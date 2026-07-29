@@ -7,9 +7,9 @@ import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { teamsChatThreadRoutes } from "@vm0/db/schema/teams-chat-thread-route";
 import { teamsOrgConnections } from "@vm0/db/schema/teams-org-connection";
 import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
-import { teamsOrgThreadSessions } from "@vm0/db/schema/teams-org-thread-session";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
 
@@ -104,21 +104,23 @@ async function sourceComputerUseHostId(
     if (!payload) {
       return null;
     }
-    const [session] = await db
-      .select({ computerUseHostId: teamsOrgThreadSessions.computerUseHostId })
-      .from(teamsOrgThreadSessions)
+    const [thread] = await db
+      .select({ computerUseHostId: chatThreads.computerUseHostId })
+      .from(teamsChatThreadRoutes)
+      .innerJoin(
+        chatThreads,
+        eq(chatThreads.id, teamsChatThreadRoutes.chatThreadId),
+      )
       .where(
         and(
-          eq(teamsOrgThreadSessions.connectionId, payload.connectionId),
-          eq(
-            teamsOrgThreadSessions.teamsConversationId,
-            payload.conversationId,
-          ),
-          eq(teamsOrgThreadSessions.teamsThreadId, payload.threadId),
+          eq(teamsChatThreadRoutes.connectionId, payload.connectionId),
+          eq(teamsChatThreadRoutes.conversationId, payload.conversationId),
+          eq(teamsChatThreadRoutes.threadId, payload.threadId),
+          eq(teamsChatThreadRoutes.userId, run.userId),
         ),
       )
       .limit(1);
-    return session?.computerUseHostId ?? null;
+    return thread?.computerUseHostId ?? null;
   }
 
   return null;
@@ -376,11 +378,21 @@ const deleteComputerUseState$ = command(
     const teamsPayload = await teamsCallbackPayload(db, run.id);
     signal.throwIfAborted();
     if (teamsPayload) {
-      await db
-        .delete(teamsOrgThreadSessions)
+      const [route] = await db
+        .select({ chatThreadId: teamsChatThreadRoutes.chatThreadId })
+        .from(teamsChatThreadRoutes)
         .where(
-          eq(teamsOrgThreadSessions.connectionId, teamsPayload.connectionId),
-        );
+          and(
+            eq(teamsChatThreadRoutes.connectionId, teamsPayload.connectionId),
+            eq(
+              teamsChatThreadRoutes.conversationId,
+              teamsPayload.conversationId,
+            ),
+            eq(teamsChatThreadRoutes.threadId, teamsPayload.threadId),
+            eq(teamsChatThreadRoutes.userId, run.userId),
+          ),
+        )
+        .limit(1);
       signal.throwIfAborted();
       await db
         .delete(teamsOrgConnections)
@@ -390,6 +402,12 @@ const deleteComputerUseState$ = command(
         .delete(teamsOrgInstallations)
         .where(eq(teamsOrgInstallations.teamsTenantId, teamsPayload.tenantId));
       signal.throwIfAborted();
+      if (route) {
+        await db
+          .delete(chatThreads)
+          .where(eq(chatThreads.id, route.chatThreadId));
+        signal.throwIfAborted();
+      }
     }
 
     await db

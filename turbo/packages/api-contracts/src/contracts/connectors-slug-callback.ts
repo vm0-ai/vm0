@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { authHeadersSchema, initContract } from "./base";
-import { connectorRefSchema } from "./connector-identity";
+import { connectorSlugSchema } from "./connector-identity";
 
 const c = initContract();
 
@@ -23,12 +23,13 @@ export type ConnectorOauthCallbackResult = z.infer<
   typeof connectorOauthCallbackResultSchema
 >;
 
-export const connectorsTypeCallbackContract = c.router({
+export const connectorsSlugCallbackContract = c.router({
   callback: {
     method: "GET",
+    // TODO(#23619): Rename this path parameter and route compatibly.
     path: "/api/connectors/:type/callback",
     headers: authHeadersSchema,
-    pathParams: z.object({ type: connectorRefSchema }),
+    pathParams: z.object({ type: connectorSlugSchema }),
     query: z
       .object({
         code: z.string().optional(),
@@ -59,5 +60,5 @@ export const connectorsTypeCallbackContract = c.router({
   },
 });
 
-export type ConnectorsTypeCallbackContract =
-  typeof connectorsTypeCallbackContract;
+export type ConnectorsSlugCallbackContract =
+  typeof connectorsSlugCallbackContract;

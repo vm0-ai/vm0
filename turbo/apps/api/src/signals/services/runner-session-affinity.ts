@@ -112,8 +112,8 @@ export function runnerSessionAffinityPollPriority(args: {
   );
   const freshAfter = runnerSessionAffinityHolderFreshAfter(args.currentDate);
   const targetGenerationRunId = sql`${runnerJobQueue.executionContext}->'resumeSession'->>'historyGenerationRunId'`;
-  const sessionId = sql`${runnerJobQueue.cliAgentSessionId}`;
-  const profile = sql`${runnerJobQueue.profile}`;
+  const sessionId = runnerJobQueue.cliAgentSessionId;
+  const profile = runnerJobQueue.profile;
   const exactCondition = reusableSandboxCondition({
     sessionId,
     profile,

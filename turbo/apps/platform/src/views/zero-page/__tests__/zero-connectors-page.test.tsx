@@ -25,7 +25,7 @@ import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import type {
   ConnectorAuthMethodId,
-  ConnectorRef,
+  ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
@@ -136,8 +136,8 @@ function applyUserConnectorUpdate(
     return Array.from(new Set([...current, ...body.enabledTypes]));
   }
   if (body.operation === "remove") {
-    return current.filter((type) => {
-      return !body.enabledTypes.includes(type);
+    return current.filter((connectorSlug) => {
+      return !body.enabledTypes.includes(connectorSlug);
     });
   }
   return [...body.enabledTypes];
@@ -173,7 +173,7 @@ function teamAgent(
 
 function mockConnectors(
   connectors: {
-    type: ConnectorRef;
+    connectorSlug: ConnectorSlug;
     authMethod?: ConnectorAuthMethodId;
     externalUsername?: string;
     connectionStatus?: ConnectorResponse["connectionStatus"];
@@ -186,7 +186,7 @@ function mockConnectors(
     connectors.map((connector) => {
       return {
         id: crypto.randomUUID(),
-        type: connector.type,
+        type: connector.connectorSlug,
         authMethod: connector.authMethod ?? "oauth",
         externalId: null,
         externalUsername: connector.externalUsername ?? null,
@@ -265,7 +265,7 @@ function customConnector(
 }
 
 function publicStatusItem(args: {
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly label: string;
   readonly description?: string;
   readonly category?: string;
@@ -275,11 +275,11 @@ function publicStatusItem(args: {
   readonly connectNotice?: PublicConnectorCatalogStatusItem["connectNotice"];
 }): PublicConnectorCatalogStatusItem {
   return {
-    connectorRef: args.connectorRef,
+    connectorRef: args.connectorSlug,
     label: args.label,
     description: args.description ?? `${args.label} public description`,
     icon: args.icon ?? {
-      url: `https://icons.example.test/${args.connectorRef}.svg`,
+      url: `https://icons.example.test/${args.connectorSlug}.svg`,
       invertInDarkMode: false,
     },
     category: args.category ?? "data-automation-infrastructure",
@@ -391,7 +391,7 @@ function mockCustomConnectorStory(): void {
 }
 
 function setupConnectorStatusFilterPage(path = "/connectors"): void {
-  mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+  mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
   context.mocks.data.team([
     teamAgent("c0000000-0000-4000-a000-000000000020", "Research", "preset:0"),
   ]);
@@ -426,7 +426,7 @@ async function expectConnectorCardsVisible(expected: {
 
 describe("connectors page", () => {
   it("lets users browse connectors by grouped categories", async () => {
-    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+    mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
 
     detachedSetupPage({ context, path: "/connectors" });
 
@@ -461,7 +461,7 @@ describe("connectors page", () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "github",
+        connectorSlug: "github",
         label: "GitHub",
         icon: {
           url: "https://icons.example.test/github.svg",
@@ -470,7 +470,7 @@ describe("connectors page", () => {
         authMethods: [],
       }),
       publicStatusItem({
-        connectorRef: "slack",
+        connectorSlug: "slack",
         label: "Slack",
         icon: {
           url: "https://icons.example.test/slack.svg",
@@ -510,7 +510,7 @@ describe("connectors page", () => {
     mockPublicConnectorStatus(
       [
         publicStatusItem({
-          connectorRef: "github",
+          connectorSlug: "github",
           label: "Public GitHub",
           category: "partner-apps",
           authMethods: [
@@ -525,7 +525,7 @@ describe("connectors page", () => {
           ],
         }),
         publicStatusItem({
-          connectorRef: "stripe",
+          connectorSlug: "stripe",
           label: "Public Stripe",
           category: "billing-apps",
           authMethods: [
@@ -578,7 +578,7 @@ describe("connectors page", () => {
     mockPublicConnectorStatus(
       [
         publicStatusItem({
-          connectorRef: "github",
+          connectorSlug: "github",
           label: "Duplicate GitHub",
           category: "partner-apps",
           authMethods: [
@@ -635,7 +635,7 @@ describe("connectors page", () => {
     mockPublicConnectorStatus(
       [
         publicStatusItem({
-          connectorRef: "github",
+          connectorSlug: "github",
           label: "Partner GitHub",
           category: "partner-apps",
           authMethods: [
@@ -650,7 +650,7 @@ describe("connectors page", () => {
           ],
         }),
         publicStatusItem({
-          connectorRef: "stripe",
+          connectorSlug: "stripe",
           label: "Billing Stripe",
           category: "billing-apps",
           authMethods: [
@@ -707,7 +707,7 @@ describe("connectors page", () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "github",
+        connectorSlug: "github",
         label: "Fallback GitHub",
         category: "legacy-category",
         authMethods: [
@@ -737,7 +737,7 @@ describe("connectors page", () => {
   it("does not show reconnect reason help on the connection expired badge", async () => {
     mockConnectors([
       {
-        type: "github",
+        connectorSlug: "github",
         connectionStatus: "reconnect-required",
         reconnectReason: "authorization_expired_or_revoked",
       },
@@ -761,7 +761,7 @@ describe("connectors page", () => {
   it("omits standalone instructions from reconnect progress", async () => {
     mockConnectors([
       {
-        type: "meta-ads",
+        connectorSlug: "meta-ads",
         connectionStatus: "reconnect-required",
       },
     ]);
@@ -816,7 +816,7 @@ describe("connectors page", () => {
   });
 
   it("disconnects a connected catalog connector from the options menu", async () => {
-    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+    mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
 
     detachedSetupPage({
       context,
@@ -847,7 +847,7 @@ describe("connectors page", () => {
     ];
     mockConnectors([
       {
-        type: "google-ads",
+        connectorSlug: "google-ads",
         oauthScopes: storedScopes,
       },
     ]);
@@ -921,7 +921,7 @@ describe("connectors page", () => {
   });
 
   it("filters connectors by integration keywords", async () => {
-    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+    mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
 
     detachedSetupPage({ context, path: "/connectors" });
 
@@ -937,8 +937,8 @@ describe("connectors page", () => {
 
   it("filters connectors by capability keywords", async () => {
     mockConnectors([
-      { type: "github", externalUsername: "octocat" },
-      { type: "axiom", authMethod: "api-token" },
+      { connectorSlug: "github", externalUsername: "octocat" },
+      { connectorSlug: "axiom", authMethod: "api-token" },
     ]);
 
     detachedSetupPage({ context, path: "/connectors" });
@@ -995,7 +995,7 @@ describe("connectors page", () => {
 
   it("filters connectors by agent", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000010";
-    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+    mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
     context.mocks.data.team([teamAgent(agentId, "Research Agent", "preset:0")]);
     context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
       return respond(200, {
@@ -1026,7 +1026,7 @@ describe("connectors page", () => {
   });
 
   it("does not subscribe untouched connector cards to connector changes", async () => {
-    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+    mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
 
     detachedSetupPage({
       context,
@@ -1039,8 +1039,8 @@ describe("connectors page", () => {
 
   it("hydrates connector search and clears it on clean navigation", async () => {
     mockConnectors([
-      { type: "github", externalUsername: "octocat" },
-      { type: "axiom", authMethod: "api-token" },
+      { connectorSlug: "github", externalUsername: "octocat" },
+      { connectorSlug: "axiom", authMethod: "api-token" },
     ]);
 
     detachedSetupPage({ context, path: "/connectors?keywords=logs" });
@@ -1132,7 +1132,7 @@ describe("connectors page", () => {
       [researchAgentId, ["github"]],
       [supportAgentId, []],
     ]);
-    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+    mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
     context.mocks.data.team([
       teamAgent(researchAgentId, "Research Agent"),
       teamAgent(supportAgentId, "Support Agent"),
@@ -1145,12 +1145,14 @@ describe("connectors page", () => {
     context.mocks.api(
       zeroUserConnectorsContract.update,
       ({ params, body, respond }) => {
-        const nextEnabledTypes = applyUserConnectorUpdate(
+        const nextEnabledConnectorSlugs = applyUserConnectorUpdate(
           enabledByAgent.get(params.id) ?? [],
           body,
         );
-        enabledByAgent.set(params.id, nextEnabledTypes);
-        return respond(200, { enabledTypes: nextEnabledTypes });
+        enabledByAgent.set(params.id, nextEnabledConnectorSlugs);
+        return respond(200, {
+          enabledTypes: nextEnabledConnectorSlugs,
+        });
       },
     );
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
@@ -1197,7 +1199,7 @@ describe("connectors page", () => {
   it("ignores stale agents when loading connector access rows", async () => {
     const activeAgentId = "c0000000-0000-4000-a000-000000000001";
     const staleAgentId = "c0000000-0000-4000-a000-000000000002";
-    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+    mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
     context.mocks.data.team([
       teamAgent(activeAgentId, "Research Agent"),
       teamAgent(staleAgentId, "Deleted Agent"),
@@ -1235,7 +1237,7 @@ describe("connectors page", () => {
   it("ignores stale authorized agents when loading connector access grants", async () => {
     const activeAgentId = "c0000000-0000-4000-a000-000000000001";
     const staleAgentId = "c0000000-0000-4000-a000-000000000002";
-    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+    mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
     context.mocks.data.team([
       teamAgent(activeAgentId, "Research Agent"),
       teamAgent(staleAgentId, "Deleted Agent"),
@@ -1289,7 +1291,7 @@ describe("connectors page", () => {
       }),
     );
 
-    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+    mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
     context.mocks.data.team([
       teamAgent(agentIds[0], "Research", "preset:0"),
       teamAgent(agentIds[1], "Support", "preset:1"),
@@ -1330,7 +1332,7 @@ describe("connectors page", () => {
 
   it("shows an add-access affordance when no agents are authorized", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000001";
-    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+    mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
     context.mocks.data.team([teamAgent(agentId, "Research Agent", "preset:0")]);
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledTypes: [] });
@@ -1363,7 +1365,7 @@ describe("connectors page", () => {
     const mediaAgentId = "c0000000-0000-4000-a000-000000000003";
     mockConnectors([
       {
-        type: "cloudinary",
+        connectorSlug: "cloudinary",
         authMethod: "api-token",
         externalUsername: "demo-cloud",
       },
@@ -1475,22 +1477,30 @@ describe("connectors page", () => {
   });
 
   it.each([
+    ["airtable", "Airtable"],
+    ["asana", "Asana"],
+    ["gumroad", "Gumroad"],
     ["hubspot", "HubSpot"],
     ["intervals-icu", "Intervals.icu"],
     ["linear", "Linear"],
     ["mercury", "Mercury"],
+    ["microsoft-365", "Microsoft 365"],
+    ["monday", "monday.com"],
     ["notion", "Notion"],
+    ["outlook-calendar", "Outlook Calendar"],
+    ["outlook-mail", "Outlook Mail"],
     ["sentry", "Sentry"],
     ["server-authored-oauth", "Server-authored OAuth"],
     ["strava", "Strava"],
+    ["todoist", "Todoist"],
     ["vercel", "Vercel"],
   ] as const)(
     "starts %s OAuth with the app callback",
-    async (connectorRef, label) => {
+    async (connectorSlug, label) => {
       mockConnectors([]);
       mockPublicConnectorStatus([
         publicStatusItem({
-          connectorRef,
+          connectorSlug,
           label,
           authMethods: [
             {
@@ -1510,10 +1520,10 @@ describe("connectors page", () => {
       context.mocks.api(
         zeroConnectorOauthStartContract.start,
         ({ body, params, respond }) => {
-          expect(params.type).toBe(connectorRef);
+          expect(params.type).toBe(connectorSlug);
           expect(body.callbackTarget).toBe("app");
           return respond(200, {
-            authorizationUrl: `https://oauth.test/${connectorRef}/authorize`,
+            authorizationUrl: `https://oauth.test/${connectorSlug}/authorize`,
           });
         },
       );
@@ -1524,7 +1534,7 @@ describe("connectors page", () => {
 
       await waitFor(() => {
         expect(authWindow.location.href).toBe(
-          `https://oauth.test/${connectorRef}/authorize`,
+          `https://oauth.test/${connectorSlug}/authorize`,
         );
       });
     },
@@ -1534,7 +1544,7 @@ describe("connectors page", () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "cloudflare",
+        connectorSlug: "cloudflare",
         label: "Cloudflare",
         authMethods: [
           {
@@ -1574,12 +1584,12 @@ describe("connectors page", () => {
   });
 
   it("routes a server-authored connector from its catalog grant metadata", async () => {
-    const connectorRef = "server-authored-steam";
+    const connectorSlug = "server-authored-steam";
     const authMethod = "partner-openid";
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef,
+        connectorSlug,
         label: "Partner Steam",
         description: "Server-authored Steam player data",
         icon: {
@@ -1603,7 +1613,7 @@ describe("connectors page", () => {
     context.mocks.api(
       zeroConnectorOpenIdStartContract.start,
       ({ body, params, respond }) => {
-        expect(params.type).toBe(connectorRef);
+        expect(params.type).toBe(connectorSlug);
         expect(body.authMethod).toBe(authMethod);
         return respond(200, {
           authorizationUrl: "https://openid.test/partner-steam/authorize",
@@ -1640,7 +1650,7 @@ describe("connectors page", () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "stripe",
+        connectorSlug: "stripe",
         label: "Public Stripe",
         description: "Public Stripe description",
         icon: {
@@ -1700,7 +1710,7 @@ describe("connectors page", () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "stripe",
+        connectorSlug: "stripe",
         label: "Public Stripe",
         description: "Public Stripe description",
         authMethods: [
@@ -1742,7 +1752,7 @@ describe("connectors page", () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "stripe",
+        connectorSlug: "stripe",
         label: "Public Stripe",
         description: "Public Stripe description",
         icon: {
@@ -1796,7 +1806,7 @@ describe("connectors page", () => {
     ]);
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "stripe",
+        connectorSlug: "stripe",
         label: "Public Stripe",
         description: "Public Stripe description",
         authMethods: [
@@ -1882,7 +1892,7 @@ describe("connectors page", () => {
     });
     expect(authorizedAgentIds).toStrictEqual([]);
 
-    mockConnectors([{ type: "stripe", authMethod: "oauth" }]);
+    mockConnectors([{ connectorSlug: "stripe", authMethod: "oauth" }]);
     context.mocks.ably.trigger("connector:changed", null);
 
     await waitFor(() => {
@@ -1909,7 +1919,7 @@ describe("connectors page", () => {
     ]);
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "stripe",
+        connectorSlug: "stripe",
         label: "Public Stripe",
         description: "Public Stripe public catalog",
         authMethods: [
@@ -1991,7 +2001,7 @@ describe("connectors page", () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "stripe",
+        connectorSlug: "stripe",
         label: "Public Stripe",
         description: "Public Stripe description",
         authMethods: [
@@ -2080,7 +2090,7 @@ describe("connectors page", () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "base44",
+        connectorSlug: "base44",
         label: "Base44",
         authMethods: [
           {
@@ -2124,7 +2134,7 @@ describe("connectors page", () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "stripe",
+        connectorSlug: "stripe",
         label: "Stripe",
         authMethods: [
           {
@@ -2193,7 +2203,7 @@ describe("connectors page", () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "stripe",
+        connectorSlug: "stripe",
         label: "Stripe",
         authMethods: [
           {
@@ -2255,7 +2265,7 @@ describe("connectors page", () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "axiom",
+        connectorSlug: "axiom",
         label: "Public Axiom",
         description: "Public Axiom description",
         authMethods: [
@@ -2337,7 +2347,7 @@ describe("connectors page", () => {
   it("reloads manual connector status after success if post-success signal aborts", async () => {
     mockConnectors([]);
     const disconnectedAxiom = publicStatusItem({
-      connectorRef: "axiom",
+      connectorSlug: "axiom",
       label: "Public Axiom",
       description: "Public Axiom description",
       icon: {
@@ -2444,7 +2454,7 @@ describe("connectors page", () => {
       context.store.set(
         submitManualGrant$,
         {
-          connectorRef: "axiom",
+          connectorSlug: "axiom",
           authMethod: "api-token",
           inputValues: { apiToken: "xaat-test" },
           options: { connectorLabel: "Public Axiom" },
@@ -2472,7 +2482,7 @@ describe("connectors page", () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "axiom",
+        connectorSlug: "axiom",
         label: "Public Axiom",
         authMethods: [
           {
@@ -2573,7 +2583,7 @@ describe("connectors page", () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "axiom",
+        connectorSlug: "axiom",
         label: "Public Axiom",
         authMethods: [
           {
@@ -2595,7 +2605,7 @@ describe("connectors page", () => {
         ],
       }),
       publicStatusItem({
-        connectorRef: "stripe",
+        connectorSlug: "stripe",
         label: "Public Stripe",
         authMethods: [
           {
@@ -2710,7 +2720,7 @@ describe("connectors page", () => {
     ]);
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "axiom",
+        connectorSlug: "axiom",
         label: "Public Axiom",
         authMethods: [
           {
@@ -2914,7 +2924,7 @@ describe("connectors page", () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorRef: "playstation",
+        connectorSlug: "playstation",
         label: "PlayStation",
         authMethods: [
           {

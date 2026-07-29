@@ -6,6 +6,8 @@ import {
   r2ImageTransformUrl,
   VIDEO_TEMPLATE_ITEMS,
 } from "@vm0/core";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import {
   onboardingDraft$,
   updateOnboardingDraft$,
@@ -54,6 +56,7 @@ function withNote(basePrompt: string, label: string, note: string): string {
 function presentationRunConfig(
   slug: string | null,
   note: string,
+  t: TFunction<"common">,
 ): TemplateRunConfig | null {
   const item = PRESENTATION_TEMPLATE_PICKER_ITEMS.find((candidate) => {
     return candidate.slug === slug;
@@ -62,11 +65,17 @@ function presentationRunConfig(
     return null;
   }
   return {
-    title: "Fulfil your presentation",
+    title: t(($) => {
+      return $.onboarding.templateRun.presentation.title;
+    }),
     prompt: withNote(item.prompt, "Additional content and instruction", note),
     note,
-    noteLabel: "Presentation content and instruction",
-    notePlaceholder: "Add your presentation's content and instruction",
+    noteLabel: t(($) => {
+      return $.onboarding.templateRun.presentation.noteLabel;
+    }),
+    notePlaceholder: t(($) => {
+      return $.onboarding.templateRun.presentation.notePlaceholder;
+    }),
     templateSlug: item.slug,
     templateId: `presentation-template:${item.slug}`,
     backPath: ROUTES.onboardingPresentationTemplate,
@@ -81,6 +90,7 @@ function presentationRunConfig(
 function imageRunConfig(
   slug: string | null,
   note: string,
+  t: TFunction<"common">,
 ): TemplateRunConfig | null {
   const item = ILLUSTRATION_TEMPLATE_ITEMS.find((candidate) => {
     return candidate.slug === slug;
@@ -90,12 +100,17 @@ function imageRunConfig(
   }
   const basePrompt = `Generate an illustration in the ${item.title} style.`;
   return {
-    title: "Select one automation you would like to have a try",
+    title: t(($) => {
+      return $.onboarding.templateRun.image.title;
+    }),
     prompt: withNote(basePrompt, "Scene", note),
     note,
-    noteLabel: "Custom illustration scene",
-    notePlaceholder:
-      "Add your custom scene to remix with your own illustration",
+    noteLabel: t(($) => {
+      return $.onboarding.templateRun.image.noteLabel;
+    }),
+    notePlaceholder: t(($) => {
+      return $.onboarding.templateRun.image.notePlaceholder;
+    }),
     templateSlug: item.slug,
     templateId: `illustration-template:${item.slug}`,
     backPath: ROUTES.onboardingImageTemplate,
@@ -110,6 +125,7 @@ function imageRunConfig(
 function videoRunConfig(
   slug: string | null,
   note: string,
+  t: TFunction<"common">,
 ): TemplateRunConfig | null {
   const item = VIDEO_TEMPLATE_ITEMS.find((candidate) => {
     return candidate.slug === slug;
@@ -118,15 +134,21 @@ function videoRunConfig(
     return null;
   }
   return {
-    title: "Customize your video",
+    title: t(($) => {
+      return $.onboarding.templateRun.video.title;
+    }),
     prompt: withNote(
       onboardingVideoPrompt(item.slug),
       "Additional direction",
       note,
     ),
     note,
-    noteLabel: "Custom video prompt",
-    notePlaceholder: "Add your custom prompt to remix with your own video",
+    noteLabel: t(($) => {
+      return $.onboarding.templateRun.video.noteLabel;
+    }),
+    notePlaceholder: t(($) => {
+      return $.onboarding.templateRun.video.notePlaceholder;
+    }),
     templateSlug: item.slug,
     templateId: item.id,
     backPath: ROUTES.onboardingVideoTemplate,
@@ -142,17 +164,19 @@ function videoRunConfig(
 function templateRunConfig(
   kind: TemplateRunKind,
   draft: OnboardingDraft,
+  t: TFunction<"common">,
 ): TemplateRunConfig | null {
   if (kind === "presentation") {
     return presentationRunConfig(
       draft.presentationTemplateSlug,
       draft.presentationNote,
+      t,
     );
   }
   if (kind === "image") {
-    return imageRunConfig(draft.imageTemplateSlug, draft.imageNote);
+    return imageRunConfig(draft.imageTemplateSlug, draft.imageNote, t);
   }
-  return videoRunConfig(draft.videoTemplateSlug, draft.videoNote);
+  return videoRunConfig(draft.videoTemplateSlug, draft.videoNote, t);
 }
 
 function playVideo(event: SyntheticEvent<HTMLElement>): void {
@@ -171,10 +195,13 @@ function resetVideo(event: SyntheticEvent<HTMLElement>): void {
 }
 
 function TemplateRunPreview({ media }: { readonly media: TemplateRunMedia }) {
+  const { t } = useTranslation();
   if (media.kind === "video") {
     return (
       <section
-        aria-label="Video template preview"
+        aria-label={t(($) => {
+          return $.onboarding.templateRun.video.previewLabel;
+        })}
         tabIndex={0}
         className="mt-6 h-[200px] w-full max-w-[350px] overflow-hidden rounded-3xl border border-border bg-background shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-primary"
         onFocus={playVideo}
@@ -198,7 +225,9 @@ function TemplateRunPreview({ media }: { readonly media: TemplateRunMedia }) {
   if (media.kind === "presentation") {
     return (
       <section
-        aria-label="Presentation template preview"
+        aria-label={t(($) => {
+          return $.onboarding.templateRun.presentation.previewLabel;
+        })}
         className="mt-6 h-[136px] w-[242px] overflow-hidden rounded-3xl border border-border bg-muted shadow-sm"
       >
         <img
@@ -211,7 +240,9 @@ function TemplateRunPreview({ media }: { readonly media: TemplateRunMedia }) {
   }
   return (
     <section
-      aria-label="Illustration template preview"
+      aria-label={t(($) => {
+        return $.onboarding.templateRun.image.previewLabel;
+      })}
       className="mt-5 h-[225px] w-[167px] overflow-hidden rounded-3xl bg-muted"
     >
       <img
@@ -228,10 +259,11 @@ function OnboardingTemplateRunPage({
 }: {
   readonly kind: TemplateRunKind;
 }) {
+  const { t } = useTranslation();
   const draft = useGet(onboardingDraft$);
   const setDraft = useSet(updateOnboardingDraft$);
   const { navigateTo } = useOnboardingNavigation();
-  const config = templateRunConfig(kind, draft);
+  const config = templateRunConfig(kind, draft, t);
 
   if (!config) {
     return null;

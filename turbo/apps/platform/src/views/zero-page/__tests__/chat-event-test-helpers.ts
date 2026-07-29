@@ -3,7 +3,6 @@ import {
   type ChatEventResponse,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
 
 type UnionKeys<T> = T extends unknown ? keyof T : never;
 type UnionValue<T, K extends PropertyKey> = T extends unknown
@@ -23,7 +22,9 @@ export type MockChatEventInput = OptionalUnionFields<ChatEventResponse> & {
   createdAt: string;
 };
 
-function inferredEventType(message: MockChatEventInput): ChatEventType {
+function inferredEventType(
+  message: MockChatEventInput,
+): ChatEventResponse["eventType"] {
   if (message.eventType !== undefined) {
     return message.eventType;
   }
@@ -238,7 +239,7 @@ const mockChatEventOverrides = {
       usage: message.usage,
     };
   },
-} satisfies Record<ChatEventType, MockChatEventOverrides>;
+} satisfies Record<ChatEventResponse["eventType"], MockChatEventOverrides>;
 
 function normalizeMockChatEvent(
   message: MockChatEventInput,

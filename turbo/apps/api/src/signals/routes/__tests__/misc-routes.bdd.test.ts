@@ -226,6 +226,7 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
 
   it("negotiates Brazilian Portuguese across old and new clients", async () => {
     const { api, admin } = testActors();
+    mockOptionalEnv("BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED", undefined);
 
     const guarded = await api.readPreferences(
       admin,

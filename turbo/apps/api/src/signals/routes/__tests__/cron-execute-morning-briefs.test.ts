@@ -17,7 +17,7 @@ import { zeroMorningBriefContract } from "@vm0/api-contracts/contracts/zero-morn
 import { zeroUserPreferencesContract } from "@vm0/api-contracts/contracts/zero-user-preferences";
 import { ILLUSTRATION_TEMPLATE_ITEMS } from "@vm0/core";
 import { Cron } from "croner";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
@@ -38,6 +38,14 @@ import { mockGoogleCalendarConnectorOAuth } from "./helpers/api-bdd-workflows";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { holdOrgAdmissionLockFixture } from "../../../test-fixtures/chat-messages";
+import {
+  insertOldFormatQueuedUserMessageFixture,
+  insertQueuedWebUserMessageFixture,
+  pauseMorningBriefAutomationIntakeFixture,
+  readMorningBriefDeliveryFixture,
+  readMorningBriefQueuedParamsFixture,
+} from "../../../test-fixtures/morning-brief";
 
 /**
  * MORNING-BRIEF: the daily 7:00 local-time brief end to end.
@@ -56,7 +64,6 @@ const webhooks = createWebhookCallbackApi(context);
 const connectors = createConnectorBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const routeMocks = createZeroRouteMocks(context);
-
 const CRON_SECRET = "test-morning-brief-cron-secret";
 const TIMEZONE = "Asia/Shanghai";
 // Anchor on the next 7:00 local strictly after the real clock: runner job
@@ -337,11 +344,9 @@ async function setupMorningBriefActor(
   return { actor: orgActor, runnerGroup, gmailAfterSeconds };
 }
 
-async function findMorningBriefThreadOrNull(scenario: Scenario): Promise<{
-  readonly threadId: string;
-  readonly runId: string;
-  readonly chatMessage: string;
-} | null> {
+async function findMorningBriefThreadIdOrNull(
+  scenario: Scenario,
+): Promise<string | null> {
   routeMocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
   const threadEvents = await accept(
     setupApp({ context })(chatThreadsContract).events({
@@ -356,22 +361,42 @@ async function findMorningBriefThreadOrNull(scenario: Scenario): Promise<{
   if (!thread) {
     return null;
   }
+  return thread.chatThreadId;
+}
+
+async function readMorningBriefThreadEvents(
+  scenario: Scenario,
+  threadId: string,
+) {
   const messages = await accept(
     setupApp({ context })(chatThreadEventsContract).list({
       headers: actorHeaders(),
-      params: { threadId: thread.chatThreadId },
+      params: { threadId },
       query: { limit: 50 },
     }),
     [200],
   );
-  const runMessage = messages.body.events.find((message) => {
+  return messages.body.events;
+}
+
+async function findMorningBriefThreadOrNull(scenario: Scenario): Promise<{
+  readonly threadId: string;
+  readonly runId: string;
+  readonly chatMessage: string;
+} | null> {
+  const threadId = await findMorningBriefThreadIdOrNull(scenario);
+  if (!threadId) {
+    return null;
+  }
+  const messages = await readMorningBriefThreadEvents(scenario, threadId);
+  const runMessage = messages.find((message) => {
     return message.eventType === "input.prompt" && message.runId !== undefined;
   });
   if (!runMessage?.runId || runMessage.content === null) {
     throw new Error("Expected the Morning Brief run message");
   }
   return {
-    threadId: thread.chatThreadId,
+    threadId,
     runId: runMessage.runId,
     chatMessage: runMessage.content,
   };
@@ -575,11 +600,62 @@ describe("cron execute morning briefs", () => {
     await executeMorningBriefsCron();
 
     // The run lands in the fixed Morning Brief thread through the chat queue.
-    const { runId, chatMessage } = await findMorningBriefThread(scenario);
+    const { threadId, runId, chatMessage } =
+      await findMorningBriefThread(scenario);
 
     // The thread shows only the member-facing line, with no signed URL.
     expect(chatMessage).toBe(`Generate my Morning Brief for ${BRIEF_DATE}.`);
     expect(chatMessage).not.toContain("# Run facts");
+    const delivery = await readMorningBriefDeliveryFixture({
+      orgId: scenario.actor.orgId,
+      userId: scenario.actor.userId,
+      briefDate: BRIEF_DATE,
+    });
+    expect(delivery).toStrictEqual(
+      expect.objectContaining({
+        id: expect.any(String),
+        status: "running",
+        runId,
+        inputKey: expect.stringContaining("/input.json"),
+        outputKey: expect.stringContaining("/output.json"),
+      }),
+    );
+    if (!delivery) {
+      throw new Error("Expected the admitted Morning Brief delivery");
+    }
+    const queuedParams = await readMorningBriefQueuedParamsFixture({
+      messageId: delivery.id,
+      orgId: scenario.actor.orgId,
+      userId: scenario.actor.userId,
+    });
+    expect(queuedParams).toStrictEqual(
+      expect.objectContaining({
+        version: 1,
+        prompt: expect.stringContaining("# Run facts"),
+        appendSystemPrompt: expect.stringContaining(
+          "Begin exactly with `Good morning.`",
+        ),
+        morningBriefDelivery: {
+          deliveryId: delivery.id,
+          internalKind: "morning-brief:email",
+          secret: expect.any(String),
+          payload: { deliveryId: delivery.id },
+        },
+      }),
+    );
+    const threadMessages = await readMorningBriefThreadEvents(
+      scenario,
+      threadId,
+    );
+    expect(
+      threadMessages.filter((message) => {
+        return (
+          message.eventType === "input.prompt" &&
+          message.content === chatMessage &&
+          message.runId !== undefined
+        );
+      }),
+    ).toHaveLength(1);
 
     // The agent uploads output.json and the run completes.
     mockUploadedBriefOutput(VALID_OUTPUT);
@@ -847,7 +923,7 @@ describe("cron execute morning briefs", () => {
     await flushWaitUntilForTest();
     expect(triggered.body.runId).toBeTruthy();
 
-    const githubConnector = await connectors.readConnectorByType(
+    const githubConnector = await connectors.readConnectorBySlug(
       scenario.actor,
       "github",
     );
@@ -868,7 +944,8 @@ describe("cron execute morning briefs", () => {
     await drainOutbox();
     expect(sentMorningBriefEmails()).toHaveLength(1);
 
-    // Repeat triggers on the same local date reset the delivery and resend.
+    // Repeat triggers on the same local date return the admitted delivery
+    // without enqueueing a second message or sending a second email.
     routeMocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
     const second = await accept(
       morningBriefTriggerClient().trigger({
@@ -878,17 +955,276 @@ describe("cron execute morning briefs", () => {
       [200],
     );
     await flushWaitUntilForTest();
-    mockUploadedBriefOutput(VALID_OUTPUT);
-    await completeMorningBriefRun(
-      scenario,
-      second.body.runId,
-      0,
-      `morning-brief-cli-${triggered.body.runId}`,
-    );
     await drainOutbox();
-    expect(sentMorningBriefEmails()).toHaveLength(2);
+    expect(second.body.runId).toBe(triggered.body.runId);
+    expect(sentMorningBriefEmails()).toHaveLength(1);
+    const thread = await findMorningBriefThread(scenario);
+    const events = await readMorningBriefThreadEvents(
+      scenario,
+      thread.threadId,
+    );
+    expect(
+      events.filter((event) => {
+        return (
+          event.eventType === "input.prompt" &&
+          event.content === `Generate my Morning Brief for ${BRIEF_DATE}.` &&
+          event.runId !== undefined
+        );
+      }),
+    ).toHaveLength(1);
     clearMockNow();
   });
+
+  it("keeps a queued brief and a concurrent user message in FIFO order", async () => {
+    context.mocks.resend.send.mockResolvedValue({
+      data: { id: "resend-fifo" },
+      error: null,
+    });
+    const scenario = await setupMorningBriefActor();
+    await updateFeatureSwitchesForUser(context, scenario.actor, {
+      [FeatureSwitchKey.ManualMorningBrief]: true,
+    });
+    mockNow(AFTER_SEVEN_LOCAL);
+    const admissionLock = await holdOrgAdmissionLockFixture({
+      orgId: scenario.actor.orgId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      admissionLock.release();
+      await admissionLock.done;
+    });
+
+    routeMocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
+    const briefRequest = morningBriefTriggerClient().trigger({
+      headers: actorHeaders(),
+      body: {},
+    });
+
+    let threadId: string | null = null;
+    await expect
+      .poll(async () => {
+        threadId = await findMorningBriefThreadIdOrNull(scenario);
+        return threadId;
+      })
+      .not.toBeNull();
+    if (!threadId) {
+      throw new Error("Expected the queued Morning Brief thread");
+    }
+    const queuedThreadId = threadId;
+    await expect
+      .poll(async () => {
+        const events = await readMorningBriefThreadEvents(
+          scenario,
+          queuedThreadId,
+        );
+        return events.some((event) => {
+          return (
+            event.eventType === "input.prompt" &&
+            event.content === `Generate my Morning Brief for ${BRIEF_DATE}.` &&
+            event.runId === undefined
+          );
+        });
+      })
+      .toBe(true);
+
+    const userPrompt = "Add the budget review to today's priorities.";
+    await insertQueuedWebUserMessageFixture({
+      threadId: queuedThreadId,
+      content: userPrompt,
+      createdAt: new Date(AFTER_SEVEN_LOCAL + 1000),
+    });
+    await expect
+      .poll(async () => {
+        const events = await readMorningBriefThreadEvents(
+          scenario,
+          queuedThreadId,
+        );
+        return events.some((event) => {
+          return (
+            event.eventType === "input.prompt" && event.content === userPrompt
+          );
+        });
+      })
+      .toBe(true);
+
+    admissionLock.release();
+    const brief = await accept(briefRequest, [200]);
+    await admissionLock.done;
+
+    mockUploadedBriefOutput(VALID_OUTPUT);
+    await completeMorningBriefRun(scenario, brief.body.runId, 0);
+    await drainOutbox();
+
+    let userRunId: string | null = null;
+    await expect
+      .poll(async () => {
+        const events = await readMorningBriefThreadEvents(
+          scenario,
+          queuedThreadId,
+        );
+        const claimed = events.filter((event) => {
+          return (
+            event.eventType === "input.prompt" &&
+            event.runId !== undefined &&
+            (event.content === `Generate my Morning Brief for ${BRIEF_DATE}.` ||
+              event.content === userPrompt)
+          );
+        });
+        userRunId =
+          claimed.find((event) => {
+            return event.content === userPrompt;
+          })?.runId ?? null;
+        return claimed.map((event) => {
+          return event.content;
+        });
+      })
+      .toStrictEqual([
+        `Generate my Morning Brief for ${BRIEF_DATE}.`,
+        userPrompt,
+      ]);
+    if (!userRunId) {
+      throw new Error("Expected the concurrent user message run");
+    }
+    expect(userRunId).not.toBe(brief.body.runId);
+    await completeMorningBriefRun(scenario, userRunId, 0);
+    clearMockNow();
+  }, 90_000);
+
+  it("admits a queued brief while workflow automation intake is paused", async () => {
+    context.mocks.resend.send.mockResolvedValue({
+      data: { id: "resend-paused" },
+      error: null,
+    });
+    const scenario = await setupMorningBriefActor();
+    await updateFeatureSwitchesForUser(context, scenario.actor, {
+      [FeatureSwitchKey.ManualMorningBrief]: true,
+    });
+    mockNow(AFTER_SEVEN_LOCAL);
+    const admissionLock = await holdOrgAdmissionLockFixture({
+      orgId: scenario.actor.orgId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      admissionLock.release();
+      await admissionLock.done;
+    });
+
+    routeMocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
+    const briefRequest = morningBriefTriggerClient().trigger({
+      headers: actorHeaders(),
+      body: {},
+    });
+    let threadId: string | null = null;
+    await expect
+      .poll(async () => {
+        threadId = await findMorningBriefThreadIdOrNull(scenario);
+        return threadId;
+      })
+      .not.toBeNull();
+    if (!threadId) {
+      throw new Error("Expected the queued Morning Brief thread");
+    }
+    const queuedThreadId = threadId;
+    await expect
+      .poll(async () => {
+        const events = await readMorningBriefThreadEvents(
+          scenario,
+          queuedThreadId,
+        );
+        return events.some((event) => {
+          return (
+            event.eventType === "input.prompt" && event.runId === undefined
+          );
+        });
+      })
+      .toBe(true);
+
+    await pauseMorningBriefAutomationIntakeFixture(queuedThreadId);
+    const pausedEvents = await readMorningBriefThreadEvents(
+      scenario,
+      queuedThreadId,
+    );
+    expect(pausedEvents).toContainEqual(
+      expect.objectContaining({
+        eventType: "queue.automation_paused",
+      }),
+    );
+
+    admissionLock.release();
+    const triggered = await accept(briefRequest, [200]);
+    await admissionLock.done;
+    const thread = await findMorningBriefThread(scenario);
+    expect(thread.runId).toBe(triggered.body.runId);
+    mockUploadedBriefOutput(VALID_OUTPUT);
+    await completeMorningBriefRun(scenario, triggered.body.runId, 0);
+    await drainOutbox();
+    clearMockNow();
+  }, 90_000);
+
+  it("drains an old-format queued params payload without new delivery fields", async () => {
+    context.mocks.resend.send.mockResolvedValue({
+      data: { id: "resend-old-format" },
+      error: null,
+    });
+    const scenario = await setupMorningBriefActor();
+    await updateFeatureSwitchesForUser(context, scenario.actor, {
+      [FeatureSwitchKey.ManualMorningBrief]: true,
+    });
+    mockNow(AFTER_SEVEN_LOCAL);
+    routeMocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
+    const triggered = await accept(
+      morningBriefTriggerClient().trigger({
+        headers: actorHeaders(),
+        body: {},
+      }),
+      [200],
+    );
+    const thread = await findMorningBriefThread(scenario);
+
+    const displayContent = "Legacy queued Morning Brief display text.";
+    const realPrompt = "Legacy queued Morning Brief execution prompt.";
+    const appendSystemPrompt = "Legacy Morning Brief system instructions.";
+    const messageId = await insertOldFormatQueuedUserMessageFixture({
+      threadId: thread.threadId,
+      orgId: scenario.actor.orgId,
+      userId: scenario.actor.userId,
+      content: displayContent,
+      prompt: realPrompt,
+      appendSystemPrompt,
+    });
+    const oldParams = await readMorningBriefQueuedParamsFixture({
+      messageId,
+      orgId: scenario.actor.orgId,
+      userId: scenario.actor.userId,
+    });
+    expect(oldParams).toStrictEqual({
+      version: 1,
+      prompt: realPrompt,
+      appendSystemPrompt,
+    });
+
+    mockUploadedBriefOutput(VALID_OUTPUT);
+    await completeMorningBriefRun(scenario, triggered.body.runId, 0);
+    await drainOutbox();
+    const events = await readMorningBriefThreadEvents(
+      scenario,
+      thread.threadId,
+    );
+    const claimed = events.find((event) => {
+      return (
+        event.eventType === "input.prompt" &&
+        event.content === displayContent &&
+        event.runId !== undefined
+      );
+    });
+    if (!claimed?.runId) {
+      throw new Error("Expected the old-format queue item to drain");
+    }
+    const runInput = await completeMorningBriefRun(scenario, claimed.runId, 0);
+    expect(runInput.prompt).toBe(realPrompt);
+    expect(runInput.appendSystemPrompt).toContain(appendSystemPrompt);
+    clearMockNow();
+  }, 90_000);
 
   it("sends no email when the uploaded brief output is invalid", async () => {
     context.mocks.resend.send.mockResolvedValue({

@@ -21,6 +21,8 @@ const variableStateSchema = z.object({
   connector_id: z.uuid(),
 });
 
+// TODO(#23619): Rename the test-only `connector_ref` wire fields with their
+// persisted connector lookup.
 export const testConnectorCredentialStorageStateActionBodySchema =
   z.discriminatedUnion("action", [
     z.object({

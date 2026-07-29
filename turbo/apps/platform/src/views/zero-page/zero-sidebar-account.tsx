@@ -7,6 +7,7 @@ import {
   useLastResolved,
   useSet,
 } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 import {
   IconLogout,
   IconPlus,
@@ -108,6 +109,7 @@ function AccountAvatar({
 }
 
 function useAccountSessions() {
+  const { t } = useTranslation();
   const clerkLoadable = useLoadable(clerk$);
   const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
 
@@ -119,7 +121,11 @@ function useAccountSessions() {
     .map((s) => {
       return {
         sessionId: s.id,
-        name: s.user?.fullName ?? "User",
+        name:
+          s.user?.fullName ??
+          t(($) => {
+            return $.settings.accountMenu.userFallback;
+          }),
         email: s.user?.primaryEmailAddress?.emailAddress ?? "",
         initial: s.user?.fullName
           ? s.user.fullName.charAt(0).toUpperCase()
@@ -160,8 +166,9 @@ function accountDisplayFrom(
       }
     | undefined,
   fallback: SessionAccount | undefined,
+  userFallback: string,
 ): AccountDisplay {
-  const name = user?.fullName ?? fallback?.name ?? "User";
+  const name = user?.fullName ?? fallback?.name ?? userFallback;
   return {
     name,
     email: user?.primaryEmailAddress?.emailAddress ?? fallback?.email ?? "",
@@ -422,6 +429,7 @@ function UnifiedSettingsGroup({
   onAccountAction: (action: ZeroAccountAction) => void;
   onOpenSettings: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <>
       <DropdownMenuModalItem
@@ -433,7 +441,11 @@ function UnifiedSettingsGroup({
           stroke={1.5}
           className="text-muted-foreground"
         />
-        <span>Settings</span>
+        <span>
+          {t(($) => {
+            return $.settings.accountMenu.settings;
+          })}
+        </span>
       </DropdownMenuModalItem>
       {labEnabled && (
         <DropdownMenuItem
@@ -443,7 +455,11 @@ function UnifiedSettingsGroup({
           className="gap-3 px-3 py-2.5 rounded-lg"
         >
           <IconFlask size={18} stroke={1.5} className="text-muted-foreground" />
-          <span>Lab</span>
+          <span>
+            {t(($) => {
+              return $.settings.accountMenu.lab;
+            })}
+          </span>
         </DropdownMenuItem>
       )}
       <DropdownMenuSeparator />
@@ -460,6 +476,7 @@ function AccountManagementGroup({
   onSwitchSession: (sessionId: string) => void;
   onAddAccount: () => void;
 }) {
+  const { t } = useTranslation();
   if (others.length === 0) {
     return (
       <DropdownMenuItem
@@ -467,7 +484,11 @@ function AccountManagementGroup({
         className="gap-3 px-3 py-2.5 rounded-lg"
       >
         <IconPlus size={18} stroke={1.5} className="text-muted-foreground" />
-        <span>Add account</span>
+        <span>
+          {t(($) => {
+            return $.settings.accountMenu.addAccount;
+          })}
+        </span>
       </DropdownMenuItem>
     );
   }
@@ -479,7 +500,11 @@ function AccountManagementGroup({
           stroke={1.5}
           className="text-muted-foreground"
         />
-        <span className="flex-1">Switch account</span>
+        <span className="flex-1">
+          {t(($) => {
+            return $.settings.accountMenu.switchAccount;
+          })}
+        </span>
         <IconChevronRight
           size={14}
           stroke={1.5}
@@ -518,7 +543,11 @@ function AccountManagementGroup({
           className="gap-3 px-3 py-2.5 rounded-lg"
         >
           <IconPlus size={18} stroke={1.5} className="text-muted-foreground" />
-          <span>Add account</span>
+          <span>
+            {t(($) => {
+              return $.settings.accountMenu.addAccount;
+            })}
+          </span>
         </DropdownMenuItem>
       </DropdownMenuSubContent>
     </DropdownMenuSub>
@@ -526,6 +555,7 @@ function AccountManagementGroup({
 }
 
 function ExtraAccountActions() {
+  const { t } = useTranslation();
   return (
     <DropdownMenuItem
       onClick={() => {
@@ -538,7 +568,11 @@ function ExtraAccountActions() {
         stroke={1.5}
         className="text-muted-foreground"
       />
-      <span>Export data</span>
+      <span>
+        {t(($) => {
+          return $.settings.accountMenu.exportData;
+        })}
+      </span>
     </DropdownMenuItem>
   );
 }
@@ -548,6 +582,7 @@ function SignOutItem({
 }: {
   onAccountAction: (action: ZeroAccountAction) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <DropdownMenuItem
       onClick={() => {
@@ -556,7 +591,11 @@ function SignOutItem({
       className="gap-3 px-3 py-2.5 rounded-lg"
     >
       <IconLogout size={18} stroke={1.5} className="text-muted-foreground" />
-      <span>Sign out</span>
+      <span>
+        {t(($) => {
+          return $.settings.accountMenu.signOut;
+        })}
+      </span>
     </DropdownMenuItem>
   );
 }
@@ -572,6 +611,7 @@ export function AccountDropdown({
   collapsed?: boolean;
   hidePreferences?: boolean;
 }) {
+  const { t } = useTranslation();
   const { clerk, accounts } = useAccountSessions();
   const userInfoLoadable = useLoadable(currentUserInfo$);
   const user =
@@ -609,7 +649,13 @@ export function AccountDropdown({
     current,
     user,
   });
-  const accountDisplay = accountDisplayFrom(user, current);
+  const accountDisplay = accountDisplayFrom(
+    user,
+    current,
+    t(($) => {
+      return $.settings.accountMenu.userFallback;
+    }),
+  );
   const others = accounts.filter((a) => {
     return !a.isActive;
   });

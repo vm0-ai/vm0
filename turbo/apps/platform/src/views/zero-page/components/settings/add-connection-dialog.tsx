@@ -19,7 +19,7 @@ import {
 import type { ConnectorDeviceAuthStartOptions } from "@vm0/connectors/connector-config";
 import type {
   ConnectorAuthMethodId,
-  ConnectorRef,
+  ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import type { FormEvent, ReactElement } from "react";
 import type {
@@ -29,8 +29,8 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
   allConnectorCatalogItems$,
-  connectFlowConnectorRef$,
-  pollingOAuthAuthCodeConnectorRef$,
+  connectFlowConnectorSlug$,
+  pollingOAuthAuthCodeConnectorSlug$,
   connectorExternalCodeState$,
   connectorOAuthDeviceAuthState$,
   connectConnectorOAuthAuthCodeAndSettle$,
@@ -50,7 +50,7 @@ import {
   setManualGrantFormValue$,
   clearManualGrantForm$,
   manualGrantFormValuesFor$,
-  selectedConnectorRef$,
+  selectedConnectorSlug$,
   connectorCurrentConnectionStatus,
   connectorExpiryCountdownText,
   hasConnectorStatusBrowserAuthGrant,
@@ -99,7 +99,7 @@ type BrowserAuthPostConnectOptions = PostConnectOptions & {
 };
 
 type SubmitManualGrantFn = (
-  connectorRef: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   authMethod: ConnectorAuthMethodId,
   inputValues: Record<string, string>,
   options: PostConnectOptions,
@@ -107,7 +107,7 @@ type SubmitManualGrantFn = (
 ) => Promise<boolean>;
 
 type ConnectOAuthAuthCodeAndSettleFn = (
-  connectorRef: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   method: PublicConnectorCatalogAuthMethodDetail,
   onSuccess: () => void | Promise<void>,
   options: BrowserAuthPostConnectOptions,
@@ -116,7 +116,7 @@ type ConnectOAuthAuthCodeAndSettleFn = (
 
 type ConnectOAuthDeviceAuthAndSettleFn = (
   args: {
-    readonly connectorRef: ConnectorRef;
+    readonly connectorSlug: ConnectorSlug;
     readonly authMethod: ConnectorAuthMethodId;
     readonly onSuccess: () => void | Promise<void>;
     readonly options: PostConnectOptions;
@@ -127,7 +127,7 @@ type ConnectOAuthDeviceAuthAndSettleFn = (
 
 type ConnectExternalCodeFn = (
   args: {
-    readonly connectorRef: ConnectorRef;
+    readonly connectorSlug: ConnectorSlug;
     readonly authMethod: ConnectorAuthMethodId;
     readonly agentId?: string;
   },
@@ -136,7 +136,7 @@ type ConnectExternalCodeFn = (
 
 type CompleteExternalCodeAndSettleFn = (
   args: {
-    readonly connectorRef: ConnectorRef;
+    readonly connectorSlug: ConnectorSlug;
     readonly authMethod: ConnectorAuthMethodId;
     readonly onSuccess: () => void | Promise<void>;
     readonly options: PostConnectOptions;
@@ -146,7 +146,7 @@ type CompleteExternalCodeAndSettleFn = (
 
 type ConnectNoAuthAndSettleFn = (
   args: {
-    readonly connectorRef: ConnectorRef;
+    readonly connectorSlug: ConnectorSlug;
     readonly authMethod: ConnectorAuthMethodId;
     readonly onSuccess: () => void | Promise<void>;
     readonly options: PostConnectOptions;
@@ -193,10 +193,10 @@ type ConnectMethodContentEntry = {
 
 function connectorOAuthDeviceAuthFlowIsActive(
   state: ConnectorOAuthDeviceAuthState,
-  connectorRef: ConnectorRef,
+  connectorSlug: ConnectorSlug,
 ): boolean {
   return (
-    state.connectorRef === connectorRef &&
+    state.connectorSlug === connectorSlug &&
     (state.status === "starting" ||
       state.status === "pending" ||
       state.status === "polling")
@@ -205,20 +205,20 @@ function connectorOAuthDeviceAuthFlowIsActive(
 
 function connectorExternalCodeFlowIsActive(
   state: ConnectorExternalCodeState,
-  connectorRef: ConnectorRef,
+  connectorSlug: ConnectorSlug,
 ): boolean {
   return (
-    state.connectorRef === connectorRef &&
+    state.connectorSlug === connectorSlug &&
     (state.status === "starting" || state.status === "pending")
   );
 }
 
 function connectorOAuthDeviceAuthStateForMethod(
   state: ConnectorOAuthDeviceAuthState,
-  connectorRef: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   authMethod: ConnectorAuthMethodId,
 ): ConnectorOAuthDeviceAuthState | null {
-  if (state.connectorRef !== connectorRef || state.status === "idle") {
+  if (state.connectorSlug !== connectorSlug || state.status === "idle") {
     return null;
   }
   return state.authMethod === authMethod ? state : null;
@@ -226,10 +226,10 @@ function connectorOAuthDeviceAuthStateForMethod(
 
 function connectorExternalCodeStateForMethod(
   state: ConnectorExternalCodeState,
-  connectorRef: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   authMethod: ConnectorAuthMethodId,
 ): ConnectorExternalCodeState | null {
-  if (state.connectorRef !== connectorRef || state.status === "idle") {
+  if (state.connectorSlug !== connectorSlug || state.status === "idle") {
     return null;
   }
   return state.authMethod === authMethod ? state : null;
@@ -240,7 +240,7 @@ function connectorExternalCodeStateForMethod(
 // ---------------------------------------------------------------------------
 
 function ManualGrantForm({
-  connectorRef,
+  connectorSlug,
   connectorLabel,
   authMethod,
   method,
@@ -250,7 +250,7 @@ function ManualGrantForm({
   submit,
   submitting,
 }: {
-  connectorRef: ConnectorRef;
+  connectorSlug: ConnectorSlug;
   connectorLabel: string;
   authMethod: ConnectorAuthMethodId;
   method: PublicConnectorCatalogAuthMethodDetail;
@@ -264,7 +264,7 @@ function ManualGrantForm({
   const clearForm = useSet(clearManualGrantForm$);
   const pageSignal = useGet(pageSignal$);
   const manualGrantFormValuesFor = useGet(manualGrantFormValuesFor$);
-  const fieldValues = manualGrantFormValuesFor(connectorRef);
+  const fieldValues = manualGrantFormValuesFor(connectorSlug);
 
   const allFilled = method.manualFields.every((field) => {
     return !field.required || hasTokenInputValue(fieldValues[field.id]);
@@ -277,7 +277,7 @@ function ManualGrantForm({
         return;
       }
       const connected = await submit(
-        connectorRef,
+        connectorSlug,
         authMethod,
         manualGrantInputValuesForMethod(method, fieldValues),
         {
@@ -290,7 +290,7 @@ function ManualGrantForm({
       if (!connected) {
         return;
       }
-      clearForm(connectorRef);
+      clearForm(connectorSlug);
       await onSuccess();
     },
   );
@@ -310,7 +310,7 @@ function ManualGrantForm({
               value={fieldValues[fieldConfig.id] ?? ""}
               onChange={(e) => {
                 return setFormValue(
-                  connectorRef,
+                  connectorSlug,
                   fieldConfig.id,
                   e.target.value,
                 );
@@ -541,13 +541,13 @@ function deviceAuthStartOptionsFilled(
 }
 
 function OAuthDeviceAuthStartOptionsForm({
-  connectorRef,
+  connectorSlug,
   authMethod,
   startOptions,
   values,
   setValue,
 }: {
-  connectorRef: ConnectorRef;
+  connectorSlug: ConnectorSlug;
   authMethod: ConnectorAuthMethodId;
   startOptions: readonly PublicConnectorCatalogStartOption[];
   values: Record<string, string>;
@@ -560,7 +560,7 @@ function OAuthDeviceAuthStartOptionsForm({
   return (
     <>
       {startOptions.map((option) => {
-        const inputId = `connector-device-auth-option-${connectorRef}-${authMethod}-${option.id}`;
+        const inputId = `connector-device-auth-option-${connectorSlug}-${authMethod}-${option.id}`;
         return (
           <div key={option.id} className="flex flex-col gap-1.5">
             <label
@@ -626,7 +626,7 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
   );
   const setStartOptionValue = (name: string, value: string) => {
     setStartOptionValueCommand({
-      connectorRef: props.item.connectorRef,
+      connectorSlug: props.item.connectorRef,
       authMethod: props.authMethod,
       name,
       value,
@@ -642,7 +642,7 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
   const start = onDomEventFn(async () => {
     await props.connectOAuthDeviceAuthAndSettle(
       {
-        connectorRef: props.item.connectorRef,
+        connectorSlug: props.item.connectorRef,
         authMethod: props.authMethod,
         onSuccess: props.onSuccess,
         options: {
@@ -684,7 +684,7 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
     return (
       <div className="flex flex-col gap-3">
         <OAuthDeviceAuthStartOptionsForm
-          connectorRef={props.item.connectorRef}
+          connectorSlug={props.item.connectorRef}
           authMethod={props.authMethod}
           startOptions={startOptions}
           values={effectiveStartOptionValues}
@@ -713,7 +713,7 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
         verification page to approve access.
       </p>
       <OAuthDeviceAuthStartOptionsForm
-        connectorRef={props.item.connectorRef}
+        connectorSlug={props.item.connectorRef}
         authMethod={props.authMethod}
         startOptions={startOptions}
         values={effectiveStartOptionValues}
@@ -864,7 +864,7 @@ function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
   const start = onDomEventFn(async () => {
     await props.connectExternalCode(
       {
-        connectorRef: props.item.connectorRef,
+        connectorSlug: props.item.connectorRef,
         authMethod: props.authMethod,
         ...(props.agentId ? { agentId: props.agentId } : {}),
       },
@@ -876,7 +876,7 @@ function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
     event.preventDefault();
     await props.completeExternalCodeAndSettle(
       {
-        connectorRef: props.item.connectorRef,
+        connectorSlug: props.item.connectorRef,
         authMethod: props.authMethod,
         onSuccess: props.onSuccess,
         options: {
@@ -907,7 +907,7 @@ function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
         }}
         onCodeChange={(code) => {
           setCode({
-            connectorRef: props.item.connectorRef,
+            connectorSlug: props.item.connectorRef,
             authMethod: props.authMethod,
             code,
           });
@@ -934,7 +934,7 @@ function ManualGrantConnectMethodContent(props: ConnectMethodContentProps) {
   }
   return (
     <ManualGrantForm
-      connectorRef={props.item.connectorRef}
+      connectorSlug={props.item.connectorRef}
       connectorLabel={props.item.label}
       authMethod={props.authMethod}
       method={props.method}
@@ -951,7 +951,7 @@ function NoAuthConnectMethodContent(props: ConnectMethodContentProps) {
   const enable = onDomEventFn(async () => {
     await props.connectNoAuthAndSettle(
       {
-        connectorRef: props.item.connectorRef,
+        connectorSlug: props.item.connectorRef,
         authMethod: props.authMethod,
         onSuccess: props.onSuccess,
         options: {
@@ -1167,32 +1167,32 @@ function ConnectModalContent({
     connectConnectorNoAuthAndSettle$,
   );
   const submitManualGrant: SubmitManualGrantFn = async (
-    connectorRef,
+    connectorSlug,
     authMethod,
     inputValues,
     options,
     signal,
   ) => {
     return await submitManualGrantCommand(
-      { connectorRef, authMethod, inputValues, options },
+      { connectorSlug, authMethod, inputValues, options },
       signal,
     );
   };
   const [, runConnectSuccess] = useLoadableSet(runConnectorConnectSuccess$);
   const pageSignal = useGet(pageSignal$);
-  const pollingConnectorRef = useGet(pollingOAuthAuthCodeConnectorRef$);
+  const pollingConnectorSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
   const settling = settleLoadable.state === "loading";
   const externalCodeCompleting =
     completeExternalCodeLoadable.state === "loading";
   const manualGrantSubmitting = manualGrantLoadable.state === "loading";
   const noAuthSubmitting = noAuthLoadable.state === "loading";
-  const isPolling = pollingConnectorRef === item.connectorRef;
+  const isPolling = pollingConnectorSlug === item.connectorRef;
   const entries = getConnectMethodContentEntries(item);
   const onConnectSuccess = async () => {
     await runConnectSuccess(item.connectorRef, onSuccess, pageSignal);
   };
   const connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn = async (
-    connectorRef,
+    connectorSlug,
     method,
     connectSuccess,
     options,
@@ -1200,7 +1200,7 @@ function ConnectModalContent({
   ) => {
     await connectOAuthAuthCodeAndSettleCommand(
       {
-        connectorRef,
+        connectorSlug,
         method,
         onSuccess: connectSuccess,
         options,
@@ -1212,7 +1212,7 @@ function ConnectModalContent({
     async (args, signal) => {
       await connectOAuthDeviceAuthAndSettle(
         {
-          connectorRef: args.connectorRef,
+          connectorSlug: args.connectorSlug,
           authMethod: args.authMethod,
           onSuccess: args.onSuccess,
           options: args.options,
@@ -1276,46 +1276,46 @@ export function ConnectModal({
   onClose,
   onSuccess,
   authorizeVisibleAgentsOnConnect = false,
-  selectedConnectorRef: selectedConnectorRefOverride,
+  selectedConnectorSlug: selectedConnectorSlugOverride,
   agentId,
 }: {
   onClose: () => void;
   onSuccess?: () => void | Promise<void>;
   authorizeVisibleAgentsOnConnect?: boolean;
-  selectedConnectorRef?: ConnectorRef | null;
+  selectedConnectorSlug?: ConnectorSlug | null;
   agentId?: string;
 }) {
-  const globalSelectedConnectorRef = useGet(selectedConnectorRef$);
-  const selectedConnectorRef =
-    selectedConnectorRefOverride === undefined
-      ? globalSelectedConnectorRef
-      : selectedConnectorRefOverride;
+  const globalSelectedConnectorSlug = useGet(selectedConnectorSlug$);
+  const selectedConnectorSlug =
+    selectedConnectorSlugOverride === undefined
+      ? globalSelectedConnectorSlug
+      : selectedConnectorSlugOverride;
   const connectorCatalogItems = useLastResolved(allConnectorCatalogItems$);
   const clearConnectorOAuthDeviceAuth = useSet(clearConnectorOAuthDeviceAuth$);
   const clearConnectorExternalCode = useSet(clearConnectorExternalCode$);
-  const connectFlowConnectorRef = useGet(connectFlowConnectorRef$);
-  const pollingConnectorRef = useGet(pollingOAuthAuthCodeConnectorRef$);
+  const connectFlowConnectorSlug = useGet(connectFlowConnectorSlug$);
+  const pollingConnectorSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
   const connectorOAuthDeviceAuthState = useGet(connectorOAuthDeviceAuthState$);
   const connectorExternalCodeState = useGet(connectorExternalCodeState$);
 
   const item = connectorCatalogItems?.find((catalogItem) => {
-    return catalogItem.connectorRef === selectedConnectorRef;
+    return catalogItem.connectorRef === selectedConnectorSlug;
   });
 
-  if (!selectedConnectorRef || !item) {
+  if (!selectedConnectorSlug || !item) {
     return null;
   }
 
   const connectFlowActive =
-    connectFlowConnectorRef === selectedConnectorRef ||
-    pollingConnectorRef === selectedConnectorRef ||
+    connectFlowConnectorSlug === selectedConnectorSlug ||
+    pollingConnectorSlug === selectedConnectorSlug ||
     connectorOAuthDeviceAuthFlowIsActive(
       connectorOAuthDeviceAuthState,
-      selectedConnectorRef,
+      selectedConnectorSlug,
     ) ||
     connectorExternalCodeFlowIsActive(
       connectorExternalCodeState,
-      selectedConnectorRef,
+      selectedConnectorSlug,
     );
 
   return (

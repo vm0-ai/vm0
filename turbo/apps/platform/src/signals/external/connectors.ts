@@ -1,13 +1,13 @@
 import { command, computed, state } from "ccstate";
 import {
   zeroConnectorsMainContract,
-  zeroConnectorsByTypeContract,
+  zeroConnectorsBySlugContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { ConnectorListResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { zeroClient$ } from "../api-client";
 import { accept } from "../../lib/accept.ts";
@@ -49,7 +49,7 @@ export const connectorCatalogStatus$ = computed(async (get) => {
   return result.body as PublicConnectorCatalogStatusResponse;
 });
 
-export const connectorCatalogStatusByRef$ = computed(async (get) => {
+export const connectorCatalogStatusBySlug$ = computed(async (get) => {
   const { connectors } = await get(connectorCatalogStatus$);
   return new Map(
     connectors.map((connector) => {
@@ -71,12 +71,12 @@ export const reloadConnectors$ = command(({ set }) => {
  * Delete a connector by ref.
  */
 export const deleteConnector$ = command(
-  async ({ get, set }, connectorRef: ConnectorRef, signal: AbortSignal) => {
+  async ({ get, set }, connectorSlug: ConnectorSlug, signal: AbortSignal) => {
     const createClient = get(zeroClient$);
-    const client = createClient(zeroConnectorsByTypeContract);
+    const client = createClient(zeroConnectorsBySlugContract);
     await accept(
       client.delete({
-        params: { type: connectorRef },
+        params: { type: connectorSlug },
         fetchOptions: { signal },
       }),
       [204],

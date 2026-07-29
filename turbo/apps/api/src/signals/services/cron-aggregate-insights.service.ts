@@ -1,4 +1,4 @@
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { insightsDaily } from "@vm0/db/schema/insights-daily";
@@ -64,7 +64,7 @@ type NetworkInsightAction = "ALLOW" | "DENY" | "BLOCK";
 
 interface NetworkInsightRow {
   readonly runId: string;
-  readonly firewallName: ConnectorRef;
+  readonly firewallName: ConnectorSlug;
   readonly firewallPermission: string;
   readonly action: NetworkInsightAction;
 }
@@ -87,7 +87,7 @@ interface UserNetworkData {
     string,
     {
       readonly label: string;
-      readonly connectorType: string;
+      readonly connectorSlug: string;
       allowed: number;
       denied: number;
       readonly agentNames: Set<string>;
@@ -119,6 +119,7 @@ interface InsightData {
   }[];
   readonly permissions: {
     readonly label: string;
+    // TODO(#23619): Rename with the persisted analytics and response schema.
     readonly connectorType: string;
     readonly allowed: number;
     readonly denied: number;
@@ -267,7 +268,7 @@ interface CurrentOrgMemberScope {
 }
 
 type PermissionLabelResolver = (
-  firewallName: ConnectorRef,
+  firewallName: ConnectorSlug,
   permissionName: string,
 ) => Promise<string>;
 
@@ -483,7 +484,7 @@ async function aggregateNetworkDataPerUser(
         string,
         {
           label: string;
-          connectorType: string;
+          connectorSlug: string;
           allowed: number;
           denied: number;
           agentNames: Set<string>;
@@ -519,7 +520,7 @@ async function aggregateNetworkDataPerUser(
         : row.firewallName;
       permission = {
         label,
-        connectorType: row.firewallName,
+        connectorSlug: row.firewallName,
         allowed: 0,
         denied: 0,
         agentNames: new Set<string>(),
@@ -565,7 +566,7 @@ function buildUserInsight(args: BuildUserInsightArgs): InsightData {
         .map((permission) => {
           return {
             label: permission.label,
-            connectorType: permission.connectorType,
+            connectorType: permission.connectorSlug,
             allowed: permission.allowed,
             denied: permission.denied,
             agentNames: [...permission.agentNames],

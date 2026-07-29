@@ -194,7 +194,7 @@ export function mergedRunCreditsCharged(
 }
 
 export function mergedRunModel(events: FinalizedUsageRunTotalsSubquery) {
-  return sql`${events.model}`.mapWith(nullableTextDecoder).as("model");
+  return events.model;
 }
 
 function finalizedUsageTokenSum(

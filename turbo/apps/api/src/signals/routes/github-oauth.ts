@@ -57,7 +57,7 @@ import {
 } from "./oauth-web-origin";
 
 const REDIRECT_STATUS = 307;
-const GITHUB_CONNECTOR_TYPE = "github";
+const GITHUB_CONNECTOR_SLUG = "github";
 const GITHUB_APP_SETUP_CALLBACK_PATH = "/api/github/app/setup/callback";
 const L = logger("GithubOAuthRoute");
 
@@ -113,7 +113,7 @@ async function resolveGithubOauthMethod(
   resolver: ConnectorActionResolver,
 ): Promise<ResolvedConnectorActionMethod | null> {
   const resolved = await resolver.resolveMethod({
-    connectorRef: GITHUB_CONNECTOR_TYPE,
+    connectorSlug: GITHUB_CONNECTOR_SLUG,
     authMethodId: getGithubOAuthAuthMethod(),
     expectedGrantKind: "auth-code",
   });
@@ -124,7 +124,7 @@ async function resolveGithubOauthMethodForNewAction(
   resolver: ConnectorActionResolver,
 ): Promise<ResolvedConnectorActionMethod | null> {
   const resolved = await resolver.resolveNewActionMethod({
-    connectorRef: GITHUB_CONNECTOR_TYPE,
+    connectorSlug: GITHUB_CONNECTOR_SLUG,
     authMethodId: getGithubOAuthAuthMethod(),
     expectedGrantKind: "auth-code",
   });
@@ -802,7 +802,7 @@ const callbackGithubUserOauth$ = command(
     const origin = getOAuthWebOrigin(request);
     const redirectUri = githubUserConnectCallbackRedirectUri(origin);
     const token = await exchangeConnectorAuthCodeWithMethod({
-      connectorRef: resolvedMethod.connectorRef,
+      connectorSlug: resolvedMethod.connectorSlug,
       authMethodId: resolvedMethod.authMethodId,
       method: resolvedMethod.method,
       authClient,

@@ -131,7 +131,7 @@ async function loadDriveTokens(
     snapshot,
     orgId,
     userId,
-    connectorRef: "google-drive",
+    connectorSlug: "google-drive",
   });
   if (loaded.kind !== "ok") {
     return null;

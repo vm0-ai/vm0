@@ -1,4 +1,4 @@
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { and, eq, gt, isNull } from "drizzle-orm";
 
@@ -26,7 +26,7 @@ export async function getConnectorOAuthAuthorizationUrl(
   db: ReadonlyDb,
   args: {
     readonly state: string;
-    readonly connectorType: ConnectorRef;
+    readonly connectorSlug: ConnectorSlug;
   },
   signal: AbortSignal,
 ): Promise<ConnectorOAuthAuthorizationResult> {
@@ -47,7 +47,7 @@ export async function getConnectorOAuthAuthorizationUrl(
   }
 
   if (
-    storedState.type !== args.connectorType ||
+    storedState.type !== args.connectorSlug ||
     storedState.consumedAt ||
     storedState.expiresAt <= nowDate() ||
     !storedState.authorizationUrl
@@ -65,7 +65,7 @@ export async function getConnectorOAuthStateStatus(
   db: Db,
   args: {
     readonly state: string;
-    readonly connectorType: ConnectorRef;
+    readonly connectorSlug: ConnectorSlug;
   },
   signal: AbortSignal,
 ): Promise<ConnectorOAuthStateStatus> {
@@ -85,7 +85,7 @@ export async function getConnectorOAuthStateStatus(
   }
 
   if (
-    storedState.type !== args.connectorType ||
+    storedState.type !== args.connectorSlug ||
     storedState.consumedAt ||
     storedState.expiresAt <= nowDate()
   ) {
@@ -99,7 +99,7 @@ export async function claimConnectorOAuthState(
   db: Db,
   args: {
     readonly state: string;
-    readonly connectorType: ConnectorRef;
+    readonly connectorSlug: ConnectorSlug;
   },
   signal: AbortSignal,
 ): Promise<ConnectorOAuthStateClaimResult> {
@@ -109,7 +109,7 @@ export async function claimConnectorOAuthState(
     .where(
       and(
         eq(connectorOauthStates.state, args.state),
-        eq(connectorOauthStates.type, args.connectorType),
+        eq(connectorOauthStates.type, args.connectorSlug),
         isNull(connectorOauthStates.consumedAt),
         gt(connectorOauthStates.expiresAt, claimedAt),
       ),

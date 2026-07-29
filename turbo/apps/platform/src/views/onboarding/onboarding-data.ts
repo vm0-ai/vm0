@@ -1,6 +1,6 @@
 import { WORKFLOW_TEMPLATE_ITEMS, type WorkflowTemplateItem } from "@vm0/core";
+import type { TFunction } from "i18next";
 import type { OnboardingChoice } from "../../signals/onboarding/onboarding-state.ts";
-import { ONBOARDING_WORKFLOW_DETAILS } from "./onboarding-workflow-details.ts";
 
 interface OnboardingMakeOption {
   readonly id: OnboardingChoice;
@@ -9,43 +9,45 @@ interface OnboardingMakeOption {
   readonly imageUrl: string;
 }
 
-export const ONBOARDING_MAKE_OPTIONS: readonly OnboardingMakeOption[] = [
-  {
-    id: "workflow",
-    title: "Workflow automation",
-    description: "Explore from preset templates",
-    imageUrl:
-      "https://static.vm0.io/web/assets/onboarding/v2-choice-workflow-default_80x80.png",
-  },
-  {
-    id: "presentation",
-    title: "Generate a presentation",
-    description: "Generate slides and speaker",
-    imageUrl:
-      "https://static.vm0.io/web/assets/onboarding/v2-choice-presentation_80x80.png",
-  },
-  {
-    id: "video",
-    title: "Video production",
-    description: "Turn your ideas into video",
-    imageUrl:
-      "https://static.vm0.io/web/assets/onboarding/v2-choice-video_80x80.png",
-  },
-  {
-    id: "images",
-    title: "Generate images",
-    description: "Create high-quality visuals",
-    imageUrl:
-      "https://static.vm0.io/web/assets/onboarding/v2-choice-images_80x80.png",
-  },
-  {
-    id: "explore",
-    title: "I will explore on my own",
-    description: "Just connect with my tools",
-    imageUrl:
-      "https://static.vm0.io/web/assets/onboarding/v2-choice-explore_80x80.png",
-  },
-];
+const ONBOARDING_MAKE_OPTION_IDS = [
+  "workflow",
+  "presentation",
+  "video",
+  "images",
+  "explore",
+] as const satisfies readonly OnboardingChoice[];
+
+const ONBOARDING_MAKE_OPTION_IMAGES: Readonly<
+  Record<OnboardingChoice, string>
+> = {
+  workflow:
+    "https://static.vm0.io/web/assets/onboarding/v2-choice-workflow-default_80x80.png",
+  presentation:
+    "https://static.vm0.io/web/assets/onboarding/v2-choice-presentation_80x80.png",
+  video:
+    "https://static.vm0.io/web/assets/onboarding/v2-choice-video_80x80.png",
+  images:
+    "https://static.vm0.io/web/assets/onboarding/v2-choice-images_80x80.png",
+  explore:
+    "https://static.vm0.io/web/assets/onboarding/v2-choice-explore_80x80.png",
+};
+
+export function onboardingMakeOptions(
+  t: TFunction<"common">,
+): readonly OnboardingMakeOption[] {
+  return ONBOARDING_MAKE_OPTION_IDS.map((id) => {
+    return {
+      id,
+      title: t(($) => {
+        return $.onboarding.make.options[id].title;
+      }),
+      description: t(($) => {
+        return $.onboarding.make.options[id].description;
+      }),
+      imageUrl: ONBOARDING_MAKE_OPTION_IMAGES[id],
+    };
+  });
+}
 
 export type OnboardingWorkflowCategoryId =
   | "engineering"
@@ -59,14 +61,13 @@ export type OnboardingWorkflowCategoryId =
   | "everyone";
 
 export interface OnboardingWorkflow {
-  readonly id: string;
+  readonly id: OnboardingWorkflowId;
   readonly categoryId: OnboardingWorkflowCategoryId;
   readonly title: string;
   readonly description: string;
   readonly prompt: string;
   readonly connectors: readonly string[];
   readonly required: readonly string[];
-  readonly steps: readonly string[];
   readonly scenario: string;
   readonly detailSteps: readonly { title: string; description: string }[];
 }
@@ -78,15 +79,18 @@ export interface OnboardingWorkflowCategory {
   readonly workflows: readonly OnboardingWorkflow[];
 }
 
-interface SupplementalWorkflowTemplate extends WorkflowTemplateItem {
+interface WorkflowPromptTemplate {
+  readonly id: WorkflowTemplateItem["id"];
+  readonly promptGuidance: string;
+  readonly connectors: readonly string[];
+}
+
+interface SupplementalWorkflowTemplate extends WorkflowPromptTemplate {
   readonly id: `workflow-template:${string}`;
 }
 
 function supplementalWorkflowTemplate(input: {
   readonly id: string;
-  readonly category: string;
-  readonly title: string;
-  readonly description: string;
   readonly prompt: string;
   readonly connectors: readonly string[];
   readonly required: readonly string[];
@@ -100,9 +104,6 @@ function supplementalWorkflowTemplate(input: {
       : `Connectors: ${input.required.join(", ")} required.`;
   return {
     id: `workflow-template:${input.id}`,
-    category: input.category,
-    title: input.title,
-    description: input.description,
     connectors: input.connectors,
     promptGuidance: `${input.prompt}\n\n${connectorLine} Connect any missing required connectors before running.`,
   };
@@ -112,10 +113,6 @@ const SUPPLEMENTAL_WORKFLOW_TEMPLATES: readonly SupplementalWorkflowTemplate[] =
   [
     supplementalWorkflowTemplate({
       id: "watch-sentry-after-release",
-      category: "Engineering",
-      title: "Watch Sentry after a release",
-      description:
-        "After each release Zero compares the new version's crash-free rate against baseline and flags a regression with a rollback suggestion.",
       prompt:
         "@Zero compare the latest release's crash-free rate in Sentry against the previous baseline and tell #dev whether it regressed, with a rollback suggestion if it did.",
       connectors: ["sentry", "github", "vercel", "slack"],
@@ -123,10 +120,6 @@ const SUPPLEMENTAL_WORKFLOW_TEMPLATES: readonly SupplementalWorkflowTemplate[] =
     }),
     supplementalWorkflowTemplate({
       id: "post-github-updates-slack",
-      category: "Engineering",
-      title: "Post GitHub updates to Slack",
-      description:
-        "Every weekday morning Zero compiles your merged and in-progress work from GitHub and Linear into a progress update for Slack.",
       prompt:
         "@Zero compile my merged and in-progress work from GitHub and Linear into a short progress update and post it to Slack.",
       connectors: ["github", "linear", "sentry", "slack"],
@@ -134,10 +127,6 @@ const SUPPLEMENTAL_WORKFLOW_TEMPLATES: readonly SupplementalWorkflowTemplate[] =
     }),
     supplementalWorkflowTemplate({
       id: "report-ai-model-costs-slack",
-      category: "Engineering",
-      title: "Report AI model costs to Slack",
-      description:
-        "Every day Zero reports LLM token spend and p95 latency per model and route from Langfuse to Slack.",
       prompt:
         "@Zero report today's LLM token spend and p95 latency per model and route from Langfuse and post it to Slack.",
       connectors: ["langfuse", "slack"],
@@ -145,10 +134,6 @@ const SUPPLEMENTAL_WORKFLOW_TEMPLATES: readonly SupplementalWorkflowTemplate[] =
     }),
     supplementalWorkflowTemplate({
       id: "summarize-user-feedback-notion",
-      category: "Product",
-      title: "Summarize user feedback in Notion",
-      description:
-        "Every week Zero gathers feedback from Productlane, Typeform, Intercom, and GitHub, clusters it into themes, and ranks it in Notion.",
       prompt:
         "@Zero gather recent user feedback from Productlane, Typeform, Intercom, and GitHub, cluster it into themes, and write a ranked summary in Notion.",
       connectors: ["productlane", "typeform", "intercom", "github", "notion"],
@@ -156,10 +141,6 @@ const SUPPLEMENTAL_WORKFLOW_TEMPLATES: readonly SupplementalWorkflowTemplate[] =
     }),
     supplementalWorkflowTemplate({
       id: "watch-brand-mentions",
-      category: "Marketing",
-      title: "Watch HN and X for brand mentions",
-      description:
-        "Every hour Zero searches the web, Hacker News, and X for mentions of your product and posts them to Slack.",
       prompt:
         "@Zero search the web, Hacker News, and X for recent mentions of our product and post them to Slack.",
       connectors: ["exa", "x", "slack"],
@@ -167,10 +148,6 @@ const SUPPLEMENTAL_WORKFLOW_TEMPLATES: readonly SupplementalWorkflowTemplate[] =
     }),
     supplementalWorkflowTemplate({
       id: "sort-route-zendesk-tickets",
-      category: "Support",
-      title: "Sort and route Zendesk tickets",
-      description:
-        "When a support ticket arrives, Zero sets its severity, routes it to the right team, and drafts a first reply.",
       prompt:
         "@Zero go through the new Zendesk tickets, set each one's severity, route it to the right team, and draft a first reply.",
       connectors: ["zendesk", "linear"],
@@ -178,10 +155,6 @@ const SUPPLEMENTAL_WORKFLOW_TEMPLATES: readonly SupplementalWorkflowTemplate[] =
     }),
     supplementalWorkflowTemplate({
       id: "fixes-to-notion-help-docs",
-      category: "Support",
-      title: "Turn fixes into Notion help docs",
-      description:
-        "When a ticket is marked resolved, Zero turns the fix into a reusable help article in Notion.",
       prompt:
         "@Zero take a recently resolved ticket and turn the fix into a reusable help article in Notion.",
       connectors: ["notion", "zendesk"],
@@ -189,10 +162,6 @@ const SUPPLEMENTAL_WORKFLOW_TEMPLATES: readonly SupplementalWorkflowTemplate[] =
     }),
     supplementalWorkflowTemplate({
       id: "morning-brief-slack",
-      category: "Everyone",
-      title: "Get a morning brief in Slack",
-      description:
-        "Every morning Zero sends a brief with your schedule and the emails that need you, and posts it to Slack.",
       prompt:
         "@Zero send me a brief with today's schedule and the emails that need me and post it to Slack.",
       connectors: ["gmail", "google-calendar", "slack"],
@@ -200,9 +169,7 @@ const SUPPLEMENTAL_WORKFLOW_TEMPLATES: readonly SupplementalWorkflowTemplate[] =
     }),
   ];
 
-const WORKFLOW_IDS_BY_CATEGORY: Readonly<
-  Record<OnboardingWorkflowCategoryId, readonly string[]>
-> = {
+const WORKFLOW_IDS_BY_CATEGORY = {
   engineering: [
     "auto-merge-github-prs",
     "file-sentry-crashes-github",
@@ -275,37 +242,31 @@ const WORKFLOW_IDS_BY_CATEGORY: Readonly<
     "meeting-recaps-slack",
     "flagged-gmail-todoist-tasks",
   ],
-};
+} as const satisfies Readonly<
+  Record<OnboardingWorkflowCategoryId, readonly string[]>
+>;
 
-const ALL_WORKFLOW_TEMPLATES: readonly WorkflowTemplateItem[] = [
+export type OnboardingWorkflowId =
+  (typeof WORKFLOW_IDS_BY_CATEGORY)[OnboardingWorkflowCategoryId][number];
+
+const WORKFLOW_CATEGORY_IDS = [
+  "engineering",
+  "product",
+  "data",
+  "marketing",
+  "sales",
+  "support",
+  "ceo",
+  "operations",
+  "everyone",
+] as const satisfies readonly OnboardingWorkflowCategoryId[];
+
+const WORKFLOW_STEP_KEYS = ["one", "two", "three"] as const;
+
+const ALL_WORKFLOW_TEMPLATES: readonly WorkflowPromptTemplate[] = [
   ...WORKFLOW_TEMPLATE_ITEMS,
   ...SUPPLEMENTAL_WORKFLOW_TEMPLATES,
 ];
-
-const WORKFLOW_DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> = {
-  "track-keyword-ranks-ahrefs":
-    "Every week Zero tracks target keyword rankings in Ahrefs and reports the movers in Notion.",
-  "publish-scheduled-posts-buffer":
-    "Every day Zero publishes the content scheduled for today from the Notion calendar to Strapi and queues the social posts in Buffer.",
-  "blog-posts-to-x":
-    "Every day Zero turns newly published blog posts into social variants and queues them to X through Buffer.",
-  "draft-newsletter-mailchimp":
-    "Every month Zero assembles a newsletter from shipped features and stages a draft in Mailchimp.",
-  "compare-google-ads-last-month":
-    "Every day Zero compares Google Ads and Meta Ads spend, CPA, and ROAS against the prior period and flags anomalies in Slack.",
-};
-
-function workflowSteps(promptGuidance: string): readonly string[] {
-  return promptGuidance
-    .split("\n")
-    .filter((line) => {
-      return line.startsWith("- ");
-    })
-    .map((line) => {
-      return line.slice(2);
-    })
-    .slice(0, 4);
-}
 
 // Derives the required connectors from the "Connectors: X required; Y optional"
 // line embedded in promptGuidance, so this stays the single source of truth with
@@ -335,8 +296,9 @@ function requiredConnectors(
 }
 
 function onboardingWorkflow(
-  id: string,
+  id: OnboardingWorkflowId,
   categoryId: OnboardingWorkflowCategoryId,
+  t: TFunction<"common">,
 ): OnboardingWorkflow {
   const template = ALL_WORKFLOW_TEMPLATES.find((candidate) => {
     return candidate.id === `workflow-template:${id}`;
@@ -344,85 +306,85 @@ function onboardingWorkflow(
   if (!template) {
     throw new Error(`Missing onboarding workflow template: ${id}`);
   }
-  const description =
-    WORKFLOW_DESCRIPTION_OVERRIDES[id] ?? template.description;
-  const details = ONBOARDING_WORKFLOW_DETAILS[id];
   return {
     id,
     categoryId,
-    title: template.title,
-    description,
+    title: t(($) => {
+      return $.onboarding.workflows[id].title;
+    }),
+    description: t(($) => {
+      return $.onboarding.workflows[id].description;
+    }),
     prompt: template.promptGuidance,
     connectors: template.connectors,
     required: requiredConnectors(template.promptGuidance, template.connectors),
-    steps: workflowSteps(template.promptGuidance),
-    scenario: details?.scenario ?? description,
-    detailSteps: details?.steps ?? [],
+    scenario: t(($) => {
+      return $.onboarding.workflows[id].scenario;
+    }),
+    detailSteps: WORKFLOW_STEP_KEYS.map((stepKey) => {
+      return {
+        title: t(($) => {
+          return $.onboarding.workflows[id].steps[stepKey].title;
+        }),
+        description: t(($) => {
+          return $.onboarding.workflows[id].steps[stepKey].description;
+        }),
+      };
+    }),
   };
 }
 
-const WORKFLOW_CATEGORY_DETAILS: readonly Omit<
-  OnboardingWorkflowCategory,
-  "workflows"
->[] = [
-  {
-    id: "engineering",
-    title: "Engineer",
-    description: "Ship, debug, automate code",
-  },
-  { id: "product", title: "Product", description: "Specs, releases, feedback" },
-  { id: "data", title: "Data", description: "Dashboards, metrics, queries" },
-  {
-    id: "marketing",
-    title: "Marketing",
-    description: "Content, SEO, campaigns",
-  },
-  { id: "sales", title: "Sales", description: "Pipeline and outreach" },
-  {
-    id: "support",
-    title: "Support",
-    description: "Tickets and customer help",
-  },
-  { id: "ceo", title: "CEO", description: "Briefings and the big picture" },
-  {
-    id: "operations",
-    title: "Operations",
-    description: "Projects, scheduling, sync",
-  },
-  {
-    id: "everyone",
-    title: "Everyone",
-    description: "Email, calendar, meetings",
-  },
-];
-
-export const ONBOARDING_WORKFLOW_CATEGORIES: readonly OnboardingWorkflowCategory[] =
-  WORKFLOW_CATEGORY_DETAILS.map((category) => {
+export function onboardingWorkflowCategories(
+  t: TFunction<"common">,
+): readonly OnboardingWorkflowCategory[] {
+  return WORKFLOW_CATEGORY_IDS.map((id) => {
     return {
-      ...category,
-      workflows: WORKFLOW_IDS_BY_CATEGORY[category.id].map((id) => {
-        return onboardingWorkflow(id, category.id);
+      id,
+      title: t(($) => {
+        return $.onboarding.categories[id].title;
+      }),
+      description: t(($) => {
+        return $.onboarding.categories[id].description;
+      }),
+      workflows: WORKFLOW_IDS_BY_CATEGORY[id].map((workflowId) => {
+        return onboardingWorkflow(workflowId, id, t);
       }),
     };
   });
+}
 
 export const CUSTOM_WORKFLOW_ID = "talk-to-zero";
 
-export function findOnboardingWorkflow(
-  workflowIdValue: string | null,
-): OnboardingWorkflow | null {
+function onboardingWorkflowIdentity(workflowIdValue: string | null): {
+  readonly id: OnboardingWorkflowId;
+  readonly categoryId: OnboardingWorkflowCategoryId;
+} | null {
   if (!workflowIdValue || workflowIdValue === CUSTOM_WORKFLOW_ID) {
     return null;
   }
-  for (const category of ONBOARDING_WORKFLOW_CATEGORIES) {
-    const workflow = category.workflows.find((candidate) => {
-      return candidate.id === workflowIdValue;
-    });
-    if (workflow) {
-      return workflow;
+  for (const categoryId of WORKFLOW_CATEGORY_IDS) {
+    for (const id of WORKFLOW_IDS_BY_CATEGORY[categoryId]) {
+      if (id === workflowIdValue) {
+        return { id, categoryId };
+      }
     }
   }
   return null;
+}
+
+export function hasOnboardingWorkflow(workflowIdValue: string | null): boolean {
+  return onboardingWorkflowIdentity(workflowIdValue) !== null;
+}
+
+export function findOnboardingWorkflow(
+  workflowIdValue: string | null,
+  t: TFunction<"common">,
+): OnboardingWorkflow | null {
+  const identity = onboardingWorkflowIdentity(workflowIdValue);
+  if (!identity) {
+    return null;
+  }
+  return onboardingWorkflow(identity.id, identity.categoryId, t);
 }
 
 export function buildWorkflowPrompt(

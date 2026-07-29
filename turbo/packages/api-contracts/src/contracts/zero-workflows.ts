@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import { connectorRefSchema } from "./connector-identity";
+import { connectorSlugSchema } from "./connector-identity";
 import { apiErrorSchema } from "./errors";
 import { publicConnectorCatalogIconSchema } from "./zero-connector-catalog";
 
@@ -1372,7 +1372,8 @@ export type ZeroWorkflowConnectorReadinessStatus = z.infer<
 
 export const zeroWorkflowConnectorReadinessEntrySchema = z
   .object({
-    connectorRef: connectorRefSchema,
+    // TODO(#23619): Rename this workflow readiness response field with clients.
+    connectorRef: connectorSlugSchema,
     label: z.string().min(1),
     icon: publicConnectorCatalogIconSchema,
     reason: z.string().min(1),

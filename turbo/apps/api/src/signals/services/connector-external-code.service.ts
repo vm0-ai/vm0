@@ -8,9 +8,9 @@ import type {
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
   connectorAuthMethodIdSchema,
-  connectorRefSchema,
+  connectorSlugSchema,
   type ConnectorAuthMethodId,
-  type ConnectorRef,
+  type ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   resolveConnectorAuthClient,
@@ -44,7 +44,7 @@ import {
 } from "./connector-action-resolver.service";
 import {
   upsertConnectorTokenConnection$,
-  zeroConnectorByType,
+  zeroConnectorBySlug,
 } from "./zero-connector-data.service";
 import {
   authorizeConnectedConnector$,
@@ -62,7 +62,7 @@ const COMPLETING_SESSION_STALE_AFTER_MS = 30 * 60 * 1000;
 type ExternalCodeSessionRow = typeof connectorExternalCodeSessions.$inferSelect;
 
 type ExternalCodeSessionOwner = {
-  readonly type: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly authMethod: ConnectorAuthMethodId;
   readonly orgId: string;
   readonly userId: string;
@@ -79,7 +79,8 @@ type CompleteSuccess = {
 };
 
 const encryptedProviderStateSchema = z.object({
-  connectorType: connectorRefSchema,
+  // TODO(#23619): Rename with the persisted encrypted provider-state format.
+  connectorType: connectorSlugSchema,
   authMethod: connectorAuthMethodIdSchema,
   providerState: z.string(),
 });
@@ -97,14 +98,14 @@ const connectorExternalCodeDisabled = Object.freeze({
 function externalCodeResolutionError(
   resolution: Exclude<ConnectorActionMethodResolution, { readonly ok: true }>,
   args: {
-    readonly connectorRef: ConnectorRef;
+    readonly connectorSlug: ConnectorSlug;
     readonly authMethodId: ConnectorAuthMethodId;
   },
 ) {
   switch (resolution.reason) {
     case "unknown_connector": {
       return badRequestMessage(
-        `${args.connectorRef} connector is not supported`,
+        `${args.connectorSlug} connector is not supported`,
       );
     }
     case "unknown_auth_method": {
@@ -115,13 +116,13 @@ function externalCodeResolutionError(
       );
       return badRequestMessage(
         hasExternalCode
-          ? `${args.connectorRef} connector does not have ${args.authMethodId} auth method`
-          : connectorMissingExternalCodeGrantMessage(args.connectorRef),
+          ? `${args.connectorSlug} connector does not have ${args.authMethodId} auth method`
+          : connectorMissingExternalCodeGrantMessage(args.connectorSlug),
       );
     }
     case "wrong_grant_kind": {
       return badRequestMessage(
-        `${args.connectorRef} ${args.authMethodId} auth method does not use an external-code grant`,
+        `${args.connectorSlug} ${args.authMethodId} auth method does not use an external-code grant`,
       );
     }
     case "hidden_auth_method": {
@@ -153,8 +154,10 @@ function generateSessionToken(): string {
   return randomBytes(32).toString("base64url");
 }
 
-function connectorMissingExternalCodeGrantMessage(type: string): string {
-  return `${type} connector does not support an external-code grant`;
+function connectorMissingExternalCodeGrantMessage(
+  connectorSlug: string,
+): string {
+  return `${connectorSlug} connector does not support an external-code grant`;
 }
 
 function resolveRequiredAuthClient(
@@ -172,7 +175,7 @@ function resolveRequiredAuthClient(
   );
   if (!authClient) {
     return internalServerError(
-      `${resolvedMethod.connectorRef} auth client not configured`,
+      `${resolvedMethod.connectorSlug} auth client not configured`,
     );
   }
   return { resolvedMethod, authClient };
@@ -180,7 +183,7 @@ function resolveRequiredAuthClient(
 
 async function resolveStoredExternalCodeMethod(args: {
   readonly resolver: ConnectorActionResolver;
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly authMethodId: string;
 }) {
   const storedAuthMethod = connectorAuthMethodIdSchema.safeParse(
@@ -190,7 +193,7 @@ async function resolveStoredExternalCodeMethod(args: {
     return internalServerError("Invalid external-code authorization session");
   }
   const resolved = await args.resolver.resolveMethod({
-    connectorRef: args.connectorRef,
+    connectorSlug: args.connectorSlug,
     authMethodId: storedAuthMethod.data,
     expectedGrantKind: "external-code",
   });
@@ -206,7 +209,7 @@ async function lockExternalCodeSessionOwner(
   },
 ): Promise<void> {
   await args.writeDb.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtext('connector_external_code:' || ${args.orgId} || ':' || ${args.userId} || ':' || ${args.type} || ':' || ${args.authMethod}))`,
+    sql`SELECT pg_advisory_xact_lock(hashtext('connector_external_code:' || ${args.orgId} || ':' || ${args.userId} || ':' || ${args.connectorSlug} || ':' || ${args.authMethod}))`,
   );
 }
 
@@ -229,7 +232,7 @@ async function markPendingSessionsSuperseded(
       and(
         eq(connectorExternalCodeSessions.orgId, args.orgId),
         eq(connectorExternalCodeSessions.userId, args.userId),
-        eq(connectorExternalCodeSessions.connectorType, args.type),
+        eq(connectorExternalCodeSessions.connectorType, args.connectorSlug),
         eq(connectorExternalCodeSessions.authMethod, args.authMethod),
         inArray(connectorExternalCodeSessions.status, [
           ...SUPERSEDABLE_EXTERNAL_CODE_SESSION_STATUSES,
@@ -242,7 +245,7 @@ async function loadOwnedSession(args: {
   readonly writeDb: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly type: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly sessionId: string;
   readonly sessionToken: string;
   readonly signal: AbortSignal;
@@ -255,7 +258,7 @@ async function loadOwnedSession(args: {
         eq(connectorExternalCodeSessions.id, args.sessionId),
         eq(connectorExternalCodeSessions.orgId, args.orgId),
         eq(connectorExternalCodeSessions.userId, args.userId),
-        eq(connectorExternalCodeSessions.connectorType, args.type),
+        eq(connectorExternalCodeSessions.connectorType, args.connectorSlug),
         eq(
           connectorExternalCodeSessions.sessionTokenHash,
           sessionTokenHash(args.sessionToken),
@@ -282,7 +285,7 @@ async function parseEncryptedProviderState(args: {
     JSON.parse(decrypted) as unknown,
   );
   if (
-    providerState.connectorType !== args.method.connectorRef ||
+    providerState.connectorType !== args.method.connectorSlug ||
     providerState.authMethod !== args.method.authMethodId
   ) {
     throw new Error("External-code provider state connector method mismatch");
@@ -550,7 +553,7 @@ const authorizeExternalCodeSessionConnector$ = command(
       readonly orgId: string;
       readonly userId: string;
       readonly session: ExternalCodeSessionRow;
-      readonly connectorType: ConnectorRef;
+      readonly connectorSlug: ConnectorSlug;
     },
     signal: AbortSignal,
   ) => {
@@ -563,7 +566,7 @@ const authorizeExternalCodeSessionConnector$ = command(
         orgId: args.orgId,
         userId: args.userId,
         agentId: args.session.agentId,
-        connectorType: args.connectorType,
+        connectorSlug: args.connectorSlug,
       },
       signal,
     );
@@ -587,10 +590,10 @@ const completedExternalCodeSessionResponse$ = command(
     const response = await completeSessionResponse({
       connectorLoader: () => {
         return get(
-          zeroConnectorByType({
+          zeroConnectorBySlug({
             orgId: args.orgId,
             userId: args.userId,
-            type: args.method.connectorRef,
+            connectorSlug: args.method.connectorSlug,
             snapshot: args.method.snapshot,
           }),
         );
@@ -599,7 +602,7 @@ const completedExternalCodeSessionResponse$ = command(
     });
     const error = await set(
       authorizeExternalCodeSessionConnector$,
-      { ...args, connectorType: args.method.connectorRef },
+      { ...args, connectorSlug: args.method.connectorSlug },
       signal,
     );
     return error ?? response;
@@ -628,7 +631,7 @@ async function completeClaimedExternalCodeSession(
         method: args.resolvedMethod,
       });
       return await completeConnectorExternalCodeAuthorizationWithMethod({
-        connectorRef: args.resolvedMethod.connectorRef,
+        connectorSlug: args.resolvedMethod.connectorSlug,
         authMethodId: args.resolvedMethod.authMethodId,
         method: args.resolvedMethod.method,
         authClient: args.authClient,
@@ -669,7 +672,7 @@ async function completeClaimedExternalCodeSession(
   const commitSignal = new AbortController().signal;
   const persistedConnector = await onRejection(
     persistClaimedConnector({
-      type: args.resolvedMethod.connectorRef,
+      connectorSlug: args.resolvedMethod.connectorSlug,
       authMethod: args.resolvedMethod.authMethodId,
       writeDb: args.writeDb,
       orgId: args.orgId,
@@ -734,7 +737,7 @@ export const startConnectorExternalCodeSession$ = command(
       readonly userId: string;
       readonly agentId: string | undefined;
       readonly authorizeAgent: true | undefined;
-      readonly type: ConnectorRef;
+      readonly connectorSlug: ConnectorSlug;
       readonly authMethod: ConnectorAuthMethodId;
     },
     signal: AbortSignal,
@@ -751,14 +754,14 @@ export const startConnectorExternalCodeSession$ = command(
     const resolver = await get(connectorActionResolver());
     signal.throwIfAborted();
     const resolved = await resolver.resolveNewActionMethod({
-      connectorRef: args.type,
+      connectorSlug: args.connectorSlug,
       authMethodId: args.authMethod,
       expectedGrantKind: "external-code",
     });
     signal.throwIfAborted();
     if (!resolved.ok) {
       return externalCodeResolutionError(resolved, {
-        connectorRef: args.type,
+        connectorSlug: args.connectorSlug,
         authMethodId: args.authMethod,
       });
     }
@@ -769,7 +772,7 @@ export const startConnectorExternalCodeSession$ = command(
 
     const startResult = await startConnectorExternalCodeAuthorizationWithMethod(
       {
-        connectorRef: resolved.connectorRef,
+        connectorSlug: resolved.connectorSlug,
         authMethodId: resolved.authMethodId,
         method: resolved.method,
         authClient: resolvedClient.authClient,
@@ -782,7 +785,7 @@ export const startConnectorExternalCodeSession$ = command(
     const expiresAt = new Date(now.getTime() + startResult.expiresIn * 1000);
     const encryptedProviderState = await encryptPersistentSecretValue(
       JSON.stringify({
-        connectorType: resolved.connectorRef,
+        connectorType: resolved.connectorSlug,
         authMethod: resolved.authMethodId,
         providerState: providerStateWithinLimit(startResult.providerState),
       }),
@@ -795,14 +798,14 @@ export const startConnectorExternalCodeSession$ = command(
 
     const [session] = await set(writeDb$).transaction(async (tx) => {
       await lockExternalCodeSessionOwner({
-        type: resolved.connectorRef,
+        connectorSlug: resolved.connectorSlug,
         authMethod: resolved.authMethodId,
         writeDb: tx,
         orgId: args.orgId,
         userId: args.userId,
       });
       await markPendingSessionsSuperseded({
-        type: resolved.connectorRef,
+        connectorSlug: resolved.connectorSlug,
         authMethod: resolved.authMethodId,
         writeDb: tx,
         orgId: args.orgId,
@@ -816,7 +819,7 @@ export const startConnectorExternalCodeSession$ = command(
           userId: args.userId,
           agentId: args.agentId,
           authorizeAgent: connectorAgentAuthorizationRequested(args),
-          connectorType: resolved.connectorRef,
+          connectorType: resolved.connectorSlug,
           authMethod: resolved.authMethodId,
           status: "pending",
           sessionTokenHash: sessionTokenHash(sessionToken),
@@ -837,7 +840,7 @@ export const startConnectorExternalCodeSession$ = command(
     const body: ConnectorExternalCodeSessionStartResponse = {
       sessionId: session.id,
       sessionToken,
-      type: resolved.connectorRef,
+      type: resolved.connectorSlug,
       status: "pending",
       authorizationUrl: startResult.authorizationUrl,
       expiresIn: startResult.expiresIn,
@@ -852,7 +855,7 @@ export const completeConnectorExternalCodeSession$ = command(
     args: {
       readonly orgId: string;
       readonly userId: string;
-      readonly type: ConnectorRef;
+      readonly connectorSlug: ConnectorSlug;
       readonly sessionId: string;
       readonly sessionToken: string;
       readonly code: string;
@@ -864,7 +867,7 @@ export const completeConnectorExternalCodeSession$ = command(
       writeDb,
       orgId: args.orgId,
       userId: args.userId,
-      type: args.type,
+      connectorSlug: args.connectorSlug,
       sessionId: args.sessionId,
       sessionToken: args.sessionToken,
       signal,
@@ -877,7 +880,7 @@ export const completeConnectorExternalCodeSession$ = command(
     signal.throwIfAborted();
     const resolvedMethod = await resolveStoredExternalCodeMethod({
       resolver,
-      connectorRef: args.type,
+      connectorSlug: args.connectorSlug,
       authMethodId: session.authMethod,
     });
     signal.throwIfAborted();
@@ -965,7 +968,7 @@ export const completeConnectorExternalCodeSession$ = command(
     }
     const authorizationError = await set(
       authorizeExternalCodeSessionConnector$,
-      { ...args, session, connectorType: resolvedMethod.connectorRef },
+      { ...args, session, connectorSlug: resolvedMethod.connectorSlug },
       signal,
     );
     return authorizationError ?? response;

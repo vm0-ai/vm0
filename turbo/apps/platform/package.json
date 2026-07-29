@@ -1,6 +1,6 @@
 {
   "name": "@vm0/app",
-  "version": "0.652.0",
+  "version": "0.653.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@clerk/clerk-js": "^6.25.8",
+    "@clerk/localizations": "^4.13.8",
     "@clerk/react": "^6.12.8",
     "@clerk/ui": "^1.26.0",
     "@sentry/react": "^10.38.0",

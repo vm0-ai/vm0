@@ -4,7 +4,7 @@ import { authHeadersSchema, initContract } from "./base";
 import { connectorCatalogDiagnosticsSchema } from "./connector-catalog-diagnostics";
 import {
   connectorAuthMethodIdSchema,
-  connectorRefSchema,
+  connectorSlugSchema,
 } from "./connector-identity";
 import { connectorReconnectReasonSchema } from "./connector-schemas";
 import { apiErrorSchema } from "./errors";
@@ -58,7 +58,8 @@ const publicConnectorCatalogCategoryMetadataSchema = z.object({
 });
 
 const publicConnectorCatalogItemSchema = z.object({
-  connectorRef: connectorRefSchema,
+  // TODO(#23619): Rename catalog API fields after independent clients migrate.
+  connectorRef: connectorSlugSchema,
   label: z.string(),
   description: z.string(),
   icon: publicConnectorCatalogIconSchema,
@@ -161,7 +162,8 @@ const publicConnectorCatalogDefaultPolicySchema = z.object({
 });
 
 const publicConnectorCatalogPermissionDetailSchema = z.object({
-  connectorRef: connectorRefSchema,
+  // TODO(#23619): Rename this catalog API field after clients migrate.
+  connectorRef: connectorSlugSchema,
   label: z.string(),
   icon: publicConnectorCatalogIconSchema,
   permissionCount: z.number().int().nonnegative(),
@@ -175,7 +177,8 @@ const publicConnectorCatalogPermissionDetailResponseSchema = z.object({
 });
 
 const connectorCatalogPathParamsSchema = z.object({
-  connectorRef: connectorRefSchema,
+  // TODO(#23619): Rename this path parameter and route in a compatible rollout.
+  connectorRef: connectorSlugSchema,
 });
 
 export type PublicConnectorCatalogAuthMethodSummary = z.infer<

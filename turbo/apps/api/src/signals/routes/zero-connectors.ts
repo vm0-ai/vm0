@@ -6,7 +6,7 @@ import {
   zeroConnectorOauthContinueContract,
   zeroConnectorOauthStartContract,
   zeroConnectorScopeDiffContract,
-  zeroConnectorsByTypeContract,
+  zeroConnectorsBySlugContract,
   zeroConnectorsMainContract,
   zeroConnectorsSearchContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
@@ -34,7 +34,7 @@ import {
   connectManualGrantConnector$,
   connectNoAuthConnector$,
   deleteZeroConnectorLocalState$,
-  zeroConnectorByType,
+  zeroConnectorBySlug,
   zeroConnectorList,
   zeroConnectorScopeDiff,
   zeroConnectorSearch,
@@ -42,7 +42,7 @@ import {
 import {
   connectorActionResolver,
   type ConnectorActionMethodResolution,
-  type ConnectorRefResolution,
+  type ConnectorSlugResolution,
 } from "../services/connector-action-resolver.service";
 import { isConnectorCatalogUnavailableError } from "../services/connector-catalog-reader.service";
 import { getConnectorOAuthAuthorizationUrl } from "../services/connector-oauth-state.service";
@@ -76,12 +76,12 @@ const connectorWriteAuth = {
   missingOrganizationStatus: 401,
 } as const;
 
-function connectorUnavailable(type: string) {
+function connectorUnavailable(connectorSlug: string) {
   return {
     status: 403 as const,
     body: {
       error: {
-        message: `${type} connector is not available`,
+        message: `${connectorSlug} connector is not available`,
         code: "FORBIDDEN",
       },
     },
@@ -115,7 +115,7 @@ function catalogHasGrantKind(
 function connectorMethodResolutionError(
   resolution: Exclude<ConnectorActionMethodResolution, { readonly ok: true }>,
   args: {
-    readonly connectorRef: string;
+    readonly connectorSlug: string;
     readonly authMethodId: string;
     readonly expectedGrantKind: ActionGrantKind;
     readonly expectedGrantLabel: string;
@@ -125,7 +125,7 @@ function connectorMethodResolutionError(
   switch (resolution.reason) {
     case "unknown_connector": {
       return badRequestMessage(
-        `${args.connectorRef} connector is not supported`,
+        `${args.connectorSlug} connector is not supported`,
       );
     }
     case "unknown_auth_method":
@@ -138,20 +138,20 @@ function connectorMethodResolutionError(
         )
       ) {
         return badRequestMessage(
-          `${args.connectorRef} connector does not use ${args.expectedGrantLabel}`,
+          `${args.connectorSlug} connector does not use ${args.expectedGrantLabel}`,
         );
       }
       if (resolution.reason === "unknown_auth_method") {
         return badRequestMessage(
-          `${args.connectorRef} connector does not have ${args.authMethodId} auth method`,
+          `${args.connectorSlug} connector does not have ${args.authMethodId} auth method`,
         );
       }
       return badRequestMessage(
-        `${args.connectorRef} ${args.authMethodId} auth method does not use ${args.expectedGrantLabel}`,
+        `${args.connectorSlug} ${args.authMethodId} auth method does not use ${args.expectedGrantLabel}`,
       );
     }
     case "hidden_auth_method": {
-      return connectorUnavailable(args.connectorRef);
+      return connectorUnavailable(args.connectorSlug);
     }
     case "missing_executable_capability": {
       return internalServerError("Connector execution is not configured");
@@ -159,8 +159,8 @@ function connectorMethodResolutionError(
   }
 }
 
-function connectorRefResolutionError(
-  resolution: Exclude<ConnectorRefResolution, { readonly ok: true }>,
+function connectorSlugResolutionError(
+  resolution: Exclude<ConnectorSlugResolution, { readonly ok: true }>,
 ) {
   switch (resolution.reason) {
     case "unknown_connector": {
@@ -180,22 +180,22 @@ const getConnectorListInner$ = computed(async (get) => {
   return { status: 200 as const, body: result };
 });
 
-const getConnectorByTypeInner$ = computed(async (get) => {
+const getConnectorBySlugInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(zeroConnectorsByTypeContract.get));
+  const params = get(pathParamsOf(zeroConnectorsBySlugContract.get));
   const resolver = await get(connectorActionResolver());
-  const resolved = await resolver.resolveRef({
-    connectorRef: params.type,
+  const resolved = await resolver.resolveSlug({
+    connectorSlug: params.type,
     requireExecutable: false,
   });
   if (!resolved.ok) {
-    return connectorRefResolutionError(resolved);
+    return connectorSlugResolutionError(resolved);
   }
   const connector = await get(
-    zeroConnectorByType({
+    zeroConnectorBySlug({
       orgId: auth.orgId,
       userId: auth.userId,
-      type: resolved.connectorRef,
+      connectorSlug: resolved.connectorSlug,
       snapshot: resolved.snapshot,
     }),
   );
@@ -206,26 +206,26 @@ const getConnectorByTypeInner$ = computed(async (get) => {
   return { status: 200 as const, body: connector };
 });
 
-const deleteConnectorByTypeInner$ = command(
+const deleteConnectorBySlugInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const params = get(pathParamsOf(zeroConnectorsByTypeContract.delete));
+    const params = get(pathParamsOf(zeroConnectorsBySlugContract.delete));
     const resolver = await get(connectorActionResolver());
     signal.throwIfAborted();
-    const resolved = await resolver.resolveRef({
-      connectorRef: params.type,
+    const resolved = await resolver.resolveSlug({
+      connectorSlug: params.type,
       requireExecutable: false,
     });
     signal.throwIfAborted();
     if (!resolved.ok) {
-      return connectorRefResolutionError(resolved);
+      return connectorSlugResolutionError(resolved);
     }
     const deleted = await set(
       deleteZeroConnectorLocalState$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
-        type: resolved.connectorRef,
+        connectorSlug: resolved.connectorSlug,
         snapshot: resolved.snapshot,
       },
       signal,
@@ -244,18 +244,18 @@ const getScopeDiffInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroConnectorScopeDiffContract.getScopeDiff));
   const resolver = await get(connectorActionResolver());
-  const resolved = await resolver.resolveRef({
-    connectorRef: params.type,
+  const resolved = await resolver.resolveSlug({
+    connectorSlug: params.type,
     requireExecutable: false,
   });
   if (!resolved.ok) {
-    return connectorRefResolutionError(resolved);
+    return connectorSlugResolutionError(resolved);
   }
   const diff = await get(
     zeroConnectorScopeDiff({
       orgId: auth.orgId,
       userId: auth.userId,
-      type: resolved.connectorRef,
+      connectorSlug: resolved.connectorSlug,
       snapshot: resolved.snapshot,
     }),
   );
@@ -320,14 +320,14 @@ const connectManualGrantConnectorInner$ = command(
     const resolver = await get(connectorActionResolver());
     signal.throwIfAborted();
     const resolved = await resolver.resolveNewActionMethod({
-      connectorRef: params.type,
+      connectorSlug: params.type,
       authMethodId: bodyResult.data.authMethod,
       expectedGrantKind: "manual",
     });
     signal.throwIfAborted();
     if (!resolved.ok) {
       return connectorMethodResolutionError(resolved, {
-        connectorRef: params.type,
+        connectorSlug: params.type,
         authMethodId: bodyResult.data.authMethod,
         expectedGrantKind: "manual",
         expectedGrantLabel: "a manual grant",
@@ -358,7 +358,7 @@ const connectManualGrantConnectorInner$ = command(
           orgId: auth.orgId,
           userId: auth.userId,
           agentId: bodyResult.data.agentId ?? null,
-          connectorType: resolved.connectorRef,
+          connectorSlug: resolved.connectorSlug,
         },
         signal,
       );
@@ -399,14 +399,14 @@ const connectNoAuthConnectorInner$ = command(
     const resolver = await get(connectorActionResolver());
     signal.throwIfAborted();
     const resolved = await resolver.resolveNewActionMethod({
-      connectorRef: params.type,
+      connectorSlug: params.type,
       authMethodId: bodyResult.data.authMethod,
       expectedGrantKind: "none",
     });
     signal.throwIfAborted();
     if (!resolved.ok) {
       return connectorMethodResolutionError(resolved, {
-        connectorRef: params.type,
+        connectorSlug: params.type,
         authMethodId: bodyResult.data.authMethod,
         expectedGrantKind: "none",
         expectedGrantLabel: "a no-auth grant",
@@ -432,7 +432,7 @@ const connectNoAuthConnectorInner$ = command(
           orgId: auth.orgId,
           userId: auth.userId,
           agentId: bodyResult.data.agentId ?? null,
-          connectorType: resolved.connectorRef,
+          connectorSlug: resolved.connectorSlug,
         },
         signal,
       );
@@ -457,7 +457,7 @@ const startConnectorOauthInner$ = command(
     }
     const request = get(request$).raw;
     const auth = get(authContext$);
-    const type = params.type;
+    const connectorSlug = params.type;
 
     if (!auth.orgId) {
       return badRequestMessage(
@@ -481,14 +481,14 @@ const startConnectorOauthInner$ = command(
     const resolver = await get(connectorActionResolver());
     signal.throwIfAborted();
     const resolved = await resolver.resolveNewActionMethod({
-      connectorRef: type,
+      connectorSlug,
       authMethodId: bodyResult.data.authMethod,
       expectedGrantKind: "auth-code",
     });
     signal.throwIfAborted();
     if (!resolved.ok) {
       return connectorMethodResolutionError(resolved, {
-        connectorRef: type,
+        connectorSlug,
         authMethodId: bodyResult.data.authMethod,
         expectedGrantKind: "auth-code",
         expectedGrantLabel: "an auth-code grant",
@@ -504,7 +504,7 @@ const startConnectorOauthInner$ = command(
     const redirectUri = getConnectorOAuthCallbackUrlForMethod({
       request,
       method,
-      connectorRef: resolved.connectorRef,
+      connectorSlug: resolved.connectorSlug,
       callbackTarget: bodyResult.data.callbackTarget,
     });
     const prepared = prepareConnectorAuthCodeStartWithMethod({
@@ -513,10 +513,10 @@ const startConnectorOauthInner$ = command(
       readEnv: optionalEnv,
     });
     if (!prepared.ok) {
-      return internalServerError(`${type} auth client not configured`);
+      return internalServerError(`${connectorSlug} auth client not configured`);
     }
     const authResult = await buildConnectorAuthCodeAuthUrlWithMethod({
-      connectorRef: resolved.connectorRef,
+      connectorSlug: resolved.connectorSlug,
       authMethodId: resolved.authMethodId,
       method,
       authClient: prepared.authClient,
@@ -530,7 +530,7 @@ const startConnectorOauthInner$ = command(
       {
         orgId: auth.orgId,
         userId: auth.userId,
-        type: resolved.connectorRef,
+        connectorSlug: resolved.connectorSlug,
         snapshot: resolved.snapshot,
       },
       signal,
@@ -540,7 +540,7 @@ const startConnectorOauthInner$ = command(
     const writeDb = set(writeDb$);
     await writeDb.insert(connectorOauthStates).values({
       state: prepared.state,
-      type: resolved.connectorRef,
+      type: resolved.connectorSlug,
       authMethod: resolved.authMethodId,
       userId: auth.userId,
       orgId: auth.orgId,
@@ -576,7 +576,7 @@ const continueConnectorOauthInner$ = command(
     const query = get(queryOf(zeroConnectorOauthContinueContract.continue));
     const resolution = await getConnectorOAuthAuthorizationUrl(
       get(db$),
-      { state: query.state, connectorType: params.type },
+      { state: query.state, connectorSlug: params.type },
       signal,
     );
 
@@ -604,7 +604,7 @@ const startConnectorOpenIdInner$ = command(
     }
     const request = get(request$).raw;
     const auth = get(authContext$);
-    const type = params.type;
+    const connectorSlug = params.type;
 
     if (!auth.orgId) {
       return badRequestMessage(
@@ -628,14 +628,14 @@ const startConnectorOpenIdInner$ = command(
     const resolver = await get(connectorActionResolver());
     signal.throwIfAborted();
     const resolved = await resolver.resolveNewActionMethod({
-      connectorRef: type,
+      connectorSlug,
       authMethodId: bodyResult.data.authMethod,
       expectedGrantKind: "openid-auth",
     });
     signal.throwIfAborted();
     if (!resolved.ok) {
       return connectorMethodResolutionError(resolved, {
-        connectorRef: type,
+        connectorSlug,
         authMethodId: bodyResult.data.authMethod,
         expectedGrantKind: "openid-auth",
         expectedGrantLabel: "an OpenID auth grant",
@@ -648,7 +648,7 @@ const startConnectorOpenIdInner$ = command(
     }
 
     const prepared = prepareConnectorOpenIdAuthStartWithMethod({
-      connectorRef: resolved.connectorRef,
+      connectorSlug: resolved.connectorSlug,
       method: resolved.method,
       origin: getConnectorOpenIdCallbackOriginForMethod({
         request,
@@ -656,7 +656,7 @@ const startConnectorOpenIdInner$ = command(
       }),
     });
     const authResult = await buildConnectorOpenIdAuthUrlWithMethod({
-      connectorRef: resolved.connectorRef,
+      connectorSlug: resolved.connectorSlug,
       authMethodId: resolved.authMethodId,
       method: resolved.method,
       returnTo: prepared.returnTo,
@@ -670,7 +670,7 @@ const startConnectorOpenIdInner$ = command(
       {
         orgId: auth.orgId,
         userId: auth.userId,
-        type: resolved.connectorRef,
+        connectorSlug: resolved.connectorSlug,
         snapshot: resolved.snapshot,
       },
       signal,
@@ -680,7 +680,7 @@ const startConnectorOpenIdInner$ = command(
     const writeDb = set(writeDb$);
     await writeDb.insert(connectorOauthStates).values({
       state: prepared.state,
-      type: resolved.connectorRef,
+      type: resolved.connectorSlug,
       authMethod: resolved.authMethodId,
       userId: auth.userId,
       orgId: auth.orgId,
@@ -738,11 +738,11 @@ export const zeroConnectorsRoutes: readonly RouteEntry[] = [
     handler: authRoute(connectorWriteAuth, startConnectorOpenIdInner$),
   },
   {
-    route: zeroConnectorsByTypeContract.get,
-    handler: authRoute(connectorReadAuth, getConnectorByTypeInner$),
+    route: zeroConnectorsBySlugContract.get,
+    handler: authRoute(connectorReadAuth, getConnectorBySlugInner$),
   },
   {
-    route: zeroConnectorsByTypeContract.delete,
-    handler: authRoute(connectorWriteAuth, deleteConnectorByTypeInner$),
+    route: zeroConnectorsBySlugContract.delete,
+    handler: authRoute(connectorWriteAuth, deleteConnectorBySlugInner$),
   },
 ];

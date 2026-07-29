@@ -1,4 +1,5 @@
 import Ably from "ably";
+import type { BrowserSessionChangedPayload } from "@vm0/api-contracts/contracts/realtime";
 import type { SessionAffinityResource } from "@vm0/api-contracts/contracts/runners";
 import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-built-in-generation";
 
@@ -219,6 +220,29 @@ export async function publishConnectorPermissionUpdatedSafely(
 }
 
 /**
+ * Notify the user's open chat surfaces that one managed browser changed
+ * lifecycle state. The payload identifies the logical browser so each
+ * thread-scoped card registry only reloads the matching shared signals.
+ *
+ * Best-effort: a failed publish must not fail browser resume or reclamation.
+ */
+export async function publishBrowserSessionChangedSafely(
+  userId: string,
+  browserId: string,
+): Promise<void> {
+  const payload: BrowserSessionChangedPayload = { browserId };
+  await tapError(
+    publishUserSignal([userId], "browserSessionChanged", payload),
+    (error) => {
+      L.warn("Failed to publish browser session changed signal", {
+        browserId,
+        error,
+      });
+    },
+  );
+}
+
+/**
  * Notify a chat thread's UI that its visible workflow set changed. The slash
  * workflow composer subscribes to this topic and refetches the authoritative
  * agent-scoped workflow list.
@@ -307,12 +331,16 @@ export async function publishCancelToRunnerGroup(
 export async function publishNetworkPolicyRefreshToRunnerGroup(
   group: string,
   runId: string,
-  connectorRef: string,
+  connectorSlug: string,
 ): Promise<void> {
   const channel = ablyClient().channels.get(`runner-group:${group}`);
-  await channel.publish("network-policy-refresh", { runId, connectorRef });
+  // TODO(#23619): Rename with the runner realtime notification contract.
+  await channel.publish("network-policy-refresh", {
+    runId,
+    connectorRef: connectorSlug,
+  });
   L.debug(
-    `Published network policy refresh ${runId}/${connectorRef} to runner-group:${group}`,
+    `Published network policy refresh ${runId}/${connectorSlug} to runner-group:${group}`,
   );
 }
 

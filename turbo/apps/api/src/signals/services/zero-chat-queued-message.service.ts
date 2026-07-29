@@ -7,6 +7,7 @@ import {
   type ChatMessageUserMessage,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { morningBriefDeliveries } from "@vm0/db/schema/morning-brief";
 import { and, eq, exists, isNull, notExists, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
@@ -33,6 +34,7 @@ import {
   decryptPersistentSecretsMap,
   encryptPersistentSecretsMap,
 } from "./crypto.utils";
+import { goalQueueEventMatchesActiveGoal } from "./chat-goal-queue.service";
 import { feishuOrgCallbackFileSchema } from "./feishu-org-callback-payload";
 import { teamsDeliveryTargetSchema } from "./teams-chat-callback-payload";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
@@ -45,6 +47,7 @@ const queuedUserMessageTriggerSourceSchema = z.enum([
   "slack",
   "feishu",
   "teams",
+  "workflow-schedule",
 ]);
 
 const queuedUserMessageRunParamsSchema = z.object({
@@ -72,6 +75,14 @@ const queuedUserMessageRunParamsSchema = z.object({
     })
     .optional(),
   teamsDelivery: teamsDeliveryTargetSchema.optional(),
+  morningBriefDelivery: z
+    .object({
+      deliveryId: z.string(),
+      internalKind: z.literal("morning-brief:email"),
+      secret: z.string(),
+      payload: z.unknown(),
+    })
+    .optional(),
   apiStartTime: z.number().optional(),
   userInfoExtras: z
     .object({
@@ -107,7 +118,12 @@ export interface QueuedUserMessage {
   readonly modelProviderType: string | null;
   readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
   readonly selectedModel: string | null;
-  readonly triggerSource: "web" | "slack" | "feishu" | "teams";
+  readonly triggerSource:
+    | "web"
+    | "slack"
+    | "feishu"
+    | "teams"
+    | "workflow-schedule";
   readonly encryptedParams: string | null;
 }
 
@@ -116,6 +132,7 @@ export type QueueFirstRunAssociation =
       readonly kind: "user_message";
       readonly threadId: string;
       readonly messageId: string;
+      readonly morningBriefDeliveryId?: string;
     }
   | {
       readonly kind: "workflow_event";
@@ -123,10 +140,22 @@ export type QueueFirstRunAssociation =
       readonly eventId: string;
       readonly prompt: string;
       readonly runGroupId: string;
+    }
+  | {
+      readonly kind: "goal_event";
+      readonly threadId: string;
+      readonly eventId: string;
+      readonly prompt: string;
+      readonly goalId: string;
+      readonly objectiveBrief: string;
     };
 
 export type QueueFirstRunClaimResult =
-  | { readonly kind: "claimed"; readonly createdAt: Date }
+  | {
+      readonly kind: "claimed";
+      readonly createdAt: Date;
+      readonly morningBriefDeliveryId?: string;
+    }
   | { readonly kind: "lost" };
 
 /**
@@ -269,7 +298,7 @@ export async function loadNextUnclaimedQueuedUserMessageId(
   return head?.eventType === "input.prompt" ? head.id : null;
 }
 
-export async function hasUnclaimedQueuedUserMessage(
+async function hasUnclaimedQueuedUserMessage(
   db: Db,
   threadId: string,
 ): Promise<boolean> {
@@ -345,6 +374,55 @@ async function appendClaimedUserMessage(
   return claimed;
 }
 
+type GoalQueueFirstRunAssociation = Extract<
+  QueueFirstRunAssociation,
+  { readonly kind: "goal_event" }
+> & { readonly runId: string };
+
+async function claimGoalQueueFirstRunAssociation(
+  db: DbTransaction,
+  args: GoalQueueFirstRunAssociation,
+): Promise<QueueFirstRunClaimResult> {
+  const pending = await listPendingChatQueueEvents(db, args.threadId);
+  const automationPause = await loadChatAutomationIntakePause(
+    db,
+    args.threadId,
+  );
+  const goalMatches = await goalQueueEventMatchesActiveGoal(db, {
+    chatThreadId: args.threadId,
+    goalId: args.goalId,
+    eventId: args.eventId,
+  });
+  const head =
+    automationPause === null
+      ? pending[0]
+      : pending.find((event) => {
+          return event.eventType !== "input.automation";
+        });
+  if (
+    head?.eventType !== "input.goal" ||
+    head.id !== args.eventId ||
+    !goalMatches
+  ) {
+    return { kind: "lost" };
+  }
+
+  const claimed = await replaceChatEvent(db, args.eventId, {
+    chatThreadId: args.threadId,
+    eventType: "input.prompt",
+    content: args.prompt,
+    userMessage: createUserMessageDocument({ text: args.prompt }),
+    runId: args.runId,
+    runGroupId: args.goalId,
+    goalSnapshot: { objectiveBrief: args.objectiveBrief },
+    triggerSource: "workflow-event",
+  });
+  if (!claimed) {
+    throw new Error("Claimed goal queue event disappeared");
+  }
+  return { kind: "claimed", createdAt: claimed.createdAt };
+}
+
 /**
  * Authoritatively arbitrate a queue-first launch inside its final persistence
  * transaction. Successful launches acquire the organization admission lock
@@ -377,6 +455,12 @@ export async function claimQueueFirstRunAssociation(
       if (await chatThreadAdmissionBlocked(db, { threadId: args.threadId })) {
         outcome = "lost";
         return { kind: "lost" };
+      }
+
+      if (args.kind === "goal_event") {
+        const claim = await claimGoalQueueFirstRunAssociation(db, args);
+        outcome = claim.kind;
+        return claim;
       }
 
       if (args.kind === "workflow_event") {
@@ -435,6 +519,16 @@ export async function claimQueueFirstRunAssociation(
         return { kind: "lost" };
       }
 
+      if (
+        !(await lockUnclaimedMorningBriefDelivery(
+          db,
+          args.morningBriefDeliveryId,
+        ))
+      ) {
+        outcome = "lost";
+        return { kind: "lost" };
+      }
+
       const claimed = await appendClaimedUserMessage(db, {
         threadId: args.threadId,
         messageId: args.messageId,
@@ -446,12 +540,67 @@ export async function claimQueueFirstRunAssociation(
       }
 
       outcome = "claimed";
-      return { kind: "claimed", createdAt: claimed.createdAt };
+      return {
+        kind: "claimed",
+        createdAt: claimed.createdAt,
+        ...(args.morningBriefDeliveryId
+          ? { morningBriefDeliveryId: args.morningBriefDeliveryId }
+          : {}),
+      };
     },
     () => {
       return { queue_first_claim_result: outcome };
     },
   );
+}
+
+async function lockUnclaimedMorningBriefDelivery(
+  db: DbTransaction,
+  deliveryId: string | undefined,
+): Promise<boolean> {
+  if (!deliveryId) {
+    return true;
+  }
+  const [delivery] = await db
+    .select({ runId: morningBriefDeliveries.runId })
+    .from(morningBriefDeliveries)
+    .where(eq(morningBriefDeliveries.id, deliveryId))
+    .for("update")
+    .limit(1);
+  return delivery?.runId === null;
+}
+
+/**
+ * Finish queue-claim side effects that reference the newly inserted run row.
+ * The caller invokes this in the same final-admission transaction immediately
+ * after run persistence so the delivery foreign key and queue claim commit
+ * atomically.
+ */
+export async function recordQueueFirstClaimedRun(
+  db: DbTransaction,
+  args: {
+    readonly claim: Extract<
+      QueueFirstRunClaimResult,
+      { readonly kind: "claimed" }
+    >;
+    readonly runId: string;
+  },
+): Promise<void> {
+  if (!args.claim.morningBriefDeliveryId) {
+    return;
+  }
+  const [delivery] = await db
+    .update(morningBriefDeliveries)
+    .set({
+      status: "running",
+      runId: args.runId,
+      updatedAt: sql`now()`,
+    })
+    .where(eq(morningBriefDeliveries.id, args.claim.morningBriefDeliveryId))
+    .returning({ id: morningBriefDeliveries.id });
+  if (!delivery) {
+    throw new Error("Failed to record the admitted morning brief run");
+  }
 }
 
 /**

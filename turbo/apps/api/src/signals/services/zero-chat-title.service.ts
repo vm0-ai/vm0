@@ -30,10 +30,7 @@ import { publishThreadListChanged } from "../external/realtime";
 import type { Db } from "../external/db";
 import { nowDate } from "../external/time";
 import { safeJsonParse, tapError } from "../utils";
-import {
-  chatEventTypeIn,
-  chatEventTypeSql,
-} from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { visibleChatEventCondition } from "./zero-chat-message-shared.service";
 import {
   RECOMMENDED_FOLLOWUP_LIMIT,
@@ -269,7 +266,7 @@ async function getLatestTitleContextMessages(
 
   const rows = await db
     .select({
-      eventType: chatEventTypeSql().as("event_type"),
+      eventType: chatMessages.eventType,
       content: chatMessages.content,
       userMessage: chatMessages.userMessage,
       createdAt: chatMessages.createdAt,
@@ -464,7 +461,7 @@ async function getLatestFollowupContextMessages(
 ): Promise<ChatCompletionContextMessage[]> {
   const rows = await db
     .select({
-      eventType: chatEventTypeSql().as("event_type"),
+      eventType: chatMessages.eventType,
       content: chatMessages.content,
       userMessage: chatMessages.userMessage,
       createdAt: chatMessages.createdAt,

@@ -35,6 +35,8 @@ def _fix_pricing_clock(monkeypatch: pytest.MonkeyPatch) -> None:
 def _signed_pricing_flow(
     real_flow: RealFlowFactory,
     issued_at: object,
+    *,
+    unit_size: object = 1_000_000,
 ) -> http.HTTPFlow:
     flow = real_flow(with_response=False, host="model.vm0.ai")
     flow.request.headers["authorization"] = "Bearer proxy-secret"
@@ -42,7 +44,7 @@ def _signed_pricing_flow(
     flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
     flow.response = tutils.tresp(
         status_code=200,
-        headers=header_map(signed_usage_pricing_headers(issued_at=issued_at)),
+        headers=header_map(signed_usage_pricing_headers(issued_at=issued_at, unit_size=unit_size)),
     )
     return flow
 
@@ -270,6 +272,27 @@ class TestResponseHeadersHandler:
     ) -> None:
         _fix_pricing_clock(monkeypatch)
         flow = _signed_pricing_flow(real_flow, issued_at)
+
+        mitm_addon.responseheaders(flow)
+
+        assert metadata_keys.MODEL_USAGE_PRICING not in flow.metadata
+        assert flow.response is not None
+        assert "x-vm0-usage-pricing" not in flow.response.headers
+        assert "x-vm0-usage-pricing-signature" not in flow.response.headers
+
+    @pytest.mark.parametrize(
+        "unit_size",
+        [0, -1, True, "1000000"],
+        ids=["zero", "negative", "boolean", "numeric-string"],
+    )
+    def test_rejects_and_strips_invalid_signed_model_usage_pricing_unit_size(
+        self,
+        real_flow: RealFlowFactory,
+        monkeypatch: pytest.MonkeyPatch,
+        unit_size: object,
+    ) -> None:
+        _fix_pricing_clock(monkeypatch)
+        flow = _signed_pricing_flow(real_flow, _FIXED_TIME, unit_size=unit_size)
 
         mitm_addon.responseheaders(flow)
 

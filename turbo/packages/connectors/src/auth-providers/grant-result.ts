@@ -1,6 +1,6 @@
 import type {
   ConnectorAuthProviderAuthMethodId,
-  ConnectorAuthProviderConnectorRef,
+  ConnectorAuthProviderConnectorSlug,
   ConnectorAuthProviderGrantOutputValuesFor,
 } from "./provider-capabilities";
 
@@ -27,8 +27,8 @@ export interface ConnectorAuthProviderGrantResult<
 }
 
 export type ConnectorAuthProviderGrantResultForMethod<
-  ConnectorRef extends ConnectorAuthProviderConnectorRef,
-  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorRef>,
+  ConnectorSlug extends ConnectorAuthProviderConnectorSlug,
+  AuthMethodId extends ConnectorAuthProviderAuthMethodId<ConnectorSlug>,
 > = ConnectorAuthProviderGrantResult<
-  ConnectorAuthProviderGrantOutputValuesFor<ConnectorRef, AuthMethodId>
+  ConnectorAuthProviderGrantOutputValuesFor<ConnectorSlug, AuthMethodId>
 >;

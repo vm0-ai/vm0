@@ -11,6 +11,7 @@ import {
 } from "@tabler/icons-react";
 import type { UserExportStatusResponse } from "@vm0/api-contracts/contracts/user-export";
 import { Button } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 import {
   platformVm0LogoDarkImg,
   platformVm0LogoImg,
@@ -38,24 +39,44 @@ type ExportViewState =
 const PRIMARY_ACTION_BUTTON_CLASS =
   "h-9 w-full gap-2 bg-foreground text-background hover:bg-foreground/90 active:bg-foreground/80";
 
-function formatRelativeTime(dateStr: string): string {
+function formatDuration(dateStr: string, locale: string, soon: string): string {
   const diffMs = new Date(dateStr).getTime() - now();
   if (!Number.isFinite(diffMs) || diffMs <= 0) {
-    return "soon";
+    return soon;
   }
 
   const totalMinutes = Math.ceil(diffMs / (1000 * 60));
   const days = Math.floor(totalMinutes / (60 * 24));
   const hours = Math.floor((totalMinutes - days * 60 * 24) / 60);
   const minutes = totalMinutes % 60;
-
+  const formatUnit = (
+    value: number,
+    unit: "day" | "hour" | "minute",
+  ): string => {
+    return new Intl.NumberFormat(locale, {
+      style: "unit",
+      unit,
+      unitDisplay: "narrow",
+    }).format(value);
+  };
+  const values: string[] = [];
   if (days > 0) {
-    return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+    values.push(formatUnit(days, "day"));
+    if (hours > 0) {
+      values.push(formatUnit(hours, "hour"));
+    }
+  } else if (hours > 0) {
+    values.push(formatUnit(hours, "hour"));
+    if (minutes > 0) {
+      values.push(formatUnit(minutes, "minute"));
+    }
+  } else {
+    values.push(formatUnit(minutes, "minute"));
   }
-  if (hours > 0) {
-    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
-  }
-  return `${minutes}m`;
+  return new Intl.ListFormat(locale, {
+    style: "narrow",
+    type: "unit",
+  }).format(values);
 }
 
 function deriveViewState(
@@ -93,8 +114,8 @@ function deriveViewState(
   return data?.canExport ? "ready" : "rate-limited";
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Failed to load export";
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
 }
 
 function StatusIcon({ viewState }: { readonly viewState: ExportViewState }) {
@@ -110,6 +131,21 @@ function StatusIcon({ viewState }: { readonly viewState: ExportViewState }) {
   return <IconDatabaseExport size={22} stroke={1.8} />;
 }
 
+function StatusCopy({
+  title,
+  description,
+}: {
+  readonly title: string;
+  readonly description: string;
+}) {
+  return (
+    <>
+      <h2 className="text-base font-semibold text-foreground">{title}</h2>
+      <p className="text-sm leading-6 text-muted-foreground">{description}</p>
+    </>
+  );
+}
+
 function StatusText({
   viewState,
   data,
@@ -117,97 +153,124 @@ function StatusText({
   readonly viewState: ExportViewState;
   readonly data: UserExportStatusResponse | null;
 }) {
+  const { t, i18n } = useTranslation();
+  const duration = (date: string) => {
+    return formatDuration(
+      date,
+      i18n.resolvedLanguage ?? i18n.language,
+      t(($) => {
+        return $.settings.export.duration.soon;
+      }),
+    );
+  };
+
   if (viewState === "loading") {
     return (
-      <>
-        <h2 className="text-base font-semibold text-foreground">
-          Checking export status
-        </h2>
-        <p className="text-sm leading-6 text-muted-foreground">
-          Your latest export state will appear here.
-        </p>
-      </>
+      <StatusCopy
+        title={t(($) => {
+          return $.settings.export.status.checkingTitle;
+        })}
+        description={t(($) => {
+          return $.settings.export.status.checkingDescription;
+        })}
+      />
     );
   }
 
   if (viewState === "in-progress") {
     return (
-      <>
-        <h2 className="text-base font-semibold text-foreground">
-          Preparing your export
-        </h2>
-        <p className="text-sm leading-6 text-muted-foreground">
-          This can take a few minutes. You can leave this page open.
-        </p>
-      </>
+      <StatusCopy
+        title={t(($) => {
+          return $.settings.export.status.preparingTitle;
+        })}
+        description={t(($) => {
+          return $.settings.export.status.preparingDescription;
+        })}
+      />
     );
   }
 
   if (viewState === "download") {
+    const description = data?.job?.expiresAt
+      ? t(
+          ($) => {
+            return $.settings.export.status.downloadExpires;
+          },
+          {
+            duration: duration(data.job.expiresAt),
+          },
+        )
+      : t(($) => {
+          return $.settings.export.status.downloadNoExpiry;
+        });
     return (
-      <>
-        <h2 className="text-base font-semibold text-foreground">
-          Your export is ready
-        </h2>
-        <p className="text-sm leading-6 text-muted-foreground">
-          {data?.job?.expiresAt
-            ? `The download link expires in ${formatRelativeTime(data.job.expiresAt)}.`
-            : "Download it before the link expires."}
-        </p>
-      </>
+      <StatusCopy
+        title={t(($) => {
+          return $.settings.export.status.downloadTitle;
+        })}
+        description={description}
+      />
     );
   }
 
   if (viewState === "expired") {
     return (
-      <>
-        <h2 className="text-base font-semibold text-foreground">
-          Previous export expired
-        </h2>
-        <p className="text-sm leading-6 text-muted-foreground">
-          Start a new export to get a fresh download link.
-        </p>
-      </>
+      <StatusCopy
+        title={t(($) => {
+          return $.settings.export.status.expiredTitle;
+        })}
+        description={t(($) => {
+          return $.settings.export.status.expiredDescription;
+        })}
+      />
     );
   }
 
   if (viewState === "failed") {
     return (
-      <>
-        <h2 className="text-base font-semibold text-foreground">
-          Export did not finish
-        </h2>
-        <p className="text-sm leading-6 text-muted-foreground">
-          Try again, or contact support if this keeps happening.
-        </p>
-      </>
+      <StatusCopy
+        title={t(($) => {
+          return $.settings.export.status.failedTitle;
+        })}
+        description={t(($) => {
+          return $.settings.export.status.failedDescription;
+        })}
+      />
     );
   }
 
   if (viewState === "rate-limited") {
+    const description = data?.nextExportAt
+      ? t(
+          ($) => {
+            return $.settings.export.status.rateLimitedUntil;
+          },
+          {
+            duration: duration(data.nextExportAt),
+          },
+        )
+      : t(($) => {
+          return $.settings.export.status.rateLimitedFallback;
+        });
     return (
-      <>
-        <h2 className="text-base font-semibold text-foreground">
-          Export recently requested
-        </h2>
-        <p className="text-sm leading-6 text-muted-foreground">
-          {data?.nextExportAt
-            ? `You can start another export in ${formatRelativeTime(data.nextExportAt)}.`
-            : "You can start another export after the cooldown ends."}
-        </p>
-      </>
+      <StatusCopy
+        title={t(($) => {
+          return $.settings.export.status.rateLimitedTitle;
+        })}
+        description={description}
+      />
     );
   }
 
   return (
-    <>
-      <h2 className="text-base font-semibold text-foreground">
-        Ready to export
-      </h2>
-      <p className="text-sm leading-6 text-muted-foreground">
-        Create a ZIP file with your workspace data.
-      </p>
-    </>
+    <StatusCopy
+      title={t(($) => {
+        return $.settings.export.status.readyTitle;
+      })}
+      description={t(($) => {
+        return $.settings.export.status.readyDescription;
+      })}
+    />
   );
 }
 
@@ -222,6 +285,7 @@ function ExportActions({
   readonly triggering: boolean;
   readonly onTrigger: () => void;
 }) {
+  const { t } = useTranslation();
   const canExport = data?.canExport ?? false;
   const downloadUrl = data?.job?.downloadUrl;
 
@@ -231,7 +295,9 @@ function ExportActions({
         <Button asChild className={PRIMARY_ACTION_BUTTON_CLASS}>
           <a href={downloadUrl} download>
             <IconDownload size={16} stroke={1.8} />
-            Download export
+            {t(($) => {
+              return $.settings.export.actions.download;
+            })}
           </a>
         </Button>
         {canExport && (
@@ -247,7 +313,9 @@ function ExportActions({
             ) : (
               <IconRefresh size={16} stroke={1.8} />
             )}
-            Export again
+            {t(($) => {
+              return $.settings.export.actions.again;
+            })}
           </Button>
         )}
       </div>
@@ -274,17 +342,32 @@ function ExportActions({
       ) : (
         <IconDatabaseExport size={16} stroke={1.8} />
       )}
-      {triggering ? "Starting export" : "Export my data"}
+      {triggering
+        ? t(($) => {
+            return $.settings.export.actions.starting;
+          })
+        : t(($) => {
+            return $.settings.export.actions.start;
+          })}
     </Button>
   );
 }
 
 function ExportScopeList() {
+  const { t } = useTranslation();
   const items = [
-    "Agent instruction documents",
-    "Workflow SKILL.md instructions and files",
-    "Memory files",
-    "User and assistant text chat messages",
+    t(($) => {
+      return $.settings.export.scope.agentInstructions;
+    }),
+    t(($) => {
+      return $.settings.export.scope.workflowInstructions;
+    }),
+    t(($) => {
+      return $.settings.export.scope.memoryFiles;
+    }),
+    t(($) => {
+      return $.settings.export.scope.chatMessages;
+    }),
   ];
 
   return (
@@ -298,7 +381,9 @@ function ExportScopeList() {
         );
       })}
       <p className="pt-1 text-xs leading-5 text-muted-foreground">
-        Artifacts are not included in this export.
+        {t(($) => {
+          return $.settings.export.scope.artifactsExcluded;
+        })}
       </p>
     </div>
   );
@@ -315,12 +400,18 @@ function iconTone(viewState: ExportViewState): string {
 }
 
 export function ExportPage() {
+  const { t } = useTranslation();
   const statusLoadable = useLoadable(userExportStatus$);
   const data = statusLoadable.state === "hasData" ? statusLoadable.data : null;
   const loading = statusLoadable.state === "loading";
   const loadError =
     statusLoadable.state === "hasError"
-      ? errorMessage(statusLoadable.error)
+      ? errorMessage(
+          statusLoadable.error,
+          t(($) => {
+            return $.settings.export.errors.loadFailed;
+          }),
+        )
       : null;
   const startError = useGet(userExportStartError$);
   const [startLoadable, startExport] = useLoadableSet(startUserExport$);
@@ -329,7 +420,12 @@ export function ExportPage() {
   const triggering = startLoadable.state === "loading";
   const startActionError =
     startLoadable.state === "hasError"
-      ? errorMessage(startLoadable.error)
+      ? errorMessage(
+          startLoadable.error,
+          t(($) => {
+            return $.settings.export.errors.startFailed;
+          }),
+        )
       : null;
   const error = startError ?? startActionError ?? loadError;
   const viewState = deriveViewState(data, loading);
@@ -347,7 +443,9 @@ export function ExportPage() {
               className="inline-flex items-center gap-1.5 text-sm text-muted-foreground no-underline transition-colors hover:text-foreground"
             >
               <IconArrowLeft size={14} stroke={1.8} />
-              Back to Zero
+              {t(($) => {
+                return $.settings.export.backToZero;
+              })}
             </Link>
             <img
               src={platformVm0LogoDarkImg}
@@ -364,10 +462,14 @@ export function ExportPage() {
           <div className="space-y-6">
             <div className="space-y-2">
               <h1 className="text-xl font-semibold tracking-tight text-foreground">
-                Export data
+                {t(($) => {
+                  return $.settings.export.title;
+                })}
               </h1>
               <p className="text-sm leading-6 text-muted-foreground">
-                Download the files and text records you created in Zero.
+                {t(($) => {
+                  return $.settings.export.description;
+                })}
               </p>
             </div>
 

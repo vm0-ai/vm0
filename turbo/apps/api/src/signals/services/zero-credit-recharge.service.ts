@@ -6,7 +6,6 @@ import {
   and,
   eq,
   exists,
-  inArray,
   isNotNull,
   isNull,
   lt,
@@ -21,10 +20,7 @@ import { nowDate } from "../external/time";
 import { tapError } from "../utils";
 import { logger } from "../../lib/log";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
-import {
-  loadOrgPlanCapabilities,
-  orgPlanEntitlementReadsEnabled,
-} from "./org-plan-entitlement-read.service";
+import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 
 const L = logger("CreditRecharge");
 
@@ -105,7 +101,7 @@ async function resolvePaymentMethod(
  * Atomically claims the recharge slot via UPDATE … RETURNING with a
  * WHERE clause that filters on:
  *  - autoRechargeEnabled = true
- *  - plan entitlement allows auto-recharge (or legacy tier fallback)
+ *  - plan entitlement allows auto-recharge
  *  - stripeCustomerId / threshold / amount NOT NULL
  *  - credits <= threshold
  *  - pendingAt IS NULL OR pendingAt < now() - 10 minutes
@@ -131,19 +127,17 @@ export const triggerAutoRecharge$ = command(
       return;
     }
 
-    const planEligibility = orgPlanEntitlementReadsEnabled(orgId)
-      ? exists(
-          writeDb
-            .select({ orgId: orgPlanEntitlements.orgId })
-            .from(orgPlanEntitlements)
-            .where(
-              and(
-                eq(orgPlanEntitlements.orgId, orgId),
-                eq(orgPlanEntitlements.autoRechargeAllowed, true),
-              ),
-            ),
-        )
-      : inArray(orgMetadata.tier, ["pro", "team", "custom"]);
+    const planEligibility = exists(
+      writeDb
+        .select({ orgId: orgPlanEntitlements.orgId })
+        .from(orgPlanEntitlements)
+        .where(
+          and(
+            eq(orgPlanEntitlements.orgId, orgId),
+            eq(orgPlanEntitlements.autoRechargeAllowed, true),
+          ),
+        ),
+    );
 
     const clearPendingFlag = async (): Promise<void> => {
       await writeDb

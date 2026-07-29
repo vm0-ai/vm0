@@ -10,6 +10,7 @@ import {
   chatThreadByIdContract,
   chatThreadArtifactsContract,
   chatThreadEventsContract,
+  chatThreadMarkReadContract,
   chatThreadsContract,
   type ChatThreadArtifactFile,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -291,6 +292,98 @@ function menuItemByText(text: string): HTMLElement {
 }
 
 describe("thread-owned utility sidebar", () => {
+  it("opens the latest browser session from the thread header", async () => {
+    const firstBrowserId = "c0000000-0000-4000-a000-000000000051";
+    const latestBrowserId = "c0000000-0000-4000-a000-000000000052";
+    const browsers = new Map<string, ZeroBrowserSession>([
+      [
+        firstBrowserId,
+        {
+          id: firstBrowserId,
+          name: "First browser",
+          status: "suspended",
+          viewerUrl: `https://app.vm0.ai/browsers/${firstBrowserId}`,
+          liveUrl: null,
+          proxyCountryCode: null,
+          timeoutMinutes: 240,
+          maxCredits: 500,
+          grossCredits: 2,
+          creditsCharged: 2,
+          idleExpiresAt: null,
+          suspendedAt: "2026-03-10T00:05:00.000Z",
+          suspensionReason: "idle",
+          createdAt: "2026-03-10T00:00:00.000Z",
+          updatedAt: "2026-03-10T00:05:00.000Z",
+        },
+      ],
+      [
+        latestBrowserId,
+        {
+          id: latestBrowserId,
+          name: "Latest browser",
+          status: "active",
+          viewerUrl: `https://app.vm0.ai/browsers/${latestBrowserId}`,
+          liveUrl: "https://live.browser-use.com/?wss=latest-browser",
+          proxyCountryCode: null,
+          timeoutMinutes: 240,
+          maxCredits: 500,
+          grossCredits: 3,
+          creditsCharged: 3,
+          idleExpiresAt: "2026-03-10T00:20:00.000Z",
+          suspendedAt: null,
+          suspensionReason: null,
+          createdAt: "2026-03-10T00:10:00.000Z",
+          updatedAt: "2026-03-10T00:10:00.000Z",
+        },
+      ],
+    ]);
+    context.mocks.api(zeroBrowserContract.get, ({ params, respond }) => {
+      const browser = browsers.get(params.browserId);
+      if (!browser) {
+        throw new Error(`Unexpected browser ${params.browserId}`);
+      }
+      return respond(200, { browser });
+    });
+    context.mocks.api(zeroBrowserContract.leaseById, ({ params, respond }) => {
+      const browser = browsers.get(params.browserId);
+      if (!browser) {
+        throw new Error(`Unexpected browser ${params.browserId}`);
+      }
+      return respond(200, { browser });
+    });
+    setupChatThread({
+      messages: [
+        {
+          id: "msg-first-browser",
+          role: "assistant",
+          content: `[First browser](/browsers/${firstBrowserId})`,
+          runId: "run-first-browser",
+          seqId: 1,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          id: "msg-latest-browser",
+          role: "assistant",
+          content: `[Latest browser](/browsers/${latestBrowserId})`,
+          runId: "run-latest-browser",
+          seqId: 2,
+          createdAt: "2026-03-10T00:10:00Z",
+        },
+      ],
+    });
+
+    const button = await screen.findByLabelText("Open browser");
+    expect(button).toHaveAttribute("aria-pressed", "false");
+    click(button);
+
+    const frame = await screen.findByTitle("Live browser: Latest browser");
+    expect(frame).toHaveAttribute(
+      "src",
+      "https://live.browser-use.com/?wss=latest-browser",
+    );
+    expect(button).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("opens the thread-scoped catalog list", async () => {
     const requestedThreadIds: (string | undefined)[] = [];
     context.mocks.api(artifactCatalogContract.list, ({ query, respond }) => {
@@ -382,11 +475,11 @@ describe("thread-owned utility sidebar", () => {
       });
     });
 
-    let enabledTypes: string[] = [];
+    let enabledConnectorSlugs: string[] = [];
     let agentAuthorized = false;
     let artifactSynced = false;
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledTypes });
+      return respond(200, { enabledTypes: enabledConnectorSlugs });
     });
     context.mocks.api(
       zeroUserConnectorsContract.update,
@@ -396,15 +489,15 @@ describe("thread-owned utility sidebar", () => {
           enabledTypes: ["google-drive"],
           operation: "add",
         });
-        enabledTypes = [...body.enabledTypes];
+        enabledConnectorSlugs = [...body.enabledTypes];
         agentAuthorized = true;
-        return respond(200, { enabledTypes });
+        return respond(200, { enabledTypes: enabledConnectorSlugs });
       },
     );
     context.mocks.api(
       chatThreadArtifactsContract.syncGoogleDrive,
       ({ body, respond }) => {
-        expect(enabledTypes).toStrictEqual(["google-drive"]);
+        expect(enabledConnectorSlugs).toStrictEqual(["google-drive"]);
         expect(body).toStrictEqual({
           runId: "run-sidebar",
           fileId: "artifact-drive-agent-notes",
@@ -905,13 +998,27 @@ describe("thread-owned utility sidebar", () => {
     ).resolves.toBeInTheDocument();
   });
 
-  it("auto-opens a sidebar card received from background sync", async () => {
+  it("auto-opens a background-synced sidebar card before mark-read completes", async () => {
     const syncedUrl = "https://synced-presentation.sites.vm7.io";
+    const markReadStarted = Promise.withResolvers<void>();
+    const finishMarkRead = Promise.withResolvers<void>();
     context.mocks.browser.matchMedia((query) => {
       return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
     });
+    context.mocks.api(
+      chatThreadMarkReadContract.markRead,
+      async ({ respond }) => {
+        markReadStarted.resolve();
+        await finishMarkRead.promise;
+        return respond(200, {
+          lastReadAt: "2026-03-10T00:00:05Z",
+          unreads: [],
+        });
+      },
+    );
     const fixture = setupChatThread({
       autoOpenEnabled: true,
+      messages: [],
     });
 
     await waitFor(() => {
@@ -923,7 +1030,7 @@ describe("thread-owned utility sidebar", () => {
         role: "user",
         content: "Build a presentation",
         runId: "run-synced",
-        seqId: 3,
+        seqId: 1,
         createdAt: "2026-03-10T00:00:03Z",
       },
       {
@@ -931,17 +1038,30 @@ describe("thread-owned utility sidebar", () => {
         role: "assistant",
         content: `[Synced presentation](${syncedUrl})`,
         runId: "run-synced",
-        seqId: 4,
+        seqId: 2,
         createdAt: "2026-03-10T00:00:04Z",
+      },
+      {
+        id: "msg-synced-finish",
+        role: "assistant",
+        content: null,
+        runId: "run-synced",
+        runLifecycleEvent: "completed",
+        seqId: 3,
+        createdAt: "2026-03-10T00:00:05Z",
       },
     ]);
 
-    await waitFor(() => {
-      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
-        "src",
-        syncedUrl,
-      );
-    });
+    await markReadStarted.promise;
+    try {
+      await waitFor(() => {
+        expect(
+          screen.getByTestId("artifact-sidebar-body-html"),
+        ).toHaveAttribute("src", syncedUrl);
+      });
+    } finally {
+      finishMarkRead.resolve();
+    }
   });
 
   it("does not reopen the same auto-opened card after the user closes it", async () => {

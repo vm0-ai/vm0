@@ -1,4 +1,4 @@
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { command, computed, state } from "ccstate";
 import { delay } from "signal-timers";
@@ -35,13 +35,13 @@ export const showConnectorRedirectingMobileWarningAfterDelay$ = command(
 );
 
 export function connectorRedirectingPath(args: {
-  readonly type: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly label: string;
   readonly icon: PublicConnectorCatalogIcon;
   readonly status?: ConnectorRedirectingStatus;
 }): string {
   const pathname = generateRouterPath(ROUTES.connectorRedirecting, {
-    type: args.type,
+    type: args.connectorSlug,
   });
   const searchParams = new URLSearchParams({
     label: args.label,

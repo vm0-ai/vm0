@@ -1,4 +1,7 @@
 //! Proxy registry schema and file persistence.
+//!
+//! TODO(#23619): Rename retained `connector_ref` tracing fields only with the
+//! operational log schema.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -107,7 +110,6 @@ async fn write_registry_with_reserve(
             path.display()
         )));
     }
-    remove_legacy_registry_tmp(path).await?;
     crate::state_file::write_private_atomic(path, &content).await
 }
 
@@ -135,18 +137,6 @@ fn fail_closed_capacity_bytes(value: &ProxyRegistry) -> RunnerResult<u64> {
                     RunnerError::Internal("proxy registry fail-closed reserve overflow".to_string())
                 })
         })
-}
-
-async fn remove_legacy_registry_tmp(path: &Path) -> RunnerResult<()> {
-    let tmp = path.with_extension("json.tmp");
-    match tokio::fs::remove_file(&tmp).await {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(RunnerError::Internal(format!(
-            "remove stale registry tmp {}: {e}",
-            tmp.display()
-        ))),
-    }
 }
 
 /// Lightweight, cloneable handle for proxy registry operations.
@@ -230,10 +220,10 @@ impl ProxyRegistryHandle {
         &self,
         source_ip: &str,
         run_id: &str,
-        connector_ref: &str,
+        connector_slug: &str,
         policy: NetworkPolicy,
     ) -> RunnerResult<bool> {
-        self.patch_existing_network_policy(source_ip, run_id, connector_ref, policy)
+        self.patch_existing_network_policy(source_ip, run_id, connector_slug, policy)
             .await
     }
 
@@ -243,10 +233,10 @@ impl ProxyRegistryHandle {
         &self,
         source_ip: &str,
         run_id: &str,
-        connector_ref: &str,
+        connector_slug: &str,
     ) -> RunnerResult<bool> {
         let _guard = lock::acquire(self.lock_path.clone()).await?;
-        self.fail_closed_network_policy_locked(source_ip, run_id, connector_ref)
+        self.fail_closed_network_policy_locked(source_ip, run_id, connector_slug)
             .await
     }
 
@@ -254,7 +244,7 @@ impl ProxyRegistryHandle {
         &self,
         source_ip: &str,
         run_id: &str,
-        connector_ref: &str,
+        connector_slug: &str,
     ) -> RunnerResult<bool> {
         let mut registry = read_registry(&self.registry_path).await?;
         let Some(vm) = registry.vms.get_mut(source_ip) else {
@@ -264,13 +254,13 @@ impl ProxyRegistryHandle {
             return Ok(false);
         }
 
-        if !vm_has_connector_firewall(vm, connector_ref) {
+        if !vm_has_connector_firewall(vm, connector_slug) {
             return Ok(false);
         }
         let Some(policy) = vm
             .network_policies
             .as_mut()
-            .and_then(|policies| policies.get_mut(connector_ref))
+            .and_then(|policies| policies.get_mut(connector_slug))
         else {
             return Ok(false);
         };
@@ -279,7 +269,9 @@ impl ProxyRegistryHandle {
         write_registry_consuming_fail_closed_capacity(&self.registry_path, &registry).await?;
         info!(
             source_ip,
-            run_id, connector_ref, "failed closed connector network policy in proxy registry"
+            run_id,
+            connector_ref = connector_slug,
+            "failed closed connector network policy in proxy registry"
         );
         Ok(true)
     }
@@ -288,7 +280,7 @@ impl ProxyRegistryHandle {
         &self,
         source_ip: &str,
         run_id: &str,
-        connector_ref: &str,
+        connector_slug: &str,
         policy: NetworkPolicy,
     ) -> RunnerResult<bool> {
         let _guard = lock::acquire(self.lock_path.clone()).await?;
@@ -297,18 +289,20 @@ impl ProxyRegistryHandle {
         let Some(vm) = registry.vms.get_mut(source_ip) else {
             return Ok(false);
         };
-        if vm.run_id != run_id || !vm_has_connector_firewall(vm, connector_ref) {
+        if vm.run_id != run_id || !vm_has_connector_firewall(vm, connector_slug) {
             return Ok(false);
         }
 
         vm.network_policies
             .get_or_insert_with(HashMap::new)
-            .insert(connector_ref.to_string(), policy);
+            .insert(connector_slug.to_string(), policy);
         registry.updated_at = chrono::Utc::now().timestamp_millis();
         write_registry(&self.registry_path, &registry).await?;
         info!(
             source_ip,
-            run_id, connector_ref, "patched connector network policy in proxy registry"
+            run_id,
+            connector_ref = connector_slug,
+            "patched connector network policy in proxy registry"
         );
         Ok(true)
     }
@@ -328,18 +322,18 @@ fn fail_closed_policy(policy: &NetworkPolicy) -> NetworkPolicy {
     }
 }
 
-fn vm_has_connector_firewall(vm: &VmEntry, connector_ref: &str) -> bool {
+fn vm_has_connector_firewall(vm: &VmEntry, connector_slug: &str) -> bool {
     vm.firewalls.as_deref().is_some_and(|firewalls| {
         firewalls
             .iter()
-            .any(|entry| firewall_entry_matches(entry, connector_ref))
+            .any(|entry| firewall_entry_matches(entry, connector_slug))
     })
 }
 
-fn firewall_entry_matches(entry: &FirewallEntry, connector_ref: &str) -> bool {
+fn firewall_entry_matches(entry: &FirewallEntry, connector_slug: &str) -> bool {
     match entry {
-        FirewallEntry::Builtin { name, .. } => name == connector_ref,
-        FirewallEntry::Inline { firewall } => firewall.name == connector_ref,
+        FirewallEntry::Builtin { name, .. } => name == connector_slug,
+        FirewallEntry::Inline { firewall } => firewall.name == connector_slug,
     }
 }
 
@@ -402,15 +396,15 @@ mod tests {
         }
     }
 
-    fn test_firewalls(connector_refs: &[&str]) -> Vec<FirewallEntry> {
-        connector_refs
+    fn test_firewalls(connector_slugs: &[&str]) -> Vec<FirewallEntry> {
+        connector_slugs
             .iter()
-            .map(|connector_ref| FirewallEntry::Inline {
+            .map(|connector_slug| FirewallEntry::Inline {
                 firewall: Firewall {
-                    name: (*connector_ref).to_string(),
+                    name: (*connector_slug).to_string(),
                     apis: vec![FirewallApi {
-                        id: format!("{connector_ref}-rest"),
-                        base: format!("https://api.{connector_ref}.com"),
+                        id: format!("{connector_slug}-rest"),
+                        base: format!("https://api.{connector_slug}.com"),
                         auth: FirewallAuth {
                             headers: HashMap::new(),
                             base: None,
@@ -540,48 +534,6 @@ mod tests {
                 .mode()
                 & 0o777,
             0o600
-        );
-    }
-
-    #[tokio::test]
-    async fn write_registry_removes_stale_fixed_tmp_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let registry_path = dir.path().join("proxy-registry.json");
-        let legacy_tmp = registry_path.with_extension("json.tmp");
-        std::fs::write(&legacy_tmp, b"stale").unwrap();
-        let empty = ProxyRegistry {
-            vms: HashMap::new(),
-            updated_at: 0,
-        };
-
-        write_registry(&registry_path, &empty).await.unwrap();
-
-        assert!(
-            !legacy_tmp.exists(),
-            "stale fixed registry tmp was not removed"
-        );
-        read_registry(&registry_path).await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn write_registry_removes_stale_fixed_tmp_symlink_without_following_it() {
-        let dir = tempfile::tempdir().unwrap();
-        let registry_path = dir.path().join("proxy-registry.json");
-        let legacy_tmp = registry_path.with_extension("json.tmp");
-        let outside = dir.path().join("outside-target");
-        std::fs::write(&outside, b"outside").unwrap();
-        std::os::unix::fs::symlink(&outside, &legacy_tmp).unwrap();
-        let empty = ProxyRegistry {
-            vms: HashMap::new(),
-            updated_at: 0,
-        };
-
-        write_registry(&registry_path, &empty).await.unwrap();
-
-        assert_eq!(std::fs::read(&outside).unwrap(), b"outside");
-        assert!(
-            std::fs::symlink_metadata(&legacy_tmp).is_err(),
-            "stale fixed registry tmp symlink was not removed"
         );
     }
 

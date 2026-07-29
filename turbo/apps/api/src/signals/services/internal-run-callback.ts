@@ -8,7 +8,6 @@ export const internalRunCallbackKinds = [
   "feishu:chat",
   "teams:chat",
   "feishu:org",
-  "teams:org",
   "telegram",
   "workflow-automation:cron",
   "workflow-automation:loop",
@@ -48,7 +47,6 @@ function isInternalRunCallbackKind(
     case "feishu:chat":
     case "teams:chat":
     case "feishu:org":
-    case "teams:org":
     case "telegram":
     case "workflow-automation:cron":
     case "workflow-automation:loop": {

@@ -1454,13 +1454,13 @@ pub(super) async fn register_proxy(
         .register_source_ip(source_ip, network_log_path)
         .await;
     if let Some(refresh) = config.network_policy_refresh.as_ref() {
-        let connector_refs = active_connector_refs(context);
+        let connector_slugs = active_connector_slugs(context);
         refresh
             .register_run(NetworkPolicyRefreshRegistration {
                 run_id: context.run_id,
                 source_ip,
                 registry: config.registry.clone(),
-                connector_refs,
+                connector_slugs,
                 refreshes: context.network_policy_refreshes.as_ref(),
             })
             .await;
@@ -1468,7 +1468,7 @@ pub(super) async fn register_proxy(
     Ok(network_log_session)
 }
 
-fn active_connector_refs(context: &ExecutionContext) -> HashSet<String> {
+fn active_connector_slugs(context: &ExecutionContext) -> HashSet<String> {
     let Some(network_policies) = context.network_policies.as_ref() else {
         return HashSet::new();
     };
@@ -1596,7 +1596,7 @@ mod tests {
     }
 
     #[test]
-    fn active_connector_refs_only_include_builtin_connectors_with_network_policy() {
+    fn active_connector_slugs_only_include_builtin_connectors_with_network_policy() {
         let mut context =
             crate::test_fixtures::execution_context::execution_context_for_test(RunId::nil());
         context.firewalls = Some(vec![
@@ -1637,8 +1637,8 @@ mod tests {
             ("not-active".to_string(), network_policy()),
         ]));
 
-        let refs = active_connector_refs(&context);
+        let slugs = active_connector_slugs(&context);
 
-        assert_eq!(refs, HashSet::from(["github".to_string()]));
+        assert_eq!(slugs, HashSet::from(["github".to_string()]));
     }
 }

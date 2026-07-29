@@ -7,6 +7,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-codex-device-auth";
 
 import { accept } from "../../../lib/accept.ts";
+import { i18n } from "../../../i18n/index.ts";
 import { now } from "../../../lib/time.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { brandName$, type BrandName } from "../../branding.ts";
@@ -71,10 +72,20 @@ function codexDeviceAuthErrorMessage(
   brandName: BrandName,
 ): string {
   if (error.code === "CODEX_AUTH_JSON_SHAPE_INVALID") {
-    return `Codex produced a login token format ${brandName} does not recognize. Update Codex and try again.`;
+    return i18n.t(
+      ($) => {
+        return $.settings.models.deviceAuth.codex.invalidTokenFormat;
+      },
+      { brandName },
+    );
   }
   if (error.code === "CODEX_FREE_PLAN_REJECTED") {
-    return `Free ChatGPT plans cannot use Codex via ${brandName}. Upgrade to Plus or Pro and try again.`;
+    return i18n.t(
+      ($) => {
+        return $.settings.models.deviceAuth.codex.freePlanRejected;
+      },
+      { brandName },
+    );
   }
   return error.message;
 }
@@ -105,12 +116,18 @@ function approvalAttemptErrorMessage(args: {
     return null;
   }
   if (!args.opened && !args.copied) {
-    return "Could not copy the device code or open the approval page. Copy the code manually and try again.";
+    return i18n.t(($) => {
+      return $.settings.models.deviceAuth.codex.copyAndOpenError;
+    });
   }
   if (!args.opened) {
-    return "Device code copied, but the approval page could not be opened. Try again.";
+    return i18n.t(($) => {
+      return $.settings.models.deviceAuth.codex.openError;
+    });
   }
-  return "Approval page opened, but the device code was not copied. Copy it manually before approving.";
+  return i18n.t(($) => {
+    return $.settings.models.deviceAuth.codex.copyError;
+  });
 }
 
 function isCurrentStarting(
@@ -248,7 +265,11 @@ function createCodexPollFlow$(ctx: CodexDeviceAuthSignalContext) {
 
           if (completion.body.status === "complete") {
             set(ctx.reloadProviders$);
-            toast.success("ChatGPT connected");
+            toast.success(
+              i18n.t(($) => {
+                return $.settings.models.deviceAuth.codex.connectedToast;
+              }),
+            );
             set(ctx.internalDialogState$, createInitialDialogState());
             set(ctx.internalFlowState$, createIdleFlowState());
             completed = true;
@@ -280,7 +301,9 @@ function createCodexPollFlow$(ctx: CodexDeviceAuthSignalContext) {
       if (expired && isCurrentActive(latest, requestId)) {
         set(ctx.internalFlowState$, {
           status: "expired",
-          message: "Codex connection session expired. Start again to retry.",
+          message: i18n.t(($) => {
+            return $.settings.models.deviceAuth.codex.expired;
+          }),
         });
       }
       return completed;
@@ -308,7 +331,9 @@ function createCodexRunFlow$(
       if (!started) {
         set(ctx.internalFlowState$, {
           status: "error",
-          message: "ChatGPT connection failed. Start again to retry.",
+          message: i18n.t(($) => {
+            return $.settings.models.deviceAuth.codex.error;
+          }),
         });
         return false;
       }

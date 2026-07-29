@@ -4,7 +4,7 @@ import { SYSTEM_ORG_ID } from "@vm0/core/storage-names";
 import {
   artifactKeySchema,
   connectorCatalogVersionSchema,
-  connectorRefSchema,
+  connectorSlugSchema,
   privateNameSchema,
 } from "./common";
 import {
@@ -197,7 +197,8 @@ const connectorCatalogFirewallSchema = z.discriminatedUnion("kind", [
 
 export const connectorCatalogArtifactConnectorSchema = z
   .object({
-    connectorRef: connectorRefSchema,
+    // TODO(#23619): Rename only with the external catalog producer and version.
+    connectorRef: connectorSlugSchema,
     label: z.string().min(1),
     description: z.string().min(1),
     category: z.string().min(1),
@@ -247,16 +248,16 @@ export const connectorCatalogArtifactSchema = z
   })
   .strict()
   .superRefine((artifact, context) => {
-    const connectorRefs = artifact.connectors.map((connector) => {
+    const connectorSlugs = artifact.connectors.map((connector) => {
       return connector.connectorRef;
     });
-    const duplicates = connectorRefs.filter((connectorRef, index) => {
-      return connectorRefs.indexOf(connectorRef) !== index;
+    const duplicates = connectorSlugs.filter((connectorSlug, index) => {
+      return connectorSlugs.indexOf(connectorSlug) !== index;
     });
-    for (const connectorRef of new Set(duplicates)) {
+    for (const connectorSlug of new Set(duplicates)) {
       context.addIssue({
         code: "custom",
-        message: `Connector catalog refs must be unique: ${connectorRef}`,
+        message: `Connector catalog refs must be unique: ${connectorSlug}`,
         path: ["connectors"],
       });
     }

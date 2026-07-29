@@ -1,5 +1,5 @@
 import { Command, Option } from "commander";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type {
   ConnectorCheckDiagnosticResult,
   ConnectorCheckPolicy,
@@ -58,7 +58,7 @@ type UrlDiagnosticRequest = Extract<
 
 interface DiagContext {
   readonly environmentNames: readonly string[] | null;
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly label: string;
   readonly connectorAvailable: boolean;
   readonly credentialResolution: "network-boundary" | "none";
@@ -98,11 +98,11 @@ function shellQuoteArg(value: string): string {
 function connectorSelectionCommand(
   url: string,
   method: string,
-  connectorRef: string,
+  connectorSlug: string,
 ): string {
   const args = [
     `--url ${shellQuoteArg(url)}`,
-    `--connector ${shellQuoteArg(connectorRef)}`,
+    `--connector ${shellQuoteArg(connectorSlug)}`,
   ];
   if (method !== "GET") {
     args.push(`--method ${shellQuoteArg(method)}`);
@@ -121,7 +121,7 @@ function rawPathFromUrl(url: string): string | undefined {
 
 function isComputerUseCheckTarget(opts: CheckConnectorOptions): boolean {
   return isComputerUsePermissionTarget({
-    connectorRef: opts.connector ?? "",
+    connectorSlug: opts.connector ?? "",
     path: opts.url === undefined ? undefined : rawPathFromUrl(opts.url),
     permission: opts.checkPermission,
   });
@@ -277,9 +277,9 @@ function connectorMismatchError(
     { readonly outcome: "connector-mismatch" }
   >,
 ): Error {
-  const requestedRef = request.connectorRef ?? "the requested connector";
+  const requestedSlug = request.connectorRef ?? "the requested connector";
   return new Error(
-    `Connector ${requestedRef} does not own ${request.method} ${request.url}; the matching connector is ${result.connector.connectorRef}\nRun: ${connectorSelectionCommand(request.url, request.method, result.connector.connectorRef)}`,
+    `Connector ${requestedSlug} does not own ${request.method} ${request.url}; the matching connector is ${result.connector.connectorRef}\nRun: ${connectorSelectionCommand(request.url, request.method, result.connector.connectorRef)}`,
   );
 }
 
@@ -398,7 +398,7 @@ function printConnectorConnectionStatus(
     if (ctx.agentId && hasPermission) {
       const connectUrl = connectorActionUrl({
         origin: ctx.platformOrigin,
-        path: `/connectors/${ctx.connectorRef}/connect`,
+        path: `/connectors/${ctx.connectorSlug}/connect`,
         agentId: ctx.agentId,
       });
       console.log(`Connect it at: [Connect ${ctx.label}](${connectUrl})`);
@@ -406,14 +406,14 @@ function printConnectorConnectionStatus(
     } else if (!ctx.agentId) {
       const connectUrl = connectorActionUrl({
         origin: ctx.platformOrigin,
-        path: `/connectors/${ctx.connectorRef}/connect`,
+        path: `/connectors/${ctx.connectorSlug}/connect`,
       });
       console.log(`Connect it at: [Connect ${ctx.label}](${connectUrl})`);
     }
   } else if (isExpired) {
     const url = connectorActionUrl({
       origin: ctx.platformOrigin,
-      path: `/connectors/${ctx.connectorRef}/connect`,
+      path: `/connectors/${ctx.connectorSlug}/connect`,
       agentId: ctx.agentId,
     });
     console.log(
@@ -448,7 +448,7 @@ function printAgentAuthorizationStatus(
   } else {
     const url = connectorActionUrl({
       origin: ctx.platformOrigin,
-      path: `/connectors/${ctx.connectorRef}/authorize`,
+      path: `/connectors/${ctx.connectorSlug}/authorize`,
       agentId: ctx.agentId,
     });
     console.log(
@@ -534,8 +534,8 @@ async function checkConnectorStatus(ctx: DiagContext): Promise<{
   );
   console.log("");
 
-  const [connector, enabledTypes] = await Promise.all([
-    getZeroConnector(ctx.connectorRef),
+  const [connector, enabledConnectorSlugs] = await Promise.all([
+    getZeroConnector(ctx.connectorSlug),
     ctx.agentId
       ? getZeroAgentUserConnectors(ctx.agentId)
       : Promise.resolve(null),
@@ -544,7 +544,8 @@ async function checkConnectorStatus(ctx: DiagContext): Promise<{
   const isConnected = connector !== null;
   const isExpired = connector?.connectionStatus === "reconnect-required";
   const hasPermission =
-    enabledTypes !== null && enabledTypes.includes(ctx.connectorRef);
+    enabledConnectorSlugs !== null &&
+    enabledConnectorSlugs.includes(ctx.connectorSlug);
 
   printConnectorConnectionStatus(ctx, isConnected, isExpired, hasPermission);
   printConnectorAuthorizationStatus(ctx, isConnected, isExpired, hasPermission);
@@ -620,7 +621,7 @@ function printUnavailablePolicy(
 }
 
 function printNamedPolicyResult(
-  connectorRef: string,
+  connectorSlug: string,
   permission: string,
   policy: ConnectorCheckPolicy,
   agentId: string | undefined,
@@ -658,7 +659,7 @@ function printNamedPolicyResult(
           : `Result: The unknown-endpoint policy denies "${permission}".`,
       );
       printPermissionRequestCommands(
-        connectorRef,
+        connectorSlug,
         permission,
         agentId,
         "To request this permission, run",
@@ -671,7 +672,7 @@ function printNamedPolicyResult(
           : `Result: The unknown-endpoint policy blocks "${permission}" until approval.`,
       );
       printPermissionRequestCommands(
-        connectorRef,
+        connectorSlug,
         permission,
         agentId,
         "To request this permission, run",
@@ -684,19 +685,19 @@ function printNamedPolicyResult(
 }
 
 function permissionRequestCommand(
-  connectorRef: string,
+  connectorSlug: string,
   permission: string,
 ): string {
-  return `zero connector permission-request ${connectorRef} --permission ${permission}`;
+  return `zero connector permission-request ${connectorSlug} --permission ${permission}`;
 }
 
 function printPermissionRequestCommands(
-  connectorRef: string,
+  connectorSlug: string,
   permission: string,
   agentId: string | undefined,
   introduction: string,
 ): void {
-  const command = permissionRequestCommand(connectorRef, permission);
+  const command = permissionRequestCommand(connectorSlug, permission);
   console.log(`${introduction}: ${command}`);
   if (!currentChatSupportsActionCallback(agentId)) {
     return;
@@ -710,7 +711,7 @@ function printPermissionRequestCommands(
 }
 
 function printUnknownEndpointPolicy(
-  connectorRef: string,
+  connectorSlug: string,
   policy: ConnectorCheckPolicy,
   agentId: string | undefined,
 ): void {
@@ -727,7 +728,7 @@ function printUnknownEndpointPolicy(
         "Result: No permission matched. The unknown endpoint policy denies this request.",
       );
       printPermissionRequestCommands(
-        connectorRef,
+        connectorSlug,
         "__unknown__",
         agentId,
         "To request access to unknown endpoints, run",
@@ -738,7 +739,7 @@ function printUnknownEndpointPolicy(
         "Result: No permission matched. The unknown endpoint policy requires approval.",
       );
       printPermissionRequestCommands(
-        connectorRef,
+        connectorSlug,
         "__unknown__",
         agentId,
         "To request access to unknown endpoints, run",
@@ -865,6 +866,7 @@ export const checkConnectorCommand = new Command()
     ),
   )
   .addOption(
+    // TODO(#23619): Rename this stable CLI option value label in the CLI rollout.
     new Option(
       "--connector <type>",
       "Select the connector when multiple connectors own the same URL route",
@@ -918,7 +920,7 @@ How connectors work:
       const platformUrl = toPlatformUrl(await getApiUrl());
       const ctx: DiagContext = {
         environmentNames: diagnosticEnvironmentNames(result),
-        connectorRef: result.connector.connectorRef,
+        connectorSlug: result.connector.connectorRef,
         label: result.connector.label,
         connectorAvailable: result.connector.visibility === "available",
         credentialResolution: result.connector.credentialResolution,

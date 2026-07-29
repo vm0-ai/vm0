@@ -216,6 +216,46 @@ function buildTeamsResponseText(args: {
     .join("\n\n");
 }
 
+async function clearTeamsThinkingReaction(args: {
+  readonly payload: TeamsDeliveryTarget;
+  readonly serviceUrl: string;
+  readonly signal: AbortSignal;
+}): Promise<void> {
+  if (
+    args.payload.conversationType === "personal" ||
+    !args.payload.activityId
+  ) {
+    return;
+  }
+
+  const cleared = await settleIncludingAbort(
+    deleteTeamsReaction({
+      serviceUrl: args.serviceUrl,
+      conversationId: args.payload.conversationId,
+      activityId: args.payload.activityId,
+      tenantId: args.payload.tenantId,
+      reactionType: TEAMS_THINKING_REACTION_TYPE,
+      signal: args.signal,
+    }),
+  );
+  args.signal.throwIfAborted();
+  if (!cleared.ok) {
+    L.warn("Failed to clear canonical Teams thinking reaction", {
+      conversationId: args.payload.conversationId,
+      activityId: args.payload.activityId,
+      error: cleared.error,
+    });
+    return;
+  }
+  if (cleared.value.kind === "teams-error") {
+    L.warn("Failed to clear canonical Teams thinking reaction", {
+      conversationId: args.payload.conversationId,
+      activityId: args.payload.activityId,
+      error: cleared.value.error,
+    });
+  }
+}
+
 async function deliverClaimedTeamsChatCallback(args: {
   readonly db: Db;
   readonly callback: ClaimedTeamsChatDelivery;
@@ -275,6 +315,11 @@ async function deliverClaimedTeamsChatCallback(args: {
     signal: args.signal,
   });
   args.signal.throwIfAborted();
+  await clearTeamsThinkingReaction({
+    payload,
+    serviceUrl,
+    signal: args.signal,
+  });
   if (result.kind === "teams-error") {
     throw new Error(`Microsoft Teams API error: ${result.error}`);
   }

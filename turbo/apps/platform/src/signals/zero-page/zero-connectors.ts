@@ -1,5 +1,5 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
@@ -25,33 +25,33 @@ export interface ComposerConnectorAuthorizationSignals {
 export interface ComposerConnectorSignals extends ComposerConnectorAuthorizationSignals {
   readonly authorizeConnector$: Command<
     Promise<void>,
-    [ConnectorRef, AbortSignal]
+    [ConnectorSlug, AbortSignal]
   >;
   readonly deauthorizeConnector$: Command<
     Promise<void>,
-    [ConnectorRef, AbortSignal]
+    [ConnectorSlug, AbortSignal]
   >;
   readonly showAddDialog$: Computed<boolean>;
   readonly setShowAddDialog$: Command<void, [boolean]>;
-  readonly pendingConnectorRef$: Computed<ConnectorRef | null>;
-  readonly setPendingConnectorRef$: Command<void, [ConnectorRef | null]>;
-  readonly selectedConnectorRef$: Computed<ConnectorRef | null>;
-  readonly setSelectedConnectorRef$: Command<void, [ConnectorRef | null]>;
-  readonly savingConnectorRef$: Computed<ConnectorRef | null>;
-  readonly setSavingConnectorRef$: Command<void, [ConnectorRef | null]>;
+  readonly pendingConnectorSlug$: Computed<ConnectorSlug | null>;
+  readonly setPendingConnectorSlug$: Command<void, [ConnectorSlug | null]>;
+  readonly selectedConnectorSlug$: Computed<ConnectorSlug | null>;
+  readonly setSelectedConnectorSlug$: Command<void, [ConnectorSlug | null]>;
+  readonly savingConnectorSlug$: Computed<ConnectorSlug | null>;
+  readonly setSavingConnectorSlug$: Command<void, [ConnectorSlug | null]>;
   readonly addDialogSearch$: Computed<string>;
   readonly setAddDialogSearch$: Command<void, [string]>;
   readonly popoverSearch$: Computed<string>;
   readonly setPopoverSearch$: Command<void, [string]>;
-  readonly popoverSortOrder$: Computed<readonly ConnectorRef[] | null>;
+  readonly popoverSortOrder$: Computed<readonly ConnectorSlug[] | null>;
   readonly setPopoverSortOrder$: Command<
     void,
-    [readonly ConnectorRef[] | null]
+    [readonly ConnectorSlug[] | null]
   >;
   readonly computerUseDownloadDialogOpen$: Computed<boolean>;
   readonly setComputerUseDownloadDialogOpen$: Command<void, [boolean]>;
-  readonly permissionConnectorRef$: Computed<ConnectorRef | null>;
-  readonly setPermissionConnectorRef$: Command<void, [ConnectorRef | null]>;
+  readonly permissionConnectorSlug$: Computed<ConnectorSlug | null>;
+  readonly setPermissionConnectorSlug$: Command<void, [ConnectorSlug | null]>;
   readonly permissionMetadata$: Computed<
     Promise<PublicConnectorCatalogPermissionDetail | null>
   >;
@@ -76,27 +76,27 @@ function createStateBinding<T>(initialValue: T) {
 
 interface ComposerConnectorUiState {
   readonly showAddDialog: boolean;
-  readonly pendingConnectorRef: ConnectorRef | null;
-  readonly selectedConnectorRef: ConnectorRef | null;
-  readonly savingConnectorRef: ConnectorRef | null;
+  readonly pendingConnectorSlug: ConnectorSlug | null;
+  readonly selectedConnectorSlug: ConnectorSlug | null;
+  readonly savingConnectorSlug: ConnectorSlug | null;
   readonly addDialogSearch: string;
   readonly popoverSearch: string;
-  readonly popoverSortOrder: readonly ConnectorRef[] | null;
+  readonly popoverSortOrder: readonly ConnectorSlug[] | null;
   readonly computerUseDownloadDialogOpen: boolean;
-  readonly permissionConnectorRef: ConnectorRef | null;
+  readonly permissionConnectorSlug: ConnectorSlug | null;
 }
 
 function initialComposerConnectorUiState(): ComposerConnectorUiState {
   return {
     showAddDialog: false,
-    pendingConnectorRef: null,
-    selectedConnectorRef: null,
-    savingConnectorRef: null,
+    pendingConnectorSlug: null,
+    selectedConnectorSlug: null,
+    savingConnectorSlug: null,
     addDialogSearch: "",
     popoverSearch: "",
     popoverSortOrder: null,
     computerUseDownloadDialogOpen: false,
-    permissionConnectorRef: null,
+    permissionConnectorSlug: null,
   };
 }
 
@@ -128,7 +128,7 @@ function createConnectorAuthorizationCommands(
     async (
       { get, set },
       operation: "add" | "remove",
-      connectorRef: ConnectorRef,
+      connectorSlug: ConnectorSlug,
       signal: AbortSignal,
     ): Promise<void> => {
       const agentId = await get(agentId$);
@@ -142,7 +142,7 @@ function createConnectorAuthorizationCommands(
         accept(
           client.update({
             params: { id: agentId },
-            body: { enabledTypes: [connectorRef], operation },
+            body: { enabledTypes: [connectorSlug], operation },
             fetchOptions: { signal },
           }),
           [200],
@@ -161,20 +161,20 @@ function createConnectorAuthorizationCommands(
   const authorizeConnector$ = command(
     async (
       { set },
-      connectorRef: ConnectorRef,
+      connectorSlug: ConnectorSlug,
       signal: AbortSignal,
     ): Promise<void> => {
-      await set(updateAuthorizedConnectors$, "add", connectorRef, signal);
+      await set(updateAuthorizedConnectors$, "add", connectorSlug, signal);
     },
   );
 
   const deauthorizeConnector$ = command(
     async (
       { set },
-      connectorRef: ConnectorRef,
+      connectorSlug: ConnectorSlug,
       signal: AbortSignal,
     ): Promise<void> => {
-      await set(updateAuthorizedConnectors$, "remove", connectorRef, signal);
+      await set(updateAuthorizedConnectors$, "remove", connectorSlug, signal);
     },
   );
 
@@ -197,25 +197,27 @@ export function createComposerConnectorSignals<T extends AgentIdValue>(
     createConnectorAuthorizationCommands(localAgentId$);
   const initial = initialComposerConnectorUiState();
   const showAddDialog = createStateBinding(initial.showAddDialog);
-  const pendingConnectorRef = createStateBinding(initial.pendingConnectorRef);
-  const selectedConnectorRef = createStateBinding(initial.selectedConnectorRef);
-  const savingConnectorRef = createStateBinding(initial.savingConnectorRef);
+  const pendingConnectorSlug = createStateBinding(initial.pendingConnectorSlug);
+  const selectedConnectorSlug = createStateBinding(
+    initial.selectedConnectorSlug,
+  );
+  const savingConnectorSlug = createStateBinding(initial.savingConnectorSlug);
   const addDialogSearch = createStateBinding(initial.addDialogSearch);
   const popoverSearch = createStateBinding(initial.popoverSearch);
   const popoverSortOrder = createStateBinding(initial.popoverSortOrder);
   const computerUseDownloadDialogOpen = createStateBinding(
     initial.computerUseDownloadDialogOpen,
   );
-  const permissionConnectorRef = createStateBinding(
-    initial.permissionConnectorRef,
+  const permissionConnectorSlug = createStateBinding(
+    initial.permissionConnectorSlug,
   );
 
   const permissionMetadata$ = computed(async (get) => {
-    const connectorRef = get(permissionConnectorRef.value$);
-    if (!connectorRef) {
+    const connectorSlug = get(permissionConnectorSlug.value$);
+    if (!connectorSlug) {
       return null;
     }
-    return await get(firewallPermissionMetadataByConnector({ connectorRef }));
+    return await get(firewallPermissionMetadataByConnector({ connectorSlug }));
   });
   const permissionGrants$ = computed(
     async (get): Promise<readonly UserPermissionGrantResponse[]> => {
@@ -232,12 +234,12 @@ export function createComposerConnectorSignals<T extends AgentIdValue>(
     ...authorizationCommands,
     showAddDialog$: showAddDialog.value$,
     setShowAddDialog$: showAddDialog.set$,
-    pendingConnectorRef$: pendingConnectorRef.value$,
-    setPendingConnectorRef$: pendingConnectorRef.set$,
-    selectedConnectorRef$: selectedConnectorRef.value$,
-    setSelectedConnectorRef$: selectedConnectorRef.set$,
-    savingConnectorRef$: savingConnectorRef.value$,
-    setSavingConnectorRef$: savingConnectorRef.set$,
+    pendingConnectorSlug$: pendingConnectorSlug.value$,
+    setPendingConnectorSlug$: pendingConnectorSlug.set$,
+    selectedConnectorSlug$: selectedConnectorSlug.value$,
+    setSelectedConnectorSlug$: selectedConnectorSlug.set$,
+    savingConnectorSlug$: savingConnectorSlug.value$,
+    setSavingConnectorSlug$: savingConnectorSlug.set$,
     addDialogSearch$: addDialogSearch.value$,
     setAddDialogSearch$: addDialogSearch.set$,
     popoverSearch$: popoverSearch.value$,
@@ -246,8 +248,8 @@ export function createComposerConnectorSignals<T extends AgentIdValue>(
     setPopoverSortOrder$: popoverSortOrder.set$,
     computerUseDownloadDialogOpen$: computerUseDownloadDialogOpen.value$,
     setComputerUseDownloadDialogOpen$: computerUseDownloadDialogOpen.set$,
-    permissionConnectorRef$: permissionConnectorRef.value$,
-    setPermissionConnectorRef$: permissionConnectorRef.set$,
+    permissionConnectorSlug$: permissionConnectorSlug.value$,
+    setPermissionConnectorSlug$: permissionConnectorSlug.set$,
     permissionMetadata$,
     permissionGrants$,
   };

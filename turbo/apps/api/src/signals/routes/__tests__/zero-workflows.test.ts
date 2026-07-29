@@ -8,7 +8,7 @@ import {
   type ZeroWorkflowCreateRequest,
   type ZeroWorkflowUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import { HttpResponse, http } from "msw";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -42,7 +42,7 @@ type StaffFixture =
   | {
       readonly kind: "connector";
       readonly actor: ApiTestUser;
-      readonly connectorType: ConnectorRef;
+      readonly connectorSlug: ConnectorSlug;
     }
   | {
       readonly kind: "workflow";
@@ -58,9 +58,9 @@ type StaffFixture =
 async function cleanupStaffFixture(fixture: StaffFixture): Promise<void> {
   switch (fixture.kind) {
     case "connector": {
-      await connectorApi.deleteConnectorByType(
+      await connectorApi.deleteConnectorBySlug(
         fixture.actor,
-        fixture.connectorType,
+        fixture.connectorSlug,
       );
       return;
     }
@@ -169,18 +169,22 @@ async function createWorkflow(
 
 async function connectManualGrant(
   actor: ApiTestUser,
-  connectorType: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   authMethod: Parameters<typeof connectorApi.connectManualGrant>[2],
   values: Parameters<typeof connectorApi.connectManualGrant>[3],
 ) {
   const connector = await connectorApi.connectManualGrant(
     actor,
-    connectorType,
+    connectorSlug,
     authMethod,
     values,
   );
   if (actor.orgId === STAFF_ORG_ID) {
-    await registerStaffFixture({ kind: "connector", actor, connectorType });
+    await registerStaffFixture({
+      kind: "connector",
+      actor,
+      connectorSlug,
+    });
   }
   return connector;
 }
