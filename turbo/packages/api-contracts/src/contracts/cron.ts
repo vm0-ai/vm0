@@ -68,6 +68,29 @@ const cronCompactChatThreadSnapshotsResponseSchema = z.object({
   eventsPruned: z.number(),
 });
 
+const cronCompactUsageEventsResponseSchema = z.object({
+  success: z.literal(true),
+  cutoff: z.string(),
+  rawSeedLimit: z.number().int().positive(),
+  seededRawRows: z.number().int().nonnegative(),
+  selectedGrains: z.number().int().nonnegative(),
+  probedRawRows: z.number().int().nonnegative(),
+  browserHeldRows: z.number().int().nonnegative(),
+  billingErrorHeldRows: z.number().int().nonnegative(),
+  rawRowsCompacted: z.number().int().nonnegative(),
+  hourlyRowsDeleted: z.number().int().nonnegative(),
+  hourlyRowsInserted: z.number().int().nonnegative(),
+  quantity: z.string().regex(/^-?\d+$/),
+  creditsCharged: z.string().regex(/^-?\d+$/),
+  allowanceUnits: z.string().regex(/^-?\d+$/),
+  affectedShortWindows: z.number().int().nonnegative(),
+  affectedWeeklyWindows: z.number().int().nonnegative(),
+  reconciled: z.literal(true),
+  hasMore: z.boolean(),
+  lockWaitMs: z.number().int().nonnegative(),
+  durationMs: z.number().int().nonnegative(),
+});
+
 const cronMonitorChatMessageQueueResponseSchema = z.object({
   success: z.literal(true),
   orphanedMessages: z.number().int().nonnegative(),
@@ -227,6 +250,19 @@ export const cronCompactChatThreadSnapshotsContract = c.router({
       401: apiErrorSchema,
     },
     summary: "Compact chat thread snapshots from lifecycle events",
+  },
+});
+
+export const cronCompactUsageEventsContract = c.router({
+  compact: {
+    method: "GET",
+    path: "/api/cron/compact-usage-events",
+    headers: authHeadersSchema,
+    responses: {
+      200: cronCompactUsageEventsResponseSchema,
+      401: apiErrorSchema,
+    },
+    summary: "Compact stable usage events into hourly rollups",
   },
 });
 
