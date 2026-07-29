@@ -141,7 +141,13 @@ describe("chat history backfill loading", () => {
   it("stays hidden during backfill when the feature switch is off", async () => {
     const { finalHistoryPage, beforeSeqIds } = mockPagedHistory();
 
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatHistoryBackfillProgress]: false,
+      },
+    });
 
     await waitFor(() => {
       expect(beforeSeqIds).toContain(GATED_BEFORE_SEQ_ID);
