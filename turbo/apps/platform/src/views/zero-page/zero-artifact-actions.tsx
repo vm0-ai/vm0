@@ -25,7 +25,9 @@ import {
 import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
 import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 import { accept } from "../../lib/accept.ts";
+import { i18n } from "../../i18n/index.ts";
 import {
   OAUTH_API_BASE,
   zeroClient$,
@@ -59,8 +61,6 @@ import {
   publicAttachmentUrl,
 } from "./zero-attachment-url.ts";
 
-const CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP =
-  "Connect Google Drive to upload artifacts";
 const GOOGLE_DRIVE_CONNECTOR_REF = "google-drive";
 const ARTIFACT_FLOATING_LAYER_CLASS =
   "!z-[10000] transition-[opacity,transform] duration-[180ms] ease data-[state=open]:!animate-none data-[state=closed]:!animate-none data-[state=open]:translate-y-0 data-[state=open]:opacity-100 data-[state=closed]:translate-y-2 data-[state=closed]:opacity-0";
@@ -142,7 +142,11 @@ function runWhenGoogleDriveReady(params: {
   description: string;
 }): void {
   if (!params.agentId) {
-    toast.error("Agent is still loading");
+    toast.error(
+      i18n.t(($) => {
+        return $.artifacts.googleDrive.agentLoading;
+      }),
+    );
     return;
   }
   const agentId = params.agentId;
@@ -170,7 +174,11 @@ function startGoogleDriveConnectAndRun(params: {
   description: string;
 }): void {
   if (!params.agentId) {
-    toast.error("Agent is still loading");
+    toast.error(
+      i18n.t(($) => {
+        return $.artifacts.googleDrive.agentLoading;
+      }),
+    );
     return;
   }
   const agentId = params.agentId;
@@ -180,7 +188,11 @@ function startGoogleDriveConnectAndRun(params: {
     "width=600,height=700",
   );
   if (!authWindow) {
-    toast.error("Failed to open Google Drive connection page");
+    toast.error(
+      i18n.t(($) => {
+        return $.artifacts.googleDrive.failedToOpenConnect;
+      }),
+    );
     return;
   }
   detach(
@@ -281,7 +293,7 @@ export function ArtifactActionTooltip({
 }
 
 export function ArtifactShareButton({
-  ariaLabel = "Share",
+  ariaLabel,
   className,
   iconSize = 16,
   url,
@@ -291,8 +303,14 @@ export function ArtifactShareButton({
   iconSize?: number;
   url: string;
 }) {
+  const { t } = useTranslation();
+  const label =
+    ariaLabel ??
+    t(($) => {
+      return $.artifacts.actions.share;
+    });
   return (
-    <ArtifactActionTooltip label={ariaLabel}>
+    <ArtifactActionTooltip label={label}>
       <a
         href={publicAttachmentUrl(url)}
         onClick={(event) => {
@@ -302,7 +320,7 @@ export function ArtifactShareButton({
           event.preventDefault();
           detach(shareArtifactUrl(url), Reason.DomCallback, "artifact share");
         }}
-        aria-label={ariaLabel}
+        aria-label={label}
         title={publicAttachmentUrl(url)}
         className={iconButtonClassName(className)}
       >
@@ -387,6 +405,37 @@ function useGoogleDriveAvailability(
   };
 }
 
+function GoogleDriveDisabledMenuItem({
+  label,
+  muted = false,
+}: {
+  label: "connect" | "synced" | "upload";
+  muted?: boolean;
+}) {
+  const { t } = useTranslation();
+  const text =
+    label === "connect"
+      ? t(($) => {
+          return $.artifacts.googleDrive.connect;
+        })
+      : label === "synced"
+        ? t(($) => {
+            return $.artifacts.googleDrive.synced;
+          })
+        : t(($) => {
+            return $.artifacts.googleDrive.upload;
+          });
+  return (
+    <ArtifactDownloadMenuItem
+      className={muted ? "text-muted-foreground" : ""}
+      disabled
+    >
+      <IconBrandGoogleDrive size={14} stroke={1.5} />
+      {text}
+    </ArtifactDownloadMenuItem>
+  );
+}
+
 function GoogleDriveMenuItem({
   closeMenu,
   syncTarget,
@@ -394,6 +443,7 @@ function GoogleDriveMenuItem({
   closeMenu: () => void;
   syncTarget?: ArtifactDownloadSyncTarget;
 }) {
+  const { t } = useTranslation();
   const {
     connectorListLoaded,
     googleDriveAuthMethod,
@@ -408,34 +458,19 @@ function GoogleDriveMenuItem({
   );
 
   if (!syncTarget) {
-    return (
-      <ArtifactDownloadMenuItem disabled>
-        <IconBrandGoogleDrive size={14} stroke={1.5} />
-        Upload to Google Drive
-      </ArtifactDownloadMenuItem>
-    );
+    return <GoogleDriveDisabledMenuItem label="upload" />;
   }
 
   if (syncTarget.synced) {
-    return (
-      <ArtifactDownloadMenuItem disabled>
-        <IconBrandGoogleDrive size={14} stroke={1.5} />
-        Synced to Google Drive
-      </ArtifactDownloadMenuItem>
-    );
+    return <GoogleDriveDisabledMenuItem label="synced" />;
   }
 
   if (!connectorListLoaded) {
     return (
-      <ArtifactDownloadMenuItem
-        className={syncTarget.disconnected ? "text-muted-foreground" : ""}
-        disabled
-      >
-        <IconBrandGoogleDrive size={14} stroke={1.5} />
-        {syncTarget.disconnected
-          ? "Connect Google Drive"
-          : "Upload to Google Drive"}
-      </ArtifactDownloadMenuItem>
+      <GoogleDriveDisabledMenuItem
+        label={syncTarget.disconnected ? "connect" : "upload"}
+        muted={syncTarget.disconnected}
+      />
     );
   }
 
@@ -487,7 +522,9 @@ function GoogleDriveMenuItem({
     return (
       <ArtifactDownloadMenuItem onClick={syncOrConnect}>
         <IconBrandGoogleDrive size={14} stroke={1.5} />
-        Upload to Google Drive
+        {t(($) => {
+          return $.artifacts.googleDrive.upload;
+        })}
       </ArtifactDownloadMenuItem>
     );
   }
@@ -504,11 +541,15 @@ function GoogleDriveMenuItem({
             onClick={syncOrConnect}
           >
             <IconBrandGoogleDrive size={14} stroke={1.5} />
-            Connect Google Drive
+            {t(($) => {
+              return $.artifacts.googleDrive.connect;
+            })}
           </ArtifactDownloadMenuItem>
         </TooltipTrigger>
         <TooltipContent side="left" className={ARTIFACT_FLOATING_LAYER_CLASS}>
-          {CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP}
+          {t(($) => {
+            return $.artifacts.googleDrive.connectTooltip;
+          })}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -599,7 +640,7 @@ function startArtifactDownloadWithCleanup(params: {
 
 export function ArtifactDownloadMenu({
   align = "end",
-  ariaLabel = "Download options",
+  ariaLabel,
   artifactKind,
   className,
   filename,
@@ -608,6 +649,12 @@ export function ArtifactDownloadMenu({
   syncTarget,
   url,
 }: ArtifactDownloadMenuProps) {
+  const { t } = useTranslation();
+  const label =
+    ariaLabel ??
+    t(($) => {
+      return $.artifacts.actions.downloadOptions;
+    });
   const artifactDownloadKey = `${url}:${filename}`;
   const openKey = useGet(artifactDownloadMenuOpenKey$);
   const pendingKey = useGet(artifactDownloadPendingKey$);
@@ -632,10 +679,10 @@ export function ArtifactDownloadMenu({
         });
       }}
     >
-      <ArtifactActionTooltip label={ariaLabel}>
+      <ArtifactActionTooltip label={label}>
         <PopoverTrigger asChild>
           <ArtifactDownloadTrigger
-            ariaLabel={ariaLabel}
+            ariaLabel={label}
             className={className}
             downloadPending={downloadPending}
             iconSize={iconSize}
@@ -646,7 +693,9 @@ export function ArtifactDownloadMenu({
       {open && (
         <PopoverOverlay
           data-testid="artifact-download-menu-dismiss-layer"
-          aria-label="Close download menu"
+          aria-label={t(($) => {
+            return $.artifacts.actions.closeDownloadMenu;
+          })}
           className="z-[9999]"
         />
       )}
@@ -679,7 +728,9 @@ export function ArtifactDownloadMenu({
           }}
         >
           <IconDownload size={14} stroke={1.5} />
-          Download
+          {t(($) => {
+            return $.artifacts.actions.download;
+          })}
         </ArtifactDownloadMenuItem>
         <GoogleDriveMenuItem closeMenu={closeMenu} syncTarget={syncTarget} />
       </PopoverContent>

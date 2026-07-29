@@ -17,6 +17,7 @@ import {
   useLastResolved,
   type Loadable,
 } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { equalArrays } from "../../lib/equality.ts";
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
@@ -1135,6 +1136,7 @@ function videoTemplatePosterImage(item: VideoTemplateItem): string {
 }
 
 function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
+  const { t } = useTranslation();
   const posterImage = videoTemplatePosterImage(item);
   return (
     <div
@@ -1179,7 +1181,14 @@ function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
       />
       <button
         type="button"
-        aria-label={`Play video template preview ${item.title}`}
+        aria-label={t(
+          ($) => {
+            return $.artifacts.templates.playVideo;
+          },
+          {
+            title: item.title,
+          },
+        )}
         className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/0 text-white opacity-100 transition-colors duration-200 hover:bg-black/25 focus-visible:bg-black/25 focus-visible:outline-none peer-data-[preview-playing=true]:pointer-events-none peer-data-[preview-playing=true]:!opacity-0"
         onClick={(event) => {
           event.preventDefault();
@@ -1216,6 +1225,7 @@ function VideoTemplateCard({
   selected: boolean;
   onSelect: (item: VideoTemplateItem) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
@@ -1236,7 +1246,14 @@ function VideoTemplateCard({
         <div className="flex shrink-0 items-center">
           <button
             type="button"
-            aria-label={`Select video template ${item.title}`}
+            aria-label={t(
+              ($) => {
+                return $.artifacts.templates.selectVideo;
+              },
+              {
+                title: item.title,
+              },
+            )}
             aria-pressed={selected}
             onClick={() => {
               onSelect(item);
@@ -1248,7 +1265,9 @@ function VideoTemplateCard({
                 : "border-border bg-background text-foreground hover:bg-muted",
             )}
           >
-            Use
+            {t(($) => {
+              return $.artifacts.templates.use;
+            })}
           </button>
         </div>
       </div>
@@ -1292,6 +1311,7 @@ function WebsiteTemplateCard({
   onSelect: (item: WebsiteTemplateItem) => void;
   onPreview: (item: WebsiteTemplateItem) => void;
 }) {
+  const { t } = useTranslation();
   const previewImageUrl = websiteTemplateCardImageUrl(item);
   const preview = () => {
     onPreview(item);
@@ -1301,7 +1321,14 @@ function WebsiteTemplateCard({
     <div
       role="button"
       tabIndex={0}
-      aria-label={`Preview website template ${item.title}`}
+      aria-label={t(
+        ($) => {
+          return $.artifacts.templates.previewWebsite;
+        },
+        {
+          title: item.title,
+        },
+      )}
       onClick={preview}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -1317,8 +1344,22 @@ function WebsiteTemplateCard({
     >
       <div className="relative aspect-[16/9] shrink-0 overflow-hidden bg-muted">
         <img
-          alt={`${item.title} website template preview`}
-          title={`${item.title} website template preview`}
+          alt={t(
+            ($) => {
+              return $.artifacts.templates.websitePreview;
+            },
+            {
+              title: item.title,
+            },
+          )}
+          title={t(
+            ($) => {
+              return $.artifacts.templates.websitePreview;
+            },
+            {
+              title: item.title,
+            },
+          )}
           src={previewImageUrl}
           loading="eager"
           decoding="async"
@@ -1335,7 +1376,14 @@ function WebsiteTemplateCard({
         </div>
         <button
           type="button"
-          aria-label={`Select website template ${item.title}`}
+          aria-label={t(
+            ($) => {
+              return $.artifacts.templates.selectWebsite;
+            },
+            {
+              title: item.title,
+            },
+          )}
           aria-pressed={selected}
           onClick={(event) => {
             event.stopPropagation();
@@ -1348,7 +1396,9 @@ function WebsiteTemplateCard({
               : "border-border bg-background text-foreground hover:bg-muted",
           )}
         >
-          Use
+          {t(($) => {
+            return $.artifacts.templates.use;
+          })}
         </button>
       </div>
     </div>
@@ -1455,6 +1505,7 @@ function WorkflowTemplateCard({
   selected: boolean;
   onSelect: (item: WorkflowTemplateItem) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
@@ -1474,7 +1525,14 @@ function WorkflowTemplateCard({
         />
         <button
           type="button"
-          aria-label={`Select workflow template ${item.title}`}
+          aria-label={t(
+            ($) => {
+              return $.artifacts.templates.selectWorkflow;
+            },
+            {
+              title: item.title,
+            },
+          )}
           aria-pressed={selected}
           onClick={() => {
             onSelect(item);
@@ -1486,7 +1544,9 @@ function WorkflowTemplateCard({
               : "border-border bg-background text-foreground hover:bg-muted",
           )}
         >
-          Use
+          {t(($) => {
+            return $.artifacts.templates.use;
+          })}
         </button>
       </div>
     </div>
@@ -1534,6 +1594,7 @@ function WorkflowTemplatePillRow({
   active: string;
   onSelect: (category: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-wrap items-center gap-1.5 px-5 pt-4">
       {["all", ...pills].map((pill) => {
@@ -1553,7 +1614,11 @@ function WorkflowTemplatePillRow({
               onSelect(pill);
             }}
           >
-            {pill === "all" ? "All" : pill}
+            {pill === "all"
+              ? t(($) => {
+                  return $.artifacts.templates.all;
+                })
+              : pill}
           </button>
         );
       })}
@@ -1590,13 +1655,8 @@ function WorkflowTemplateGrid({
   );
 }
 
-function TemplateEmptyPanel({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
+function TemplateEmptyPanel() {
+  const { t } = useTranslation();
   return (
     <div className="flex min-h-40 flex-1 items-center justify-center rounded-[22px] border-2 border-dashed border-border bg-background px-6 py-10 text-center">
       <div className="flex max-w-xl flex-col items-center">
@@ -1604,8 +1664,16 @@ function TemplateEmptyPanel({
           className="mb-4 h-8 w-8 text-muted-foreground/70"
           stroke={1.7}
         />
-        <p className="text-sm font-semibold text-muted-foreground">{title}</p>
-        <p className="mt-2 text-sm text-muted-foreground/80">{description}</p>
+        <p className="text-sm font-semibold text-muted-foreground">
+          {t(($) => {
+            return $.artifacts.templates.noMatches;
+          })}
+        </p>
+        <p className="mt-2 text-sm text-muted-foreground/80">
+          {t(($) => {
+            return $.artifacts.templates.tryDifferentSearch;
+          })}
+        </p>
       </div>
     </div>
   );
@@ -2885,6 +2953,7 @@ function TemplatePreviewFrames({
   readonly primaryFrameUrl: string | null;
   readonly title: string;
 }) {
+  const { t } = useTranslation();
   const frameUrls: readonly string[] =
     primaryFrameUrl === null
       ? []
@@ -2910,8 +2979,18 @@ function TemplatePreviewFrames({
             key={frameUrl}
             title={
               frameUrl === overlayFrameUrl
-                ? `${title} active HTML preview`
-                : `${title} HTML preview`
+                ? t(
+                    ($) => {
+                      return $.artifacts.templates.activeHtmlPreview;
+                    },
+                    { title },
+                  )
+                : t(
+                    ($) => {
+                      return $.artifacts.templates.htmlPreview;
+                    },
+                    { title },
+                  )
             }
             data-testid={
               frameUrl === overlayFrameUrl || overlayFrameUrl === null
@@ -2954,6 +3033,7 @@ function TemplatePreview({
   runtime: TemplatePreviewRuntime;
   theme?: PresentationTemplateThemeOption;
 }) {
+  const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
   const hover = useGet(templateCardHover$);
   const setHover = useSet(setTemplateCardHover$);
@@ -3197,7 +3277,14 @@ function TemplatePreview({
       />
       <button
         type="button"
-        aria-label={`Preview ${item.title} at current slide`}
+        aria-label={t(
+          ($) => {
+            return $.artifacts.templates.previewCurrentSlide;
+          },
+          {
+            title: item.title,
+          },
+        )}
         className="absolute inset-0 z-10 cursor-zoom-in bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         onClick={openPreview}
       />
@@ -3272,6 +3359,7 @@ function TemplateDetailPreviewFrame({
   readonly slideIndex: number;
   readonly title: string;
 }) {
+  const { t } = useTranslation();
   const frames: readonly {
     readonly active: boolean;
     readonly slideIndex: number;
@@ -3297,8 +3385,18 @@ function TemplateDetailPreviewFrame({
         key={candidateFrame.url}
         title={
           candidateFrame.active
-            ? `${title} HTML preview`
-            : `${title} previous HTML preview`
+            ? t(
+                ($) => {
+                  return $.artifacts.templates.htmlPreview;
+                },
+                { title },
+              )
+            : t(
+                ($) => {
+                  return $.artifacts.templates.previousHtmlPreview;
+                },
+                { title },
+              )
         }
         data-template-detail-frame={
           candidateFrame.active ? "active" : "previous"
@@ -3354,6 +3452,7 @@ function TemplatePreviewPage({
   onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
   runtime: TemplatePreviewRuntime;
 }) {
+  const { t } = useTranslation();
   const detailPreview = useGet(templateDetailHtmlPreview$);
   const setCardThemeId = useSet(setTemplateCardThemeId$);
   const selectDetailPreview = useSet(selectPresentationTemplateDetailPreview$);
@@ -3443,7 +3542,9 @@ function TemplatePreviewPage({
             className="inline-flex shrink-0 items-center p-0 leading-none text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={onBack}
           >
-            Template
+            {t(($) => {
+              return $.artifacts.templates.template;
+            })}
           </button>
           <span className="shrink-0 text-muted-foreground">/</span>
           <span className="block min-w-0 truncate leading-none">
@@ -3455,7 +3556,14 @@ function TemplatePreviewPage({
         <div className="rounded-lg border border-border bg-background p-2.5 sm:p-3">
           <div
             role="group"
-            aria-label={`${item.title} slide preview`}
+            aria-label={t(
+              ($) => {
+                return $.artifacts.templates.slidePreview;
+              },
+              {
+                title: item.title,
+              },
+            )}
             tabIndex={0}
             onKeyDown={handleDetailSlideKeyDown}
             className="relative aspect-[16/9] overflow-hidden rounded-lg bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -3484,7 +3592,9 @@ function TemplatePreviewPage({
             />
             <button
               type="button"
-              aria-label="Preview previous slide"
+              aria-label={t(($) => {
+                return $.artifacts.templates.previousSlide;
+              })}
               disabled={activeSlideIndex === 0}
               tabIndex={-1}
               onClick={() => {
@@ -3494,7 +3604,9 @@ function TemplatePreviewPage({
             />
             <button
               type="button"
-              aria-label="Preview next slide"
+              aria-label={t(($) => {
+                return $.artifacts.templates.nextSlide;
+              })}
               disabled={activeSlideIndex >= detailSlideCount - 1}
               tabIndex={-1}
               onClick={() => {
@@ -3536,7 +3648,14 @@ function TemplatePreviewPage({
                 <button
                   key={slideNumber}
                   type="button"
-                  aria-label={`Preview slide ${slideNumber}`}
+                  aria-label={t(
+                    ($) => {
+                      return $.artifacts.templates.previewSlide;
+                    },
+                    {
+                      slideNumber,
+                    },
+                  )}
                   aria-pressed={active}
                   onClick={() => {
                     selectDetailSlide(slideIndex);
@@ -3554,7 +3673,15 @@ function TemplatePreviewPage({
                     runtime={runtime}
                     slideId={thumbnailSlide?.id ?? null}
                     themeVariables={thumbnailThemeVariables}
-                    title={`${item.title} slide ${slideNumber} preview`}
+                    title={t(
+                      ($) => {
+                        return $.artifacts.templates.slideThumbnail;
+                      },
+                      {
+                        title: item.title,
+                        slideNumber,
+                      },
+                    )}
                   />
                   <span className="absolute bottom-1 right-1 rounded border border-border bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold text-foreground shadow-sm backdrop-blur">
                     {slideNumber}
@@ -3572,12 +3699,18 @@ function TemplatePreviewPage({
             <div className="my-5 border-t border-border" />
             <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               <IconPalette size={14} stroke={1.9} />
-              <span>Theme</span>
+              <span>
+                {t(($) => {
+                  return $.artifacts.templates.theme;
+                })}
+              </span>
             </p>
             <div className="mt-3 space-y-4">
               <div className="space-y-2">
                 <p className="px-1 text-xs font-medium text-muted-foreground">
-                  Multi-accent
+                  {t(($) => {
+                    return $.artifacts.templates.multiAccent;
+                  })}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {multiAccentThemes.map((theme) => {
@@ -3586,7 +3719,12 @@ function TemplatePreviewPage({
                       <button
                         key={theme.id}
                         type="button"
-                        aria-label={`Select style ${theme.name}`}
+                        aria-label={t(
+                          ($) => {
+                            return $.artifacts.templates.selectStyle;
+                          },
+                          { style: theme.name },
+                        )}
                         aria-pressed={active}
                         onClick={() => {
                           selectDetailTheme(theme);
@@ -3618,7 +3756,9 @@ function TemplatePreviewPage({
               </div>
               <div className="space-y-2">
                 <p className="px-1 text-xs font-medium text-muted-foreground">
-                  Single-accent
+                  {t(($) => {
+                    return $.artifacts.templates.singleAccent;
+                  })}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {singleAccentThemes.map((theme) => {
@@ -3631,7 +3771,12 @@ function TemplatePreviewPage({
                       <button
                         key={theme.id}
                         type="button"
-                        aria-label={`Select style ${theme.name}`}
+                        aria-label={t(
+                          ($) => {
+                            return $.artifacts.templates.selectStyle;
+                          },
+                          { style: theme.name },
+                        )}
                         aria-pressed={active}
                         onClick={() => {
                           selectDetailTheme(theme);
@@ -3662,7 +3807,14 @@ function TemplatePreviewPage({
             </div>
             <button
               type="button"
-              aria-label={`Select template ${item.title}`}
+              aria-label={t(
+                ($) => {
+                  return $.artifacts.templates.selectTemplate;
+                },
+                {
+                  title: item.title,
+                },
+              )}
               className="mt-4 h-12 w-full rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               onClick={() => {
                 setCardThemeId(item.slug, selectedTheme.id);
@@ -3672,7 +3824,9 @@ function TemplatePreviewPage({
                 );
               }}
             >
-              Use this template
+              {t(($) => {
+                return $.artifacts.templates.useThisTemplate;
+              })}
             </button>
           </div>
         </div>
@@ -3695,6 +3849,7 @@ function PptCard({
   priority?: boolean;
   runtime: TemplatePreviewRuntime;
 }) {
+  const { t } = useTranslation();
   const themeIdBySlug = useGet(templateCardThemeIdBySlug$);
   const selectedTheme = findPresentationTemplateTheme(
     themeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item),
@@ -3729,7 +3884,14 @@ function PptCard({
         </div>
         <button
           type="button"
-          aria-label={`Select template ${item.title}`}
+          aria-label={t(
+            ($) => {
+              return $.artifacts.templates.selectTemplate;
+            },
+            {
+              title: item.title,
+            },
+          )}
           aria-pressed={selected}
           onClick={() => {
             onSelect(item, presentationTemplateColorSystemId(selectedTheme.id));
@@ -3741,7 +3903,9 @@ function PptCard({
               : "bg-background text-foreground hover:bg-muted",
           )}
         >
-          Use
+          {t(($) => {
+            return $.artifacts.templates.use;
+          })}
         </button>
       </div>
     </div>
@@ -3765,6 +3929,7 @@ function IllustrationTemplateHero({
   onVariantChange: (slug: string, index: number) => void;
   runtime: TemplatePreviewRuntime;
 }) {
+  const { t } = useTranslation();
   const heroImage = illustrationHeroImageUrl(source);
   const navigable = images.length > 1;
   const variantAt = (direction: -1 | 1): number => {
@@ -3783,7 +3948,14 @@ function IllustrationTemplateHero({
       <img
         key={source}
         src={heroImage}
-        alt={`${item.title} illustration preview`}
+        alt={t(
+          ($) => {
+            return $.artifacts.templates.illustrationPreview;
+          },
+          {
+            title: item.title,
+          },
+        )}
         className={cn(
           "absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100",
           navigable && "cursor-pointer",
@@ -4169,6 +4341,7 @@ function IllustrationTemplateCard({
   onVariantChange: (slug: string, index: number) => void;
   runtime: TemplatePreviewRuntime;
 }) {
+  const { t } = useTranslation();
   const images = item.previewImages;
   const safeIndex = Math.max(0, Math.min(activeIndex, images.length - 1));
   const heroSource = images[safeIndex] ?? item.previewImage;
@@ -4209,7 +4382,14 @@ function IllustrationTemplateCard({
               <button
                 key={image}
                 type="button"
-                aria-label={`Show variant ${index + 1}`}
+                aria-label={t(
+                  ($) => {
+                    return $.artifacts.templates.showVariant;
+                  },
+                  {
+                    variantNumber: index + 1,
+                  },
+                )}
                 aria-pressed={active}
                 className={cn(
                   "relative h-12 w-12 shrink-0 overflow-hidden rounded-md border-2 bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -4269,7 +4449,14 @@ function IllustrationTemplateCard({
         </p>
         <button
           type="button"
-          aria-label={`Select template ${item.title}`}
+          aria-label={t(
+            ($) => {
+              return $.artifacts.templates.selectTemplate;
+            },
+            {
+              title: item.title,
+            },
+          )}
           aria-pressed={selected}
           onClick={() => {
             onSelect(item);
@@ -4281,7 +4468,9 @@ function IllustrationTemplateCard({
               : "border-border bg-background text-foreground hover:bg-muted",
           )}
         >
-          Use
+          {t(($) => {
+            return $.artifacts.templates.use;
+          })}
         </button>
       </div>
     </div>
@@ -4319,36 +4508,6 @@ function resolveTemplatePickerCategory({
   return categories.includes(category) ? category : defaultCategory;
 }
 
-const TEMPLATE_PICKER_CATEGORY_META: Readonly<
-  Record<string, { title: string }>
-> = {
-  slides: {
-    title: "Presentation",
-  },
-  website: {
-    title: "Website",
-  },
-  illustration: {
-    title: "Illustration",
-  },
-  video: {
-    title: "Video",
-  },
-  workflow: {
-    title: "Workflow",
-  },
-};
-
-function templatePickerCategoryMeta(category: string): {
-  title: string;
-} {
-  return (
-    TEMPLATE_PICKER_CATEGORY_META[category] ?? {
-      title: "Template",
-    }
-  );
-}
-
 function TemplatePickerCategoryNav({
   selectedCategory,
   hasPptTab,
@@ -4364,6 +4523,7 @@ function TemplatePickerCategoryNav({
   hasWorkflowTab: boolean;
   onChange: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   const categoryOptions: {
     value: string;
     label: string;
@@ -4372,33 +4532,43 @@ function TemplatePickerCategoryNav({
   if (hasPptTab) {
     categoryOptions.push({
       value: "slides",
-      label: "Presentation",
+      label: t(($) => {
+        return $.artifacts.kinds.presentation;
+      }),
       Icon: IconPresentation,
     });
   }
   categoryOptions.push({
     value: "website",
-    label: "Website",
+    label: t(($) => {
+      return $.artifacts.templates.website;
+    }),
     Icon: IconWorld,
   });
   if (hasIllustrationTab) {
     categoryOptions.push({
       value: "illustration",
-      label: "Illustration",
+      label: t(($) => {
+        return $.artifacts.templates.illustration;
+      }),
       Icon: IconPhoto,
     });
   }
   if (hasVideoTab) {
     categoryOptions.push({
       value: "video",
-      label: "Video",
+      label: t(($) => {
+        return $.artifacts.kinds.video;
+      }),
       Icon: IconVideo,
     });
   }
   if (hasWorkflowTab) {
     categoryOptions.push({
       value: "workflow",
-      label: "Workflow",
+      label: t(($) => {
+        return $.artifacts.templates.workflow;
+      }),
       Icon: IconRoute,
     });
   }
@@ -4408,7 +4578,9 @@ function TemplatePickerCategoryNav({
       <div className="shrink-0 border-b border-border bg-gray-50 px-4 pb-4 pr-14 pt-4 sm:hidden">
         <Select value={selectedCategory} onValueChange={onChange}>
           <SelectTrigger
-            aria-label="Template category"
+            aria-label={t(($) => {
+              return $.artifacts.templates.category;
+            })}
             className="h-9 w-full bg-card"
           >
             <SelectValue />
@@ -4429,14 +4601,18 @@ function TemplatePickerCategoryNav({
       </div>
       <nav
         role="tablist"
-        aria-label="Template categories"
+        aria-label={t(($) => {
+          return $.artifacts.templates.categories;
+        })}
         aria-orientation="vertical"
         data-template-picker-sidebar=""
         className="hidden w-52 shrink-0 flex-col gap-1 overflow-y-auto border-r border-border bg-gray-50 p-3 sm:flex"
       >
         <div className="flex min-h-[50px] items-center px-2">
           <h2 className="text-lg font-semibold tracking-tight text-foreground">
-            Template
+            {t(($) => {
+              return $.artifacts.templates.template;
+            })}
           </h2>
         </div>
         {categoryOptions.map(({ value, label, Icon }, categoryIndex) => {
@@ -4496,7 +4672,31 @@ function TemplatePickerCategoryHeader({
 }: {
   selectedCategory: string;
 }) {
-  const meta = templatePickerCategoryMeta(selectedCategory);
+  const { t } = useTranslation();
+  const title =
+    selectedCategory === "slides"
+      ? t(($) => {
+          return $.artifacts.kinds.presentation;
+        })
+      : selectedCategory === "website"
+        ? t(($) => {
+            return $.artifacts.templates.website;
+          })
+        : selectedCategory === "illustration"
+          ? t(($) => {
+              return $.artifacts.templates.illustration;
+            })
+          : selectedCategory === "video"
+            ? t(($) => {
+                return $.artifacts.kinds.video;
+              })
+            : selectedCategory === "workflow"
+              ? t(($) => {
+                  return $.artifacts.templates.workflow;
+                })
+              : t(($) => {
+                  return $.artifacts.templates.template;
+                });
   return (
     <header
       className={cn(
@@ -4506,7 +4706,7 @@ function TemplatePickerCategoryHeader({
     >
       <div className="min-w-0">
         <h2 className="truncate text-lg font-semibold tracking-tight text-foreground">
-          {meta.title}
+          {title}
         </h2>
       </div>
     </header>
@@ -4522,6 +4722,7 @@ function TemplatePickerWorkflowSearch({
   search: string;
   onSearchChange: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   if (selectedCategory !== "workflow") {
     return null;
   }
@@ -4533,13 +4734,17 @@ function TemplatePickerWorkflowSearch({
           stroke={1.8}
         />
         <Input
-          aria-label="Search connectors"
+          aria-label={t(($) => {
+            return $.artifacts.templates.searchConnectors;
+          })}
           className="h-9 pl-9 text-sm sm:h-8"
           value={search}
           onChange={(event) => {
             onSearchChange(event.target.value);
           }}
-          placeholder="Search connector..."
+          placeholder={t(($) => {
+            return $.artifacts.templates.searchConnector;
+          })}
         />
       </div>
     </div>
@@ -4638,6 +4843,7 @@ function TemplatePickerDialog({
   hasWorkflowTab: boolean;
   runtime: TemplatePreviewRuntime;
 }) {
+  const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
   const category = useGet(templatePickerCategory$);
   const setCategory = useSet(setTemplatePickerCategory$);
@@ -4671,8 +4877,8 @@ function TemplatePickerDialog({
     "gap-0 overflow-hidden p-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0",
     skipEnterAnimation && "data-[state=open]:!animate-none",
     isPreviewing
-      ? "flex h-[min(90dvh,760px)] max-w-6xl flex-col sm:h-auto [&>button[aria-label=Close]]:top-[7px]"
-      : "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button[aria-label=Close]]:top-[7px] sm:[&>button[aria-label=Close]]:top-[19px]",
+      ? "flex h-[min(90dvh,760px)] max-w-6xl flex-col sm:h-auto [&>button]:top-[7px]"
+      : "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button]:top-[7px] sm:[&>button]:top-[19px]",
   );
   const filteredPptItems = presentationItems;
   const filteredIllustrationItems = ILLUSTRATION_TEMPLATE_ITEMS;
@@ -4885,6 +5091,9 @@ function TemplatePickerDialog({
       }}
     >
       <DialogContent
+        closeLabel={t(($) => {
+          return $.artifacts.actions.close;
+        })}
         className={dialogContentClassName}
         overlayClassName={
           skipEnterAnimation ? "data-[state=open]:!animate-none" : undefined
@@ -4914,7 +5123,11 @@ function TemplatePickerDialog({
         ) : (
           <>
             <DialogHeader className="shrink-0 border-b border-border px-5 py-4 sm:hidden">
-              <DialogTitle>Template</DialogTitle>
+              <DialogTitle>
+                {t(($) => {
+                  return $.artifacts.templates.template;
+                })}
+              </DialogTitle>
             </DialogHeader>
             <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
               <TemplatePickerCategoryNav
@@ -5044,10 +5257,7 @@ function TemplatePickerCategoryContent({
             runtime={runtime}
           />
         ) : (
-          <TemplateEmptyPanel
-            title="No matches"
-            description="Try a different search."
-          />
+          <TemplateEmptyPanel />
         )}
       </div>
     );
@@ -5067,10 +5277,7 @@ function TemplatePickerCategoryContent({
             onPreview={onPreviewWebsite}
           />
         ) : (
-          <TemplateEmptyPanel
-            title="No matches"
-            description="Try a different search."
-          />
+          <TemplateEmptyPanel />
         )}
       </div>
     );
@@ -5100,10 +5307,7 @@ function TemplatePickerCategoryContent({
             runtime={runtime}
           />
         ) : (
-          <TemplateEmptyPanel
-            title="No matches"
-            description="Try a different search."
-          />
+          <TemplateEmptyPanel />
         )}
       </div>
     );
@@ -5122,10 +5326,7 @@ function TemplatePickerCategoryContent({
             onSelect={onSelectVideo}
           />
         ) : (
-          <TemplateEmptyPanel
-            title="No matches"
-            description="Try a different search."
-          />
+          <TemplateEmptyPanel />
         )}
       </div>
     );
@@ -5153,10 +5354,7 @@ function TemplatePickerCategoryContent({
                 onSelect={onSelectWorkflow}
               />
             ) : (
-              <TemplateEmptyPanel
-                title="No matches"
-                description="Try a different search."
-              />
+              <TemplateEmptyPanel />
             )}
           </div>
           {/* Soften the hard clip where cards scroll up under the pill row,
@@ -5356,6 +5554,7 @@ function TemplatePickerButton({
   hasWorkflowTab: boolean;
   runtime: TemplatePreviewRuntime;
 }) {
+  const { t } = useTranslation();
   const open = useGet(templatePickerOpen$);
   const skipEnterAnimation = useGet(templatePickerSkipEnterAnimation$);
   const category = useGet(templatePickerCategory$);
@@ -5399,7 +5598,9 @@ function TemplatePickerButton({
                 COMPOSER_CONTROL_FOCUS_CLASS,
                 picker.value && "bg-accent text-foreground",
               )}
-              aria-label="Template"
+              aria-label={t(($) => {
+                return $.artifacts.templates.template;
+              })}
               aria-pressed={picker.value !== undefined}
               onPointerEnter={prewarmPicker}
               onFocus={prewarmPicker}
@@ -5417,7 +5618,18 @@ function TemplatePickerButton({
             </button>
           </TooltipTrigger>
           <TooltipContent side="top" className="text-xs">
-            {selectedTitle ? `Template: ${selectedTitle}` : "Template"}
+            {selectedTitle
+              ? t(
+                  ($) => {
+                    return $.artifacts.templates.selected;
+                  },
+                  {
+                    title: selectedTitle,
+                  },
+                )
+              : t(($) => {
+                  return $.artifacts.templates.template;
+                })}
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
