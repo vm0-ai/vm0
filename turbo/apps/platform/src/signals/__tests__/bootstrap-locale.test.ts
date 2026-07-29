@@ -109,4 +109,14 @@ describe("bootstrap locale", () => {
 
     await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
   });
+
+  it("normalizes a legacy cached locale to English before bundle render", () => {
+    sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
+    context.store.set(testLocaleStorage.set$, "zh-CN");
+
+    executeLocaleEntrypoint();
+
+    expect(document.documentElement.lang).toBe(DEFAULT_LOCALE);
+    expect(context.store.get(testLocaleStorage.get$)).toBe(DEFAULT_LOCALE);
+  });
 });

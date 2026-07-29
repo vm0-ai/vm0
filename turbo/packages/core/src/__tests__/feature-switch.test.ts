@@ -238,7 +238,7 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.LanguagePreference,
     );
-    expect(getUserOverridableFeatureSwitchKeys()).toContain(
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.BrazilianPortugueseLocale,
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
@@ -277,7 +277,6 @@ describe("user-overridable switches", () => {
         [FeatureSwitchKey.Dummy]: false,
       }),
     ).toStrictEqual({
-      [FeatureSwitchKey.BrazilianPortugueseLocale]: true,
       [FeatureSwitchKey.ZeroBrowser]: true,
       [FeatureSwitchKey.ComposerConnectorPermissions]: true,
       [FeatureSwitchKey.Dummy]: false,

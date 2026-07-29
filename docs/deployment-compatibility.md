@@ -163,6 +163,32 @@ For frontend/backend API changes:
 - Test missing new response fields or old response shapes when frontend code can
   receive them during rollout.
 
+### Brazilian Portuguese locale rollout
+
+The `en-US` / `pt-BR` locale transition uses a receiver-first rollout because
+Platform and API promotion are independent and locale preferences are shared
+persisted state:
+
+1. Deploy the API and Platform receivers with
+   `BrazilianPortugueseLocale` disabled. The API continues to accept legacy
+   `zh-CN` requests as `en-US`, projects stored `pt-BR` to `en-US` for old
+   clients, and advertises writable locales only to a client carrying the
+   `pt-br-locale-v1` capability.
+2. Verify that every API reader which rejects stored `pt-BR` values, including
+   rollback candidates, has drained.
+3. Enable `BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED` only after that
+   verification. The corresponding `BrazilianPortugueseLocale` switch is
+   API-controlled and cannot be set through user feature-switch overrides. A
+   capable API then advertises both `en-US` and `pt-BR`; Platform keeps
+   synchronization and the selector hidden until it receives that handshake.
+4. Remove the legacy request normalization, old-client response projection,
+   capability handshake, and rollout switch only after stale browser clients
+   and rollback windows have closed and persisted `zh-CN` rows have migrated.
+   Cleanup is tracked by #23508.
+
+Do not enable the persistence guard during step 1. A stored `pt-BR` value is not
+readable by the API release that preceded this receiver change.
+
 For runner/backend API changes:
 
 - Test old runner requests against the new backend handler.

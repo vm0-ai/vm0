@@ -1,5 +1,4 @@
 import { command, computed, state } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { i18n, initializeI18n } from "../i18n/index.ts";
 import { DEFAULT_LOCALE, type SupportedLocale } from "../i18n/resources.ts";
 import {
@@ -7,7 +6,6 @@ import {
   resolveDocumentLocale,
 } from "../i18n/locale-storage.ts";
 import { clerk$ } from "./auth.ts";
-import { featureSwitch$ } from "./external/feature-switch.ts";
 import { localStorageSignals } from "./external/local-storage.ts";
 import {
   updateUserPreference$,
@@ -29,15 +27,12 @@ export const locale$ = computed((get) => {
   return get(internalLocale$);
 });
 
-const brazilianPortugueseEnabled$ = computed((get): boolean => {
-  return (
-    get(featureSwitch$)[FeatureSwitchKey.BrazilianPortugueseLocale] ?? false
-  );
-});
-
 export const localePreferenceSupported$ = computed(async (get) => {
   const preferences = await get(userPreferences$);
-  return preferences.locale !== undefined && get(brazilianPortugueseEnabled$);
+  return (
+    preferences.locale !== undefined &&
+    preferences.supportedLocales?.includes("pt-BR") === true
+  );
 });
 
 export const initLocale$ = command(async ({ set }, signal: AbortSignal) => {
@@ -79,7 +74,10 @@ export const syncLocalePreference$ = command(
 
     const preferences = await get(userPreferences$);
     signal.throwIfAborted();
-    if (preferences.locale === undefined || !get(brazilianPortugueseEnabled$)) {
+    if (
+      preferences.locale === undefined ||
+      preferences.supportedLocales?.includes("pt-BR") !== true
+    ) {
       return;
     }
 

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { CLIENT_FORCE_UPGRADE_STATUS } from "@vm0/api-contracts/contracts/client-headers";
+import {
+  addClientCapabilityToVersion,
+  CLIENT_CAPABILITY_PT_BR_LOCALE,
+  CLIENT_FORCE_UPGRADE_STATUS,
+} from "@vm0/api-contracts/contracts/client-headers";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 
 import { clearMockedAuth, mockUser } from "../../__tests__/mock-auth.ts";
@@ -16,6 +20,10 @@ const context = testContext();
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+const EXPECTED_CLIENT_VERSION = addClientCapabilityToVersion(
+  "0.540.0",
+  CLIENT_CAPABILITY_PT_BR_LOCALE,
+);
 
 interface ObservedClientHeaders {
   readonly requestId: string | null;
@@ -92,8 +100,8 @@ describe("api client headers", () => {
     expect(second).toBeDefined();
     expect(first.type).toBe("App");
     expect(second.type).toBe("App");
-    expect(first.version).toBe("0.540.0");
-    expect(second.version).toBe("0.540.0");
+    expect(first.version).toBe(EXPECTED_CLIENT_VERSION);
+    expect(second.version).toBe(EXPECTED_CLIENT_VERSION);
     expect(first.zeroMailVersion).toBe("3");
     expect(second.zeroMailVersion).toBe("3");
     expect(first.sessionId).toMatch(UUID_REGEX);
@@ -129,8 +137,8 @@ describe("api client headers", () => {
     expect(second).toBeDefined();
     expect(first.type).toBe("App");
     expect(second.type).toBe("App");
-    expect(first.version).toBe("0.540.0");
-    expect(second.version).toBe("0.540.0");
+    expect(first.version).toBe(EXPECTED_CLIENT_VERSION);
+    expect(second.version).toBe(EXPECTED_CLIENT_VERSION);
     expect(first.zeroMailVersion).toBe("3");
     expect(second.zeroMailVersion).toBe("3");
     expect(first.sessionId).toMatch(UUID_REGEX);
