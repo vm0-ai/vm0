@@ -693,6 +693,22 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
         flow.kill()
         return None
 
+    if (
+        isinstance(
+            classification,
+            request_classification.FirewallAmbiguous | request_classification.FirewallBlock,
+        )
+        and classification.mcp_destination
+    ):
+        _start_request_timing(flow)
+        if isinstance(classification, request_classification.FirewallAmbiguous):
+            _set_firewall_ambiguous_response(flow, classification.firewall_ambiguous)
+        else:
+            _set_firewall_block_response(flow, classification.firewall_block)
+        flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
+        upstream_admission.forget_server_binding(flow.server_conn)
+        return None
+
     if classification.kind == "firewall_allow" and mcp_policy.is_mcp_allow(
         classification.firewall_allow
     ):

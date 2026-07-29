@@ -149,6 +149,7 @@ class BrowserAllow:
 class FirewallAmbiguous:
     vm_info: dict
     firewall_ambiguous: matching.FirewallAmbiguous
+    mcp_destination: bool
     kind: Literal["firewall_ambiguous"] = field(init=False, default="firewall_ambiguous")
 
 
@@ -156,6 +157,7 @@ class FirewallAmbiguous:
 class FirewallBlock:
     vm_info: dict
     firewall_block: matching.FirewallBlock
+    mcp_destination: bool
     kind: Literal["firewall_block"] = field(init=False, default="firewall_block")
 
 
@@ -449,19 +451,22 @@ def _classify_request(
         if isinstance(result, matching.FirewallAmbiguous | matching.FirewallBlock):
             # MCP payload privacy belongs to the destination match, even when
             # owner selection or another firewall decision rejects the route.
-            if mcp_api_request or matching.matches_compiled_mcp_api(
+            mcp_destination = mcp_api_request or matching.matches_compiled_mcp_api(
                 original_url,
                 compiled_firewalls,
-            ):
+            )
+            if mcp_destination:
                 flow.metadata[metadata_keys.CAPTURE_BODY] = False
             if isinstance(result, matching.FirewallAmbiguous):
                 return FirewallAmbiguous(
                     vm_info=vm_info,
                     firewall_ambiguous=result,
+                    mcp_destination=mcp_destination,
                 )
             return FirewallBlock(
                 vm_info=vm_info,
                 firewall_block=result,
+                mcp_destination=mcp_destination,
             )
         if isinstance(result, matching.FirewallAllow | matching.FirewallPolicyAllow):
             firewall_allow = (

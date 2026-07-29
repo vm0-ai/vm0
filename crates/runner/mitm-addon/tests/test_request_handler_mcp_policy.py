@@ -249,23 +249,24 @@ async def test_mcp_policy_cannot_be_bypassed_on_the_platform_api_origin(
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
 
 
-async def test_mcp_ambiguous_route_never_captures_request_body(
+async def test_mcp_ambiguous_route_rejects_oversized_body_at_headers_without_capture(
     tmp_path,
     real_flow,
     headers,
     mitm_ctx,
 ):
     registry_path = _write_mcp_registry(tmp_path, duplicate_owner=True)
-    flow = _mcp_flow(real_flow, headers)
+    body = b'{"secret":"must-not-be-logged"}' + b"x" * (64 * 1024)
+    flow = _mcp_flow(real_flow, headers, body=body)
 
     with mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"):
         mitm_addon.requestheaders(flow)
+        assert flow.response is not None
+        assert flow.response.status_code == 409
+        assert flow.metadata[metadata_keys.CAPTURE_BODY] is False
         await mitm_addon.request(flow)
         mitm_addon.response(flow)
 
-    assert flow.response is not None
-    assert flow.response.status_code == 409
-    assert flow.metadata[metadata_keys.CAPTURE_BODY] is False
     [network_entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
     assert "request_body" not in network_entry
     assert "must-not-be-logged" not in json.dumps(network_entry)
