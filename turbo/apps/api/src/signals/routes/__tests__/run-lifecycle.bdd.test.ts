@@ -8875,7 +8875,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
     );
     expect(claim.appendSystemPrompt ?? "").toContain("zero web-search --help");
-    expect(claim.appendSystemPrompt ?? "").not.toContain("zero finance --help");
+    expect(claim.appendSystemPrompt ?? "").toContain("zero finance --help");
     expect(claim.appendSystemPrompt ?? "").toContain("zero scrape --help");
     expect(claim.appendSystemPrompt ?? "").toContain(
       "zero people-search <query>",
