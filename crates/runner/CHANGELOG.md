@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.148.25](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.24...runner-rs-v0.148.25) (2026-07-29)
+
+
+### Documentation
+
+* **runner:** correct host oom probe contract ([#23599](https://github.com/vm0-ai/vm0/issues/23599)) ([d30400a](https://github.com/vm0-ai/vm0/commit/d30400a670d92885654982ce6c3af3c08ceff245))
+
 ## [0.148.24](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.23...runner-rs-v0.148.24) (2026-07-28)
 
 
