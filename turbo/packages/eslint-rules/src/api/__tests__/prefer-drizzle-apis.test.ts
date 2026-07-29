@@ -682,7 +682,6 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         }
         db.select({
           direct: sql\`\${users.name}\`.mapWith(users.name),
-          mapped: sql\`\${users.name}\`.mapWith(users.name),
           sameAlias: sql\`\${users.name}\`.mapWith(users.name).as("name"),
           selectedName: sql\`\${selectedUsers.name}\`.mapWith(selectedUsers.name),
           localName: localName.mapWith(users.name),
@@ -700,7 +699,6 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         });
       `,
       errors: [
-        { messageId: "directColumn" },
         { messageId: "directColumn" },
         { messageId: "directColumn" },
         { messageId: "directColumn" },

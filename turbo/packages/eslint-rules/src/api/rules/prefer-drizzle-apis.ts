@@ -1041,6 +1041,9 @@ export const preferDrizzleApis = createRule({
         return;
       }
       const metadata = columnMetadata(expression.expression);
+      // A bare SQL result uses noopDecoder, so selecting the column directly
+      // is equivalent only when the wrapper explicitly uses that same column
+      // as its result decoder.
       if (
         !isConventionalColumnExpression(expression.expression) ||
         metadata === undefined ||
