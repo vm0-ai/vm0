@@ -3796,23 +3796,26 @@ async function validateChatEventAssetRefTableRename(): Promise<void> {
         },
       ]);
 
-      const previousApiInsert = await client.query<{
+      const previousApiInsertSql = `
+        INSERT INTO "chat_message_asset_refs" (
+          "chat_message_id",
+          "asset_id",
+          "position"
+        )
+        VALUES ($1, $2, 1)
+        ON CONFLICT DO NOTHING
+        RETURNING
+          "chat_message_id" AS "chatMessageId",
+          "asset_id" AS "assetId",
+          "position"
+      `;
+      type PreviousApiInsertRow = {
         assetId: string;
         chatMessageId: string;
         position: number;
-      }>(
-        `
-          INSERT INTO "chat_message_asset_refs" (
-            "chat_message_id",
-            "asset_id",
-            "position"
-          )
-          VALUES ($1, $2, 1)
-          RETURNING
-            "chat_message_id" AS "chatMessageId",
-            "asset_id" AS "assetId",
-            "position"
-        `,
+      };
+      const previousApiInsert = await client.query<PreviousApiInsertRow>(
+        previousApiInsertSql,
         [eventId, previousApiAssetId],
       );
       assert.deepEqual(previousApiInsert.rows, [
@@ -3822,6 +3825,12 @@ async function validateChatEventAssetRefTableRename(): Promise<void> {
           position: 1,
         },
       ]);
+      const duplicatePreviousApiInsert =
+        await client.query<PreviousApiInsertRow>(previousApiInsertSql, [
+          eventId,
+          previousApiAssetId,
+        ]);
+      assert.deepEqual(duplicatePreviousApiInsert.rows, []);
 
       const currentApiInsert = await client.query<{
         assetId: string;
