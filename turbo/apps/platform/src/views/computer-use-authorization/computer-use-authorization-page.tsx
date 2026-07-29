@@ -12,6 +12,7 @@ import type {
   ComputerUseHost,
 } from "@vm0/api-contracts/contracts/zero-computer-use";
 import { Button } from "@vm0/ui/components/ui/button";
+import { useTranslation } from "react-i18next";
 import {
   applyComputerUseAuthorizationRequest$,
   computerUseAuthorizationRequest$,
@@ -20,16 +21,16 @@ import {
   zeroDesktopDownloadSupportStatus$,
   visibleComputerUseHosts,
   ZERO_DESKTOP_DOWNLOAD_URL,
-  ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL,
-  ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { computerUseIllustrationImg } from "../zero-page/platform-assets.ts";
 import { Vm0LogoLink } from "../zero-page/zero-directed-shared.tsx";
+import { locale$ } from "../../signals/locale.ts";
+import { i18n } from "../../i18n/index.ts";
 
-function formatTime(value: string): string {
-  return new Date(value).toLocaleString(undefined, {
+function formatTime(value: string, locale: string): string {
+  return new Date(value).toLocaleString(locale, {
     dateStyle: "medium",
     timeStyle: "short",
   });
@@ -38,13 +39,19 @@ function formatTime(value: string): string {
 function sourceLabel(source: ComputerUseAuthorizationSource): string {
   switch (source) {
     case "chat": {
-      return "this chat thread";
+      return i18n.t(($) => {
+        return $.authorization.computerUse.sources.chat;
+      });
     }
     case "slack": {
-      return "this Slack thread";
+      return i18n.t(($) => {
+        return $.authorization.computerUse.sources.slack;
+      });
     }
     case "teams": {
-      return "this Teams thread";
+      return i18n.t(($) => {
+        return $.authorization.computerUse.sources.teams;
+      });
     }
   }
 }
@@ -62,6 +69,8 @@ function HostOption({
   applied: boolean;
   onAuthorize: () => void;
 }) {
+  const { t } = useTranslation();
+  const locale = useGet(locale$);
   return (
     <div className="flex w-full flex-col gap-3 rounded-lg border border-border bg-background px-3 py-3 text-left sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 items-center gap-3">
@@ -73,7 +82,12 @@ function HostOption({
             {host.displayName}
           </div>
           <div className="mt-0.5 text-xs text-muted-foreground">
-            Last seen {formatTime(host.lastSeenAt)}
+            {t(
+              ($) => {
+                return $.authorization.computerUse.lastSeen;
+              },
+              { date: formatTime(host.lastSeenAt, locale) },
+            )}
           </div>
         </div>
       </div>
@@ -88,10 +102,14 @@ function HostOption({
         {applied ? (
           <>
             <IconCheck size={16} />
-            Authorized
+            {t(($) => {
+              return $.authorization.computerUse.authorized;
+            })}
           </>
         ) : (
-          "Authorize"
+          t(($) => {
+            return $.authorization.computerUse.authorize;
+          })
         )}
       </Button>
     </div>
@@ -99,6 +117,7 @@ function HostOption({
 }
 
 function EmptyHosts() {
+  const { t } = useTranslation();
   const downloadSupportLoadable = useLoadable(
     zeroDesktopDownloadSupportStatus$,
   );
@@ -118,24 +137,33 @@ function EmptyHosts() {
       </div>
       <div className="flex max-w-sm flex-col gap-1">
         <h2 className="text-sm font-medium text-foreground">
-          No online computers
+          {t(($) => {
+            return $.authorization.computerUse.noHostsTitle;
+          })}
         </h2>
         <p className="text-sm leading-5 text-muted-foreground">
-          Open Zero Computer Use on your Mac and refresh this page when it comes
-          online.
+          {t(($) => {
+            return $.authorization.computerUse.noHostsDescription;
+          })}
         </p>
         <p className="text-sm leading-5 text-muted-foreground">
-          {ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL}
+          {t(($) => {
+            return $.authorization.computerUse.macRequirement;
+          })}
         </p>
       </div>
       {downloadSupportStatus === "unsupported-intel-mac" ? (
         <Button type="button" variant="outline" disabled className="h-9">
           <IconAlertTriangle size={16} />
-          {ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL}
+          {t(($) => {
+            return $.authorization.computerUse.unsupportedIntelMac;
+          })}
         </Button>
       ) : downloadSupportStatus === "checking" ? (
         <Button type="button" variant="outline" disabled className="h-9">
-          Checking compatibility
+          {t(($) => {
+            return $.authorization.computerUse.checkingCompatibility;
+          })}
         </Button>
       ) : (
         <a
@@ -145,7 +173,9 @@ function EmptyHosts() {
           className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent"
         >
           <IconDownload size={16} />
-          Download for macOS
+          {t(($) => {
+            return $.authorization.computerUse.downloadMac;
+          })}
         </a>
       )}
     </div>
@@ -153,17 +183,21 @@ function EmptyHosts() {
 }
 
 function ErrorState() {
+  const { t } = useTranslation();
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center px-4">
       <div className="flex w-[430px] max-w-full flex-col items-center gap-6 rounded-xl border border-border bg-background px-6 py-10 text-center">
         <Vm0LogoLink />
         <div className="flex flex-col gap-2">
           <h1 className="text-lg font-medium text-foreground">
-            Authorization link unavailable
+            {t(($) => {
+              return $.authorization.computerUse.unavailableTitle;
+            })}
           </h1>
           <p className="text-sm leading-5 text-muted-foreground">
-            This Computer Use authorization link is invalid, expired, or not
-            available for this workspace.
+            {t(($) => {
+              return $.authorization.computerUse.unavailableDescription;
+            })}
           </p>
         </div>
       </div>
@@ -172,6 +206,8 @@ function ErrorState() {
 }
 
 export function ComputerUseAuthorizationPage() {
+  const { t } = useTranslation();
+  const locale = useGet(locale$);
   const pageSignal = useGet(pageSignal$);
   const requestLoadable = useLoadable(computerUseAuthorizationRequest$);
   const [applyLoadable, applyAuthorization] = useLoadableSet(
@@ -212,11 +248,17 @@ export function ComputerUseAuthorizationPage() {
           </div>
           <div className="flex flex-col gap-2">
             <h1 className="text-lg font-medium text-foreground">
-              Authorize computer use
+              {t(($) => {
+                return $.authorization.computerUse.title;
+              })}
             </h1>
             <p className="mx-auto max-w-md text-sm leading-5 text-muted-foreground">
-              Choose an online computer for Zero to use in{" "}
-              {sourceLabel(request.source)}.
+              {t(
+                ($) => {
+                  return $.authorization.computerUse.description;
+                },
+                { source: sourceLabel(request.source) },
+              )}
             </p>
           </div>
         </div>
@@ -247,7 +289,12 @@ export function ComputerUseAuthorizationPage() {
 
         <div className="flex flex-col gap-3 border-t border-border pt-5">
           <div className="text-xs text-muted-foreground">
-            Link expires {formatTime(request.expiresAt)}.
+            {t(
+              ($) => {
+                return $.authorization.computerUse.linkExpires;
+              },
+              { date: formatTime(request.expiresAt, locale) },
+            )}
           </div>
         </div>
       </div>
