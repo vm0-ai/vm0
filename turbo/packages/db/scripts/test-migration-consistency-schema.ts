@@ -3679,6 +3679,7 @@ async function validateChatEventTableRename(): Promise<void> {
   const testDbUrl = createTestDbUrl(testDb);
   const composeId = "95000000-0000-4000-8000-000000000001";
   const threadId = "95000000-0000-4000-8000-000000000002";
+  const artifactFileId = "95000000-0000-4000-8000-000000000003";
 
   await createDatabase(testDb);
   try {
@@ -3988,6 +3989,57 @@ async function validateChatEventTableRename(): Promise<void> {
       `);
       assert.deepEqual(contractedRelations.rows, [
         { relationKind: "r", relationName: "chat_events" },
+      ]);
+
+      const lingeringFunctionDependencies = await client.query<{
+        functionName: string;
+      }>(`
+        SELECT "pg_proc"."proname" AS "functionName"
+        FROM "pg_proc"
+        INNER JOIN "pg_namespace"
+          ON "pg_namespace"."oid" = "pg_proc"."pronamespace"
+        WHERE "pg_namespace"."nspname" = 'public'
+          AND "pg_proc"."prokind" IN ('f', 'p')
+          AND pg_get_functiondef("pg_proc"."oid") ILIKE '%chat_messages%'
+        ORDER BY "pg_proc"."proname"
+      `);
+      assert.deepEqual(lingeringFunctionDependencies.rows, []);
+
+      await client.query(
+        `
+          INSERT INTO "run_uploaded_files" (
+            "id",
+            "chat_thread_id",
+            "source",
+            "external_id",
+            "user_id",
+            "org_id",
+            "url"
+          )
+          VALUES (
+            $1,
+            $2,
+            'web',
+            'post-contract-artifact',
+            'chat-event-table-rename-user',
+            'chat-event-table-rename-org',
+            'https://example.com/post-contract-artifact'
+          )
+        `,
+        [artifactFileId, threadId],
+      );
+      const queuedArtifact = await client.query<{
+        authorUserId: string;
+      }>(
+        `
+          SELECT "author_user_id" AS "authorUserId"
+          FROM "artifact_catalog_pending_files"
+          WHERE "file_id" = $1
+        `,
+        [artifactFileId],
+      );
+      assert.deepEqual(queuedArtifact.rows, [
+        { authorUserId: "chat-event-table-rename-user" },
       ]);
 
       const contractedRows = await client.query<{
