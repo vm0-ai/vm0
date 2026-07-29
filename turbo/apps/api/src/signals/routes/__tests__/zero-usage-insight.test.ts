@@ -402,7 +402,8 @@ describe("GET /api/zero/usage/insight", () => {
     expect(seriesKeys).toStrictEqual(new Set([...names.slice(0, 7), "others"]));
   });
 
-  it("today produces hourly bucket strings", async () => {
+  it("today includes first-hour activity in an hourly bucket", async () => {
+    mockNow(new Date("2026-07-29T00:30:00.500Z"));
     const actor = await entitledInsightActor();
     const compose = await createInsightCompose(actor);
     const runId = await createSourceRun(actor, compose.composeId, "cli");
@@ -420,10 +421,8 @@ describe("GET /api/zero/usage/insight", () => {
       [200],
     );
 
-    expect(response.body.buckets.length).toBeGreaterThanOrEqual(1);
-    for (const bucket of response.body.buckets) {
-      expect(bucket.ts).toMatch(/:00:00/);
-    }
+    expect(response.body.buckets).toHaveLength(1);
+    expect(response.body.buckets[0]?.ts).toBe("2026-07-29T00:00:00.000Z");
   });
 
   it("day window returns the selected calendar day with hourly buckets", async () => {
