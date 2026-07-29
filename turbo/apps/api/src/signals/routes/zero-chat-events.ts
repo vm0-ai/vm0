@@ -1732,7 +1732,7 @@ async function appendAssociatedUserMessage(params: {
   });
 }
 
-function appendRecallUserMessage(params: {
+function appendRecallChatEvent(params: {
   readonly db: Db;
   readonly threadId: string;
   readonly revokesEventId: string;
@@ -2025,7 +2025,7 @@ const handleRecallSend$ = command(
       return ownership;
     }
 
-    const message = await appendRecallUserMessage({
+    const message = await appendRecallChatEvent({
       db,
       threadId: args.body.threadId,
       revokesEventId: args.body.revokesEventId,

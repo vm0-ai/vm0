@@ -31,7 +31,7 @@ export function generateDataKeyOutput(
   };
 }
 
-export function decryptDataKeyOutput(): DecryptCommandOutput {
+function decryptDataKeyOutput(): DecryptCommandOutput {
   return { $metadata: {}, Plaintext: TEST_DATA_KEY };
 }
 

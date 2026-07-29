@@ -27,8 +27,9 @@ export const connectors = pgTable(
   "connectors",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    // TODO(#23619): Rename the property and column in the persistence phase.
+    // Legacy built-in rollout bridge. Switch in #23793 and remove in #23794.
     type: varchar("type", { length: 64 }), // "github"
+    connectorSlug: varchar("connector_slug", { length: 64 }),
     customConnectorId: uuid("custom_connector_id"),
     authMethod: varchar("auth_method", { length: 50 }).notNull(), // "oauth"
     storageVersion: bigint("storage_version", { mode: "number" }).notNull(),
@@ -71,9 +72,16 @@ export const connectors = pgTable(
         "chk_connectors_identity",
         sql`num_nonnulls(${table.type}, ${table.customConnectorId}) = 1`,
       ),
+      uniqueIndex("idx_connectors_org_user_slug")
+        .on(table.orgId, table.userId, table.connectorSlug)
+        .where(sql`${table.connectorSlug} IS NOT NULL`),
       check(
         "chk_connectors_storage_version_positive",
         sql`${table.storageVersion} > 0`,
+      ),
+      check(
+        "chk_connectors_connector_slug_matches_type",
+        sql`${table.connectorSlug} IS NOT DISTINCT FROM ${table.type}`,
       ),
     ];
   },

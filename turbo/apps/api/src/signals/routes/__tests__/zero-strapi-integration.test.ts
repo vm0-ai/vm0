@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroStrapiIntegrationsContract } from "@vm0/api-contracts/contracts/zero-strapi-integrations";
-import { zeroWorkflowQueueContract } from "@vm0/api-contracts/contracts/zero-workflow-queue";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -40,10 +39,6 @@ function automationsClient() {
   return setupApp({ context })(zeroWorkflowAutomationsContract);
 }
 
-function queueClient() {
-  return setupApp({ context })(zeroWorkflowQueueContract);
-}
-
 async function postStrapiEvent(args: {
   readonly webhookUrl: string;
   readonly authorizationHeader: string;
@@ -63,6 +58,40 @@ async function postStrapiEvent(args: {
     },
   );
   return { status: response.status, body: await response.json() };
+}
+
+async function pendingWorkflowEvents(threadId: string) {
+  const events = await workflows.readThreadEvents(threadId);
+  const revokedIds = new Set(
+    events.flatMap((event) => {
+      return event.revokesEventId ? [event.revokesEventId] : [];
+    }),
+  );
+  return events.filter(
+    (
+      event,
+    ): event is Extract<
+      (typeof events)[number],
+      { readonly eventType: "input.automation" }
+    > => {
+      return (
+        event.eventType === "input.automation" &&
+        event.runId === undefined &&
+        !revokedIds.has(event.id)
+      );
+    },
+  );
+}
+
+async function workflowAutomationRuns(threadId: string, automationId: string) {
+  const events = await workflows.readThreadEvents(threadId);
+  return events.filter((event) => {
+    return (
+      event.eventType === "input.prompt" &&
+      chatEventDisplayText(event) === `/${WORKFLOW_NAME}` &&
+      event.workflowSnapshot?.automationId === automationId
+    );
+  });
 }
 
 beforeEach(() => {
@@ -334,14 +363,6 @@ describe("Strapi integration", () => {
     if (!automation.body.chatThreadId) {
       throw new Error("Expected Strapi automation chat thread");
     }
-    const paused = await accept(
-      queueClient().pause({
-        headers: authHeaders(),
-        params: { threadId: automation.body.chatThreadId },
-      }),
-      [200],
-    );
-    expect(paused.body.pausedAt).not.toBeNull();
 
     const publishStartedAt = now() - 60_000;
     mockNow(publishStartedAt);
@@ -425,17 +446,6 @@ describe("Strapi integration", () => {
       }, 0),
     ).toBe(1);
 
-    const durableQueue = await accept(
-      queueClient().get({
-        headers: authHeaders(),
-        params: { threadId: automation.body.chatThreadId },
-      }),
-      [200],
-    );
-    expect(durableQueue.body.running).toBeNull();
-    expect(durableQueue.body.pending).toHaveLength(1);
-    expect(durableQueue.body.pausedAt).not.toBeNull();
-
     const duplicateAfterAdmission = await postStrapiEvent({
       webhookUrl: createdIntegration.body.webhookUrl,
       authorizationHeader: createdIntegration.body.authorizationHeader,
@@ -448,27 +458,10 @@ describe("Strapi integration", () => {
       queued: 0,
     });
 
-    const resumed = await accept(
-      queueClient().resume({
-        headers: authHeaders(),
-        params: { threadId: automation.body.chatThreadId },
-      }),
-      [200],
-    );
-    expect(resumed.body.running).not.toBeNull();
-    expect(resumed.body.pending).toHaveLength(0);
-    expect(resumed.body.pausedAt).toBeNull();
-
-    const events = await workflows.readThreadEvents(
+    const runsForAutomation = await workflowAutomationRuns(
       automation.body.chatThreadId,
+      automation.body.id,
     );
-    const runsForAutomation = events.filter((event) => {
-      return (
-        event.eventType === "input.prompt" &&
-        chatEventDisplayText(event) === `/${WORKFLOW_NAME}` &&
-        event.workflowSnapshot?.automationId === automation.body.id
-      );
-    });
     expect(runsForAutomation).toHaveLength(1);
     expect(runsForAutomation[0]?.workflowSnapshot?.triggerBrief).toContain(
       "(2 locales)",
@@ -512,15 +505,9 @@ describe("Strapi integration", () => {
       success: true,
       executed: 1,
     });
-    const queueDuringRun = await accept(
-      queueClient().get({
-        headers: authHeaders(),
-        params: { threadId: automation.body.chatThreadId },
-      }),
-      [200],
-    );
-    expect(queueDuringRun.body.running?.runId).toBe(runId);
-    expect(queueDuringRun.body.pending).toHaveLength(1);
+    await expect(
+      pendingWorkflowEvents(automation.body.chatThreadId),
+    ).resolves.toHaveLength(1);
   });
 
   it("retries durable admission after queue encryption fails", async () => {
@@ -570,13 +557,6 @@ describe("Strapi integration", () => {
     if (!automation.body.chatThreadId) {
       throw new Error("Expected Strapi automation chat thread");
     }
-    await accept(
-      queueClient().pause({
-        headers: authHeaders(),
-        params: { threadId: automation.body.chatThreadId },
-      }),
-      [200],
-    );
 
     const publishedAt = now();
     mockNow(publishedAt);
@@ -621,15 +601,9 @@ describe("Strapi integration", () => {
     });
     expect(kms.generateDataKeyCalls).toBe(1);
 
-    const queueAfterFailure = await accept(
-      queueClient().get({
-        headers: authHeaders(),
-        params: { threadId: automation.body.chatThreadId },
-      }),
-      [200],
-    );
-    expect(queueAfterFailure.body.running).toBeNull();
-    expect(queueAfterFailure.body.pending).toHaveLength(0);
+    await expect(
+      pendingWorkflowEvents(automation.body.chatThreadId),
+    ).resolves.toHaveLength(0);
     const eventsAfterFailure = await workflows.readThreadEvents(
       automation.body.chatThreadId,
     );
@@ -665,17 +639,13 @@ describe("Strapi integration", () => {
     });
     expect(kms.generateDataKeyCalls).toBe(2);
 
-    const queueAfterRetry = await accept(
-      queueClient().get({
-        headers: authHeaders(),
-        params: { threadId: automation.body.chatThreadId },
-      }),
-      [200],
+    const runsAfterRetry = await workflowAutomationRuns(
+      automation.body.chatThreadId,
+      automation.body.id,
     );
-    expect(queueAfterRetry.body.running).toBeNull();
-    expect(queueAfterRetry.body.pending).toHaveLength(1);
-    const queuedEventId = queueAfterRetry.body.pending[0]?.id;
-    expect(queuedEventId).toStrictEqual(expect.any(String));
+    expect(runsAfterRetry).toHaveLength(1);
+    const runId = runsAfterRetry[0]?.runId;
+    expect(runId).toStrictEqual(expect.any(String));
 
     const finalCron = await createApp({
       signal: context.signal,
@@ -688,15 +658,13 @@ describe("Strapi integration", () => {
       executed: 0,
       skipped: 0,
     });
-    const finalQueue = await accept(
-      queueClient().get({
-        headers: authHeaders(),
-        params: { threadId: automation.body.chatThreadId },
-      }),
-      [200],
-    );
-    expect(finalQueue.body.running).toBeNull();
-    expect(finalQueue.body.pending).toHaveLength(1);
-    expect(finalQueue.body.pending[0]?.id).toBe(queuedEventId);
+    expect(
+      (
+        await workflowAutomationRuns(
+          automation.body.chatThreadId,
+          automation.body.id,
+        )
+      )[0]?.runId,
+    ).toBe(runId);
   });
 });

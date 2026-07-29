@@ -78,24 +78,6 @@ export async function readMorningBriefQueuedParamsFixture(args: {
 }
 
 /**
- * Appends the production automation-pause control event to a dedicated brief
- * thread. The workflow queue API intentionally has no resource for this
- * non-automation thread, so the acceptance test uses the event writer.
- */
-export async function pauseMorningBriefAutomationIntakeFixture(
-  threadId: string,
-): Promise<void> {
-  await db().transaction(async (tx) => {
-    await insertChatEvent(tx, {
-      chatThreadId: threadId,
-      eventType: "queue.automation_paused",
-      runId: null,
-      pauseReason: "Morning Brief queue acceptance test",
-    });
-  });
-}
-
-/**
  * Appends a normal web user message without invoking a drain. Product sends
  * persist this same event before draining, but cannot pause at that boundary.
  */

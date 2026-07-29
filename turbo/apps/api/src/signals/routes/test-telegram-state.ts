@@ -289,6 +289,7 @@ function loadThreadSessions(db: ReadonlyDb, botId: string) {
       chatId: telegramThreadSessions.chatId,
       rootMessageId: telegramThreadSessions.rootMessageId,
       agentSessionId: telegramThreadSessions.agentSessionId,
+      lastProcessedMessageId: telegramThreadSessions.lastProcessedMessageId,
     })
     .from(telegramThreadSessions)
     .innerJoin(

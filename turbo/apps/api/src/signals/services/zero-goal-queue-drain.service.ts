@@ -2,19 +2,14 @@ import type { ChatMessageGoalSnapshot } from "@vm0/db/schema/chat-message";
 import { command } from "ccstate";
 
 import { logger } from "../../lib/log";
-import {
-  publishChatThreadMessageCreatedSafely,
-  publishChatThreadWorkflowQueueChangedSafely,
-} from "../external/realtime";
+import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import { writeDb$, type Db } from "../external/db";
 import { now } from "../external/time";
-import { settle } from "../utils";
 import {
   isQueueFirstRunClaimLost,
   type DispatchFailedRunCallbacks,
 } from "./agent-run-create.service";
 import {
-  decryptGoalQueueEventParams,
   loadGoalQueueTarget,
   loadNextGoalQueueEvent,
   rejectGoalQueueEvent,
@@ -32,12 +27,9 @@ const log = logger("api:zero-goal-queue-drain");
 const MAX_DRAIN_ATTEMPTS = 5;
 const GOAL_INVALIDATED_REASON =
   "Goal continuation no longer matches the active goal";
-const GOAL_PAYLOAD_UNREADABLE_REASON =
-  "Goal continuation queue payload is unreadable";
 
 interface InternalRunCallbackInput {
   readonly internalKind: InternalRunCallbackKind;
-  readonly secret: string;
   readonly payload: unknown;
 }
 
@@ -101,12 +93,10 @@ function buildGoalContinuationPrompt(goal: {
 function buildGoalChatCallbacks(args: {
   readonly threadId: string;
   readonly agentId: string;
-  readonly callbackSecret: string;
 }): readonly InternalRunCallbackInput[] {
   return [
     {
       internalKind: "chat",
-      secret: args.callbackSecret,
       payload: {
         threadId: args.threadId,
         agentId: args.agentId,
@@ -163,11 +153,6 @@ async function publishGoalQueueChanged(
   event: PendingGoalQueueEvent,
   signal: AbortSignal,
 ): Promise<void> {
-  await publishChatThreadWorkflowQueueChangedSafely(
-    event.userId,
-    event.chatThreadId,
-  );
-  signal.throwIfAborted();
   await publishChatThreadMessageCreatedSafely(event.userId, event.chatThreadId);
   signal.throwIfAborted();
 }
@@ -198,7 +183,6 @@ const launchQueuedGoal$ = command(
     args: {
       readonly event: PendingGoalQueueEvent;
       readonly goal: GoalQueueTarget;
-      readonly callbackSecret: string;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
     },
     signal: AbortSignal,
@@ -258,7 +242,6 @@ const launchQueuedGoal$ = command(
         callbacks: buildGoalChatCallbacks({
           threadId: normalizedGoal.threadId,
           agentId: normalizedGoal.agentId,
-          callbackSecret: args.callbackSecret,
         }),
         zeroRunMetadata: {
           goalId: normalizedGoal.goalId,
@@ -319,37 +302,7 @@ export const drainGoalQueueForThread$ = command(
         return;
       }
 
-      const decrypted = await settle(
-        decryptGoalQueueEventParams(event.encryptedParams, {
-          orgId: event.orgId,
-          userId: event.userId,
-        }),
-      );
-      signal.throwIfAborted();
-      if (!decrypted.ok || !decrypted.value) {
-        const paused = await pauseActiveGoalForThread(db, {
-          orgId: event.orgId,
-          userId: event.userId,
-          threadId: event.chatThreadId,
-        });
-        signal.throwIfAborted();
-        await rejectGoalEvent(
-          db,
-          event,
-          GOAL_PAYLOAD_UNREADABLE_REASON,
-          signal,
-        );
-        log.warn(
-          "Goal queue event payload could not be decrypted; goal paused",
-          {
-            eventId: event.id,
-            pauseResult: paused.kind,
-          },
-        );
-        continue;
-      }
-
-      const goal = await loadGoalQueueTarget(db, event, decrypted.value.goalId);
+      const goal = await loadGoalQueueTarget(db, event);
       signal.throwIfAborted();
       if (!goal) {
         await rejectGoalEvent(db, event, GOAL_INVALIDATED_REASON, signal);
@@ -361,7 +314,6 @@ export const drainGoalQueueForThread$ = command(
         {
           event,
           goal,
-          callbackSecret: decrypted.value.callbackSecret,
           dispatchFailedCallbacks: args.dispatchFailedCallbacks,
         },
         signal,
@@ -372,11 +324,7 @@ export const drainGoalQueueForThread$ = command(
         return;
       }
       if (result.kind === "enqueued") {
-        const stillValid = await loadGoalQueueTarget(
-          db,
-          event,
-          decrypted.value.goalId,
-        );
+        const stillValid = await loadGoalQueueTarget(db, event);
         signal.throwIfAborted();
         if (!stillValid) {
           await rejectGoalEvent(db, event, GOAL_INVALIDATED_REASON, signal);

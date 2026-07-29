@@ -5153,6 +5153,27 @@
       "when": 1785326650784,
       "tag": "0735_remove_browser_usage_pricing",
       "breakpoints": true
+    },
+    {
+      "idx": 736,
+      "version": "7",
+      "when": 1785336324333,
+      "tag": "0736_drop_chat_messages_compatibility_view",
+      "breakpoints": true
+    },
+    {
+      "idx": 737,
+      "version": "7",
+      "when": 1785341952944,
+      "tag": "0737_browser_session_resize_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 738,
+      "version": "7",
+      "when": 1785344698053,
+      "tag": "0738_expand_connector_slug_columns",
+      "breakpoints": true
     }
   ]
 }

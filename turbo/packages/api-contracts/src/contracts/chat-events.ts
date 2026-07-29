@@ -15,8 +15,6 @@ export const CHAT_EVENT_TYPES = [
   "run.completed",
   "run.failed",
   "run.cancelled",
-  "queue.automation_paused",
-  "queue.automation_resumed",
   "control.interrupt",
   "control.revoke",
   "goal.changed",
@@ -26,12 +24,6 @@ export const CHAT_EVENT_TYPES = [
 export const chatEventTypeSchema = z.enum(CHAT_EVENT_TYPES);
 
 export type ChatEventType = z.infer<typeof chatEventTypeSchema>;
-type MaterializedChatEventType = Exclude<ChatEventType, "input.goal">;
-export const MATERIALIZED_CHAT_EVENT_TYPES = CHAT_EVENT_TYPES.filter(
-  (eventType): eventType is MaterializedChatEventType => {
-    return eventType !== "input.goal";
-  },
-);
 export type ChatEventCompatibilityRole = "user" | "assistant";
 export type ChatEventRunLifecycle = "completed" | "failed" | "cancelled";
 export type ChatRunFoldState = "queued" | "dequeued" | ChatEventRunLifecycle;
@@ -60,8 +52,6 @@ const VALID_CHAT_EVENT_REVOCATION_TARGETS = {
   "run.completed": [],
   "run.failed": [],
   "run.cancelled": [],
-  "queue.automation_paused": [],
-  "queue.automation_resumed": [],
   "control.interrupt": [],
   "control.revoke": [
     "input.prompt",
@@ -87,35 +77,11 @@ const CHAT_RUN_FOLD_STATES = {
   "run.completed": "completed",
   "run.failed": "failed",
   "run.cancelled": "cancelled",
-  "queue.automation_paused": null,
-  "queue.automation_resumed": null,
   "control.interrupt": null,
   "control.revoke": null,
   "goal.changed": null,
   "usage.recorded": null,
 } satisfies Record<ChatEventType, ChatRunFoldState | null>;
-
-const CHAT_AUTOMATION_INTAKE_PAUSE_TRANSITIONS = {
-  "input.prompt": null,
-  "input.automation": null,
-  "input.goal": null,
-  "input.rejected": null,
-  "output.message": null,
-  "output.error": null,
-  "output.thinking": null,
-  "output.followups": null,
-  "run.queued": null,
-  "run.dequeued": null,
-  "run.completed": null,
-  "run.failed": null,
-  "run.cancelled": null,
-  "queue.automation_paused": "pause",
-  "queue.automation_resumed": "resume",
-  "control.interrupt": null,
-  "control.revoke": null,
-  "goal.changed": null,
-  "usage.recorded": null,
-} satisfies Record<ChatEventType, "pause" | "resume" | null>;
 
 interface ChatEventFoldInput {
   readonly id?: string;
@@ -129,16 +95,6 @@ interface ChatEventFoldInput {
 export interface ChatQueueFoldInput extends ChatEventFoldInput {
   readonly id: string;
   readonly createdAt: string;
-}
-
-export interface ChatAutomationIntakePauseFoldInput extends ChatEventFoldInput {
-  readonly createdAt: string;
-  readonly pauseReason?: string | null;
-}
-
-export interface ChatAutomationIntakePauseState {
-  readonly pausedAt: string;
-  readonly pauseReason: string | null;
 }
 
 interface ChatUsageFoldInput extends ChatEventFoldInput {
@@ -167,8 +123,6 @@ export function chatEventCompatibilityRole(
     case "run.completed":
     case "run.failed":
     case "run.cancelled":
-    case "queue.automation_paused":
-    case "queue.automation_resumed":
     case "goal.changed":
     case "usage.recorded":
       return "assistant";
@@ -195,8 +149,6 @@ export function chatEventRunLifecycle(
     case "output.followups":
     case "run.queued":
     case "run.dequeued":
-    case "queue.automation_paused":
-    case "queue.automation_resumed":
     case "control.interrupt":
     case "control.revoke":
     case "goal.changed":
@@ -356,34 +308,10 @@ export function foldPendingChatQueueEvents<TEvent extends ChatQueueFoldInput>(
     .sort(compareChatQueueEvents);
 }
 
-export function foldChatAutomationIntakePause(
-  events: readonly ChatAutomationIntakePauseFoldInput[],
-): ChatAutomationIntakePauseState | null {
-  let pause: ChatAutomationIntakePauseState | null = null;
-  for (const event of events) {
-    const transition =
-      CHAT_AUTOMATION_INTAKE_PAUSE_TRANSITIONS[event.eventType];
-    if (transition === "pause") {
-      pause = {
-        pausedAt: event.createdAt,
-        pauseReason: event.pauseReason ?? null,
-      };
-    } else if (transition === "resume") {
-      pause = null;
-    }
-  }
-  return pause;
-}
-
-export function foldRunnableChatQueueEvents<
-  TEvent extends ChatQueueFoldInput & ChatAutomationIntakePauseFoldInput,
->(events: readonly TEvent[]): TEvent[] {
-  const pending = foldPendingChatQueueEvents(events);
-  return foldChatAutomationIntakePause(events) === null
-    ? pending
-    : pending.filter((event) => {
-        return event.eventType !== "input.automation";
-      });
+export function foldRunnableChatQueueEvents<TEvent extends ChatQueueFoldInput>(
+  events: readonly TEvent[],
+): TEvent[] {
+  return foldPendingChatQueueEvents(events);
 }
 
 export function foldActiveChatGoalObjective(

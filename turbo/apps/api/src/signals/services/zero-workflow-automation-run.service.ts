@@ -1,10 +1,7 @@
 import { command } from "ccstate";
 
 import { writeDb$ } from "../external/db";
-import {
-  publishChatThreadMessageCreatedSafely,
-  publishChatThreadWorkflowQueueChangedSafely,
-} from "../external/realtime";
+import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import {
   admitWorkflowAutomationEvent,
   type WorkflowQueueEventParams,
@@ -94,11 +91,6 @@ export const runWorkflowAutomationNow$ = command(
     );
     signal.throwIfAborted();
 
-    await publishChatThreadWorkflowQueueChangedSafely(
-      automation.ownerUserId,
-      chatThreadId,
-    );
-    signal.throwIfAborted();
     if (admission.kind === "inserted") {
       await publishChatThreadMessageCreatedSafely(
         automation.ownerUserId,

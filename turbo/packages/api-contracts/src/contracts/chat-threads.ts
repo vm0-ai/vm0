@@ -1,9 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import {
-  MATERIALIZED_CHAT_EVENT_TYPES,
-  chatEventTypeSchema,
-} from "./chat-events";
+import { CHAT_EVENT_TYPES } from "./chat-events";
 import { apiErrorSchema } from "./errors";
 import { requireUserMessageForNonEmptyDraft } from "./draft-user-message";
 import { hostedArtifactKindSchema } from "./zero-host";
@@ -409,6 +406,10 @@ const workflowSnapshotSchema = z.object({
   triggerBrief: z.string().nullable().optional(),
 });
 
+const goalSnapshotSchema = z.object({
+  objectiveBrief: z.string().min(1),
+});
+
 const chatEventBaseSchema = z.object({
   id: z.string(),
   threadId: z.string(),
@@ -420,11 +421,7 @@ const chatEventBaseSchema = z.object({
   feishuChatOpenUrl: z.string().url().optional(),
   isGoalRun: z.boolean().optional(),
   runEventId: z.string().optional(),
-  goalSnapshot: z
-    .object({
-      objectiveBrief: z.string().min(1),
-    })
-    .optional(),
+  goalSnapshot: goalSnapshotSchema.optional(),
   revokesEventId: z.string().optional(),
   /** Server-assigned strict position within the chat thread. */
   seqId: z.number().int().positive(),
@@ -468,6 +465,26 @@ const inputAutomationEventSchema = chatEventBaseSchema
     automationId: z.string().uuid(),
     triggerSource: triggerSourceSchema,
     triggerBrief: z.string().nullable(),
+  })
+  .strict();
+
+const inputGoalEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("input.goal"),
+    content: z.null(),
+    // Queue association stays server-side; the public event preserves only
+    // the non-sensitive goal snapshot and stream ordering contract.
+    runId: z.never().optional(),
+    runGroupId: z.never().optional(),
+    triggerSource: z.never().optional(),
+    slackMessagePermalink: z.never().optional(),
+    feishuChatOpenUrl: z.never().optional(),
+    isGoalRun: z.never().optional(),
+    runEventId: z.never().optional(),
+    goalSnapshot: goalSnapshotSchema,
+    revokesEventId: z.never().optional(),
+    sequenceNumber: z.never().optional(),
+    workflowSnapshot: z.never().optional(),
   })
   .strict();
 
@@ -558,7 +575,11 @@ const runCancelledEventSchema = chatEventBaseSchema
   })
   .strict();
 
-const queueAutomationPausedEventSchema = chatEventBaseSchema
+// Read-only rollout compatibility for browser bundles that may reach the
+// previous API while historical queue pause markers still exist. These leaves
+// deliberately stay outside CHAT_EVENT_TYPES and chatEventSchema so no current
+// writer or fold can recreate the retired pause/resume behavior.
+const legacyQueueAutomationPausedEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("queue.automation_paused"),
     content: z.null(),
@@ -566,7 +587,7 @@ const queueAutomationPausedEventSchema = chatEventBaseSchema
   })
   .strict();
 
-const queueAutomationResumedEventSchema = chatEventBaseSchema
+const legacyQueueAutomationResumedEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("queue.automation_resumed"),
     content: z.null(),
@@ -609,6 +630,7 @@ const usageRecordedEventSchema = chatEventBaseSchema
 const chatEventSchema = z.discriminatedUnion("eventType", [
   inputPromptEventSchema,
   inputAutomationEventSchema,
+  inputGoalEventSchema,
   inputRejectedEventSchema,
   outputMessageEventSchema,
   outputErrorEventSchema,
@@ -619,22 +641,26 @@ const chatEventSchema = z.discriminatedUnion("eventType", [
   runCompletedEventSchema,
   runFailedEventSchema,
   runCancelledEventSchema,
-  queueAutomationPausedEventSchema,
-  queueAutomationResumedEventSchema,
   controlInterruptEventSchema,
   controlRevokeEventSchema,
   goalChangedEventSchema,
   usageRecordedEventSchema,
 ]);
 
-const chatEventResponseSchema = chatEventSchema;
+/**
+ * Redacted public projection of the canonical thread stream, plus read-only
+ * compatibility for retired pause markers from older API deployments.
+ * Server-only payload fields are not accepted.
+ */
+const chatEventResponseSchema = z.discriminatedUnion("eventType", [
+  ...chatEventSchema.options,
+  legacyQueueAutomationPausedEventSchema,
+  legacyQueueAutomationResumedEventSchema,
+]);
 
-if (
-  MATERIALIZED_CHAT_EVENT_TYPES.length !== chatEventSchema.options.length ||
-  !chatEventTypeSchema.options.includes("input.goal")
-) {
+if (CHAT_EVENT_TYPES.length !== chatEventSchema.options.length) {
   throw new Error(
-    "ChatEvent schema must cover every materialized event catalog leaf",
+    "ChatEvent schema must cover every registered event catalog leaf",
   );
 }
 
@@ -1582,6 +1608,15 @@ export type ChatThreadDraft = z.infer<typeof chatThreadDraftSchema>;
 export type ChatEvent = z.infer<typeof chatEventSchema>;
 export type ChatEventResponse = z.infer<typeof chatEventResponseSchema>;
 export type ChatEventSendBody = z.infer<typeof chatEventsContract.send.body>;
+
+export function isCanonicalChatEventResponse(
+  event: ChatEventResponse,
+): event is ChatEvent {
+  return (
+    event.eventType !== "queue.automation_paused" &&
+    event.eventType !== "queue.automation_resumed"
+  );
+}
 
 export function chatEventResponse(event: ChatEvent): ChatEventResponse {
   return chatEventResponseSchema.parse(event);

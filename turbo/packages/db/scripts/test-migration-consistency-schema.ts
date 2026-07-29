@@ -35,7 +35,23 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/node-postgres";
 import { Client } from "pg";
+import {
+  connectorSlugLegacyInsertConnectors,
+  connectorSlugLegacyInsertExternalCodeSessions,
+  connectorSlugLegacyInsertOauthDeviceSessions,
+  connectorSlugLegacyInsertOauthStates,
+  connectorSlugLegacyInsertUserConnectors,
+  connectorSlugLegacyInsertUserPermissionGrants,
+} from "../src/compat/connector-slug-legacy-insert";
+import { connectorExternalCodeSessions } from "../src/schema/connector-external-code-session";
+import { connectorOauthDeviceAuthorizationSessions } from "../src/schema/connector-oauth-device-authorization-session";
+import { connectorOauthStates } from "../src/schema/connector-oauth-state";
+import { connectors } from "../src/schema/connector";
+import { userConnectors } from "../src/schema/user-connector";
+import { userPermissionGrants } from "../src/schema/user-permission-grant";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_DIR = path.join(dirname, "..");
@@ -547,7 +563,7 @@ async function validateCanonicalChatMessageCompatibility(
     userMessage: unknown;
   }>(
     `
-      INSERT INTO "chat_messages" (
+      INSERT INTO "chat_events" (
         "chat_thread_id",
         "content",
         "event_type",
@@ -579,7 +595,7 @@ async function validateCanonicalChatMessageCompatibility(
 
   const nextMessage = await client.query<{ seqId: string }>(
     `
-      INSERT INTO "chat_messages" (
+      INSERT INTO "chat_events" (
         "chat_thread_id",
         "content",
         "event_type"
@@ -606,7 +622,7 @@ async function validateCanonicalChatMessageCompatibility(
     userMessage: unknown;
   }>(
     `
-      INSERT INTO "chat_messages" (
+      INSERT INTO "chat_events" (
         "chat_thread_id",
         "content",
         "event_type",
@@ -750,9 +766,8 @@ async function validateChatEventSourcesAreAppendOnly(
       throw new Error("Failed to create append-only chat thread fixture");
     }
 
-    // Simulate the previous typed API version serving during migration: it
-    // writes event_type but does not know about seq_id and relies on the
-    // temporary database allocator.
+    // Insert through the canonical table without seq_id and rely on the
+    // database allocator.
     messageId = await validateCanonicalChatMessageCompatibility(
       client,
       threadId,
@@ -854,7 +869,7 @@ async function validateChatEventSourcesAreAppendOnly(
 
     await expectAppendOnlyUpdateRejected(client, {
       tableName: "chat_events",
-      query: `UPDATE "chat_messages" SET "content" = 'mutated' WHERE "id" = $1`,
+      query: `UPDATE "chat_events" SET "content" = 'mutated' WHERE "id" = $1`,
       rowId: messageId,
     });
     await expectAppendOnlyUpdateRejected(client, {
@@ -863,11 +878,9 @@ async function validateChatEventSourcesAreAppendOnly(
       rowId: eventId,
     });
 
-    console.log("   ✅ chat_messages compatibility view rejects UPDATE");
+    console.log("   ✅ chat_events rejects UPDATE");
     console.log("   ✅ chat_thread_events rejects UPDATE\n");
-    console.log(
-      "   ✅ previous API writes receive database-allocated seq_ids\n",
-    );
+    console.log("   ✅ chat event writes receive database-allocated seq_ids\n");
   } finally {
     await client.query(
       `
@@ -4053,6 +4066,7 @@ async function validateChatMessageRoleContraction(): Promise<void> {
 
 const CHAT_EVENT_TABLE_RENAME_PREVIOUS_MIGRATION = 722;
 const CHAT_EVENT_TABLE_RENAME_MIGRATION = 723;
+const CHAT_MESSAGES_VIEW_CONTRACTION_MIGRATION = 736;
 
 async function validateChatEventTableRename(): Promise<void> {
   console.log(
@@ -4063,6 +4077,7 @@ async function validateChatEventTableRename(): Promise<void> {
   const testDbUrl = createTestDbUrl(testDb);
   const composeId = "95000000-0000-4000-8000-000000000001";
   const threadId = "95000000-0000-4000-8000-000000000002";
+  const artifactFileId = "95000000-0000-4000-8000-000000000003";
 
   await createDatabase(testDb);
   try {
@@ -4350,6 +4365,100 @@ async function validateChatEventTableRename(): Promise<void> {
         query: `UPDATE "chat_events" SET "content" = 'mutated' WHERE "id" = $1`,
         rowId: historicalEventId,
       });
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        CHAT_MESSAGES_VIEW_CONTRACTION_MIGRATION,
+      );
+
+      const contractedRelations = await client.query<{
+        relationKind: string;
+        relationName: string;
+      }>(`
+        SELECT
+          "relname" AS "relationName",
+          "relkind"::text AS "relationKind"
+        FROM "pg_class"
+        INNER JOIN "pg_namespace"
+          ON "pg_namespace"."oid" = "pg_class"."relnamespace"
+        WHERE "pg_namespace"."nspname" = 'public'
+          AND "pg_class"."relname" IN ('chat_events', 'chat_messages')
+        ORDER BY "pg_class"."relname"
+      `);
+      assert.deepEqual(contractedRelations.rows, [
+        { relationKind: "r", relationName: "chat_events" },
+      ]);
+
+      const lingeringFunctionDependencies = await client.query<{
+        functionName: string;
+      }>(`
+        SELECT "pg_proc"."proname" AS "functionName"
+        FROM "pg_proc"
+        INNER JOIN "pg_namespace"
+          ON "pg_namespace"."oid" = "pg_proc"."pronamespace"
+        WHERE "pg_namespace"."nspname" = 'public'
+          AND "pg_proc"."prokind" IN ('f', 'p')
+          AND pg_get_functiondef("pg_proc"."oid") ILIKE '%chat_messages%'
+        ORDER BY "pg_proc"."proname"
+      `);
+      assert.deepEqual(lingeringFunctionDependencies.rows, []);
+
+      await client.query(
+        `
+          INSERT INTO "run_uploaded_files" (
+            "id",
+            "chat_thread_id",
+            "source",
+            "external_id",
+            "user_id",
+            "org_id",
+            "url"
+          )
+          VALUES (
+            $1,
+            $2,
+            'web',
+            'post-contract-artifact',
+            'chat-event-table-rename-user',
+            'chat-event-table-rename-org',
+            'https://example.com/post-contract-artifact'
+          )
+        `,
+        [artifactFileId, threadId],
+      );
+      const queuedArtifact = await client.query<{
+        authorUserId: string;
+      }>(
+        `
+          SELECT "author_user_id" AS "authorUserId"
+          FROM "artifact_catalog_pending_files"
+          WHERE "file_id" = $1
+        `,
+        [artifactFileId],
+      );
+      assert.deepEqual(queuedArtifact.rows, [
+        { authorUserId: "chat-event-table-rename-user" },
+      ]);
+
+      const contractedRows = await client.query<{
+        content: string;
+        seqId: string;
+      }>(
+        `
+          SELECT "content", "seq_id" AS "seqId"
+          FROM "chat_events"
+          WHERE "chat_thread_id" = $1
+          ORDER BY "seq_id"
+        `,
+        [threadId],
+      );
+      assert.deepEqual(contractedRows.rows, physicalRows.rows);
+
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_events",
+        query: `UPDATE "chat_events" SET "content" = 'mutated' WHERE "id" = $1`,
+        rowId: historicalEventId,
+      });
     } finally {
       await client.end();
     }
@@ -4358,7 +4467,7 @@ async function validateChatEventTableRename(): Promise<void> {
   }
 
   console.log(
-    "   ✅ Historical rows survive, previous-API SELECT/INSERT RETURNING remains compatible, physical objects are renamed, and append-only protection holds through the rename\n",
+    "   ✅ Historical rows survive the rename and compatibility-view contraction, previous-API access remains compatible through the expand step, and append-only protection stays active\n",
   );
 }
 
@@ -6177,6 +6286,1382 @@ async function validateStorageLegacyTypeContraction(): Promise<void> {
   }
 }
 
+type ConnectorSlugSqlValue = string | number | null;
+
+type ConnectorSlugCompatibilitySpec = {
+  readonly tableName:
+    | "connector_external_code_sessions"
+    | "connector_oauth_device_authorization_sessions"
+    | "connector_oauth_states"
+    | "connectors"
+    | "user_connectors"
+    | "user_permission_grants";
+  readonly legacyColumn: "connector_ref" | "connector_type" | "type";
+  readonly originalId: string;
+  readonly originalSlug: string;
+  readonly slugKey: string;
+  readonly baseColumns: readonly string[];
+  readonly baseValues: (suffix: string) => readonly ConnectorSlugSqlValue[];
+  readonly conflictColumns: readonly string[];
+  readonly conflictWhere?: string;
+};
+
+type ConnectorSlugInsertArgs = {
+  readonly canonicalSlug?: string;
+  readonly conflictAction?: "nothing" | "update-legacy";
+  readonly explicitId?: string;
+  readonly legacySlug?: string;
+  readonly returnExpandedIdentity: boolean;
+  readonly suffix: string;
+};
+
+type ConnectorSlugInsertStatement = {
+  readonly query: string;
+  readonly values: readonly ConnectorSlugSqlValue[];
+};
+
+type ConnectorSlugIdentityRow = {
+  readonly connectorSlug: string;
+  readonly id: string;
+  readonly legacyValue: string;
+};
+
+const CONNECTOR_SLUG_EXPANSION_AGENT_ID =
+  "71000000-0000-4000-8000-000000000099";
+const CONNECTOR_SLUG_EXPANSION_CUSTOM_CONNECTOR_ID =
+  "71000000-0000-4000-8000-000000000098";
+const CONNECTOR_SLUG_EXPANSION_CUSTOM_CONNECTION_ID =
+  "71000000-0000-4000-8000-000000000097";
+const CONNECTOR_SLUG_EXPANSION_CUSTOM_OAUTH_STATE_ID =
+  "71000000-0000-4000-8000-000000000096";
+const CONNECTOR_SLUG_EXPANSION_PREVIOUS_MIGRATION = 737;
+const CONNECTOR_SLUG_EXPANSION_MIGRATION = 738;
+const connectorSlugLegacyInsertIds = {
+  connector_external_code_sessions: "71000000-0000-4000-8000-000000000085",
+  connector_oauth_device_authorization_sessions:
+    "71000000-0000-4000-8000-000000000084",
+  connector_oauth_states: "71000000-0000-4000-8000-000000000083",
+  connectors: "71000000-0000-4000-8000-000000000081",
+  user_connectors: "71000000-0000-4000-8000-000000000082",
+  user_permission_grants: "71000000-0000-4000-8000-000000000086",
+} as const;
+const connectorSlugLegacyInsertValues = {
+  connector_external_code_sessions: "x",
+  connector_oauth_device_authorization_sessions: "youtube",
+  connector_oauth_states: "gmail",
+  connectors: "google-drive",
+  user_connectors: "google-calendar",
+  user_permission_grants: "slack",
+} as const;
+
+const connectorSlugCompatibilitySpecs: readonly ConnectorSlugCompatibilitySpec[] =
+  [
+    {
+      tableName: "connectors",
+      legacyColumn: "type",
+      originalId: "71000000-0000-4000-8000-000000000001",
+      originalSlug: "github",
+      slugKey: "connector",
+      baseColumns: ["auth_method", "storage_version", "user_id", "org_id"],
+      baseValues: (suffix) => {
+        return [
+          "oauth",
+          1,
+          `connector-slug-user-${suffix}`,
+          "connector-slug-org",
+        ];
+      },
+      conflictColumns: ["org_id", "user_id", "type"],
+      conflictWhere: '"type" IS NOT NULL',
+    },
+    {
+      tableName: "user_connectors",
+      legacyColumn: "connector_type",
+      originalId: "71000000-0000-4000-8000-000000000002",
+      originalSlug: "notion",
+      slugKey: "user-connector",
+      baseColumns: ["org_id", "user_id", "agent_id"],
+      baseValues: (suffix) => {
+        return [
+          "connector-slug-org",
+          `connector-slug-user-${suffix}`,
+          CONNECTOR_SLUG_EXPANSION_AGENT_ID,
+        ];
+      },
+      conflictColumns: ["org_id", "user_id", "agent_id", "connector_type"],
+    },
+    {
+      tableName: "connector_oauth_states",
+      legacyColumn: "type",
+      originalId: "71000000-0000-4000-8000-000000000003",
+      originalSlug: "linear",
+      slugKey: "oauth-state",
+      baseColumns: [
+        "state",
+        "auth_method",
+        "user_id",
+        "org_id",
+        "redirect_uri",
+        "expires_at",
+      ],
+      baseValues: (suffix) => {
+        return [
+          `connector-slug-state-${suffix}`,
+          "oauth",
+          `connector-slug-user-${suffix}`,
+          "connector-slug-org",
+          "https://example.com/callback",
+          "2030-01-01T00:00:00.000Z",
+        ];
+      },
+      conflictColumns: ["state"],
+    },
+    {
+      tableName: "connector_oauth_device_authorization_sessions",
+      legacyColumn: "connector_type",
+      originalId: "71000000-0000-4000-8000-000000000004",
+      originalSlug: "github",
+      slugKey: "device-session",
+      baseColumns: [
+        "org_id",
+        "user_id",
+        "auth_method",
+        "session_token_hash",
+        "encrypted_provider_state",
+        "user_code",
+        "verification_uri",
+        "interval_seconds",
+        "expires_at",
+      ],
+      baseValues: (suffix) => {
+        return [
+          "connector-slug-org",
+          `connector-slug-user-${suffix}`,
+          "oauth-device",
+          `connector-slug-device-token-${suffix}`,
+          `encrypted-device-state-${suffix}`,
+          `device-code-${suffix}`,
+          "https://example.com/device",
+          5,
+          "2030-01-01T00:00:00.000Z",
+        ];
+      },
+      conflictColumns: ["session_token_hash"],
+    },
+    {
+      tableName: "connector_external_code_sessions",
+      legacyColumn: "connector_type",
+      originalId: "71000000-0000-4000-8000-000000000005",
+      originalSlug: "x",
+      slugKey: "external-session",
+      baseColumns: [
+        "org_id",
+        "user_id",
+        "auth_method",
+        "session_token_hash",
+        "encrypted_provider_state",
+        "authorization_url",
+        "expires_at",
+      ],
+      baseValues: (suffix) => {
+        return [
+          "connector-slug-org",
+          `connector-slug-user-${suffix}`,
+          "external-code",
+          `connector-slug-external-token-${suffix}`,
+          `encrypted-external-state-${suffix}`,
+          `https://example.com/authorize/${suffix}`,
+          "2030-01-01T00:00:00.000Z",
+        ];
+      },
+      conflictColumns: ["session_token_hash"],
+    },
+    {
+      tableName: "user_permission_grants",
+      legacyColumn: "connector_ref",
+      originalId: "71000000-0000-4000-8000-000000000006",
+      originalSlug: "slack",
+      slugKey: "permission-grant",
+      baseColumns: ["org_id", "user_id", "agent_id", "permission", "action"],
+      baseValues: (suffix) => {
+        return [
+          "connector-slug-org",
+          `connector-slug-user-${suffix}`,
+          CONNECTOR_SLUG_EXPANSION_AGENT_ID,
+          `channels:read:${suffix}`,
+          "allow",
+        ];
+      },
+      conflictColumns: [
+        "org_id",
+        "user_id",
+        "agent_id",
+        "connector_ref",
+        "permission",
+      ],
+    },
+  ];
+
+function buildConnectorSlugInsert(
+  spec: ConnectorSlugCompatibilitySpec,
+  args: ConnectorSlugInsertArgs,
+): ConnectorSlugInsertStatement {
+  const columns = [...spec.baseColumns];
+  const values = [...spec.baseValues(args.suffix)];
+
+  if (args.explicitId !== undefined) {
+    columns.unshift("id");
+    values.unshift(args.explicitId);
+  }
+  if (args.legacySlug !== undefined) {
+    columns.push(spec.legacyColumn);
+    values.push(args.legacySlug);
+  }
+  if (args.canonicalSlug !== undefined) {
+    columns.push("connector_slug");
+    values.push(args.canonicalSlug);
+  }
+
+  const quotedColumns = columns.map((column) => {
+    return `"${column}"`;
+  });
+  const placeholders = values.map((_value, index) => {
+    return `$${index + 1}`;
+  });
+  let conflictClause = "";
+  if (args.conflictAction === "nothing") {
+    conflictClause = "ON CONFLICT DO NOTHING";
+  } else if (args.conflictAction === "update-legacy") {
+    const conflictTarget = spec.conflictColumns
+      .map((column) => {
+        return `"${column}"`;
+      })
+      .join(", ");
+    const conflictWhere =
+      spec.conflictWhere === undefined ? "" : ` WHERE ${spec.conflictWhere}`;
+    conflictClause = `ON CONFLICT (${conflictTarget})${conflictWhere} DO UPDATE
+      SET "${spec.legacyColumn}" = EXCLUDED."${spec.legacyColumn}"`;
+  }
+
+  const returning = args.returnExpandedIdentity
+    ? `RETURNING
+        "id",
+        "${spec.legacyColumn}" AS "legacyValue",
+        "connector_slug" AS "connectorSlug"`
+    : `RETURNING "id"`;
+
+  return {
+    query: `
+      INSERT INTO "${spec.tableName}" (${quotedColumns.join(", ")})
+      VALUES (${placeholders.join(", ")})
+      ${conflictClause}
+      ${returning}
+    `,
+    values,
+  };
+}
+
+async function insertConnectorSlugRow(
+  client: Client,
+  spec: ConnectorSlugCompatibilitySpec,
+  args: ConnectorSlugInsertArgs,
+): Promise<readonly ConnectorSlugIdentityRow[]> {
+  const statement = buildConnectorSlugInsert(spec, args);
+  const result = await client.query<ConnectorSlugIdentityRow>(statement.query, [
+    ...statement.values,
+  ]);
+  return result.rows;
+}
+
+function requireSingleResultRow<T>(rows: readonly T[]): T {
+  assert.equal(rows.length, 1);
+  const row = rows[0];
+  assert.ok(row);
+  return row;
+}
+
+async function validateExpandedBuildAgainstConnectorSlugPredecessor(
+  client: Client,
+): Promise<void> {
+  const database = drizzle(client);
+  const connectorSpec = connectorSlugCompatibilitySpecs.find((spec) => {
+    return spec.tableName === "connectors";
+  });
+  const userConnectorSpec = connectorSlugCompatibilitySpecs.find((spec) => {
+    return spec.tableName === "user_connectors";
+  });
+  const oauthStateSpec = connectorSlugCompatibilitySpecs.find((spec) => {
+    return spec.tableName === "connector_oauth_states";
+  });
+  const deviceSessionSpec = connectorSlugCompatibilitySpecs.find((spec) => {
+    return spec.tableName === "connector_oauth_device_authorization_sessions";
+  });
+  const externalCodeSessionSpec = connectorSlugCompatibilitySpecs.find(
+    (spec) => {
+      return spec.tableName === "connector_external_code_sessions";
+    },
+  );
+  const permissionGrantSpec = connectorSlugCompatibilitySpecs.find((spec) => {
+    return spec.tableName === "user_permission_grants";
+  });
+  assert.ok(connectorSpec);
+  assert.ok(userConnectorSpec);
+  assert.ok(oauthStateSpec);
+  assert.ok(deviceSessionSpec);
+  assert.ok(externalCodeSessionSpec);
+  assert.ok(permissionGrantSpec);
+
+  assert.equal(
+    (
+      await database
+        .select({ id: connectors.id, type: connectors.type })
+        .from(connectors)
+        .where(eq(connectors.id, connectorSpec.originalId))
+    ).length,
+    1,
+  );
+  assert.equal(
+    (
+      await database
+        .update(connectors)
+        .set({ type: connectorSpec.originalSlug })
+        .where(eq(connectors.id, connectorSpec.originalId))
+        .returning({ id: connectors.id, type: connectors.type })
+    ).length,
+    1,
+  );
+
+  assert.equal(
+    (
+      await database
+        .select({
+          id: userConnectors.id,
+          connectorType: userConnectors.connectorType,
+        })
+        .from(userConnectors)
+        .where(eq(userConnectors.id, userConnectorSpec.originalId))
+    ).length,
+    1,
+  );
+  assert.equal(
+    (
+      await database
+        .update(userConnectors)
+        .set({
+          connectorType: userConnectorSpec.originalSlug,
+        })
+        .where(eq(userConnectors.id, userConnectorSpec.originalId))
+        .returning({
+          id: userConnectors.id,
+          connectorType: userConnectors.connectorType,
+        })
+    ).length,
+    1,
+  );
+
+  assert.equal(
+    (
+      await database
+        .select({
+          id: connectorOauthStates.id,
+          type: connectorOauthStates.type,
+        })
+        .from(connectorOauthStates)
+        .where(eq(connectorOauthStates.id, oauthStateSpec.originalId))
+    ).length,
+    1,
+  );
+  assert.equal(
+    (
+      await database
+        .update(connectorOauthStates)
+        .set({ type: oauthStateSpec.originalSlug })
+        .where(eq(connectorOauthStates.id, oauthStateSpec.originalId))
+        .returning({
+          id: connectorOauthStates.id,
+          type: connectorOauthStates.type,
+        })
+    ).length,
+    1,
+  );
+
+  assert.equal(
+    (
+      await database
+        .select({
+          id: connectorOauthDeviceAuthorizationSessions.id,
+          connectorType:
+            connectorOauthDeviceAuthorizationSessions.connectorType,
+        })
+        .from(connectorOauthDeviceAuthorizationSessions)
+        .where(
+          eq(
+            connectorOauthDeviceAuthorizationSessions.id,
+            deviceSessionSpec.originalId,
+          ),
+        )
+    ).length,
+    1,
+  );
+  assert.equal(
+    (
+      await database
+        .update(connectorOauthDeviceAuthorizationSessions)
+        .set({
+          connectorType: deviceSessionSpec.originalSlug,
+        })
+        .where(
+          eq(
+            connectorOauthDeviceAuthorizationSessions.id,
+            deviceSessionSpec.originalId,
+          ),
+        )
+        .returning({
+          id: connectorOauthDeviceAuthorizationSessions.id,
+          connectorType:
+            connectorOauthDeviceAuthorizationSessions.connectorType,
+        })
+    ).length,
+    1,
+  );
+
+  assert.equal(
+    (
+      await database
+        .select({
+          id: connectorExternalCodeSessions.id,
+          connectorType: connectorExternalCodeSessions.connectorType,
+        })
+        .from(connectorExternalCodeSessions)
+        .where(
+          eq(
+            connectorExternalCodeSessions.id,
+            externalCodeSessionSpec.originalId,
+          ),
+        )
+    ).length,
+    1,
+  );
+  assert.equal(
+    (
+      await database
+        .update(connectorExternalCodeSessions)
+        .set({
+          connectorType: externalCodeSessionSpec.originalSlug,
+        })
+        .where(
+          eq(
+            connectorExternalCodeSessions.id,
+            externalCodeSessionSpec.originalId,
+          ),
+        )
+        .returning({
+          id: connectorExternalCodeSessions.id,
+          connectorType: connectorExternalCodeSessions.connectorType,
+        })
+    ).length,
+    1,
+  );
+
+  assert.equal(
+    (
+      await database
+        .select({
+          id: userPermissionGrants.id,
+          connectorRef: userPermissionGrants.connectorRef,
+        })
+        .from(userPermissionGrants)
+        .where(eq(userPermissionGrants.id, permissionGrantSpec.originalId))
+    ).length,
+    1,
+  );
+  assert.equal(
+    (
+      await database
+        .update(userPermissionGrants)
+        .set({
+          connectorRef: permissionGrantSpec.originalSlug,
+        })
+        .where(eq(userPermissionGrants.id, permissionGrantSpec.originalId))
+        .returning({
+          id: userPermissionGrants.id,
+          connectorRef: userPermissionGrants.connectorRef,
+        })
+    ).length,
+    1,
+  );
+
+  assert.deepEqual(
+    await database
+      .insert(connectorSlugLegacyInsertConnectors)
+      .values({
+        id: connectorSlugLegacyInsertIds.connectors,
+        type: "google-drive",
+        authMethod: "oauth",
+        storageVersion: 1,
+        userId: "connector-slug-current-build-connector-user",
+        orgId: "connector-slug-org",
+      })
+      .returning({ id: connectorSlugLegacyInsertConnectors.id }),
+    [{ id: connectorSlugLegacyInsertIds.connectors }],
+  );
+  assert.deepEqual(
+    await database
+      .insert(connectorSlugLegacyInsertUserConnectors)
+      .values({
+        id: connectorSlugLegacyInsertIds.user_connectors,
+        orgId: "connector-slug-org",
+        userId: "connector-slug-current-build-user-connector-user",
+        agentId: CONNECTOR_SLUG_EXPANSION_AGENT_ID,
+        connectorType: "google-calendar",
+      })
+      .returning({ id: connectorSlugLegacyInsertUserConnectors.id }),
+    [{ id: connectorSlugLegacyInsertIds.user_connectors }],
+  );
+  assert.deepEqual(
+    await database
+      .insert(connectorSlugLegacyInsertOauthStates)
+      .values({
+        id: connectorSlugLegacyInsertIds.connector_oauth_states,
+        state: "connector-slug-current-build-state",
+        type: "gmail",
+        authMethod: "oauth",
+        userId: "connector-slug-current-build-oauth-state-user",
+        orgId: "connector-slug-org",
+        redirectUri: "https://example.com/current-build/callback",
+        expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+      })
+      .returning({ id: connectorSlugLegacyInsertOauthStates.id }),
+    [{ id: connectorSlugLegacyInsertIds.connector_oauth_states }],
+  );
+  assert.deepEqual(
+    await database
+      .insert(connectorSlugLegacyInsertOauthDeviceSessions)
+      .values({
+        id: connectorSlugLegacyInsertIds.connector_oauth_device_authorization_sessions,
+        orgId: "connector-slug-org",
+        userId: "connector-slug-current-build-device-user",
+        connectorType: "youtube",
+        authMethod: "oauth-device",
+        sessionTokenHash: "connector-slug-current-build-device-token",
+        encryptedProviderState: "connector-slug-current-build-device-state",
+        userCode: "CURRENT-BUILD",
+        verificationUri: "https://example.com/current-build/device",
+        intervalSeconds: 5,
+        expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+      })
+      .returning({
+        id: connectorSlugLegacyInsertOauthDeviceSessions.id,
+      }),
+    [
+      {
+        id: connectorSlugLegacyInsertIds.connector_oauth_device_authorization_sessions,
+      },
+    ],
+  );
+  assert.deepEqual(
+    await database
+      .insert(connectorSlugLegacyInsertExternalCodeSessions)
+      .values({
+        id: connectorSlugLegacyInsertIds.connector_external_code_sessions,
+        orgId: "connector-slug-org",
+        userId: "connector-slug-current-build-external-code-user",
+        connectorType: "x",
+        authMethod: "external-code",
+        sessionTokenHash: "connector-slug-current-build-external-code-token",
+        encryptedProviderState:
+          "connector-slug-current-build-external-code-state",
+        authorizationUrl: "https://example.com/current-build/authorize",
+        expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+      })
+      .returning({
+        id: connectorSlugLegacyInsertExternalCodeSessions.id,
+      }),
+    [
+      {
+        id: connectorSlugLegacyInsertIds.connector_external_code_sessions,
+      },
+    ],
+  );
+  assert.deepEqual(
+    await database
+      .insert(connectorSlugLegacyInsertUserPermissionGrants)
+      .values({
+        id: connectorSlugLegacyInsertIds.user_permission_grants,
+        orgId: "connector-slug-org",
+        userId: "connector-slug-current-build-permission-user",
+        agentId: CONNECTOR_SLUG_EXPANSION_AGENT_ID,
+        connectorRef: "slack",
+        permission: "channels:history",
+        action: "allow",
+      })
+      .returning({
+        id: connectorSlugLegacyInsertUserPermissionGrants.id,
+      }),
+    [{ id: connectorSlugLegacyInsertIds.user_permission_grants }],
+  );
+}
+
+async function waitForConnectorSlugMigrationLock(
+  observer: Client,
+  migrationPid: number,
+): Promise<void> {
+  for (let attempt = 0; attempt < 1000; attempt += 1) {
+    const result = await observer.query<{ readonly waiting: boolean }>(
+      `
+        SELECT EXISTS (
+          SELECT 1
+          FROM "pg_catalog"."pg_locks"
+          WHERE "pid" = $1
+            AND "relation" = 'connectors'::regclass
+            AND "mode" = 'AccessExclusiveLock'
+            AND NOT "granted"
+        ) AS "waiting"
+      `,
+      [migrationPid],
+    );
+    if (result.rows[0]?.waiting) {
+      return;
+    }
+    await delay(10);
+  }
+
+  throw new Error(
+    "Connector slug migration did not wait for the expected ACCESS EXCLUSIVE lock",
+  );
+}
+
+async function applyConnectorSlugExpansionBehindConcurrentWriter(
+  testDbUrl: string,
+  connectorId: string,
+): Promise<void> {
+  const writer = new Client({ connectionString: testDbUrl });
+  const migration = new Client({ connectionString: testDbUrl });
+  const observer = new Client({ connectionString: testDbUrl });
+  await writer.connect();
+  await migration.connect();
+  await observer.connect();
+
+  let writerTransactionOpen = false;
+  let migrationFailure: unknown = null;
+  let migrationTask: Promise<void> | null = null;
+  try {
+    await writer.query("BEGIN");
+    writerTransactionOpen = true;
+    const lockedConnector = await writer.query(
+      `SELECT "id" FROM "connectors" WHERE "id" = $1 FOR UPDATE`,
+      [connectorId],
+    );
+    assert.equal(lockedConnector.rowCount, 1);
+    const migrationPidResult = await migration.query<{
+      readonly pid: number;
+    }>(`SELECT pg_backend_pid() AS "pid"`);
+    const migrationPid = migrationPidResult.rows[0]?.pid;
+    assert.ok(migrationPid);
+
+    migrationTask = applyMigrationsUpToInTransaction(
+      migration,
+      CONNECTOR_SLUG_EXPANSION_MIGRATION,
+    ).catch((error: unknown) => {
+      migrationFailure = error;
+    });
+    await waitForConnectorSlugMigrationLock(observer, migrationPid);
+
+    await writer.query(
+      `
+        UPDATE "connectors"
+        SET "updated_at" = clock_timestamp()
+        WHERE "id" = $1
+      `,
+      [connectorId],
+    );
+    await writer.query("COMMIT");
+    writerTransactionOpen = false;
+
+    await migrationTask;
+    if (migrationFailure !== null) {
+      throw migrationFailure;
+    }
+  } finally {
+    if (writerTransactionOpen) {
+      await writer.query("ROLLBACK");
+    }
+    if (migrationTask !== null) {
+      await migrationTask;
+    }
+    await writer.end();
+    await migration.end();
+    await observer.end();
+  }
+}
+
+async function validateConnectorSlugExpansion(): Promise<void> {
+  console.log(
+    "=== Phase 1.6: Validate connector slug expansion compatibility ===\n",
+  );
+  const testDb = "migration_connector_slug_expansion_test";
+  const testDbUrl = createTestDbUrl(testDb);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(
+      testDbUrl,
+      CONNECTOR_SLUG_EXPANSION_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES ($1, 'connector-slug-owner', 'connector-slug-agent', 'connector-slug-org')
+        `,
+        [CONNECTOR_SLUG_EXPANSION_AGENT_ID],
+      );
+      await client.query(
+        `
+          INSERT INTO "zero_agents" ("id", "org_id", "owner", "name")
+          VALUES ($1, 'connector-slug-org', 'connector-slug-owner', 'connector-slug-agent')
+        `,
+        [CONNECTOR_SLUG_EXPANSION_AGENT_ID],
+      );
+      await client.query("BEGIN");
+      await client.query(
+        `
+          INSERT INTO "org_custom_connectors" (
+            "id",
+            "org_id",
+            "slug",
+            "display_name",
+            "prefixes",
+            "header_name",
+            "header_template",
+            "auth_mode",
+            "created_by"
+          )
+          VALUES (
+            $1,
+            'connector-slug-org',
+            '_connector_slug_custom',
+            'Connector Slug Custom',
+            '[]'::jsonb,
+            'Authorization',
+            'Bearer {{secret}}',
+            'oauth',
+            'connector-slug-owner'
+          )
+        `,
+        [CONNECTOR_SLUG_EXPANSION_CUSTOM_CONNECTOR_ID],
+      );
+      await client.query(
+        `
+          INSERT INTO "org_custom_connector_oauth_configs" (
+            "connector_id",
+            "org_id",
+            "provider_adapter",
+            "client_id",
+            "encrypted_client_secret",
+            "authorization_url",
+            "token_url",
+            "token_endpoint_auth_method",
+            "pkce_method"
+          )
+          VALUES (
+            $1,
+            'connector-slug-org',
+            'standard',
+            'connector-slug-client',
+            'connector-slug-encrypted-secret',
+            'https://example.com/custom/authorize',
+            'https://example.com/custom/token',
+            'client_secret_basic',
+            'none'
+          )
+        `,
+        [CONNECTOR_SLUG_EXPANSION_CUSTOM_CONNECTOR_ID],
+      );
+      await client.query("COMMIT");
+      await client.query(
+        `
+          INSERT INTO "connectors" (
+            "id",
+            "custom_connector_id",
+            "auth_method",
+            "storage_version",
+            "user_id",
+            "org_id"
+          )
+          VALUES (
+            $1,
+            $2,
+            'oauth2',
+            1,
+            'connector-slug-custom-user',
+            'connector-slug-org'
+          )
+        `,
+        [
+          CONNECTOR_SLUG_EXPANSION_CUSTOM_CONNECTION_ID,
+          CONNECTOR_SLUG_EXPANSION_CUSTOM_CONNECTOR_ID,
+        ],
+      );
+      await client.query(
+        `
+          INSERT INTO "connector_oauth_states" (
+            "id",
+            "state",
+            "custom_connector_id",
+            "connector_revision",
+            "auth_method",
+            "user_id",
+            "org_id",
+            "redirect_uri",
+            "expires_at"
+          )
+          VALUES (
+            $1,
+            'connector-slug-custom-state',
+            $2,
+            1,
+            'oauth2',
+            'connector-slug-custom-user',
+            'connector-slug-org',
+            'https://example.com/custom/callback',
+            '2030-01-01T00:00:00.000Z'
+          )
+        `,
+        [
+          CONNECTOR_SLUG_EXPANSION_CUSTOM_OAUTH_STATE_ID,
+          CONNECTOR_SLUG_EXPANSION_CUSTOM_CONNECTOR_ID,
+        ],
+      );
+
+      for (const spec of connectorSlugCompatibilitySpecs) {
+        const rows = await insertConnectorSlugRow(client, spec, {
+          explicitId: spec.originalId,
+          legacySlug: spec.originalSlug,
+          returnExpandedIdentity: false,
+          suffix: `${spec.tableName}-original`,
+        });
+        assert.equal(rows.length, 1);
+      }
+
+      const originalRows = new Map<string, unknown>();
+      const legacyColumns = new Map<string, readonly string[]>();
+      for (const spec of connectorSlugCompatibilitySpecs) {
+        const snapshot = await client.query<{ readonly data: unknown }>(
+          `
+            SELECT to_jsonb(stored_row) AS "data"
+            FROM "${spec.tableName}" AS stored_row
+            WHERE "id" = $1
+          `,
+          [spec.originalId],
+        );
+        const snapshotRow = requireSingleResultRow(snapshot.rows);
+        originalRows.set(spec.tableName, snapshotRow.data);
+
+        const columns = await client.query<{ readonly columnName: string }>(
+          `
+            SELECT "column_name" AS "columnName"
+            FROM "information_schema"."columns"
+            WHERE "table_schema" = current_schema()
+              AND "table_name" = $1
+            ORDER BY "ordinal_position"
+          `,
+          [spec.tableName],
+        );
+        legacyColumns.set(
+          spec.tableName,
+          columns.rows.map((row) => {
+            return row.columnName;
+          }),
+        );
+      }
+
+      await validateExpandedBuildAgainstConnectorSlugPredecessor(client);
+
+      await applyConnectorSlugExpansionBehindConcurrentWriter(
+        testDbUrl,
+        connectorSlugLegacyInsertIds.connectors,
+      );
+
+      const customConnection = await client.query<{
+        readonly connectorSlug: string | null;
+        readonly customConnectorId: string;
+        readonly type: string | null;
+      }>(
+        `
+          SELECT
+            "type",
+            "connector_slug" AS "connectorSlug",
+            "custom_connector_id" AS "customConnectorId"
+          FROM "connectors"
+          WHERE "id" = $1
+        `,
+        [CONNECTOR_SLUG_EXPANSION_CUSTOM_CONNECTION_ID],
+      );
+      assert.deepEqual(requireSingleResultRow(customConnection.rows), {
+        connectorSlug: null,
+        customConnectorId: CONNECTOR_SLUG_EXPANSION_CUSTOM_CONNECTOR_ID,
+        type: null,
+      });
+
+      const customOauthState = await client.query<{
+        readonly connectorRevision: number;
+        readonly connectorSlug: string | null;
+        readonly customConnectorId: string;
+        readonly type: string | null;
+      }>(
+        `
+          SELECT
+            "type",
+            "connector_slug" AS "connectorSlug",
+            "custom_connector_id" AS "customConnectorId",
+            "connector_revision" AS "connectorRevision"
+          FROM "connector_oauth_states"
+          WHERE "id" = $1
+        `,
+        [CONNECTOR_SLUG_EXPANSION_CUSTOM_OAUTH_STATE_ID],
+      );
+      assert.deepEqual(requireSingleResultRow(customOauthState.rows), {
+        connectorRevision: 1,
+        connectorSlug: null,
+        customConnectorId: CONNECTOR_SLUG_EXPANSION_CUSTOM_CONNECTOR_ID,
+        type: null,
+      });
+
+      for (const spec of connectorSlugCompatibilitySpecs) {
+        const stored = await client.query<{
+          readonly connectorSlug: string;
+          readonly data: unknown;
+          readonly legacyValue: string;
+        }>(
+          `
+            SELECT
+              to_jsonb(stored_row) - 'connector_slug' AS "data",
+              "${spec.legacyColumn}" AS "legacyValue",
+              "connector_slug" AS "connectorSlug"
+            FROM "${spec.tableName}" AS stored_row
+            WHERE "id" = $1
+          `,
+          [spec.originalId],
+        );
+        const storedRow = requireSingleResultRow(stored.rows);
+        assert.deepEqual(storedRow.data, originalRows.get(spec.tableName));
+        assert.equal(storedRow.legacyValue, spec.originalSlug);
+        assert.equal(storedRow.connectorSlug, spec.originalSlug);
+
+        const currentBuildInsert = await client.query<{
+          readonly connectorSlug: string;
+          readonly legacyValue: string;
+        }>(
+          `
+            SELECT
+              "${spec.legacyColumn}" AS "legacyValue",
+              "connector_slug" AS "connectorSlug"
+            FROM "${spec.tableName}"
+            WHERE "id" = $1
+          `,
+          [connectorSlugLegacyInsertIds[spec.tableName]],
+        );
+        assert.deepEqual(requireSingleResultRow(currentBuildInsert.rows), {
+          connectorSlug: connectorSlugLegacyInsertValues[spec.tableName],
+          legacyValue: connectorSlugLegacyInsertValues[spec.tableName],
+        });
+
+        const oldColumns = legacyColumns.get(spec.tableName);
+        assert.ok(oldColumns);
+        const oldReturning = await client.query<Record<string, unknown>>(
+          `
+            UPDATE "${spec.tableName}"
+            SET "${spec.legacyColumn}" = "${spec.legacyColumn}"
+            WHERE "id" = $1
+            RETURNING ${oldColumns
+              .map((column) => {
+                return `"${column}"`;
+              })
+              .join(", ")}
+          `,
+          [spec.originalId],
+        );
+        const oldReturningRow = requireSingleResultRow(oldReturning.rows);
+        assert.deepEqual(
+          Object.keys(oldReturningRow).sort(),
+          [...oldColumns].sort(),
+        );
+
+        const legacySlug = `${spec.slugKey}-legacy`;
+        const legacyRows = await insertConnectorSlugRow(client, spec, {
+          legacySlug,
+          returnExpandedIdentity: true,
+          suffix: `${spec.tableName}-legacy`,
+        });
+        const legacyRow = requireSingleResultRow(legacyRows);
+        assert.equal(legacyRow.legacyValue, legacySlug);
+        assert.equal(legacyRow.connectorSlug, legacySlug);
+
+        const canonicalSlug = `${spec.slugKey}-canonical`;
+        const canonicalRows = await insertConnectorSlugRow(client, spec, {
+          canonicalSlug,
+          returnExpandedIdentity: true,
+          suffix: `${spec.tableName}-canonical`,
+        });
+        const canonicalRow = requireSingleResultRow(canonicalRows);
+        assert.equal(canonicalRow.legacyValue, canonicalSlug);
+        assert.equal(canonicalRow.connectorSlug, canonicalSlug);
+
+        const dualSlug = `${spec.slugKey}-dual`;
+        const dualRows = await insertConnectorSlugRow(client, spec, {
+          canonicalSlug: dualSlug,
+          legacySlug: dualSlug,
+          returnExpandedIdentity: true,
+          suffix: `${spec.tableName}-dual`,
+        });
+        const dualRow = requireSingleResultRow(dualRows);
+        assert.equal(dualRow.legacyValue, dualSlug);
+        assert.equal(dualRow.connectorSlug, dualSlug);
+
+        const conflictingInsert = buildConnectorSlugInsert(spec, {
+          canonicalSlug: `${spec.slugKey}-canonical-conflict`,
+          legacySlug: `${spec.slugKey}-legacy-conflict`,
+          returnExpandedIdentity: true,
+          suffix: `${spec.tableName}-conflict`,
+        });
+        await expectDatabaseError(client, {
+          code: "P0001",
+          messageIncludes: `connector_slug and ${spec.legacyColumn} must match`,
+          query: conflictingInsert.query,
+          values: conflictingInsert.values,
+        });
+
+        const legacyUpdateSlug = `${spec.slugKey}-legacy-update`;
+        const legacyUpdate = await client.query<ConnectorSlugIdentityRow>(
+          `
+            UPDATE "${spec.tableName}"
+            SET "${spec.legacyColumn}" = $1
+            WHERE "id" = $2
+            RETURNING
+              "id",
+              "${spec.legacyColumn}" AS "legacyValue",
+              "connector_slug" AS "connectorSlug"
+          `,
+          [legacyUpdateSlug, legacyRow.id],
+        );
+        const legacyUpdateRow = requireSingleResultRow(legacyUpdate.rows);
+        assert.equal(legacyUpdateRow.legacyValue, legacyUpdateSlug);
+        assert.equal(legacyUpdateRow.connectorSlug, legacyUpdateSlug);
+
+        const canonicalUpdateSlug = `${spec.slugKey}-canonical-update`;
+        const canonicalUpdate = await client.query<ConnectorSlugIdentityRow>(
+          `
+            UPDATE "${spec.tableName}"
+            SET "connector_slug" = $1
+            WHERE "id" = $2
+            RETURNING
+              "id",
+              "${spec.legacyColumn}" AS "legacyValue",
+              "connector_slug" AS "connectorSlug"
+          `,
+          [canonicalUpdateSlug, legacyRow.id],
+        );
+        const canonicalUpdateRow = requireSingleResultRow(canonicalUpdate.rows);
+        assert.equal(canonicalUpdateRow.legacyValue, canonicalUpdateSlug);
+        assert.equal(canonicalUpdateRow.connectorSlug, canonicalUpdateSlug);
+
+        const dualUpdateSlug = `${spec.slugKey}-dual-update`;
+        const dualUpdate = await client.query<ConnectorSlugIdentityRow>(
+          `
+            UPDATE "${spec.tableName}"
+            SET "${spec.legacyColumn}" = $1, "connector_slug" = $1
+            WHERE "id" = $2
+            RETURNING
+              "id",
+              "${spec.legacyColumn}" AS "legacyValue",
+              "connector_slug" AS "connectorSlug"
+          `,
+          [dualUpdateSlug, legacyRow.id],
+        );
+        const dualUpdateRow = requireSingleResultRow(dualUpdate.rows);
+        assert.equal(dualUpdateRow.legacyValue, dualUpdateSlug);
+        assert.equal(dualUpdateRow.connectorSlug, dualUpdateSlug);
+
+        await expectDatabaseError(client, {
+          code: "P0001",
+          messageIncludes: `connector_slug and ${spec.legacyColumn} must match`,
+          query: `
+            UPDATE "${spec.tableName}"
+            SET
+              "${spec.legacyColumn}" = $1,
+              "connector_slug" = $2
+            WHERE "id" = $3
+          `,
+          values: [
+            `${spec.slugKey}-legacy-update-conflict`,
+            `${spec.slugKey}-canonical-update-conflict`,
+            legacyRow.id,
+          ],
+        });
+
+        const unrelatedUpdate = await client.query<ConnectorSlugIdentityRow>(
+          `
+            UPDATE "${spec.tableName}"
+            SET "id" = "id"
+            WHERE "id" = $1
+            RETURNING
+              "id",
+              "${spec.legacyColumn}" AS "legacyValue",
+              "connector_slug" AS "connectorSlug"
+          `,
+          [legacyRow.id],
+        );
+        const unrelatedUpdateRow = requireSingleResultRow(unrelatedUpdate.rows);
+        assert.equal(unrelatedUpdateRow.legacyValue, dualUpdateSlug);
+        assert.equal(unrelatedUpdateRow.connectorSlug, dualUpdateSlug);
+
+        const upsertSlug = `${spec.slugKey}-upsert`;
+        const firstUpsert = await insertConnectorSlugRow(client, spec, {
+          legacySlug: upsertSlug,
+          returnExpandedIdentity: true,
+          suffix: `${spec.tableName}-upsert`,
+        });
+        requireSingleResultRow(firstUpsert);
+        const secondUpsert = await insertConnectorSlugRow(client, spec, {
+          conflictAction: "update-legacy",
+          legacySlug: upsertSlug,
+          returnExpandedIdentity: true,
+          suffix: `${spec.tableName}-upsert`,
+        });
+        const secondUpsertRow = requireSingleResultRow(secondUpsert);
+        assert.equal(secondUpsertRow.connectorSlug, upsertSlug);
+        const ignoredConflict = await insertConnectorSlugRow(client, spec, {
+          conflictAction: "nothing",
+          legacySlug: upsertSlug,
+          returnExpandedIdentity: true,
+          suffix: `${spec.tableName}-upsert`,
+        });
+        assert.equal(ignoredConflict.length, 0);
+
+        const duplicateInsert = buildConnectorSlugInsert(spec, {
+          legacySlug: upsertSlug,
+          returnExpandedIdentity: true,
+          suffix: `${spec.tableName}-upsert`,
+        });
+        await expectDatabaseError(client, {
+          code: "23505",
+          query: duplicateInsert.query,
+          values: duplicateInsert.values,
+        });
+
+        const oldRead = await client.query<Record<string, unknown>>(
+          `
+            SELECT ${oldColumns
+              .map((column) => {
+                return `"${column}"`;
+              })
+              .join(", ")}
+            FROM "${spec.tableName}"
+            ORDER BY "${spec.legacyColumn}", "id"
+          `,
+        );
+        assert.ok(oldRead.rows.length >= 5);
+        const firstOldReadRow = oldRead.rows[0];
+        assert.ok(firstOldReadRow);
+        assert.deepEqual(
+          Object.keys(firstOldReadRow).sort(),
+          [...oldColumns].sort(),
+        );
+
+        const deleted = await client.query<{
+          readonly id: string;
+          readonly legacyValue: string;
+        }>(
+          `
+            DELETE FROM "${spec.tableName}"
+            WHERE "id" = $1 AND "${spec.legacyColumn}" = $2
+            RETURNING "id", "${spec.legacyColumn}" AS "legacyValue"
+          `,
+          [dualRow.id, dualSlug],
+        );
+        const deletedRow = requireSingleResultRow(deleted.rows);
+        assert.equal(deletedRow.legacyValue, dualSlug);
+      }
+
+      const expectedFunctions = [
+        "sync_connector_slug_from_connector_ref",
+        "sync_connector_slug_from_connector_type",
+        "sync_connector_slug_from_type",
+      ];
+      const functions = await client.query<{ readonly name: string }>(`
+        SELECT "proname" AS "name"
+        FROM "pg_proc"
+        JOIN "pg_namespace" ON "pg_namespace"."oid" = "pg_proc"."pronamespace"
+        WHERE "pg_namespace"."nspname" = current_schema()
+          AND "proname" = ANY(ARRAY[
+            'sync_connector_slug_from_connector_ref',
+            'sync_connector_slug_from_connector_type',
+            'sync_connector_slug_from_type'
+          ])
+        ORDER BY "proname"
+      `);
+      assert.deepEqual(
+        functions.rows.map((row) => {
+          return row.name;
+        }),
+        expectedFunctions,
+      );
+
+      const expectedTriggers = [
+        "sync_connector_external_code_sessions_connector_slug",
+        "sync_connector_oauth_device_sessions_connector_slug",
+        "sync_connector_oauth_states_connector_slug",
+        "sync_connectors_connector_slug",
+        "sync_user_connectors_connector_slug",
+        "sync_user_permission_grants_connector_slug",
+      ];
+      const triggers = await client.query<{
+        readonly definition: string;
+        readonly name: string;
+      }>(`
+        SELECT
+          "tgname" AS "name",
+          pg_get_triggerdef("pg_trigger"."oid") AS "definition"
+        FROM "pg_trigger"
+        JOIN "pg_class" ON "pg_class"."oid" = "pg_trigger"."tgrelid"
+        JOIN "pg_namespace" ON "pg_namespace"."oid" = "pg_class"."relnamespace"
+        WHERE "pg_namespace"."nspname" = current_schema()
+          AND NOT "tgisinternal"
+          AND "tgname" LIKE 'sync_%_connector_slug'
+        ORDER BY "tgname"
+      `);
+      assert.deepEqual(
+        triggers.rows.map((row) => {
+          return row.name;
+        }),
+        expectedTriggers,
+      );
+      const expectedTriggerUpdateColumns = new Map([
+        [
+          "sync_connector_external_code_sessions_connector_slug",
+          "UPDATE OF connector_type, connector_slug",
+        ],
+        [
+          "sync_connector_oauth_device_sessions_connector_slug",
+          "UPDATE OF connector_type, connector_slug",
+        ],
+        [
+          "sync_connector_oauth_states_connector_slug",
+          "UPDATE OF type, connector_slug",
+        ],
+        ["sync_connectors_connector_slug", "UPDATE OF type, connector_slug"],
+        [
+          "sync_user_connectors_connector_slug",
+          "UPDATE OF connector_type, connector_slug",
+        ],
+        [
+          "sync_user_permission_grants_connector_slug",
+          "UPDATE OF connector_ref, connector_slug",
+        ],
+      ]);
+      assert.ok(
+        triggers.rows.every((row) => {
+          const expectedColumns = expectedTriggerUpdateColumns.get(row.name);
+          assert.ok(expectedColumns);
+          return row.definition.includes(
+            `BEFORE INSERT OR ${expectedColumns} ON`,
+          );
+        }),
+      );
+
+      const expectedChecks = [
+        "chk_connector_external_code_sessions_slug_matches_type",
+        "chk_connector_oauth_device_sessions_slug_matches_type",
+        "chk_connector_oauth_states_slug_matches_type",
+        "chk_connectors_connector_slug_matches_type",
+        "chk_user_connectors_slug_matches_type",
+        "chk_user_permission_grants_slug_matches_ref",
+      ];
+      const checks = await client.query<{
+        readonly name: string;
+        readonly validated: boolean;
+      }>(`
+        SELECT
+          "conname" AS "name",
+          "convalidated" AS "validated"
+        FROM "pg_constraint"
+        JOIN "pg_class" ON "pg_class"."oid" = "pg_constraint"."conrelid"
+        JOIN "pg_namespace" ON "pg_namespace"."oid" = "pg_class"."relnamespace"
+        WHERE "pg_namespace"."nspname" = current_schema()
+          AND "contype" = 'c'
+          AND "conname" = ANY(ARRAY[
+            'chk_connector_external_code_sessions_slug_matches_type',
+            'chk_connector_oauth_device_sessions_slug_matches_type',
+            'chk_connector_oauth_states_slug_matches_type',
+            'chk_connectors_connector_slug_matches_type',
+            'chk_user_connectors_slug_matches_type',
+            'chk_user_permission_grants_slug_matches_ref'
+          ])
+        ORDER BY "conname"
+      `);
+      assert.deepEqual(
+        checks.rows.map((row) => {
+          return row.name;
+        }),
+        expectedChecks,
+      );
+      assert.ok(
+        checks.rows.every((row) => {
+          return row.validated;
+        }),
+      );
+
+      const expectedIndexes = [
+        "idx_connector_external_code_sessions_owner_slug_status",
+        "idx_connector_oauth_device_sessions_owner_slug_status",
+        "idx_connectors_org_user_slug",
+        "idx_user_connectors_unique_slug",
+        "uq_user_permission_grants_slug_permission",
+      ];
+      const indexes = await client.query<{
+        readonly definition: string;
+        readonly name: string;
+      }>(`
+        SELECT
+          "indexname" AS "name",
+          "indexdef" AS "definition"
+        FROM "pg_indexes"
+        WHERE "schemaname" = current_schema()
+          AND "indexname" = ANY(ARRAY[
+            'idx_connector_external_code_sessions_owner_slug_status',
+            'idx_connector_oauth_device_sessions_owner_slug_status',
+            'idx_connectors_org_user_slug',
+            'idx_user_connectors_unique_slug',
+            'uq_user_permission_grants_slug_permission'
+          ])
+        ORDER BY "indexname"
+      `);
+      assert.deepEqual(
+        indexes.rows.map((row) => {
+          return row.name;
+        }),
+        expectedIndexes,
+      );
+      assert.ok(
+        indexes.rows.every((row) => {
+          return row.definition.includes("connector_slug");
+        }),
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+
+  console.log(
+    "   ✅ Connector slug expansion preserves predecessor inserts, avoids lock-upgrade deadlocks, and enforces mirrored identity\n",
+  );
+}
+
 async function extractSchemaFromDb(dbUrl: string): Promise<{
   tables: Set<string>;
   columns: Map<string, Set<string>>;
@@ -6997,6 +8482,187 @@ async function validateModelObservationContractCleanup(): Promise<void> {
   }
 }
 
+const BROWSER_RESIZE_STATE_PREVIOUS_MIGRATION = 736;
+const BROWSER_RESIZE_STATE_MIGRATION = 737;
+
+const browserResizeRolloutFixture = {
+  orgId: "browser-resize-rollout-org",
+  userId: "browser-resize-rollout-user",
+  profileId: "98000000-0000-4000-8000-000000000001",
+  providerProfileId: "98000000-0000-4000-8000-000000000002",
+  instances: [
+    {
+      browserSessionId: "98000000-0000-4000-8000-000000000011",
+      chatThreadId: "98000000-0000-4000-8000-000000000012",
+      runId: "98000000-0000-4000-8000-000000000013",
+      providerSessionId: "98000000-0000-4000-8000-000000000014",
+    },
+    {
+      browserSessionId: "98000000-0000-4000-8000-000000000021",
+      chatThreadId: "98000000-0000-4000-8000-000000000022",
+      runId: "98000000-0000-4000-8000-000000000023",
+      providerSessionId: "98000000-0000-4000-8000-000000000024",
+    },
+    {
+      browserSessionId: "98000000-0000-4000-8000-000000000031",
+      chatThreadId: "98000000-0000-4000-8000-000000000032",
+      runId: "98000000-0000-4000-8000-000000000033",
+      providerSessionId: "98000000-0000-4000-8000-000000000034",
+    },
+  ],
+} as const;
+
+async function seedBrowserResizeRolloutSessions(client: Client): Promise<void> {
+  const fixture = browserResizeRolloutFixture;
+  await client.query(
+    `INSERT INTO "browser_profiles" (
+       "id", "org_id", "user_id", "provider_profile_id"
+     )
+     VALUES ($1, $2, $3, $4)`,
+    [
+      fixture.profileId,
+      fixture.orgId,
+      fixture.userId,
+      fixture.providerProfileId,
+    ],
+  );
+  for (const instance of fixture.instances) {
+    await client.query(
+      `INSERT INTO "browser_sessions" (
+         "id", "chat_thread_id", "org_id", "user_id", "name",
+         "browser_profile_id", "status", "timeout_minutes", "max_credits"
+       )
+       VALUES ($1, $2, $3, $4, 'resize-rollout', $5, 'active', 240, 1)`,
+      [
+        instance.browserSessionId,
+        instance.chatThreadId,
+        fixture.orgId,
+        fixture.userId,
+        fixture.profileId,
+      ],
+    );
+  }
+}
+
+async function insertBrowserInstanceWithPreviousApiShape(
+  client: Client,
+  instance: (typeof browserResizeRolloutFixture.instances)[number],
+): Promise<void> {
+  const inserted = await client.query<{ providerSessionId: string }>(
+    `INSERT INTO "browser_session_instances" (
+       "provider_session_id", "browser_session_id", "chat_thread_id", "run_id",
+       "status", "pricing_unit_price", "pricing_unit_size", "timeout_at",
+       "started_at", "last_touched_at", "idle_expires_at", "stop_requested_at",
+       "finished_at"
+     )
+     VALUES (
+       $1, $2, $3, $4, 'active', 0, 1, NOW() + INTERVAL '4 hours', NOW(),
+       NOW(), NOW() + INTERVAL '10 minutes', NULL, NULL
+     )
+     RETURNING "provider_session_id" AS "providerSessionId"`,
+    [
+      instance.providerSessionId,
+      instance.browserSessionId,
+      instance.chatThreadId,
+      instance.runId,
+    ],
+  );
+  assert.deepEqual(inserted.rows, [
+    { providerSessionId: instance.providerSessionId },
+  ]);
+}
+
+async function browserResizeStateTableAvailable(
+  client: Client,
+): Promise<boolean> {
+  const result = await client.query<{ available: boolean }>(
+    `SELECT to_regclass('public.browser_session_resize_states') IS NOT NULL
+       AS "available"`,
+  );
+  return result.rows[0]?.available ?? false;
+}
+
+async function validateBrowserResizeStateRolloutCompatibility(): Promise<void> {
+  console.log("=== Validate browser resize state rollout compatibility ===\n");
+  const testDb = "migration_browser_resize_state_rollout_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const [beforeMigration, previousAfterMigration, currentAfterMigration] =
+    browserResizeRolloutFixture.instances;
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, BROWSER_RESIZE_STATE_PREVIOUS_MIGRATION);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await seedBrowserResizeRolloutSessions(client);
+      assert.equal(await browserResizeStateTableAvailable(client), false);
+      await insertBrowserInstanceWithPreviousApiShape(client, beforeMigration);
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        BROWSER_RESIZE_STATE_MIGRATION,
+      );
+      assert.equal(await browserResizeStateTableAvailable(client), true);
+      await insertBrowserInstanceWithPreviousApiShape(
+        client,
+        previousAfterMigration,
+      );
+      await insertBrowserInstanceWithPreviousApiShape(
+        client,
+        currentAfterMigration,
+      );
+      await client.query(
+        `INSERT INTO "browser_session_resize_states" (
+           "provider_session_id", "screen_width", "screen_height"
+         )
+         VALUES ($1, 1440, 900)`,
+        [currentAfterMigration.providerSessionId],
+      );
+
+      const states = await client.query<{
+        providerSessionId: string;
+        screenHeight: number | null;
+        screenWidth: number | null;
+      }>(
+        `SELECT
+           instances."provider_session_id" AS "providerSessionId",
+           resize_state."screen_width" AS "screenWidth",
+           resize_state."screen_height" AS "screenHeight"
+         FROM "browser_session_instances" AS instances
+         LEFT JOIN "browser_session_resize_states" AS resize_state
+           ON resize_state."provider_session_id" =
+             instances."provider_session_id"
+         ORDER BY instances."provider_session_id"`,
+      );
+      assert.deepEqual(states.rows, [
+        {
+          providerSessionId: beforeMigration.providerSessionId,
+          screenHeight: null,
+          screenWidth: null,
+        },
+        {
+          providerSessionId: previousAfterMigration.providerSessionId,
+          screenHeight: null,
+          screenWidth: null,
+        },
+        {
+          providerSessionId: currentAfterMigration.providerSessionId,
+          screenHeight: 900,
+          screenWidth: 1440,
+        },
+      ]);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+  console.log(
+    "   ✅ Current API tolerates pre-0737 schema, previous API inserts after 0737, and only current post-migration instances gain resize state\n",
+  );
+}
+
 async function validateTimestampOrdering(): Promise<void> {
   console.log("=== Phase 0.5: Validate Journal Timestamp Ordering ===\n");
 
@@ -7168,6 +8834,7 @@ async function main(): Promise<void> {
 
     await validateConnectorCredentialOwnershipBackfill();
     await validateConnectorCredentialOwnershipContraction();
+    await validateConnectorSlugExpansion();
 
     await validateStorageArchiveSizeFinalization();
     await validateStorageLegacyTypeContraction();
@@ -7187,6 +8854,7 @@ async function main(): Promise<void> {
     await validateChatEventTableRename();
     await validateChatInputGoalEvent();
     await validateChatEventAssetRefTableRename();
+    await validateBrowserResizeStateRolloutCompatibility();
     await validateCurrentBrowserApiBeforeBillingMigration();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)

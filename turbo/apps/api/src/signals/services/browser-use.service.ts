@@ -1,23 +1,71 @@
+import { once } from "node:events";
+
+import {
+  ZERO_BROWSER_INITIAL_SCREEN_HEIGHT,
+  ZERO_BROWSER_SCREEN_WIDTH,
+} from "@vm0/api-contracts/contracts/zero-browser";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
-import { readBoundedResponseText, safeJsonParse, settle } from "../utils";
+import {
+  readBoundedResponseText,
+  safeJsonParse,
+  safeSync,
+  settle,
+} from "../utils";
 
 const BROWSER_USE_API_BASE_URL = "https://api.browser-use.com/api/v3";
 const BROWSER_USE_REQUEST_TIMEOUT_MS = 30_000;
+const BROWSER_USE_CDP_REQUEST_TIMEOUT_MS = 15_000;
 const MAX_BROWSER_USE_RESPONSE_BYTES = 512 * 1024;
+const MAX_BROWSER_USE_CDP_RESPONSE_BYTES = 64 * 1024;
 const MAX_BROWSER_USE_ERROR_MESSAGE_CHARS = 2048;
 const browserUseLiveUrlSchema = z.url().refine((value) => {
   return new URL(value).origin === "https://live.browser-use.com";
 });
+
+function isBrowserUseHostname(hostname: string): boolean {
+  return (
+    hostname === "browser-use.com" || hostname.endsWith(".browser-use.com")
+  );
+}
+
 const browserUseCdpUrlSchema = z.url().refine((value) => {
   const url = new URL(value);
-  return (
-    url.protocol === "https:" &&
-    (url.hostname === "browser-use.com" ||
-      url.hostname.endsWith(".browser-use.com"))
-  );
+  return url.protocol === "https:" && isBrowserUseHostname(url.hostname);
 });
+const browserUseCdpWebSocketUrlSchema = z.url().refine((value) => {
+  const url = new URL(value);
+  return url.protocol === "wss:" && isBrowserUseHostname(url.hostname);
+});
+const browserUseCdpVersionSchema = z.object({
+  webSocketDebuggerUrl: z.string().min(1),
+});
+const browserUseCdpResponseSchema = z.object({
+  id: z.number().int(),
+  result: z.unknown().optional(),
+  error: z
+    .object({
+      message: z.string(),
+    })
+    .optional(),
+});
+const browserUseCdpTargetsSchema = z.object({
+  targetInfos: z.array(
+    z.object({
+      targetId: z.string().min(1),
+      type: z.string(),
+    }),
+  ),
+});
+const browserUseCdpWindowSchema = z.object({
+  windowId: z.number().int().nonnegative(),
+});
+type BrowserUseCdpSocketEventName = "open" | "message" | "error" | "close";
+interface BrowserUseCdpSocketEvent {
+  readonly name: BrowserUseCdpSocketEventName;
+  readonly event: unknown;
+}
 
 const browserUseProfileSchema = z.object({
   id: z.uuid(),
@@ -61,6 +109,210 @@ export class BrowserUseProviderError extends Error {
     this.name = "BrowserUseProviderError";
     this.status = status;
     this.code = code;
+  }
+}
+
+function browserUseCdpVersionUrl(cdpUrl: string): URL {
+  const url = new URL(browserUseCdpUrlSchema.parse(cdpUrl));
+  url.pathname = `${url.pathname.replace(/\/$/u, "")}/json/version`;
+  return url;
+}
+
+async function browserUseCdpWebSocketUrl(
+  cdpUrl: string,
+  signal: AbortSignal,
+): Promise<string> {
+  const response = await fetch(browserUseCdpVersionUrl(cdpUrl), { signal });
+  const text = await readBoundedResponseText(
+    response,
+    MAX_BROWSER_USE_CDP_RESPONSE_BYTES,
+  );
+  if (!response.ok || text.kind === "too_large") {
+    throw new Error("Browser Use CDP discovery failed");
+  }
+  const version = browserUseCdpVersionSchema.parse(safeJsonParse(text.text), {
+    reportInput: true,
+  });
+  return browserUseCdpWebSocketUrlSchema.parse(version.webSocketDebuggerUrl);
+}
+
+async function waitForBrowserUseCdpSocketEvent(
+  socket: WebSocket,
+  name: BrowserUseCdpSocketEventName,
+  signal: AbortSignal,
+): Promise<BrowserUseCdpSocketEvent> {
+  const events: unknown[] = await once(socket, name, { signal });
+  signal.throwIfAborted();
+  return { name, event: events[0] };
+}
+
+async function nextBrowserUseCdpSocketEvent(
+  socket: WebSocket,
+  names: readonly BrowserUseCdpSocketEventName[],
+  signal: AbortSignal,
+): Promise<BrowserUseCdpSocketEvent> {
+  const controller = new AbortController();
+  const result = await settle(
+    Promise.race(
+      names.map(async (name) => {
+        return await waitForBrowserUseCdpSocketEvent(
+          socket,
+          name,
+          AbortSignal.any([signal, controller.signal]),
+        );
+      }),
+    ),
+  );
+  controller.abort();
+  signal.throwIfAborted();
+  if (!result.ok) {
+    throw result.error;
+  }
+  return result.value;
+}
+
+async function waitForBrowserUseCdpSocket(
+  socket: WebSocket,
+  signal: AbortSignal,
+): Promise<void> {
+  const received = await nextBrowserUseCdpSocketEvent(
+    socket,
+    ["open", "error", "close"],
+    signal,
+  );
+  if (received.name !== "open") {
+    throw new Error("Browser Use CDP connection failed");
+  }
+}
+
+async function sendBrowserUseCdpCommand(
+  socket: WebSocket,
+  id: number,
+  method: string,
+  params: Readonly<Record<string, unknown>>,
+  signal: AbortSignal,
+): Promise<unknown> {
+  signal.throwIfAborted();
+  const sent = safeSync(() => {
+    socket.send(JSON.stringify({ id, method, params }));
+  });
+  if ("error" in sent) {
+    throw sent.error;
+  }
+  while (true) {
+    const received = await nextBrowserUseCdpSocketEvent(
+      socket,
+      ["message", "error", "close"],
+      signal,
+    );
+    if (received.name !== "message") {
+      throw new Error("Browser Use CDP connection closed");
+    }
+    if (!(received.event instanceof MessageEvent)) {
+      continue;
+    }
+    if (
+      typeof received.event.data !== "string" ||
+      received.event.data.length > MAX_BROWSER_USE_CDP_RESPONSE_BYTES
+    ) {
+      continue;
+    }
+    const response = browserUseCdpResponseSchema.safeParse(
+      safeJsonParse(received.event.data),
+    );
+    if (!response.success || response.data.id !== id) {
+      continue;
+    }
+    if (response.data.error) {
+      throw new Error(response.data.error.message);
+    }
+    return response.data.result;
+  }
+}
+
+async function resizeBrowserUseCdp(
+  cdpUrl: string,
+  width: number,
+  height: number,
+  signal: AbortSignal,
+): Promise<void> {
+  const websocketUrl = await browserUseCdpWebSocketUrl(cdpUrl, signal);
+  const socket = new WebSocket(websocketUrl);
+  const resized = await settle(
+    (async () => {
+      await waitForBrowserUseCdpSocket(socket, signal);
+      const targets = browserUseCdpTargetsSchema.parse(
+        await sendBrowserUseCdpCommand(
+          socket,
+          1,
+          "Target.getTargets",
+          {},
+          signal,
+        ),
+        { reportInput: true },
+      );
+      const target = targets.targetInfos.find((candidate) => {
+        return candidate.type === "page";
+      });
+      if (!target) {
+        throw new Error("Browser Use CDP returned no page target");
+      }
+      const window = browserUseCdpWindowSchema.parse(
+        await sendBrowserUseCdpCommand(
+          socket,
+          2,
+          "Browser.getWindowForTarget",
+          { targetId: target.targetId },
+          signal,
+        ),
+        { reportInput: true },
+      );
+      await sendBrowserUseCdpCommand(
+        socket,
+        3,
+        "Browser.setContentsSize",
+        { windowId: window.windowId, width, height },
+        signal,
+      );
+    })(),
+  );
+  if (
+    socket.readyState === WebSocket.CONNECTING ||
+    socket.readyState === WebSocket.OPEN
+  ) {
+    safeSync(() => {
+      socket.close(1000);
+    });
+  }
+  if (!resized.ok) {
+    throw resized.error;
+  }
+}
+
+export async function resizeBrowserUseSession(
+  cdpUrl: string,
+  width: number,
+  height: number,
+  signal: AbortSignal,
+): Promise<void> {
+  const result = await settle(
+    resizeBrowserUseCdp(
+      cdpUrl,
+      width,
+      height,
+      AbortSignal.any([
+        signal,
+        AbortSignal.timeout(BROWSER_USE_CDP_REQUEST_TIMEOUT_MS),
+      ]),
+    ),
+  );
+  signal.throwIfAborted();
+  if (!result.ok) {
+    throw new BrowserUseProviderError(
+      502,
+      "BROWSER_USE_RESIZE_ERROR",
+      "Managed browser provider could not resize the browser",
+    );
   }
 }
 
@@ -223,9 +475,9 @@ export async function createBrowserUseSession(
         profileId: args.profileId,
         proxyCountryCode: args.proxyCountryCode,
         timeout: args.timeoutMinutes,
-        browserScreenWidth: 1440,
-        browserScreenHeight: 900,
-        allowResizing: false,
+        browserScreenWidth: ZERO_BROWSER_SCREEN_WIDTH,
+        browserScreenHeight: ZERO_BROWSER_INITIAL_SCREEN_HEIGHT,
+        allowResizing: true,
         enableRecording: false,
       }),
     },

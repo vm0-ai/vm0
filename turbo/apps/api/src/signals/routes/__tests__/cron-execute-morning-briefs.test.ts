@@ -44,7 +44,6 @@ import { holdOrgAdmissionLockFixture } from "../../../test-fixtures/chat-message
 import {
   insertOldFormatQueuedUserMessageFixture,
   insertQueuedWebUserMessageFixture,
-  pauseMorningBriefAutomationIntakeFixture,
   readMorningBriefDeliveryFixture,
   readMorningBriefQueuedParamsForDeliveryFixture,
   readMorningBriefQueuedParamsFixture,
@@ -1419,81 +1418,6 @@ describe("cron execute morning briefs", () => {
     }
     expect(userRunId).not.toBe(briefRunId);
     await completeMorningBriefRun(scenario, userRunId, 0);
-    clearMockNow();
-  }, 90_000);
-
-  it("admits a queued brief while workflow automation intake is paused", async () => {
-    context.mocks.resend.send.mockResolvedValue({
-      data: { id: "resend-paused" },
-      error: null,
-    });
-    const scenario = await setupMorningBriefActor();
-    await updateFeatureSwitchesForUser(context, scenario.actor, {
-      [FeatureSwitchKey.ManualMorningBrief]: true,
-    });
-    mockNow(AFTER_SEVEN_LOCAL);
-    const admissionLock = await holdOrgAdmissionLockFixture({
-      orgId: scenario.actor.orgId,
-      signal: context.signal,
-    });
-    onTestFinished(async () => {
-      admissionLock.release();
-      await admissionLock.done;
-    });
-
-    routeMocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
-    const briefRequest = morningBriefTriggerClient().trigger({
-      headers: actorHeaders(),
-      body: {},
-    });
-    let threadId: string | null = null;
-    await expect
-      .poll(async () => {
-        threadId = await findMorningBriefThreadIdOrNull(scenario);
-        return threadId;
-      })
-      .not.toBeNull();
-    if (!threadId) {
-      throw new Error("Expected the queued Morning Brief thread");
-    }
-    const queuedThreadId = threadId;
-    await expect
-      .poll(async () => {
-        const events = await readMorningBriefThreadEvents(
-          scenario,
-          queuedThreadId,
-        );
-        return events.some((event) => {
-          return (
-            event.eventType === "input.prompt" && event.runId === undefined
-          );
-        });
-      })
-      .toBe(true);
-
-    await pauseMorningBriefAutomationIntakeFixture(queuedThreadId);
-    const pausedEvents = await readMorningBriefThreadEvents(
-      scenario,
-      queuedThreadId,
-    );
-    expect(pausedEvents).toContainEqual(
-      expect.objectContaining({
-        eventType: "queue.automation_paused",
-      }),
-    );
-
-    admissionLock.release();
-    const triggered = await accept(briefRequest, [200]);
-    await admissionLock.done;
-    if (!triggered.body.runId) {
-      throw new Error("Expected the paused-intake Morning Brief run");
-    }
-    const triggeredRunId = triggered.body.runId;
-    const thread = await findMorningBriefThread(scenario);
-    expect(thread.runId).toBe(triggeredRunId);
-    mockUploadedBriefOutput(VALID_OUTPUT);
-    await completeMorningBriefRun(scenario, triggeredRunId, 0);
-    await drainOutbox();
     clearMockNow();
   }, 90_000);
 

@@ -68,7 +68,7 @@ async function recordFirstAssistantMessageAcknowledgement(args: {
   });
 }
 
-export async function publishFirstAssistantMessageCreated(args: {
+async function publishFirstAssistantMessageCreated(args: {
   readonly db: Db;
   readonly threadId: string;
   readonly userId: string;
@@ -94,4 +94,19 @@ export async function publishFirstAssistantMessageCreated(args: {
       },
     ),
   );
+}
+
+export async function publishFirstAssistantMessageCreatedSafely(args: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly userId: string;
+  readonly runId: string;
+}): Promise<void> {
+  await tapError(publishFirstAssistantMessageCreated(args), (error) => {
+    L.warn("Failed to publish first assistant message created signal", {
+      runId: args.runId,
+      threadId: args.threadId,
+      error,
+    });
+  });
 }
