@@ -1577,19 +1577,6 @@ const queryBuilderCases = {
             )
           \`;
         }
-        function unionRows(userId: number) {
-          return sql\`
-            WITH rows AS (
-              SELECT run_id
-              FROM usage_event
-              WHERE user_id = \${userId}
-              UNION ALL
-              SELECT run_id
-              FROM archived_usage_event
-              WHERE user_id = \${userId}
-            )
-          \`;
-        }
         function deletingRows(userId: number) {
           return sql\`
             WITH rows AS (
@@ -1610,7 +1597,7 @@ const queryBuilderCases = {
           \`;
         }
         function statefulRows(userId: number) {
-          const selectedUserId = userId;
+          let selectedUserId = userId;
           return sql\`
             WITH rows AS (
               SELECT run_id
@@ -1628,11 +1615,6 @@ const queryBuilderCases = {
         await executeRawRows(
           db,
           sql\`\${materializedRows(threadId)} SELECT run_id FROM rows\`,
-          rowSchema,
-        );
-        await executeRawRows(
-          db,
-          sql\`\${unionRows(threadId)} SELECT run_id FROM rows\`,
           rowSchema,
         );
         await executeRawRows(
@@ -2279,6 +2261,57 @@ const queryBuilderCases = {
     },
   ],
   readInvalid: [
+    {
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, gt, sql, sum } from "drizzle-orm";
+
+        function recordWith(userId: number) {
+          const live = sql\`
+            live AS (
+              SELECT
+                \${runs.threadId} AS thread_id,
+                \${sum(runs.id)} AS total
+              FROM \${runs}
+              WHERE \${eq(runs.threadId, userId)}
+              GROUP BY \${runs.threadId}
+              HAVING \${gt(sum(runs.id), 0)}
+            )
+          \`;
+          const archived = sql\`
+            archived AS (
+              SELECT
+                \${runs.threadId} AS thread_id,
+                \${sum(runs.id)} AS total
+              FROM \${runs}
+              WHERE \${eq(runs.threadId, userId)}
+              GROUP BY \${runs.threadId}
+            )
+          \`;
+          const record = sql\`
+            record AS (
+              SELECT thread_id, total
+              FROM live
+              UNION ALL
+              SELECT thread_id, total
+              FROM archived
+            )
+          \`;
+          return sql\`WITH \${live}, \${archived}, \${record}\`;
+        }
+
+        await executeRawRows(
+          db,
+          sql\`
+            \${recordWith(threadId)}
+            SELECT thread_id, total
+            FROM record
+            ORDER BY total DESC
+          \`,
+          rowSchema,
+        );
+      `,
+      errors: [{ messageId: "composedCteQueryBuilder" }],
+    },
     {
       code: `${rawRowsImport}${schemaPreamble}
         import { gte, sql, sum } from "drizzle-orm";

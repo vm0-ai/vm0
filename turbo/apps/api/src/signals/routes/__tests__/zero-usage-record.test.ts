@@ -775,6 +775,17 @@ describe("GET /api/zero/usage/record", () => {
     );
     expect(secondPage.body.rows).toHaveLength(1);
     expect(secondPage.body.rows[0]?.threadId).toBe(expectedThreadIds[2]);
+
+    const emptyPage = await accept(
+      apiClient().get({
+        query: { page: 3, pageSize: 2 },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(emptyPage.body.rows).toStrictEqual([]);
+    expect(emptyPage.body.pagination.total).toBe(3);
+    expect(emptyPage.body.totalCredits).toBe(30);
   });
 
   it("returns kind and provider breakdowns for each usage row", async () => {
