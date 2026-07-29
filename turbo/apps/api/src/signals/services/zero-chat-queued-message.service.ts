@@ -519,17 +519,14 @@ export async function claimQueueFirstRunAssociation(
         return { kind: "lost" };
       }
 
-      if (args.morningBriefDeliveryId) {
-        const [delivery] = await db
-          .select({ runId: morningBriefDeliveries.runId })
-          .from(morningBriefDeliveries)
-          .where(eq(morningBriefDeliveries.id, args.morningBriefDeliveryId))
-          .for("update")
-          .limit(1);
-        if (!delivery || delivery.runId !== null) {
-          outcome = "lost";
-          return { kind: "lost" };
-        }
+      if (
+        !(await lockUnclaimedMorningBriefDelivery(
+          db,
+          args.morningBriefDeliveryId,
+        ))
+      ) {
+        outcome = "lost";
+        return { kind: "lost" };
       }
 
       const claimed = await appendClaimedUserMessage(db, {
@@ -555,6 +552,22 @@ export async function claimQueueFirstRunAssociation(
       return { queue_first_claim_result: outcome };
     },
   );
+}
+
+async function lockUnclaimedMorningBriefDelivery(
+  db: DbTransaction,
+  deliveryId: string | undefined,
+): Promise<boolean> {
+  if (!deliveryId) {
+    return true;
+  }
+  const [delivery] = await db
+    .select({ runId: morningBriefDeliveries.runId })
+    .from(morningBriefDeliveries)
+    .where(eq(morningBriefDeliveries.id, deliveryId))
+    .for("update")
+    .limit(1);
+  return delivery?.runId === null;
 }
 
 /**
