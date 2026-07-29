@@ -2,15 +2,16 @@
  * Auth retry helpers shared by `fetch$` (signals/fetch.ts) and
  * `zeroClient$` (signals/api-client.ts).
  *
- * On a 401 response we force-refresh the Clerk JWT and replay the request
- * once before falling back to `clerk.redirectToSignIn()`. This covers the
- * common PWA case where `session.getToken()` returned a cached token that
- * expired between fetch and server-side validation (see issue #8883).
+ * On a 401 response we force-refresh the Clerk JWT and replay the request.
+ * Network failures during either recovery step retry with fibonacci backoff.
+ * Only an explicit 401 after recovery falls back to
+ * `clerk.redirectToSignIn()`.
  */
 import { command, computed, state } from "ccstate";
 import type { Clerk } from "@clerk/clerk-js";
+import { isNetworkRequestError } from "../lib/network-error.ts";
 import { now } from "../lib/time.ts";
-import { detach, Reason, settle } from "./utils";
+import { detach, Reason, retryWithFibonacciBackoff } from "./utils";
 
 export type ClerkLike = Pick<Clerk, "session" | "redirectToSignIn">;
 
@@ -18,8 +19,7 @@ const AUTH_TRANSITION_REDIRECT_SUPPRESSION_MS = 30_000;
 
 type FreshTokenResult =
   | { readonly status: "refreshed"; readonly token: string }
-  | { readonly status: "unavailable" }
-  | { readonly status: "offline" };
+  | { readonly status: "unavailable" };
 
 const unauthorizedRedirectSuppressionUntilState$ = state(0);
 
@@ -44,10 +44,9 @@ function isUnauthorizedRedirectSuppressed(suppressionUntil: number): boolean {
 }
 
 /**
- * Force-refresh the Clerk session token. Clerk performs bounded transient
- * retries internally. Once those retries determine the browser is offline,
- * preserve the session and let the next API action retry after connectivity
- * returns instead of redirecting to sign-in.
+ * Force-refresh the Clerk session token. Network failures retry until the
+ * request's owning signal aborts, so a temporarily offline browser does not
+ * turn into a sign-in redirect.
  *
  * Concurrent 401s may each trigger their own refresh, but Clerk's FAPI
  * internally dedups in-flight token requests, so the extra traffic is
@@ -55,28 +54,53 @@ function isUnauthorizedRedirectSuppressed(suppressionUntil: number): boolean {
  */
 export async function fetchFreshToken(
   clerk: ClerkLike,
-  staleToken: string | null,
+  signal: AbortSignal,
 ): Promise<FreshTokenResult> {
-  if (!clerk.session) {
+  signal.throwIfAborted();
+  const session = clerk.session;
+  if (!session) {
     return { status: "unavailable" };
   }
-  const tokenResult = await settle(clerk.session.getToken({ skipCache: true }));
-  if (!tokenResult.ok) {
-    const { error } = tokenResult;
-    if (
-      typeof error === "object" &&
-      error !== null &&
-      "code" in error &&
-      error.code === "clerk_offline"
-    ) {
-      return { status: "offline" };
-    }
-    throw error;
-  }
-  if (!tokenResult.value || tokenResult.value === staleToken) {
+  const token = await retryAuthRecoveryOperation(() => {
+    return session.getToken({ skipCache: true });
+  }, signal);
+  if (!token) {
     return { status: "unavailable" };
   }
-  return { status: "refreshed", token: tokenResult.value };
+  return { status: "refreshed", token };
+}
+
+function isClerkOfflineError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "clerk_offline"
+  );
+}
+
+function isAuthRecoveryNetworkError(error: unknown): boolean {
+  return isClerkOfflineError(error) || isNetworkRequestError(error);
+}
+
+export function retryAuthRecoveryOperation<T>(
+  operation: () => Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  return retryWithFibonacciBackoff(
+    operation,
+    isAuthRecoveryNetworkError,
+    signal,
+  );
+}
+
+export function authRecoverySignal(
+  rootSignal: AbortSignal,
+  requestSignal: AbortSignal | null | undefined,
+): AbortSignal {
+  return requestSignal
+    ? AbortSignal.any([rootSignal, requestSignal])
+    : rootSignal;
 }
 
 export function handleUnauthorizedRedirect(

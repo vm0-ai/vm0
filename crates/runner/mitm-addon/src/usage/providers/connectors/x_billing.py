@@ -273,9 +273,13 @@ _INCLUDES_TO_BUCKET: dict[str, str] = {
 
 
 def classify_includes_bucket(key: str) -> str | None:
-    """Return the billing bucket for an ``includes.<key>`` resource
-    type, or ``None`` if the key is not recognized.  Caller is
-    responsible for substituting a safe over-charging fallback.
+    """Return the billing bucket for an ``includes.<key>`` resource type.
+
+    ``None`` means the caller must preserve the unknown type as a bounded
+    synthetic ``includes.<key>`` category or the fixed
+    ``includes.__overflow__`` category, not substitute a known bucket.  The
+    server applies the minimum-rate X ``__fallback__`` price to these
+    categories, records ``fallback_pricing``, and emits underbilling telemetry.
     """
     return _INCLUDES_TO_BUCKET.get(key)
 
