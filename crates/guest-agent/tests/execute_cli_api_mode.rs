@@ -8,7 +8,7 @@ mod common;
 
 use guest_agent::masker::SecretMasker;
 use guest_agent::run_context::GuestRuntime;
-use httpmock::prelude::*;
+use serde_json::Value;
 use std::path::Path;
 use std::time::Duration;
 
@@ -58,7 +58,7 @@ async fn api_mode_execute_cli_captures_session_metadata_and_sends_events()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock_cli = common::build_and_locate_mock()?;
     let tmp = tempfile::tempdir()?;
-    let server = MockServer::start();
+    let server = common::RecordingServer::start(200, Duration::ZERO).await?;
     let session_id = "preview-filtered-user";
     let prompt = [
         "@ECHO@",
@@ -70,7 +70,7 @@ async fn api_mode_execute_cli_captures_session_metadata_and_sends_events()
     .join("\n");
 
     unsafe {
-        setup_api_env(&mock_cli, tmp.path(), &server.base_url(), &prompt)?;
+        setup_api_env(&mock_cli, tmp.path(), &server.base_url, &prompt)?;
     }
     let runtime = GuestRuntime::from_process_env()?;
     let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
@@ -78,13 +78,6 @@ async fn api_mode_execute_cli_captures_session_metadata_and_sends_events()
     unsafe {
         std::env::set_var("VM0_RUN_ID", "stale-run-id-after-runtime-construction");
     }
-
-    let event_delivery = server.mock(|when, then| {
-        when.method(POST)
-            .path("/api/webhooks/agent/events")
-            .body_includes(format!(r#""runId":"{expected_run_id}""#));
-        then.status(200);
-    });
 
     let masker = SecretMasker::from_raw("");
     let active_input = guest_agent::active_input::ActiveInputRuntime::new_with_initial_prompt(
@@ -112,10 +105,50 @@ async fn api_mode_execute_cli_captures_session_metadata_and_sends_events()
         Some(1),
         "API mode should acknowledge the init and result events"
     );
-    let delivery_calls = event_delivery.calls_async().await;
+    let requests = server.requests()?;
     assert!(
-        (1..=2).contains(&delivery_calls),
-        "init and result should use one batch or two singleton requests, got {delivery_calls}"
+        (1..=2).contains(&requests.len()),
+        "init and result should use one batch or two singleton requests, got {}",
+        requests.len()
+    );
+    let mut delivered_events = Vec::new();
+    for request in requests {
+        assert_eq!(request.path, "/api/webhooks/agent/events");
+        assert_eq!(request.authorization.as_deref(), Some("Bearer test-token"));
+        assert_eq!(request.content_type.as_deref(), Some("application/json"));
+        let body: Value = serde_json::from_str(&request.body)?;
+        assert_eq!(
+            body.get("runId").and_then(Value::as_str),
+            Some(expected_run_id.as_str())
+        );
+        delivered_events.extend(
+            body.get("events")
+                .and_then(Value::as_array)
+                .expect("event request should contain an events array")
+                .iter()
+                .cloned(),
+        );
+    }
+    assert_eq!(delivered_events.len(), 2);
+    assert_eq!(
+        delivered_events[0].get("subtype").and_then(Value::as_str),
+        Some("init")
+    );
+    assert_eq!(
+        delivered_events[0]
+            .get("session_id")
+            .and_then(Value::as_str),
+        Some(session_id)
+    );
+    assert_eq!(
+        delivered_events[1].get("type").and_then(Value::as_str),
+        Some("result")
+    );
+    assert!(
+        delivered_events
+            .iter()
+            .all(|event| !event.to_string().contains("should-not-upload")),
+        "replayed user event should not be delivered"
     );
 
     let captured_session_id = std::fs::read_to_string(runtime.paths.session_id_file())?;
