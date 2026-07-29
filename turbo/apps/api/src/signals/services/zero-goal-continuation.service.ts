@@ -1,5 +1,3 @@
-import { randomBytes } from "node:crypto";
-
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { command } from "ccstate";
@@ -47,10 +45,6 @@ type GoalContinuationResult =
   | GoalEnqueueResult
   | { readonly kind: "paused"; readonly goalId: string };
 
-function generateCallbackSecret(): string {
-  return randomBytes(32).toString("hex");
-}
-
 function isTerminalStatus(status: string): status is TerminalRunStatus {
   return (
     status === "completed" ||
@@ -97,13 +91,8 @@ const enqueueGoalContinuation$ = command(
     const admission = await settle(
       admitGoalQueueEvent(args.db, {
         chatThreadId: args.goal.threadId,
-        orgId: args.goal.orgId,
-        userId: args.goal.userId,
+        goalId: args.goal.goalId,
         objectiveBrief: args.goal.objectiveBrief,
-        params: {
-          goalId: args.goal.goalId,
-          callbackSecret: generateCallbackSecret(),
-        },
       }),
     );
     signal.throwIfAborted();

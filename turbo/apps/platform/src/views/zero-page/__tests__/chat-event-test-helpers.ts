@@ -144,6 +144,14 @@ const mockChatEventOverrides = {
           : message.triggerBrief,
     };
   },
+  "input.goal": (message) => {
+    return {
+      content: null,
+      goalSnapshot: message.goalSnapshot ?? {
+        objectiveBrief: "Mock queued goal",
+      },
+    };
+  },
   "input.rejected": (message) => {
     return {
       content: null,
