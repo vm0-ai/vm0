@@ -327,10 +327,16 @@ for _ in 1 2; do
         "success-unit" "/opt/vm0" "behavior-a"
   )
   for _ in $(seq 1 100); do
-    [ -f "$success_status" ] && break
+    if [ -f "$success_status" ] \
+      && [ -f "$success_command_status" ] \
+      && [ ! -e "$success_active" ]; then
+      break
+    fi
     /bin/sleep 0.01
   done
   test -f "$success_status"
+  test -f "$success_command_status"
+  test ! -e "$success_active"
 done
 assert_value "$success_count" "1"
 assert_value "$success_status" "0"
