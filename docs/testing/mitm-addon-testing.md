@@ -162,6 +162,7 @@ tests must not resolve a different mitmproxy version from production.
 | `test_firewall_rewrite_forwarding.py`                   | Firewall auth URL rewrite forwarding behavior                                                                        |
 | `test_firewall_rewrite_safety.py`                       | Firewall auth URL rewrite fail-closed and safety behavior                                                            |
 | `test_auth_query_injection.py`                          | Firewall auth query injection and query rewrite behavior                                                             |
+| `test_host_normalization.py`                            | Shared hostname identity, ASCII fast-path, IDNA, and label-boundary contracts                                        |
 | `test_url_utils.py`                                     | Rewrite URL, path, query, and auth-base URL utility cases                                                            |
 | `test_url_utils_trusted_authority.py`                   | Trusted request authority success and URL reconstruction                                                             |
 | `test_url_utils_trusted_authority_rejection.py`         | Trusted request authority rejection matrices                                                                         |
