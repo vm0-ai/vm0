@@ -584,20 +584,40 @@ async function syncArtifactCatalogFile(
     return [];
   }
 
-  await upsertArtifact({
-    db,
-    kind,
-    entityId,
-    logicalKey: `file:${row.url}`,
-    projectionFileId: row.id,
-    projectionCreatedAt: row.createdAt,
-    orgId: row.orgId,
-    authorUserId,
-    title: row.filename ?? row.externalId,
-    thumbnail: fileThumbnail(row),
-    createdAt: row.createdAt,
+  const orgId = row.orgId;
+  const logicalKey = `file:${row.url}`;
+  const synced = await db.transaction(async (tx) => {
+    // Serialize retries for one file before touching either artifact key.
+    const [lockedFile] = await tx
+      .select({ id: runUploadedFiles.id })
+      .from(runUploadedFiles)
+      .where(eq(runUploadedFiles.id, row.id))
+      .for("update")
+      .limit(1);
+    signal.throwIfAborted();
+    if (!lockedFile) {
+      return false;
+    }
+
+    await upsertArtifact({
+      db: tx,
+      kind,
+      entityId,
+      logicalKey,
+      projectionFileId: row.id,
+      projectionCreatedAt: row.createdAt,
+      orgId,
+      authorUserId,
+      title: row.filename ?? row.externalId,
+      thumbnail: fileThumbnail(row),
+      createdAt: row.createdAt,
+    });
+    return true;
   });
   signal.throwIfAborted();
+  if (!synced) {
+    return [];
+  }
   await finishPendingArtifactFile(db, fileId, signal);
   return [authorUserId];
 }
