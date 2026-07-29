@@ -26,11 +26,11 @@ const mockAgent = {
 
 const defaultPermissionDetails = [
   catalogPermissionDetail({
-    connectorRef: "github",
+    connectorSlug: "github",
     label: "GitHub",
   }),
   catalogPermissionDetail({
-    connectorRef: "slack",
+    connectorSlug: "slack",
     label: "Slack",
     permissions: [
       { name: "conversations:read", description: "Read conversations" },
@@ -243,7 +243,7 @@ describe("zero agent view command", () => {
     it("should load a server-authored connector once per unique ref", async () => {
       let permissionRequests = 0;
       const serverOnlyDetail = catalogPermissionDetail({
-        connectorRef: "server-only",
+        connectorSlug: "server-only",
         label: "Server Only",
         permissions: [
           { name: "records.read", description: "Read server records" },

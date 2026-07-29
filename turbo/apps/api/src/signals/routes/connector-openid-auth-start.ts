@@ -25,7 +25,7 @@ export function openIdRealmForOrigin(origin: string): string {
 }
 
 export function prepareConnectorOpenIdAuthStartWithMethod(args: {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly method: ConnectorAuthMethodRuntimeConfig;
   readonly origin: string;
 }): PrepareResolvedConnectorOpenIdAuthStartResult {
@@ -34,7 +34,7 @@ export function prepareConnectorOpenIdAuthStartWithMethod(args: {
   }
   const state = generateConnectorOAuthState();
   const returnTo = new URL(
-    `/api/connectors/${args.connectorRef}/callback`,
+    `/api/connectors/${args.connectorSlug}/callback`,
     args.origin,
   );
   returnTo.searchParams.set("state", state);
@@ -48,7 +48,7 @@ export function prepareConnectorOpenIdAuthStartWithMethod(args: {
 }
 
 export async function buildConnectorOpenIdAuthUrlWithMethod(args: {
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly authMethodId: string;
   readonly method: ConnectorAuthMethodRuntimeConfig;
   readonly returnTo: string;
@@ -57,7 +57,7 @@ export async function buildConnectorOpenIdAuthUrlWithMethod(args: {
 }): Promise<AuthUrlResult> {
   return normalizeAuthUrlResult(
     await buildConnectorOpenIdAuthAuthorizationUrlWithMethod({
-      connectorRef: args.connectorRef,
+      connectorSlug: args.connectorSlug,
       authMethodId: args.authMethodId,
       method: args.method,
       returnTo: args.returnTo,

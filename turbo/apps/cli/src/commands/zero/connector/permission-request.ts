@@ -30,11 +30,11 @@ function permissionDescription(permission: string): string {
 }
 
 function printSensitivePermissionGuidance(
-  connectorRef: string,
+  connectorSlug: string,
   permission: string,
 ): void {
   // Slack chat:write: strongly recommend bot-based messaging over user identity
-  if (connectorRef === "slack" && permission === "chat:write") {
+  if (connectorSlug === "slack" && permission === "chat:write") {
     console.log("");
     console.log(
       "IMPORTANT: Granting chat:write allows sending messages AS THE USER's identity, not as a bot.",
@@ -50,7 +50,7 @@ function printSensitivePermissionGuidance(
 
   // Gmail send permissions: strongly recommend draft-based workflow over direct send.
   if (
-    connectorRef === "gmail" &&
+    connectorSlug === "gmail" &&
     (permission === "messages.send" || permission === "drafts.send")
   ) {
     console.log("");
@@ -158,7 +158,7 @@ async function printBrowserPermissionRequestMessage(): Promise<void> {
 }
 
 async function outputPermissionRequestMessage(
-  connectorRef: string,
+  connectorSlug: string,
   label: string,
   permission: string,
   agentId: string | undefined,
@@ -167,7 +167,7 @@ async function outputPermissionRequestMessage(
   const platformOrigin = await getPlatformOrigin();
 
   const urlParams = new URLSearchParams({
-    ref: connectorRef,
+    ref: connectorSlug,
     permission,
     action: "allow",
   });
@@ -176,7 +176,7 @@ async function outputPermissionRequestMessage(
   const pagePath = agentId ? `/agents/${agentId}/permissions` : "/agents";
   const url = `${platformOrigin}${pagePath}?${urlParams.toString()}`;
 
-  printSensitivePermissionGuidance(connectorRef, permission);
+  printSensitivePermissionGuidance(connectorSlug, permission);
   printPermissionRequestMessage({
     permission,
     label,
@@ -205,6 +205,7 @@ const callbackPromptNotes = callbackPromptAvailable
 export const permissionRequestCommand = new Command()
   .name("permission-request")
   .description("Request permission to use a connector capability")
+  // TODO(#23619): Rename this stable CLI argument label in the CLI rollout.
   .argument("<connector-ref>", "The connector type (e.g. github)")
   .addOption(
     new Option(
@@ -239,7 +240,7 @@ ${callbackPromptNotes}  - Permission requests update the current user's connecto
   .action(
     withErrorHandler(
       async (
-        connectorRef: string,
+        connectorSlug: string,
         opts: {
           permission: string;
           agent?: string;
@@ -248,7 +249,7 @@ ${callbackPromptNotes}  - Permission requests update the current user's connecto
       ) => {
         if (
           isBrowserPermissionTarget({
-            connectorRef,
+            connectorSlug,
             permission: opts.permission,
           })
         ) {
@@ -262,7 +263,7 @@ ${callbackPromptNotes}  - Permission requests update the current user's connecto
         }
         if (
           isComputerUsePermissionTarget({
-            connectorRef,
+            connectorSlug,
             permission: opts.permission,
           })
         ) {
@@ -277,9 +278,10 @@ ${callbackPromptNotes}  - Permission requests update the current user's connecto
 
         const agentId = opts.agent ?? process.env.ZERO_AGENT_ID;
 
-        const metadata = await getZeroConnectorCatalogPermissions(connectorRef);
+        const metadata =
+          await getZeroConnectorCatalogPermissions(connectorSlug);
         if (!metadata) {
-          throw new Error(`Unknown connector type: ${connectorRef}`);
+          throw new Error(`Unknown connector type: ${connectorSlug}`);
         }
 
         if (
@@ -287,12 +289,12 @@ ${callbackPromptNotes}  - Permission requests update the current user's connecto
           !findFirewallMetadataPermission(metadata, opts.permission)
         ) {
           throw new Error(
-            `Unknown permission "${opts.permission}" for ${connectorRef}`,
+            `Unknown permission "${opts.permission}" for ${connectorSlug}`,
           );
         }
 
         await outputPermissionRequestMessage(
-          connectorRef,
+          connectorSlug,
           metadata.label,
           opts.permission,
           agentId,

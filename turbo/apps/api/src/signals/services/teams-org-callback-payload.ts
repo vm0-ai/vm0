@@ -10,7 +10,3 @@ export const teamsOrgCallbackPayloadSchema = z
   })
   .extend(teamsDeliveryTargetSchema.shape)
   .passthrough();
-
-export type TeamsOrgCallbackPayload = z.infer<
-  typeof teamsOrgCallbackPayloadSchema
->;

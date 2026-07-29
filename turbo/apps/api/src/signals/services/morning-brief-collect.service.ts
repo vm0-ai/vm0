@@ -44,10 +44,7 @@ import {
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
-import {
-  chatEventTypeIn,
-  chatEventTypeSql,
-} from "./zero-chat-event-type.service";
+import { chatEventTypeIn } from "./zero-chat-event-type.service";
 
 const GITHUB_API_BASE = "https://api.github.com";
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -61,17 +58,17 @@ const MAX_CALENDAR_EVENTS = 50;
 const MAX_UNREAD_THREADS = 10;
 const MAX_THREAD_MESSAGES = 3;
 
-const MORNING_BRIEF_CONNECTOR_REFS = [
+const MORNING_BRIEF_CONNECTOR_SLUGS = [
   "github",
   "gmail",
   "google-calendar",
 ] as const;
-type MorningBriefConnectorRef = (typeof MORNING_BRIEF_CONNECTOR_REFS)[number];
+type MorningBriefConnectorSlug = (typeof MORNING_BRIEF_CONNECTOR_SLUGS)[number];
 
 function connectorTokenEnvironmentName(
-  connectorRef: MorningBriefConnectorRef,
+  connectorSlug: MorningBriefConnectorSlug,
 ): string {
-  switch (connectorRef) {
+  switch (connectorSlug) {
     case "github": {
       return "GH_TOKEN";
     }
@@ -97,10 +94,10 @@ async function resolveMorningBriefConnectorAccess(args: {
   readonly db: Db;
   readonly orgId: string;
   readonly userId: string;
-  readonly connectorRef: MorningBriefConnectorRef;
+  readonly connectorSlug: MorningBriefConnectorSlug;
   readonly signal: AbortSignal;
 }): Promise<ConnectorAccessResult> {
-  const environmentName = connectorTokenEnvironmentName(args.connectorRef);
+  const environmentName = connectorTokenEnvironmentName(args.connectorSlug);
   const currentTime = nowDate();
   const snapshot = await loadConnectorRuntimeSnapshot(args.db);
   args.signal.throwIfAborted();
@@ -109,19 +106,19 @@ async function resolveMorningBriefConnectorAccess(args: {
     snapshot,
     orgId: args.orgId,
     userId: args.userId,
-    connectorRef: args.connectorRef,
+    connectorSlug: args.connectorSlug,
   });
   args.signal.throwIfAborted();
   if (loaded.kind !== "ok") {
     return {
       kind: "unavailable",
-      message: `${args.connectorRef} is not connected`,
+      message: `${args.connectorSlug} is not connected`,
     };
   }
   if (loaded.connection.needsReconnect) {
     return {
       kind: "unavailable",
-      message: `${args.connectorRef} needs to be reconnected`,
+      message: `${args.connectorSlug} needs to be reconnected`,
     };
   }
   const connection = loaded.connection;
@@ -156,7 +153,7 @@ async function resolveMorningBriefConnectorAccess(args: {
     if (refreshed.kind !== "not-refreshable") {
       return {
         kind: "unavailable",
-        message: `${args.connectorRef} token refresh failed`,
+        message: `${args.connectorSlug} token refresh failed`,
       };
     }
   }
@@ -168,7 +165,7 @@ async function resolveMorningBriefConnectorAccess(args: {
   if (valueRef === null) {
     return {
       kind: "unavailable",
-      message: `${args.connectorRef} needs to be reconnected`,
+      message: `${args.connectorSlug} needs to be reconnected`,
     };
   }
   const values = await loadConnectorCredentialValues({
@@ -181,7 +178,7 @@ async function resolveMorningBriefConnectorAccess(args: {
   if (!accessToken) {
     return {
       kind: "unavailable",
-      message: `${args.connectorRef} needs to be reconnected`,
+      message: `${args.connectorSlug} needs to be reconnected`,
     };
   }
   return {
@@ -619,7 +616,7 @@ async function collectUnreadChatThreads(args: {
   for (const row of rows) {
     const messages = await args.db
       .select({
-        eventType: chatEventTypeSql().as("event_type"),
+        eventType: chatMessages.eventType,
         content: chatMessages.content,
         userMessage: chatMessages.userMessage,
         createdAt: chatMessages.createdAt,
@@ -731,22 +728,22 @@ interface CollectMorningBriefInputArgs {
 export async function collectMorningBriefInput(
   args: CollectMorningBriefInputArgs,
 ): Promise<MorningBriefInput> {
-  const accessFor = (connectorRef: MorningBriefConnectorRef) => {
+  const accessFor = (connectorSlug: MorningBriefConnectorSlug) => {
     return resolveMorningBriefConnectorAccess({
       db: args.db,
       orgId: args.orgId,
       userId: args.userId,
-      connectorRef,
+      connectorSlug,
       signal: args.signal,
     });
   };
 
   const withAccess = async <T>(
-    connectorRef: MorningBriefConnectorRef,
+    connectorSlug: MorningBriefConnectorSlug,
     collect: (access: ConnectorAccess) => Promise<T>,
   ): Promise<MorningBriefSource<T>> => {
     return await collectSource(async () => {
-      const resolved = await accessFor(connectorRef);
+      const resolved = await accessFor(connectorSlug);
       if (resolved.kind !== "ok") {
         throw new Error(resolved.message);
       }

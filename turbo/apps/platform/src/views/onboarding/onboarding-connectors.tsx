@@ -2,19 +2,19 @@ import type { ReactNode } from "react";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { cn } from "@vm0/ui";
 import {
-  connectorRefSchema,
-  type ConnectorRef,
+  connectorSlugSchema,
+  type ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   allConnectorCatalogItems$,
   connectConnectorNoAuth$,
   connectConnectorOAuthAuthCode$,
-  connectFlowConnectorRef$,
-  justConnectedRefs$,
-  pollingOAuthAuthCodeConnectorRef$,
-  pollingOAuthDeviceAuthConnectorRef$,
-  selectedConnectorRef$,
-  setSelectedConnectorRef$,
+  connectFlowConnectorSlug$,
+  justConnectedSlugs$,
+  pollingOAuthAuthCodeConnectorSlug$,
+  pollingOAuthDeviceAuthConnectorSlug$,
+  selectedConnectorSlug$,
+  setSelectedConnectorSlug$,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ConnectModal } from "../zero-page/components/settings/add-connection-dialog.tsx";
@@ -22,9 +22,9 @@ import { ConnectorCard } from "../zero-page/components/settings/connector-card.t
 
 type ConnectorSetupVariant = "workflow" | "prompt";
 
-function connectorRefs(values: readonly string[]): ConnectorRef[] {
+function parseConnectorSlugs(values: readonly string[]): ConnectorSlug[] {
   return values.flatMap((value) => {
-    const parsed = connectorRefSchema.safeParse(value);
+    const parsed = connectorSlugSchema.safeParse(value);
     return parsed.success ? [parsed.data] : [];
   });
 }
@@ -40,22 +40,22 @@ export function OnboardingConnectorSetup({
   readonly variant?: ConnectorSetupVariant;
   readonly children?: ReactNode;
 }) {
-  const refs = connectorRefs(connectorIds);
-  const requiredSet = new Set(connectorRefs(requiredIds ?? []));
+  const connectorSlugs = parseConnectorSlugs(connectorIds);
+  const requiredSet = new Set(parseConnectorSlugs(requiredIds ?? []));
   const pageSignal = useGet(pageSignal$);
   const connectorCatalogItemsLoadable = useLastLoadable(
     allConnectorCatalogItems$,
   );
   const connect = useSet(connectConnectorOAuthAuthCode$);
   const connectNoAuth = useSet(connectConnectorNoAuth$);
-  const connectRef = useGet(selectedConnectorRef$);
-  const setConnectRef = useSet(setSelectedConnectorRef$);
-  const connectFlowRef = useGet(connectFlowConnectorRef$);
-  const pollingAuthCodeRef = useGet(pollingOAuthAuthCodeConnectorRef$);
-  const pollingDeviceAuthRef = useGet(pollingOAuthDeviceAuthConnectorRef$);
-  const justConnectedRefs = useGet(justConnectedRefs$);
+  const selectedConnectorSlug = useGet(selectedConnectorSlug$);
+  const setSelectedConnectorSlug = useSet(setSelectedConnectorSlug$);
+  const connectFlowSlug = useGet(connectFlowConnectorSlug$);
+  const pollingAuthCodeSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
+  const pollingDeviceAuthSlug = useGet(pollingOAuthDeviceAuthConnectorSlug$);
+  const justConnectedSlugs = useGet(justConnectedSlugs$);
 
-  if (refs.length === 0 && children === undefined) {
+  if (connectorSlugs.length === 0 && children === undefined) {
     return null;
   }
 
@@ -74,37 +74,37 @@ export function OnboardingConnectorSetup({
             : "mt-6 flex flex-col gap-3",
         )}
       >
-        {refs.map((connectorRef) => {
+        {connectorSlugs.map((connectorSlug) => {
           const item = connectorCatalogItems.find((candidate) => {
-            return candidate.connectorRef === connectorRef;
+            return candidate.connectorRef === connectorSlug;
           });
           const connected =
-            item?.connected === true || justConnectedRefs.has(connectorRef);
+            item?.connected === true || justConnectedSlugs.has(connectorSlug);
           const connecting =
-            connectFlowRef === connectorRef ||
-            pollingAuthCodeRef === connectorRef ||
-            pollingDeviceAuthRef === connectorRef;
+            connectFlowSlug === connectorSlug ||
+            pollingAuthCodeSlug === connectorSlug ||
+            pollingDeviceAuthSlug === connectorSlug;
 
           return (
             <ConnectorCard
-              key={connectorRef}
+              key={connectorSlug}
               variant="onboarding"
-              connectorRef={connectorRef}
+              connectorSlug={connectorSlug}
               connector={item}
               connected={connected}
               busy={connecting}
               loading={loading}
               layout={variant}
-              required={requiredSet.has(connectorRef)}
+              required={requiredSet.has(connectorSlug)}
               connect={
                 item
                   ? {
                       openModal: () => {
-                        setConnectRef(connectorRef);
+                        setSelectedConnectorSlug(connectorSlug);
                       },
                       connectBrowserAuth: (authMethod) => {
                         return connect(
-                          connectorRef,
+                          connectorSlug,
                           authMethod,
                           {
                             connectorLabel: item.label,
@@ -116,7 +116,7 @@ export function OnboardingConnectorSetup({
                       connectNoAuth: (authMethod) => {
                         return connectNoAuth(
                           {
-                            connectorRef,
+                            connectorSlug,
                             authMethod,
                             options: { connectorLabel: item.label },
                           },
@@ -131,10 +131,10 @@ export function OnboardingConnectorSetup({
         })}
         {children}
       </section>
-      {connectRef ? (
+      {selectedConnectorSlug ? (
         <ConnectModal
           onClose={() => {
-            setConnectRef(null);
+            setSelectedConnectorSlug(null);
           }}
         />
       ) : null}

@@ -59,7 +59,7 @@ const DEFAULT_COMPOSES_LIST: ComposeListItem[] = [
 ];
 
 let mockComposesList: ComposeListItem[] = [...DEFAULT_COMPOSES_LIST];
-const mockEnabledConnectorTypesByAgent = new Map<string, string[]>();
+const mockEnabledConnectorSlugsByAgent = new Map<string, string[]>();
 
 export function setMockComposesList(composes: ComposeListItem[]): void {
   mockComposesList = composes;
@@ -70,7 +70,7 @@ export function resetMockComposesList(): void {
 }
 
 export function resetMockUserConnectors(): void {
-  mockEnabledConnectorTypesByAgent.clear();
+  mockEnabledConnectorSlugsByAgent.clear();
 }
 
 function mockUserConnectorUpdateResponse(
@@ -84,8 +84,8 @@ function mockUserConnectorUpdateResponse(
     return Array.from(new Set([...current, ...body.enabledTypes]));
   }
   if (body.operation === "remove") {
-    return current.filter((type) => {
-      return !body.enabledTypes.includes(type);
+    return current.filter((connectorSlug) => {
+      return !body.enabledTypes.includes(connectorSlug);
     });
   }
   return [...body.enabledTypes];
@@ -105,19 +105,19 @@ export const apiAgentsHandlers = [
   // GET /api/zero/agents/:id/user-connectors
   mockApi(zeroUserConnectorsContract.get, ({ params, respond }) => {
     return respond(200, {
-      enabledTypes: mockEnabledConnectorTypesByAgent.get(params.id) ?? [],
+      enabledTypes: mockEnabledConnectorSlugsByAgent.get(params.id) ?? [],
     });
   }),
 
   // PUT /api/zero/agents/:id/user-connectors
   mockApi(zeroUserConnectorsContract.update, ({ body, params, respond }) => {
-    const enabledTypes = mockUserConnectorUpdateResponse(
-      mockEnabledConnectorTypesByAgent.get(params.id) ?? [],
+    const enabledConnectorSlugs = mockUserConnectorUpdateResponse(
+      mockEnabledConnectorSlugsByAgent.get(params.id) ?? [],
       body,
     );
-    mockEnabledConnectorTypesByAgent.set(params.id, enabledTypes);
+    mockEnabledConnectorSlugsByAgent.set(params.id, enabledConnectorSlugs);
     return respond(200, {
-      enabledTypes,
+      enabledTypes: enabledConnectorSlugs,
     });
   }),
 

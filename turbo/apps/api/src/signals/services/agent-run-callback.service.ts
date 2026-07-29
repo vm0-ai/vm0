@@ -35,10 +35,6 @@ import {
   handleFeishuOrgInternalCallbackWithoutCcstate,
 } from "./internal-feishu-org-run-callback.service";
 import {
-  handleTeamsOrgInternalCallback$,
-  handleTeamsOrgInternalCallbackWithoutCcstate,
-} from "./internal-teams-org-run-callback.service";
-import {
   handleTelegramInternalCallback$,
   handleTelegramInternalCallbackWithoutCcstate,
 } from "./internal-telegram-run-callback.service";
@@ -198,13 +194,6 @@ const dispatchInternalCallback$ = command(
           success: false,
           error: "Teams chat delivery callbacks are inline-only",
         };
-      }
-      case "teams:org": {
-        return await set(
-          handleTeamsOrgInternalCallback$,
-          input.envelope,
-          signal,
-        );
       }
       case "telegram": {
         return await set(
@@ -586,12 +575,6 @@ async function dispatchInternalCallbackWithoutCcstate(
         success: false,
         error: "Teams chat delivery callbacks are inline-only",
       };
-    }
-    case "teams:org": {
-      return await handleTeamsOrgInternalCallbackWithoutCcstate(
-        input.db,
-        callbackEnvelope(input),
-      );
     }
     case "telegram": {
       return await handleTelegramInternalCallbackWithoutCcstate(

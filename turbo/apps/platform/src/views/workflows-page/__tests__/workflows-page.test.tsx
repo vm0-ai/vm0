@@ -71,9 +71,9 @@ function workflowDetailPath(tab: WorkflowDetailTestTab): string {
   return `/workflows/${SALES_WORKFLOW_ID}/${tab}`;
 }
 
-function connectorIcon(connectorRef: string) {
+function connectorIcon(connectorSlug: string) {
   return {
-    url: `https://icons.example.test/${connectorRef}.svg`,
+    url: `https://icons.example.test/${connectorSlug}.svg`,
     invertInDarkMode: false,
   };
 }

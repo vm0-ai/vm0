@@ -21,15 +21,15 @@ const context = testContext();
 const agentId = "c0000000-0000-4000-a000-000000000001";
 
 function publicConnectorStatusItem(
-  connectorRef: string,
+  connectorSlug: string,
 ): PublicConnectorCatalogStatusItem {
   return {
-    connectorRef,
-    label: connectorRef,
-    description: `${connectorRef} public description`,
+    connectorRef: connectorSlug,
+    label: connectorSlug,
+    description: `${connectorSlug} public description`,
     category: "data-automation-infrastructure",
     icon: {
-      url: `https://icons.example.test/${connectorRef}.svg`,
+      url: `https://icons.example.test/${connectorSlug}.svg`,
       invertInDarkMode: false,
     },
     generation: [],
@@ -52,10 +52,10 @@ function publicConnectorStatusItem(
   };
 }
 
-function mockConnectorCatalogStatus(connectorRefs: readonly string[]): void {
+function mockConnectorCatalogStatus(connectorSlugs: readonly string[]): void {
   context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
     return respond(200, {
-      connectors: connectorRefs.map(publicConnectorStatusItem),
+      connectors: connectorSlugs.map(publicConnectorStatusItem),
     });
   });
 }

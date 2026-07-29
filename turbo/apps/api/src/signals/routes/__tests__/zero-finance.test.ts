@@ -35,23 +35,6 @@ function client() {
   return setupApp({ context });
 }
 
-async function financeEnabledActor(): Promise<ApiTestUser> {
-  const actor = createBddApi(context).user();
-  if (!actor.orgId) {
-    throw new Error("Zero Finance test actor must belong to an organization");
-  }
-  await updateFeatureSwitchesForUser(
-    context,
-    {
-      userId: actor.userId,
-      orgId: actor.orgId,
-      ...(actor.orgRole ? { orgRole: actor.orgRole } : {}),
-    },
-    { [FeatureSwitchKey.ZeroFinance]: true },
-  );
-  return actor;
-}
-
 async function fundActor(actor: ApiTestUser): Promise<void> {
   await createRunsApi(context).grantProEntitlement(actor);
 }
@@ -73,6 +56,18 @@ function configureProvider(): void {
 describe("zero finance routes", () => {
   it("rejects requests when the feature switch is disabled", async () => {
     const actor = createBddApi(context).user();
+    if (!actor.orgId) {
+      throw new Error("Zero Finance test actor must belong to an organization");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      {
+        userId: actor.userId,
+        orgId: actor.orgId,
+        ...(actor.orgRole ? { orgRole: actor.orgRole } : {}),
+      },
+      { [FeatureSwitchKey.ZeroFinance]: false },
+    );
     let providerRequests = 0;
     configureProvider();
     server.use(
@@ -128,7 +123,7 @@ describe("zero finance routes", () => {
   });
 
   it("maps all operations to APIDojo and charges one credit each", async () => {
-    const actor = await financeEnabledActor();
+    const actor = createBddApi(context).user();
     await fundActor(actor);
     configureProvider();
     const beforeCredits = await credits(actor);
@@ -216,7 +211,7 @@ describe("zero finance routes", () => {
   });
 
   it("does not charge credits when APIDojo fails", async () => {
-    const actor = await financeEnabledActor();
+    const actor = createBddApi(context).user();
     await fundActor(actor);
     configureProvider();
     const beforeCredits = await credits(actor);
@@ -243,7 +238,7 @@ describe("zero finance routes", () => {
   });
 
   it("returns not configured without calling APIDojo", async () => {
-    const actor = await financeEnabledActor();
+    const actor = createBddApi(context).user();
     let providerRequests = 0;
     mockEnv("ZERO_FINANCE_APIDOJO_TOKEN", undefined);
     server.use(

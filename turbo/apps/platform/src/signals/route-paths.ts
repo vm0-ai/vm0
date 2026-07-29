@@ -24,6 +24,7 @@ export const ROUTES = {
   customConnectorProposal: "/connectors/custom/proposal",
   computerUseAuthorize: "/computer-use/authorize/:requestToken",
   feishuOAuthCallback: "/connectors/feishu/callback",
+  // TODO(#23619): Rename connector `:type` params with existing browser URLs.
   connectorCallback: "/connectors/:type/callback",
   connectorCallbackResult: "/connectors/:type/callback/:status",
   connectorRedirecting: "/connectors/:type/redirecting",
