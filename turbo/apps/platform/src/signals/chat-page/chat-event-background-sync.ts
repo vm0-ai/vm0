@@ -153,11 +153,21 @@ const receiveSyncedEventsInVisibleThreads$ = command(
 
     await Promise.all(
       visibleThreads.map(async (thread) => {
-        await set(thread.receiveSyncedEvents$, events, signal);
-        signal.throwIfAborted();
-        if (events.length > 0) {
-          await set(autoOpenThreadSidebar$, thread, signal);
+        // Receiving merges the new events before it awaits read-state work, so
+        // start it first and let sidebar selection proceed from that projection.
+        const receiveEventsPromise = set(
+          thread.receiveSyncedEvents$,
+          events,
+          signal,
+        );
+        if (events.length === 0) {
+          await receiveEventsPromise;
+          return;
         }
+        await Promise.all([
+          receiveEventsPromise,
+          set(autoOpenThreadSidebar$, thread, signal),
+        ]);
       }),
     );
     signal.throwIfAborted();
