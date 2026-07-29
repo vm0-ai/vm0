@@ -51,6 +51,9 @@ describe("isFeatureEnabled", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.BrazilianPortugueseLocale, {}),
     ).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.ZeroChatMessaging, {})).toBe(
+      false,
+    );
   });
 
   it("should return false for disabled switch with non-matching userId", () => {
@@ -124,6 +127,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ZeroChatMessaging]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.LanguagePreference]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.BrazilianPortugueseLocale]).toBe(
       false,
@@ -158,6 +162,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ZeroChatMessaging]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.LanguagePreference]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.BrazilianPortugueseLocale]).toBe(
       false,
@@ -228,6 +233,9 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.ZeroMailReplyFollowUp,
     );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.ZeroChatMessaging,
+    );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.LanguagePreference,
     );
@@ -262,6 +270,7 @@ describe("user-overridable switches", () => {
         [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
         [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
         [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
+        [FeatureSwitchKey.ZeroChatMessaging]: true,
         [FeatureSwitchKey.BrazilianPortugueseLocale]: true,
         [FeatureSwitchKey.ZeroBrowser]: true,
         [FeatureSwitchKey.ComposerConnectorPermissions]: true,

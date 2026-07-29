@@ -193,11 +193,14 @@ export { listZeroLogs, searchZeroLogs } from "./domains/zero-logs";
 
 // Domain modules - Zero Chat
 export {
+  getZeroChatThreadAgentId,
   getZeroChatThreadSnapshot,
   getZeroChatThread,
+  listZeroChatEvents,
   listZeroChatThreadEvents,
   renameZeroChatThread,
   searchZeroChat,
+  sendZeroChatEvent,
   updateZeroChatThreadModelSelection,
 } from "./domains/zero-chat";
 export type {

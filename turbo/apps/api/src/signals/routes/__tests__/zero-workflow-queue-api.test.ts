@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { chatEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroWorkflowQueueContract } from "@vm0/api-contracts/contracts/zero-workflow-queue";
@@ -277,6 +277,47 @@ describe("workflow queue API", () => {
     expect(runIds).toHaveLength(2);
     await completeRunThroughSandbox(scenario, runIds[1]!);
     await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(2);
+  });
+
+  it("recalls one pending automation through the chat event control route", async () => {
+    const { scenario, automation } = await busyQueueFixture(1);
+    const before = await accept(
+      queueClient().get({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+    const pendingEventId = before.body.pending[0]?.id;
+    if (!pendingEventId) {
+      throw new Error("Expected one pending automation event");
+    }
+
+    const recalled = await accept(
+      chatMessagesClient().send({
+        headers: authHeaders(),
+        body: {
+          agentId: scenario.agentId,
+          threadId: automation.threadId,
+          revokesEventId: pendingEventId,
+          clientEventId: randomUUID(),
+        },
+      }),
+      [201],
+    );
+    expect(recalled.body).toMatchObject({
+      runId: null,
+      threadId: automation.threadId,
+    });
+
+    const after = await accept(
+      queueClient().get({
+        headers: authHeaders(),
+        params: { threadId: automation.threadId },
+      }),
+      [200],
+    );
+    expect(after.body.pending).toStrictEqual([]);
   });
 
   it("clears all pending events", async () => {

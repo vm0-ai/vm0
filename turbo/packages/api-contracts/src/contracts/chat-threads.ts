@@ -646,6 +646,9 @@ const chatThreadDetailSchema = z.object({
 
 const chatThreadMetadataSchema = z.object({
   id: z.string(),
+  // Optional during API/CLI rollout so a newer CLI can fall back to the
+  // compact thread snapshot when it reaches an older API.
+  agentId: z.string().uuid().optional(),
   title: z.string().nullable(),
   selectedModel: z.string().nullable(),
 });
@@ -1349,6 +1352,7 @@ export const chatThreadEventsContract = c.router({
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Get paginated chat events for a thread",

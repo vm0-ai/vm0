@@ -25,6 +25,7 @@ const api = createRunsApi(context);
 interface ChatThreadFixture {
   readonly userId: string;
   readonly orgId: string;
+  readonly agentId: string;
   readonly threadId: string;
 }
 
@@ -65,7 +66,12 @@ async function seedChatThread(title: string): Promise<ChatThreadFixture> {
     { orgId: actor.orgId, userId: actor.userId },
     context.signal,
   );
-  return { userId: actor.userId, orgId: actor.orgId, threadId: thread.id };
+  return {
+    userId: actor.userId,
+    orgId: actor.orgId,
+    agentId: agent.agentId,
+    threadId: thread.id,
+  };
 }
 
 function currentSecond(): number {
@@ -127,6 +133,7 @@ describe("POST /api/zero/chat-threads/:id/model-selection", () => {
 
     expect(response.body).toStrictEqual({
       id: fixture.threadId,
+      agentId: fixture.agentId,
       title: "Launch plan",
       selectedModel: "claude-sonnet-5",
     });

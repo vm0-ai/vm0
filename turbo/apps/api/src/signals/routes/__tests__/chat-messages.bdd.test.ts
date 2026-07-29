@@ -5132,8 +5132,8 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
 
     // The thread's sticky host is not exposed by any read route, so the
     // grant is observed through the run token issued to each claim: a
-    // granted token can create write commands on the host, an ungranted
-    // token cannot, and no run token can ever post chat sends.
+    // granted token can create write commands on the host, while an
+    // ungranted token cannot. Chat messaging remains available independently.
     const plain = await sendChatRun(actor, {
       agentId,
       prompt: "no computer use selected",
@@ -5145,13 +5145,16 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
       [403],
     );
     expect(deniedCommand.status).toBe(403);
-    const deniedSend = await requestSendEventWithBearer(
+    const nestedSend = await requestSendEventWithBearer(
       plainToken,
-      { agentId, prompt: "sandbox tokens cannot chat" },
-      [403],
+      { agentId, prompt: "run tokens can send chat messages" },
+      [201],
     );
-    expectApiError(deniedSend.body);
-    expect(deniedSend.body.error.message).toContain("agent-run:write");
+    expect(nestedSend.status).toBe(201);
+    if (nestedSend.status !== 201 || nestedSend.body.runId === null) {
+      throw new Error("Expected chat-message:write to dispatch a nested run");
+    }
+    await cancelChatRun(actor, nestedSend.body.runId);
     await cancelChatRun(actor, plain.runId);
 
     // Selecting an online host pins it to the thread and grants the run
