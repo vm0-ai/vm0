@@ -259,25 +259,30 @@ type DialogState =
   | { kind: "none" }
   | { kind: "create" }
   | { kind: "edit"; connector: CustomConnectorResponse }
-  | {
-      kind: "edit-confirm";
-      connector: CustomConnectorResponse;
-      body: UpdateCustomConnectorBody;
-    }
   | { kind: "rename"; connector: CustomConnectorResponse }
   | { kind: "connect"; connector: CustomConnectorResponse }
   | { kind: "delete"; connector: CustomConnectorResponse };
 
 const internalDialog$ = state<DialogState>({ kind: "none" });
+const internalEditConfirmation$ = state<{
+  readonly connector: CustomConnectorResponse;
+  readonly body: UpdateCustomConnectorBody;
+} | null>(null);
+
 export const customConnectorDialog$ = computed((get) => {
   return get(internalDialog$);
 });
+export const customConnectorEditConfirmation$ = computed((get) => {
+  return get(internalEditConfirmation$);
+});
 export const openCustomConnectorCreateDialog$ = command(({ set }) => {
+  set(internalEditConfirmation$, null);
   set(internalDialog$, { kind: "create" });
 });
 export const openCustomConnectorEditDialog$ = command(
   ({ set }, connector: CustomConnectorResponse) => {
     set(internalCreateForm$, createFormFromConnector(connector));
+    set(internalEditConfirmation$, null);
     set(internalDialog$, { kind: "edit", connector });
   },
 );
@@ -289,12 +294,12 @@ export const openCustomConnectorEditConfirmationDialog$ = command(
       readonly body: UpdateCustomConnectorBody;
     },
   ) => {
-    set(internalDialog$, { kind: "edit-confirm", ...args });
+    set(internalEditConfirmation$, args);
   },
 );
-export const returnToCustomConnectorEditDialog$ = command(
-  ({ set }, connector: CustomConnectorResponse) => {
-    set(internalDialog$, { kind: "edit", connector });
+export const closeCustomConnectorEditConfirmationDialog$ = command(
+  ({ set }) => {
+    set(internalEditConfirmation$, null);
   },
 );
 export const openCustomConnectorRenameDialog$ = command(
@@ -318,6 +323,7 @@ export const openCustomConnectorDeleteDialog$ = command(
   },
 );
 export const closeCustomConnectorDialog$ = command(({ set }) => {
+  set(internalEditConfirmation$, null);
   set(internalDialog$, { kind: "none" });
 });
 

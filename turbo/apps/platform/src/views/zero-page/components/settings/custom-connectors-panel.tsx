@@ -12,6 +12,7 @@ import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   clearCustomConnectorSecret$,
+  connectCustomConnectorOAuth2$,
   customConnectorDialog$,
   customConnectors$,
   openCustomConnectorConnectDialog$,
@@ -29,9 +30,19 @@ import { CustomConnectorCreateDialog } from "./custom-connector-create-dialog.ts
 import { CustomConnectorRenameDialog } from "./custom-connector-rename-dialog.tsx";
 import { CustomConnectorConnectDialog } from "./custom-connector-connect-dialog.tsx";
 import { CustomConnectorDeleteConfirm } from "./custom-connector-delete-confirm.tsx";
-import { CustomConnectorUpdateConfirm } from "./custom-connector-update-confirm.tsx";
 import { DropdownMenuModalItem } from "../../../components/dropdown-menu-modal-item.tsx";
 import { noConnectorImg } from "../../platform-assets.ts";
+
+function connectsDirectlyWithOAuth(
+  connector: CustomConnectorResponse,
+  oauth2Enabled: boolean,
+): boolean {
+  return (
+    oauth2Enabled &&
+    connector.authMethods?.length === 1 &&
+    connector.authMethods[0]?.type === "oauth2"
+  );
+}
 
 function CustomConnectorRow({
   connector,
@@ -54,6 +65,7 @@ function CustomConnectorRow({
 }) {
   const { t } = useTranslation();
   const hasActions = connector.hasSecret || isAdmin;
+  const directOAuth = connectsDirectlyWithOAuth(connector, fullEditingEnabled);
   const cardContent = (
     <>
       <div className="flex h-14 items-center gap-2.5 px-5">
@@ -72,17 +84,11 @@ function CustomConnectorRow({
         }`}
       >
         <div className="flex items-center gap-2 min-w-0">
-          {connector.hasSecret ? (
+          {connector.hasSecret && (
             <span className="flex items-center gap-2 text-xs text-muted-foreground truncate">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
               {t(($) => {
                 return $.connectors.custom.statusConnected;
-              })}
-            </span>
-          ) : (
-            <span className="text-xs font-medium text-muted-foreground">
-              {t(($) => {
-                return $.connectors.actions.connect;
               })}
             </span>
           )}
@@ -131,7 +137,14 @@ function CustomConnectorRow({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
-              {!connector.hasSecret && (
+              {!connector.hasSecret && directOAuth && (
+                <DropdownMenuItem onClick={onConnect}>
+                  {t(($) => {
+                    return $.connectors.actions.connect;
+                  })}
+                </DropdownMenuItem>
+              )}
+              {!connector.hasSecret && !directOAuth && (
                 <DropdownMenuModalItem onModalSelect={onConnect}>
                   {t(($) => {
                     return $.connectors.actions.connect;
@@ -188,6 +201,7 @@ export function CustomConnectorsPanel() {
   const openRename = useSet(openCustomConnectorRenameDialog$);
   const openConnect = useSet(openCustomConnectorConnectDialog$);
   const openDelete = useSet(openCustomConnectorDeleteDialog$);
+  const connectOAuth2 = useSet(connectCustomConnectorOAuth2$);
   const setRenameInput = useSet(setCustomConnectorRenameInput$);
   const clearSecret = useSet(clearCustomConnectorSecret$);
   const signal = useGet(pageSignal$);
@@ -199,6 +213,14 @@ export function CustomConnectorsPanel() {
   const handleRename = (connector: CustomConnectorResponse) => {
     setRenameInput(connector.displayName);
     openRename(connector);
+  };
+
+  const handleConnect = (connector: CustomConnectorResponse) => {
+    if (connectsDirectlyWithOAuth(connector, fullEditingEnabled)) {
+      detach(connectOAuth2(connector.id, signal), Reason.DomCallback);
+      return;
+    }
+    openConnect(connector);
   };
 
   return (
@@ -233,7 +255,7 @@ export function CustomConnectorsPanel() {
                 connector={c}
                 isAdmin={isAdmin}
                 onConnect={() => {
-                  return openConnect(c);
+                  return handleConnect(c);
                 }}
                 onDisconnect={() => {
                   return handleDisconnect(c);
@@ -257,12 +279,6 @@ export function CustomConnectorsPanel() {
       {dialog.kind === "create" && <CustomConnectorCreateDialog />}
       {dialog.kind === "edit" && (
         <CustomConnectorCreateDialog connector={dialog.connector} />
-      )}
-      {dialog.kind === "edit-confirm" && (
-        <CustomConnectorUpdateConfirm
-          connector={dialog.connector}
-          body={dialog.body}
-        />
       )}
       {dialog.kind === "rename" && (
         <CustomConnectorRenameDialog

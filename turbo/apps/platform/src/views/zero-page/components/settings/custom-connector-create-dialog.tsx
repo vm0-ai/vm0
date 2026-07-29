@@ -36,9 +36,11 @@ import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   addCustomConnectorAuthMethod$,
+  closeCustomConnectorEditConfirmationDialog$,
   closeCustomConnectorDialog$,
   createCustomConnector$,
   customConnectorCreateForm$,
+  customConnectorEditConfirmation$,
   openCustomConnectorEditConfirmationDialog$,
   removeCustomConnectorAuthMethod$,
   resetCustomConnectorCreateForm$,
@@ -47,6 +49,7 @@ import {
   updateCustomConnector$,
 } from "../../../../signals/zero-page/settings/custom-connectors.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
+import { CustomConnectorUpdateConfirm } from "./custom-connector-update-confirm.tsx";
 
 type CreateField = Exclude<keyof CustomConnectorCreateForm, "authMethodTypes">;
 
@@ -751,6 +754,66 @@ function AuthenticationFields({
   );
 }
 
+function CustomConnectorForm({
+  form,
+  setField,
+  oauth2Enabled,
+  editing,
+  advancedApiDefinition,
+  addAuthMethod,
+  removeAuthMethod,
+  submitting,
+  canSubmit,
+  onSubmit,
+  onCancel,
+}: AuthenticationFieldsProps & {
+  readonly submitting: boolean;
+  readonly canSubmit: boolean;
+  readonly onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  readonly onCancel: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <form className="flex flex-col gap-4" onSubmit={onSubmit}>
+      <BaseFields form={form} setField={setField} />
+      <AuthenticationFields
+        form={form}
+        setField={setField}
+        oauth2Enabled={oauth2Enabled}
+        editing={editing}
+        advancedApiDefinition={advancedApiDefinition}
+        addAuthMethod={addAuthMethod}
+        removeAuthMethod={removeAuthMethod}
+      />
+      <DialogFooter>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onCancel}
+          disabled={submitting}
+        >
+          {t(($) => {
+            return $.connectors.actions.cancel;
+          })}
+        </Button>
+        <Button type="submit" disabled={!canSubmit}>
+          {submitting
+            ? t(($) => {
+                return editing
+                  ? $.connectors.actions.savingEllipsis
+                  : $.connectors.actions.creating;
+              })
+            : t(($) => {
+                return editing
+                  ? $.connectors.actions.save
+                  : $.connectors.actions.create;
+              })}
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
 export function CustomConnectorCreateDialog({
   connector,
 }: {
@@ -767,6 +830,9 @@ export function CustomConnectorCreateDialog({
   const openEditConfirmation = useSet(
     openCustomConnectorEditConfirmationDialog$,
   );
+  const closeEditConfirmation = useSet(
+    closeCustomConnectorEditConfirmationDialog$,
+  );
   const closeDialog = useSet(closeCustomConnectorDialog$);
   const resetForm = useSet(resetCustomConnectorCreateForm$);
   const [createLoadable, createConnector] = useLoadableSet(
@@ -776,6 +842,7 @@ export function CustomConnectorCreateDialog({
     updateCustomConnector$,
   );
   const signal = useGet(pageSignal$);
+  const pendingUpdate = useGet(customConnectorEditConfirmation$);
 
   const editing = connector !== undefined;
   const submitting = editing
@@ -795,29 +862,42 @@ export function CustomConnectorCreateDialog({
     closeDialog();
   };
 
+  const saveUpdate = (body: UpdateCustomConnectorBody) => {
+    if (!connector) {
+      return;
+    }
+    detach(
+      (async () => {
+        await updateConnector(
+          {
+            id: connector.id,
+            body,
+          },
+          signal,
+        );
+        close();
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!canSubmit) {
       return;
     }
+    if (connector) {
+      const body = buildUpdateBody(form, connector);
+      if (updateDisconnectsOAuthConnections(connector, body)) {
+        openEditConfirmation({ connector, body });
+        return;
+      }
+      saveUpdate(body);
+      return;
+    }
     detach(
       (async () => {
-        if (connector) {
-          const body = buildUpdateBody(form, connector);
-          if (updateDisconnectsOAuthConnections(connector, body)) {
-            openEditConfirmation({ connector, body });
-            return;
-          }
-          await updateConnector(
-            {
-              id: connector.id,
-              body,
-            },
-            signal,
-          );
-        } else {
-          await createConnector(buildCreateBody(form, oauth2Enabled), signal);
-        }
+        await createConnector(buildCreateBody(form, oauth2Enabled), signal);
         close();
       })(),
       Reason.DomCallback,
@@ -825,30 +905,29 @@ export function CustomConnectorCreateDialog({
   };
 
   return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        return !open && close();
-      }}
-    >
-      <DialogContent
-        className="max-w-2xl max-h-[90vh] overflow-y-auto"
-        aria-describedby={undefined}
+    <>
+      <Dialog
+        open
+        onOpenChange={(open) => {
+          return !open && close();
+        }}
       >
-        <DialogHeader>
-          <DialogTitle>
-            {editing
-              ? t(($) => {
-                  return $.connectors.custom.edit.title;
-                })
-              : t(($) => {
-                  return $.connectors.custom.create.title;
-                })}
-          </DialogTitle>
-        </DialogHeader>
-        <form className="flex flex-col gap-4" onSubmit={onSubmit}>
-          <BaseFields form={form} setField={setField} />
-          <AuthenticationFields
+        <DialogContent
+          className="max-w-2xl max-h-[90vh] overflow-y-auto"
+          aria-describedby={undefined}
+        >
+          <DialogHeader>
+            <DialogTitle>
+              {editing
+                ? t(($) => {
+                    return $.connectors.custom.edit.title;
+                  })
+                : t(($) => {
+                    return $.connectors.custom.create.title;
+                  })}
+            </DialogTitle>
+          </DialogHeader>
+          <CustomConnectorForm
             form={form}
             setField={setField}
             oauth2Enabled={oauth2Enabled}
@@ -856,34 +935,22 @@ export function CustomConnectorCreateDialog({
             advancedApiDefinition={advancedApiDefinition}
             addAuthMethod={addAuthMethod}
             removeAuthMethod={removeAuthMethod}
+            submitting={submitting}
+            canSubmit={canSubmit}
+            onSubmit={onSubmit}
+            onCancel={close}
           />
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={close}
-              disabled={submitting}
-            >
-              {t(($) => {
-                return $.connectors.actions.cancel;
-              })}
-            </Button>
-            <Button type="submit" disabled={!canSubmit}>
-              {submitting
-                ? t(($) => {
-                    return editing
-                      ? $.connectors.actions.savingEllipsis
-                      : $.connectors.actions.creating;
-                  })
-                : t(($) => {
-                    return editing
-                      ? $.connectors.actions.save
-                      : $.connectors.actions.create;
-                  })}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+      {connector && pendingUpdate?.connector.id === connector.id && (
+        <CustomConnectorUpdateConfirm
+          submitting={submitting}
+          onCancel={closeEditConfirmation}
+          onConfirm={() => {
+            saveUpdate(pendingUpdate.body);
+          }}
+        />
+      )}
+    </>
   );
 }

@@ -90,6 +90,19 @@ function queryButtonByText(
   );
 }
 
+function buttonByAriaLabel(
+  label: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!button) {
+    throw new Error(`${label} button not found`);
+  }
+  return button;
+}
+
 function queryMenuItemByText(text: string): HTMLElement | null {
   return (
     queryAllByRoleFast("menuitem").find((candidate) => {
@@ -3353,6 +3366,7 @@ describe("connectors page", () => {
     expect(within(editDialog).getByLabelText("New client secret")).toHaveValue(
       "",
     );
+    click(within(editDialog).getByLabelText("Remove API authentication"));
     await fill(
       within(editDialog).getByLabelText(/Prefixes/u),
       "https://api.acme.test/v2/",
@@ -3371,6 +3385,7 @@ describe("connectors page", () => {
         /disconnect every member currently connected with OAuth/u,
       ),
     ).toBeInTheDocument();
+    expect(editDialog).toBeInTheDocument();
     click(buttonByText("Save and disconnect", confirmationDialog));
     await waitFor(() => {
       expect(screen.getByText("https://api.acme.test/v2/")).toBeInTheDocument();
@@ -3380,7 +3395,6 @@ describe("connectors page", () => {
       displayName: "Acme API",
       prefixTemplates: ["https://api.acme.test/v2/"],
       authMethods: [
-        { type: "api" },
         {
           type: "oauth2",
           authorizationUrl: "https://oauth.acme.test/authorize",
@@ -3393,35 +3407,12 @@ describe("connectors page", () => {
     expect(updatedBodies[0]).not.toHaveProperty("oauthClientId");
     expect(updatedBodies[0]).not.toHaveProperty("oauthClientSecret");
 
-    const connectorCardButton = queryAllByRoleFast("button").find((button) => {
-      return button.getAttribute("aria-label") === "Connect Acme API";
-    });
-    if (!connectorCardButton) {
-      throw new Error("Connect Acme API card button not found");
-    }
+    const connectorCardButton = buttonByAriaLabel("Connect Acme API");
+    expect(
+      within(connectorCardButton).queryByText("Connect"),
+    ).not.toBeInTheDocument();
     click(connectorCardButton);
-    const connectDialog = await screen.findByRole("dialog", {
-      name: "Connect Acme API",
-    });
-    const oauthChoice = within(connectDialog)
-      .getByText("OAuth 2.0")
-      .closest("button");
-    if (!(oauthChoice instanceof HTMLButtonElement)) {
-      throw new Error("Expected OAuth 2.0 authentication choice");
-    }
-    click(oauthChoice);
-    expect(
-      within(connectDialog).getByText(
-        "Continue to the provider to authorize access.",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      within(connectDialog).queryByLabelText("Client ID"),
-    ).not.toBeInTheDocument();
-    expect(
-      within(connectDialog).queryByLabelText("Client secret"),
-    ).not.toBeInTheDocument();
-    click(buttonByText("Continue", connectDialog));
+    expect(document.querySelector('[role="dialog"]')).not.toBeInTheDocument();
 
     await waitFor(() => {
       expect(authWindow.location.href).toBe(
@@ -3470,7 +3461,11 @@ describe("connectors page", () => {
       expect(screen.getByText("https://api.acme.test/v1/")).toBeInTheDocument();
     });
 
-    click(screen.getByText("Connect"));
+    const connectorCardButton = buttonByAriaLabel("Connect Acme API");
+    expect(
+      within(connectorCardButton).queryByText("Connect"),
+    ).not.toBeInTheDocument();
+    click(connectorCardButton);
 
     const connectDialog = await screen.findByRole("dialog");
     expect(
@@ -3504,7 +3499,7 @@ describe("connectors page", () => {
     click(await screen.findByText("Disconnect"));
 
     await waitFor(() => {
-      expect(screen.getByText("Connect")).toBeInTheDocument();
+      expect(buttonByAriaLabel("Connect Acme Billing API")).toBeInTheDocument();
     });
 
     click(screen.getByLabelText("More options"));
