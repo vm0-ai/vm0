@@ -1799,12 +1799,7 @@
           "placeholder": "Nome do espaço de trabalho",
           "title": "Nome"
         },
-        "sectionTitle": "Perfil",
-        "slug": {
-          "description": "Identificador da organização usado em URLs",
-          "placeholder": "organization-slug",
-          "title": "Slug"
-        }
+        "sectionTitle": "Perfil"
       },
       "toasts": {
         "deleted": "Espaço de trabalho excluído",
