@@ -689,8 +689,20 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           returnedName: nameSql().mapWith(users.name),
         }).from(users);
         db.select(localSelection).from(selectedUsers);
+        db.selectDistinct({
+          name: sql\`\${users.name}\`.mapWith(users.name),
+        }).from(users);
+        db.selectDistinctOn([users.id], {
+          name: sql\`\${users.name}\`.mapWith(users.name),
+        }).from(users);
+        db.delete(users).returning({
+          name: sql\`\${users.name}\`.mapWith(users.name),
+        });
       `,
       errors: [
+        { messageId: "directColumn" },
+        { messageId: "directColumn" },
+        { messageId: "directColumn" },
         { messageId: "directColumn" },
         { messageId: "directColumn" },
         { messageId: "directColumn" },
