@@ -114,6 +114,16 @@ function dialogCreateButton(
   return createButton;
 }
 
+function dialogCloseButton(dialog: HTMLElement, label: string): HTMLElement {
+  const closeButton = queryAllByRoleFast("button", dialog).find((button) => {
+    return button.getAttribute("aria-label") === label;
+  });
+  if (!closeButton) {
+    throw new Error("dialog close button not found");
+  }
+  return closeButton;
+}
+
 function mockAgentDetailStory(): string {
   const agentId = "a0000000-0000-4000-a000-000000000301";
   mockAgentsPage([
@@ -455,6 +465,7 @@ describe("zero jobs page", () => {
     const createDialog = await screen.findByRole("dialog", {
       name: "Criar um novo agente",
     });
+    expect(dialogCloseButton(createDialog, "Fechar")).toBeInTheDocument();
     await fill(
       within(createDialog).getByPlaceholderText("Ex.: Assistente de pesquisa"),
       "Agente de marketing",
@@ -482,8 +493,9 @@ describe("zero jobs page", () => {
     expect(screen.getByText("Nome")).toBeInTheDocument();
 
     click(screen.getByText("Excluir agente"));
-    await expect(
-      screen.findByRole("dialog", { name: "Excluir Research Agent?" }),
-    ).resolves.toBeInTheDocument();
+    const deleteDialog = await screen.findByRole("dialog", {
+      name: "Excluir Research Agent?",
+    });
+    expect(dialogCloseButton(deleteDialog, "Fechar")).toBeInTheDocument();
   });
 });

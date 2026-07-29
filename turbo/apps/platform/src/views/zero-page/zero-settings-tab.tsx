@@ -480,7 +480,11 @@ export function ZeroSettingsTab({
       )}
 
       <Dialog open={demoteConfirmOpen} onOpenChange={setDemoteConfirmOpen}>
-        <DialogContent>
+        <DialogContent
+          closeLabel={t(($) => {
+            return $.actions.close;
+          })}
+        >
           <DialogHeader>
             <DialogTitle>
               {t(

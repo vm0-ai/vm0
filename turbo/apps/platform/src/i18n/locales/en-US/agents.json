@@ -1,6 +1,7 @@
 {
   "actions": {
     "cancel": "Cancel",
+    "close": "Close",
     "copying": "Copying…",
     "create": "Create",
     "delete": "Delete agent",

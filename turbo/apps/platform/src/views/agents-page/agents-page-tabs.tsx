@@ -573,7 +573,12 @@ function CreateTeammateDialogContent({
   const avatarUrl = useGet(jobsAvatarUrl$);
 
   return (
-    <DialogContent className="sm:max-w-[480px] p-0 gap-0 overflow-hidden">
+    <DialogContent
+      closeLabel={t(($) => {
+        return $.actions.close;
+      })}
+      className="sm:max-w-[480px] p-0 gap-0 overflow-hidden"
+    >
       <DialogHeader className="sr-only">
         <DialogTitle>
           {t(($) => {

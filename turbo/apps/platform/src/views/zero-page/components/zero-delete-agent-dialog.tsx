@@ -366,7 +366,12 @@ export function AgentDeleteDialog({
                   })}
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-3xl gap-0 overflow-hidden p-0">
+              <DialogContent
+                closeLabel={t(($) => {
+                  return $.actions.close;
+                })}
+                className="max-w-3xl gap-0 overflow-hidden p-0"
+              >
                 {canReconcile ? (
                   <AgentDeleteReconcileView
                     agentName={resolvedAgentName}

@@ -1,6 +1,7 @@
 {
   "actions": {
     "cancel": "Cancelar",
+    "close": "Fechar",
     "copying": "Copiando…",
     "create": "Criar",
     "delete": "Excluir agente",
