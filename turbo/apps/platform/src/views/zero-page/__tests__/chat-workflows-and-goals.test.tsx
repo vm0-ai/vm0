@@ -471,6 +471,10 @@ describe("chat lifecycle", () => {
     expect(within(dialog).getByLabelText("Thread ID value")).toHaveValue(
       "gmail-thread-1",
     );
+    // The field and operator cells are fixed for a thread-scoped automation, so
+    // they must not look editable next to the value cell.
+    expect(within(dialog).getByLabelText("Thread ID field")).toBeDisabled();
+    expect(within(dialog).getByLabelText("Thread ID operator")).toBeDisabled();
     await fill(
       within(dialog).getByLabelText("Thread ID value"),
       "gmail-thread-2",
