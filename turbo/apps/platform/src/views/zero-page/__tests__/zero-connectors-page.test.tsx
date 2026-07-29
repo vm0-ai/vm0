@@ -1477,6 +1477,7 @@ describe("connectors page", () => {
   it.each([
     ["airtable", "Airtable"],
     ["asana", "Asana"],
+    ["cloudflare", "Cloudflare"],
     ["gumroad", "Gumroad"],
     ["hubspot", "HubSpot"],
     ["intervals-icu", "Intervals.icu"],
