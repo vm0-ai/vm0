@@ -299,7 +299,7 @@ impl FirewallApi {
         if !self.suppress_body_capture {
             return Err("MCP firewall requires body capture suppression".to_string());
         }
-        mcp.validate_for_cache()
+        mcp.validate()
     }
 }
 
@@ -310,8 +310,8 @@ pub struct FirewallMcpPolicy {
 }
 
 impl FirewallMcpPolicy {
-    fn validate_for_cache(&self) -> Result<(), String> {
-        self.tool_policy.validate_for_cache()
+    fn validate(&self) -> Result<(), String> {
+        self.tool_policy.validate()
     }
 }
 
@@ -325,7 +325,7 @@ pub enum FirewallMcpToolPolicy {
 }
 
 impl FirewallMcpToolPolicy {
-    fn validate_for_cache(&self) -> Result<(), String> {
+    fn validate(&self) -> Result<(), String> {
         use api_contracts::generated::constants::firewall::{
             MCP_TOOL_NAME_MAX_LENGTH, MCP_TOOL_POLICY_MAX_EXACT_NAMES,
         };
