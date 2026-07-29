@@ -891,13 +891,17 @@ function ArtifactPreviewDialogThreadResolver({
     loadable.state === "hasData"
       ? findArtifactDialogItemForUrl(loadable.data, preview.url)
       : undefined;
-  const imageNavigation =
-    preview.kind === "image" && loadable.state === "hasData"
+  const resolvedImageNavigation =
+    preview.kind === "image"
       ? currentEventImageArtifactNavigation(
-          loadable.data,
+          loadable.state === "hasData" ? loadable.data : [],
           eventGroups ?? [],
           preview.url,
         )
+      : {};
+  const imageNavigation =
+    resolvedImageNavigation.role === "assistant" || loadable.state === "hasData"
+      ? resolvedImageNavigation
       : {};
   const openImageNavigationItem = (
     navigationItem: ImageArtifactNavigationItem,
