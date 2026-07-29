@@ -31,9 +31,12 @@ import {
   TooltipTrigger,
   cn,
 } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 
+import { i18n } from "../../i18n/index.ts";
 import { nowDate } from "../../lib/time.ts";
 import { openCreateWorkflowDialog$ } from "../../signals/automation-page/workflow-automation-dialog.ts";
+import { brandName$ } from "../../signals/branding.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import {
   allVisibleWorkflows$,
@@ -142,7 +145,12 @@ function AgentAvatar({ workflow }: { readonly workflow: ZeroWorkflowSummary }) {
   return (
     <AgentAvatarImg
       name={workflow.agentId}
-      alt={`Runs as ${label}`}
+      alt={i18n.t(
+        ($) => {
+          return $.workflows.list.runsAsAria;
+        },
+        { agent: label },
+      )}
       className="h-6 w-6 shrink-0 rounded-md"
       size={24}
     />
@@ -185,7 +193,15 @@ function VisibilityIcon({
       size={15}
       stroke={1.7}
       className={cn("shrink-0", isPublic ? "text-blue-500" : "text-[#45A7A8]")}
-      aria-label={isPublic ? "Public" : "Private"}
+      aria-label={
+        isPublic
+          ? i18n.t(($) => {
+              return $.workflows.common.public;
+            })
+          : i18n.t(($) => {
+              return $.workflows.common.private;
+            })
+      }
     />
   );
 }
@@ -201,7 +217,11 @@ function ConnectorPopoverList({
   return (
     <div className="flex flex-col">
       <div className="flex items-center gap-1.5 px-2 pb-1.5 pt-1 text-xs font-semibold text-muted-foreground">
-        <span>Automations</span>
+        <span>
+          {i18n.t(($) => {
+            return $.workflows.list.automations;
+          })}
+        </span>
         <span className="font-normal text-muted-foreground/70">
           {entries.length}
         </span>
@@ -245,7 +265,9 @@ function ConnectorCell({
     return (
       <span className={connectorPillClassName({ muted: true })}>
         <ConnectorPillMarker dotClassName="bg-muted-foreground/40" />
-        Manual
+        {i18n.t(($) => {
+          return $.workflows.common.manual;
+        })}
       </span>
     );
   }
@@ -274,7 +296,11 @@ function ConnectorCell({
               </button>
             </PopoverTrigger>
           </TooltipTrigger>
-          <TooltipContent side="bottom">View automations</TooltipContent>
+          <TooltipContent side="bottom">
+            {i18n.t(($) => {
+              return $.workflows.list.viewAutomations;
+            })}
+          </TooltipContent>
         </Tooltip>
       </TooltipProvider>
       <PopoverContent
@@ -295,6 +321,7 @@ export function WorkflowHoverContent({
 }: {
   readonly workflow: ZeroWorkflowSummary;
 }) {
+  useTranslation();
   const title = workflowTitle(workflow);
   return (
     <div className="max-w-xs">
@@ -305,13 +332,19 @@ export function WorkflowHoverContent({
       <div className="mt-2.5 flex flex-col gap-3 border-t border-border/60 pt-2.5 text-xs text-foreground/80">
         <div className="flex items-center gap-2">
           <span className="w-16 shrink-0 text-muted-foreground">
-            Created by
+            {i18n.t(($) => {
+              return $.workflows.list.createdBy;
+            })}
           </span>
           <MemberAvatar workflow={workflow} />
           <span className="truncate">{ownerLabel(workflow)}</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="w-16 shrink-0 text-muted-foreground">Runs as</span>
+          <span className="w-16 shrink-0 text-muted-foreground">
+            {i18n.t(($) => {
+              return $.workflows.list.runsAs;
+            })}
+          </span>
           <AgentAvatar workflow={workflow} />
           <span className="truncate">{agentLabel(workflow)}</span>
         </div>
@@ -354,7 +387,12 @@ function WorkflowRow({
             <Link
               pathname={ROUTES.workflowDetailAutomations}
               options={{ pathParams: { workflowId: workflow.id } }}
-              aria-label={`Open ${title}`}
+              aria-label={i18n.t(
+                ($) => {
+                  return $.workflows.list.open;
+                },
+                { title },
+              )}
               className="flex min-w-0 flex-1 items-center gap-3 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
             >
               <WorkflowRowIcon entries={entries} />
@@ -439,7 +477,7 @@ function agentFilterOptions(
       return { agentId, label };
     })
     .sort((a, b) => {
-      return a.label.localeCompare(b.label);
+      return a.label.localeCompare(b.label, i18n.resolvedLanguage);
     });
 }
 
@@ -458,35 +496,72 @@ function applyAgentFilter(
 function emptyDescriptionForFilter(filter: WorkflowFilter): string {
   switch (filter) {
     case "without": {
-      return "Every workflow here runs on a schedule or event.";
+      return i18n.t(($) => {
+        return $.workflows.list.empty.without;
+      });
     }
     case "automated": {
-      return "Add an automation to a workflow and it shows up here.";
+      return i18n.t(($) => {
+        return $.workflows.list.empty.automated;
+      });
     }
     case "private": {
-      return "No private workflows yet.";
+      return i18n.t(($) => {
+        return $.workflows.list.empty.private;
+      });
     }
     case "public": {
-      return "No public workflows yet.";
+      return i18n.t(($) => {
+        return $.workflows.list.empty.public;
+      });
     }
     default: {
-      return "Create a workflow from chat or save one from a useful run.";
+      return i18n.t(($) => {
+        return $.workflows.list.empty.all;
+      });
     }
   }
 }
 
 type NextRunBucket = "today" | "week" | "later" | "event" | "manual";
 
-const NEXT_RUN_SECTIONS: readonly {
+function nextRunSections(): readonly {
   readonly key: NextRunBucket;
   readonly label: string;
-}[] = [
-  { key: "today", label: "Runs today" },
-  { key: "week", label: "This week" },
-  { key: "later", label: "Later" },
-  { key: "event", label: "On automation" },
-  { key: "manual", label: "Manual" },
-];
+}[] {
+  return [
+    {
+      key: "today",
+      label: i18n.t(($) => {
+        return $.workflows.list.section.today;
+      }),
+    },
+    {
+      key: "week",
+      label: i18n.t(($) => {
+        return $.workflows.list.section.week;
+      }),
+    },
+    {
+      key: "later",
+      label: i18n.t(($) => {
+        return $.workflows.list.section.later;
+      }),
+    },
+    {
+      key: "event",
+      label: i18n.t(($) => {
+        return $.workflows.list.section.event;
+      }),
+    },
+    {
+      key: "manual",
+      label: i18n.t(($) => {
+        return $.workflows.list.section.manual;
+      }),
+    },
+  ];
+}
 
 function dayKey(date: Date, timezone: string): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -594,7 +669,7 @@ function WorkflowNextRunGroups({
     list.push(workflow);
     buckets.set(bucket, list);
   }
-  const visibleSections = NEXT_RUN_SECTIONS.flatMap((section) => {
+  const visibleSections = nextRunSections().flatMap((section) => {
     const sectionWorkflows = buckets.get(section.key);
     if (!sectionWorkflows || sectionWorkflows.length === 0) {
       return [];
@@ -663,11 +738,15 @@ function WorkflowListPanel({
         <div className="zero-card flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
           <img
             src={emptyWorkflowImg}
-            alt="No workflows"
+            alt={i18n.t(($) => {
+              return $.workflows.list.noWorkflows;
+            })}
             className="h-24 w-24 object-contain opacity-80"
           />
           <p className="mt-3 text-sm font-medium text-foreground">
-            No workflows
+            {i18n.t(($) => {
+              return $.workflows.list.noWorkflows;
+            })}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
             {emptyDescription}
@@ -716,14 +795,31 @@ function FilterPills<T extends string>({
   );
 }
 
-const SORT_OPTIONS: readonly {
+function sortOptions(): readonly {
   readonly value: WorkflowSortMode;
   readonly label: string;
-}[] = [
-  { value: "alphabetical", label: "Alphabetical" },
-  { value: "created", label: "Created time" },
-  { value: "next-run", label: "Next run" },
-];
+}[] {
+  return [
+    {
+      value: "alphabetical",
+      label: i18n.t(($) => {
+        return $.workflows.list.sort.alphabetical;
+      }),
+    },
+    {
+      value: "created",
+      label: i18n.t(($) => {
+        return $.workflows.list.sort.created;
+      }),
+    },
+    {
+      value: "next-run",
+      label: i18n.t(($) => {
+        return $.workflows.list.sort.nextRun;
+      }),
+    },
+  ];
+}
 
 function SortDropdown({
   value,
@@ -732,7 +828,8 @@ function SortDropdown({
   readonly value: WorkflowSortMode;
   readonly onChange: (value: WorkflowSortMode) => void;
 }) {
-  const current = SORT_OPTIONS.find((option) => {
+  const options = sortOptions();
+  const current = options.find((option) => {
     return option.value === value;
   });
   return (
@@ -749,12 +846,15 @@ function SortDropdown({
             stroke={1.8}
             className="text-muted-foreground"
           />
-          {current?.label ?? "Next run"}
+          {current?.label ??
+            i18n.t(($) => {
+              return $.workflows.list.sort.label;
+            })}
           <IconChevronDown size={14} stroke={1.8} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {SORT_OPTIONS.map((option) => {
+        {options.map((option) => {
           return (
             <DropdownMenuItem
               key={option.value}
@@ -807,7 +907,10 @@ function AgentFilterDropdown({
             />
           )}
           <span className="max-w-[8rem] truncate">
-            {selected?.label ?? "All agents"}
+            {selected?.label ??
+              i18n.t(($) => {
+                return $.workflows.list.allAgents;
+              })}
           </span>
           <IconChevronDown size={14} stroke={1.8} />
         </Button>
@@ -822,7 +925,9 @@ function AgentFilterDropdown({
           }}
         >
           <IconUser size={15} stroke={1.8} className="text-muted-foreground" />
-          All agents
+          {i18n.t(($) => {
+            return $.workflows.list.allAgents;
+          })}
         </DropdownMenuItem>
         {options.map((option) => {
           return (
@@ -858,7 +963,10 @@ function sortWorkflows(
   }
   if (sortMode === "alphabetical") {
     return [...workflows].sort((a, b) => {
-      return workflowTitle(a).localeCompare(workflowTitle(b));
+      return workflowTitle(a).localeCompare(
+        workflowTitle(b),
+        i18n.resolvedLanguage,
+      );
     });
   }
   return workflows;
@@ -875,6 +983,7 @@ function WorkflowFilterBar({
   readonly agentFilter: string;
   readonly agentOptions: readonly AgentFilterOption[];
 }) {
+  const { t } = useTranslation();
   const setFilter = useSet(setWorkflowFilter$);
   const setSortMode = useSet(setWorkflowSortMode$);
   const setAgentFilter = useSet(setWorkflowAgentFilter$);
@@ -885,11 +994,36 @@ function WorkflowFilterBar({
         value={filter}
         onChange={setFilter}
         options={[
-          { value: "all", label: "All" },
-          { value: "automated", label: "Automated" },
-          { value: "without", label: "Manual" },
-          { value: "private", label: "Private" },
-          { value: "public", label: "Public" },
+          {
+            value: "all",
+            label: t(($) => {
+              return $.workflows.list.all;
+            }),
+          },
+          {
+            value: "automated",
+            label: t(($) => {
+              return $.workflows.list.automated;
+            }),
+          },
+          {
+            value: "without",
+            label: t(($) => {
+              return $.workflows.common.manual;
+            }),
+          },
+          {
+            value: "private",
+            label: t(($) => {
+              return $.workflows.common.private;
+            }),
+          },
+          {
+            value: "public",
+            label: t(($) => {
+              return $.workflows.common.public;
+            }),
+          },
         ]}
       />
       <div className="ml-auto flex items-center gap-1.5">
@@ -907,6 +1041,8 @@ function WorkflowFilterBar({
 }
 
 export function WorkflowsPage() {
+  const { t } = useTranslation();
+  const brandName = useGet(brandName$);
   const filter = useGet(workflowFilter$);
   const sortMode = useGet(workflowSortMode$);
   const agentFilter = useGet(workflowAgentFilter$);
@@ -947,15 +1083,21 @@ export function WorkflowsPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      <title>{`${t(($) => {
+        return $.workflows.common.workflows;
+      })} | ${brandName}`}</title>
       <header className="shrink-0 bg-transparent px-4 pb-0 pt-3 sm:px-6 md:pb-3 md:pt-10">
         <div className="mx-auto flex max-w-[900px] flex-wrap items-end justify-between gap-4">
           <div className="hidden min-w-0 md:block">
             <h1 className="text-lg font-semibold tracking-tight text-foreground">
-              Workflows
+              {t(($) => {
+                return $.workflows.list.title;
+              })}
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              A reusable SOP for a task. Write one from scratch or distill it
-              from your daily work, then run, edit, or automate it.
+              {t(($) => {
+                return $.workflows.list.description;
+              })}
             </p>
           </div>
           <Button
@@ -968,7 +1110,9 @@ export function WorkflowsPage() {
             }}
           >
             <IconPlus size={14} stroke={2} />
-            Create in chat
+            {t(($) => {
+              return $.workflows.list.createInChat;
+            })}
           </Button>
         </div>
       </header>
@@ -988,7 +1132,9 @@ export function WorkflowsPage() {
             emptyDescription={
               agentFilter === WORKFLOW_ALL_AGENTS
                 ? emptyDescriptionForFilter(filter)
-                : "No workflows run as this agent yet."
+                : t(($) => {
+                    return $.workflows.list.agentEmpty;
+                  })
             }
             automationEntriesByWorkflowId={automationEntriesByWorkflowId}
             displayTimezone={displayTimezone}
