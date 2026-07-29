@@ -69,16 +69,6 @@ export const setProfileName$ = command(({ set }, value: string) => {
   set(internalProfileName$, value);
 });
 
-const internalProfileSlug$ = state("");
-
-export const profileSlug$ = computed((get) => {
-  return get(internalProfileSlug$);
-});
-
-export const setProfileSlug$ = command(({ set }, value: string) => {
-  set(internalProfileSlug$, value);
-});
-
 const internalProfileLogoUrl$ = state<string | null>(null);
 
 export const profileLogoUrl$ = computed((get) => {
@@ -148,7 +138,6 @@ export const initProfileName$ = command(
     const org = await get(org$);
     signal.throwIfAborted();
     set(internalProfileName$, org?.name ?? "");
-    set(internalProfileSlug$, org?.slug ?? "");
     set(internalProfileLogoUrl$, null);
     set(clearPendingLogo$);
     set(internalLogoLoaded$, false);
@@ -327,7 +316,6 @@ export const setLockedTarget$ = command(
 
 interface SaveOrgProfileInput {
   readonly name: string;
-  readonly slug: string;
   readonly logoFile: File | null;
 }
 
@@ -379,7 +367,6 @@ export const saveOrgProfile$ = command(
     }
 
     const hasNameChange = input.name !== (org.name ?? "");
-    const hasSlugChange = input.slug !== (org.slug ?? "");
 
     if (input.logoFile) {
       const result = await set(uploadOrgLogo$, input.logoFile, signal);
@@ -387,19 +374,11 @@ export const saveOrgProfile$ = command(
       set(internalProfileLogoUrl$, result.logoUrl);
     }
 
-    if (hasNameChange || hasSlugChange) {
-      const body: { name?: string; slug?: string; force?: boolean } = {};
-      if (hasNameChange) {
-        body.name = input.name;
-      }
-      if (hasSlugChange) {
-        body.slug = input.slug;
-        body.force = true;
-      }
+    if (hasNameChange) {
       const client = get(zeroClient$)(zeroOrgContract);
       await accept(
         client.update({
-          body,
+          body: { name: input.name },
           fetchOptions: { signal },
         }),
         [200],
