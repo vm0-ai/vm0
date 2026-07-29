@@ -2106,6 +2106,18 @@ describe("CHAT-02/RUN-03: cancellation finalization barrier", () => {
       },
       [200],
     );
+    await flushWaitUntilForTest();
+    const afterDuplicateFinalization = await chat.listThreadEvents(
+      actor,
+      first.threadId,
+    );
+    expect(
+      userMessages(afterDuplicateFinalization.events).filter((message) => {
+        return (
+          message.revokesEventId === queued.id && message.runId !== undefined
+        );
+      }),
+    ).toHaveLength(1);
     const runnerMetadata = await api.requestRunRunner(
       actor,
       first.runId,

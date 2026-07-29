@@ -692,25 +692,15 @@ impl JobProvider for ApiProvider {
                     return;
                 }
                 Err(e) => {
-                    let (retryable, status, failure_kind) = match &e {
+                    let retryable = api_failure_is_retryable(&e);
+                    let (status, failure_kind) = match &e {
                         RunnerError::ApiStatus(api_error) => {
-                            let status = api_error.status;
-                            (
-                                matches!(
-                                    status,
-                                    StatusCode::REQUEST_TIMEOUT
-                                        | StatusCode::MISDIRECTED_REQUEST
-                                        | StatusCode::TOO_EARLY
-                                        | StatusCode::TOO_MANY_REQUESTS
-                                ) || status.is_server_error(),
-                                api_error.status.as_str(),
-                                "http_status",
-                            )
+                            (api_error.status.as_str(), "http_status")
                         }
                         RunnerError::ApiTransport(api_error) => {
-                            (true, "", api_error.failure_kind.as_str())
+                            ("", api_error.failure_kind.as_str())
                         }
-                        _ => (false, "", "local"),
+                        _ => ("", "local"),
                     };
                     let will_retry = retryable && attempt < MAX_ATTEMPTS;
 
@@ -774,7 +764,7 @@ async fn finalize_cancellation_with_retry(
             .await
         {
             Ok(()) => return,
-            Err(error) if attempt < MAX_ATTEMPTS => {
+            Err(error) if attempt < MAX_ATTEMPTS && api_failure_is_retryable(&error) => {
                 warn!(
                     run_id = %run_id,
                     attempt,
@@ -795,6 +785,23 @@ async fn finalize_cancellation_with_retry(
                 return;
             }
         }
+    }
+}
+
+fn api_failure_is_retryable(error: &RunnerError) -> bool {
+    match error {
+        RunnerError::ApiStatus(api_error) => {
+            let status = api_error.status;
+            matches!(
+                status,
+                StatusCode::REQUEST_TIMEOUT
+                    | StatusCode::MISDIRECTED_REQUEST
+                    | StatusCode::TOO_EARLY
+                    | StatusCode::TOO_MANY_REQUESTS
+            ) || status.is_server_error()
+        }
+        RunnerError::ApiTransport(_) => true,
+        _ => false,
     }
 }
 
@@ -4032,6 +4039,52 @@ mod tests {
                 CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
             )
             .await;
+
+        complete_mock.assert_calls_async(1).await;
+        finalization_mock.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn api_provider_does_not_retry_permanent_cancellation_finalization_failure() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::new_v4();
+        let complete_mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(routes::webhooks::agent::complete::COMPLETE.path);
+                then.status(200).json_body(serde_json::json!({
+                    "success": true,
+                    "status": "failed",
+                    "cancellationFinalizationRequired": true
+                }));
+            })
+            .await;
+        let finalization_mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path(format!("/api/runners/runs/{run_id}/cancellation-finalized"));
+                then.status(400).body("invalid finalization");
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+
+        tokio::time::timeout(
+            Duration::from_secs(1),
+            provider.complete(
+                run_id,
+                1,
+                Some("cancelled by user"),
+                None,
+                None,
+                CompletionAuth::sandbox_token(run_id, "sandbox-token".to_string()),
+            ),
+        )
+        .await
+        .expect("permanent finalization failure should not wait for the retry delay");
 
         complete_mock.assert_calls_async(1).await;
         finalization_mock.assert_calls_async(1).await;

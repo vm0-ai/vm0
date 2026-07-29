@@ -2385,12 +2385,13 @@ const cancellationFinalizationInner$ = command(
       return forbidden("Run does not belong to runner");
     }
 
+    const shouldDrain =
+      run.status === "cancelled" && run.cancellationFinalizationStatus !== null;
     if (
-      run.status === "cancelled" &&
-      run.cancellationFinalizationStatus !== null &&
+      shouldDrain &&
       run.cancellationFinalizationStatus !== CANCELLATION_FINALIZATION_FINALIZED
     ) {
-      const [finalized] = await db
+      await db
         .update(agentRuns)
         .set({
           cancellationFinalizationStatus: CANCELLATION_FINALIZATION_FINALIZED,
@@ -2410,34 +2411,33 @@ const cancellationFinalizationInner$ = command(
               CANCELLATION_FINALIZATION_PENDING,
             ]),
           ),
-        )
-        .returning({ id: agentRuns.id });
+        );
       signal.throwIfAborted();
+    }
 
-      if (finalized) {
-        const backgroundSignal = new AbortController().signal;
-        waitUntil(
-          tapError(
-            set(
-              drainChatThreadQueueForRun$,
+    if (shouldDrain) {
+      const backgroundSignal = new AbortController().signal;
+      waitUntil(
+        tapError(
+          set(
+            drainChatThreadQueueForRun$,
+            {
+              runId,
+              dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+            },
+            backgroundSignal,
+          ),
+          (error) => {
+            L.error(
+              "Failed to drain chat thread after cancellation finalization",
               {
                 runId,
-                dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+                error,
               },
-              backgroundSignal,
-            ),
-            (error) => {
-              L.error(
-                "Failed to drain chat thread after cancellation finalization",
-                {
-                  runId,
-                  error,
-                },
-              );
-            },
-          ),
-        );
-      }
+            );
+          },
+        ),
+      );
     }
 
     return {
