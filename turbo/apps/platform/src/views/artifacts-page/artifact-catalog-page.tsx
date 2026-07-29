@@ -13,7 +13,7 @@ import {
 } from "@tabler/icons-react";
 import { r2ImageTransformUrl } from "@vm0/core";
 import { useGet, useLoadable, useSet } from "ccstate-react";
-import { cn } from "@vm0/ui";
+import { Alert, AlertDescription, cn } from "@vm0/ui";
 
 import {
   artifactCatalog$,
@@ -221,13 +221,12 @@ export function ArtifactCatalogSkeleton() {
 
 export function ArtifactCatalogError() {
   return (
-    <div
-      role="alert"
-      className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
-    >
+    <Alert variant="destructive">
       <IconAlertTriangle size={16} stroke={1.5} aria-hidden />
-      Could not load artifacts. Try again later.
-    </div>
+      <AlertDescription>
+        Could not load artifacts. Try again later.
+      </AlertDescription>
+    </Alert>
   );
 }
 
