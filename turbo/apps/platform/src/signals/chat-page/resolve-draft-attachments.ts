@@ -15,7 +15,7 @@ import type {
  * validation. The UI strips this placeholder from `PagedUserMessage` so the
  * bubble shows only the download chips.
  */
-export const ATTACH_ONLY_PLACEHOLDER = "(see attached files)";
+const ATTACH_ONLY_PLACEHOLDER = "(see attached files)";
 
 /**
  * Prepared send-message payload derived from a draft.
