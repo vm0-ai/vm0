@@ -6334,6 +6334,8 @@ const CONNECTOR_SLUG_EXPANSION_CUSTOM_CONNECTION_ID =
   "71000000-0000-4000-8000-000000000097";
 const CONNECTOR_SLUG_EXPANSION_CUSTOM_OAUTH_STATE_ID =
   "71000000-0000-4000-8000-000000000096";
+const CONNECTOR_SLUG_EXPANSION_PREVIOUS_MIGRATION = 737;
+const CONNECTOR_SLUG_EXPANSION_MIGRATION = 738;
 const connectorSlugLegacyInsertIds = {
   connector_external_code_sessions: "71000000-0000-4000-8000-000000000085",
   connector_oauth_device_authorization_sessions:
@@ -6957,11 +6959,12 @@ async function applyConnectorSlugExpansionBehindConcurrentWriter(
     const migrationPid = migrationPidResult.rows[0]?.pid;
     assert.ok(migrationPid);
 
-    migrationTask = applyMigrationsUpToInTransaction(migration, 737).catch(
-      (error: unknown) => {
-        migrationFailure = error;
-      },
-    );
+    migrationTask = applyMigrationsUpToInTransaction(
+      migration,
+      CONNECTOR_SLUG_EXPANSION_MIGRATION,
+    ).catch((error: unknown) => {
+      migrationFailure = error;
+    });
     await waitForConnectorSlugMigrationLock(observer, migrationPid);
 
     await writer.query(
@@ -7001,7 +7004,10 @@ async function validateConnectorSlugExpansion(): Promise<void> {
 
   await createDatabase(testDb);
   try {
-    await runMigrationsUpTo(testDbUrl, 736);
+    await runMigrationsUpTo(
+      testDbUrl,
+      CONNECTOR_SLUG_EXPANSION_PREVIOUS_MIGRATION,
+    );
     const client = new Client({ connectionString: testDbUrl });
     await client.connect();
     try {
@@ -7512,8 +7518,13 @@ async function validateConnectorSlugExpansion(): Promise<void> {
         "sync_user_connectors_connector_slug",
         "sync_user_permission_grants_connector_slug",
       ];
-      const triggers = await client.query<{ readonly name: string }>(`
-        SELECT "tgname" AS "name"
+      const triggers = await client.query<{
+        readonly definition: string;
+        readonly name: string;
+      }>(`
+        SELECT
+          "tgname" AS "name",
+          pg_get_triggerdef("pg_trigger"."oid") AS "definition"
         FROM "pg_trigger"
         JOIN "pg_class" ON "pg_class"."oid" = "pg_trigger"."tgrelid"
         JOIN "pg_namespace" ON "pg_namespace"."oid" = "pg_class"."relnamespace"
@@ -7527,6 +7538,38 @@ async function validateConnectorSlugExpansion(): Promise<void> {
           return row.name;
         }),
         expectedTriggers,
+      );
+      const expectedTriggerUpdateColumns = new Map([
+        [
+          "sync_connector_external_code_sessions_connector_slug",
+          "UPDATE OF connector_type, connector_slug",
+        ],
+        [
+          "sync_connector_oauth_device_sessions_connector_slug",
+          "UPDATE OF connector_type, connector_slug",
+        ],
+        [
+          "sync_connector_oauth_states_connector_slug",
+          "UPDATE OF type, connector_slug",
+        ],
+        ["sync_connectors_connector_slug", "UPDATE OF type, connector_slug"],
+        [
+          "sync_user_connectors_connector_slug",
+          "UPDATE OF connector_type, connector_slug",
+        ],
+        [
+          "sync_user_permission_grants_connector_slug",
+          "UPDATE OF connector_ref, connector_slug",
+        ],
+      ]);
+      assert.ok(
+        triggers.rows.every((row) => {
+          const expectedColumns = expectedTriggerUpdateColumns.get(row.name);
+          assert.ok(expectedColumns);
+          return row.definition.includes(
+            `BEFORE INSERT OR ${expectedColumns} ON`,
+          );
+        }),
       );
 
       const expectedChecks = [

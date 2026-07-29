@@ -97,22 +97,22 @@ END;
 $$ LANGUAGE plpgsql;--> statement-breakpoint
 
 CREATE TRIGGER "sync_connectors_connector_slug"
-BEFORE INSERT OR UPDATE ON "connectors"
+BEFORE INSERT OR UPDATE OF "type", "connector_slug" ON "connectors"
 FOR EACH ROW EXECUTE FUNCTION "sync_connector_slug_from_type"();--> statement-breakpoint
 CREATE TRIGGER "sync_connector_oauth_states_connector_slug"
-BEFORE INSERT OR UPDATE ON "connector_oauth_states"
+BEFORE INSERT OR UPDATE OF "type", "connector_slug" ON "connector_oauth_states"
 FOR EACH ROW EXECUTE FUNCTION "sync_connector_slug_from_type"();--> statement-breakpoint
 CREATE TRIGGER "sync_user_connectors_connector_slug"
-BEFORE INSERT OR UPDATE ON "user_connectors"
+BEFORE INSERT OR UPDATE OF "connector_type", "connector_slug" ON "user_connectors"
 FOR EACH ROW EXECUTE FUNCTION "sync_connector_slug_from_connector_type"();--> statement-breakpoint
 CREATE TRIGGER "sync_connector_oauth_device_sessions_connector_slug"
-BEFORE INSERT OR UPDATE ON "connector_oauth_device_authorization_sessions"
+BEFORE INSERT OR UPDATE OF "connector_type", "connector_slug" ON "connector_oauth_device_authorization_sessions"
 FOR EACH ROW EXECUTE FUNCTION "sync_connector_slug_from_connector_type"();--> statement-breakpoint
 CREATE TRIGGER "sync_connector_external_code_sessions_connector_slug"
-BEFORE INSERT OR UPDATE ON "connector_external_code_sessions"
+BEFORE INSERT OR UPDATE OF "connector_type", "connector_slug" ON "connector_external_code_sessions"
 FOR EACH ROW EXECUTE FUNCTION "sync_connector_slug_from_connector_type"();--> statement-breakpoint
 CREATE TRIGGER "sync_user_permission_grants_connector_slug"
-BEFORE INSERT OR UPDATE ON "user_permission_grants"
+BEFORE INSERT OR UPDATE OF "connector_ref", "connector_slug" ON "user_permission_grants"
 FOR EACH ROW EXECUTE FUNCTION "sync_connector_slug_from_connector_ref"();--> statement-breakpoint
 
 UPDATE "connectors"
