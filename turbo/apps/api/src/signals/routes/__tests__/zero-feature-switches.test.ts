@@ -12,7 +12,7 @@ function client() {
 }
 
 describe("/api/zero/feature-switches", () => {
-  it("does not persist or activate inline templates for a non-staff org", async () => {
+  it("persists and activates inline templates for a non-staff org", async () => {
     createZeroRouteMocks(context).clerk.session(
       "user_nonstaff_feature_switch_test",
       "org_nonstaff_feature_switch_test",
@@ -32,19 +32,23 @@ describe("/api/zero/feature-switches", () => {
       [200],
     );
 
-    expect(updated.body.switches).toStrictEqual({});
+    expect(updated.body.switches).toStrictEqual({
+      [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
+    });
     expect(
       updated.body.effectiveSwitches[
         FeatureSwitchKey.StructuredPromptInlineTemplates
       ],
-    ).toBeFalsy();
+    ).toBe(true);
 
     const current = await accept(client().get({ headers }), [200]);
-    expect(current.body.switches).toStrictEqual({});
+    expect(current.body.switches).toStrictEqual({
+      [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
+    });
     expect(
       current.body.effectiveSwitches[
         FeatureSwitchKey.StructuredPromptInlineTemplates
       ],
-    ).toBeFalsy();
+    ).toBe(true);
   });
 });
