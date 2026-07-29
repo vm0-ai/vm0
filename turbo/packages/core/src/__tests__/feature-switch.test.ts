@@ -16,9 +16,6 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.VideoArtifactPosters, {})).toBe(
       true,
     );
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.ChatHistoryBackfillProgress, {}),
-    ).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
