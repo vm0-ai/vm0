@@ -250,7 +250,7 @@ function validateFirewallBindings(args: {
 }
 
 function validateBaseUrlTemplates(
-  connectorRef: string,
+  connectorSlug: string,
   firewall: FirewallConfig,
 ): void {
   const templates = new Map<string, FirewallBaseHostPolicy | undefined>();
@@ -264,7 +264,7 @@ function validateBaseUrlTemplates(
       !isDeepStrictEqual(templates.get(api.base), api.hostPolicy)
     ) {
       throw new Error(
-        `Firewall base URL host policies conflict: ${connectorRef} (${api.base})`,
+        `Firewall base URL host policies conflict: ${connectorSlug} (${api.base})`,
       );
     }
     templates.set(api.base, api.hostPolicy);

@@ -31,8 +31,11 @@ const YOUTUBE_OAUTH_SCOPES = [
   "https://www.googleapis.com/auth/userinfo.email",
 ] as const;
 
-function oauthStartUrl(type: string, origin = BASE_URL): string {
-  return new URL(`/api/zero/connectors/${type}/oauth/start`, origin).toString();
+function oauthStartUrl(connectorSlug: string, origin = BASE_URL): string {
+  return new URL(
+    `/api/zero/connectors/${connectorSlug}/oauth/start`,
+    origin,
+  ).toString();
 }
 
 function authHeaders(): HeadersInit {
@@ -89,7 +92,7 @@ function expectCloudflareAuthorizationScopes(authorizationUrl: URL): void {
 }
 
 async function requestOauthStart(
-  type: string,
+  connectorSlug: string,
   options: {
     readonly authMethod?: ConnectorAuthMethodId;
     readonly authenticated?: boolean;
@@ -107,7 +110,7 @@ async function requestOauthStart(
   }
   headers.set("content-type", "application/json");
   const app = createApp({ signal: context.signal });
-  return await app.request(oauthStartUrl(type, options.origin), {
+  return await app.request(oauthStartUrl(connectorSlug, options.origin), {
     method: "POST",
     headers,
     body: JSON.stringify({
@@ -149,11 +152,11 @@ function expectOauthState(authorizationUrl: URL): string {
 }
 
 function legacyContinuationUrl(
-  connectorType: string,
+  connectorSlug: string,
   authorizationUrl: URL,
 ): URL {
   const continuationUrl = new URL(
-    `/api/zero/connectors/${connectorType}/oauth/continue`,
+    `/api/zero/connectors/${connectorSlug}/oauth/continue`,
     API_ORIGIN,
   );
   continuationUrl.searchParams.set("state", expectOauthState(authorizationUrl));
@@ -284,7 +287,7 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     });
   });
 
-  it("rejects an OAuth handoff for a different connector type", async () => {
+  it("rejects an OAuth handoff for a different connector slug", async () => {
     const response = await requestOauthStart("github", {
       authenticated: true,
       origin: API_ORIGIN,

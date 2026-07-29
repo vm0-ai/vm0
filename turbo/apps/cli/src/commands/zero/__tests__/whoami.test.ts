@@ -51,11 +51,11 @@ function makePermissionGrant(overrides: Record<string, unknown> = {}) {
 
 const defaultPermissionDetails = [
   catalogPermissionDetail({
-    connectorRef: "github",
+    connectorSlug: "github",
     label: "GitHub",
   }),
   catalogPermissionDetail({
-    connectorRef: "slack",
+    connectorSlug: "slack",
     label: "Slack",
     permissions: [
       {
@@ -556,7 +556,7 @@ describe("zero whoami command", () => {
       ).toBe(true);
     });
 
-    it("should show permissions for a server-authored connector ref", async () => {
+    it("should show permissions for a server-authored connector slug", async () => {
       const token = buildZeroToken({
         userId: "user-1",
         runId: "run-abc",
@@ -571,7 +571,7 @@ describe("zero whoami command", () => {
       vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       const serverOnlyDetail = catalogPermissionDetail({
-        connectorRef: "server-only",
+        connectorSlug: "server-only",
         label: "Server Only",
         permissions: [
           { name: "records.read", description: "Read server records" },

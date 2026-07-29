@@ -5,7 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import {
   allConnectorCatalogItems$,
@@ -13,13 +13,13 @@ import {
 } from "../../../../signals/zero-page/settings/connectors.ts";
 
 interface ScopeReviewModalProps {
-  connectorRef: ConnectorRef | null;
+  connectorSlug: ConnectorSlug | null;
   onClose: () => void;
-  onReconnect: (connectorRef: ConnectorRef) => void;
+  onReconnect: (connectorSlug: ConnectorSlug) => void;
 }
 
 export function ScopeReviewModal({
-  connectorRef,
+  connectorSlug,
   onClose,
   onReconnect,
 }: ScopeReviewModalProps) {
@@ -29,14 +29,14 @@ export function ScopeReviewModal({
   const scopeDiff =
     scopeDiffLoadable.state === "hasData" ? scopeDiffLoadable.data : null;
 
-  if (!connectorRef) {
+  if (!connectorSlug) {
     return null;
   }
 
   const connector = connectorCatalogItems?.find((candidate) => {
-    return candidate.connectorRef === connectorRef;
+    return candidate.connectorRef === connectorSlug;
   });
-  const connectorLabel = connector?.label ?? connectorRef;
+  const connectorLabel = connector?.label ?? connectorSlug;
 
   return (
     <Dialog
@@ -116,7 +116,7 @@ export function ScopeReviewModal({
               <button
                 type="button"
                 onClick={() => {
-                  return onReconnect(connectorRef);
+                  return onReconnect(connectorSlug);
                 }}
                 className="flex-1 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
               >

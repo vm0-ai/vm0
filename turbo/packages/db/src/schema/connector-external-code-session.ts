@@ -23,6 +23,7 @@ export const connectorExternalCodeSessions = pgTable(
     userId: text("user_id").notNull(),
     agentId: uuid("agent_id"),
     authorizeAgent: boolean("authorize_agent").default(false).notNull(),
+    // TODO(#23619): Rename the property and column in the persistence phase.
     connectorType: varchar("connector_type", { length: 64 }).notNull(),
     authMethod: varchar("auth_method", { length: 50 }).notNull(),
     status: connectorExternalCodeSessionStatusEnum("status")

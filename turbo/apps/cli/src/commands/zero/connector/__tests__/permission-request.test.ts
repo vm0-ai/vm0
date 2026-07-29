@@ -18,7 +18,7 @@ describe("zero connector permission-request command", () => {
   const SLACK_READ_PERMISSION = "admin.conversations:read";
   const permissionDetails = [
     catalogPermissionDetail({
-      connectorRef: "slack",
+      connectorSlug: "slack",
       label: "Slack",
       permissions: [
         { name: SLACK_READ_PERMISSION, description: "Read conversations" },
@@ -26,7 +26,7 @@ describe("zero connector permission-request command", () => {
       ],
     }),
     catalogPermissionDetail({
-      connectorRef: "gmail",
+      connectorSlug: "gmail",
       label: "Gmail",
       permissions: [
         { name: "messages.send", description: "Send messages" },
@@ -34,7 +34,7 @@ describe("zero connector permission-request command", () => {
       ],
     }),
     catalogPermissionDetail({
-      connectorRef: "cloudflare",
+      connectorSlug: "cloudflare",
       label: "Cloudflare",
     }),
   ];
@@ -328,7 +328,7 @@ describe("zero connector permission-request command", () => {
   it("validates a server-authored connector absent from the CLI bundle", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     const serverOnlyDetail = catalogPermissionDetail({
-      connectorRef: "server-only",
+      connectorSlug: "server-only",
       label: "Server Only",
       permissions: [
         { name: "records.read", description: "Read server records" },
@@ -445,7 +445,7 @@ describe("zero connector permission-request command", () => {
     expect(errorOutput).not.toContain("Unknown connector type");
   });
 
-  it("rejects permission metadata for a different connector ref", async () => {
+  it("rejects permission metadata for a different connector slug", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://app.vm0.ai");
     server.use(
       http.get(
@@ -453,7 +453,7 @@ describe("zero connector permission-request command", () => {
         () => {
           return HttpResponse.json({
             permissions: catalogPermissionDetail({
-              connectorRef: "github",
+              connectorSlug: "github",
               label: "GitHub",
               permissions: [{ name: SLACK_READ_PERMISSION }],
             }),
@@ -544,7 +544,7 @@ describe("zero connector permission-request command", () => {
     expect(mockConsoleError).not.toHaveBeenCalled();
   });
 
-  it("recognizes computer-use:write even when the connector ref is wrong", async () => {
+  it("recognizes computer-use:write even when the connector slug is wrong", async () => {
     vi.stubEnv("ZERO_TOKEN", "");
 
     await permissionRequestCommand.parseAsync([

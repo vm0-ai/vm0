@@ -141,7 +141,7 @@ import {
   type WorkflowTemplateItem,
 } from "@vm0/core";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-providers";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
@@ -157,11 +157,11 @@ import {
   allConnectorCatalogItems$,
   connectConnectorNoAuth$,
   connectConnectorOAuthAuthCode$,
-  connectFlowConnectorRef$,
+  connectFlowConnectorSlug$,
   matchesConnectorSearch,
-  justConnectedRefs$,
-  pollingOAuthAuthCodeConnectorRef$,
-  pollingOAuthDeviceAuthConnectorRef$,
+  justConnectedSlugs$,
+  pollingOAuthAuthCodeConnectorSlug$,
+  pollingOAuthDeviceAuthConnectorSlug$,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -1395,9 +1395,9 @@ function WorkflowTemplateConnectorIcons({
   withDivider?: boolean;
 }) {
   const catalogConnectors = useLastResolved(allConnectorCatalogItems$);
-  const visibleConnectors = connectors.flatMap((connectorRef) => {
+  const visibleConnectors = connectors.flatMap((connectorSlug) => {
     const connector = catalogConnectors?.find((candidate) => {
-      return candidate.connectorRef === connectorRef;
+      return candidate.connectorRef === connectorSlug;
     });
     return connector ? [connector] : [];
   });
@@ -5565,13 +5565,13 @@ function ConnectorTriggerIcons({
 function AddConnectorsDialog({
   signals,
   unconnected,
-  busyConnectorRef,
+  busyConnectorSlug,
   connectHandlers,
   onClose,
 }: {
   signals: ComposerConnectorSignals;
   unconnected: PublicConnectorCatalogStatusItem[];
-  busyConnectorRef: ConnectorRef | null;
+  busyConnectorSlug: ConnectorSlug | null;
   connectHandlers: (
     connector: PublicConnectorCatalogStatusItem,
   ) => ConnectorConnectHandlers;
@@ -5618,7 +5618,7 @@ function AddConnectorsDialog({
                   key={item.connectorRef}
                   variant="catalog"
                   connector={item}
-                  busy={busyConnectorRef === item.connectorRef}
+                  busy={busyConnectorSlug === item.connectorRef}
                   connect={connectHandlers(item)}
                 />
               );
@@ -5804,7 +5804,7 @@ function ComposerConnectorPermissionDialog({
   return (
     <PermissionsDialog
       agentId={agentId}
-      connectorRef={connector.connectorRef}
+      connectorSlug={connector.connectorRef}
       connectorLabel={connector.label}
       metadata$={signals.permissionMetadata$}
       displayName={agentDisplayName}
@@ -5815,7 +5815,7 @@ function ComposerConnectorPermissionDialog({
       onApply={async (intent, { metadata: appliedMetadata }) => {
         await savePermissionDraftPolicies({
           scope: { agentId },
-          connectorRef: connector.connectorRef,
+          connectorSlug: connector.connectorRef,
           metadata: appliedMetadata,
           initialPolicies,
           initialGrants: activeSnapshot.grants,
@@ -5836,7 +5836,7 @@ function ConnectorsPopoverButton({
   agentDisplayName,
   agentConnectors,
   connectorsLoading,
-  savingConnectorRef,
+  savingConnectorSlug,
   computerUse,
   onOpenAddDialog,
   onToggle,
@@ -5846,11 +5846,11 @@ function ConnectorsPopoverButton({
   agentDisplayName: string;
   agentConnectors: ComposerConnectorItem[];
   connectorsLoading: boolean;
-  savingConnectorRef: ConnectorRef | null;
+  savingConnectorSlug: ConnectorSlug | null;
   computerUse: ComposerComputerUse | undefined;
   onOpenAddDialog: () => void;
   onToggle: (
-    connectorRef: ConnectorRef,
+    connectorSlug: ConnectorSlug,
     checked: boolean,
   ) => void | Promise<void>;
 }) {
@@ -5863,13 +5863,15 @@ function ConnectorsPopoverButton({
     signals.setComputerUseDownloadDialogOpen$,
   );
   const permissionEntryEnabled = useGet(composerConnectorPermissionsEnabled$);
-  const permissionConnectorRef = useGet(signals.permissionConnectorRef$);
-  const setPermissionConnectorRef = useSet(signals.setPermissionConnectorRef$);
+  const permissionConnectorSlug = useGet(signals.permissionConnectorSlug$);
+  const setPermissionConnectorSlug = useSet(
+    signals.setPermissionConnectorSlug$,
+  );
   const showSearch = agentConnectors.length > 20;
   const permissionConnector =
-    permissionEntryEnabled && permissionConnectorRef
+    permissionEntryEnabled && permissionConnectorSlug
       ? agentConnectors.find((c) => {
-          return c.connectorRef === permissionConnectorRef;
+          return c.connectorRef === permissionConnectorSlug;
         })
       : undefined;
 
@@ -5993,7 +5995,7 @@ function ConnectorsPopoverButton({
                             onClick={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
-                              setPermissionConnectorRef(item.connectorRef);
+                              setPermissionConnectorSlug(item.connectorRef);
                             }}
                             aria-label={`Configure ${item.label} permissions`}
                             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -6006,7 +6008,7 @@ function ConnectorsPopoverButton({
                         onCheckedChange={onDomEventFn(async (checked) => {
                           await onToggle(item.connectorRef, checked);
                         })}
-                        loading={savingConnectorRef === item.connectorRef}
+                        loading={savingConnectorSlug === item.connectorRef}
                         ariaLabel={`${item.authorized ? "Remove" : "Add"} ${item.label}`}
                         size="sm"
                       />
@@ -6057,7 +6059,7 @@ function ConnectorsPopoverButton({
           agentDisplayName={agentDisplayName}
           connector={permissionConnector}
           onClose={() => {
-            setPermissionConnectorRef(null);
+            setPermissionConnectorSlug(null);
           }}
         />
       )}
@@ -6836,7 +6838,7 @@ function equalAgentConnectorAuthorizations(
   }
   return (
     left.agentId === right.agentId &&
-    equalArrays(left.enabledTypes, right.enabledTypes)
+    equalArrays(left.enabledConnectorSlugs, right.enabledConnectorSlugs)
   );
 }
 
@@ -6852,10 +6854,10 @@ export function useComposerConnectorReadState(
   };
 }
 
-function matchingAuthorizedConnectorRefs(
+function matchingAuthorizedConnectorSlugs(
   agentId: Loadable<string | null>,
   authorizations: Loadable<AgentConnectorAuthorizations | null>,
-): readonly ConnectorRef[] | null {
+): readonly ConnectorSlug[] | null {
   if (agentId.state !== "hasData" || authorizations.state !== "hasData") {
     return null;
   }
@@ -6865,7 +6867,7 @@ function matchingAuthorizedConnectorRefs(
   if (authorizations.data?.agentId !== agentId.data) {
     return null;
   }
-  return authorizations.data.enabledTypes;
+  return authorizations.data.enabledConnectorSlugs;
 }
 
 // The thread route invokes this hook from its ccstate-connected composer so
@@ -7059,32 +7061,34 @@ export function useZeroChatComposer(
   const agentIdLoadable = connectorReadState.agentId;
   const authorizationsLoadable = connectorReadState.authorizations;
   const pageSignal = useGet(pageSignal$);
-  const selectedConnectorRef = useGet(composerConnectors.selectedConnectorRef$);
-  const pendingConnectorRef = useGet(composerConnectors.pendingConnectorRef$);
-  const setPendingConnectorRef = useSet(
-    composerConnectors.setPendingConnectorRef$,
+  const selectedConnectorSlug = useGet(
+    composerConnectors.selectedConnectorSlug$,
   );
-  const setSelectedConnectorRef = useSet(
-    composerConnectors.setSelectedConnectorRef$,
+  const pendingConnectorSlug = useGet(composerConnectors.pendingConnectorSlug$);
+  const setPendingConnectorSlug = useSet(
+    composerConnectors.setPendingConnectorSlug$,
   );
-  const pollingAuthCodeRef = useGet(pollingOAuthAuthCodeConnectorRef$);
-  const pollingDeviceAuthRef = useGet(pollingOAuthDeviceAuthConnectorRef$);
-  const connectFlowRef = useGet(connectFlowConnectorRef$);
-  const busyConnectorRef =
-    connectFlowRef ?? pollingAuthCodeRef ?? pollingDeviceAuthRef;
+  const setSelectedConnectorSlug = useSet(
+    composerConnectors.setSelectedConnectorSlug$,
+  );
+  const pollingAuthCodeSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
+  const pollingDeviceAuthSlug = useGet(pollingOAuthDeviceAuthConnectorSlug$);
+  const connectFlowSlug = useGet(connectFlowConnectorSlug$);
+  const busyConnectorSlug =
+    connectFlowSlug ?? pollingAuthCodeSlug ?? pollingDeviceAuthSlug;
   const connectBrowserAuth = useSet(connectConnectorOAuthAuthCode$);
   const connectNoAuth = useSet(connectConnectorNoAuth$);
   const authorizeFn = useSet(composerConnectors.authorizeConnector$);
   const deauthorizeFn = useSet(composerConnectors.deauthorizeConnector$);
-  const optimisticConnected = useGet(justConnectedRefs$);
+  const optimisticConnected = useGet(justConnectedSlugs$);
 
-  const savingConnectorRef = useGet(composerConnectors.savingConnectorRef$);
-  const setSavingConnectorRef = useSet(
-    composerConnectors.setSavingConnectorRef$,
+  const savingConnectorSlug = useGet(composerConnectors.savingConnectorSlug$);
+  const setSavingConnectorSlug = useSet(
+    composerConnectors.setSavingConnectorSlug$,
   );
   const agentRecordId = loadableDataOrNull(agentIdLoadable);
 
-  const authorizedConnectors = matchingAuthorizedConnectorRefs(
+  const authorizedConnectors = matchingAuthorizedConnectorSlugs(
     agentIdLoadable,
     authorizationsLoadable,
   );
@@ -7123,18 +7127,18 @@ export function useZeroChatComposer(
     },
   );
 
-  const handleConnectSuccess = async (connectorRef: ConnectorRef) => {
-    const label = connectorMap.get(connectorRef)?.label ?? connectorRef;
+  const handleConnectSuccess = async (connectorSlug: ConnectorSlug) => {
+    const label = connectorMap.get(connectorSlug)?.label ?? connectorSlug;
     const authorized = await tapError(
       (async () => {
-        await authorizeFn(connectorRef, pageSignal);
+        await authorizeFn(connectorSlug, pageSignal);
         return true;
       })(),
       () => {
         toast.error(
           `${label} connected but could not be authorized for ${displayName}`,
           {
-            id: `connector-save-error-${connectorRef}`,
+            id: `connector-save-error-${connectorSlug}`,
           },
         );
       },
@@ -7143,38 +7147,38 @@ export function useZeroChatComposer(
       return false;
     }
     toast.success(`${label} connected and authorized for ${displayName}`, {
-      id: `connector-connected-${connectorRef}`,
+      id: `connector-connected-${connectorSlug}`,
     });
     return true;
   };
 
   const completeConnectorAddition = async (
-    connectorRef: ConnectorRef,
+    connectorSlug: ConnectorSlug,
   ): Promise<void> => {
-    if (!authorizedSet.has(connectorRef)) {
-      const authorized = await handleConnectSuccess(connectorRef);
+    if (!authorizedSet.has(connectorSlug)) {
+      const authorized = await handleConnectSuccess(connectorSlug);
       if (!authorized) {
-        setPendingConnectorRef(null);
+        setPendingConnectorSlug(null);
         return;
       }
     }
-    setPendingConnectorRef(null);
+    setPendingConnectorSlug(null);
     setShowAddDialog(false);
   };
 
   const connectorConnectHandlers = (
     connector: PublicConnectorCatalogStatusItem,
   ): ConnectorConnectHandlers => {
-    const connectorRef = connector.connectorRef;
+    const connectorSlug = connector.connectorRef;
     return {
       openModal: () => {
-        setPendingConnectorRef(connectorRef);
-        setSelectedConnectorRef(connectorRef);
+        setPendingConnectorSlug(connectorSlug);
+        setSelectedConnectorSlug(connectorSlug);
       },
       connectBrowserAuth: async (authMethod) => {
-        setPendingConnectorRef(connectorRef);
+        setPendingConnectorSlug(connectorSlug);
         const connected = await connectBrowserAuth(
-          connectorRef,
+          connectorSlug,
           authMethod,
           {
             connectorLabel: connector.label,
@@ -7184,17 +7188,17 @@ export function useZeroChatComposer(
           pageSignal,
         );
         if (connected) {
-          await completeConnectorAddition(connectorRef);
+          await completeConnectorAddition(connectorSlug);
         } else {
-          setPendingConnectorRef(null);
+          setPendingConnectorSlug(null);
         }
         return connected;
       },
       connectNoAuth: async (authMethod) => {
-        setPendingConnectorRef(connectorRef);
+        setPendingConnectorSlug(connectorSlug);
         const connected = await connectNoAuth(
           {
-            connectorRef,
+            connectorSlug,
             authMethod,
             options: {
               connectorLabel: connector.label,
@@ -7204,23 +7208,26 @@ export function useZeroChatComposer(
           pageSignal,
         );
         if (connected) {
-          await completeConnectorAddition(connectorRef);
+          await completeConnectorAddition(connectorSlug);
         } else {
-          setPendingConnectorRef(null);
+          setPendingConnectorSlug(null);
         }
         return connected;
       },
     };
   };
 
-  const handleToggle = async (connectorRef: ConnectorRef, checked: boolean) => {
-    setSavingConnectorRef(connectorRef);
+  const handleToggle = async (
+    connectorSlug: ConnectorSlug,
+    checked: boolean,
+  ) => {
+    setSavingConnectorSlug(connectorSlug);
     await bestEffort(
       checked
-        ? authorizeFn(connectorRef, pageSignal)
-        : deauthorizeFn(connectorRef, pageSignal),
+        ? authorizeFn(connectorSlug, pageSignal)
+        : deauthorizeFn(connectorSlug, pageSignal),
     );
-    setSavingConnectorRef(null);
+    setSavingConnectorSlug(null);
   };
 
   const handleSend = () => {
@@ -7432,7 +7439,7 @@ export function useZeroChatComposer(
                     agentDisplayName={displayName}
                     agentConnectors={agentConnectors}
                     connectorsLoading={connectorsLoading}
-                    savingConnectorRef={savingConnectorRef}
+                    savingConnectorSlug={savingConnectorSlug}
                     computerUse={computerUse}
                     onOpenAddDialog={() => {
                       return setShowAddDialog(true);
@@ -7478,17 +7485,17 @@ export function useZeroChatComposer(
         <ActiveGoalObjectiveDialog threadId={chatThreadId} />
         <WebsiteTemplatePreviewDialogSlot />
       </div>
-      {selectedConnectorRef && (
+      {selectedConnectorSlug && (
         <ConnectModal
-          selectedConnectorRef={selectedConnectorRef}
+          selectedConnectorSlug={selectedConnectorSlug}
           agentId={nullToUndefined(agentRecordId)}
           onClose={() => {
-            return setSelectedConnectorRef(null);
+            return setSelectedConnectorSlug(null);
           }}
           onSuccess={async () => {
-            const connectorRef = pendingConnectorRef ?? selectedConnectorRef;
-            if (connectorRef) {
-              await completeConnectorAddition(connectorRef);
+            const connectorSlug = pendingConnectorSlug ?? selectedConnectorSlug;
+            if (connectorSlug) {
+              await completeConnectorAddition(connectorSlug);
             }
           }}
         />
@@ -7497,10 +7504,10 @@ export function useZeroChatComposer(
         <AddConnectorsDialog
           signals={composerConnectors}
           unconnected={unconnectedConnectors}
-          busyConnectorRef={busyConnectorRef}
+          busyConnectorSlug={busyConnectorSlug}
           connectHandlers={connectorConnectHandlers}
           onClose={() => {
-            setPendingConnectorRef(null);
+            setPendingConnectorSlug(null);
             return setShowAddDialog(false);
           }}
         />

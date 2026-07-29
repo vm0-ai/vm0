@@ -18,7 +18,7 @@ import {
   TooltipTrigger,
   cn,
 } from "@vm0/ui";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
@@ -48,7 +48,7 @@ import { ConnectorIcon } from "./connector-icons.tsx";
 import { PermissionsDialog } from "./permissions-dialog.tsx";
 
 interface ConnectorAccessManagementDialogProps {
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly connectorLabel: string;
   readonly onClose: () => void;
 }
@@ -312,7 +312,7 @@ function ConnectorAccessDialog({
 function AgentPermissionDialog({
   row,
   metadata,
-  connectorRef,
+  connectorSlug,
   connectorLabel,
   pageSignal,
   applyGrantPolicies,
@@ -320,7 +320,7 @@ function AgentPermissionDialog({
 }: {
   readonly row: ConnectorAgentAccessRow | undefined;
   readonly metadata: PublicConnectorCatalogPermissionDetail | null;
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly connectorLabel: string;
   readonly pageSignal: AbortSignal;
   readonly applyGrantPolicies: ApplyUserPermissionGrants;
@@ -336,7 +336,7 @@ function AgentPermissionDialog({
   return (
     <PermissionsDialog
       agentId={row.agent.id}
-      connectorRef={connectorRef}
+      connectorSlug={connectorSlug}
       connectorLabel={connectorLabel}
       metadata$={managedConnectorFirewallPermissionMetadata$}
       displayName={agentName(row.agent)}
@@ -347,7 +347,7 @@ function AgentPermissionDialog({
       onApply={async (intent, { metadata: appliedMetadata }) => {
         await savePermissionDraftPolicies({
           scope: { agentId: row.agent.id },
-          connectorRef,
+          connectorSlug,
           metadata: appliedMetadata,
           initialPolicies,
           initialGrants: activeSnapshot.grants,
@@ -363,7 +363,7 @@ function AgentPermissionDialog({
 }
 
 export function ConnectorAccessManagementDialog({
-  connectorRef,
+  connectorSlug,
   connectorLabel,
   onClose,
 }: ConnectorAccessManagementDialogProps) {
@@ -404,7 +404,7 @@ export function ConnectorAccessManagementDialog({
       withCleanup(
         (async () => {
           await setAuthorization(
-            { agentId: row.agent.id, connectorRef, authorized },
+            { agentId: row.agent.id, connectorSlug, authorized },
             pageSignal,
           );
           toast.success(`${connectorLabel} access updated`);
@@ -436,7 +436,7 @@ export function ConnectorAccessManagementDialog({
       <AgentPermissionDialog
         row={selectedPermissionRow}
         metadata={metadata}
-        connectorRef={connectorRef}
+        connectorSlug={connectorSlug}
         connectorLabel={connectorLabel}
         pageSignal={pageSignal}
         applyGrantPolicies={applyGrantPolicies}

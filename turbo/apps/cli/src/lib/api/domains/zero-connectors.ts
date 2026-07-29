@@ -1,11 +1,11 @@
 import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
 import type {
   ConnectorAuthMethodId,
-  ConnectorRef,
+  ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   zeroConnectorManualGrantContract,
-  zeroConnectorsByTypeContract,
+  zeroConnectorsBySlugContract,
   zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
@@ -73,19 +73,19 @@ export async function listZeroConnectorCatalogStatus(): Promise<PublicConnectorC
 }
 
 export async function getZeroConnectorCatalogPermissions(
-  connectorRef: string,
+  connectorSlug: string,
 ): Promise<PublicConnectorCatalogPermissionDetail | null> {
   const config = await getClientConfig();
   const client = initClient(zeroConnectorCatalogContract, config);
 
   const result = await client.permissions({
-    params: { connectorRef },
+    params: { connectorRef: connectorSlug },
   });
 
   if (result.status === 200) {
-    if (result.body.permissions.connectorRef !== connectorRef) {
+    if (result.body.permissions.connectorRef !== connectorSlug) {
       throw new Error(
-        `Permission metadata connectorRef mismatch: expected ${connectorRef}, got ${result.body.permissions.connectorRef}`,
+        `Permission metadata connectorRef mismatch: expected ${connectorSlug}, got ${result.body.permissions.connectorRef}`,
       );
     }
     return result.body.permissions;
@@ -97,7 +97,7 @@ export async function getZeroConnectorCatalogPermissions(
 
   handleError(
     result,
-    `Failed to get connector permission metadata for "${connectorRef}"`,
+    `Failed to get connector permission metadata for "${connectorSlug}"`,
   );
 }
 
@@ -124,13 +124,13 @@ export async function diagnoseZeroConnectorCheck(
  * Returns null if not connected (404 response)
  */
 export async function getZeroConnector(
-  type: ConnectorRef,
+  connectorSlug: ConnectorSlug,
 ): Promise<ConnectorResponse | null> {
   const config = await getClientConfig();
-  const client = initClient(zeroConnectorsByTypeContract, config);
+  const client = initClient(zeroConnectorsBySlugContract, config);
 
   const result = await client.get({
-    params: { type },
+    params: { type: connectorSlug },
   });
 
   if (result.status === 200) {
@@ -141,11 +141,11 @@ export async function getZeroConnector(
     return null;
   }
 
-  handleError(result, `Failed to get connector "${type}"`);
+  handleError(result, `Failed to get connector "${connectorSlug}"`);
 }
 
 export async function connectZeroConnectorManualGrant(
-  type: ConnectorRef,
+  connectorSlug: ConnectorSlug,
   authMethod: ConnectorAuthMethodId,
   values: Record<string, string>,
 ): Promise<ConnectorResponse> {
@@ -153,7 +153,7 @@ export async function connectZeroConnectorManualGrant(
   const client = initClient(zeroConnectorManualGrantContract, config);
 
   const result = await client.connect({
-    params: { type },
+    params: { type: connectorSlug },
     body: { authMethod, values },
   });
 
@@ -161,7 +161,7 @@ export async function connectZeroConnectorManualGrant(
     return result.body;
   }
 
-  handleError(result, `Failed to connect connector "${type}"`);
+  handleError(result, `Failed to connect connector "${connectorSlug}"`);
 }
 
 export async function listZeroCustomConnectors(): Promise<

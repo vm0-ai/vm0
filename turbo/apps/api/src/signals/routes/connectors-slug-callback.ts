@@ -1,11 +1,11 @@
 import { command } from "ccstate";
 import {
-  connectorsTypeCallbackContract,
+  connectorsSlugCallbackContract,
   type ConnectorOauthCallbackResult,
-} from "@vm0/api-contracts/contracts/connectors-type-callback";
+} from "@vm0/api-contracts/contracts/connectors-slug-callback";
 import {
   connectorAuthMethodIdSchema,
-  type ConnectorRef,
+  type ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   connectorGrantScopes,
@@ -72,7 +72,7 @@ type CompleteOAuthCallbackInput = {
   readonly agentId: string | null;
   readonly authorizeAgent: boolean;
   readonly origin: string;
-  readonly type: string;
+  readonly connectorSlug: ConnectorSlug;
 };
 
 type CompleteOpenIdCallbackInput = {
@@ -84,21 +84,19 @@ type CompleteOpenIdCallbackInput = {
   readonly agentId: string | null;
   readonly authorizeAgent: boolean;
   readonly origin: string;
-  readonly type: string;
+  readonly connectorSlug: ConnectorSlug;
 };
 
 type ResolveCallbackStateInput = {
   readonly origin: string;
-  readonly type: string;
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly storedState: StoredOAuthState;
   readonly resolver: ConnectorActionResolver;
 };
 
 type ResolveOpenIdCallbackStateInput = {
   readonly origin: string;
-  readonly type: string;
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly storedState: StoredOAuthState;
   readonly resolver: ConnectorActionResolver;
 };
@@ -148,12 +146,13 @@ type ConnectorCallbackQuery = Readonly<Record<string, string | undefined>>;
 
 function redirectWithError(
   origin: string,
-  type: string,
+  connectorSlug: string,
   message: string,
   clearCookies = false,
 ): Response {
   const errorUrl = new URL("/connector/error", origin);
-  errorUrl.searchParams.set("type", type);
+  // TODO(#23619): Rename this redirect query field with Platform consumers.
+  errorUrl.searchParams.set("type", connectorSlug);
   errorUrl.searchParams.set("message", message);
 
   const response = connectorOAuthRedirectResponse(errorUrl.toString());
@@ -163,10 +162,13 @@ function redirectWithError(
   return response;
 }
 
-function invalidStateRedirectResponse(origin: string, type: string): Response {
+function invalidStateRedirectResponse(
+  origin: string,
+  connectorSlug: string,
+): Response {
   return redirectWithError(
     origin,
-    type,
+    connectorSlug,
     "Invalid state - please try again",
     true,
   );
@@ -174,13 +176,26 @@ function invalidStateRedirectResponse(origin: string, type: string): Response {
 
 function missingAuthorizationCodeRedirectResponse(
   origin: string,
-  type: string,
+  connectorSlug: string,
 ): Response {
-  return redirectWithError(origin, type, "Missing authorization code", true);
+  return redirectWithError(
+    origin,
+    connectorSlug,
+    "Missing authorization code",
+    true,
+  );
 }
 
-function missingStateRedirectResponse(origin: string, type: string): Response {
-  return redirectWithError(origin, type, "Missing state parameter", true);
+function missingStateRedirectResponse(
+  origin: string,
+  connectorSlug: string,
+): Response {
+  return redirectWithError(
+    origin,
+    connectorSlug,
+    "Missing state parameter",
+    true,
+  );
 }
 
 async function exchangeTokenForConnector(args: {
@@ -203,12 +218,12 @@ async function exchangeTokenForConnector(args: {
   );
   if (!authClient) {
     throw new Error(
-      `${args.resolvedMethod.connectorRef} auth client not configured`,
+      `${args.resolvedMethod.connectorSlug} auth client not configured`,
     );
   }
 
   return await exchangeConnectorAuthCodeWithMethod({
-    connectorRef: args.resolvedMethod.connectorRef,
+    connectorSlug: args.resolvedMethod.connectorSlug,
     authMethodId: args.resolvedMethod.authMethodId,
     method: args.resolvedMethod.method,
     authClient,
@@ -228,7 +243,7 @@ async function verifyOpenIdForConnector(args: {
   readonly signal: AbortSignal;
 }): Promise<ConnectorAuthProviderGrantResult> {
   return await verifyConnectorOpenIdAuthCallbackWithMethod({
-    connectorRef: args.resolvedMethod.connectorRef,
+    connectorSlug: args.resolvedMethod.connectorSlug,
     authMethodId: args.resolvedMethod.authMethodId,
     method: args.resolvedMethod.method,
     callbackParams: args.callbackParams,
@@ -240,23 +255,22 @@ async function verifyOpenIdForConnector(args: {
 
 function resolveConnectorWithGrant(args: {
   readonly snapshot: ConnectorRuntimeSnapshot;
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly grantKind: "auth-code" | "openid-auth";
   readonly origin: string;
-  readonly type: string;
 }):
   | { readonly ok: true; readonly connector: ConnectorRuntimeConnector }
   | { readonly ok: false; readonly response: Response } {
   const connector = getConnectorRuntimeConnector(
     args.snapshot,
-    args.connectorRef,
+    args.connectorSlug,
   );
   if (!connector) {
     return {
       ok: false,
       response: redirectWithError(
         args.origin,
-        args.type,
+        args.connectorSlug,
         "Unknown connector type",
       ),
     };
@@ -271,8 +285,8 @@ function resolveConnectorWithGrant(args: {
       ok: false,
       response: redirectWithError(
         args.origin,
-        args.type,
-        `${args.type} connector does not use an ${label} grant`,
+        args.connectorSlug,
+        `${args.connectorSlug} connector does not use an ${label} grant`,
       ),
     };
   }
@@ -282,26 +296,25 @@ function resolveConnectorWithGrant(args: {
 async function claimStoredOAuthStateForCallback(args: {
   readonly db: Db;
   readonly state: string;
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly origin: string;
-  readonly type: string;
   readonly signal: AbortSignal;
 }): Promise<ClaimedCallbackState> {
   const storedStateResolution = await claimConnectorOAuthState(
     args.db,
-    { state: args.state, connectorType: args.connectorRef },
+    { state: args.state, connectorSlug: args.connectorSlug },
     args.signal,
   );
   if (storedStateResolution.kind === "invalid") {
     return {
       ok: false,
-      response: invalidStateRedirectResponse(args.origin, args.type),
+      response: invalidStateRedirectResponse(args.origin, args.connectorSlug),
     };
   }
   if (storedStateResolution.kind === "missing") {
     return {
       ok: false,
-      response: invalidStateRedirectResponse(args.origin, args.type),
+      response: invalidStateRedirectResponse(args.origin, args.connectorSlug),
     };
   }
 
@@ -314,30 +327,29 @@ async function claimStoredOAuthStateForCallback(args: {
 async function rejectInvalidStoredOAuthStateForCallback(args: {
   readonly db: Db;
   readonly state: string;
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly origin: string;
-  readonly type: string;
   readonly signal: AbortSignal;
 }): Promise<Response | undefined> {
   const status = await getConnectorOAuthStateStatus(
     args.db,
-    { state: args.state, connectorType: args.connectorRef },
+    { state: args.state, connectorSlug: args.connectorSlug },
     args.signal,
   );
   if (status.kind === "usable") {
     return undefined;
   }
 
-  return invalidStateRedirectResponse(args.origin, args.type);
+  return invalidStateRedirectResponse(args.origin, args.connectorSlug);
 }
 
 function invalidStoredAuthMethodResponse(
   origin: string,
-  type: string,
+  connectorSlug: string,
 ): Response {
   return redirectWithError(
     origin,
-    type,
+    connectorSlug,
     "Invalid connector auth method - please try again",
     true,
   );
@@ -345,11 +357,10 @@ function invalidStoredAuthMethodResponse(
 
 async function resolveStoredCallbackMethod(args: {
   readonly resolver: ConnectorActionResolver;
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly authMethod: string;
   readonly expectedGrantKind: "auth-code" | "openid-auth";
   readonly origin: string;
-  readonly type: string;
 }): Promise<
   | {
       readonly ok: true;
@@ -363,19 +374,25 @@ async function resolveStoredCallbackMethod(args: {
   if (!authMethodResult.success) {
     return {
       ok: false,
-      response: invalidStoredAuthMethodResponse(args.origin, args.type),
+      response: invalidStoredAuthMethodResponse(
+        args.origin,
+        args.connectorSlug,
+      ),
     };
   }
 
   const resolvedMethod = await args.resolver.resolveMethod({
-    connectorRef: args.connectorRef,
+    connectorSlug: args.connectorSlug,
     authMethodId: authMethodResult.data,
     expectedGrantKind: args.expectedGrantKind,
   });
   if (!resolvedMethod.ok) {
     return {
       ok: false,
-      response: invalidStoredAuthMethodResponse(args.origin, args.type),
+      response: invalidStoredAuthMethodResponse(
+        args.origin,
+        args.connectorSlug,
+      ),
     };
   }
 
@@ -387,12 +404,12 @@ async function resolveStoredCallbackMethod(args: {
 
 async function linkGithubIntegrationAfterConnectorConnect(args: {
   readonly db: Db;
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly identity: CallbackIdentity;
   readonly token: ConnectorAuthProviderGrantResult;
   readonly signal: AbortSignal;
 }): Promise<void> {
-  if (args.connectorRef !== "github") {
+  if (args.connectorSlug !== "github") {
     return;
   }
 
@@ -421,11 +438,12 @@ async function linkGithubIntegrationAfterConnectorConnect(args: {
 
 function successRedirectResponse(args: {
   readonly origin: string;
-  readonly type: string;
+  readonly connectorSlug: ConnectorSlug;
   readonly username: string | null | undefined;
 }): Response {
   const successUrl = new URL("/connector/success", args.origin);
-  successUrl.searchParams.set("type", args.type);
+  // TODO(#23619): Rename this redirect query field with Platform consumers.
+  successUrl.searchParams.set("type", args.connectorSlug);
   successUrl.searchParams.set("username", args.username ?? "");
 
   const response = connectorOAuthRedirectResponse(successUrl.toString());
@@ -513,14 +531,14 @@ const completeOAuthCallback$ = command(
           orgId: args.identity.orgId,
           userId: args.identity.userId,
           agentId: args.agentId,
-          connectorType: args.resolvedMethod.connectorRef,
+          connectorSlug: args.resolvedMethod.connectorSlug,
         },
         signal,
       );
       if (authorization.status === "agentNotFound") {
         return redirectWithError(
           args.origin,
-          args.type,
+          args.connectorSlug,
           authorization.message,
           true,
         );
@@ -529,7 +547,7 @@ const completeOAuthCallback$ = command(
 
     await linkGithubIntegrationAfterConnectorConnect({
       db: set(writeDb$),
-      connectorRef: args.resolvedMethod.connectorRef,
+      connectorSlug: args.resolvedMethod.connectorSlug,
       identity: args.identity,
       token,
       signal,
@@ -538,7 +556,7 @@ const completeOAuthCallback$ = command(
 
     return successRedirectResponse({
       origin: args.origin,
-      type: args.type,
+      connectorSlug: args.connectorSlug,
       username: result.connector.externalUsername,
     });
   },
@@ -583,14 +601,14 @@ const completeOpenIdCallback$ = command(
           orgId: args.identity.orgId,
           userId: args.identity.userId,
           agentId: args.agentId,
-          connectorType: args.resolvedMethod.connectorRef,
+          connectorSlug: args.resolvedMethod.connectorSlug,
         },
         signal,
       );
       if (authorization.status === "agentNotFound") {
         return redirectWithError(
           args.origin,
-          args.type,
+          args.connectorSlug,
           authorization.message,
           true,
         );
@@ -599,7 +617,7 @@ const completeOpenIdCallback$ = command(
 
     return successRedirectResponse({
       origin: args.origin,
-      type: args.type,
+      connectorSlug: args.connectorSlug,
       username: result.connector.externalUsername,
     });
   },
@@ -611,11 +629,10 @@ async function resolveCallbackState(
 ): Promise<ResolvedCallbackState> {
   const authMethodResult = await resolveStoredCallbackMethod({
     resolver: args.resolver,
-    connectorRef: args.connectorRef,
+    connectorSlug: args.connectorSlug,
     authMethod: args.storedState.authMethod,
     expectedGrantKind: "auth-code",
     origin: args.origin,
-    type: args.type,
   });
   signal.throwIfAborted();
   if (!authMethodResult.ok) {
@@ -661,11 +678,10 @@ async function resolveOpenIdCallbackState(
 ): Promise<ResolvedOpenIdCallbackState> {
   const authMethodResult = await resolveStoredCallbackMethod({
     resolver: args.resolver,
-    connectorRef: args.connectorRef,
+    connectorSlug: args.connectorSlug,
     authMethod: args.storedState.authMethod,
     expectedGrantKind: "openid-auth",
     origin: args.origin,
-    type: args.type,
   });
   signal.throwIfAborted();
   if (!authMethodResult.ok) {
@@ -711,7 +727,7 @@ const handleOpenIdConnectorCallback$ = command(
   async (
     { get, set },
     args: {
-      readonly type: ConnectorRef;
+      readonly connectorSlug: ConnectorSlug;
       readonly query: ConnectorCallbackQuery;
       readonly origin: string;
       readonly snapshot: ConnectorRuntimeSnapshot;
@@ -720,24 +736,22 @@ const handleOpenIdConnectorCallback$ = command(
   ): Promise<Response> => {
     const connectorResult = resolveConnectorWithGrant({
       snapshot: args.snapshot,
-      connectorRef: args.type,
+      connectorSlug: args.connectorSlug,
       grantKind: "openid-auth",
       origin: args.origin,
-      type: args.type,
     });
     if (!connectorResult.ok) {
       return connectorResult.response;
     }
     const state = args.query.state;
     if (!state) {
-      return missingStateRedirectResponse(args.origin, args.type);
+      return missingStateRedirectResponse(args.origin, args.connectorSlug);
     }
 
     const claimedState = await claimStoredOAuthStateForCallback({
       db: set(writeDb$),
-      connectorRef: args.type,
+      connectorSlug: args.connectorSlug,
       origin: args.origin,
-      type: args.type,
       signal,
       state,
     });
@@ -753,8 +767,7 @@ const handleOpenIdConnectorCallback$ = command(
     const resolvedState = await resolveOpenIdCallbackState(
       {
         origin: args.origin,
-        type: args.type,
-        connectorRef: args.type,
+        connectorSlug: args.connectorSlug,
         storedState: claimedState.storedState,
         resolver,
       },
@@ -776,7 +789,7 @@ const handleOpenIdConnectorCallback$ = command(
           agentId: resolvedState.agentId,
           authorizeAgent: resolvedState.authorizeAgent,
           origin: args.origin,
-          type: args.type,
+          connectorSlug: args.connectorSlug,
         },
         signal,
       ),
@@ -789,7 +802,7 @@ const handleOpenIdConnectorCallback$ = command(
 
     return redirectWithError(
       args.origin,
-      args.type,
+      args.connectorSlug,
       "OpenID authorization failed. Please try again.",
       true,
     );
@@ -797,7 +810,7 @@ const handleOpenIdConnectorCallback$ = command(
 );
 
 function authCodeCallbackPreflight(args: {
-  readonly type: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
   readonly query: ConnectorCallbackQuery;
   readonly request: Request;
   readonly origin: string;
@@ -805,10 +818,9 @@ function authCodeCallbackPreflight(args: {
 }): Response | null {
   const connectorResult = resolveConnectorWithGrant({
     snapshot: args.snapshot,
-    connectorRef: args.type,
+    connectorSlug: args.connectorSlug,
     grantKind: "auth-code",
     origin: args.origin,
-    type: args.type,
   });
   if (!connectorResult.ok) {
     return connectorResult.response;
@@ -835,7 +847,7 @@ const handleAuthCodeConnectorCallback$ = command(
   async (
     { get, set },
     args: {
-      readonly type: ConnectorRef;
+      readonly connectorSlug: ConnectorSlug;
       readonly query: ConnectorCallbackQuery;
       readonly request: Request;
       readonly origin: string;
@@ -851,9 +863,8 @@ const handleAuthCodeConnectorCallback$ = command(
     const state = args.query.state;
     const storedStateCallbackArgs = {
       db: set(writeDb$),
-      connectorRef: args.type,
+      connectorSlug: args.connectorSlug,
       origin: args.origin,
-      type: args.type,
       signal,
     };
 
@@ -870,7 +881,7 @@ const handleAuthCodeConnectorCallback$ = command(
       }
       return redirectWithError(
         args.origin,
-        args.type,
+        args.connectorSlug,
         args.query.error_description ||
           args.query.error ||
           "OAuth authorization failed",
@@ -891,11 +902,14 @@ const handleAuthCodeConnectorCallback$ = command(
           return invalidStateResponse;
         }
       }
-      return missingAuthorizationCodeRedirectResponse(args.origin, args.type);
+      return missingAuthorizationCodeRedirectResponse(
+        args.origin,
+        args.connectorSlug,
+      );
     }
 
     if (!state) {
-      return missingStateRedirectResponse(args.origin, args.type);
+      return missingStateRedirectResponse(args.origin, args.connectorSlug);
     }
 
     const claimedState = await claimStoredOAuthStateForCallback({
@@ -914,8 +928,7 @@ const handleAuthCodeConnectorCallback$ = command(
     const resolvedState = await resolveCallbackState(
       {
         origin: args.origin,
-        type: args.type,
-        connectorRef: args.type,
+        connectorSlug: args.connectorSlug,
         storedState: claimedState.storedState,
         resolver,
       },
@@ -943,7 +956,7 @@ const handleAuthCodeConnectorCallback$ = command(
           agentId: resolvedState.agentId,
           authorizeAgent: resolvedState.authorizeAgent,
           origin: args.origin,
-          type: args.type,
+          connectorSlug: args.connectorSlug,
         },
         signal,
       ),
@@ -956,7 +969,7 @@ const handleAuthCodeConnectorCallback$ = command(
 
     return redirectWithError(
       args.origin,
-      args.type,
+      args.connectorSlug,
       "OAuth authorization failed. Please try again.",
       true,
     );
@@ -965,8 +978,10 @@ const handleAuthCodeConnectorCallback$ = command(
 
 const callbackConnectorInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const { type } = get(pathParamsOf(connectorsTypeCallbackContract.callback));
-    const query = get(queryOf(connectorsTypeCallbackContract.callback));
+    const { type: connectorSlug } = get(
+      pathParamsOf(connectorsSlugCallbackContract.callback),
+    );
+    const query = get(queryOf(connectorsSlugCallbackContract.callback));
     const request = get(request$).raw;
     const origin = getConnectorOAuthOrigin(request);
     const snapshot = await loadConnectorRuntimeSnapshot(get(db$));
@@ -976,7 +991,7 @@ const callbackConnectorInner$ = command(
       ? await set(
           handleOpenIdConnectorCallback$,
           {
-            type,
+            connectorSlug,
             query,
             origin,
             snapshot,
@@ -986,7 +1001,7 @@ const callbackConnectorInner$ = command(
       : await set(
           handleAuthCodeConnectorCallback$,
           {
-            type,
+            connectorSlug,
             query,
             request,
             origin,
@@ -1008,9 +1023,9 @@ const callbackConnectorInner$ = command(
   },
 );
 
-export const connectorsTypeCallbackRoutes: readonly RouteEntry[] = [
+export const connectorsSlugCallbackRoutes: readonly RouteEntry[] = [
   {
-    route: connectorsTypeCallbackContract.callback,
+    route: connectorsSlugCallbackContract.callback,
     handler: callbackConnectorInner$,
   },
 ];

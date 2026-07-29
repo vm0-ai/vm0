@@ -1,5 +1,5 @@
 import { command, computed, state, type Computed } from "ccstate";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
@@ -7,7 +7,7 @@ import { withCleanup } from "../utils.ts";
 
 export interface AgentConnectorAuthorizations {
   readonly agentId: string;
-  readonly enabledTypes: readonly ConnectorRef[];
+  readonly enabledConnectorSlugs: readonly ConnectorSlug[];
 }
 
 type MissingPolicy = "throw" | "null";
@@ -77,7 +77,7 @@ function createAgentConnectorAuthorizationRequestBroker(): AgentConnectorAuthori
         }
         return {
           agentId: params.agentId,
-          enabledTypes: result.body.enabledTypes,
+          enabledConnectorSlugs: result.body.enabledTypes,
         };
       };
 
@@ -140,12 +140,12 @@ export function agentConnectorAuthorizations(params: {
 
 export function isAgentConnectorAuthorized(params: {
   readonly agentId: string;
-  readonly connectorRef: ConnectorRef;
+  readonly connectorSlug: ConnectorSlug;
 }): Computed<Promise<boolean>> {
   return computed(async (get): Promise<boolean> => {
     const authorizations = await get(
       agentConnectorAuthorizations({ agentId: params.agentId }),
     );
-    return authorizations.enabledTypes.includes(params.connectorRef);
+    return authorizations.enabledConnectorSlugs.includes(params.connectorSlug);
   });
 }

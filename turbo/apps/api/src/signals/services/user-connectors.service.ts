@@ -1,5 +1,5 @@
 import { and, eq, inArray, or } from "drizzle-orm";
-import type { ConnectorRef } from "@vm0/api-contracts/contracts/connector-identity";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import {
   orgCustomConnectors,
@@ -18,7 +18,7 @@ import type { Db } from "../external/db";
 type UpdateUserConnectorsResult =
   | {
       readonly status: "updated";
-      readonly enabledTypes: readonly ConnectorRef[];
+      readonly enabledConnectorSlugs: readonly ConnectorSlug[];
     }
   | { readonly status: "agentNotFound" };
 
@@ -438,12 +438,12 @@ export async function updateUserConnectors(
     readonly orgId: string;
     readonly userId: string;
     readonly agentId: string;
-    readonly enabledTypes: readonly ConnectorRef[];
+    readonly enabledConnectorSlugs: readonly ConnectorSlug[];
     readonly operation?: UserConnectorUpdateOperation;
     readonly allowMissingZeroAgentForEmptyReplace: boolean;
   },
 ): Promise<UpdateUserConnectorsResult> {
-  const enabledTypes = Array.from(new Set(args.enabledTypes));
+  const enabledConnectorSlugs = Array.from(new Set(args.enabledConnectorSlugs));
   const operation = args.operation ?? "replace";
 
   return await db.transaction(async (tx) => {
@@ -455,7 +455,8 @@ export async function updateUserConnectors(
     const agentLocked = await lockZeroAgentForConnectorReplace(tx, args);
     if (
       !agentLocked &&
-      (enabledTypes.length > 0 || !args.allowMissingZeroAgentForEmptyReplace)
+      (enabledConnectorSlugs.length > 0 ||
+        !args.allowMissingZeroAgentForEmptyReplace)
     ) {
       return { status: "agentNotFound" };
     }
@@ -468,27 +469,27 @@ export async function updateUserConnectors(
 
     if (operation === "replace") {
       await tx.delete(userConnectors).where(connectorScope);
-    } else if (operation === "remove" && enabledTypes.length > 0) {
+    } else if (operation === "remove" && enabledConnectorSlugs.length > 0) {
       await tx
         .delete(userConnectors)
         .where(
           and(
             connectorScope,
-            inArray(userConnectors.connectorType, enabledTypes),
+            inArray(userConnectors.connectorType, enabledConnectorSlugs),
           ),
         );
     }
 
-    if (operation !== "remove" && enabledTypes.length > 0) {
+    if (operation !== "remove" && enabledConnectorSlugs.length > 0) {
       await tx
         .insert(userConnectors)
         .values(
-          enabledTypes.map((connectorType) => {
+          enabledConnectorSlugs.map((connectorSlug) => {
             return {
               orgId: args.orgId,
               userId: args.userId,
               agentId: args.agentId,
-              connectorType,
+              connectorType: connectorSlug,
             };
           }),
         )
@@ -496,17 +497,17 @@ export async function updateUserConnectors(
     }
 
     if (operation === "replace") {
-      return { status: "updated", enabledTypes };
+      return { status: "updated", enabledConnectorSlugs };
     }
 
     const rows = await tx
-      .select({ connectorType: userConnectors.connectorType })
+      .select({ connectorSlug: userConnectors.connectorType })
       .from(userConnectors)
       .where(connectorScope);
     return {
       status: "updated",
-      enabledTypes: rows.map((row) => {
-        return row.connectorType;
+      enabledConnectorSlugs: rows.map((row) => {
+        return row.connectorSlug;
       }),
     };
   });

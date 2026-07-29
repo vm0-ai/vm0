@@ -240,7 +240,7 @@ async function resolveGoogleMeetAccess(args: {
     snapshot,
     orgId: args.orgId,
     userId: args.userId,
-    connectorRef: "google-meet",
+    connectorSlug: "google-meet",
     ...(args.connectorId === undefined
       ? {}
       : { connectorId: args.connectorId }),

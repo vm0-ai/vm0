@@ -29,6 +29,7 @@ export interface ServiceUsage {
 
 export interface PermissionEntry {
   label: string;
+  // TODO(#23619): Rename with the zero-insights response field.
   connectorType?: string;
   allowed: number;
   denied: number;

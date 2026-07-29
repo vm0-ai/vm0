@@ -127,12 +127,12 @@ function resolvedUrl(
 }
 
 function connectorResponse(
-  connectorRef: string,
+  connectorSlug: string,
   connectionStatus: ConnectorResponse["connectionStatus"] = "connected",
 ): ConnectorResponse {
   return {
     id: "00000000-0000-4000-8000-000000000002",
-    type: connectorRef,
+    type: connectorSlug,
     authMethod: "oauth",
     externalId: "external-1",
     externalUsername: "user",
@@ -168,13 +168,13 @@ function stubDiagnostic(
 }
 
 function stubConnector(
-  connectorRef: string,
-  response: ConnectorResponse | null = connectorResponse(connectorRef),
+  connectorSlug: string,
+  response: ConnectorResponse | null = connectorResponse(connectorSlug),
   onRequest?: () => void,
   baseUrl = API_BASE_URL,
 ): void {
   server.use(
-    http.get(`${baseUrl}/api/zero/connectors/${connectorRef}`, () => {
+    http.get(`${baseUrl}/api/zero/connectors/${connectorSlug}`, () => {
       onRequest?.();
       if (response === null) {
         return HttpResponse.json(
@@ -188,37 +188,39 @@ function stubConnector(
 }
 
 function stubAgentConnectors(
-  enabledTypes: string[],
+  enabledConnectorSlugs: string[],
   onRequest?: () => void,
   baseUrl = API_BASE_URL,
 ): void {
   server.use(
     http.get(`${baseUrl}/api/zero/agents/${AGENT_ID}/user-connectors`, () => {
       onRequest?.();
-      return HttpResponse.json({ enabledTypes });
+      return HttpResponse.json({
+        enabledTypes: enabledConnectorSlugs,
+      });
     }),
   );
 }
 
 function stubResolvedDependencies(
-  connectorRef = "github",
+  connectorSlug = "github",
   options: {
     readonly connector?: ConnectorResponse | null;
-    readonly enabledTypes?: string[];
+    readonly enabledConnectorSlugs?: string[];
     readonly baseUrl?: string;
   } = {},
 ): void {
   const baseUrl = options.baseUrl ?? API_BASE_URL;
   stubConnector(
-    connectorRef,
+    connectorSlug,
     options.connector === undefined
-      ? connectorResponse(connectorRef)
+      ? connectorResponse(connectorSlug)
       : options.connector,
     undefined,
     baseUrl,
   );
   stubAgentConnectors(
-    options.enabledTypes ?? [connectorRef],
+    options.enabledConnectorSlugs ?? [connectorSlug],
     undefined,
     baseUrl,
   );
@@ -461,7 +463,7 @@ describe("zero connector check command", () => {
   });
 
   describe("resolved identities and local responsibilities", () => {
-    it("uses a server-only connector ref for local presence, connection, and authorization checks", async () => {
+    it("uses a server-only connector slug for local presence, connection, and authorization checks", async () => {
       const serverOnlyIdentity = connectorIdentity({
         connectorRef: "server-only",
         label: "Server Only Connector",
@@ -543,35 +545,38 @@ describe("zero connector check command", () => {
         name: "unavailable",
         identity: connectorIdentity({ visibility: "unavailable" }),
         connector: null,
-        enabledTypes: [] as string[],
+        enabledConnectorSlugs: [] as string[],
         expected: "not available for this account",
       },
       {
         name: "disconnected but authorized",
         identity: connectorIdentity(),
         connector: null,
-        enabledTypes: ["github"],
+        enabledConnectorSlugs: ["github"],
         expected: "authorized for this agent, but it is not connected",
       },
       {
         name: "expired",
         identity: connectorIdentity(),
         connector: connectorResponse("github", "reconnect-required"),
-        enabledTypes: ["github"],
+        enabledConnectorSlugs: ["github"],
         expected: "needs to be reconnected",
       },
       {
         name: "connected but unauthorized",
         identity: connectorIdentity(),
         connector: connectorResponse("github"),
-        enabledTypes: [] as string[],
+        enabledConnectorSlugs: [] as string[],
         expected: "not authorized for this agent",
       },
     ])(
       "renders $name connector state",
-      async ({ identity, connector, enabledTypes, expected }) => {
+      async ({ identity, connector, enabledConnectorSlugs, expected }) => {
         stubDiagnostic(resolvedEnvironment({ connector: identity }));
-        stubResolvedDependencies("github", { connector, enabledTypes });
+        stubResolvedDependencies("github", {
+          connector,
+          enabledConnectorSlugs,
+        });
 
         await checkConnectorCommand.parseAsync([
           "node",
@@ -657,7 +662,7 @@ describe("zero connector check command", () => {
         stubDiagnostic(resolvedEnvironment(), undefined, baseUrl);
         stubResolvedDependencies("github", {
           connector: null,
-          enabledTypes: [],
+          enabledConnectorSlugs: [],
           baseUrl,
         });
 
