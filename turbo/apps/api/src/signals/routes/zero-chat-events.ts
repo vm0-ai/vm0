@@ -1744,7 +1744,9 @@ function appendRecallUserMessage(params: {
       chatThreadId: params.threadId,
       eventId: params.revokesEventId,
     });
-    const wasPending = pendingTarget?.eventType === "input.prompt";
+    const wasPending =
+      pendingTarget?.eventType === "input.prompt" ||
+      pendingTarget?.eventType === "input.automation";
 
     const [existingRevoker] = await tx
       .select({
@@ -1783,7 +1785,11 @@ function appendRecallUserMessage(params: {
         and(
           eq(chatMessages.id, params.revokesEventId),
           eq(chatMessages.chatThreadId, params.threadId),
-          chatEventTypeIn(["input.prompt", "input.rejected"]),
+          chatEventTypeIn([
+            "input.prompt",
+            "input.automation",
+            "input.rejected",
+          ]),
         ),
       )
       .limit(1);
@@ -3451,7 +3457,7 @@ export const zeroChatEventsRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "agent-run:write",
+        requiredCapability: "chat-message:write",
       },
       sendChatEventInner$,
     ),

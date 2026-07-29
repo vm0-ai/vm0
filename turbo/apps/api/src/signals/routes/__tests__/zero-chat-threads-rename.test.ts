@@ -24,6 +24,7 @@ const chat = createChatFilesBddApi(context);
 interface ChatThreadFixture {
   readonly userId: string;
   readonly orgId: string;
+  readonly agentId: string;
   readonly threadId: string;
 }
 
@@ -47,7 +48,12 @@ async function seedChatThread(title: string): Promise<ChatThreadFixture> {
     { orgId: actor.orgId, userId: actor.userId },
     context.signal,
   );
-  return { userId: actor.userId, orgId: actor.orgId, threadId: thread.id };
+  return {
+    userId: actor.userId,
+    orgId: actor.orgId,
+    agentId: agent.agentId,
+    threadId: thread.id,
+  };
 }
 
 function currentSecond(): number {
@@ -113,6 +119,7 @@ describe("POST /api/zero/chat-threads/:id/rename", () => {
     );
     expect(metadataResponse.body).toStrictEqual({
       id: fixture.threadId,
+      agentId: fixture.agentId,
       title: "CLI renamed title",
       selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
     });

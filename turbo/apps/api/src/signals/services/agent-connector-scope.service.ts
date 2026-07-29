@@ -3,6 +3,7 @@ import {
   type ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
+import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import {
   zeroAgents,
@@ -61,11 +62,23 @@ async function loadAgentAllowedCustomConnectorRows(
   return await db
     .select({ customConnectorId: userCustomConnectors.customConnectorId })
     .from(userCustomConnectors)
+    .innerJoin(
+      orgCustomConnectors,
+      and(
+        eq(orgCustomConnectors.id, userCustomConnectors.customConnectorId),
+        eq(orgCustomConnectors.orgId, userCustomConnectors.orgId),
+        eq(
+          orgCustomConnectors.revision,
+          userCustomConnectors.connectorRevision,
+        ),
+      ),
+    )
     .where(
       and(
         eq(userCustomConnectors.orgId, args.orgId),
         eq(userCustomConnectors.userId, args.userId),
         eq(userCustomConnectors.agentId, args.agentId),
+        eq(orgCustomConnectors.enabled, true),
       ),
     );
 }

@@ -123,7 +123,9 @@ async function getConstraints(client: Client): Promise<ConstraintInfo[]> {
       -- CHECK constraints are validated against the Drizzle snapshot. PostgreSQL
       -- 18 also exposes NOT NULL constraints here, but column nullability is
       -- already compared above and their generated names change across renames.
-      AND catalog_constraint.contype NOT IN ('c', 'n')
+      -- Trigger constraints, like ordinary triggers, are migration-owned objects
+      -- that Drizzle cannot represent and require dedicated behavioral checks.
+      AND catalog_constraint.contype NOT IN ('c', 'n', 't')
     ORDER BY
       relation.relname,
       catalog_constraint.contype,

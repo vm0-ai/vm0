@@ -836,7 +836,12 @@ async function requestSendEventRaw(
 /** Chat send authenticated by a run-scoped sandbox bearer token. */
 async function requestSendEventWithBearer(
   token: string,
-  body: { readonly agentId: string; readonly prompt: string },
+  body: {
+    readonly agentId: string;
+    readonly clientEventId?: string;
+    readonly prompt: string;
+    readonly threadId?: string;
+  },
   statuses: readonly (201 | 401 | 403)[],
 ) {
   return await accept(
@@ -5167,8 +5172,8 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
 
     // The thread's sticky host is not exposed by any read route, so the
     // grant is observed through the run token issued to each claim: a
-    // granted token can create write commands on the host, an ungranted
-    // token cannot, and no run token can ever post chat sends.
+    // granted token can create write commands on the host, while an
+    // ungranted token cannot. Chat messaging remains available independently.
     const plain = await sendChatRun(actor, {
       agentId,
       prompt: "no computer use selected",
@@ -5180,13 +5185,32 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
       [403],
     );
     expect(deniedCommand.status).toBe(403);
-    const deniedSend = await requestSendEventWithBearer(
+    const nestedEventId = randomUUID();
+    const nestedSend = await requestSendEventWithBearer(
       plainToken,
-      { agentId, prompt: "sandbox tokens cannot chat" },
-      [403],
+      {
+        agentId,
+        clientEventId: nestedEventId,
+        threadId: plain.threadId,
+        prompt: "run tokens can send chat messages",
+      },
+      [201],
     );
-    expectApiError(deniedSend.body);
-    expect(deniedSend.body.error.message).toContain("agent-run:write");
+    expect(nestedSend.status).toBe(201);
+    expect(nestedSend.body).toMatchObject({ runId: null });
+    const recalled = await accept(
+      chatEventsClient().send({
+        headers: { authorization: `Bearer ${plainToken}` },
+        body: {
+          agentId,
+          threadId: plain.threadId,
+          revokesEventId: nestedEventId,
+          clientEventId: randomUUID(),
+        },
+      }),
+      [201],
+    );
+    expect(recalled.body.runId).toBeNull();
     await cancelChatRun(actor, plain.runId);
 
     // Selecting an online host pins it to the thread and grants the run

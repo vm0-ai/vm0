@@ -486,12 +486,26 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ZeroChatMessaging]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Advertise zero chat send and cancel in the agent system prompt without gating the CLI commands or API.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ComposerConnectorPermissions]: {
     maintainer: "ming@vm0.ai",
     description:
       "Show the configure-permissions entry in the chat composer connector popover, opening the agent×connector firewall dialog inline.",
     enabled: false,
     userOverridable: true,
+  },
+  [FeatureSwitchKey.CustomConnectorOAuth2]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Allow org admins to add OAuth 2.0 authentication to custom connectors.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
 };
 

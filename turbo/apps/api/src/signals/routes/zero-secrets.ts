@@ -5,7 +5,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-secrets";
 import type { SecretListResponse } from "@vm0/api-contracts/contracts/secrets";
 import { connectors } from "@vm0/db/schema/connector";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -49,10 +49,14 @@ const listSecretsInner$ = computed(async (get): Promise<unknown> => {
         and(
           eq(connectors.orgId, auth.orgId),
           eq(connectors.userId, auth.userId),
+          isNotNull(connectors.type),
         ),
       ),
   ]);
   const connectorAccesses = connectorRows.flatMap((row) => {
+    if (!row.connectorSlug) {
+      return [];
+    }
     const result = resolveConnectorCredentialAccess({
       snapshot,
       stored: {

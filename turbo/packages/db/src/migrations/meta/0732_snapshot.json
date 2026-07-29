@@ -1,6 +1,6 @@
 {
-  "id": "6dae0176-1be1-4be2-844c-53b87334327b",
-  "prevId": "ad22f09c-24b2-45ee-8b8d-aae522bc1ddd",
+  "id": "0c9a9ee9-b5b4-4d82-a51b-fdbd21abe005",
+  "prevId": "82937cd4-67d7-4fbe-97c7-c2604403f719",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -331,6 +331,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "connector_revision": {
+          "name": "connector_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
         "kind": {
           "name": "kind",
           "type": "varchar(16)",
@@ -347,7 +354,7 @@
           "name": "encrypted_value",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "expires_at": {
           "name": "expires_at",
@@ -2871,15 +2878,13 @@
           "name": "pricing_unit_price",
           "type": "bigint",
           "primaryKey": false,
-          "notNull": true,
-          "default": 0
+          "notNull": true
         },
         "pricing_unit_size": {
           "name": "pricing_unit_size",
           "type": "bigint",
           "primaryKey": false,
-          "notNull": true,
-          "default": 1
+          "notNull": true
         },
         "gross_credits": {
           "name": "gross_credits",
@@ -2977,9 +2982,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_browser_session_instances_run_status": {
           "name": "idx_browser_session_instances_run_status",
@@ -2998,15 +3003,21 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_browser_session_instances_reconcile": {
           "name": "idx_browser_session_instances_reconcile",
           "columns": [
             {
               "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "settled_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -3019,9 +3030,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "uq_browser_session_instances_thread_owned": {
           "name": "uq_browser_session_instances_thread_owned",
@@ -3034,38 +3045,38 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"browser_session_instances\".\"status\" IN ('active', 'stopping')",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
         "browser_session_instances_browser_session_id_browser_sessions_id_fk": {
           "name": "browser_session_instances_browser_session_id_browser_sessions_id_fk",
           "tableFrom": "browser_session_instances",
+          "tableTo": "browser_sessions",
           "columnsFrom": [
             "browser_session_id"
           ],
-          "tableTo": "browser_sessions",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "browser_session_instances_usage_event_id_usage_event_id_fk": {
           "name": "browser_session_instances_usage_event_id_usage_event_id_fk",
           "tableFrom": "browser_session_instances",
+          "tableTo": "usage_event",
           "columnsFrom": [
             "usage_event_id"
           ],
-          "tableTo": "usage_event",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3149,8 +3160,7 @@
           "name": "max_credits",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "default": 1
+          "notNull": true
         },
         "gross_credits": {
           "name": "gross_credits",
@@ -3211,9 +3221,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_browser_sessions_owner_created": {
           "name": "idx_browser_sessions_owner_created",
@@ -3238,9 +3248,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "idx_browser_sessions_reconcile": {
           "name": "idx_browser_sessions_reconcile",
@@ -3259,9 +3269,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "uq_browser_sessions_thread_owned": {
           "name": "uq_browser_sessions_thread_owned",
@@ -3274,51 +3284,51 @@
             }
           ],
           "isUnique": true,
-          "with": {},
-          "method": "btree",
           "where": "\"browser_sessions\".\"status\" IN ('creating', 'active', 'resuming', 'stopping')",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
         "browser_sessions_run_id_agent_runs_id_fk": {
           "name": "browser_sessions_run_id_agent_runs_id_fk",
           "tableFrom": "browser_sessions",
+          "tableTo": "agent_runs",
           "columnsFrom": [
             "run_id"
           ],
-          "tableTo": "agent_runs",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         },
         "browser_sessions_browser_profile_id_browser_profiles_id_fk": {
           "name": "browser_sessions_browser_profile_id_browser_profiles_id_fk",
           "tableFrom": "browser_sessions",
+          "tableTo": "browser_profiles",
           "columnsFrom": [
             "browser_profile_id"
           ],
-          "tableTo": "browser_profiles",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         },
         "browser_sessions_browser_thread_profile_id_browser_thread_profiles_id_fk": {
           "name": "browser_sessions_browser_thread_profile_id_browser_thread_profiles_id_fk",
           "tableFrom": "browser_sessions",
+          "tableTo": "browser_thread_profiles",
           "columnsFrom": [
             "browser_thread_profile_id"
           ],
-          "tableTo": "browser_thread_profiles",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "no action"
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -6864,7 +6874,19 @@
           "name": "type",
           "type": "varchar(64)",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "custom_connector_id": {
+          "name": "custom_connector_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "connector_revision": {
+          "name": "connector_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
         },
         "auth_method": {
           "name": "auth_method",
@@ -6994,11 +7016,36 @@
           "with": {}
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "fk_connector_oauth_states_custom_connector": {
+          "name": "fk_connector_oauth_states_custom_connector",
+          "tableFrom": "connector_oauth_states",
+          "tableTo": "org_custom_connectors",
+          "columnsFrom": [
+            "custom_connector_id",
+            "org_id"
+          ],
+          "columnsTo": [
+            "id",
+            "org_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "chk_connector_oauth_states_identity": {
+          "name": "chk_connector_oauth_states_identity",
+          "value": "num_nonnulls(\"connector_oauth_states\".\"type\", \"connector_oauth_states\".\"custom_connector_id\") = 1"
+        },
+        "chk_connector_oauth_states_custom_revision": {
+          "name": "chk_connector_oauth_states_custom_revision",
+          "value": "(\n          \"connector_oauth_states\".\"custom_connector_id\" IS NULL\n          AND \"connector_oauth_states\".\"connector_revision\" IS NULL\n        ) OR (\n          \"connector_oauth_states\".\"custom_connector_id\" IS NOT NULL\n          AND \"connector_oauth_states\".\"connector_revision\" IS NOT NULL\n        )"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.connectors": {
@@ -7016,7 +7063,13 @@
           "name": "type",
           "type": "varchar(64)",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "custom_connector_id": {
+          "name": "custom_connector_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         },
         "auth_method": {
           "name": "auth_method",
@@ -7139,16 +7192,75 @@
             }
           ],
           "isUnique": true,
+          "where": "\"connectors\".\"type\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_connectors_org_user_custom_connector": {
+          "name": "idx_connectors_org_user_custom_connector",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "custom_connector_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"connectors\".\"custom_connector_id\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "fk_connectors_custom_connector": {
+          "name": "fk_connectors_custom_connector",
+          "tableFrom": "connectors",
+          "tableTo": "org_custom_connectors",
+          "columnsFrom": [
+            "custom_connector_id",
+            "org_id"
+          ],
+          "columnsTo": [
+            "id",
+            "org_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "idx_connectors_id_org_user": {
+          "name": "idx_connectors_id_org_user",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "org_id",
+            "user_id"
+          ]
+        }
+      },
       "policies": {},
       "checkConstraints": {
+        "chk_connectors_identity": {
+          "name": "chk_connectors_identity",
+          "value": "num_nonnulls(\"connectors\".\"type\", \"connectors\".\"custom_connector_id\") = 1"
+        },
         "chk_connectors_storage_version_positive": {
           "name": "chk_connectors_storage_version_positive",
           "value": "\"connectors\".\"storage_version\" > 0"
@@ -13128,7 +13240,23 @@
           "with": {}
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "fk_org_custom_connector_secrets_connector": {
+          "name": "fk_org_custom_connector_secrets_connector",
+          "tableFrom": "org_custom_connector_secrets",
+          "tableTo": "org_custom_connectors",
+          "columnsFrom": [
+            "connector_id",
+            "org_id"
+          ],
+          "columnsTo": [
+            "id",
+            "org_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -13263,15 +13391,17 @@
         }
       },
       "foreignKeys": {
-        "org_custom_connector_values_connector_id_org_custom_connectors_id_fk": {
-          "name": "org_custom_connector_values_connector_id_org_custom_connectors_id_fk",
+        "fk_org_custom_connector_values_connector": {
+          "name": "fk_org_custom_connector_values_connector",
           "tableFrom": "org_custom_connector_values",
           "tableTo": "org_custom_connectors",
           "columnsFrom": [
-            "connector_id"
+            "connector_id",
+            "org_id"
           ],
           "columnsTo": [
-            "id"
+            "id",
+            "org_id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
@@ -13358,6 +13488,57 @@
           "notNull": true,
           "default": "'[]'::jsonb"
         },
+        "auth_mode": {
+          "name": "auth_mode",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'manual'"
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "permission_bundle_ref": {
+          "name": "permission_bundle_ref",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mcp_endpoint": {
+          "name": "mcp_endpoint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mcp_transport": {
+          "name": "mcp_transport",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mcp_resource": {
+          "name": "mcp_resource",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "skill_markdown": {
+          "name": "skill_markdown",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
         "created_by": {
           "name": "created_by",
           "type": "text",
@@ -13419,9 +13600,39 @@
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
+      "uniqueConstraints": {
+        "idx_org_custom_connectors_id_org": {
+          "name": "idx_org_custom_connectors_id_org",
+          "nullsNotDistinct": false,
+          "columns": [
+            "id",
+            "org_id"
+          ]
+        }
+      },
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "chk_org_custom_connectors_slug": {
+          "name": "chk_org_custom_connectors_slug",
+          "value": "left(\"org_custom_connectors\".\"slug\", 1) = '_'"
+        },
+        "chk_org_custom_connectors_auth_mode": {
+          "name": "chk_org_custom_connectors_auth_mode",
+          "value": "\"org_custom_connectors\".\"auth_mode\" IN ('manual', 'oauth')"
+        },
+        "chk_org_custom_connectors_mcp": {
+          "name": "chk_org_custom_connectors_mcp",
+          "value": "(\n          \"org_custom_connectors\".\"mcp_endpoint\" IS NULL\n          AND \"org_custom_connectors\".\"mcp_transport\" IS NULL\n        ) OR (\n          \"org_custom_connectors\".\"mcp_endpoint\" IS NOT NULL\n          AND \"org_custom_connectors\".\"mcp_transport\" = 'streamable-http'\n        )"
+        },
+        "chk_org_custom_connectors_revision_positive": {
+          "name": "chk_org_custom_connectors_revision_positive",
+          "value": "\"org_custom_connectors\".\"revision\" > 0"
+        },
+        "chk_org_custom_connectors_skill_size": {
+          "name": "chk_org_custom_connectors_skill_size",
+          "value": "\"org_custom_connectors\".\"skill_markdown\" IS NULL OR octet_length(\"org_custom_connectors\".\"skill_markdown\") <= 65536"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.org_members_cache": {
@@ -15735,21 +15946,48 @@
             }
           ],
           "isUnique": true,
+          "where": "\"secrets\".\"connector_id\" IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_secrets_connector_name": {
+          "name": "idx_secrets_connector_name",
+          "columns": [
+            {
+              "expression": "connector_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"secrets\".\"connector_id\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}
         }
       },
       "foreignKeys": {
-        "secrets_connector_id_connectors_id_fk": {
-          "name": "secrets_connector_id_connectors_id_fk",
+        "fk_secrets_connector_owner": {
+          "name": "fk_secrets_connector_owner",
           "tableFrom": "secrets",
           "tableTo": "connectors",
           "columnsFrom": [
-            "connector_id"
+            "connector_id",
+            "org_id",
+            "user_id"
           ],
           "columnsTo": [
-            "id"
+            "id",
+            "org_id",
+            "user_id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
@@ -20449,6 +20687,34 @@
           "primaryKey": false,
           "notNull": true
         },
+        "connector_revision": {
+          "name": "connector_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "permission_names": {
+          "name": "permission_names",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "allow_all_mcp_tools": {
+          "name": "allow_all_mcp_tools",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "mcp_tool_names": {
+          "name": "mcp_tool_names",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -20527,15 +20793,17 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "user_custom_connectors_custom_connector_id_org_custom_connectors_id_fk": {
-          "name": "user_custom_connectors_custom_connector_id_org_custom_connectors_id_fk",
+        "fk_user_custom_connectors_custom_connector": {
+          "name": "fk_user_custom_connectors_custom_connector",
           "tableFrom": "user_custom_connectors",
           "tableTo": "org_custom_connectors",
           "columnsFrom": [
-            "custom_connector_id"
+            "custom_connector_id",
+            "org_id"
           ],
           "columnsTo": [
-            "id"
+            "id",
+            "org_id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
@@ -20544,7 +20812,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "chk_user_custom_connectors_mcp_grant": {
+          "name": "chk_user_custom_connectors_mcp_grant",
+          "value": "NOT \"user_custom_connectors\".\"allow_all_mcp_tools\" OR cardinality(\"user_custom_connectors\".\"mcp_tool_names\") = 0"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.user_feature_switches": {
@@ -22686,6 +22959,130 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.org_custom_connector_oauth_configs": {
+      "name": "org_custom_connector_oauth_configs",
+      "schema": "",
+      "columns": {
+        "connector_id": {
+          "name": "connector_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider_adapter": {
+          "name": "provider_adapter",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "client_id": {
+          "name": "client_id",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "encrypted_client_secret": {
+          "name": "encrypted_client_secret",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "authorization_url": {
+          "name": "authorization_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_url": {
+          "name": "token_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "token_endpoint_auth_method": {
+          "name": "token_endpoint_auth_method",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pkce_method": {
+          "name": "pkce_method",
+          "type": "varchar(8)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scopes": {
+          "name": "scopes",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "authorization_params": {
+          "name": "authorization_params",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "fk_org_custom_connector_oauth_configs_connector": {
+          "name": "fk_org_custom_connector_oauth_configs_connector",
+          "tableFrom": "org_custom_connector_oauth_configs",
+          "tableTo": "org_custom_connectors",
+          "columnsFrom": [
+            "connector_id",
+            "org_id"
+          ],
+          "columnsTo": [
+            "id",
+            "org_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "chk_org_custom_connector_oauth_configs_provider_adapter": {
+          "name": "chk_org_custom_connector_oauth_configs_provider_adapter",
+          "value": "\"org_custom_connector_oauth_configs\".\"provider_adapter\" IN ('standard', 'feishu')"
+        },
+        "chk_org_custom_connector_oauth_configs_pkce_method": {
+          "name": "chk_org_custom_connector_oauth_configs_pkce_method",
+          "value": "\"org_custom_connector_oauth_configs\".\"pkce_method\" IN ('none', 'S256')"
+        },
+        "chk_org_custom_connector_oauth_configs_token_auth_method": {
+          "name": "chk_org_custom_connector_oauth_configs_token_auth_method",
+          "value": "\"org_custom_connector_oauth_configs\".\"token_endpoint_auth_method\" IN (\n          'client_secret_basic',\n          'client_secret_post'\n        )"
+        }
+      },
       "isRLSEnabled": false
     }
   },

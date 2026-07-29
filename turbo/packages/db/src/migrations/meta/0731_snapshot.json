@@ -1,5 +1,5 @@
 {
-  "id": "ad22f09c-24b2-45ee-8b8d-aae522bc1ddd",
+  "id": "82937cd4-67d7-4fbe-97c7-c2604403f719",
   "prevId": "86a70431-86fa-45ed-88f8-e0e469718fa1",
   "version": "7",
   "dialect": "postgresql",
@@ -2871,15 +2871,13 @@
           "name": "pricing_unit_price",
           "type": "bigint",
           "primaryKey": false,
-          "notNull": true,
-          "default": 0
+          "notNull": true
         },
         "pricing_unit_size": {
           "name": "pricing_unit_size",
           "type": "bigint",
           "primaryKey": false,
-          "notNull": true,
-          "default": 1
+          "notNull": true
         },
         "gross_credits": {
           "name": "gross_credits",
@@ -3007,6 +3005,12 @@
           "columns": [
             {
               "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "settled_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -3149,8 +3153,7 @@
           "name": "max_credits",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true,
-          "default": 1
+          "notNull": true
         },
         "gross_credits": {
           "name": "gross_credits",
