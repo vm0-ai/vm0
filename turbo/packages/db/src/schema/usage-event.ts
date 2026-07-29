@@ -32,9 +32,9 @@ import { agentRuns } from "./agent-run";
  *   video     fal-ai/veo3.1/fast           output_video_seconds.audio
  *   video     bytedance/seedance-2.0       output_video_tokens
  *
- * Charging is applied by the billing processor. New trusted model-provider
- * events may include `grossCredits`, calculated by the runner from a signed
- * proxy price schedule; other events use the `(kind, provider, category)`
+ * Charging is applied by the billing processor. Browser events may include
+ * backend-calculated `grossCredits`, and historical model events may retain
+ * runner-calculated values. Other events use the `(kind, provider, category)`
  * pricing-table lookup. The processor applies allowances to the gross amount
  * and writes `creditsCharged`.
  *

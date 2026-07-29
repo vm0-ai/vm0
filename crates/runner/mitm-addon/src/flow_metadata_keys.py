@@ -162,9 +162,6 @@ Model-provider usage
   observable model-provider flows already carry ``MODEL_USAGE_PROVIDER``.
 - ``MODEL_USAGE_PROVIDER``: optional ``str`` canonical model id from registry VM
   info. Read by model-provider usage observability and reported-model selection.
-- ``MODEL_USAGE_PRICING``: optional signed model-provider pricing metadata with
-  the unit size and credits-per-token-category map. Read only by billable
-  usage-event reporting.
 - ``MODEL_JSON_USAGE_FINALIZED``: ``bool`` written when JSON usage finalization
   ran. Read by ``response()`` to skip legacy fallback JSON extraction.
 
@@ -228,7 +225,6 @@ TRUSTED_AUTHORITY_HOST: Final = "trusted_authority_host"
 MODEL_PROVIDER_USAGE: Final = "model_provider_usage"
 MODEL_PROVIDER_USAGE_SOURCES: Final = "model_provider_usage_sources"
 MODEL_USAGE_PROVIDER: Final = "model_usage_provider"
-MODEL_USAGE_PRICING: Final = "model_usage_pricing"
 MODEL_JSON_USAGE_FINALIZED: Final = "_model_json_usage_finalized"
 RESPONSE_STREAM_STATE: Final = "response_stream_state"
 STREAM_BUFFER: Final = "stream_buffer"
