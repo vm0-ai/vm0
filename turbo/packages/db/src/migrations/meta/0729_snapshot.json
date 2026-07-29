@@ -1,6 +1,6 @@
 {
-  "id": "3972f729-d568-4b71-ae8d-27ab8a8c2bb2",
-  "prevId": "2689f164-4ded-42ad-8e2f-92dc1e853555",
+  "id": "86a70431-86fa-45ed-88f8-e0e469718fa1",
+  "prevId": "3972f729-d568-4b71-ae8d-27ab8a8c2bb2",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4464,7 +4464,11 @@
         },
         "chat_events_input_user_message_check": {
           "name": "chat_events_input_user_message_check",
-          "value": "\"chat_events\".\"event_type\" NOT IN ('input.prompt', 'input.rejected')\n          OR \"chat_events\".\"structured_prompt\" IS NOT NULL"
+          "value": "\"chat_events\".\"event_type\" NOT IN ('input.prompt', 'input.rejected')\n          OR \"chat_events\".\"user_message\" IS NOT NULL"
+        },
+        "chat_events_input_content_check": {
+          "name": "chat_events_input_content_check",
+          "value": "\"chat_events\".\"event_type\" NOT IN ('input.prompt', 'input.rejected')\n          OR \"chat_events\".\"content\" IS NULL"
         }
       },
       "isRLSEnabled": false
@@ -5146,7 +5150,7 @@
         },
         "chat_threads_draft_user_message_check": {
           "name": "chat_threads_draft_user_message_check",
-          "value": "\"chat_threads\".\"draft_structured_prompt\" IS NOT NULL\n          OR (\n            COALESCE(\"chat_threads\".\"draft_content\", '') = ''\n            AND COALESCE(\"chat_threads\".\"draft_attachments\", '[]'::jsonb) = '[]'::jsonb\n          )"
+          "value": "\"chat_threads\".\"draft_user_message\" IS NOT NULL\n          OR (\n            COALESCE(\"chat_threads\".\"draft_content\", '') = ''\n            AND COALESCE(\"chat_threads\".\"draft_attachments\", '[]'::jsonb) = '[]'::jsonb\n          )"
         }
       },
       "isRLSEnabled": false
@@ -21156,7 +21160,7 @@
       "checkConstraints": {
         "zero_agent_drafts_draft_user_message_check": {
           "name": "zero_agent_drafts_draft_user_message_check",
-          "value": "\"zero_agent_drafts\".\"draft_structured_prompt\" IS NOT NULL\n          OR (\n            COALESCE(\"zero_agent_drafts\".\"draft_content\", '') = ''\n            AND COALESCE(\"zero_agent_drafts\".\"draft_attachments\", '[]'::jsonb) = '[]'::jsonb\n          )"
+          "value": "\"zero_agent_drafts\".\"draft_user_message\" IS NOT NULL\n          OR (\n            COALESCE(\"zero_agent_drafts\".\"draft_content\", '') = ''\n            AND COALESCE(\"zero_agent_drafts\".\"draft_attachments\", '[]'::jsonb) = '[]'::jsonb\n          )"
         }
       },
       "isRLSEnabled": false

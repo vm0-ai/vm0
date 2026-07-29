@@ -5087,22 +5087,29 @@
     {
       "idx": 726,
       "version": "7",
-      "when": 1785315790680,
-      "tag": "0726_add-canonical-user-message-columns",
+      "when": 1785319219172,
+      "tag": "0726_drop_teams_org_thread_sessions",
       "breakpoints": true
     },
     {
       "idx": 727,
       "version": "7",
-      "when": 1785315790681,
-      "tag": "0727_bridge-canonical-user-message-columns",
+      "when": 1785319219173,
+      "tag": "0727_add-canonical-user-message-columns",
       "breakpoints": true
     },
     {
       "idx": 728,
       "version": "7",
-      "when": 1785315790682,
-      "tag": "0728_switch-canonical-user-message-constraints",
+      "when": 1785319219174,
+      "tag": "0728_bridge-canonical-user-message-columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 729,
+      "version": "7",
+      "when": 1785319219175,
+      "tag": "0729_switch-canonical-user-message-constraints",
       "breakpoints": true
     }
   ]

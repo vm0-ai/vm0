@@ -1,5 +1,5 @@
 {
-  "id": "2689f164-4ded-42ad-8e2f-92dc1e853555",
+  "id": "b43acc64-f006-4c0f-846c-60a8770bf82f",
   "prevId": "71a64f42-34ee-436d-ba22-b56b5ada8973",
   "version": "7",
   "dialect": "postgresql",
@@ -4156,12 +4156,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "user_message": {
-          "name": "user_message",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -4975,12 +4969,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "draft_user_message": {
-          "name": "draft_user_message",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -18214,174 +18202,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.teams_org_thread_sessions": {
-      "name": "teams_org_thread_sessions",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "connection_id": {
-          "name": "connection_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "teams_conversation_id": {
-          "name": "teams_conversation_id",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "teams_channel_id": {
-          "name": "teams_channel_id",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "teams_thread_id": {
-          "name": "teams_thread_id",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "agent_session_id": {
-          "name": "agent_session_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "computer_use_host_id": {
-          "name": "computer_use_host_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "idx_teams_org_thread_sessions_conn_conversation_thread": {
-          "name": "idx_teams_org_thread_sessions_conn_conversation_thread",
-          "columns": [
-            {
-              "expression": "connection_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "teams_conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "teams_thread_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_teams_org_thread_sessions_connection": {
-          "name": "idx_teams_org_thread_sessions_connection",
-          "columns": [
-            {
-              "expression": "connection_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_teams_org_thread_sessions_computer_use_host": {
-          "name": "idx_teams_org_thread_sessions_computer_use_host",
-          "columns": [
-            {
-              "expression": "computer_use_host_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "teams_org_thread_sessions_connection_id_teams_org_connections_id_fk": {
-          "name": "teams_org_thread_sessions_connection_id_teams_org_connections_id_fk",
-          "tableFrom": "teams_org_thread_sessions",
-          "tableTo": "teams_org_connections",
-          "columnsFrom": [
-            "connection_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "teams_org_thread_sessions_agent_session_id_agent_sessions_id_fk": {
-          "name": "teams_org_thread_sessions_agent_session_id_agent_sessions_id_fk",
-          "tableFrom": "teams_org_thread_sessions",
-          "tableTo": "agent_sessions",
-          "columnsFrom": [
-            "agent_session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "teams_org_thread_sessions_computer_use_host_id_computer_use_hosts_id_fk": {
-          "name": "teams_org_thread_sessions_computer_use_host_id_computer_use_hosts_id_fk",
-          "tableFrom": "teams_org_thread_sessions",
-          "tableTo": "computer_use_hosts",
-          "columnsFrom": [
-            "computer_use_host_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.teams_user_agent_preferences": {
       "name": "teams_user_agent_preferences",
       "schema": "",
@@ -21266,12 +21086,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "draft_user_message": {
-          "name": "draft_user_message",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {

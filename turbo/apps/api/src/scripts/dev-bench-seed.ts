@@ -1048,7 +1048,7 @@ async function seedDevBench(args: {
   }
 
   await database.execute(
-    sql`ANALYZE zero_runs, agent_runs, chat_threads, chat_messages`,
+    sql`ANALYZE zero_runs, agent_runs, chat_threads, chat_events`,
   );
 
   writeLine("Seeded prod-shaped chat benchmark threads:");

@@ -773,7 +773,7 @@ async function logPlannerDiagnostic(
       zero_runs,
       agent_runs,
       chat_threads,
-      chat_messages,
+      chat_events,
       connectors,
       org_metadata,
       org_members_metadata,
