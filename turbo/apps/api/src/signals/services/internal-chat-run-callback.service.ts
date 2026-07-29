@@ -110,7 +110,7 @@ import {
 import { attachCanonicalPublishedAssetsToCompletionEvent } from "./canonical-published-asset-message.service";
 import {
   decryptQueuedUserMessageRunParams,
-  discardUnclaimedUserMessage,
+  discardUnclaimedUserMessageInTransaction,
   failQueuedUserMessage,
   loadNextUnclaimedQueuedUserMessage,
   type QueuedUserMessage,
@@ -2838,30 +2838,31 @@ async function handleQueuedMessageAdmissionFailure(args: {
     });
     return;
   }
-  await discardUnclaimedUserMessage(args.db, {
-    threadId: args.failure.threadId,
-    messageId: args.failure.queuedMessage.id,
-  });
-  args.signal.throwIfAborted();
-  if (args.failure.morningBriefDelivery) {
-    const [delivery] = await args.db
+  const failure = args.failure;
+  await args.db.transaction(async (tx) => {
+    const discarded = await discardUnclaimedUserMessageInTransaction(tx, {
+      threadId: failure.threadId,
+      messageId: failure.queuedMessage.id,
+    });
+    if (!discarded || !failure.morningBriefDelivery) {
+      return;
+    }
+    const [delivery] = await tx
       .update(morningBriefDeliveries)
       .set({
         status: "failed",
-        error: args.failure.error.message,
+        error: failure.error.message,
         updatedAt: nowDate(),
       })
       .where(
-        eq(
-          morningBriefDeliveries.id,
-          args.failure.morningBriefDelivery.deliveryId,
-        ),
+        eq(morningBriefDeliveries.id, failure.morningBriefDelivery.deliveryId),
       )
       .returning({ id: morningBriefDeliveries.id });
     if (!delivery) {
       throw new Error("Failed to record Morning Brief admission failure");
     }
-  }
+  });
+  args.signal.throwIfAborted();
   await args.continueDrain();
 }
 
@@ -3612,7 +3613,10 @@ function buildQueuedChatDispatchFailedCallbacks(args: {
         payload: payload.morningBriefDelivery.payload,
       });
       if (!deliveryResult.success) {
-        throw new Error(deliveryResult.error);
+        log.error("Failed to process Morning Brief dispatch-failed callback", {
+          runId,
+          error: deliveryResult.error,
+        });
       }
     }
     const suppressWebPushForActiveGoal = await runHasActiveGoal(db, runId);

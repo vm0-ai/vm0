@@ -1,6 +1,7 @@
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { createStore } from "ccstate";
 import { and, eq, isNotNull } from "drizzle-orm";
 
 import { db } from "../lib/db";
@@ -8,6 +9,7 @@ import {
   admitGoalQueueEvent,
   type GoalQueueAdmission,
 } from "../signals/services/chat-goal-queue.service";
+import { drainChatThreadQueueForThread$ } from "../signals/services/chat-thread-queue-drain.service";
 import { insertChatEvent } from "../signals/services/zero-chat-event.service";
 
 interface GoalQueueAdmissionFixtureArgs {
@@ -37,6 +39,24 @@ export async function admitGoalQueueEventFixture(
       callbackSecret: args.callbackSecret,
     },
   });
+}
+
+/**
+ * Start a second production drain to reproduce claim races that cannot be
+ * scheduled through an external route at a deterministic boundary.
+ */
+export async function drainChatThreadQueueFixture(
+  threadId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  await createStore().set(
+    drainChatThreadQueueForThread$,
+    {
+      chatThreadId: threadId,
+      dispatchFailedCallbacks: async () => {},
+    },
+    signal,
+  );
 }
 
 /**

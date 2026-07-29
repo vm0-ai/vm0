@@ -20,6 +20,7 @@ import { clearMockNow, mockNow } from "../../../lib/time";
 import { accept, setupApp } from "../../../__tests__/test-helpers";
 import {
   appendAutomationPauseFixture,
+  drainChatThreadQueueFixture,
   readGoalQueueStateFixture,
 } from "../../../test-fixtures/goal-queue";
 import { testContext } from "../../../__tests__/test-context";
@@ -1655,6 +1656,66 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     expect(JSON.stringify(rejected.userMessage)).not.toContain("internal kms");
     expect(rejected).not.toHaveProperty("runId");
     await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
+  }, 90_000);
+
+  it("does not pause a live goal when another drain claims its unreadable event first", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await enableGoalWorkflows(actor);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before concurrent goal payload decryption",
+    });
+    await createGoalForRun(actor, first.runId, "survive a lost rejection race");
+    const firstDecryptStarted = createDeferredPromise<void>(context.signal);
+    const releaseFirstDecrypt = deferredGate();
+    useSecretKmsProbe(undefined, (_command, callNumber) => {
+      if (callNumber !== 1) {
+        return undefined;
+      }
+      firstDecryptStarted.resolve(undefined);
+      return releaseFirstDecrypt.wait().then(() => {
+        throw new Error("first drain cannot decrypt the goal payload");
+      });
+    });
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "completed before concurrent goal drains"),
+    ]);
+
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await firstDecryptStarted.promise;
+
+    const secondDrain = drainChatThreadQueueFixture(
+      first.threadId,
+      context.signal,
+    );
+    let continuationRunId: string | undefined;
+    await expect
+      .poll(async () => {
+        [continuationRunId] = await goalRunIds(first.threadId);
+        return continuationRunId;
+      })
+      .toBeDefined();
+    await secondDrain;
+    releaseFirstDecrypt.release();
+    await flushWaitUntilForTest();
+
+    const goal = await accept(
+      goalsClient().get({
+        headers: zeroGoalHeaders(actor, first.runId),
+      }),
+      [200],
+    );
+    expect(goal.body.status).toBe("active");
+    if (!continuationRunId) {
+      throw new Error("Expected the concurrently claimed goal run");
+    }
+    await api.requestCancelRun(actor, continuationRunId, [200]);
+    await waitForRunStatus(actor, continuationRunId, "cancelled");
   }, 90_000);
 
   it("rejects a goal invalidated before launch without creating a run", async () => {

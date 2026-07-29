@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 
 import { HttpResponse, http } from "msw";
@@ -1267,6 +1267,54 @@ describe("cron execute morning briefs", () => {
     expect(queuedParams).not.toHaveProperty("apiStartTime");
     expect(queuedParams?.prompt).toContain(
       "expire 1440 minutes after the trigger above",
+    );
+
+    const queuedEvents = await readMorningBriefThreadEvents(scenario, threadId);
+    const strandedEvent = queuedEvents.find((event) => {
+      return (
+        event.eventType === "input.prompt" &&
+        event.content === `Generate my Morning Brief for ${BRIEF_DATE}.` &&
+        event.runId === undefined
+      );
+    });
+    if (!strandedEvent) {
+      throw new Error("Expected the pending Morning Brief queue event");
+    }
+    await chat.requestSendEvent(
+      scenario.actor,
+      {
+        agentId: scenario.agentId,
+        threadId,
+        revokesEventId: strandedEvent.id,
+        clientEventId: randomUUID(),
+      },
+      [201],
+    );
+
+    routeMocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
+    const readmitted = await accept(
+      morningBriefTriggerClient().trigger({
+        headers: actorHeaders(),
+        body: {},
+      }),
+      [200],
+    );
+    expect(readmitted.body).toStrictEqual({
+      runId: null,
+      briefDate: BRIEF_DATE,
+      queued: true,
+    });
+    const readmittedDelivery = await readMorningBriefDeliveryFixture({
+      orgId: scenario.actor.orgId,
+      userId: scenario.actor.userId,
+      briefDate: BRIEF_DATE,
+    });
+    expect(readmittedDelivery).toStrictEqual(
+      expect.objectContaining({
+        id: delivery.id,
+        status: "queued",
+        runId: null,
+      }),
     );
 
     mockNow(AFTER_SEVEN_LOCAL + 31 * 60 * 1000);
