@@ -835,6 +835,7 @@ async function requestSendEventWithBearer(
   token: string,
   body: {
     readonly agentId: string;
+    readonly clientEventId?: string;
     readonly prompt: string;
     readonly threadId?: string;
   },
@@ -5153,20 +5154,32 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
       [403],
     );
     expect(deniedCommand.status).toBe(403);
+    const nestedEventId = randomUUID();
     const nestedSend = await requestSendEventWithBearer(
       plainToken,
       {
         agentId,
+        clientEventId: nestedEventId,
         threadId: plain.threadId,
         prompt: "run tokens can send chat messages",
       },
       [201],
     );
     expect(nestedSend.status).toBe(201);
-    if (nestedSend.status !== 201 || nestedSend.body.runId === null) {
-      throw new Error("Expected chat-message:write to dispatch a nested run");
-    }
-    await cancelChatRun(actor, nestedSend.body.runId);
+    expect(nestedSend.body).toMatchObject({ runId: null });
+    const recalled = await accept(
+      chatEventsClient().send({
+        headers: { authorization: `Bearer ${plainToken}` },
+        body: {
+          agentId,
+          threadId: plain.threadId,
+          revokesEventId: nestedEventId,
+          clientEventId: randomUUID(),
+        },
+      }),
+      [201],
+    );
+    expect(recalled.body.runId).toBeNull();
     await cancelChatRun(actor, plain.runId);
 
     // Selecting an online host pins it to the thread and grants the run
