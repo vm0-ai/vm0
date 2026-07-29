@@ -10,6 +10,7 @@ import {
   chatThreadByIdContract,
   chatThreadArtifactsContract,
   chatThreadEventsContract,
+  chatThreadMarkReadContract,
   chatThreadsContract,
   type ChatThreadArtifactFile,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -905,13 +906,27 @@ describe("thread-owned utility sidebar", () => {
     ).resolves.toBeInTheDocument();
   });
 
-  it("auto-opens a sidebar card received from background sync", async () => {
+  it("auto-opens a background-synced sidebar card before mark-read completes", async () => {
     const syncedUrl = "https://synced-presentation.sites.vm7.io";
+    const markReadStarted = Promise.withResolvers<void>();
+    const finishMarkRead = Promise.withResolvers<void>();
     context.mocks.browser.matchMedia((query) => {
       return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
     });
+    context.mocks.api(
+      chatThreadMarkReadContract.markRead,
+      async ({ respond }) => {
+        markReadStarted.resolve();
+        await finishMarkRead.promise;
+        return respond(200, {
+          lastReadAt: "2026-03-10T00:00:05Z",
+          unreads: [],
+        });
+      },
+    );
     const fixture = setupChatThread({
       autoOpenEnabled: true,
+      messages: [],
     });
 
     await waitFor(() => {
@@ -923,7 +938,7 @@ describe("thread-owned utility sidebar", () => {
         role: "user",
         content: "Build a presentation",
         runId: "run-synced",
-        seqId: 3,
+        seqId: 1,
         createdAt: "2026-03-10T00:00:03Z",
       },
       {
@@ -931,17 +946,30 @@ describe("thread-owned utility sidebar", () => {
         role: "assistant",
         content: `[Synced presentation](${syncedUrl})`,
         runId: "run-synced",
-        seqId: 4,
+        seqId: 2,
         createdAt: "2026-03-10T00:00:04Z",
+      },
+      {
+        id: "msg-synced-finish",
+        role: "assistant",
+        content: null,
+        runId: "run-synced",
+        runLifecycleEvent: "completed",
+        seqId: 3,
+        createdAt: "2026-03-10T00:00:05Z",
       },
     ]);
 
-    await waitFor(() => {
-      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
-        "src",
-        syncedUrl,
-      );
-    });
+    await markReadStarted.promise;
+    try {
+      await waitFor(() => {
+        expect(
+          screen.getByTestId("artifact-sidebar-body-html"),
+        ).toHaveAttribute("src", syncedUrl);
+      });
+    } finally {
+      finishMarkRead.resolve();
+    }
   });
 
   it("does not reopen the same auto-opened card after the user closes it", async () => {
