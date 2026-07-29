@@ -2,7 +2,7 @@ import { cronExecuteMorningBriefsContract } from "@vm0/api-contracts/contracts/c
 import { command } from "ccstate";
 
 import type { RouteEntry } from "../route-entry";
-import { now, nowDate } from "../external/time";
+import { nowDate } from "../external/time";
 import { executeDueMorningBriefs$ } from "../services/morning-brief-run.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
@@ -16,7 +16,7 @@ const executeMorningBriefsRoute$: RouteEntry["handler"] = command(
 
     const result = await set(
       executeDueMorningBriefs$,
-      { currentTime: nowDate(), apiStartTime: now() },
+      { currentTime: nowDate() },
       signal,
     );
     signal.throwIfAborted();

@@ -21,7 +21,8 @@ use guest_agent::telemetry::{Telemetry, UploadMode};
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
 use guest_contracts::diagnostics::{
-    CliTerminationReason, FailureClass, FailureDiagnostic, FailureReason,
+    AGENT_EXECUTION_TIMEOUT_EXIT_CODE, CliTerminationReason, FailureClass, FailureDiagnostic,
+    FailureReason,
 };
 use guest_contracts::session_history_identity::{
     FinalSessionHistoryIdentityExpectation, SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE,
@@ -199,6 +200,8 @@ fn parse_session_history_identity_expectation(
 /// Final telemetry upload is attempted on all paths where the HTTP client can
 /// be initialized; when no API token is configured, that upload is a no-op.
 async fn run(runtime: GuestRuntime) -> i32 {
+    let start = Instant::now();
+
     // Record API-to-agent E2E time (as early as possible)
     guest_agent::timing::record_e2e_from_api_start(
         "api_to_agent_start",
@@ -228,8 +231,6 @@ async fn run(runtime: GuestRuntime) -> i32 {
         &runtime.config.prompt,
     );
     let control_handle = control::ControlHandle::spawn(shutdown.clone(), active_input.controller());
-    let start = Instant::now();
-
     log_info!(
         LOG_TAG,
         "Working directory: {}",
@@ -393,13 +394,14 @@ async fn execute(
         skip_recovery_checkpoint_for_no_history,
         failure_diagnostic,
         cli_execution_succeeded,
-    ) = match cli::execute_cli_with_active_input_for_config(
+    ) = match cli::execute_cli_with_active_input_for_config_started_at(
         masker,
         heartbeat_monitor,
         http.clone(),
         active_input,
         config,
         runtime_paths,
+        start,
     )
     .await
     {
@@ -413,7 +415,24 @@ async fn execute(
                     runtime_paths,
                     &cli_result,
                 );
-                (cli_exit_code, 1, msg, false, Some(diagnostic), false)
+                let exit_code = if cli_result
+                    .cli_termination
+                    .as_ref()
+                    .is_some_and(|termination| {
+                        termination.reason == CliTerminationReason::ExecutionTimeout
+                    }) {
+                    AGENT_EXECUTION_TIMEOUT_EXIT_CODE
+                } else {
+                    1
+                };
+                (
+                    cli_exit_code,
+                    exit_code,
+                    msg,
+                    false,
+                    Some(diagnostic),
+                    false,
+                )
             } else if preserves_successful_post_result_cleanup(config.framework, &cli_result) {
                 (cli_exit_code, 0, String::new(), false, None, true)
             } else if cli_exit_code != 0 {

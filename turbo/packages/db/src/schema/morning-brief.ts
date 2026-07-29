@@ -54,7 +54,7 @@ export const morningBriefSchedules = pgTable(
  * The unique index is the idempotency guard: a delivery for a local date is
  * created exactly once regardless of concurrent cron ticks.
  *
- * Status flow: collecting → running → emailed | failed | skipped.
+ * Status flow: collecting → queued → running → emailed | failed | skipped.
  */
 export const morningBriefDeliveries = pgTable(
   "morning_brief_deliveries",

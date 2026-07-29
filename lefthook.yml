@@ -38,7 +38,7 @@ pre-commit:
             root: turbo/
             glob: "turbo/**/*.{ts,tsx}"
             fail_text: "TypeScript errors found. Run 'cd turbo && pnpm check-types' to see details."
-            timeout: "120s"
+            timeout: "300s"
     - name: crates
       group:
         parallel: true

@@ -377,6 +377,11 @@ fn build_env_json_required_keys() {
     assert_eq!(env.get("VM0_RUN_ID").unwrap(), &RunId::nil().to_string());
     assert_eq!(env.get("VM0_API_TOKEN").unwrap(), "tok");
     assert_eq!(
+        env.get(guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV)
+            .unwrap(),
+        "7200"
+    );
+    assert_eq!(
         env.get(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV)
             .unwrap(),
         &guest_runtime_dir(ctx.run_id).unwrap()
