@@ -1391,6 +1391,11 @@ async fn execute_cli_inner(
         }
     };
 
+    // `tokio::fs::File` may still own an in-flight blocking write after
+    // `write_all` returns. Wait for it before callers observe the completed
+    // execution and read the run log.
+    let _ = log_file.flush().await;
+
     active_input_controller.close_terminal();
     if let Some(handle) = claude_stdin_write_handle.take() {
         if handle.is_finished() {
