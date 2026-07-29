@@ -5,6 +5,7 @@ import { IconSearch, IconChartLine, IconUpload } from "@tabler/icons-react";
 import { Button, Input, Tabs, TabsList, TabsTrigger } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { triggerSourceSchema } from "@vm0/api-contracts/contracts/logs";
 import type {
   LogStatus,
   TriggerSource,
@@ -46,20 +47,6 @@ const LOG_STATUSES = [
   "cancelled",
 ] as const satisfies readonly LogStatus[];
 
-const TRIGGER_SOURCES = [
-  "web",
-  "slack",
-  "email",
-  "telegram",
-  "agentphone",
-  "github",
-  "cli",
-  "agent",
-  "webhook",
-  "workflow-schedule",
-  "workflow-event",
-] as const satisfies readonly TriggerSource[];
-
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
@@ -78,12 +65,7 @@ function isLogStatus(value: unknown): value is LogStatus {
 }
 
 function isTriggerSource(value: unknown): value is TriggerSource {
-  return (
-    typeof value === "string" &&
-    TRIGGER_SOURCES.some((source) => {
-      return source === value;
-    })
-  );
+  return triggerSourceSchema.safeParse(value).success;
 }
 
 function logStatusValue(value: unknown): LogStatus {
