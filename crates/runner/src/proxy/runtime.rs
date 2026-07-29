@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use nix::fcntl::Flock;
 use nix::sys::signal::Signal;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::process::{ProcessStat, ProcessStatRead, process_stat_is_live};
@@ -19,12 +19,26 @@ pub(super) const RUNTIME_MARKER_ENV: &str = "VM0_MITMDUMP_RUNTIME_DIR";
 const RUNTIME_MARKER_PREFIX: &[u8] = b"VM0_MITMDUMP_RUNTIME_DIR=";
 const LAUNCH_PREFIX: &str = "launch-";
 const PROCESS_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
-const PROCESS_SCAN_INTERVAL: Duration = Duration::from_millis(20);
+const PROCESS_EXIT_POLL_INTERVAL: Duration = Duration::from_millis(20);
 
 #[derive(Clone, Copy)]
 struct ProcessIdentity {
     pid: u32,
     starttime: u64,
+}
+
+#[derive(Clone)]
+struct ProcessObservation {
+    identity: ProcessIdentity,
+    stat: ProcessStat,
+    command: String,
+}
+
+struct ProcessSnapshot {
+    processes: Vec<ProcessObservation>,
+    elapsed: Duration,
+    examined: usize,
+    same_uid: usize,
 }
 
 /// Serializes owners of the runner-local proxy resources and scopes every
@@ -177,155 +191,191 @@ impl MitmdumpRuntime {
     }
 
     async fn terminate_marked_processes(&self, exact_path: Option<&Path>) -> RunnerResult<()> {
-        let deadline = tokio::time::Instant::now() + PROCESS_EXIT_TIMEOUT;
+        let target = exact_path.unwrap_or(&self.root);
         let mut consecutive_empty_scans = 0u8;
         loop {
-            let processes = self.scan_marked_processes(exact_path).await?;
-            if processes.is_empty() {
+            let snapshot = self.scan_marked_processes(exact_path).await?;
+            log_process_snapshot(target, &snapshot);
+            if snapshot.processes.is_empty() {
                 consecutive_empty_scans += 1;
                 if consecutive_empty_scans == 2 {
                     return Ok(());
                 }
             } else {
                 consecutive_empty_scans = 0;
-                for process in processes {
-                    signal_stable_process(process).await?;
+                for process in &snapshot.processes {
+                    signal_stable_process(process.identity).await?;
                 }
+                wait_for_process_exit(target, &snapshot).await?;
             }
-            if tokio::time::Instant::now() >= deadline {
-                let target = exact_path.unwrap_or(&self.root);
-                return Err(RunnerError::Internal(format!(
-                    "timed out terminating mitmdump processes using {}",
-                    target.display()
-                )));
-            }
-            tokio::time::sleep(PROCESS_SCAN_INTERVAL).await;
+            tokio::time::sleep(PROCESS_EXIT_POLL_INTERVAL).await;
         }
     }
 
     async fn scan_marked_processes(
         &self,
         exact_path: Option<&Path>,
-    ) -> RunnerResult<Vec<ProcessIdentity>> {
-        let expected_uid = nix::unistd::geteuid().as_raw();
-        let mut entries = tokio::fs::read_dir("/proc").await.map_err(|error| {
-            RunnerError::Internal(format!("scan /proc for mitmdump runtime owners: {error}"))
-        })?;
-        let mut processes = Vec::new();
-        let mut seen = HashSet::new();
-        loop {
-            let entry = entries.next_entry().await.map_err(|error| {
+    ) -> RunnerResult<ProcessSnapshot> {
+        let root = self.root.clone();
+        let exact_path = exact_path.map(Path::to_path_buf);
+        tokio::task::spawn_blocking(move || scan_marked_processes(&root, exact_path.as_deref()))
+            .await
+            .map_err(|error| {
                 RunnerError::Internal(format!(
-                    "read /proc entry for mitmdump runtime owners: {error}"
+                    "join mitmdump runtime owner discovery task: {error}"
                 ))
-            })?;
-            let Some(entry) = entry else {
-                break;
-            };
-            let Some(pid) = entry
-                .file_name()
-                .to_str()
-                .and_then(|name| name.parse::<u32>().ok())
-            else {
-                continue;
-            };
-            let metadata = match entry.metadata().await {
-                Ok(metadata) => metadata,
-                Err(error) if process_disappeared(&error) => continue,
-                Err(error) => {
-                    return Err(RunnerError::Internal(format!(
-                        "inspect /proc/{pid} for mitmdump runtime owner: {error}"
-                    )));
-                }
-            };
-            if metadata.uid() != expected_uid {
-                continue;
-            }
-            let Some(environ) = read_process_environ(pid).await? else {
-                continue;
-            };
-            let Some(marker) = runtime_marker(&environ) else {
-                continue;
-            };
-            let marker_path = Path::new(std::ffi::OsStr::from_bytes(marker));
-            if !self.is_launch_path(marker_path)
-                || exact_path.is_some_and(|expected| marker_path != expected)
-            {
-                continue;
-            }
-            let before = match crate::process::read_process_stat_checked(pid).await {
-                ProcessStatRead::Found(stat) if process_stat_is_live(&stat) => stat,
-                ProcessStatRead::Found(_) | ProcessStatRead::Missing => continue,
-                ProcessStatRead::Unreadable(error) if process_disappeared(&error) => continue,
-                ProcessStatRead::Unreadable(error) => {
-                    return Err(RunnerError::Internal(format!(
-                        "read /proc/{pid}/stat for mitmdump runtime owner: {error}"
-                    )));
-                }
-                ProcessStatRead::Invalid => {
-                    return Err(RunnerError::Internal(format!(
-                        "parse /proc/{pid}/stat for mitmdump runtime owner"
-                    )));
-                }
-            };
-            let Some(rechecked_environ) = read_process_environ(pid).await? else {
-                continue;
-            };
-            if runtime_marker(&rechecked_environ) != Some(marker) {
-                continue;
-            }
-            let after = match crate::process::read_process_stat_checked(pid).await {
-                ProcessStatRead::Found(stat) if process_stat_is_live(&stat) => stat,
-                ProcessStatRead::Found(_) | ProcessStatRead::Missing => continue,
-                ProcessStatRead::Unreadable(error) if process_disappeared(&error) => continue,
-                ProcessStatRead::Unreadable(error) => {
-                    return Err(RunnerError::Internal(format!(
-                        "recheck /proc/{pid}/stat for mitmdump runtime owner: {error}"
-                    )));
-                }
-                ProcessStatRead::Invalid => {
-                    return Err(RunnerError::Internal(format!(
-                        "reparse /proc/{pid}/stat for mitmdump runtime owner"
-                    )));
-                }
-            };
-            if !same_process(&before, &after) || !seen.insert((pid, after.starttime)) {
-                continue;
-            }
-            processes.push(ProcessIdentity {
-                pid,
-                starttime: after.starttime,
-            });
-        }
-        Ok(processes)
+            })?
     }
 
     fn is_launch_path(&self, path: &Path) -> bool {
-        path.parent() == Some(self.root.as_path())
-            && path
-                .file_name()
-                .is_some_and(|name| name.as_bytes().starts_with(LAUNCH_PREFIX.as_bytes()))
+        is_launch_path(&self.root, path)
     }
 }
 
-async fn read_process_environ(pid: u32) -> RunnerResult<Option<Vec<u8>>> {
-    match tokio::fs::read(format!("/proc/{pid}/environ")).await {
+fn scan_marked_processes(root: &Path, exact_path: Option<&Path>) -> RunnerResult<ProcessSnapshot> {
+    let started = std::time::Instant::now();
+    let expected_uid = nix::unistd::geteuid().as_raw();
+    let entries = std::fs::read_dir("/proc").map_err(|error| {
+        RunnerError::Internal(format!("scan /proc for mitmdump runtime owners: {error}"))
+    })?;
+    let mut processes = Vec::new();
+    let mut seen = HashSet::new();
+    let mut examined = 0usize;
+    let mut same_uid = 0usize;
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            RunnerError::Internal(format!(
+                "read /proc entry for mitmdump runtime owners: {error}"
+            ))
+        })?;
+        let Some(pid) = entry
+            .file_name()
+            .to_str()
+            .and_then(|name| name.parse::<u32>().ok())
+        else {
+            continue;
+        };
+        examined += 1;
+        let metadata = match entry.metadata() {
+            Ok(metadata) => metadata,
+            Err(error) if process_disappeared(&error) => continue,
+            Err(error) => {
+                return Err(RunnerError::Internal(format!(
+                    "inspect /proc/{pid} for mitmdump runtime owner: {error}"
+                )));
+            }
+        };
+        if metadata.uid() != expected_uid {
+            continue;
+        }
+        same_uid += 1;
+        let Some(environ) = read_process_environ(pid)? else {
+            continue;
+        };
+        let Some(marker) = runtime_marker(&environ) else {
+            continue;
+        };
+        let marker_path = Path::new(std::ffi::OsStr::from_bytes(marker));
+        if !is_launch_path(root, marker_path)
+            || exact_path.is_some_and(|expected| marker_path != expected)
+        {
+            continue;
+        }
+        let before = match crate::process::read_process_stat_checked_blocking(pid) {
+            ProcessStatRead::Found(stat) if process_stat_is_live(&stat) => stat,
+            ProcessStatRead::Found(_) | ProcessStatRead::Missing => continue,
+            ProcessStatRead::Unreadable(error) if process_disappeared(&error) => continue,
+            ProcessStatRead::Unreadable(error) => {
+                return Err(RunnerError::Internal(format!(
+                    "read /proc/{pid}/stat for mitmdump runtime owner: {error}"
+                )));
+            }
+            ProcessStatRead::Invalid => {
+                return Err(RunnerError::Internal(format!(
+                    "parse /proc/{pid}/stat for mitmdump runtime owner"
+                )));
+            }
+        };
+        let Some(rechecked_environ) = read_process_environ(pid)? else {
+            continue;
+        };
+        if runtime_marker(&rechecked_environ) != Some(marker) {
+            continue;
+        }
+        let Some(command) = read_process_comm(pid)? else {
+            continue;
+        };
+        let after = match crate::process::read_process_stat_checked_blocking(pid) {
+            ProcessStatRead::Found(stat) if process_stat_is_live(&stat) => stat,
+            ProcessStatRead::Found(_) | ProcessStatRead::Missing => continue,
+            ProcessStatRead::Unreadable(error) if process_disappeared(&error) => continue,
+            ProcessStatRead::Unreadable(error) => {
+                return Err(RunnerError::Internal(format!(
+                    "recheck /proc/{pid}/stat for mitmdump runtime owner: {error}"
+                )));
+            }
+            ProcessStatRead::Invalid => {
+                return Err(RunnerError::Internal(format!(
+                    "reparse /proc/{pid}/stat for mitmdump runtime owner"
+                )));
+            }
+        };
+        if !same_process(&before, &after) || !seen.insert((pid, after.starttime)) {
+            continue;
+        }
+        processes.push(ProcessObservation {
+            identity: ProcessIdentity {
+                pid,
+                starttime: after.starttime,
+            },
+            stat: after,
+            command,
+        });
+    }
+    Ok(ProcessSnapshot {
+        processes,
+        elapsed: started.elapsed(),
+        examined,
+        same_uid,
+    })
+}
+
+fn read_process_environ(pid: u32) -> RunnerResult<Option<Vec<u8>>> {
+    match std::fs::read(format!("/proc/{pid}/environ")) {
         Ok(environ) => Ok(Some(environ)),
         Err(error) if process_disappeared(&error) => Ok(None),
-        Err(error) if process_comm_is_mitmdump(pid).await? => Err(RunnerError::Internal(format!(
+        Err(error) if process_comm_is_mitmdump(pid)? => Err(RunnerError::Internal(format!(
             "read /proc/{pid}/environ for mitmdump runtime owner: {error}"
         ))),
         Err(_) => Ok(None),
     }
 }
 
-async fn process_comm_is_mitmdump(pid: u32) -> RunnerResult<bool> {
+fn process_comm_is_mitmdump(pid: u32) -> RunnerResult<bool> {
     let path = format!("/proc/{pid}/comm");
-    match tokio::fs::read(&path).await {
+    match std::fs::read(&path) {
         Ok(comm) => Ok(comm.strip_suffix(b"\n").unwrap_or(&comm) == b"mitmdump"),
         Err(error) if process_disappeared(&error) => Ok(false),
         Err(error) => Err(RunnerError::Internal(format!(
             "read {path} after an unreadable process environment: {error}"
+        ))),
+    }
+}
+
+fn read_process_comm(pid: u32) -> RunnerResult<Option<String>> {
+    let path = format!("/proc/{pid}/comm");
+    match std::fs::read(&path) {
+        Ok(comm) => {
+            let comm = comm.strip_suffix(b"\n").unwrap_or(&comm);
+            let command = String::from_utf8_lossy(comm)
+                .chars()
+                .flat_map(char::escape_default)
+                .collect();
+            Ok(Some(command))
+        }
+        Err(error) if process_disappeared(&error) => Ok(None),
+        Err(error) => Err(RunnerError::Internal(format!(
+            "read {path} for mitmdump runtime owner: {error}"
         ))),
     }
 }
@@ -342,6 +392,117 @@ fn runtime_marker(environ: &[u8]) -> Option<&[u8]> {
 
 fn same_process(before: &ProcessStat, after: &ProcessStat) -> bool {
     before.pgid == after.pgid && before.starttime == after.starttime
+}
+
+fn is_launch_path(root: &Path, path: &Path) -> bool {
+    path.parent() == Some(root)
+        && path
+            .file_name()
+            .is_some_and(|name| name.as_bytes().starts_with(LAUNCH_PREFIX.as_bytes()))
+}
+
+fn log_process_snapshot(target: &Path, snapshot: &ProcessSnapshot) {
+    let elapsed_ms = snapshot.elapsed.as_millis();
+    let matched = snapshot.processes.len();
+    debug!(
+        target = %target.display(),
+        elapsed_ms,
+        examined = snapshot.examined,
+        same_uid = snapshot.same_uid,
+        matched,
+        "scanned for mitmdump runtime owners"
+    );
+    if snapshot.elapsed >= PROCESS_EXIT_TIMEOUT {
+        warn!(
+            target = %target.display(),
+            elapsed_ms,
+            examined = snapshot.examined,
+            same_uid = snapshot.same_uid,
+            matched,
+            "mitmdump process discovery exceeded the process-exit budget"
+        );
+    }
+}
+
+async fn wait_for_process_exit(target: &Path, snapshot: &ProcessSnapshot) -> RunnerResult<()> {
+    let deadline = tokio::time::Instant::now() + PROCESS_EXIT_TIMEOUT;
+    let mut remaining = snapshot.processes.clone();
+    loop {
+        let mut live = Vec::new();
+        for process in &remaining {
+            if let Some(observation) = observe_stable_process(process).await? {
+                live.push(observation);
+            }
+        }
+        if live.is_empty() {
+            return Ok(());
+        }
+        remaining = live;
+
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
+            return Err(process_exit_timeout_error(target, snapshot, &remaining));
+        }
+        tokio::time::sleep_until(std::cmp::min(deadline, now + PROCESS_EXIT_POLL_INTERVAL)).await;
+    }
+}
+
+async fn observe_stable_process(
+    process: &ProcessObservation,
+) -> RunnerResult<Option<ProcessObservation>> {
+    match crate::process::read_process_stat_checked(process.identity.pid).await {
+        ProcessStatRead::Found(stat)
+            if process_stat_is_live(&stat) && stat.starttime == process.identity.starttime =>
+        {
+            Ok(Some(ProcessObservation {
+                identity: process.identity,
+                stat,
+                command: process.command.clone(),
+            }))
+        }
+        ProcessStatRead::Found(_) | ProcessStatRead::Missing => Ok(None),
+        ProcessStatRead::Unreadable(error) if process_disappeared(&error) => Ok(None),
+        ProcessStatRead::Unreadable(error) => Err(RunnerError::Internal(format!(
+            "read /proc/{}/stat while waiting for mitmdump cleanup: {error}",
+            process.identity.pid
+        ))),
+        ProcessStatRead::Invalid => Err(RunnerError::Internal(format!(
+            "parse /proc/{}/stat while waiting for mitmdump cleanup",
+            process.identity.pid
+        ))),
+    }
+}
+
+fn process_exit_timeout_error(
+    target: &Path,
+    snapshot: &ProcessSnapshot,
+    remaining: &[ProcessObservation],
+) -> RunnerError {
+    let processes = remaining
+        .iter()
+        .map(|process| {
+            format!(
+                "pid={} state={} ppid={} pgid={} starttime={} command={:?}",
+                process.identity.pid,
+                process.stat.state,
+                process.stat.ppid,
+                process.stat.pgid,
+                process.identity.starttime,
+                process.command
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; ");
+    RunnerError::Internal(format!(
+        "timed out waiting for signalled mitmdump processes using {}: \
+         discovery_elapsed_ms={}, examined={}, same_uid={}, matched={}; remaining=[{}]",
+        target.display(),
+        snapshot.elapsed.as_millis(),
+        snapshot.examined,
+        snapshot.same_uid,
+        snapshot.processes.len(),
+        processes
+    ))
 }
 
 async fn signal_stable_process(process: ProcessIdentity) -> RunnerResult<()> {

@@ -854,6 +854,62 @@ wait "$!"
         std::fs::set_permissions(path, perms).unwrap();
     }
 
+    fn write_graceful_parent_with_descendant_mitmdump(path: &Path) {
+        std::fs::write(
+            path,
+            r#"#!/usr/bin/env python3
+import os
+import signal
+import socket
+import sys
+import time
+from pathlib import Path
+
+Path(f"{sys.argv[0]}.env").write_text(
+    f"{os.environ['TMPDIR']}\n{os.environ['VM0_MITMDUMP_RUNTIME_DIR']}\n",
+    encoding="utf-8",
+)
+port = None
+ready_path = None
+usage_state_id = None
+previous = None
+for argument in sys.argv[1:]:
+    if previous == "--listen-port":
+        port = int(argument)
+    if argument.startswith("vm0_addon_ready_path="):
+        ready_path = Path(argument.removeprefix("vm0_addon_ready_path="))
+    if argument.startswith("vm0_usage_state_id="):
+        usage_state_id = argument.removeprefix("vm0_usage_state_id=")
+    previous = argument
+
+descendant_pid = os.fork()
+if descendant_pid == 0:
+    for handled in (signal.SIGHUP, signal.SIGINT, signal.SIGTERM):
+        signal.signal(handled, signal.SIG_IGN)
+    Path(f"{sys.argv[0]}.descendant").write_text(
+        str(os.getpid()), encoding="utf-8"
+    )
+    while True:
+        time.sleep(60)
+
+signal.signal(signal.SIGTERM, lambda _signum, _frame: sys.exit(0))
+ready_path.parent.mkdir(parents=True, exist_ok=True)
+ready_path.write_text(usage_state_id, encoding="utf-8")
+sock = socket.socket()
+sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+sock.bind(("127.0.0.1", port))
+sock.listen(1)
+while True:
+    connection, _ = sock.accept()
+    connection.close()
+"#,
+        )
+        .unwrap();
+        let mut perms = std::fs::metadata(path).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(path, perms).unwrap();
+    }
+
     fn write_forking_failing_mitmdump(path: &Path) {
         std::fs::write(
             path,
@@ -1601,6 +1657,37 @@ exit 42
         let child = restart.spawn().await.unwrap();
         proxy.complete_restart(child);
         proxy.kill_now().await.unwrap();
+        assert_no_launch_dirs(&runtime_dir).await;
+    }
+
+    #[tokio::test]
+    async fn graceful_stop_kills_descendant_after_parent_exits_cleanly() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().join("home"));
+        crate::ca::ensure(&home).await.unwrap();
+        let fake_mitmdump = dir.path().join("graceful-parent-mitmdump");
+        write_graceful_parent_with_descendant_mitmdump(&fake_mitmdump);
+        let config = test_proxy_config(dir.path(), &home, fake_mitmdump.clone());
+        let runtime_dir = config.runtime_dir.clone();
+        let (mut proxy, _crash_rx) = MitmProxy::new(config).await.unwrap();
+        proxy.start().await.unwrap();
+
+        let descendant_path = fake_mitmdump.with_extension("descendant");
+        wait_for_file(&descendant_path).await;
+        let descendant_pid: u32 = std::fs::read_to_string(&descendant_path)
+            .unwrap()
+            .parse()
+            .unwrap();
+        let environment = std::fs::read_to_string(fake_mitmdump.with_extension("env")).unwrap();
+        let launch_path = PathBuf::from(environment.lines().next().unwrap());
+
+        proxy.stop().await.unwrap();
+
+        assert!(
+            wait_for_pid_absent(descendant_pid).await,
+            "graceful stop left forked descendant {descendant_pid} alive"
+        );
+        assert!(!launch_path.exists(), "graceful stop left launch directory");
         assert_no_launch_dirs(&runtime_dir).await;
     }
 
