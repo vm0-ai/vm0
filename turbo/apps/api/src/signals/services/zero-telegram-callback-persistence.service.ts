@@ -296,10 +296,7 @@ export async function saveCanonicalTelegramThreadSession(args: {
         telegramThreadSessionOwnerWhere(args),
         eq(telegramThreadSessions.chatId, args.chatId),
         or(
-          eq(
-            telegramThreadSessions.rootMessageId,
-            args.previousRootMessageId,
-          ),
+          eq(telegramThreadSessions.rootMessageId, args.previousRootMessageId),
           eq(telegramThreadSessions.agentSessionId, args.agentSessionId),
         ),
         isNotNull(telegramThreadSessions.lastProcessedMessageId),
