@@ -5055,6 +5055,13 @@
       "when": 1785302878910,
       "tag": "0721_drop_chat_message_queue_compatibility_view",
       "breakpoints": true
+    },
+    {
+      "idx": 722,
+      "version": "7",
+      "when": 1785305123889,
+      "tag": "0722_drop_chat_messages_role",
+      "breakpoints": true
     }
   ]
 }
