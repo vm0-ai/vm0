@@ -70,6 +70,7 @@ function createPreferences(
     "ko-KR",
     "id-ID",
     "fr-FR",
+    "hi-IN",
   ],
 ): UserPreferencesResponse {
   return {
@@ -352,6 +353,41 @@ describe("settings dialog", () => {
       ).toHaveTextContent("Français");
       expect(document.documentElement.lang).toBe("fr-FR");
       expect(cachedLocale()).toBe("fr-FR");
+    });
+  });
+
+  it("selects and persists Hindi when the API advertises it", async () => {
+    const submittedLocales: UserLocale[] = [];
+    let serverLocale: UserLocale | null = "en-US";
+    const supportedLocales: UserLocale[] = ["en-US", "pt-BR", "hi-IN"];
+    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+      return respond(200, createPreferences(serverLocale, supportedLocales));
+    });
+    context.mocks.api(
+      zeroUserPreferencesContract.update,
+      ({ body, respond }) => {
+        if (body.locale !== undefined) {
+          serverLocale = body.locale;
+          submittedLocales.push(body.locale);
+        }
+        return respond(200, createPreferences(serverLocale, supportedLocales));
+      },
+    );
+
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: true,
+    });
+
+    click(await screen.findByRole("combobox", { name: "Language" }));
+    click(screen.getByRole("option", { name: "हिन्दी" }));
+
+    await waitFor(() => {
+      expect(submittedLocales).toContain("hi-IN");
+      expect(screen.getByRole("combobox", { name: "भाषा" })).toHaveTextContent(
+        "हिन्दी",
+      );
+      expect(document.documentElement.lang).toBe("hi-IN");
+      expect(cachedLocale()).toBe("hi-IN");
     });
   });
 
@@ -886,6 +922,9 @@ describe("settings dialog", () => {
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("option", { name: "Bahasa Indonesia" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "हिन्दी" }),
     ).not.toBeInTheDocument();
   });
 

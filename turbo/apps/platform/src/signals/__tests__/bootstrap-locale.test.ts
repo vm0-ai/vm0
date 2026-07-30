@@ -113,6 +113,24 @@ describe("bootstrap locale", () => {
     });
   });
 
+  it("normalizes a Hindi browser language before bundle render", () => {
+    context.mocks.browser.language("hi");
+
+    executeLocaleEntrypoint();
+
+    expect(document.documentElement.lang).toBe("hi-IN");
+    expect(context.store.get(testLocaleStorage.get$)).toBeNull();
+    expect(window.__vm0PreBundleCopy).toMatchObject({
+      loading: {
+        ariaLabel: "आपका वर्कस्पेस लोड हो रहा है",
+        messages: expect.arrayContaining(["न्यूरॉन्स को सक्रिय कर रहे हैं..."]),
+      },
+      metadata: {
+        title: "Zero — vm0 से आपका AI सहकर्मी",
+      },
+    });
+  });
+
   it("normalizes a Spanish browser language before bundle render", () => {
     context.mocks.browser.language("es");
 
@@ -200,6 +218,7 @@ describe("bootstrap locale", () => {
     expect(i18n.hasResourceBundle("ko-KR", "common")).toBeTruthy();
     expect(i18n.hasResourceBundle("id-ID", "common")).toBeTruthy();
     expect(i18n.hasResourceBundle("es-ES", "common")).toBeTruthy();
+    expect(i18n.hasResourceBundle("hi-IN", "common")).toBeTruthy();
     expect(new Intl.NumberFormat(i18n.language).format(1234.5)).toBe("1.234,5");
     expect(
       new Intl.DateTimeFormat(i18n.language, {
@@ -676,6 +695,73 @@ describe("bootstrap locale", () => {
     expect(context.store.get(locale$)).toBe("fr-FR");
     expect(i18n.language).toBe("fr-FR");
     expect(document.documentElement.lang).toBe("fr-FR");
+
+    await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
+  });
+
+  it("uses cached Hindi across pre-bundle UI and i18next", async () => {
+    context.mocks.browser.language("en-US");
+    sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
+    context.store.set(testLocaleStorage.set$, "hi-IN");
+    executeLocaleEntrypoint();
+    executeBrowserCompatibilityEntrypoint(
+      "Mozilla/5.0 Chrome/100.0.0.0 Safari/537.36",
+    );
+
+    const metadata = document.createElement("meta");
+    metadata.name = "description";
+    document.head.append(metadata);
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        metadata.remove();
+      },
+      { once: true },
+    );
+    executeMetadataEntrypoint();
+
+    await setupPage({
+      context,
+      path: "/error",
+      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: false },
+      withoutRender: true,
+    });
+
+    expect(context.store.get(locale$)).toBe("hi-IN");
+    expect(i18n.language).toBe("hi-IN");
+    expect(window.__vm0BrowserSupported).toBeFalsy();
+    expect(window.__vm0BrowserUpgrade).toMatchObject({
+      actionLabel: "Chrome को अपडेट करें",
+      actionUrl: "https://www.google.com/chrome/",
+      title: "जारी रखने के लिए Chrome को अपडेट करें",
+    });
+    expect(metadata).toHaveAttribute(
+      "content",
+      expect.stringContaining("Zero, vm0 से आपका AI सहकर्मी है"),
+    );
+    expect(window.__vm0PreBundleCopy).toMatchObject({
+      browserUpgrade: {
+        safari: {
+          actionLabel: "Safari को अपडेट करें",
+          title: "जारी रखने के लिए Safari को अपडेट करें",
+        },
+      },
+      loading: {
+        ariaLabel: "आपका वर्कस्पेस लोड हो रहा है",
+      },
+    });
+
+    const hindiAgentResources = resources["hi-IN"].agents;
+    i18n.removeResourceBundle("hi-IN", "agents");
+    expect(
+      i18n.t(
+        ($) => {
+          return $.actions.save;
+        },
+        { ns: "agents" },
+      ),
+    ).toBe("Save");
+    i18n.addResourceBundle("hi-IN", "agents", hindiAgentResources, true, true);
 
     await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
   });

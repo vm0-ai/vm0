@@ -70,7 +70,8 @@ function parseUserLocale(value: unknown): UserLocale | null {
     value === "de-DE" ||
     value === "es-ES" ||
     value === "it-IT" ||
-    value === "fr-FR"
+    value === "fr-FR" ||
+    value === "hi-IN"
   ) {
     return value;
   }

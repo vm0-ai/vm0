@@ -186,6 +186,7 @@ runs:
           add_env ENV "$deploy_env"
           add_env BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED "true"
           add_env JAPANESE_LOCALE_ROLLOUT_ENABLED "true"
+          add_env HINDI_LOCALE_ROLLOUT_ENABLED "true"
           # Keep production writes disabled until every rollback candidate can
           # parse persisted id-ID preferences. Preview deploys are isolated and
           # remain enabled for end-to-end rollout coverage.

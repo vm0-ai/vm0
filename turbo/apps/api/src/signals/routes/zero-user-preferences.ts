@@ -3,6 +3,7 @@ import {
   clientVersionSupportsCapability,
   CLIENT_CAPABILITY_ES_ES_LOCALE,
   CLIENT_CAPABILITY_FR_FR_LOCALE,
+  CLIENT_CAPABILITY_HI_IN_LOCALE,
   CLIENT_CAPABILITY_IT_IT_LOCALE,
   CLIENT_CAPABILITY_JA_JP_LOCALE,
   CLIENT_CAPABILITY_KO_KR_LOCALE,
@@ -22,6 +23,7 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isBrazilianPortugueseLocaleRolloutEnabled } from "../../lib/brazilian-portuguese-locale-rollout";
 import { isFrenchLocaleRolloutEnabled } from "../../lib/french-locale-rollout";
 import { isGermanLocaleRolloutEnabled } from "../../lib/german-locale-rollout";
+import { isHindiLocaleRolloutEnabled } from "../../lib/hindi-locale-rollout";
 import { isIndonesianLocaleRolloutEnabled } from "../../lib/indonesian-locale-rollout";
 import { badRequestMessage } from "../../lib/error";
 import { isItalianLocaleRolloutEnabled } from "../../lib/italian-locale-rollout";
@@ -94,6 +96,10 @@ const localeRollout$ = computed(async (get): Promise<LocaleRollout> => {
     clientVersion,
     CLIENT_CAPABILITY_FR_FR_LOCALE,
   );
+  const clientSupportsHindi = clientVersionSupportsCapability(
+    clientVersion,
+    CLIENT_CAPABILITY_HI_IN_LOCALE,
+  );
   const japaneseEnabled =
     clientSupportsJapanese &&
     isJapaneseLocaleRolloutEnabled() &&
@@ -151,6 +157,12 @@ const localeRollout$ = computed(async (get): Promise<LocaleRollout> => {
     clientSupportsFrench,
     isFrenchLocaleRolloutEnabled(),
   );
+  addSupportedLocale(
+    supportedLocales,
+    "hi-IN",
+    clientSupportsHindi,
+    isHindiLocaleRolloutEnabled(),
+  );
 
   return {
     clientSupportsLocaleNegotiation:
@@ -161,7 +173,8 @@ const localeRollout$ = computed(async (get): Promise<LocaleRollout> => {
       clientSupportsGerman ||
       clientSupportsSpanish ||
       clientSupportsItalian ||
-      clientSupportsFrench,
+      clientSupportsFrench ||
+      clientSupportsHindi,
     supportedLocales,
   };
 });
