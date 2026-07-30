@@ -320,13 +320,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.CodexSessionPruning]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Prune oversized Codex checkpoint histories to the latest native compact generation.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ClaudeSessionPruning]: {
     maintainer: "liangyou@vm0.ai",
     description:
