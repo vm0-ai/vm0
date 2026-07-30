@@ -17,40 +17,13 @@ const insightServiceSchema = z.object({
   agentNames: z.array(z.string()),
 });
 
-export const insightPermissionSchema = z
-  .object({
-    label: z.string(),
-    connectorSlug: z.string().optional(),
-    // TODO(#23840): Remove after legacy Insights clients have drained.
-    connectorType: z.string().optional(),
-    allowed: z.number(),
-    denied: z.number(),
-    agentNames: z.array(z.string()),
-  })
-  .superRefine((permission, context) => {
-    if (
-      permission.connectorSlug !== undefined &&
-      permission.connectorType !== undefined &&
-      permission.connectorSlug !== permission.connectorType
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["connectorSlug"],
-        message: "connectorSlug and connectorType must match",
-      });
-    }
-  })
-  .overwrite((permission) => {
-    const connectorSlug = permission.connectorSlug ?? permission.connectorType;
-    if (connectorSlug === undefined) {
-      return permission;
-    }
-    return {
-      ...permission,
-      connectorSlug,
-      connectorType: connectorSlug,
-    };
-  });
+export const insightPermissionSchema = z.object({
+  label: z.string(),
+  connectorSlug: z.string().optional(),
+  allowed: z.number(),
+  denied: z.number(),
+  agentNames: z.array(z.string()),
+});
 
 const insightTopTaskSchema = z.object({
   name: z.string(),
