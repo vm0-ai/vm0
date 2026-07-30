@@ -252,6 +252,81 @@ pub(crate) async fn is_unit_active(unit: &RunnerServiceUnit) -> RunnerResult<boo
     unit_active_from_systemctl_show(svc, &properties, &output.status, &values, &output.stderr)
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SystemdUnitLoadState {
+    Stub,
+    Loaded,
+    NotFound,
+    BadSetting,
+    Error,
+    Merged,
+    Masked,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) struct SystemdReloadState {
+    load_state: SystemdUnitLoadState,
+    need_daemon_reload: bool,
+}
+
+impl SystemdReloadState {
+    pub(super) fn is_not_found(self) -> bool {
+        self.load_state == SystemdUnitLoadState::NotFound
+    }
+
+    pub(super) fn need_daemon_reload(self) -> bool {
+        self.need_daemon_reload
+    }
+
+    #[cfg(test)]
+    pub(super) fn for_test(is_not_found: bool, need_daemon_reload: bool) -> Self {
+        Self {
+            load_state: if is_not_found {
+                SystemdUnitLoadState::NotFound
+            } else {
+                SystemdUnitLoadState::Loaded
+            },
+            need_daemon_reload,
+        }
+    }
+}
+
+/// Read systemd's authoritative dirty state for reload coalescing.
+pub(super) async fn read_systemd_reload_state(
+    unit: &RunnerServiceUnit,
+) -> RunnerResult<SystemdReloadState> {
+    let svc = unit.service_name();
+    let properties = ["LoadState", "NeedDaemonReload"];
+    let output = run_systemctl_show(svc, &properties).await?;
+    systemd_reload_state_from_output(svc, &properties, &output)
+}
+
+/// Read systemd's authoritative dirty state with cleanup timeout semantics.
+pub(super) async fn read_systemd_reload_state_bounded(
+    unit: &RunnerServiceUnit,
+    duration: Duration,
+) -> RunnerResult<SystemdReloadState> {
+    let svc = unit.service_name();
+    let properties = ["LoadState", "NeedDaemonReload"];
+    let output = run_systemctl_show_bounded(svc, &properties, duration).await?;
+    systemd_reload_state_from_output(svc, &properties, &output)
+}
+
+fn systemd_reload_state_from_output(
+    svc: &str,
+    properties: &[&str],
+    output: &Output,
+) -> RunnerResult<SystemdReloadState> {
+    let values = parse_systemctl_show_output(svc, properties, output)?;
+    systemd_reload_state_from_systemctl_show(
+        svc,
+        properties,
+        &output.status,
+        &values,
+        &output.stderr,
+    )
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct CleanupUnitActiveState {
     active_state: String,
@@ -584,6 +659,58 @@ fn systemctl_property<'a>(
 fn classify_unit_active(svc: &str, load_state: &str, active_state: &str) -> RunnerResult<bool> {
     let normalized_state = normalize_unit_state(svc, load_state, active_state)?;
     Ok(normalized_state.is_active_like() && active_state != "deactivating")
+}
+
+fn parse_systemd_unit_load_state(svc: &str, value: &str) -> RunnerResult<SystemdUnitLoadState> {
+    match value {
+        "stub" => Ok(SystemdUnitLoadState::Stub),
+        "loaded" => Ok(SystemdUnitLoadState::Loaded),
+        "not-found" => Ok(SystemdUnitLoadState::NotFound),
+        "bad-setting" => Ok(SystemdUnitLoadState::BadSetting),
+        "error" => Ok(SystemdUnitLoadState::Error),
+        "merged" => Ok(SystemdUnitLoadState::Merged),
+        "masked" => Ok(SystemdUnitLoadState::Masked),
+        other => Err(RunnerError::Internal(format!(
+            "unknown LoadState for {svc}: {other:?}"
+        ))),
+    }
+}
+
+fn parse_systemd_boolean(svc: &str, property: &str, value: &str) -> RunnerResult<bool> {
+    match value {
+        "yes" => Ok(true),
+        "no" => Ok(false),
+        other => Err(RunnerError::Internal(format!(
+            "unknown {property} for {svc}: {other:?}"
+        ))),
+    }
+}
+
+fn systemd_reload_state_from_systemctl_show(
+    svc: &str,
+    properties: &[&str],
+    status: &ExitStatus,
+    values: &BTreeMap<String, String>,
+    stderr: &[u8],
+) -> RunnerResult<SystemdReloadState> {
+    let load_state =
+        parse_systemd_unit_load_state(svc, required_systemctl_property(svc, values, "LoadState")?)?;
+    let need_daemon_reload = parse_systemd_boolean(
+        svc,
+        "NeedDaemonReload",
+        required_systemctl_property(svc, values, "NeedDaemonReload")?,
+    )?;
+    ensure_systemctl_show_status(
+        svc,
+        properties,
+        status,
+        stderr,
+        load_state == SystemdUnitLoadState::NotFound,
+    )?;
+    Ok(SystemdReloadState {
+        load_state,
+        need_daemon_reload,
+    })
 }
 
 fn normalize_unit_state(
@@ -1081,6 +1208,80 @@ mod tests {
         let message = err.to_string();
 
         assert!(message.contains("empty systemctl show property"));
+    }
+
+    #[test]
+    fn systemd_reload_state_parses_loaded_dirty_unit() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["LoadState", "NeedDaemonReload"];
+        let output = systemctl_show_output(
+            ExitStatus::from_raw(0),
+            b"LoadState=loaded\nNeedDaemonReload=yes\n",
+            b"",
+        );
+
+        let state =
+            systemd_reload_state_from_output("vm0-runner-test.service", &properties, &output)
+                .unwrap();
+
+        assert!(!state.is_not_found());
+        assert!(state.need_daemon_reload());
+    }
+
+    #[test]
+    fn systemd_reload_state_accepts_not_found_with_failed_status() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["LoadState", "NeedDaemonReload"];
+        let output = systemctl_show_output(
+            ExitStatus::from_raw(0x100),
+            b"LoadState=not-found\nNeedDaemonReload=no\n",
+            b"Unit not found\n",
+        );
+
+        let state =
+            systemd_reload_state_from_output("vm0-runner-test.service", &properties, &output)
+                .unwrap();
+
+        assert!(state.is_not_found());
+        assert!(!state.need_daemon_reload());
+    }
+
+    #[test]
+    fn systemd_reload_state_rejects_unknown_boolean() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["LoadState", "NeedDaemonReload"];
+        let output = systemctl_show_output(
+            ExitStatus::from_raw(0),
+            b"LoadState=loaded\nNeedDaemonReload=maybe\n",
+            b"",
+        );
+
+        let error =
+            systemd_reload_state_from_output("vm0-runner-test.service", &properties, &output)
+                .unwrap_err();
+
+        assert!(error.to_string().contains("unknown NeedDaemonReload"));
+    }
+
+    #[test]
+    fn systemd_reload_state_rejects_unknown_load_state() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["LoadState", "NeedDaemonReload"];
+        let output = systemctl_show_output(
+            ExitStatus::from_raw(0),
+            b"LoadState=half-loaded\nNeedDaemonReload=yes\n",
+            b"",
+        );
+
+        let error =
+            systemd_reload_state_from_output("vm0-runner-test.service", &properties, &output)
+                .unwrap_err();
+
+        assert!(error.to_string().contains("unknown LoadState"));
     }
 
     #[test]

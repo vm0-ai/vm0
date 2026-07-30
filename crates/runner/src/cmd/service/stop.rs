@@ -7,6 +7,7 @@ use crate::paths::HomePaths;
 
 use super::drain_override::{remove_drain_restart_override, write_drain_restart_override};
 use super::gate::check_active_jobs_gate;
+use super::reload::{SystemdReloadRequirement, coordinate_systemd_reload_bounded};
 use super::systemctl::{
     BoundedSystemctlOutcome, CleanupUnitActiveState, cleanup_unit_active_state_bounded,
     is_unit_active, is_unit_enabled_bounded, run_systemctl, run_systemctl_bounded,
@@ -147,26 +148,40 @@ async fn run_cleanup_systemctl(args: &[&str], duration: TokioDuration) -> Runner
 async fn reload_systemd_if_drain_restart_override_removed_bounded(
     unit: &RunnerServiceUnit,
 ) -> RunnerResult<bool> {
-    if !remove_drain_restart_override(unit)? {
-        return Ok(false);
+    let remove_result = remove_drain_restart_override(unit);
+    let removed = matches!(&remove_result, Ok(true));
+
+    let reload_result = coordinate_systemd_reload_bounded(
+        unit,
+        SystemdReloadRequirement::Dirty,
+        CLEANUP_LOCK_TIMEOUT,
+        CLEANUP_ACTION_TIMEOUT,
+    )
+    .await;
+
+    if let Err(reload_error) = reload_result {
+        let reload_error = if removed {
+            match restore_drain_restart_override_after_failed_cleanup_bounded(unit, "remove_reload")
+                .await
+            {
+                Ok(()) => reload_error,
+                Err(restore_error) => {
+                    drain_override_cleanup_reload_error(unit, reload_error, restore_error)
+                }
+            }
+        } else {
+            reload_error
+        };
+        return match remove_result {
+            Ok(_) => Err(reload_error),
+            Err(remove_error) => Err(RunnerError::Internal(format!(
+                "failed to remove drain restart override for {} during cleanup: {remove_error}; additionally failed to reload systemd: {reload_error}",
+                unit.unit_name()
+            ))),
+        };
     }
 
-    if let Err(reload_error) =
-        run_cleanup_systemctl(&["daemon-reload"], CLEANUP_ACTION_TIMEOUT).await
-    {
-        if let Err(restore_error) =
-            restore_drain_restart_override_after_failed_cleanup_bounded(unit, "remove_reload").await
-        {
-            return Err(drain_override_cleanup_reload_error(
-                unit,
-                reload_error,
-                restore_error,
-            ));
-        }
-        return Err(reload_error);
-    }
-
-    Ok(true)
+    remove_result.map(|_| removed)
 }
 
 async fn restore_drain_restart_override_after_failed_cleanup_bounded(
@@ -179,7 +194,14 @@ async fn restore_drain_restart_override_after_failed_cleanup_bounded(
             unit.unit_name()
         )));
     }
-    if let Err(e) = run_cleanup_systemctl(&["daemon-reload"], CLEANUP_ACTION_TIMEOUT).await {
+    if let Err(e) = coordinate_systemd_reload_bounded(
+        unit,
+        SystemdReloadRequirement::Dirty,
+        CLEANUP_LOCK_TIMEOUT,
+        CLEANUP_ACTION_TIMEOUT,
+    )
+    .await
+    {
         return Err(RunnerError::Internal(format!(
             "failed to reload systemd after restoring drain restart override for {} ({context}): {e}",
             unit.unit_name()
@@ -288,7 +310,11 @@ impl ServiceStopOps for RealServiceStopOps {
 
     fn disable<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
         Box::pin(async move {
-            run_cleanup_systemctl(&["disable", unit.service_name()], CLEANUP_ACTION_TIMEOUT).await
+            run_cleanup_systemctl(
+                &["disable", "--no-reload", unit.service_name()],
+                CLEANUP_ACTION_TIMEOUT,
+            )
+            .await
         })
     }
 
@@ -371,13 +397,13 @@ async fn stop_default_with_ops(
 
     // Clear "failed" latch so systemd fully unloads the transient unit.
     let _ = ops.reset_failed(unit).await;
-    if let Err(e) = ops.cleanup_drain_restart_override(unit).await {
-        warn!(unit = %unit.unit_name(), error = %e, "failed to remove drain restart override after stop");
-        eprintln!(
-            "WARNING: stop could not remove the drain restart override for {}: {e}.",
-            svc
-        );
-    }
+    ops.cleanup_drain_restart_override(unit)
+        .await
+        .map_err(|error| {
+            RunnerError::Internal(format!(
+                "stopped {svc}, but failed to make drain restart override cleanup effective: {error}"
+            ))
+        })?;
     Ok(())
 }
 
@@ -442,8 +468,9 @@ async fn stop_cleanup_with_ops(
     if let Err(e) = ops.reset_failed_bounded(unit).await {
         warn!(unit = %unit.unit_name(), error = %e, "failed to reset failed service state during cleanup");
     }
-    if let Err(e) = ops.cleanup_drain_restart_override_bounded(unit).await {
-        warn!(unit = %unit.unit_name(), error = %e, "failed to remove drain restart override during cleanup");
+    let drain_cleanup_result = ops.cleanup_drain_restart_override_bounded(unit).await;
+    if let Err(error) = &drain_cleanup_result {
+        warn!(unit = %unit.unit_name(), error = %error, "failed to remove drain restart override during cleanup");
     }
 
     let inactive_result = verify_cleanup_inactive(unit, ops, cleanup_escalated).await;
@@ -453,7 +480,9 @@ async fn stop_cleanup_with_ops(
         Ok(())
     };
 
-    combine_cleanup_postcondition_results(unit, inactive_result, disabled_result)
+    let postcondition_result =
+        combine_cleanup_postcondition_results(unit, inactive_result, disabled_result);
+    combine_cleanup_transition_results(unit, drain_cleanup_result, postcondition_result)
 }
 
 async fn verify_cleanup_not_enabled(
@@ -500,6 +529,23 @@ fn combine_cleanup_postcondition_results(
             "cleanup postconditions failed for {}: {inactive_error}; additionally: {disabled_error}",
             unit.service_name()
         ))),
+    }
+}
+
+fn combine_cleanup_transition_results(
+    unit: &RunnerServiceUnit,
+    drain_cleanup_result: RunnerResult<()>,
+    postcondition_result: RunnerResult<()>,
+) -> RunnerResult<()> {
+    match (drain_cleanup_result, postcondition_result) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(error), Ok(())) | (Ok(()), Err(error)) => Err(error),
+        (Err(drain_cleanup_error), Err(postcondition_error)) => {
+            Err(RunnerError::Internal(format!(
+                "cleanup failed for {}: {drain_cleanup_error}; additionally: {postcondition_error}",
+                unit.service_name()
+            )))
+        }
     }
 }
 
@@ -834,6 +880,26 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stop_default_reports_drain_cleanup_failure() {
+        let unit = service_unit();
+        let home = fake_home();
+        let mut ops = FakeStopOps {
+            cleanup_drain_error: true,
+            ..FakeStopOps::default()
+        };
+
+        let error = stop_with_ops(&unit, &home, false, None, &mut ops)
+            .await
+            .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("failed to make drain restart override cleanup effective")
+        );
+    }
+
+    #[tokio::test]
     async fn stop_force_without_cleanup_does_not_escalate_or_disable() {
         let unit = service_unit();
         let home = fake_home();
@@ -896,6 +962,28 @@ mod tests {
                 "cleanup_active_state",
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn stop_cleanup_reports_coordinated_reload_failure() {
+        let unit = service_unit();
+        let home = fake_home();
+        let mut ops = FakeStopOps {
+            cleanup_drain_error: true,
+            ..FakeStopOps::default()
+        };
+
+        let error = stop_with_ops(
+            &unit,
+            &home,
+            true,
+            Some(CleanupPolicy::PartialStart),
+            &mut ops,
+        )
+        .await
+        .unwrap_err();
+
+        assert!(error.to_string().contains("cleanup drain failed"));
     }
 
     #[tokio::test]
