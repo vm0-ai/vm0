@@ -4,8 +4,10 @@ import type {
   PersistedAttachment,
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
+import { initializeI18n } from "../../i18n/index.ts";
+import { DEFAULT_LOCALE } from "../../i18n/resources.ts";
 import { testContext } from "./test-helpers.ts";
 import { createDraftSignals } from "../zero-page/chat-draft.ts";
 import { createWorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
@@ -18,6 +20,11 @@ import {
 
 const context = testContext();
 const THREAD_ID = "1fe7f3cc-40b9-49f2-8f86-5f07d8d8dfd8";
+const MENTIONED_AGENT_ID = "a1000000-0000-4000-a000-000000000001";
+
+beforeAll(async () => {
+  await initializeI18n(DEFAULT_LOCALE);
+});
 
 function presentationTemplate(): GenerationTemplateRequest {
   return {
@@ -79,6 +86,11 @@ describe("user message document codec", () => {
               type: "chatThreadMention",
               attrs: { threadId: THREAD_ID, title: "Project Alpha" },
             },
+            { type: "text", text: " with " },
+            {
+              type: "agentMention",
+              attrs: { agentId: MENTIONED_AGENT_ID, name: "Ada" },
+            },
             { type: "text", text: " then" },
             { type: "hardBreak" },
             { type: "text", text: "continue  " },
@@ -123,12 +135,20 @@ describe("user message document codec", () => {
           threadId: THREAD_ID,
           titleSnapshot: "Project Alpha",
         },
+        { type: "text", text: " with " },
+        {
+          type: "agent",
+          agentId: MENTIONED_AGENT_ID,
+          nameSnapshot: "Ada",
+        },
         { type: "text", text: " then\ncontinue  \nlast" },
       ],
     });
     expect(messageDocumentToPrompt(structured)).toBe(
-      `  Review [Project Alpha](/chats/${THREAD_ID}) then\ncontinue  \nlast`,
+      `  Review [Project Alpha](/chats/${THREAD_ID}) with ` +
+        `[Ada](/agents/${MENTIONED_AGENT_ID}/chat) then\ncontinue  \nlast`,
     );
+    expect(messageDocumentToDisplayText(structured)).toContain("[Agent: Ada]");
 
     const restored = messageDocumentToEditorDoc(structured);
     expect(restored).toStrictEqual({
@@ -150,6 +170,15 @@ describe("user message document codec", () => {
             {
               type: "chatThreadMention",
               attrs: { threadId: THREAD_ID, title: "Project Alpha" },
+            },
+            { type: "text", text: " with " },
+            {
+              type: "agentMention",
+              attrs: {
+                agentId: MENTIONED_AGENT_ID,
+                name: "Ada",
+                avatarUrl: null,
+              },
             },
             { type: "text", text: " then" },
           ],

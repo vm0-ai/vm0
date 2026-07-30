@@ -2249,7 +2249,7 @@ describe("connector catalog valid lifecycle", () => {
     await firewall.provisionRunReadyOrg(actor);
     const callsBeforeSeed = context.mocks.s3.send.mock.calls.length;
     await firewall.seedTestConnector(actor, {
-      connectorName: "test-oauth-device",
+      connectorSlug: "test-oauth-device",
       authMethod: "oauth",
       accessToken: "catalog-cli-access-token",
     });
@@ -5949,6 +5949,38 @@ describe("connector catalog rejection and latest-valid retention", () => {
           mutateCatalog: (artifact) => {
             firstRecord(artifact.connectors, "connectors").description =
               PRIVATE_VALUE;
+          },
+        });
+      },
+    },
+    {
+      name: "duplicate connector slug",
+      expected: "invalid-artifact",
+      release: () => {
+        return buildRelease({
+          version: "duplicate-connector-slug",
+          mutateCatalog: (artifact) => {
+            const connectors = arrayValue(artifact.connectors, "connectors");
+            connectors.push(
+              structuredClone(firstRecord(connectors, "connectors")),
+            );
+          },
+        });
+      },
+    },
+    {
+      name: "unknown category group",
+      expected: "relationship-mismatch",
+      release: () => {
+        return buildRelease({
+          version: "unknown-category-group",
+          mutateCatalog: (artifact) => {
+            const categoryMetadata = recordValue(
+              artifact.categoryMetadata,
+              "categoryMetadata",
+            );
+            firstRecord(categoryMetadata.categories, "categories").groupId =
+              "unknown";
           },
         });
       },

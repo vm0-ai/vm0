@@ -14,7 +14,7 @@ import firewall_auth_client as auth_client
 import flow_metadata_keys as metadata_keys
 import matching
 from aws_sigv4 import AwsSigV4Credentials
-from tests.auth_endpoint_helpers import FakeAuthEndpoint
+from tests.auth_endpoint_helpers import FakeAuthEndpoint, firewall_auth_success_response
 from tests.auth_state_helpers import auth_cache_key, set_cached_headers
 from tests.aws_sigv4_helpers import (
     DEFAULT_AWS_REGION,
@@ -200,14 +200,14 @@ def aws_auth_response(
         refreshed_connectors.append("aws")
         refreshed_secrets.append("AWS_SESSION_TOKEN")
 
-    response: dict[str, object] = {
-        "headers": dict(headers) if headers is not None else {},
-        "awsSigv4": aws_sigv4,
-        "expiresAt": FAR_FUTURE_EXPIRES_AT,
-        "resolvedSecrets": resolved_secrets,
-        "refreshedConnectors": refreshed_connectors,
-        "refreshedSecrets": refreshed_secrets,
-    }
+    response = firewall_auth_success_response(
+        headers if headers is not None else {},
+        expires_at=FAR_FUTURE_EXPIRES_AT,
+        resolved_secrets=resolved_secrets,
+        refreshed_connectors=refreshed_connectors,
+        refreshed_secrets=refreshed_secrets,
+    )
+    response["awsSigv4"] = aws_sigv4
     if query is not None:
         response["query"] = dict(query)
     return response

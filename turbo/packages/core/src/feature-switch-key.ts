@@ -43,6 +43,7 @@ export enum FeatureSwitchKey {
   ZeroDebug = "zeroDebug",
   LanguagePreference = "languagePreference",
   BrazilianPortugueseLocale = "brazilianPortugueseLocale",
+  JapaneseLocale = "japaneseLocale",
   ZeroBrowser = "zeroBrowser",
   ZeroChatMessaging = "zeroChatMessaging",
   ZeroMailReplyFollowUp = "zeroMailReplyFollowUp",
@@ -74,6 +75,7 @@ export enum FeatureSwitchKey {
   FeishuIntegration = "feishuIntegration",
   StrapiIntegration = "strapiIntegration",
   Artifacts = "artifacts",
+  ArtifactKeyV2 = "artifactKeyV2",
   HostedArtifactVersions = "hostedArtifactVersions",
   VideoArtifactPosters = "videoArtifactPosters",
   ImageStyleR2 = "imageStyleR2",
@@ -81,5 +83,6 @@ export enum FeatureSwitchKey {
   ComposerConnectorPermissions = "composerConnectorPermissions",
   ThreeColumnNav = "threeColumnNav",
   ChatThreadSidebarAutoOpen = "chatThreadSidebarAutoOpen",
+  CustomConnectorCliCreate = "customConnectorCliCreate",
   CustomConnectorOAuth2 = "customConnectorOAuth2",
 }

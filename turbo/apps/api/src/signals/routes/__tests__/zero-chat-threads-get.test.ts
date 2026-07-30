@@ -155,35 +155,6 @@ describe("GET /api/zero/chat-threads/:threadId/events", () => {
 
     expect(response.body).toStrictEqual({
       events: [],
-      hasHistoryBefore: false,
-    });
-  });
-
-  it("lists events with the legacy chat-message:read capability", async () => {
-    const fixture = await seedChatThread("Launch plan");
-    const seconds = currentSecond();
-    const token = signSandboxJwtForTests({
-      scope: "zero",
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      runId: `run_${randomUUID()}`,
-      capabilities: ["chat-message:read"],
-      iat: seconds,
-      exp: seconds + 600,
-    });
-
-    const response = await accept(
-      eventsClient().list({
-        headers: { authorization: `Bearer ${token}` },
-        params: { threadId: fixture.threadId },
-        query: {},
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
-      events: [],
-      hasHistoryBefore: false,
     });
   });
 

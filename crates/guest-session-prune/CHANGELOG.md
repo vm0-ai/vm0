@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.1...guest-session-prune-v0.3.2) (2026-07-30)
+
+
+### Documentation
+
+* **rust:** document claude compact-generation selection invariants ([#24049](https://github.com/vm0-ai/vm0/issues/24049)) ([1f29385](https://github.com/vm0-ai/vm0/commit/1f29385b693cebd325991325093f865db9f46b1d))
+
 ## [0.3.1](https://github.com/vm0-ai/vm0/compare/guest-session-prune-v0.3.0...guest-session-prune-v0.3.1) (2026-07-29)
 
 

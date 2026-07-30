@@ -21,15 +21,20 @@ import {
   integrationsGithubContract,
   type GithubInstallationResponse,
 } from "@vm0/api-contracts/contracts/integrations-github";
-import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+import {
+  zeroAgentCustomConnectorsContract,
+  type AgentCustomConnectorGrant,
+} from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorOAuth2Contract,
   zeroCustomConnectorProposalContract,
   zeroCustomConnectorSecretContract,
+  zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
   type CreateCustomConnectorBody,
   type CustomConnectorResponse,
+  type CustomConnectorValueInput,
   type PatchCustomConnectorBody,
   type SaveCustomConnectorProposalBody,
   type SaveCustomConnectorProposalResponse,
@@ -1787,6 +1792,38 @@ export function createConnectorBddApi(context: TestContext) {
       );
     },
 
+    async requestSetCustomConnectorValues(
+      actor: ApiTestUser | null,
+      connectorId: string,
+      values: readonly CustomConnectorValueInput[],
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+    ) {
+      const client = setupApp({ context })(zeroCustomConnectorValuesContract);
+      return await accept(
+        client.set({
+          params: { id: connectorId },
+          headers: authenticate(actor),
+          body: { values: [...values] },
+        }),
+        statuses,
+      );
+    },
+
+    async setCustomConnectorValues(
+      actor: ApiTestUser,
+      connectorId: string,
+      values: readonly CustomConnectorValueInput[],
+    ): Promise<CustomConnectorResponse> {
+      const response = await api.requestSetCustomConnectorValues(
+        actor,
+        connectorId,
+        values,
+        [200],
+      );
+      expectStatus(response, 200);
+      return response.body;
+    },
+
     async requestDeleteCustomConnectorSecret(
       actor: ApiTestUser | null,
       connectorId: string,
@@ -1818,13 +1855,14 @@ export function createConnectorBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       connectorId: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+      agentId?: string,
     ) {
       const client = setupApp({ context })(zeroCustomConnectorOAuth2Contract);
       return await accept(
         client.start({
           params: { id: connectorId },
           headers: authenticate(actor),
-          body: {},
+          body: agentId ? { agentId } : {},
         }),
         statuses,
       );
@@ -1833,11 +1871,13 @@ export function createConnectorBddApi(context: TestContext) {
     async startCustomConnectorOAuth2(
       actor: ApiTestUser,
       connectorId: string,
+      agentId?: string,
     ): Promise<string> {
       const response = await api.requestStartCustomConnectorOAuth2(
         actor,
         connectorId,
         [200],
+        agentId,
       );
       expectStatus(response, 200);
       return response.body.authorizationUrl;
@@ -1883,6 +1923,19 @@ export function createConnectorBddApi(context: TestContext) {
       return response.body.enabledIds;
     },
 
+    async readAgentCustomConnectorGrants(
+      actor: ApiTestUser,
+      agentId: string,
+    ): Promise<readonly AgentCustomConnectorGrant[]> {
+      const response = await api.requestAgentCustomConnectors(
+        actor,
+        agentId,
+        [200],
+      );
+      expectStatus(response, 200);
+      return response.body.grants ?? [];
+    },
+
     async requestUpdateAgentCustomConnectors(
       actor: ApiTestUser | null,
       agentId: string,
@@ -1920,6 +1973,28 @@ export function createConnectorBddApi(context: TestContext) {
       );
       expectStatus(response, 200);
       return response.body.enabledIds;
+    },
+
+    async requestUpdateAgentCustomConnectorGrants(
+      actor: ApiTestUser | null,
+      agentId: string,
+      grants: readonly AgentCustomConnectorGrant[],
+      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
+      operation?: "replace" | "add" | "remove",
+    ) {
+      const client = setupApp({ context })(zeroAgentCustomConnectorsContract);
+      const body =
+        operation === undefined
+          ? { grants: [...grants] }
+          : { grants: [...grants], operation };
+      return await accept(
+        client.update({
+          params: { id: agentId },
+          headers: authenticate(actor),
+          body,
+        }),
+        statuses,
+      );
     },
   };
 

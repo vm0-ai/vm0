@@ -1,5 +1,86 @@
 # Changelog
 
+## [9.270.1](https://github.com/vm0-ai/vm0/compare/cli-v9.270.0...cli-v9.270.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* **cli:** emit connector slug in permission action urls ([#24062](https://github.com/vm0-ai/vm0/issues/24062)) ([1a42e7a](https://github.com/vm0-ai/vm0/commit/1a42e7af131bcae9629b507229f3b0fe3f96ce4f))
+
+
+### Refactoring
+
+* remove legacy chat message capability aliases ([#24063](https://github.com/vm0-ai/vm0/issues/24063)) ([9ecc474](https://github.com/vm0-ai/vm0/commit/9ecc4744be290710c473f47a06460cd49a158a52))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.251.1
+    * @vm0/core bumped to 8.491.0
+
+## [9.270.0](https://github.com/vm0-ai/vm0/compare/cli-v9.269.5...cli-v9.270.0) (2026-07-30)
+
+
+### Features
+
+* **connectors:** add agent-driven custom connector creation ([#24020](https://github.com/vm0-ai/vm0/issues/24020)) ([49a30be](https://github.com/vm0-ai/vm0/commit/49a30bed8aa3295f875ea56ad81edcd473a49fce))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.251.0
+    * @vm0/core bumped to 8.490.0
+
+## [9.269.5](https://github.com/vm0-ai/vm0/compare/cli-v9.269.4...cli-v9.269.5) (2026-07-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.250.2
+    * @vm0/core bumped to 8.489.0
+
+## [9.269.4](https://github.com/vm0-ai/vm0/compare/cli-v9.269.3...cli-v9.269.4) (2026-07-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.250.1
+    * @vm0/core bumped to 8.488.3
+
+## [9.269.3](https://github.com/vm0-ai/vm0/compare/cli-v9.269.2...cli-v9.269.3) (2026-07-30)
+
+
+### Refactoring
+
+* **chat:** stop backward history paging at seq id one ([#23966](https://github.com/vm0-ai/vm0/issues/23966)) ([5d48c32](https://github.com/vm0-ai/vm0/commit/5d48c32163d609e48b8ec156547cf219bf283bdf))
+* **cli:** remove unnecessary resource candidate groups ([#23961](https://github.com/vm0-ai/vm0/issues/23961)) ([6c46502](https://github.com/vm0-ai/vm0/commit/6c46502cc34dc59fcd6b612cb72c7c21659178da))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.250.0
+    * @vm0/core bumped to 8.488.2
+
+## [9.269.2](https://github.com/vm0-ai/vm0/compare/cli-v9.269.1...cli-v9.269.2) (2026-07-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.249.2
+    * @vm0/core bumped to 8.488.1
+
 ## [9.269.1](https://github.com/vm0-ai/vm0/compare/cli-v9.269.0...cli-v9.269.1) (2026-07-30)
 
 
@@ -8158,7 +8239,7 @@
 
 * add zero web upload-file and file:read/file:write caps ([#10256](https://github.com/vm0-ai/vm0/issues/10256)) ([497dc17](https://github.com/vm0-ai/vm0/commit/497dc17f454d584e1427b10a6ae3e28a63c7c726))
 * **cli:** implement zero search --source slack static recipe ([#10270](https://github.com/vm0-ai/vm0/issues/10270)) ([dbb30e7](https://github.com/vm0-ai/vm0/commit/dbb30e79d1ea64cc6c7466e6b1eb897b489664b7))
-* **cli:** scaffold zero search command and chat-message:read capability ([#10251](https://github.com/vm0-ai/vm0/issues/10251)) ([bc6cb51](https://github.com/vm0-ai/vm0/commit/bc6cb51312022317278d86896e360cca6ef777f4))
+* **cli:** scaffold zero search command and chat message read capability ([#10251](https://github.com/vm0-ai/vm0/issues/10251)) ([bc6cb51](https://github.com/vm0-ai/vm0/commit/bc6cb51312022317278d86896e360cca6ef777f4))
 
 
 ### Bug Fixes
@@ -8479,7 +8560,7 @@
 
 ### Features
 
-* add zero chat message send command with chat-message:write capability ([#9580](https://github.com/vm0-ai/vm0/issues/9580)) ([93692d7](https://github.com/vm0-ai/vm0/commit/93692d7cff357a7d9d015e194dd134f475dd9ccb))
+* add zero chat message send command with chat message write capability ([#9580](https://github.com/vm0-ai/vm0/issues/9580)) ([93692d7](https://github.com/vm0-ai/vm0/commit/93692d7cff357a7d9d015e194dd134f475dd9ccb))
 
 
 ### Dependencies

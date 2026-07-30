@@ -57,6 +57,7 @@ function catalogPermissionDetail(
   } = overrides;
   return {
     connectorRef: connectorSlug,
+    connectorSlug,
     label,
     icon: icon ?? {
       url: `https://icons.example.test/${connectorSlug}.svg`,
@@ -76,19 +77,19 @@ function catalogPermissionDetail(
 function applyUserConnectorUpdate(
   current: readonly string[],
   body: {
-    readonly enabledTypes: readonly string[];
+    readonly enabledConnectorSlugs: readonly string[];
     readonly operation?: "replace" | "add" | "remove";
   },
 ): string[] {
   if (body.operation === "add") {
-    return Array.from(new Set([...current, ...body.enabledTypes]));
+    return Array.from(new Set([...current, ...body.enabledConnectorSlugs]));
   }
   if (body.operation === "remove") {
     return current.filter((connectorSlug) => {
-      return !body.enabledTypes.includes(connectorSlug);
+      return !body.enabledConnectorSlugs.includes(connectorSlug);
     });
   }
-  return [...body.enabledTypes];
+  return [...body.enabledConnectorSlugs];
 }
 
 function connectedConnector(
@@ -107,6 +108,7 @@ function connectedConnector(
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
     ...overrides,
+    slug: overrides.slug ?? overrides.type,
   };
 }
 
@@ -117,6 +119,7 @@ function publicConnectorStatusItem(
   const { connectorRef: connectorSlug, label, icon, ...rest } = overrides;
   return {
     connectorRef: connectorSlug,
+    slug: connectorSlug,
     label,
     description: `${label} public help text`,
     icon: icon ?? {
@@ -158,14 +161,20 @@ function mockAgentConnectorAuthorizations(
 ): void {
   let enabledConnectorSlugs: string[] = [...initialConnectorSlugs];
   context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-    return respond(200, { enabledTypes: enabledConnectorSlugs });
+    return respond(200, {
+      enabledTypes: enabledConnectorSlugs,
+      enabledConnectorSlugs,
+    });
   });
   context.mocks.api(zeroUserConnectorsContract.update, ({ body, respond }) => {
     enabledConnectorSlugs = applyUserConnectorUpdate(
       enabledConnectorSlugs,
       body,
     );
-    return respond(200, { enabledTypes: enabledConnectorSlugs });
+    return respond(200, {
+      enabledTypes: enabledConnectorSlugs,
+      enabledConnectorSlugs,
+    });
   });
 }
 
@@ -1117,10 +1126,7 @@ describe("chat event action cards", () => {
           query.beforeSeqId ||
           query.sinceSeqId
         ) {
-          return respond(200, {
-            events: [],
-            ...(query.beforeSeqId ? { hasHistoryBefore: false } : {}),
-          });
+          return respond(200, { events: [] });
         }
         return respond(200, {
           events: [
@@ -1133,7 +1139,6 @@ describe("chat event action cards", () => {
               createdAt,
             },
           ],
-          hasHistoryBefore: false,
         });
       },
     );
@@ -1843,7 +1848,10 @@ describe("chat event action cards", () => {
         updatedAt: "2026-01-01T00:00:01Z",
       }),
     ]);
-    triggerAblyEvent("connector:changed", { connectorRef: "gmail" });
+    triggerAblyEvent("connector:changed", {
+      connectorSlug: "gmail",
+      connectorRef: "slack",
+    });
 
     await refreshStarted.promise;
     const cardRemainedVisible = card.isConnected;
@@ -1929,19 +1937,21 @@ describe("chat event action cards", () => {
     mockNow();
     const user = userEvent.setup({ delay: null });
     const connectorAuthorizeUrl = `${window.location.origin}/connectors/github/authorize?agentId=${AGENT_ID}`;
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=catalog.analytics%3Aread&action=allow&expiresIn=24h`;
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=slack&ref=github&permission=catalog.analytics%3Aread&action=allow&expiresIn=24h`;
     let capturedPermissionGrantBody: unknown = null;
 
     context.mocks.data.connectors([
       connectedConnector({
-        type: "github",
+        type: "slack",
+        slug: "github",
         authMethod: "oauth",
         externalUsername: "octocat",
       }),
     ]);
     mockConnectorCatalogStatus([
       publicConnectorStatusItem({
-        connectorRef: "github",
+        connectorRef: "slack",
+        slug: "github",
         label: "Catalog GitHub",
         description: "Catalog GitHub server help text",
         icon: {
@@ -1988,7 +1998,8 @@ describe("chat event action cards", () => {
         return respond(200, [
           {
             agentId: body.agentId,
-            connectorRef: body.connectorRef,
+            connectorRef: body.connectorSlug,
+            connectorSlug: body.connectorSlug,
             permission: grant.permission,
             action: grant.action,
             expiresAt: isoFromNowMs(24 * 60 * 60 * 1000),
@@ -2080,7 +2091,7 @@ describe("chat event action cards", () => {
       ).toBeInTheDocument();
       expect(capturedPermissionGrantBody).toMatchObject({
         agentId: AGENT_ID,
-        connectorRef: "slack",
+        connectorSlug: "slack",
         mode: "patch",
         grants: [
           {
@@ -2133,7 +2144,8 @@ describe("chat event action cards", () => {
         return respond(200, [
           {
             agentId: body.agentId,
-            connectorRef: body.connectorRef,
+            connectorRef: body.connectorSlug,
+            connectorSlug: body.connectorSlug,
             permission: grant.permission,
             action: grant.action,
             expiresAt: isoFromNowMs(
@@ -2212,7 +2224,7 @@ describe("chat event action cards", () => {
     expect(capturedPermissionGrantBodies).toStrictEqual([
       {
         agentId: AGENT_ID,
-        connectorRef: "google-sheets",
+        connectorSlug: "google-sheets",
         mode: "patch",
         grants: [
           {
@@ -2224,7 +2236,7 @@ describe("chat event action cards", () => {
       },
       {
         agentId: AGENT_ID,
-        connectorRef: "google-sheets",
+        connectorSlug: "google-sheets",
         mode: "patch",
         grants: [
           {
@@ -2276,7 +2288,8 @@ describe("chat event action cards", () => {
         return respond(200, [
           {
             agentId: body.agentId,
-            connectorRef: body.connectorRef,
+            connectorRef: body.connectorSlug,
+            connectorSlug: body.connectorSlug,
             permission: grant.permission,
             action: grant.action,
             expiresAt: isoFromNowMs(60 * 60 * 1000),
@@ -3102,7 +3115,8 @@ describe("chat event action cards", () => {
         return respond(200, [
           {
             agentId: body.agentId,
-            connectorRef: body.connectorRef,
+            connectorRef: body.connectorSlug,
+            connectorSlug: body.connectorSlug,
             permission: grant.permission,
             action: grant.action,
             expiresAt: isoFromNowMs(60 * 60 * 1000),
@@ -3162,7 +3176,7 @@ describe("chat event action cards", () => {
       ).toBeInTheDocument();
       expect(capturedBody).toMatchObject({
         agentId: AGENT_ID,
-        connectorRef: "gmail",
+        connectorSlug: "gmail",
         mode: "patch",
         grants: [
           {
@@ -3396,7 +3410,8 @@ describe("chat event action cards", () => {
         storedGrants = [
           {
             agentId: body.agentId,
-            connectorRef: body.connectorRef,
+            connectorRef: body.connectorSlug,
+            connectorSlug: body.connectorSlug,
             permission: grant.permission,
             action: grant.action,
             expiresAt: isoFromNowMs(60 * 60 * 1000),
@@ -3474,7 +3489,8 @@ describe("chat event action cards", () => {
         return respond(200, [
           {
             agentId: body.agentId,
-            connectorRef: body.connectorRef,
+            connectorRef: body.connectorSlug,
+            connectorSlug: body.connectorSlug,
             permission: grant.permission,
             action: grant.action,
             expiresAt: isoFromNowMs(7 * 24 * 60 * 60 * 1000),
@@ -3529,7 +3545,7 @@ describe("chat event action cards", () => {
       ).toBeInTheDocument();
       expect(capturedBody).toMatchObject({
         agentId: AGENT_ID,
-        connectorRef: "slack",
+        connectorSlug: "slack",
         mode: "patch",
         grants: [
           {
@@ -3561,7 +3577,8 @@ describe("chat event action cards", () => {
         return respond(200, [
           {
             agentId: body.agentId,
-            connectorRef: body.connectorRef,
+            connectorRef: body.connectorSlug,
+            connectorSlug: body.connectorSlug,
             permission: grant.permission,
             action: grant.action,
             expiresAt: isoFromNowMs(60 * 60 * 1000),
@@ -3615,7 +3632,7 @@ describe("chat event action cards", () => {
       ).toBeInTheDocument();
       expect(capturedBody).toMatchObject({
         agentId: AGENT_ID,
-        connectorRef: "cloudflare",
+        connectorSlug: "cloudflare",
         mode: "patch",
         grants: [
           {
@@ -3655,7 +3672,8 @@ describe("chat event action cards", () => {
         expect(body.mode).toBe("patch");
         const grant: UserPermissionGrantResponse = {
           agentId: body.agentId,
-          connectorRef: body.connectorRef,
+          connectorRef: body.connectorSlug,
+          connectorSlug: body.connectorSlug,
           permission: appliedGrant.permission,
           action: appliedGrant.action,
           expiresAt: null,

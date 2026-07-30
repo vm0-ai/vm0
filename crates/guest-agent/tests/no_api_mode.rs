@@ -120,10 +120,7 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
         cli_result.last_event_sequence, None,
         "no-API execute_cli must not enqueue webhook events"
     );
-    assert!(
-        !std::path::Path::new(runtime.paths.event_error_flag()).exists(),
-        "no-API execute_cli must not write event error flag"
-    );
+    assert!(cli_result.event_delivery.is_none());
     let cli_session_id = std::fs::read_to_string(runtime.paths.session_id_file())?;
     assert!(
         cli_session_id.starts_with("mock-"),

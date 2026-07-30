@@ -102,26 +102,6 @@ describe("auth tokens", () => {
     });
   });
 
-  it("normalizes legacy chat message capabilities to chat event capabilities", () => {
-    const nowSeconds = currentSecond();
-    const token = signSandboxJwtForTests({
-      scope: "zero",
-      userId: "user_zero",
-      orgId: "org_zero",
-      runId: "run_zero",
-      capabilities: ["chat-message:read", "chat-message:write"],
-      iat: nowSeconds,
-      exp: nowSeconds + 60,
-    });
-
-    expect(verifyZeroToken(token)).toStrictEqual({
-      userId: "user_zero",
-      orgId: "org_zero",
-      runId: "run_zero",
-      capabilities: ["chat-event:read", "chat-event:write"],
-    });
-  });
-
   it("rejects expired tokens and mismatched scopes", () => {
     const nowSeconds = currentSecond();
     const expiredToken = signPatJwtForTests({
@@ -178,12 +158,6 @@ describe("auth tokens", () => {
         "chat-event:write",
       ]),
     });
-    expect(decodeZeroTokenPayloadForTest(token)).not.toMatchObject({
-      capabilities: expect.arrayContaining(["chat-message:read"]),
-    });
-    expect(decodeZeroTokenPayloadForTest(token)).not.toMatchObject({
-      capabilities: expect.arrayContaining(["chat-message:write"]),
-    });
     expect(verifyZeroToken(token)?.capabilities).toContain("chat-event:read");
     expect(verifyZeroToken(token)?.capabilities).toContain("chat-event:write");
   });
@@ -202,6 +176,23 @@ describe("auth tokens", () => {
     );
     expect(verifyZeroToken(enabledToken)?.capabilities).toContain(
       "banking:read",
+    );
+  });
+
+  it("gates custom connector writes behind the CLI create feature switch", () => {
+    const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
+    const enabledToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_zero",
+      { [FeatureSwitchKey.CustomConnectorCliCreate]: true },
+    );
+
+    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
+      "connector:write",
+    );
+    expect(verifyZeroToken(enabledToken)?.capabilities).toContain(
+      "connector:write",
     );
   });
 

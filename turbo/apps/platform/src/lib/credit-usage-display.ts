@@ -1,29 +1,71 @@
 import { getModelDisplayName } from "@vm0/core/model-display-name";
+import { i18n } from "../i18n/index.ts";
 
-const MANAGED_USAGE_KIND_DISPLAY_NAMES: Readonly<Record<string, string>> = {
-  scrape: "Web Fetch",
-  maps: "Maps",
-  "web-search": "Web Search",
-  "people-search": "People Search",
-  finance: "Finance",
-  weather: "Weather",
-};
+const USAGE_DISPLAY_NAMES = {
+  auto(): string {
+    return i18n.t(($) => {
+      return $.usage.displayNames.auto;
+    });
+  },
+  finance(): string {
+    return i18n.t(($) => {
+      return $.usage.displayNames.finance;
+    });
+  },
+  maps(): string {
+    return i18n.t(($) => {
+      return $.usage.displayNames.maps;
+    });
+  },
+  peopleSearch(): string {
+    return i18n.t(($) => {
+      return $.usage.displayNames.peopleSearch;
+    });
+  },
+  weather(): string {
+    return i18n.t(($) => {
+      return $.usage.displayNames.weather;
+    });
+  },
+  webFetch(): string {
+    return i18n.t(($) => {
+      return $.usage.displayNames.webFetch;
+    });
+  },
+  webSearch(): string {
+    return i18n.t(($) => {
+      return $.usage.displayNames.webSearch;
+    });
+  },
+} as const;
+
+const MANAGED_USAGE_KIND_DISPLAY_NAMES: Readonly<Record<string, () => string>> =
+  {
+    scrape: USAGE_DISPLAY_NAMES.webFetch,
+    maps: USAGE_DISPLAY_NAMES.maps,
+    "web-search": USAGE_DISPLAY_NAMES.webSearch,
+    "people-search": USAGE_DISPLAY_NAMES.peopleSearch,
+    finance: USAGE_DISPLAY_NAMES.finance,
+    weather: USAGE_DISPLAY_NAMES.weather,
+  };
 
 // Current Settings responses retain raw usage kinds inside each provider.
 // Keep provider aliases for older APIs that only return the provider so app
 // and API promotions can serve different versions safely.
-const MANAGED_USAGE_PROVIDER_DISPLAY_NAMES: Readonly<Record<string, string>> = {
-  firecrawl: "Web Fetch",
-  "google-maps": "Maps",
-  openstreetmap: "Maps",
-  perplexity: "Web Search",
-  apidojo: "Finance",
-  "google-weather": "Weather",
-  "google-air-quality": "Weather",
+const MANAGED_USAGE_PROVIDER_DISPLAY_NAMES: Readonly<
+  Record<string, () => string>
+> = {
+  firecrawl: USAGE_DISPLAY_NAMES.webFetch,
+  "google-maps": USAGE_DISPLAY_NAMES.maps,
+  openstreetmap: USAGE_DISPLAY_NAMES.maps,
+  perplexity: USAGE_DISPLAY_NAMES.webSearch,
+  apidojo: USAGE_DISPLAY_NAMES.finance,
+  "google-weather": USAGE_DISPLAY_NAMES.weather,
+  "google-air-quality": USAGE_DISPLAY_NAMES.weather,
 };
 
-const MODEL_DISPLAY_NAMES: Readonly<Record<string, string>> = {
-  "vm0-model": "Auto",
+const MODEL_DISPLAY_NAMES: Readonly<Record<string, () => string>> = {
+  "vm0-model": USAGE_DISPLAY_NAMES.auto,
 };
 
 function titleCaseUsageToken(token: string): string {
@@ -35,10 +77,12 @@ function titleCaseUsageToken(token: string): string {
   return token.charAt(0).toUpperCase() + token.slice(1);
 }
 
-function formatUsageIdentifier(value: string): string {
+function formatUsageDisplayName(value: string): string {
   const normalized = value.trim();
   if (!normalized) {
-    return "Usage";
+    return i18n.t(($) => {
+      return $.usage.displayNames.usage;
+    });
   }
 
   return normalized
@@ -67,7 +111,7 @@ function stripUsageProviderPrefix(value: string): string {
 function usageModelDisplayName(model: string): string {
   const usageDisplayName = MODEL_DISPLAY_NAMES[model];
   if (usageDisplayName) {
-    return usageDisplayName;
+    return usageDisplayName();
   }
 
   const directDisplayName = getModelDisplayName(model);
@@ -81,7 +125,7 @@ function usageModelDisplayName(model: string): string {
     return strippedDisplayName;
   }
 
-  return formatUsageIdentifier(strippedModel);
+  return formatUsageDisplayName(strippedModel);
 }
 
 function usageKindBase(kind: string): string {
@@ -95,11 +139,11 @@ export function getCreditUsageDisplayName(
   const baseKind = usageKindBase(kind);
   const managedKindDisplayName = MANAGED_USAGE_KIND_DISPLAY_NAMES[baseKind];
   if (managedKindDisplayName) {
-    return managedKindDisplayName;
+    return managedKindDisplayName();
   }
 
   if (!provider || provider === "unknown") {
-    return formatUsageIdentifier(kind);
+    return formatUsageDisplayName(kind);
   }
 
   const normalizedProvider = provider.trim();
@@ -110,8 +154,8 @@ export function getCreditUsageDisplayName(
   const managedProviderDisplayName =
     MANAGED_USAGE_PROVIDER_DISPLAY_NAMES[normalizedProvider];
   if (managedProviderDisplayName) {
-    return managedProviderDisplayName;
+    return managedProviderDisplayName();
   }
 
-  return formatUsageIdentifier(normalizedProvider);
+  return formatUsageDisplayName(normalizedProvider);
 }

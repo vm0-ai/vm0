@@ -12,7 +12,7 @@ import { agentDetail$ } from "./detail.ts";
 // ---------------------------------------------------------------------------
 // Authorized connectors: User↔Agent↔Connector (per-agent grant)
 //  - GET/PUT /api/zero/agents/:id/user-connectors
-//  - Wire data: { enabledTypes: string[] } — connector slugs this user
+//  - Wire data: { enabledConnectorSlugs: string[] } — connector slugs this user
 //    authorized for this agent
 // ---------------------------------------------------------------------------
 
@@ -124,7 +124,7 @@ export const saveAgentConnectors$ = command(
         await accept(
           client.update({
             params: { id: detail.agentId },
-            body: { enabledTypes: [name], operation },
+            body: { enabledConnectorSlugs: [name], operation },
             fetchOptions: { signal },
           }),
           [200],

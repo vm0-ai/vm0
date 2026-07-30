@@ -13,16 +13,13 @@ import {
 } from "../../lib/blocked-fetch-host";
 import { env } from "../../lib/env";
 import { badRequestMessage } from "../../lib/error";
-import {
-  buildArtifactKey,
-  buildFileUrl,
-  sanitizeArtifactFilename,
-} from "../../lib/file-url";
+import { sanitizeArtifactFilename } from "../../lib/file-url";
 import { inferMimetype } from "../../lib/mimetype";
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { putS3Object } from "../external/s3";
+import { allocateArtifactObject$ } from "../services/artifact-storage.service";
 import { recordWebUploadedFile$ } from "../services/run-uploaded-files.service";
 import { rejectSuspendedOrg$ } from "../services/zero-org-suspension.service";
 import type { RouteEntry } from "../route-entry";
@@ -264,13 +261,22 @@ const importImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return bytes;
   }
 
-  const id = crypto.randomUUID();
   const filename = importImageFilename(fetched.url, contentType);
-  const s3Key = buildArtifactKey(auth.userId, id, filename);
+  const orgId = "orgId" in auth ? auth.orgId : null;
+  const artifact = await set(
+    allocateArtifactObject$,
+    { userId: auth.userId, orgId, filename },
+    signal,
+  );
+  const { id, key: s3Key, url, metadata } = artifact;
   const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
-  const url = buildFileUrl(auth.userId, id, filename);
 
-  await get(putS3Object(bucket, s3Key, Buffer.from(bytes), contentType));
+  await get(
+    putS3Object(bucket, s3Key, Buffer.from(bytes), contentType, {
+      signal,
+      metadata,
+    }),
+  );
   signal.throwIfAborted();
 
   await set(
@@ -279,7 +285,7 @@ const importImageInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       runId: "runId" in auth ? auth.runId : undefined,
       externalId: id,
       userId: auth.userId,
-      orgId: "orgId" in auth ? auth.orgId : null,
+      orgId,
       filename,
       contentType,
       sizeBytes: bytes.byteLength,

@@ -1,26 +1,24 @@
 import {
-  pgTable,
-  uuid,
-  varchar,
-  text,
   integer,
+  pgTable,
+  text,
   timestamp,
   uniqueIndex,
-  index,
+  uuid,
+  varchar,
 } from "drizzle-orm/pg-core";
+
+import { chatThreads } from "./chat-thread";
 import { githubInstallations } from "./github-installation";
-import { agentSessions } from "./agent-session";
 
 /**
- * GitHub Issue Sessions table
- * Maps GitHub issues to VM0 agent sessions for conversation continuity.
- * Allows agents to maintain context across multiple comments on an issue.
+ * Stable mapping from one linked GitHub user's view of an issue or pull
+ * request to the canonical VM0 chat thread that owns its queue and session.
  */
-export const githubIssueSessions = pgTable(
-  "github_issue_sessions",
+export const githubChatThreadRoutes = pgTable(
+  "github_chat_thread_routes",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    userId: text("user_id").notNull(),
     installationId: uuid("installation_id")
       .notNull()
       .references(
@@ -30,12 +28,13 @@ export const githubIssueSessions = pgTable(
         { onDelete: "cascade" },
       ),
     repo: varchar("repo", { length: 255 }).notNull(),
-    issueNumber: integer("issue_number").notNull(),
-    agentSessionId: uuid("agent_session_id")
+    subjectNumber: integer("subject_number").notNull(),
+    userId: text("user_id").notNull(),
+    chatThreadId: uuid("chat_thread_id")
       .notNull()
       .references(
         () => {
-          return agentSessions.id;
+          return chatThreads.id;
         },
         { onDelete: "cascade" },
       ),
@@ -45,12 +44,12 @@ export const githubIssueSessions = pgTable(
   },
   (table) => {
     return [
-      uniqueIndex("idx_github_issue_sessions_installation_repo_issue").on(
+      uniqueIndex("idx_github_chat_thread_routes_install_repo_subject_user").on(
         table.installationId,
         table.repo,
-        table.issueNumber,
+        table.subjectNumber,
+        table.userId,
       ),
-      index("idx_github_issue_sessions_installation").on(table.installationId),
     ];
   },
 );

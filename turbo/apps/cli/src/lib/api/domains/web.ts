@@ -349,6 +349,7 @@ interface PrepareUploadResponse {
   contentType: string;
   size: number;
   uploadUrl: string;
+  uploadHeaders?: Record<string, string>;
   url: string;
 }
 
@@ -723,7 +724,12 @@ export async function uploadWebFile(
   const prepareRes = await fetch(prepareUrl, {
     method: "POST",
     headers: headersWithCliClientHeaders(prepareHeaders),
-    body: JSON.stringify({ filename, contentType, size: stats.size }),
+    body: JSON.stringify({
+      filename,
+      contentType,
+      size: stats.size,
+      supportsUploadHeaders: true,
+    }),
   });
 
   if (!prepareRes.ok) {
@@ -739,7 +745,10 @@ export async function uploadWebFile(
   const bytes = readFileSync(localPath);
   const putRes = await fetch(prepared.uploadUrl, {
     method: "PUT",
-    headers: { "Content-Type": prepared.contentType },
+    headers: {
+      "Content-Type": prepared.contentType,
+      ...prepared.uploadHeaders,
+    },
     body: new Uint8Array(bytes),
   });
 

@@ -4,7 +4,7 @@ import {
   type ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import { customConnectorProposalSchema } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { PlatformConnectorCatalogStatusItem } from "../connector-domain.ts";
 import { connectorCatalogStatusBySlug$ } from "../external/connectors.ts";
 import {
   allConnectorCatalogItems$,
@@ -37,7 +37,7 @@ export interface ConnectorActionDescriptor {
 }
 
 export interface ConnectorSignals extends ConnectorActionDescriptor {
-  catalogItem$: Computed<Promise<PublicConnectorCatalogStatusItem | null>>;
+  catalogItem$: Computed<Promise<PlatformConnectorCatalogStatusItem | null>>;
   available$: Computed<Promise<boolean>>;
   connected$: Computed<Promise<boolean>>;
   authorized$: Computed<Promise<boolean>>;
@@ -191,7 +191,7 @@ function createConnectorActivation(
     const connectorCatalogItems = await get(allConnectorCatalogItems$);
     signal.throwIfAborted();
     const connector = connectorCatalogItems.find((item) => {
-      return item.connectorRef === descriptor.connectorSlug;
+      return item.slug === descriptor.connectorSlug;
     });
     if (!connector) {
       return;

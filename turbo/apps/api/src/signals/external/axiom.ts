@@ -1,7 +1,10 @@
 import { computed, type Computed } from "ccstate";
 import { Axiom } from "@axiomhq/js";
+
 import { env, optionalEnv } from "../../lib/env";
+import { logger } from "../../lib/log";
 import { singleton } from "../../lib/singleton";
+import { startUntrackedBestEffortCleanup } from "../utils";
 import {
   getAxiomTokenEnvNameForApl,
   getAxiomTokenEnvNameForDataset,
@@ -10,12 +13,28 @@ import {
 const AXIOM_API_ORIGIN = "https://api.axiom.co";
 const AXIOM_QUERY_TIMEOUT_MS = 120_000;
 
+const L = logger("api:axiom");
+
+function logClientError(client: "sessions" | "telemetry", error: Error): void {
+  L.error("Axiom client operation failed", { client, error });
+}
+
 const sessionsAxiomClient = singleton(() => {
-  return new Axiom({ token: env("AXIOM_TOKEN_SESSIONS") });
+  return new Axiom({
+    token: env("AXIOM_TOKEN_SESSIONS"),
+    onError: (error) => {
+      logClientError("sessions", error);
+    },
+  });
 });
 
 const telemetryAxiomClient = singleton(() => {
-  return new Axiom({ token: env("AXIOM_TOKEN_TELEMETRY") });
+  return new Axiom({
+    token: env("AXIOM_TOKEN_TELEMETRY"),
+    onError: (error) => {
+      logClientError("telemetry", error);
+    },
+  });
 });
 
 export function getDatasetName(base: string): string {
@@ -53,8 +72,136 @@ export function ingestToAxiom(
   return true;
 }
 
+interface AxiomIngestFailure {
+  readonly timestamp: string;
+  readonly error: string;
+}
+
+interface AxiomIngestStatus {
+  readonly ingested: number;
+  readonly failed: number;
+  readonly failures?: readonly AxiomIngestFailure[];
+  readonly processedBytes: number;
+  readonly blocksCreated?: number;
+  readonly walLength?: number;
+}
+
+type DirectAxiomIngestResult =
+  | { readonly configured: false }
+  | { readonly configured: true };
+
+class DirectAxiomIngestError extends Error {
+  readonly reason: "http_status" | "invalid_response" | "partial_ingest";
+  readonly status?: number;
+
+  constructor(
+    message: string,
+    options: {
+      readonly reason: "http_status" | "invalid_response" | "partial_ingest";
+      readonly status?: number;
+    },
+  ) {
+    super(message);
+    this.name = "DirectAxiomIngestError";
+    this.reason = options.reason;
+    this.status = options.status;
+  }
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return Number.isInteger(value) && typeof value === "number" && value >= 0;
+}
+
+function isAxiomIngestFailure(value: unknown): value is AxiomIngestFailure {
+  return (
+    isRecord(value) &&
+    typeof value.timestamp === "string" &&
+    typeof value.error === "string"
+  );
+}
+
+function isAxiomIngestStatus(value: unknown): value is AxiomIngestStatus {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    isNonNegativeInteger(value.ingested) &&
+    isNonNegativeInteger(value.failed) &&
+    isNonNegativeInteger(value.processedBytes) &&
+    (value.blocksCreated === undefined ||
+      isNonNegativeInteger(value.blocksCreated)) &&
+    (value.walLength === undefined || isNonNegativeInteger(value.walLength)) &&
+    (value.failures === undefined ||
+      (Array.isArray(value.failures) &&
+        value.failures.every(isAxiomIngestFailure)))
+  );
+}
+
+function axiomIngestUrl(dataset: string): string {
+  return new URL(
+    `/v1/datasets/${encodeURIComponent(dataset)}/ingest`,
+    AXIOM_API_ORIGIN,
+  ).toString();
+}
+
+export async function ingestAxiomDirect(
+  dataset: string,
+  events: readonly Record<string, unknown>[],
+  signal: AbortSignal,
+): Promise<DirectAxiomIngestResult> {
+  const tokenEnvName = getAxiomTokenEnvNameForDataset(dataset);
+  const token = optionalEnv(tokenEnvName);
+  if (!token) {
+    return { configured: false };
+  }
+
+  const response = await fetch(axiomIngestUrl(dataset), {
+    method: "POST",
+    redirect: "error",
+    headers: {
+      accept: "application/json",
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(events),
+    signal,
+  });
+
+  if (!response.ok) {
+    if (response.body) {
+      startUntrackedBestEffortCleanup(response.body.cancel());
+    }
+    throw new DirectAxiomIngestError(
+      `Axiom ingest failed with status ${response.status}`,
+      {
+        reason: "http_status",
+        status: response.status,
+      },
+    );
+  }
+
+  const payload: unknown = await response.json();
+  if (!isAxiomIngestStatus(payload)) {
+    throw new DirectAxiomIngestError(
+      "Axiom ingest returned an unexpected response shape",
+      { reason: "invalid_response" },
+    );
+  }
+  if (
+    payload.failed !== 0 ||
+    (payload.failures?.length ?? 0) !== 0 ||
+    payload.ingested !== events.length
+  ) {
+    throw new DirectAxiomIngestError(
+      `Axiom ingest accepted ${payload.ingested} of ${events.length} events with ${payload.failed} failed events and ${payload.failures?.length ?? 0} failure details`,
+      { reason: "partial_ingest" },
+    );
+  }
+
+  return { configured: true };
+}
+
 interface FlushAxiomOptions {
-  readonly throwOnError?: boolean;
   readonly client?: "all" | "sessions" | "telemetry";
 }
 
@@ -89,17 +236,13 @@ export async function flushAxiom(
       return flush.promise;
     }),
   );
-  const errors: unknown[] = [];
   for (const [index, result] of results.entries()) {
     if (result.status === "rejected") {
-      errors.push({
+      L.error("Axiom client flush failed", {
         client: flushes[index]?.name ?? "unknown",
         error: result.reason,
       });
     }
-  }
-  if (options.throwOnError && errors.length > 0) {
-    throw new AggregateError(errors, "Axiom flush failed");
   }
 }
 

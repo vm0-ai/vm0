@@ -196,7 +196,7 @@ describe("chat drafts", () => {
     mockAgentChatPage(agentId);
     context.mocks.api(zeroAgentDraftContract.get, ({ params, respond }) => {
       return respond(200, {
-        draftContent: `Resume the ${params.id} launch notes`,
+        draftContent: null,
         draftUserMessage: {
           version: 1,
           parts: [
@@ -358,7 +358,6 @@ describe("chat drafts", () => {
 
       await waitFor(() => {
         expect(draftPatches).toContainEqual({
-          draftContent: "agent-level draft",
           draftUserMessage: {
             version: 1,
             parts: [{ type: "text", text: "agent-level draft" }],
@@ -372,7 +371,6 @@ describe("chat drafts", () => {
 
       await waitFor(() => {
         expect(draftPatches).toContainEqual({
-          draftContent: null,
           draftUserMessage: null,
           draftAttachments: null,
         });
@@ -406,7 +404,6 @@ describe("chat drafts", () => {
 
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
-        draftContent: "thread-level draft",
         draftUserMessage: {
           version: 1,
           parts: [{ type: "text", text: "thread-level draft" }],
@@ -420,7 +417,6 @@ describe("chat drafts", () => {
 
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
-        draftContent: null,
         draftUserMessage: null,
         draftAttachments: null,
       });
@@ -476,7 +472,7 @@ describe("chat drafts", () => {
         });
       }
       return respond(200, {
-        draftContent: `Feedback on this part of your reply:\n\n> ${quote}\n\n${note}`,
+        draftContent: null,
         draftUserMessage: {
           version: 1,
           parts: [
@@ -531,7 +527,7 @@ describe("chat drafts", () => {
     });
     context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
       return respond(200, {
-        draftContent: "Review the saved launch brief",
+        draftContent: null,
         draftUserMessage: {
           version: 1,
           parts: [
@@ -688,11 +684,6 @@ describe("chat drafts", () => {
 
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
-        draftContent:
-          `Review [Launch research](/chats/${referencedThreadId}) now\n\n` +
-          "Feedback on this part of your reply:\n\n" +
-          "> The launch sequence is vague\n\n" +
-          `Add the rollout dates from [Release notes](/chats/${feedbackReferencedThreadId})`,
         draftUserMessage: {
           version: 1,
           parts: [
@@ -750,7 +741,7 @@ describe("chat drafts", () => {
     });
     context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
       return respond(200, {
-        draftContent: "Review the saved launch brief",
+        draftContent: null,
         draftUserMessage: {
           version: 1,
           parts: [
@@ -807,7 +798,6 @@ describe("chat drafts", () => {
 
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
-        draftContent: "Review the updated launch brief",
         draftUserMessage: {
           version: 1,
           parts: [
@@ -854,7 +844,6 @@ describe("chat drafts", () => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
       expect(textarea().textContent ?? "").toBe("");
       expect(draftPatches).toContainEqual({
-        draftContent: null,
         draftUserMessage: null,
         draftAttachments: null,
       });
@@ -874,26 +863,39 @@ describe("chat drafts", () => {
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
-    context.mocks.http.post("*/api/zero/uploads/prepare", () => {
-      return HttpResponse.json({
-        id: "upload-photo",
-        filename: "photo.png",
-        contentType: "image/png",
-        size: 1024,
-        uploadUrl: "https://mock-upload.example.com/photo.png",
-        url: "https://example.com/photo.png",
-      });
-    });
+    context.mocks.http.post(
+      "*/api/zero/uploads/prepare",
+      async ({ request }) => {
+        await expect(request.json()).resolves.toMatchObject({
+          filename: "photo.png",
+          supportsUploadHeaders: true,
+        });
+        return HttpResponse.json({
+          id: "upload-photo",
+          filename: "photo.png",
+          contentType: "image/png",
+          size: 1024,
+          uploadUrl: "https://mock-upload.example.com/photo.png",
+          uploadHeaders: {
+            "x-amz-meta-artifact-id": "upload-photo",
+          },
+          url: "https://example.com/photo.png",
+        });
+      },
+    );
     context.mocks.http.put(
       "https://mock-upload.example.com/photo.png",
-      ({ deferred }) => {
+      ({ deferred, request }) => {
+        expect(request.headers.get("x-amz-meta-artifact-id")).toBe(
+          "upload-photo",
+        );
         uploadStarted.resolve();
-        const request = deferred<Response>();
+        const pendingResponse = deferred<Response>();
         uploadRequest = {
-          promise: request.promise,
-          resolve: request.resolve,
+          promise: pendingResponse.promise,
+          resolve: pendingResponse.resolve,
         };
-        return request.promise;
+        return pendingResponse.promise;
       },
     );
 
@@ -1083,6 +1085,7 @@ describe("chat drafts", () => {
           contentType: "video/mp4",
           size: 5 * 1024 * 1024 + 1,
           multipart: true,
+          supportsUploadHeaders: true,
         },
       ]);
       expect(firstPartAttempts).toBe(2);

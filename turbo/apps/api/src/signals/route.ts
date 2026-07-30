@@ -5,7 +5,6 @@ import { agentComposesByIdRoutes } from "./routes/agent-composes-id";
 import { agentComposesReadRoutes } from "./routes/agent-composes-read";
 import { agentComposesRoutes } from "./routes/agent-composes";
 import { agentRunsCancelRoutes } from "./routes/agent-runs-cancel";
-import { agentRunsCreateRoutes } from "./routes/agent-runs-create";
 import { agentRunsReadRoutes } from "./routes/agent-runs-read";
 import { agentRunTelemetryRoutes } from "./routes/agent-run-telemetry";
 import { agentSessionsRoutes } from "./routes/agent-sessions-id";
@@ -237,7 +236,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...agentComposesReadRoutes,
   ...agentComposesByIdRoutes,
   ...agentComposesRoutes,
-  ...agentRunsCreateRoutes,
   ...agentRunsCancelRoutes,
   ...agentRunsReadRoutes,
   ...agentRunTelemetryRoutes,

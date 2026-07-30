@@ -517,7 +517,7 @@ describe("chat lifecycle", () => {
     mockChatLifecycle(context);
     context.mocks.api(chatThreadEventsContract.list, async ({ respond }) => {
       await initialMessageList.promise;
-      return respond(200, { events: [], hasHistoryBefore: false });
+      return respond(200, { events: [] });
     });
 
     detachedSetupPage({ context, path: AGENT_CHAT_PATH });
@@ -605,7 +605,6 @@ describe("chat lifecycle", () => {
                 createdAt: "2026-03-10T00:00:01Z",
               },
             ]),
-            hasHistoryBefore: false,
           });
         }
         return respond(200, {
@@ -629,7 +628,6 @@ describe("chat lifecycle", () => {
               createdAt: "2026-03-10T00:00:01Z",
             },
           ]),
-          hasHistoryBefore: false,
         });
       },
     );

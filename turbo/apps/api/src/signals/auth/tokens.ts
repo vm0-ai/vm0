@@ -32,6 +32,7 @@ const CONDITIONAL_CAPABILITIES = [
   ["banking:read", FeatureSwitchKey.Banking],
   ["browser:read", FeatureSwitchKey.ZeroBrowser],
   ["browser:write", FeatureSwitchKey.ZeroBrowser],
+  ["connector:write", FeatureSwitchKey.CustomConnectorCliCreate],
 ] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [
@@ -57,30 +58,13 @@ function isZeroCapability(value: string): value is ZeroCapability {
   });
 }
 
-function normalizeZeroCapability(capability: string): string {
-  switch (capability) {
-    case "chat-message:read": {
-      return "chat-event:read";
-    }
-    case "chat-message:write": {
-      return "chat-event:write";
-    }
-    default: {
-      return capability;
-    }
-  }
-}
-
 // Capability names are open-ended at the token boundary so tokens issued by a
 // newer API remain valid on an older API. The validated output remains closed
 // to known capabilities so unknown names cannot grant permissions.
 const zeroCapabilitiesSchema = z
   .array(z.string().min(1))
   .transform((capabilities) => {
-    return capabilities.flatMap((capability) => {
-      const normalized = normalizeZeroCapability(capability);
-      return isZeroCapability(normalized) ? [normalized] : [];
-    });
+    return capabilities.filter(isZeroCapability);
   })
   .readonly();
 

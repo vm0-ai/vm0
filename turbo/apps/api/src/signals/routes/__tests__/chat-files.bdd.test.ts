@@ -54,7 +54,6 @@ describe("CHAT-01 chat thread lifecycle", () => {
     );
 
     await api.patchThread(actor, created.id, {
-      draftContent: "follow up on the launch",
       draftUserMessage: {
         version: 1,
         parts: [
@@ -76,7 +75,6 @@ describe("CHAT-01 chat thread lifecycle", () => {
       ],
     });
     const draft = await api.readThreadDraft(actor, created.id);
-    expect(draft.draftContent).toBe("follow up on the launch");
     expect(draft.draftUserMessage).toStrictEqual({
       version: 1,
       parts: [
@@ -150,7 +148,6 @@ describe("CHAT-01 chat thread lifecycle", () => {
     expectApiError(peerDraftRead.body);
     expect(peerDraftRead.body.error.code).toBe("NOT_FOUND");
     await api.patchThread(owner, thread.id, {
-      draftContent: "private draft",
       draftAttachments: null,
       draftUserMessage: {
         version: 1,
@@ -158,7 +155,6 @@ describe("CHAT-01 chat thread lifecycle", () => {
       },
     });
     await expect(api.readThreadDraft(owner, thread.id)).resolves.toMatchObject({
-      draftContent: "private draft",
       draftUserMessage: {
         version: 1,
         parts: [{ type: "text", text: "private draft" }],
@@ -701,7 +697,6 @@ describe("CHAT-02 chat messages and visible validation", () => {
     });
     expect(ownerMessages).toStrictEqual({
       events: [],
-      hasHistoryBefore: false,
     });
 
     const peerMessages = await api.requestListThreadEvents(

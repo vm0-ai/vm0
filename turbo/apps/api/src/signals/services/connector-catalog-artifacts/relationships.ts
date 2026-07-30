@@ -116,9 +116,6 @@ function sourceGrant(method: ConnectorCatalogAuthMethod): ConnectorGrantSource {
 function validateConnectorSemantics(artifact: ConnectorCatalogArtifact): void {
   const catalogSource = catalogSourceSchema.parse({
     catalogVersion: artifact.catalogVersion,
-    connectorRefs: artifact.connectors.map((connector) => {
-      return connector.slug;
-    }),
     categoryMetadata: artifact.categoryMetadata,
   });
   validateCatalogSourceSemantics(catalogSource);
@@ -143,7 +140,6 @@ function validateConnectorSemantics(artifact: ConnectorCatalogArtifact): void {
       throw new Error(`Unknown category for connector ${connector.slug}`);
     }
     const source = connectorSourceSchema.parse({
-      ref: connector.slug,
       label: connector.label,
       description: connector.description,
       category: connector.category,
@@ -166,7 +162,10 @@ function validateConnectorSemantics(artifact: ConnectorCatalogArtifact): void {
         };
       }),
     });
-    validateConnectorSourceSemantics(source);
+    validateConnectorSourceSemantics({
+      connectorSlug: connector.slug,
+      source,
+    });
 
     if (connector.skill.kind === "bundled") {
       const storageOwner = skillStorageOwners.get(connector.skill.storageName);
@@ -347,7 +346,6 @@ function validateFirewallSemantics(artifact: ConnectorCatalogArtifact): void {
       throw new Error("Generated connector firewall is unavailable");
     }
     validateFirewallGeneratorResult({
-      connectorRef: connector.slug,
       firewall,
       categories: connector.firewall.categories,
       defaultAllowed: connector.firewall.defaultAllowed,

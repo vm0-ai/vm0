@@ -1,6 +1,6 @@
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatInputQueueParams } from "@vm0/db/schema/chat-input-queue-params";
+import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -109,18 +109,9 @@ async function chatEventQueueAdmissionLock(
   tx: WorkflowQueueAdmissionTransaction,
   chatThreadId: string,
 ): Promise<void> {
-  // Release 1 of the two-phase namespace migration: every admission acquires
-  // the legacy key before the canonical key while API revisions overlap.
-  // Release 2 may drop the legacy key only after Release 1 is fully rolled out
-  // and its rollback target has drained.
-  const compatibilityKey = `chat_message_queue:${chatThreadId}`;
-  const canonicalKey = `chat_event_queue:${chatThreadId}`;
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtext(${compatibilityKey}))`,
-  );
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtext(${canonicalKey}))`,
-  );
+  // Serialize every admission and claim transaction for the same chat thread.
+  const lockKey = `chat_event_queue:${chatThreadId}`;
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
 }
 
 /** Any active thread-bound run preserves strict per-thread serialization. */
@@ -323,14 +314,14 @@ export async function loadNextWorkflowQueueEvent(
         chatThreadId: chatEvents.chatThreadId,
         triggerSource: chatEvents.triggerSource,
         triggerBrief: chatEvents.triggerBrief,
-        encryptedParams: chatInputQueueParams.encryptedParams,
+        encryptedParams: chatEventInputParams.encryptedParams,
         createdAt: chatEvents.createdAt,
       })
       .from(chatEvents)
       .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
       .leftJoin(
-        chatInputQueueParams,
-        eq(chatInputQueueParams.eventId, chatEvents.id),
+        chatEventInputParams,
+        eq(chatEventInputParams.eventId, chatEvents.id),
       )
       .where(eq(chatEvents.id, head.id))
       .limit(1);

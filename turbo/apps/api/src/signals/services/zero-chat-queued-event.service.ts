@@ -1,6 +1,6 @@
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
-import { chatInputQueueParams } from "@vm0/db/schema/chat-input-queue-params";
+import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import {
   chatEvents,
   type ChatEventAttachFileMetadata,
@@ -37,6 +37,7 @@ import {
 import { goalQueueEventMatchesActiveGoal } from "./chat-goal-queue.service";
 import { feishuOrgCallbackFileSchema } from "./feishu-org-callback-payload";
 import { agentphoneDeliveryTargetSchema } from "./agentphone-chat-callback-payload";
+import { githubDeliveryTargetSchema } from "./github-chat-callback-payload";
 import { teamsDeliveryTargetSchema } from "./teams-chat-callback-payload";
 import { telegramDeliveryTargetSchema } from "./telegram-chat-callback-payload";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
@@ -51,6 +52,7 @@ const queuedUserMessageTriggerSourceSchema = z.enum([
   "teams",
   "telegram",
   "agentphone",
+  "github",
   "workflow-schedule",
 ]);
 
@@ -81,6 +83,7 @@ const queuedUserMessageRunParamsSchema = z.object({
   teamsDelivery: teamsDeliveryTargetSchema.optional(),
   telegramDelivery: telegramDeliveryTargetSchema.optional(),
   agentphoneDelivery: agentphoneDeliveryTargetSchema.optional(),
+  githubDelivery: githubDeliveryTargetSchema.optional(),
   morningBriefDelivery: z
     .object({
       deliveryId: z.string(),
@@ -114,8 +117,8 @@ type QueuedUserMessageRunParams = z.infer<
 
 const queuedChatEvent = alias(chatEvents, "queued_chat_event");
 const queuedChatEventRevoker = alias(chatEvents, "queued_chat_event_revoker");
-const queuedEncryptedParams = chatInputQueueParams.encryptedParams;
-const queuedAttachFileMetadata = chatInputQueueParams.attachFileMetadata;
+const queuedEncryptedParams = chatEventInputParams.encryptedParams;
+const queuedAttachFileMetadata = chatEventInputParams.attachFileMetadata;
 
 export interface QueuedUserMessage {
   readonly id: string;
@@ -134,6 +137,7 @@ export interface QueuedUserMessage {
     | "teams"
     | "telegram"
     | "agentphone"
+    | "github"
     | "workflow-schedule";
   readonly encryptedParams: string | null;
 }
@@ -266,8 +270,8 @@ export async function loadNextUnclaimedQueuedUserMessage(
     .from(chatEvents)
     .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
     .leftJoin(
-      chatInputQueueParams,
-      eq(chatInputQueueParams.eventId, chatEvents.id),
+      chatEventInputParams,
+      eq(chatEventInputParams.eventId, chatEvents.id),
     )
     .where(
       and(
@@ -348,8 +352,8 @@ async function appendClaimedUserMessage(
     })
     .from(chatEvents)
     .leftJoin(
-      chatInputQueueParams,
-      eq(chatInputQueueParams.eventId, chatEvents.id),
+      chatEventInputParams,
+      eq(chatEventInputParams.eventId, chatEvents.id),
     )
     .where(
       and(
@@ -713,8 +717,8 @@ export async function failQueuedUserMessage(
       })
       .from(chatEvents)
       .leftJoin(
-        chatInputQueueParams,
-        eq(chatInputQueueParams.eventId, chatEvents.id),
+        chatEventInputParams,
+        eq(chatEventInputParams.eventId, chatEvents.id),
       )
       .where(
         and(

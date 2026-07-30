@@ -232,12 +232,19 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description:
       "Enable workspace language bootstrap, persistence, and the Settings preference entry.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.BrazilianPortugueseLocale]: {
     maintainer: "yuma@vm0.ai",
     description:
       "Allow pt-BR preference writes after incompatible API readers and rollback candidates have drained.",
+    enabled: false,
+    userOverridable: false,
+  },
+  [FeatureSwitchKey.JapaneseLocale]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Allow ja-JP preference writes after incompatible API readers and rollback candidates have drained.",
     enabled: false,
     userOverridable: false,
   },
@@ -387,8 +394,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description:
       "Match chat composer slash skill suggestions by any slug substring instead of only prefixes.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ThreeColumnNav]: {
     maintainer: "ming@vm0.ai",
@@ -408,8 +414,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.SlackDmSessionRouting]: {
     maintainer: "yuma@vm0.ai",
     description:
-      "Reuse agent/model-scoped sessions for top-level Slack direct messages after compatible callback readers are deployed.",
-    enabled: false,
+      "Reuse agent/model-scoped sessions for top-level Slack direct messages.",
+    enabled: true,
   },
   [FeatureSwitchKey.TeamsIntegration]: {
     maintainer: "linghan@vm0.ai",
@@ -437,8 +443,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Show the Artifacts manage page for generated artifacts in the current organization.",
+    enabled: true,
+  },
+  [FeatureSwitchKey.ArtifactKeyV2]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Store new user artifacts under flat, ten-character hashed public keys.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.HostedArtifactVersions]: {
     maintainer: "yuma@vm0.ai",
@@ -494,6 +505,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the configure-permissions entry in the chat composer connector popover, opening the agent×connector firewall dialog inline.",
     enabled: false,
     userOverridable: true,
+  },
+  [FeatureSwitchKey.CustomConnectorCliCreate]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Allow Zero CLI agents to create and configure custom connectors directly.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.CustomConnectorOAuth2]: {
     maintainer: "liangyou@vm0.ai",

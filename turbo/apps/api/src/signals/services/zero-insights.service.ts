@@ -1,7 +1,8 @@
 import { computed, type Computed } from "ccstate";
-import type {
-  DayInsight,
-  InsightsResponse,
+import {
+  insightPermissionSchema,
+  type DayInsight,
+  type InsightsResponse,
 } from "@vm0/api-contracts/contracts/zero-insights";
 import { insightsDaily } from "@vm0/db/schema/insights-daily";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
@@ -13,6 +14,7 @@ import { tapError } from "../utils";
 
 type DayInsightData = Partial<Omit<DayInsight, "date">>;
 const ORG_MEMBERSHIP_PAGE_SIZE = 100;
+const storedInsightPermissionsSchema = insightPermissionSchema.array();
 
 interface StoredTeamUsageEntry {
   readonly userId?: string;
@@ -137,6 +139,9 @@ export function zeroInsights(args: {
 
     const days = rows.map((row): DayInsight => {
       const data = row.data as StoredDayInsightData;
+      const permissions = storedInsightPermissionsSchema.parse(
+        data.permissions ?? [],
+      );
       const teamUsage = filterTeamUsageByCurrentMembers(
         data.teamUsage ?? [],
         currentMemberUserIds,
@@ -155,7 +160,7 @@ export function zeroInsights(args: {
         teamUsage,
         topTask: data.topTask ?? null,
         services: data.services ?? [],
-        permissions: data.permissions ?? [],
+        permissions,
         automations: [],
         chats: data.chats ?? [],
       };

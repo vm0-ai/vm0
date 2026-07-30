@@ -119,8 +119,7 @@ interface InsightData {
   }[];
   readonly permissions: {
     readonly label: string;
-    // TODO(#23619): Rename with the persisted analytics and response schema.
-    readonly connectorType: string;
+    readonly connectorSlug: string;
     readonly allowed: number;
     readonly denied: number;
     readonly agentNames: string[];
@@ -566,7 +565,7 @@ function buildUserInsight(args: BuildUserInsightArgs): InsightData {
         .map((permission) => {
           return {
             label: permission.label,
-            connectorType: permission.connectorSlug,
+            connectorSlug: permission.connectorSlug,
             allowed: permission.allowed,
             denied: permission.denied,
             agentNames: [...permission.agentNames],

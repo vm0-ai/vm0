@@ -14,11 +14,10 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { agentphoneChatThreadRoutes } from "@vm0/db/schema/agentphone-chat-thread-route";
 import { agentphoneMessages } from "@vm0/db/schema/agentphone-message";
-import { agentphoneThreadSessions } from "@vm0/db/schema/agentphone-thread-session";
 import { agentphoneUserAgentPreferences } from "@vm0/db/schema/agentphone-user-agent-preference";
 import { agentphoneUserLinks } from "@vm0/db/schema/agentphone-user-link";
 import { chatEvents } from "@vm0/db/schema/chat-event";
-import { and, desc, eq, isNotNull, isNull, notExists, or } from "drizzle-orm";
+import { and, desc, eq, isNull, notExists, or } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { env, optionalEnv } from "../../lib/env";
@@ -416,34 +415,7 @@ async function resolveAgentPhoneConversationUserLink(
     .where(eq(agentphoneChatThreadRoutes.conversationId, conversationId))
     .orderBy(desc(agentphoneChatThreadRoutes.createdAt))
     .limit(1);
-  if (route) {
-    return resolveAgentPhoneUserLinkById(db, route.userLinkId);
-  }
-
-  const [session] = await db
-    .select({ userLinkId: agentphoneThreadSessions.agentphoneUserLinkId })
-    .from(agentphoneThreadSessions)
-    .where(eq(agentphoneThreadSessions.conversationId, conversationId))
-    .orderBy(desc(agentphoneThreadSessions.updatedAt))
-    .limit(1);
-  if (session) {
-    return resolveAgentPhoneUserLinkById(db, session.userLinkId);
-  }
-
-  const [message] = await db
-    .select({ userLinkId: agentphoneMessages.agentphoneUserLinkId })
-    .from(agentphoneMessages)
-    .where(
-      and(
-        eq(agentphoneMessages.conversationId, conversationId),
-        isNotNull(agentphoneMessages.agentphoneUserLinkId),
-      ),
-    )
-    .orderBy(desc(agentphoneMessages.createdAt))
-    .limit(1);
-  return message?.userLinkId
-    ? resolveAgentPhoneUserLinkById(db, message.userLinkId)
-    : null;
+  return route ? resolveAgentPhoneUserLinkById(db, route.userLinkId) : null;
 }
 
 export async function resolveAgentPhoneUserLinkForEvent(
@@ -1209,24 +1181,14 @@ async function handleNewSessionCommand(args: {
 
   const rootMessageId = agentPhoneThreadRootMessageId(args.event);
   const userLinkId = args.userLink.id;
-  await args.db.transaction(async (tx) => {
-    await tx
-      .delete(agentphoneChatThreadRoutes)
-      .where(
-        and(
-          eq(agentphoneChatThreadRoutes.agentphoneUserLinkId, userLinkId),
-          eq(agentphoneChatThreadRoutes.rootMessageId, rootMessageId),
-        ),
-      );
-    await tx
-      .delete(agentphoneThreadSessions)
-      .where(
-        and(
-          eq(agentphoneThreadSessions.agentphoneUserLinkId, userLinkId),
-          eq(agentphoneThreadSessions.rootMessageId, rootMessageId),
-        ),
-      );
-  });
+  await args.db
+    .delete(agentphoneChatThreadRoutes)
+    .where(
+      and(
+        eq(agentphoneChatThreadRoutes.agentphoneUserLinkId, userLinkId),
+        eq(agentphoneChatThreadRoutes.rootMessageId, rootMessageId),
+      ),
+    );
   args.signal.throwIfAborted();
 
   await sendAgentPhoneSlashCommandText(

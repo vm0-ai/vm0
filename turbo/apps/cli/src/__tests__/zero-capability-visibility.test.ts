@@ -115,23 +115,6 @@ describe("decodeZeroTokenPayload", () => {
     });
   });
 
-  it("should normalize legacy chat message capabilities", () => {
-    const token = buildZeroToken({
-      userId: "user-1",
-      runId: "run-1",
-      orgId: "org-1",
-      scope: "zero",
-      capabilities: ["chat-message:read", "chat-message:write"],
-      iat: 1000,
-      exp: 2000,
-    });
-
-    expect(decodeZeroTokenPayload(token)?.capabilities).toStrictEqual([
-      "chat-event:read",
-      "chat-event:write",
-    ]);
-  });
-
   it("should return undefined for token without vm0_sandbox_ prefix", () => {
     expect(decodeZeroTokenPayload("some-other-token")).toBeUndefined();
   });
@@ -1093,7 +1076,17 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
-  it("should hide connector when connector:read capability is missing", () => {
+  it("should show connector when connector:write capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["connector:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    expect(visibleCommandNames(buildProgram())).toContain("connector");
+  });
+
+  it("should hide connector when connector capabilities are missing", () => {
     const token = buildZeroToken({
       scope: "zero",
       capabilities: ["agent:read"],

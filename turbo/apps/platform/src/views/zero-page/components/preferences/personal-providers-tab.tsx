@@ -298,7 +298,6 @@ function CodexOAuthCredentialRow({
               },
               {
                 kind: "separator",
-                label: "codex-reset-separator",
               },
               {
                 label: t(($) => {
@@ -419,14 +418,19 @@ function fallbackSubscriptionUsage(
 }
 
 function usageWindows(usage: SubscriptionUsage | null | undefined): readonly {
-  readonly label: string;
+  readonly kind: "fiveHour" | "week";
   readonly window: SubscriptionUsageWindow;
 }[] {
   return [
-    { label: "5h", window: usage?.fiveHour ?? null },
-    { label: "Week", window: usage?.weekly ?? null },
+    { kind: "fiveHour" as const, window: usage?.fiveHour ?? null },
+    { kind: "week" as const, window: usage?.weekly ?? null },
   ].filter(
-    (item): item is { label: string; window: SubscriptionUsageWindow } => {
+    (
+      item,
+    ): item is {
+      kind: "fiveHour" | "week";
+      window: SubscriptionUsageWindow;
+    } => {
       return hasUsageWindow(item.window);
     },
   );
@@ -473,13 +477,15 @@ function SubscriptionUsageMeter({
   return (
     <div className="w-full rounded-lg bg-muted/30 px-3 py-2.5">
       <div className="space-y-2">
-        {windows.map(({ label, window }) => {
+        {windows.map(({ kind, window }) => {
           const windowLabel =
-            label === "Week"
+            kind === "week"
               ? t(($) => {
                   return $.settings.models.personal.status.week;
                 })
-              : label;
+              : t(($) => {
+                  return $.settings.models.personal.status.fiveHour;
+                });
           const remainingPercent =
             window.remainingPercent ??
             (window.usedPercent === null ? null : 100 - window.usedPercent);
@@ -487,7 +493,7 @@ function SubscriptionUsageMeter({
           const reset = formatSubscriptionUsageReset(window.resetAt);
           const tone = usageTone(remainingPercent);
           return (
-            <div key={label} className="space-y-1">
+            <div key={kind} className="space-y-1">
               <div className="flex min-w-0 items-center justify-between gap-2 text-[11px] leading-none">
                 <span className="font-medium text-foreground">
                   {windowLabel}
@@ -542,13 +548,21 @@ function SubscriptionUsageMeter({
   );
 }
 
-interface OAuthMenuItem {
-  label: string;
-  kind?: "item" | "status" | "separator";
-  disabled?: boolean;
-  onSelect?: () => void;
-  opensModal?: boolean;
-}
+type OAuthMenuItem =
+  | {
+      readonly kind: "separator";
+    }
+  | {
+      readonly kind: "status";
+      readonly label: string;
+    }
+  | {
+      readonly kind?: "item";
+      readonly label: string;
+      readonly disabled?: boolean;
+      readonly onSelect?: () => void;
+      readonly opensModal?: boolean;
+    };
 
 function OAuthMenuEntry({ item }: { item: OAuthMenuItem }) {
   if (item.kind === "separator") {
@@ -679,7 +693,9 @@ function OAuthCredentialRow({
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-44">
                   {menuItems.map((item) => {
-                    return <OAuthMenuEntry key={item.label} item={item} />;
+                    const key =
+                      item.kind === "separator" ? "separator" : item.label;
+                    return <OAuthMenuEntry key={key} item={item} />;
                   })}
                 </DropdownMenuContent>
               </DropdownMenu>

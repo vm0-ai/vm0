@@ -99,7 +99,6 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
         params: { id: fixture.agentId },
         headers: authHeaders(),
         body: {
-          draftContent: "draft text",
           draftUserMessage,
           draftAttachments: [attachment],
         },
@@ -115,7 +114,7 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
       [200],
     );
     expect(saved.body).toStrictEqual({
-      draftContent: "draft text",
+      draftContent: null,
       draftUserMessage,
       draftAttachments: [attachment],
     });
@@ -125,7 +124,6 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
         params: { id: fixture.agentId },
         headers: authHeaders(),
         body: {
-          draftContent: null,
           draftUserMessage: null,
           draftAttachments: null,
         },
@@ -156,7 +154,6 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
         params: { id: fixture.agentId },
         headers: authHeaders(),
         body: {
-          draftContent: "owner draft",
           draftUserMessage: {
             version: 1,
             parts: [{ type: "text", text: "owner draft" }],

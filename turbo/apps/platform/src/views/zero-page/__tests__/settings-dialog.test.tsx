@@ -59,11 +59,14 @@ async function openDialog(
   });
 }
 
-function createPreferences(locale: UserLocale | null): UserPreferencesResponse {
+function createPreferences(
+  locale: UserLocale | null,
+  supportedLocales: UserLocale[] = ["en-US", "pt-BR"],
+): UserPreferencesResponse {
   return {
     timezone: null,
     locale,
-    supportedLocales: ["en-US", "pt-BR"],
+    supportedLocales,
     pinnedAgentIds: [],
     sendMode: "enter",
     morningBriefEnabled: false,
@@ -197,10 +200,119 @@ describe("settings dialog", () => {
     });
   });
 
+  it("selects and persists Japanese when the API advertises it", async () => {
+    const submittedLocales: UserLocale[] = [];
+    let serverLocale: UserLocale | null = "en-US";
+    const supportedLocales: UserLocale[] = ["en-US", "pt-BR", "ja-JP"];
+    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+      return respond(200, createPreferences(serverLocale, supportedLocales));
+    });
+    context.mocks.api(
+      zeroUserPreferencesContract.update,
+      ({ body, respond }) => {
+        if (body.locale !== undefined) {
+          serverLocale = body.locale;
+          submittedLocales.push(body.locale);
+        }
+        return respond(200, createPreferences(serverLocale, supportedLocales));
+      },
+    );
+
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: true,
+    });
+
+    click(
+      await screen.findByRole("combobox", {
+        name: "Language",
+      }),
+    );
+    click(screen.getByRole("option", { name: "日本語" }));
+
+    await waitFor(() => {
+      expect(submittedLocales).toContain("ja-JP");
+      expect(screen.getByRole("combobox", { name: "言語" })).toHaveTextContent(
+        "日本語",
+      );
+      expect(document.documentElement.lang).toBe("ja-JP");
+      expect(cachedLocale()).toBe("ja-JP");
+    });
+
+    click(screen.getByRole("combobox", { name: "言語" }));
+    click(screen.getByRole("option", { name: "English" }));
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe("en-US");
+    });
+  });
+
+  it("restores Japanese from the workspace preference on reload", async () => {
+    document.documentElement.lang = "en-US";
+    context.store.set(setCachedLocale$, "en-US");
+    context.mocks.data.userPreferences(
+      createPreferences("ja-JP", ["en-US", "ja-JP"]),
+    );
+
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: true,
+    });
+
+    const languageSelect = await screen.findByRole("combobox", {
+      name: "言語",
+    });
+    await waitFor(() => {
+      expect(languageSelect).toHaveTextContent("日本語");
+      expect(document.documentElement.lang).toBe("ja-JP");
+      expect(cachedLocale()).toBe("ja-JP");
+    });
+
+    click(languageSelect);
+    expect(
+      screen.queryByRole("option", { name: "Português (Brasil)" }),
+    ).not.toBeInTheDocument();
+    click(screen.getByRole("option", { name: "English" }));
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe("en-US");
+    });
+  });
+
+  it("does not submit Japanese to an API that advertises only Portuguese", async () => {
+    const submittedLocales: UserLocale[] = [];
+    document.documentElement.lang = "ja-JP";
+    context.store.set(setCachedLocale$, "ja-JP");
+    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+      return respond(200, createPreferences(null, ["en-US", "pt-BR"]));
+    });
+    context.mocks.api(
+      zeroUserPreferencesContract.update,
+      ({ body, respond }) => {
+        if (body.locale !== undefined) {
+          submittedLocales.push(body.locale);
+        }
+        return respond(
+          200,
+          createPreferences(body.locale ?? null, ["en-US", "pt-BR"]),
+        );
+      },
+    );
+
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: true,
+    });
+
+    await waitFor(() => {
+      expect(submittedLocales).toContain("en-US");
+      expect(submittedLocales).not.toContain("ja-JP");
+      expect(document.documentElement.lang).toBe("en-US");
+      expect(cachedLocale()).toBe("en-US");
+    });
+  });
+
   it("hides the language entry when the feature switch is off", async () => {
     context.mocks.data.userPreferences(createPreferences("en-US"));
 
-    await openDialog("admin", "preference");
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: false,
+    });
 
     await waitFor(() => {
       expect(screen.getByText("Theme")).toBeInTheDocument();

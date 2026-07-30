@@ -1,5 +1,101 @@
 # Changelog
 
+## [0.662.2](https://github.com/vm0-ai/vm0/compare/app-v0.662.1...app-v0.662.2) (2026-07-30)
+
+
+### Bug Fixes
+
+* remove orange selected tint from computer use menu rows ([#24031](https://github.com/vm0-ai/vm0/issues/24031)) ([2f7f660](https://github.com/vm0-ai/vm0/commit/2f7f66032be922106a06d46a77a4aca8045c5c3a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.251.1
+    * @vm0/core bumped to 8.491.0
+
+## [0.662.1](https://github.com/vm0-ai/vm0/compare/app-v0.662.0...app-v0.662.1) (2026-07-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.251.0
+    * @vm0/core bumped to 8.490.0
+
+## [0.662.0](https://github.com/vm0-ai/vm0/compare/app-v0.661.1...app-v0.662.0) (2026-07-30)
+
+
+### Features
+
+* **platform:** enable locale rollout and browser detection ([#23983](https://github.com/vm0-ai/vm0/issues/23983)) ([9b689ad](https://github.com/vm0-ai/vm0/commit/9b689ad900016b7a04f930a57ae20f9702fdff69))
+
+
+### Refactoring
+
+* **insights:** migrate connector identity to slug ([#23952](https://github.com/vm0-ai/vm0/issues/23952)) ([596d96d](https://github.com/vm0-ai/vm0/commit/596d96d3d5972f9753c20ba3cdaff4e4506a0969))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.250.2
+    * @vm0/core bumped to 8.489.0
+
+## [0.661.1](https://github.com/vm0-ai/vm0/compare/app-v0.661.0...app-v0.661.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* **platform:** enforce localized ui copy ([#23973](https://github.com/vm0-ai/vm0/issues/23973)) ([2fd5962](https://github.com/vm0-ai/vm0/commit/2fd596255dc6ef490390e4acc6b00bd001d0de94))
+
+
+### Refactoring
+
+* **platform:** consume slug-named connector contracts ([#23981](https://github.com/vm0-ai/vm0/issues/23981)) ([497e7ac](https://github.com/vm0-ai/vm0/commit/497e7ac9b5ba69cc567edf239756f65efe3e0060))
+* retire draft content storage ([#23940](https://github.com/vm0-ai/vm0/issues/23940)) ([baa4589](https://github.com/vm0-ai/vm0/commit/baa45899ef04ae8607ea6d5552632c95940ea259))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.250.1
+    * @vm0/core bumped to 8.488.3
+
+## [0.661.0](https://github.com/vm0-ai/vm0/compare/app-v0.660.2...app-v0.661.0) (2026-07-30)
+
+
+### Features
+
+* **chat:** render composer agent mentions as structured agent parts ([#23943](https://github.com/vm0-ai/vm0/issues/23943)) ([ae861b8](https://github.com/vm0-ai/vm0/commit/ae861b86e7873f6d8811f00c877af6e0483f888c))
+
+
+### Refactoring
+
+* **chat:** stop backward history paging at seq id one ([#23966](https://github.com/vm0-ai/vm0/issues/23966)) ([5d48c32](https://github.com/vm0-ai/vm0/commit/5d48c32163d609e48b8ec156547cf219bf283bdf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.250.0
+    * @vm0/core bumped to 8.488.2
+
+## [0.660.2](https://github.com/vm0-ai/vm0/compare/app-v0.660.1...app-v0.660.2) (2026-07-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.249.2
+    * @vm0/core bumped to 8.488.1
+
 ## [0.660.1](https://github.com/vm0-ai/vm0/compare/app-v0.660.0...app-v0.660.1) (2026-07-30)
 
 

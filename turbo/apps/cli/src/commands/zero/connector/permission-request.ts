@@ -167,7 +167,7 @@ async function outputPermissionRequestMessage(
   const platformOrigin = await getPlatformOrigin();
 
   const urlParams = new URLSearchParams({
-    ref: connectorSlug,
+    connectorSlug,
     permission,
     action: "allow",
   });

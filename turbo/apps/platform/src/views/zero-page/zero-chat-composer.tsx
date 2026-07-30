@@ -139,7 +139,7 @@ import {
 } from "@vm0/core";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-providers";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
@@ -362,7 +362,9 @@ export interface ZeroChatComposerProps {
 }
 
 export interface ComposerConnectorReadState {
-  readonly catalogItems: Loadable<readonly PublicConnectorCatalogStatusItem[]>;
+  readonly catalogItems: Loadable<
+    readonly PlatformConnectorCatalogStatusItem[]
+  >;
   readonly customConnectors: Loadable<readonly CustomConnectorResponse[]>;
   readonly agentId: Loadable<string | null>;
   readonly authorizations: Loadable<AgentConnectorAuthorizations | null>;
@@ -435,7 +437,7 @@ type TemplatePreviewImageSize = Parameters<typeof r2ImageTransformUrl>[1];
 // Helpers
 // ---------------------------------------------------------------------------
 
-type ComposerConnectorItem = PublicConnectorCatalogStatusItem & {
+type ComposerConnectorItem = PlatformConnectorCatalogStatusItem & {
   readonly authorized: boolean;
 };
 
@@ -1446,7 +1448,7 @@ function WorkflowTemplateConnectorIcons({
   const catalogConnectors = useLastResolved(allConnectorCatalogItems$);
   const visibleConnectors = connectors.flatMap((connectorSlug) => {
     const connector = catalogConnectors?.find((candidate) => {
-      return candidate.connectorRef === connectorSlug;
+      return candidate.slug === connectorSlug;
     });
     return connector ? [connector] : [];
   });
@@ -1470,7 +1472,7 @@ function WorkflowTemplateConnectorIcons({
         {displayedConnectors.map((connector) => {
           return (
             <span
-              key={connector.connectorRef}
+              key={connector.slug}
               className={cn(
                 "flex shrink-0 items-center justify-center border border-border/60 bg-background",
                 compact ? "h-5 w-5 rounded" : "h-7 w-7 rounded-md",
@@ -1962,9 +1964,7 @@ function prewarmIllustrationPreviewImagesNearScroll({
 
 interface PresentationTemplateThemeOption {
   readonly id: string;
-  readonly name: string;
   readonly group: "multi-accent" | "single-accent";
-  readonly paletteName: string;
   readonly colors: readonly [
     bg: string,
     surface: string,
@@ -1978,332 +1978,400 @@ interface PresentationTemplateThemeOption {
   ];
 }
 
-const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOption[] =
-  [
-    {
-      id: "prism",
-      name: "Candy party",
-      group: "multi-accent",
-      paletteName: "Candy party",
-      colors: [
-        "#FFFFFF",
-        "#F7F7FA",
-        "#1A1726",
-        "#5C5870",
-        "#7257E6",
-        "#FF6B4A",
-        "#AEE63E",
-        "#3FA9F5",
-        "#ECECF2",
-      ],
-    },
-    {
-      id: "carnival",
-      name: "Funfair",
-      group: "multi-accent",
-      paletteName: "Funfair",
-      colors: [
-        "#FFFDF7",
-        "#FFFFFF",
-        "#221C14",
-        "#5E564A",
-        "#FF7A1A",
-        "#E5388E",
-        "#F5B73E",
-        "#1FB6A6",
-        "#EFEADF",
-      ],
-    },
-    {
-      id: "pop-art",
-      name: "Neon arcade",
-      group: "multi-accent",
-      paletteName: "Neon arcade",
-      colors: [
-        "#111016",
-        "#1B1A22",
-        "#F4F2FA",
-        "#A09CB0",
-        "#3D7BFF",
-        "#FF3D9A",
-        "#C6FF4A",
-        "#FF7A1A",
-        "#26242E",
-      ],
-    },
-    {
-      id: "warm-sand",
-      name: "Morning paper",
-      group: "single-accent",
-      paletteName: "Morning paper",
-      colors: [
-        "#FFFDF8",
-        "#FFFFFF",
-        "#262626",
-        "#5A5A5A",
-        "#F19B3A",
-        "#8DACE5",
-        "#DDB8D9",
-        "#516049",
-        "#ECECEC",
-      ],
-    },
-    {
-      id: "bauhaus-primary",
-      name: "Toy bricks",
-      group: "single-accent",
-      paletteName: "Toy bricks",
-      colors: [
-        "#F5F1E6",
-        "#FFFFFF",
-        "#1A1A1A",
-        "#4A4A4A",
-        "#E63327",
-        "#2C5BD6",
-        "#F2B705",
-        "#1A1A1A",
-        "#E2DDD0",
-      ],
-    },
-    {
-      id: "nordic-frost",
-      name: "Ice lake",
-      group: "single-accent",
-      paletteName: "Ice lake",
-      colors: [
-        "#FBFCFD",
-        "#FFFFFF",
-        "#1F2933",
-        "#5B6B7B",
-        "#3E8EDE",
-        "#7BC6C9",
-        "#B8C4D0",
-        "#1F2933",
-        "#E8EDF1",
-      ],
-    },
-    {
-      id: "forest-editorial",
-      name: "Moss library",
-      group: "single-accent",
-      paletteName: "Moss library",
-      colors: [
-        "#F7F6F1",
-        "#FFFFFF",
-        "#1E2B22",
-        "#4F5C52",
-        "#5B7553",
-        "#C97B4A",
-        "#E4DFD0",
-        "#1E2B22",
-        "#E6E8E1",
-      ],
-    },
-    {
-      id: "coral-studio",
-      name: "Peach studio",
-      group: "single-accent",
-      paletteName: "Peach studio",
-      colors: [
-        "#FFF9F6",
-        "#FFFFFF",
-        "#3A2A26",
-        "#6E5B55",
-        "#FF6F5E",
-        "#FFB199",
-        "#2BB3A3",
-        "#3A2A26",
-        "#F0E7E2",
-      ],
-    },
-    {
-      id: "slate-corporate",
-      name: "Boardroom blue",
-      group: "single-accent",
-      paletteName: "Boardroom blue",
-      colors: [
-        "#FFFFFF",
-        "#F6F8FB",
-        "#16243B",
-        "#5A6678",
-        "#2F5BD0",
-        "#6E8BB8",
-        "#F0A03A",
-        "#16243B",
-        "#E9EDF3",
-      ],
-    },
-    {
-      id: "terracotta-clay",
-      name: "Clay pot",
-      group: "single-accent",
-      paletteName: "Clay pot",
-      colors: [
-        "#FBF4EC",
-        "#FFFFFF",
-        "#3B2A20",
-        "#6B5546",
-        "#C36A3F",
-        "#D9A441",
-        "#7A7A52",
-        "#EAD9C6",
-        "#ECE0D2",
-      ],
-    },
-    {
-      id: "berry-pop",
-      name: "Raspberry soda",
-      group: "single-accent",
-      paletteName: "Raspberry soda",
-      colors: [
-        "#FFFAFC",
-        "#FFFFFF",
-        "#2E1A2C",
-        "#6A5566",
-        "#D63A8E",
-        "#8E5BD0",
-        "#F4B8D4",
-        "#2E1A2C",
-        "#F0E6EC",
-      ],
-    },
-    {
-      id: "citrus-fresh",
-      name: "Orange juice",
-      group: "single-accent",
-      paletteName: "Orange juice",
-      colors: [
-        "#FFFFFB",
-        "#FFFFFF",
-        "#232318",
-        "#5C5C4E",
-        "#FF8A1E",
-        "#FFD23E",
-        "#8FB339",
-        "#4FA3A3",
-        "#EDEDE3",
-      ],
-    },
-    {
-      id: "mauve-dusk",
-      name: "Lavender dusk",
-      group: "single-accent",
-      paletteName: "Lavender dusk",
-      colors: [
-        "#FAF7FB",
-        "#FFFFFF",
-        "#2B2533",
-        "#635B70",
-        "#9C7BB8",
-        "#8AA0C9",
-        "#E0B6C9",
-        "#2B2533",
-        "#ECE7F0",
-      ],
-    },
-    {
-      id: "mono-ink",
-      name: "Newsprint red",
-      group: "single-accent",
-      paletteName: "Newsprint red",
-      colors: [
-        "#FFFFFF",
-        "#FAFAFA",
-        "#0A0A0A",
-        "#6B6B6B",
-        "#E5392E",
-        "#0A0A0A",
-        "#BFBFBF",
-        "#0A0A0A",
-        "#EEEEEE",
-      ],
-    },
-    {
-      id: "sunset-maroon",
-      name: "Sunset glow",
-      group: "single-accent",
-      paletteName: "Sunset glow",
-      colors: [
-        "#FFF7F2",
-        "#FFFFFF",
-        "#3A1F22",
-        "#6E4A4C",
-        "#F26B3A",
-        "#E0457B",
-        "#F2A93B",
-        "#3A1F22",
-        "#F0E2DA",
-      ],
-    },
-    {
-      id: "mint-tech",
-      name: "Mint lab",
-      group: "single-accent",
-      paletteName: "Mint lab",
-      colors: [
-        "#FBFFFD",
-        "#FFFFFF",
-        "#1B2A26",
-        "#56655F",
-        "#16B981",
-        "#4FA3E0",
-        "#9AE6C8",
-        "#3A4A45",
-        "#E6F0EB",
-      ],
-    },
-    {
-      id: "midnight-mono",
-      name: "Night run",
-      group: "single-accent",
-      paletteName: "Night run",
-      colors: [
-        "#121316",
-        "#1C1E22",
-        "#F2F2F0",
-        "#A0A3A8",
-        "#C6FF4A",
-        "#6B7280",
-        "#3A3D44",
-        "#C6FF4A",
-        "#2A2C31",
-      ],
-    },
-    {
-      id: "ocean-deep",
-      name: "Deep dive",
-      group: "single-accent",
-      paletteName: "Deep dive",
-      colors: [
-        "#0E2A33",
-        "#143840",
-        "#EAF6F4",
-        "#9DB8B8",
-        "#38C7B4",
-        "#5A93A8",
-        "#1F4A52",
-        "#38C7B4",
-        "#1B454E",
-      ],
-    },
-    {
-      id: "gold-luxe",
-      name: "Award night",
-      group: "single-accent",
-      paletteName: "Award night",
-      colors: [
-        "#16140F",
-        "#211E16",
-        "#F3EEE2",
-        "#ADA48E",
-        "#C9A24B",
-        "#8A6E3A",
-        "#3A352A",
-        "#C9A24B",
-        "#2A271E",
-      ],
-    },
-  ];
+const PRESENTATION_TEMPLATE_THEME_OPTIONS = [
+  {
+    id: "prism",
+    group: "multi-accent",
+    colors: [
+      "#FFFFFF",
+      "#F7F7FA",
+      "#1A1726",
+      "#5C5870",
+      "#7257E6",
+      "#FF6B4A",
+      "#AEE63E",
+      "#3FA9F5",
+      "#ECECF2",
+    ],
+  },
+  {
+    id: "carnival",
+    group: "multi-accent",
+    colors: [
+      "#FFFDF7",
+      "#FFFFFF",
+      "#221C14",
+      "#5E564A",
+      "#FF7A1A",
+      "#E5388E",
+      "#F5B73E",
+      "#1FB6A6",
+      "#EFEADF",
+    ],
+  },
+  {
+    id: "pop-art",
+    group: "multi-accent",
+    colors: [
+      "#111016",
+      "#1B1A22",
+      "#F4F2FA",
+      "#A09CB0",
+      "#3D7BFF",
+      "#FF3D9A",
+      "#C6FF4A",
+      "#FF7A1A",
+      "#26242E",
+    ],
+  },
+  {
+    id: "warm-sand",
+    group: "single-accent",
+    colors: [
+      "#FFFDF8",
+      "#FFFFFF",
+      "#262626",
+      "#5A5A5A",
+      "#F19B3A",
+      "#8DACE5",
+      "#DDB8D9",
+      "#516049",
+      "#ECECEC",
+    ],
+  },
+  {
+    id: "bauhaus-primary",
+    group: "single-accent",
+    colors: [
+      "#F5F1E6",
+      "#FFFFFF",
+      "#1A1A1A",
+      "#4A4A4A",
+      "#E63327",
+      "#2C5BD6",
+      "#F2B705",
+      "#1A1A1A",
+      "#E2DDD0",
+    ],
+  },
+  {
+    id: "nordic-frost",
+    group: "single-accent",
+    colors: [
+      "#FBFCFD",
+      "#FFFFFF",
+      "#1F2933",
+      "#5B6B7B",
+      "#3E8EDE",
+      "#7BC6C9",
+      "#B8C4D0",
+      "#1F2933",
+      "#E8EDF1",
+    ],
+  },
+  {
+    id: "forest-editorial",
+    group: "single-accent",
+    colors: [
+      "#F7F6F1",
+      "#FFFFFF",
+      "#1E2B22",
+      "#4F5C52",
+      "#5B7553",
+      "#C97B4A",
+      "#E4DFD0",
+      "#1E2B22",
+      "#E6E8E1",
+    ],
+  },
+  {
+    id: "coral-studio",
+    group: "single-accent",
+    colors: [
+      "#FFF9F6",
+      "#FFFFFF",
+      "#3A2A26",
+      "#6E5B55",
+      "#FF6F5E",
+      "#FFB199",
+      "#2BB3A3",
+      "#3A2A26",
+      "#F0E7E2",
+    ],
+  },
+  {
+    id: "slate-corporate",
+    group: "single-accent",
+    colors: [
+      "#FFFFFF",
+      "#F6F8FB",
+      "#16243B",
+      "#5A6678",
+      "#2F5BD0",
+      "#6E8BB8",
+      "#F0A03A",
+      "#16243B",
+      "#E9EDF3",
+    ],
+  },
+  {
+    id: "terracotta-clay",
+    group: "single-accent",
+    colors: [
+      "#FBF4EC",
+      "#FFFFFF",
+      "#3B2A20",
+      "#6B5546",
+      "#C36A3F",
+      "#D9A441",
+      "#7A7A52",
+      "#EAD9C6",
+      "#ECE0D2",
+    ],
+  },
+  {
+    id: "berry-pop",
+    group: "single-accent",
+    colors: [
+      "#FFFAFC",
+      "#FFFFFF",
+      "#2E1A2C",
+      "#6A5566",
+      "#D63A8E",
+      "#8E5BD0",
+      "#F4B8D4",
+      "#2E1A2C",
+      "#F0E6EC",
+    ],
+  },
+  {
+    id: "citrus-fresh",
+    group: "single-accent",
+    colors: [
+      "#FFFFFB",
+      "#FFFFFF",
+      "#232318",
+      "#5C5C4E",
+      "#FF8A1E",
+      "#FFD23E",
+      "#8FB339",
+      "#4FA3A3",
+      "#EDEDE3",
+    ],
+  },
+  {
+    id: "mauve-dusk",
+    group: "single-accent",
+    colors: [
+      "#FAF7FB",
+      "#FFFFFF",
+      "#2B2533",
+      "#635B70",
+      "#9C7BB8",
+      "#8AA0C9",
+      "#E0B6C9",
+      "#2B2533",
+      "#ECE7F0",
+    ],
+  },
+  {
+    id: "mono-ink",
+    group: "single-accent",
+    colors: [
+      "#FFFFFF",
+      "#FAFAFA",
+      "#0A0A0A",
+      "#6B6B6B",
+      "#E5392E",
+      "#0A0A0A",
+      "#BFBFBF",
+      "#0A0A0A",
+      "#EEEEEE",
+    ],
+  },
+  {
+    id: "sunset-maroon",
+    group: "single-accent",
+    colors: [
+      "#FFF7F2",
+      "#FFFFFF",
+      "#3A1F22",
+      "#6E4A4C",
+      "#F26B3A",
+      "#E0457B",
+      "#F2A93B",
+      "#3A1F22",
+      "#F0E2DA",
+    ],
+  },
+  {
+    id: "mint-tech",
+    group: "single-accent",
+    colors: [
+      "#FBFFFD",
+      "#FFFFFF",
+      "#1B2A26",
+      "#56655F",
+      "#16B981",
+      "#4FA3E0",
+      "#9AE6C8",
+      "#3A4A45",
+      "#E6F0EB",
+    ],
+  },
+  {
+    id: "midnight-mono",
+    group: "single-accent",
+    colors: [
+      "#121316",
+      "#1C1E22",
+      "#F2F2F0",
+      "#A0A3A8",
+      "#C6FF4A",
+      "#6B7280",
+      "#3A3D44",
+      "#C6FF4A",
+      "#2A2C31",
+    ],
+  },
+  {
+    id: "ocean-deep",
+    group: "single-accent",
+    colors: [
+      "#0E2A33",
+      "#143840",
+      "#EAF6F4",
+      "#9DB8B8",
+      "#38C7B4",
+      "#5A93A8",
+      "#1F4A52",
+      "#38C7B4",
+      "#1B454E",
+    ],
+  },
+  {
+    id: "gold-luxe",
+    group: "single-accent",
+    colors: [
+      "#16140F",
+      "#211E16",
+      "#F3EEE2",
+      "#ADA48E",
+      "#C9A24B",
+      "#8A6E3A",
+      "#3A352A",
+      "#C9A24B",
+      "#2A271E",
+    ],
+  },
+] as const satisfies readonly PresentationTemplateThemeOption[];
+
+type PresentationTemplateTheme =
+  (typeof PRESENTATION_TEMPLATE_THEME_OPTIONS)[number];
+
+const PRESENTATION_TEMPLATE_THEME_NAMES = {
+  "bauhaus-primary": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.bauhausPrimary;
+    });
+  },
+  "berry-pop": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.berryPop;
+    });
+  },
+  carnival: () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.carnival;
+    });
+  },
+  "citrus-fresh": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.citrusFresh;
+    });
+  },
+  "coral-studio": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.coralStudio;
+    });
+  },
+  "forest-editorial": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.forestEditorial;
+    });
+  },
+  "gold-luxe": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.goldLuxe;
+    });
+  },
+  "mauve-dusk": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.mauveDusk;
+    });
+  },
+  "midnight-mono": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.midnightMono;
+    });
+  },
+  "mint-tech": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.mintTech;
+    });
+  },
+  "mono-ink": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.monoInk;
+    });
+  },
+  "nordic-frost": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.nordicFrost;
+    });
+  },
+  "ocean-deep": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.oceanDeep;
+    });
+  },
+  "pop-art": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.popArt;
+    });
+  },
+  prism: () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.prism;
+    });
+  },
+  "slate-corporate": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.slateCorporate;
+    });
+  },
+  "sunset-maroon": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.sunsetMaroon;
+    });
+  },
+  "terracotta-clay": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.terracottaClay;
+    });
+  },
+  "warm-sand": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.warmSand;
+    });
+  },
+} satisfies Record<PresentationTemplateTheme["id"], () => string>;
+
+function presentationTemplateThemeName(
+  theme: PresentationTemplateTheme,
+): string {
+  return PRESENTATION_TEMPLATE_THEME_NAMES[theme.id]();
+}
 
 function defaultPresentationTemplateThemeId(
   item: PresentationTemplateItem,
@@ -2317,7 +2385,7 @@ function presentationTemplateColorSystemId(themeId: string): string {
 
 function findPresentationTemplateTheme(
   themeId: string,
-): PresentationTemplateThemeOption {
+): PresentationTemplateTheme {
   return (
     PRESENTATION_TEMPLATE_THEME_OPTIONS.find((theme) => {
       return theme.id === themeId;
@@ -3722,7 +3790,7 @@ function TemplatePreviewPage({
                           ($) => {
                             return $.artifacts.templates.selectStyle;
                           },
-                          { style: theme.name },
+                          { style: presentationTemplateThemeName(theme) },
                         )}
                         aria-pressed={active}
                         onClick={() => {
@@ -3774,7 +3842,7 @@ function TemplatePreviewPage({
                           ($) => {
                             return $.artifacts.templates.selectStyle;
                           },
-                          { style: theme.name },
+                          { style: presentationTemplateThemeName(theme) },
                         )}
                         aria-pressed={active}
                         onClick={() => {
@@ -5764,9 +5832,7 @@ function ConnectorTriggerIcons({
     <span className="flex items-center -space-x-2 sm:-space-x-1.5">
       {enabled.map((item) => {
         const key =
-          item.kind === "builtin"
-            ? item.connector.connectorRef
-            : item.connector.id;
+          item.kind === "builtin" ? item.connector.slug : item.connector.id;
         return (
           <span key={key} className="relative shrink-0">
             <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background zero-border sm:h-7 sm:w-7">
@@ -5823,10 +5889,16 @@ function CustomConnectorCatalogCard({
   connector: CustomConnectorResponse;
   onConnect: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <button
       type="button"
-      aria-label={`Connect ${connector.displayName}`}
+      aria-label={t(
+        ($) => {
+          return $.connectors.card.connectAria;
+        },
+        { connector: connector.displayName },
+      )}
       className="zero-card cursor-pointer overflow-hidden text-left"
       onClick={onConnect}
     >
@@ -5873,11 +5945,11 @@ function AddConnectorsDialog({
   onClose,
 }: {
   signals: ComposerConnectorSignals;
-  unconnected: PublicConnectorCatalogStatusItem[];
+  unconnected: PlatformConnectorCatalogStatusItem[];
   unconnectedCustom: CustomConnectorResponse[];
   busyConnectorSlug: ConnectorSlug | null;
   connectHandlers: (
-    connector: PublicConnectorCatalogStatusItem,
+    connector: PlatformConnectorCatalogStatusItem,
   ) => ConnectorConnectHandlers;
   onConnectCustom: (connector: CustomConnectorResponse) => void;
   onClose: () => void;
@@ -5934,10 +6006,10 @@ function AddConnectorsDialog({
             {filtered.map((item) => {
               return (
                 <ConnectorCard
-                  key={item.connectorRef}
+                  key={item.slug}
                   variant="catalog"
                   connector={item}
-                  busy={busyConnectorSlug === item.connectorRef}
+                  busy={busyConnectorSlug === item.slug}
                   connect={connectHandlers(item)}
                 />
               );
@@ -5980,12 +6052,7 @@ function ComputerUseConnectorMenuSection({
           onClick={() => {
             computerUse.onCloudBrowserChange(!computerUse.cloudBrowserEnabled);
           }}
-          className={cn(
-            "flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 transition-colors",
-            computerUse.cloudBrowserEnabled
-              ? "bg-primary/5"
-              : "hover:bg-gray-100 dark:hover:bg-gray-200",
-          )}
+          className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
         >
           <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
             <IconWorld size={16} stroke={1.5} />
@@ -6051,12 +6118,7 @@ function ComputerUseConnectorMenuSection({
                 onClick={() => {
                   computerUse.onChange(checked ? null : host.id);
                 }}
-                className={cn(
-                  "flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 transition-colors",
-                  checked
-                    ? "bg-primary/5"
-                    : "hover:bg-gray-100 dark:hover:bg-gray-200",
-                )}
+                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
               >
                 <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
                   <IconDeviceDesktop size={16} stroke={1.5} />
@@ -6174,7 +6236,7 @@ function ComposerConnectorPermissionDialog({
   return (
     <PermissionsDialog
       agentId={agentId}
-      connectorSlug={connector.connectorRef}
+      connectorSlug={connector.slug}
       connectorLabel={connector.label}
       metadata$={signals.permissionMetadata$}
       displayName={agentDisplayName}
@@ -6185,7 +6247,7 @@ function ComposerConnectorPermissionDialog({
       onApply={async (intent, { metadata: appliedMetadata }) => {
         await savePermissionDraftPolicies({
           scope: { agentId },
-          connectorSlug: connector.connectorRef,
+          connectorSlug: connector.slug,
           metadata: appliedMetadata,
           initialPolicies,
           initialGrants: activeSnapshot.grants,
@@ -6217,9 +6279,7 @@ type ComposerPopoverConnectorItem =
 function composerPopoverConnectorId(
   item: ComposerPopoverConnectorItem,
 ): string {
-  return item.kind === "builtin"
-    ? item.connector.connectorRef
-    : item.connector.id;
+  return item.kind === "builtin" ? item.connector.slug : item.connector.id;
 }
 
 function matchesComposerPopoverConnectorSearch(
@@ -6290,7 +6350,7 @@ function ConnectorsPopoverButton({
   const permissionConnector =
     permissionEntryEnabled && permissionConnectorSlug
       ? agentConnectors.find((c) => {
-          return c.connectorRef === permissionConnectorSlug;
+          return c.slug === permissionConnectorSlug;
         })
       : undefined;
 
@@ -6449,7 +6509,7 @@ function ConnectorsPopoverButton({
                   const connector = item.connector;
                   return (
                     <label
-                      key={connector.connectorRef}
+                      key={connector.slug}
                       className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
                     >
                       <span className="flex h-4 w-4 shrink-0 items-center justify-center">
@@ -6467,9 +6527,7 @@ function ConnectorsPopoverButton({
                             onClick={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
-                              setPermissionConnectorSlug(
-                                connector.connectorRef,
-                              );
+                              setPermissionConnectorSlug(connector.slug);
                             }}
                             aria-label={t(
                               ($) => {
@@ -6485,9 +6543,9 @@ function ConnectorsPopoverButton({
                       <LoadingSwitch
                         checked={connector.authorized}
                         onCheckedChange={onDomEventFn(async (checked) => {
-                          await onToggle(connector.connectorRef, checked);
+                          await onToggle(connector.slug, checked);
                         })}
-                        loading={savingConnectorSlug === connector.connectorRef}
+                        loading={savingConnectorSlug === connector.slug}
                         ariaLabel={
                           connector.authorized
                             ? t(
@@ -6949,7 +7007,9 @@ function ComposerUploadMenu({
             <Input
               className="mt-2 h-9 text-sm"
               name="uploadLink"
-              placeholder="https://example.com/image.png"
+              placeholder={t(($) => {
+                return $.chat.attachments.linkPlaceholder;
+              })}
               type="url"
               data-testid="composer-upload-link-input"
             />
@@ -7112,6 +7172,7 @@ function restoreChatClipboardPayload({
     return (
       part.type === "text" ||
       part.type === "chat_thread" ||
+      part.type === "agent" ||
       part.type === "feedback" ||
       (inlineTemplatesEnabled && part.type === "template")
     );
@@ -7473,9 +7534,9 @@ interface ResolvedComposerConnectorCollections {
   readonly authorizedSet: ReadonlySet<ConnectorSlug>;
   readonly connectorMap: ReadonlyMap<
     ConnectorSlug,
-    PublicConnectorCatalogStatusItem
+    PlatformConnectorCatalogStatusItem
   >;
-  readonly unconnectedConnectors: PublicConnectorCatalogStatusItem[];
+  readonly unconnectedConnectors: PlatformConnectorCatalogStatusItem[];
   readonly unconnectedCustomConnectors: CustomConnectorResponse[];
   readonly agentConnectors: ComposerConnectorItem[];
   readonly agentCustomConnectors: ComposerCustomConnectorItem[];
@@ -7490,7 +7551,7 @@ function resolveComposerConnectorCollections({
   optimisticConnected,
   selectedCustomConnectorId,
 }: {
-  catalogItems: Loadable<readonly PublicConnectorCatalogStatusItem[]>;
+  catalogItems: Loadable<readonly PlatformConnectorCatalogStatusItem[]>;
   customConnectors: Loadable<readonly CustomConnectorResponse[]>;
   authorizedConnectorSlugs: readonly ConnectorSlug[] | null;
   authorizedCustomConnectorIds: readonly string[] | null;
@@ -7505,13 +7566,11 @@ function resolveComposerConnectorCollections({
   const authorizedCustomSet = new Set(authorizedCustomConnectorIds ?? []);
   const connectorMap = new Map(
     resolvedCatalogItems.map((connector) => {
-      return [connector.connectorRef, connector];
+      return [connector.slug, connector];
     }),
   );
   const unconnectedConnectors = resolvedCatalogItems.filter((connector) => {
-    return (
-      !connector.connected && !optimisticConnected.has(connector.connectorRef)
-    );
+    return !connector.connected && !optimisticConnected.has(connector.slug);
   });
   const unconnectedCustomConnectors = resolvedCustomConnectors.filter(
     (connector) => {
@@ -7520,14 +7579,12 @@ function resolveComposerConnectorCollections({
   );
   const agentConnectors = resolvedCatalogItems
     .filter((connector) => {
-      return (
-        connector.connected || optimisticConnected.has(connector.connectorRef)
-      );
+      return connector.connected || optimisticConnected.has(connector.slug);
     })
     .map((connector) => {
       return {
         ...connector,
-        authorized: authorizedSet.has(connector.connectorRef),
+        authorized: authorizedSet.has(connector.slug),
       };
     });
   const agentCustomConnectors = resolvedCustomConnectors
@@ -7900,9 +7957,9 @@ export function useZeroChatComposer(
   };
 
   const connectorConnectHandlers = (
-    connector: PublicConnectorCatalogStatusItem,
+    connector: PlatformConnectorCatalogStatusItem,
   ): ConnectorConnectHandlers => {
-    const connectorSlug = connector.connectorRef;
+    const connectorSlug = connector.slug;
     return {
       openModal: () => {
         setPendingConnectorSlug(connectorSlug);

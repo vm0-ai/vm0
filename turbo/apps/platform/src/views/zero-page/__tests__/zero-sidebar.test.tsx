@@ -753,7 +753,6 @@ describe("zero sidebar", () => {
                   },
                 ]
               : [],
-          hasHistoryBefore: false,
         });
       },
     );
@@ -2522,6 +2521,67 @@ describe("zero sidebar", () => {
     expect(within(dialog).getByText("Mostrar atalhos")).toBeInTheDocument();
     expect(
       within(dialog).getByLabelText("Fechar atalhos de teclado"),
+    ).toBeInTheDocument();
+  });
+
+  it("localizes desktop and mobile shell navigation in Japanese", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Localized conversation"),
+    ]);
+    setMockWorkflowAutomations([
+      createMockWorkflowAutomation({
+        chatThreadId: EXISTING_THREAD_ID,
+      }),
+    ]);
+    context.mocks.data.userPreferences({
+      locale: "ja-JP",
+      supportedLocales: ["en-US", "ja-JP"],
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.Artifacts]: true,
+        [FeatureSwitchKey.LanguagePreference]: true,
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+        [FeatureSwitchKey.ZeroDebug]: true,
+      },
+    });
+
+    const rail = await screen.findByTestId("labeled-nav-rail");
+    expect(
+      within(rail).getByRole("navigation", { name: "サイドバー" }),
+    ).toBeInTheDocument();
+    expect(within(rail).getByText("エージェント")).toBeInTheDocument();
+    expect(within(rail).getByText("ワークフロー")).toBeInTheDocument();
+    expect(within(rail).getByText("コネクター")).toBeInTheDocument();
+    expect(within(rail).getByText("アーティファクト")).toBeInTheDocument();
+    expect(within(rail).getByText("アクティビティ")).toBeInTheDocument();
+    expect(within(rail).getByLabelText("Zeroの連携先")).toBeInTheDocument();
+    expect(screen.getByLabelText("メニューを開く")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("モバイルでアーティファクトを開く"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("モバイルでオートメーションを開く"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("サイドバーを折りたたむ")).toBeInTheDocument();
+
+    fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "キーボードショートカット",
+    });
+    expect(
+      within(dialog).getByText("このページで利用可能なショートカット"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("ショートカットを表示する"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByLabelText("キーボードショートカットを閉じる"),
     ).toBeInTheDocument();
   });
 

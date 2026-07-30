@@ -85,6 +85,7 @@ pub struct RecordedRequest {
     pub path: String,
     pub authorization: Option<String>,
     pub content_type: Option<String>,
+    pub client_request_id: Option<String>,
     pub body: String,
 }
 
@@ -235,6 +236,8 @@ impl ControlledRequest {
 pub struct ControlledHttpServer {
     pub base_url: String,
     requests: Arc<AtomicUsize>,
+    completed_responses: Arc<AtomicUsize>,
+    recorded_requests: Arc<Mutex<Vec<RecordedRequest>>>,
     request_rx: mpsc::UnboundedReceiver<ControlledRequest>,
     handle: tokio::task::JoinHandle<()>,
 }
@@ -249,17 +252,26 @@ impl ControlledHttpServer {
             .map_err(|error| format!("controlled HTTP server local_addr: {error}"))?;
         let requests = Arc::new(AtomicUsize::new(0));
         let task_requests = Arc::clone(&requests);
+        let completed_responses = Arc::new(AtomicUsize::new(0));
+        let task_completed_responses = Arc::clone(&completed_responses);
+        let recorded_requests = Arc::new(Mutex::new(Vec::new()));
+        let task_recorded_requests = Arc::clone(&recorded_requests);
         let (request_tx, request_rx) = mpsc::unbounded_channel();
         let handle = tokio::spawn(async move {
             while let Ok((mut socket, _peer)) = listener.accept().await {
                 let connection_tx = request_tx.clone();
                 let connection_requests = Arc::clone(&task_requests);
+                let connection_completed_responses = Arc::clone(&task_completed_responses);
+                let connection_recorded_requests = Arc::clone(&task_recorded_requests);
                 tokio::spawn(async move {
                     let Ok(request) = read_http_request(&mut socket).await else {
                         let _ = write_http_response(&mut socket, 400).await;
                         return;
                     };
                     connection_requests.fetch_add(1, Ordering::SeqCst);
+                    if let Ok(mut requests) = connection_recorded_requests.lock() {
+                        requests.push(request.clone());
+                    }
                     let (response, response_rx) = oneshot::channel();
                     if connection_tx
                         .send(ControlledRequest { request, response })
@@ -271,6 +283,7 @@ impl ControlledHttpServer {
                         return;
                     };
                     let _ = write_http_response(&mut socket, status).await;
+                    connection_completed_responses.fetch_add(1, Ordering::SeqCst);
                 });
             }
         });
@@ -278,6 +291,8 @@ impl ControlledHttpServer {
         Ok(Self {
             base_url: format!("http://{addr}"),
             requests,
+            completed_responses,
+            recorded_requests,
             request_rx,
             handle,
         })
@@ -292,6 +307,17 @@ impl ControlledHttpServer {
 
     pub fn request_count(&self) -> usize {
         self.requests.load(Ordering::SeqCst)
+    }
+
+    pub fn completed_response_count(&self) -> usize {
+        self.completed_responses.load(Ordering::SeqCst)
+    }
+
+    pub fn requests(&self) -> Result<Vec<RecordedRequest>, String> {
+        self.recorded_requests
+            .lock()
+            .map(|requests| requests.clone())
+            .map_err(|_| "controlled HTTP request mutex poisoned".to_string())
     }
 }
 
@@ -327,7 +353,6 @@ impl Drop for RunFilesGuard {
 
 fn cleanup_run_files_for_paths(paths: &guest_agent::paths::GuestPaths) {
     let _ = std::fs::remove_file(paths.agent_log_file());
-    let _ = std::fs::remove_file(paths.event_error_flag());
     let _ = std::fs::remove_file(paths.session_id_file());
     let _ = std::fs::remove_file(paths.session_history_path_file());
     let _ = std::fs::remove_file(paths.sandbox_ops_file());
@@ -370,6 +395,7 @@ async fn read_http_request(socket: &mut tokio::net::TcpStream) -> Result<Recorde
 
     let mut authorization = None;
     let mut content_type = None;
+    let mut client_request_id = None;
     let mut content_length = 0usize;
     for line in header_lines.lines() {
         let Some((name, value)) = line.split_once(':') else {
@@ -382,6 +408,9 @@ async fn read_http_request(socket: &mut tokio::net::TcpStream) -> Result<Recorde
         }
         if trimmed_name.eq_ignore_ascii_case("content-type") {
             content_type = Some(trimmed_value.to_string());
+        }
+        if trimmed_name.eq_ignore_ascii_case("x-client-request-id") {
+            client_request_id = Some(trimmed_value.to_string());
         }
         if trimmed_name.eq_ignore_ascii_case("content-length") {
             content_length = trimmed_value
@@ -421,6 +450,7 @@ async fn read_http_request(socket: &mut tokio::net::TcpStream) -> Result<Recorde
         path,
         authorization,
         content_type,
+        client_request_id,
         body,
     })
 }

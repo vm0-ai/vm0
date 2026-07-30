@@ -3,18 +3,26 @@ import type { ResolvedAttachFile } from "@vm0/api-contracts/contracts/chat-threa
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { eq, isNotNull, isNull, not, notExists, or, sql } from "drizzle-orm";
+import {
+  and,
+  eq,
+  isNotNull,
+  isNull,
+  not,
+  notExists,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
-import { env } from "../../lib/env";
-import { buildArtifactPrefix, buildFileUrl } from "../../lib/file-url";
 import { writeDb$, type Db } from "../external/db";
 import {
   publishChatThreadMessageCreatedSafely,
   publishThreadListChangedSafely,
 } from "../external/realtime";
-import { listS3Objects } from "../external/s3";
 import { nowDate } from "../external/time";
+import { resolvedArtifactObject } from "./artifact-storage.service";
 import { assistantEventIdForRunEvent } from "./assistant-event-id";
 import { insertChatEvents } from "./zero-chat-event.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
@@ -54,7 +62,7 @@ const EXT_MIMETYPE_MAP: Readonly<Record<string, string>> = {
 };
 const revoker = alias(chatEvents, "revoker");
 
-interface InsertAssistantEventsInput {
+export interface InsertAssistantEventsInput {
   readonly runId: string;
   readonly threadId: string;
   readonly userId: string;
@@ -103,7 +111,9 @@ export async function touchChatThreadLastMessageAt(
   });
 }
 
-export function visibleChatEventCondition(db: Pick<Db, "select">) {
+export function visibleChatEventCondition(
+  db: Pick<Db, "select">,
+): SQL | undefined {
   const isCompatibilityUserEvent = chatEventTypeIn([
     "input.prompt",
     "input.automation",
@@ -111,29 +121,26 @@ export function visibleChatEventCondition(db: Pick<Db, "select">) {
     "control.interrupt",
     "control.revoke",
   ]);
-  return sql.join(
-    [
-      not(chatEventTypeIn(["input.goal"])),
-      notExists(
-        db
-          .select({ id: revoker.id })
-          .from(revoker)
-          .where(eq(revoker.revokesEventId, chatEvents.id)),
-      ),
-      or(
-        not(isCompatibilityUserEvent),
-        isNotNull(chatEvents.runId),
-        isNull(chatEvents.revokesEventId),
-        isNotNull(chatEvents.content),
-        isNotNull(chatEvents.error),
-      ),
-      or(
-        not(isCompatibilityUserEvent),
-        isNotNull(chatEvents.runId),
-        isNull(chatEvents.interruptsRunId),
-      ),
-    ],
-    sql` AND `,
+  return and(
+    not(chatEventTypeIn(["input.goal"])),
+    notExists(
+      db
+        .select({ id: revoker.id })
+        .from(revoker)
+        .where(eq(revoker.revokesEventId, chatEvents.id)),
+    ),
+    or(
+      not(isCompatibilityUserEvent),
+      isNotNull(chatEvents.runId),
+      isNull(chatEvents.revokesEventId),
+      isNotNull(chatEvents.content),
+      isNotNull(chatEvents.error),
+    ),
+    or(
+      not(isCompatibilityUserEvent),
+      isNotNull(chatEvents.runId),
+      isNull(chatEvents.interruptsRunId),
+    ),
   );
 }
 
@@ -142,23 +149,19 @@ export function resolveAttachFileUrls(
   fileIds: readonly string[],
 ): Computed<Promise<readonly ResolvedAttachFile[]>> {
   return computed(async (get): Promise<readonly ResolvedAttachFile[]> => {
-    const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
     const resolved = await Promise.all(
       fileIds.map(async (fileId): Promise<ResolvedAttachFile | null> => {
-        const prefix = buildArtifactPrefix(userId, fileId);
-        const objects = await get(listS3Objects(bucket, prefix));
-        const object = objects[0];
+        const object = await get(resolvedArtifactObject(userId, fileId));
         if (!object) {
           return null;
         }
 
-        const filename = object.key.split("/").pop() ?? fileId;
         return {
           id: fileId,
-          filename,
-          contentType: inferMimetype(filename),
+          filename: object.filename,
+          contentType: object.contentType,
           size: object.size,
-          url: buildFileUrl(userId, fileId, filename),
+          url: object.url,
         };
       }),
     );
@@ -182,7 +185,7 @@ export async function runGroupIdForRun(
 }
 
 async function assistantEventRunContextForRun(
-  db: Db,
+  db: ChatThreadEventTransaction,
   runId: string,
 ): Promise<{
   readonly runGroupId: string | undefined;
@@ -207,13 +210,21 @@ async function assistantEventRunContextForRun(
   };
 }
 
-export async function insertAssistantEvents(
-  writeDb: Db,
+interface InsertAssistantEventsTransactionResult {
+  readonly insertedRowCount: number;
+  readonly shouldAttemptFirstAssistantEventClaim: boolean;
+}
+
+export async function insertAssistantEventsInTransaction(
+  tx: ChatThreadEventTransaction,
   args: InsertAssistantEventsInput,
   signal: AbortSignal,
-): Promise<number> {
+): Promise<InsertAssistantEventsTransactionResult> {
   if (args.items.length === 0) {
-    return 0;
+    return {
+      insertedRowCount: 0,
+      shouldAttemptFirstAssistantEventClaim: false,
+    };
   }
 
   const itemsWithRunEventId = args.items.filter(
@@ -230,58 +241,74 @@ export async function insertAssistantEvents(
   const legacyItems = args.items.filter((item) => {
     return item.runEventId === undefined;
   });
-  const runContext = await assistantEventRunContextForRun(writeDb, args.runId);
+  const runContext = await assistantEventRunContextForRun(tx, args.runId);
+  signal.throwIfAborted();
 
-  const [deterministicRows, legacyRows] = await writeDb.transaction(
-    async (tx) => {
-      const deterministicRows =
-        itemsWithRunEventId.length === 0
-          ? []
-          : await insertChatEvents(
-              tx,
-              itemsWithRunEventId.map((item) => {
-                return {
-                  id: assistantEventIdForRunEvent(args.runId, item.runEventId),
-                  chatThreadId: args.threadId,
-                  runId: args.runId,
-                  runGroupId: runContext.runGroupId,
-                  eventType: "output.message",
-                  content: item.content,
-                  sequenceNumber: item.sequenceNumber,
-                  runEventId: item.runEventId,
-                };
-              }),
-              "any",
-            );
-      signal.throwIfAborted();
+  const deterministicRows =
+    itemsWithRunEventId.length === 0
+      ? []
+      : await insertChatEvents(
+          tx,
+          itemsWithRunEventId.map((item) => {
+            return {
+              id: assistantEventIdForRunEvent(args.runId, item.runEventId),
+              chatThreadId: args.threadId,
+              runId: args.runId,
+              runGroupId: runContext.runGroupId,
+              eventType: "output.message",
+              content: item.content,
+              sequenceNumber: item.sequenceNumber,
+              runEventId: item.runEventId,
+            };
+          }),
+          "any",
+        );
+  signal.throwIfAborted();
 
-      const legacyRows =
-        legacyItems.length === 0
-          ? []
-          : await insertChatEvents(
-              tx,
-              legacyItems.map((item) => {
-                return {
-                  chatThreadId: args.threadId,
-                  runId: args.runId,
-                  runGroupId: runContext.runGroupId,
-                  eventType: "output.message",
-                  content: item.content,
-                  sequenceNumber: item.sequenceNumber,
-                  runEventId: null,
-                };
-              }),
-              "run-sequence",
-            );
-      return [deterministicRows, legacyRows] as const;
-    },
-  );
+  const legacyRows =
+    legacyItems.length === 0
+      ? []
+      : await insertChatEvents(
+          tx,
+          legacyItems.map((item) => {
+            return {
+              chatThreadId: args.threadId,
+              runId: args.runId,
+              runGroupId: runContext.runGroupId,
+              eventType: "output.message",
+              content: item.content,
+              sequenceNumber: item.sequenceNumber,
+              runEventId: null,
+            };
+          }),
+          "run-sequence",
+        );
   signal.throwIfAborted();
 
   const insertedRowCount = deterministicRows.length + legacyRows.length;
+  return {
+    insertedRowCount,
+    shouldAttemptFirstAssistantEventClaim:
+      runContext.shouldAttemptFirstAssistantEventClaim,
+  };
+}
 
-  if (insertedRowCount > 0) {
-    if (runContext.shouldAttemptFirstAssistantEventClaim) {
+export async function insertAssistantEvents(
+  writeDb: Db,
+  args: InsertAssistantEventsInput,
+  signal: AbortSignal,
+): Promise<number> {
+  if (args.items.length === 0) {
+    return 0;
+  }
+
+  const result = await writeDb.transaction(async (tx) => {
+    return await insertAssistantEventsInTransaction(tx, args, signal);
+  });
+  signal.throwIfAborted();
+
+  if (result.insertedRowCount > 0) {
+    if (result.shouldAttemptFirstAssistantEventClaim) {
       await publishFirstAssistantEventCreatedSafely({
         db: writeDb,
         userId: args.userId,
@@ -297,7 +324,7 @@ export async function insertAssistantEvents(
     signal.throwIfAborted();
   }
 
-  return insertedRowCount;
+  return result.insertedRowCount;
 }
 
 export const insertAssistantEvents$ = command(

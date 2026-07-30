@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import { cronCleanupSandboxesContract } from "@vm0/api-contracts/contracts/cron";
+import {
+  NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+  runnersNetworkPolicyRefreshContract,
+} from "@vm0/api-contracts/contracts/runners";
 import type {
   TestCronCleanupSandboxesStateActionBody,
   TestCronCleanupSandboxesStateActionResponse,
@@ -21,6 +25,8 @@ const BUCKET = "test-user-storage-bucket";
 const FIXED_NOW_MS = Date.parse("2000-01-01T00:10:00.000Z");
 const CRON_CLEANUP_STATE_ROUTE =
   "/api/test/cron-cleanup-sandboxes-state/action";
+const OFFICIAL_RUNNER_AUTHORIZATION =
+  "Bearer vm0_official_abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
 
 interface RunFixture {
   readonly runId: string;
@@ -413,7 +419,7 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
   });
 
-  it("cleans up pending runs after the pending timeout", async () => {
+  it("exposes a pending-run timeout as terminal to policy refresh", async () => {
     const fixture = await trackRun(
       insertRunFixture({ status: "pending", createdAt: minutesAgo(6) }),
     );
@@ -437,6 +443,19 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       error: "Run timed out while pending (never started)",
     });
     await expect(findRunnerJob(fixture.runId)).resolves.toBeNull();
+
+    const refresh = await accept(
+      setupApp({ context })(runnersNetworkPolicyRefreshContract).refresh({
+        headers: { authorization: OFFICIAL_RUNNER_AUTHORIZATION },
+        params: { runId: fixture.runId },
+        body: { connectorSlugs: ["slack"] },
+      }),
+      [409],
+    );
+    expect(refresh.body.error).toStrictEqual({
+      code: NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+      message: "Run is terminal",
+    });
   });
 
   it("cleans up pending runs without runner jobs after the pending timeout", async () => {

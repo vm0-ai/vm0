@@ -17,11 +17,6 @@ interface ChatEventListQuery {
   readonly limit?: number;
 }
 
-interface ChatEventListResult {
-  readonly events: ChatEvent[];
-  readonly hasHistoryBefore: boolean;
-}
-
 export async function sendChatEvent(
   createClient: ZeroClientFactory,
   body: ChatEventSendBody,
@@ -43,7 +38,7 @@ export async function listChatEvents(
   threadId: string,
   query: ChatEventListQuery,
   signal: AbortSignal,
-): Promise<ChatEventListResult> {
+): Promise<ChatEvent[]> {
   const result = await accept(
     createClient(chatThreadEventsContract).list({
       params: { threadId },
@@ -53,11 +48,8 @@ export async function listChatEvents(
     [200],
     signal,
   );
-  return {
-    // A previous API can still return historical pause/resume queue markers
-    // during an app-first rollout. They are read-compatible wire leaves only;
-    // current queue state derives exclusively from canonical ChatEvents.
-    events: result.body.events.filter(isCanonicalChatEventResponse),
-    hasHistoryBefore: result.body.hasHistoryBefore ?? false,
-  };
+  // A previous API can still return historical pause/resume queue markers
+  // during an app-first rollout. They are read-compatible wire leaves only;
+  // current queue state derives exclusively from canonical ChatEvents.
+  return result.body.events.filter(isCanonicalChatEventResponse);
 }
