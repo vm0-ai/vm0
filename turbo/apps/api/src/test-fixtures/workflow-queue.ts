@@ -1,0 +1,64 @@
+import { randomBytes } from "node:crypto";
+
+import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
+import { eq } from "drizzle-orm";
+
+import { db } from "../lib/db";
+import { admitWorkflowAutomationEvent } from "../signals/services/chat-message-queue.service";
+
+interface PreviousDeploymentWorkflowEventArgs {
+  readonly automationId: string;
+  readonly chatThreadId: string;
+  readonly agentId: string;
+  readonly appendSystemPrompt: string;
+}
+
+/**
+ * Admit an event through the production admission service using the queue
+ * payload shape written before automations started carrying a trigger line:
+ * `appendSystemPrompt` only, with no `prompt`.
+ *
+ * Current production code always writes both, so no external endpoint can
+ * construct this row, but rows in this shape can still be drained by the new
+ * backend during a rollout. Everything except the payload shape stays on the
+ * real path, including encryption and the admission transaction.
+ */
+export async function admitPreviousDeploymentWorkflowEventFixture(
+  args: PreviousDeploymentWorkflowEventArgs,
+): Promise<void> {
+  const [automation] = await db()
+    .select()
+    .from(zeroWorkflowAutomations)
+    .where(eq(zeroWorkflowAutomations.id, args.automationId))
+    .limit(1);
+  if (!automation) {
+    throw new Error("Expected the workflow automation to exist");
+  }
+
+  const admission = await admitWorkflowAutomationEvent(db(), {
+    automation,
+    chatThreadId: args.chatThreadId,
+    triggerSource: "workflow-event",
+    triggerBrief: undefined,
+    coalescePendingScheduleRun: false,
+    params: {
+      version: 1,
+      appendSystemPrompt: args.appendSystemPrompt,
+      callbacks: [
+        {
+          internalKind: "chat",
+          secret: randomBytes(32).toString("hex"),
+          payload: { threadId: args.chatThreadId, agentId: args.agentId },
+        },
+      ],
+      recordLastRunId: false,
+      recordLastRunAt: true,
+      activePreviousRunPolicy: "allow",
+    },
+  });
+  if (admission.kind !== "inserted") {
+    throw new Error(
+      `Expected the previous-deployment event to be inserted, got ${admission.kind}`,
+    );
+  }
+}

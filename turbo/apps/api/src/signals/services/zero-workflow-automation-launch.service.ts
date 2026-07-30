@@ -109,6 +109,12 @@ export interface RunWorkflowAutomationNowArgs {
 
 interface LaunchQueuedWorkflowAutomationArgs extends RunWorkflowAutomationNowArgs {
   readonly queueEventId: string;
+  /**
+   * Admission time of the queue row, which is when the automation actually
+   * fired. `apiStartTime` belongs to whichever request drains the row, so it
+   * runs late whenever an event waits behind an active run.
+   */
+  readonly queueEventCreatedAt: Date;
 }
 
 interface WorkflowAutomationRunInput {
@@ -186,9 +192,11 @@ function buildWorkflowAutomationCallbacks(
 
 /**
  * Consecutive ticks of the same schedule are otherwise indistinguishable, so the
- * fire time is this run's unique identifier.
+ * fire time is this run's unique identifier. The scheduler owns the fire time and
+ * builds this at admission; the launch fallback below only serves rows enqueued
+ * before schedules carried a trigger line.
  */
-function scheduleTriggerContext(args: {
+export function scheduleTriggerContext(args: {
   readonly automation: AutomationRow;
   readonly workflowName: string;
   readonly firedAt: Date;
@@ -410,6 +418,7 @@ async function buildTimedWorkflowAutomationRunInput(args: {
   readonly agentId: string;
   readonly workflowName: string;
   readonly chatThreadId: string;
+  readonly firedAt: Date;
   readonly computerUseHostGrant: ComputerUseHostGrant;
   readonly timing: ApiDispatchTimingCollector;
 }): Promise<WorkflowAutomationRunInput> {
@@ -418,30 +427,40 @@ async function buildTimedWorkflowAutomationRunInput(args: {
     "api_dispatch_pre_create_zero_workflow_automation_build_run_input",
     "nested",
     () => {
-      // Event sources carry their own event and build both strings from one
-      // trigger line. Only the schedule tick has no event of its own, so it is
-      // built here. Guarding on kind keeps a queue row written by a previous
-      // deployment (event row without a prompt) from rendering as a schedule.
-      const schedule =
+      // Every dispatcher builds both strings at fire time, because only it knows
+      // which event fired and when. The branches below serve exactly one case: a
+      // queue row enqueued before automations carried a trigger line. Such a row
+      // has no prompt, and a schedule row of that vintage has no
+      // appendSystemPrompt either because the old code built it here.
+      //
+      // Delete both branches, `firedAt`, and `queueEventCreatedAt` once no
+      // workflow queue row written before this change can still be drained.
+      const legacySchedule =
+        args.command.appendSystemPrompt === undefined &&
         args.automation.kind === "schedule"
           ? scheduleTriggerContext({
               automation: args.automation,
               workflowName: args.workflowName,
-              firedAt: new Date(args.command.apiStartTime),
+              firedAt: args.firedAt,
             })
           : null;
+      const appendSystemPrompt =
+        args.command.appendSystemPrompt ??
+        (legacySchedule
+          ? workflowAutomationAppendSystemPrompt(legacySchedule)
+          : undefined);
+      if (appendSystemPrompt === undefined) {
+        // An event row always carries its context, in this version and in every
+        // previous one. Fail loudly instead of starting a run that has no idea
+        // which event it is handling.
+        throw new Error(
+          `Event workflow automation ${args.automation.id} reached run start without automation context`,
+        );
+      }
       return {
-        prompt:
-          args.command.prompt ??
-          (schedule
-            ? workflowAutomationPrompt({
-                workflowName: args.workflowName,
-                trigger: schedule.trigger,
-              })
-            : `/${args.workflowName}`),
+        prompt: args.command.prompt ?? `/${args.workflowName}`,
         appendSystemPrompt: appendComputerUseSystemPrompt(
-          args.command.appendSystemPrompt ??
-            (schedule ? workflowAutomationAppendSystemPrompt(schedule) : ""),
+          appendSystemPrompt,
           args.computerUseHostGrant,
         ),
         callbacks:
@@ -555,6 +574,7 @@ export const launchQueuedWorkflowAutomation$ = command(
       agentId,
       workflowName,
       chatThreadId,
+      firedAt: args.queueEventCreatedAt,
       computerUseHostGrant,
       timing,
     });

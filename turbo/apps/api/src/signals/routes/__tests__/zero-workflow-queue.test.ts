@@ -21,6 +21,7 @@ import {
   createActiveGoalQueueEventFixture,
   readGoalQueueStateFixture,
 } from "../../../test-fixtures/goal-queue";
+import { admitPreviousDeploymentWorkflowEventFixture } from "../../../test-fixtures/workflow-queue";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
 import type { ApiTestUser } from "./helpers/api-bdd";
@@ -577,6 +578,92 @@ describe("workflow queue", () => {
       afterFirst[1]!,
     );
     expect(secondClaim.apiStartTime).toBe(dequeuedAt);
+  });
+
+  it("labels a queued schedule tick with the time it fired, not the time it drained", async () => {
+    // Keep this global cron scan before schedules created by parallel test files.
+    mockNow(Date.UTC(2020, 0, 2));
+    const scenario = await setup();
+    const webhookAutomation = await createWebhookAutomation(scenario);
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          schedule: {
+            type: "cron",
+            cronExpression: "0 9 * * *",
+            timezone: "UTC",
+          },
+        },
+      }),
+      [201],
+    );
+    if (!created.body.nextRunAt) {
+      throw new Error("Expected a scheduled next run");
+    }
+
+    // Occupy the thread so the tick has to wait in the queue.
+    const busyRunId = await expectAcceptedRunId(
+      await postWorkflowWebhook(webhookAutomation, "busy"),
+      webhookAutomation.threadId,
+    );
+
+    const firedAt = Date.parse(created.body.nextRunAt) + 60_000;
+    mockNow(firedAt);
+    await executeDueWorkflowAutomations();
+
+    // A later, unrelated drain pass launches the tick. Its trigger line must
+    // still report the fire time, not this drain time.
+    const drainedAt = firedAt + 600_000;
+    mockNow(drainedAt);
+    await completeRunThroughSandbox(scenario, busyRunId);
+    const runIds = await workflowRunIds(webhookAutomation.threadId);
+    expect(runIds).toHaveLength(2);
+
+    await runsApi.heartbeatRunner(scenario.runnerGroup);
+    const claim = await runsApi.claimRunnerJob(runIds[1]!);
+    expect(claim.prompt).toBe(
+      `/${WORKFLOW_NAME}\nTrigger: schedule fired at ${new Date(
+        firedAt,
+      ).toISOString()} (cron "0 9 * * *" in UTC).`,
+    );
+    expect(claim.prompt).not.toContain(new Date(drainedAt).toISOString());
+    expect(claim.appendSystemPrompt).toContain(
+      `"firedAt": "${new Date(firedAt).toISOString()}"`,
+    );
+  });
+
+  it("drains an event row enqueued without a prompt by a previous deployment", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    const busyRunId = await expectAcceptedRunId(
+      await postWorkflowWebhook(automation, "busy"),
+      automation.threadId,
+    );
+
+    const legacyAppendSystemPrompt = [
+      "# Current context",
+      "You are running because a signed workflow webhook automation received an HTTP POST.",
+    ].join("\n");
+    await admitPreviousDeploymentWorkflowEventFixture({
+      automationId: automation.automationId,
+      chatThreadId: automation.threadId,
+      agentId: scenario.agentId,
+      appendSystemPrompt: legacyAppendSystemPrompt,
+    });
+
+    await completeRunThroughSandbox(scenario, busyRunId);
+    const runIds = await workflowRunIds(automation.threadId);
+    expect(runIds).toHaveLength(2);
+
+    await runsApi.heartbeatRunner(scenario.runnerGroup);
+    const claim = await runsApi.claimRunnerJob(runIds[1]!);
+    // The row carries no prompt, so it renders the way its writer intended
+    // rather than picking up a schedule trigger line.
+    expect(claim.prompt).toBe(`/${WORKFLOW_NAME}`);
+    expect(claim.appendSystemPrompt).toContain(legacyAppendSystemPrompt);
+    expect(claim.appendSystemPrompt).not.toContain("Trigger: ");
   });
 
   it("coalesces schedule ticks: at most one pending tick per automation", async () => {

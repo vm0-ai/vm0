@@ -18,6 +18,7 @@ import type {
 
 export {
   buildChatOnlyWorkflowAutomationCallbacks,
+  scheduleTriggerContext,
   type AutomationRow,
   type DueWorkflowAutomation,
   type RunFailure,

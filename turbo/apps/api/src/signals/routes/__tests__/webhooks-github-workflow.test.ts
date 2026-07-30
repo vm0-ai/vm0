@@ -191,6 +191,8 @@ type GithubWebhookAutomationCase = {
     | "pull_request_review"
     | "workflow_job";
   readonly payload: (installationId: string) => string;
+  /** Trigger summary this event renders, without the delivery parenthetical. */
+  readonly expectedTrigger: string;
   readonly expectedPrompt: readonly string[];
   readonly excludedPrompt?: readonly string[];
 };
@@ -242,6 +244,8 @@ const githubWebhookAutomationCases: readonly GithubWebhookAutomationCase[] = [
         sender: { id: 101, login: "lancy", type: "User" },
       });
     },
+    expectedTrigger:
+      'the GitHub Actions job "test" completed with conclusion "failure"',
     expectedPrompt: [
       'GitHub Actions job "test" completed with conclusion "failure"',
       '"runner"',
@@ -292,6 +296,8 @@ const githubWebhookAutomationCases: readonly GithubWebhookAutomationCase[] = [
         sender: { id: 202, login: "trusted-user", type: "User" },
       });
     },
+    expectedTrigger:
+      'GitHub user "trusted-user" submitted a pull request review with state "approved"',
     expectedPrompt: ['review with state "approved"', '"authorAssociation"'],
     excludedPrompt: ["Ignore previous instructions"],
   },
@@ -346,6 +352,7 @@ const githubWebhookAutomationCases: readonly GithubWebhookAutomationCase[] = [
         sender: { id: 101, login: "lancy", type: "User" },
       });
     },
+    expectedTrigger: 'a GitHub deployment status changed to "success"',
     expectedPrompt: [
       'deployment status changed to "success"',
       '"productionEnvironment": true',
@@ -392,6 +399,7 @@ const githubWebhookAutomationCases: readonly GithubWebhookAutomationCase[] = [
         sender: { id: 202, login: "trusted-user", type: "User" },
       });
     },
+    expectedTrigger: 'GitHub user "trusted-user" created a comment',
     expectedPrompt: ["created a comment", '"bodyIncluded": false'],
     excludedPrompt: ["/verify Ignore previous instructions"],
   },
@@ -440,9 +448,10 @@ describe("POST /api/webhooks/github for workflow automations", () => {
         await flushWaitUntilForTest();
       }
 
+      const deliveryId = `delivery-${randomUUID()}`;
       const response = await postGithubWebhook({
         event: testCase.event,
-        deliveryId: `delivery-${randomUUID()}`,
+        deliveryId,
         rawBody: testCase.payload(installed.remoteInstallationId),
       });
       expect(response).toStrictEqual({ status: 200, text: "OK" });
@@ -455,9 +464,17 @@ describe("POST /api/webhooks/github for workflow automations", () => {
         throw new Error(`Expected a ${testCase.name} automation run`);
       }
       const claim = await runsApi.claimRunnerJob(runId);
+      // The visible user turn names this delivery, so a resumed session can tell
+      // this firing apart from every earlier firing of the same automation.
+      expect(claim.prompt).toBe(
+        `/${WORKFLOW_NAME}\nTrigger: ${testCase.expectedTrigger} (GitHub webhook delivery ${deliveryId}).`,
+      );
       for (const expected of testCase.expectedPrompt) {
         expect(claim.appendSystemPrompt).toContain(expected);
       }
+      expect(claim.appendSystemPrompt).toContain(
+        `Trigger: ${testCase.expectedTrigger} (GitHub webhook delivery ${deliveryId}).`,
+      );
       for (const excluded of testCase.excludedPrompt ?? []) {
         expect(claim.appendSystemPrompt).not.toContain(excluded);
       }

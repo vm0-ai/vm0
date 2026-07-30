@@ -250,6 +250,7 @@ export const drainWorkflowQueueForThread$ = command(
               params.allowClaimedOnceScheduleAutomation,
           },
           queueEventId: event.id,
+          queueEventCreatedAt: event.createdAt,
           apiStartTime: launchHint?.apiStartTime ?? now(),
           prompt: params.prompt,
           triggerBrief: event.triggerBrief ?? undefined,
