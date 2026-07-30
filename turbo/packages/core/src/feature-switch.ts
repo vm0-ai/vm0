@@ -438,6 +438,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the Artifacts manage page for generated artifacts in the current organization.",
     enabled: true,
   },
+  [FeatureSwitchKey.ArtifactKeyV2]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Store new user artifacts under flat, ten-character hashed public keys.",
+    enabled: false,
+  },
   [FeatureSwitchKey.HostedArtifactVersions]: {
     maintainer: "yuma@vm0.ai",
     description:

@@ -7,14 +7,13 @@ import { userBehaviorCount } from "@vm0/db/schema/user-behavior-count";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { parseBuffer } from "music-metadata";
 
-import { buildArtifactKey, buildFileUrl } from "../../lib/file-url";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { db$, writeDb$ } from "../external/db";
 import { checkBillableOperationCredits$ } from "./billable-operation-admission.service";
 import { nowDate } from "../external/time";
-import { putS3Object } from "../external/s3";
 import { tapError } from "../utils";
+import { storeGeneratedArtifactObject$ } from "./artifact-storage.service";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
 import {
   AUDIO_INPUT_BEHAVIOR_KEY,
@@ -959,7 +958,7 @@ export const recordSttUsage$ = command(
 
 export const recordGeneratedSpeech$ = command(
   async (
-    { get, set },
+    { set },
     params: {
       readonly orgId: string;
       readonly userId: string;
@@ -972,21 +971,19 @@ export const recordGeneratedSpeech$ = command(
     signal: AbortSignal,
   ): Promise<RecordedSpeech> => {
     const writeDb = set(writeDb$);
-    const fileId = randomUUID();
-    const filename = `voice-${fileId.slice(0, 8)}.wav`;
-    const s3Key = buildArtifactKey(params.userId, fileId, filename);
-    const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
-    await get(
-      putS3Object(
-        bucket,
-        s3Key,
-        Buffer.from(params.audioBytes),
-        SPEECH_CONTENT_TYPE,
-      ),
+    const artifact = await set(
+      storeGeneratedArtifactObject$,
+      {
+        userId: params.userId,
+        orgId: params.orgId,
+        filenamePrefix: "voice",
+        extension: "wav",
+        body: Buffer.from(params.audioBytes),
+        contentType: SPEECH_CONTENT_TYPE,
+      },
+      signal,
     );
-    signal.throwIfAborted();
-
-    const url = buildFileUrl(params.userId, fileId, filename);
+    const { id: fileId, filename, key: s3Key, url } = artifact;
     await set(
       recordWebUploadedFile$,
       {

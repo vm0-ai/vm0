@@ -1,6 +1,10 @@
+import { createHash } from "node:crypto";
+
 import { env } from "./env";
 
 const ARTIFACTS_PREFIX = "artifacts";
+const ARTIFACT_HASH_LENGTH = 10;
+const ARTIFACT_HASH_SPACE = 36n ** BigInt(ARTIFACT_HASH_LENGTH);
 
 /**
  * Sanitize a user-supplied filename for use in an artifact object key.
@@ -26,6 +30,39 @@ export function buildArtifactKey(
 
 export function buildArtifactPrefix(userId: string, id: string): string {
   return `${ARTIFACTS_PREFIX}/${encodeURIComponent(userId)}/${id}/`;
+}
+
+function artifactHash(id: string, variant?: string): string {
+  const seed = variant === undefined ? id : `${id}\0${variant}`;
+  const digestPrefix = createHash("sha256")
+    .update(seed)
+    .digest("hex")
+    .slice(0, 16);
+  return (BigInt(`0x${digestPrefix}`) % ARTIFACT_HASH_SPACE)
+    .toString(36)
+    .padStart(ARTIFACT_HASH_LENGTH, "0");
+}
+
+function artifactExtension(filename: string): string {
+  const sanitized = sanitizeArtifactFilename(filename);
+  const extension = sanitized.split(".").pop();
+  return extension && extension !== sanitized ? extension.toLowerCase() : "bin";
+}
+
+export function buildArtifactPrefixV2(id: string, variant?: string): string {
+  return `${ARTIFACTS_PREFIX}/${artifactHash(id, variant)}.`;
+}
+
+export function buildArtifactKeyV2(
+  id: string,
+  filename: string,
+  variant?: string,
+): string {
+  return `${buildArtifactPrefixV2(id, variant)}${artifactExtension(filename)}`;
+}
+
+export function isArtifactKeyV2(key: string): boolean {
+  return /^artifacts\/[0-9a-z]{10}\.[^/]+$/u.test(key);
 }
 
 /**

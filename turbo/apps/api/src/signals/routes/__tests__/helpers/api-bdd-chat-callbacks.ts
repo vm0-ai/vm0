@@ -33,7 +33,9 @@ type OpenRouterCompletionBody = z.infer<typeof openRouterCompletionBodySchema>;
 interface StoredS3Object {
   readonly bucket: string;
   readonly body?: Uint8Array;
+  readonly contentType?: string;
   readonly key: string;
+  readonly metadata?: Readonly<Record<string, string>>;
   readonly size: number;
 }
 
@@ -43,6 +45,7 @@ interface CapturedS3Put {
   readonly ifNoneMatch: string | null;
   readonly key: string;
   readonly contentType: string | null;
+  readonly metadata: Readonly<Record<string, string>> | null;
 }
 
 interface AuthHeaders {
@@ -72,6 +75,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function isStringRecord(value: unknown): value is Record<string, string> {
+  return (
+    isRecord(value) &&
+    Object.values(value).every((entry) => {
+      return typeof entry === "string";
+    })
+  );
+}
+
 function commandInput(command: unknown): Record<string, unknown> {
   if (isRecord(command) && isRecord(command.input)) {
     return command.input;
@@ -97,6 +109,9 @@ function storedS3ObjectResponse(
     object?.body ?? (object ? new Uint8Array(object.size) : undefined);
   return {
     ContentLength: object?.size,
+    ContentType: object?.contentType,
+    LastModified: object ? nowDate() : undefined,
+    Metadata: object?.metadata,
     Body: body
       ? {
           async *[Symbol.asyncIterator](): AsyncGenerator<Uint8Array> {
@@ -330,6 +345,7 @@ export function createChatCallbacksApi(context: TestContext) {
             key,
             contentType:
               typeof input.ContentType === "string" ? input.ContentType : null,
+            metadata: isStringRecord(input.Metadata) ? input.Metadata : null,
           });
           if (rejectNextImmutablePut && input.IfNoneMatch === "*") {
             rejectNextImmutablePut = false;

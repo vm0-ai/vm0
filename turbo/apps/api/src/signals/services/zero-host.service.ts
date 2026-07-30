@@ -596,6 +596,7 @@ function artifactPreviewArgs(
     id: artifactRow.id,
     runId: deployment.runId,
     userId: deployment.userId,
+    orgId: deployment.orgId,
     url: deployment.artifactUrl ?? deployment.url,
     contentType: "text/html",
     deploymentId: deployment.id,
