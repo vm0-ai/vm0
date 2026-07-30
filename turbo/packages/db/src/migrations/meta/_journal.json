@@ -5265,6 +5265,20 @@
       "when": 1785395016613,
       "tag": "0751_retire_draft_content_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 752,
+      "version": "7",
+      "when": 1785400935228,
+      "tag": "0752_chunky_gateway",
+      "breakpoints": true
+    },
+    {
+      "idx": 753,
+      "version": "7",
+      "when": 1785400947601,
+      "tag": "0753_backfill_chat_scoped_hosted_sites",
+      "breakpoints": true
     }
   ]
 }

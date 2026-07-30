@@ -238,6 +238,7 @@ async function createHostedArtifact(args: {
   readonly fileId: string;
   readonly url: string;
   readonly deploymentId: string;
+  readonly bearer: string;
 }> {
   const run = await sendChatRun(args.actor, {
     agentId: args.agentId,
@@ -262,6 +263,7 @@ async function createHostedArtifact(args: {
     fileId: prepared.url,
     url: prepared.url,
     deploymentId: prepared.deploymentId,
+    bearer,
   };
 }
 
@@ -715,7 +717,10 @@ describe("GET /api/zero/artifacts", () => {
       throw new Error("Expected artifact sync timestamp");
     }
 
-    await chat.completeHostedSite(owner.actor, artifact.deploymentId);
+    await chat.completeHostedSiteWithBearer(
+      artifact.bearer,
+      artifact.deploymentId,
+    );
     await flushWaitUntilForTest();
 
     const retriedResponse = await chat.listArtifacts(owner.actor);
