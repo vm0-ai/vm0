@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import { eq, sql } from "drizzle-orm";
 import { HttpResponse, delay, http, passthrough } from "msw";
-import { connectorSlugLegacyInsertConnectors } from "@vm0/db/compat/connector-slug-legacy-insert";
+import { connectorSlugCanonicalInsertConnectors } from "@vm0/db/compat/connector-slug-canonical-insert";
 import {
   agentComposes,
   agentComposeVersions,
@@ -712,11 +712,11 @@ async function seedSideEffectFreeGetData(
     sendMode: "cmd-enter",
     captureNetworkBodiesRemaining: 3,
   });
-  await db.insert(connectorSlugLegacyInsertConnectors).values([
+  await db.insert(connectorSlugCanonicalInsertConnectors).values([
     {
       orgId: fixture.orgId,
       userId: fixture.userId,
-      type: "benchmark-github",
+      connectorSlug: "benchmark-github",
       authMethod: "api-token",
       storageVersion: 1,
       externalId: "bench-github",
@@ -725,7 +725,7 @@ async function seedSideEffectFreeGetData(
     {
       orgId: fixture.orgId,
       userId: fixture.userId,
-      type: "benchmark-slack",
+      connectorSlug: "benchmark-slack",
       authMethod: "api-token",
       storageVersion: 1,
       externalId: "bench-slack",
@@ -734,7 +734,7 @@ async function seedSideEffectFreeGetData(
     {
       orgId: fixture.orgId,
       userId: fixture.userId,
-      type: "benchmark-notion",
+      connectorSlug: "benchmark-notion",
       authMethod: "api-token",
       storageVersion: 1,
       externalId: "bench-notion",

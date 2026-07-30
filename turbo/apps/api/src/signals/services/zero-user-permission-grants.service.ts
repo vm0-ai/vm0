@@ -12,7 +12,7 @@ import {
   type NetworkPolicies,
   type NetworkPolicy,
 } from "@vm0/connectors/firewall-types";
-import { connectorSlugLegacyInsertUserPermissionGrants } from "@vm0/db/compat/connector-slug-legacy-insert";
+import { connectorSlugCanonicalInsertUserPermissionGrants } from "@vm0/db/compat/connector-slug-canonical-insert";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import {
   connectorCatalogActiveSnapshot,
@@ -67,7 +67,7 @@ const userPermissionGrantSelection = Object.freeze({
   orgId: userPermissionGrants.orgId,
   userId: userPermissionGrants.userId,
   agentId: userPermissionGrants.agentId,
-  connectorRef: userPermissionGrants.connectorRef,
+  connectorRef: userPermissionGrants.connectorSlug,
   permission: userPermissionGrants.permission,
   action: userPermissionGrants.action,
   expiresAt: userPermissionGrants.expiresAt,
@@ -75,23 +75,23 @@ const userPermissionGrantSelection = Object.freeze({
   updatedAt: userPermissionGrants.updatedAt,
 });
 
-const connectorSlugLegacyInsertUserPermissionGrantSelection = Object.freeze({
-  id: connectorSlugLegacyInsertUserPermissionGrants.id,
-  orgId: connectorSlugLegacyInsertUserPermissionGrants.orgId,
-  userId: connectorSlugLegacyInsertUserPermissionGrants.userId,
-  agentId: connectorSlugLegacyInsertUserPermissionGrants.agentId,
-  connectorRef: connectorSlugLegacyInsertUserPermissionGrants.connectorRef,
-  permission: connectorSlugLegacyInsertUserPermissionGrants.permission,
-  action: connectorSlugLegacyInsertUserPermissionGrants.action,
-  expiresAt: connectorSlugLegacyInsertUserPermissionGrants.expiresAt,
-  createdAt: connectorSlugLegacyInsertUserPermissionGrants.createdAt,
-  updatedAt: connectorSlugLegacyInsertUserPermissionGrants.updatedAt,
+const connectorSlugCanonicalInsertUserPermissionGrantSelection = Object.freeze({
+  id: connectorSlugCanonicalInsertUserPermissionGrants.id,
+  orgId: connectorSlugCanonicalInsertUserPermissionGrants.orgId,
+  userId: connectorSlugCanonicalInsertUserPermissionGrants.userId,
+  agentId: connectorSlugCanonicalInsertUserPermissionGrants.agentId,
+  connectorRef: connectorSlugCanonicalInsertUserPermissionGrants.connectorSlug,
+  permission: connectorSlugCanonicalInsertUserPermissionGrants.permission,
+  action: connectorSlugCanonicalInsertUserPermissionGrants.action,
+  expiresAt: connectorSlugCanonicalInsertUserPermissionGrants.expiresAt,
+  createdAt: connectorSlugCanonicalInsertUserPermissionGrants.createdAt,
+  updatedAt: connectorSlugCanonicalInsertUserPermissionGrants.updatedAt,
 });
 
 type UserPermissionGrantRow = Omit<
   typeof userPermissionGrants.$inferSelect,
-  "connectorSlug"
->;
+  "connectorSlug" | "legacyConnectorRef"
+> & { readonly connectorRef: string };
 type StoredPermissionGrantRow = UserPermissionGrantRow;
 type ResolvedPermissionGrant = Pick<
   UserPermissionGrantRow,
@@ -494,7 +494,7 @@ export async function resolveActiveNetworkPolicyRefreshesFromBaseline(
         catalogDigest: connectorCatalogActiveSnapshot.catalogDigest,
       },
       grant: {
-        connectorRef: userPermissionGrants.connectorRef,
+        connectorRef: userPermissionGrants.connectorSlug,
         permission: userPermissionGrants.permission,
         action: userPermissionGrants.action,
         expiresAt: userPermissionGrants.expiresAt,
@@ -511,7 +511,7 @@ export async function resolveActiveNetworkPolicyRefreshesFromBaseline(
         eq(userPermissionGrants.orgId, scope.orgId),
         eq(userPermissionGrants.userId, scope.userId),
         eq(userPermissionGrants.agentId, scope.agentId),
-        inArray(userPermissionGrants.connectorRef, connectorSlugs),
+        inArray(userPermissionGrants.connectorSlug, connectorSlugs),
         activeUserPermissionGrantCondition(checkedAt),
       ),
     )
@@ -529,7 +529,7 @@ export async function resolveActiveNetworkPolicyRefreshesFromBaseline(
       ),
     )
     .orderBy(
-      asc(userPermissionGrants.connectorRef),
+      asc(userPermissionGrants.connectorSlug),
       asc(userPermissionGrants.permission),
     );
 
@@ -639,7 +639,7 @@ async function loadActiveUserPermissionGrants(
       ),
     )
     .orderBy(
-      asc(userPermissionGrants.connectorRef),
+      asc(userPermissionGrants.connectorSlug),
       asc(userPermissionGrants.permission),
     );
 }
@@ -658,12 +658,12 @@ async function loadActiveUserPermissionGrantsForConnectorSlugs(
         eq(userPermissionGrants.orgId, scope.orgId),
         eq(userPermissionGrants.userId, scope.userId),
         eq(userPermissionGrants.agentId, scope.agentId),
-        inArray(userPermissionGrants.connectorRef, connectorSlugs),
+        inArray(userPermissionGrants.connectorSlug, connectorSlugs),
         activeUserPermissionGrantCondition(checkedAt),
       ),
     )
     .orderBy(
-      asc(userPermissionGrants.connectorRef),
+      asc(userPermissionGrants.connectorSlug),
       asc(userPermissionGrants.permission),
     );
 }
@@ -757,7 +757,7 @@ async function applyVisibleAgentGrantRows(
       eq(userPermissionGrants.orgId, args.orgId),
       eq(userPermissionGrants.userId, args.userId),
       eq(userPermissionGrants.agentId, agentId),
-      eq(userPermissionGrants.connectorRef, args.apply.connectorSlug),
+      eq(userPermissionGrants.connectorSlug, args.apply.connectorSlug),
     );
 
     if (args.apply.mode === "replace") {
@@ -803,25 +803,30 @@ async function applyVisibleAgentGrantRows(
                 eq(userPermissionGrants.orgId, args.orgId),
                 eq(userPermissionGrants.userId, args.userId),
                 eq(userPermissionGrants.agentId, agentId),
-                eq(userPermissionGrants.connectorRef, args.apply.connectorSlug),
+                eq(
+                  userPermissionGrants.connectorSlug,
+                  args.apply.connectorSlug,
+                ),
                 eq(userPermissionGrants.permission, grant.permission),
               ),
             )
             .returning(userPermissionGrantSelection)
         : await tx
-            .insert(connectorSlugLegacyInsertUserPermissionGrants)
+            .insert(connectorSlugCanonicalInsertUserPermissionGrants)
             .values({
               orgId: args.orgId,
               userId: args.userId,
               agentId,
-              connectorRef: args.apply.connectorSlug,
+              connectorSlug: args.apply.connectorSlug,
               permission: grant.permission,
               action: grant.action,
               expiresAt,
               createdAt: timestamp,
               updatedAt: timestamp,
             })
-            .returning(connectorSlugLegacyInsertUserPermissionGrantSelection);
+            .returning(
+              connectorSlugCanonicalInsertUserPermissionGrantSelection,
+            );
       if (!row) {
         throw new Error("User permission grant apply did not return a row");
       }

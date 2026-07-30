@@ -17,7 +17,7 @@ import {
 import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connector-config";
 import type { ConnectorAuthMethodId } from "@vm0/api-contracts/contracts/connector-identity";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
-import { connectorSlugLegacyInsertOauthStates } from "@vm0/db/compat/connector-slug-legacy-insert";
+import { connectorSlugCanonicalInsertOauthStates } from "@vm0/db/compat/connector-slug-canonical-insert";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { connectors } from "@vm0/db/schema/connector";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
@@ -401,9 +401,9 @@ export async function buildGithubUserConnectAuthorizationUrl(args: {
     }),
   );
 
-  await args.db.insert(connectorSlugLegacyInsertOauthStates).values({
+  await args.db.insert(connectorSlugCanonicalInsertOauthStates).values({
     state,
-    type: "github",
+    connectorSlug: "github",
     authMethod: args.authMethodId,
     userId: args.vm0UserId,
     orgId: args.orgId,
@@ -501,7 +501,7 @@ export async function linkGithubVm0User(args: {
       .where(
         and(
           eq(connectors.userId, args.vm0UserId),
-          eq(connectors.type, "github"),
+          eq(connectors.connectorSlug, "github"),
         ),
       )
       .limit(1);

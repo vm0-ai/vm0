@@ -40,7 +40,7 @@ async function loadAgentAllowedConnectorSlugRows(
   },
 ): Promise<readonly AgentConnectorSlugRow[]> {
   return await db
-    .select({ connectorSlug: userConnectors.connectorType })
+    .select({ connectorSlug: userConnectors.connectorSlug })
     .from(userConnectors)
     .where(
       and(

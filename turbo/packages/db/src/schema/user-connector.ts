@@ -31,9 +31,11 @@ export const userConnectors = pgTable(
         },
         { onDelete: "cascade" },
       ),
-    // Legacy rollout bridge. Switch in #23793 and remove in #23794.
-    connectorType: varchar("connector_type", { length: 64 }).notNull(),
-    connectorSlug: varchar("connector_slug", { length: 64 }),
+    // Compatibility bridge for pre-#23793 releases. Remove in #23794.
+    legacyConnectorType: varchar("connector_type", {
+      length: 64,
+    }).notNull(),
+    connectorSlug: varchar("connector_slug", { length: 64 }).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {
@@ -42,7 +44,7 @@ export const userConnectors = pgTable(
         table.orgId,
         table.userId,
         table.agentId,
-        table.connectorType,
+        table.legacyConnectorType,
       ),
       uniqueIndex("idx_user_connectors_unique_slug").on(
         table.orgId,
@@ -54,7 +56,7 @@ export const userConnectors = pgTable(
       check(
         "chk_user_connectors_slug_matches_type",
         sql`${table.connectorSlug} IS NOT NULL
-          AND ${table.connectorSlug} = ${table.connectorType}`,
+          AND ${table.connectorSlug} = ${table.legacyConnectorType}`,
       ),
     ];
   },
