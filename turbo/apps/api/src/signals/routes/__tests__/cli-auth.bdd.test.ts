@@ -422,6 +422,15 @@ describe("CLI-TEST: test-connector", () => {
       error: "connectorSlug, authMethod, and accessToken are required",
     });
 
+    const malformedSlug = await authDevice.requestTestConnector(
+      {},
+      { ...githubOauthBody, connectorSlug: "not a connector slug" },
+      [400],
+    );
+    expect(malformedSlug.body).toStrictEqual({
+      error: 'Unknown connector slug: "not a connector slug"',
+    });
+
     const unknownSlug = await authDevice.requestTestConnector(
       {},
       { ...githubOauthBody, connectorSlug: "unknown-connector" },

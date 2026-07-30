@@ -42,7 +42,7 @@ export const cliAuthTestConnectorContract = c.router({
     path: "/api/cli/auth/test-connector",
     query: testEmailQuerySchema,
     body: z.object({
-      connectorSlug: connectorSlugSchema,
+      connectorSlug: z.string(),
       authMethod: connectorAuthMethodIdSchema,
       accessToken: z.string(),
       refreshToken: z.string().min(1).optional(),
