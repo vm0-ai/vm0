@@ -69,7 +69,9 @@ function parseUserLocale(value: unknown): UserLocale | null {
     value === "id-ID" ||
     value === "de-DE" ||
     value === "es-ES" ||
-    value === "it-IT"
+    value === "it-IT" ||
+    value === "fr-FR" ||
+    value === "hi-IN"
   ) {
     return value;
   }

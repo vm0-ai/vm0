@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
+import type { SupportedLocale } from "../../../i18n/resources.ts";
 import { platformVm0LogoDarkImg } from "../../../lib/static-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
@@ -15,9 +16,9 @@ function setBrowserUrl(url: string): void {
   window.location.href = url;
 }
 
-function usePortugueseLocale(): void {
-  document.documentElement.lang = "pt-BR";
-  context.mocks.data.userPreferences({ locale: "pt-BR" });
+function useLocale(locale: SupportedLocale): void {
+  document.documentElement.lang = locale;
+  context.mocks.data.userPreferences({ locale });
   context.signal.addEventListener(
     "abort",
     () => {
@@ -88,29 +89,65 @@ function useSpanishLocale(): void {
 }
 
 describe("app auth pages", () => {
-  it("localizes the app auth shell and Clerk resources in Brazilian Portuguese", async () => {
-    usePortugueseLocale();
-    setBrowserUrl("https://app.vm0.ai/sign-up");
+  const localeCases = [
+    {
+      locale: "pt-BR",
+      loading: "Carregando autenticação",
+      toggleTheme: "Alternar tema",
+      documentTitle: "Criar conta | VM0",
+      actionLink: "Registre-se",
+      accessNotAllowed: "Acesso não permitido.",
+    },
+    {
+      locale: "fr-FR",
+      loading: "Chargement de l'authentification",
+      toggleTheme: "Changer de thème",
+      documentTitle: "S'inscrire | VM0",
+      actionLink: "S'inscrire",
+      accessNotAllowed: "L'accès n'est pas autorisé.",
+    },
+    {
+      locale: "hi-IN",
+      loading: "प्रमाणीकरण लोड हो रहा है",
+      toggleTheme: "थीम टॉगल करें",
+      documentTitle: "साइन अप करें | VM0",
+      actionLink: "साइन अप करें",
+      accessNotAllowed: "प्रवेश की अनुमति नहीं है।",
+    },
+  ] as const;
 
-    const authComponent = context.mocks.clerk.deferAuthComponentMount();
-    detachedSetupPage({ context, path: "/sign-up" });
+  it.each(localeCases)(
+    "localizes the app auth shell and Clerk resources in $locale",
+    async (localeCase) => {
+      useLocale(localeCase.locale);
+      setBrowserUrl("https://app.vm0.ai/sign-up");
 
-    await expect(
-      screen.findByText("Carregando autenticação"),
-    ).resolves.toBeInTheDocument();
-    expect(screen.getByLabelText("Alternar tema")).toBeInTheDocument();
-    expect(document.title).toBe("Criar conta | VM0");
+      const authComponent = context.mocks.clerk.deferAuthComponentMount();
+      detachedSetupPage({ context, path: "/sign-up" });
 
-    const localization = getClerkLocalization("VM0", "pt-BR", i18n.t);
-    expect(localization.signIn?.start?.actionLink).toBe("Registre-se");
-    expect(localization.unstable__errors?.not_allowed_access).toBe(
-      "Acesso não permitido.",
-    );
+      await expect(
+        screen.findByText(localeCase.loading),
+      ).resolves.toBeInTheDocument();
+      expect(screen.getByLabelText(localeCase.toggleTheme)).toBeInTheDocument();
+      expect(document.title).toBe(localeCase.documentTitle);
 
-    act(() => {
-      authComponent.mount();
-    });
-  });
+      const localization = getClerkLocalization(
+        "VM0",
+        localeCase.locale,
+        i18n.t,
+      );
+      expect(localization.signIn?.start?.actionLink).toBe(
+        localeCase.actionLink,
+      );
+      expect(localization.unstable__errors?.not_allowed_access).toBe(
+        localeCase.accessNotAllowed,
+      );
+
+      act(() => {
+        authComponent.mount();
+      });
+    },
+  );
 
   it("localizes the app auth shell and Clerk resources in Japanese", async () => {
     useJapaneseLocale();

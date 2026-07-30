@@ -5,7 +5,10 @@ export default defineConfig({
     globals: true,
     environment: "node",
     env: {
+      FRENCH_LOCALE_ROLLOUT_ENABLED: "true",
+      HINDI_LOCALE_ROLLOUT_ENABLED: "true",
       INDONESIAN_LOCALE_ROLLOUT_ENABLED: "true",
+      JAPANESE_LOCALE_ROLLOUT_ENABLED: "true",
       TZ: "UTC",
     },
     setupFiles: ["./src/__tests__/env-stub.ts", "./src/__tests__/setup.ts"],

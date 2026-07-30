@@ -8,6 +8,7 @@ import {
   chatEventsContract,
   chatThreadEventsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { RUNNER_CANCELLATION_RECOVERY_CAPABILITY } from "@vm0/api-contracts/contracts/runners";
 import { zeroModelProvidersByTypeContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { onTestFinished } from "vitest";
@@ -607,6 +608,43 @@ describe("workflow queue", () => {
     await expect(
       readChatEventInputParamsFixture(thirdEvent.id),
     ).resolves.toBeNull();
+  });
+
+  it("keeps workflow events queued until cancellation recovery completes", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    const firstRunId = await expectAcceptedRunId(
+      await postWorkflowWebhook(automation, "first"),
+      automation.threadId,
+    );
+    await runsApi.heartbeatRunner(scenario.runnerGroup);
+    const firstClaim = await runsApi.claimRunnerJob(firstRunId, {
+      capabilities: [RUNNER_CANCELLATION_RECOVERY_CAPABILITY],
+    });
+    expectAcceptedWithoutRun(
+      await postWorkflowWebhook(automation, "wait for recovery"),
+    );
+
+    await runsApi.requestCancelRun(scenario.actor, firstRunId, [200]);
+    await flushWaitUntilForTest();
+    await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
+      firstRunId,
+    ]);
+
+    await webhooksApi.requestAgentComplete(
+      { runId: firstRunId, exitCode: 1, error: "Run cancelled" },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+    await flushWaitUntilForTest();
+    const runIds = await workflowRunIds(automation.threadId);
+    expect(runIds).toHaveLength(2);
+    const secondRunId = runIds[1];
+    if (!secondRunId) {
+      throw new Error("Expected cancellation recovery to launch a second run");
+    }
+    await runsApi.requestCancelRun(scenario.actor, secondRunId, [200]);
+    await flushWaitUntilForTest();
   });
 
   it("labels a queued schedule tick with the time it fired, not the time it drained", async () => {

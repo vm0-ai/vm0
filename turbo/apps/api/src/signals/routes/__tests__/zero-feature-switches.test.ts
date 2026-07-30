@@ -13,7 +13,7 @@ function client() {
 }
 
 describe("/api/zero/feature-switches", () => {
-  it("projects the Japanese locale deployment switch", async () => {
+  it("applies the Japanese locale override within the deployment gate", async () => {
     createZeroRouteMocks(context).clerk.session(
       "user_japanese_locale_switch_test",
       "org_japanese_locale_switch_test",
@@ -21,17 +21,65 @@ describe("/api/zero/feature-switches", () => {
     );
     const headers = { authorization: "Bearer clerk-session" };
 
-    mockOptionalEnv("JAPANESE_LOCALE_ROLLOUT_ENABLED", undefined);
-    const disabled = await accept(client().get({ headers }), [200]);
+    await accept(client().delete({ headers }), [200]);
+    mockOptionalEnv("JAPANESE_LOCALE_ROLLOUT_ENABLED", "true");
+    const defaultDisabled = await accept(client().get({ headers }), [200]);
     expect(
-      disabled.body.effectiveSwitches[FeatureSwitchKey.JapaneseLocale],
+      defaultDisabled.body.effectiveSwitches[FeatureSwitchKey.JapaneseLocale],
     ).toBeFalsy();
 
-    mockOptionalEnv("JAPANESE_LOCALE_ROLLOUT_ENABLED", "true");
-    const enabled = await accept(client().get({ headers }), [200]);
+    const enabled = await accept(
+      client().update({
+        headers,
+        body: {
+          switches: {
+            [FeatureSwitchKey.JapaneseLocale]: true,
+          },
+        },
+      }),
+      [200],
+    );
+    expect(enabled.body.switches[FeatureSwitchKey.JapaneseLocale]).toBeTruthy();
     expect(
       enabled.body.effectiveSwitches[FeatureSwitchKey.JapaneseLocale],
     ).toBeTruthy();
+
+    const disabledByUser = await accept(
+      client().update({
+        headers,
+        body: {
+          switches: {
+            [FeatureSwitchKey.JapaneseLocale]: false,
+          },
+        },
+      }),
+      [200],
+    );
+    expect(
+      disabledByUser.body.effectiveSwitches[FeatureSwitchKey.JapaneseLocale],
+    ).toBeFalsy();
+
+    await accept(
+      client().update({
+        headers,
+        body: {
+          switches: {
+            [FeatureSwitchKey.JapaneseLocale]: true,
+          },
+        },
+      }),
+      [200],
+    );
+    mockOptionalEnv("JAPANESE_LOCALE_ROLLOUT_ENABLED", undefined);
+    const deploymentDisabled = await accept(client().get({ headers }), [200]);
+    expect(
+      deploymentDisabled.body.switches[FeatureSwitchKey.JapaneseLocale],
+    ).toBeTruthy();
+    expect(
+      deploymentDisabled.body.effectiveSwitches[
+        FeatureSwitchKey.JapaneseLocale
+      ],
+    ).toBeFalsy();
   });
 
   it("projects the Korean locale deployment switch", async () => {
@@ -115,6 +163,86 @@ describe("/api/zero/feature-switches", () => {
       current.body.effectiveSwitches[
         FeatureSwitchKey.StructuredPromptInlineTemplates
       ],
+    ).toBeTruthy();
+  });
+
+  it("exposes French locale availability only through the server rollout gate", async () => {
+    createZeroRouteMocks(context).clerk.session(
+      "user_french_locale_feature_switch_test",
+      "org_french_locale_feature_switch_test",
+      "org:member",
+    );
+    const headers = { authorization: "Bearer clerk-session" };
+    mockOptionalEnv("FRENCH_LOCALE_ROLLOUT_ENABLED", undefined);
+
+    const guarded = await accept(client().get({ headers }), [200]);
+    expect(
+      guarded.body.effectiveSwitches[FeatureSwitchKey.FrenchLocale],
+    ).toBeFalsy();
+
+    const overrideAttempt = await accept(
+      client().update({
+        headers,
+        body: {
+          switches: {
+            [FeatureSwitchKey.FrenchLocale]: true,
+          },
+        },
+      }),
+      [200],
+    );
+    expect(overrideAttempt.body.switches).not.toHaveProperty(
+      FeatureSwitchKey.FrenchLocale,
+    );
+    expect(
+      overrideAttempt.body.effectiveSwitches[FeatureSwitchKey.FrenchLocale],
+    ).toBeFalsy();
+
+    mockOptionalEnv("FRENCH_LOCALE_ROLLOUT_ENABLED", "true");
+
+    const enabled = await accept(client().get({ headers }), [200]);
+    expect(
+      enabled.body.effectiveSwitches[FeatureSwitchKey.FrenchLocale],
+    ).toBeTruthy();
+  });
+
+  it("exposes Hindi locale availability only through the server rollout gate", async () => {
+    createZeroRouteMocks(context).clerk.session(
+      "user_hindi_locale_feature_switch_test",
+      "org_hindi_locale_feature_switch_test",
+      "org:member",
+    );
+    const headers = { authorization: "Bearer clerk-session" };
+    mockOptionalEnv("HINDI_LOCALE_ROLLOUT_ENABLED", undefined);
+
+    const guarded = await accept(client().get({ headers }), [200]);
+    expect(
+      guarded.body.effectiveSwitches[FeatureSwitchKey.HindiLocale],
+    ).toBeFalsy();
+
+    const overrideAttempt = await accept(
+      client().update({
+        headers,
+        body: {
+          switches: {
+            [FeatureSwitchKey.HindiLocale]: true,
+          },
+        },
+      }),
+      [200],
+    );
+    expect(overrideAttempt.body.switches).not.toHaveProperty(
+      FeatureSwitchKey.HindiLocale,
+    );
+    expect(
+      overrideAttempt.body.effectiveSwitches[FeatureSwitchKey.HindiLocale],
+    ).toBeFalsy();
+
+    mockOptionalEnv("HINDI_LOCALE_ROLLOUT_ENABLED", "true");
+
+    const enabled = await accept(client().get({ headers }), [200]);
+    expect(
+      enabled.body.effectiveSwitches[FeatureSwitchKey.HindiLocale],
     ).toBeTruthy();
   });
 });

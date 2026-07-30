@@ -364,7 +364,9 @@ function createAssistantErrorRecoveryComputed(
         selectModel: {
           allowedFrameworks: allowedFrameworksForRecovery(classified),
           excludedModel:
-            classified.scope === "model" ? get(selectedModel$) : null,
+            classified.kind === "usage-limit" && classified.scope === "model"
+              ? get(selectedModel$)
+              : null,
         },
         resetAndTryAgain,
       },

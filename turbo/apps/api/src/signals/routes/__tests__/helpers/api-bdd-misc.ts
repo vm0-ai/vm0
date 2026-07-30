@@ -29,6 +29,8 @@ import { zeroOrgLogoContract } from "@vm0/api-contracts/contracts/zero-org-logo"
 import {
   addClientCapabilityToVersion,
   CLIENT_CAPABILITY_ES_ES_LOCALE,
+  CLIENT_CAPABILITY_FR_FR_LOCALE,
+  CLIENT_CAPABILITY_HI_IN_LOCALE,
   CLIENT_CAPABILITY_IT_IT_LOCALE,
   CLIENT_CAPABILITY_JA_JP_LOCALE,
   CLIENT_CAPABILITY_KO_KR_LOCALE,
@@ -105,9 +107,25 @@ export const ITALIAN_CLIENT_VERSION = addClientCapabilityToVersion(
   "0.662.0",
   CLIENT_CAPABILITY_IT_IT_LOCALE,
 );
-export const ALL_LOCALES_CLIENT_VERSION = addClientCapabilityToVersion(
+const ALL_LOCALES_WITH_ITALIAN_CLIENT_VERSION = addClientCapabilityToVersion(
   ALL_LOCALES_WITH_SPANISH_CLIENT_VERSION,
   CLIENT_CAPABILITY_IT_IT_LOCALE,
+);
+export const FRENCH_CLIENT_VERSION = addClientCapabilityToVersion(
+  "0.649.0",
+  CLIENT_CAPABILITY_FR_FR_LOCALE,
+);
+const ALL_LOCALES_WITH_FRENCH_CLIENT_VERSION = addClientCapabilityToVersion(
+  ALL_LOCALES_WITH_ITALIAN_CLIENT_VERSION,
+  CLIENT_CAPABILITY_FR_FR_LOCALE,
+);
+export const HINDI_CLIENT_VERSION = addClientCapabilityToVersion(
+  "0.648.0",
+  CLIENT_CAPABILITY_HI_IN_LOCALE,
+);
+export const ALL_LOCALES_CLIENT_VERSION = addClientCapabilityToVersion(
+  ALL_LOCALES_WITH_FRENCH_CLIENT_VERSION,
+  CLIENT_CAPABILITY_HI_IN_LOCALE,
 );
 
 type ZeroLogsSearchQuery = z.input<

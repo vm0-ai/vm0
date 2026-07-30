@@ -2,6 +2,8 @@ import { command, computed } from "ccstate";
 import {
   clientVersionSupportsCapability,
   CLIENT_CAPABILITY_ES_ES_LOCALE,
+  CLIENT_CAPABILITY_FR_FR_LOCALE,
+  CLIENT_CAPABILITY_HI_IN_LOCALE,
   CLIENT_CAPABILITY_IT_IT_LOCALE,
   CLIENT_CAPABILITY_JA_JP_LOCALE,
   CLIENT_CAPABILITY_KO_KR_LOCALE,
@@ -15,9 +17,13 @@ import {
   type UserPreferencesResponse,
   zeroUserPreferencesContract,
 } from "@vm0/api-contracts/contracts/zero-user-preferences";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { isBrazilianPortugueseLocaleRolloutEnabled } from "../../lib/brazilian-portuguese-locale-rollout";
+import { isFrenchLocaleRolloutEnabled } from "../../lib/french-locale-rollout";
 import { isGermanLocaleRolloutEnabled } from "../../lib/german-locale-rollout";
+import { isHindiLocaleRolloutEnabled } from "../../lib/hindi-locale-rollout";
 import { isIndonesianLocaleRolloutEnabled } from "../../lib/indonesian-locale-rollout";
 import { badRequestMessage } from "../../lib/error";
 import { isItalianLocaleRolloutEnabled } from "../../lib/italian-locale-rollout";
@@ -29,6 +35,7 @@ import { authRoute } from "../auth/auth-route";
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
+import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   updateUserPreferences$,
   userPreferences,
@@ -54,7 +61,8 @@ function addSupportedLocale(
   }
 }
 
-const localeRollout$ = computed((get): LocaleRollout => {
+const localeRollout$ = computed(async (get): Promise<LocaleRollout> => {
+  const auth = get(organizationAuthContext$);
   const clientVersion = get(request$).raw.headers.get(CLIENT_VERSION_HEADER);
   const clientSupportsBrazilianPortuguese = clientVersionSupportsCapability(
     clientVersion,
@@ -84,6 +92,22 @@ const localeRollout$ = computed((get): LocaleRollout => {
     clientVersion,
     CLIENT_CAPABILITY_IT_IT_LOCALE,
   );
+  const clientSupportsFrench = clientVersionSupportsCapability(
+    clientVersion,
+    CLIENT_CAPABILITY_FR_FR_LOCALE,
+  );
+  const clientSupportsHindi = clientVersionSupportsCapability(
+    clientVersion,
+    CLIENT_CAPABILITY_HI_IN_LOCALE,
+  );
+  const japaneseEnabled =
+    clientSupportsJapanese &&
+    isJapaneseLocaleRolloutEnabled() &&
+    isFeatureEnabled(FeatureSwitchKey.JapaneseLocale, {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      overrides: await get(userFeatureSwitchOverrides(auth.orgId, auth.userId)),
+    });
   const supportedLocales: UserLocale[] = ["en-US"];
   addSupportedLocale(
     supportedLocales,
@@ -95,7 +119,7 @@ const localeRollout$ = computed((get): LocaleRollout => {
     supportedLocales,
     "ja-JP",
     clientSupportsJapanese,
-    isJapaneseLocaleRolloutEnabled(),
+    japaneseEnabled,
   );
   addSupportedLocale(
     supportedLocales,
@@ -127,6 +151,18 @@ const localeRollout$ = computed((get): LocaleRollout => {
     clientSupportsItalian,
     isItalianLocaleRolloutEnabled(),
   );
+  addSupportedLocale(
+    supportedLocales,
+    "fr-FR",
+    clientSupportsFrench,
+    isFrenchLocaleRolloutEnabled(),
+  );
+  addSupportedLocale(
+    supportedLocales,
+    "hi-IN",
+    clientSupportsHindi,
+    isHindiLocaleRolloutEnabled(),
+  );
 
   return {
     clientSupportsLocaleNegotiation:
@@ -136,7 +172,9 @@ const localeRollout$ = computed((get): LocaleRollout => {
       clientSupportsIndonesian ||
       clientSupportsGerman ||
       clientSupportsSpanish ||
-      clientSupportsItalian,
+      clientSupportsItalian ||
+      clientSupportsFrench ||
+      clientSupportsHindi,
     supportedLocales,
   };
 });

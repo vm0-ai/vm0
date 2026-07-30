@@ -4,13 +4,13 @@ export const CLIENT_SESSION_ID_HEADER = "X-Client-Session-Id";
 export const CLIENT_REQUEST_ID_HEADER = "X-Client-Request-Id";
 export const CLIENT_CAPABILITY_PT_BR_LOCALE = "pt-br-locale-v1";
 export const CLIENT_CAPABILITY_JA_JP_LOCALE = "ja-jp-locale-v1";
+export const CLIENT_CAPABILITY_HI_IN_LOCALE = "hi-in-locale-v1";
 export const CLIENT_CAPABILITY_KO_KR_LOCALE = "ko-kr-locale-v1";
 export const CLIENT_CAPABILITY_ID_ID_LOCALE = "id-id-locale-v1";
 export const CLIENT_CAPABILITY_DE_DE_LOCALE = "de-de-locale-v1";
 export const CLIENT_CAPABILITY_ES_ES_LOCALE = "es-es-locale-v1";
 export const CLIENT_CAPABILITY_IT_IT_LOCALE = "it-it-locale-v1";
-export const CLIENT_CAPABILITY_CONNECTOR_SLUG_IDENTITIES =
-  "connector-slug-identities-v1";
+export const CLIENT_CAPABILITY_FR_FR_LOCALE = "fr-fr-locale-v1";
 export const ZERO_MAIL_CLIENT_VERSION_HEADER = "X-Zero-Mail-Client-Version";
 export const ZERO_MAIL_CLIENT_VERSION = "3";
 export const CLIENT_FORCE_UPGRADE_STATUS = 426;

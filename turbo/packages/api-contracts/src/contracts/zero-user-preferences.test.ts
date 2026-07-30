@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  SUPPORTED_USER_LOCALES,
   updateUserPreferencesRequestSchema,
   userLocaleSchema,
   userPreferencesResponseSchema,
@@ -111,5 +112,36 @@ describe("user preferences contract", () => {
 
     expect(preferences.locale).toBe("it-IT");
     expect(preferences.supportedLocales).toStrictEqual(["en-US", "it-IT"]);
+  });
+
+  it("accepts every current user locale in an API response", () => {
+    expect(SUPPORTED_USER_LOCALES).toStrictEqual([
+      "en-US",
+      "pt-BR",
+      "ja-JP",
+      "ko-KR",
+      "id-ID",
+      "de-DE",
+      "es-ES",
+      "it-IT",
+      "fr-FR",
+      "hi-IN",
+    ]);
+
+    const preferences = userPreferencesResponseSchema.parse({
+      timezone: null,
+      locale: "hi-IN",
+      supportedLocales: [...SUPPORTED_USER_LOCALES],
+      pinnedAgentIds: [],
+      sendMode: "enter",
+      morningBriefEnabled: false,
+      morningBriefNextRunAt: null,
+      captureNetworkBodiesRemaining: 0,
+    });
+
+    expect(preferences.locale).toBe("hi-IN");
+    expect(preferences.supportedLocales).toStrictEqual([
+      ...SUPPORTED_USER_LOCALES,
+    ]);
   });
 });

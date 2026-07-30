@@ -4,7 +4,9 @@ import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { isBrazilianPortugueseLocaleRolloutEnabled } from "../../lib/brazilian-portuguese-locale-rollout";
+import { isFrenchLocaleRolloutEnabled } from "../../lib/french-locale-rollout";
 import { isGermanLocaleRolloutEnabled } from "../../lib/german-locale-rollout";
+import { isHindiLocaleRolloutEnabled } from "../../lib/hindi-locale-rollout";
 import { isIndonesianLocaleRolloutEnabled } from "../../lib/indonesian-locale-rollout";
 import { isJapaneseLocaleRolloutEnabled } from "../../lib/japanese-locale-rollout";
 import { isKoreanLocaleRolloutEnabled } from "../../lib/korean-locale-rollout";
@@ -46,7 +48,8 @@ function featureSwitchResponseBody(params: {
   effectiveSwitches[FeatureSwitchKey.BrazilianPortugueseLocale] =
     isBrazilianPortugueseLocaleRolloutEnabled();
   effectiveSwitches[FeatureSwitchKey.JapaneseLocale] =
-    isJapaneseLocaleRolloutEnabled();
+    isJapaneseLocaleRolloutEnabled() &&
+    effectiveSwitches[FeatureSwitchKey.JapaneseLocale];
   effectiveSwitches[FeatureSwitchKey.KoreanLocale] =
     isKoreanLocaleRolloutEnabled();
   effectiveSwitches[FeatureSwitchKey.IndonesianLocale] =
@@ -57,6 +60,10 @@ function featureSwitchResponseBody(params: {
     isSpanishLocaleRolloutEnabled();
   effectiveSwitches[FeatureSwitchKey.ItalianLocale] =
     isItalianLocaleRolloutEnabled();
+  effectiveSwitches[FeatureSwitchKey.FrenchLocale] =
+    isFrenchLocaleRolloutEnabled();
+  effectiveSwitches[FeatureSwitchKey.HindiLocale] =
+    isHindiLocaleRolloutEnabled();
 
   return {
     switches: params.switches,

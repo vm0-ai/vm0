@@ -170,9 +170,13 @@
                   ? "es-ES"
                   : /^it(?:-|$)/i.test(navigator.language)
                     ? "it-IT"
-                    : /^pt(?:-|$)/i.test(navigator.language)
-                      ? "pt-BR"
-                      : "en-US";
+                    : /^fr(?:-|$)/i.test(navigator.language)
+                      ? "fr-FR"
+                      : /^hi(?:-|$)/i.test(navigator.language)
+                        ? "hi-IN"
+                        : /^pt(?:-|$)/i.test(navigator.language)
+                          ? "pt-BR"
+                          : "en-US";
         var locale =
           cached === "en-US" ||
           cached === "pt-BR" ||
@@ -181,7 +185,9 @@
           cached === "id-ID" ||
           cached === "de-DE" ||
           cached === "es-ES" ||
-          cached === "it-IT"
+          cached === "it-IT" ||
+          cached === "fr-FR" ||
+          cached === "hi-IN"
             ? cached
             : browserLocale;
         var copyByLocale = {
@@ -235,6 +241,58 @@
               description:
                 "Zero is your AI coworker from vm0. Text Zero or chat on the web — research, email, docs, Slack, GitHub, Notion, and 100+ tools.",
               title: "Zero — Your AI coworker from vm0",
+            },
+          },
+          "fr-FR": {
+            browserUpgrade: {
+              browser: {
+                actionLabel: "Mettre à jour le navigateur",
+                description:
+                  "Zero ne prend pas en charge la version actuelle de votre navigateur. Mettez à jour votre navigateur pour continuer.",
+                title: "Mettez à jour votre navigateur pour continuer",
+              },
+              chrome: {
+                actionLabel: "Mettre à jour Chrome",
+                description:
+                  "Zero ne prend pas en charge la version actuelle de votre navigateur. Mettez à jour Chrome pour continuer.",
+                title: "Mettez à jour Chrome pour continuer",
+              },
+              chromium: {
+                actionLabel: "Mettre à jour Chromium",
+                description:
+                  "Zero ne prend pas en charge la version actuelle de votre navigateur. Mettez à jour Chromium pour continuer.",
+                title: "Mettez à jour Chromium pour continuer",
+              },
+              ios: {
+                actionLabel: "Mettre à jour iOS",
+                description:
+                  "Zero ne prend pas en charge la version actuelle de votre navigateur. Mettez à jour iOS pour continuer.",
+                title: "Mettez à jour iOS pour continuer",
+              },
+              safari: {
+                actionLabel: "Mettre à jour Safari",
+                description:
+                  "Zero ne prend pas en charge la version actuelle de votre navigateur. Mettez à jour Safari pour continuer.",
+                title: "Mettez à jour Safari pour continuer",
+              },
+            },
+            loading: {
+              ariaLabel: "Chargement de votre espace de travail",
+              messages: [
+                "Initialisation des neurones...",
+                "Quelques idées sont en préparation...",
+                "Préparation en cours...",
+                "Presque prêt...",
+                "Chargement de votre espace de travail...",
+                "Accordage des instruments...",
+                "Connexion des idées...",
+                "Mise en place de l’équipe...",
+              ],
+            },
+            metadata: {
+              description:
+                "Zero est votre coéquipier IA créé par vm0. Envoyez un message à Zero ou discutez sur le web — recherche, e-mails, documents, Slack, GitHub, Notion et plus de 100 outils.",
+              title: "Zero — Votre coéquipier IA créé par vm0",
             },
           },
           "pt-BR": {
@@ -599,6 +657,58 @@
               description:
                 "Zero è il tuo collega AI di vm0. Scrivi a Zero o chatta sul web — ricerca, email, documenti, Slack, GitHub, Notion e oltre 100 strumenti.",
               title: "Zero — Il tuo collega AI di vm0",
+            },
+          },
+          "hi-IN": {
+            browserUpgrade: {
+              browser: {
+                actionLabel: "ब्राउज़र अपडेट करें",
+                description:
+                  "Zero आपके वर्तमान ब्राउज़र संस्करण का समर्थन नहीं करता है। जारी रखने के लिए अपना ब्राउज़र अपडेट करें।",
+                title: "जारी रखने के लिए अपना ब्राउज़र अपडेट करें",
+              },
+              chrome: {
+                actionLabel: "Chrome को अपडेट करें",
+                description:
+                  "Zero आपके वर्तमान ब्राउज़र संस्करण का समर्थन नहीं करता है। जारी रखने के लिए Chrome को अपडेट करें।",
+                title: "जारी रखने के लिए Chrome को अपडेट करें",
+              },
+              chromium: {
+                actionLabel: "Chromium को अपडेट करें",
+                description:
+                  "Zero आपके वर्तमान ब्राउज़र संस्करण का समर्थन नहीं करता है। जारी रखने के लिए Chromium को अपडेट करें।",
+                title: "जारी रखने के लिए Chromium को अपडेट करें",
+              },
+              ios: {
+                actionLabel: "iOS को अपडेट करें",
+                description:
+                  "Zero आपके वर्तमान ब्राउज़र संस्करण का समर्थन नहीं करता है। जारी रखने के लिए iOS को अपडेट करें।",
+                title: "जारी रखने के लिए iOS को अपडेट करें",
+              },
+              safari: {
+                actionLabel: "Safari को अपडेट करें",
+                description:
+                  "Zero आपके वर्तमान ब्राउज़र संस्करण का समर्थन नहीं करता है। जारी रखने के लिए Safari को अपडेट करें।",
+                title: "जारी रखने के लिए Safari को अपडेट करें",
+              },
+            },
+            loading: {
+              ariaLabel: "आपका वर्कस्पेस लोड हो रहा है",
+              messages: [
+                "न्यूरॉन्स को सक्रिय कर रहे हैं...",
+                "कुछ नए विचार तैयार कर रहे हैं...",
+                "सब कुछ तैयार कर रहे हैं...",
+                "बस लगभग तैयार...",
+                "आपका वर्कस्पेस लोड हो रहा है...",
+                "उपकरणों को ट्यून कर रहे हैं...",
+                "कड़ियाँ जोड़ रहे हैं...",
+                "टीम को तैयार कर रहे हैं...",
+              ],
+            },
+            metadata: {
+              description:
+                "Zero, vm0 से आपका AI सहकर्मी है। Zero को टेक्स्ट करें या वेब पर चैट करें — रिसर्च, ईमेल, दस्तावेज़, Slack, GitHub, Notion और 100+ टूल।",
+              title: "Zero — vm0 से आपका AI सहकर्मी",
             },
           },
         };

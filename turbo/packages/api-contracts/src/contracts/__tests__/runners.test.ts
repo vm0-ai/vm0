@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import {
+  CANCELLATION_RECOVERY_STALE_AFTER_MS,
   compatibleStoredExecutionContextSchema,
   elapsedSinceApiStartMs,
   executionContextSchema,
@@ -12,6 +13,7 @@ import {
   jobSchema,
   NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX,
   NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+  RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
   RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
@@ -27,6 +29,17 @@ import {
   storedExecutionContextSchema,
   storedResumeSessionSchema,
 } from "../runners";
+
+describe("cancellation recovery timing contract", () => {
+  it("keeps the API stale fallback beyond the runner recovery deadline", () => {
+    expect(RUNNER_CANCELLATION_RECOVERY_GRACE_MS).toBe(90_000);
+    expect(CANCELLATION_RECOVERY_STALE_AFTER_MS).toBe(120_000);
+    expect(
+      CANCELLATION_RECOVERY_STALE_AFTER_MS -
+        RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
+    ).toBe(30_000);
+  });
+});
 
 function loadRunnerClaimResponseFixture(): unknown {
   return JSON.parse(

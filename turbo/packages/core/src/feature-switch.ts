@@ -251,7 +251,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Allow ja-JP preference writes after incompatible API readers and rollback candidates have drained.",
     enabled: false,
-    userOverridable: false,
   },
   [FeatureSwitchKey.KoreanLocale]: {
     maintainer: "yuma@vm0.ai",
@@ -285,6 +284,20 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "linghan@vm0.ai",
     description:
       "Allow it-IT preference writes after incompatible API readers and rollback candidates have drained.",
+    enabled: false,
+    userOverridable: false,
+  },
+  [FeatureSwitchKey.FrenchLocale]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Allow fr-FR preference writes after incompatible API readers and rollback candidates have drained.",
+    enabled: false,
+    userOverridable: false,
+  },
+  [FeatureSwitchKey.HindiLocale]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Allow hi-IN preference writes after incompatible API readers and rollback candidates have drained.",
     enabled: false,
     userOverridable: false,
   },
