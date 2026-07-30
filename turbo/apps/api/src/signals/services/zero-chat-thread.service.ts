@@ -295,8 +295,6 @@ const eventColumns = {
   thinking: chatEvents.thinking,
   runId: effectiveChatEventRunId(),
   runGroupId: chatEvents.runGroupId,
-  automationId: chatEvents.automationId,
-  triggerBrief: chatEvents.triggerBrief,
   usagePayload: chatEvents.usagePayload,
   runEventId: chatEvents.runEventId,
   goalEvent: chatEvents.goalEvent,
@@ -409,20 +407,8 @@ function selectChatEventsWithMetadata(db: Pick<Db, "select">) {
   return db
     .select({
       ...eventColumns,
-      automationId: sql`CASE
-        WHEN ${isNull(chatEvents.contextId)}
-          THEN ${chatEvents.automationId}
-        ELSE ${chatAutomationContext.automationId}
-      END`
-        .mapWith(chatEvents.automationId)
-        .as("automation_id"),
-      triggerBrief: sql`CASE
-        WHEN ${isNull(chatEvents.contextId)}
-          THEN ${chatEvents.triggerBrief}
-        ELSE ${chatAutomationContext.triggerBrief}
-      END`
-        .mapWith(chatEvents.triggerBrief)
-        .as("trigger_brief"),
+      automationId: chatAutomationContext.automationId,
+      triggerBrief: chatAutomationContext.triggerBrief,
       triggerSource: sql`COALESCE(
         ${chatEvents.triggerSource},
         ${metadata.runTriggerSource}

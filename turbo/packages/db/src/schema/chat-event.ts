@@ -110,9 +110,7 @@ export const chatEvents = pgTable(
       "slack" | "feishu" | "automation" | "goal"
     >(),
     contextId: uuid("context_id"),
-    automationId: uuid("automation_id"),
     triggerSource: text("trigger_source").$type<TriggerSource>(),
-    triggerBrief: text("trigger_brief"),
     content: text("content"),
     /** Canonical rich user-message document for user input events. */
     userMessage: jsonb("user_message").$type<ChatEventUserMessage>(),
@@ -157,9 +155,6 @@ export const chatEvents = pgTable(
       index("idx_chat_events_run_group_id")
         .on(table.runGroupId)
         .where(sql`${table.runGroupId} IS NOT NULL`),
-      index("chat_events_input_automation_idx")
-        .on(table.automationId)
-        .where(sql`${table.eventType} = 'input.automation'`),
       index("chat_events_input_automation_context_idx")
         .on(table.contextId)
         .where(sql`${table.eventType} = 'input.automation'`),

@@ -39,7 +39,6 @@ import {
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
   completeRunWithoutCallbacksFixture,
-  convertAutomationEventToLegacyContextFixture,
   holdChatEventQueueAdmissionLockFixture,
   holdOrgAdmissionLockFixture,
   readChatEventContextFixture,
@@ -784,7 +783,6 @@ describe("workflow queue", () => {
     if (!legacyEvent) {
       throw new Error("Expected the previous-deployment event");
     }
-    await convertAutomationEventToLegacyContextFixture(legacyEvent.id);
     await expect(
       pendingWorkflowEvents(automation.threadId),
     ).resolves.toStrictEqual([
@@ -852,13 +850,6 @@ describe("workflow queue", () => {
     mockNow(Date.parse(created.body.nextRunAt) + 60_000);
     await executeDueWorkflowAutomations();
     expect(kms.generateDataKeyCalls).toBe(3);
-    const [legacyPendingTick] = await pendingWorkflowEvents(
-      webhookAutomation.threadId,
-    );
-    if (!legacyPendingTick) {
-      throw new Error("Expected the first schedule tick to remain pending");
-    }
-    await convertAutomationEventToLegacyContextFixture(legacyPendingTick.id);
     const updated = await accept(
       automationsClient().update({
         headers: authHeaders(),

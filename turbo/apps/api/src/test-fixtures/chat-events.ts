@@ -99,33 +99,6 @@ export async function readChatEventContextFixture(
   };
 }
 
-export async function convertAutomationEventToLegacyContextFixture(
-  eventId: string,
-): Promise<void> {
-  await db().transaction(async (tx) => {
-    const [event] = await tx
-      .select({
-        contextId: chatEvents.contextId,
-        contextType: chatEvents.contextType,
-      })
-      .from(chatEvents)
-      .where(eq(chatEvents.id, eventId))
-      .limit(1);
-    if (event?.contextType !== "automation" || !event.contextId) {
-      throw new Error("Expected an automation context pointer");
-    }
-
-    await tx.execute(sql`SET LOCAL session_replication_role = replica`);
-    await tx
-      .update(chatEvents)
-      .set({ contextType: null, contextId: null })
-      .where(eq(chatEvents.id, eventId));
-    await tx
-      .delete(chatAutomationContext)
-      .where(eq(chatAutomationContext.id, event.contextId));
-  });
-}
-
 export async function readChatEventInputParamsFixture(
   eventId: string,
 ): Promise<ChatEventInputParamsFixture | null> {
