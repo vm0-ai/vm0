@@ -268,10 +268,11 @@ impl CandidateState {
 /// fails closed instead of falling back to an older generation. The retained
 /// generation must preserve the expected native session identity, supported
 /// boundary, summary, and message shapes and relationships, unique UUID
-/// ancestry whose non-null parents resolve to earlier retained records, and
-/// complete ordered tool-use/tool-result pairs. Malformed or oversized records,
-/// candidate size violations, and changes to the observed EOF or source length
-/// likewise make the source [`ClaudeHistorySelection::Ineligible`].
+/// ancestry with retained parent links resolving to earlier candidate records,
+/// and complete, unambiguous tool-use/tool-result pairs whose results follow
+/// their uses. Malformed or oversized retained records, candidate size
+/// violations, and changes to the observed EOF or source length likewise make
+/// the source [`ClaudeHistorySelection::Ineligible`].
 ///
 /// `Ineligible` is an expected eligibility or compatibility outcome that lets
 /// the caller use its ordinary checkpoint path. The selector only chooses an
