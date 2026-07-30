@@ -165,6 +165,7 @@ import {
   type BrowserSessionSignals,
 } from "./browser-session-block.ts";
 import { createChatThreadContainerSignals } from "./chat-thread-container.ts";
+import { createAssistantErrorRecoverySignals } from "./assistant-error-recovery.ts";
 import {
   createComposerConnectorSignals,
   type ComposerConnectorAuthorizationSignals,
@@ -4688,6 +4689,11 @@ export function createChatThreadSignals(
     appendOptimisticEvent$: events.appendOptimisticEvent$,
     dataSource,
   });
+  const assistantErrorRecovery = createAssistantErrorRecoverySignals({
+    visibleRenderedChatGroups$: events.visibleRenderedChatGroups$,
+    selectedModel$: modelSelection.selectedModel$,
+    sendMessage$: messageActions.sendMessage$,
+  });
   return {
     threadId,
     threadDraft$,
@@ -4697,6 +4703,7 @@ export function createChatThreadSignals(
     ...modelSelection,
     ...computerUseHostSelection,
     ...messageActions,
+    ...assistantErrorRecovery,
     composerSendButtonStatus$: composerSendButton.composerSendButtonStatus$,
     ...scrollSignals,
     ...container,
