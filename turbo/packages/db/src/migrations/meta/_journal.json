@@ -5377,6 +5377,13 @@
       "when": 1785420940243,
       "tag": "0767_add_chat_automation_context",
       "breakpoints": true
+    },
+    {
+      "idx": 768,
+      "version": "7",
+      "when": 1785421224125,
+      "tag": "0768_contract_chat_event_property_columns",
+      "breakpoints": true
     }
   ]
 }
