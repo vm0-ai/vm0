@@ -1,6 +1,7 @@
 use crate::support::*;
 use httpmock::prelude::*;
 use serde_json::json;
+use std::time::Duration;
 
 const TEST_RUN_ID: &str = "test-run-001";
 const TEST_SANDBOX_ID: &str = "00000000-0000-4000-8000-000000000abc";
@@ -123,6 +124,43 @@ async fn complete_report_success_swallows_4xx_auth_error() {
         None,
     )
     .await;
+
+    mock.assert_calls_async(1).await;
+}
+
+#[tokio::test]
+async fn complete_report_user_cancellation_posts_nonzero_and_swallows_server_error() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/complete")
+            .json_body(json!({
+                "runId": TEST_RUN_ID,
+                "exitCode": 1,
+                "lastEventSequence": 9,
+                "sandboxId": TEST_SANDBOX_ID,
+                "sandboxReuseResult": TEST_SANDBOX_REUSE_RESULT,
+            }));
+        then.status(500);
+    });
+
+    let result = tokio::time::timeout(
+        Duration::from_secs(2),
+        guest_agent::complete::report_user_cancellation_for_run(
+            &http_client!(),
+            TEST_RUN_ID,
+            TEST_SANDBOX_ID,
+            TEST_SANDBOX_REUSE_RESULT,
+            Some(9),
+        ),
+    )
+    .await;
+    assert!(
+        result.is_ok(),
+        "failed cancellation completion must not hang guest shutdown"
+    );
 
     mock.assert_calls_async(1).await;
 }
