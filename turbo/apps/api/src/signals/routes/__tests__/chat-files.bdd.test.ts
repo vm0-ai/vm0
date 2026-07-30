@@ -371,6 +371,8 @@ describe("CHAT-02 chat messages and visible validation", () => {
         },
       ],
     });
+    expect(rejectedUserMessage).not.toHaveProperty("automationId");
+    expect(rejectedUserMessage).not.toHaveProperty("triggerBrief");
     expect(assistantMessage?.content).toContain("Insufficient credits");
     expect(assistantMessage?.error).toBe("insufficient_credits");
 
