@@ -835,7 +835,7 @@ describe("GET /api/zero/usage/record", () => {
 
     const run = await createUnthreadedRun(fixture.actor, {
       prompt: "Mixed media run",
-      triggerSource: "cli",
+      triggerSource: "test",
       createdAt: createdAt(5),
     });
     await recordModelUsage(fixture.actor, run.runId, model, {
@@ -922,7 +922,7 @@ describe("GET /api/zero/usage/record", () => {
 
     const run = await createUnthreadedRun(fixture.actor, {
       prompt: "Settlement boundary usage",
-      triggerSource: "cli",
+      triggerSource: "test",
     });
     const settledAt = new Date(nowDate().getTime() + 8 * DAY_MS);
     mockNow(settledAt);
@@ -956,7 +956,7 @@ describe("GET /api/zero/usage/record", () => {
     expect(response.body.pagination.total).toBe(1);
     expect(response.body.totalCredits).toBe(6);
     expect(response.body.rows[0]).toMatchObject({
-      source: "cli",
+      source: "test",
       runId: run.runId,
       credits: 6,
       tokens: 0,

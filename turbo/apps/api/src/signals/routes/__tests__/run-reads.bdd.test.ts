@@ -3292,7 +3292,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       description: "Member isolation.",
       visibility: "private",
     });
-    const cliCompose = await createClaudeCompose(actor, "bdd-cli-logs");
+    const testCompose = await createClaudeCompose(actor, "bdd-test-logs");
     const authOrg = createAuthOrgAgentsBddApi(context);
     const agentOneName = (
       await authOrg.readComposeById(actor, agentOne.agentId)
@@ -3310,11 +3310,11 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       modelProvider: "anthropic-api-key",
     });
     await api.requestCancelRun(actor, secondAgentRun.runId, [200]);
-    const cliRun = await api.createDirectRun(actor, {
-      agentComposeId: cliCompose.composeId,
-      prompt: "direct cli run",
+    const testRun = await api.createDirectRun(actor, {
+      agentComposeId: testCompose.composeId,
+      prompt: "direct test run",
     });
-    await api.requestCancelRun(actor, cliRun.runId, [200]);
+    await api.requestCancelRun(actor, testRun.runId, [200]);
 
     const memberRun = await api.createRun(member, {
       agentId: memberAgent.agentId,
@@ -3329,7 +3329,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       return entry.id;
     });
     expect([...listedIds].sort()).toStrictEqual(
-      [webRun.runId, secondAgentRun.runId, cliRun.runId].sort(),
+      [webRun.runId, secondAgentRun.runId, testRun.runId].sort(),
     );
 
     const invalidListSince = await reads.requestListLogs(
@@ -3350,13 +3350,13 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       status: "cancelled",
       prompt: "web run on agent one",
     });
-    const cliEntry = listed.body.data.find((entry) => {
-      return entry.id === cliRun.runId;
+    const testEntry = listed.body.data.find((entry) => {
+      return entry.id === testRun.runId;
     });
-    expect(cliEntry).toMatchObject({
+    expect(testEntry).toMatchObject({
       agentId: null,
       displayName: null,
-      triggerSource: "cli",
+      triggerSource: "test",
     });
     const pageOne = await reads.requestListLogs(actor, { limit: 1 }, [200]);
     mustOk(pageOne, "the first log page");
@@ -3472,7 +3472,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
 
     expect(listed.body.filters.statuses).toContain("cancelled");
     expect([...listed.body.filters.sources].sort()).toStrictEqual([
-      "cli",
+      "test",
       "web",
     ]);
     expect(listed.body.filters.agents).toContain(agentOne.agentId);
