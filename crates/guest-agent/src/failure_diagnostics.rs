@@ -12,8 +12,9 @@ use crate::paths;
 use crate::session_metadata;
 use guest_common::{log_info, log_warn};
 use guest_contracts::diagnostics::{
-    AgentFramework, CliObservedExitDiagnostic, CliTerminationDiagnostic, FailureClass,
-    FailureDetailSource, FailureDiagnostic, FailureReason, PromptMetadata, SessionHistoryStatus,
+    AgentFramework, CliObservedExitDiagnostic, CliTerminationDiagnostic, EventDeliveryDiagnostic,
+    FailureClass, FailureDetailSource, FailureDiagnostic, FailureReason, PromptMetadata,
+    SessionHistoryStatus,
 };
 use serde_json::Value;
 use std::io::ErrorKind;
@@ -67,6 +68,26 @@ pub fn cli_control_failure_for_config(
         cli_result.exit_code,
         cli_result.claude_result,
     );
+    let diagnostic =
+        with_cli_observed_exit(diagnostic, cli_result.cli_observed_exit.as_ref().cloned());
+    with_cli_termination(diagnostic, cli_result.cli_termination)
+}
+
+/// Build the primary diagnostic for terminal event delivery after a CLI result.
+pub fn event_delivery_failure_for_config(
+    config: &env::GuestConfig,
+    runtime_paths: &paths::GuestPaths,
+    cli_result: &cli::CliExecutionResult,
+    event_delivery: EventDeliveryDiagnostic,
+) -> FailureDiagnostic {
+    let diagnostic = cli_result_failure_diagnostic_for_config(
+        config,
+        runtime_paths,
+        FailureClass::EventUploadFailed,
+        cli_result.exit_code,
+        cli_result.claude_result,
+    )
+    .with_event_delivery(event_delivery);
     let diagnostic =
         with_cli_observed_exit(diagnostic, cli_result.cli_observed_exit.as_ref().cloned());
     with_cli_termination(diagnostic, cli_result.cli_termination)

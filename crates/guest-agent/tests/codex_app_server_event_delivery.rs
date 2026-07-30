@@ -6,6 +6,9 @@
 mod common;
 
 use guest_agent::masker::SecretMasker;
+use guest_contracts::diagnostics::{
+    EventDeliveryAcceptanceOutcome, EventDeliveryAttemptFailureKind,
+};
 use std::time::Duration;
 
 const RUN_ID: &str = "codex-app-server-event-delivery-test";
@@ -40,7 +43,6 @@ async fn codex_app_server_event_delivery_stops_watermark_at_failed_sequence()
         RUN_ID,
         Duration::ZERO,
     )?;
-    let event_error_flag = runtime.paths.event_error_flag().to_string();
     let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
 
     let execution = tokio::spawn(async move {
@@ -55,6 +57,7 @@ async fn codex_app_server_event_delivery_stops_watermark_at_failed_sequence()
     let mut logical_sequences = Vec::new();
     let mut failed_sequences = None;
     let mut failed_attempts = 0usize;
+    let mut failed_request_ids = Vec::new();
     while logical_sequences.len() < TOTAL_EVENTS || failed_attempts < 3 {
         let request = server.next_request(Duration::from_secs(5)).await?;
         let sequences = common::event_request_sequences(&request.request)?;
@@ -69,6 +72,13 @@ async fn codex_app_server_event_delivery_stops_watermark_at_failed_sequence()
                 failed_sequences = Some(sequences.clone());
             }
             failed_attempts += 1;
+            failed_request_ids.push(
+                request
+                    .request
+                    .client_request_id
+                    .clone()
+                    .ok_or("failed request omitted x-client-request-id")?,
+            );
             request.respond(500)?;
         } else {
             logical_sequences.extend(sequences);
@@ -87,13 +97,38 @@ async fn codex_app_server_event_delivery_stops_watermark_at_failed_sequence()
 
     assert_eq!(cli_result.exit_code, common::CLEAN_EXIT);
     assert_eq!(cli_result.last_event_sequence, expected_watermark);
+    let delivery = cli_result
+        .event_delivery
+        .ok_or("failed delivery omitted structured diagnostic")?;
+    assert_eq!(delivery.total_events, TOTAL_EVENTS as u64);
+    assert_eq!(delivery.failed_batches, 1);
+    assert_eq!(delivery.last_acknowledged_sequence, expected_watermark);
+    let failed_batch = delivery
+        .first_failed_batch
+        .ok_or("failed delivery omitted first failed batch")?;
+    assert_eq!(
+        failed_batch.outcome,
+        EventDeliveryAcceptanceOutcome::ConfirmedRejection
+    );
+    assert_eq!(failed_batch.attempts.len(), 3);
+    assert_eq!(
+        failed_batch
+            .attempts
+            .iter()
+            .map(|attempt| attempt.client_request_id.clone())
+            .collect::<Vec<_>>(),
+        failed_request_ids
+    );
+    assert!(failed_batch.attempts.iter().all(|attempt| {
+        attempt.failure_kind == EventDeliveryAttemptFailureKind::HttpStatus
+            && attempt.http_status == Some(500)
+    }));
     assert_eq!(failed_attempts, 3);
     assert_eq!(
         logical_sequences,
         (0..TOTAL_EVENTS as u32).collect::<Vec<_>>(),
         "logical batches should cover the translated Codex events in FIFO order"
     );
-    assert_eq!(std::fs::read_to_string(event_error_flag)?, "1");
 
     Ok(())
 }
