@@ -652,6 +652,28 @@ jobs:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
         run: pnpm test:migration-consistency
 
+  production-migration-smoke:
+    needs: prepare
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      needs.prepare.outputs.migration-changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
+    environment:
+      name: production
+      deployment: false
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: ./.github/actions/toolchain-init
+      - uses: ./.github/actions/production-migration-smoke
+        with:
+          neon-api-key: ${{ secrets.NEON_API_KEY }}
+          neon-project-id: ${{ vars.NEON_PROJECT_ID }}
+          branch-name: pr-smoke/migrate-${{ github.event.pull_request.number }}-${{ github.run_id }}-${{ github.run_attempt }}
+
   test-cli:
     needs: [detect-turbo-ts-checks]
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
