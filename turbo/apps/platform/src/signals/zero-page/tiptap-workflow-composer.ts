@@ -150,7 +150,7 @@ const EDITOR_CONTENT_CLASS =
 
 function editorContentClass(singleLineOnMobile: boolean): string {
   return singleLineOnMobile
-    ? `${EDITOR_CONTENT_CLASS} min-h-[44px] md:min-h-[96px]`
+    ? `${EDITOR_CONTENT_CLASS} min-h-[68px] md:min-h-[96px]`
     : `${EDITOR_CONTENT_CLASS} min-h-[96px]`;
 }
 
