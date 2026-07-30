@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import {
+  chatRunFinishedEventConfigSchema,
   gmailLabelAppliedEventConfigSchema,
   gmailNewMessageEventConfigSchema,
   googleCalendarEventCancelledEventConfigSchema,
@@ -17,6 +18,7 @@ import {
   notionPageContentUpdatedEventConfigSchema,
   strapiEntryPublishedEventConfigSchema,
   webhookReceivedEventConfigSchema,
+  type ChatRunFinishedEventConfig,
   type ChatThreadWorkflowAutomation,
   type GmailWorkflowEventConfig,
   type GoogleCalendarWorkflowEventConfig,
@@ -40,6 +42,7 @@ import {
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { parseScheduledAtTime } from "@vm0/core/timezone";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import {
@@ -107,6 +110,10 @@ import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation
 
 type AutomationRow = typeof zeroWorkflowAutomations.$inferSelect;
 type WorkflowRow = typeof zeroWorkflows.$inferSelect;
+type ChatRunFinishedWorkflowEventType = Extract<
+  ZeroWorkflowEventType,
+  "chat-run-finished"
+>;
 type GmailWorkflowEventType = Extract<
   ZeroWorkflowEventType,
   "gmail-new-message" | "gmail-label-applied"
@@ -388,6 +395,7 @@ function supportedWorkflowEventType(
   eventType: string | null,
 ): eventType is ZeroWorkflowEventType {
   return (
+    eventType === "chat-run-finished" ||
     eventType === "gmail-new-message" ||
     eventType === "gmail-label-applied" ||
     eventType === "github-label-applied" ||
@@ -406,6 +414,12 @@ function supportedWorkflowEventType(
     eventType === "strapi-entry-published" ||
     eventType === "webhook-received"
   );
+}
+
+function supportedChatRunFinishedEventType(
+  eventType: string | null,
+): eventType is ChatRunFinishedWorkflowEventType {
+  return eventType === "chat-run-finished";
 }
 
 function supportedGmailEventType(
@@ -623,6 +637,16 @@ function eventRowToSummary(
   row: AutomationRow,
   chatThreadId: string | null,
 ): ZeroWorkflowAutomationSummary | null {
+  if (row.eventType === "chat-run-finished") {
+    return {
+      ...rowSummaryBase(row, chatThreadId),
+      kind: "event",
+      eventType: "chat-run-finished",
+      eventConfig: chatRunFinishedEventConfigSchema.parse(row.eventConfig),
+      schedule: null,
+      scheduleSummary: null,
+    };
+  }
   if (row.eventType === "gmail-new-message") {
     return {
       ...rowSummaryBase(row, chatThreadId),
@@ -1224,6 +1248,15 @@ type CreateGithubEventAutomationInput =
       >;
     });
 
+interface CreateChatRunFinishedEventAutomationInput {
+  readonly orgId: string;
+  readonly member: WorkflowMember;
+  readonly workflowId: string;
+  readonly eventType: ChatRunFinishedWorkflowEventType;
+  readonly eventConfig: ChatRunFinishedEventConfig;
+  readonly enabled: boolean;
+}
+
 interface CreateGoogleCalendarEventAutomationInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
@@ -1277,6 +1310,7 @@ interface CreateWebhookEventAutomationInput {
 
 type CreateAutomationInput =
   | CreateScheduleAutomationInput
+  | CreateChatRunFinishedEventAutomationInput
   | CreateGmailEventAutomationInput
   | CreateGithubEventAutomationInput
   | CreateGoogleCalendarEventAutomationInput
@@ -1293,6 +1327,12 @@ function automationCreateInputIsSchedule(
   args: CreateAutomationInput,
 ): args is CreateScheduleAutomationInput {
   return "schedule" in args;
+}
+
+function automationCreateInputIsChatRunFinished(
+  args: CreateEventAutomationInput,
+): args is CreateChatRunFinishedEventAutomationInput {
+  return supportedChatRunFinishedEventType(args.eventType);
 }
 
 function automationCreateInputIsGmail(
@@ -1338,6 +1378,7 @@ async function insertWorkflowEventAutomation(
   db: Db,
   args: {
     readonly input:
+      | CreateChatRunFinishedEventAutomationInput
       | CreateGmailEventAutomationInput
       | CreateGithubEventAutomationInput
       | CreateGoogleCalendarEventAutomationInput
@@ -1953,6 +1994,40 @@ async function createStrapiEventAutomationForWorkflow(args: {
   return { kind: "ok", summary };
 }
 
+async function createChatRunFinishedEventAutomationForWorkflow(args: {
+  readonly context: {
+    readonly db: Db;
+    readonly workflowId: string;
+    readonly agentId: string;
+    readonly workflowTitle: string;
+  };
+  readonly input: CreateChatRunFinishedEventAutomationInput;
+}): Promise<AutomationResult> {
+  // The watched thread must belong to the automation owner: the run's final
+  // output is surfaced to the workflow run, so cross-user watching would leak
+  // another user's conversation.
+  const [thread] = await args.context.db
+    .select({ userId: chatThreads.userId })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, args.input.eventConfig.chatThreadId))
+    .limit(1);
+  if (!thread || thread.userId !== args.input.member.userId) {
+    return {
+      kind: "bad-request",
+      message: `Chat thread not found: ${args.input.eventConfig.chatThreadId}`,
+    };
+  }
+
+  const summary = await insertWorkflowEventAutomation(args.context.db, {
+    input: args.input,
+    workflowId: args.context.workflowId,
+    agentId: args.context.agentId,
+    workflowTitle: args.context.workflowTitle,
+    currentTime: nowDate(),
+  });
+  return { kind: "ok", summary };
+}
+
 const createEventAutomationForWorkflow$ = command(
   async (
     { get },
@@ -1966,6 +2041,13 @@ const createEventAutomationForWorkflow$ = command(
     signal: AbortSignal,
   ): Promise<AutomationResult> => {
     const { input } = args;
+    if (automationCreateInputIsChatRunFinished(input)) {
+      return await createChatRunFinishedEventAutomationForWorkflow({
+        context: args,
+        input,
+      });
+    }
+
     if (input.eventType === "webhook-received") {
       return await createWebhookEventAutomationForWorkflow({
         context: args,

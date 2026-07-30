@@ -420,6 +420,11 @@ export function gmailAutomationTitle(
   if (automation.kind === "schedule") {
     return automation.scheduleSummary;
   }
+  if (automation.eventType === "chat-run-finished") {
+    return i18n.t(($) => {
+      return $.workflows.automations.chat.runFinishedTitle;
+    });
+  }
   if (automation.eventType === "gmail-label-applied") {
     return i18n.t(($) => {
       return $.workflows.automations.gmail.labelAppliedTitle;
@@ -570,6 +575,11 @@ export function gmailAutomationSummary(
 ): string | null {
   if (automation.kind !== "event") {
     return null;
+  }
+  if (automation.eventType === "chat-run-finished") {
+    return i18n.t(($) => {
+      return $.workflows.automations.chat.summary;
+    });
   }
   if (automation.eventType === "gmail-label-applied") {
     return i18n.t(

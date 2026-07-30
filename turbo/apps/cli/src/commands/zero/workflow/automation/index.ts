@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import type {
+  ChatRunFinishedRunStatus,
   GithubDeploymentState,
   GithubLabelAppliedSubjectFilter,
   GithubPullRequestReviewState,
@@ -80,6 +81,9 @@ interface AddOptions extends GmailAutomationOptions {
   readonly integrationId?: string;
   readonly contentTypeUid?: string;
   readonly locale?: string;
+  readonly chatThreadId?: string;
+  readonly runStatus?: string;
+  readonly outputPattern?: string;
 }
 
 interface UpdateOptions extends GmailAutomationOptions {
@@ -131,10 +135,24 @@ const GITHUB_WEBHOOK_EVENT_KINDS = [
   "github-issue-comment-created",
 ] as const;
 const STRAPI_EVENT_KINDS = ["strapi-entry-published"] as const;
+const CHAT_EVENT_KINDS = ["chat-run-finished"] as const;
+const CHAT_RUN_FINISHED_STATUSES = [
+  "completed",
+  "failed",
+  "cancelled",
+] as const;
 
 function githubWebhookAutomationsEnabled(): boolean {
   const payload = decodeZeroTokenPayload();
   return isFeatureEnabled(FeatureSwitchKey.GithubWebhookAutomations, {
+    userId: payload?.userId,
+    orgId: payload?.orgId,
+  });
+}
+
+function zeroChatMessagingEnabled(): boolean {
+  const payload = decodeZeroTokenPayload();
+  return isFeatureEnabled(FeatureSwitchKey.ZeroChatMessaging, {
     userId: payload?.userId,
     orgId: payload?.orgId,
   });
@@ -154,6 +172,7 @@ function automationKinds(): readonly string[] {
     ...EVENT_KINDS,
     ...(githubWebhookAutomationsEnabled() ? GITHUB_WEBHOOK_EVENT_KINDS : []),
     ...(strapiIntegrationEnabled() ? STRAPI_EVENT_KINDS : []),
+    ...(zeroChatMessagingEnabled() ? CHAT_EVENT_KINDS : []),
   ];
 }
 
@@ -629,6 +648,14 @@ function hasStrapiAutomationOptions(options: AddOptions): boolean {
   );
 }
 
+function hasChatRunFinishedAutomationOptions(options: AddOptions): boolean {
+  return (
+    options.chatThreadId !== undefined ||
+    options.runStatus !== undefined ||
+    options.outputPattern !== undefined
+  );
+}
+
 function hasEventAddOptions(options: AddOptions): boolean {
   return (
     hasGmailAutomationOptions(options) ||
@@ -636,7 +663,8 @@ function hasEventAddOptions(options: AddOptions): boolean {
     hasGithubAutomationOptions(options) ||
     hasCalendarAutomationOptions(options) ||
     hasNotionAutomationOptions(options) ||
-    hasStrapiAutomationOptions(options)
+    hasStrapiAutomationOptions(options) ||
+    hasChatRunFinishedAutomationOptions(options)
   );
 }
 
@@ -1450,6 +1478,75 @@ function buildNotionPageContentUpdatedCreateRequest(
   };
 }
 
+function parseChatRunFinishedStatuses(
+  value: string,
+): ChatRunFinishedRunStatus[] {
+  const statuses = value
+    .split(",")
+    .map((status) => {
+      return status.trim();
+    })
+    .filter((status) => {
+      return status.length > 0;
+    });
+  if (statuses.length === 0) {
+    throw new Error(
+      `--run-status requires at least one of: ${CHAT_RUN_FINISHED_STATUSES.join(", ")}`,
+    );
+  }
+  return statuses.map((status) => {
+    const match = CHAT_RUN_FINISHED_STATUSES.find((candidate) => {
+      return candidate === status;
+    });
+    if (!match) {
+      throw new Error(
+        `Invalid --run-status value "${status}"; expected one of: ${CHAT_RUN_FINISHED_STATUSES.join(", ")}`,
+      );
+    }
+    return match;
+  });
+}
+
+function buildChatRunFinishedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowAutomationCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (
+    hasGmailAutomationOptions(options) ||
+    hasGmailLabelOption(options) ||
+    hasGithubAutomationOptions(options) ||
+    hasCalendarAutomationOptions(options) ||
+    hasNotionAutomationOptions(options) ||
+    hasStrapiAutomationOptions(options)
+  ) {
+    throw new Error(
+      "Only --chat-thread-id, --run-status, and --output-pattern apply to chat-run-finished automations",
+    );
+  }
+  const chatThreadId = options.chatThreadId?.trim();
+  if (!chatThreadId) {
+    throw new Error(
+      "chat-run-finished automations require --chat-thread-id <uuid>",
+    );
+  }
+  const runStatuses =
+    options.runStatus === undefined
+      ? undefined
+      : parseChatRunFinishedStatuses(options.runStatus);
+  const outputPattern = options.outputPattern?.trim();
+  return {
+    kind: "event",
+    eventType: "chat-run-finished",
+    eventConfig: {
+      provider: "chat",
+      event: "run_finished",
+      chatThreadId,
+      ...(runStatuses ? { runStatuses } : {}),
+      ...(outputPattern ? { outputPattern } : {}),
+    },
+  };
+}
+
 function buildWebhookCreateRequest(
   options: AddOptions,
 ): ZeroWorkflowAutomationCreateRequest {
@@ -1549,6 +1646,8 @@ function buildCreateRequest(
       return buildNotionPageContentUpdatedCreateRequest(options);
     case "strapi-entry-published":
       return buildStrapiEntryPublishedCreateRequest(options);
+    case "chat-run-finished":
+      return buildChatRunFinishedCreateRequest(options);
     case "webhook":
       return buildWebhookCreateRequest(options);
     default:
@@ -1855,6 +1954,18 @@ const addCommand = addGithubAutomationOptions(
     "Optional Strapi content type UID, for example api::article.article",
   )
   .option("--locale <locale>", "Optional Strapi locale filter")
+  .option(
+    "--chat-thread-id <uuid>",
+    "Watched chat thread ID for chat-run-finished automations",
+  )
+  .option(
+    "--run-status <statuses>",
+    "Comma-separated finish statuses for chat-run-finished automations: completed, failed, cancelled (default: all)",
+  )
+  .option(
+    "--output-pattern <pattern>",
+    "Optional * wildcard matched against the finished run's final assistant text",
+  )
   .option("--agent <id>", "Agent ID for resolving a workflow name")
   .addHelpText(
     "after",
@@ -1877,6 +1988,7 @@ Examples:
   zero workflow automation add research-notes --agent <agent-id> notion-page-content-updated --database-url "https://www.notion.so/1234567890abcdef1234567890abcdef?v=abcdef1234567890abcdef1234567890"
   zero workflow automation add deploy-blog --agent <agent-id> strapi-entry-published --integration-id <uuid> --content-type-uid api::article.article
   zero workflow automation add triage --agent <agent-id> webhook
+  zero workflow automation add follow-up --agent <agent-id> chat-run-finished --chat-thread-id <thread-uuid> --run-status completed,failed --output-pattern "*deploy failed*"
 
 Notes:
   - Workflow names resolve under --agent, then ZERO_AGENT_ID
@@ -1900,6 +2012,11 @@ Notes:
         if (kind === "strapi-entry-published" && !strapiIntegrationEnabled()) {
           throw new Error(
             "Strapi workflow automations are not enabled for this workspace",
+          );
+        }
+        if (kind === "chat-run-finished" && !zeroChatMessagingEnabled()) {
+          throw new Error(
+            "Chat run finished automations are not enabled for this workspace",
           );
         }
         if (

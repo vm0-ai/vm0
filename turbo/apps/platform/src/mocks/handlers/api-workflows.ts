@@ -658,6 +658,16 @@ function createWorkflowAutomationSummaryForRequest(
       scheduleSummary: null,
     };
   }
+  if (body.eventType === "chat-run-finished") {
+    return {
+      ...base,
+      kind: "event",
+      eventType: "chat-run-finished",
+      eventConfig: body.eventConfig,
+      schedule: null,
+      scheduleSummary: null,
+    };
+  }
   const exhaustive: never = body;
   return exhaustive;
 }

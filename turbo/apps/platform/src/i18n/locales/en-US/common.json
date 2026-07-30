@@ -4275,6 +4275,10 @@
         "updatedRule": "When calendar {{calendar}} event is updated",
         "updatedTitle": "Google Calendar event updated"
       },
+      "chat": {
+        "runFinishedTitle": "Chat run finished",
+        "summary": "Watched chat thread"
+      },
       "common": {
         "addAutomation": "Add automation",
         "automation": "Automation",

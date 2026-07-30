@@ -290,6 +290,13 @@ function workflowAutomationKindLabel(
     return formatWorkflowAutomationEntry(automation);
   }
   switch (automation.eventType) {
+    case "chat-run-finished": {
+      const { chatThreadId, runStatuses, outputPattern } =
+        automation.eventConfig;
+      const statuses = runStatuses?.join(",") ?? "any";
+      const pattern = outputPattern ? ` matching "${outputPattern}"` : "";
+      return `Chat run finished (${statuses})${pattern}: ${chatThreadId}`;
+    }
     case "gmail-new-message":
       return "Gmail new message";
     case "gmail-label-applied":

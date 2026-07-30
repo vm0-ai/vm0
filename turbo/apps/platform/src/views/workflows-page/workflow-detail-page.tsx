@@ -3926,6 +3926,11 @@ function workflowAutomationTitle(
       return $.workflows.automations.meet.transcriptReadyTitle;
     });
   }
+  if (automation.eventType === "chat-run-finished") {
+    return i18n.t(($) => {
+      return $.workflows.automations.chat.runFinishedTitle;
+    });
+  }
   if (automation.eventType === "notion-child-page-created") {
     return i18n.t(($) => {
       return $.workflows.automations.notion.childPageTitle;
@@ -4202,6 +4207,11 @@ function workflowAutomationSummary(
   if (automation.eventType === "google-meet-transcript-generated") {
     return i18n.t(($) => {
       return $.workflows.automations.meet.summary;
+    });
+  }
+  if (automation.eventType === "chat-run-finished") {
+    return i18n.t(($) => {
+      return $.workflows.automations.chat.summary;
     });
   }
   if (automation.eventType === "notion-child-page-created") {
