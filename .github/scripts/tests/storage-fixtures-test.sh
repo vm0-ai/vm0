@@ -52,12 +52,12 @@ stop_server() {
 start_server() {
   local scenario="$1"
   local scenario_dir="$TEST_TMP_DIR/$scenario"
-  local port_file="$scenario_dir/port"
 
   mkdir -p "$scenario_dir"
   REQUEST_LOG="$scenario_dir/requests.log"
 
-  python3 - "$scenario" "$port_file" "$REQUEST_LOG" <<'PY' &
+  coproc FIXTURE_SERVER {
+    python3 - "$scenario" "$REQUEST_LOG" <<'PY'
 import json
 import sys
 import threading
@@ -66,8 +66,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 scenario = sys.argv[1]
-port_file = Path(sys.argv[2])
-request_log = Path(sys.argv[3])
+request_log = Path(sys.argv[2])
 counts: Counter[str] = Counter()
 lock = threading.Lock()
 
@@ -152,23 +151,21 @@ class Handler(BaseHTTPRequestHandler):
 
 
 with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
-    port_file.write_text(str(server.server_address[1]), encoding="utf-8")
+    print(server.server_address[1], flush=True)
     server.serve_forever()
 PY
-  SERVER_PID=$!
+  }
+  SERVER_PID="$FIXTURE_SERVER_PID"
 
-  local _attempt
-  for _attempt in {1..100}; do
-    if [[ -s "$port_file" ]]; then
-      SERVER_URL="http://127.0.0.1:$(<"$port_file")"
-      return
-    fi
-    if ! kill -0 "$SERVER_PID" 2>/dev/null; then
-      fail "fixture HTTP server exited before becoming ready"
-    fi
-    sleep 0.01
-  done
-  fail "fixture HTTP server did not become ready"
+  local server_fd="${FIXTURE_SERVER[0]}"
+  local server_port
+  if ! IFS= read -r -u "$server_fd" server_port; then
+    wait "$SERVER_PID" 2>/dev/null || true
+    SERVER_PID=""
+    fail "fixture HTTP server exited before becoming ready"
+  fi
+  exec {server_fd}<&-
+  SERVER_URL="http://127.0.0.1:$server_port"
 }
 
 request_count() {
