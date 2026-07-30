@@ -1884,9 +1884,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
   [
     {
       id: "prism",
-      name: "Prism",
+      name: "Candy party",
       group: "multi-accent",
-      paletteName: "Prism",
+      paletteName: "Candy party",
       colors: [
         "#FFFFFF",
         "#F7F7FA",
@@ -1901,9 +1901,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "carnival",
-      name: "Carnival",
+      name: "Funfair",
       group: "multi-accent",
-      paletteName: "Carnival",
+      paletteName: "Funfair",
       colors: [
         "#FFFDF7",
         "#FFFFFF",
@@ -1918,9 +1918,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "pop-art",
-      name: "Pop Art",
+      name: "Neon arcade",
       group: "multi-accent",
-      paletteName: "Pop Art",
+      paletteName: "Neon arcade",
       colors: [
         "#111016",
         "#1B1A22",
@@ -1935,9 +1935,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "warm-sand",
-      name: "Warm Sand",
+      name: "Morning paper",
       group: "single-accent",
-      paletteName: "Warm Sand",
+      paletteName: "Morning paper",
       colors: [
         "#FFFDF8",
         "#FFFFFF",
@@ -1952,9 +1952,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "bauhaus-primary",
-      name: "Bauhaus Primary",
+      name: "Toy bricks",
       group: "single-accent",
-      paletteName: "Bauhaus Primary",
+      paletteName: "Toy bricks",
       colors: [
         "#F5F1E6",
         "#FFFFFF",
@@ -1969,9 +1969,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "nordic-frost",
-      name: "Nordic Frost",
+      name: "Ice lake",
       group: "single-accent",
-      paletteName: "Nordic Frost",
+      paletteName: "Ice lake",
       colors: [
         "#FBFCFD",
         "#FFFFFF",
@@ -1986,9 +1986,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "forest-editorial",
-      name: "Forest Editorial",
+      name: "Moss library",
       group: "single-accent",
-      paletteName: "Forest Editorial",
+      paletteName: "Moss library",
       colors: [
         "#F7F6F1",
         "#FFFFFF",
@@ -2003,9 +2003,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "coral-studio",
-      name: "Coral Studio",
+      name: "Peach studio",
       group: "single-accent",
-      paletteName: "Coral Studio",
+      paletteName: "Peach studio",
       colors: [
         "#FFF9F6",
         "#FFFFFF",
@@ -2020,9 +2020,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "slate-corporate",
-      name: "Slate Corporate",
+      name: "Boardroom blue",
       group: "single-accent",
-      paletteName: "Slate Corporate",
+      paletteName: "Boardroom blue",
       colors: [
         "#FFFFFF",
         "#F6F8FB",
@@ -2037,9 +2037,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "terracotta-clay",
-      name: "Terracotta Clay",
+      name: "Clay pot",
       group: "single-accent",
-      paletteName: "Terracotta Clay",
+      paletteName: "Clay pot",
       colors: [
         "#FBF4EC",
         "#FFFFFF",
@@ -2054,9 +2054,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "berry-pop",
-      name: "Berry Pop",
+      name: "Raspberry soda",
       group: "single-accent",
-      paletteName: "Berry Pop",
+      paletteName: "Raspberry soda",
       colors: [
         "#FFFAFC",
         "#FFFFFF",
@@ -2071,9 +2071,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "citrus-fresh",
-      name: "Citrus Fresh",
+      name: "Orange juice",
       group: "single-accent",
-      paletteName: "Citrus Fresh",
+      paletteName: "Orange juice",
       colors: [
         "#FFFFFB",
         "#FFFFFF",
@@ -2088,9 +2088,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "mauve-dusk",
-      name: "Mauve Dusk",
+      name: "Lavender dusk",
       group: "single-accent",
-      paletteName: "Mauve Dusk",
+      paletteName: "Lavender dusk",
       colors: [
         "#FAF7FB",
         "#FFFFFF",
@@ -2105,9 +2105,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "mono-ink",
-      name: "Mono Ink",
+      name: "Newsprint red",
       group: "single-accent",
-      paletteName: "Mono Ink",
+      paletteName: "Newsprint red",
       colors: [
         "#FFFFFF",
         "#FAFAFA",
@@ -2122,9 +2122,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "sunset-maroon",
-      name: "Sunset Maroon",
+      name: "Sunset glow",
       group: "single-accent",
-      paletteName: "Sunset Maroon",
+      paletteName: "Sunset glow",
       colors: [
         "#FFF7F2",
         "#FFFFFF",
@@ -2139,9 +2139,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "mint-tech",
-      name: "Mint Tech",
+      name: "Mint lab",
       group: "single-accent",
-      paletteName: "Mint Tech",
+      paletteName: "Mint lab",
       colors: [
         "#FBFFFD",
         "#FFFFFF",
@@ -2156,9 +2156,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "midnight-mono",
-      name: "Midnight Mono",
+      name: "Night run",
       group: "single-accent",
-      paletteName: "Midnight Mono",
+      paletteName: "Night run",
       colors: [
         "#121316",
         "#1C1E22",
@@ -2173,9 +2173,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "ocean-deep",
-      name: "Ocean Deep",
+      name: "Deep dive",
       group: "single-accent",
-      paletteName: "Ocean Deep",
+      paletteName: "Deep dive",
       colors: [
         "#0E2A33",
         "#143840",
@@ -2190,9 +2190,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "gold-luxe",
-      name: "Gold Luxe",
+      name: "Award night",
       group: "single-accent",
-      paletteName: "Gold Luxe",
+      paletteName: "Award night",
       colors: [
         "#16140F",
         "#211E16",

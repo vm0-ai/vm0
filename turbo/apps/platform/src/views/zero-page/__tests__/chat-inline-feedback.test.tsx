@@ -536,7 +536,7 @@ describe("chat inline feedback", () => {
         `Preview ${template.title} at current slide`,
       ),
     );
-    click(await screen.findByLabelText("Select style Gold Luxe"));
+    click(await screen.findByLabelText("Select style Award night"));
     click(await screen.findByLabelText(`Select template ${template.title}`));
     await waitFor(() => {
       expect(
@@ -1423,7 +1423,7 @@ describe("chat inline feedback", () => {
         `Preview ${template.title} at current slide`,
       ),
     );
-    click(await screen.findByLabelText("Select style Gold Luxe"));
+    click(await screen.findByLabelText("Select style Award night"));
     click(await screen.findByLabelText(`Select template ${template.title}`));
     await waitFor(() => {
       expect(
