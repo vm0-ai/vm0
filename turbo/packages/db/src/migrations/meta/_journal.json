@@ -5307,6 +5307,20 @@
       "when": 1785402433507,
       "tag": "0757_expand_first_assistant_event_acknowledged_at",
       "breakpoints": true
+    },
+    {
+      "idx": 758,
+      "version": "7",
+      "when": 1785405505957,
+      "tag": "0758_drop_agentphone_thread_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 759,
+      "version": "7",
+      "when": 1785406871736,
+      "tag": "0759_drop_feishu_org_thread_sessions",
+      "breakpoints": true
     }
   ]
 }

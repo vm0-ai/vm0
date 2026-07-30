@@ -1,5 +1,6 @@
 import {
   addClientCapabilityToVersion,
+  CLIENT_CAPABILITY_JA_JP_LOCALE,
   CLIENT_CAPABILITY_PT_BR_LOCALE,
   CLIENT_REQUEST_ID_HEADER,
   CLIENT_SESSION_ID_HEADER,
@@ -26,8 +27,11 @@ const clientSessionId = crypto.randomUUID();
 function createClientHeaders(): Record<string, string> {
   return {
     [CLIENT_VERSION_HEADER]: addClientCapabilityToVersion(
-      clientVersion,
-      CLIENT_CAPABILITY_PT_BR_LOCALE,
+      addClientCapabilityToVersion(
+        clientVersion,
+        CLIENT_CAPABILITY_PT_BR_LOCALE,
+      ),
+      CLIENT_CAPABILITY_JA_JP_LOCALE,
     ),
     [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
     [CLIENT_SESSION_ID_HEADER]: clientSessionId,

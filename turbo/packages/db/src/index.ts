@@ -44,7 +44,6 @@ import * as telegramChatThreadRouteSchema from "./schema/telegram-chat-thread-ro
 import * as telegramMessageSchema from "./schema/telegram-message";
 import * as agentphoneUserLinkSchema from "./schema/agentphone-user-link";
 import * as agentphoneUserAgentPreferenceSchema from "./schema/agentphone-user-agent-preference";
-import * as agentphoneThreadSessionSchema from "./schema/agentphone-thread-session";
 import * as agentphoneChatThreadRouteSchema from "./schema/agentphone-chat-thread-route";
 import * as agentphoneMessageSchema from "./schema/agentphone-message";
 import * as agentphoneVerificationSendCooldownSchema from "./schema/agentphone-verification-send-cooldown";
@@ -59,7 +58,6 @@ import * as teamsChatThreadRouteSchema from "./schema/teams-chat-thread-route";
 import * as teamsUserAgentPreferenceSchema from "./schema/teams-user-agent-preference";
 import * as feishuOrgInstallationSchema from "./schema/feishu-org-installation";
 import * as feishuOrgConnectionSchema from "./schema/feishu-org-connection";
-import * as feishuOrgThreadSessionSchema from "./schema/feishu-org-thread-session";
 import * as feishuOrgEventSchema from "./schema/feishu-org-event";
 import * as feishuChatThreadRouteSchema from "./schema/feishu-chat-thread-route";
 import * as feishuChatIngressSchema from "./schema/feishu-chat-ingress";
@@ -152,7 +150,6 @@ export const schema = {
   ...teamsUserAgentPreferenceSchema,
   ...feishuOrgInstallationSchema,
   ...feishuOrgConnectionSchema,
-  ...feishuOrgThreadSessionSchema,
   ...feishuOrgEventSchema,
   ...feishuChatThreadRouteSchema,
   ...feishuChatIngressSchema,
@@ -182,7 +179,6 @@ export const schema = {
   ...telegramMessageSchema,
   ...agentphoneUserLinkSchema,
   ...agentphoneUserAgentPreferenceSchema,
-  ...agentphoneThreadSessionSchema,
   ...agentphoneChatThreadRouteSchema,
   ...agentphoneMessageSchema,
   ...agentphoneVerificationSendCooldownSchema,
