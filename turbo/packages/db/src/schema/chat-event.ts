@@ -130,8 +130,6 @@ export const chatEvents = pgTable(
     generationTemplate: jsonb(
       "generation_template",
     ).$type<ChatEventGenerationTemplate>(),
-    slackMessagePermalink: text("slack_message_permalink"),
-    feishuChatOpenUrl: text("feishu_chat_open_url"),
     recommendedFollowups: jsonb(
       "recommended_followups",
     ).$type<ChatEventRecommendedFollowups>(),

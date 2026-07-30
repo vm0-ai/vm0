@@ -30,6 +30,7 @@ import {
   addClientCapabilityToVersion,
   CLIENT_CAPABILITY_JA_JP_LOCALE,
   CLIENT_CAPABILITY_KO_KR_LOCALE,
+  CLIENT_CAPABILITY_ID_ID_LOCALE,
   CLIENT_CAPABILITY_PT_BR_LOCALE,
   CLIENT_VERSION_HEADER,
 } from "@vm0/api-contracts/contracts/client-headers";
@@ -69,9 +70,17 @@ export const KOREAN_CLIENT_VERSION = addClientCapabilityToVersion(
   "0.648.0",
   CLIENT_CAPABILITY_KO_KR_LOCALE,
 );
-export const ALL_LOCALES_CLIENT_VERSION = addClientCapabilityToVersion(
+export const INDONESIAN_CLIENT_VERSION = addClientCapabilityToVersion(
+  "0.648.0",
+  CLIENT_CAPABILITY_ID_ID_LOCALE,
+);
+const ALL_LOCALES_WITH_KOREAN_CLIENT_VERSION = addClientCapabilityToVersion(
   JAPANESE_CLIENT_VERSION,
   CLIENT_CAPABILITY_KO_KR_LOCALE,
+);
+export const ALL_LOCALES_CLIENT_VERSION = addClientCapabilityToVersion(
+  ALL_LOCALES_WITH_KOREAN_CLIENT_VERSION,
+  CLIENT_CAPABILITY_ID_ID_LOCALE,
 );
 
 type ZeroLogsSearchQuery = z.input<

@@ -123,7 +123,6 @@ const nullableTriggerSourceDecoder = nullableDriverValueDecoder(
 );
 const nullableTextDecoder = nullableDriverValueDecoder(pgTextDecoder);
 const matchedChatEvent = alias(chatEvents, "matched_chat_event");
-const revokedChatEvent = alias(chatEvents, "revoked_chat_event");
 const hostedRunUploadedFiles = alias(runUploadedFiles, "hosted_files");
 const HOSTED_ARTIFACT_KINDS = ["hosted-site", "presentation-html"] as const;
 
@@ -415,20 +414,8 @@ function selectChatEventsWithMetadata(db: Pick<Db, "select">) {
       )`
         .mapWith(nullableTriggerSourceDecoder)
         .as("trigger_source"),
-      slackMessagePermalink: sql`COALESCE(
-        ${chatSlackContext.messagePermalink},
-        ${chatEvents.slackMessagePermalink},
-        ${revokedChatEvent.slackMessagePermalink}
-      )`
-        .mapWith(nullableTextDecoder)
-        .as("slack_message_permalink"),
-      feishuChatOpenUrl: sql`COALESCE(
-        ${chatFeishuContext.chatOpenUrl},
-        ${chatEvents.feishuChatOpenUrl},
-        ${revokedChatEvent.feishuChatOpenUrl}
-      )`
-        .mapWith(nullableTextDecoder)
-        .as("feishu_chat_open_url"),
+      slackMessagePermalink: chatSlackContext.messagePermalink,
+      feishuChatOpenUrl: chatFeishuContext.chatOpenUrl,
       workflowId: metadata.workflowId,
       workflowAgentId: metadata.workflowAgentId,
       workflowName: metadata.workflowName,
@@ -449,10 +436,6 @@ function selectChatEventsWithMetadata(db: Pick<Db, "select">) {
     })
     .from(chatEvents)
     .leftJoinLateral(metadata, sql`true`)
-    .leftJoin(
-      revokedChatEvent,
-      eq(revokedChatEvent.id, chatEvents.revokesEventId),
-    )
     .leftJoin(
       chatSlackContext,
       and(
