@@ -311,7 +311,7 @@ assert_line_count "$actual_failure/actual-ssh.log" 1 \
 assert_line_count "$actual_failure/stdout" 1 "actual stdout"
 assert_line_count "$actual_failure/stderr" 1 "actual stderr"
 
-recovery="${tmp}/recovery"
+recovery="${tmp}/github-runner-recovery-case"
 run_wrapper "$recovery" stale-success ssh \
   metal@dev-11.gcp.vm3.ai touch /tmp/recovered-operation
 assert_contains "$recovery/status" "0"
@@ -331,6 +331,10 @@ state_file=$(find "$recovery/state" -name '*.control-path' -print -quit)
 [ -n "$state_file" ] || fail "expected recovery control-path state"
 selected_control_path=$(< "$state_file")
 [ -n "$selected_control_path" ] || fail "expected selected recovery socket"
+control_path_bind_length=$((${#selected_control_path} + 17))
+if [ "$control_path_bind_length" -gt 107 ]; then
+  fail "recovery control path exceeds the Linux Unix socket path limit"
+fi
 assert_line_count "$recovery/ssh.log" 1 \
   "-S ${selected_control_path} -n -M -N -f metal@dev-11.gcp.vm3.ai"
 assert_line_count "$recovery/ssh.log" 1 \

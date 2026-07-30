@@ -175,6 +175,16 @@ def _message_event(
     return wsproto.events.BytesMessage(content, message_finished=message_finished)
 
 
+def _malformed_compressed_binary_frame(*, from_client: bool) -> bytes:
+    payload = b"\x04"
+    if not from_client:
+        return b"\xc2\x01" + payload
+
+    masking_key = b"\x01\x02\x03\x04"
+    masked_payload = bytes([payload[0] ^ masking_key[0]])
+    return b"\xc2\x81" + masking_key + masked_payload
+
+
 def _source_connection(
     running: _RunningWebSocket,
     *,
@@ -410,6 +420,61 @@ async def test_compression_preserves_context_takeover_and_is_connection_local(
         b"shared-prefix-" * 32,
         b"shared-prefix-" * 32 + b"second",
     ]
+
+
+@pytest.mark.parametrize("from_client", [True, False])
+async def test_malformed_compressed_frame_closes_only_the_rejected_flow(
+    tmp_path: Path,
+    from_client: bool,
+) -> None:
+    with (
+        patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+        taddons.context(Proxyserver(), mitm_addon) as addon_context,
+    ):
+        rejected = await _start_websocket(addon_context, compression=True)
+        malformed = await _handle_event(
+            addon_context,
+            rejected,
+            events.DataReceived(
+                _source_connection(rejected, from_client=from_client),
+                _malformed_compressed_binary_frame(from_client=from_client),
+            ),
+        )
+
+        healthy = await _start_websocket(addon_context, compression=True)
+        healthy_peer = _peer(from_client=from_client, compression=True)
+        delivered = await _handle_event(
+            addon_context,
+            healthy,
+            events.DataReceived(
+                _source_connection(healthy, from_client=from_client),
+                healthy_peer.send(_message_event(b"healthy-compressed")),
+            ),
+        )
+
+    assert _message_hooks(malformed) == []
+    assert _data_sends(malformed) == []
+    assert rejected.flow.websocket is not None
+    assert rejected.flow.websocket.close_code == 1007
+    assert rejected.flow.websocket.messages == []
+    assert not rejected.flow.live
+
+    rejected_source = rejected.layer.client_ws if from_client else rejected.layer.server_ws
+    assert isinstance(rejected_source, websocket_framing._BoundedWebsocketConnection)
+    assert sum(len(fragment) for fragment in rejected_source.frame_buf) == 0
+    assert len(rejected_source._vm0_bounded_deflates) == 1
+    bounded_deflate = rejected_source._vm0_bounded_deflates[0]
+    assert bounded_deflate._decompressor is None
+    assert bounded_deflate._inbound_is_compressible is None
+    assert bounded_deflate._inbound_compressed is None
+    assert rejected_source._vm0_message_limit._budget.decoded_bytes == 0
+    assert rejected_source._vm0_message_limit._budget.data_frames == 0
+
+    assert len(_message_hooks(delivered)) == 1
+    assert len(_data_sends(delivered)) == 1
+    assert healthy.flow.websocket is not None
+    assert healthy.flow.websocket.timestamp_end is None
+    assert healthy.flow.websocket.messages[-1].content == b"healthy-compressed"
 
 
 @pytest.mark.parametrize("from_client", [True, False])

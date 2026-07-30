@@ -373,6 +373,7 @@ export const startCustomConnectorOAuth2$ = command(
       readonly userId: string;
       readonly connectorId: string;
       readonly redirectUri: string;
+      readonly agentId?: string;
     },
     signal: AbortSignal,
   ) => {
@@ -416,6 +417,8 @@ export const startCustomConnectorOAuth2$ = command(
         authMethod: CUSTOM_CONNECTOR_OAUTH_METHOD_ID,
         userId: args.userId,
         orgId: args.orgId,
+        agentId: args.agentId,
+        authorizeAgent: args.agentId !== undefined,
         redirectUri: args.redirectUri,
         authorizationUrl,
         codeVerifier,

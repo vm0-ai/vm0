@@ -30,9 +30,11 @@ import {
   zeroCustomConnectorOAuth2Contract,
   zeroCustomConnectorProposalContract,
   zeroCustomConnectorSecretContract,
+  zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
   type CreateCustomConnectorBody,
   type CustomConnectorResponse,
+  type CustomConnectorValueInput,
   type PatchCustomConnectorBody,
   type SaveCustomConnectorProposalBody,
   type SaveCustomConnectorProposalResponse,
@@ -1790,6 +1792,38 @@ export function createConnectorBddApi(context: TestContext) {
       );
     },
 
+    async requestSetCustomConnectorValues(
+      actor: ApiTestUser | null,
+      connectorId: string,
+      values: readonly CustomConnectorValueInput[],
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+    ) {
+      const client = setupApp({ context })(zeroCustomConnectorValuesContract);
+      return await accept(
+        client.set({
+          params: { id: connectorId },
+          headers: authenticate(actor),
+          body: { values: [...values] },
+        }),
+        statuses,
+      );
+    },
+
+    async setCustomConnectorValues(
+      actor: ApiTestUser,
+      connectorId: string,
+      values: readonly CustomConnectorValueInput[],
+    ): Promise<CustomConnectorResponse> {
+      const response = await api.requestSetCustomConnectorValues(
+        actor,
+        connectorId,
+        values,
+        [200],
+      );
+      expectStatus(response, 200);
+      return response.body;
+    },
+
     async requestDeleteCustomConnectorSecret(
       actor: ApiTestUser | null,
       connectorId: string,
@@ -1821,13 +1855,14 @@ export function createConnectorBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       connectorId: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+      agentId?: string,
     ) {
       const client = setupApp({ context })(zeroCustomConnectorOAuth2Contract);
       return await accept(
         client.start({
           params: { id: connectorId },
           headers: authenticate(actor),
-          body: {},
+          body: agentId ? { agentId } : {},
         }),
         statuses,
       );
@@ -1836,11 +1871,13 @@ export function createConnectorBddApi(context: TestContext) {
     async startCustomConnectorOAuth2(
       actor: ApiTestUser,
       connectorId: string,
+      agentId?: string,
     ): Promise<string> {
       const response = await api.requestStartCustomConnectorOAuth2(
         actor,
         connectorId,
         [200],
+        agentId,
       );
       expectStatus(response, 200);
       return response.body.authorizationUrl;
