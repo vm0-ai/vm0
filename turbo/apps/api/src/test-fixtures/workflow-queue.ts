@@ -4,7 +4,7 @@ import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
 import { eq } from "drizzle-orm";
 
 import { db } from "../lib/db";
-import { admitWorkflowAutomationEvent } from "../signals/services/chat-message-queue.service";
+import { admitWorkflowAutomationEvent } from "../signals/services/workflow-chat-event-queue.service";
 
 interface PreviousDeploymentWorkflowEventArgs {
   readonly automationId: string;
