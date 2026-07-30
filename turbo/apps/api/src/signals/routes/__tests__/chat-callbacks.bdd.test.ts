@@ -48,6 +48,7 @@ import {
   generateDataKeyOutput,
   useSecretKmsProbe,
 } from "./helpers/secret-kms-probe";
+import { insertRunOutputAsPreviousApi } from "./helpers/runtime-state";
 
 /**
  * CHAT-02 / HOOK-01: signed chat run callbacks through real dispatch.
@@ -3078,6 +3079,47 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     ).toStrictEqual(["DB result fallback answer"]);
     await flushWaitUntilForTest();
     expect(firstAssistantEventsForRun(resultOnly.runId)).toHaveLength(1);
+  }, 90_000);
+
+  it("bridges a result-only chat event acknowledged by the previous API writer", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "mixed-version result-only chat run",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+
+    chatCallbacks.mockPreviousApiChatOutputEvents([
+      resultEvent(0, "Result preserved across the rolling deploy"),
+    ]);
+    // No current public route can reproduce the prior writer's row: it stored
+    // the result sequence but not the result/output text.
+    await insertRunOutputAsPreviousApi(context, {
+      runId: run.runId,
+      processedThroughSequence: 0,
+      latestResultSequence: 0,
+    });
+    context.mocks.axiom.query.mockClear();
+
+    await completeChatRunOk(run.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    const messages = await waitForThreadMessages(
+      actor,
+      run.threadId,
+      (threadMessages) => {
+        return eventBackedContents(threadMessages, run.runId).length === 1;
+      },
+    );
+
+    expect(
+      eventBackedContents(messages.events, run.runId).map((message) => {
+        return message.content;
+      }),
+    ).toStrictEqual(["Result preserved across the rolling deploy"]);
+    expect(chatOutputAxiomQueryCalls()).toHaveLength(1);
   }, 90_000);
 
   it("extracts assistant output from Codex items and result fallbacks, skips non-events, and acknowledges progress without reading events", async () => {
