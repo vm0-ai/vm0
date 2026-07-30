@@ -64,6 +64,13 @@ struct FinalizedApiRequest {
     context: ApiRequestContext,
 }
 
+/// Finalized API request whose correlation context is available before transport execution.
+pub(crate) struct PreparedApiRequest {
+    client: Client,
+    request: Request,
+    context: ApiRequestContext,
+}
+
 /// Request builder for generated vm0 API routes.
 ///
 /// Generated client headers are finalized in `send`/`build` so caller-side
@@ -102,13 +109,17 @@ impl ApiRequestBuilder {
     }
 
     pub async fn send(self, endpoint_label: &'static str) -> RunnerResult<Response> {
+        self.prepare(endpoint_label)?.send().await
+    }
+
+    pub(crate) fn prepare(self, endpoint_label: &'static str) -> RunnerResult<PreparedApiRequest> {
         let client = self.client.clone();
         let finalized = self.finalize(endpoint_label)?;
-        let context = finalized.context;
-        client
-            .execute(finalized.request)
-            .await
-            .map_err(|e| api_transport_error(context, e))
+        Ok(PreparedApiRequest {
+            client,
+            request: finalized.request,
+            context: finalized.context,
+        })
     }
 
     #[cfg(test)]
@@ -147,6 +158,24 @@ impl ApiRequestBuilder {
             builder: builder.header(name, value),
             client_headers,
         }
+    }
+}
+
+impl PreparedApiRequest {
+    pub(crate) fn context(&self) -> &ApiRequestContext {
+        &self.context
+    }
+
+    pub(crate) async fn send(self) -> RunnerResult<Response> {
+        let Self {
+            client,
+            request,
+            context,
+        } = self;
+        client
+            .execute(request)
+            .await
+            .map_err(|e| api_transport_error(context, e))
     }
 }
 
