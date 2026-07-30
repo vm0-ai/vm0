@@ -170,7 +170,7 @@ describe("zero chat thread IndexedDB fallback", () => {
     await clearCachedChatData();
   });
 
-  it("shows cached messages and their sidebar before remote catch-up", async () => {
+  it("shows cached messages without auto-opening their artifact before remote catch-up", async () => {
     const cachedUrl = "https://cached-initial-deck.sites.vm7.io";
     prepareDefaultAgent();
     mockCurrentThreadDetail();
@@ -215,15 +215,10 @@ describe("zero chat thread IndexedDB fallback", () => {
       setupChatPage({ autoOpenEnabled: true });
       await catchUpRequested.promise;
 
-      const sidebar = await screen.findByTestId("artifact-sidebar");
-      expect(sidebar).toBeInTheDocument();
-      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
-        "src",
-        cachedUrl,
-      );
       await expect(
         screen.findByText("Cached initial deck"),
       ).resolves.toBeInTheDocument();
+      expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
     } finally {
       if (!releaseCatchUp.settled()) {
         releaseCatchUp.resolve();
