@@ -353,6 +353,7 @@
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
+      "test": "Teste",
       "web": "Web",
       "webhook": "Webhook",
       "workflowEvent": "Evento de fluxo de trabalho",
