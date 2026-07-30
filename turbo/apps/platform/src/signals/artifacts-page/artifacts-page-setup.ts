@@ -1,15 +1,11 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { i18n } from "../../i18n/index.ts";
 
 import { ArtifactCatalogPage } from "../../views/artifacts-page/artifact-catalog-page.tsx";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
-import { featureSwitch$ } from "../external/feature-switch.ts";
 import { updatePage$ } from "../react-router.ts";
-import { detachedNavigateTo$ } from "../route.ts";
-import { ROUTES } from "../route-paths.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import {
   reloadArtifactCatalog$,
@@ -17,15 +13,7 @@ import {
 } from "./artifact-catalog-signals.ts";
 
 export const setupArtifactsPage$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const features = await get(featureSwitch$);
-    signal.throwIfAborted();
-
-    if (!features[FeatureSwitchKey.Artifacts]) {
-      set(detachedNavigateTo$, ROUTES.home, { replace: true });
-      return;
-    }
-
+  async ({ set }, signal: AbortSignal) => {
     // Entering the page always starts a fresh first page. Later pages are
     // fetched on scroll and never cached across visits.
     set(setArtifactCatalogKind$, "presentation");

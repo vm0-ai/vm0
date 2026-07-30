@@ -5342,6 +5342,13 @@
       "when": 1785410977112,
       "tag": "0762_remove_legacy_connector_identity_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 763,
+      "version": "7",
+      "when": 1785412068303,
+      "tag": "0763_add_chat_display_contexts",
+      "breakpoints": true
     }
   ]
 }

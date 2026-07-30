@@ -55,7 +55,6 @@ const getAgentDraftInner$ = computed(async (get) => {
   return {
     status: 200 as const,
     body: {
-      draftContent: null,
       draftUserMessage: draft?.draftUserMessage ?? null,
       draftAttachments: draft?.draftAttachments ?? null,
     },
