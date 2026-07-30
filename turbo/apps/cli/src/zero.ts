@@ -30,7 +30,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   agent: "agent:read",
   workflow: "agent:read",
   goal: ["goal:read", "goal:agent-result:write", "goal:user-control:write"],
-  connector: "connector:read",
+  connector: ["connector:read", "connector:write"],
   mail: "connector:read",
   doctor: null,
   credit: ["billing:read", "billing:write"],

@@ -487,6 +487,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     userOverridable: true,
   },
+  [FeatureSwitchKey.CustomConnectorCliCreate]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Allow Zero CLI agents to create and configure custom connectors directly.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.CustomConnectorOAuth2]: {
     maintainer: "liangyou@vm0.ai",
     description:

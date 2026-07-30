@@ -22,7 +22,11 @@ import {
 } from "@vm0/api-contracts/contracts/zero-connector-check";
 import {
   zeroCustomConnectorByIdContract,
+  zeroCustomConnectorOAuth2Contract,
+  zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
+  type CreateCustomConnectorBody,
+  type CustomConnectorValueInput,
   type CustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type {
@@ -355,6 +359,20 @@ export async function listZeroCustomConnectors(): Promise<
   handleError(result, "Failed to list custom connectors");
 }
 
+export async function createZeroCustomConnector(
+  body: CreateCustomConnectorBody,
+): Promise<CustomConnectorResponse> {
+  const config = await getClientConfig();
+  const client = initClient(zeroCustomConnectorsContract, config);
+
+  const result = await client.create({ body, headers: {} });
+  if (result.status === 201) {
+    return result.body;
+  }
+
+  handleError(result, "Failed to create custom connector");
+}
+
 export async function getZeroCustomConnector(
   id: string,
 ): Promise<CustomConnectorResponse | null> {
@@ -370,4 +388,42 @@ export async function getZeroCustomConnector(
   }
 
   handleError(result, `Failed to get custom connector "${id}"`);
+}
+
+export async function setZeroCustomConnectorValues(
+  id: string,
+  values: readonly CustomConnectorValueInput[],
+): Promise<CustomConnectorResponse> {
+  const config = await getClientConfig();
+  const client = initClient(zeroCustomConnectorValuesContract, config);
+
+  const result = await client.set({
+    params: { id },
+    headers: {},
+    body: { values: [...values] },
+  });
+  if (result.status === 200) {
+    return result.body;
+  }
+
+  handleError(result, `Failed to set values for custom connector "${id}"`);
+}
+
+export async function startZeroCustomConnectorOAuth2(
+  id: string,
+  agentId: string | undefined,
+): Promise<string> {
+  const config = await getClientConfig();
+  const client = initClient(zeroCustomConnectorOAuth2Contract, config);
+
+  const result = await client.start({
+    params: { id },
+    headers: {},
+    body: agentId ? { agentId } : {},
+  });
+  if (result.status === 200) {
+    return result.body.authorizationUrl;
+  }
+
+  handleError(result, `Failed to start OAuth for custom connector "${id}"`);
 }

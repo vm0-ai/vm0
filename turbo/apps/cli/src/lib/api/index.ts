@@ -82,6 +82,7 @@ export {
   updateZeroAgentInstructions,
   getZeroAgentUserConnectors,
   getZeroAgentCustomConnectors,
+  addZeroAgentCustomConnector,
   listZeroUserPermissionGrants,
 } from "./domains/zero-agents";
 
@@ -126,7 +127,10 @@ export {
   getZeroConnectorCatalogPermissions,
   connectZeroConnectorManualGrant,
   listZeroCustomConnectors,
+  createZeroCustomConnector,
   getZeroCustomConnector,
+  setZeroCustomConnectorValues,
+  startZeroCustomConnectorOAuth2,
 } from "./domains/zero-connectors";
 
 // Domain modules - Zero Mail
