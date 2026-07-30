@@ -443,7 +443,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Store new user artifacts under flat, ten-character hashed public keys.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.HostedArtifactVersions]: {
     maintainer: "yuma@vm0.ai",

@@ -311,6 +311,81 @@ async function createRunUploadedFile(args: {
   };
 }
 
+describe("artifact key compatibility", () => {
+  it("keeps a legacy attachment URL when an enabled org uses an older upload client", async () => {
+    const owner = await artifactActor(
+      "Artifacts API legacy upload compatibility agent",
+    );
+    if (!owner.actor.orgId) {
+      throw new Error("Expected legacy upload test actor to have an org");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...owner.actor, orgId: owner.actor.orgId },
+      { [FeatureSwitchKey.ArtifactKeyV2]: true },
+    );
+
+    const prepared = await chat.prepareUpload(owner.actor, {
+      filename: "legacy attachment.txt",
+      contentType: "text/plain",
+      size: 24,
+    });
+    const legacyKey = new URL(prepared.url).pathname.replace(/^\/+/u, "");
+    expect(legacyKey).toBe(
+      `artifacts/${owner.actor.userId}/${prepared.id}/legacy_attachment.txt`,
+    );
+    owner.objectStore.addObject({
+      bucket: "test-user-artifacts",
+      key: legacyKey,
+      contentType: prepared.contentType,
+      size: prepared.size,
+    });
+
+    const sent = await chat.requestSendEvent(
+      owner.actor,
+      {
+        agentId: owner.agentId,
+        prompt: "Use the legacy attachment",
+        attachFiles: [
+          {
+            id: prepared.id,
+            filename: prepared.filename,
+            contentType: prepared.contentType,
+            size: prepared.size,
+          },
+        ],
+      },
+      [201],
+    );
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected legacy attachment send to create a run");
+    }
+    await flushWaitUntilForTest();
+
+    const events = await chat.listThreadEvents(owner.actor, sent.body.threadId);
+    const input = events.events.find((event) => {
+      return event.eventType === "input.prompt";
+    });
+    expect(input).toMatchObject({
+      attachFiles: [
+        {
+          id: prepared.id,
+          filename: prepared.filename,
+          contentType: prepared.contentType,
+          size: prepared.size,
+          url: prepared.url,
+        },
+      ],
+    });
+
+    const { sandboxHeaders } = await claimChatRun(
+      owner.runnerGroup,
+      sent.body.runId,
+    );
+    await completeChatRunOk(sent.body.runId, sandboxHeaders);
+  }, 120_000);
+});
+
 describe("video Artifact previews", () => {
   it("leaves video preview empty when immediate posters are disabled", async () => {
     const owner = await artifactActor(

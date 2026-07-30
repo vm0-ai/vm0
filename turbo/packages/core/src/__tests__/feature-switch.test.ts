@@ -141,7 +141,7 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.Artifacts]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ImageStyleR2]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
