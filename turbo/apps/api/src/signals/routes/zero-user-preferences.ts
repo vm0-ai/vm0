@@ -154,17 +154,6 @@ const localeRollout$ = computed((get): LocaleRollout => {
   };
 });
 
-function supportedLocales(rollout: LocaleRollout): UserLocale[] {
-  const locales: UserLocale[] = ["en-US"];
-  if (rollout.brazilianPortugueseEnabled) {
-    locales.push("pt-BR");
-  }
-  if (rollout.frenchEnabled) {
-    locales.push("fr-FR");
-  }
-  return locales;
-}
-
 function projectUserPreferences(
   preferences: UserPreferencesResponse,
   rollout: LocaleRollout,

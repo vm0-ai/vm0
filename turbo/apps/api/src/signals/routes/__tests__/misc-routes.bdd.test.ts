@@ -408,6 +408,7 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
   it("negotiates French across rollout and legacy clients", async () => {
     const { api, admin } = testActors();
     mockOptionalEnv("BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED", undefined);
+    mockOptionalEnv("INDONESIAN_LOCALE_ROLLOUT_ENABLED", undefined);
     mockOptionalEnv("FRENCH_LOCALE_ROLLOUT_ENABLED", undefined);
 
     const guarded = await api.readPreferences(admin, FRENCH_CLIENT_VERSION);
@@ -506,7 +507,7 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
     );
     expect(rollbackRead.body).toMatchObject({
       locale: "en-US",
-      supportedLocales: ["en-US", "pt-BR"],
+      supportedLocales: ["en-US"],
     });
 
     const rollbackWrite = await api.updatePreferences(
