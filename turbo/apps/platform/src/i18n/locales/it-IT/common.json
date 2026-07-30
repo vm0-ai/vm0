@@ -242,8 +242,8 @@
         "binaryData": "[Dati binari, {{size}} codifica base64]",
         "complete": "completo",
         "headersWithCount": "{{title}} ({{formattedCount}})",
-        "requestBody": "Richiedi corpo",
-        "requestHeaders": "Richiedi intestazioni",
+        "requestBody": "Corpo della richiesta",
+        "requestHeaders": "Intestazioni della richiesta",
         "responseBody": "Corpo di risposta",
         "responseHeaders": "Intestazioni di risposta",
         "truncated": "troncato"
@@ -254,13 +254,13 @@
         "authRefreshedConnectors": "Connettori aggiornati",
         "authRefreshedSecrets": "Segreti aggiornati",
         "authResolvedSecrets": "Segreti risolti",
-        "authUrlRewrite": "URL Riscrivi",
+        "authUrlRewrite": "Riscrittura URL",
         "baseUrl": "Base URL",
         "billable": "Fatturabile",
         "browserUserAgent": "Agente utente del browser",
-        "connectorBaseUrl": "Base connettore URL",
+        "connectorBaseUrl": "URL di base del connettore",
         "connectorDiagnostic": "Diagnostica del connettore",
-        "connectorEnvNames": "Nomi delle buste dei connettori",
+        "connectorEnvNames": "Nomi delle variabili d'ambiente del connettore",
         "connectorReason": "Motivo del connettore",
         "connectorRouteCandidates": "Candidati per il percorso del connettore",
         "connectorRouteReason": "Motivo del percorso del connettore",
@@ -280,35 +280,35 @@
         "modelCatalogCacheValidationLatency": "Latenza di convalida della cache del catalogo modelli",
         "modelCatalogPrefetchRole": "Ruolo di prelettura del catalogo modelli",
         "modelCatalogUpstreamEncoding": "Codifica upstream del catalogo modelli",
-        "params": "Param",
+        "params": "Parametri",
         "permission": "Autorizzazione",
         "permissionError": "Errore di autorizzazione",
-        "port": "Porto",
-        "requestSize": "Richiedi dimensione",
+        "port": "Porta",
+        "requestSize": "Dimensione della richiesta",
         "responseSize": "Dimensione della risposta",
         "ruleMatch": "Corrispondenza delle regole",
         "status": "Stato",
-        "timestamp": "Timestamp",
-        "type": "Digitare",
-        "upstreamBindingClientBindingCount": "Conteggio associazioni client upstream",
-        "upstreamBindingClientBindingEndpointMatch": "Corrispondenza dell'endpoint di associazione del client upstream",
-        "upstreamBindingClientBindingHosts": "Host di associazione client upstream",
-        "upstreamBindingClientBindingMatch": "Corrispondenza dell'associazione del client upstream",
-        "upstreamBindingClientId": "Client di associazione a monte ID",
-        "upstreamBindingClientSockname": "Nome del client di associazione upstream",
-        "upstreamBindingDirectBindingHost": "Host di associazione diretta upstream",
-        "upstreamBindingDirectBindingKinds": "Tipi di rilegatura diretta a monte",
-        "upstreamBindingDirectBindingPort": "Porta di collegamento diretto a monte",
-        "upstreamBindingDirectBindingPresent": "Presente legame diretto a monte",
-        "upstreamBindingReason": "Motivo vincolante a monte",
-        "upstreamBindingRequestHost": "Host della richiesta di associazione upstream",
-        "upstreamBindingRequestPort": "Porta della richiesta di associazione upstream",
-        "upstreamBindingServerAddress": "Indirizzo del server di associazione upstream",
-        "upstreamBindingServerConnected": "Server di associazione upstream connesso",
-        "upstreamBindingServerId": "Server di associazione upstream ID",
-        "upstreamBindingServerPeername": "Nome peer del server di associazione upstream",
-        "upstreamBindingServerSockname": "Nome del server di associazione upstream",
-        "upstreamBindingTrustedHost": "Host attendibile del collegamento a monte",
+        "timestamp": "Data e ora",
+        "type": "Tipo",
+        "upstreamBindingClientBindingCount": "Numero di binding client upstream",
+        "upstreamBindingClientBindingEndpointMatch": "Corrispondenza endpoint del binding client upstream",
+        "upstreamBindingClientBindingHosts": "Host del binding client upstream",
+        "upstreamBindingClientBindingMatch": "Corrispondenza del binding client upstream",
+        "upstreamBindingClientId": "ID client del binding upstream",
+        "upstreamBindingClientSockname": "Nome socket del client del binding upstream",
+        "upstreamBindingDirectBindingHost": "Host del binding diretto upstream",
+        "upstreamBindingDirectBindingKinds": "Tipi di binding diretto upstream",
+        "upstreamBindingDirectBindingPort": "Porta del binding diretto upstream",
+        "upstreamBindingDirectBindingPresent": "Binding diretto upstream presente",
+        "upstreamBindingReason": "Motivo del binding upstream",
+        "upstreamBindingRequestHost": "Host della richiesta di binding upstream",
+        "upstreamBindingRequestPort": "Porta della richiesta di binding upstream",
+        "upstreamBindingServerAddress": "Indirizzo server del binding upstream",
+        "upstreamBindingServerConnected": "Server del binding upstream connesso",
+        "upstreamBindingServerId": "ID server del binding upstream",
+        "upstreamBindingServerPeername": "Nome peer del server del binding upstream",
+        "upstreamBindingServerSockname": "Nome socket del server del binding upstream",
+        "upstreamBindingTrustedHost": "Host attendibile del binding upstream",
         "url": "URL"
       },
       "filter": {
@@ -316,7 +316,7 @@
         "selectedTypes_one": "{{formattedCount}} tipo",
         "selectedTypes_many": "{{formattedCount}} tipi",
         "selectedTypes_other": "{{formattedCount}} tipi",
-        "type": "Digitare il filtro"
+        "type": "Filtro per tipo"
       },
       "headers": {
         "latency": "Latenza",
@@ -324,7 +324,7 @@
         "permission": "Autorizzazione",
         "status": "Stato",
         "time": "Tempo",
-        "type": "Digitare",
+        "type": "Tipo",
         "urlHost": "URL / Host"
       },
       "loadMore": "Carica di più",
@@ -344,14 +344,14 @@
     },
     "sources": {
       "agent": "Agente",
-      "agentphone": "AgenteTelefono",
+      "agentphone": "AgentPhone",
       "agentWithName": "Agente ({{name}})",
       "cli": "CLI",
       "email": "E-mail",
       "feishu": "Feishu",
       "github": "GitHub",
       "slack": "Slack",
-      "teams": "Squadre",
+      "teams": "Microsoft Teams",
       "telegram": "Telegram",
       "web": "Rete",
       "webhook": "Webhook",
@@ -721,7 +721,7 @@
   },
   "authorization": {
     "browser": {
-      "description": "Zero utilizzerà un profilo browser cloud isolato per questo thread di chat. Abilitandola si disconnette l'uso del computer dal thread.",
+      "description": "Zero utilizzerà un profilo browser cloud isolato per questo thread di chat. Abilitandolo, Computer Use verrà disconnesso dal thread.",
       "enable": "Abilita per questo thread",
       "enabled": "Browser cloud abilitato",
       "linkExpires": "Il collegamento scade {{date}}.",
@@ -745,8 +745,8 @@
         "slack": "questo Slack thread",
         "teams": "questo thread di Teams"
       },
-      "title": "Autorizzare l'uso del computer",
-      "unavailableDescription": "Questo collegamento all'autorizzazione all'uso del computer non è valido, è scaduto o non è disponibile per questa area di lavoro.",
+      "title": "Autorizza Computer Use",
+      "unavailableDescription": "Questo link di autorizzazione di Computer Use non è valido, è scaduto o non è disponibile per questa area di lavoro.",
       "unavailableTitle": "Collegamento di autorizzazione non disponibile",
       "unsupportedIntelMac": "Richiede un Mac Apple Silicon"
     },
@@ -1268,7 +1268,7 @@
       }
     },
     "computerUse": {
-      "authorization": "Autorizzazione all'uso del computer",
+      "authorization": "Autorizzazione di Computer Use",
       "authorizationDescription": "Seleziona un host desktop per le esecuzioni future in questo thread.",
       "checkingCompatibility": "Verifica compatibilità",
       "cloudBrowser": "Browser cloud",
@@ -1280,7 +1280,7 @@
       "disconnectHost": "Disconnetti {{hostName}}",
       "downloadMacos": "Scarica per macOS",
       "enableCloudBrowser": "Abilita il browser cloud",
-      "hosts": "Host di utilizzo del computer",
+      "hosts": "Host di Computer Use",
       "macosRequirement": "Richiede un Mac Apple Silicon con macOS 14 o successivo. I Mac Intel non sono supportati.",
       "noOnlineComputers": "Nessun computer online",
       "offline": "Non in linea",
@@ -1840,7 +1840,7 @@
         "authorizationParameters": "Parametri di autorizzazione",
         "authorizationParametersDescription": "Aggiungi solo i parametri richiesti dal tuo provider.",
         "authorizationUrl": "Autorizzazione URL",
-        "clientId": "Cliente ID",
+        "clientId": "ID client",
         "clientSecret": "Segreto del cliente",
         "displayName": "Nome visualizzato",
         "headerName": "Nome dell'intestazione",
@@ -1857,7 +1857,7 @@
         "parameters": {
           "accessType": "Tipo di accesso",
           "audience": "Pubblico",
-          "prompt": "Richiedi",
+          "prompt": "Prompt",
           "resource": "Risorsa"
         },
         "prefixes": "Prefissi",
@@ -2056,7 +2056,7 @@
         "connectDescriptionNamed": "{{displayName}}, collega il tuo account Teams in modo da poter interagire con il tuo agente direttamente da Microsoft Teams.",
         "connectTitle": "Connetti Microsoft Teams",
         "invalidDescription": "Questa pagina deve essere aperta da un collegamento di connessione di Microsoft Teams.",
-        "open": "Squadre aperte",
+        "open": "Apri Microsoft Teams",
         "providerName": "Microsoft Teams",
         "successDescription": "Sei connesso a {{team}}. Menziona @Zero in Teams per iniziare a chattare.",
         "successTitle": "Connesso a Microsoft Teams"
@@ -2946,7 +2946,7 @@
         "scenario": "La presentazione delle metriche settimanali contiene ogni volta le stesse diapositive con nuovi dati. Zero estrae i dati, crea la presentazione in Gamma e la pubblica su Slack, così è pronta prima della riunione.",
         "steps": {
           "one": {
-            "description": "Zero legge le metriche da Fogli e analisi.",
+            "description": "Zero legge le metriche da Google Sheets e Analytics.",
             "title": "Zero raccoglie i numeri"
           },
           "three": {
@@ -3341,16 +3341,16 @@
         "title": "Evidenzia le email chiave in Gmail"
       },
       "investor-update-google-docs": {
-        "description": "Raccogli parametri e punti salienti in un aggiornamento per gli investitori in Documenti.",
-        "scenario": "L'aggiornamento mensile per gli investitori inizia sempre in ritardo e da zero. Zero raccoglie i KPI, evidenzia e redige l'aggiornamento in Google Documenti in modo da perfezionare anziché assemblare.",
+        "description": "Raccogli metriche e punti salienti in un aggiornamento per gli investitori su Google Docs.",
+        "scenario": "L'aggiornamento mensile per gli investitori inizia sempre in ritardo e da zero. Zero raccoglie KPI e punti salienti e prepara la bozza su Google Docs, così devi solo perfezionarla.",
         "steps": {
           "one": {
-            "description": "Zero ricava entrate e crescita da Stripe e Fogli.",
+            "description": "Zero ricava ricavi e crescita da Stripe e Google Sheets.",
             "title": "Zero raccoglie i KPI"
           },
           "three": {
             "description": "Zero lascia una bozza pronta per essere modificata.",
-            "title": "Modificabile in Google Documenti"
+            "title": "Modificabile in Google Docs"
           },
           "two": {
             "description": "Zero scrive la narrazione e le metriche.",
@@ -3627,7 +3627,7 @@
       },
       "run-daily-query-sheets": {
         "description": "Esegui il tuo SQL salvato in base a una pianificazione e aggiungi i risultati a un foglio.",
-        "scenario": "Il report che ricostruisci ogni mattina è la stessa query e la stessa incolla in un foglio. Zero esegue la query per te ogni giorno e scrive i risultati formattati direttamente in Google Fogli.",
+        "scenario": "Il report che ricostruisci ogni mattina usa sempre la stessa query e gli stessi passaggi manuali. Zero esegue la query ogni giorno e scrive i risultati formattati direttamente in Google Sheets.",
         "steps": {
           "one": {
             "description": "Zero esegue la query di sola lettura salvata sul magazzino.",
@@ -3635,14 +3635,14 @@
           },
           "three": {
             "description": "Zero aggiunge i risultati al tuo foglio di monitoraggio.",
-            "title": "Scritto su Google Fogli"
+            "title": "Scritto in Google Sheets"
           },
           "two": {
             "description": "Zero modella l'output in colonne pulite.",
             "title": "Risultati formattati"
           }
         },
-        "title": "Esegui una query giornaliera in Google Fogli"
+        "title": "Esegui una query giornaliera in Google Sheets"
       },
       "send-bugs-github-slack": {
         "description": "Archivia le segnalazioni contrassegnate da bug come issue GitHub e avvisa il team su Slack.",
@@ -3863,14 +3863,14 @@
           },
           "three": {
             "description": "Zero aggiunge le righe attribuite al tuo foglio.",
-            "title": "Registrato su Google Fogli"
+            "title": "Registrato in Google Sheets"
           },
           "two": {
             "description": "Zero abbina ogni iscrizione alla relativa origine e campagna tramite Plausible.",
             "title": "Attribuito a un canale"
           }
         },
-        "title": "Tieni traccia delle origini di registrazione in Google Fogli"
+        "title": "Monitora le origini delle registrazioni in Google Sheets"
       },
       "watch-brand-mentions": {
         "description": "Ogni ora Zero cerca sul Web, Hacker News e X menzioni del tuo prodotto e le pubblica su Slack.",
@@ -4167,8 +4167,8 @@
           "codeRequired": "Incolla il codice di autorizzazione Claude Code per continuare.",
           "connectedToast": "Claude Code connesso",
           "connectTitle": "Connetti Claude Code",
-          "error": "Claude Connessione al codice non riuscita. Ricomincia per riprovare.",
-          "expired": "Claude Sessione di connessione del codice scaduta. Ricomincia per riprovare.",
+          "error": "Connessione a Claude Code non riuscita. Ricomincia per riprovare.",
+          "expired": "La sessione di connessione a Claude Code è scaduta. Ricomincia per riprovare.",
           "instructions": "Per prima cosa fai clic su Apri la pagina di approvazione Claude. Quindi approva {{brandName}} in Claude e copia il codice di autorizzazione mostrato dopo l'approvazione. Infine incolla il codice qui e fai clic su Connetti.",
           "openApproval": "Apri la pagina di approvazione Claude",
           "preparing": "Preparazione...",
@@ -4201,7 +4201,7 @@
       },
       "personal": {
         "actionForProvider": "{{action}} {{provider}}",
-        "claudeDescription": "Connettiti con Claude Accesso al codice per percorsi di modelli supportati da Claude.",
+        "claudeDescription": "Accedi con Claude Code per utilizzare i modelli basati su Claude.",
         "claudeTitle": "OAuth Claude Code",
         "codexDescription": "Connettiti con l'accesso del dispositivo Codex per i percorsi del modello supportati da Codex.",
         "codexTitle": "ChatGPT (Codex)",
@@ -4748,7 +4748,7 @@
         "addWebhookDescription": "Esegui questo flusso di lavoro quando arriva un evento webhook GitHub corrispondente.",
         "addWorkflowAction": "Aggiungi l'automazione del flusso di lavoro",
         "addWorkflowAria": "Aggiungi l'automazione del flusso di lavoro GitHub",
-        "addWorkflowDescription": "Esegui questo flusso di lavoro al completamento dell'esecuzione del flusso di lavoro Azioni GitHub corrispondente.",
+        "addWorkflowDescription": "Esegui questo flusso di lavoro al termine di un'esecuzione corrispondente di GitHub Actions.",
         "addWorkflowTitle": "Aggiungi l'automazione del flusso di lavoro GitHub",
         "aJob": "un lavoro del flusso di lavoro GitHub",
         "any": "Qualunque",
@@ -4763,7 +4763,7 @@
         "anyReview": "Qualsiasi recensione",
         "anyReviewState": "Qualsiasi stato di revisione",
         "anyWorkflow": "Qualsiasi flusso di lavoro",
-        "apps": "GitHub Applicazioni",
+        "apps": "GitHub Apps",
         "appsPlaceholder": "vercel, 12345",
         "authorsPlaceholder": "ottogatto, e7h4n",
         "authorsSummary": "Autori {{values}}",
@@ -4859,10 +4859,10 @@
         "updateWebhookAria": "Aggiorna l'automazione {{title}}",
         "updateWorkflowAria": "Aggiorna l'automazione del flusso di lavoro GitHub",
         "withConclusions": " con {{values}}",
-        "workflowJobDescription": "Esegui al completamento di un processo Azioni corrispondente.",
+        "workflowJobDescription": "Esegui al termine di un job corrispondente di GitHub Actions.",
         "workflowJobRule": "Al termine di {{jobs}}",
         "workflowJobTitle": "Lavoro del flusso di lavoro GitHub completato",
-        "workflowRunDescription": "Esegui al completamento dell'esecuzione del flusso di lavoro Azioni corrispondente.",
+        "workflowRunDescription": "Esegui al termine di un'esecuzione corrispondente di GitHub Actions.",
         "workflowRunRule": "Quando {{workflows}} completa{{conclusions}}",
         "workflowRunTitle": "GitHub flusso di lavoro completato",
         "workflows": "GitHub flussi di lavoro",
@@ -4931,7 +4931,7 @@
         "summary": "Riunioni che organizzi",
         "transcriptHint": "La trascrizione deve essere abilitata per la riunione. Se Meet non crea una trascrizione, questa automazione non verrà eseguita.",
         "transcriptReadyDescription": "Esegui quando Meet termina di generare una trascrizione.",
-        "transcriptReadyTitle": "Trascrizione della riunione Google pronta"
+        "transcriptReadyTitle": "Trascrizione di Google Meet pronta"
       },
       "notion": {
         "addAction": "Aggiungi l'automazione Notion",
@@ -5054,7 +5054,7 @@
         "github": "GitHub",
         "gmail": "Gmail",
         "googleCalendar": "Google Calendar",
-        "googleMeet": "Google Incontro",
+        "googleMeet": "Google Meet",
         "notion": "Notion",
         "strapi": "Strapi",
         "webhook": "Webhook"

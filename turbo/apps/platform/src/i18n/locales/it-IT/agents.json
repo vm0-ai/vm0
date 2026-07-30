@@ -259,8 +259,8 @@
       "marketing": {
         "cases": {
           "apify-web-scraper-to-sheets": {
-            "description": "Apify raschia i siti in righe strutturate di fogli Google",
-            "title": "Apify web scraper su Fogli"
+            "description": "Apify estrae i siti in righe strutturate di Google Sheets",
+            "title": "Web scraper Apify per Google Sheets"
           },
           "brevo-email-nurture-sequence": {
             "description": "Sequenze e-mail automatizzate da eventi CRM",
@@ -287,7 +287,7 @@
             "title": "Approfondimenti sulla community Discord"
           },
           "instagram-engagement-tracker": {
-            "description": "Coinvolgimento in Fogli con riepiloghi settimanali Slack",
+            "description": "Coinvolgimento in Google Sheets con riepiloghi settimanali su Slack",
             "title": "Monitoraggio del coinvolgimento di Instagram"
           },
           "loops-email-campaign": {
@@ -307,7 +307,7 @@
             "title": "Casi d'uso della posta elettronica onboarding"
           },
           "serpapi-keyword-tracker": {
-            "description": "Tieni traccia della classifica delle parole chiave settimanalmente e accedi a Fogli",
+            "description": "Monitora ogni settimana il posizionamento delle parole chiave e registralo in Google Sheets",
             "title": "Tracker di parole chiave SerpAPI"
           },
           "similarweb-traffic-comparison": {
@@ -315,7 +315,7 @@
             "title": "Confronto del traffico Web simile"
           },
           "social-media-content-calendar": {
-            "description": "Trasforma un calendario di Fogli in post per ciascuna rete",
+            "description": "Trasforma un calendario di Google Sheets in post per ogni rete",
             "title": "Calendario dei contenuti dei social media"
           },
           "x-brand-monitor": {
@@ -340,12 +340,12 @@
             "title": "ClickUp → Slack standup"
           },
           "google-docs-notion-migrator": {
-            "description": "Google Documenti in batch in Notion con layout conservato",
-            "title": "Documenti Google → Migratore Notion"
+            "description": "Importa batch di Google Docs in Notion mantenendo il layout",
+            "title": "Migrazione da Google Docs a Notion"
           },
           "google-drive-file-organizer": {
             "description": "Nuovi file ordinati automaticamente in cartelle",
-            "title": "Google Organizzatore di file dell'unità"
+            "title": "Organizzatore di file di Google Drive"
           },
           "jotform-intake-to-notion": {
             "description": "Le risposte dei moduli arrivano in Notion con le notifiche Slack",
@@ -360,7 +360,7 @@
             "title": "Elaboratore di contratti PDF"
           },
           "revenuecat-subscription-digest": {
-            "description": "Metriche di abbonamento in Fogli con avvisi di abbandono in Slack",
+            "description": "Metriche degli abbonamenti in Google Sheets con avvisi di abbandono su Slack",
             "title": "Digest delle iscrizioni a RevenueCat"
           },
           "todoist-notion-task-sync": {
@@ -410,7 +410,7 @@
       "sales": {
         "cases": {
           "airtable-deal-tracker": {
-            "description": "Le offerte si sincronizzano con Fogli e Slack quando si chiudono",
+            "description": "Le trattative si sincronizzano con Google Sheets e Slack alla chiusura",
             "title": "Tracker delle offerte Airtable"
           },
           "bitrix24-lead-nurture": {
