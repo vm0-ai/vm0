@@ -128,7 +128,7 @@ function findDataRows(lines: readonly string[]): string[] {
   return lines.filter((line) => {
     const trimmed = line.trim();
     if (!trimmed) return false;
-    if (trimmed.startsWith("TYPE")) return false;
+    if (trimmed.startsWith("SLUG")) return false;
     if (trimmed.startsWith("No exact match")) return false;
     if (trimmed.startsWith("Too many results")) return false;
     if (trimmed.startsWith("No matches found")) return false;
@@ -172,7 +172,7 @@ describe("zero connector search command", () => {
   });
 
   describe("without agent context", () => {
-    it("returns github first for an exact type match with no banner", async () => {
+    it("returns github first for an exact slug match with no banner", async () => {
       await searchCommand.parseAsync(["node", "cli", "github"]);
 
       const lines = mockConsoleLog.mock.calls.flat() as string[];
@@ -214,31 +214,31 @@ describe("zero connector search command", () => {
       const output = lines.join("\n");
       expect(output).toContain("No exact match. Showing closest:");
       const dataRows = findDataRows(lines);
-      const types = dataRows.map((row) => {
+      const slugs = dataRows.map((row) => {
         return row.split(/\s+/)[0];
       });
-      expect(types).toContain("github");
-      expect(types).toContain("gitlab");
+      expect(slugs).toContain("github");
+      expect(slugs).toContain("gitlab");
     });
 
-    it("ranks tag-exact above type-substring above tag-substring", async () => {
+    it("ranks tag-exact above slug-substring above tag-substring", async () => {
       // Keyword "chat" exercises three scoring tiers against the real catalog
       // and pins the priority ordering contract so future refactors of
       // scoreConnector cannot silently reorder them:
-      //   - microsoft-365, slack: tag-exact "chat" => 70, sorted by type
-      //   - chatwoot: type-substring "chatwoot"    => 50
+      //   - microsoft-365, slack: tag-exact "chat" => 70, sorted by slug
+      //   - chatwoot: slug-substring "chatwoot"    => 50
       //   - openai:   tag-substring "chatgpt"      => 25
       await searchCommand.parseAsync(["node", "cli", "chat", "--limit", "10"]);
 
       const lines = mockConsoleLog.mock.calls.flat() as string[];
       const dataRows = findDataRows(lines);
-      const types = dataRows.map((row) => {
+      const slugs = dataRows.map((row) => {
         return row.split(/\s+/)[0];
       });
-      const microsoft365Idx = types.indexOf("microsoft-365");
-      const slackIdx = types.indexOf("slack");
-      const chatwootIdx = types.indexOf("chatwoot");
-      const openaiIdx = types.indexOf("openai");
+      const microsoft365Idx = slugs.indexOf("microsoft-365");
+      const slackIdx = slugs.indexOf("slack");
+      const chatwootIdx = slugs.indexOf("chatwoot");
+      const openaiIdx = slugs.indexOf("openai");
       expect(microsoft365Idx).toBe(0);
       expect(slackIdx).toBe(1);
       expect(chatwootIdx).toBeGreaterThan(slackIdx);
@@ -432,7 +432,7 @@ describe("zero connector search command", () => {
   });
 
   describe("CONNECTED AS column", () => {
-    it("renders @username for a connected type", async () => {
+    it("renders @username for a connected slug", async () => {
       server.use(stubConnectors([connectedGithub]));
 
       await searchCommand.parseAsync(["node", "cli", "github"]);
@@ -443,7 +443,7 @@ describe("zero connector search command", () => {
       expect(output).toContain("@octocat");
     });
 
-    it("renders (not connected) for a type with no connector", async () => {
+    it("renders (not connected) for a slug with no connector", async () => {
       server.use(stubConnectors([]));
 
       await searchCommand.parseAsync(["node", "cli", "github"]);
@@ -496,10 +496,10 @@ describe("zero connector search command", () => {
       const lines = mockConsoleLog.mock.calls.flat() as string[];
       const output = lines.join("\n");
       const dataRows = findDataRows(lines);
-      const types = dataRows.map((row) => {
+      const slugs = dataRows.map((row) => {
         return row.split(/\s+/)[0];
       });
-      expect(types).not.toContain("zapier");
+      expect(slugs).not.toContain("zapier");
       expect(output).not.toContain("zapier");
     });
 
@@ -520,11 +520,11 @@ describe("zero connector search command", () => {
 
       const lines = mockConsoleLog.mock.calls.flat() as string[];
       const dataRows = findDataRows(lines);
-      const types = dataRows.map((row) => {
+      const slugs = dataRows.map((row) => {
         return row.split(/\s+/)[0];
       });
       // mercury has an ungated api-token auth method, so it is always visible.
-      expect(types).toContain("mercury");
+      expect(slugs).toContain("mercury");
     });
 
     it("uses the server-visible catalog for feature-gated oauth connectors", async () => {

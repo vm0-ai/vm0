@@ -10,6 +10,7 @@ import {
   heartbeatBodySchema,
   heldSessionStateSchema,
   jobSchema,
+  NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX,
   RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
@@ -887,43 +888,28 @@ describe("runner poll request contract", () => {
 describe("runner network policy refresh contract", () => {
   const bodySchema = runnersNetworkPolicyRefreshContract.refresh.body;
 
-  it.each([
-    [
-      "canonical",
-      { connectorSlugs: ["slack", "github", "slack"] },
-      ["slack", "github"],
-    ],
-    [
-      "legacy",
-      { connectorRefs: ["slack", "github", "slack"] },
-      ["slack", "github"],
-    ],
-    [
-      "matching dual",
-      {
-        connectorSlugs: ["github", "slack", "github"],
-        connectorRefs: ["slack", "github"],
-      },
-      ["github", "slack"],
-    ],
-  ])(
-    "normalizes %s input to canonical connector slugs",
-    (_, body, expected) => {
-      expect(bodySchema.parse(body)).toEqual({ connectorSlugs: expected });
-    },
-  );
+  it("normalizes canonical connector slugs and ignores additional fields", () => {
+    expect(
+      bodySchema.parse({
+        connectorSlugs: ["slack", "github", "slack"],
+        additionalField: true,
+      }),
+    ).toEqual({ connectorSlugs: ["slack", "github"] });
+  });
 
   it.each([
-    ["missing both fields", {}],
+    ["missing canonical field", {}],
+    ["empty canonical field", { connectorSlugs: [] }],
+    ["invalid canonical slug", { connectorSlugs: ["invalid/slack"] }],
     [
-      "different connector sets",
-      { connectorSlugs: ["slack"], connectorRefs: ["github"] },
-    ],
-    [
-      "different connector counts",
+      "oversized canonical field",
       {
-        connectorSlugs: ["slack", "github"],
-        connectorRefs: ["slack"],
+        connectorSlugs: Array.from(
+          { length: NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX + 1 },
+          () => {
+            return "slack";
+          },
+        ),
       },
     ],
   ])("rejects %s", (_, body) => {

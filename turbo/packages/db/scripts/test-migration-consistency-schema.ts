@@ -133,6 +133,14 @@ async function runMigrations(dbUrl: string): Promise<void> {
   });
 }
 
+async function resetDatabase(dbUrl: string): Promise<void> {
+  console.log(`♻️  Resetting database...`);
+  execCommand(`tsx ${path.join(dirname, "reset-db.ts")}`, {
+    env: { DATABASE_URL: dbUrl },
+    cwd: PACKAGE_DIR,
+  });
+}
+
 async function validateCurrentBrowserApiBeforeBillingMigration(): Promise<void> {
   console.log(
     "=== Phase 1.95: Validate current browser API before billing migration ===\n",
@@ -8948,6 +8956,12 @@ async function main(): Promise<void> {
     await runMigrations(dbUrl1);
     console.log("   ✅ Migrations applied successfully\n");
 
+    console.log("=== Phase 2.1: Validate database reset ===\n");
+    await resetDatabase(dbUrl1);
+    await resetDatabase(dbUrl1);
+    await runMigrations(dbUrl1);
+    console.log("   ✅ Consecutive database resets completed successfully\n");
+
     await validatePreviousBrowserApiAfterThreadLifecycleMigration(dbUrl1);
     await validateChatEventSourcesAreAppendOnly(dbUrl1);
     await validateConnectorCatalogFinalConstraints(dbUrl1);
@@ -8992,6 +9006,7 @@ async function main(): Promise<void> {
       console.log(
         "   ✅ Custom connector OAuth mode constraints reject mismatched configuration",
       );
+      console.log("   ✅ Consecutive database resets replay all migrations");
       console.log("   ✅ Schemas are functionally equivalent");
       console.log("   ✅ All migrations match the schema definitions");
 

@@ -963,6 +963,29 @@ pub async fn execute_cli_with_active_input_for_runtime(
     .await
 }
 
+pub async fn execute_cli_with_cancellation_for_runtime(
+    runtime: &guest_agent::run_context::GuestRuntime,
+    masker: &guest_agent::masker::SecretMasker,
+    heartbeat: guest_agent::cli::HeartbeatMonitor,
+    cancellation: tokio_util::sync::CancellationToken,
+) -> Result<guest_agent::cli::CliExecutionResult, guest_agent::error::AgentError> {
+    let active_input = guest_agent::active_input::ActiveInputRuntime::new_with_initial_prompt(
+        &runtime.config.run_id,
+        false,
+        &runtime.config.prompt,
+    );
+    guest_agent::cli::execute_cli_with_controls_for_config_started_at(
+        masker,
+        heartbeat,
+        runtime.http.clone(),
+        guest_agent::cli::CliExecutionControls::new(active_input.into_writer(), cancellation),
+        &runtime.config,
+        &runtime.paths,
+        Instant::now(),
+    )
+    .await
+}
+
 pub struct VirtualTimeCheckpoint<'a> {
     pub file: &'a str,
     pub needle: &'a str,

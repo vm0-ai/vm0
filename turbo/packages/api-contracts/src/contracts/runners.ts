@@ -715,66 +715,20 @@ export const runnersNetworkPolicyRefreshContract = c.router({
     pathParams: z.object({
       runId: z.uuid(),
     }),
-    body: z
-      .object({
-        connectorSlugs: z
-          .array(connectorSlugSchema)
-          .min(1)
-          .max(NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX)
-          .optional(),
-        // TODO(#23827): Remove after every pre-bridge runner has drained.
-        connectorRefs: z
-          .array(connectorSlugSchema)
-          .min(1)
-          .max(NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX)
-          .optional(),
-      })
-      .superRefine((body, context) => {
-        if (
-          body.connectorSlugs === undefined &&
-          body.connectorRefs === undefined
-        ) {
-          context.addIssue({
-            code: "custom",
-            path: ["connectorSlugs"],
-            message: "connectorSlugs or connectorRefs is required",
-          });
-          return;
-        }
-        if (
-          body.connectorSlugs !== undefined &&
-          body.connectorRefs !== undefined
-        ) {
-          const connectorSlugs = new Set(body.connectorSlugs);
-          const connectorRefs = new Set(body.connectorRefs);
-          if (
-            connectorSlugs.size !== connectorRefs.size ||
-            [...connectorSlugs].some((connectorSlug) => {
-              return !connectorRefs.has(connectorSlug);
-            })
-          ) {
-            context.addIssue({
-              code: "custom",
-              path: ["connectorSlugs"],
-              message: "must identify the same connectors as connectorRefs",
-            });
-          }
-        }
-      })
-      .transform((body) => {
-        return {
-          connectorSlugs: [
-            ...new Set(body.connectorSlugs ?? body.connectorRefs ?? []),
-          ],
-        };
-      }),
+    body: z.object({
+      connectorSlugs: z
+        .array(connectorSlugSchema)
+        .min(1)
+        .max(NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX)
+        .transform((connectorSlugs) => {
+          return [...new Set(connectorSlugs)];
+        }),
+    }),
     responses: {
       200: z.object({
         refreshes: z.array(
           z.object({
             connectorSlug: connectorSlugSchema,
-            // TODO(#23827): Remove after every pre-bridge runner has drained.
-            connectorRef: connectorSlugSchema,
             networkPolicy: networkPolicySchema,
             nextRefreshAt: z.string().datetime({ offset: true }).nullable(),
           }),

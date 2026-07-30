@@ -1724,7 +1724,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn successful_network_policy_refresh_emits_canonical_slug_fields() {
+    async fn successful_network_policy_refresh_ignores_additional_response_fields() {
         let server = MockServer::start();
         let run_id = RunId::nil();
         let refresh_mock = server.mock(|when, then| {
@@ -1742,6 +1742,7 @@ mod tests {
                             "unknownPolicy": "allow",
                         },
                         "nextRefreshAt": null,
+                        "additionalField": true,
                     }],
                 }));
         });
@@ -1769,78 +1770,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn compatible_network_policy_refresh_identities_apply_policy() {
-        for (case, identity) in [
-            (
-                "canonical only",
-                json!({
-                    "connectorSlug": "slack",
-                }),
-            ),
-            (
-                "legacy only",
-                json!({
-                    "connectorRef": "slack",
-                }),
-            ),
-            (
-                "matching dual identities",
-                json!({
-                    "connectorSlug": "slack",
-                    "connectorRef": "slack",
-                }),
-            ),
-        ] {
-            let server = MockServer::start();
-            let run_id = RunId::nil();
-            let refresh_mock = server.mock(|when, then| {
-                when.method(POST)
-                    .path(format!("/api/runners/runs/{run_id}/network-policy-refresh"));
-                then.status(200)
-                    .header("content-type", "application/json")
-                    .json_body(network_policy_refresh_response(identity));
-            });
-            let harness = NetworkPolicyRefreshHarness::new(&server, run_id).await;
-
-            harness.refresh_slack().await;
-
-            refresh_mock.assert_calls(1);
-            let policy = harness.slack_policy().await;
-            assert_eq!(
-                policy["allow"],
-                json!(["chat:write", "files:write"]),
-                "{case}"
-            );
-            assert_eq!(policy["deny"], json!([]), "{case}");
-            assert_eq!(policy["ask"], json!(["channels:read"]), "{case}");
-            assert_eq!(policy["unknownPolicy"], json!("allow"), "{case}");
-            harness.shutdown().await;
-        }
-    }
-
-    #[tokio::test]
-    async fn malformed_network_policy_refresh_identities_fail_closed() {
+    async fn malformed_canonical_network_policy_refresh_identities_fail_closed() {
         for (_, identity) in [
-            (
-                "conflicting identities",
-                json!({
-                    "connectorSlug": "slack",
-                    "connectorRef": "github",
-                }),
-            ),
             ("missing identity", json!({})),
             (
-                "invalid canonical identity with valid legacy identity",
+                "invalid canonical identity",
                 json!({
                     "connectorSlug": null,
-                    "connectorRef": "slack",
                 }),
             ),
             (
-                "empty legacy identity with valid canonical identity",
+                "empty canonical identity",
                 json!({
-                    "connectorSlug": "slack",
-                    "connectorRef": "",
+                    "connectorSlug": "",
                 }),
             ),
         ] {
@@ -1876,7 +1818,7 @@ mod tests {
                 .json_body(json!({
                     "refreshes": [
                         {
-                            "connectorRef": "slack",
+                            "connectorSlug": "slack",
                             "networkPolicy": {
                                 "allow": ["chat:write", "files:write"],
                                 "deny": [],
@@ -1886,7 +1828,7 @@ mod tests {
                             "nextRefreshAt": null,
                         },
                         {
-                            "connectorRef": "slack",
+                            "connectorSlug": "slack",
                             "networkPolicy": {
                                 "allow": ["channels:read"],
                                 "deny": ["files:write"],
@@ -1920,7 +1862,7 @@ mod tests {
                 .json_body(json!({
                     "refreshes": [
                         {
-                            "connectorRef": "slack",
+                            "connectorSlug": "slack",
                             "networkPolicy": {
                                 "allow": ["chat:write", "files:write"],
                                 "deny": [],
@@ -1982,10 +1924,7 @@ mod tests {
         let first_mock = server.mock(|when, then| {
             when.method(POST)
                 .path(format!("/api/runners/runs/{run_id}/network-policy-refresh"))
-                .json_body(json!({
-                    "connectorSlugs": first_batch,
-                    "connectorRefs": first_batch,
-                }));
+                .json_body(json!({ "connectorSlugs": first_batch }));
             then.status(500)
                 .header("content-type", "application/json")
                 .json_body(json!({
@@ -1998,10 +1937,7 @@ mod tests {
         let second_mock = server.mock(|when, then| {
             when.method(POST)
                 .path(format!("/api/runners/runs/{run_id}/network-policy-refresh"))
-                .json_body(json!({
-                    "connectorSlugs": second_batch,
-                    "connectorRefs": second_batch,
-                }));
+                .json_body(json!({ "connectorSlugs": second_batch }));
             then.status(500)
                 .header("content-type", "application/json")
                 .json_body(json!({
@@ -2065,7 +2001,7 @@ mod tests {
                 .json_body(json!({
                     "refreshes": [
                         {
-                            "connectorRef": "github",
+                            "connectorSlug": "github",
                             "networkPolicy": {
                                 "allow": ["repos:read"],
                                 "deny": [],

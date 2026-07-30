@@ -355,7 +355,7 @@ describe("zero connector permission-request command", () => {
     expect(logCalls).toContain("permission=records.read");
   });
 
-  it("exits with an error for an unknown connector type", async () => {
+  it("exits with an error for an unknown connector slug", async () => {
     await expect(async () => {
       await permissionRequestCommand.parseAsync([
         "node",
@@ -367,7 +367,7 @@ describe("zero connector permission-request command", () => {
     }).rejects.toThrow("process.exit called");
 
     expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("Unknown connector type: unknown-service"),
+      expect.stringContaining("Unknown connector slug: unknown-service"),
     );
   });
 
@@ -442,7 +442,7 @@ describe("zero connector permission-request command", () => {
 
     const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
     expect(errorOutput).toContain("Failed to fetch");
-    expect(errorOutput).not.toContain("Unknown connector type");
+    expect(errorOutput).not.toContain("Unknown connector slug");
   });
 
   it("rejects permission metadata for a different connector slug", async () => {
@@ -452,11 +452,14 @@ describe("zero connector permission-request command", () => {
         "https://app.vm0.ai/api/zero/connector-catalog/slack/permissions",
         () => {
           return HttpResponse.json({
-            permissions: catalogPermissionDetail({
-              connectorSlug: "github",
-              label: "GitHub",
-              permissions: [{ name: SLACK_READ_PERMISSION }],
-            }),
+            permissions: {
+              ...catalogPermissionDetail({
+                connectorSlug: "github",
+                label: "GitHub",
+                permissions: [{ name: SLACK_READ_PERMISSION }],
+              }),
+              connectorRef: "legacy-github",
+            },
           });
         },
       ),
@@ -474,7 +477,7 @@ describe("zero connector permission-request command", () => {
 
     expect(mockConsoleError).toHaveBeenCalledWith(
       expect.stringContaining(
-        "Permission metadata connectorRef mismatch: expected slack, got github",
+        "Permission metadata connector slug mismatch: expected slack, got github",
       ),
     );
   });
