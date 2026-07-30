@@ -226,6 +226,24 @@ describe("chat run queue", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("treats missing thread detail as no reported recovery", async () => {
+    mockCancellationRecoveryQueue();
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(404, {
+        error: { message: "Thread not found", code: "NOT_FOUND" },
+      });
+    });
+
+    detachedSetupPage({ context, path: CHAT_PATH });
+
+    await expect(
+      screen.findByLabelText("Queued message"),
+    ).resolves.toHaveTextContent("Continue after recovery");
+    expect(
+      screen.queryByText(CANCELLATION_RECOVERY_COPY),
+    ).not.toBeInTheDocument();
+  });
+
   it("explains recovery without disabling queued work or the composer", async () => {
     const recalledEventIds: string[] = [];
     mockCancellationRecoveryQueue({
