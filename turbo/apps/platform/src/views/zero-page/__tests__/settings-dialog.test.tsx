@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import {
   type UserLocale,
   type UserPreferencesResponse,
@@ -15,6 +16,7 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { localeStorageKey } from "../../../i18n/locale-storage.ts";
+import { setFeatureSwitch$ } from "../../../signals/external/feature-switch.ts";
 import { localStorageSignals } from "../../../signals/external/local-storage.ts";
 
 const context = testContext();
@@ -414,6 +416,7 @@ describe("settings dialog", () => {
 
     await openDialog("admin", "preference", {
       [FeatureSwitchKey.LanguagePreference]: true,
+      [FeatureSwitchKey.JapaneseLocale]: true,
     });
 
     click(
@@ -544,6 +547,7 @@ describe("settings dialog", () => {
 
     await openDialog("admin", "preference", {
       [FeatureSwitchKey.LanguagePreference]: true,
+      [FeatureSwitchKey.JapaneseLocale]: true,
     });
 
     const languageSelect = await screen.findByRole("combobox", {
@@ -683,6 +687,7 @@ describe("settings dialog", () => {
 
     await openDialog("admin", "preference", {
       [FeatureSwitchKey.LanguagePreference]: true,
+      [FeatureSwitchKey.JapaneseLocale]: true,
     });
 
     await waitFor(() => {
@@ -729,6 +734,71 @@ describe("settings dialog", () => {
       expect(submittedLocales).not.toContain("es-ES");
       expect(document.documentElement.lang).toBe("en-US");
       expect(cachedLocale()).toBe("en-US");
+    });
+  });
+
+  it("updates Japanese availability after a same-session Lab toggle", async () => {
+    let japaneseEnabled = false;
+    context.mocks.data.userPreferences(createPreferences("en-US", ["en-US"]));
+
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: true,
+      [FeatureSwitchKey.JapaneseLocale]: false,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Theme")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("combobox", { name: "Language" }),
+      ).not.toBeInTheDocument();
+    });
+
+    context.mocks.api(
+      zeroFeatureSwitchesContract.update,
+      ({ body, respond }) => {
+        japaneseEnabled =
+          body.switches[FeatureSwitchKey.JapaneseLocale] ?? japaneseEnabled;
+        return respond(200, {
+          switches: body.switches,
+          effectiveSwitches: {
+            [FeatureSwitchKey.JapaneseLocale]: japaneseEnabled,
+          },
+        });
+      },
+    );
+    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+      return respond(200, {
+        switches: {
+          [FeatureSwitchKey.JapaneseLocale]: japaneseEnabled,
+        },
+        effectiveSwitches: {
+          [FeatureSwitchKey.JapaneseLocale]: japaneseEnabled,
+        },
+      });
+    });
+
+    await context.store.set(
+      setFeatureSwitch$,
+      { [FeatureSwitchKey.JapaneseLocale]: true },
+      context.signal,
+    );
+
+    const languageSelect = await screen.findByRole("combobox", {
+      name: "Language",
+    });
+    click(languageSelect);
+    expect(screen.getByRole("option", { name: "日本語" })).toBeInTheDocument();
+
+    await context.store.set(
+      setFeatureSwitch$,
+      { [FeatureSwitchKey.JapaneseLocale]: false },
+      context.signal,
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("combobox", { name: "Language" }),
+      ).not.toBeInTheDocument();
     });
   });
 

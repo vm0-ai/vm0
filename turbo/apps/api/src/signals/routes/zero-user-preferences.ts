@@ -100,9 +100,7 @@ const localeRollout$ = computed(async (get): Promise<LocaleRollout> => {
     isFeatureEnabled(FeatureSwitchKey.JapaneseLocale, {
       orgId: auth.orgId,
       userId: auth.userId,
-      overrides: await get(
-        userFeatureSwitchOverrides(auth.orgId, auth.userId),
-      ),
+      overrides: await get(userFeatureSwitchOverrides(auth.orgId, auth.userId)),
     });
   const supportedLocales: UserLocale[] = ["en-US"];
   addSupportedLocale(

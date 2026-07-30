@@ -801,14 +801,13 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
     expect(postRollbackRead.body.locale).toBe("ko-KR");
 
     mockOptionalEnv("BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED", "true");
-    mockOptionalEnv("JAPANESE_LOCALE_ROLLOUT_ENABLED", "true");
     const allLocales = await api.readPreferences(
       admin,
       ALL_LOCALES_CLIENT_VERSION,
     );
     expect(allLocales.body).toMatchObject({
       locale: "ko-KR",
-      supportedLocales: ["en-US", "pt-BR", "ja-JP", "ko-KR"],
+      supportedLocales: ["en-US", "pt-BR", "ko-KR"],
     });
   });
 
@@ -1055,14 +1054,13 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
     expect(postRollbackRead.body.locale).toBe("es-ES");
 
     mockOptionalEnv("BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED", "true");
-    mockOptionalEnv("JAPANESE_LOCALE_ROLLOUT_ENABLED", "true");
     const allLocales = await api.readPreferences(
       admin,
       ALL_LOCALES_CLIENT_VERSION,
     );
     expect(allLocales.body).toMatchObject({
       locale: "es-ES",
-      supportedLocales: ["en-US", "pt-BR", "ja-JP", "es-ES"],
+      supportedLocales: ["en-US", "pt-BR", "es-ES"],
     });
   });
 
