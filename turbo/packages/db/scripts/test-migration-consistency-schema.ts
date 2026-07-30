@@ -10025,6 +10025,49 @@ async function validateTelegramThreadSessionContraction(): Promise<void> {
   }
 }
 
+async function validateAgentPhoneThreadSessionContraction(): Promise<void> {
+  console.log(
+    "=== Validate legacy AgentPhone thread session contraction ===\n",
+  );
+  const testDb = "migration_agentphone_thread_session_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 757);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      const beforeDrop = await client.query<{
+        legacy_session_table: string | null;
+      }>(`
+        SELECT to_regclass(
+          'public.agentphone_thread_sessions'
+        )::text AS "legacy_session_table"
+      `);
+      assert.deepEqual(beforeDrop.rows, [
+        { legacy_session_table: "agentphone_thread_sessions" },
+      ]);
+
+      await applyMigrationsUpTo(client, 758);
+
+      const afterDrop = await client.query<{
+        legacy_session_table: string | null;
+      }>(`
+        SELECT to_regclass(
+          'public.agentphone_thread_sessions'
+        )::text AS "legacy_session_table"
+      `);
+      assert.deepEqual(afterDrop.rows, [{ legacy_session_table: null }]);
+      console.log("   ✅ Legacy AgentPhone thread session table is removed\n");
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateOrgPlanEntitlementBackfill(): Promise<void> {
   console.log(
     "=== Phase 1.8: Validate existing org plan entitlement backfill ===\n",
@@ -11072,6 +11115,7 @@ async function main(): Promise<void> {
     await validateSlackLegacySchemaContraction();
     await validateTeamsThreadSessionContraction();
     await validateTelegramThreadSessionContraction();
+    await validateAgentPhoneThreadSessionContraction();
     await validateOrgPlanEntitlementBackfill();
     await validateModelObservationContractCleanup();
     await validateChatEventTypeBackfillAndContract();
