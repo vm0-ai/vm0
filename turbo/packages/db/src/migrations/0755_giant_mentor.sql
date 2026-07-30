@@ -22,6 +22,8 @@ CREATE TABLE "model_provider_surfaces" (
 --> statement-breakpoint
 ALTER TABLE "org_model_policies" DROP CONSTRAINT "chk_org_model_policies_member_scope_no_provider_id";--> statement-breakpoint
 ALTER TABLE "org_model_policies" DROP CONSTRAINT "chk_org_model_policies_builtin_route_no_provider_id";--> statement-breakpoint
+ALTER TABLE "browser_session_instances" DROP CONSTRAINT "browser_session_instances_usage_event_id_usage_event_id_fk";
+--> statement-breakpoint
 ALTER TABLE "org_model_policies" ADD COLUMN "model_provider_surface_id" uuid;--> statement-breakpoint
 ALTER TABLE "model_provider_connections" ADD CONSTRAINT "model_provider_connections_secret_id_secrets_id_fk" FOREIGN KEY ("secret_id") REFERENCES "public"."secrets"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "model_provider_surfaces" ADD CONSTRAINT "model_provider_surfaces_connection_id_model_provider_connections_id_fk" FOREIGN KEY ("connection_id") REFERENCES "public"."model_provider_connections"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -31,6 +33,19 @@ CREATE INDEX "idx_model_provider_surfaces_connection" ON "model_provider_surface
 CREATE UNIQUE INDEX "idx_model_provider_surfaces_connection_protocol" ON "model_provider_surfaces" USING btree ("connection_id","protocol");--> statement-breakpoint
 ALTER TABLE "org_model_policies" ADD CONSTRAINT "org_model_policies_model_provider_surface_id_model_provider_surfaces_id_fk" FOREIGN KEY ("model_provider_surface_id") REFERENCES "public"."model_provider_surfaces"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "idx_org_model_policies_surface" ON "org_model_policies" USING btree ("model_provider_surface_id") WHERE model_provider_surface_id IS NOT NULL;--> statement-breakpoint
+ALTER TABLE "browser_session_instances" DROP COLUMN "billing_run_id";--> statement-breakpoint
+ALTER TABLE "browser_session_instances" DROP COLUMN "browser_cost_microusd";--> statement-breakpoint
+ALTER TABLE "browser_session_instances" DROP COLUMN "proxy_cost_microusd";--> statement-breakpoint
+ALTER TABLE "browser_session_instances" DROP COLUMN "proxy_used_mb";--> statement-breakpoint
+ALTER TABLE "browser_session_instances" DROP COLUMN "pricing_unit_price";--> statement-breakpoint
+ALTER TABLE "browser_session_instances" DROP COLUMN "pricing_unit_size";--> statement-breakpoint
+ALTER TABLE "browser_session_instances" DROP COLUMN "gross_credits";--> statement-breakpoint
+ALTER TABLE "browser_session_instances" DROP COLUMN "credits_charged";--> statement-breakpoint
+ALTER TABLE "browser_session_instances" DROP COLUMN "usage_event_id";--> statement-breakpoint
+ALTER TABLE "browser_session_instances" DROP COLUMN "settled_at";--> statement-breakpoint
+ALTER TABLE "browser_sessions" DROP COLUMN "max_credits";--> statement-breakpoint
+ALTER TABLE "browser_sessions" DROP COLUMN "gross_credits";--> statement-breakpoint
+ALTER TABLE "browser_sessions" DROP COLUMN "credits_charged";--> statement-breakpoint
 ALTER TABLE "org_model_policies" ADD CONSTRAINT "chk_org_model_policies_one_route_id" CHECK (model_provider_id IS NULL OR model_provider_surface_id IS NULL);--> statement-breakpoint
 ALTER TABLE "org_model_policies" ADD CONSTRAINT "chk_org_model_policies_member_scope_no_provider_id" CHECK (credential_scope <> 'member' OR (model_provider_id IS NULL AND model_provider_surface_id IS NULL));--> statement-breakpoint
 ALTER TABLE "org_model_policies" ADD CONSTRAINT "chk_org_model_policies_builtin_route_no_provider_id" CHECK (default_provider_type <> 'vm0' OR (model_provider_id IS NULL AND model_provider_surface_id IS NULL));

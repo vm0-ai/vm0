@@ -8617,6 +8617,224 @@ async function validateConnectorSlugRollout(): Promise<void> {
   );
 }
 
+async function validateInsightsConnectorSlugExpansion(): Promise<void> {
+  console.log(
+    "=== Phase 1.61: Validate insights connector slug expansion ===\n",
+  );
+  const previousMigration = 753;
+  const targetMigration = 754;
+  const targetMigrationTag = "0754_expand_insights_connector_slug";
+  const successDb = "migration_insights_connector_slug_expansion_test";
+  const rejectionDb =
+    "migration_insights_connector_slug_expansion_rejection_test";
+  const successDbUrl = createTestDbUrl(successDb);
+  const rejectionDbUrl = createTestDbUrl(rejectionDb);
+  const legacyData = {
+    permissions: [
+      {
+        label: "repo-read",
+        connectorType: "github",
+        allowed: 3,
+        denied: 0,
+        agentNames: ["Research agent"],
+        metadata: { retained: true },
+      },
+      {
+        label: "channels:read",
+        connectorSlug: "slack",
+        allowed: 2,
+        denied: 0,
+        agentNames: ["Support agent"],
+      },
+      {
+        label: "pages:read",
+        connectorSlug: "notion",
+        connectorType: "notion",
+        allowed: 1,
+        denied: 0,
+        agentNames: ["Knowledge agent"],
+      },
+      {
+        label: "unscoped",
+        allowed: 0,
+        denied: 1,
+        agentNames: [],
+      },
+    ],
+    unrelated: {
+      nested: ["preserve", 42],
+    },
+  };
+  const expandedData = {
+    ...legacyData,
+    permissions: [
+      {
+        ...legacyData.permissions[0],
+        connectorSlug: "github",
+      },
+      legacyData.permissions[1],
+      legacyData.permissions[2],
+      legacyData.permissions[3],
+    ],
+  };
+
+  await createDatabase(successDb);
+  try {
+    await runMigrationsUpTo(successDbUrl, previousMigration);
+    const client = new Client({ connectionString: successDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "insights_daily" (
+            "id",
+            "org_id",
+            "user_id",
+            "date",
+            "data",
+            "updated_at"
+          )
+          VALUES (
+            '00000000-0000-4000-8000-000000075301',
+            'insights-slug-org',
+            'insights-slug-user',
+            '2026-07-30',
+            $1::jsonb,
+            '2026-07-30T00:00:00.000Z'
+          )
+        `,
+        [JSON.stringify(legacyData)],
+      );
+
+      await applyMigrationsUpTo(client, targetMigration);
+
+      const result = await client.query<{ readonly data: unknown }>(
+        `
+          SELECT "data"
+          FROM "insights_daily"
+          WHERE "id" = '00000000-0000-4000-8000-000000075301'
+        `,
+      );
+      assert.deepEqual(result.rows[0]?.data, expandedData);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(successDb);
+  }
+
+  const compatibleData = {
+    permissions: [
+      {
+        label: "repo-read",
+        connectorType: "github",
+        allowed: 1,
+        denied: 0,
+        agentNames: ["Research agent"],
+      },
+    ],
+    marker: "must remain unchanged",
+  };
+  const conflictingData = {
+    permissions: [
+      {
+        label: "channels:read",
+        connectorSlug: "slack",
+        connectorType: "github",
+        allowed: 1,
+        denied: 0,
+        agentNames: ["Support agent"],
+      },
+    ],
+  };
+
+  await createDatabase(rejectionDb);
+  try {
+    await runMigrationsUpTo(rejectionDbUrl, previousMigration);
+    const client = new Client({ connectionString: rejectionDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "insights_daily" (
+            "id",
+            "org_id",
+            "user_id",
+            "date",
+            "data"
+          )
+          VALUES
+            (
+              '00000000-0000-4000-8000-000000075302',
+              'insights-slug-org',
+              'insights-slug-user',
+              '2026-07-29',
+              $1::jsonb
+            ),
+            (
+              '00000000-0000-4000-8000-000000075303',
+              'insights-slug-org',
+              'insights-slug-user',
+              '2026-07-30',
+              $2::jsonb
+            )
+        `,
+        [JSON.stringify(compatibleData), JSON.stringify(conflictingData)],
+      );
+
+      await assert.rejects(
+        applyMigrationsUpTo(client, targetMigration),
+        /conflicting connectorSlug and connectorType identities/,
+      );
+
+      const rows = await client.query<{
+        readonly data: unknown;
+        readonly id: string;
+      }>(
+        `
+          SELECT "id", "data"
+          FROM "insights_daily"
+          WHERE "id" IN (
+            '00000000-0000-4000-8000-000000075302',
+            '00000000-0000-4000-8000-000000075303'
+          )
+          ORDER BY "id"
+        `,
+      );
+      assert.deepEqual(rows.rows, [
+        {
+          id: "00000000-0000-4000-8000-000000075302",
+          data: compatibleData,
+        },
+        {
+          id: "00000000-0000-4000-8000-000000075303",
+          data: conflictingData,
+        },
+      ]);
+
+      const migrationRecord = await client.query<{
+        readonly count: number;
+      }>(
+        `
+          SELECT COUNT(*)::int AS "count"
+          FROM "__drizzle_migrations"
+          WHERE "hash" = $1
+        `,
+        [targetMigrationTag],
+      );
+      assert.equal(migrationRecord.rows[0]?.count, 0);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(rejectionDb);
+  }
+
+  console.log(
+    "   ✅ Insights connector slug expansion preserves JSONB and rejects conflicts atomically\n",
+  );
+}
+
 async function extractSchemaFromDb(dbUrl: string): Promise<{
   tables: Set<string>;
   columns: Map<string, Set<string>>;
@@ -10357,6 +10575,7 @@ async function main(): Promise<void> {
     await validateConnectorCredentialOwnershipBackfill();
     await validateConnectorCredentialOwnershipContraction();
     await validateConnectorSlugRollout();
+    await validateInsightsConnectorSlugExpansion();
 
     await validateStorageArchiveSizeFinalization();
     await validateStorageLegacyTypeContraction();
