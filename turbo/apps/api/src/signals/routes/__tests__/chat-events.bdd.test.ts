@@ -6128,37 +6128,20 @@ describe("CHAT-02: shared user message queue", () => {
       signal: context.signal,
     });
 
-    const callbackQueryStarted = createDeferredPromise<void>(context.signal);
-    const releaseCallbackQuery = createDeferredPromise<void>(context.signal);
     onTestFinished(async () => {
-      if (!releaseCallbackQuery.settled()) {
-        releaseCallbackQuery.resolve(undefined);
-      }
       admissionLock.release();
       await admissionLock.done;
     });
 
-    context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
-      const apl = typeof args[0] === "string" ? args[0] : "";
-      if (!apl.includes("['agent-run-events']")) {
-        return Promise.resolve([]);
-      }
-      if (!callbackQueryStarted.settled()) {
-        callbackQueryStarted.resolve(undefined);
-      }
-      return releaseCallbackQuery.promise.then(() => {
-        return [assistantEvent(0, "terminal callback race complete")];
-      });
-    });
-
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "terminal callback race complete"),
+    ]);
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
       lastEventSequence: 0,
     });
-    await callbackQueryStarted.promise;
-    // Completing the anchor also starts the org run-queue drain. Pin that
-    // known waiter first so the next two waiters identify the inline send and
-    // the terminal callback's chat-message drain respectively.
-    await expect.poll(admissionLock.waiterCount).toBe(1);
+    // Completing the anchor starts both the org run-queue drain and the
+    // database-backed terminal callback's chat-message drain.
+    await expect.poll(admissionLock.waiterCount).toBe(2);
 
     const prompt = "terminal drain and inline send share one claim";
     const messageId = randomUUID();
@@ -6180,9 +6163,6 @@ describe("CHAT-02: shared user message queue", () => {
         });
       })
       .toBe(true);
-    await expect.poll(admissionLock.waiterCount).toBe(2);
-
-    releaseCallbackQuery.resolve(undefined);
     await expect.poll(admissionLock.waiterCount).toBe(3);
     admissionLock.release();
 
@@ -6252,9 +6232,9 @@ describe("CHAT-02: shared user message queue", () => {
     );
     expect(queued.body).toMatchObject({ runId: null });
 
-    // Pin the terminal drain ahead of the callback drain at run admission,
-    // then make the claim and recall queue behind the exact message row in a
-    // test-owned order.
+    // Pin both completion-triggered drains at run admission, then make the
+    // claim and recall queue behind the exact message row in a test-owned
+    // order.
     const admissionLock = await holdOrgAdmissionLockFixture({
       orgId: actor.orgId,
       signal: context.signal,
@@ -6265,36 +6245,18 @@ describe("CHAT-02: shared user message queue", () => {
       signal: context.signal,
     });
 
-    const callbackQueryStarted = createDeferredPromise<void>(context.signal);
-    const releaseCallbackQuery = createDeferredPromise<void>(context.signal);
     onTestFinished(async () => {
-      if (!releaseCallbackQuery.settled()) {
-        releaseCallbackQuery.resolve(undefined);
-      }
       admissionLock.release();
       eventQueueLock.release();
       await Promise.all([admissionLock.done, eventQueueLock.done]);
     });
 
-    context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
-      const apl = typeof args[0] === "string" ? args[0] : "";
-      if (!apl.includes("['agent-run-events']")) {
-        return Promise.resolve([]);
-      }
-      if (!callbackQueryStarted.settled()) {
-        callbackQueryStarted.resolve(undefined);
-      }
-      return releaseCallbackQuery.promise.then(() => {
-        return [assistantEvent(0, "recall claim race complete")];
-      });
-    });
-
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "recall claim race complete"),
+    ]);
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
       lastEventSequence: 0,
     });
-    await callbackQueryStarted.promise;
-    await expect.poll(admissionLock.waiterCount).toBe(1);
-    releaseCallbackQuery.resolve(undefined);
     await expect.poll(admissionLock.waiterCount).toBe(2);
     admissionLock.release();
     await admissionLock.done;
@@ -6397,40 +6359,22 @@ describe("CHAT-02: shared user message queue", () => {
       signal: context.signal,
     });
 
-    // Stage the callback drain at org admission before recall reaches the queue
-    // row. The direct waiter proves recall is first; the transitive count after
-    // admission opens proves the drain is queued behind it.
-    const callbackQueryStarted = createDeferredPromise<void>(context.signal);
-    const releaseCallbackQuery = createDeferredPromise<void>(context.signal);
+    // Stage the completion-triggered drains at org admission before recall
+    // reaches the queue row. The direct waiter proves recall is first; the
+    // transitive count after admission opens proves the drain is queued behind
+    // it.
     onTestFinished(async () => {
-      if (!releaseCallbackQuery.settled()) {
-        releaseCallbackQuery.resolve(undefined);
-      }
       admissionLock.release();
       eventQueueLock.release();
       await Promise.all([admissionLock.done, eventQueueLock.done]);
     });
 
-    context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
-      const apl = typeof args[0] === "string" ? args[0] : "";
-      if (!apl.includes("['agent-run-events']")) {
-        return Promise.resolve([]);
-      }
-      if (!callbackQueryStarted.settled()) {
-        callbackQueryStarted.resolve(undefined);
-      }
-      return releaseCallbackQuery.promise.then(() => {
-        return [assistantEvent(0, "recall-first queue race complete")];
-      });
-    });
-
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "recall-first queue race complete"),
+    ]);
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
       lastEventSequence: 0,
     });
-    await callbackQueryStarted.promise;
-    await expect.poll(admissionLock.waiterCount).toBe(1);
-
-    releaseCallbackQuery.resolve(undefined);
     await expect.poll(admissionLock.waiterCount).toBe(2);
 
     const recall = Promise.allSettled([
