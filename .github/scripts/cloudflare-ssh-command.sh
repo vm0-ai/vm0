@@ -31,6 +31,8 @@ TARGET_HOST=""
 REMOTE_OPERAND_COUNT=0
 OPERANDS=()
 
+# Recognize only the repository's native and Ansible invocation shapes.
+# Unknown transport-changing forms must reach the real client unchanged.
 strip_wrapping_quotes() {
   local value=$1
   if [[ "$value" == \"*\" ]] && [ "${#value}" -ge 2 ]; then
@@ -439,13 +441,22 @@ lock_file="${STATE_DIR}/${target_key}.lock"
 
 exec {lock_fd}> "$lock_file"
 flock "$lock_fd"
+lock_held=true
+
+release_transport_lock() {
+  if [ "$lock_held" = "true" ]; then
+    flock -u "$lock_fd" || true
+    lock_held=false
+  fi
+}
+trap release_transport_lock EXIT
 
 current_control_path=""
 if [ -s "$state_file" ]; then
   IFS= read -r current_control_path < "$state_file"
   if [[ "$current_control_path" != /* ]]; then
     echo "Invalid saved Cloudflare SSH control path" >&2
-    flock -u "$lock_fd"
+    release_transport_lock
     exit 2
   fi
 fi
@@ -462,7 +473,7 @@ if [ "$probe_status" -ne 0 ]; then
     || cloudflare_ssh_is_permanent_failure "$first_probe_stderr"; then
     emit_probe_failure 1 "$probe_status" "$first_probe_stderr" error
     rm -rf "$probe_dir"
-    flock -u "$lock_fd"
+    release_transport_lock
     exit "$probe_status"
   fi
 
@@ -477,7 +488,7 @@ if [ "$probe_status" -ne 0 ]; then
     >&2 || recovery_status=$?
   if [ "$recovery_status" -ne 0 ]; then
     rm -rf "$probe_dir" "$recovery_dir"
-    flock -u "$lock_fd"
+    release_transport_lock
     exit "$recovery_status"
   fi
 
@@ -496,7 +507,7 @@ if [ "$probe_status" -ne 0 ]; then
     if [ "$close_status" -eq 0 ]; then
       rm -rf "$recovery_dir"
     fi
-    flock -u "$lock_fd"
+    release_transport_lock
     exit "$probe_status"
   fi
 
@@ -507,8 +518,11 @@ if [ "$probe_status" -ne 0 ]; then
 fi
 
 rm -rf "$probe_dir"
-flock -u "$lock_fd"
+release_transport_lock
+trap - EXIT
 
+# From this point the caller operation is single-shot. Preserve its streams and
+# status through exec; never infer replay safety from the real client's result.
 if [ -n "$selected_control_path" ]; then
   exec "$REAL_BINARY" \
     -o "ControlPath=${selected_control_path}" \

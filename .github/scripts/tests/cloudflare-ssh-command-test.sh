@@ -310,6 +310,9 @@ assert_contains "$recovery/stderr" "--secret [redacted]"
 assert_contains "$recovery/stderr" "TUNNEL_SERVICE_TOKEN_ID=[redacted]"
 assert_not_contains "$recovery/stderr" "super-secret"
 assert_not_contains "$recovery/stderr" "client-id"
+if [ -s "$recovery/stdout" ]; then
+  fail "transport recovery must not pollute caller stdout"
+fi
 assert_line_count "$recovery/ssh.log" 1 \
   "-n -T metal@dev-11.gcp.vm3.ai true"
 
