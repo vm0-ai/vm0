@@ -589,6 +589,35 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("does not use a goal queue event as composer goal state", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000722";
+    mockChatLifecycle(context, {
+      threadId,
+      chatEvents: [
+        {
+          id: "msg-goal-queued",
+          eventType: "input.goal",
+          runId: undefined,
+          content: null,
+          goalSnapshot: {
+            objectiveBrief: "Finish the queued goal",
+          },
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+    });
+    expect(screen.queryByLabelText("Active goal")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Finish the queued goal"),
+    ).not.toBeInTheDocument();
+  });
+
   it("folds goal-state markers into the goal row beneath the queued messages", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000723";
@@ -1180,7 +1209,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     });
   });
 
-  it("renders automation trigger briefs and folds queue status events", async () => {
+  it("renders a pending automation only as an automation event", async () => {
     const threadId = "thread-pending-automation-event";
 
     mockChatLifecycle(context, {
@@ -1207,19 +1236,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           runId: undefined,
           createdAt: "2026-06-09T10:00:00Z",
         },
-        {
-          id: "msg-automation-paused",
-          eventType: "queue.automation_paused",
-          content: null,
-          pauseReason: "Provider unavailable",
-          createdAt: "2026-06-09T10:01:00Z",
-        },
-        {
-          id: "msg-automation-resumed",
-          eventType: "queue.automation_resumed",
-          content: null,
-          createdAt: "2026-06-09T10:02:00Z",
-        },
       ],
     });
 
@@ -1232,8 +1248,10 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       "Scheduled digest due",
     );
     expect(claimedAutomationBrief).toBeInTheDocument();
-    await expectQueuedMessages(["Gmail label applied"]);
-    expect(screen.queryByText("Provider unavailable")).not.toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Pending automation event"),
+    ).resolves.toHaveTextContent("Gmail label applied");
+    expect(screen.queryByLabelText("Queued message")).not.toBeInTheDocument();
   });
 
   it("shows template labels on historical user messages", async () => {

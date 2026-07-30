@@ -285,27 +285,6 @@ export async function publishChatThreadWorkflowsChangedSafely(
   );
 }
 
-/**
- * Notify a chat thread's UI that its workflow queue changed (event enqueued,
- * drained, skipped, cleared, paused, or resumed). Best-effort like the
- * automations signal: a failed publish must not fail the mutation. The client
- * re-fetches the authoritative queue state on any delivery.
- */
-export async function publishChatThreadWorkflowQueueChangedSafely(
-  userId: string,
-  threadId: string,
-): Promise<void> {
-  await tapError(
-    publishUserSignal([userId], `chatThreadWorkflowQueueChanged:${threadId}`),
-    (error) => {
-      L.warn("Failed to publish chat thread workflow queue changed signal", {
-        threadId,
-        error,
-      });
-    },
-  );
-}
-
 export async function publishBuiltInGenerationChanged(
   userId: string,
   generationId: string,
@@ -354,9 +333,10 @@ export async function publishNetworkPolicyRefreshToRunnerGroup(
   connectorSlug: string,
 ): Promise<void> {
   const channel = ablyClient().channels.get(`runner-group:${group}`);
-  // TODO(#23619): Rename with the runner realtime notification contract.
   await channel.publish("network-policy-refresh", {
     runId,
+    connectorSlug,
+    // TODO(#23827): Remove after every pre-bridge runner has drained.
     connectorRef: connectorSlug,
   });
   L.debug(

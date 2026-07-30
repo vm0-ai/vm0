@@ -97,8 +97,10 @@ export type SqlAnalysisFinding =
     }
   | {
       readonly capability: QueryCapability;
+      readonly coveredSourceKeys?: readonly string[];
       readonly kind: "query-builder";
       readonly node: TSESTree.Expression;
+      readonly sourceKey?: string;
     };
 
 export interface SqlCapabilityChecks {
@@ -301,6 +303,13 @@ type StructuralExpression = (
       readonly selectMarker: SqlMarker | undefined;
       readonly subselect: unknown;
     }
+  | {
+      readonly children: readonly StructuralExpression[];
+      readonly isBuilderShape: boolean;
+      readonly kind: "scalar-query";
+      readonly predicate: StructuralExpression | undefined;
+      readonly selection: StructuralExpression | undefined;
+    }
 ) & {
   readonly sourceChunks: ReadonlySet<SqlSourceChunk>;
 };
@@ -312,7 +321,7 @@ interface StructuralOrdering {
   readonly sourceChunks: ReadonlySet<SqlSourceChunk>;
 }
 
-type ClassifiedHelperFinding = (
+type ClassifiedLeafFinding = (
   | {
       readonly helper: SqlHelper;
       readonly kind: "helper";
@@ -329,15 +338,28 @@ type ClassifiedHelperFinding = (
   readonly sourceChunks: ReadonlySet<SqlSourceChunk>;
 };
 
+type ClassifiedQueryFinding = {
+  readonly capability: "structured-scalar";
+  readonly isolationContext: "predicate";
+  readonly isPartial: false;
+  readonly kind: "query-builder";
+  readonly node: TSESTree.Expression;
+  readonly sourceChunks: ReadonlySet<SqlSourceChunk>;
+  readonly suppressedFindings: readonly ClassifiedLeafFinding[];
+};
+
+type ClassifiedFinding = ClassifiedLeafFinding | ClassifiedQueryFinding;
+
 interface ExpressionClassification {
   readonly anchor: TSESTree.Node | undefined;
-  readonly findings: readonly ClassifiedHelperFinding[];
+  readonly findings: readonly ClassifiedFinding[];
   readonly isWholeReplacement: boolean;
 }
 
 interface ClassificationContext {
   readonly allowsOptionalSql: boolean;
   readonly allowsRetainedSqlWrapper: boolean;
+  readonly allowsScalarQuery: boolean;
   readonly capabilities: SqlCapabilityChecks;
   readonly checker: TypeChecker;
   readonly ownsResultMapping: boolean;
@@ -660,6 +682,48 @@ function markerIsWrapper(
 ): boolean {
   const tsNode = services.esTreeNodeToTSNodeMap.get(node);
   return isDrizzleWrapperType(checker, checker.getTypeAtLocation(tsNode));
+}
+
+function isOptionalDrizzleWrapperType(
+  type: Type,
+  checker: TypeChecker,
+): boolean {
+  if ((type.flags & (TypeFlags.Any | TypeFlags.Unknown)) !== 0) {
+    return false;
+  }
+  if ((type.flags & TypeFlags.TypeParameter) !== 0) {
+    const constraint = checker.getBaseConstraintOfType(type);
+    return (
+      constraint !== undefined &&
+      isOptionalDrizzleWrapperType(constraint, checker)
+    );
+  }
+  if (!type.isUnion()) {
+    return isDrizzleWrapperType(checker, type);
+  }
+  let hasWrapper = false;
+  for (const member of type.types) {
+    if ((member.flags & (TypeFlags.Undefined | TypeFlags.Void)) !== 0) {
+      continue;
+    }
+    if (!isDrizzleWrapperType(checker, member)) {
+      return false;
+    }
+    hasWrapper = true;
+  }
+  return hasWrapper;
+}
+
+function nodeIsOptionalDrizzleWrapper(
+  node: TSESTree.Expression,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+): boolean {
+  const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+  return isOptionalDrizzleWrapperType(
+    checker.getTypeAtLocation(tsNode),
+    checker,
+  );
 }
 
 function typeMayBeSqlWrapper(type: Type, checker: TypeChecker): boolean {
@@ -1546,6 +1610,61 @@ function structuralExpression(
 
   const sublink = recordProperty(value, "SubLink");
   if (
+    sublink?.subLinkType === "EXPR_SUBLINK" &&
+    sublink.subselect !== undefined
+  ) {
+    const select = recordProperty(sublink.subselect, "SelectStmt");
+    const targets = select === undefined ? undefined : targetValues(select);
+    const selectionValue = targets?.length === 1 ? targets[0] : undefined;
+    const selection =
+      selectionValue === undefined
+        ? undefined
+        : structuralExpression(selectionValue, markers, sourceRanges);
+    const predicate =
+      select?.whereClause === undefined
+        ? undefined
+        : structuralExpression(select.whereClause, markers, sourceRanges);
+    const children = collectStructuralExpressions(
+      sublink.subselect,
+      markers,
+      sourceRanges,
+    );
+    const from = select?.fromClause;
+    return {
+      children,
+      isBuilderShape:
+        hasOnlyKeys(
+          sublink,
+          new Set(["location", "subLinkType", "subselect"]),
+        ) &&
+        select !== undefined &&
+        select.limitOption === "LIMIT_OPTION_DEFAULT" &&
+        select.op === "SETOP_NONE" &&
+        hasOnlyKeys(
+          select,
+          new Set([
+            "fromClause",
+            "limitOption",
+            "op",
+            "targetList",
+            "whereClause",
+          ]),
+        ) &&
+        selection !== undefined &&
+        predicate !== undefined &&
+        Array.isArray(from) &&
+        from.length === 1 &&
+        relationMarker(from[0], markers)?.isTable === true,
+      kind: "scalar-query",
+      predicate,
+      selection,
+      sourceChunks: mergeSourceChunks(
+        ownSourceChunks(value, sourceRanges),
+        children,
+      ),
+    };
+  }
+  if (
     sublink?.subLinkType === "EXISTS_SUBLINK" &&
     sublink.subselect !== undefined
   ) {
@@ -1588,7 +1707,7 @@ function deduplicateFindings<T extends SqlAnalysisFinding>(
   for (const finding of findings) {
     const key =
       finding.kind === "query-builder"
-        ? finding.kind
+        ? `${finding.kind}:${finding.capability}:${finding.sourceKey ?? ""}`
         : finding.kind === "empty-fragment"
           ? finding.kind
           : `${finding.kind}:${finding.helper}`;
@@ -1852,7 +1971,7 @@ function classifiedFinding(
   sourceChunks: ReadonlySet<SqlSourceChunk>,
   isolationContext: "ordering" | "predicate" | "selection" = "predicate",
   isPartial = false,
-): ClassifiedHelperFinding {
+): ClassifiedLeafFinding {
   return {
     helper,
     isolationContext,
@@ -1861,6 +1980,19 @@ function classifiedFinding(
     node,
     sourceChunks,
   };
+}
+
+function isWholeHelperReplacement(
+  classification: ExpressionClassification,
+): boolean {
+  const finding = classification.findings[0];
+  return (
+    classification.isWholeReplacement &&
+    classification.findings.length === 1 &&
+    finding !== undefined &&
+    finding.kind !== "query-builder" &&
+    !finding.isPartial
+  );
 }
 
 function firstClassificationNode(
@@ -1916,6 +2048,82 @@ function classifyExistence(
     }),
     isWholeReplacement: false,
   };
+}
+
+function classifyScalarQuery(
+  expression: Extract<StructuralExpression, { readonly kind: "scalar-query" }>,
+  context: ClassificationContext,
+): ExpressionClassification {
+  const childContext = nestedClassificationContext(context);
+  function classifyChildren(): ExpressionClassification {
+    const children = expression.children.map((child) => {
+      return classifyExpression(child, childContext);
+    });
+    return {
+      anchor: children.map(firstClassificationNode).find((node) => {
+        return node !== undefined;
+      }),
+      findings: children.flatMap((child) => {
+        return child.findings;
+      }),
+      isWholeReplacement: false,
+    };
+  }
+  if (
+    !context.allowsScalarQuery ||
+    !expression.isBuilderShape ||
+    expression.selection === undefined ||
+    expression.predicate === undefined
+  ) {
+    return classifyChildren();
+  }
+  const selectionClassification = classifyExpression(
+    expression.selection,
+    childContext,
+  );
+  const predicateClassification = classifyExpression(
+    expression.predicate,
+    childContext,
+  );
+  const selectionSupported =
+    expression.selection.kind === "marker"
+      ? expression.selection.marker.isColumn ||
+        expression.selection.marker.isWrapper
+      : isWholeHelperReplacement(selectionClassification);
+  const predicateSupported =
+    expression.predicate.kind === "marker"
+      ? expression.predicate.marker.isWrapper ||
+        (context.allowsOptionalSql &&
+          nodeIsOptionalDrizzleWrapper(
+            expression.predicate.marker.node,
+            context.checker,
+            context.services,
+          ))
+      : isWholeHelperReplacement(predicateClassification);
+  if (selectionSupported && predicateSupported) {
+    const node = literalBoundaryNode(expression.sourceChunks, context.root);
+    return {
+      anchor: node,
+      findings: [
+        {
+          capability: "structured-scalar",
+          isolationContext: "predicate",
+          isPartial: false,
+          kind: "query-builder",
+          node,
+          sourceChunks: expression.sourceChunks,
+          suppressedFindings: [
+            ...(selectionClassification?.findings ?? []),
+            ...(predicateClassification?.findings ?? []),
+          ].filter((finding): finding is ClassifiedLeafFinding => {
+            return finding.kind !== "query-builder";
+          }),
+        },
+      ],
+      isWholeReplacement: true,
+    };
+  }
+  return classifyChildren();
 }
 
 function classifyExpression(
@@ -2249,6 +2457,9 @@ function classifyExpression(
 
   if (expression.kind === "existence") {
     return classifyExistence(expression, "exists", context);
+  }
+  if (expression.kind === "scalar-query") {
+    return classifyScalarQuery(expression, context);
   }
 
   const children = expression.children.map((child) => {
@@ -4396,6 +4607,14 @@ function sameStructuralExpression(
       sameStructuralOrderings(left.orderings, right.orderings)
     );
   }
+  if (left.kind === "scalar-query" && right.kind === "scalar-query") {
+    return (
+      left.isBuilderShape === right.isBuilderShape &&
+      sameOptionalExpression(left.selection, right.selection) &&
+      sameOptionalExpression(left.predicate, right.predicate) &&
+      sameStructuralExpressions(left.children, right.children)
+    );
+  }
   if (left.kind === "existence" && right.kind === "existence") {
     return (
       left.isHandBuiltSelect === right.isHandBuiltSelect &&
@@ -4664,9 +4883,33 @@ function findingSourceProvenance(
 }
 
 function publicFinding(
-  finding: ClassifiedHelperFinding,
+  finding: ClassifiedFinding,
   sourceLocalEligible: boolean,
 ): SqlAnalysisFinding {
+  if (finding.kind === "query-builder") {
+    const { sourceKey } = findingSourceProvenance(
+      finding.sourceChunks,
+      finding.node,
+    );
+    const coveredSourceKeys = [
+      ...new Set(
+        finding.suppressedFindings.map((suppressed) => {
+          const provenance = findingSourceProvenance(
+            suppressed.sourceChunks,
+            suppressed.node,
+          );
+          return `${suppressed.kind}:${suppressed.helper}:${provenance.sourceKey}`;
+        }),
+      ),
+    ];
+    return {
+      capability: finding.capability,
+      coveredSourceKeys,
+      kind: finding.kind,
+      node: finding.node,
+      sourceKey,
+    };
+  }
   const { sourceKey, sourceTemplateKey } = findingSourceProvenance(
     finding.sourceChunks,
     finding.node,
@@ -4703,13 +4946,14 @@ function sameSourceChunks(
 }
 
 function replacementBoundaryForFinding(
-  finding: ClassifiedHelperFinding,
+  finding: ClassifiedFinding,
   variant: SqlSourceVariant,
   root: TSESTree.Expression,
   checker: TypeChecker,
   services: ParserServicesWithTypeInformation,
   capabilities: SqlCapabilityChecks,
   allowsRetainedSqlWrapper: boolean,
+  allowsScalarQuery: boolean,
 ): TSESTree.Expression | undefined {
   // A parsed descendant can cross template boundaries because Drizzle inserts
   // nested SQL without parentheses. Reparse each editable boundary in
@@ -4744,6 +4988,7 @@ function replacementBoundaryForFinding(
     const classificationContext: ClassificationContext = {
       allowsOptionalSql: true,
       allowsRetainedSqlWrapper,
+      allowsScalarQuery,
       capabilities,
       checker,
       ownsResultMapping: false,
@@ -4772,7 +5017,12 @@ function replacementBoundaryForFinding(
       .find((candidateFinding) => {
         return (
           candidateFinding.kind === finding.kind &&
-          candidateFinding.helper === finding.helper &&
+          (candidateFinding.kind === "query-builder" &&
+          finding.kind === "query-builder"
+            ? candidateFinding.capability === finding.capability
+            : candidateFinding.kind !== "query-builder" &&
+              finding.kind !== "query-builder" &&
+              candidateFinding.helper === finding.helper) &&
           candidateFinding.isolationContext === finding.isolationContext &&
           candidateFinding.isPartial === finding.isPartial &&
           sameSourceChunks(candidateFinding.sourceChunks, finding.sourceChunks)
@@ -4878,6 +5128,8 @@ function analyzeParsed(
       context === "source-selection" ||
       context === "source-statement" ||
       context === "source-where-prefix",
+    allowsScalarQuery:
+      context === "predicate" || context === "optional-predicate",
     capabilities,
     checker,
     ownsResultMapping,
@@ -4927,9 +5179,10 @@ function analyzeParsed(
   const hasWholeReplacementBoundary = replacementBoundary !== undefined;
   const findingEntries = deduplicateFindingEntries(
     classifications.flatMap((classification) => {
-      function isSourceLocalEligible(
-        finding: ClassifiedHelperFinding,
-      ): boolean {
+      function isSourceLocalEligible(finding: ClassifiedFinding): boolean {
+        if (finding.kind === "query-builder") {
+          return false;
+        }
         return (
           (finding.helper !== "and" && finding.helper !== "or") ||
           !(
@@ -4956,11 +5209,15 @@ function analyzeParsed(
             signature: {
               boundaryIsRoot: publicResult.node === node,
               boundaryType: publicResult.node.type,
-              helper: finding.helper,
+              helper:
+                finding.kind === "query-builder" ? undefined : finding.helper,
               isPartial: finding.isPartial,
               kind: finding.kind,
               ownsResultMapping,
-              queryCapability: undefined,
+              queryCapability:
+                finding.kind === "query-builder"
+                  ? finding.capability
+                  : undefined,
             },
           };
         });
@@ -4977,11 +5234,15 @@ function analyzeParsed(
               signature: {
                 boundaryIsRoot: publicResult.node === node,
                 boundaryType: publicResult.node.type,
-                helper: finding.helper,
+                helper:
+                  finding.kind === "query-builder" ? undefined : finding.helper,
                 isPartial: finding.isPartial,
                 kind: finding.kind,
                 ownsResultMapping,
-                queryCapability: undefined,
+                queryCapability:
+                  finding.kind === "query-builder"
+                    ? finding.capability
+                    : undefined,
               },
             },
           ];
@@ -4994,6 +5255,7 @@ function analyzeParsed(
           services,
           capabilities,
           classificationContext.allowsRetainedSqlWrapper,
+          classificationContext.allowsScalarQuery,
         );
         if (boundary === undefined) {
           return [];
@@ -5008,11 +5270,15 @@ function analyzeParsed(
             signature: {
               boundaryIsRoot: boundary === node,
               boundaryType: boundary.type,
-              helper: finding.helper,
+              helper:
+                finding.kind === "query-builder" ? undefined : finding.helper,
               isPartial: finding.isPartial,
               kind: finding.kind,
               ownsResultMapping,
-              queryCapability: undefined,
+              queryCapability:
+                finding.kind === "query-builder"
+                  ? finding.capability
+                  : undefined,
             },
           },
         ];
@@ -5120,7 +5386,10 @@ function variantMightContainCapability(
     .join("");
   return (
     SQL_CAPABILITY_TOKEN.test(literalSource) ||
-    ((context === "statement" || context === "structured-selection") &&
+    ((context === "statement" ||
+      context === "structured-selection" ||
+      context === "predicate" ||
+      context === "optional-predicate") &&
       /\bSELECT\b/i.test(literalSource)) ||
     (allowsWriteQueryBuilder && WRITE_CAPABILITY_TOKEN.test(literalSource))
   );

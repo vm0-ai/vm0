@@ -1,7 +1,6 @@
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { createStore } from "ccstate";
 import { and, eq, isNotNull } from "drizzle-orm";
 
 import { db } from "../lib/db";
@@ -9,16 +8,11 @@ import {
   admitGoalQueueEvent,
   type GoalQueueAdmission,
 } from "../signals/services/chat-goal-queue.service";
-import { drainChatThreadQueueForThread$ } from "../signals/services/chat-thread-queue-drain.service";
-import { insertChatEvent } from "../signals/services/zero-chat-event.service";
 
 interface GoalQueueAdmissionFixtureArgs {
   readonly threadId: string;
-  readonly orgId: string;
-  readonly userId: string;
   readonly goalId: string;
   readonly objectiveBrief: string;
-  readonly callbackSecret: string;
 }
 
 /**
@@ -31,38 +25,12 @@ export async function admitGoalQueueEventFixture(
 ): Promise<GoalQueueAdmission> {
   return await admitGoalQueueEvent(db(), {
     chatThreadId: args.threadId,
-    orgId: args.orgId,
-    userId: args.userId,
+    goalId: args.goalId,
     objectiveBrief: args.objectiveBrief,
-    params: {
-      goalId: args.goalId,
-      callbackSecret: args.callbackSecret,
-    },
   });
 }
 
-/**
- * Start a second production drain to reproduce claim races that cannot be
- * scheduled through an external route at a deterministic boundary.
- */
-export async function drainChatThreadQueueFixture(
-  threadId: string,
-  signal: AbortSignal,
-): Promise<void> {
-  await createStore().set(
-    drainChatThreadQueueForThread$,
-    {
-      chatThreadId: threadId,
-      dispatchFailedCallbacks: async () => {},
-    },
-    signal,
-  );
-}
-
-/**
- * Read internal queue facts that are deliberately absent from materialized
- * thread APIs: source input.goal ids and admitted goal-run ids.
- */
+/** Read queue source event ids and admitted goal-run ids for route assertions. */
 export async function readGoalQueueStateFixture(threadId: string): Promise<{
   readonly eventIds: readonly string[];
   readonly runIds: readonly string[];
@@ -134,7 +102,6 @@ export async function createActiveGoalQueueEventFixture(args: {
   readonly agentId: string;
   readonly objective: string;
   readonly objectiveBrief: string;
-  readonly callbackSecret: string;
 }): Promise<{ readonly goalId: string; readonly eventId: string }> {
   const [goal] = await db()
     .insert(threadGoals)
@@ -153,33 +120,11 @@ export async function createActiveGoalQueueEventFixture(args: {
   }
   const admission = await admitGoalQueueEventFixture({
     threadId: args.threadId,
-    orgId: args.orgId,
-    userId: args.userId,
     goalId: goal.id,
     objectiveBrief: args.objectiveBrief,
-    callbackSecret: args.callbackSecret,
   });
   if (admission.kind !== "inserted") {
     throw new Error("Expected the goal fixture event to be inserted");
   }
   return { goalId: goal.id, eventId: admission.eventId };
-}
-
-/**
- * Append an automation-intake pause without inducing a provider failure. This
- * isolates the contract that automation pause never gates goal continuation.
- */
-export async function appendAutomationPauseFixture(args: {
-  readonly threadId: string;
-  readonly reason: string;
-}): Promise<void> {
-  await db().transaction(async (tx) => {
-    await insertChatEvent(tx, {
-      chatThreadId: args.threadId,
-      eventType: "queue.automation_paused",
-      content: null,
-      runId: null,
-      pauseReason: args.reason,
-    });
-  });
 }

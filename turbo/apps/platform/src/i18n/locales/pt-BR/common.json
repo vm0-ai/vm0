@@ -958,6 +958,7 @@
     "cardTitle": "Navegador na nuvem",
     "close": "Fechar navegador ao vivo",
     "documentTitle": "Navegador ao vivo",
+    "fitWindow": "Ajustar navegador à janela",
     "iframeTitle": "Navegador ao vivo: {{name}}",
     "invalidLink": "Link de navegador inválido",
     "open": "Abrir o navegador {{name}}",

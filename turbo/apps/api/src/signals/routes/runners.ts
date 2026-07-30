@@ -2332,7 +2332,7 @@ const networkPolicyRefreshInner$ = command(
       return authError;
     }
 
-    const connectorSlugs = [...new Set(body.data.connectorRefs)];
+    const { connectorSlugs } = body.data;
     const refreshes = await resolveActiveNetworkPolicyRefreshes(
       db,
       {
@@ -2352,7 +2352,8 @@ const networkPolicyRefreshInner$ = command(
       body: {
         refreshes: refreshes.map((refresh) => {
           return {
-            // TODO(#23619): Rename with the runner response wire contract.
+            connectorSlug: refresh.connectorSlug,
+            // TODO(#23827): Remove after every pre-bridge runner has drained.
             connectorRef: refresh.connectorSlug,
             networkPolicy: refresh.networkPolicy,
             nextRefreshAt: refresh.nextRefreshAt,

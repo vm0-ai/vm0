@@ -1107,16 +1107,82 @@ pub struct NetworkPolicyRefresh {
     pub next_refresh_at: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, Deserialize)]
+#[serde(try_from = "NetworkPolicyRefreshResponseWire")]
 pub struct NetworkPolicyRefreshResponse {
-    /// TODO(#23619): Rename only with the runner API response wire contract.
-    pub connector_ref: String,
+    pub connector_slug: String,
     pub network_policy: NetworkPolicy,
     pub next_refresh_at: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NetworkPolicyRefreshResponseWire {
+    #[serde(default)]
+    connector_slug: OptionalWireConnectorSlug,
+    // TODO(#23827): Remove after every pre-bridge runner has drained.
+    #[serde(default)]
+    connector_ref: OptionalWireConnectorSlug,
+    network_policy: NetworkPolicy,
+    next_refresh_at: Option<String>,
+}
+
+#[derive(Default)]
+enum OptionalWireConnectorSlug {
+    #[default]
+    Missing,
+    Present(String),
+}
+
+impl<'de> Deserialize<'de> for OptionalWireConnectorSlug {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        String::deserialize(deserializer).map(Self::Present)
+    }
+}
+
+impl OptionalWireConnectorSlug {
+    fn as_deref(&self) -> Option<&str> {
+        match self {
+            Self::Missing => None,
+            Self::Present(value) => Some(value),
+        }
+    }
+}
+
+impl TryFrom<NetworkPolicyRefreshResponseWire> for NetworkPolicyRefreshResponse {
+    type Error = &'static str;
+
+    fn try_from(value: NetworkPolicyRefreshResponseWire) -> Result<Self, Self::Error> {
+        let connector_slug = match (
+            value.connector_slug.as_deref(),
+            value.connector_ref.as_deref(),
+        ) {
+            (Some(""), _) | (_, Some("")) => {
+                return Err("network policy refresh connector identity must not be empty");
+            }
+            (Some(connector_slug), Some(connector_ref)) if connector_slug != connector_ref => {
+                return Err("network policy refresh connectorSlug and connectorRef must match");
+            }
+            (Some(connector_slug), _) => connector_slug,
+            (None, Some(connector_ref)) => connector_ref,
+            (None, None) => {
+                return Err("network policy refresh connector identity is required");
+            }
+        }
+        .to_string();
+
+        Ok(Self {
+            connector_slug,
+            network_policy: value.network_policy,
+            next_refresh_at: value.next_refresh_at,
+        })
+    }
+}
+
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NetworkPolicyRefreshBatchResponse {
     pub refreshes: Vec<NetworkPolicyRefreshResponse>,

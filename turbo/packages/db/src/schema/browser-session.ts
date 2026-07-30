@@ -1,6 +1,5 @@
 import { sql } from "drizzle-orm";
 import {
-  bigint,
   index,
   integer,
   pgTable,
@@ -16,7 +15,6 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-browser";
 
 import { agentRuns } from "./agent-run";
-import { usageEvent } from "./usage-event";
 
 export const browserProfiles = pgTable(
   "browser_profiles",
@@ -73,9 +71,8 @@ export const browserSessions = pgTable(
   "browser_sessions",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    // External browser cleanup must survive chat-thread deletion. The terminal
-    // callback or reconciler uses this durable attribution key to stop and bill
-    // the provider instance after the parent thread is gone.
+    // External browser cleanup must survive chat-thread deletion. The delete
+    // path and reconciler use this durable key after the parent thread is gone.
     chatThreadId: uuid("chat_thread_id").notNull(),
     runId: uuid("run_id").references(
       () => {
@@ -104,13 +101,6 @@ export const browserSessions = pgTable(
       .notNull(),
     proxyCountryCode: varchar("proxy_country_code", { length: 2 }),
     timeoutMinutes: integer("timeout_minutes").notNull(),
-    maxCredits: integer("max_credits").notNull(),
-    grossCredits: bigint("gross_credits", { mode: "number" })
-      .default(0)
-      .notNull(),
-    creditsCharged: bigint("credits_charged", { mode: "number" })
-      .default(0)
-      .notNull(),
     suspendedAt: timestamp("suspended_at"),
     suspensionReason: varchar("suspension_reason", {
       length: 20,
@@ -180,36 +170,12 @@ export const browserSessionInstances = pgTable(
         { onDelete: "cascade" },
       ),
     // These IDs are immutable attribution keys rather than ownership FKs.
-    // Provider cleanup and settlement must outlive deletion of either parent.
+    // Provider cleanup must outlive deletion of either parent.
     chatThreadId: uuid("chat_thread_id").notNull(),
     runId: uuid("run_id").notNull(),
-    // Run that owns this instance's whole cost. Chosen once when the instance
-    // is claimed for stop, so retries always settle onto the same run.
-    billingRunId: uuid("billing_run_id"),
     status: varchar("status", { length: 20 })
       .$type<"active" | "stopping" | "stopped">()
       .notNull(),
-    browserCostMicrousd: bigint("browser_cost_microusd", { mode: "number" })
-      .default(0)
-      .notNull(),
-    proxyCostMicrousd: bigint("proxy_cost_microusd", { mode: "number" })
-      .default(0)
-      .notNull(),
-    proxyUsedMb: text("proxy_used_mb").default("0").notNull(),
-    pricingUnitPrice: bigint("pricing_unit_price", {
-      mode: "number",
-    }).notNull(),
-    pricingUnitSize: bigint("pricing_unit_size", { mode: "number" }).notNull(),
-    grossCredits: bigint("gross_credits", { mode: "number" })
-      .default(0)
-      .notNull(),
-    creditsCharged: bigint("credits_charged", { mode: "number" }),
-    usageEventId: uuid("usage_event_id").references(
-      () => {
-        return usageEvent.id;
-      },
-      { onDelete: "set null" },
-    ),
     timeoutAt: timestamp("timeout_at").notNull(),
     startedAt: timestamp("started_at").notNull(),
     // Idle lease. Any run or open viewer touches the instance, and the
@@ -223,7 +189,6 @@ export const browserSessionInstances = pgTable(
       .notNull(),
     stopRequestedAt: timestamp("stop_requested_at"),
     finishedAt: timestamp("finished_at"),
-    settledAt: timestamp("settled_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -239,12 +204,37 @@ export const browserSessionInstances = pgTable(
       ),
       index("idx_browser_session_instances_reconcile").on(
         table.status,
-        table.settledAt,
         table.updatedAt,
       ),
       uniqueIndex("uq_browser_session_instances_thread_owned")
         .on(table.chatThreadId)
         .where(sql`${table.status} IN ('active', 'stopping')`),
     ];
+  },
+);
+
+/**
+ * Resize capability and persisted dimensions for provider instances created
+ * by APIs that support manual window fitting.
+ *
+ * Keeping this state in a companion table preserves the statement shape of
+ * browser_session_instances while the previous API and migration 0737 may
+ * deploy in either order. Row absence means the instance is not resizable.
+ */
+export const browserSessionResizeStates = pgTable(
+  "browser_session_resize_states",
+  {
+    providerSessionId: uuid("provider_session_id")
+      .primaryKey()
+      .references(
+        () => {
+          return browserSessionInstances.providerSessionId;
+        },
+        { onDelete: "cascade" },
+      ),
+    screenWidth: integer("screen_width").notNull(),
+    screenHeight: integer("screen_height").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
 );

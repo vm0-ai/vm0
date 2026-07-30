@@ -19,6 +19,8 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import {
   browserProfiles,
+  browserSessionInstances,
+  browserSessionResizeStates,
   browserSessions,
 } from "@vm0/db/schema/browser-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -767,6 +769,52 @@ type PreviousApiBrowserProfileAction = Extract<
   { action: "read-browser-profile-as-previous-api" }
 >;
 
+type PreviousApiBrowserInstanceAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "set-browser-instance-as-previous-api" }
+>;
+
+async function setBrowserInstanceAsPreviousApi(
+  db: Db,
+  body: PreviousApiBrowserInstanceAction,
+  signal: AbortSignal,
+) {
+  const [instance] = await db
+    .select({
+      providerSessionId: browserSessionInstances.providerSessionId,
+    })
+    .from(browserSessionInstances)
+    .where(
+      and(
+        eq(browserSessionInstances.browserSessionId, body.browser_id),
+        eq(browserSessionInstances.status, "active"),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  if (!instance) {
+    throw new Error("Expected an active previous API browser instance");
+  }
+  // Previous API inserts have no companion row. The migration consistency
+  // suite executes that binary's real insert shape after migration 0734.
+  const [deleted] = await db
+    .delete(browserSessionResizeStates)
+    .where(
+      eq(
+        browserSessionResizeStates.providerSessionId,
+        instance.providerSessionId,
+      ),
+    )
+    .returning({
+      providerSessionId: browserSessionResizeStates.providerSessionId,
+    });
+  signal.throwIfAborted();
+  if (!deleted) {
+    throw new Error("Expected a current API browser resize state");
+  }
+  return { status: 200 as const, body: { ok: true as const } };
+}
+
 async function readBrowserProfileAsPreviousApi(
   db: Db,
   body: PreviousApiBrowserProfileAction,
@@ -824,6 +872,7 @@ type CompatibilityFixtureAction =
   | PreviousApiComputerAccessAction
   | PreviousApiRunnerJobContextProfileAction
   | PreviousApiBrowserProfileAction
+  | PreviousApiBrowserInstanceAction
   | ConnectorPermissionBaselineMutationAction;
 
 function isCompatibilityFixtureAction(
@@ -834,6 +883,7 @@ function isCompatibilityFixtureAction(
     "set-computer-use-host-as-previous-api",
     "set-runner-job-context-profile-as-previous-api",
     "read-browser-profile-as-previous-api",
+    "set-browser-instance-as-previous-api",
     "mutate-runner-job-connector-permission-baseline",
   ].includes(body.action);
 }
@@ -855,6 +905,9 @@ async function compatibilityFixtureActionResponse(
     }
     case "read-browser-profile-as-previous-api": {
       return await readBrowserProfileAsPreviousApi(db, body, signal);
+    }
+    case "set-browser-instance-as-previous-api": {
+      return await setBrowserInstanceAsPreviousApi(db, body, signal);
     }
     case "mutate-runner-job-connector-permission-baseline": {
       await mutateRunnerJobConnectorPermissionBaseline(db, body, signal);

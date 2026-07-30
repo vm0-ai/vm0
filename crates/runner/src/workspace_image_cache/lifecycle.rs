@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use nix::fcntl::Flock;
@@ -8,6 +9,7 @@ use tokio::fs;
 use tracing::debug;
 use tracing::{info, warn};
 
+use crate::duration::duration_ms;
 use crate::error::{RunnerError, RunnerResult};
 use crate::ids::RunId;
 use crate::storage_fingerprints::StorageFingerprints;
@@ -718,6 +720,7 @@ impl SessionWorkspaceCache {
         &self,
         input: WorkspaceImagePromotionInput<'_>,
     ) -> RunnerResult<WorkspaceImagePromotionOutcome> {
+        let promotion_started = Instant::now();
         let cache_dir = self.session_workspace_cache_entry_dir(input.cache_key);
         if remove_non_directory_workspace_cache_entry(&cache_dir).await? {
             info!(
@@ -827,40 +830,52 @@ impl SessionWorkspaceCache {
             );
             return Ok(WorkspaceImagePromotionOutcome::SkippedUnpublished);
         }
-        if !has_copy_headroom(stats, budget, active_allocated) {
-            match self.gc_locked(false).await {
-                Ok(freed) if freed > 0 => {
-                    stats = self.fs_stats().await?;
-                    budget = CacheBudget::from_fs_stats(stats);
-                }
-                Ok(_) => {}
-                Err(e) => warn!(
-                    run_id = %input.run_id,
-                    cache_key = input.cache_key,
-                    error = %e,
-                    "workspace image cache GC failed before promotion copy"
-                ),
-            }
-        }
-        if !has_copy_headroom(stats, budget, active_allocated) {
-            info!(
-                run_id = %input.run_id,
-                cache_key = input.cache_key,
-                allocated_bytes = active_allocated,
-                available_bytes = stats.available_bytes,
-                min_free_bytes = budget.min_free_bytes,
-                "workspace image cache promotion skipped due to copy free-space pressure"
-            );
-            return Ok(WorkspaceImagePromotionOutcome::SkippedUnpublished);
-        }
-
         ensure_workspace_cache_entry_dir(&cache_dir).await?;
         let tmp = self.session_workspace_cache_tmp_image(input.cache_key, input.run_id);
         let _ = remove_workspace_cache_path_if_exists(&tmp).await;
-        if let Err(e) = sparse_copy(input.active_image, &tmp).await {
-            let _ = remove_workspace_cache_path_if_exists(&tmp).await;
-            return Err(e);
-        }
+        let rename_started = Instant::now();
+        let (transfer_mode, transfer_duration) = match fs::rename(input.active_image, &tmp).await {
+            Ok(()) => ("rename", rename_started.elapsed()),
+            Err(e) if e.kind() == std::io::ErrorKind::CrossesDevices => {
+                if !has_copy_headroom(stats, budget, active_allocated) {
+                    match self.gc_locked(false).await {
+                        Ok(freed) if freed > 0 => {
+                            stats = self.fs_stats().await?;
+                            budget = CacheBudget::from_fs_stats(stats);
+                        }
+                        Ok(_) => {}
+                        Err(e) => warn!(
+                            run_id = %input.run_id,
+                            cache_key = input.cache_key,
+                            error = %e,
+                            "workspace image cache GC failed before promotion copy"
+                        ),
+                    }
+                }
+                if !has_copy_headroom(stats, budget, active_allocated) {
+                    info!(
+                        run_id = %input.run_id,
+                        cache_key = input.cache_key,
+                        allocated_bytes = active_allocated,
+                        available_bytes = stats.available_bytes,
+                        min_free_bytes = budget.min_free_bytes,
+                        "workspace image cache promotion skipped due to copy free-space pressure"
+                    );
+                    return Ok(WorkspaceImagePromotionOutcome::SkippedUnpublished);
+                }
+
+                let copy_started = Instant::now();
+                if let Err(e) = sparse_copy(input.active_image, &tmp).await {
+                    let _ = remove_workspace_cache_path_if_exists(&tmp).await;
+                    return Err(e);
+                }
+                ("sparse_copy", copy_started.elapsed())
+            }
+            Err(e) => {
+                let _ = remove_workspace_cache_path_if_exists(&tmp).await;
+                return Err(e.into());
+            }
+        };
         let tmp_metadata = match fs::symlink_metadata(&tmp).await {
             Ok(metadata) => metadata,
             Err(e) => {
@@ -883,7 +898,7 @@ impl SessionWorkspaceCache {
                 cache_key = input.cache_key,
                 actual_image_size_bytes = logical_image_size_bytes,
                 expected_image_size_bytes = input.image_size_bytes,
-                "workspace image cache promotion skipped because copied image size does not match cache key"
+                "workspace image cache promotion skipped because transferred image size does not match cache key"
             );
             return Ok(WorkspaceImagePromotionOutcome::SkippedUnpublished);
         }
@@ -895,7 +910,7 @@ impl SessionWorkspaceCache {
                 cache_key = input.cache_key,
                 allocated_bytes = tmp_allocated,
                 max_entry_bytes = budget.max_entry_bytes,
-                "workspace image cache promotion skipped because copied image is too large"
+                "workspace image cache promotion skipped because transferred image is too large"
             );
             return Ok(WorkspaceImagePromotionOutcome::SkippedUnpublished);
         }
@@ -974,6 +989,12 @@ impl SessionWorkspaceCache {
         info!(
             run_id = %input.run_id,
             cache_key = input.cache_key,
+            outcome = "promoted",
+            transfer_mode,
+            transfer_ms = duration_ms(transfer_duration),
+            promotion_ms = duration_ms(promotion_started.elapsed()),
+            logical_image_size_bytes,
+            source_allocated_bytes = active_allocated,
             allocated_bytes = allocated,
             "workspace image cache promoted"
         );

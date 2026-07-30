@@ -133,7 +133,6 @@ interface HttpRunCallback {
 
 interface InternalRunCallback {
   readonly internalKind: InternalRunCallbackKind;
-  readonly secret: string;
   readonly payload: unknown;
 }
 

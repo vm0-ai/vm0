@@ -4,6 +4,10 @@ import {
   IconLoader2,
   IconPlayerPlay,
 } from "@tabler/icons-react";
+import {
+  ZERO_BROWSER_INITIAL_SCREEN_HEIGHT,
+  ZERO_BROWSER_SCREEN_WIDTH,
+} from "@vm0/api-contracts/contracts/zero-browser";
 import { cn } from "@vm0/ui";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
@@ -17,6 +21,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 
 interface BrowserSessionPanelProps {
   readonly signals: BrowserSessionSignals;
+  readonly containLiveFrame?: boolean;
 }
 
 function PanelFrame({
@@ -60,7 +65,45 @@ function PanelMessage({
   );
 }
 
-export function BrowserSessionPanel({ signals }: BrowserSessionPanelProps) {
+function LiveBrowserFrame({
+  liveUrl,
+  title,
+  contain,
+  aspectRatio,
+}: {
+  readonly liveUrl: string;
+  readonly title: string;
+  readonly contain: boolean;
+  readonly aspectRatio: number;
+}) {
+  return (
+    <iframe
+      src={liveUrl}
+      title={title}
+      referrerPolicy="no-referrer"
+      allow="autoplay; clipboard-read; clipboard-write; fullscreen"
+      style={
+        contain
+          ? {
+              aspectRatio: String(aspectRatio),
+              width: `min(100cqw, calc(100cqh * ${String(aspectRatio)}))`,
+            }
+          : undefined
+      }
+      className={cn(
+        "border-0 bg-background",
+        contain
+          ? "block h-auto max-h-full max-w-full shrink-0"
+          : "w-full min-h-0 flex-1",
+      )}
+    />
+  );
+}
+
+export function BrowserSessionPanel({
+  signals,
+  containLiveFrame = false,
+}: BrowserSessionPanelProps) {
   const { t } = useTranslation();
   const sessionLoadable = useLastLoadable(signals.panelSession$);
   const keepAliveRef = useSet(signals.keepAliveRef$);
@@ -102,6 +145,9 @@ export function BrowserSessionPanel({ signals }: BrowserSessionPanelProps) {
   }
 
   const session = sessionLoadable.data;
+  const browserAspectRatio = session.screen
+    ? session.screen.width / session.screen.height
+    : ZERO_BROWSER_SCREEN_WIDTH / ZERO_BROWSER_INITIAL_SCREEN_HEIGHT;
   const liveUrl = session.status === "active" ? session.liveUrl : null;
   if (liveUrl === null) {
     return (
@@ -149,20 +195,33 @@ export function BrowserSessionPanel({ signals }: BrowserSessionPanelProps) {
     );
   }
 
+  const liveFrame = (
+    <LiveBrowserFrame
+      liveUrl={liveUrl}
+      title={t(
+        ($) => {
+          return $.browserSession.iframeTitle;
+        },
+        { name: session.name },
+      )}
+      contain={containLiveFrame}
+      aspectRatio={browserAspectRatio}
+    />
+  );
+
   return (
     <PanelFrame panelRef={keepAliveRef}>
-      <iframe
-        src={liveUrl}
-        title={t(
-          ($) => {
-            return $.browserSession.iframeTitle;
-          },
-          { name: session.name },
-        )}
-        referrerPolicy="no-referrer"
-        allow="autoplay; clipboard-read; clipboard-write; fullscreen"
-        className={cn("w-full min-h-0 flex-1 border-0 bg-background")}
-      />
+      {containLiveFrame ? (
+        <div
+          data-browser-session-viewport
+          style={{ containerType: "size" }}
+          className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-muted/20"
+        >
+          {liveFrame}
+        </div>
+      ) : (
+        liveFrame
+      )}
       <p className="border-t border-border/60 px-3.5 py-2 text-[11px] leading-4 text-muted-foreground">
         {browserSessionReclaimHint(session)}
       </p>

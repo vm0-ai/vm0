@@ -1332,19 +1332,16 @@ describe("CHAT-02: queueing and recalling messages", () => {
     );
 
     // Another user's send cannot claim the queued message's client id.
-    const stranger = bdd.user();
-    await api.ensureOrgModelProvider(stranger);
-    const strangerAgent = await bdd.createAgent(stranger, {
-      displayName: "Cross-user client-id agent",
-    });
+    const { actor: stranger, agentId: strangerAgentId } =
+      await entitledChatActor();
     const strangerThread = await chat.createThread(stranger, {
-      agentId: strangerAgent.agentId,
+      agentId: strangerAgentId,
       title: "Cross-user conflict thread",
     });
     const crossUser = await chat.requestSendEvent(
       stranger,
       {
-        agentId: strangerAgent.agentId,
+        agentId: strangerAgentId,
         threadId: strangerThread.id,
         prompt: "cross-user retry",
         clientEventId: queuedId,
@@ -1360,6 +1357,18 @@ describe("CHAT-02: queueing and recalling messages", () => {
       strangerThread.id,
     );
     expect(strangerMessages.events).toStrictEqual([]);
+
+    const strangerRun = await sendChatRun(stranger, {
+      agentId: strangerAgentId,
+      threadId: strangerThread.id,
+      prompt: "first accepted event after the rejected id",
+    });
+    const acceptedStrangerMessages = await chat.listThreadEvents(
+      stranger,
+      strangerThread.id,
+    );
+    expect(acceptedStrangerMessages.events[0]?.seqId).toBe(1);
+    await cancelChatRun(stranger, strangerRun.runId);
 
     const beforeRecall = await chat.listThreadEvents(actor, first.threadId);
     expect(

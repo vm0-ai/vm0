@@ -60,7 +60,7 @@ type InputAutomationEvent = ChatEventIdentity & {
 type InputGoalEvent = ChatEventIdentity & {
   readonly eventType: "input.goal";
   readonly content?: null;
-  readonly encryptedParams: string;
+  readonly runGroupId: string;
   readonly goalSnapshot: NonNullable<ChatEventInsert["goalSnapshot"]>;
 };
 
@@ -137,17 +137,6 @@ type RunCancelledEvent = ChatEventIdentity & {
   readonly error?: string;
 };
 
-type QueueAutomationPausedEvent = ChatEventIdentity & {
-  readonly eventType: "queue.automation_paused";
-  readonly content?: null;
-  readonly pauseReason: string | null;
-};
-
-type QueueAutomationResumedEvent = ChatEventIdentity & {
-  readonly eventType: "queue.automation_resumed";
-  readonly content?: null;
-};
-
 type ControlInterruptEvent = ChatEventIdentity & {
   readonly eventType: "control.interrupt";
   readonly content?: null;
@@ -188,8 +177,6 @@ export type NewChatEvent =
   | RunCompletedEvent
   | RunFailedEvent
   | RunCancelledEvent
-  | QueueAutomationPausedEvent
-  | QueueAutomationResumedEvent
   | ControlInterruptEvent
   | ControlRevokeEvent
   | GoalChangedEvent
@@ -220,22 +207,12 @@ type PersistedChatEvent = Omit<ChatEventInsert, "role" | "seqId">;
 
 function persistedChatEventValues(values: NewChatEvent): PersistedChatEvent {
   const runLifecycleEvent = chatEventRunLifecycle(values.eventType);
-  if (values.eventType === "queue.automation_paused") {
-    const { pauseReason, ...event } = values;
-    return {
-      ...event,
-      content: null,
-      error: pauseReason,
-      eventType: event.eventType,
-    };
-  }
   return {
     ...values,
     ...(values.eventType === "input.prompt" ||
     values.eventType === "input.rejected" ||
     values.eventType === "input.automation" ||
-    values.eventType === "input.goal" ||
-    values.eventType === "queue.automation_resumed"
+    values.eventType === "input.goal"
       ? { content: null }
       : {}),
     eventType: values.eventType,
@@ -263,6 +240,22 @@ async function reserveChatEventSeqIds(
     throw new Error(`Chat thread ${chatThreadId} not found`);
   }
   return thread.lastSeqId - count + 1;
+}
+
+async function releaseChatEventSeqId(
+  tx: ChatEventWriteTransaction,
+  chatThreadId: string,
+): Promise<void> {
+  const [thread] = await tx
+    .update(chatThreads)
+    .set({
+      lastChatMessageSeqId: sql`${chatThreads.lastChatMessageSeqId} - 1`,
+    })
+    .where(eq(chatThreads.id, chatThreadId))
+    .returning({ id: chatThreads.id });
+  if (!thread) {
+    throw new Error(`Chat thread ${chatThreadId} not found`);
+  }
 }
 
 async function addSeqIdsToEvents(
@@ -340,6 +333,11 @@ export async function insertChatEvent(
               seqId: chatMessages.seqId,
             });
 
+  if (rows.length === 0) {
+    // A rejected idempotent write is not part of the canonical stream, so it
+    // must not consume the thread's next cursor.
+    await releaseChatEventSeqId(tx, values.chatThreadId);
+  }
   return rows[0] ?? null;
 }
 

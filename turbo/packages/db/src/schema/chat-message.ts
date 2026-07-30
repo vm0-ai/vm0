@@ -105,12 +105,6 @@ export const chatMessages = pgTable(
     // the API and remains only on the original pending input event.
     encryptedParams: text("encrypted_params"),
     content: text("content"),
-    /**
-     * Rollout bridge for API versions that still write structured_prompt.
-     * Remove with the compatibility trigger after the old API has drained.
-     */
-    legacyUserMessage:
-      jsonb("structured_prompt").$type<ChatMessageUserMessage>(),
     /** Canonical rich user-message document for user input events. */
     userMessage: jsonb("user_message").$type<ChatMessageUserMessage>(),
     thinking: text("thinking"),

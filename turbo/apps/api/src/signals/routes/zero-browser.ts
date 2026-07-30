@@ -11,6 +11,7 @@ import {
   getZeroBrowser$,
   leaseCurrentZeroBrowser$,
   leaseZeroBrowserById$,
+  resizeZeroBrowserById$,
   resumeZeroBrowserFromViewer$,
   useZeroBrowser$,
   type BrowserServiceError,
@@ -153,6 +154,32 @@ const resumeBrowserByIdInner$ = command(
   },
 );
 
+const resizeByIdParams$ = pathParamsOf(zeroBrowserContract.resizeById);
+const resizeByIdBody$ = bodyResultOf(zeroBrowserContract.resizeById);
+const resizeBrowserByIdInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const body = await get(resizeByIdBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+    const auth = get(organizationAuthContext$);
+    const result = await set(
+      resizeZeroBrowserById$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        browserId: get(resizeByIdParams$).browserId,
+        aspectRatio: body.data.aspectRatio,
+      },
+      signal,
+    );
+    return result.kind === "error"
+      ? errorResponse(result)
+      : { status: 200 as const, body: { browser: result.value } };
+  },
+);
+
 const currentBrowserInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
@@ -245,6 +272,10 @@ export const zeroBrowserRoutes: readonly RouteEntry[] = [
   {
     route: zeroBrowserContract.resumeById,
     handler: authRoute(browserViewerWriteAuth, resumeBrowserByIdInner$),
+  },
+  {
+    route: zeroBrowserContract.resizeById,
+    handler: authRoute(browserViewerWriteAuth, resizeBrowserByIdInner$),
   },
   {
     route: zeroBrowserContract.current,

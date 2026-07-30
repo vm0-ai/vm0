@@ -22,7 +22,7 @@ import {
 import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   click,
@@ -306,9 +306,9 @@ describe("thread-owned utility sidebar", () => {
           liveUrl: null,
           proxyCountryCode: null,
           timeoutMinutes: 240,
-          maxCredits: 500,
-          grossCredits: 2,
-          creditsCharged: 2,
+          maxCredits: 1,
+          grossCredits: 0,
+          creditsCharged: 0,
           idleExpiresAt: null,
           suspendedAt: "2026-03-10T00:05:00.000Z",
           suspensionReason: "idle",
@@ -326,9 +326,9 @@ describe("thread-owned utility sidebar", () => {
           liveUrl: "https://live.browser-use.com/?wss=latest-browser",
           proxyCountryCode: null,
           timeoutMinutes: 240,
-          maxCredits: 500,
-          grossCredits: 3,
-          creditsCharged: 3,
+          maxCredits: 1,
+          grossCredits: 0,
+          creditsCharged: 0,
           idleExpiresAt: "2026-03-10T00:20:00.000Z",
           suspendedAt: null,
           suspensionReason: null,
@@ -732,9 +732,10 @@ describe("thread-owned utility sidebar", () => {
       liveUrl,
       proxyCountryCode: null,
       timeoutMinutes: 240,
-      maxCredits: 500,
+      maxCredits: 1,
       grossCredits: 0,
       creditsCharged: 0,
+      screen: { width: 1440, height: 900, resizable: true },
       idleExpiresAt: "2026-03-10T00:10:00.000Z",
       suspendedAt: null,
       suspensionReason: null,
@@ -749,8 +750,27 @@ describe("thread-owned utility sidebar", () => {
       await releaseResponse.promise;
       return respond(200, { browser });
     });
+    let leaseRequests = 0;
     context.mocks.api(zeroBrowserContract.leaseById, ({ respond }) => {
-      return respond(200, { browser });
+      leaseRequests += 1;
+      return respond(200, {
+        browser: {
+          ...browser,
+          // The production lease endpoint extends the instance without
+          // returning its provider live URL.
+          liveUrl: null,
+        },
+      });
+    });
+    const resizeAspectRatios: number[] = [];
+    context.mocks.api(zeroBrowserContract.resizeById, ({ body, respond }) => {
+      resizeAspectRatios.push(body.aspectRatio);
+      return respond(200, {
+        browser: {
+          ...browser,
+          screen: { width: 1440, height: 1800, resizable: true },
+        },
+      });
     });
     setupChatThread({
       autoOpenEnabled: true,
@@ -777,6 +797,87 @@ describe("thread-owned utility sidebar", () => {
     const frame = await screen.findByTitle("Live browser: Auto-open browser");
     expect(frame).toHaveAttribute("src", liveUrl);
     expect(frame.closest("[data-browser-session-sidebar]")).not.toBeNull();
+    expect(resizeAspectRatios).toStrictEqual([]);
+
+    const viewport = frame.closest("[data-browser-session-viewport]");
+    if (!(viewport instanceof HTMLDivElement)) {
+      throw new Error("Expected a live browser viewport");
+    }
+    vi.spyOn(viewport, "getBoundingClientRect").mockReturnValue(
+      DOMRect.fromRect({
+        width: 720,
+        height: 900,
+      }),
+    );
+    const fitWindow = queryAllByRoleFast("button").find((button) => {
+      return button.getAttribute("aria-label") === "Fit browser to window";
+    });
+    if (!(fitWindow instanceof HTMLButtonElement)) {
+      throw new Error("Expected the fit browser button");
+    }
+    expect(fitWindow).toBeEnabled();
+    click(fitWindow);
+
+    await waitFor(() => {
+      expect(leaseRequests).toBeGreaterThan(0);
+      expect(resizeAspectRatios).toStrictEqual([0.8]);
+      expect(fitWindow).toBeEnabled();
+      expect(
+        screen.getByTitle("Live browser: Auto-open browser"),
+      ).toHaveAttribute("src", liveUrl);
+    });
+  });
+
+  it("disables Fit Window for a session returned by the previous API", async () => {
+    const browserId = "c0000000-0000-4000-a000-000000000052";
+    const browser: ZeroBrowserSession = {
+      id: browserId,
+      name: "Previous API browser",
+      status: "active",
+      viewerUrl: `https://app.vm0.ai/browsers/${browserId}`,
+      liveUrl: "https://live.browser-use.com/?wss=previous-api-browser",
+      proxyCountryCode: null,
+      timeoutMinutes: 240,
+      maxCredits: 500,
+      grossCredits: 0,
+      creditsCharged: 0,
+      idleExpiresAt: "2026-03-10T00:10:00.000Z",
+      suspendedAt: null,
+      suspensionReason: null,
+      createdAt: "2026-03-10T00:00:00.000Z",
+      updatedAt: "2026-03-10T00:00:00.000Z",
+    };
+    context.mocks.browser.matchMedia((query) => {
+      return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
+    });
+    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+      return respond(200, { browser });
+    });
+    context.mocks.api(zeroBrowserContract.leaseById, ({ respond }) => {
+      return respond(200, { browser });
+    });
+    setupChatThread({
+      autoOpenEnabled: true,
+      messages: [
+        {
+          id: "msg-previous-api-browser",
+          role: "assistant",
+          content: `[Open browser](/browsers/${browserId})`,
+          runId: "run-previous-api-browser",
+          seqId: 1,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    await screen.findByTitle("Live browser: Previous API browser");
+    const fitWindow = queryAllByRoleFast("button").find((button) => {
+      return button.getAttribute("aria-label") === "Fit browser to window";
+    });
+    if (!(fitWindow instanceof HTMLButtonElement)) {
+      throw new Error("Expected the fit browser button");
+    }
+    expect(fitWindow).toBeDisabled();
   });
 
   it("falls back to the latest successful run and ignores failed and cancelled runs", async () => {

@@ -4,7 +4,14 @@ import {
   type ZeroBrowserSession,
 } from "@vm0/api-contracts/contracts/zero-browser";
 import { browserSessionChangedPayloadSchema } from "@vm0/api-contracts/contracts/realtime";
-import { command, computed, state, type Command, type Computed } from "ccstate";
+import {
+  command,
+  computed,
+  state,
+  type Command,
+  type Computed,
+  type State,
+} from "ccstate";
 
 import { formatAppNumber } from "../../i18n/format.ts";
 import { i18n } from "../../i18n/index.ts";
@@ -12,7 +19,7 @@ import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { pageSignal$ } from "../page-signal.ts";
 import { setAblyPayloadLoop$ } from "../realtime.ts";
-import { onRef, settle, setLoop } from "../utils.ts";
+import { onRef, settle, setLoop, withCleanup } from "../utils.ts";
 import {
   getOrCreateCardSignals,
   registeredCardSignals,
@@ -35,9 +42,11 @@ export interface BrowserSessionSignals extends BrowserSessionDescriptor {
   readonly session$: Computed<Promise<ZeroBrowserSession | null>>;
   readonly panelSession$: Computed<Promise<ZeroBrowserSession | null>>;
   readonly resuming$: Computed<boolean>;
+  readonly fittingWindow$: Computed<boolean>;
   readonly reload$: Command<void, []>;
   readonly reloadPanel$: Command<void, []>;
   readonly resume$: Command<Promise<void>, [AbortSignal]>;
+  readonly fitWindow$: Command<Promise<void>, [number, AbortSignal]>;
   // Attach to the visible panel container: the lease heartbeat lives exactly as
   // long as that element is mounted.
   readonly keepAliveRef$: Command<
@@ -101,6 +110,51 @@ async function fetchBrowserSession(
   return response.status === 200 ? response.body.browser : null;
 }
 
+function createFitWindowSignals(
+  descriptor: BrowserSessionDescriptor,
+  sessionOverride$: State<ZeroBrowserSession | null | undefined>,
+): Pick<BrowserSessionSignals, "fittingWindow$" | "fitWindow$"> {
+  const fittingWindowState$ = state(false);
+  const fitWindow$ = command(
+    async (
+      { get, set },
+      aspectRatio: number,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      if (get(fittingWindowState$)) {
+        return;
+      }
+      set(fittingWindowState$, true);
+      const fitted = await settle(
+        withCleanup(
+          accept(
+            get(zeroClient$)(zeroBrowserContract).resizeById({
+              params: { browserId: descriptor.browserId },
+              body: { aspectRatio },
+              fetchOptions: { signal },
+            }),
+            [200],
+            signal,
+          ),
+          () => {
+            set(fittingWindowState$, false);
+          },
+        ),
+        signal,
+      );
+      if (fitted.ok) {
+        set(sessionOverride$, fitted.value.body.browser);
+      }
+    },
+  );
+  return {
+    fittingWindow$: computed((get) => {
+      return get(fittingWindowState$);
+    }),
+    fitWindow$,
+  };
+}
+
 export function createBrowserSessionSignals(
   threadId: string | null,
   descriptor: BrowserSessionDescriptor,
@@ -125,6 +179,10 @@ export function createBrowserSessionSignals(
   });
 
   const resumingState$ = state(false);
+  const { fittingWindow$, fitWindow$ } = createFitWindowSignals(
+    descriptor,
+    sessionOverride$,
+  );
   // accept() reports a failed resume through the app's toast surface, so the
   // panel only has to stop showing a pending state and reload what is real.
   const resume$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -166,6 +224,19 @@ export function createBrowserSessionSignals(
               [200, 404, 409],
             );
             if (response.status === 200) {
+              const currentSession = await get(session$);
+              signal.throwIfAborted();
+              set(
+                sessionOverride$,
+                currentSession
+                  ? {
+                      ...response.body.browser,
+                      // Lease responses intentionally omit the provider live
+                      // URL, so retain the one loaded by the viewer endpoint.
+                      liveUrl: currentSession.liveUrl,
+                    }
+                  : response.body.browser,
+              );
               return false;
             }
             // The browser was reclaimed while the panel was hidden or idle. Stop
@@ -188,9 +259,11 @@ export function createBrowserSessionSignals(
     resuming$: computed((get) => {
       return get(resumingState$);
     }),
+    fittingWindow$,
     reload$,
     reloadPanel$: reload$,
     resume$,
+    fitWindow$,
     keepAliveRef$,
   };
 }

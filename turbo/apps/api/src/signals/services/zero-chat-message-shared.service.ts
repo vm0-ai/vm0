@@ -17,15 +17,15 @@ import {
 } from "../../lib/file-url";
 import { writeDb$, type Db } from "../external/db";
 import {
-  publishThreadListChanged,
-  publishUserSignal,
+  publishChatThreadMessageCreatedSafely,
+  publishThreadListChangedSafely,
 } from "../external/realtime";
 import { listS3Objects } from "../external/s3";
 import { nowDate } from "../external/time";
 import { assistantMessageIdForRunEvent } from "./assistant-message-id";
 import { insertChatEvents } from "./zero-chat-event.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
-import { publishFirstAssistantMessageCreated } from "./zero-chat-first-assistant-message-metric.service";
+import { publishFirstAssistantMessageCreatedSafely } from "./zero-chat-first-assistant-message-metric.service";
 import {
   appendChatThreadEvent,
   type ChatThreadEventTransaction,
@@ -309,21 +309,18 @@ export async function insertAssistantEventMessages(
 
   if (insertedRowCount > 0) {
     if (runContext.shouldAttemptFirstAssistantMessageClaim) {
-      await publishFirstAssistantMessageCreated({
+      await publishFirstAssistantMessageCreatedSafely({
         db: writeDb,
         userId: args.userId,
         threadId: args.threadId,
         runId: args.runId,
       });
     } else {
-      await publishUserSignal(
-        [args.userId],
-        `chatThreadMessageCreated:${args.threadId}`,
-      );
+      await publishChatThreadMessageCreatedSafely(args.userId, args.threadId);
     }
     signal.throwIfAborted();
 
-    await publishThreadListChanged(args.userId);
+    await publishThreadListChangedSafely(args.userId);
     signal.throwIfAborted();
   }
 
