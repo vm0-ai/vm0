@@ -17,6 +17,10 @@ import {
 import { compatibleStoredExecutionContextSchema } from "@vm0/api-contracts/contracts/runners";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import {
+  browserSessionTabSnapshots,
+  browserSessions,
+} from "@vm0/db/schema/browser-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { hostedSites } from "@vm0/db/schema/hosted-site";
@@ -32,6 +36,7 @@ import { executeRawRows } from "../../lib/db-raw-rows";
 import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
+import { nowDate } from "../external/time";
 import {
   resetSecretKmsClientForTests,
   setSecretKmsClientForTests,
@@ -44,6 +49,7 @@ import {
   onRejection,
   settleIncludingAbort,
 } from "../utils";
+import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -844,6 +850,49 @@ type PreviousApiRunnerJobContextProfileAction = Extract<
   { action: "set-runner-job-context-profile-as-previous-api" }
 >;
 
+type PreviousApiBrowserTabSnapshotAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "set-browser-tab-snapshot-as-previous-api" }
+>;
+
+async function setBrowserTabSnapshotAsPreviousApi(
+  db: Db,
+  body: PreviousApiBrowserTabSnapshotAction,
+  signal: AbortSignal,
+) {
+  // Older snapshots may already contain duplicate URLs. No current production
+  // API can reproduce that persisted input after capture-side deduplication.
+  const [browser] = await db
+    .select({ userId: browserSessions.userId })
+    .from(browserSessions)
+    .where(eq(browserSessions.chatThreadId, body.thread_id))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!browser) {
+    throw new Error("Expected a managed browser for previous API tab snapshot");
+  }
+  const encryptedTabUrls = await encryptPersistentSecretValue(
+    JSON.stringify(body.tab_urls),
+    { userId: browser.userId },
+  );
+  signal.throwIfAborted();
+  await db
+    .insert(browserSessionTabSnapshots)
+    .values({
+      chatThreadId: body.thread_id,
+      encryptedTabUrls,
+    })
+    .onConflictDoUpdate({
+      target: browserSessionTabSnapshots.chatThreadId,
+      set: {
+        encryptedTabUrls,
+        updatedAt: nowDate(),
+      },
+    });
+  signal.throwIfAborted();
+  return { status: 200 as const, body: { ok: true as const } };
+}
+
 async function setRunnerJobContextProfileAsPreviousApi(
   db: Db,
   body: PreviousApiRunnerJobContextProfileAction,
@@ -875,6 +924,7 @@ type CompatibilityFixtureAction =
   | PreviousApiHostedSiteAction
   | PreviousApiHostedDeploymentAction
   | PreviousApiComputerAccessAction
+  | PreviousApiBrowserTabSnapshotAction
   | PreviousApiRunnerJobContextProfileAction
   | ConnectorPermissionBaselineMutationAction;
 
@@ -886,6 +936,7 @@ function isCompatibilityFixtureAction(
     "insert-hosted-site-as-previous-api",
     "insert-hosted-deployment-as-previous-api",
     "set-computer-use-host-as-previous-api",
+    "set-browser-tab-snapshot-as-previous-api",
     "set-runner-job-context-profile-as-previous-api",
     "mutate-runner-job-connector-permission-baseline",
   ].includes(body.action);
@@ -908,6 +959,9 @@ async function compatibilityFixtureActionResponse(
     }
     case "set-computer-use-host-as-previous-api": {
       return await setComputerUseHostAsPreviousApi(db, body, signal);
+    }
+    case "set-browser-tab-snapshot-as-previous-api": {
+      return await setBrowserTabSnapshotAsPreviousApi(db, body, signal);
     }
     case "set-runner-job-context-profile-as-previous-api": {
       return await setRunnerJobContextProfileAsPreviousApi(db, body, signal);

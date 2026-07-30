@@ -18,7 +18,7 @@ import { createApp } from "../../../app-factory";
 import { browserUseCdpHandler } from "../../../__tests__/mocks";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
-import { clearMockNow, mockNow } from "../../../lib/time";
+import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
@@ -27,14 +27,20 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import { setComputerUseHostAsPreviousApi } from "./helpers/runtime-state";
+import {
+  setBrowserTabSnapshotAsPreviousApi,
+  setComputerUseHostAsPreviousApi,
+} from "./helpers/runtime-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
 const computerUse = createComputerUseBddApi(context);
 const BROWSER_USE_API_URL = "https://api.browser-use.com/api/v3";
 const CRON_SECRET = "test-browser-reconcile-secret";
-const STARTED_AT_MS = Date.parse("2026-07-24T10:00:00.000Z");
+// Keep the mocked application clock aligned with PostgreSQL's wall clock.
+// Runner queue claims reject jobs whose application-generated expiry is
+// already in the past from the database's perspective.
+const STARTED_AT_MS = now();
 const MINUTE_MS = 60_000;
 
 function isoAt(offsetMs: number): string {
@@ -146,6 +152,11 @@ async function setupBrowserScenario() {
   mockEnv("ZERO_BROWSER_USE_API_KEY", "test-browser-use-key");
   mockEnv("APP_URL", "https://app.vm0.ai");
   mockEnv("CRON_SECRET", CRON_SECRET);
+  server.use(
+    http.delete(`${BROWSER_USE_API_URL}/profiles/:id`, () => {
+      return new HttpResponse(null, { status: 204 });
+    }),
+  );
 
   const bdd = createBddApi(context);
   const routeMocks = createZeroRouteMocks(context);
@@ -412,7 +423,19 @@ describe("zero browser route", () => {
         });
       }),
       http.delete(`${BROWSER_USE_API_URL}/profiles/:id`, ({ params }) => {
-        deletedProfiles.push(String(params.id));
+        const profileId = String(params.id);
+        deletedProfiles.push(profileId);
+        if (
+          profileId === profileIds[0] &&
+          deletedProfiles.filter((deleted) => {
+            return deleted === profileId;
+          }).length === 1
+        ) {
+          return HttpResponse.json(
+            { detail: "temporary Browser Use outage" },
+            { status: 503 },
+          );
+        }
         return new HttpResponse(null, { status: 204 });
       }),
       http.post(`${BROWSER_USE_API_URL}/browsers`, async ({ request }) => {
@@ -659,13 +682,38 @@ describe("zero browser route", () => {
     await chat.deleteThread(actor, other.threadId);
     await flushWaitUntilForTest();
     expect(providerStops).toBe(2);
+    expect(
+      deletedProfiles.filter((profileId) => {
+        return profileId === profileIds[0];
+      }),
+    ).toHaveLength(1);
+    expect(
+      deletedProfiles.filter((profileId) => {
+        return profileId === profileIds[1];
+      }),
+    ).toHaveLength(1);
     const reconciled = await reconcileBrowsers();
     expect(reconciled.body).toMatchObject({
+      checked: 1,
+      stopped: 1,
+      errors: 0,
+    });
+    expect(
+      deletedProfiles.filter((profileId) => {
+        return profileId === profileIds[0];
+      }),
+    ).toHaveLength(2);
+    expect(
+      deletedProfiles.filter((profileId) => {
+        return profileId === profileIds[1];
+      }),
+    ).toHaveLength(1);
+    const fullyRetired = await reconcileBrowsers();
+    expect(fullyRetired.body).toMatchObject({
       checked: 0,
       stopped: 0,
       errors: 0,
     });
-    expect(deletedProfiles).toStrictEqual([]);
   }, 120_000);
 
   it("reclaims the earliest idle lease before starting past org concurrency", async () => {
@@ -869,6 +917,11 @@ describe("zero browser route", () => {
             targetInfos: [
               {
                 targetId: "first-tab",
+                type: "page",
+                url: savedTabUrls[0],
+              },
+              {
+                targetId: "duplicate-first-tab",
                 type: "page",
                 url: savedTabUrls[0],
               },
@@ -1189,6 +1242,157 @@ describe("zero browser route", () => {
       stopped: 0,
       errors: 0,
     });
+  }, 120_000);
+
+  it("deduplicates previous snapshot URLs before restoring browser tabs", async () => {
+    const { routeMocks, runs, chat, actor, agent } =
+      await setupBrowserScenario();
+    const first = await createClaimedChatRun(
+      chat,
+      runs,
+      actor,
+      agent.agentId,
+      "Restore a managed browser snapshot",
+    );
+
+    const providerIds = [randomUUID(), randomUUID()] as const;
+    const savedTabUrls = [
+      "https://example.com/research?q=one",
+      "http://example.org/draft#section",
+    ] as const;
+    const cdpWebSocketUrls = [
+      `wss://${providerIds[0]}.cdp.browser-use.com/devtools/browser/test`,
+      `wss://${providerIds[1]}.cdp.browser-use.com/devtools/browser/test`,
+    ] as const;
+    let currentCdpWebSocketUrl: string | null = null;
+    context.mocks.browserUseCdp.connect.mockImplementation((url) => {
+      currentCdpWebSocketUrl = url;
+    });
+    context.mocks.browserUseCdp.command.mockImplementation((command) => {
+      if (command.method !== "Target.getTargets") {
+        return undefined;
+      }
+      if (currentCdpWebSocketUrl === cdpWebSocketUrls[0]) {
+        return {
+          targetInfos: [
+            {
+              targetId: "captured-tab",
+              type: "page",
+              url: savedTabUrls[0],
+            },
+          ],
+        };
+      }
+      return {
+        targetInfos: [
+          {
+            targetId: "default-tab",
+            type: "page",
+            url: "about:blank",
+          },
+        ],
+      };
+    });
+    let providerCreates = 0;
+    server.use(
+      http.post(`${BROWSER_USE_API_URL}/profiles`, async ({ request }) => {
+        const body = z
+          .strictObject({ name: z.string() })
+          .parse(await request.json());
+        return HttpResponse.json(providerProfile(randomUUID(), body.name), {
+          status: 201,
+        });
+      }),
+      http.post(`${BROWSER_USE_API_URL}/browsers`, () => {
+        const providerId = providerIds[providerCreates];
+        providerCreates += 1;
+        if (!providerId) {
+          return HttpResponse.json(
+            { error: "unexpected browser create" },
+            { status: 500 },
+          );
+        }
+        return HttpResponse.json(providerBrowser(providerId), { status: 201 });
+      }),
+      http.get(`${BROWSER_USE_API_URL}/browsers/:id`, ({ params }) => {
+        return HttpResponse.json(providerBrowser(String(params.id)));
+      }),
+      ...providerIds.map((providerId, index) => {
+        const webSocketUrl = cdpWebSocketUrls[index];
+        return http.get(
+          `https://${providerId}.cdp.browser-use.com/json/version`,
+          () => {
+            return HttpResponse.json({
+              webSocketDebuggerUrl: webSocketUrl,
+            });
+          },
+        );
+      }),
+      ...cdpWebSocketUrls.map((webSocketUrl) => {
+        return browserUseCdpHandler(webSocketUrl);
+      }),
+      http.patch(`${BROWSER_USE_API_URL}/browsers/:id`, ({ params }) => {
+        return HttpResponse.json(
+          providerBrowser(String(params.id), { status: "stopped" }),
+        );
+      }),
+    );
+
+    const opened = await accept(
+      client().use({ headers: first.claim.browserHeaders, body: {} }),
+      [200],
+    );
+    const threadId = opened.body.browser.threadId;
+    mockNow(STARTED_AT_MS + 11 * MINUTE_MS);
+    const reclaimed = await reconcileBrowsers();
+    expect(reclaimed.body).toMatchObject({ stopped: 1, errors: 0 });
+    await flushWaitUntilForTest();
+
+    // This historical snapshot shape cannot be produced through the current
+    // capture path because capture now deduplicates before persistence.
+    await setBrowserTabSnapshotAsPreviousApi(context, {
+      threadId,
+      tabUrls: [
+        savedTabUrls[0],
+        savedTabUrls[0],
+        savedTabUrls[1],
+        savedTabUrls[0],
+        savedTabUrls[1],
+      ],
+    });
+    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const resumed = await accept(
+      client().start({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId },
+        body: { eventId: randomUUID() },
+      }),
+      [200],
+    );
+    expect(resumed.body.browser.status).toBe("active");
+    expect(
+      context.mocks.browserUseCdp.command.mock.calls
+        .map(([command]) => {
+          return command;
+        })
+        .filter((command) => {
+          return command.method === "Target.createTarget";
+        }),
+    ).toStrictEqual([
+      {
+        id: 2,
+        method: "Target.createTarget",
+        params: { url: savedTabUrls[0] },
+      },
+      {
+        id: 3,
+        method: "Target.createTarget",
+        params: { url: savedTabUrls[1] },
+      },
+    ]);
+
+    await chat.deleteThread(actor, first.threadId);
+    await flushWaitUntilForTest();
   }, 120_000);
 
   it("reuses one thread browser and records start-stop lifecycle events", async () => {

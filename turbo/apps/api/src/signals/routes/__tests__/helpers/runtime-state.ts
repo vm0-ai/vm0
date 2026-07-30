@@ -371,3 +371,17 @@ export async function setComputerUseHostAsPreviousApi(
     computer_use_host_id: args.computerUseHostId,
   });
 }
+
+export async function setBrowserTabSnapshotAsPreviousApi(
+  context: TestContext,
+  args: {
+    readonly threadId: string;
+    readonly tabUrls: readonly string[];
+  },
+): Promise<void> {
+  await postAction(context, {
+    action: "set-browser-tab-snapshot-as-previous-api",
+    thread_id: args.threadId,
+    tab_urls: [...args.tabUrls],
+  });
+}

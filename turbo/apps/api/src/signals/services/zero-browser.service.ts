@@ -22,7 +22,17 @@ import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { command } from "ccstate";
-import { and, asc, desc, eq, inArray, lte, notExists, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNull,
+  lte,
+  notExists,
+  sql,
+} from "drizzle-orm";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
@@ -45,6 +55,7 @@ import {
   resizeBrowserUseSession,
   restoreBrowserUseTabUrls,
   stopBrowserUseSession,
+  stopBrowserUseSessionForCleanup,
   type BrowserUseSession,
 } from "./browser-use.service";
 import {
@@ -1005,6 +1016,103 @@ async function deleteUnusedProfile(profileId: string): Promise<void> {
       profileId,
       AbortSignal.timeout(PROVIDER_CLEANUP_TIMEOUT_MS),
     ),
+  );
+}
+
+interface BrowserProfileCleanupTarget {
+  readonly chatThreadId: string;
+  readonly providerProfileId: string;
+}
+
+async function latestBrowserProviderSessionId(
+  db: Db,
+  chatThreadId: string,
+): Promise<string | null> {
+  const [instance] = await db
+    .select({
+      providerSessionId: browserSessionInstances.providerSessionId,
+    })
+    .from(browserSessionInstances)
+    .where(eq(browserSessionInstances.chatThreadId, chatThreadId))
+    .orderBy(desc(browserSessionInstances.createdAt))
+    .limit(1);
+  return instance?.providerSessionId ?? null;
+}
+
+async function retireBrowserProfileOwnership(
+  db: Db,
+  target: BrowserProfileCleanupTarget,
+  signal: AbortSignal,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    await lockBrowserProfileCreation(tx, target.chatThreadId);
+    const [profile] = await tx
+      .select({
+        providerProfileId: browserThreadProfiles.providerProfileId,
+      })
+      .from(browserThreadProfiles)
+      .where(eq(browserThreadProfiles.chatThreadId, target.chatThreadId))
+      .limit(1);
+    if (profile?.providerProfileId !== target.providerProfileId) {
+      return;
+    }
+    await tx
+      .delete(browserSessions)
+      .where(eq(browserSessions.chatThreadId, target.chatThreadId));
+    await tx
+      .delete(browserThreadProfiles)
+      .where(
+        and(
+          eq(browserThreadProfiles.chatThreadId, target.chatThreadId),
+          eq(browserThreadProfiles.providerProfileId, target.providerProfileId),
+        ),
+      );
+  });
+  signal.throwIfAborted();
+}
+
+async function cleanupBrowserProfile(
+  db: Db,
+  target: BrowserProfileCleanupTarget,
+  signal: AbortSignal,
+  providerSessionIds?: readonly string[],
+): Promise<void> {
+  const retryProviderSessionId =
+    providerSessionIds === undefined
+      ? await latestBrowserProviderSessionId(db, target.chatThreadId)
+      : null;
+  signal.throwIfAborted();
+  const cleanupProviderSessionIds =
+    providerSessionIds ??
+    (retryProviderSessionId === null ? [] : [retryProviderSessionId]);
+  for (const providerSessionId of cleanupProviderSessionIds) {
+    await stopBrowserUseSessionForCleanup(providerSessionId, signal);
+    signal.throwIfAborted();
+  }
+  await deleteBrowserUseProfile(target.providerProfileId, signal);
+  signal.throwIfAborted();
+  await retireBrowserProfileOwnership(db, target, signal);
+}
+
+function cleanupBrowserProfileLater(
+  db: Db,
+  target: BrowserProfileCleanupTarget,
+  providerSessionIds: readonly string[],
+): void {
+  const backgroundSignal = new AbortController().signal;
+  waitUntil(
+    (async () => {
+      const result = await settleIncludingAbort(
+        cleanupBrowserProfile(db, target, backgroundSignal, providerSessionIds),
+      );
+      if (!result.ok) {
+        L.warn("Managed browser provider profile cleanup failed", {
+          chatThreadId: target.chatThreadId,
+          providerProfileId: target.providerProfileId,
+          error: result.error,
+        });
+      }
+    })(),
   );
 }
 
@@ -2288,8 +2396,7 @@ export const stopThreadZeroBrowsers$ = command(
     await db
       .update(browserSessions)
       .set({
-        status: "suspended",
-        suspendedAt: nowDate(),
+        status: "stopping",
         suspensionReason: "reconcile",
         updatedAt: nowDate(),
       })
@@ -2324,7 +2431,7 @@ export const stopThreadZeroBrowsers$ = command(
     for (const target of active) {
       if (
         await stopActiveBrowserInstance(db, target, "reconcile", signal, {
-          stopProvider: true,
+          stopProvider: false,
           emitLifecycleEvent: false,
           saveTabSnapshot: false,
         })
@@ -2369,6 +2476,31 @@ export const stopThreadZeroBrowsers$ = command(
         ),
       );
     signal.throwIfAborted();
+
+    const [profile] = await db
+      .select({
+        chatThreadId: browserThreadProfiles.chatThreadId,
+        providerProfileId: browserThreadProfiles.providerProfileId,
+      })
+      .from(browserThreadProfiles)
+      .where(eq(browserThreadProfiles.chatThreadId, args.chatThreadId))
+      .limit(1);
+    signal.throwIfAborted();
+    if (profile) {
+      cleanupBrowserProfileLater(
+        db,
+        profile,
+        active.map((target) => {
+          return target.providerSessionId;
+        }),
+      );
+    } else {
+      await db
+        .delete(browserSessions)
+        .where(eq(browserSessions.chatThreadId, args.chatThreadId));
+      signal.throwIfAborted();
+    }
+
     return { released };
   },
 );
@@ -2489,6 +2621,51 @@ interface BrowserReconcileOutcome {
   readonly healthy: number;
 }
 
+async function reconcileOrphanedBrowserProfiles(
+  db: Db,
+  limit: number,
+  signal: AbortSignal,
+): Promise<{
+  readonly checked: number;
+  readonly cleaned: number;
+  readonly errors: number;
+}> {
+  const profiles = await db
+    .select({
+      chatThreadId: browserThreadProfiles.chatThreadId,
+      providerProfileId: browserThreadProfiles.providerProfileId,
+    })
+    .from(browserThreadProfiles)
+    .leftJoin(
+      chatThreads,
+      eq(chatThreads.id, browserThreadProfiles.chatThreadId),
+    )
+    .where(isNull(chatThreads.id))
+    .orderBy(browserThreadProfiles.updatedAt)
+    .limit(limit);
+  signal.throwIfAborted();
+
+  let cleaned = 0;
+  let errors = 0;
+  for (const profile of profiles) {
+    const result = await settleIncludingAbort(
+      cleanupBrowserProfile(db, profile, signal),
+    );
+    signal.throwIfAborted();
+    if (result.ok) {
+      cleaned += 1;
+    } else {
+      errors += 1;
+      L.warn("Managed browser orphaned profile reconciliation failed", {
+        chatThreadId: profile.chatThreadId,
+        providerProfileId: profile.providerProfileId,
+        error: result.error,
+      });
+    }
+  }
+  return { checked: profiles.length, cleaned, errors };
+}
+
 const reconcileBrowserInstance$ = command(
   async (
     { set },
@@ -2593,11 +2770,16 @@ export const reconcileZeroBrowsers$ = command(
       RECONCILE_BATCH_SIZE,
       signal,
     );
+    const profileCleanup = await reconcileOrphanedBrowserProfiles(
+      db,
+      RECONCILE_BATCH_SIZE,
+      signal,
+    );
 
     return {
-      checked: rows.length + releasedStarts,
-      stopped,
-      errors,
+      checked: rows.length + releasedStarts + profileCleanup.checked,
+      stopped: stopped + profileCleanup.cleaned,
+      errors: errors + profileCleanup.errors,
       healthy,
     };
   },

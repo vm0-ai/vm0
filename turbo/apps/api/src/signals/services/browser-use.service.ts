@@ -311,6 +311,24 @@ function restorableBrowserUseTabUrl(url: string): boolean {
   return protocol === "http:" || protocol === "https:";
 }
 
+function boundedRestorableBrowserUseTabUrls(
+  urls: Iterable<string>,
+): readonly string[] {
+  const boundedUrls: string[] = [];
+  const seenUrls = new Set<string>();
+  for (const url of urls) {
+    if (!restorableBrowserUseTabUrl(url) || seenUrls.has(url)) {
+      continue;
+    }
+    seenUrls.add(url);
+    boundedUrls.push(url);
+    if (boundedUrls.length === MAX_BROWSER_USE_TAB_URLS) {
+      break;
+    }
+  }
+  return boundedUrls;
+}
+
 function browserUseCdpSignal(signal: AbortSignal): AbortSignal {
   return AbortSignal.any([
     signal,
@@ -334,14 +352,15 @@ export async function listBrowserUseTabUrls(
       ),
       { reportInput: true },
     );
-    return targets.targetInfos
-      .filter((target) => {
-        return target.type === "page" && restorableBrowserUseTabUrl(target.url);
-      })
-      .slice(0, MAX_BROWSER_USE_TAB_URLS)
-      .map((target) => {
-        return target.url;
-      });
+    return boundedRestorableBrowserUseTabUrls(
+      targets.targetInfos
+        .filter((target) => {
+          return target.type === "page";
+        })
+        .map((target) => {
+          return target.url;
+        }),
+    );
   });
 }
 
@@ -357,9 +376,7 @@ export async function restoreBrowserUseTabUrls(
   if (urls.length === 0) {
     return;
   }
-  const boundedUrls = urls
-    .filter(restorableBrowserUseTabUrl)
-    .slice(0, MAX_BROWSER_USE_TAB_URLS);
+  const boundedUrls = boundedRestorableBrowserUseTabUrls(urls);
   if (boundedUrls.length === 0) {
     return;
   }
@@ -489,6 +506,7 @@ async function browserUseRequest(
   path: string,
   init: RequestInit,
   signal: AbortSignal,
+  acceptedStatuses: readonly number[] = [],
 ): Promise<unknown> {
   const apiKey = env("ZERO_BROWSER_USE_API_KEY");
   if (!apiKey) {
@@ -543,7 +561,10 @@ async function browserUseRequest(
     );
   }
 
-  if (!result.value.response.ok) {
+  if (
+    !result.value.response.ok &&
+    !acceptedStatuses.includes(result.value.response.status)
+  ) {
     throw providerError(result.value.response, result.value.body);
   }
   return result.value.body;
@@ -574,6 +595,7 @@ export async function deleteBrowserUseProfile(
     `/profiles/${encodeURIComponent(profileId)}`,
     { method: "DELETE" },
     signal,
+    [404],
   );
 }
 
@@ -629,4 +651,19 @@ export async function stopBrowserUseSession(
     signal,
   );
   return parseBrowserUseSession(body);
+}
+
+export async function stopBrowserUseSessionForCleanup(
+  providerSessionId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  await browserUseRequest(
+    `/browsers/${encodeURIComponent(providerSessionId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ action: "stop" }),
+    },
+    signal,
+    [404],
+  );
 }
