@@ -176,9 +176,9 @@ export function stubConnectorCatalogPermissions(
     }),
   );
   return http.get(
-    `${origin}/api/zero/connector-catalog/:connectorRef/permissions`,
+    `${origin}/api/zero/connector-catalog/:connectorSlug/permissions`,
     ({ params }) => {
-      const connectorSlug = String(params.connectorRef);
+      const connectorSlug = String(params.connectorSlug);
       const permissions = detailsBySlug.get(connectorSlug);
       if (!permissions) {
         return HttpResponse.json(

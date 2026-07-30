@@ -1165,7 +1165,7 @@ export function createConnectorBddApi(context: TestContext) {
       const client = setupApp({ context })(zeroConnectorsBySlugContract);
       return await accept(
         client.get({
-          params: { type: connectorSlug },
+          params: { connectorSlug },
           headers: authenticate(actor),
         }),
         statuses,
@@ -1193,7 +1193,7 @@ export function createConnectorBddApi(context: TestContext) {
       const client = setupApp({ context })(zeroConnectorsBySlugContract);
       await accept(
         client.delete({
-          params: { type: connectorSlug },
+          params: { connectorSlug },
           headers: authenticate(actor),
         }),
         statuses,
@@ -1208,7 +1208,7 @@ export function createConnectorBddApi(context: TestContext) {
       const client = setupApp({ context })(zeroConnectorScopeDiffContract);
       return await accept(
         client.getScopeDiff({
-          params: { type: connectorSlug },
+          params: { connectorSlug },
           headers: authenticate(actor),
         }),
         statuses,
@@ -1238,7 +1238,7 @@ export function createConnectorBddApi(context: TestContext) {
       const client = setupApp({ context })(zeroConnectorManualGrantContract);
       return await accept(
         client.connect({
-          params: { type: connectorSlug },
+          params: { connectorSlug },
           headers: authenticate(actor),
           body: {
             authMethod,
@@ -1283,7 +1283,7 @@ export function createConnectorBddApi(context: TestContext) {
       const client = setupApp({ context })(zeroConnectorOauthStartContract);
       return await accept(
         client.start({
-          params: { type: connectorSlug },
+          params: { connectorSlug },
           headers: authenticate(actor),
           body: {
             authMethod,
@@ -1322,7 +1322,7 @@ export function createConnectorBddApi(context: TestContext) {
       const client = setupApp({ context })(connectorsSlugCallbackContract);
       return await accept(
         client.callback({
-          params: { type: connectorSlug },
+          params: { connectorSlug },
           query,
           headers: {},
         }),
@@ -1337,7 +1337,7 @@ export function createConnectorBddApi(context: TestContext) {
       const client = setupApp({ context })(connectorsSlugCallbackContract);
       const response = await accept(
         client.callback({
-          params: { type: connectorSlug },
+          params: { connectorSlug },
           query: { ...query, responseMode: "json" },
           headers: {},
         }),
@@ -1442,7 +1442,7 @@ export function createConnectorBddApi(context: TestContext) {
       );
       return await accept(
         client.create({
-          params: { type: connectorSlug },
+          params: { connectorSlug },
           headers: authenticate(actor),
           body: { authMethod, options },
         }),
@@ -1479,7 +1479,7 @@ export function createConnectorBddApi(context: TestContext) {
       );
       return await accept(
         client.poll({
-          params: { type: connectorSlug, sessionId },
+          params: { connectorSlug, sessionId },
           headers: authenticate(actor),
           body: { sessionToken },
         }),
@@ -1515,7 +1515,7 @@ export function createConnectorBddApi(context: TestContext) {
       );
       return await accept(
         client.create({
-          params: { type: connectorSlug },
+          params: { connectorSlug },
           headers: authenticate(actor),
           body: { authMethod },
         }),
@@ -1538,7 +1538,7 @@ export function createConnectorBddApi(context: TestContext) {
       );
       return await accept(
         client.complete({
-          params: { type: connectorSlug, sessionId: args.sessionId },
+          params: { connectorSlug, sessionId: args.sessionId },
           headers: authenticate(actor),
           body: { sessionToken: args.sessionToken, code: args.code },
         }),

@@ -79,7 +79,7 @@ export async function getZeroConnectorCatalogPermissions(
   const client = initClient(zeroConnectorCatalogContract, config);
 
   const result = await client.permissions({
-    params: { connectorRef: connectorSlug },
+    params: { connectorSlug },
   });
 
   if (result.status === 200) {
@@ -120,7 +120,7 @@ export async function diagnoseZeroConnectorCheck(
 }
 
 /**
- * Get a connector by type (zero proxy)
+ * Get a connector by slug (zero proxy)
  * Returns null if not connected (404 response)
  */
 export async function getZeroConnector(
@@ -130,7 +130,7 @@ export async function getZeroConnector(
   const client = initClient(zeroConnectorsBySlugContract, config);
 
   const result = await client.get({
-    params: { type: connectorSlug },
+    params: { connectorSlug },
   });
 
   if (result.status === 200) {
@@ -153,7 +153,7 @@ export async function connectZeroConnectorManualGrant(
   const client = initClient(zeroConnectorManualGrantContract, config);
 
   const result = await client.connect({
-    params: { type: connectorSlug },
+    params: { connectorSlug },
     body: { authMethod, values },
   });
 

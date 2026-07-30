@@ -680,6 +680,7 @@ function connectorCatalogItem(
 ): PublicConnectorCatalogItem {
   return {
     connectorRef: effective.connector.slug,
+    slug: effective.connector.slug,
     label: effective.connector.label,
     description: effective.connector.description,
     icon: iconForCatalog(effective.connector),
@@ -938,6 +939,7 @@ export async function searchExternalConnectorCatalog(
     return [
       {
         id: connector.slug,
+        slug: connector.slug,
         label: connector.label,
         description: connector.description,
         authMethods: entry.authMethods.map((method) => {
@@ -1014,6 +1016,7 @@ export async function getExternalPublicConnectorCatalogPermissionDetail(
   );
   return {
     connectorRef: entry.connector.slug,
+    connectorSlug: entry.connector.slug,
     label: entry.connector.label,
     icon: iconForCatalog(entry.connector),
     permissionCount: permissions.length,

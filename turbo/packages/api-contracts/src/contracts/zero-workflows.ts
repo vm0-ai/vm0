@@ -1372,8 +1372,9 @@ export type ZeroWorkflowConnectorReadinessStatus = z.infer<
 
 export const zeroWorkflowConnectorReadinessEntrySchema = z
   .object({
-    // TODO(#23619): Rename this workflow readiness response field with clients.
+    // TODO(#23821): Remove this legacy response field after clients migrate.
     connectorRef: connectorSlugSchema,
+    connectorSlug: connectorSlugSchema.optional(),
     label: z.string().min(1),
     icon: publicConnectorCatalogIconSchema,
     reason: z.string().min(1),

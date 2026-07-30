@@ -134,7 +134,7 @@ export function createAuthDeviceSupportApi(context: TestContext) {
     ): Promise<ConnectorResponse> {
       const response = await accept(
         authDeviceSupportApp(context)(zeroConnectorsBySlugContract).get({
-          params: { type: connectorSlug },
+          params: { connectorSlug },
           headers: authenticate(context, actor),
         }),
         [200],

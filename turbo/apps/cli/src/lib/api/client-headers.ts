@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
+  addClientCapabilityToVersion,
+  CLIENT_CAPABILITY_CONNECTOR_SLUG_IDENTITIES,
   CLIENT_REQUEST_ID_HEADER,
   CLIENT_SESSION_ID_HEADER,
   CLIENT_TYPE_CLI,
@@ -33,7 +35,10 @@ export function createCliClientHeaderInjector(options: {
 }
 
 const addDefaultCliClientHeaders = createCliClientHeaderInjector({
-  clientVersion: __CLI_VERSION__,
+  clientVersion: addClientCapabilityToVersion(
+    __CLI_VERSION__,
+    CLIENT_CAPABILITY_CONNECTOR_SLUG_IDENTITIES,
+  ),
 });
 
 function addCliClientHeaders(headers: Headers): void {

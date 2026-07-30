@@ -1337,7 +1337,7 @@ describe("chat event action cards", () => {
     context.mocks.api(
       zeroConnectorOauthStartContract.start,
       ({ body, params, respond }) => {
-        expect(params.type).toBe("gmail");
+        expect(params.connectorSlug).toBe("gmail");
         expect(body).toStrictEqual({
           authMethod: "oauth",
           agentId: AGENT_ID,
@@ -1559,7 +1559,7 @@ describe("chat event action cards", () => {
       zeroConnectorNoAuthGrantContract.connect,
       ({ body, params, respond }) => {
         connectCalls += 1;
-        expect(params.type).toBe("stripe");
+        expect(params.connectorSlug).toBe("stripe");
         expect(body).toStrictEqual({
           authMethod: "api",
           agentId: AGENT_ID,
@@ -1758,7 +1758,7 @@ describe("chat event action cards", () => {
       zeroConnectorOauthStartContract.start,
       ({ params, respond }) => {
         oauthStartRequests += 1;
-        expect(params.type).toBe("gmail");
+        expect(params.connectorSlug).toBe("gmail");
         return respond(200, {
           authorizationUrl: "https://accounts.google.test/oauth",
         });
@@ -1962,7 +1962,7 @@ describe("chat event action cards", () => {
     context.mocks.api(
       zeroConnectorCatalogContract.permissions,
       ({ params, respond }) => {
-        expect(params.connectorRef).toBe("slack");
+        expect(params.connectorSlug).toBe("slack");
         return respond(200, {
           permissions: catalogPermissionDetail({
             connectorRef: "slack",
@@ -2103,7 +2103,7 @@ describe("chat event action cards", () => {
     context.mocks.api(
       zeroConnectorCatalogContract.permissions,
       ({ params, respond }) => {
-        expect(params.connectorRef).toBe("google-sheets");
+        expect(params.connectorSlug).toBe("google-sheets");
         return respond(200, {
           permissions: catalogPermissionDetail({
             connectorRef: "google-sheets",
@@ -2500,7 +2500,7 @@ describe("chat event action cards", () => {
     context.mocks.api(
       zeroConnectorManualGrantContract.connect,
       ({ body, params, respond }) => {
-        expect(params.type).toBe("future-connector");
+        expect(params.connectorSlug).toBe("future-connector");
         expect(body.agentId).toBe(AGENT_ID);
         expect(body.authorizeAgent).toBeTruthy();
         connected = true;

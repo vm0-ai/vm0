@@ -98,7 +98,7 @@ describe("permission allow page", () => {
     context.mocks.api(
       zeroConnectorCatalogContract.permissions,
       ({ params, respond }) => {
-        expect(params.connectorRef).toBe("slack");
+        expect(params.connectorSlug).toBe("slack");
         return respond(200, {
           permissions: catalogPermissionDetail({
             connectorRef: "slack",
@@ -504,7 +504,7 @@ describe("permission allow page", () => {
     context.mocks.api(
       zeroConnectorCatalogContract.permissions,
       ({ params, respond }) => {
-        expect(params.connectorRef).toBe("slack");
+        expect(params.connectorSlug).toBe("slack");
         return respond(200, {
           permissions: catalogPermissionDetail({
             connectorRef: "slack",

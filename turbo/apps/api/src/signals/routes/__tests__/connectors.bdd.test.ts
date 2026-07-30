@@ -101,6 +101,7 @@ function expectConnectorErrorRedirect(
   const url = redirectLocation(response);
   expect(url.pathname).toBe("/connector/error");
   expect(url.searchParams.get("type")).toBe(args.connectorSlug);
+  expect(url.searchParams.get("connectorSlug")).toBe(args.connectorSlug);
   expect(url.searchParams.get("message")).toBe(args.message);
 }
 
@@ -584,6 +585,7 @@ describe("CONN-02: OAuth device authorization", () => {
     );
     expect(session).toMatchObject({
       type: "test-oauth-device",
+      connectorSlug: "test-oauth-device",
       status: "pending",
       userCode: "TEST-DEVICE",
       verificationUri: "https://oauth-device.test/device",
@@ -2906,6 +2908,7 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
     const successUrl = redirectLocation(success);
     expect(successUrl.pathname).toBe("/connector/success");
     expect(successUrl.searchParams.get("type")).toBe("github");
+    expect(successUrl.searchParams.get("connectorSlug")).toBe("github");
     expect(successUrl.searchParams.get("username")).toBe("bdd-github-user");
 
     const connected = await connectorsApi.readConnectorBySlug(actor, "github");
@@ -3104,6 +3107,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
     const successUrl = redirectLocation(success);
     expect(successUrl.pathname).toBe("/connector/success");
     expect(successUrl.searchParams.get("type")).toBe("test-oauth");
+    expect(successUrl.searchParams.get("connectorSlug")).toBe("test-oauth");
     expect(successUrl.searchParams.get("username")).toBe("bdd-test-oauth");
 
     expect(provider.tokenBodies).toHaveLength(1);

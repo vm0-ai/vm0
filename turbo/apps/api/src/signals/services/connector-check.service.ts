@@ -1,7 +1,7 @@
 import type {
   ConnectorCheckDiagnosticResult,
   ConnectorCheckPolicy,
-  ConnectorCheckRequest,
+  NormalizedConnectorCheckRequest,
 } from "@vm0/api-contracts/contracts/zero-connector-check";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
@@ -51,8 +51,9 @@ import {
 type FeatureStates = ReturnType<typeof getAllFeatureStates>;
 
 interface ConnectorCheckIdentity {
-  // TODO(#23619): Rename this wire response field after API clients migrate.
+  // TODO(#23821): Remove this legacy response field after clients migrate.
   readonly connectorRef: ConnectorSlug;
+  readonly connectorSlug: ConnectorSlug;
   readonly label: string;
   readonly visibility: "available" | "unavailable";
   readonly credentialResolution: "network-boundary" | "none";
@@ -88,7 +89,7 @@ type ConnectorCheckTimeline =
   | { readonly kind: "run"; readonly context: RunContextResponse };
 
 interface ResolveConnectorCheckArgs {
-  readonly request: ConnectorCheckRequest;
+  readonly request: NormalizedConnectorCheckRequest;
   readonly orgId: string;
   readonly userId: string;
   readonly stateSource:
@@ -156,6 +157,7 @@ function connectorIdentity(
   }
   return {
     connectorRef: connectorSlug,
+    connectorSlug,
     label: connector.catalogConnector.label,
     visibility: catalogContext.visibleConnectorSlugs.has(connectorSlug)
       ? "available"
@@ -971,6 +973,7 @@ function ambiguousDiagnostic(
       }
       return {
         connectorRef: candidate,
+        connectorSlug: candidate,
         label: connector.catalogConnector.label,
       };
     }),
@@ -1046,7 +1049,10 @@ function selectUrlEnvironmentNames(args: {
 }
 
 interface ResolvedUrlDiagnosticArgs {
-  readonly request: Extract<ConnectorCheckRequest, { readonly mode: "url" }>;
+  readonly request: Extract<
+    NormalizedConnectorCheckRequest,
+    { readonly mode: "url" }
+  >;
   readonly parsed: ParsedConnectorDiagnosticRequest;
   readonly decision: Exclude<
     FirewallRequestDecision,
@@ -1078,8 +1084,8 @@ function resolvedUrlDiagnostic(
   }
   const connectorSlug = decision.firewallName;
   if (
-    request.connectorRef !== undefined &&
-    connectorSlug !== request.connectorRef
+    request.connectorSlug !== undefined &&
+    connectorSlug !== request.connectorSlug
   ) {
     return {
       outcome: "connector-mismatch",
@@ -1121,12 +1127,12 @@ function resolvedUrlDiagnostic(
 }
 
 async function resolveUrlMode(
-  request: Extract<ConnectorCheckRequest, { readonly mode: "url" }>,
+  request: Extract<NormalizedConnectorCheckRequest, { readonly mode: "url" }>,
   parsed: ParsedConnectorDiagnosticRequest,
   timeline: ConnectorCheckTimeline,
   catalogContext: ConnectorCheckCatalogContext,
 ): Promise<ConnectorCheckDiagnosticResult> {
-  const requestedConnectorSlug = request.connectorRef;
+  const requestedConnectorSlug = request.connectorSlug;
   if (
     requestedConnectorSlug !== undefined &&
     !isConnectorSlug(catalogContext.snapshot, requestedConnectorSlug)
@@ -1175,7 +1181,10 @@ async function resolveUrlMode(
 }
 
 async function resolveEnvironmentMode(
-  request: Extract<ConnectorCheckRequest, { readonly mode: "environment" }>,
+  request: Extract<
+    NormalizedConnectorCheckRequest,
+    { readonly mode: "environment" }
+  >,
   timeline: ConnectorCheckTimeline,
   catalogContext: ConnectorCheckCatalogContext,
 ): Promise<ConnectorCheckDiagnosticResult> {

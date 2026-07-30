@@ -1034,7 +1034,7 @@ describe("connectors page", () => {
     context.mocks.api(
       zeroConnectorOauthStartContract.start,
       ({ body, params, respond }) => {
-        expect(params.type).toBe("meta-ads");
+        expect(params.connectorSlug).toBe("meta-ads");
         expect(body.callbackTarget).toBe("app");
         return respond(200, {
           authorizationUrl: "https://oauth.test/meta-ads/authorize",
@@ -1117,7 +1117,7 @@ describe("connectors page", () => {
     context.mocks.api(
       zeroConnectorScopeDiffContract.getScopeDiff,
       ({ params, respond }) => {
-        expect(params.type).toBe("google-ads");
+        expect(params.connectorSlug).toBe("google-ads");
         return respond(200, {
           addedScopes,
           removedScopes: [],
@@ -1678,7 +1678,7 @@ describe("connectors page", () => {
     context.mocks.api(
       zeroConnectorOauthStartContract.start,
       ({ body, params, respond }) => {
-        expect(params.type).toBe("google-maps");
+        expect(params.connectorSlug).toBe("google-maps");
         expect(body.callbackTarget).toBe("app");
         return respond(200, {
           authorizationUrl: "https://oauth.test/google-maps/authorize",
@@ -1712,7 +1712,7 @@ describe("connectors page", () => {
       zeroConnectorOauthStartContract.start,
       ({ params, respond }) => {
         return respond(200, {
-          authorizationUrl: `https://oauth.test/${params.type}/authorize`,
+          authorizationUrl: `https://oauth.test/${params.connectorSlug}/authorize`,
         });
       },
     );
@@ -1785,7 +1785,7 @@ describe("connectors page", () => {
       context.mocks.api(
         zeroConnectorOauthStartContract.start,
         ({ body, params, respond }) => {
-          expect(params.type).toBe(connectorSlug);
+          expect(params.connectorSlug).toBe(connectorSlug);
           expect(body.callbackTarget).toBe("app");
           return respond(200, {
             authorizationUrl: `https://oauth.test/${connectorSlug}/authorize`,
@@ -1829,7 +1829,7 @@ describe("connectors page", () => {
     context.mocks.api(
       zeroConnectorOauthStartContract.start,
       ({ body, params, respond }) => {
-        expect(params.type).toBe("slack");
+        expect(params.connectorSlug).toBe("slack");
         expect(body.callbackTarget).toBeUndefined();
         return respond(200, {
           authorizationUrl: "https://oauth.test/slack/authorize",
@@ -1878,7 +1878,7 @@ describe("connectors page", () => {
     context.mocks.api(
       zeroConnectorOpenIdStartContract.start,
       ({ body, params, respond }) => {
-        expect(params.type).toBe(connectorSlug);
+        expect(params.connectorSlug).toBe(connectorSlug);
         expect(body.authMethod).toBe(authMethod);
         return respond(200, {
           authorizationUrl: "https://openid.test/partner-steam/authorize",
@@ -1944,7 +1944,7 @@ describe("connectors page", () => {
       ({ params, respond }) => {
         startCount += 1;
         return respond(200, {
-          authorizationUrl: `https://oauth.test/${params.type}/authorize`,
+          authorizationUrl: `https://oauth.test/${params.connectorSlug}/authorize`,
         });
       },
     );
@@ -2111,7 +2111,7 @@ describe("connectors page", () => {
     context.mocks.api(
       zeroConnectorOauthStartContract.start,
       ({ body, params, respond }) => {
-        expect(params.type).toBe("stripe");
+        expect(params.connectorSlug).toBe("stripe");
         expect(body?.authMethod).toBe("oauth");
         return respond(200, {
           authorizationUrl: "https://oauth.test/stripe/authorize",
@@ -2206,13 +2206,13 @@ describe("connectors page", () => {
       zeroConnectorNoAuthGrantContract.connect,
       ({ body, params, respond }) => {
         connectCount += 1;
-        expect(params.type).toBe("stripe");
+        expect(params.connectorSlug).toBe("stripe");
         expect(body.authMethod).toBe("api");
         expect(body.authorizeAgent).toBeTruthy();
         expect(body.agentId).toBeUndefined();
         return respond(200, {
           id: crypto.randomUUID(),
-          type: params.type,
+          type: params.connectorSlug,
           authMethod: body.authMethod,
           externalId: null,
           externalUsername: null,
@@ -2294,11 +2294,11 @@ describe("connectors page", () => {
       zeroConnectorNoAuthGrantContract.connect,
       ({ body, params, respond }) => {
         connectCount += 1;
-        expect(params.type).toBe("stripe");
+        expect(params.connectorSlug).toBe("stripe");
         expect(body.authMethod).toBe("api");
         return respond(200, {
           id: crypto.randomUUID(),
-          type: params.type,
+          type: params.connectorSlug,
           authMethod: body.authMethod,
           externalId: null,
           externalUsername: null,
@@ -2431,7 +2431,7 @@ describe("connectors page", () => {
       zeroConnectorOauthDeviceAuthSessionContract.create,
       ({ body, params, respond }) => {
         startCount += 1;
-        expect(params.type).toBe("stripe");
+        expect(params.connectorSlug).toBe("stripe");
         capturedOptions = body.options ?? null;
         return respond(200, {
           sessionId: "00000000-0000-4000-8000-000000000010",
@@ -2559,7 +2559,7 @@ describe("connectors page", () => {
       zeroConnectorManualGrantContract.connect,
       ({ body, params, respond }) => {
         submitCount += 1;
-        expect(params.type).toBe("axiom");
+        expect(params.connectorSlug).toBe("axiom");
         submittedValues = body.values;
         return respond(200, {
           id: crypto.randomUUID(),
@@ -2649,7 +2649,7 @@ describe("connectors page", () => {
     context.mocks.api(
       zeroConnectorManualGrantContract.connect,
       ({ body, params, respond }) => {
-        expect(params.type).toBe("axiom");
+        expect(params.connectorSlug).toBe("axiom");
         expect(body.values).toStrictEqual({ apiToken: "xaat-test" });
         catalogStatusItems = [
           {
@@ -2899,7 +2899,7 @@ describe("connectors page", () => {
         expect(body.agentId).toBeUndefined();
         return respond(200, {
           id: crypto.randomUUID(),
-          type: params.type,
+          type: params.connectorSlug,
           authMethod: body.authMethod,
           externalId: null,
           externalUsername: null,
@@ -3012,7 +3012,7 @@ describe("connectors page", () => {
       ({ body, params, respond }) => {
         return respond(200, {
           id: crypto.randomUUID(),
-          type: params.type,
+          type: params.connectorSlug,
           authMethod: body.authMethod,
           externalId: null,
           externalUsername: null,

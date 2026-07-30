@@ -85,7 +85,7 @@ async function deleteConnector(
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
     setupApp({ context })(zeroConnectorsBySlugContract).delete({
-      params: { type: connectorSlug },
+      params: { connectorSlug },
       headers: authHeaders(),
     }),
     [204, 404],
@@ -106,14 +106,14 @@ async function readConnector(
   mocks.clerk.session(fixture.userId, fixture.orgId);
   return await accept(
     setupApp({ context })(zeroConnectorsBySlugContract).get({
-      params: { type: connectorSlug },
+      params: { connectorSlug },
       headers: authHeaders(),
     }),
     [200],
   );
 }
 
-describe("POST /api/zero/connectors/:type/manual-grant", () => {
+describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
   const fixtures: AuthenticatedFixture[] = [];
 
   afterEach(async () => {
@@ -135,7 +135,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     const client = setupApp({ context })(zeroConnectorManualGrantContract);
     const response = await accept(
       client.connect({
-        params: { type: "openai" },
+        params: { connectorSlug: "openai" },
         body: { authMethod: "api-token", values: { apiKey: "sk-test" } },
         headers: {},
       }),
@@ -151,7 +151,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     const client = setupApp({ context })(zeroConnectorManualGrantContract);
     const response = await accept(
       client.connect({
-        params: { type: "openai" },
+        params: { connectorSlug: "openai" },
         body: { authMethod: "api-token", values: { apiKey: "sk-test" } },
         headers: { authorization: "Bearer clerk-session" },
       }),
@@ -188,7 +188,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
     const response = await accept(
       client.connect({
-        params: { type: connectorSlug },
+        params: { connectorSlug },
         body: { authMethod, values: { apiKey: "secret" } },
         headers: authHeaders(),
       }),
@@ -235,7 +235,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
     const response = await accept(
       client.connect({
-        params: { type: "openai" },
+        params: { connectorSlug: "openai" },
         body: {
           authMethod: "api-token",
           values: { apiKey: " sk-test\n" },
@@ -266,7 +266,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
     const response = await accept(
       client.connect({
-        params: { type: "zendesk" },
+        params: { connectorSlug: "zendesk" },
         body: {
           authMethod: "api-token",
           values: {
@@ -317,7 +317,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     const fixture = await seedFixture();
     await accept(
       setupApp({ context })(zeroConnectorManualGrantContract).connect({
-        params: { type: "zendesk" },
+        params: { connectorSlug: "zendesk" },
         body: {
           authMethod: "api-token",
           values: {
@@ -367,7 +367,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
     const response = await accept(
       setupApp({ context })(zeroConnectorManualGrantContract).connect({
-        params: { type: "openai" },
+        params: { connectorSlug: "openai" },
         headers: authHeaders(),
         body: {
           authMethod: "api-token",
@@ -427,7 +427,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
     const response = await accept(
       client.connect({
-        params: { type: "insforge" },
+        params: { connectorSlug: "insforge" },
         body: {
           authMethod: "api-token",
           values: {
@@ -455,7 +455,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
     const response = await accept(
       client.connect({
-        params: { type: "lark" },
+        params: { connectorSlug: "lark" },
         body: {
           authMethod: "api-token",
           values: {
@@ -484,7 +484,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     const client = setupApp({ context })(zeroConnectorManualGrantContract);
     await accept(
       client.connect({
-        params: { type: "lark" },
+        params: { connectorSlug: "lark" },
         body: {
           authMethod: "api-token",
           values: {
@@ -499,7 +499,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
     await accept(
       client.connect({
-        params: { type: "lark" },
+        params: { connectorSlug: "lark" },
         body: {
           authMethod: "api-token",
           values: {
@@ -529,7 +529,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     const client = setupApp({ context })(zeroConnectorManualGrantContract);
     await accept(
       client.connect({
-        params: { type: "test-oauth" },
+        params: { connectorSlug: "test-oauth" },
         body: {
           authMethod: "api-token",
           values: {
@@ -545,7 +545,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
     await accept(
       client.connect({
-        params: { type: "test-oauth" },
+        params: { connectorSlug: "test-oauth" },
         body: {
           authMethod: "api-token",
           values: {
@@ -568,7 +568,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     const client = setupApp({ context })(zeroConnectorManualGrantContract);
     await accept(
       client.connect({
-        params: { type: "gitlab" },
+        params: { connectorSlug: "gitlab" },
         body: {
           authMethod: "api-token",
           values: {
@@ -583,7 +583,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
     await accept(
       client.connect({
-        params: { type: "gitlab" },
+        params: { connectorSlug: "gitlab" },
         body: {
           authMethod: "api-token",
           values: { accessToken: "new-token" },
@@ -607,7 +607,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
     const response = await accept(
       client.connect({
-        params: { type: "openai" },
+        params: { connectorSlug: "openai" },
         body: {
           authMethod: "api-token",
           values: { OPENAI_TOKEN: "sk-private" },
@@ -628,7 +628,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
     const response = await accept(
       client.connect({
-        params: { type: "openai" },
+        params: { connectorSlug: "openai" },
         body: {
           authMethod: "api-token",
           values: {
@@ -654,7 +654,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
     const response = await accept(
       client.connect({
-        params: { type: "openai" },
+        params: { connectorSlug: "openai" },
         body: { authMethod: "api-token", values: {} },
         headers: { authorization: "Bearer clerk-session" },
       }),
@@ -671,7 +671,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
     const response = await accept(
       client.connect({
-        params: { type: "openai" },
+        params: { connectorSlug: "openai" },
         body: { authMethod: "api-token", values: { apiKey: " \n\t " } },
         headers: { authorization: "Bearer clerk-session" },
       }),
@@ -688,7 +688,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
     const response = await accept(
       client.connect({
-        params: { type: "github" },
+        params: { connectorSlug: "github" },
         body: { authMethod: "api-token", values: {} },
         headers: { authorization: "Bearer clerk-session" },
       }),
@@ -706,7 +706,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
     const response = await accept(
       client.connect({
-        params: { type: "stripe" },
+        params: { connectorSlug: "stripe" },
         body: { authMethod: "oauth", values: { apiKey: "sk_test_key" } },
         headers: { authorization: "Bearer clerk-session" },
       }),
@@ -724,7 +724,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
     const response = await accept(
       client.connect({
-        params: { type: "bentoml" },
+        params: { connectorSlug: "bentoml" },
         body: {
           authMethod: "api-token",
           values: {
@@ -750,7 +750,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
     const response = await accept(
       client.connect({
-        params: { type: "cloudflare" },
+        params: { connectorSlug: "cloudflare" },
         body: { authMethod: "api-token", values: {} },
         headers: { authorization: "Bearer clerk-session" },
       }),
@@ -770,7 +770,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
     await accept(
       client.connect({
-        params: { type: "openai" },
+        params: { connectorSlug: "openai" },
         body: { authMethod: "api-token", values: { apiKey: "sk-test" } },
         headers: { authorization: "Bearer clerk-session" },
       }),
@@ -780,7 +780,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     expect(context.mocks.ably.publish).toHaveBeenCalledTimes(1);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "connector:changed",
-      { connectorRef: "openai" },
+      { connectorRef: "openai", connectorSlug: "openai" },
     );
   });
 
@@ -793,7 +793,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
     const response = await accept(
       client.connect({
-        params: { type: "bentoml" },
+        params: { connectorSlug: "bentoml" },
         body: {
           authMethod: "api-token",
           values: {

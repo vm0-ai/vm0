@@ -70,7 +70,7 @@ describe("connector callback page", () => {
     context.mocks.api(
       connectorsSlugCallbackContract.callback,
       ({ params, query, respond }) => {
-        expect(params.type).toBe("github");
+        expect(params.connectorSlug).toBe("github");
         observedQuery = query;
         return respond(200, {
           status: "success",

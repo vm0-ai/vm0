@@ -28,7 +28,7 @@ export function firewallPermissionMetadataByConnector(
     const client = createClient(zeroConnectorCatalogContract);
     const result = await accept(
       client.permissions({
-        params: { connectorRef: key },
+        params: { connectorSlug: key },
       }),
       [200, 404],
     );

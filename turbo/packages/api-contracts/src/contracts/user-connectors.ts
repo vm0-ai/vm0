@@ -11,19 +11,66 @@ const c = initContract();
  * agent.
  */
 export const userConnectorEnabledSlugsSchema = z.object({
-  // TODO(#23619): Rename this user-connector wire field after clients migrate.
+  // TODO(#23821): Remove this legacy wire field after clients migrate.
   enabledTypes: z.array(connectorSlugSchema),
+  enabledConnectorSlugs: z.array(connectorSlugSchema).optional(),
 });
 export type UserConnectorEnabledSlugs = z.infer<
   typeof userConnectorEnabledSlugsSchema
 >;
 
-export const userConnectorUpdateSchema = userConnectorEnabledSlugsSchema.extend(
-  {
+function sameConnectorSlugs(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((value, index) => {
+      return value === right[index];
+    })
+  );
+}
+
+export const userConnectorUpdateSchema = z
+  .object({
+    // TODO(#23821): Remove this legacy wire field after clients migrate.
+    enabledTypes: z.array(connectorSlugSchema).optional(),
+    enabledConnectorSlugs: z.array(connectorSlugSchema).optional(),
     operation: z.enum(["replace", "add", "remove"]).optional(),
-  },
-);
-export type UserConnectorUpdate = z.infer<typeof userConnectorUpdateSchema>;
+  })
+  .superRefine((request, ctx) => {
+    if (
+      request.enabledTypes === undefined &&
+      request.enabledConnectorSlugs === undefined
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "enabledTypes or enabledConnectorSlugs is required",
+        path: ["enabledConnectorSlugs"],
+      });
+    }
+    if (
+      request.enabledTypes !== undefined &&
+      request.enabledConnectorSlugs !== undefined &&
+      !sameConnectorSlugs(request.enabledTypes, request.enabledConnectorSlugs)
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "enabledTypes and enabledConnectorSlugs must match",
+        path: ["enabledConnectorSlugs"],
+      });
+    }
+  })
+  .transform(({ enabledTypes, enabledConnectorSlugs, ...request }) => {
+    const normalizedConnectorSlugs =
+      enabledConnectorSlugs ?? enabledTypes ?? [];
+    return {
+      ...request,
+      enabledTypes: normalizedConnectorSlugs,
+      enabledConnectorSlugs: normalizedConnectorSlugs,
+    };
+  });
+export type UserConnectorUpdate = z.input<typeof userConnectorUpdateSchema>;
 
 /**
  * Contract for GET/PUT /api/zero/agents/:id/user-connectors

@@ -1689,7 +1689,7 @@ describe("connector catalog valid lifecycle", () => {
 
     const detail = await accept(
       catalogClient.get({
-        params: { connectorRef: release.connectorSlug },
+        params: { connectorSlug: release.connectorSlug },
         headers,
       }),
       [200],
@@ -1710,7 +1710,7 @@ describe("connector catalog valid lifecycle", () => {
 
     const permissions = await accept(
       catalogClient.permissions({
-        params: { connectorRef: release.connectorSlug },
+        params: { connectorSlug: release.connectorSlug },
         headers,
       }),
       [200],
@@ -1754,6 +1754,7 @@ describe("connector catalog valid lifecycle", () => {
     expect(search.body.connectors).toStrictEqual([
       {
         id: release.connectorSlug,
+        slug: release.connectorSlug,
         label: "External Test",
         description: "An external connector used only by the sync fixture",
         authMethods: ["api-token"],
@@ -1801,7 +1802,7 @@ describe("connector catalog valid lifecycle", () => {
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const response = await accept(
       setupApp({ context })(zeroConnectorCatalogContract).permissions({
-        params: { connectorRef: release.connectorSlug },
+        params: { connectorSlug: release.connectorSlug },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -1828,7 +1829,7 @@ describe("connector catalog valid lifecycle", () => {
       accept(catalogClient.list({ headers }), [200]),
       accept(
         catalogClient.get({
-          params: { connectorRef: release.connectorSlug },
+          params: { connectorSlug: release.connectorSlug },
           headers,
         }),
         [200],
@@ -3387,7 +3388,7 @@ describe("connector catalog valid lifecycle", () => {
     const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
     const start = await accept(
       setupApp({ context })(zeroConnectorOpenIdStartContract).start({
-        params: { type: "steam" },
+        params: { connectorSlug: "steam" },
         headers,
         body: { authMethod: "openid" },
       }),
@@ -3396,7 +3397,7 @@ describe("connector catalog valid lifecycle", () => {
     mockSteamOpenIdVerification();
     await accept(
       setupApp({ context })(connectorsSlugCallbackContract).callback({
-        params: { type: "steam" },
+        params: { connectorSlug: "steam" },
         headers: {},
         query: steamOpenIdCallbackQuery(start.body.authorizationUrl),
       }),
@@ -3929,6 +3930,7 @@ describe("connector catalog valid lifecycle", () => {
     expect(readiness.body.connectors).toStrictEqual([
       {
         connectorRef: "gmail",
+        connectorSlug: "gmail",
         label: "Catalog Gmail",
         icon: {
           url: expect.stringMatching(

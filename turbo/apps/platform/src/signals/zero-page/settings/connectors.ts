@@ -759,7 +759,7 @@ export const scopeDiff$ = computed(async (get) => {
   const createClient = get(zeroClient$);
   const client = createClient(zeroConnectorScopeDiffContract);
   const result = await accept(
-    client.getScopeDiff({ params: { type: connectorSlug } }),
+    client.getScopeDiff({ params: { connectorSlug } }),
     [200],
   );
   return result.body;
@@ -938,7 +938,7 @@ export const submitManualGrant$ = command(
         const connectorClient = createClient(zeroConnectorManualGrantContract);
         await accept(
           connectorClient.connect({
-            params: { type: connectorSlug },
+            params: { connectorSlug },
             body: {
               authMethod,
               authorizeAgent: true,
@@ -1011,7 +1011,7 @@ export const connectConnectorNoAuth$ = command(
         const connectorClient = createClient(zeroConnectorNoAuthGrantContract);
         await accept(
           connectorClient.connect({
-            params: { type: connectorSlug },
+            params: { connectorSlug },
             body: {
               authMethod,
               authorizeAgent: true,
@@ -1365,7 +1365,7 @@ const pollConnectorOAuthDeviceAuthOnce$ = command(
 
         const pollResponse = await accept(
           client.poll({
-            params: { type: connectorSlug, sessionId: current.sessionId },
+            params: { connectorSlug, sessionId: current.sessionId },
             body: { sessionToken: current.sessionToken },
             fetchOptions: { signal },
           }),
@@ -1557,7 +1557,7 @@ const connectConnectorOAuthDeviceAuth$ = command(
         const startResponse = await tapError(
           accept(
             client.create({
-              params: { type: connectorSlug },
+              params: { connectorSlug },
               body: connectorOAuthDeviceAuthStartBody(args),
               fetchOptions: { signal: flowSignal },
             }),
@@ -1808,7 +1808,7 @@ export const connectConnectorExternalCode$ = command(
         const startResponse = await tapError(
           accept(
             client.create({
-              params: { type: connectorSlug },
+              params: { connectorSlug },
               body: {
                 authMethod,
                 authorizeAgent: true,
@@ -1923,7 +1923,7 @@ const completeConnectorExternalCode$ = command(
         });
         const completeResult = await accept(
           client.complete({
-            params: { type: connectorSlug, sessionId: current.sessionId },
+            params: { connectorSlug, sessionId: current.sessionId },
             body: {
               sessionToken: current.sessionToken,
               code,
@@ -2172,7 +2172,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
                 get(zeroClient$)(zeroConnectorOpenIdStartContract, {
                   apiBase: "api",
                 }).start({
-                  params: { type: args.connectorSlug },
+                  params: { connectorSlug: args.connectorSlug },
                   body: {
                     authMethod: args.method.id,
                     authorizeAgent: true,
@@ -2186,7 +2186,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
                 get(zeroClient$)(zeroConnectorOauthStartContract, {
                   apiBase: OAUTH_API_BASE,
                 }).start({
-                  params: { type: args.connectorSlug },
+                  params: { connectorSlug: args.connectorSlug },
                   body: {
                     authMethod: args.method.id,
                     authorizeAgent: true,

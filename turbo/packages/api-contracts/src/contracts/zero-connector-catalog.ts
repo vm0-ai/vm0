@@ -58,8 +58,9 @@ const publicConnectorCatalogCategoryMetadataSchema = z.object({
 });
 
 const publicConnectorCatalogItemSchema = z.object({
-  // TODO(#23619): Rename catalog API fields after independent clients migrate.
+  // TODO(#23821): Remove this legacy API field after clients migrate.
   connectorRef: connectorSlugSchema,
+  slug: connectorSlugSchema.optional(),
   label: z.string(),
   description: z.string(),
   icon: publicConnectorCatalogIconSchema,
@@ -162,8 +163,9 @@ const publicConnectorCatalogDefaultPolicySchema = z.object({
 });
 
 const publicConnectorCatalogPermissionDetailSchema = z.object({
-  // TODO(#23619): Rename this catalog API field after clients migrate.
+  // TODO(#23821): Remove this legacy API field after clients migrate.
   connectorRef: connectorSlugSchema,
+  connectorSlug: connectorSlugSchema.optional(),
   label: z.string(),
   icon: publicConnectorCatalogIconSchema,
   permissionCount: z.number().int().nonnegative(),
@@ -177,8 +179,7 @@ const publicConnectorCatalogPermissionDetailResponseSchema = z.object({
 });
 
 const connectorCatalogPathParamsSchema = z.object({
-  // TODO(#23619): Rename this path parameter and route in a compatible rollout.
-  connectorRef: connectorSlugSchema,
+  connectorSlug: connectorSlugSchema,
 });
 
 export type PublicConnectorCatalogAuthMethodSummary = z.infer<
@@ -278,7 +279,7 @@ export const zeroConnectorCatalogContract = c.router({
   },
   get: {
     method: "GET",
-    path: "/api/zero/connector-catalog/:connectorRef",
+    path: "/api/zero/connector-catalog/:connectorSlug",
     headers: authHeadersSchema,
     pathParams: connectorCatalogPathParamsSchema,
     responses: {
@@ -293,7 +294,7 @@ export const zeroConnectorCatalogContract = c.router({
   },
   permissions: {
     method: "GET",
-    path: "/api/zero/connector-catalog/:connectorRef/permissions",
+    path: "/api/zero/connector-catalog/:connectorSlug/permissions",
     headers: authHeadersSchema,
     pathParams: connectorCatalogPathParamsSchema,
     responses: {

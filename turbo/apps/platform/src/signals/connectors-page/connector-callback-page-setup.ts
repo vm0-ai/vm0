@@ -168,7 +168,7 @@ const completeConnectorCallback$ = command(
     });
     const response = await accept(
       client.callback({
-        params: { type: connectorSlug },
+        params: { connectorSlug },
         query: { ...query, responseMode: "json" },
         fetchOptions: { signal },
       }),
