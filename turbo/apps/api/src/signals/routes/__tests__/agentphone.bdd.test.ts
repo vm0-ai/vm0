@@ -336,10 +336,9 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     // Completion converts markdown output to iMessage plain text, without
     // an audit link or a non-default-agent footer.
     const beforeCompletion = sends.messages.length;
-    ap.mockCompletionRunOutput(MARKDOWN_RUN_OUTPUT);
+    await ap.mockCompletionRunOutput(run1.runId, MARKDOWN_RUN_OUTPUT);
     await completeSandboxRun(run1.sandboxToken, run1.runId, 0);
     await waitForSendCount(sends, beforeCompletion + 1);
-    ap.restoreCompletionRunOutput();
     const completionReply = lastSend(sends);
     expect(completionReply.toNumber).toBe(phone);
     expect(completionReply.conversationId).toBeUndefined();

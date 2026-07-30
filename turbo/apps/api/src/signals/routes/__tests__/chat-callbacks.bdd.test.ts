@@ -488,6 +488,14 @@ async function completeChatRunOk(
   sandboxHeaders: { readonly authorization: string },
   options: { readonly lastEventSequence?: number } = {},
 ): Promise<void> {
+  const stagedOutputEvents = chatCallbacks.consumeMockChatOutputEvents();
+  if (stagedOutputEvents.length > 0) {
+    await webhooks.requestAgentEvents(
+      { runId, events: stagedOutputEvents },
+      sandboxHeaders,
+      [200],
+    );
+  }
   const historyHash = createHash("sha256")
     .update(`bdd chat session history ${runId}`)
     .digest("hex");
@@ -1380,9 +1388,7 @@ describe("CHAT-02: completed chat callback", () => {
       "api_dispatch_pre_create_zero_chat_callback_load_terminal",
       "api_dispatch_pre_create_zero_chat_callback_prepare_completed",
       "api_dispatch_pre_create_zero_chat_callback_load_db_output_state",
-      "api_dispatch_pre_create_zero_chat_callback_db_output_incomplete",
-      "api_dispatch_pre_create_zero_chat_callback_query_output_events",
-      "api_dispatch_pre_create_zero_chat_callback_insert_assistant_items",
+      "api_dispatch_pre_create_zero_chat_callback_db_output_complete",
       "api_dispatch_pre_create_zero_chat_callback_insert_lifecycle_marker",
       "api_dispatch_pre_create_zero_chat_callback_load_followup_context",
       "api_dispatch_pre_create_zero_chat_callback_auto_send_load_thread",
@@ -2084,12 +2090,11 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       ],
     );
     expectNoChatCallbackPreCreateTimingActions(timingEvents, [
-      "api_dispatch_pre_create_zero_chat_callback_query_output_events",
       "api_dispatch_pre_create_zero_chat_callback_insert_assistant_items",
     ]);
   }, 90_000);
 
-  it("falls back to Axiom when DB assistant output is not complete through the terminal sequence", async () => {
+  it("uses every acknowledged DB assistant event without Axiom repair", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -2115,11 +2120,23 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       sandboxHeaders,
       [200],
     );
-
-    chatCallbacks.mockChatOutputEvents([
-      assistantEvent(0, "Partial streamed answer"),
-      assistantEvent(1, "Terminal answer from Axiom"),
-    ]);
+    await webhooks.requestAgentEvents(
+      {
+        runId: run.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 1,
+            message: {
+              id: "msg_bdd_partial_1",
+              content: [{ type: "text", text: "Terminal DB answer" }],
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
     context.mocks.axiom.query.mockClear();
     await completeChatRunOk(run.runId, sandboxHeaders, {
       lastEventSequence: 1,
@@ -2132,124 +2149,64 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
         return eventBackedContents(threadMessages, run.runId).length === 2;
       },
     );
-    expect(chatOutputAxiomQueryCalls()).toHaveLength(1);
+    expect(chatOutputAxiomQueryCalls()).toHaveLength(0);
     expect(
       eventBackedContents(messages.events, run.runId).map((message) => {
         return message.content;
       }),
     ).toStrictEqual(
-      expect.arrayContaining([
-        "Partial streamed answer",
-        "Terminal answer from Axiom",
-      ]),
+      expect.arrayContaining(["Partial streamed answer", "Terminal DB answer"]),
     );
   }, 90_000);
 
-  it("repairs output after a duplicate-heavy full Axiom page", async () => {
+  it("does not query Axiom when repeated DB event batches are idempotent", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const run = await startChatRun(actor, {
       agentId,
-      prompt: "repair paginated output",
+      prompt: "repeat DB output",
     });
     const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
-    const logicalEvents = Array.from({ length: 206 }, (_, sequenceNumber) => {
-      return assistantEvent(sequenceNumber, `answer ${sequenceNumber}`);
-    });
-    const rawEvents = [
-      ...Array.from({ length: 200 }, () => {
-        return assistantEvent(0, "answer 0");
-      }),
-      ...logicalEvents.slice(1),
-    ];
-    const runContextSnapshot =
-      context.mocks.axiom.ingest.mock.calls
-        .filter(([dataset]) => {
-          return dataset === "run-context";
-        })
-        .flatMap(([, events]) => {
-          return Array.isArray(events) ? events : [];
-        })
-        .find((event) => {
-          return isRecord(event) && event.runId === run.runId;
-        }) ?? null;
-    context.mocks.axiom.query.mockImplementation((apl: unknown) => {
-      const query = typeof apl === "string" ? apl : "";
-      if (query.includes("['run-context']")) {
-        return Promise.resolve(
-          runContextSnapshot === null ? [] : [runContextSnapshot],
-        );
-      }
-      if (!query.includes("['agent-run-events']")) {
-        return Promise.resolve([]);
-      }
-      if (!query.includes('eventType == "assistant"')) {
-        return Promise.resolve(rawEvents);
-      }
-
-      const lowerBound = Number(
-        /sequenceNumber > (-?\d+)/.exec(query)?.[1] ?? "-1",
-      );
-      return Promise.resolve(
-        rawEvents
-          .filter((event) => {
-            return (
-              typeof event.sequenceNumber === "number" &&
-              event.sequenceNumber > lowerBound &&
-              event.sequenceNumber <= 205
-            );
-          })
-          .slice(0, 200),
-      );
-    });
+    const event = {
+      type: "assistant" as const,
+      sequenceNumber: 0,
+      message: {
+        id: "msg_bdd_repeated_db_output",
+        content: [{ type: "text" as const, text: "Stored once" }],
+      },
+    };
+    await webhooks.requestAgentEvents(
+      { runId: run.runId, events: [event] },
+      sandboxHeaders,
+      [200],
+    );
+    await webhooks.requestAgentEvents(
+      { runId: run.runId, events: [event] },
+      sandboxHeaders,
+      [200],
+    );
+    context.mocks.axiom.query.mockClear();
 
     await completeChatRunOk(run.runId, sandboxHeaders, {
-      lastEventSequence: 205,
+      lastEventSequence: 0,
     });
-    const latest = await waitForThreadMessages(
+    const messages = await waitForThreadMessages(
       actor,
       run.threadId,
-      (messages) => {
-        return eventBackedContents(messages, run.runId).some((message) => {
-          return message.sequenceNumber === 205;
-        });
+      (threadMessages) => {
+        return eventBackedContents(threadMessages, run.runId).length === 1;
       },
     );
     expect(
-      eventBackedContents(latest.events, run.runId).find((message) => {
-        return message.sequenceNumber === 205;
-      })?.content,
-    ).toBe("answer 205");
-    expect(chatOutputAxiomQueryCalls()).toHaveLength(3);
-
-    const allMessages: ChatEventResponse[] = [];
-    let beforeSeqId: number | undefined;
-    while (true) {
-      const page = await chat.listThreadEvents(actor, run.threadId, {
-        ...(beforeSeqId === undefined ? {} : { beforeSeqId }),
-        limit: 50,
-      });
-      allMessages.push(...page.events);
-      if (page.events[0]?.seqId === 1) {
-        break;
-      }
-      beforeSeqId = page.events[0]?.seqId;
-      if (beforeSeqId === undefined) {
-        throw new Error("Expected a pagination cursor");
-      }
-    }
-
-    const repaired = eventBackedContents(allMessages, run.runId);
-    expect(repaired).toHaveLength(206);
-    expect(
-      repaired.filter((message) => {
-        return message.sequenceNumber === 0;
+      eventBackedContents(messages.events, run.runId).map((message) => {
+        return message.content;
       }),
-    ).toHaveLength(1);
+    ).toStrictEqual(["Stored once"]);
+    expect(chatOutputAxiomQueryCalls()).toHaveLength(0);
   }, 90_000);
 
-  it("returns the event ACK before a locked live projection times out", async () => {
+  it("returns 503 when the required DB output projection is locked", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const run = await startChatRun(actor, {
       agentId,
@@ -2275,24 +2232,22 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
             sequenceNumber: 0,
             message: {
               id: "msg_locked_projection",
-              content: [{ type: "text", text: "must remain best effort" }],
+              content: [{ type: "text", text: "must be durable" }],
             },
           },
         ],
       },
       sandboxHeaders,
-      [200],
+      [503],
     );
-    expect(response.status).toBe(200);
-    await expect.poll(held.blockedWaiterCount).toBeGreaterThanOrEqual(1);
+    expect(response.status).toBe(503);
 
-    await flushWaitUntilForTest();
     const messages = await chat.listThreadEvents(actor, run.threadId);
     expect(eventBackedContents(messages.events, run.runId)).toHaveLength(0);
     expect(
       context.mocks.axiomLogging.error.mock.calls.some(([message, fields]) => {
         return (
-          message === 'Optional event consumer "chat-assistant" failed' &&
+          message === "Required database run output projection failed" &&
           isRecord(fields) &&
           fields.runId === run.runId
         );
@@ -2302,7 +2257,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     await held.done;
   }, 30_000);
 
-  it("keeps accepted projection independent of the route deadline", async () => {
+  it("returns the route deadline while a required DB projection remains blocked", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const run = await startChatRun(actor, {
       agentId,
@@ -2323,7 +2278,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       await held.done;
     });
 
-    const response = await webhooks.requestAgentEvents(
+    const pending = webhooks.requestAgentEvents(
       {
         runId: run.runId,
         events: [
@@ -2338,52 +2293,29 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
         ],
       },
       sandboxHeaders,
-      [200],
+      [503],
     );
-    expect(response.status).toBe(200);
     await expect.poll(held.blockedWaiterCount).toBeGreaterThanOrEqual(1);
 
     routeDeadline.abort(
       new DOMException("event route deadline", "TimeoutError"),
     );
+    const response = await pending;
+    expect(response.status).toBe(503);
     held.release();
     await held.done;
-    await flushWaitUntilForTest();
 
     const messages = await chat.listThreadEvents(actor, run.threadId);
-    expect(
-      eventBackedContents(messages.events, run.runId).map((message) => {
-        return {
-          content: message.content,
-          sequenceNumber: message.sequenceNumber,
-        };
-      }),
-    ).toStrictEqual([
-      {
-        content: "Persist after the ACK.",
-        sequenceNumber: 0,
-      },
-    ]);
+    expect(eventBackedContents(messages.events, run.runId)).toHaveLength(0);
   }, 30_000);
 
-  it("skips live projection instead of queueing past its pool budget", async () => {
+  it("persists concurrent event batches instead of skipping output projection", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const run = await startChatRun(actor, {
       agentId,
       prompt: "saturate live projection admission",
     });
     const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
-    const held = await holdChatEventInsertTransactionFixture({
-      threadId: run.threadId,
-      content: "hold every admitted projection",
-      signal: context.signal,
-    });
-    onTestFinished(async () => {
-      held.release();
-      await held.done;
-    });
-    context.mocks.axiomLogging.warn.mockClear();
-
     await Promise.all(
       Array.from({ length: 6 }, (_, sequenceNumber) => {
         return webhooks.requestAgentEvents(
@@ -2411,23 +2343,8 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       }),
     );
 
-    await expect
-      .poll(() => {
-        return context.mocks.axiomLogging.warn.mock.calls.some(
-          ([message, fields]) => {
-            return (
-              message ===
-                "Skipping live chat projection at the concurrency limit" &&
-              isRecord(fields) &&
-              fields.runId === run.runId
-            );
-          },
-        );
-      })
-      .toBe(true);
-    await flushWaitUntilForTest();
-    held.release();
-    await held.done;
+    const messages = await chat.listThreadEvents(actor, run.threadId);
+    expect(eventBackedContents(messages.events, run.runId)).toHaveLength(6);
   }, 30_000);
 
   it("keeps repeated at-least-once event batches idempotent", async () => {
@@ -2476,7 +2393,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     expect(firstAssistantEventsForRun(run.runId)).toHaveLength(1);
   });
 
-  it("skips Axiom for DB-complete no-output runs and falls back for result-only output", async () => {
+  it("uses DB projection for both no-output and result-only runs", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -2546,16 +2463,13 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
           {
             type: "result",
             sequenceNumber: 0,
-            result: "webhook result text is not stored in materialization",
+            result: "DB result fallback answer",
           },
         ],
       },
       resultOnlyHeaders,
       [200],
     );
-    chatCallbacks.mockChatOutputEvents([
-      resultEvent(0, "Axiom result fallback answer"),
-    ]);
     context.mocks.axiom.query.mockClear();
 
     await completeChatRunOk(resultOnly.runId, resultOnlyHeaders, {
@@ -2570,12 +2484,12 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
         );
       },
     );
-    expect(chatOutputAxiomQueryCalls()).toHaveLength(1);
+    expect(chatOutputAxiomQueryCalls()).toHaveLength(0);
     expect(
       eventBackedContents(messages.events, resultOnly.runId).map((message) => {
         return message.content;
       }),
-    ).toStrictEqual(["Axiom result fallback answer"]);
+    ).toStrictEqual(["DB result fallback answer"]);
     await flushWaitUntilForTest();
     expect(firstAssistantEventsForRun(resultOnly.runId)).toHaveLength(1);
   }, 90_000);
@@ -3441,7 +3355,6 @@ describe("CHAT-02: auto-send after failures", () => {
       "api_dispatch_pre_create_zero_chat_callback_load_db_output_state",
       "api_dispatch_pre_create_zero_chat_callback_db_output_complete",
       "api_dispatch_pre_create_zero_chat_callback_db_output_incomplete",
-      "api_dispatch_pre_create_zero_chat_callback_query_output_events",
       "api_dispatch_pre_create_zero_chat_callback_insert_lifecycle_marker",
       "api_dispatch_pre_create_zero_chat_callback_load_followup_context",
     ]);

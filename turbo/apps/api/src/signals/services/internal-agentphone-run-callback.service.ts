@@ -58,7 +58,6 @@ type AgentPhoneCallbackPayload = z.infer<
 interface RunContext {
   readonly userId: string;
   readonly orgId: string;
-  readonly lastEventSequence: number | null;
   readonly chatThreadId: string | null;
 }
 
@@ -152,7 +151,6 @@ async function loadRunContext(args: {
     .select({
       userId: agentRuns.userId,
       orgId: agentRuns.orgId,
-      lastEventSequence: agentRuns.lastEventSequence,
       chatThreadId: zeroRuns.chatThreadId,
     })
     .from(agentRuns)
@@ -164,6 +162,7 @@ async function loadRunContext(args: {
 }
 
 async function resolveCompletionText(args: {
+  readonly db: Db;
   readonly runId: string;
   readonly status: "completed" | "failed";
   readonly error: string | undefined;
@@ -180,11 +179,7 @@ async function resolveCompletionText(args: {
     });
   }
 
-  const output = await getRunOutputText(args.runId, {
-    waitForOutput: false,
-    knownLastEventSequence: args.run?.lastEventSequence,
-    signal: args.signal,
-  });
+  const output = await getRunOutputText(args.db, args.runId, args.signal);
   args.signal.throwIfAborted();
   return output ?? "Task completed successfully.";
 }
@@ -342,6 +337,7 @@ async function handleCompletion(args: {
   }
 
   const mainText = await resolveCompletionText({
+    db: args.db,
     runId: args.runId,
     status: args.status,
     error: args.error,

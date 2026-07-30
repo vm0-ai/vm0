@@ -611,6 +611,14 @@ async function completeChatRunOk(
     readonly lastEventSequence?: number;
   } = {},
 ): Promise<void> {
+  const stagedOutputEvents = chatCallbacks.consumeMockChatOutputEvents();
+  if (stagedOutputEvents.length > 0) {
+    await webhooks.requestAgentEvents(
+      { runId, events: stagedOutputEvents },
+      sandboxHeaders,
+      [200],
+    );
+  }
   const history = `bdd chat session history ${runId}`;
   const historyHash = createHash("sha256").update(history).digest("hex");
   await webhooks.requestAgentCheckpoint(
@@ -628,7 +636,15 @@ async function completeChatRunOk(
       runId,
       exitCode: 0,
       ...(options.lastEventSequence === undefined
-        ? {}
+        ? stagedOutputEvents.length === 0
+          ? {}
+          : {
+              lastEventSequence: Math.max(
+                ...stagedOutputEvents.map((event) => {
+                  return event.sequenceNumber;
+                }),
+              ),
+            }
         : { lastEventSequence: options.lastEventSequence }),
     },
     sandboxHeaders,

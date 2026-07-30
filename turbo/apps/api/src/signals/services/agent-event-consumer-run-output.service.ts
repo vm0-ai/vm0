@@ -1,18 +1,13 @@
 import { command } from "ccstate";
-import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
-import { chatOutputMaterializations } from "@vm0/db/schema/chat-output-materialization";
+import { and, eq, isNotNull, isNull, lte, sql } from "drizzle-orm";
+import { runOutputMaterializations } from "@vm0/db/schema/run-output-materialization";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
-import { env } from "../../lib/env";
-import { eventConsumerPayload$ } from "../../lib/event-consumer/route";
 import type {
   AgentEvent,
   EventConsumerPayload,
 } from "../../lib/event-consumer/verify";
-import { logger } from "../../lib/log";
-import { singleton } from "../../lib/singleton";
 import { nowDate } from "../../lib/time";
-import { onRejection } from "../utils";
 import { writeDb$, type Db } from "../external/db";
 import {
   publishChatThreadMessageCreatedSafely,
@@ -29,31 +24,15 @@ import {
 import { chatThreadForRunFromDb } from "./zero-chat-thread.service";
 
 const INITIAL_PROCESSED_THROUGH_SEQUENCE = -1;
-const CHAT_PROJECTION_LOCK_TIMEOUT = "1s";
-const CHAT_PROJECTION_STATEMENT_TIMEOUT = "5s";
+const RUN_OUTPUT_PROJECTION_LOCK_TIMEOUT = "1s";
+const RUN_OUTPUT_PROJECTION_STATEMENT_TIMEOUT = "5s";
 
-const L = logger("webhook:events:chat-projection");
-
-class ChatProjectionAdmission {
-  private active = 0;
-  private readonly capacity = Math.max(1, Math.floor(env("DB_POOL_MAX") / 2));
-
-  tryAcquire(): (() => void) | null {
-    if (this.active >= this.capacity) {
-      return null;
-    }
-    this.active += 1;
-    return () => {
-      this.active -= 1;
-    };
-  }
+interface OutputCandidate {
+  readonly sequenceNumber: number;
+  readonly content: string;
 }
 
-const chatProjectionAdmission = singleton(() => {
-  return new ChatProjectionAdmission();
-});
-
-interface ChatProjection {
+export interface MaterializedChatProjection {
   readonly thread: {
     readonly chatThreadId: string;
     readonly userId: string;
@@ -114,12 +93,8 @@ function codexAgentMessageText(event: AgentEvent): string | null {
   return item.text;
 }
 
-function eventText(event: AgentEvent): string | null {
-  const fromMessage = anthropicMessageText(event);
-  if (fromMessage !== null) {
-    return fromMessage;
-  }
-  return codexAgentMessageText(event);
+function assistantEventText(event: AgentEvent): string | null {
+  return anthropicMessageText(event) ?? codexAgentMessageText(event);
 }
 
 function resultText(event: AgentEvent): string | null {
@@ -139,6 +114,30 @@ function resultText(event: AgentEvent): string | null {
   }
 
   return null;
+}
+
+function callbackOutputText(event: AgentEvent): string | null {
+  return resultText(event) ?? codexAgentMessageText(event);
+}
+
+function latestCandidate(
+  events: readonly AgentEvent[],
+  extractText: (event: AgentEvent) => string | null,
+): OutputCandidate | null {
+  let latest: OutputCandidate | null = null;
+  for (const event of events) {
+    const content = extractText(event);
+    if (content === null) {
+      continue;
+    }
+    if (latest === null || event.sequenceNumber > latest.sequenceNumber) {
+      latest = {
+        sequenceNumber: event.sequenceNumber,
+        content,
+      };
+    }
+  }
+  return latest;
 }
 
 function eventMessageId(event: AgentEvent): string | undefined {
@@ -187,25 +186,11 @@ function nextProcessedThroughSequence(
   return nextProcessedThroughSequence;
 }
 
-function latestResultSequence(events: readonly AgentEvent[]): number | null {
-  let latestSequence: number | null = null;
-  for (const event of events) {
-    if (resultText(event) === null) {
-      continue;
-    }
-    latestSequence =
-      latestSequence === null
-        ? event.sequenceNumber
-        : Math.max(latestSequence, event.sequenceNumber);
-  }
-  return latestSequence;
-}
-
 function assistantEventItems(
   events: readonly AgentEvent[],
 ): InsertAssistantEventsInput["items"] {
   return events.flatMap((event) => {
-    const text = eventText(event);
+    const text = assistantEventText(event);
     if (text === null) {
       return [];
     }
@@ -219,44 +204,52 @@ function assistantEventItems(
   });
 }
 
-function projectChatAssistantEvents(
+async function materializeRunOutputEvents(
   writeDb: Db,
   payload: EventConsumerPayload,
-  items: InsertAssistantEventsInput["items"],
   signal: AbortSignal,
-): Promise<ChatProjection | null> {
-  return writeDb.transaction(async (tx) => {
+): Promise<MaterializedChatProjection | null> {
+  const assistantItems = assistantEventItems(payload.events);
+  const latestResult = latestCandidate(payload.events, resultText);
+  const latestOutput = latestCandidate(payload.events, callbackOutputText);
+
+  return await writeDb.transaction(async (tx) => {
     await tx.execute(
-      sql`SELECT set_config('lock_timeout', ${CHAT_PROJECTION_LOCK_TIMEOUT}, true)`,
+      sql`SELECT set_config('lock_timeout', ${RUN_OUTPUT_PROJECTION_LOCK_TIMEOUT}, true)`,
     );
     await tx.execute(
-      sql`SELECT set_config('statement_timeout', ${CHAT_PROJECTION_STATEMENT_TIMEOUT}, true)`,
+      sql`SELECT set_config('statement_timeout', ${RUN_OUTPUT_PROJECTION_STATEMENT_TIMEOUT}, true)`,
     );
     signal.throwIfAborted();
 
     const thread = await chatThreadForRunFromDb(tx, payload.runId);
     signal.throwIfAborted();
-    if (!thread) {
-      return null;
+
+    let insertedRowCount = 0;
+    let shouldAttemptFirstAssistantEventClaim = false;
+    if (thread) {
+      const insertion = await insertAssistantEventsInTransaction(
+        tx,
+        {
+          runId: payload.runId,
+          threadId: thread.chatThreadId,
+          userId: thread.userId,
+          items: assistantItems,
+        },
+        signal,
+      );
+      insertedRowCount = insertion.insertedRowCount;
+      shouldAttemptFirstAssistantEventClaim =
+        insertion.shouldAttemptFirstAssistantEventClaim;
     }
 
-    const insertion = await insertAssistantEventsInTransaction(
-      tx,
-      {
-        runId: payload.runId,
-        threadId: thread.chatThreadId,
-        userId: thread.userId,
-        items,
-      },
-      signal,
-    );
     const [existingState] = await tx
       .select({
         processedThroughSequence:
-          chatOutputMaterializations.processedThroughSequence,
+          runOutputMaterializations.processedThroughSequence,
       })
-      .from(chatOutputMaterializations)
-      .where(eq(chatOutputMaterializations.runId, payload.runId))
+      .from(runOutputMaterializations)
+      .where(eq(runOutputMaterializations.runId, payload.runId))
       .limit(1);
     signal.throwIfAborted();
 
@@ -265,33 +258,50 @@ function projectChatAssistantEvents(
         INITIAL_PROCESSED_THROUGH_SEQUENCE,
       payload.events,
     );
-    const resultSequence = latestResultSequence(payload.events);
     const updatedAt = nowDate();
     await tx
-      .insert(chatOutputMaterializations)
+      .insert(runOutputMaterializations)
       .values({
         runId: payload.runId,
         processedThroughSequence,
-        latestResultSequence: resultSequence,
+        latestResultSequence: latestResult?.sequenceNumber,
+        latestResultText: latestResult?.content,
+        latestOutputSequence: latestOutput?.sequenceNumber,
+        latestOutputText: latestOutput?.content,
         updatedAt,
       })
       .onConflictDoUpdate({
-        target: chatOutputMaterializations.runId,
+        target: runOutputMaterializations.runId,
         set: {
-          processedThroughSequence: sql`greatest(${chatOutputMaterializations.processedThroughSequence}, ${processedThroughSequence})`,
+          processedThroughSequence: sql`greatest(${runOutputMaterializations.processedThroughSequence}, ${processedThroughSequence})`,
           latestResultSequence:
-            resultSequence === null
-              ? chatOutputMaterializations.latestResultSequence
-              : sql`greatest(coalesce(${chatOutputMaterializations.latestResultSequence}, -1), ${resultSequence})`,
+            latestResult === null
+              ? runOutputMaterializations.latestResultSequence
+              : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestResultSequence}, -1)`, latestResult.sequenceNumber)} then ${latestResult.sequenceNumber} else ${runOutputMaterializations.latestResultSequence} end`,
+          latestResultText:
+            latestResult === null
+              ? runOutputMaterializations.latestResultText
+              : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestResultSequence}, -1)`, latestResult.sequenceNumber)} then ${latestResult.content} else ${runOutputMaterializations.latestResultText} end`,
+          latestOutputSequence:
+            latestOutput === null
+              ? runOutputMaterializations.latestOutputSequence
+              : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestOutputSequence}, -1)`, latestOutput.sequenceNumber)} then ${latestOutput.sequenceNumber} else ${runOutputMaterializations.latestOutputSequence} end`,
+          latestOutputText:
+            latestOutput === null
+              ? runOutputMaterializations.latestOutputText
+              : sql`case when ${lte(sql`coalesce(${runOutputMaterializations.latestOutputSequence}, -1)`, latestOutput.sequenceNumber)} then ${latestOutput.content} else ${runOutputMaterializations.latestOutputText} end`,
           updatedAt,
         },
       });
     signal.throwIfAborted();
 
+    if (!thread) {
+      return null;
+    }
+
     const acknowledgedAt = nowDate();
     const [firstAssistantClaim] =
-      insertion.insertedRowCount > 0 &&
-      insertion.shouldAttemptFirstAssistantEventClaim
+      insertedRowCount > 0 && shouldAttemptFirstAssistantEventClaim
         ? await tx
             .update(zeroRuns)
             .set({ firstAssistantEventAcknowledgedAt: acknowledgedAt })
@@ -308,7 +318,7 @@ function projectChatAssistantEvents(
 
     return {
       thread,
-      insertedRowCount: insertion.insertedRowCount,
+      insertedRowCount,
       firstAssistantAcknowledgement:
         firstAssistantClaim?.apiStartedAt === null ||
         firstAssistantClaim?.apiStartedAt === undefined
@@ -321,9 +331,19 @@ function projectChatAssistantEvents(
   });
 }
 
-async function publishChatProjection(
+export const materializeRunOutputEvents$ = command(
+  async (
+    { set },
+    payload: EventConsumerPayload,
+    signal: AbortSignal,
+  ): Promise<MaterializedChatProjection | null> => {
+    return await materializeRunOutputEvents(set(writeDb$), payload, signal);
+  },
+);
+
+export async function publishMaterializedChatProjection(
   payload: EventConsumerPayload,
-  projection: ChatProjection,
+  projection: MaterializedChatProjection,
   signal: AbortSignal,
 ): Promise<void> {
   if (projection.insertedRowCount === 0) {
@@ -349,52 +369,3 @@ async function publishChatProjection(
   await publishThreadListChangedSafely(projection.thread.userId);
   signal.throwIfAborted();
 }
-
-async function runAdmittedChatProjection(
-  writeDb: Db,
-  payload: EventConsumerPayload,
-  signal: AbortSignal,
-  release: () => void,
-) {
-  const projection = await projectChatAssistantEvents(
-    writeDb,
-    payload,
-    assistantEventItems(payload.events),
-    signal,
-  );
-  signal.throwIfAborted();
-  if (projection) {
-    await publishChatProjection(payload, projection, signal);
-    signal.throwIfAborted();
-  }
-
-  release();
-  return {
-    status: 200 as const,
-    body: { processed: projection?.insertedRowCount ?? 0 },
-  };
-}
-
-export const processChatAssistantEvents$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const payload = get(eventConsumerPayload$);
-    signal.throwIfAborted();
-    const firstSequence = payload.events[0]!.sequenceNumber;
-    const lastSequence =
-      payload.events[payload.events.length - 1]!.sequenceNumber;
-    const release = chatProjectionAdmission().tryAcquire();
-    if (!release) {
-      L.warn("Skipping live chat projection at the concurrency limit", {
-        runId: payload.runId,
-        firstSequence,
-        lastSequence,
-      });
-      return { status: 200 as const, body: { processed: 0 } };
-    }
-
-    return await onRejection(
-      runAdmittedChatProjection(set(writeDb$), payload, signal, release),
-      release,
-    );
-  },
-);

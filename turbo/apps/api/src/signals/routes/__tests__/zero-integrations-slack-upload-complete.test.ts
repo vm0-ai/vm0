@@ -88,6 +88,14 @@ async function completeRun(args: {
 }): Promise<void> {
   chatCallbacks.mockChatOutputEvents(args.events);
   const authorization = `Bearer ${args.sandboxToken}`;
+  const stagedOutputEvents = chatCallbacks.consumeMockChatOutputEvents();
+  if (stagedOutputEvents.length > 0) {
+    await webhooks.requestAgentEvents(
+      { runId: args.runId, events: stagedOutputEvents },
+      { authorization },
+      [200],
+    );
+  }
   const historyHash = createHash("sha256")
     .update(`canonical Slack upload ${args.runId}`)
     .digest("hex");
@@ -106,7 +114,15 @@ async function completeRun(args: {
       runId: args.runId,
       exitCode: 0,
       ...(args.lastEventSequence === undefined
-        ? {}
+        ? stagedOutputEvents.length === 0
+          ? {}
+          : {
+              lastEventSequence: Math.max(
+                ...stagedOutputEvents.map((event) => {
+                  return event.sequenceNumber;
+                }),
+              ),
+            }
         : { lastEventSequence: args.lastEventSequence }),
     },
     { authorization },

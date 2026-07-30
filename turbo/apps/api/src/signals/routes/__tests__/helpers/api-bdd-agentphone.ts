@@ -28,6 +28,7 @@ import {
   createBddIntegrationApi,
 } from "./api-bdd-integrations";
 import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
+import { seedRunOutputTextFixture } from "../../../../test-fixtures/run-output";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 export const AGENTPHONE_BDD_AGENT_ID = "agt-bdd-agentphone";
@@ -252,32 +253,8 @@ export function createAgentPhoneBddApi(context: TestContext) {
       return { messages, typing };
     },
 
-    /**
-     * Route the run-output Axiom query to a fixed assistant result so the
-     * AgentPhone completion callback resolves `text` as the run output.
-     * Restore with `restoreCompletionRunOutput` before completing runs that
-     * should fall back to "Task completed successfully.".
-     */
-    mockCompletionRunOutput(text: string): void {
-      context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
-        const apl = typeof args[0] === "string" ? args[0] : "";
-        return Promise.resolve(
-          apl.includes("agent-run-events")
-            ? [
-                {
-                  eventType: "result",
-                  sequenceNumber: 1,
-                  eventData: { result: text },
-                },
-              ]
-            : [],
-        );
-      });
-    },
-
-    restoreCompletionRunOutput(): void {
-      context.mocks.axiom.query.mockReset();
-      context.mocks.axiom.query.mockResolvedValue([]);
+    async mockCompletionRunOutput(runId: string, text: string): Promise<void> {
+      await seedRunOutputTextFixture({ runId, text });
     },
 
     async linkViaWebhookConnectPrompt(

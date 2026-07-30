@@ -24,6 +24,7 @@ import { seedTelegramUserLink$ } from "./helpers/zero-telegram";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createComposesBddApi } from "./helpers/api-bdd-composes";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { seedRunOutputTextFixture } from "../../../test-fixtures/run-output";
 
 const context = testContext();
 const store = createStore();
@@ -448,13 +449,11 @@ async function dispatchTelegramCallback(body: {
   };
 }
 
-function completedOutput(text = "**Done** with `code`"): void {
-  context.mocks.axiom.query.mockResolvedValueOnce([
-    {
-      eventType: "result",
-      eventData: { result: text },
-    },
-  ]);
+async function completedOutput(
+  runId: string,
+  text = "**Done** with `code`",
+): Promise<void> {
+  await seedRunOutputTextFixture({ runId, text });
 }
 
 async function enableAuditLink(fixture: TelegramFixture): Promise<void> {
@@ -506,7 +505,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
   it("renders completed output as Telegram HTML and stores the bot reply", async () => {
     const fixture = await seedFixture();
     const telegram = telegramApiMocks();
-    completedOutput();
+    await completedOutput(fixture.runId);
 
     const result = await dispatchTelegramCallback({
       callbackId: fixture.callbackId,
@@ -544,7 +543,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
         },
       ],
     });
-    completedOutput("Retried result");
+    await completedOutput(fixture.runId, "Retried result");
 
     const timer = runTelegramSendDelaysImmediately();
     const result = await dispatchTelegramCallback({
@@ -571,7 +570,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
         };
       }),
     });
-    completedOutput("Still limited");
+    await completedOutput(fixture.runId, "Still limited");
 
     const timer = runTelegramSendDelaysImmediately();
     const result = await dispatchTelegramCallback({
@@ -596,7 +595,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
   it("throttles split completion reply chunks", async () => {
     const fixture = await seedFixture();
     const telegram = telegramApiMocks();
-    completedOutput("x".repeat(5000));
+    await completedOutput(fixture.runId, "x".repeat(5000));
 
     const timer = runTelegramSendDelaysImmediately();
     const result = await dispatchTelegramCallback({
@@ -617,7 +616,8 @@ describe("POST /api/internal/callbacks/telegram", () => {
   it("renders markdown links in completed replies", async () => {
     const fixture = await seedFixture();
     const telegram = telegramApiMocks();
-    completedOutput(
+    await completedOutput(
+      fixture.runId,
       "Please [connect Notion](https://example.com/connect?agentId=123)",
     );
 
@@ -667,7 +667,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
         },
       ),
     );
-    completedOutput("Mocked preview reply");
+    await completedOutput(fixture.runId, "Mocked preview reply");
 
     const result = await dispatchTelegramCallback({
       callbackId: fixture.callbackId,
@@ -701,7 +701,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
     });
     const telegram = telegramApiMocks();
     mockEnv("APP_URL", "https://app.vm0.test");
-    completedOutput("Plain result");
+    await completedOutput(fixture.runId, "Plain result");
 
     const result = await dispatchTelegramCallback({
       callbackId: fixture.callbackId,
@@ -726,7 +726,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
       selected_model: "claude-opus-4-7",
     });
     const telegram = telegramApiMocks();
-    completedOutput("Responder result");
+    await completedOutput(fixture.runId, "Responder result");
 
     const result = await dispatchTelegramCallback({
       callbackId: fixture.callbackId,
@@ -783,7 +783,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
   it("does not quote DM replies", async () => {
     const fixture = await seedFixture();
     const telegram = telegramApiMocks();
-    completedOutput("DM result");
+    await completedOutput(fixture.runId, "DM result");
 
     const result = await dispatchTelegramCallback({
       callbackId: fixture.callbackId,
@@ -818,7 +818,7 @@ describe("POST /api/internal/callbacks/telegram", () => {
     mockEnv("TELEGRAM_OFFICIAL_BOT_USERNAME", "zerobot");
     mockEnv("TELEGRAM_OFFICIAL_WEBHOOK_SECRET", "official-secret");
     const telegram = telegramApiMocks(OFFICIAL_BOT_TOKEN);
-    completedOutput("Official result");
+    await completedOutput(fixture.runId, "Official result");
 
     const result = await dispatchTelegramCallback({
       callbackId: fixture.callbackId,

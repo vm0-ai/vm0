@@ -3669,7 +3669,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       });
     });
 
-    integrations.mockSlackRunResultOutput("SLACK_BDD_OUTPUT");
+    await integrations.mockSlackRunResultOutput(run1Id, "SLACK_BDD_OUTPUT");
     let failedMessagePublishCount = 0;
     let failedThreadListPublishCount = 0;
     context.mocks.ably.publish.mockImplementation((topic: unknown) => {
@@ -3730,7 +3730,10 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     const run2Id = await pollSlackRun(runnerGroup);
     const claim2 = await runs.claimRunnerJob(run2Id);
-    integrations.mockSlackRunAgentMessageOutput("final codex answer");
+    await integrations.mockSlackRunAgentMessageOutput(
+      run2Id,
+      "final codex answer",
+    );
     await completeSlackTriggeredRun({
       runId: run2Id,
       sandboxToken: claim2.sandboxToken,
@@ -3764,7 +3767,10 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     const run3Id = await pollSlackRun(runnerGroup);
     const claim3 = await runs.claimRunnerJob(run3Id);
-    integrations.mockSlackRunResultOutput("SECOND_OPINION_OUTPUT");
+    await integrations.mockSlackRunResultOutput(
+      run3Id,
+      "SECOND_OPINION_OUTPUT",
+    );
     context.mocks.slack.chat.postMessage.mockClear();
     await completeSlackTriggeredRun({
       runId: run3Id,
@@ -3842,7 +3848,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     const run6Id = await pollSlackRun(runnerGroup);
     const claim6 = await runs.claimRunnerJob(run6Id);
-    integrations.mockSlackRunResultOutput("UNDELIVERED_OUTPUT");
+    await integrations.mockSlackRunResultOutput(run6Id, "UNDELIVERED_OUTPUT");
     context.mocks.slack.chat.postMessage.mockRejectedValueOnce(
       Object.assign(new Error("channel_not_found"), {
         data: { ok: false, error: "channel_not_found" },
@@ -3917,7 +3923,10 @@ describe("INT-01: Slack app deep webhook flows", () => {
       });
     });
 
-    integrations.mockSlackRunResultOutput("NO_MODEL_FOOTER_OUTPUT");
+    await integrations.mockSlackRunResultOutput(
+      run1Id,
+      "NO_MODEL_FOOTER_OUTPUT",
+    );
     await completeSlackTriggeredRun({
       runId: run1Id,
       sandboxToken: claim1.sandboxToken,

@@ -15,6 +15,7 @@ import { zeroPushSubscriptionsRoutes } from "../../zero-push-subscriptions";
 import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
+import type { AgentEvent } from "../../../../lib/event-consumer/verify";
 
 const CHAT_CALLBACK_URL = "http://localhost:3000/api/internal/callbacks/chat";
 const OPENROUTER_COMPLETIONS_URL =
@@ -82,6 +83,26 @@ function isStringRecord(value: unknown): value is Record<string, string> {
       return typeof entry === "string";
     })
   );
+}
+
+function webhookEventFromAxiomFixture(
+  event: Readonly<Record<string, unknown>>,
+): AgentEvent {
+  const type =
+    typeof event.type === "string"
+      ? event.type
+      : typeof event.eventType === "string"
+        ? event.eventType
+        : null;
+  const sequenceNumber = event.sequenceNumber;
+  if (type === null || typeof sequenceNumber !== "number") {
+    throw new Error("Chat output fixture requires an event type and sequence");
+  }
+  return {
+    ...(isRecord(event.eventData) ? event.eventData : event),
+    type,
+    sequenceNumber,
+  };
 }
 
 function commandInput(command: unknown): Record<string, unknown> {
@@ -178,6 +199,8 @@ function capturedRunContextSnapshot(
 }
 
 export function createChatCallbacksApi(context: TestContext) {
+  let stagedOutputEvents: AgentEvent[] = [];
+
   function pushSubscriptionsClient() {
     return setupAppWithRoutes({
       context,
@@ -287,6 +310,7 @@ export function createChatCallbacksApi(context: TestContext) {
      */
     mockChatOutputEvents(events: readonly Record<string, unknown>[]): void {
       const snapshot = [...events];
+      stagedOutputEvents = snapshot.map(webhookEventFromAxiomFixture);
       context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
         const apl = typeof args[0] === "string" ? args[0] : "";
         if (apl.includes("['run-context']")) {
@@ -297,6 +321,12 @@ export function createChatCallbacksApi(context: TestContext) {
         }
         return Promise.resolve(snapshot);
       });
+    },
+
+    consumeMockChatOutputEvents(): AgentEvent[] {
+      const events = stagedOutputEvents;
+      stagedOutputEvents = [];
+      return events;
     },
 
     /**

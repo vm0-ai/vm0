@@ -65,6 +65,7 @@ import {
 import type { ApiTestUser, ApiTestUserOptions } from "./api-bdd";
 import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
 import { createZeroRouteMocks } from "./zero-route-test";
+import { seedRunOutputTextFixture } from "../../../../test-fixtures/run-output";
 
 interface AuthHeaders {
   readonly authorization?: string;
@@ -1128,24 +1129,15 @@ export function createBddIntegrationApi(context: TestContext) {
       );
     },
 
-    mockSlackRunResultOutput(text: string): void {
-      context.mocks.axiom.query.mockResolvedValueOnce([
-        {
-          eventType: "result",
-          sequenceNumber: 0,
-          eventData: { result: text },
-        },
-      ]);
+    async mockSlackRunResultOutput(runId: string, text: string): Promise<void> {
+      await seedRunOutputTextFixture({ runId, text });
     },
 
-    mockSlackRunAgentMessageOutput(text: string): void {
-      context.mocks.axiom.query.mockResolvedValueOnce([
-        {
-          eventType: "item.completed",
-          sequenceNumber: 0,
-          eventData: { item: { type: "agent_message", text } },
-        },
-      ]);
+    async mockSlackRunAgentMessageOutput(
+      runId: string,
+      text: string,
+    ): Promise<void> {
+      await seedRunOutputTextFixture({ runId, text });
     },
 
     async enableAuditLinkSwitch(actor: ApiTestUser): Promise<void> {
