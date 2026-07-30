@@ -33,6 +33,7 @@ import {
   isDrizzleDeclaration,
   isDrizzlePgCoreDeclaration,
   isDrizzleSqlTag,
+  isDrizzleSqlType,
   isDrizzleSymbol,
   isNamedDrizzleSignature,
   resolvedSymbol,
@@ -1021,13 +1022,18 @@ export const preferDrizzleApis = createRule({
     }
 
     interface DirectSelectionField {
+      readonly isComputedSql: boolean;
       readonly propertyName: string;
       readonly sqlTemplate: TSESTree.TaggedTemplateExpression | undefined;
     }
 
-    function directSelectedSqlTemplate(
+    interface DirectSelectedSql {
+      readonly template: TSESTree.TaggedTemplateExpression | undefined;
+    }
+
+    function directSelectedSql(
       node: TSESTree.Expression,
-    ): TSESTree.TaggedTemplateExpression | undefined {
+    ): DirectSelectedSql | undefined {
       const asCall = directDrizzleCall(node, "as");
       const alias =
         asCall === undefined ? undefined : singleCallArgument(asCall);
@@ -1041,6 +1047,17 @@ export const preferDrizzleApis = createRule({
         return undefined;
       }
 
+      const tsSource = services.esTreeNodeToTSNodeMap.get(source);
+      if (
+        !isDrizzleSqlType(
+          checker,
+          checker.getTypeAtLocation(tsSource),
+          tsSource,
+        )
+      ) {
+        return undefined;
+      }
+
       const mapWith = directDrizzleCall(source, "mapWith");
       if (mapWith !== undefined) {
         if (singleCallArgument(mapWith) === undefined) {
@@ -1048,10 +1065,13 @@ export const preferDrizzleApis = createRule({
         }
         source = callReceiver(mapWith);
       }
-      return source?.type === AST_NODE_TYPES.TaggedTemplateExpression &&
-        isDrizzleSqlTag(checker, services, source.tag)
-        ? source
-        : undefined;
+      return {
+        template:
+          source?.type === AST_NODE_TYPES.TaggedTemplateExpression &&
+          isDrizzleSqlTag(checker, services, source.tag)
+            ? source
+            : undefined,
+      };
     }
 
     function directSelectionFields(
@@ -1069,12 +1089,14 @@ export const preferDrizzleApis = createRule({
           return undefined;
         }
 
+        const selectedSql =
+          property.value.type === AST_NODE_TYPES.CallExpression
+            ? directSelectedSql(property.value)
+            : undefined;
         fields.push({
+          isComputedSql: selectedSql !== undefined,
           propertyName: property.key.name,
-          sqlTemplate:
-            property.value.type === AST_NODE_TYPES.CallExpression
-              ? directSelectedSqlTemplate(property.value)
-              : undefined,
+          sqlTemplate: selectedSql?.template,
         });
       }
       return fields;
@@ -1212,10 +1234,7 @@ export const preferDrizzleApis = createRule({
         if (
           callbackFields?.some((propertyName) => {
             return fields.some((field) => {
-              return (
-                field.propertyName === propertyName &&
-                field.sqlTemplate !== undefined
-              );
+              return field.propertyName === propertyName && field.isComputedSql;
             });
           }) === true
         ) {

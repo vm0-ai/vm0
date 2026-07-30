@@ -913,6 +913,17 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
       errors: [{ messageId: "unstableGrouping" }],
     },
     {
+      name: "bound computed output alias grouping",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const bucket = sql\`DATE(\${users.deletedAt})\`.mapWith(String);
+        db.select({
+          bucket: bucket.as("bucket"),
+        }).from(users).groupBy(({ bucket: selectedBucket }) => selectedBucket);
+      `,
+      errors: [{ messageId: "unstableGrouping" }],
+    },
+    {
       name: "positional grouping of a direct column",
       code: `${drizzlePreamble}
         import { sql } from "drizzle-orm";
