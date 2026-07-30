@@ -96,7 +96,7 @@ function sandboxOperationEvents(): readonly Record<string, unknown>[] {
 function gmailEventContextFromPrompt(
   appendSystemPrompt: string,
 ): Record<string, unknown> {
-  const marker = "# Gmail event\n";
+  const marker = "# This run's event\n";
   const markerIndex = appendSystemPrompt.indexOf(marker);
   expect(markerIndex).toBeGreaterThanOrEqual(0);
   const parsed: unknown = JSON.parse(
@@ -587,7 +587,7 @@ async function workflowRunIds(
   return events.flatMap((message) => {
     if (
       message.eventType !== "input.prompt" ||
-      chatEventDisplayText(message) !== `/${WORKFLOW_NAME}` ||
+      !chatEventDisplayText(message)?.startsWith(`/${WORKFLOW_NAME}`) ||
       !message.runId
     ) {
       return [];
@@ -716,9 +716,7 @@ describe("POST /api/webhooks/gmail", () => {
     if (typeof appendSystemPrompt !== "string") {
       throw new Error("Expected appendSystemPrompt on the claimed run");
     }
-    expect(appendSystemPrompt).toContain(
-      "This context intentionally includes only event metadata. It does not include the email body.",
-    );
+    expect(appendSystemPrompt).toContain("Not included below: the email body.");
     expect(appendSystemPrompt).not.toContain("Please draft a helpful reply.");
     expect(gmailEventContextFromPrompt(appendSystemPrompt)).toStrictEqual({
       automationId: created.body.id,

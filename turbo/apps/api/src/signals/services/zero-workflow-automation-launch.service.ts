@@ -26,6 +26,11 @@ import {
 import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { loadComputerUseHostGrantForAutoSend } from "./zero-chat-computer-use-host.service";
+import {
+  workflowAutomationAppendSystemPrompt,
+  workflowAutomationPrompt,
+  type WorkflowAutomationContext,
+} from "./workflow-automation-context.service";
 
 export type AutomationRow = typeof zeroWorkflowAutomations.$inferSelect;
 
@@ -179,14 +184,36 @@ function buildWorkflowAutomationCallbacks(
   return callbacks;
 }
 
-function buildAppendSystemPrompt(workflowName: string): string {
-  return [
-    "# Current context",
-    `You are running on a schedule for the "${workflowName}" workflow.`,
-    "The workflow's procedure is available as a skill - execute it now.",
-    "This run is linked to a web chat thread; everything you output is shown to the user there.",
-    "Connector permissions use the same agent-run permission settings as chat runs. If a connector request fails, do not retry blindly or assume an HTTP error came from Zero permission policy. Run `zero connector check --url <FAILED_URL> --method <METHOD> [--connector <connector-ref>]`; only when it reports a deny or ask outcome, request access with `zero connector permission-request <connector-ref> --permission <name>` and tell the user which permission this automation needs. The user chooses the grant duration in the confirmation UI. Omit query strings or fragments when they may contain secrets because permission matching does not need them.",
-  ].join("\n");
+/**
+ * Consecutive ticks of the same schedule are otherwise indistinguishable, so the
+ * fire time is this run's unique identifier.
+ */
+function scheduleTriggerContext(args: {
+  readonly automation: AutomationRow;
+  readonly workflowName: string;
+  readonly firedAt: Date;
+}): WorkflowAutomationContext {
+  const firedAt = args.firedAt.toISOString();
+  const recurrence =
+    args.automation.scheduleType === "loop"
+      ? `every ${args.automation.intervalSeconds}s`
+      : args.automation.cronExpression
+        ? `cron "${args.automation.cronExpression}" in ${args.automation.timezone}`
+        : `once in ${args.automation.timezone}`;
+  return {
+    workflowName: args.workflowName,
+    trigger: `schedule fired at ${firedAt} (${recurrence}).`,
+    event: {
+      automationId: args.automation.id,
+      trigger: "schedule",
+      scheduleType: args.automation.scheduleType,
+      cronExpression: args.automation.cronExpression,
+      intervalSeconds: args.automation.intervalSeconds,
+      atTime: args.automation.atTime,
+      timezone: args.automation.timezone,
+      firedAt,
+    },
+  };
 }
 
 function appendComputerUseSystemPrompt(
@@ -391,11 +418,30 @@ async function buildTimedWorkflowAutomationRunInput(args: {
     "api_dispatch_pre_create_zero_workflow_automation_build_run_input",
     "nested",
     () => {
+      // Event sources carry their own event and build both strings from one
+      // trigger line. Only the schedule tick has no event of its own, so it is
+      // built here. Guarding on kind keeps a queue row written by a previous
+      // deployment (event row without a prompt) from rendering as a schedule.
+      const schedule =
+        args.automation.kind === "schedule"
+          ? scheduleTriggerContext({
+              automation: args.automation,
+              workflowName: args.workflowName,
+              firedAt: new Date(args.command.apiStartTime),
+            })
+          : null;
       return {
-        prompt: args.command.prompt ?? `/${args.workflowName}`,
+        prompt:
+          args.command.prompt ??
+          (schedule
+            ? workflowAutomationPrompt({
+                workflowName: args.workflowName,
+                trigger: schedule.trigger,
+              })
+            : `/${args.workflowName}`),
         appendSystemPrompt: appendComputerUseSystemPrompt(
           args.command.appendSystemPrompt ??
-            buildAppendSystemPrompt(args.workflowName),
+            (schedule ? workflowAutomationAppendSystemPrompt(schedule) : ""),
           args.computerUseHostGrant,
         ),
         callbacks:
