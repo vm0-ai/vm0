@@ -4346,6 +4346,28 @@
         "updatedRule": "Quando um evento do calendário {{calendar}} for atualizado",
         "updatedTitle": "Evento do Google Calendar atualizado"
       },
+      "chat": {
+        "addAction": "Adicionar automação de chat",
+        "addAria": "Adicionar automação de execução de chat concluída",
+        "addDescription": "Execute este fluxo de trabalho quando uma execução na thread de chat monitorada terminar.",
+        "addTitle": "Adicionar automação de chat",
+        "anyOutput": "Qualquer saída",
+        "anyStatus": "Qualquer status de término",
+        "patternHint": "Curinga * opcional comparado com a resposta final da execução. Deixe vazio para corresponder a qualquer saída.",
+        "patternLabel": "Padrão de saída",
+        "runFinishedDescription": "Executar quando uma execução em uma de suas threads de chat terminar.",
+        "runFinishedTitle": "Execução de chat concluída",
+        "statusCancelled": "Cancelada",
+        "statusCompleted": "Concluída",
+        "statusesHint": "Execuções com falha ou canceladas não têm texto de resposta, então um padrão de saída nunca corresponde a elas.",
+        "statusesLabel": "Status de término",
+        "statusFailed": "Falhou",
+        "threadIdHint": "Abra o chat e copie o ID da thread na URL. A thread deve ser um de seus próprios chats.",
+        "threadIdLabel": "ID da thread de chat",
+        "viewDescription": "Os filtros desta automação são fixos após a criação.",
+        "viewTitle": "Automação de execução de chat concluída",
+        "watchedThreadLabel": "Thread de chat monitorada"
+      },
       "common": {
         "addAutomation": "Adicionar automação",
         "automation": "Automação",

@@ -70,6 +70,9 @@ function workflowAutomationSummary(
   automation: ChatThreadWorkflowAutomation,
 ): string {
   if (automation.kind === "event") {
+    if (automation.eventType === "chat-run-finished") {
+      return "Chat run finished";
+    }
     if (automation.eventType === "gmail-new-message") {
       return i18n.t(($) => {
         return $.chat.automations.events.gmailNewMessage;
