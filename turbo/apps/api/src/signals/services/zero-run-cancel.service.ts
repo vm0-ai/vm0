@@ -234,24 +234,28 @@ export const dispatchCancelSideEffects$ = command(
 
     const chatCallbackId = await chatCallbackIdForRun(db, result.runId);
     signal.throwIfAborted();
-    const callbackResults = await tapError(
-      set(
-        dispatchRunCallbacks$,
-        {
-          db,
-          runId: result.runId,
-          status: "failed",
-          error: "Run cancelled",
-        },
-        signal,
-      ),
-      (error) => {
-        L.error("Failed to dispatch cancel callbacks", {
-          runId: result.runId,
-          error,
-        });
-      },
-    );
+    const callbackResults =
+      recoveryRedrive && chatCallbackId === undefined
+        ? []
+        : await tapError(
+            set(
+              dispatchRunCallbacks$,
+              {
+                db,
+                runId: result.runId,
+                status: "failed",
+                error: "Run cancelled",
+                ...(recoveryRedrive ? { callbackId: chatCallbackId } : {}),
+              },
+              signal,
+            ),
+            (error) => {
+              L.error("Failed to dispatch cancel callbacks", {
+                runId: result.runId,
+                error,
+              });
+            },
+          );
     signal.throwIfAborted();
 
     const chatCallbackDrained = callbackResults?.some((callbackResult) => {

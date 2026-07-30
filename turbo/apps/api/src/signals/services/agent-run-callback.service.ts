@@ -62,6 +62,7 @@ interface DispatchRunCallbacksInput {
   readonly status: TerminalCallbackStatus;
   readonly result?: Record<string, unknown>;
   readonly error?: string;
+  readonly callbackId?: string;
 }
 
 interface DispatchSingleCallbackInput {
@@ -349,7 +350,7 @@ export const dispatchRunCallbacks$ = command(
     input: DispatchRunCallbacksInput,
     signal: AbortSignal,
   ): Promise<DispatchResult[]> => {
-    const { db, runId, status, result, error } = input;
+    const { db, runId, status, result, error, callbackId } = input;
     const [run] = await db
       .select({
         orgId: agentRuns.orgId,
@@ -380,6 +381,9 @@ export const dispatchRunCallbacks$ = command(
       .where(
         and(
           eq(agentRunCallbacks.runId, runId),
+          callbackId === undefined
+            ? undefined
+            : eq(agentRunCallbacks.id, callbackId),
           or(
             eq(agentRunCallbacks.status, "pending"),
             eq(agentRunCallbacks.status, "failed"),
@@ -428,21 +432,23 @@ export const dispatchRunCallbacks$ = command(
       signal.throwIfAborted();
       results.push(dispatchResult);
     }
-    await tapError(
-      set(
-        continueGoalIfIdle$,
-        {
-          db,
-          runId,
-          dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+    if (callbackId === undefined) {
+      await tapError(
+        set(
+          continueGoalIfIdle$,
+          {
+            db,
+            runId,
+            dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+          },
+          signal,
+        ),
+        (error) => {
+          L.error("Goal continuation dispatch failed", { runId, error });
         },
-        signal,
-      ),
-      (error) => {
-        L.error("Goal continuation dispatch failed", { runId, error });
-      },
-    );
-    signal.throwIfAborted();
+      );
+      signal.throwIfAborted();
+    }
     return results;
   },
 );
