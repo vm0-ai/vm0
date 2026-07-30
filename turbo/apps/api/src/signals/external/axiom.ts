@@ -80,8 +80,8 @@ interface AxiomIngestStatus {
   readonly failed: number;
   readonly failures?: readonly AxiomIngestFailure[];
   readonly processedBytes: number;
-  readonly blocksCreated: number;
-  readonly walLength: number;
+  readonly blocksCreated?: number;
+  readonly walLength?: number;
 }
 
 type DirectAxiomIngestResult =
@@ -129,8 +129,9 @@ function isAxiomIngestStatus(value: unknown): value is AxiomIngestStatus {
     isNonNegativeInteger(value.ingested) &&
     isNonNegativeInteger(value.failed) &&
     isNonNegativeInteger(value.processedBytes) &&
-    isNonNegativeInteger(value.blocksCreated) &&
-    isNonNegativeInteger(value.walLength) &&
+    (value.blocksCreated === undefined ||
+      isNonNegativeInteger(value.blocksCreated)) &&
+    (value.walLength === undefined || isNonNegativeInteger(value.walLength)) &&
     (value.failures === undefined ||
       (Array.isArray(value.failures) &&
         value.failures.every(isAxiomIngestFailure)))

@@ -58,8 +58,6 @@ function successfulAxiomIngestStatus(ingested: number) {
     ingested,
     failed: 0,
     processedBytes: 123,
-    blocksCreated: 1,
-    walLength: 456,
   };
 }
 
