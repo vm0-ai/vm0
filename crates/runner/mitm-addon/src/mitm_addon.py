@@ -778,7 +778,6 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
             send_response=False,
         )
         flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
-        upstream_admission.forget_server_binding(flow.server_conn)
         flow.kill()
         return None
 
@@ -791,7 +790,6 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
         )
     ):
         flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
-        upstream_admission.forget_server_binding(flow.server_conn)
         return None
 
     _prebind_requestheaders_upstream_destination(flow, classification)
@@ -820,7 +818,6 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
                 )
             request_classification.pop_cached_classification(flow)
             flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
-            upstream_admission.forget_server_binding(flow.server_conn)
             flow.kill()
             return None
 
@@ -844,7 +841,6 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
                 )
                 request_classification.pop_cached_classification(flow)
                 flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
-                upstream_admission.forget_server_binding(flow.server_conn)
                 flow.kill()
                 return None
             try:
@@ -944,7 +940,6 @@ def _admit_buffered_aws_sigv4_request(
             )
         request_classification.pop_cached_classification(flow)
         flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
-        upstream_admission.forget_server_binding(flow.server_conn)
         flow.kill()
         return
 
@@ -962,7 +957,6 @@ def _admit_buffered_aws_sigv4_request(
         )
         request_classification.pop_cached_classification(flow)
         flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
-        upstream_admission.forget_server_binding(flow.server_conn)
         flow.kill()
         return
 
@@ -1029,7 +1023,6 @@ async def _try_firewall_request_stream_from_headers(
         )
     except (asyncio.CancelledError, Exception):
         _restore_request_headers_probe_metadata(flow, metadata_snapshot)
-        upstream_admission.forget_server_binding(flow.server_conn)
         raise
     if result is not FirewallHeaderPhaseAuthResult.APPLIED:
         fall_back()
@@ -1048,8 +1041,6 @@ async def _try_firewall_request_stream_from_headers(
     )
     if flow.response is None:
         request_streaming.configure_request_stream(flow, capture_body=capture_body)
-    else:
-        upstream_admission.forget_server_binding(flow.server_conn)
 
 
 def _set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallBlock) -> None:
@@ -1134,14 +1125,12 @@ async def request(flow: http.HTTPFlow) -> None:
     if flow.metadata.get(_REQUEST_HEADERS_TERMINATED):
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
         aws_sigv4_body_admission.release_from_flow(flow)
-        upstream_admission.forget_server_binding(flow.server_conn)
         request_classification.pop_cached_classification(flow)
         return
 
     if flow.response is not None or flow.error is not None:
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
         aws_sigv4_body_admission.release_from_flow(flow)
-        upstream_admission.forget_server_binding(flow.server_conn)
         request_classification.pop_cached_classification(flow)
         return
 
@@ -1277,8 +1266,6 @@ async def request(flow: http.HTTPFlow) -> None:
                     flow,
                     request_end_stream=True,
                 )
-                if flow.response is not None:
-                    upstream_admission.forget_server_binding(flow.server_conn)
             return
 
         if classification.kind == "allow":
@@ -1300,12 +1287,9 @@ async def request(flow: http.HTTPFlow) -> None:
         flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
         aws_sigv4_body_admission.release_from_flow(flow)
-        upstream_admission.forget_server_binding(flow.server_conn)
         terminal_usage.release_tracked_flow(flow)
         raise
     finally:
-        if flow.response is not None or flow.error is not None:
-            upstream_admission.forget_server_binding(flow.server_conn)
         request_classification.pop_cached_classification(flow)
 
 
@@ -1512,8 +1496,6 @@ def _release_terminal_flow_state(
     auth_base_forwarder.release_forward_request_admission_from_flow(flow)
     if release_aws_sigv4_body_admission:
         aws_sigv4_body_admission.release_from_flow(flow)
-    if flow.error is not None:
-        upstream_admission.forget_server_binding(flow.server_conn)
     if release_tracking:
         terminal_usage.release_tracked_flow(flow)
 

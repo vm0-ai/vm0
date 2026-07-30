@@ -317,7 +317,11 @@ async def test_public_destination_upstream_change_during_auth_prevents_credentia
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
     assert flow.request.headers.fields == original_headers
     assert flow.request.path == original_path
-    assert flow.server_conn.id not in upstream_destination_binding.binding_snapshot_for_tests()
+    binding_snapshot = upstream_destination_binding.binding_snapshot_for_tests()
+    if upstream_change == "completed":
+        assert flow.server_conn.id not in binding_snapshot
+    else:
+        assert flow.server_conn.id in binding_snapshot
 
 
 async def test_public_destination_policy_allow_classifies_public_runtime_destination_once(
