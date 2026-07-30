@@ -93,7 +93,10 @@ async function uploadCanonicalBody(
   }
   const uploadResponse = await fetch(initialized.uploadUrl, {
     method: "PUT",
-    headers: { "Content-Type": contentType },
+    headers: {
+      "Content-Type": contentType,
+      ...initialized.uploadHeaders,
+    },
     body: fileContent,
   });
   if (!uploadResponse.ok) {
@@ -221,6 +224,7 @@ async function uploadFile(options: UploadFileOptions): Promise<void> {
   const initialized = await initSlackFileUpload({
     filename,
     length: file.size,
+    supportsUploadHeaders: true,
     canonical: {
       operationId,
       contentType,

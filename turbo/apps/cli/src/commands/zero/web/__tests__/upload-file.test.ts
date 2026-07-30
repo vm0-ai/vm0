@@ -74,6 +74,11 @@ describe("zero web upload-file command", () => {
         contentType: "application/pdf",
         size: 13,
         uploadUrl: PUT_URL,
+        uploadHeaders: {
+          "x-amz-meta-artifact-id": "file-uuid-1",
+          "x-amz-meta-filename": "report.pdf",
+          "x-amz-meta-user-id": "user-test",
+        },
         url: "https://presigned.example.com/file-uuid-1/report.pdf?sig=abc",
       };
 
@@ -103,15 +108,22 @@ describe("zero web upload-file command", () => {
             filename: string;
             contentType: string;
             size: number;
+            supportsUploadHeaders: true;
           };
           expect(body.filename).toBe("report.pdf");
           expect(body.contentType).toBe("application/pdf");
           expect(body.size).toBe(13);
+          expect(body.supportsUploadHeaders).toBe(true);
 
           return HttpResponse.json(prepared, { status: 200 });
         }),
         http.put(PUT_URL, ({ request }) => {
           putReceivedContentType = request.headers.get("content-type");
+          expect(request.headers.get("x-amz-meta-artifact-id")).toBe(
+            "file-uuid-1",
+          );
+          expect(request.headers.get("x-amz-meta-filename")).toBe("report.pdf");
+          expect(request.headers.get("x-amz-meta-user-id")).toBe("user-test");
           expect(request.headers.get(CLIENT_TYPE_HEADER)).toBeNull();
           expect(request.headers.get(CLIENT_VERSION_HEADER)).toBeNull();
           expect(request.headers.get(CLIENT_SESSION_ID_HEADER)).toBeNull();

@@ -4,18 +4,15 @@ import {
   type PhoneUploadCompleteBody,
 } from "@vm0/api-contracts/contracts/integrations";
 
-import { env } from "../../lib/env";
-import { buildArtifactPrefix, buildFileUrl } from "../../lib/file-url";
-import { inferMimetype } from "../../lib/mimetype";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { writeDb$ } from "../external/db";
-import { listS3Objects } from "../external/s3";
 import {
   isAgentPhoneApiError,
   sendAgentPhoneMessage,
 } from "../external/agentphone-client";
+import { resolveArtifactObject$ } from "../services/artifact-storage.service";
 import { recordAgentPhoneUploadedFile$ } from "../services/run-uploaded-files.service";
 import {
   normalizeAgentPhoneHandle,
@@ -87,21 +84,20 @@ const complete$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
   const body = bodyResult.data;
 
-  const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
-  const prefix = buildArtifactPrefix(auth.userId, body.uploadId);
-  const objects = await get(listS3Objects(bucket, prefix));
-  signal.throwIfAborted();
-  const object = objects[0];
+  const object = await set(
+    resolveArtifactObject$,
+    { userId: auth.userId, id: body.uploadId },
+    signal,
+  );
   if (!object) {
     return uploadedFileNotFound();
   }
 
-  const filename = object.key.split("/").pop() ?? body.uploadId;
   const uploadedFile: UploadedFileInfo = {
     key: object.key,
     size: object.size,
-    filename,
-    fileUrl: buildFileUrl(auth.userId, body.uploadId, filename),
+    filename: object.filename,
+    fileUrl: object.url,
   };
 
   const userChannel: AgentPhoneChannel = "sms";
@@ -129,7 +125,7 @@ const complete$ = command(async ({ get, set }, signal: AbortSignal) => {
     return routeError(404, "AgentPhone agent not found", "NOT_FOUND");
   }
 
-  const mimetype = body.contentType ?? inferMimetype(uploadedFile.filename);
+  const mimetype = body.contentType ?? object.contentType;
   const sendResult = await settle(
     sendAgentPhoneMessage(
       {

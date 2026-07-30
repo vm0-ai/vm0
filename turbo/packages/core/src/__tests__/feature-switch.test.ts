@@ -20,6 +20,12 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.LanguagePreference, {})).toBe(
       true,
     );
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.ComposerSkillSubstringSearch, {}),
+    ).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.SlackDmSessionRouting, {})).toBe(
+      true,
+    );
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -140,7 +146,9 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ComposerSkillSubstringSearch]).toBe(
       true,
     );
+    expect(staffOrgStates[FeatureSwitchKey.SlackDmSessionRouting]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.Artifacts]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ImageStyleR2]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
@@ -174,9 +182,11 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.ComposerSkillSubstringSearch]).toBe(
-      false,
+      true,
     );
+    expect(otherOrgStates[FeatureSwitchKey.SlackDmSessionRouting]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.Artifacts]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ImageStyleR2]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(
