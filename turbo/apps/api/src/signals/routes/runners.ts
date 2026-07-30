@@ -2353,8 +2353,6 @@ const networkPolicyRefreshInner$ = command(
         refreshes: refreshes.map((refresh) => {
           return {
             connectorSlug: refresh.connectorSlug,
-            // TODO(#23827): Remove after every pre-bridge runner has drained.
-            connectorRef: refresh.connectorSlug,
             networkPolicy: refresh.networkPolicy,
             nextRefreshAt: refresh.nextRefreshAt,
           };

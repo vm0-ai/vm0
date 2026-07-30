@@ -1,19 +1,30 @@
-import type {
-  PublicConnectorCatalogAuthMethodDetail,
-  PublicConnectorCatalogItem,
-  PublicConnectorCatalogStatusItem,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { PublicConnectorCatalogAuthMethodDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { ZeroConnectorCatalogStatus } from "../../../lib/api/domains/zero-connectors";
 
-export type PublicConnectorStatus = PublicConnectorCatalogStatusItem;
+export type PublicConnectorStatus = ZeroConnectorCatalogStatus;
 
-interface PublicConnectorSearchResult {
-  readonly connector: PublicConnectorStatus;
+interface ConnectorSearchItem {
+  readonly slug: string;
+  readonly label: string;
+  readonly description: string;
+  readonly category: string;
+  readonly tags: readonly string[];
+  readonly generation: readonly string[];
+  readonly authMethods: readonly {
+    readonly id: string;
+    readonly label: string;
+    readonly description: string | null;
+  }[];
+}
+
+interface ConnectorSearchResult<T extends ConnectorSearchItem> {
+  readonly connector: T;
   readonly score: number;
   readonly matchedField: string;
 }
 
-interface PublicConnectorSearchOutput {
-  readonly results: readonly PublicConnectorSearchResult[];
+interface ConnectorSearchOutput<T extends ConnectorSearchItem> {
+  readonly results: readonly ConnectorSearchResult<T>[];
   readonly total: number;
 }
 
@@ -33,9 +44,9 @@ function tokenize(input: string): Set<string> {
   return tokens;
 }
 
-function publicStrings(connector: PublicConnectorCatalogItem): string[] {
+function publicStrings(connector: ConnectorSearchItem): string[] {
   return [
-    connector.connectorRef,
+    connector.slug,
     connector.label,
     connector.description,
     connector.category,
@@ -64,10 +75,10 @@ function best(candidates: readonly (ScoreHit | null)[]): ScoreHit | null {
 function scoreExact(
   keywordLower: string,
   skipPrivateIdentifierMatches: boolean,
-  connector: PublicConnectorStatus,
+  connector: ConnectorSearchItem,
 ): ScoreHit | null {
-  if (connector.connectorRef.toLowerCase() === keywordLower) {
-    return { score: 100, matchedField: "connectorRef" };
+  if (connector.slug.toLowerCase() === keywordLower) {
+    return { score: 100, matchedField: "slug" };
   }
   if (connector.label.toLowerCase() === keywordLower) {
     return { score: 80, matchedField: "label" };
@@ -100,11 +111,11 @@ function scoreExact(
 function scoreSubstring(
   keywordLower: string,
   skipPrivateIdentifierMatches: boolean,
-  connector: PublicConnectorStatus,
+  connector: ConnectorSearchItem,
 ): ScoreHit | null {
   const candidates: ScoreHit[] = [];
-  if (connector.connectorRef.toLowerCase().includes(keywordLower)) {
-    candidates.push({ score: 50, matchedField: "connectorRef" });
+  if (connector.slug.toLowerCase().includes(keywordLower)) {
+    candidates.push({ score: 50, matchedField: "slug" });
   }
   if (connector.label.toLowerCase().includes(keywordLower)) {
     candidates.push({ score: 50, matchedField: "label" });
@@ -146,7 +157,7 @@ function scoreSubstring(
 
 function scoreTokens(
   keywordTokens: ReadonlySet<string>,
-  connector: PublicConnectorStatus,
+  connector: ConnectorSearchItem,
 ): ScoreHit | null {
   const candidateTokens = new Set<string>();
   for (const source of publicStrings(connector)) {
@@ -171,7 +182,7 @@ function scoreConnector(
   keywordLower: string,
   keyword: string,
   keywordTokens: ReadonlySet<string>,
-  connector: PublicConnectorStatus,
+  connector: ConnectorSearchItem,
 ): ScoreHit | null {
   const skipPrivateIdentifierMatches =
     /^[A-Za-z0-9_]+$/.test(keyword) && keyword.includes("_");
@@ -187,38 +198,31 @@ function scoreConnector(
   return hit;
 }
 
-export function searchPublicConnectorCatalog(
-  connectors: readonly PublicConnectorStatus[],
+export function searchConnectorCatalog<T extends ConnectorSearchItem>(
+  connectors: readonly T[],
   keyword: string,
   limit: number,
-): PublicConnectorSearchOutput {
+): ConnectorSearchOutput<T> {
   const trimmed = keyword.trim();
   if (!trimmed) return { results: [], total: 0 };
 
   const keywordLower = trimmed.toLowerCase();
   const keywordTokens = tokenize(trimmed);
-  const hits = connectors.flatMap(
-    (connector): PublicConnectorSearchResult[] => {
-      const hit = scoreConnector(
-        keywordLower,
-        trimmed,
-        keywordTokens,
+  const hits = connectors.flatMap((connector): ConnectorSearchResult<T>[] => {
+    const hit = scoreConnector(keywordLower, trimmed, keywordTokens, connector);
+    if (!hit) return [];
+    return [
+      {
         connector,
-      );
-      if (!hit) return [];
-      return [
-        {
-          connector,
-          score: hit.score,
-          matchedField: hit.matchedField,
-        },
-      ];
-    },
-  );
+        score: hit.score,
+        matchedField: hit.matchedField,
+      },
+    ];
+  });
 
   hits.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
-    return a.connector.connectorRef.localeCompare(b.connector.connectorRef);
+    return a.connector.slug.localeCompare(b.connector.slug);
   });
 
   return {
@@ -232,14 +236,14 @@ export function findConnectorStatusItem(
   connectorSlug: string,
 ): PublicConnectorStatus | null {
   const exact = connectors.find((connector) => {
-    return connector.connectorRef === connectorSlug;
+    return connector.slug === connectorSlug;
   });
   if (exact) return exact;
 
   const lower = connectorSlug.toLowerCase();
   return (
     connectors.find((connector) => {
-      return connector.connectorRef.toLowerCase() === lower;
+      return connector.slug.toLowerCase() === lower;
     }) ?? null
   );
 }
@@ -249,7 +253,7 @@ export function availableConnectorSlugs(
 ): string {
   return connectors
     .map((connector) => {
-      return connector.connectorRef;
+      return connector.slug;
     })
     .join(", ");
 }
@@ -264,7 +268,7 @@ export function resolveManualGrantAuthMethod(
     });
     if (!authMethod) {
       throw new Error(
-        `${connector.connectorRef} connector does not have ${rawAuthMethod} auth method`,
+        `${connector.slug} connector does not have ${rawAuthMethod} auth method`,
         {
           cause: new Error(
             `Available auth methods: ${connector.authMethods
@@ -282,7 +286,7 @@ export function resolveManualGrantAuthMethod(
     }
 
     throw new Error(
-      `${connector.connectorRef} ${authMethod.id} auth method does not use a manual grant`,
+      `${connector.slug} ${authMethod.id} auth method does not use a manual grant`,
     );
   }
 
@@ -294,13 +298,11 @@ export function resolveManualGrantAuthMethod(
     return authMethod;
   }
   if (manualAuthMethods.length === 0) {
-    throw new Error(
-      `${connector.connectorRef} connector does not use a manual grant`,
-    );
+    throw new Error(`${connector.slug} connector does not use a manual grant`);
   }
 
   throw new Error(
-    `${connector.connectorRef} connector has multiple manual grant auth methods`,
+    `${connector.slug} connector has multiple manual grant auth methods`,
     {
       cause: new Error(
         `Pass --auth-method ${manualAuthMethods

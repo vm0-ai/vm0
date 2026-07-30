@@ -1,5 +1,5 @@
 import { foldPendingChatQueueEvents } from "@vm0/api-contracts/contracts/chat-events";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { and, asc, eq, isNull, lt, notExists } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -10,7 +10,7 @@ import { chatEventTypeIn } from "./zero-chat-event-type.service";
 type ChatQueueReadDb = Pick<Db, "select">;
 type ChatQueueDistinctReadDb = Pick<Db, "select" | "selectDistinct">;
 
-const queueEventRevoker = alias(chatMessages, "queue_event_revoker");
+const queueEventRevoker = alias(chatEvents, "queue_event_revoker");
 
 interface PendingChatQueueEvent {
   readonly id: string;
@@ -24,7 +24,7 @@ function unrevokedQueueEventCondition(db: ChatQueueReadDb) {
     db
       .select({ id: queueEventRevoker.id })
       .from(queueEventRevoker)
-      .where(eq(queueEventRevoker.revokesEventId, chatMessages.id)),
+      .where(eq(queueEventRevoker.revokesEventId, chatEvents.id)),
   );
 }
 
@@ -41,23 +41,23 @@ export async function listPendingChatQueueEvents(
 ): Promise<readonly PendingChatQueueEvent[]> {
   const rows = await db
     .select({
-      id: chatMessages.id,
-      chatThreadId: chatMessages.chatThreadId,
-      eventType: chatMessages.eventType,
-      runId: chatMessages.runId,
-      createdAt: chatMessages.createdAt,
+      id: chatEvents.id,
+      chatThreadId: chatEvents.chatThreadId,
+      eventType: chatEvents.eventType,
+      runId: chatEvents.runId,
+      createdAt: chatEvents.createdAt,
     })
-    .from(chatMessages)
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.chatThreadId, chatThreadId),
+        eq(chatEvents.chatThreadId, chatThreadId),
         chatEventTypeIn(["input.prompt", "input.automation", "input.goal"]),
-        isNull(chatMessages.runId),
-        createdBefore ? lt(chatMessages.createdAt, createdBefore) : undefined,
+        isNull(chatEvents.runId),
+        createdBefore ? lt(chatEvents.createdAt, createdBefore) : undefined,
         unrevokedQueueEventCondition(db),
       ),
     )
-    .orderBy(asc(chatMessages.createdAt), asc(chatMessages.id));
+    .orderBy(asc(chatEvents.createdAt), asc(chatEvents.id));
 
   const folded = foldPendingChatQueueEvents(
     rows.map((row) => {
@@ -95,18 +95,18 @@ export async function loadPendingChatQueueEvent(
 ): Promise<PendingChatQueueEvent | null> {
   const [event] = await db
     .select({
-      id: chatMessages.id,
-      chatThreadId: chatMessages.chatThreadId,
-      eventType: chatMessages.eventType,
-      createdAt: chatMessages.createdAt,
+      id: chatEvents.id,
+      chatThreadId: chatEvents.chatThreadId,
+      eventType: chatEvents.eventType,
+      createdAt: chatEvents.createdAt,
     })
-    .from(chatMessages)
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.id, args.eventId),
-        eq(chatMessages.chatThreadId, args.chatThreadId),
+        eq(chatEvents.id, args.eventId),
+        eq(chatEvents.chatThreadId, args.chatThreadId),
         chatEventTypeIn(["input.prompt", "input.automation", "input.goal"]),
-        isNull(chatMessages.runId),
+        isNull(chatEvents.runId),
         unrevokedQueueEventCondition(db),
       ),
     )
@@ -127,13 +127,13 @@ export async function hasPendingUserChatQueueEvent(
   chatThreadId: string,
 ): Promise<boolean> {
   const [event] = await db
-    .select({ id: chatMessages.id })
-    .from(chatMessages)
+    .select({ id: chatEvents.id })
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.chatThreadId, chatThreadId),
+        eq(chatEvents.chatThreadId, chatThreadId),
         chatEventTypeIn(["input.prompt"]),
-        isNull(chatMessages.runId),
+        isNull(chatEvents.runId),
         unrevokedQueueEventCondition(db),
       ),
     )
@@ -163,13 +163,13 @@ export async function staleChatEventQueueThreadIds(
   },
 ): Promise<readonly string[]> {
   const rows = await db
-    .selectDistinct({ chatThreadId: chatMessages.chatThreadId })
-    .from(chatMessages)
+    .selectDistinct({ chatThreadId: chatEvents.chatThreadId })
+    .from(chatEvents)
     .where(
       and(
         chatEventTypeIn(["input.prompt", "input.automation", "input.goal"]),
-        isNull(chatMessages.runId),
-        lt(chatMessages.createdAt, args.staleBefore),
+        isNull(chatEvents.runId),
+        lt(chatEvents.createdAt, args.staleBefore),
         unrevokedQueueEventCondition(db),
       ),
     )

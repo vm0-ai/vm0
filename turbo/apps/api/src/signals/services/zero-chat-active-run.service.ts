@@ -1,6 +1,6 @@
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   and,
@@ -54,11 +54,11 @@ async function activeChatRunExists(
           ),
           exists(
             db
-              .select({ id: chatMessages.id })
-              .from(chatMessages)
+              .select({ id: chatEvents.id })
+              .from(chatEvents)
               .where(
                 and(
-                  eq(chatMessages.runId, zeroRuns.id),
+                  eq(chatEvents.runId, zeroRuns.id),
                   chatEventTypeIn(["input.prompt"]),
                 ),
               ),

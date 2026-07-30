@@ -6,9 +6,10 @@ import {
   morningBriefDeliveries,
   morningBriefSchedules,
 } from "@vm0/db/schema/morning-brief";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { command } from "ccstate";
-import { and, asc, eq, isNotNull, isNull, lte, ne, or } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -24,6 +25,7 @@ import {
   putS3Object,
 } from "../external/s3";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
+import { listPendingChatQueueEvents } from "./chat-event-queue.service";
 import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
 import { settle } from "../utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
@@ -37,11 +39,11 @@ import {
   nextMorningBriefRunAt,
 } from "./morning-brief-schedule.service";
 import { insertChatEvent } from "./zero-chat-event.service";
-import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
+import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import {
-  discardUnclaimedUserMessage,
+  decryptQueuedUserMessageRunParams,
   encryptQueuedUserMessageRunParams,
-} from "./zero-chat-queued-message.service";
+} from "./zero-chat-queued-event.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { resolveDefaultAgent } from "./zero-email-common.service";
 import { createAutomationChatThread } from "./zero-workflow-user-automation-thread.service";
@@ -594,6 +596,44 @@ type ManualMorningBriefDeliveryAdmission =
   | { readonly kind: "ok"; readonly deliveryId: string }
   | Extract<ManualMorningBriefAdmission, { readonly kind: "duplicate" }>;
 
+async function hasPendingMorningBriefQueueEvent(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly chatThreadId: string;
+    readonly deliveryId: string;
+  },
+): Promise<boolean> {
+  const pendingMessageIds = (
+    await listPendingChatQueueEvents(db, args.chatThreadId)
+  ).flatMap((event) => {
+    return event.eventType === "input.prompt" ? [event.id] : [];
+  });
+  if (pendingMessageIds.length === 0) {
+    return false;
+  }
+  const messages = await db
+    .select({ encryptedParams: chatEvents.encryptedParams })
+    .from(chatEvents)
+    .where(
+      and(
+        inArray(chatEvents.id, pendingMessageIds),
+        eq(chatEvents.triggerSource, "workflow-schedule"),
+      ),
+    );
+  for (const message of messages) {
+    const params = await decryptQueuedUserMessageRunParams(
+      message.encryptedParams,
+      { orgId: args.orgId, userId: args.userId },
+    );
+    if (params?.morningBriefDelivery?.deliveryId === args.deliveryId) {
+      return true;
+    }
+  }
+  return false;
+}
+
 async function admitManualMorningBriefDelivery(
   db: Db,
   args: {
@@ -641,13 +681,22 @@ async function admitManualMorningBriefDelivery(
   if (!existing) {
     throw new Error("Expected the existing morning brief delivery");
   }
-  if (existing.status === "queued") {
-    return {
-      kind: "duplicate",
-      runId: null,
-      briefDate: args.briefDate,
-      queued: true,
-    };
+  if (existing.status === "queued" && args.chatThreadId) {
+    const hasPendingEvent = await hasPendingMorningBriefQueueEvent(db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      chatThreadId: args.chatThreadId,
+      deliveryId: existing.id,
+    });
+    signal.throwIfAborted();
+    if (hasPendingEvent) {
+      return {
+        kind: "duplicate",
+        runId: null,
+        briefDate: args.briefDate,
+        queued: true,
+      };
+    }
   }
   if (existing.runId && existing.status !== "failed") {
     return {
@@ -656,13 +705,6 @@ async function admitManualMorningBriefDelivery(
       briefDate: args.briefDate,
       queued: false,
     };
-  }
-  if (args.chatThreadId) {
-    await discardUnclaimedUserMessage(db, {
-      threadId: args.chatThreadId,
-      messageId: existing.id,
-    });
-    signal.throwIfAborted();
   }
   [delivery] = await db
     .update(morningBriefDeliveries)
@@ -680,10 +722,7 @@ async function admitManualMorningBriefDelivery(
         eq(morningBriefDeliveries.updatedAt, existing.updatedAt),
         or(
           eq(morningBriefDeliveries.status, "failed"),
-          and(
-            isNull(morningBriefDeliveries.runId),
-            ne(morningBriefDeliveries.status, "queued"),
-          ),
+          isNull(morningBriefDeliveries.runId),
         ),
       ),
     )

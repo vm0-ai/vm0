@@ -90,7 +90,7 @@ const cronCompactUsageEventsResponseSchema = z.object({
   durationMs: z.number().int().nonnegative(),
 });
 
-const cronMonitorChatMessageQueueResponseSchema = z.object({
+const cronMonitorChatEventQueueResponseSchema = z.object({
   success: z.literal(true),
   orphanedMessages: z.number().int().nonnegative(),
 });
@@ -264,13 +264,13 @@ export const cronCompactUsageEventsContract = c.router({
   },
 });
 
-export const cronMonitorChatMessageQueueContract = c.router({
+export const cronMonitorChatEventQueueContract = c.router({
   monitor: {
     method: "GET",
     path: "/api/cron/monitor-chat-message-queue",
     headers: authHeadersSchema,
     responses: {
-      200: cronMonitorChatMessageQueueResponseSchema,
+      200: cronMonitorChatEventQueueResponseSchema,
       401: apiErrorSchema,
       500: z.object({ error: z.string() }),
     },
@@ -499,8 +499,8 @@ export type CronProcessUsageEventsContract =
   typeof cronProcessUsageEventsContract;
 export type CronCompactChatThreadSnapshotsContract =
   typeof cronCompactChatThreadSnapshotsContract;
-export type CronMonitorChatMessageQueueContract =
-  typeof cronMonitorChatMessageQueueContract;
+export type CronMonitorChatEventQueueContract =
+  typeof cronMonitorChatEventQueueContract;
 export type CronReconcileBillingEntitlementsContract =
   typeof cronReconcileBillingEntitlementsContract;
 export type CronAggregateInsightsContract =

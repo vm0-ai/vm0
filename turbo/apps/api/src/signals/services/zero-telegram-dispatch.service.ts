@@ -3,13 +3,11 @@ import { createHmac, randomBytes } from "node:crypto";
 import { command } from "ccstate";
 import { and, desc, eq } from "drizzle-orm";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { agentSessions } from "@vm0/db/schema/agent-session";
 import {
   telegramMessages,
   type TelegramMessageEntity,
 } from "@vm0/db/schema/telegram-message";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
-import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
@@ -96,8 +94,6 @@ interface TelegramAgent {
 
 interface ThreadSession {
   readonly rootMessageId: string | undefined;
-  readonly existingSessionId: string | undefined;
-  readonly lastProcessedMessageId: string | undefined;
 }
 
 interface DispatchArgs {
@@ -633,153 +629,20 @@ async function storeTelegramMessage(args: {
     .onConflictDoNothing();
 }
 
-async function lookupTelegramThreadSession(args: {
-  readonly db: Db;
-  readonly chatId: string;
-  readonly rootMessageId: string;
-  readonly userLinkId: string;
-}): Promise<{
-  readonly existingSessionId: string | undefined;
-  readonly lastProcessedMessageId: string | undefined;
-}> {
-  const [session] = await args.db
-    .select({
-      agentSessionId: telegramThreadSessions.agentSessionId,
-      lastProcessedMessageId: telegramThreadSessions.lastProcessedMessageId,
-    })
-    .from(telegramThreadSessions)
-    .where(
-      and(
-        eq(telegramThreadSessions.telegramUserLinkId, args.userLinkId),
-        eq(telegramThreadSessions.chatId, args.chatId),
-        eq(telegramThreadSessions.rootMessageId, args.rootMessageId),
-      ),
-    )
-    .limit(1);
-  return {
-    existingSessionId: session?.agentSessionId,
-    lastProcessedMessageId: session?.lastProcessedMessageId ?? undefined,
-  };
+function resolveDirectMessageSession(): ThreadSession {
+  return { rootMessageId: "dm" };
 }
 
-async function resolveSessionCompose(args: {
-  readonly db: Db;
-  readonly sessionId: string;
-  readonly userId: string;
-}): Promise<string | undefined> {
-  const [session] = await args.db
-    .select({ agentComposeId: agentSessions.agentComposeId })
-    .from(agentSessions)
-    .where(
-      and(
-        eq(agentSessions.id, args.sessionId),
-        eq(agentSessions.userId, args.userId),
-      ),
-    )
-    .limit(1);
-  return session?.agentComposeId;
-}
-
-async function resetIncompatibleSession(args: {
-  readonly db: Db;
-  readonly existingSessionId: string | undefined;
-  readonly lastProcessedMessageId: string | undefined;
-  readonly userId: string;
-  readonly composeId: string;
-  readonly signal: AbortSignal;
-}): Promise<{
-  readonly existingSessionId: string | undefined;
-  readonly lastProcessedMessageId: string | undefined;
-}> {
-  if (!args.existingSessionId) {
-    return {
-      existingSessionId: undefined,
-      lastProcessedMessageId: args.lastProcessedMessageId,
-    };
-  }
-
-  const sessionComposeId = await resolveSessionCompose({
-    db: args.db,
-    sessionId: args.existingSessionId,
-    userId: args.userId,
-  });
-  args.signal.throwIfAborted();
-  if (sessionComposeId && sessionComposeId !== args.composeId) {
-    return { existingSessionId: undefined, lastProcessedMessageId: undefined };
-  }
-
-  return {
-    existingSessionId: args.existingSessionId,
-    lastProcessedMessageId: args.lastProcessedMessageId,
-  };
-}
-
-async function resolveDirectMessageSession(args: {
-  readonly db: Db;
-  readonly chatId: string;
-  readonly userLinkId: string;
-  readonly userId: string;
-  readonly composeId: string;
-  readonly signal: AbortSignal;
-}): Promise<ThreadSession> {
-  const rootMessageId = "dm";
-  const session = await lookupTelegramThreadSession({
-    db: args.db,
-    chatId: args.chatId,
-    rootMessageId,
-    userLinkId: args.userLinkId,
-  });
-  args.signal.throwIfAborted();
-  const compatible = await resetIncompatibleSession({
-    db: args.db,
-    existingSessionId: session.existingSessionId,
-    lastProcessedMessageId: session.lastProcessedMessageId,
-    userId: args.userId,
-    composeId: args.composeId,
-    signal: args.signal,
-  });
-  return { rootMessageId, ...compatible };
-}
-
-async function resolveMentionThreadSession(args: {
-  readonly db: Db;
+function resolveMentionThreadSession(args: {
   readonly message: TelegramDispatchMessage;
-  readonly chatId: string;
-  readonly userLinkId: string;
-  readonly userId: string;
-  readonly composeId: string;
   readonly botUsername: string | null;
-  readonly signal: AbortSignal;
-}): Promise<ThreadSession> {
+}): ThreadSession {
   const rootMessageId =
     isTelegramReplyToBotUsername(args.message, args.botUsername) &&
     args.message.reply_to_message
       ? String(args.message.reply_to_message.message_id)
       : undefined;
-  if (!rootMessageId) {
-    return {
-      rootMessageId: undefined,
-      existingSessionId: undefined,
-      lastProcessedMessageId: undefined,
-    };
-  }
-
-  const session = await lookupTelegramThreadSession({
-    db: args.db,
-    chatId: args.chatId,
-    rootMessageId,
-    userLinkId: args.userLinkId,
-  });
-  args.signal.throwIfAborted();
-  const compatible = await resetIncompatibleSession({
-    db: args.db,
-    existingSessionId: session.existingSessionId,
-    lastProcessedMessageId: session.lastProcessedMessageId,
-    userId: args.userId,
-    composeId: args.composeId,
-    signal: args.signal,
-  });
-  return { rootMessageId, ...compatible };
+  return { rootMessageId };
 }
 
 function formatContextMessage(args: {
@@ -876,7 +739,6 @@ const runAgentForTelegram$ = command(
       readonly userId: string;
       readonly orgId: string;
       readonly agentId: string;
-      readonly sessionId: string | undefined;
       readonly prompt: string;
       readonly appendSystemPrompt: string;
       readonly userInfoExtras: {
@@ -896,7 +758,7 @@ const runAgentForTelegram$ = command(
         userId: args.userId,
         orgId: args.orgId,
         agentId: args.agentId,
-        sessionId: args.sessionId,
+        sessionId: undefined,
         prompt: args.prompt,
         appendSystemPrompt: args.appendSystemPrompt,
         triggerSource: "telegram",
@@ -991,7 +853,6 @@ const dispatchTelegramMessage$ = command(
         userId: args.userLink.vm0UserId,
         orgId: args.installation.orgId,
         agentId: args.agent.agentId,
-        sessionId: args.session.existingSessionId,
         prompt: args.prompt,
         appendSystemPrompt: buildTelegramPrompt(
           {
@@ -1014,7 +875,6 @@ const dispatchTelegramMessage$ = command(
           rootMessageId: args.session.rootMessageId ?? null,
           userLinkId: args.userLink.id,
           agentId: args.installation.defaultComposeId,
-          existingSessionId: args.session.existingSessionId ?? null,
           isDM: args.isDM,
         },
       },
@@ -1178,15 +1038,7 @@ export const dispatchTelegramDirectMessage$ = command(
     });
     signal.throwIfAborted();
 
-    const session = await resolveDirectMessageSession({
-      db,
-      chatId: base.chatId,
-      userLinkId: base.userLink.id,
-      userId: base.userLink.vm0UserId,
-      composeId: base.installation.defaultComposeId,
-      signal,
-    });
-    signal.throwIfAborted();
+    const session = resolveDirectMessageSession();
 
     const basePrompt = base.message.text ?? base.message.caption ?? "";
     let prompt = appendTelegramMessageContext(basePrompt, base.message);
@@ -1239,17 +1091,10 @@ export const dispatchTelegramMention$ = command(
     });
     signal.throwIfAborted();
 
-    const session = await resolveMentionThreadSession({
-      db,
+    const session = resolveMentionThreadSession({
       message: base.message,
-      chatId: base.chatId,
-      userLinkId: base.userLink.id,
-      userId: base.userLink.vm0UserId,
-      composeId: base.installation.defaultComposeId,
       botUsername: base.installation.botUsername,
-      signal,
     });
-    signal.throwIfAborted();
 
     const text = stripBotMention(
       base.message.text ?? base.message.caption ?? "",

@@ -1,6 +1,6 @@
 import {
   CANONICAL_ASSET_VERSION,
-  chatMessageAssetRefs,
+  chatEventAssetRefs,
   runUploadedFiles,
 } from "@vm0/db/schema/run-uploaded-file";
 import { and, asc, eq } from "drizzle-orm";
@@ -39,11 +39,11 @@ export async function attachCanonicalPublishedAssetsToCompletionEvent(
   }
 
   await tx
-    .insert(chatMessageAssetRefs)
+    .insert(chatEventAssetRefs)
     .values(
       assets.map((asset, position) => {
         return {
-          chatMessageId: args.completedEventId,
+          chatEventId: args.completedEventId,
           assetId: asset.id,
           position,
         };

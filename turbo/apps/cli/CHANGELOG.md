@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.268.0](https://github.com/vm0-ai/vm0/compare/cli-v9.267.0...cli-v9.268.0) (2026-07-30)
+
+
+### Features
+
+* **cli:** show custom connectors in list and search ([#23865](https://github.com/vm0-ai/vm0/issues/23865)) ([edb4a3f](https://github.com/vm0-ai/vm0/commit/edb4a3f2549100ffb9dc8068565c2865aacfcc3d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.248.1
+    * @vm0/core bumped to 8.486.3
+
 ## [9.267.0](https://github.com/vm0-ai/vm0/compare/cli-v9.266.0...cli-v9.267.0) (2026-07-30)
 
 

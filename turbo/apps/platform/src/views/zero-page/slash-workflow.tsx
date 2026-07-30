@@ -3,6 +3,7 @@
 // workflow composer can both reuse them without an import cycle.
 import { IconChevronRight, IconFileText } from "@tabler/icons-react";
 import { cn, PopoverContent } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { Link } from "../router/link.tsx";
 import type { ComposerSlashWorkflow } from "../../signals/zero-page/workflow-composer-domain.ts";
@@ -74,6 +75,7 @@ export function SlashWorkflowMenu({
   readonly showWorkflowsPageLink: boolean;
   readonly onSelect: (workflow: ComposerSlashWorkflow) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <PopoverContent
       side="top"
@@ -90,11 +92,15 @@ export function SlashWorkflowMenu({
       data-testid="slash-workflow-menu"
     >
       <div className="px-2.5 pt-2 pb-2 text-xs font-medium text-muted-foreground">
-        Workflows
+        {t(($) => {
+          return $.chat.composer.workflows.title;
+        })}
       </div>
       {loading ? (
         <div className="px-2.5 py-2 text-sm text-muted-foreground">
-          Loading workflows...
+          {t(($) => {
+            return $.chat.composer.workflows.loading;
+          })}
         </div>
       ) : workflows.length > 0 ? (
         <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-1.5">
@@ -139,7 +145,9 @@ export function SlashWorkflowMenu({
         </div>
       ) : (
         <div className="px-2.5 pt-1 pb-2.5 text-sm text-muted-foreground">
-          No matching workflows
+          {t(($) => {
+            return $.chat.composer.workflows.empty;
+          })}
         </div>
       )}
       {showWorkflowsPageLink && (
@@ -158,7 +166,11 @@ export function SlashWorkflowMenu({
                 stroke={1.8}
                 className="shrink-0 text-muted-foreground"
               />
-              <span className="truncate">View all workflows</span>
+              <span className="truncate">
+                {t(($) => {
+                  return $.chat.composer.workflows.viewAll;
+                })}
+              </span>
             </span>
             <IconChevronRight
               size={16}

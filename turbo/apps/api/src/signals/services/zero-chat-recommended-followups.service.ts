@@ -1,7 +1,7 @@
 import type {
-  ChatMessageRecommendedFollowupGenerationType,
-  ChatMessageRecommendedFollowups,
-} from "@vm0/db/schema/chat-message";
+  ChatEventRecommendedFollowupGenerationType,
+  ChatEventRecommendedFollowups,
+} from "@vm0/db/schema/chat-event";
 
 export const RECOMMENDED_FOLLOWUP_LIMIT = 3;
 
@@ -22,7 +22,7 @@ function sanitizeFollowupPrompt(raw: string): string | null {
 
 function isRecommendedFollowupGenerationType(
   value: unknown,
-): value is ChatMessageRecommendedFollowupGenerationType {
+): value is ChatEventRecommendedFollowupGenerationType {
   return (
     value === "image" ||
     value === "video" ||
@@ -60,13 +60,13 @@ function isJsonSyntaxPromptFragment(prompt: string): boolean {
 
 export function normalizeRecommendedFollowups(
   value: unknown,
-): ChatMessageRecommendedFollowups {
+): ChatEventRecommendedFollowups {
   if (!Array.isArray(value)) {
     return [];
   }
 
   const seen = new Set<string>();
-  const followups: ChatMessageRecommendedFollowups = [];
+  const followups: ChatEventRecommendedFollowups = [];
   for (const item of value) {
     if (!isRecord(item) || typeof item.prompt !== "string") {
       continue;

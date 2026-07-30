@@ -2,7 +2,7 @@ import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { and, count, eq, isNull, like, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
@@ -36,15 +36,15 @@ export async function setWorkflowQueueEventCreatedAtFixture(args: {
   const updated = await db().transaction(async (tx) => {
     await tx.execute(sql`SET LOCAL session_replication_role = replica`);
     return await tx
-      .update(chatMessages)
+      .update(chatEvents)
       .set({ createdAt: args.createdAt })
       .where(
         and(
-          eq(chatMessages.id, args.eventId),
-          eq(chatMessages.eventType, "input.automation"),
+          eq(chatEvents.id, args.eventId),
+          eq(chatEvents.eventType, "input.automation"),
         ),
       )
-      .returning({ id: chatMessages.id });
+      .returning({ id: chatEvents.id });
   });
   if (updated.length !== 1) {
     throw new Error("Expected one workflow queue event to become historical");
@@ -56,22 +56,22 @@ export async function setWorkflowQueueEventCreatedAtFixture(args: {
  * real time to pass. Product APIs cannot construct an already-stale queue item.
  */
 export async function setQueuedUserMessageCreatedAtFixture(args: {
-  readonly messageId: string;
+  readonly eventId: string;
   readonly createdAt: Date;
 }): Promise<void> {
   const updated = await db().transaction(async (tx) => {
     await tx.execute(sql`SET LOCAL session_replication_role = replica`);
     return await tx
-      .update(chatMessages)
+      .update(chatEvents)
       .set({ createdAt: args.createdAt })
       .where(
         and(
-          eq(chatMessages.id, args.messageId),
-          eq(chatMessages.eventType, "input.prompt"),
-          isNull(chatMessages.runId),
+          eq(chatEvents.id, args.eventId),
+          eq(chatEvents.eventType, "input.prompt"),
+          isNull(chatEvents.runId),
         ),
       )
-      .returning({ id: chatMessages.id });
+      .returning({ id: chatEvents.id });
   });
   if (updated.length !== 1) {
     throw new Error("Expected one queued user message to become historical");
@@ -675,9 +675,9 @@ export async function holdThreadSessionConversationChangesFixture(args: {
  * product lock in a test-owned order. This timing-only boundary neither creates
  * nor changes product rows and cannot block unrelated queue items.
  */
-export async function holdChatMessageQueueItemFixture(args: {
+export async function holdChatEventQueueItemFixture(args: {
   readonly threadId: string;
-  readonly messageId: string;
+  readonly eventId: string;
   readonly signal: AbortSignal;
 }): Promise<{
   readonly release: () => void;
@@ -689,14 +689,14 @@ export async function holdChatMessageQueueItemFixture(args: {
   const released = createDeferredPromise<void>(args.signal);
   const done = db().transaction(async (tx) => {
     const [pending] = await tx
-      .select({ id: chatMessages.id })
-      .from(chatMessages)
+      .select({ id: chatEvents.id })
+      .from(chatEvents)
       .where(
         and(
-          eq(chatMessages.id, args.messageId),
-          eq(chatMessages.chatThreadId, args.threadId),
-          eq(chatMessages.eventType, "input.prompt"),
-          isNull(chatMessages.runId),
+          eq(chatEvents.id, args.eventId),
+          eq(chatEvents.chatThreadId, args.threadId),
+          eq(chatEvents.eventType, "input.prompt"),
+          isNull(chatEvents.runId),
         ),
       )
       .for("update")
@@ -737,13 +737,13 @@ export async function holdChatMessageQueueItemFixture(args: {
 }
 
 /**
- * Holds one existing chat-message row so thread deletion can pause after it
+ * Holds one existing ChatEvent row so thread deletion can pause after it
  * owns the parent thread lock. This timing-only boundary does not create or
  * mutate product data and cannot block messages outside the selected thread.
  */
-export async function holdChatMessageFixture(args: {
+export async function holdChatEventFixture(args: {
   readonly threadId: string;
-  readonly messageId: string;
+  readonly eventId: string;
   readonly signal: AbortSignal;
 }): Promise<{
   readonly release: () => void;
@@ -754,12 +754,12 @@ export async function holdChatMessageFixture(args: {
   const released = createDeferredPromise<void>(args.signal);
   const done = db().transaction(async (tx) => {
     const rows = await tx
-      .select({ id: chatMessages.id })
-      .from(chatMessages)
+      .select({ id: chatEvents.id })
+      .from(chatEvents)
       .where(
         and(
-          eq(chatMessages.id, args.messageId),
-          eq(chatMessages.chatThreadId, args.threadId),
+          eq(chatEvents.id, args.eventId),
+          eq(chatEvents.chatThreadId, args.threadId),
         ),
       )
       .for("update")
@@ -797,23 +797,23 @@ export async function holdChatMessageFixture(args: {
 }
 
 /**
- * Inserts one message through the production sequence writer, then holds its
+ * Inserts one event through the production sequence writer, then holds its
  * transaction open. No product endpoint can pause between INSERT and COMMIT,
  * so this fixture is the narrow timing boundary for sequence serialization.
  */
-export async function holdChatMessageInsertTransactionFixture(args: {
+export async function holdChatEventInsertTransactionFixture(args: {
   readonly threadId: string;
   readonly content: string;
   readonly signal: AbortSignal;
 }): Promise<{
-  readonly message: { readonly id: string; readonly seqId: number };
+  readonly event: { readonly id: string; readonly seqId: number };
   readonly release: () => void;
   readonly done: Promise<void>;
   readonly blockedWaiterCount: () => Promise<number>;
 }> {
   const started = createDeferredPromise<{
     readonly pid: number;
-    readonly message: { readonly id: string; readonly seqId: number };
+    readonly event: { readonly id: string; readonly seqId: number };
   }>(args.signal);
   const released = createDeferredPromise<void>(args.signal);
   const done = db().transaction(async (tx) => {
@@ -828,22 +828,22 @@ export async function holdChatMessageInsertTransactionFixture(args: {
     if (!holderPid) {
       throw new Error("Expected the chat-message insert holder pid");
     }
-    const message = await insertChatEvent(tx, {
+    const event = await insertChatEvent(tx, {
       chatThreadId: args.threadId,
       eventType: "output.message",
       content: args.content,
       runId: null,
     });
-    if (!message) {
+    if (!event) {
       throw new Error("Expected the held chat-message insert");
     }
-    started.resolve({ pid: holderPid, message });
+    started.resolve({ pid: holderPid, event });
     await released.promise;
   });
-  const { pid, message } = await started.promise;
+  const { pid, event } = await started.promise;
 
   return {
-    message,
+    event,
     release: () => {
       if (!released.settled()) {
         released.resolve(undefined);
@@ -856,12 +856,12 @@ export async function holdChatMessageInsertTransactionFixture(args: {
   };
 }
 
-/** Inserts one message with reservation and persistence in one transaction. */
-export async function insertChatMessageTransactionFixture(args: {
+/** Inserts one event with reservation and persistence in one transaction. */
+export async function insertChatEventTransactionFixture(args: {
   readonly threadId: string;
   readonly content: string;
 }): Promise<{ readonly id: string; readonly seqId: number }> {
-  const message = await db().transaction(async (tx) => {
+  const event = await db().transaction(async (tx) => {
     return await insertChatEvent(tx, {
       chatThreadId: args.threadId,
       eventType: "output.message",
@@ -869,10 +869,10 @@ export async function insertChatMessageTransactionFixture(args: {
       runId: null,
     });
   });
-  if (!message) {
+  if (!event) {
     throw new Error("Expected the chat-message insert");
   }
-  return message;
+  return event;
 }
 
 /**
@@ -936,19 +936,19 @@ export async function insertRetiredQueuePauseEventsFixture(args: {
     const [thread] = await tx
       .update(chatThreads)
       .set({
-        lastChatMessageSeqId: sql`${chatThreads.lastChatMessageSeqId} + 2`,
+        lastChatEventSeqId: sql`${chatThreads.lastChatEventSeqId} + 2`,
       })
       .where(eq(chatThreads.id, args.threadId))
-      .returning({ lastSeqId: chatThreads.lastChatMessageSeqId });
+      .returning({ lastSeqId: chatThreads.lastChatEventSeqId });
     if (!thread) {
       throw new Error(`Chat thread ${args.threadId} not found`);
     }
     const pausedSeqId = thread.lastSeqId - 1;
     const resumedSeqId = thread.lastSeqId;
     const retiredEventType = (eventType: string) => {
-      return eventType as (typeof chatMessages.$inferInsert)["eventType"];
+      return eventType as (typeof chatEvents.$inferInsert)["eventType"];
     };
-    await tx.insert(chatMessages).values([
+    await tx.insert(chatEvents).values([
       {
         chatThreadId: args.threadId,
         eventType: retiredEventType("queue.automation_paused"),

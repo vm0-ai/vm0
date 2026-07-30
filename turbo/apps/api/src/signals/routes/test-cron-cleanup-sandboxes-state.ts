@@ -12,7 +12,7 @@ import { agentRunCustomConnectorAuthRefs } from "@vm0/db/schema/agent-run-custom
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { exportJobs } from "@vm0/db/schema/export-job";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -197,15 +197,15 @@ async function deleteRunForAction(
     : [];
   signal.throwIfAborted();
   const runThreadRows = await db
-    .select({ id: chatMessages.chatThreadId })
-    .from(chatMessages)
-    .where(eq(chatMessages.runId, runId));
+    .select({ id: chatEvents.chatThreadId })
+    .from(chatEvents)
+    .where(eq(chatEvents.runId, runId));
   signal.throwIfAborted();
   const runThreadIds = runThreadRows.map((row) => {
     return row.id;
   });
   if (runThreadIds.length > 0) {
-    await db.delete(chatMessages).where(eq(chatMessages.runId, runId));
+    await db.delete(chatEvents).where(eq(chatEvents.runId, runId));
     signal.throwIfAborted();
     await db
       .delete(chatThreads)
@@ -214,9 +214,9 @@ async function deleteRunForAction(
           inArray(chatThreads.id, runThreadIds),
           notExists(
             db
-              .select({ id: chatMessages.id })
-              .from(chatMessages)
-              .where(eq(chatMessages.chatThreadId, chatThreads.id)),
+              .select({ id: chatEvents.id })
+              .from(chatEvents)
+              .where(eq(chatEvents.chatThreadId, chatThreads.id)),
           ),
         ),
       );
@@ -525,12 +525,12 @@ async function getQueueMarkerRevokerForAction(
   }
   const [revoker] = await db
     .select({
-      id: chatMessages.id,
-      revokesEventId: chatMessages.revokesEventId,
-      runEventId: chatMessages.runEventId,
+      id: chatEvents.id,
+      revokesEventId: chatEvents.revokesEventId,
+      runEventId: chatEvents.runEventId,
     })
-    .from(chatMessages)
-    .where(eq(chatMessages.revokesEventId, markerId))
+    .from(chatEvents)
+    .where(eq(chatEvents.revokesEventId, markerId))
     .limit(1);
   signal.throwIfAborted();
   return actionOk({ queue_marker_revoker: revoker ?? null });

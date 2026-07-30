@@ -15,7 +15,7 @@ import {
   loadNextWorkflowQueueEvent,
   rejectWorkflowQueueEvent,
   type PendingWorkflowQueueEvent,
-} from "./chat-message-queue.service";
+} from "./workflow-chat-event-queue.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import {
   launchQueuedWorkflowAutomation$,

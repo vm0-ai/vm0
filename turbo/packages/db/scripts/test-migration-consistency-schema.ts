@@ -133,6 +133,14 @@ async function runMigrations(dbUrl: string): Promise<void> {
   });
 }
 
+async function resetDatabase(dbUrl: string): Promise<void> {
+  console.log(`♻️  Resetting database...`);
+  execCommand(`tsx ${path.join(dirname, "reset-db.ts")}`, {
+    env: { DATABASE_URL: dbUrl },
+    cwd: PACKAGE_DIR,
+  });
+}
+
 async function validateCurrentBrowserApiBeforeBillingMigration(): Promise<void> {
   console.log(
     "=== Phase 1.95: Validate current browser API before billing migration ===\n",
@@ -8230,6 +8238,47 @@ async function validateTeamsThreadSessionContraction(): Promise<void> {
   }
 }
 
+async function validateTelegramThreadSessionContraction(): Promise<void> {
+  console.log("=== Validate legacy Telegram thread session contraction ===\n");
+  const testDb = "migration_telegram_thread_session_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 740);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      const beforeDrop = await client.query<{
+        legacy_session_table: string | null;
+      }>(`
+        SELECT to_regclass(
+          'public.telegram_thread_sessions'
+        )::text AS "legacy_session_table"
+      `);
+      assert.deepEqual(beforeDrop.rows, [
+        { legacy_session_table: "telegram_thread_sessions" },
+      ]);
+
+      await applyMigrationsUpTo(client, 741);
+
+      const afterDrop = await client.query<{
+        legacy_session_table: string | null;
+      }>(`
+        SELECT to_regclass(
+          'public.telegram_thread_sessions'
+        )::text AS "legacy_session_table"
+      `);
+      assert.deepEqual(afterDrop.rows, [{ legacy_session_table: null }]);
+      console.log("   ✅ Legacy Telegram thread session table is removed\n");
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateOrgPlanEntitlementBackfill(): Promise<void> {
   console.log(
     "=== Phase 1.8: Validate existing org plan entitlement backfill ===\n",
@@ -8909,6 +8958,7 @@ async function main(): Promise<void> {
     await validateSlackChatThreadRouteBackfill();
     await validateSlackLegacySchemaContraction();
     await validateTeamsThreadSessionContraction();
+    await validateTelegramThreadSessionContraction();
     await validateOrgPlanEntitlementBackfill();
     await validateModelObservationContractCleanup();
     await validateChatEventTypeBackfillAndContract();
@@ -8933,6 +8983,12 @@ async function main(): Promise<void> {
     const dbUrl1 = createTestDbUrl(TEST_DB_1);
     await runMigrations(dbUrl1);
     console.log("   ✅ Migrations applied successfully\n");
+
+    console.log("=== Phase 2.1: Validate database reset ===\n");
+    await resetDatabase(dbUrl1);
+    await resetDatabase(dbUrl1);
+    await runMigrations(dbUrl1);
+    console.log("   ✅ Consecutive database resets completed successfully\n");
 
     await validatePreviousBrowserApiAfterBillingMigration(dbUrl1);
     await validateChatEventSourcesAreAppendOnly(dbUrl1);
@@ -8978,6 +9034,7 @@ async function main(): Promise<void> {
       console.log(
         "   ✅ Custom connector OAuth mode constraints reject mismatched configuration",
       );
+      console.log("   ✅ Consecutive database resets replay all migrations");
       console.log("   ✅ Schemas are functionally equivalent");
       console.log("   ✅ All migrations match the schema definitions");
 

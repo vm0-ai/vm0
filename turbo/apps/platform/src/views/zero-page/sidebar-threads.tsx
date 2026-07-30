@@ -5,6 +5,7 @@ import {
   useLastResolved,
   useLastLoadable,
 } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 import type { Computed } from "ccstate";
 import {
   IconPlus,
@@ -133,17 +134,25 @@ function equalSidebarChatThreadWindows(
 }
 
 function SessionStateIndicator({ state }: { state: IndicatorState }) {
+  const { t } = useTranslation();
   if (state === "running") {
     return <RunningIndicator />;
   }
   if (state === "unread") {
     return (
-      <span aria-label="Unread" className="h-2 w-2 rounded-full bg-sky-600" />
+      <span
+        aria-label={t(($) => {
+          return $.chat.sidebar.unread;
+        })}
+        className="h-2 w-2 rounded-full bg-sky-600"
+      />
     );
   }
   return (
     <span
-      aria-label="Draft"
+      aria-label={t(($) => {
+        return $.chat.sidebar.draft;
+      })}
       className="flex items-center justify-center text-sidebar-foreground/50"
     >
       <IconPencil size={16} stroke={2} />
@@ -302,6 +311,11 @@ function ChatThreadMenuTriggerContent({
   );
 }
 
+function preventChatThreadMenuNavigation(e: MouseEvent) {
+  e.preventDefault();
+  e.stopPropagation();
+}
+
 function ChatThreadMenu({
   threadId,
   isPinned,
@@ -315,6 +329,7 @@ function ChatThreadMenu({
   hasOtherIndicator: boolean;
   usePinnedIndicatorTrigger: boolean;
 }) {
+  const { t } = useTranslation();
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
   const pinChatThread = useSet(pinChatThread$);
   const unpinChatThread = useSet(unpinChatThread$);
@@ -329,11 +344,6 @@ function ChatThreadMenu({
     } else {
       detach(pinChatThread(threadId, pageSignal), Reason.DomCallback);
     }
-  }
-
-  function handleMenuTriggerClick(e: MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
   }
 
   function openRenameDialog() {
@@ -351,7 +361,7 @@ function ChatThreadMenu({
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            onClick={handleMenuTriggerClick}
+            onClick={preventChatThreadMenuNavigation}
             className={`peer pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md ${
               showMobileTrigger ? "visible" : "invisible"
             } md:invisible md:group-hover:visible md:data-[state=open]:visible transition-opacity duration-150 ${
@@ -359,14 +369,22 @@ function ChatThreadMenu({
                 ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
                 : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
             }`}
-            aria-label="Open chat menu"
+            aria-label={t(($) => {
+              return $.chat.sidebar.openChatMenu;
+            })}
             data-testid="chat-thread-menu-trigger"
             data-pinned={isPinned ? "true" : "false"}
           >
             <Tooltip>
               <TooltipTrigger asChild>
                 <span
-                  aria-label={usePinnedIndicatorTrigger ? "Pinned" : undefined}
+                  aria-label={
+                    usePinnedIndicatorTrigger
+                      ? t(($) => {
+                          return $.chat.sidebar.pinned;
+                        })
+                      : undefined
+                  }
                   data-testid={
                     usePinnedIndicatorTrigger
                       ? "chat-thread-pinned-indicator"
@@ -379,7 +397,11 @@ function ChatThreadMenu({
                 </span>
               </TooltipTrigger>
               <TooltipContent side="bottom">
-                <p className="text-xs">More</p>
+                <p className="text-xs">
+                  {t(($) => {
+                    return $.chat.actions.more;
+                  })}
+                </p>
               </TooltipContent>
             </Tooltip>
           </button>
@@ -389,18 +411,24 @@ function ChatThreadMenu({
             {isPinned ? (
               <>
                 <IconPinnedOff size={16} stroke={2} className="mr-2" />
-                Unpin chat
+                {t(($) => {
+                  return $.chat.sidebar.unpin;
+                })}
               </>
             ) : (
               <>
                 <IconPin size={16} stroke={2} className="mr-2" />
-                Pin chat
+                {t(($) => {
+                  return $.chat.sidebar.pin;
+                })}
               </>
             )}
           </DropdownMenuItem>
           <DropdownMenuModalItem onModalSelect={openRenameDialog}>
             <IconPencil size={16} stroke={2} className="mr-2" />
-            Rename chat
+            {t(($) => {
+              return $.chat.sidebar.rename;
+            })}
           </DropdownMenuModalItem>
           <DropdownMenuModalItem
             onModalSelect={() => {
@@ -409,7 +437,9 @@ function ChatThreadMenu({
             className="text-destructive focus:text-destructive"
           >
             <IconTrash size={16} stroke={2} className="mr-2" />
-            Delete chat
+            {t(($) => {
+              return $.chat.sidebar.delete;
+            })}
           </DropdownMenuModalItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -428,6 +458,7 @@ function ChatThreadSideDecorator({
   isHighlighted: boolean;
   indicatorState: IndicatorState | null;
 }) {
+  const { t } = useTranslation();
   if (indicatorState === "draft") {
     return (
       <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
@@ -457,14 +488,20 @@ function ChatThreadSideDecorator({
           <Tooltip>
             <TooltipTrigger asChild>
               <span
-                aria-label="Pinned"
+                aria-label={t(($) => {
+                  return $.chat.sidebar.pinned;
+                })}
                 className="hidden items-center justify-center text-sidebar-foreground/70 group-hover:hidden peer-data-[state=open]:hidden md:flex"
               >
                 <IconPin size={16} stroke={2} />
               </span>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              <p className="text-xs">Pinned</p>
+              <p className="text-xs">
+                {t(($) => {
+                  return $.chat.sidebar.pinned;
+                })}
+              </p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -537,6 +574,7 @@ function ChatThreadItemLink({
   session: SidebarChatThread;
   state: ReturnType<typeof useChatThreadItemState>;
 }) {
+  const { t } = useTranslation();
   const openRenameChatThreadDialog = useSet(
     openRenameChatThreadDialogForThreadId$,
   );
@@ -581,7 +619,12 @@ function ChatThreadItemLink({
         {state.paneIndicator && (
           <ChatThreadListPaneIcon pane={state.paneIndicator} />
         )}
-        <span className="min-w-0 truncate">{session.title ?? "New chat"}</span>
+        <span className="min-w-0 truncate">
+          {session.title ??
+            t(($) => {
+              return $.chat.newChat;
+            })}
+        </span>
       </span>
     </Link>
   );
@@ -604,6 +647,7 @@ function ChatThreadItem({ session }: { session: SidebarChatThread }) {
 }
 
 function ChatThreadRenameDialog() {
+  const { t } = useTranslation();
   const renameDialogThreadId = useGet(renameDialogThreadId$);
   const renameDialogAgentId = useGet(renameDialogAgentId$);
   const renameDialogInput = useGet(renameDialogInput$);
@@ -662,9 +706,15 @@ function ChatThreadRenameDialog() {
         }}
       >
         <DialogHeader>
-          <DialogTitle>Rename chat</DialogTitle>
+          <DialogTitle>
+            {t(($) => {
+              return $.chat.sidebar.rename;
+            })}
+          </DialogTitle>
           <DialogDescription>
-            Enter a new name for this chat thread.
+            {t(($) => {
+              return $.chat.sidebar.renameDescription;
+            })}
           </DialogDescription>
         </DialogHeader>
         <form
@@ -682,7 +732,9 @@ function ChatThreadRenameDialog() {
               onChange={(e) => {
                 return setRenameDialogInput(e.target.value);
               }}
-              placeholder="Chat title"
+              placeholder={t(($) => {
+                return $.chat.sidebar.titlePlaceholder;
+              })}
             />
           </div>
           <DialogFooter>
@@ -693,10 +745,14 @@ function ChatThreadRenameDialog() {
                 closeRenameDialog();
               }}
             >
-              Cancel
+              {t(($) => {
+                return $.chat.actions.cancel;
+              })}
             </Button>
             <Button type="submit" disabled={!renameDialogInput.trim()}>
-              Rename
+              {t(($) => {
+                return $.chat.actions.rename;
+              })}
             </Button>
           </DialogFooter>
         </form>
@@ -712,21 +768,31 @@ function DeleteChatThreadDialogContent({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>Delete chat?</DialogTitle>
+        <DialogTitle>
+          {t(($) => {
+            return $.chat.sidebar.deleteTitle;
+          })}
+        </DialogTitle>
         <DialogDescription>
-          This will permanently delete this chat. Any task currently running in
-          this chat will be stopped immediately. This action cannot be undone.
+          {t(($) => {
+            return $.chat.sidebar.deleteDescription;
+          })}
         </DialogDescription>
       </DialogHeader>
       <DialogFooter>
         <Button variant="outline" onClick={onCancel}>
-          Cancel
+          {t(($) => {
+            return $.chat.actions.cancel;
+          })}
         </Button>
         <Button variant="destructive" onClick={onConfirm}>
-          Delete
+          {t(($) => {
+            return $.chat.actions.delete;
+          })}
         </Button>
       </DialogFooter>
     </DialogContent>
@@ -807,21 +873,47 @@ function VirtualizedChatThreads({ threadCount }: { threadCount: number }) {
 }
 
 function ChatThreads({ threadCount }: { threadCount: number }) {
+  const { t } = useTranslation();
   const unreadOnly = useGet(chatThreadOnlyUnread$);
 
   if (threadCount === 0) {
     return (
       <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
         {unreadOnly
-          ? "No unread chats"
-          : "Start a conversation and it'll show up here"}
+          ? t(($) => {
+              return $.chat.sidebar.noUnread;
+            })
+          : t(($) => {
+              return $.chat.sidebar.empty;
+            })}
       </p>
     );
   }
   return <VirtualizedChatThreads threadCount={threadCount} />;
 }
 
+function ChatThreadsListMenuTooltip() {
+  const { t } = useTranslation();
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span>
+          <IconDots size={16} stroke={2} />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">
+        <p className="text-xs">
+          {t(($) => {
+            return $.chat.actions.more;
+          })}
+        </p>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function ChatThreadsTitle() {
+  const { t } = useTranslation();
   const currentChatAgentId = useLastResolved(currentChatAgentId$) ?? null;
   const createNewChat = useSet(createNewChatThread$);
   const setExpanded = useSet(setSidebarExpanded$);
@@ -877,18 +969,11 @@ function ChatThreadsTitle() {
                   e.stopPropagation();
                 }}
                 className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors"
-                aria-label="Open chat list menu"
+                aria-label={t(($) => {
+                  return $.chat.sidebar.openListMenu;
+                })}
               >
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span>
-                      <IconDots size={16} stroke={2} />
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    <p className="text-xs">More</p>
-                  </TooltipContent>
-                </Tooltip>
+                <ChatThreadsListMenuTooltip />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
@@ -905,7 +990,9 @@ function ChatThreadsTitle() {
                 disabled={!currentChatAgentId || newChatDisabled}
               >
                 <IconPlus size={16} stroke={2} className="mr-2" />
-                New chat
+                {t(($) => {
+                  return $.chat.newChat;
+                })}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
@@ -918,7 +1005,9 @@ function ChatThreadsTitle() {
                   stroke={2}
                   className={`mr-2 ${unreadOnly ? "invisible" : ""}`}
                 />
-                All chats
+                {t(($) => {
+                  return $.chat.sidebar.allChats;
+                })}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={() => {
@@ -930,7 +1019,9 @@ function ChatThreadsTitle() {
                   stroke={2}
                   className={`mr-2 ${unreadOnly ? "" : "invisible"}`}
                 />
-                Unread only
+                {t(($) => {
+                  return $.chat.sidebar.unreadOnly;
+                })}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -1025,6 +1116,7 @@ function AgentChatThreadsContent({
 }
 
 function ExpandedChatThreadsContent() {
+  const { t } = useTranslation();
   const agentScope = useGet(currentChatAgentScope$);
   const isScrolled = useGet(isScrolled$);
   const setIsScrolledFn = useSet(setIsScrolled$);
@@ -1085,7 +1177,9 @@ function ExpandedChatThreadsContent() {
   return (
     <OverlayScrollArea
       className="mt-1 min-h-0 flex-1"
-      aria-label="Chat threads"
+      aria-label={t(($) => {
+        return $.chat.sidebar.chatThreads;
+      })}
       data-testid="sidebar-scroll-area"
       tabIndex={currentMainThreadId ? 0 : undefined}
       onPointerDownCapture={(event) => {

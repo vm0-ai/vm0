@@ -58,8 +58,11 @@ function buildZeroToken(
 function connectorIdentity(
   overrides: Partial<ConnectorIdentity> = {},
 ): ConnectorIdentity {
+  const connectorSlug =
+    overrides.connectorSlug ?? overrides.connectorRef ?? "github";
   return {
-    connectorRef: "github",
+    connectorRef: connectorSlug,
+    connectorSlug,
     label: "GitHub",
     visibility: "available",
     credentialResolution: "network-boundary",
@@ -133,6 +136,7 @@ function connectorResponse(
   return {
     id: "00000000-0000-4000-8000-000000000002",
     type: connectorSlug,
+    slug: connectorSlug,
     authMethod: "oauth",
     externalId: "external-1",
     externalUsername: "user",
@@ -268,7 +272,7 @@ describe("zero connector check command", () => {
       stubDiagnostic(
         resolvedUrl({
           connector: connectorIdentity({
-            connectorRef: "server-only",
+            connectorSlug: "server-only",
             label: "Server Only",
           }),
           environmentNames: ["SERVER_ONLY_TOKEN"],
@@ -299,7 +303,7 @@ describe("zero connector check command", () => {
         mode: "url",
         method: "POST",
         url: "https://service.example.com/api/items",
-        connectorRef: "server-only",
+        connectorSlug: "server-only",
         environmentName: "SERVER_ONLY_TOKEN",
       } satisfies ConnectorCheckRequest);
       expect(getOutput()).toContain(
@@ -373,6 +377,29 @@ describe("zero connector check command", () => {
         "zero connector permission-request github --permission contents:write",
       );
       expect(getOutput()).not.toContain("--callback-prompt");
+    });
+
+    it("normalizes a legacy-only diagnostic connector identity", async () => {
+      stubDiagnostic(
+        resolvedEnvironment({
+          connector: {
+            ...connectorIdentity(),
+            connectorSlug: undefined,
+          },
+        }),
+      );
+      stubResolvedDependencies();
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--env-name",
+        "GH_TOKEN",
+      ]);
+
+      expect(getOutput()).toContain(
+        "GH_TOKEN is managed by the GitHub connector (slug: github).",
+      );
     });
 
     it("prints a callback permission command example in the current web chat", async () => {
@@ -465,7 +492,7 @@ describe("zero connector check command", () => {
   describe("resolved identities and local responsibilities", () => {
     it("uses a server-only connector slug for local presence, connection, and authorization checks", async () => {
       const serverOnlyIdentity = connectorIdentity({
-        connectorRef: "server-only",
+        connectorSlug: "server-only",
         label: "Server Only Connector",
       });
       let connectorCalls = 0;
@@ -500,7 +527,7 @@ describe("zero connector check command", () => {
 
       const output = getOutput();
       expect(output).toContain(
-        "SERVER_ONLY_TOKEN is managed by the Server Only Connector connector (type: server-only).",
+        "SERVER_ONLY_TOKEN is managed by the Server Only Connector connector (slug: server-only).",
       );
       expect(output).toContain(
         "Checking process.env.SERVER_ONLY_TOKEN: present",
@@ -757,7 +784,7 @@ describe("zero connector check command", () => {
       stubDiagnostic({
         outcome: "unresolved-dynamic-base",
         connector: connectorIdentity({
-          connectorRef: "reap",
+          connectorSlug: "reap",
           label: "Reap",
         }),
       });
@@ -1027,7 +1054,7 @@ describe("zero connector check command", () => {
           "missing-connector",
         ],
         result: { outcome: "unknown-connector" },
-        expected: "Unknown connector type: missing-connector",
+        expected: "Unknown connector slug: missing-connector",
       },
       {
         name: "unknown environment",
@@ -1103,7 +1130,7 @@ describe("zero connector check command", () => {
         result: {
           outcome: "unresolved-dynamic-base",
           connector: connectorIdentity({
-            connectorRef: "reap",
+            connectorSlug: "reap",
             label: "Reap",
           }),
         },
@@ -1134,8 +1161,8 @@ describe("zero connector check command", () => {
       stubDiagnostic({
         outcome: "ambiguous",
         candidates: [
-          { connectorRef: "zeta", label: "Zeta" },
-          { connectorRef: "alpha", label: "Alpha" },
+          { connectorRef: "zeta", connectorSlug: "zeta", label: "Zeta" },
+          { connectorRef: "alpha", connectorSlug: "alpha", label: "Alpha" },
         ],
       });
 

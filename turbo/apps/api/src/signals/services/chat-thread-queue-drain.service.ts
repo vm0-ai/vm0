@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
-import { staleChatThreadQueueThreadIds } from "./chat-message-queue.service";
+import { staleChatThreadQueueThreadIds } from "./workflow-chat-event-queue.service";
 import {
   drainQueuedUserMessagesForThread$,
   type ChatCallbackPreCreateTimingCollector,

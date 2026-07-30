@@ -30,7 +30,6 @@ import { telegramChatThreadRoutes } from "@vm0/db/schema/telegram-chat-thread-ro
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramMessages } from "@vm0/db/schema/telegram-message";
 import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
-import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
 import { telegramUserAgentPreferences } from "@vm0/db/schema/telegram-user-agent-preference";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
@@ -280,23 +279,6 @@ function loadOfficialMessages(db: ReadonlyDb, orgId: string | undefined) {
     .from(telegramMessages)
     .where(eq(telegramMessages.officialOrgId, orgId))
     .orderBy(telegramMessages.createdAt);
-}
-
-function loadThreadSessions(db: ReadonlyDb, botId: string) {
-  return db
-    .select({
-      telegramUserLinkId: telegramThreadSessions.telegramUserLinkId,
-      chatId: telegramThreadSessions.chatId,
-      rootMessageId: telegramThreadSessions.rootMessageId,
-      agentSessionId: telegramThreadSessions.agentSessionId,
-      lastProcessedMessageId: telegramThreadSessions.lastProcessedMessageId,
-    })
-    .from(telegramThreadSessions)
-    .innerJoin(
-      telegramUserLinks,
-      eq(telegramUserLinks.id, telegramThreadSessions.telegramUserLinkId),
-    )
-    .where(eq(telegramUserLinks.installationId, botId));
 }
 
 async function loadChatThreadRoutes(db: ReadonlyDb, botId: string) {
@@ -795,94 +777,6 @@ async function getRunForAction(
   });
 }
 
-async function seedThreadSessionForAction(
-  db: Db,
-  body: Record<string, unknown>,
-  signal: AbortSignal,
-) {
-  const chatId = readActionString(body, "chat_id");
-  const rootMessageId = readActionString(body, "root_message_id");
-  const userLinkId = readActionOptionalString(body, "user_link_id");
-  const officialUserLinkId = readActionOptionalString(
-    body,
-    "official_user_link_id",
-  );
-  if (!chatId || !rootMessageId || (!userLinkId && !officialUserLinkId)) {
-    return actionBadRequest(
-      "chat_id, root_message_id, and one link id are required",
-    );
-  }
-
-  let agentSessionId = readActionOptionalString(body, "agent_session_id");
-  if (!agentSessionId) {
-    const required = requiredActionStrings(body, [
-      "org_id",
-      "user_id",
-      "compose_id",
-    ]);
-    if (!required) {
-      return actionBadRequest(
-        "org_id, user_id, and compose_id are required when agent_session_id is omitted",
-      );
-    }
-    const sessionId = await insertAgentSessionForAction(
-      db,
-      {
-        orgId: required.org_id!,
-        userId: required.user_id!,
-        composeId: required.compose_id!,
-      },
-      signal,
-    );
-    if (!sessionId) {
-      return actionBadRequest("failed to create agent session");
-    }
-    agentSessionId = sessionId;
-  }
-
-  await db.insert(telegramThreadSessions).values({
-    telegramUserLinkId: userLinkId,
-    telegramOfficialUserLinkId: officialUserLinkId,
-    chatId,
-    rootMessageId,
-    agentSessionId,
-  });
-  signal.throwIfAborted();
-  return actionOk({ agent_session_id: agentSessionId });
-}
-
-async function findThreadSessionForAction(
-  db: Db,
-  body: Record<string, unknown>,
-  signal: AbortSignal,
-) {
-  const required = requiredActionStrings(body, [
-    "user_link_id",
-    "chat_id",
-    "root_message_id",
-  ]);
-  if (!required) {
-    return actionBadRequest(
-      "user_link_id, chat_id, and root_message_id are required",
-    );
-  }
-  const [row] = await db
-    .select({ agentSessionId: telegramThreadSessions.agentSessionId })
-    .from(telegramThreadSessions)
-    .where(
-      and(
-        eq(telegramThreadSessions.telegramUserLinkId, required.user_link_id!),
-        eq(telegramThreadSessions.chatId, required.chat_id!),
-        eq(telegramThreadSessions.rootMessageId, required.root_message_id!),
-      ),
-    )
-    .limit(1);
-  signal.throwIfAborted();
-  return actionOk({
-    thread_session: row ? { agent_session_id: row.agentSessionId } : null,
-  });
-}
-
 async function deleteTelegramFixtureForAction(
   db: Db,
   body: Record<string, unknown>,
@@ -893,20 +787,6 @@ async function deleteTelegramFixtureForAction(
   const telegramBotIds = readActionStringArray(body, "telegram_bot_ids");
 
   if (telegramBotIds.length > 0) {
-    const linkRows = await db
-      .select({ id: telegramUserLinks.id })
-      .from(telegramUserLinks)
-      .where(inArray(telegramUserLinks.installationId, telegramBotIds));
-    signal.throwIfAborted();
-    const linkIds = linkRows.map((row) => {
-      return row.id;
-    });
-    if (linkIds.length > 0) {
-      await db
-        .delete(telegramThreadSessions)
-        .where(inArray(telegramThreadSessions.telegramUserLinkId, linkIds));
-      signal.throwIfAborted();
-    }
     await db
       .delete(telegramMessages)
       .where(inArray(telegramMessages.installationId, telegramBotIds));
@@ -1437,31 +1317,6 @@ async function findChatThreadRouteForAction(
   return actionOk({ route: route ?? null });
 }
 
-async function seedAgentSessionForAction(
-  db: Db,
-  body: Record<string, unknown>,
-  signal: AbortSignal,
-) {
-  const required = requiredActionStrings(body, [
-    "org_id",
-    "user_id",
-    "compose_id",
-  ]);
-  if (!required) {
-    return actionBadRequest("org_id, user_id, and compose_id are required");
-  }
-  const sessionId = await insertAgentSessionForAction(
-    db,
-    {
-      orgId: required.org_id!,
-      userId: required.user_id!,
-      composeId: required.compose_id!,
-    },
-    signal,
-  );
-  return actionOk({ agent_session_id: sessionId });
-}
-
 async function insertAgentSessionForAction(
   db: Db,
   args: {
@@ -1481,36 +1336,6 @@ async function insertAgentSessionForAction(
     .returning({ id: agentSessions.id });
   signal.throwIfAborted();
   return session?.id ?? null;
-}
-
-async function hasThreadSessionForAction(
-  db: Db,
-  body: Record<string, unknown>,
-  signal: AbortSignal,
-) {
-  const required = requiredActionStrings(body, [
-    "user_link_id",
-    "chat_id",
-    "root_message_id",
-  ]);
-  if (!required) {
-    return actionBadRequest(
-      "user_link_id, chat_id, and root_message_id are required",
-    );
-  }
-  const [thread] = await db
-    .select({ id: telegramThreadSessions.id })
-    .from(telegramThreadSessions)
-    .where(
-      and(
-        eq(telegramThreadSessions.telegramUserLinkId, required.user_link_id!),
-        eq(telegramThreadSessions.chatId, required.chat_id!),
-        eq(telegramThreadSessions.rootMessageId, required.root_message_id!),
-      ),
-    )
-    .limit(1);
-  signal.throwIfAborted();
-  return actionOk({ exists: thread !== undefined });
 }
 
 async function seedRunningRunForAction(
@@ -2025,7 +1850,6 @@ const getTestTelegramState$ = computed(async (get) => {
     messageCount,
     messages,
     officialMessages,
-    threadSessions,
     routes,
   ] = await Promise.all([
     loadLinks(db, query.bot_id),
@@ -2036,7 +1860,6 @@ const getTestTelegramState$ = computed(async (get) => {
     countMessages(db, query.bot_id),
     loadMessages(db, query.bot_id),
     loadOfficialMessages(db, installation?.orgId),
-    loadThreadSessions(db, query.bot_id),
     loadChatThreadRoutes(db, query.bot_id),
   ]);
   const [composeVersion, mockCalls] = await Promise.all([
@@ -2066,7 +1889,6 @@ const getTestTelegramState$ = computed(async (get) => {
       mock_calls: mockCalls,
       messages,
       official_messages: officialMessages,
-      thread_sessions: threadSessions,
       routes,
     },
   };
@@ -2261,9 +2083,6 @@ const telegramStateActionHandlers = {
   "delete-post-fixture": deleteTelegramPostFixtureForAction,
   "get-post-run-state": getTelegramPostRunStateForAction,
   "get-telegram-link-id": getTelegramLinkIdForAction,
-  "seed-agent-session": seedAgentSessionForAction,
-  "seed-thread-session": seedThreadSessionForAction,
-  "has-thread-session": hasThreadSessionForAction,
   "seed-running-run": seedRunningRunForAction,
   "seed-completed-run": seedCompletedRunForAction,
   "seed-model-policies": seedModelPoliciesForAction,
@@ -2273,7 +2092,6 @@ const telegramStateActionHandlers = {
   "update-run-callback": updateRunCallbackForAction,
   "update-run": updateRunForAction,
   "get-run": getRunForAction,
-  "find-thread-session": findThreadSessionForAction,
   "find-chat-thread-route": findChatThreadRouteForAction,
   "delete-fixture": deleteTelegramFixtureForAction,
 } satisfies Record<

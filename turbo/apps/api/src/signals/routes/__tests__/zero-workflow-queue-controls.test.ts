@@ -33,7 +33,7 @@ function automationsClient() {
   return setupApp({ context })(zeroWorkflowAutomationsContract);
 }
 
-function chatMessagesClient() {
+function chatEventsClient() {
   return setupApp({ context })(chatEventsContract);
 }
 
@@ -340,7 +340,7 @@ describe("workflow automation queue controls", () => {
     }
     const clientEventId = randomUUID();
     await accept(
-      chatMessagesClient().send({
+      chatEventsClient().send({
         headers: authHeaders(),
         body: {
           agentId: scenario.agentId,
@@ -428,7 +428,7 @@ describe("workflow automation queue controls", () => {
     }
 
     const userMessage = await accept(
-      chatMessagesClient().send({
+      chatEventsClient().send({
         headers: authHeaders(),
         body: {
           agentId: scenario.agentId,
