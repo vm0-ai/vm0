@@ -256,7 +256,11 @@ ruby -e '
   raise "Runner must wait for resolver" unless rollback.fetch("rollback-runner").fetch("needs") == "resolve-target"
   raise "API must wait for resolver" unless rollback.fetch("rollback-api").fetch("needs") == "resolve-target"
   release_job = release.fetch("release-please")
-  raise "release must wait for production queue" unless release_job.fetch("needs") == "queue-production-deploy"
+  release_needs = Array(release_job.fetch("needs"))
+  raise "release must wait for production queue" unless release_needs.include?("queue-production-deploy")
+  raise "release must wait for release detection" unless release_needs.include?("detect-release-commit")
+  queue_needs = Array(release.fetch("queue-production-deploy").fetch("needs"))
+  raise "production queue must wait for release detection" unless queue_needs.include?("detect-release-commit")
   release_target_output = "$" + "{{ steps.release-target.outputs.sha }}"
   raise "release job must expose the resolved release target" unless release_job.fetch("outputs").fetch("release_target") == release_target_output
   raise "release workflow must not use the triggering workflow SHA as a release target" if File.read(ARGV[1]).include?("github.event.workflow_run.head_sha")
@@ -265,6 +269,7 @@ ruby -e '
   desktop_target = "desktop-v" + "$" + "{{ needs.release-please.outputs.desktop_version }}"
   checkout_ref_exceptions = {
     "queue-production-deploy" => "main",
+    "refresh-release-pull-request" => "main",
     "build-desktop-release" => desktop_target,
     "publish-desktop-update-manifest" => desktop_target,
     "update-rollback-dashboard" => "main",
