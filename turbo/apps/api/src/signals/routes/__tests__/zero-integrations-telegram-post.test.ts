@@ -19,6 +19,10 @@ import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { clearMockedEnv, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
+import {
+  findPendingChatInputQueueParamsByPromptFixture,
+  readChatInputQueueParamsFixture,
+} from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   createFixtureTracker,
@@ -1253,6 +1257,105 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     );
     expect(timingActionTypes).not.toContain(
       "api_dispatch_pre_create_zero_prepare_args",
+    );
+  });
+
+  it("keeps queued Telegram transport params until the input is claimed", async () => {
+    const runnerGroup = configureCanonicalTelegramRunner();
+    const fixture = await trackFixture(
+      seedTelegramPostFixture({ linkTelegramUser: true }),
+    );
+    telegramApiMocks();
+    const chatId = 77_002;
+    const firstPrompt = "hold the Telegram queue";
+    expect(
+      (
+        await postWebhook({
+          telegramBotId: fixture.telegramBotId,
+          secret: fixture.webhookSecret,
+          body: {
+            update_id: 201,
+            message: {
+              message_id: 2201,
+              chat: { id: chatId, type: "private" },
+              from: {
+                id: Number(fixture.telegramUserId),
+                username: "alice",
+                first_name: "Alice",
+              },
+              text: firstPrompt,
+            },
+          },
+        })
+      ).status,
+    ).toBe(200);
+    await flushWaitUntilForTest();
+    const firstState = await telegramPostRunState(fixture, firstPrompt);
+    const firstRunId = firstState.run?.id;
+    if (!firstRunId) {
+      throw new Error("Expected the first Telegram run");
+    }
+    const firstClaim = await claimTelegramRun(firstRunId, runnerGroup);
+
+    const queuedPrompt = "claim Telegram queue transport params";
+    expect(
+      (
+        await postWebhook({
+          telegramBotId: fixture.telegramBotId,
+          secret: fixture.webhookSecret,
+          body: {
+            update_id: 202,
+            message: {
+              message_id: 2202,
+              chat: { id: chatId, type: "private" },
+              from: {
+                id: Number(fixture.telegramUserId),
+                username: "alice",
+                first_name: "Alice",
+              },
+              text: queuedPrompt,
+            },
+          },
+        })
+      ).status,
+    ).toBe(200);
+    await flushWaitUntilForTest();
+    const queuedParams =
+      await findPendingChatInputQueueParamsByPromptFixture(queuedPrompt);
+    expect(queuedParams).toMatchObject({
+      eventId: expect.any(String),
+      encryptedParams: expect.any(String),
+    });
+    if (!queuedParams) {
+      throw new Error("Expected queued Telegram transport params");
+    }
+    await completeCanonicalChatRun({
+      runId: firstRunId,
+      sandboxToken: firstClaim.sandboxToken,
+    });
+    let queuedRunId: string | null = null;
+    await expect
+      .poll(async () => {
+        queuedRunId =
+          (await telegramPostRunState(fixture, queuedPrompt)).run?.id ?? null;
+        return queuedRunId;
+      })
+      .toStrictEqual(expect.any(String));
+    if (!queuedRunId) {
+      throw new Error("Expected the queued Telegram run");
+    }
+    await expect(
+      readChatInputQueueParamsFixture(queuedParams.eventId),
+    ).resolves.toBeNull();
+    const queuedClaim = await claimTelegramRun(queuedRunId, runnerGroup);
+    expect(queuedClaim.prompt).toBe(queuedPrompt);
+    expect(queuedClaim.appendSystemPrompt).toContain(
+      "You are currently running inside: Telegram",
+    );
+    await runsApi.requestCancelRun(
+      actorForFixture(fixture),
+      queuedRunId,
+      [200],
     );
   });
 

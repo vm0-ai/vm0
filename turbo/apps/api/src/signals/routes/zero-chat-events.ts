@@ -16,6 +16,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { chatInputQueueParams } from "@vm0/db/schema/chat-input-queue-params";
 import {
   chatEvents,
   type ChatEventAttachFileMetadata,
@@ -2731,11 +2732,18 @@ async function appendQueueFirstInsufficientCreditsEvents(params: {
       .select({
         userMessage: chatEvents.userMessage,
         attachFiles: chatEvents.attachFiles,
-        attachFileMetadata: chatEvents.attachFileMetadata,
+        attachFileMetadata: sql`COALESCE(
+          ${chatInputQueueParams.attachFileMetadata},
+          ${chatEvents.attachFileMetadata}
+        )`.mapWith(chatEvents.attachFileMetadata),
         generationTemplate: chatEvents.generationTemplate,
         createdAt: chatEvents.createdAt,
       })
       .from(chatEvents)
+      .leftJoin(
+        chatInputQueueParams,
+        eq(chatInputQueueParams.eventId, chatEvents.id),
+      )
       .where(
         and(
           eq(chatEvents.id, params.eventId),
@@ -2744,7 +2752,7 @@ async function appendQueueFirstInsufficientCreditsEvents(params: {
           isNull(chatEvents.runId),
         ),
       )
-      .for("update")
+      .for("update", { of: chatEvents })
       .limit(1);
     if (!queuedMessage) {
       throw new Error("Queue-first message is no longer available");

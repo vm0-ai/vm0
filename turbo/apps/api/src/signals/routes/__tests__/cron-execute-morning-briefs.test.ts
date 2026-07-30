@@ -40,7 +40,10 @@ import { mockGoogleCalendarConnectorOAuth } from "./helpers/api-bdd-workflows";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { holdOrgAdmissionLockFixture } from "../../../test-fixtures/chat-events";
+import {
+  holdOrgAdmissionLockFixture,
+  readChatInputQueueParamsFixture,
+} from "../../../test-fixtures/chat-events";
 import {
   insertOldFormatQueuedUserMessageFixture,
   insertQueuedWebUserMessageFixture,
@@ -58,7 +61,8 @@ import { readRunApiStart } from "./helpers/runtime-state";
  * Every Given is built through public APIs (onboarding, entitlement, connector
  * OAuth, feature switches, user preferences) and external HTTP mocks; every
  * Then is a cron response, chat read, Resend send capture, or preferences
- * read — no database fixtures or row asserts.
+ * read. Storage migration cases also assert the queue-only transport row
+ * lifecycle directly.
  */
 
 const context = testContext();
@@ -1378,6 +1382,12 @@ describe("cron execute morning briefs", () => {
     if (!strandedEvent) {
       throw new Error("Expected the pending Morning Brief queue event");
     }
+    await expect(
+      readChatInputQueueParamsFixture(strandedEvent.id),
+    ).resolves.toMatchObject({
+      eventId: strandedEvent.id,
+      encryptedParams: expect.any(String),
+    });
     await chat.requestSendEvent(
       scenario.actor,
       {
@@ -1388,6 +1398,9 @@ describe("cron execute morning briefs", () => {
       },
       [201],
     );
+    await expect(
+      readChatInputQueueParamsFixture(strandedEvent.id),
+    ).resolves.toBeNull();
 
     routeMocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
     const readmitted = await accept(
@@ -1414,6 +1427,28 @@ describe("cron execute morning briefs", () => {
         runId: null,
       }),
     );
+    const readmittedEvents = await readMorningBriefThreadEvents(
+      scenario,
+      threadId,
+    );
+    const readmittedEvent = [...readmittedEvents].reverse().find((event) => {
+      return (
+        event.eventType === "input.prompt" &&
+        chatEventDisplayText(event) ===
+          `Generate my Morning Brief for ${BRIEF_DATE}.` &&
+        event.runId === undefined &&
+        event.id !== strandedEvent.id
+      );
+    });
+    if (!readmittedEvent) {
+      throw new Error("Expected the readmitted Morning Brief queue event");
+    }
+    await expect(
+      readChatInputQueueParamsFixture(readmittedEvent.id),
+    ).resolves.toMatchObject({
+      eventId: readmittedEvent.id,
+      encryptedParams: expect.any(String),
+    });
 
     mockNow(AFTER_SEVEN_LOCAL + 31 * 60 * 1000);
     mockUploadedBriefOutput(VALID_OUTPUT);
@@ -1434,6 +1469,9 @@ describe("cron execute morning briefs", () => {
     if (!queuedRunId) {
       throw new Error("Expected the queued Morning Brief to drain");
     }
+    await expect(
+      readChatInputQueueParamsFixture(readmittedEvent.id),
+    ).resolves.toBeNull();
     expect(previousBriefDate).not.toBe(BRIEF_DATE);
     await completeMorningBriefRun(scenario, queuedRunId, 0);
     clearMockNow();
