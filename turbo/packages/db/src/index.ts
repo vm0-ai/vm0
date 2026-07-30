@@ -16,6 +16,8 @@ import * as runnerSchema from "./schema/runner-job-queue";
 import * as runnerStateSchema from "./schema/runner-state";
 import * as agentRunQueueSchema from "./schema/agent-run-queue";
 import * as chatEventInputParamsSchema from "./schema/chat-event-input-params";
+import * as chatFeishuContextSchema from "./schema/chat-feishu-context";
+import * as chatSlackContextSchema from "./schema/chat-slack-context";
 import * as secretSchema from "./schema/secret";
 import * as modelProviderSchema from "./schema/model-provider";
 import * as orgModelPolicySchema from "./schema/org-model-policy";
@@ -133,6 +135,8 @@ export const schema = {
   ...runnerStateSchema,
   ...agentRunQueueSchema,
   ...chatEventInputParamsSchema,
+  ...chatFeishuContextSchema,
+  ...chatSlackContextSchema,
   ...secretSchema,
   ...modelProviderSchema,
   ...orgModelPolicySchema,

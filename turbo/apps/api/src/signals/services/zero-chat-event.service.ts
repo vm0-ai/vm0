@@ -1,4 +1,6 @@
 /** Typed append-only commands for the canonical ChatEvent stream. */
+import { randomUUID } from "node:crypto";
+
 import {
   chatEventRunLifecycle,
   isValidChatEventRevocation,
@@ -6,6 +8,8 @@ import {
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import { chatEvents } from "@vm0/db/schema/chat-event";
+import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
+import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatEventAssetRefs } from "@vm0/db/schema/run-uploaded-file";
 import { eq, isNotNull, sql } from "drizzle-orm";
@@ -20,15 +24,24 @@ type ChatEventWriteTransaction = Parameters<
 
 type ChatEventIdentity = Pick<
   ChatEventInsert,
-  | "id"
-  | "chatThreadId"
-  | "runId"
-  | "runGroupId"
-  | "slackMessagePermalink"
-  | "feishuChatOpenUrl"
+  "id" | "chatThreadId" | "runId" | "runGroupId"
 > & {
   readonly createdAt?: Date;
 };
+
+type ChatEventDisplayContext =
+  | {
+      readonly slackMessagePermalink: string | null;
+      readonly feishuChatOpenUrl?: never;
+    }
+  | {
+      readonly slackMessagePermalink?: never;
+      readonly feishuChatOpenUrl: string;
+    }
+  | {
+      readonly slackMessagePermalink?: never;
+      readonly feishuChatOpenUrl?: never;
+    };
 
 type ChatEventInputPayload = Pick<
   ChatEventInsert,
@@ -44,6 +57,7 @@ type ChatEventOutputSequence = Pick<
 >;
 
 type InputPromptEvent = ChatEventIdentity &
+  ChatEventDisplayContext &
   ChatEventInputPayload & {
     readonly eventType: "input.prompt";
     readonly content?: null;
@@ -68,6 +82,7 @@ type InputGoalEvent = ChatEventIdentity & {
 };
 
 type InputRejectedEvent = ChatEventIdentity &
+  ChatEventDisplayContext &
   ChatEventInputPayload &
   Pick<ChatEventInsert, "sequenceNumber"> & {
     readonly eventType: "input.rejected";
@@ -217,6 +232,30 @@ type InsertChatEventsConflict = "any" | "run-sequence";
 
 type PersistedChatEvent = Omit<ChatEventInsert, "role" | "seqId">;
 
+type ChatEventContextPointer = Pick<
+  ChatEventInsert,
+  "contextType" | "contextId"
+>;
+
+interface StoredChatEventContextPointer {
+  readonly contextType: NonNullable<ChatEventInsert["contextType"]> | null;
+  readonly contextId: string | null;
+}
+
+type NewDisplayContext =
+  | {
+      readonly type: "slack";
+      readonly id: string;
+      readonly chatThreadId: string;
+      readonly messagePermalink: string;
+    }
+  | {
+      readonly type: "feishu";
+      readonly id: string;
+      readonly chatThreadId: string;
+      readonly chatOpenUrl: string;
+    };
+
 function isPendingInputEvent(values: NewChatEvent): boolean {
   return (
     (values.eventType === "input.prompt" ||
@@ -264,10 +303,105 @@ async function insertEventInputParams(
   });
 }
 
-function persistedChatEventValues(values: NewChatEvent): PersistedChatEvent {
+function newDisplayContext(
+  eventId: string,
+  values: NewChatEvent,
+): NewDisplayContext | undefined {
+  const slackMessagePermalink =
+    "slackMessagePermalink" in values
+      ? values.slackMessagePermalink
+      : undefined;
+  if (slackMessagePermalink !== null && slackMessagePermalink !== undefined) {
+    return {
+      type: "slack",
+      id: eventId,
+      chatThreadId: values.chatThreadId,
+      messagePermalink: slackMessagePermalink,
+    };
+  }
+
+  const feishuChatOpenUrl =
+    "feishuChatOpenUrl" in values ? values.feishuChatOpenUrl : undefined;
+  if (feishuChatOpenUrl !== undefined) {
+    return {
+      type: "feishu",
+      id: eventId,
+      chatThreadId: values.chatThreadId,
+      chatOpenUrl: feishuChatOpenUrl,
+    };
+  }
+
+  return undefined;
+}
+
+function displayContextPointer(
+  context: NewDisplayContext | undefined,
+): ChatEventContextPointer | undefined {
+  if (!context) {
+    return undefined;
+  }
+  return {
+    contextType: context.type,
+    contextId: context.id,
+  };
+}
+
+function replacementContext(
+  target: StoredChatEventContextPointer,
+  eventId: string,
+  values: NewChatEvent,
+): {
+  readonly pointer: ChatEventContextPointer | undefined;
+  readonly displayContext: NewDisplayContext | undefined;
+} {
+  if (target.contextType !== null && target.contextId !== null) {
+    return {
+      pointer: {
+        contextType: target.contextType,
+        contextId: target.contextId,
+      },
+      displayContext: undefined,
+    };
+  }
+  const displayContext = newDisplayContext(eventId, values);
+  return {
+    pointer: displayContextPointer(displayContext),
+    displayContext,
+  };
+}
+
+async function insertDisplayContext(
+  tx: ChatEventWriteTransaction,
+  context: NewDisplayContext,
+  createdAt: Date,
+): Promise<void> {
+  if (context.type === "slack") {
+    await tx.insert(chatSlackContext).values({
+      id: context.id,
+      chatThreadId: context.chatThreadId,
+      messagePermalink: context.messagePermalink,
+      createdAt,
+    });
+    return;
+  }
+  await tx.insert(chatFeishuContext).values({
+    id: context.id,
+    chatThreadId: context.chatThreadId,
+    chatOpenUrl: context.chatOpenUrl,
+    createdAt,
+  });
+}
+
+function persistedChatEventValues(
+  values: NewChatEvent,
+  overrides?: Partial<
+    Pick<ChatEventInsert, "id" | "contextType" | "contextId">
+  >,
+): PersistedChatEvent {
   const runLifecycleEvent = chatEventRunLifecycle(values.eventType);
   return {
     ...values,
+    ...overrides,
     ...(values.eventType === "input.prompt" ||
     values.eventType === "input.rejected" ||
     values.eventType === "input.automation" ||
@@ -352,8 +486,13 @@ export async function insertChatEvent(
   values: AppendChatEvent,
   conflict: InsertChatEventConflict = "none",
 ): Promise<ChatEventCommandResult | null> {
+  const eventId = values.id ?? randomUUID();
+  const displayContext = newDisplayContext(eventId, values);
   const [valueWithSeqId] = await addSeqIdsToEvents(tx, [
-    persistedChatEventValues(values),
+    persistedChatEventValues(values, {
+      id: eventId,
+      ...displayContextPointer(displayContext),
+    }),
   ]);
   if (!valueWithSeqId) {
     throw new Error("chat event seq_id was not assigned");
@@ -399,6 +538,9 @@ export async function insertChatEvent(
     if (!inserted) {
       throw new Error("Inserted chat event result is missing");
     }
+    if (displayContext) {
+      await insertDisplayContext(tx, displayContext, inserted.createdAt);
+    }
     await insertEventInputParams(tx, inserted.id, values);
   }
   return rows[0] ?? null;
@@ -415,7 +557,9 @@ export async function insertChatEvents(
 
   const valuesWithSeqIds = await addSeqIdsToEvents(
     tx,
-    values.map(persistedChatEventValues),
+    values.map((value) => {
+      return persistedChatEventValues(value);
+    }),
   );
   const query = tx.insert(chatEvents).values([...valuesWithSeqIds]);
   if (conflict === "any") {
@@ -450,6 +594,8 @@ export async function replaceChatEvent(
       chatThreadId: chatEvents.chatThreadId,
       createdAt: chatEvents.createdAt,
       eventType: chatEvents.eventType,
+      contextType: chatEvents.contextType,
+      contextId: chatEvents.contextId,
       encryptedParams: chatEventInputParams.encryptedParams,
       attachFileMetadata: chatEventInputParams.attachFileMetadata,
     })
@@ -495,11 +641,23 @@ export async function replaceChatEvent(
               : target.attachFileMetadata,
         }
       : replacement;
+  const replacementId = replacement.id ?? randomUUID();
+  const { pointer: contextPointer, displayContext } = replacementContext(
+    target,
+    replacementId,
+    replacementWithParams,
+  );
   const seqId = await reserveChatEventSeqIds(tx, replacement.chatThreadId, 1);
   const rows = await tx
     .insert(chatEvents)
     .values({
-      ...persistedChatEventValues({ ...replacementWithParams, createdAt }),
+      ...persistedChatEventValues(
+        { ...replacementWithParams, createdAt },
+        {
+          id: replacementId,
+          ...contextPointer,
+        },
+      ),
       seqId,
       revokesEventId: eventId,
     })
@@ -514,6 +672,9 @@ export async function replaceChatEvent(
     return null;
   }
 
+  if (displayContext) {
+    await insertDisplayContext(tx, displayContext, inserted.createdAt);
+  }
   await insertEventInputParams(tx, inserted.id, replacementWithParams);
   if (options?.preserveAssetRefs !== false) {
     const assetRefs = await tx
