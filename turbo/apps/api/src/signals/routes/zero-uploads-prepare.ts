@@ -16,6 +16,7 @@ import {
   createMultipartS3Upload,
   generatePresignedPutUrl,
   generatePresignedUploadPartUrl,
+  s3MetadataHeaders,
 } from "../external/s3";
 import { allocateArtifactObject$ } from "../services/artifact-storage.service";
 import { rejectSuspendedOrg$ } from "../services/zero-org-suspension.service";
@@ -60,10 +61,14 @@ const prepareUploadInner$ = command(
         userId: auth.userId,
         orgId: auth.orgId,
         filename,
+        allowV2:
+          bodyResult.data.multipart === true ||
+          bodyResult.data.supportsUploadHeaders === true,
       },
       signal,
     );
     const { id, key: s3Key, url, metadata } = artifact;
+    const uploadHeaders = metadata ? s3MetadataHeaders(metadata) : undefined;
 
     if (
       bodyResult.data.multipart === true &&
@@ -130,7 +135,15 @@ const prepareUploadInner$ = command(
 
     return {
       status: 200 as const,
-      body: { id, filename, contentType, size, uploadUrl, url },
+      body: {
+        id,
+        filename,
+        contentType,
+        size,
+        uploadUrl,
+        url,
+        ...(uploadHeaders ? { uploadHeaders } : {}),
+      },
     };
   },
 );

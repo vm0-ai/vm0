@@ -6,7 +6,7 @@ import { sanitizeArtifactFilename } from "../../lib/file-url";
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
-import { generatePresignedPutUrl } from "../external/s3";
+import { generatePresignedPutUrl, s3MetadataHeaders } from "../external/s3";
 import { allocateArtifactObject$ } from "../services/artifact-storage.service";
 import type { RouteEntry } from "../route-entry";
 
@@ -27,9 +27,17 @@ const initInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const sanitized = sanitizeArtifactFilename(filename);
   const artifact = await set(
     allocateArtifactObject$,
-    { userId: auth.userId, orgId: auth.orgId, filename },
+    {
+      userId: auth.userId,
+      orgId: auth.orgId,
+      filename,
+      allowV2: bodyResult.data.supportsUploadHeaders === true,
+    },
     signal,
   );
+  const uploadHeaders = artifact.metadata
+    ? s3MetadataHeaders(artifact.metadata)
+    : undefined;
   const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
   const uploadUrl = await get(
     generatePresignedPutUrl(
@@ -51,6 +59,7 @@ const initInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       filename: sanitized,
       contentType,
       size: length,
+      ...(uploadHeaders ? { uploadHeaders } : {}),
     },
   };
 });

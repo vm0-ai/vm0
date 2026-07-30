@@ -478,6 +478,16 @@ export function generatePresignedPutUrl(
   );
 }
 
+export function s3MetadataHeaders(
+  metadata: Readonly<Record<string, string>>,
+): Readonly<Record<string, string>> {
+  return Object.fromEntries(
+    Object.entries(metadata).map(([name, value]) => {
+      return [`x-amz-meta-${name}`, value];
+    }),
+  );
+}
+
 export function createMultipartS3Upload(
   bucket: string,
   key: string,
@@ -607,6 +617,9 @@ function generatePresignedPutUrlWithClient(
 ): Computed<Promise<string>> {
   return computed((get): Promise<string> => {
     const client = get(client$);
+    const metadataHeaders = options.metadata
+      ? s3MetadataHeaders(options.metadata)
+      : undefined;
     const command = new PutObjectCommand({
       Bucket: bucket,
       Key: key,
@@ -615,13 +628,9 @@ function generatePresignedPutUrlWithClient(
     });
     return getSignedUrl(client, command, {
       expiresIn: options.expiresIn,
-      ...(options.metadata
+      ...(metadataHeaders
         ? {
-            hoistableHeaders: new Set(
-              Object.keys(options.metadata).map((name) => {
-                return `x-amz-meta-${name}`;
-              }),
-            ),
+            unhoistableHeaders: new Set(Object.keys(metadataHeaders)),
           }
         : {}),
     });

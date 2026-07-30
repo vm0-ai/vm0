@@ -179,6 +179,7 @@ describe("POST /api/zero/uploads/complete", () => {
       filename: "财务 报告.pdf",
       contentType: "application/pdf",
       size: 17,
+      supportsUploadHeaders: true,
     });
     const key = new URL(prepared.url).pathname.replace(/^\/+/u, "");
     fixture.objectStore.addObject({

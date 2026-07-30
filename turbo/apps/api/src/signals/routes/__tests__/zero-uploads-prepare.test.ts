@@ -167,6 +167,7 @@ describe("POST /api/zero/uploads/prepare", () => {
       [FeatureSwitchKey.ArtifactKeyV2]: true,
     });
     mocks.clerk.session(peer.userId, peer.orgId);
+    mocks.s3.listObjects([]);
 
     const client = setupApp({ context })(zeroUploadsContract);
     const response = await client.prepare({
@@ -174,6 +175,7 @@ describe("POST /api/zero/uploads/prepare", () => {
         filename: "财务 报告.PDF",
         contentType: "application/pdf",
         size: 13,
+        supportsUploadHeaders: true,
       },
       headers: { authorization: "Bearer clerk-session" },
     });
@@ -186,6 +188,13 @@ describe("POST /api/zero/uploads/prepare", () => {
       /^https:\/\/cdn\.vm7\.io\/artifacts\/[0-9a-z]{10}\.pdf$/,
     );
     expect(response.body.url).not.toContain(peer.userId);
+    expect(response.body).toMatchObject({
+      uploadHeaders: {
+        "x-amz-meta-artifact-id": response.body.id,
+        "x-amz-meta-filename": encodeURIComponent("财务 报告.PDF"),
+        "x-amz-meta-user-id": encodeURIComponent(peer.userId),
+      },
+    });
     const signedCommand = context.mocks.s3.getSignedUrl.mock.calls[0]?.[1] as {
       input: {
         Key: string;
@@ -201,12 +210,35 @@ describe("POST /api/zero/uploads/prepare", () => {
       },
     });
     expect(context.mocks.s3.getSignedUrl.mock.calls[0]?.[2]).toMatchObject({
-      hoistableHeaders: new Set([
+      unhoistableHeaders: new Set([
         "x-amz-meta-artifact-id",
         "x-amz-meta-filename",
         "x-amz-meta-user-id",
       ]),
     });
+  });
+
+  it("keeps legacy keys for enabled orgs when clients cannot send upload headers", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const actor = { userId: `user_${randomUUID()}`, orgId };
+    await updateFeatureSwitchesForUser(context, actor, {
+      [FeatureSwitchKey.ArtifactKeyV2]: true,
+    });
+    mocks.clerk.session(actor.userId, actor.orgId);
+
+    const response = await setupApp({ context })(zeroUploadsContract).prepare({
+      body: validBody(),
+      headers: { authorization: "Bearer clerk-session" },
+    });
+
+    expect(response.status).toBe(200);
+    if (response.status !== 200) {
+      throw new Error("Expected legacy upload preparation to succeed");
+    }
+    expect(response.body.url).toBe(
+      `https://cdn.vm7.io/artifacts/${actor.userId}/${response.body.id}/hello.txt`,
+    );
+    expect("uploadHeaders" in response.body).toBeFalsy();
   });
 
   it("retries with a new artifact id when a flat hash is occupied", async () => {
@@ -239,7 +271,7 @@ describe("POST /api/zero/uploads/prepare", () => {
     });
 
     const response = await setupApp({ context })(zeroUploadsContract).prepare({
-      body: validBody(),
+      body: { ...validBody(), supportsUploadHeaders: true },
       headers: { authorization: "Bearer clerk-session" },
     });
 

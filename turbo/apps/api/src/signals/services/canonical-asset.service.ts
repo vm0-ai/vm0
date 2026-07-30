@@ -14,7 +14,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 
 import type { SlackFile } from "../../lib/slack-webhook-context";
 import { env } from "../../lib/env";
-import { buildFileUrlFromKey } from "../../lib/file-url";
+import { buildFileUrlFromKey, isArtifactKeyV2 } from "../../lib/file-url";
 import { inferMimetype } from "../../lib/mimetype";
 import { isAllowedUploadType } from "../../lib/uploads-constants";
 import { type Db, writeDb$ } from "../external/db";
@@ -27,6 +27,7 @@ import {
 import {
   generatePresignedPutUrl,
   putS3Object,
+  s3MetadataHeaders,
   s3ObjectHead,
 } from "../external/s3";
 import { settleIncludingAbort } from "../utils";
@@ -749,6 +750,7 @@ interface PrepareCanonicalPublishedAssetArgs {
   readonly contentType: string;
   readonly size: number;
   readonly checksumSha256: string;
+  readonly allowV2: boolean;
   readonly destination: {
     readonly channelId: string;
     readonly threadTs?: string;
@@ -761,6 +763,7 @@ interface PreparedCanonicalPublishedAsset {
   readonly assetId: string;
   readonly operationId: string;
   readonly uploadUrl?: string;
+  readonly uploadHeaders?: Readonly<Record<string, string>>;
   readonly url: string;
 }
 
@@ -905,6 +908,7 @@ export const prepareCanonicalPublishedAsset$ = command(
         userId: args.userId,
         orgId: args.orgId,
         filename: args.filename,
+        allowV2: args.allowV2,
       },
       signal,
     );
@@ -920,6 +924,10 @@ export const prepareCanonicalPublishedAsset$ = command(
     if (!storageKey) {
       throw new Error("Canonical publication storage key is missing");
     }
+    const metadata = isArtifactKeyV2(storageKey)
+      ? artifactObjectMetadata(args.userId, asset.id, args.filename)
+      : undefined;
+    const uploadHeaders = metadata ? s3MetadataHeaders(metadata) : undefined;
 
     const url = buildFileUrlFromKey(storageKey);
     if (asset.materializationStatus === "ready") {
@@ -947,11 +955,7 @@ export const prepareCanonicalPublishedAsset$ = command(
         CANONICAL_UPLOAD_URL_TTL_SECONDS,
         {
           usePublicEndpoint: true,
-          metadata: artifactObjectMetadata(
-            args.userId,
-            asset.id,
-            args.filename,
-          ),
+          metadata,
         },
       ),
     );
@@ -960,6 +964,7 @@ export const prepareCanonicalPublishedAsset$ = command(
       assetId: asset.id,
       operationId: args.operationId,
       uploadUrl,
+      ...(uploadHeaders ? { uploadHeaders } : {}),
       url,
     };
   },

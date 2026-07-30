@@ -27,7 +27,11 @@ import {
   type FeishuOutboundMessage,
 } from "../external/feishu-client";
 import { writeDb$, type Db } from "../external/db";
-import { downloadS3Buffer, generatePresignedPutUrl } from "../external/s3";
+import {
+  downloadS3Buffer,
+  generatePresignedPutUrl,
+  s3MetadataHeaders,
+} from "../external/s3";
 import {
   allocateArtifactObject$,
   resolveArtifactObject$,
@@ -389,9 +393,13 @@ const initUpload$ = command(async ({ get, set }, signal: AbortSignal) => {
       userId: auth.userId,
       orgId: auth.orgId,
       filename: bodyResult.data.filename,
+      allowV2: bodyResult.data.supportsUploadHeaders === true,
     },
     signal,
   );
+  const uploadHeaders = artifact.metadata
+    ? s3MetadataHeaders(artifact.metadata)
+    : undefined;
   const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
   const uploadUrl = await get(
     generatePresignedPutUrl(
@@ -412,6 +420,7 @@ const initUpload$ = command(async ({ get, set }, signal: AbortSignal) => {
       filename,
       contentType: bodyResult.data.contentType,
       size: bodyResult.data.length,
+      ...(uploadHeaders ? { uploadHeaders } : {}),
     },
   };
 });

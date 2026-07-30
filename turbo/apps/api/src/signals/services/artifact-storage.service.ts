@@ -114,10 +114,13 @@ export const allocateArtifactObject$ = command(
       readonly filename: string;
       readonly id?: string;
       readonly variant?: string;
+      readonly allowV2?: boolean;
     },
     signal: AbortSignal,
   ): Promise<ArtifactObjectLocation> => {
-    const useV2 = await set(artifactKeyV2Enabled$, args.orgId, args.userId);
+    const useV2 =
+      args.allowV2 !== false &&
+      (await set(artifactKeyV2Enabled$, args.orgId, args.userId));
     signal.throwIfAborted();
 
     if (!useV2) {
