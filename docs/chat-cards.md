@@ -28,9 +28,9 @@ state creation inside React render.
 The body parser accepts platform links in common message forms:
 
 ```markdown
-https://app.vm0.ai/agents/agent-123/permissions?ref=slack&permission=messages.write
+https://app.vm0.ai/agents/agent-123/permissions?connectorSlug=slack&permission=messages.write
 
-[Review permission](https://app.vm0.ai/agents/agent-123/permissions?ref=slack&permission=messages.write)
+[Review permission](https://app.vm0.ai/agents/agent-123/permissions?connectorSlug=slack&permission=messages.write)
 
 /computer-use/authorize/request-token
 ```
@@ -42,8 +42,8 @@ link remains ordinary Markdown.
 
 Current link-backed card patterns include:
 
-- `/connectors/:connectorRef/connect` and
-  `/connectors/:connectorRef/authorize`
+- `/connectors/:connectorSlug/connect` and
+  `/connectors/:connectorSlug/authorize`
 - `/connectors/custom/proposal?p=...`
 - `/agents/:agentId/permissions?...`
 - `/computer-use/authorize/:requestToken`

@@ -5318,8 +5318,15 @@
     {
       "idx": 759,
       "version": "7",
-      "when": 1785406026483,
-      "tag": "0759_thread_browser_identity",
+      "when": 1785406871736,
+      "tag": "0759_drop_feishu_org_thread_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 760,
+      "version": "7",
+      "when": 1785406871737,
+      "tag": "0760_thread_browser_identity",
       "breakpoints": true
     }
   ]
