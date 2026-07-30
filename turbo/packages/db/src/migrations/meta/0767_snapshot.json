@@ -4684,6 +4684,13 @@
           "notNull": true,
           "default": -1
         },
+        "pending_sequence_numbers": {
+          "name": "pending_sequence_numbers",
+          "type": "integer[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::integer[]"
+        },
         "latest_result_sequence": {
           "name": "latest_result_sequence",
           "type": "integer",

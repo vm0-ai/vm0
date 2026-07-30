@@ -154,19 +154,24 @@ function eventMessageId(event: AgentEvent): string | undefined {
   return undefined;
 }
 
-function nextProcessedThroughSequence(
+function nextProjectionSequenceState(
   currentProcessedThroughSequence: number,
+  currentPendingSequenceNumbers: readonly number[],
   events: readonly AgentEvent[],
-): number {
+): {
+  readonly processedThroughSequence: number;
+  readonly pendingSequenceNumbers: number[];
+} {
   const sortedSequences = Array.from(
     new Set(
-      events
-        .map((event) => {
+      [
+        ...currentPendingSequenceNumbers,
+        ...events.map((event) => {
           return event.sequenceNumber;
-        })
-        .filter((sequenceNumber) => {
-          return Number.isInteger(sequenceNumber) && sequenceNumber >= 0;
         }),
+      ].filter((sequenceNumber) => {
+        return Number.isInteger(sequenceNumber) && sequenceNumber >= 0;
+      }),
     ),
   ).sort((left, right) => {
     return left - right;
@@ -183,7 +188,31 @@ function nextProcessedThroughSequence(
     nextProcessedThroughSequence = sequenceNumber;
   }
 
-  return nextProcessedThroughSequence;
+  return {
+    processedThroughSequence: nextProcessedThroughSequence,
+    pendingSequenceNumbers: sortedSequences.filter((sequenceNumber) => {
+      return sequenceNumber > nextProcessedThroughSequence;
+    }),
+  };
+}
+
+function nextStoredProjectionSequenceState(
+  current:
+    | {
+        readonly processedThroughSequence: number;
+        readonly pendingSequenceNumbers: readonly number[];
+      }
+    | undefined,
+  events: readonly AgentEvent[],
+): {
+  readonly processedThroughSequence: number;
+  readonly pendingSequenceNumbers: number[];
+} {
+  return nextProjectionSequenceState(
+    current?.processedThroughSequence ?? INITIAL_PROCESSED_THROUGH_SEQUENCE,
+    current?.pendingSequenceNumbers ?? [],
+    events,
+  );
 }
 
 function assistantEventItems(
@@ -251,23 +280,23 @@ async function materializeRunOutputEvents(
       .select({
         processedThroughSequence:
           runOutputMaterializations.processedThroughSequence,
+        pendingSequenceNumbers:
+          runOutputMaterializations.pendingSequenceNumbers,
       })
       .from(runOutputMaterializations)
       .where(eq(runOutputMaterializations.runId, payload.runId))
       .limit(1);
     signal.throwIfAborted();
 
-    const processedThroughSequence = nextProcessedThroughSequence(
-      existingState?.processedThroughSequence ??
-        INITIAL_PROCESSED_THROUGH_SEQUENCE,
-      payload.events,
-    );
+    const { processedThroughSequence, pendingSequenceNumbers } =
+      nextStoredProjectionSequenceState(existingState, payload.events);
     const updatedAt = nowDate();
     await tx
       .insert(runOutputMaterializations)
       .values({
         runId: payload.runId,
         processedThroughSequence,
+        pendingSequenceNumbers,
         latestResultSequence: latestResult?.sequenceNumber,
         latestResultText: latestResult?.content,
         latestOutputSequence: latestOutput?.sequenceNumber,
@@ -278,6 +307,7 @@ async function materializeRunOutputEvents(
         target: runOutputMaterializations.runId,
         set: {
           processedThroughSequence: sql`greatest(${runOutputMaterializations.processedThroughSequence}, ${processedThroughSequence})`,
+          pendingSequenceNumbers,
           latestResultSequence:
             latestResult === null
               ? runOutputMaterializations.latestResultSequence

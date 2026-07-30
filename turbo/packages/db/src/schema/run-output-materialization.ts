@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 import { agentRuns } from "./agent-run";
@@ -21,6 +22,10 @@ export const runOutputMaterializations = pgTable(
       ),
     processedThroughSequence: integer("processed_through_sequence")
       .default(-1)
+      .notNull(),
+    pendingSequenceNumbers: integer("pending_sequence_numbers")
+      .array()
+      .default(sql`'{}'::integer[]`)
       .notNull(),
     latestResultSequence: integer("latest_result_sequence"),
     latestResultText: text("latest_result_text"),
