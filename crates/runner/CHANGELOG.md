@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.150.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.150.0...runner-rs-v0.150.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* **runner:** preserve upstream bindings across flows ([#24122](https://github.com/vm0-ai/vm0/issues/24122)) ([fbc643c](https://github.com/vm0-ai/vm0/commit/fbc643cc1f9663833abff68435fe44250a477e92))
+
+
+### Performance Improvements
+
+* **runner:** prevent concurrent systemd daemon-reload storms ([#24109](https://github.com/vm0-ai/vm0/issues/24109)) ([681b3e4](https://github.com/vm0-ai/vm0/commit/681b3e49d0da6d8859b659c9db3d4fa05b6ac86c))
+
 ## [0.150.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.149.4...runner-rs-v0.150.0) (2026-07-30)
 
 
