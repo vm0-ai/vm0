@@ -112,8 +112,8 @@ type QueuedUserMessageRunParams = z.infer<
   typeof queuedUserMessageRunParamsSchema
 >;
 
-const queuedChatEvent = alias(chatEvents, "queued_chat_message");
-const queuedChatEventRevoker = alias(chatEvents, "queued_chat_message_revoker");
+const queuedChatEvent = alias(chatEvents, "queued_chat_event");
+const queuedChatEventRevoker = alias(chatEvents, "queued_chat_event_revoker");
 const queuedEncryptedParams = sql`COALESCE(
   ${chatInputQueueParams.encryptedParams},
   ${chatEvents.encryptedParams}
