@@ -30,7 +30,7 @@ function stubAgentContext(enabledConnectorSlugs: readonly string[]) {
       `http://localhost:3000/api/zero/agents/${AGENT_ID}/user-connectors`,
       () => {
         return HttpResponse.json({
-          enabledTypes: [...enabledConnectorSlugs],
+          enabledConnectorSlugs: [...enabledConnectorSlugs],
         });
       },
     ),

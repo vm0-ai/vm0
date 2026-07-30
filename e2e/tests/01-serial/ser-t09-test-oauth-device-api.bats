@@ -62,7 +62,7 @@ assert_response_jq() {
     assert_api_status 200 "device authorization start"
     assert_response_jq '
       .status == "pending" and
-      .type == "test-oauth-device" and
+      .connectorSlug == "test-oauth-device" and
       .userCode == "TEST-DEVICE" and
       .verificationUri == "https://oauth-device.test/device" and
       .verificationUriComplete == "https://oauth-device.test/device?user_code=TEST-DEVICE" and
@@ -82,7 +82,7 @@ assert_response_jq() {
     assert_api_status 200 "device authorization poll"
     assert_response_jq '
       .status == "complete" and
-      .connector.type == "test-oauth-device" and
+      .connector.slug == "test-oauth-device" and
       .connector.authMethod == "oauth" and
       .connector.externalUsername == "test-oauth-device-user"
     ' "device authorization poll"
@@ -90,7 +90,7 @@ assert_response_jq() {
     zero_api_request GET "/api/zero/connectors"
     assert_api_status 200 "connector list"
     assert_response_jq '
-      any(.connectors[]?; .type == "test-oauth-device" and
+      any(.connectors[]?; .slug == "test-oauth-device" and
         .authMethod == "oauth" and
         .externalUsername == "test-oauth-device-user")
     ' "connector list"

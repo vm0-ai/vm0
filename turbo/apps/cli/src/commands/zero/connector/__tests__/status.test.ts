@@ -23,7 +23,7 @@ const ALT_AGENT_UUID = "550e8400-e29b-41d4-a716-446655440099";
 
 const connectedGithub = {
   id: "1",
-  type: "github",
+  slug: "github",
   authMethod: "oauth",
   externalId: "12345",
   externalUsername: "octocat",
@@ -36,7 +36,7 @@ const connectedGithub = {
 
 function statusItemFromConnector(connector: Record<string, unknown>) {
   return catalogStatusItem({
-    connectorSlug: connector.type as string,
+    connectorSlug: connector.slug as string,
     authMethods: [authCodeMethod(connector.authMethod as string)],
     connection: {
       authMethod: connector.authMethod as string,
@@ -98,7 +98,7 @@ function stubUserConnectors(
   origin = "http://localhost:3000",
 ) {
   return http.get(`${origin}/api/zero/agents/${id}/user-connectors`, () => {
-    return HttpResponse.json({ enabledTypes: enabledConnectorSlugs });
+    return HttpResponse.json({ enabledConnectorSlugs: enabledConnectorSlugs });
   });
 }
 

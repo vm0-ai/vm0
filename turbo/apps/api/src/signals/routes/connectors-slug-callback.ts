@@ -151,8 +151,6 @@ function redirectWithError(
   clearCookies = false,
 ): Response {
   const errorUrl = new URL("/connector/error", origin);
-  // TODO(#23821): Remove this legacy query field after Platform migrates.
-  errorUrl.searchParams.set("type", connectorSlug);
   errorUrl.searchParams.set("connectorSlug", connectorSlug);
   errorUrl.searchParams.set("message", message);
 
@@ -443,8 +441,6 @@ function successRedirectResponse(args: {
   readonly username: string | null | undefined;
 }): Response {
   const successUrl = new URL("/connector/success", args.origin);
-  // TODO(#23821): Remove this legacy query field after Platform migrates.
-  successUrl.searchParams.set("type", args.connectorSlug);
   successUrl.searchParams.set("connectorSlug", args.connectorSlug);
   successUrl.searchParams.set("username", args.username ?? "");
 

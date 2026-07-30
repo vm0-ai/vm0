@@ -144,7 +144,6 @@ describe("GET /api/zero/connectors/:connectorSlug", () => {
     );
 
     expect(response.body).toMatchObject({
-      type: "openai",
       slug: "openai",
       authMethod: "api-token",
       connectionStatus: "connected",
@@ -176,6 +175,6 @@ describe("GET /api/zero/connectors/:connectorSlug", () => {
       [200],
     );
 
-    expect(response.body.type).toBe("openai");
+    expect(response.body.slug).toBe("openai");
   });
 });

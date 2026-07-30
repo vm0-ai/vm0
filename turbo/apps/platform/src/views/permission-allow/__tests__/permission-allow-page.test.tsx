@@ -24,18 +24,12 @@ function catalogPermissionDetail(
   overrides: Partial<PublicConnectorCatalogPermissionDetail> &
     Pick<
       PublicConnectorCatalogPermissionDetail,
-      "connectorRef" | "label" | "permissions"
+      "connectorSlug" | "label" | "permissions"
     >,
 ): PublicConnectorCatalogPermissionDetail {
-  const {
-    connectorRef: connectorSlug,
-    label,
-    permissions,
-    icon,
-    ...rest
-  } = overrides;
+  const { connectorSlug, label, permissions, icon, ...rest } = overrides;
   return {
-    connectorRef: connectorSlug,
+    connectorSlug,
     label,
     icon: icon ?? {
       url: `https://icons.example.test/${connectorSlug}.svg`,
@@ -101,7 +95,7 @@ describe("permission allow page", () => {
         expect(params.connectorSlug).toBe("slack");
         return respond(200, {
           permissions: catalogPermissionDetail({
-            connectorRef: "slack",
+            connectorSlug: "slack",
             label: "Catalog Slack",
             icon: {
               url: "https://icons.example.test/permission-slack.svg",
@@ -128,7 +122,6 @@ describe("permission allow page", () => {
         return respond(200, [
           {
             agentId: body.agentId,
-            connectorRef: body.connectorSlug,
             connectorSlug: body.connectorSlug,
             permission: appliedGrant.permission,
             action: appliedGrant.action,
@@ -252,7 +245,7 @@ describe("permission allow page", () => {
     let grants: UserPermissionGrantResponse[] = [
       {
         agentId,
-        connectorRef: "slack",
+        connectorSlug: "slack",
         permission: "admin.analytics:read",
         action: "allow",
         expiresAt: null,
@@ -287,7 +280,6 @@ describe("permission allow page", () => {
         expect(body.mode).toBe("patch");
         const grant: UserPermissionGrantResponse = {
           agentId: body.agentId,
-          connectorRef: body.connectorSlug,
           connectorSlug: body.connectorSlug,
           permission: appliedGrant.permission,
           action: appliedGrant.action,
@@ -355,7 +347,7 @@ describe("permission allow page", () => {
       return respond(200, [
         {
           agentId,
-          connectorRef: "slack",
+          connectorSlug: "slack",
           permission: "admin.analytics:read",
           action: "allow",
           expiresAt: isoFromNowMs(7 * 24 * 60 * 60 * 1000),
@@ -407,7 +399,7 @@ describe("permission allow page", () => {
       return respond(200, [
         {
           agentId,
-          connectorRef: "slack",
+          connectorSlug: "slack",
           permission: "admin.analytics:read",
           action: "allow",
           expiresAt: isoFromNowMs(-60 * 1000),
@@ -457,7 +449,7 @@ describe("permission allow page", () => {
       return respond(200, [
         {
           agentId,
-          connectorRef: "slack",
+          connectorSlug: "slack",
           permission: "admin.analytics:read",
           action: "allow",
           expiresAt: "",
@@ -509,7 +501,7 @@ describe("permission allow page", () => {
         expect(params.connectorSlug).toBe("slack");
         return respond(200, {
           permissions: catalogPermissionDetail({
-            connectorRef: "slack",
+            connectorSlug: "slack",
             label: "Catalog Slack",
             permissions: [
               {
@@ -529,7 +521,7 @@ describe("permission allow page", () => {
       return respond(200, [
         {
           agentId,
-          connectorRef: "slack",
+          connectorSlug: "slack",
           permission: "admin.analytics:read",
           action: "allow",
           expiresAt: isoFromNowMs(-60 * 1000),
@@ -576,7 +568,7 @@ describe("permission allow page", () => {
       return respond(200, [
         {
           agentId,
-          connectorRef: "slack",
+          connectorSlug: "slack",
           permission: "admin.analytics:read",
           action: "deny",
           expiresAt: null,
@@ -638,7 +630,6 @@ describe("permission allow page", () => {
         expect(body.mode).toBe("patch");
         const grant: UserPermissionGrantResponse = {
           agentId: body.agentId,
-          connectorRef: body.connectorSlug,
           connectorSlug: body.connectorSlug,
           permission: appliedGrant.permission,
           action: appliedGrant.action,
@@ -680,7 +671,7 @@ describe("permission allow page", () => {
     expect(grants).toMatchObject([
       {
         agentId,
-        connectorRef: "cloudflare",
+        connectorSlug: "cloudflare",
         permission: UNKNOWN_PERMISSION_GRANT,
         action: "allow",
       },
@@ -707,7 +698,7 @@ describe("permission allow page", () => {
       return respond(200, [
         {
           agentId,
-          connectorRef: "cloudflare",
+          connectorSlug: "cloudflare",
           permission: UNKNOWN_PERMISSION_GRANT,
           action: "allow",
           expiresAt: null,
