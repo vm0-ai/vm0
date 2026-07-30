@@ -80,6 +80,27 @@ def create_anthropic_messages_sse_usage_extractor(
     event boundary updates that same dict in place. After all decoded bytes
     have been fed, callers must invoke ``scanner.finish()`` to flush a trailing
     event without a blank-line terminator.
+
+    When a captured event cannot be parsed or exceeds an extractor bound,
+    ``on_parse_error(event_type, error)`` receives the resolved event identity
+    and parser diagnostic only for ``message_start`` and ``message_delta``.
+    Event-less frames can use a completed JSON ``type`` scalar as their
+    identity. Malformed frames without a usable usage-event identity and
+    malformed non-usage events remain silent.
+
+    ``on_lifecycle_event(event_type, content_block_type)`` receives only
+    successfully parsed lifecycle observations. A ``message_start`` emits
+    ``("message_start", None)``; a ``content_block_start`` emits
+    ``("content_block_start", content_block_type)``, where the second value is
+    the bounded string ``content_block.type``, or ``None`` when that field is
+    absent or not a string. Event-less frames can again use the JSON ``type``.
+    Conflicting SSE and JSON event types, malformed events, oversized selected
+    fields, and unknown or irrelevant events do not emit lifecycle observations.
+    These callback values contain no message, thinking, text, tool, or other
+    response content.
+
+    HTTP content decoding and decoder errors remain caller-owned; this parser
+    receives decoded bytes and owns only SSE framing and selected JSON fields.
     """
     usage: dict = {}
     parser = SseUsageScanner(
