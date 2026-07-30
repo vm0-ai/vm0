@@ -42,6 +42,13 @@ const localeCases = [
     attach: "Lampirkan",
     send: "Kirim",
   },
+  {
+    locale: "de-DE",
+    placeholder:
+      "Bitten Sie mich, Workflows zu automatisieren und Aufgaben zu verwalten...",
+    attach: "Anhängen",
+    send: "Senden",
+  },
 ] as const;
 
 beforeEach(() => {
