@@ -13,7 +13,7 @@ import {
 import { zeroStrapiIntegrationsContract } from "@vm0/api-contracts/contracts/zero-strapi-integrations";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   click,
@@ -21,9 +21,16 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { initializeI18n } from "../../../i18n/index.ts";
+import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
+
+afterEach(async () => {
+  document.documentElement.lang = DEFAULT_LOCALE;
+  await initializeI18n(DEFAULT_LOCALE);
+});
 
 function queryRole(role: "button" | "link", name: string): HTMLElement | null {
   return (
@@ -383,6 +390,61 @@ describe("works page", () => {
     await expect(
       screen.findByText("Webhook tested"),
     ).resolves.toBeInTheDocument();
+  });
+
+  it("localizes Strapi settings in Portuguese while preserving integration data", async () => {
+    const integrationId = "00000000-0000-4000-8000-000000000092";
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
+    context.mocks.api(zeroStrapiIntegrationsContract.list, ({ respond }) => {
+      return respond(200, [
+        {
+          id: integrationId,
+          name: "Marketing CMS",
+          baseUrl: "https://cms.example.com",
+          webhookUrl: `https://www.vm0.test/api/zero/strapi/events/${integrationId}`,
+          secretLastFour: "abcd",
+          lastTestedAt: "2026-07-28T04:00:00.000Z",
+          lastReceivedAt: null,
+          createdAt: "2026-07-28T03:00:00.000Z",
+        },
+      ]);
+    });
+    context.mocks.api(
+      zeroStrapiIntegrationsContract.checkTest,
+      ({ respond }) => {
+        return respond(200, {
+          received: true,
+          lastTestedAt: "2026-07-28T04:00:00.000Z",
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/settings/strapi",
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+        [FeatureSwitchKey.StrapiIntegration]: true,
+      },
+    });
+
+    await expect(
+      screen.findByText("Marketing CMS"),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Permita que o Zero reaja a entradas publicadas no Strapi e automatize o trabalho subsequente.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Webhook testado")).toBeInTheDocument();
+    expect(getRole("button", "Verificar teste")).toBeInTheDocument();
+    expect(screen.getByText(/^Último teste:/u)).toBeInTheDocument();
+    expect(screen.getByText("https://cms.example.com")).toBeInTheDocument();
+    click(getRole("button", "Verificar teste"));
+    await expect(
+      screen.findByText("Webhook de teste do Strapi recebido"),
+    ).resolves.toBeInTheDocument();
+    expect(document.documentElement.lang).toBe("pt-BR");
   });
 
   it("redirects direct Feishu settings navigation when the switch is disabled", async () => {

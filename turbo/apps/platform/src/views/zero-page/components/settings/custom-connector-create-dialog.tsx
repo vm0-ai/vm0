@@ -83,27 +83,22 @@ function parseScopes(raw: string): string[] {
 const OAUTH_AUTHORIZATION_PARAM_FIELDS = [
   {
     field: "oauthResource",
-    label: "Resource",
     placeholder: "https://api.provider.example",
   },
   {
     field: "oauthAudience",
-    label: "Audience",
     placeholder: "https://api.provider.example",
   },
   {
     field: "oauthAccessType",
-    label: "Access type",
     placeholder: "offline",
   },
   {
     field: "oauthPrompt",
-    label: "Prompt",
     placeholder: "consent",
   },
 ] as const satisfies readonly {
   readonly field: CreateField;
-  readonly label: string;
   readonly placeholder: string;
 }[];
 
@@ -175,10 +170,14 @@ function ApiAuthenticationFields({
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-medium text-foreground">
-            API authentication
+            {t(($) => {
+              return $.connectors.custom.create.apiAuthentication;
+            })}
           </p>
           <p className="text-xs text-muted-foreground">
-            Inject a user-provided secret into every matching request.
+            {t(($) => {
+              return $.connectors.custom.create.apiAuthenticationDescription;
+            })}
           </p>
         </div>
         {removable && (
@@ -186,7 +185,9 @@ function ApiAuthenticationFields({
             type="button"
             variant="ghost"
             size="icon"
-            aria-label="Remove API authentication"
+            aria-label={t(($) => {
+              return $.connectors.custom.create.removeApiAuthentication;
+            })}
             onClick={onRemove}
           >
             <IconTrash size={16} />
@@ -242,7 +243,9 @@ function ApiAuthenticationFields({
         </>
       ) : (
         <p className="text-xs text-muted-foreground">
-          Advanced API fields and injections are preserved when you save.
+          {t(($) => {
+            return $.connectors.custom.create.advancedApiPreserved;
+          })}
         </p>
       )}
     </div>
@@ -261,6 +264,7 @@ function OAuth2ClientFields({
   setField,
   editing,
 }: CreateFormFieldProps & { readonly editing: boolean }) {
+  const { t } = useTranslation();
   return (
     <>
       <div className="flex flex-col gap-2">
@@ -268,7 +272,9 @@ function OAuth2ClientFields({
           htmlFor="cc-oauth-client-id"
           className="text-sm font-medium text-foreground"
         >
-          Client ID
+          {t(($) => {
+            return $.connectors.custom.create.clientId;
+          })}
         </label>
         <Input
           id="cc-oauth-client-id"
@@ -283,7 +289,13 @@ function OAuth2ClientFields({
           htmlFor="cc-oauth-client-secret"
           className="text-sm font-medium text-foreground"
         >
-          {editing ? "New client secret" : "Client secret"}
+          {editing
+            ? t(($) => {
+                return $.connectors.custom.create.newClientSecret;
+              })
+            : t(($) => {
+                return $.connectors.custom.create.clientSecret;
+              })}
         </label>
         <Input
           id="cc-oauth-client-secret"
@@ -292,12 +304,20 @@ function OAuth2ClientFields({
           onChange={(event) => {
             setField("oauthClientSecret", event.target.value);
           }}
-          placeholder={editing ? "Leave blank to keep current" : undefined}
+          placeholder={
+            editing
+              ? t(($) => {
+                  return $.connectors.custom.create.keepClientSecretPlaceholder;
+                })
+              : undefined
+          }
         />
       </div>
       {editing && (
         <p className="text-xs text-muted-foreground">
-          Leave the client secret blank to keep the stored value.
+          {t(($) => {
+            return $.connectors.custom.create.keepClientSecret;
+          })}
         </p>
       )}
     </>
@@ -305,6 +325,7 @@ function OAuth2ClientFields({
 }
 
 function OAuth2RedirectUrlField() {
+  const { t } = useTranslation();
   const redirectUrl = customConnectorOAuthCallbackUrl();
   return (
     <div className="flex flex-col gap-2">
@@ -312,9 +333,13 @@ function OAuth2RedirectUrlField() {
         htmlFor="cc-oauth-callback-url"
         className="text-sm font-medium text-foreground"
       >
-        Redirect URL
+        {t(($) => {
+          return $.connectors.custom.create.redirectUrl;
+        })}
         <span className="ml-1 font-normal text-amber-600 dark:text-amber-400">
-          (Register this URL in the provider&apos;s OAuth application.)
+          {t(($) => {
+            return $.connectors.custom.create.redirectHint;
+          })}
         </span>
       </label>
       <div className="relative">
@@ -327,7 +352,9 @@ function OAuth2RedirectUrlField() {
         <CopyButton
           type="button"
           text={redirectUrl}
-          aria-label="Copy Redirect URL"
+          aria-label={t(($) => {
+            return $.connectors.custom.create.redirectCopy;
+          })}
           className="absolute top-1/2 right-1 -translate-y-1/2 p-1.5 hover:bg-accent"
         />
       </div>
@@ -336,6 +363,7 @@ function OAuth2RedirectUrlField() {
 }
 
 function OAuth2AdvancedFields({ form, setField }: CreateFormFieldProps) {
+  const { t } = useTranslation();
   return (
     <details className="group rounded-lg border border-border">
       <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2.5 text-sm font-medium text-foreground">
@@ -343,7 +371,11 @@ function OAuth2AdvancedFields({ form, setField }: CreateFormFieldProps) {
           size={16}
           className="shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
         />
-        <span>Advanced settings</span>
+        <span>
+          {t(($) => {
+            return $.connectors.custom.create.advancedSettings;
+          })}
+        </span>
       </summary>
       <div className="flex flex-col gap-4 border-t border-border px-3 py-4">
         <div className="flex flex-col gap-2">
@@ -358,7 +390,11 @@ function OAuth2AdvancedFields({ form, setField }: CreateFormFieldProps) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="none">None</SelectItem>
+              <SelectItem value="none">
+                {t(($) => {
+                  return $.connectors.custom.create.none;
+                })}
+              </SelectItem>
               <SelectItem value="S256">S256</SelectItem>
             </SelectContent>
           </Select>
@@ -366,10 +402,15 @@ function OAuth2AdvancedFields({ form, setField }: CreateFormFieldProps) {
         <div className="flex flex-col gap-2">
           <div>
             <p className="text-sm font-medium text-foreground">
-              Authorization parameters
+              {t(($) => {
+                return $.connectors.custom.create.authorizationParameters;
+              })}
             </p>
             <p className="text-xs text-muted-foreground">
-              Add only the parameters your provider requires.
+              {t(($) => {
+                return $.connectors.custom.create
+                  .authorizationParametersDescription;
+              })}
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -380,9 +421,28 @@ function OAuth2AdvancedFields({ form, setField }: CreateFormFieldProps) {
                     htmlFor={`cc-${parameter.field}`}
                     className="text-sm font-medium text-foreground"
                   >
-                    {parameter.label}
+                    {parameter.field === "oauthResource"
+                      ? t(($) => {
+                          return $.connectors.custom.create.parameters.resource;
+                        })
+                      : parameter.field === "oauthAudience"
+                        ? t(($) => {
+                            return $.connectors.custom.create.parameters
+                              .audience;
+                          })
+                        : parameter.field === "oauthAccessType"
+                          ? t(($) => {
+                              return $.connectors.custom.create.parameters
+                                .accessType;
+                            })
+                          : t(($) => {
+                              return $.connectors.custom.create.parameters
+                                .prompt;
+                            })}
                     <span className="text-muted-foreground font-normal ml-1">
-                      (optional)
+                      {t(($) => {
+                        return $.connectors.custom.create.optional;
+                      })}
                     </span>
                   </label>
                   <Input
@@ -403,40 +463,18 @@ function OAuth2AdvancedFields({ form, setField }: CreateFormFieldProps) {
   );
 }
 
-function OAuth2AuthenticationFields({
-  form,
-  setField,
-  editing,
-  onRemove,
-}: CreateFormFieldProps & {
-  readonly editing: boolean;
-  readonly onRemove: () => void;
-}) {
+function OAuth2EndpointFields({ form, setField }: CreateFormFieldProps) {
+  const { t } = useTranslation();
   return (
-    <div className="rounded-xl border border-border p-4 flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-medium text-foreground">OAuth 2.0</p>
-          <p className="text-xs text-muted-foreground">
-            Configure one OAuth app for members to authorize.
-          </p>
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label="Remove OAuth 2.0"
-          onClick={onRemove}
-        >
-          <IconTrash size={16} />
-        </Button>
-      </div>
+    <>
       <div className="flex flex-col gap-2">
         <label
           htmlFor="cc-oauth-authorization-url"
           className="text-sm font-medium text-foreground"
         >
-          Authorization URL
+          {t(($) => {
+            return $.connectors.custom.create.authorizationUrl;
+          })}
         </label>
         <Input
           id="cc-oauth-authorization-url"
@@ -452,7 +490,9 @@ function OAuth2AuthenticationFields({
           htmlFor="cc-oauth-token-url"
           className="text-sm font-medium text-foreground"
         >
-          Token URL
+          {t(($) => {
+            return $.connectors.custom.create.tokenUrl;
+          })}
         </label>
         <Input
           id="cc-oauth-token-url"
@@ -463,15 +503,57 @@ function OAuth2AuthenticationFields({
           placeholder="https://provider.example.com/oauth/token"
         />
       </div>
+    </>
+  );
+}
+
+function OAuth2AuthenticationFields({
+  form,
+  setField,
+  editing,
+  onRemove,
+}: CreateFormFieldProps & {
+  readonly editing: boolean;
+  readonly onRemove: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="rounded-xl border border-border p-4 flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-foreground">OAuth 2.0</p>
+          <p className="text-xs text-muted-foreground">
+            {t(($) => {
+              return $.connectors.custom.create.oauthDescription;
+            })}
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={t(($) => {
+            return $.connectors.custom.create.removeOauth;
+          })}
+          onClick={onRemove}
+        >
+          <IconTrash size={16} />
+        </Button>
+      </div>
+      <OAuth2EndpointFields form={form} setField={setField} />
       <OAuth2ClientFields form={form} setField={setField} editing={editing} />
       <div className="flex flex-col gap-2">
         <label
           htmlFor="cc-oauth-scopes"
           className="text-sm font-medium text-foreground"
         >
-          Scopes
+          {t(($) => {
+            return $.connectors.custom.create.scopes;
+          })}
           <span className="text-muted-foreground font-normal ml-1">
-            (one per line)
+            {t(($) => {
+              return $.connectors.custom.create.scopesHint;
+            })}
           </span>
         </label>
         <textarea
@@ -487,7 +569,9 @@ function OAuth2AuthenticationFields({
       </div>
       <div className="flex flex-col gap-2">
         <label className="text-sm font-medium text-foreground">
-          Token endpoint authentication
+          {t(($) => {
+            return $.connectors.custom.create.tokenEndpointAuthentication;
+          })}
         </label>
         <Select
           value={form.oauthClientAuthentication}
@@ -495,15 +579,23 @@ function OAuth2AuthenticationFields({
             setField("oauthClientAuthentication", value);
           }}
         >
-          <SelectTrigger aria-label="Token endpoint authentication">
+          <SelectTrigger
+            aria-label={t(($) => {
+              return $.connectors.custom.create.tokenEndpointAuthentication;
+            })}
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="client_secret_post">
-              Client secret in request body
+              {t(($) => {
+                return $.connectors.custom.create.secretInRequestBody;
+              })}
             </SelectItem>
             <SelectItem value="client_secret_basic">
-              HTTP Basic authentication
+              {t(($) => {
+                return $.connectors.custom.create.httpBasicAuthentication;
+              })}
             </SelectItem>
           </SelectContent>
         </Select>
@@ -512,8 +604,9 @@ function OAuth2AuthenticationFields({
       <OAuth2AdvancedFields form={form} setField={setField} />
       {editing && (
         <p className="text-xs text-muted-foreground">
-          Changing OAuth settings or client credentials disconnects existing
-          OAuth connections.
+          {t(($) => {
+            return $.connectors.custom.create.oauthChangesDisconnect;
+          })}
         </p>
       )}
     </div>
@@ -793,6 +886,7 @@ function AuthenticationFields({
   addAuthMethod,
   removeAuthMethod,
 }: AuthenticationFieldsProps) {
+  const { t } = useTranslation();
   if (!oauth2Enabled && !editing) {
     return <LegacyApiFields form={form} setField={setField} />;
   }
@@ -833,7 +927,9 @@ function AuthenticationFields({
             disabled={availableAuthMethods.length === 0}
           >
             <IconPlus size={16} />
-            Add authentication
+            {t(($) => {
+              return $.connectors.custom.create.addAuthentication;
+            })}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start">
@@ -843,7 +939,9 @@ function AuthenticationFields({
                 addAuthMethod("api");
               }}
             >
-              API authentication
+              {t(($) => {
+                return $.connectors.custom.create.apiAuthentication;
+              })}
             </DropdownMenuItem>
           )}
           {availableAuthMethods.includes("oauth2") && (
@@ -945,6 +1043,7 @@ export function CustomConnectorCreateDialog({
 }: {
   readonly connector?: CustomConnectorResponse;
 }) {
+  const { t } = useTranslation();
   const form = useGet(customConnectorCreateForm$);
   const featureSwitches = useGet(featureSwitch$);
   const oauth2Enabled =
@@ -1038,6 +1137,9 @@ export function CustomConnectorCreateDialog({
         <DialogContent
           className="max-w-2xl max-h-[90vh] overflow-y-auto"
           aria-describedby={undefined}
+          closeLabel={t(($) => {
+            return $.connectors.actions.close;
+          })}
         >
           <DialogHeader>
             <CustomConnectorDialogTitle editing={editing} />

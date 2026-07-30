@@ -10,17 +10,7 @@ import {
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { command } from "ccstate";
-import {
-  and,
-  asc,
-  eq,
-  inArray,
-  isNotNull,
-  isNull,
-  lte,
-  or,
-  sql,
-} from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -626,10 +616,7 @@ async function hasPendingMorningBriefQueueEvent(
   }
   const messages = await db
     .select({
-      encryptedParams: sql`COALESCE(
-        ${chatInputQueueParams.encryptedParams},
-        ${chatEvents.encryptedParams}
-      )`.mapWith(chatEvents.encryptedParams),
+      encryptedParams: chatInputQueueParams.encryptedParams,
     })
     .from(chatEvents)
     .leftJoin(

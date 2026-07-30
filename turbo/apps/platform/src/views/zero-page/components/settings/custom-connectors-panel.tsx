@@ -6,6 +6,8 @@ import {
 } from "ccstate-react";
 import { IconDotsVertical } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
+
+import { formatLocalizedNumber } from "../../../../i18n/format.ts";
 import {
   Button,
   DropdownMenu,
@@ -50,8 +52,11 @@ function connectsDirectlyWithOAuth(
   return oauth2Enabled && connector.authMode === "oauth";
 }
 
-function customConnectorAgentName(agent: TeamComposeItem): string {
-  return agent.displayName ?? "Unnamed";
+function customConnectorAgentName(
+  agent: TeamComposeItem,
+  unnamed: string,
+): string {
+  return agent.displayName ?? unnamed;
 }
 
 function truncateCustomConnectorAgentName(name: string): string {
@@ -68,6 +73,10 @@ function CustomConnectorAgentUsage({
   readonly agents: readonly TeamComposeItem[];
   readonly loading: boolean;
 }) {
+  const { t } = useTranslation();
+  const unnamed = t(($) => {
+    return $.connectors.catalog.unnamedAgent;
+  });
   if (loading) {
     return <span className="block h-3 w-20 animate-pulse rounded bg-muted" />;
   }
@@ -77,7 +86,9 @@ function CustomConnectorAgentUsage({
         className="truncate text-xs text-muted-foreground"
         data-testid="custom-connector-card-agent-usage"
       >
-        Not used by any agents
+        {t(($) => {
+          return $.connectors.custom.agentUsage.none;
+        })}
       </span>
     );
   }
@@ -85,17 +96,39 @@ function CustomConnectorAgentUsage({
   const visibleNames = agents
     .slice(0, CUSTOM_CONNECTOR_AGENT_NAME_LIMIT)
     .map((agent) => {
-      return truncateCustomConnectorAgentName(customConnectorAgentName(agent));
+      return truncateCustomConnectorAgentName(
+        customConnectorAgentName(agent, unnamed),
+      );
     });
   const overflowCount = agents.length - visibleNames.length;
+  const agentNames = visibleNames.join(", ");
   return (
     <span
       className="min-w-0 truncate text-xs text-muted-foreground"
       data-testid="custom-connector-card-agent-usage"
-      title={agents.map(customConnectorAgentName).join(", ")}
+      title={agents
+        .map((agent) => {
+          return customConnectorAgentName(agent, unnamed);
+        })
+        .join(", ")}
     >
-      Used by {visibleNames.join(", ")}
-      {overflowCount > 0 ? ` +${overflowCount}` : ""}
+      {overflowCount > 0
+        ? t(
+            ($) => {
+              return $.connectors.custom.agentUsage.usedByOverflow;
+            },
+            {
+              agents: agentNames,
+              count: overflowCount,
+              value: formatLocalizedNumber(overflowCount),
+            },
+          )
+        : t(
+            ($) => {
+              return $.connectors.custom.agentUsage.usedBy;
+            },
+            { agents: agentNames },
+          )}
     </span>
   );
 }

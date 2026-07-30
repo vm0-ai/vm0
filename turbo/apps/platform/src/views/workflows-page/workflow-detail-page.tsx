@@ -208,6 +208,7 @@ import { strapiIntegrations$ } from "../../signals/zero-page/zero-strapi.ts";
 import {
   connectGithubInstallation$,
   githubIntegrationData$,
+  type GithubIntegrationData,
 } from "../../signals/zero-page/zero-github.ts";
 import {
   atTimeInTimezone,
@@ -7891,14 +7892,14 @@ function GithubWebhookAutomationFields({
 
 function GithubLabelAutomationAvailabilityMessages({
   githubLoaded,
-  isInstalled,
+  githubData,
   needsConnection,
   githubLoadError,
   connecting,
   onConnect,
 }: {
   readonly githubLoaded: boolean;
-  readonly isInstalled: boolean;
+  readonly githubData: GithubIntegrationData | null;
   readonly needsConnection: boolean;
   readonly githubLoadError: boolean;
   readonly connecting: boolean;
@@ -7906,7 +7907,9 @@ function GithubLabelAutomationAvailabilityMessages({
 }) {
   return (
     <>
-      {githubLoaded && !isInstalled ? <GithubNotInstalledNotice /> : null}
+      {githubLoaded && !githubData?.isInstalled ? (
+        <GithubNotInstalledNotice githubData={githubData} />
+      ) : null}
       {needsConnection ? (
         <GithubAccountConnectionNotice
           connecting={connecting}
@@ -7918,12 +7921,41 @@ function GithubLabelAutomationAvailabilityMessages({
   );
 }
 
-function GithubNotInstalledNotice() {
+function GithubNotInstalledNotice({
+  githubData,
+}: {
+  readonly githubData: GithubIntegrationData | null;
+}) {
+  const installUrl =
+    githubData && !githubData.isInstalled
+      ? (githubData.installUrl ?? null)
+      : null;
+
   return (
     <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
       {i18n.t(($) => {
         return $.workflows.automations.github.installedRequired;
-      })}
+      })}{" "}
+      {installUrl ? (
+        <Button
+          asChild
+          type="button"
+          variant="link"
+          className="h-auto p-0 text-xs"
+        >
+          <a href={installUrl} target="_blank" rel="noreferrer">
+            {i18n.t(($) => {
+              return $.workflows.automations.github.installApp;
+            })}
+          </a>
+        </Button>
+      ) : (
+        <span>
+          {i18n.t(($) => {
+            return $.workflows.automations.github.installAdminRequired;
+          })}
+        </span>
+      )}
     </div>
   );
 }
@@ -8070,7 +8102,7 @@ function CreateGithubLabelAppliedAutomationDialog({
           />
           <GithubLabelAutomationAvailabilityMessages
             githubLoaded={githubLoadable.state === "hasData"}
-            isInstalled={isInstalled}
+            githubData={githubData}
             needsConnection={needsConnection}
             githubLoadError={githubLoadError}
             connecting={connecting}
@@ -8164,7 +8196,7 @@ function CreateGithubWorkflowRunCompletedAutomationDialog({
             disabled={creating || loadingGithub || githubLoadError}
           />
           {githubLoadable.state === "hasData" && !isInstalled ? (
-            <GithubNotInstalledNotice />
+            <GithubNotInstalledNotice githubData={githubData} />
           ) : null}
           {githubLoadError ? <GithubLoadErrorNotice /> : null}
           <DialogFooter>
@@ -8331,7 +8363,7 @@ function CreateGithubWebhookAutomationDialog({
             disabled={creating || loadingGithub || githubLoadError}
           />
           {githubLoadable.state === "hasData" && !isInstalled ? (
-            <GithubNotInstalledNotice />
+            <GithubNotInstalledNotice githubData={githubData} />
           ) : null}
           {githubLoadError ? <GithubLoadErrorNotice /> : null}
           <DialogFooter>
@@ -9857,7 +9889,7 @@ function UpdateGithubLabelAppliedAutomationForm({
       />
       <GithubLabelAutomationAvailabilityMessages
         githubLoaded={githubLoadable.state === "hasData"}
-        isInstalled={isInstalled}
+        githubData={githubData}
         needsConnection={needsConnection}
         githubLoadError={githubLoadError}
         connecting={connecting}

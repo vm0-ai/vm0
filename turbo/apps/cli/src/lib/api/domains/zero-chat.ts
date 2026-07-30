@@ -27,6 +27,12 @@ export type ZeroChatThreadEvent = Omit<ChatThreadEvent, "seqId"> & {
   readonly seqId?: number;
 };
 
+interface ZeroChatThreadCreateResult {
+  readonly threadId: string;
+  readonly title: string | null;
+  readonly selectedModel: string | null;
+}
+
 interface ZeroChatEventSendResult {
   readonly runId: string | null;
   readonly threadId: string;
@@ -105,6 +111,32 @@ export async function listZeroChatThreadEvents(options: {
     return { kind: "expired" };
   }
   handleError(result, "Failed to list chat thread events");
+}
+
+export async function createZeroChatThread(options: {
+  agentId: string;
+  title: string;
+  model?: string;
+}): Promise<ZeroChatThreadCreateResult> {
+  const config = await getClientConfig();
+  const client = initClient(chatThreadsContract, config);
+  const result = await client.create({
+    body: {
+      agentId: options.agentId,
+      title: options.title,
+      ...(options.model === undefined ? {} : { model: options.model }),
+    },
+  });
+  if (result.status === 201) {
+    return {
+      threadId: result.body.id,
+      title: result.body.title,
+      // An API that predates the echoed pin leaves the CLI with only the
+      // model the caller asked for.
+      selectedModel: result.body.selectedModel ?? options.model ?? null,
+    };
+  }
+  handleError(result, "Failed to create chat thread");
 }
 
 export async function renameZeroChatThread(options: {

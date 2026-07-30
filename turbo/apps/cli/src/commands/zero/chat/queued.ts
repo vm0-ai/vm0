@@ -98,7 +98,7 @@ Examples:
 Notes:
   - Lists the same unassociated user and automation events shown as queued by Platform
   - Event IDs can be passed to zero chat cancel --event-id
-  - Authenticates via ZERO_TOKEN (requires chat-message:read capability)`,
+  - Authenticates via ZERO_TOKEN (requires chat-event:read capability)`,
   )
   .action(
     withErrorHandler(async (options: QueuedOptions) => {

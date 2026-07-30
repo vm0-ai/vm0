@@ -14,12 +14,11 @@ import { connectorOauthDeviceAuthorizationSessionStatusEnum } from "../schema/co
 import type { UserPermissionGrantAction } from "../schema/user-permission-grant";
 
 /**
- * Temporary insert-only table projections for the connector_slug expansion.
+ * Previous-release insert projections for connector_slug rollout tests.
  *
- * They intentionally omit connector_slug so this API build can insert into both
- * the migration-0737 schema and the expanded schema. Migration 0738 triggers
- * populate connector_slug after the column exists. Switch writes in #23793 and
- * delete these projections in #23794.
+ * They intentionally omit connector_slug to model the expand release running
+ * before and after the cutover migration. Current application writes use the
+ * canonical projections; delete these legacy projections in #23794.
  */
 export const connectorSlugLegacyInsertConnectors = pgTable("connectors", {
   id: uuid("id").defaultRandom().primaryKey(),

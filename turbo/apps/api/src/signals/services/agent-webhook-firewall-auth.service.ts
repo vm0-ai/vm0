@@ -1082,7 +1082,7 @@ async function loadConnectorAccessStates(
   const rows = await db
     .select({
       connectorId: connectors.id,
-      type: sql`${connectors.type}`.mapWith(pgTextDecoder).as("type"),
+      type: sql`${connectors.connectorSlug}`.mapWith(pgTextDecoder).as("type"),
       authMethod: connectors.authMethod,
       storageVersion: connectors.storageVersion,
       tokenExpiresAt: connectors.tokenExpiresAt,
@@ -1093,8 +1093,8 @@ async function loadConnectorAccessStates(
       and(
         eq(connectors.orgId, orgId),
         eq(connectors.userId, userId),
-        isNotNull(connectors.type),
-        inArray(connectors.type, [...connectorTypes]),
+        isNotNull(connectors.connectorSlug),
+        inArray(connectors.connectorSlug, [...connectorTypes]),
       ),
     );
 
@@ -1809,7 +1809,7 @@ async function loadConnectorRefreshStateRow(
       and(
         eq(connectors.orgId, args.orgId),
         eq(connectors.userId, args.userId),
-        eq(connectors.type, args.connectorType),
+        eq(connectors.connectorSlug, args.connectorType),
       ),
     );
   const rows = lockRow
@@ -1985,7 +1985,7 @@ async function markRefreshSuccess(
         eq(connectors.id, prepared.connectorId),
         eq(connectors.orgId, args.orgId),
         eq(connectors.userId, args.userId),
-        eq(connectors.type, args.connectorType),
+        eq(connectors.connectorSlug, args.connectorType),
       ),
     );
   return Object.fromEntries(returnedSecretValues);
@@ -2035,7 +2035,7 @@ async function markRefreshFailure(
       and(
         eq(connectors.orgId, args.orgId),
         eq(connectors.userId, args.userId),
-        eq(connectors.type, args.connectorType),
+        eq(connectors.connectorSlug, args.connectorType),
       ),
     );
 }

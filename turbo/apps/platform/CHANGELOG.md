@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.660.1](https://github.com/vm0-ai/vm0/compare/app-v0.660.0...app-v0.660.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* **platform:** keep plain Enter as a newline on iPhone keyboards ([#23911](https://github.com/vm0-ai/vm0/issues/23911)) ([56a5c3b](https://github.com/vm0-ai/vm0/commit/56a5c3ba5a92594d3e2261a9072dc9830a4b0084))
+
+
+### Refactoring
+
+* **observability:** migrate connector diagnostics to slug ([#23907](https://github.com/vm0-ai/vm0/issues/23907)) ([ce77eaa](https://github.com/vm0-ai/vm0/commit/ce77eaa374b8c2f6975c3550e8c76c15ccb224ce))
+* **platform:** rename chat message DOM identifiers ([#23934](https://github.com/vm0-ai/vm0/issues/23934)) ([02170a6](https://github.com/vm0-ai/vm0/commit/02170a6064d25c8bf5e2567195f15e84686f2f87))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.249.1
+    * @vm0/core bumped to 8.488.0
+
 ## [0.660.0](https://github.com/vm0-ai/vm0/compare/app-v0.659.0...app-v0.660.0) (2026-07-30)
 
 

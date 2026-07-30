@@ -328,7 +328,7 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadEventsContract.list,
     handler: authRoute(
-      { requiredCapability: "chat-message:read" },
+      { requiredCapability: "chat-event:read" },
       listChatEventsInner$,
     ),
   },
@@ -342,7 +342,7 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "chat-message:read",
+        requiredCapability: "chat-event:read",
       },
       searchChatInner$,
     ),

@@ -244,6 +244,7 @@ function sanitizeAxiomNetworkEvent(event: unknown): NetworkLogEntry | null {
     firewall_billable: booleanValue(event.firewall_billable),
     firewall_error: stringValue(event.firewall_error),
     ...sanitizeUpstreamBindingFields(event),
+    connector_diagnostic_slug: stringValue(event.connector_diagnostic_slug),
     connector_diagnostic_type: stringValue(event.connector_diagnostic_type),
     connector_diagnostic_reason: stringValue(event.connector_diagnostic_reason),
     connector_diagnostic_env_names: stringArrayValue(

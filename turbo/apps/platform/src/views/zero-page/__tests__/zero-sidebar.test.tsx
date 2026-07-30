@@ -2494,7 +2494,7 @@ describe("zero sidebar", () => {
       within(rail).getByRole("navigation", { name: "Barra lateral" }),
     ).toBeInTheDocument();
     expect(within(rail).getByText("Agentes")).toBeInTheDocument();
-    expect(within(rail).getByText("Fluxos")).toBeInTheDocument();
+    expect(within(rail).getByText("Fluxos de trabalho")).toBeInTheDocument();
     expect(within(rail).getByText("Conectores")).toBeInTheDocument();
     expect(within(rail).getByText("Artefatos")).toBeInTheDocument();
     expect(within(rail).getByText("Atividade")).toBeInTheDocument();
