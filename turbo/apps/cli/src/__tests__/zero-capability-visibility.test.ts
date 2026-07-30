@@ -115,6 +115,23 @@ describe("decodeZeroTokenPayload", () => {
     });
   });
 
+  it("should normalize legacy chat message capabilities", () => {
+    const token = buildZeroToken({
+      userId: "user-1",
+      runId: "run-1",
+      orgId: "org-1",
+      scope: "zero",
+      capabilities: ["chat-message:read", "chat-message:write"],
+      iat: 1000,
+      exp: 2000,
+    });
+
+    expect(decodeZeroTokenPayload(token)?.capabilities).toStrictEqual([
+      "chat-event:read",
+      "chat-event:write",
+    ]);
+  });
+
   it("should return undefined for token without vm0_sandbox_ prefix", () => {
     expect(decodeZeroTokenPayload("some-other-token")).toBeUndefined();
   });
@@ -407,10 +424,10 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
-  it("should show chat when chat-message:read capability is present", () => {
+  it("should show chat when chat-event:read capability is present", () => {
     const token = buildZeroToken({
       scope: "zero",
-      capabilities: ["chat-message:read"],
+      capabilities: ["chat-event:read"],
     });
     vi.stubEnv("ZERO_TOKEN", token);
 
@@ -420,10 +437,10 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
-  it("should show chat when chat-message:write capability is present", () => {
+  it("should show chat when chat-event:write capability is present", () => {
     const token = buildZeroToken({
       scope: "zero",
-      capabilities: ["chat-message:write"],
+      capabilities: ["chat-event:write"],
     });
     vi.stubEnv("ZERO_TOKEN", token);
 

@@ -246,7 +246,7 @@ async function queryZeroRunBootstrapMetadataSnapshot(
         .mapWith(bootstrapMetadataRowKindDecoder)
         .as("kind"),
       ...emptyBootstrapMetadataFields(),
-      name: sql`${userConnectors.connectorType}`
+      name: sql`${userConnectors.connectorSlug}`
         .mapWith(nullableTextDecoder)
         .as("name"),
     })
@@ -265,7 +265,7 @@ async function queryZeroRunBootstrapMetadataSnapshot(
         .mapWith(bootstrapMetadataRowKindDecoder)
         .as("kind"),
       ...emptyBootstrapMetadataFields(),
-      name: sql`${userPermissionGrants.connectorRef}`
+      name: sql`${userPermissionGrants.connectorSlug}`
         .mapWith(nullableTextDecoder)
         .as("name"),
       detail: sql`${userPermissionGrants.permission}`

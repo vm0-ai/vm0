@@ -297,7 +297,7 @@ async function seedTelegramCallback(args: {
 /**
  * Seeds an org-scoped actor with credits (Stripe webhook grant) and an agent
  * created through the product agent API whose compose head declares an inline
- * ANTHROPIC_API_KEY, so real runs can be created through POST /api/zero/runs
+ * ANTHROPIC_API_KEY, so real runs can be created through the test fixture
  * without an org model provider (the run then records no selected model,
  * matching the pre-existing fixture runs these tests were written against).
  */

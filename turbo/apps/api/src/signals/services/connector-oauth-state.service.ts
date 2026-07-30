@@ -8,7 +8,7 @@ import type { Db, ReadonlyDb } from "../external/db";
 const storedOAuthStateSelection = Object.freeze({
   id: connectorOauthStates.id,
   state: connectorOauthStates.state,
-  type: connectorOauthStates.type,
+  type: connectorOauthStates.connectorSlug,
   customConnectorId: connectorOauthStates.customConnectorId,
   connectorRevision: connectorOauthStates.connectorRevision,
   authMethod: connectorOauthStates.authMethod,
@@ -27,8 +27,10 @@ const storedOAuthStateSelection = Object.freeze({
 
 export type StoredOAuthState = Omit<
   typeof connectorOauthStates.$inferSelect,
-  "connectorSlug"
->;
+  "connectorSlug" | "legacyType"
+> & {
+  readonly type: typeof connectorOauthStates.$inferSelect.connectorSlug;
+};
 
 type ConnectorOAuthStateClaimResult =
   | { readonly kind: "missing" }
@@ -56,7 +58,7 @@ export async function getConnectorOAuthAuthorizationUrl(
   const [storedState] = await db
     .select({
       authorizationUrl: connectorOauthStates.authorizationUrl,
-      type: connectorOauthStates.type,
+      type: connectorOauthStates.connectorSlug,
       consumedAt: connectorOauthStates.consumedAt,
       expiresAt: connectorOauthStates.expiresAt,
     })
@@ -94,7 +96,7 @@ export async function getConnectorOAuthStateStatus(
 ): Promise<ConnectorOAuthStateStatus> {
   const [storedState] = await db
     .select({
-      type: connectorOauthStates.type,
+      type: connectorOauthStates.connectorSlug,
       consumedAt: connectorOauthStates.consumedAt,
       expiresAt: connectorOauthStates.expiresAt,
     })
@@ -132,7 +134,7 @@ export async function claimConnectorOAuthState(
     .where(
       and(
         eq(connectorOauthStates.state, args.state),
-        eq(connectorOauthStates.type, args.connectorSlug),
+        eq(connectorOauthStates.connectorSlug, args.connectorSlug),
         isNull(connectorOauthStates.consumedAt),
         gt(connectorOauthStates.expiresAt, claimedAt),
       ),
@@ -167,7 +169,7 @@ export async function claimCustomConnectorOAuthState(
     .where(
       and(
         eq(connectorOauthStates.state, args.state),
-        isNull(connectorOauthStates.type),
+        isNull(connectorOauthStates.connectorSlug),
         isNotNull(connectorOauthStates.customConnectorId),
         eq(connectorOauthStates.authMethod, "oauth2"),
         isNull(connectorOauthStates.consumedAt),

@@ -3,7 +3,7 @@ import {
   testConnectorCredentialStorageStateContract,
   type TestConnectorCredentialStorageStateActionBody,
 } from "@vm0/api-contracts/contracts/test-connector-credential-storage-state";
-import { connectorSlugLegacyInsertConnectors } from "@vm0/db/compat/connector-slug-legacy-insert";
+import { connectorSlugCanonicalInsertConnectors } from "@vm0/db/compat/connector-slug-canonical-insert";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
@@ -60,7 +60,7 @@ async function readState(
       and(
         eq(connectors.orgId, body.org_id),
         eq(connectors.userId, body.user_id),
-        eq(connectors.type, body.connector_ref),
+        eq(connectors.connectorSlug, body.connector_ref),
       ),
     )
     .limit(1);
@@ -134,15 +134,15 @@ async function seedOwnedSecret(
 ) {
   const connectorId = await db.transaction(async (tx) => {
     const [connector] = await tx
-      .insert(connectorSlugLegacyInsertConnectors)
+      .insert(connectorSlugCanonicalInsertConnectors)
       .values({
         orgId: body.org_id,
         userId: body.user_id,
-        type: body.connector_ref,
+        connectorSlug: body.connector_ref,
         authMethod: body.auth_method,
         storageVersion: body.storage_version,
       })
-      .returning({ id: connectorSlugLegacyInsertConnectors.id });
+      .returning({ id: connectorSlugCanonicalInsertConnectors.id });
     if (!connector) {
       throw new Error("Expected connector storage test fixture");
     }
@@ -167,15 +167,15 @@ async function seedConnector(
   signal: AbortSignal,
 ) {
   const [connector] = await db
-    .insert(connectorSlugLegacyInsertConnectors)
+    .insert(connectorSlugCanonicalInsertConnectors)
     .values({
       orgId: body.org_id,
       userId: body.user_id,
-      type: body.connector_ref,
+      connectorSlug: body.connector_ref,
       authMethod: body.auth_method,
       storageVersion: body.storage_version,
     })
-    .returning({ id: connectorSlugLegacyInsertConnectors.id });
+    .returning({ id: connectorSlugCanonicalInsertConnectors.id });
   signal.throwIfAborted();
   if (!connector) {
     throw new Error("Expected connector storage test fixture");
@@ -205,7 +205,7 @@ async function setConnectorState(
       and(
         eq(connectors.orgId, body.org_id),
         eq(connectors.userId, body.user_id),
-        eq(connectors.type, body.connector_ref),
+        eq(connectors.connectorSlug, body.connector_ref),
       ),
     )
     .returning({ id: connectors.id });

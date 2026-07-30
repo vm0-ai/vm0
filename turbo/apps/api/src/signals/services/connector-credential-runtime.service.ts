@@ -133,7 +133,7 @@ export async function loadConnectorCredentialConnection(args: {
   const conditions = [
     eq(connectors.orgId, args.orgId),
     eq(connectors.userId, args.userId),
-    eq(connectors.type, args.connectorSlug),
+    eq(connectors.connectorSlug, args.connectorSlug),
   ];
   if (args.connectorId !== undefined) {
     conditions.push(eq(connectors.id, args.connectorId));
@@ -385,7 +385,7 @@ async function persistConnectorRefresh(args: {
           eq(connectors.id, args.connection.connectorId),
           eq(connectors.orgId, args.orgId),
           eq(connectors.userId, args.userId),
-          eq(connectors.type, args.connection.connectorSlug),
+          eq(connectors.connectorSlug, args.connection.connectorSlug),
         ),
       )
       .limit(1);
@@ -466,7 +466,7 @@ async function markConnectorCredentialNeedsReconnectAfterRefreshFailure(args: {
           eq(connectors.id, args.connection.connectorId),
           eq(connectors.orgId, args.orgId),
           eq(connectors.userId, args.userId),
-          eq(connectors.type, args.connection.connectorSlug),
+          eq(connectors.connectorSlug, args.connection.connectorSlug),
           eq(connectors.authMethod, args.connection.runtimeMethod.authMethodId),
           eq(sql`${connectors.updatedAt}::text`, args.connection.stateRevision),
         ),

@@ -130,7 +130,7 @@ describe("POST /api/zero/chat-threads/:id/rename", () => {
     const token = zeroToken({
       userId: fixture.userId,
       orgId: fixture.orgId,
-      capabilities: ["chat-message:read"],
+      capabilities: ["chat-event:read"],
     });
 
     const response = await accept(

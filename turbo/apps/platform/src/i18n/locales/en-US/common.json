@@ -4408,6 +4408,8 @@
         "events": "Triggering events",
         "filterHelp": "Leave a filter empty to match any value. Separate multiple values with commas.",
         "headBranches": "Head branches",
+        "installAdminRequired": "Ask an organization admin to install it.",
+        "installApp": "Install GitHub App",
         "installedRequired": "GitHub is not installed for this workspace.",
         "issueCommentDescription": "Run when a matching issue or PR comment is created.",
         "issueCommentRule": "When a matching GitHub issue or pull request comment is created",

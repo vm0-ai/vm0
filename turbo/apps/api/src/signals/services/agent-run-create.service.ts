@@ -3122,7 +3122,7 @@ function storedConnectorSnapshotQuery(
     db
       .select({
         connectorId: connectors.id,
-        connectorSlug: sql`${connectors.type}`
+        connectorSlug: sql`${connectors.connectorSlug}`
           .mapWith(pgTextDecoder)
           .as("connector_slug"),
         authMethod: connectors.authMethod,
@@ -3143,9 +3143,9 @@ function storedConnectorSnapshotQuery(
         and(
           eq(connectors.orgId, args.orgId),
           eq(connectors.userId, args.userId),
-          isNotNull(connectors.type),
+          isNotNull(connectors.connectorSlug),
           args.allowedConnectorSlugs
-            ? inArray(connectors.type, args.allowedConnectorSlugs)
+            ? inArray(connectors.connectorSlug, args.allowedConnectorSlugs)
             : undefined,
         ),
       ),

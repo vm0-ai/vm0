@@ -81,9 +81,15 @@ describe("connectorOauthDeviceAuthorizationSessions schema", () => {
     expect(connectorOauthDeviceAuthorizationSessions.userId.name).toBe(
       "user_id",
     );
-    expect(connectorOauthDeviceAuthorizationSessions.connectorType.name).toBe(
-      "connector_type",
+    expect(
+      connectorOauthDeviceAuthorizationSessions.legacyConnectorType.name,
+    ).toBe("connector_type");
+    expect(connectorOauthDeviceAuthorizationSessions.connectorSlug.name).toBe(
+      "connector_slug",
     );
+    expect(
+      connectorOauthDeviceAuthorizationSessions.connectorSlug.notNull,
+    ).toBe(true);
     expect(connectorOauthDeviceAuthorizationSessions.authMethod.name).toBe(
       "auth_method",
     );

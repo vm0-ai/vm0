@@ -14,15 +14,16 @@ import { connectorOauthDeviceAuthorizationSessionStatusEnum } from "../schema/co
 import type { UserPermissionGrantAction } from "../schema/user-permission-grant";
 
 /**
- * Previous-release insert projections for connector_slug rollout tests.
+ * Temporary insert-only projections for the connector_slug cutover.
  *
- * They intentionally omit connector_slug to model the expand release running
- * before and after the cutover migration. Current application writes use the
- * canonical projections; delete these legacy projections in #23794.
+ * They omit the physically required legacy identity columns so current
+ * application writes are canonical-only. Migration 0738 triggers mirror
+ * connector_slug into those legacy columns for rollback compatibility. Remove
+ * these projections with the legacy columns in #23794.
  */
-export const connectorSlugLegacyInsertConnectors = pgTable("connectors", {
+export const connectorSlugCanonicalInsertConnectors = pgTable("connectors", {
   id: uuid("id").defaultRandom().primaryKey(),
-  type: varchar("type", { length: 64 }),
+  connectorSlug: varchar("connector_slug", { length: 64 }),
   customConnectorId: uuid("custom_connector_id"),
   authMethod: varchar("auth_method", { length: 50 }).notNull(),
   storageVersion: bigint("storage_version", { mode: "number" }).notNull(),
@@ -39,24 +40,24 @@ export const connectorSlugLegacyInsertConnectors = pgTable("connectors", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const connectorSlugLegacyInsertUserConnectors = pgTable(
+export const connectorSlugCanonicalInsertUserConnectors = pgTable(
   "user_connectors",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
     agentId: uuid("agent_id").notNull(),
-    connectorType: varchar("connector_type", { length: 64 }).notNull(),
+    connectorSlug: varchar("connector_slug", { length: 64 }).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
 );
 
-export const connectorSlugLegacyInsertOauthStates = pgTable(
+export const connectorSlugCanonicalInsertOauthStates = pgTable(
   "connector_oauth_states",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     state: text("state").notNull(),
-    type: varchar("type", { length: 64 }),
+    connectorSlug: varchar("connector_slug", { length: 64 }),
     customConnectorId: uuid("custom_connector_id"),
     connectorRevision: integer("connector_revision"),
     authMethod: varchar("auth_method", { length: 50 }).notNull(),
@@ -74,7 +75,7 @@ export const connectorSlugLegacyInsertOauthStates = pgTable(
   },
 );
 
-export const connectorSlugLegacyInsertOauthDeviceSessions = pgTable(
+export const connectorSlugCanonicalInsertOauthDeviceSessions = pgTable(
   "connector_oauth_device_authorization_sessions",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -82,7 +83,7 @@ export const connectorSlugLegacyInsertOauthDeviceSessions = pgTable(
     userId: text("user_id").notNull(),
     agentId: uuid("agent_id"),
     authorizeAgent: boolean("authorize_agent").default(false).notNull(),
-    connectorType: varchar("connector_type", { length: 64 }).notNull(),
+    connectorSlug: varchar("connector_slug", { length: 64 }).notNull(),
     authMethod: varchar("auth_method", { length: 50 }).notNull(),
     status: connectorOauthDeviceAuthorizationSessionStatusEnum("status")
       .default("awaiting_user_authorization")
@@ -102,7 +103,7 @@ export const connectorSlugLegacyInsertOauthDeviceSessions = pgTable(
   },
 );
 
-export const connectorSlugLegacyInsertExternalCodeSessions = pgTable(
+export const connectorSlugCanonicalInsertExternalCodeSessions = pgTable(
   "connector_external_code_sessions",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -110,7 +111,7 @@ export const connectorSlugLegacyInsertExternalCodeSessions = pgTable(
     userId: text("user_id").notNull(),
     agentId: uuid("agent_id"),
     authorizeAgent: boolean("authorize_agent").default(false).notNull(),
-    connectorType: varchar("connector_type", { length: 64 }).notNull(),
+    connectorSlug: varchar("connector_slug", { length: 64 }).notNull(),
     authMethod: varchar("auth_method", { length: 50 }).notNull(),
     status: connectorExternalCodeSessionStatusEnum("status")
       .default("pending")
@@ -127,14 +128,14 @@ export const connectorSlugLegacyInsertExternalCodeSessions = pgTable(
   },
 );
 
-export const connectorSlugLegacyInsertUserPermissionGrants = pgTable(
+export const connectorSlugCanonicalInsertUserPermissionGrants = pgTable(
   "user_permission_grants",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
     agentId: uuid("agent_id").notNull(),
-    connectorRef: varchar("connector_ref", { length: 64 }).notNull(),
+    connectorSlug: varchar("connector_slug", { length: 64 }).notNull(),
     permission: varchar("permission", { length: 128 }).notNull(),
     action: varchar("action", { length: 8 })
       .$type<UserPermissionGrantAction>()

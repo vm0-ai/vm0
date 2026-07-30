@@ -3440,7 +3440,7 @@ export const zeroChatEventsRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "chat-message:write",
+        requiredCapability: "chat-event:write",
       },
       sendChatEventInner$,
     ),

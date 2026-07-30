@@ -51,7 +51,9 @@ describe("userPermissionGrants schema", () => {
     expect(userPermissionGrants.orgId.name).toBe("org_id");
     expect(userPermissionGrants.userId.name).toBe("user_id");
     expect(userPermissionGrants.agentId.name).toBe("agent_id");
-    expect(userPermissionGrants.connectorRef.name).toBe("connector_ref");
+    expect(userPermissionGrants.legacyConnectorRef.name).toBe("connector_ref");
+    expect(userPermissionGrants.connectorSlug.name).toBe("connector_slug");
+    expect(userPermissionGrants.connectorSlug.notNull).toBe(true);
     expect(userPermissionGrants.permission.name).toBe("permission");
     expect(userPermissionGrants.action.name).toBe("action");
     expect(userPermissionGrants.expiresAt.name).toBe("expires_at");

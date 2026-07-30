@@ -6,7 +6,6 @@ import {
   networkPoliciesSchema,
 } from "@vm0/connectors/firewall-types";
 import {
-  createRunResponseSchema,
   getRunResponseSchema,
   cancelRunResponseSchema,
   agentEventsResponseSchema,
@@ -26,7 +25,7 @@ import { sandboxReuseResultSchema } from "./webhooks";
  * Fields not used by unattended workflow runs are omitted:
  * triggerSource, vars, secrets, volumeVersions, permissionPolicies.
  */
-const zeroRunRequestSchema = unifiedRunRequestSchema
+export const zeroRunCreateBodySchema = unifiedRunRequestSchema
   .omit({
     triggerSource: true,
     artifacts: true,
@@ -55,30 +54,6 @@ const zeroNetworkLogPaginationQuerySchema = createLogPaginationQuerySchema({
   maxLimit: 500,
   defaultLimit: 500,
   defaultOrder: "asc",
-});
-
-/**
- * Zero runs main contract (POST /api/zero/runs)
- * Proxies to runsMainContract.create
- */
-export const zeroRunsMainContract = c.router({
-  create: {
-    method: "POST",
-    path: "/api/zero/runs",
-    headers: authHeadersSchema,
-    body: zeroRunRequestSchema,
-    responses: {
-      201: createRunResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      402: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      429: apiErrorSchema,
-      503: apiErrorSchema,
-    },
-    summary: "Create and execute agent run (zero proxy)",
-  },
 });
 
 /**
@@ -329,7 +304,6 @@ export type RunRunnerResponse = z.infer<typeof runRunnerResponseSchema>;
 
 // Type exports
 export type ZeroLogsSearchContract = typeof zeroLogsSearchContract;
-export type ZeroRunsMainContract = typeof zeroRunsMainContract;
 export type ZeroRunsByIdContract = typeof zeroRunsByIdContract;
 export type ZeroRunsCancelContract = typeof zeroRunsCancelContract;
 export type ZeroRunsQueueContract = typeof zeroRunsQueueContract;

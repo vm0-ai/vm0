@@ -25,9 +25,11 @@ export const connectorExternalCodeSessions = pgTable(
     userId: text("user_id").notNull(),
     agentId: uuid("agent_id"),
     authorizeAgent: boolean("authorize_agent").default(false).notNull(),
-    // Legacy rollout bridge. Switch in #23793 and remove in #23794.
-    connectorType: varchar("connector_type", { length: 64 }).notNull(),
-    connectorSlug: varchar("connector_slug", { length: 64 }),
+    // Compatibility bridge for pre-#23793 releases. Remove in #23794.
+    legacyConnectorType: varchar("connector_type", {
+      length: 64,
+    }).notNull(),
+    connectorSlug: varchar("connector_slug", { length: 64 }).notNull(),
     authMethod: varchar("auth_method", { length: 50 }).notNull(),
     status: connectorExternalCodeSessionStatusEnum("status")
       .default("pending")
@@ -50,7 +52,7 @@ export const connectorExternalCodeSessions = pgTable(
       index("idx_connector_external_code_sessions_owner_status").on(
         table.orgId,
         table.userId,
-        table.connectorType,
+        table.legacyConnectorType,
         table.authMethod,
         table.status,
       ),
@@ -68,7 +70,7 @@ export const connectorExternalCodeSessions = pgTable(
       check(
         "chk_connector_external_code_sessions_slug_matches_type",
         sql`${table.connectorSlug} IS NOT NULL
-          AND ${table.connectorSlug} = ${table.connectorType}`,
+          AND ${table.connectorSlug} = ${table.legacyConnectorType}`,
       ),
     ];
   },

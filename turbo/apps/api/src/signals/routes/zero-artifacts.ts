@@ -313,7 +313,7 @@ export const zeroArtifactsRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "chat-message:read",
+        requiredCapability: "chat-event:read",
       },
       listArtifactsInner$,
     ),
@@ -324,7 +324,7 @@ export const zeroArtifactsRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "chat-message:read",
+        requiredCapability: "chat-event:read",
       },
       getImageEditSnapshotInner$,
     ),
@@ -335,7 +335,7 @@ export const zeroArtifactsRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "chat-message:read",
+        requiredCapability: "chat-event:read",
       },
       upsertImageEditSnapshotInner$,
     ),
@@ -346,7 +346,7 @@ export const zeroArtifactsRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "chat-message:read",
+        requiredCapability: "chat-event:read",
       },
       deleteImageEditSnapshotInner$,
     ),

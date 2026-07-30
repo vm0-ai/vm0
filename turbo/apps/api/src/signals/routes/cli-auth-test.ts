@@ -17,7 +17,7 @@ import {
   connectorAuthMethodRuntimeMetadata,
   type ConnectorOutputTarget,
 } from "@vm0/connectors/connector-auth-method";
-import { connectorSlugLegacyInsertUserConnectors } from "@vm0/db/compat/connector-slug-legacy-insert";
+import { connectorSlugCanonicalInsertUserConnectors } from "@vm0/db/compat/connector-slug-canonical-insert";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -458,13 +458,13 @@ const enableTestConnectors$ = command(
       });
     signal.throwIfAborted();
 
-    await writeDb.insert(connectorSlugLegacyInsertUserConnectors).values(
+    await writeDb.insert(connectorSlugCanonicalInsertUserConnectors).values(
       connectorSlugs.map((connectorSlug) => {
         return {
           orgId,
           userId,
           agentId: compose.id,
-          connectorType: connectorSlug,
+          connectorSlug,
         };
       }),
     );
