@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
+import { i18n } from "../../i18n/index.ts";
 import { ZeroDirectedAuthorizePage } from "../../views/zero-page/zero-directed-authorize-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
@@ -18,7 +19,15 @@ export const setupDirectedAuthorizePage$ = command(
       typeof params?.connectorSlug === "string" ? params.connectorSlug : "";
 
     set(updatePage$, createElement(ZeroDirectedAuthorizePage), "minimal");
-    set(updateDocumentTitle$, `Authorize ${connectorSlug}`);
+    set(
+      updateDocumentTitle$,
+      i18n.t(
+        ($) => {
+          return $.connectors.directed.authorizeDocumentTitle;
+        },
+        { connector: connectorSlug },
+      ),
+    );
     await set(hideAppSkeleton$, signal);
   },
 );

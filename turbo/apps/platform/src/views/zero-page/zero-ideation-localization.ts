@@ -15,22 +15,23 @@ export type IdeationCatalogCopy = Readonly<
 >;
 
 function resolveUseCaseCopy(
-  title: string,
+  id: string,
   catalogCopy: IdeationCatalogCopy,
 ): IdeationUseCaseCopy {
   for (const categoryCopy of Object.values(catalogCopy)) {
-    const copy = categoryCopy.cases[title];
+    const copy = categoryCopy.cases[id];
     if (copy) {
       return copy;
     }
   }
-  throw new Error(`Missing ideation use case copy: ${title}`);
+  throw new Error(`Missing ideation use case copy: ${id}`);
 }
 
-export function localizeIdeationUseCase<
-  T extends { readonly title: string; readonly description: string },
->(useCase: T, catalogCopy: IdeationCatalogCopy): T {
-  const copy = resolveUseCaseCopy(useCase.title, catalogCopy);
+export function localizeIdeationUseCase<T extends { readonly id: string }>(
+  useCase: T,
+  catalogCopy: IdeationCatalogCopy,
+): T & IdeationUseCaseCopy {
+  const copy = resolveUseCaseCopy(useCase.id, catalogCopy);
   return {
     ...useCase,
     title: copy.title,
@@ -51,9 +52,9 @@ export function localizeIdeationCategories(
       ...category,
       title: categoryCopy.title,
       cases: category.cases.map((useCase) => {
-        const copy = categoryCopy.cases[useCase.title];
+        const copy = categoryCopy.cases[useCase.id];
         if (!copy) {
-          throw new Error(`Missing ideation use case copy: ${useCase.title}`);
+          throw new Error(`Missing ideation use case copy: ${useCase.id}`);
         }
         return {
           ...useCase,

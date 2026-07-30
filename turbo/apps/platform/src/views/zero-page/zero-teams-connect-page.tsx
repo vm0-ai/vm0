@@ -8,6 +8,7 @@ import {
 } from "@tabler/icons-react";
 import { Button } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
+import { i18n } from "../../i18n/index.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { searchParams$ } from "../../signals/route.ts";
 import {
@@ -53,7 +54,11 @@ export function ZeroTeamsConnectPage() {
 
 function connectedLabel(params: URLSearchParams): string {
   return (
-    params.get("teamName") ?? params.get("tenantName") ?? "Microsoft Teams"
+    params.get("teamName") ??
+    params.get("tenantName") ??
+    i18n.t(($) => {
+      return $.connectors.providerConnect.teams.providerName;
+    })
   );
 }
 

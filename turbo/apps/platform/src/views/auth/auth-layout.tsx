@@ -399,7 +399,9 @@ export function AuthLayout({ children }: AuthLayoutProps) {
         <a href="/" className="absolute left-6 top-6 flex items-center gap-2">
           <img
             src={theme === "dark" ? platformVm0LogoImg : platformVm0LogoDarkImg}
-            alt="VM0"
+            alt={t(($) => {
+              return $.appShell.logoAlt;
+            })}
             width={82}
             height={20}
           />

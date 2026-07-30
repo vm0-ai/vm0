@@ -1,5 +1,12 @@
 {
   "activity": {
+    "codex": {
+      "commandStatus": "Comando {{status}}",
+      "fileOperationCompleted": "Operação de arquivo concluída",
+      "fileOperationStatus": "Operação de arquivo {{status}}",
+      "fileReadCompleted": "Leitura de arquivo concluída",
+      "fileReadStatus": "Leitura de arquivo {{status}}"
+    },
     "context": {
       "artifact": "Artefato",
       "environmentMapping": "Mapeamento de ambiente",
@@ -195,6 +202,9 @@
       "title": "Atividade"
     },
     "network": {
+      "actions": {
+        "block": "BLOCK"
+      },
       "browser": "navegador",
       "capture": {
         "binaryData": "[Dados binários, {{size}} codificados em base64]",
@@ -395,6 +405,7 @@
         "warmingNeurons": "Aquecendo os neurônios..."
       }
     },
+    "logoAlt": "VM0",
     "metadata": {
       "description": "Zero é seu colega de IA da vm0. Envie uma mensagem para o Zero ou converse pela web — pesquise, envie e-mails, crie documentos e use Slack, GitHub, Notion e mais de 100 ferramentas.",
       "title": "Zero — Seu colega de IA da vm0"
@@ -523,6 +534,12 @@
       "kindIcon": "Artefato do tipo {{kind}}",
       "loading": "Carregando artefatos"
     },
+    "fileBadges": {
+      "artwork": "ART",
+      "audio": "ÁUD",
+      "file": "ARQ",
+      "video": "VÍD"
+    },
     "googleDrive": {
       "agentLoading": "O agente ainda está carregando",
       "connect": "Conectar o Google Drive",
@@ -581,6 +598,7 @@
         "video": "vídeo"
       },
       "siteLabel": "Visualização do site {{title}}",
+      "slideTitle": "Slide {{number}}",
       "unavailable": "Visualização de {{kind}} indisponível.",
       "videoLabel": "Visualização de vídeo de {{filename}}"
     },
@@ -622,6 +640,27 @@
       "slideThumbnail": "Visualização do slide {{slideNumber}} de {{title}}",
       "template": "Modelo",
       "theme": "Tema",
+      "themeNames": {
+        "bauhausPrimary": "Blocos de montar",
+        "berryPop": "Refrigerante de framboesa",
+        "carnival": "Parque de diversões",
+        "citrusFresh": "Suco de laranja",
+        "coralStudio": "Estúdio pêssego",
+        "forestEditorial": "Biblioteca de musgo",
+        "goldLuxe": "Noite de premiação",
+        "mauveDusk": "Crepúsculo lavanda",
+        "midnightMono": "Corrida noturna",
+        "mintTech": "Laboratório menta",
+        "monoInk": "Vermelho jornal",
+        "nordicFrost": "Lago de gelo",
+        "oceanDeep": "Mergulho profundo",
+        "popArt": "Fliperama neon",
+        "prism": "Festa de doces",
+        "slateCorporate": "Azul corporativo",
+        "sunsetMaroon": "Brilho do pôr do sol",
+        "terracottaClay": "Vaso de barro",
+        "warmSand": "Jornal da manhã"
+      },
       "tryDifferentSearch": "Tente outra busca.",
       "use": "Usar",
       "useThisTemplate": "Usar este modelo",
@@ -1045,6 +1084,7 @@
       "imageUnavailable": "[Imagem indisponível: {{filename}}]",
       "importing": "Importando anexo",
       "invalidLink": "Insira um link válido",
+      "linkPlaceholder": "https://example.com/image.png",
       "loadingFile": "Carregando {{filename}}",
       "previewFile": "Visualizar {{filename}}",
       "supportedTypes": "Imagens, documentos, áudio, vídeo e arquivos compactados",
@@ -1260,6 +1300,8 @@
       "sourcePartsHeading_other": "Feedback sobre {{count}} partes de {{description}}:"
     },
     "mail": {
+      "bcc": "cco",
+      "cc": "cc",
       "closeDetails": "Fechar detalhes do e-mail",
       "deleted": "Este rascunho foi excluído.",
       "deletedEmail": "E-mail excluído: {{subject}}",
@@ -1301,10 +1343,12 @@
     },
     "newChat": "Nova conversa",
     "origins": {
+      "feishu": "Feishu",
       "openChat": "Abrir conversa",
       "openFeishuChat": "Abrir conversa original no Feishu",
       "openMessage": "Abrir mensagem",
-      "openSlackMessage": "Abrir mensagem original no Slack"
+      "openSlackMessage": "Abrir mensagem original no Slack",
+      "slack": "Slack"
     },
     "permissions": {
       "actionDescription": "{{action}} {{permissionName}}",
@@ -1329,6 +1373,7 @@
       "updated": "Permissões atualizadas",
       "updateFailed": "Não foi possível atualizar as permissões"
     },
+    "promptDocumentTitle": "Prompt",
     "queue": {
       "aboutAutomationEvent": "Sobre este evento de automação",
       "aboutGoal": "Sobre este objetivo",
@@ -1573,6 +1618,7 @@
       "failedTitle": "Não foi possível conectar {{connector}}",
       "finishing": "Finalizando a conexão segura",
       "genericLabel": "Conector",
+      "githubLabel": "GitHub",
       "invalidUrl": "A URL de callback do conector é inválida.",
       "success": "Conectado"
     },
@@ -1810,7 +1856,8 @@
         "created": "\"{{connector}}\" criado",
         "deleted": "Conector personalizado excluído",
         "disconnected": "Desconectado",
-        "renamed": "Renomeado para \"{{connector}}\""
+        "renamed": "Renomeado para \"{{connector}}\"",
+        "updated": "\"{{connector}}\" atualizado"
       },
       "updateConfirm": {
         "action": "Salvar e desconectar",
@@ -1822,6 +1869,7 @@
       "configure": "Configurar {{connector}}",
       "descriptionAgent": "Ao salvar, seus valores serão conectados e {{agent}} será autorizado.",
       "descriptionUser": "Ao salvar, este conector personalizado será conectado à sua conta.",
+      "documentTitle": "Configurar conector personalizado",
       "invalid": "Este link de proposta de conector personalizado é inválido ou expirou.",
       "requestScope": "Escopo da solicitação",
       "returnToChat": "Volte ao chat e responda ACK para que o agente possa verificar o conector.",
@@ -1833,6 +1881,8 @@
     "directed": {
       "authorizeAgent": "Autorizar {{agent}}",
       "authorized": "{{connector}} autorizado",
+      "authorizeDocumentTitle": "Autorizar {{connector}}",
+      "connectDocumentTitle": "Conectar {{connector}}",
       "connected": "{{connector}} conectado",
       "needsConnector": "{{agent}} precisa de {{connector}} para continuar",
       "reconnecting": "Reconectando..."
@@ -1893,6 +1943,7 @@
         "back": "Voltar para {{brandName}}",
         "connectDescription": "Vincule este número de telefone à sua conta do {{brandName}} para interagir com o Zero por mensagens de texto.",
         "connectTitle": "Conectar número de telefone",
+        "documentTitle": "Conectar mensagens",
         "errorFallback": "Não foi possível conectar este número de telefone. Tente novamente pelas suas mensagens de texto.",
         "incompleteDescription": "Abra um novo link /connect nas suas mensagens de texto.",
         "incompleteTitle": "O link de conexão está incompleto",
@@ -1968,6 +2019,7 @@
         "connectTitle": "Conectar o Microsoft Teams",
         "invalidDescription": "Esta página deve ser aberta por um link de conexão do Microsoft Teams.",
         "open": "Abrir Teams",
+        "providerName": "Microsoft Teams",
         "successDescription": "Você está conectado a {{team}}. Mencione @Zero no Teams para começar a conversar.",
         "successTitle": "Conectado ao Microsoft Teams"
       },
@@ -1977,6 +2029,7 @@
         "alreadyTitle": "Já conectado ao Telegram",
         "back": "Voltar para as configurações do Telegram",
         "botFallback": "este bot",
+        "botFatherHandle": "@BotFather",
         "checkingConnectionDescription": "Aguarde enquanto verificamos sua conexão com o Telegram.",
         "checkingConnectionTitle": "Verificando a conexão...",
         "checkingDomain": "Verificando o status do domínio...",
@@ -2001,6 +2054,7 @@
         "open": "Abrir Telegram",
         "openBotFather": "Abrir BotFather",
         "refresh": "Atualize esta página e tente novamente.",
+        "setDomainCommand": "/setdomain",
         "signInButton": "Entrar no {{brandName}}",
         "signInCheckFailed": "Não foi possível verificar o login",
         "signInDescription": "Entre com sua conta do {{brandName}} antes de conectar este usuário do Telegram.",
@@ -2130,6 +2184,7 @@
         "defaultAgentAria": "Agente padrão para {{appId}}",
         "developerConsole": "console de desenvolvedor do Feishu",
         "dialogAdminRequired": "Um administrador da organização deve configurar o app. Você poderá conectar sua própria conta pela lista de bots do Feishu após a conclusão da configuração.",
+        "documentTitle": "Feishu",
         "emptyAdmin": "Adicione um app personalizado para encaminhar mensagens do Feishu a um agente.",
         "emptyMember": "Peça a um administrador da organização para adicionar um bot do Feishu.",
         "emptyTitle": "Ainda não há bots do Feishu",
@@ -2260,6 +2315,7 @@
         "botFallback": "Bot do Telegram",
         "bots": "Bots do Telegram",
         "botToken": "Token do bot",
+        "botTokenPlaceholder": "123456:ABC-DEF",
         "checking": "Verificando...",
         "copied": "copiado!",
         "copyAria": "Copiar {{value}}",
@@ -2271,6 +2327,7 @@
         },
         "defaultAgent": "Agente padrão",
         "disconnectAria": "Desconectar {{bot}}",
+        "documentTitle": "Telegram",
         "domain": {
           "detected": "Domínio detectado",
           "instructionAfter": ", escolha este bot e defina o domínio como ",
@@ -2371,6 +2428,7 @@
   },
   "global": {
     "errors": {
+      "httpStatus": "HTTP {{status}}",
       "requestFailed": "Falha na solicitação"
     },
     "realtime": {
@@ -3918,10 +3976,18 @@
       "settings": "Configurações",
       "signOut": "Sair",
       "subscriptions": {
+        "providers": {
+          "claudeCode": "Claude Code",
+          "codex": "Codex"
+        },
         "reset": "Redefinir",
         "resetTimeUnavailable": "Horário de redefinição indisponível",
         "usage": "Uso de {{provider}}",
-        "usageRemaining": "{{provider}}: {{window}} restante"
+        "usageRemaining": "{{provider}}: {{window}} restante",
+        "windows": {
+          "fiveHour": "5h",
+          "week": "Semana"
+        }
       },
       "switchAccount": "Trocar de conta",
       "userFallback": "Usuário"
@@ -4106,6 +4172,7 @@
         "status": {
           "connected": "Conectado",
           "connectedWithDetail": "Conectado ({{detail}})",
+          "fiveHour": "5h",
           "left": "{{percent}} restante",
           "stale": "Atenção",
           "week": "Semana"
@@ -4130,6 +4197,11 @@
         },
         "prioritizeSpeed": "Prioriza a velocidade",
         "pro": "Pro",
+        "providerLabels": {
+          "azureFoundryPortal": "Portal do Azure Foundry",
+          "claudeCodeOauth": "Claude Code (token OAuth)",
+          "deepseek": "Deepseek"
+        },
         "runSpeed": "Velocidade de execução",
         "standard": "Padrão"
       },
@@ -4234,6 +4306,10 @@
       "language": {
         "description": "Escolha seu idioma preferido para a interface do {{brandName}}",
         "label": "Idioma",
+        "options": {
+          "english": "English",
+          "portugueseBrazil": "Português (Brasil)"
+        },
         "title": "Idioma"
       },
       "morningBrief": {
@@ -4539,6 +4615,7 @@
         "addDescriptionUpdated": "Execute este fluxo de trabalho quando um evento do Google Calendar for atualizado.",
         "addTitle": "Adicionar automação do Google Calendar",
         "calendarId": "ID do calendário",
+        "calendarIdPlaceholder": "primary",
         "cancelledDescription": "Execute quando um evento do calendário for cancelado.",
         "cancelledRule": "Quando um evento do calendário {{calendar}} for cancelado",
         "cancelledTitle": "Evento do Google Calendar cancelado",
@@ -4559,6 +4636,7 @@
         "anyStatus": "Qualquer status de término",
         "patternHint": "Curinga * opcional comparado com a resposta final da execução. Deixe vazio para corresponder a qualquer saída.",
         "patternLabel": "Padrão de saída",
+        "patternPlaceholder": "*falha no deploy*",
         "runFinishedDescription": "Executar quando uma execução em uma de suas threads de chat terminar.",
         "runFinishedTitle": "Execução de chat concluída",
         "statusCancelled": "Cancelada",
@@ -4610,6 +4688,7 @@
         "actorAnyone": "Qualquer pessoa",
         "actorMe": "Eu",
         "actors": "Atores",
+        "actorsPlaceholder": "octocat, dependabot[bot]",
         "addLabelAction": "Adicionar automação de rótulo",
         "addLabelAria": "Adicionar automação de rótulo do GitHub",
         "addLabelDescription": "Execute este fluxo de trabalho quando um rótulo do GitHub for aplicado.",
@@ -4635,14 +4714,19 @@
         "anyReviewState": "Qualquer status de revisão",
         "anyWorkflow": "Qualquer fluxo de trabalho",
         "apps": "GitHub Apps",
+        "appsPlaceholder": "vercel, 12345",
+        "authorsPlaceholder": "octocat, e7h4n",
         "authorsSummary": "Autores {{values}}",
         "aWorkflow": "um fluxo de trabalho do GitHub",
         "baseBranches": "Branches base",
         "branches": "Branches",
+        "branchesPlaceholder": "main, release",
         "commentPrefixes": "Prefixos de comentário",
+        "commentPrefixesPlaceholder": "/zero, /verify, /deploy",
         "conclusions": "Conclusões",
         "conclusionsSummary": "Conclusões {{values}}",
         "creators": "Criadores",
+        "creatorsPlaceholder": "octocat, 12345",
         "deploymentStates": "Status de implantação",
         "deploymentStatesSummary": "Status de implantação {{values}}",
         "deploymentStatusDescription": "Execute quando um status de implantação correspondente for criado.",
@@ -4652,10 +4736,13 @@
         "editWebhookFilters": "Editar filtros de {{title}}",
         "editWorkflowFilters": "Editar filtros do fluxo de trabalho do GitHub",
         "environments": "Ambientes",
+        "environmentsPlaceholder": "Preview, Production",
         "environmentsSummary": "Ambientes {{values}}",
         "events": "Eventos de acionamento",
+        "eventsPlaceholder": "push, pull_request, workflow_dispatch",
         "filterHelp": "Deixe um filtro vazio para corresponder a qualquer valor. Separe vários valores com vírgulas.",
         "headBranches": "Branches de origem",
+        "headBranchesPlaceholder": "feature/, dependabot/",
         "installAdminRequired": "Peça a um administrador da organização para instalá-lo.",
         "installApp": "Instalar o GitHub App",
         "installedRequired": "O GitHub não está instalado neste espaço de trabalho.",
@@ -4665,12 +4752,14 @@
         "issuesAndPullRequests": "Issues e pull requests",
         "issuesOnly": "Somente issues",
         "jobs": "Jobs",
+        "jobsPlaceholder": "test, build",
         "jobsSummary": "Jobs {{values}}",
         "labelAppliedDescription": "Execute quando uma issue ou pull request receber um rótulo.",
         "labelAppliedRule": "Quando o rótulo do GitHub {{label}} for aplicado",
         "labelAppliedTitle": "Rótulo do GitHub aplicado",
         "labelName": "Nome do rótulo",
         "labelOnlySummary": "Rótulo {{label}}",
+        "labelPlaceholder": "triagem",
         "labelSummary": "Rótulo {{label}} · {{subject}} · Ator {{actor}}",
         "loadError": "Não foi possível carregar as configurações do GitHub.",
         "nonProductionOnly": "Somente não produção",
@@ -4698,14 +4787,18 @@
         "productionOnly": "Somente produção",
         "pullRequestsOnly": "Somente pull requests",
         "refs": "Refs",
+        "refsPlaceholder": "main, v1.0.0",
         "repositories": "Repositórios",
+        "repositoriesPlaceholder": "vm0-ai/vm0, owner/another-repo",
         "repositoriesSummary": "Repositórios {{values}}",
         "reviewDescription": "Execute quando uma revisão correspondente for enviada.",
         "reviewRule": "Quando uma revisão correspondente de pull request for enviada no GitHub",
         "reviewStates": "Status de revisão",
         "reviewTitle": "Revisão de pull request do GitHub enviada",
         "runnerGroups": "Grupos de runners",
+        "runnerGroupsPlaceholder": "Default, production",
         "runnerLabels": "Rótulos de runners",
+        "runnerLabelsPlaceholder": "self-hosted, linux",
         "saveFilters": "Salvar filtros",
         "selectNoneAny": "Não selecione nada para corresponder a qualquer valor.",
         "selectNoneConclusion": "Não selecione nada para corresponder a qualquer conclusão.",
@@ -4723,6 +4816,8 @@
         "workflowRunRule": "Quando {{workflows}} for concluído{{conclusions}}",
         "workflowRunTitle": "Fluxo de trabalho do GitHub concluído",
         "workflows": "Fluxos de trabalho do GitHub",
+        "workflowsPlaceholder": "Turbo, .github/workflows/release.yml",
+        "workflowsShortPlaceholder": "Turbo, release",
         "workflowsSummary": "Fluxos de trabalho {{values}}"
       },
       "gmail": {
@@ -4753,6 +4848,7 @@
         "labelAppliedRule": "Quando o rótulo do Gmail {{label}} for aplicado",
         "labelAppliedTitle": "Rótulo do Gmail aplicado",
         "labelName": "Nome do rótulo",
+        "labelPlaceholder": "Suporte",
         "labelSummary": "Rótulo {{label}}",
         "messageMatchesRule": "Quando uma mensagem do Gmail corresponder a {{summary}}",
         "newMessageDescription": "Execute este fluxo de trabalho a partir de um e-mail correspondente.",
@@ -4813,11 +4909,13 @@
         "databaseUpdatedRule": "Quando o conteúdo de um item do banco de dados do Notion {{title}} for atualizado",
         "databaseUpdatedRuleGeneric": "Quando o conteúdo de um item de banco de dados do Notion for atualizado",
         "databaseUrl": "URL do banco de dados",
+        "databaseUrlPlaceholder": "https://www.notion.so/...",
         "page": "Página",
         "pageSummary": "Página {{title}}",
         "pageUpdatedRule": "Quando o conteúdo da página do Notion {{title}} for atualizado",
         "pageUpdatedRuleGeneric": "Quando o conteúdo de uma página do Notion for atualizado",
         "pageUrl": "URL da página",
+        "pageUrlPlaceholder": "https://www.notion.so/workspace/Page-title-...",
         "parentPageSummary": "Página principal {{title}}",
         "parentPageUrl": "URL da página principal",
         "scope": "Escopo"
@@ -4890,14 +4988,26 @@
         "connectFirst": "Conecte uma instância do Strapi antes de criar esta automação.",
         "contentType": "UID do tipo de conteúdo (opcional)",
         "contentTypeAny": "Qualquer tipo de conteúdo",
+        "contentTypePlaceholder": "api::article.article",
         "entryPublishedDescription": "Execute depois que uma entrada correspondente do Strapi for publicada.",
         "entryPublishedTitle": "Entrada do Strapi publicada",
         "instance": "Instância do Strapi",
         "locale": "Localidade (opcional)",
         "localeAny": "Qualquer localidade",
         "localeHint": "Deixe a localidade em branco para combinar todos os eventos de publicação localizados do mesmo documento em uma única execução do fluxo de trabalho.",
+        "localePlaceholder": "en",
         "localeSummary": "Localidade {{locale}}",
         "rule": "Quando uma entrada correspondente for publicada no Strapi"
+      },
+      "types": {
+        "chat": "Chat",
+        "github": "GitHub",
+        "gmail": "Gmail",
+        "googleCalendar": "Google Calendar",
+        "googleMeet": "Google Meet",
+        "notion": "Notion",
+        "strapi": "Strapi",
+        "webhook": "Webhook"
       },
       "webhook": {
         "addDescription": "Crie um endpoint assinado para este fluxo de trabalho.",
@@ -5027,6 +5137,7 @@
         "instructionPlaceholder": "Escreva as instruções do fluxo de trabalho...",
         "instructions": "instruções",
         "noContent": "Nenhum conteúdo disponível para este arquivo.",
+        "sizeBytes": "{{size}} B",
         "upload": "Enviar arquivos de texto",
         "uploadAria": "Enviar arquivos do fluxo de trabalho"
       },
@@ -5046,6 +5157,7 @@
         "saved": "Fluxo de trabalho salvo",
         "slug": "Slug",
         "slugHelp": "Use apenas letras minúsculas, números e -. Use {{command}} no chat para usar este fluxo de trabalho.",
+        "slugPlaceholder": "workflow-slug",
         "slugTitle": "Use apenas letras minúsculas, números e hifens",
         "visibility": "Visibilidade",
         "visibilityHelp": "Escolha como este fluxo de trabalho é compartilhado no seu espaço de trabalho."
@@ -5145,11 +5257,13 @@
       "description": "Comunicação e colaboração em equipe",
       "install": "Instalar no Slack",
       "permissionsUpdated": "As permissões do Slack foram atualizadas",
+      "title": "Slack",
       "uninstallDescription": "Isso removerá a integração com o Slack de todo o espaço de trabalho. Todos os usuários conectados serão desconectados, e {{displayName}} deixará de responder a mensagens ou menções no Slack. Essa ação não pode ser desfeita.",
       "uninstallTitle": "Desinstalar a integração com o Slack?"
     },
     "strapi": {
-      "description": "Automatize o trabalho quando entradas forem publicadas"
+      "description": "Automatize o trabalho quando entradas forem publicadas",
+      "title": "Strapi"
     },
     "teams": {
       "adminInstall": "Peça ao administrador para instalar a integração com o Microsoft Teams",
@@ -5160,13 +5274,15 @@
       "install": "Instalar no Teams",
       "moreOptions": "Mais opções do Microsoft Teams",
       "permissionsUpdated": "As permissões do Microsoft Teams foram atualizadas",
+      "title": "Microsoft Teams",
       "uninstall": "Desinstalar Microsoft Teams",
       "uninstallDescription": "Isso removerá a integração com o Microsoft Teams do {{brandName}} neste espaço de trabalho. Todos os usuários conectados serão desconectados, e {{displayName}} deixará de responder a mensagens do Teams neste espaço até que um administrador reconecte a integração.",
       "uninstallTitle": "Desinstalar a integração com o Microsoft Teams?"
     },
     "telegram": {
       "description": "Encaminhe mensagens do Telegram para agentes",
-      "openSettings": "Abrir configurações do Telegram"
+      "openSettings": "Abrir configurações do Telegram",
+      "title": "Telegram"
     }
   }
 }

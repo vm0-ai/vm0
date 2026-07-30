@@ -1,4 +1,5 @@
 import type { AgentEvent } from "../zero-page/log-types.ts";
+import { i18n } from "../../i18n/index.ts";
 
 interface NormalizeCodexEventsOptions {
   framework?: string | null;
@@ -1039,7 +1040,14 @@ function normalizeCodexCommandEvent(
       itemId,
       content:
         combineContentWithError(output, errorMessage) ??
-        (isFailedStatus(status) ? `Command ${status}` : ""),
+        (isFailedStatus(status)
+          ? i18n.t(
+              ($) => {
+                return $.activity.codex.commandStatus;
+              },
+              { status },
+            )
+          : ""),
       isError,
       durationMs: getFirstNumber(item, ["duration_ms", "durationMs"]),
     });
@@ -1082,8 +1090,15 @@ function normalizeCodexFileMutationEvent(
           errorMessage,
         ) ??
         (isFailedStatus(status)
-          ? `File operation ${status}`
-          : "File operation completed"),
+          ? i18n.t(
+              ($) => {
+                return $.activity.codex.fileOperationStatus;
+              },
+              { status },
+            )
+          : i18n.t(($) => {
+              return $.activity.codex.fileOperationCompleted;
+            })),
       isError: isFailedStatus(status) || errorMessage !== undefined,
       durationMs: getFirstNumber(item, ["duration_ms", "durationMs"]),
     });
@@ -1124,8 +1139,15 @@ function normalizeCodexFileReadEvent(
           errorMessage,
         ) ??
         (isFailedStatus(status)
-          ? `File read ${status}`
-          : "File read completed"),
+          ? i18n.t(
+              ($) => {
+                return $.activity.codex.fileReadStatus;
+              },
+              { status },
+            )
+          : i18n.t(($) => {
+              return $.activity.codex.fileReadCompleted;
+            })),
       isError: isFailedStatus(status) || errorMessage !== undefined,
       durationMs: getFirstNumber(item, ["duration_ms", "durationMs"]),
     });

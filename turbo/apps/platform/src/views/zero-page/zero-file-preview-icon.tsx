@@ -1,3 +1,5 @@
+import { i18n } from "../../i18n/index.ts";
+
 const SPREADSHEET_FILE_RE =
   /\.(csv|tsv|xls|xlsx|xlsm|xlsb|xltx|xltm|ods|numbers|parquet)$/i;
 const DATABASE_FILE_RE = /\.(sqlite|sqlite3|db)$/i;
@@ -184,11 +186,25 @@ function getTextDocumentPreviewIconMeta(
   }
 
   if (AUDIO_FILE_RE.test(lower) || type.startsWith("audio/")) {
-    return { label: ext || "AUD", bandClassName: "bg-[#7C3AED]" };
+    return {
+      label:
+        ext ||
+        i18n.t(($) => {
+          return $.artifacts.fileBadges.audio;
+        }),
+      bandClassName: "bg-[#7C3AED]",
+    };
   }
 
   if (VIDEO_FILE_RE.test(lower) || type.startsWith("video/")) {
-    return { label: ext || "VID", bandClassName: "bg-[#E11D48]" };
+    return {
+      label:
+        ext ||
+        i18n.t(($) => {
+          return $.artifacts.fileBadges.video;
+        }),
+      bandClassName: "bg-[#E11D48]",
+    };
   }
 
   return null;
@@ -234,7 +250,14 @@ function getStructuredFilePreviewIconMeta(
     ARTWORK_EXTENSION_RE.test(ext) ||
     matchesFilePreviewType(lower, type, ARTWORK_FILE_RE, ["illustrator"])
   ) {
-    return { label: ext || "ART", bandClassName: "bg-[#D84E1F]" };
+    return {
+      label:
+        ext ||
+        i18n.t(($) => {
+          return $.artifacts.fileBadges.artwork;
+        }),
+      bandClassName: "bg-[#D84E1F]",
+    };
   }
 
   if (DOCUMENT_EXTENSION_RE.test(ext) || DOCUMENT_FILE_RE.test(lower)) {
@@ -263,7 +286,11 @@ function getFilePreviewIconMeta(
   }
 
   return {
-    label: ext ? ext.slice(0, 4) : "FILE",
+    label: ext
+      ? ext.slice(0, 4)
+      : i18n.t(($) => {
+          return $.artifacts.fileBadges.file;
+        }),
     bandClassName: "bg-[#64748B]",
   };
 }

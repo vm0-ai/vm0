@@ -1,3 +1,5 @@
+import { i18n } from "../../i18n/index.ts";
+
 interface AgentPhoneConnectParams {
   phoneHandle: string;
   agentphoneAgentId: string;
@@ -68,7 +70,9 @@ function invalidParams(
     returnPath: "/agentphone/connect",
     error: {
       code,
-      title: "Connect link is invalid",
+      title: i18n.t(($) => {
+        return $.connectors.providerConnect.agentphone.invalidTitle;
+      }),
       message,
     },
   };
@@ -89,8 +93,12 @@ export function parseAgentPhoneConnectParams(
       returnPath: "/agentphone/connect",
       error: {
         code: "incomplete",
-        title: "Connect link is incomplete",
-        message: "Open a fresh /connect link from your text messages.",
+        title: i18n.t(($) => {
+          return $.connectors.providerConnect.agentphone.incompleteTitle;
+        }),
+        message: i18n.t(($) => {
+          return $.connectors.providerConnect.agentphone.incompleteDescription;
+        }),
       },
     };
   }
@@ -98,7 +106,9 @@ export function parseAgentPhoneConnectParams(
   if (!/^\d+$/.test(tsRaw)) {
     return invalidParams(
       "invalid_timestamp",
-      "The timestamp on this link is not valid.",
+      i18n.t(($) => {
+        return $.connectors.providerConnect.agentphone.invalidTimestamp;
+      }),
     );
   }
 
@@ -106,14 +116,18 @@ export function parseAgentPhoneConnectParams(
   if (!Number.isSafeInteger(timestamp) || timestamp <= 0) {
     return invalidParams(
       "invalid_timestamp",
-      "The timestamp on this link is not valid.",
+      i18n.t(($) => {
+        return $.connectors.providerConnect.agentphone.invalidTimestamp;
+      }),
     );
   }
 
   if (!/^[0-9a-f]{64}$/i.test(signature)) {
     return invalidParams(
       "invalid_signature",
-      "The signature on this link is not valid.",
+      i18n.t(($) => {
+        return $.connectors.providerConnect.agentphone.invalidSignature;
+      }),
     );
   }
 
