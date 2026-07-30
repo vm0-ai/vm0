@@ -13,6 +13,7 @@ import {
   IconPlus,
   IconSettings,
 } from "@tabler/icons-react";
+import { FEISHU_OAUTH_SCOPES } from "@vm0/api-contracts/contracts/zero-feishu-connect";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { Button } from "@vm0/ui";
 import {
@@ -266,8 +267,9 @@ const FEISHU_SETUP_STEPS = [
   "create",
   "credentials",
   "tokens",
-  "events",
   "redirect",
+  "permissions",
+  "events",
   "publish",
 ] as const satisfies readonly FeishuSetupStep[];
 
@@ -290,7 +292,7 @@ function FeishuSetupProgress({ step }: { step: FeishuSetupStep }) {
           );
         })}
       </div>
-      <div className="grid grid-cols-6 gap-2 text-xs">
+      <div className="grid grid-cols-7 gap-2 text-xs">
         {FEISHU_SETUP_STEPS.map((item, index) => {
           return (
             <div
@@ -819,6 +821,55 @@ function FeishuRedirectStep({ data }: { data: FeishuDialogData | null }) {
   );
 }
 
+function FeishuPermissionsStep({ data }: { data: FeishuDialogData | null }) {
+  const { t } = useTranslation();
+  const scopes = data?.oauthScopes ?? FEISHU_OAUTH_SCOPES;
+  const scopeList = scopes.join(", ");
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
+        <div className="mb-2 font-medium text-foreground">
+          {t(($) => {
+            return $.connectors.providerSettings.feishu.permissions.title;
+          })}
+        </div>
+        <p className="leading-relaxed">
+          {t(($) => {
+            return $.connectors.providerSettings.feishu.permissions.description;
+          })}
+        </p>
+      </div>
+      <div className="rounded-lg border border-border p-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <span className="text-sm font-medium text-foreground">
+            {t(($) => {
+              return $.connectors.providerSettings.feishu.permissions.label;
+            })}
+          </span>
+          {scopeList ? (
+            <CopyButton
+              value={scopeList}
+              label={t(($) => {
+                return $.connectors.providerSettings.feishu.permissions.label;
+              })}
+            />
+          ) : null}
+        </div>
+        <div className="max-h-56 overflow-y-auto rounded-md bg-muted/40 p-3">
+          <code className="whitespace-pre-wrap break-words text-xs text-foreground">
+            {scopes.join("\n")}
+          </code>
+        </div>
+      </div>
+      <p className="text-sm text-muted-foreground">
+        {t(($) => {
+          return $.connectors.providerSettings.feishu.permissions.hint;
+        })}
+      </p>
+    </div>
+  );
+}
+
 function FeishuPublishStep({
   data,
   form,
@@ -967,6 +1018,9 @@ function FeishuSetupStepContent({
     case "redirect": {
       return <FeishuRedirectStep data={data} />;
     }
+    case "permissions": {
+      return <FeishuPermissionsStep data={data} />;
+    }
     case "events": {
       return <FeishuEventsStep data={data} />;
     }
@@ -1026,6 +1080,9 @@ function canContinueFeishuSetup(args: {
     }
     case "redirect": {
       return Boolean(args.data?.oauthRedirectUrl);
+    }
+    case "permissions": {
+      return (args.data?.oauthScopes ?? FEISHU_OAUTH_SCOPES).length > 0;
     }
     case "events": {
       return args.data?.callbackVerified ?? false;
@@ -1431,7 +1488,7 @@ function FeishuBotMenu({
                 open({
                   appId: bot.appId,
                   defaultAgentId: bot.defaultAgentId,
-                  step: bot.setupCompleted ? "create" : "events",
+                  step: bot.setupCompleted ? "create" : "redirect",
                   installationId: bot.id,
                 });
               }}

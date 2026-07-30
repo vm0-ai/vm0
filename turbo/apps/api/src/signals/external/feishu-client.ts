@@ -35,7 +35,11 @@ const feishuBotInfoResponseSchema = z.object({
 const feishuOAuthTokenResponseSchema = z.object({
   code: z.number(),
   msg: z.string().optional(),
+  error: z.string().optional(),
+  error_description: z.string().optional(),
   access_token: z.string().optional(),
+  refresh_token: z.string().optional(),
+  expires_in: z.number().optional(),
 });
 
 const feishuUserInfoResponseSchema = z.object({
@@ -140,6 +144,12 @@ export interface FeishuUserInfo {
   readonly tenantKey: string | null;
 }
 
+interface FeishuOAuthToken {
+  readonly accessToken: string;
+  readonly refreshToken: string | null;
+  readonly expiresInSeconds: number;
+}
+
 export class FeishuApiError extends Error {
   constructor(
     message: string,
@@ -152,6 +162,17 @@ export class FeishuApiError extends Error {
 export class InvalidFeishuCredentialsError extends FeishuApiError {
   constructor(message: string) {
     super(message, 400);
+  }
+}
+
+export class FeishuOAuthTokenError extends FeishuApiError {
+  constructor(
+    message: string,
+    routeStatus: 400 | 502,
+    readonly code: number,
+    readonly oauthError: string | undefined,
+  ) {
+    super(message, routeStatus);
   }
 }
 
@@ -245,7 +266,7 @@ export async function exchangeFeishuOAuthCode(args: {
   readonly code: string;
   readonly redirectUri: string;
   readonly signal: AbortSignal;
-}): Promise<string> {
+}): Promise<FeishuOAuthToken> {
   const response = await fetch(
     `${FEISHU_API_ORIGIN}/open-apis/authen/v2/oauth/token`,
     {
@@ -261,14 +282,64 @@ export async function exchangeFeishuOAuthCode(args: {
       signal: args.signal,
     },
   );
-  const parsed = feishuOAuthTokenResponseSchema.parse(await readJson(response));
+  const parsed = feishuOAuthTokenResponseSchema.parse(await response.json());
   if (parsed.code !== 0) {
-    throw new FeishuApiError(parsed.msg ?? "Feishu OAuth exchange failed", 400);
+    throw new FeishuOAuthTokenError(
+      parsed.error_description ?? parsed.msg ?? "Feishu OAuth exchange failed",
+      response.status >= 500 ? 502 : 400,
+      parsed.code,
+      parsed.error,
+    );
   }
-  if (!parsed.access_token) {
+  if (!response.ok || !parsed.access_token || parsed.expires_in === undefined) {
     throw new FeishuApiError("Feishu OAuth token response is incomplete", 502);
   }
-  return parsed.access_token;
+  return {
+    accessToken: parsed.access_token,
+    refreshToken: parsed.refresh_token ?? null,
+    expiresInSeconds: parsed.expires_in,
+  };
+}
+
+export async function refreshFeishuOAuthToken(args: {
+  readonly appId: string;
+  readonly appSecret: string;
+  readonly refreshToken: string;
+  readonly signal: AbortSignal;
+}): Promise<FeishuOAuthToken> {
+  const response = await fetch(
+    `${FEISHU_API_ORIGIN}/open-apis/authen/v2/oauth/token`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json; charset=utf-8" },
+      body: JSON.stringify({
+        grant_type: "refresh_token",
+        client_id: args.appId,
+        client_secret: args.appSecret,
+        refresh_token: args.refreshToken,
+      }),
+      signal: args.signal,
+    },
+  );
+  const parsed = feishuOAuthTokenResponseSchema.parse(await response.json());
+  if (parsed.code !== 0) {
+    throw new FeishuOAuthTokenError(
+      parsed.error_description ??
+        parsed.msg ??
+        "Feishu OAuth token refresh failed",
+      response.status >= 500 ? 502 : 400,
+      parsed.code,
+      parsed.error,
+    );
+  }
+  if (!response.ok || !parsed.access_token || parsed.expires_in === undefined) {
+    throw new FeishuApiError("Feishu OAuth token response is incomplete", 502);
+  }
+  return {
+    accessToken: parsed.access_token,
+    refreshToken: parsed.refresh_token ?? null,
+    expiresInSeconds: parsed.expires_in,
+  };
 }
 
 export async function fetchFeishuUserInfo(args: {

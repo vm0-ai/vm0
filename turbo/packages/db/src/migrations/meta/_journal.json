@@ -5346,8 +5346,15 @@
     {
       "idx": 763,
       "version": "7",
-      "when": 1785412815590,
-      "tag": "0763_peaceful_riptide",
+      "when": 1785412068303,
+      "tag": "0763_add_chat_display_contexts",
+      "breakpoints": true
+    },
+    {
+      "idx": 764,
+      "version": "7",
+      "when": 1785413569071,
+      "tag": "0764_real_quicksilver",
       "breakpoints": true
     }
   ]
