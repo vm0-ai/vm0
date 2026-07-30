@@ -129,6 +129,7 @@ export const zeroModelProviderConnectionsByIdContract = c.router({
     pathParams: z.object({ id: z.uuid() }),
     responses: {
       204: c.noBody(),
+      400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,

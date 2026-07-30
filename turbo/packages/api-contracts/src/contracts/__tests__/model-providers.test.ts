@@ -169,6 +169,23 @@ describe("model-first canonical catalog", () => {
     ).toBe(false);
   });
 
+  it("preserves an omitted surface id for active policy requests", () => {
+    const parsed = updateOrgModelPoliciesRequestSchema.parse({
+      policies: [
+        {
+          model: "claude-sonnet-5",
+          isDefault: true,
+          defaultProviderType: "vercel-ai-gateway",
+          credentialScope: "org",
+          modelProviderId: null,
+        },
+      ],
+    });
+
+    expect(parsed.policies).toHaveLength(1);
+    expect(parsed.policies[0]).not.toHaveProperty("modelProviderSurfaceId");
+  });
+
   it("replaces retired Auto policy requests with the default model", () => {
     expect(
       updateOrgModelPoliciesRequestSchema.parse({
@@ -232,7 +249,6 @@ describe("model-first canonical catalog", () => {
           defaultProviderType: "vm0",
           credentialScope: "org",
           modelProviderId: null,
-          modelProviderSurfaceId: null,
         },
         {
           model: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,

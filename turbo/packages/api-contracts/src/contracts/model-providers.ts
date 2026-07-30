@@ -1544,7 +1544,9 @@ export const updateOrgModelPoliciesRequestSchema = z
             defaultProviderType: policy.defaultProviderType,
             credentialScope: policy.credentialScope,
             modelProviderId: policy.modelProviderId,
-            modelProviderSurfaceId: policy.modelProviderSurfaceId ?? null,
+            ...(policy.modelProviderSurfaceId === undefined
+              ? {}
+              : { modelProviderSurfaceId: policy.modelProviderSurfaceId }),
           },
         ];
       },

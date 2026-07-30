@@ -8,7 +8,9 @@ import { badRequestMessage, isNotFoundResponse } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
+import { db$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
+import { modelProviderGatewaySchemaAvailable } from "../services/model-provider-gateway-schema.service";
 import {
   createModelProviderConnection$,
   deleteModelProviderConnection$,
@@ -26,6 +28,10 @@ const adminRequired = Object.freeze({
   }),
 });
 
+const gatewaySchemaUnavailable = badRequestMessage(
+  "Custom model gateways are unavailable until the database migration is applied",
+);
+
 function isErrorResponse(
   value: unknown,
 ): value is ReturnType<typeof badRequestMessage> {
@@ -36,6 +42,12 @@ const listConnectionsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   if (auth.orgRole !== "admin") {
     return adminRequired;
+  }
+  if (!(await modelProviderGatewaySchemaAvailable(get(db$)))) {
+    return {
+      status: 200 as const,
+      body: { connections: [] },
+    };
   }
   return {
     status: 200 as const,
@@ -48,6 +60,13 @@ const createConnectionInner$ = command(
     const auth = get(organizationAuthContext$);
     if (auth.orgRole !== "admin") {
       return adminRequired;
+    }
+    const gatewaySchemaAvailable = await modelProviderGatewaySchemaAvailable(
+      get(db$),
+    );
+    signal.throwIfAborted();
+    if (!gatewaySchemaAvailable) {
+      return gatewaySchemaUnavailable;
     }
     const body = await get(
       bodyResultOf(zeroModelProviderConnectionsMainContract.create),
@@ -72,6 +91,13 @@ const updateConnectionInner$ = command(
     const auth = get(organizationAuthContext$);
     if (auth.orgRole !== "admin") {
       return adminRequired;
+    }
+    const gatewaySchemaAvailable = await modelProviderGatewaySchemaAvailable(
+      get(db$),
+    );
+    signal.throwIfAborted();
+    if (!gatewaySchemaAvailable) {
+      return gatewaySchemaUnavailable;
     }
     const [body, params] = await Promise.all([
       get(bodyResultOf(zeroModelProviderConnectionsByIdContract.update)),
@@ -101,6 +127,13 @@ const deleteConnectionInner$ = command(
     const auth = get(organizationAuthContext$);
     if (auth.orgRole !== "admin") {
       return adminRequired;
+    }
+    const gatewaySchemaAvailable = await modelProviderGatewaySchemaAvailable(
+      get(db$),
+    );
+    signal.throwIfAborted();
+    if (!gatewaySchemaAvailable) {
+      return gatewaySchemaUnavailable;
     }
     const params = await get(
       pathParamsOf(zeroModelProviderConnectionsByIdContract.delete),

@@ -156,6 +156,34 @@ function loadRows(
     );
 }
 
+function resolveOmittedModelProviderSurfaceIds(
+  policies: readonly UpdateOrgModelPolicy[],
+  existingRows: readonly OrgModelPolicyRow[],
+): UpdateOrgModelPolicy[] {
+  const existingByModel = new Map(
+    existingRows.map((row) => {
+      return [row.model, row];
+    }),
+  );
+  return policies.map((policy) => {
+    if (policy.modelProviderSurfaceId !== undefined) {
+      return policy;
+    }
+    const existing = existingByModel.get(policy.model);
+    const routeIdentityUnchanged =
+      existing !== undefined &&
+      existing.defaultProviderType === policy.defaultProviderType &&
+      existing.credentialScope === policy.credentialScope &&
+      (existing.modelProviderId ?? null) === policy.modelProviderId;
+    return {
+      ...policy,
+      modelProviderSurfaceId: routeIdentityUnchanged
+        ? existing.modelProviderSurfaceId
+        : null,
+    };
+  });
+}
+
 async function orgModelCapabilities(
   db: Db,
   orgId: string,
@@ -919,10 +947,17 @@ export const updateOrgModelPolicies$ = command(
     signal.throwIfAborted();
     const capabilities = await orgModelCapabilities(db, params.orgId);
     signal.throwIfAborted();
+    const policies = gatewaySchemaAvailable
+      ? resolveOmittedModelProviderSurfaceIds(
+          params.policies,
+          await loadRows(db, params.orgId, true),
+        )
+      : params.policies;
+    signal.throwIfAborted();
     const validation = await validateUpdatePolicies(
       db,
       params.orgId,
-      params.policies,
+      policies,
       capabilities,
       gatewaySchemaAvailable,
     );

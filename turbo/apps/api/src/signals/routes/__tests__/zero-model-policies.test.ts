@@ -803,7 +803,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     });
   });
 
-  it("allows a model mapped by a custom gateway surface", async () => {
+  it("preserves an omitted custom gateway surface and clears an explicit null", async () => {
     const fixture = await seedFixture();
     useSession(fixture);
     const gatewayClient = setupApp({ context })(
@@ -865,6 +865,64 @@ describe("GET/PUT /api/zero/model-policies", () => {
       credentialScope: "org",
       modelProviderId: null,
       modelProviderSurfaceId: surfaceId,
+      routeStatus: "valid",
+    });
+
+    const previousClientPolicies = updated.body.policies.map((policy) => {
+      return {
+        model: policy.model,
+        isDefault: policy.isDefault,
+        defaultProviderType: policy.defaultProviderType,
+        credentialScope: policy.credentialScope,
+        modelProviderId: policy.modelProviderId,
+      };
+    });
+    const roundTripped = await accept(
+      client.update({
+        headers: authHeaders(),
+        body: { policies: previousClientPolicies },
+      }),
+      [200],
+    );
+    expect(
+      roundTripped.body.policies.find((policy) => {
+        return policy.model === "claude-sonnet-5";
+      }),
+    ).toMatchObject({
+      defaultProviderType: "vercel-ai-gateway",
+      credentialScope: "org",
+      modelProviderId: null,
+      modelProviderSurfaceId: surfaceId,
+      routeStatus: "valid",
+    });
+
+    const clearedPolicies = toUpdate(roundTripped.body).map((policy) => {
+      return policy.model === "claude-sonnet-5"
+        ? {
+            ...policy,
+            defaultProviderType: "vm0" as const,
+            credentialScope: "org" as const,
+            modelProviderId: null,
+            modelProviderSurfaceId: null,
+          }
+        : policy;
+    });
+    const cleared = await accept(
+      client.update({
+        headers: authHeaders(),
+        body: { policies: clearedPolicies },
+      }),
+      [200],
+    );
+    expect(
+      cleared.body.policies.find((policy) => {
+        return policy.model === "claude-sonnet-5";
+      }),
+    ).toMatchObject({
+      defaultProviderType: "vm0",
+      credentialScope: "org",
+      modelProviderId: null,
+      modelProviderSurfaceId: null,
       routeStatus: "valid",
     });
   });
