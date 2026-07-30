@@ -127,8 +127,8 @@ const nullableTriggerSourceDecoder = nullableDriverValueDecoder(
   zodEnumDriverValueDecoder(triggerSourceSchema),
 );
 const nullableTextDecoder = nullableDriverValueDecoder(pgTextDecoder);
-const matchedChatEvent = alias(chatEvents, "matched_chat_message");
-const revokedChatEvent = alias(chatEvents, "revoked_chat_message");
+const matchedChatEvent = alias(chatEvents, "matched_chat_event");
+const revokedChatEvent = alias(chatEvents, "revoked_chat_event");
 const hostedRunUploadedFiles = alias(runUploadedFiles, "hosted_files");
 const HOSTED_ARTIFACT_KINDS = ["hosted-site", "presentation-html"] as const;
 
@@ -409,7 +409,7 @@ function chatEventMetadataSubquery(db: Pick<Db, "select">) {
     )
     .where(eq(zeroRuns.id, chatEvents.runId))
     .limit(1)
-    .as("chat_message_metadata");
+    .as("chat_event_metadata");
 }
 
 function selectChatEventsWithMetadata(db: Pick<Db, "select">) {
