@@ -23,7 +23,10 @@ import type { EditorDocumentSnapshot } from "../zero-page/user-message-document-
 import type { AgentReferenceSignals } from "./agent-reference-signals.ts";
 import type { ArtifactSignals } from "./artifact-card-signals.ts";
 import type { ThreadSidebarAutoOpenCandidate } from "./thread-sidebar-auto-open.ts";
-import type { ThreadScrollPosition } from "./chat-thread-scroll.ts";
+import type {
+  ThreadScrollPosition,
+  ThreadScrollRenderRequest,
+} from "./chat-thread-scroll.ts";
 import type { AssistantErrorRecovery } from "./assistant-error-recovery.ts";
 
 type RecommendedFollowup = NonNullable<
@@ -127,8 +130,13 @@ export interface ChatThreadSignals {
     (() => void) | undefined,
     [HTMLElement | null]
   >;
+  scrollCommitOnRef$: Command<(() => void) | undefined, [HTMLElement | null]>;
   threadScrollPosition$: Computed<ThreadScrollPosition | null>;
-  scrollTo$: Command<boolean, [ThreadScrollPosition]>;
+  scrollRenderRequestReady$: Computed<
+    Promise<ThreadScrollRenderRequest | null>
+  >;
+  requestScrollAfterRender$: Command<void, [ThreadScrollPosition | null]>;
+  scrollTo$: Command<void, [ThreadScrollPosition]>;
   scrollToBottom$: Command<void, []>;
   scrollToTop$: Command<void, []>;
   containerEl$: Computed<HTMLElement | null>;

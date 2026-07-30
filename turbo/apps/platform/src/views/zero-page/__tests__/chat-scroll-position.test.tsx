@@ -130,7 +130,13 @@ function installChatLayout(layouts: ReadonlyMap<string, ThreadLayout>): void {
       if (!isScrollContainer(this)) {
         return scrollTopDescriptor?.get?.call(this) as number;
       }
-      return scrollTopByContainer.get(this) ?? 0;
+      const scrollTop = scrollTopByContainer.get(this) ?? 0;
+      const maxScrollTop = Math.max(0, this.scrollHeight - this.clientHeight);
+      const clampedScrollTop = Math.min(scrollTop, maxScrollTop);
+      if (clampedScrollTop !== scrollTop) {
+        scrollTopByContainer.set(this, clampedScrollTop);
+      }
+      return clampedScrollTop;
     },
     set(this: HTMLElement, value: number) {
       if (!isScrollContainer(this)) {
@@ -153,6 +159,9 @@ function installChatLayout(layouts: ReadonlyMap<string, ThreadLayout>): void {
     get(this: HTMLElement): number {
       if (!isScrollContainer(this)) {
         return (scrollHeightDescriptor?.get?.call(this) as number) ?? 0;
+      }
+      if (!this.querySelector("[data-message-container]")) {
+        return this.clientHeight;
       }
       const threadId = threadIdForElement(this);
       return threadId === null
@@ -214,6 +223,48 @@ function installChatLayout(layouts: ReadonlyMap<string, ThreadLayout>): void {
         prototype,
         "getBoundingClientRect",
         ownRectDescriptor,
+      );
+    },
+    { once: true },
+  );
+}
+
+function installImmediateAnimationFrames(): void {
+  const requestDescriptor = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "requestAnimationFrame",
+  );
+  const cancelDescriptor = Object.getOwnPropertyDescriptor(
+    globalThis,
+    "cancelAnimationFrame",
+  );
+  let nextFrameId = 0;
+
+  Object.defineProperty(globalThis, "requestAnimationFrame", {
+    configurable: true,
+    value: (callback: FrameRequestCallback): number => {
+      nextFrameId += 1;
+      callback(performance.now());
+      return nextFrameId;
+    },
+  });
+  Object.defineProperty(globalThis, "cancelAnimationFrame", {
+    configurable: true,
+    value: (_frameId: number): void => {},
+  });
+
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      restorePrototypeProperty(
+        globalThis,
+        "requestAnimationFrame",
+        requestDescriptor,
+      );
+      restorePrototypeProperty(
+        globalThis,
+        "cancelAnimationFrame",
+        cancelDescriptor,
       );
     },
     { once: true },
@@ -653,9 +704,10 @@ describe("chat scroll position", () => {
     });
   });
 
-  it("restores a thread by anchor after the target's document position changes", async () => {
+  it("restores a thread after its old DOM collapses and an early frame has no target", async () => {
     let currentThreadTargetTop = 400;
     mockKeyboardNavigationThreads();
+    installImmediateAnimationFrames();
     context.mocks.api(
       chatThreadEventsContract.list,
       ({ params, query, respond }) => {
