@@ -25,6 +25,37 @@ import { chatEventTypeIn } from "./zero-chat-event-type.service";
 
 const ACTIVE_CHAT_RUN_STATUSES = ["queued", "pending", "running"] as const;
 
+function activeChatRunCondition(db: Pick<Db, "select">) {
+  return and(
+    inArray(agentRuns.status, ACTIVE_CHAT_RUN_STATUSES),
+    or(
+      notExists(
+        db
+          .select({ id: agentRunCallbacks.id })
+          .from(agentRunCallbacks)
+          .where(
+            and(
+              eq(agentRunCallbacks.runId, zeroRuns.id),
+              eq(agentRunCallbacks.internalKind, "chat"),
+              isNotNull(sql`${agentRunCallbacks.payload}->>'queuedMessageId'`),
+            ),
+          ),
+      ),
+      exists(
+        db
+          .select({ id: chatEvents.id })
+          .from(chatEvents)
+          .where(
+            and(
+              eq(chatEvents.runId, zeroRuns.id),
+              chatEventTypeIn(["input.prompt"]),
+            ),
+          ),
+      ),
+    ),
+  );
+}
+
 function unresolvedCancellationRecoveryCondition(
   db: Pick<Db, "select">,
   completedAtCondition: SQL,
@@ -68,36 +99,7 @@ async function activeChatRunExists(
           ? undefined
           : ne(zeroRuns.id, args.excludeRunId),
         or(
-          and(
-            inArray(agentRuns.status, ACTIVE_CHAT_RUN_STATUSES),
-            or(
-              notExists(
-                db
-                  .select({ id: agentRunCallbacks.id })
-                  .from(agentRunCallbacks)
-                  .where(
-                    and(
-                      eq(agentRunCallbacks.runId, zeroRuns.id),
-                      eq(agentRunCallbacks.internalKind, "chat"),
-                      isNotNull(
-                        sql`${agentRunCallbacks.payload}->>'queuedMessageId'`,
-                      ),
-                    ),
-                  ),
-              ),
-              exists(
-                db
-                  .select({ id: chatEvents.id })
-                  .from(chatEvents)
-                  .where(
-                    and(
-                      eq(chatEvents.runId, zeroRuns.id),
-                      chatEventTypeIn(["input.prompt"]),
-                    ),
-                  ),
-              ),
-            ),
-          ),
+          activeChatRunCondition(db),
           unresolvedCancellationRecoveryCondition(
             db,
             gt(
@@ -142,6 +144,18 @@ export async function expiredCancellationRecoveryThreadIds(
     .where(
       and(
         pendingChatQueueEventCondition(db),
+        notExists(
+          db
+            .select({ id: zeroRuns.id })
+            .from(zeroRuns)
+            .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+            .where(
+              and(
+                eq(zeroRuns.chatThreadId, chatEvents.chatThreadId),
+                activeChatRunCondition(db),
+              ),
+            ),
+        ),
         exists(
           db
             .select({ id: zeroRuns.id })

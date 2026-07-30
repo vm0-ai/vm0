@@ -155,24 +155,32 @@ export const drainStaleChatThreadQueues$ = command(
     ]);
     signal.throwIfAborted();
     const recoveryThreadIdSet = new Set(recoveryThreadIds);
-    const candidates: readonly QueueDrainSweepCandidate[] = [
-      ...recoveryThreadIds.map((chatThreadId) => {
+    const recoveryCandidates: readonly QueueDrainSweepCandidate[] =
+      recoveryThreadIds.map((chatThreadId) => {
         return {
           chatThreadId,
           reason: "cancellation-recovery-expired" as const,
         };
-      }),
-      ...staleThreadIds
-        .filter((chatThreadId) => {
-          return !recoveryThreadIdSet.has(chatThreadId);
-        })
-        .map((chatThreadId) => {
-          return {
-            chatThreadId,
-            queueItemCreatedBefore: staleBefore,
-            reason: "queue-item-stale" as const,
-          };
-        }),
+      });
+    const staleCandidates: readonly QueueDrainSweepCandidate[] = staleThreadIds
+      .filter((chatThreadId) => {
+        return !recoveryThreadIdSet.has(chatThreadId);
+      })
+      .map((chatThreadId) => {
+        return {
+          chatThreadId,
+          queueItemCreatedBefore: staleBefore,
+          reason: "queue-item-stale" as const,
+        };
+      });
+    // Give both repair paths capacity under sustained backlog, then let either
+    // path consume any unused share without raising the existing total limit.
+    const reservedPerReason = Math.floor(DRAIN_SWEEP_LIMIT / 2);
+    const candidates: readonly QueueDrainSweepCandidate[] = [
+      ...recoveryCandidates.slice(0, reservedPerReason),
+      ...staleCandidates.slice(0, reservedPerReason),
+      ...recoveryCandidates.slice(reservedPerReason),
+      ...staleCandidates.slice(reservedPerReason),
     ].slice(0, DRAIN_SWEEP_LIMIT);
     for (const candidate of candidates) {
       await tapError(
