@@ -5188,6 +5188,13 @@
       "when": 1785376274586,
       "tag": "0740_drop_chat_message_asset_refs_compatibility_view",
       "breakpoints": true
+    },
+    {
+      "idx": 741,
+      "version": "7",
+      "when": 1785381995195,
+      "tag": "0741_drop_telegram_thread_sessions",
+      "breakpoints": true
     }
   ]
 }
