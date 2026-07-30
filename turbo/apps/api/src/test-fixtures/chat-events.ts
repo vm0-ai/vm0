@@ -2,6 +2,8 @@ import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
+import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
+import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { and, count, eq, isNull, like, or, sql } from "drizzle-orm";
@@ -33,6 +35,52 @@ interface ChatEventInputParamsFixture {
   readonly eventId: string;
   readonly encryptedParams: string;
   readonly attachFileMetadata: typeof chatEventInputParams.$inferSelect.attachFileMetadata;
+}
+
+interface ChatEventContextFixture {
+  readonly id: string;
+  readonly revokesEventId: string | null;
+  readonly contextType: string | null;
+  readonly contextId: string | null;
+  readonly slackMessagePermalink: string | null;
+  readonly feishuChatOpenUrl: string | null;
+}
+
+export async function readChatEventContextFixture(
+  eventId: string,
+): Promise<ChatEventContextFixture | null> {
+  const [event] = await db()
+    .select({
+      id: chatEvents.id,
+      revokesEventId: chatEvents.revokesEventId,
+      contextType: chatEvents.contextType,
+      contextId: chatEvents.contextId,
+    })
+    .from(chatEvents)
+    .where(eq(chatEvents.id, eventId))
+    .limit(1);
+  if (!event) {
+    return null;
+  }
+
+  const contextId = event.contextId ?? event.id;
+  const [[slackContext], [feishuContext]] = await Promise.all([
+    db()
+      .select({ messagePermalink: chatSlackContext.messagePermalink })
+      .from(chatSlackContext)
+      .where(eq(chatSlackContext.id, contextId))
+      .limit(1),
+    db()
+      .select({ chatOpenUrl: chatFeishuContext.chatOpenUrl })
+      .from(chatFeishuContext)
+      .where(eq(chatFeishuContext.id, contextId))
+      .limit(1),
+  ]);
+  return {
+    ...event,
+    slackMessagePermalink: slackContext?.messagePermalink ?? null,
+    feishuChatOpenUrl: feishuContext?.chatOpenUrl ?? null,
+  };
 }
 
 export async function readChatEventInputParamsFixture(

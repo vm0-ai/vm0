@@ -8,7 +8,6 @@ import type {
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
   connectorAuthMethodIdSchema,
-  connectorSlugSchema,
   type ConnectorAuthMethodId,
   type ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
@@ -25,7 +24,6 @@ import { isOAuthProviderHttpError } from "@vm0/connectors/auth-providers/oauth/e
 import { connectorExternalCodeSessions } from "@vm0/db/schema/connector-external-code-session";
 import { command } from "ccstate";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
-import { z } from "zod";
 
 import { badRequestMessage, notFound } from "../../lib/error";
 import { optionalEnv } from "../../lib/env";
@@ -36,6 +34,10 @@ import {
   decryptPersistentSecretValue,
   encryptPersistentSecretValue,
 } from "./crypto.utils";
+import {
+  parseConnectorExternalCodeProviderState,
+  serializeConnectorExternalCodeProviderState,
+} from "./connector-authorization-provider-state";
 import {
   connectorActionResolver,
   type ConnectorActionMethodResolution,
@@ -102,13 +104,6 @@ type CompleteSuccess = {
   readonly status: 200;
   readonly body: ConnectorExternalCodeSessionCompleteResponse;
 };
-
-const encryptedProviderStateSchema = z.object({
-  // TODO(#23619): Rename with the persisted encrypted provider-state format.
-  connectorType: connectorSlugSchema,
-  authMethod: connectorAuthMethodIdSchema,
-  providerState: z.string(),
-});
 
 const connectorExternalCodeDisabled = Object.freeze({
   status: 403 as const,
@@ -306,16 +301,11 @@ async function parseEncryptedProviderState(args: {
       userId: args.session.userId,
     },
   );
-  const providerState = encryptedProviderStateSchema.parse(
-    JSON.parse(decrypted) as unknown,
-  );
-  if (
-    providerState.connectorType !== args.method.connectorSlug ||
-    providerState.authMethod !== args.method.authMethodId
-  ) {
-    throw new Error("External-code provider state connector method mismatch");
-  }
-  return providerState.providerState;
+  return parseConnectorExternalCodeProviderState({
+    serializedState: decrypted,
+    connectorSlug: args.method.connectorSlug,
+    authMethod: args.method.authMethodId,
+  }).providerState;
 }
 
 async function expireSession(args: {
@@ -809,8 +799,8 @@ export const startConnectorExternalCodeSession$ = command(
     const now = nowDate();
     const expiresAt = new Date(now.getTime() + startResult.expiresIn * 1000);
     const encryptedProviderState = await encryptPersistentSecretValue(
-      JSON.stringify({
-        connectorType: resolved.connectorSlug,
+      serializeConnectorExternalCodeProviderState({
+        connectorSlug: resolved.connectorSlug,
         authMethod: resolved.authMethodId,
         providerState: providerStateWithinLimit(startResult.providerState),
       }),
