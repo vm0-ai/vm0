@@ -3144,7 +3144,7 @@
             "title": "ユーザーへの影響によるランキング"
           }
         },
-        "title": "GitHub のIssueにより、ファイル Sentry がクラッシュする"
+        "title": "SentryのクラッシュをGitHub Issueとして登録"
       },
       "fixes-to-notion-help-docs": {
         "description": "チケットが解決済みとしてマークされると、Zero は修正を Notion の再利用可能なヘルプ記事に変換します。",
@@ -3948,12 +3948,12 @@
       "signOut": "サインアウト",
       "subscriptions": {
         "providers": {
-          "claudeCode": "Claude コード",
+          "claudeCode": "Claude Code",
           "codex": "Codex"
         },
         "reset": "リセット",
         "resetTimeUnavailable": "リセット時間は利用不可",
-        "usage": "{{provider}} の使用法",
+        "usage": "{{provider}}の使用量",
         "usageRemaining": "{{provider}} {{window}} 残り",
         "windows": {
           "fiveHour": "5時間",
@@ -4097,16 +4097,16 @@
           "approvalOpenError": "承認ページを開けませんでした。リンクを手動で使用し、ここにコードを貼り付けます。",
           "authorizationCode": "認証コード",
           "codePlaceholder": "Claude からコードを貼り付けます",
-          "codeRequired": "Claude コード認証コードを貼り付けて続行します。",
-          "connectedToast": "Claude コードが接続されました",
-          "connectTitle": "Claude コードを接続する",
-          "error": "Claude コード接続に失敗しました。もう一度やり直してください。",
-          "expired": "Claude コード接続セッションの有効期限が切れました。もう一度やり直してください。",
+          "codeRequired": "Claude Codeの認証コードを貼り付けて続行します。",
+          "connectedToast": "Claude Codeが接続されました",
+          "connectTitle": "Claude Codeを接続する",
+          "error": "Claude Codeの接続に失敗しました。もう一度やり直してください。",
+          "expired": "Claude Codeの接続セッションの有効期限が切れました。もう一度やり直してください。",
           "instructions": "まず、[Claude 承認ページを開く] をクリックします。次に、Claude の {{brandName}} を承認し、承認後に表示される認証コードをコピーします。最後にそのコードをここに貼り付けて、「接続」をクリックします。",
           "openApproval": "Claude 承認ページを開く",
           "preparing": "準備中...",
-          "reconnectAction": "Claude コードを再接続します",
-          "reconnectTitle": "Claude コードを再接続します",
+          "reconnectAction": "Claude Codeを再接続する",
+          "reconnectTitle": "Claude Codeを再接続",
           "signIn": "Claude でサインインします",
           "submit": "接続する"
         },
@@ -4134,8 +4134,8 @@
       },
       "personal": {
         "actionForProvider": "{{action}} {{provider}}",
-        "claudeDescription": "Claude をサポートするモデル ルートの Claude コード ログインに接続します。",
-        "claudeTitle": "Claude コード OAuth",
+        "claudeDescription": "Claudeベースのモデルルートで使用するClaude Codeログインを接続します。",
+        "claudeTitle": "Claude Code OAuth",
         "codexDescription": "Codex をサポートするモデル ルートの Codex デバイス ログインを使用して接続します。",
         "codexTitle": "ChatGPT (Codex)",
         "description": "自分の実行でのみ、自分の資格情報を使用して使用されます。",
@@ -4170,7 +4170,7 @@
         "pro": "プロ",
         "providerLabels": {
           "azureFoundryPortal": "Azure ファウンドリ ポータル",
-          "claudeCodeOauth": "Claude コード (OAuth トークン)",
+          "claudeCodeOauth": "Claude Code（OAuthトークン）",
           "deepseek": "ディープシーク"
         },
         "runSpeed": "走行速度",
@@ -4207,17 +4207,17 @@
         "workspaceTitle": "ワークスペース"
       },
       "reset": {
-        "confirmDescription": "Codex リセットを 1 回使用して、現在の使用状況ウィンドウをリセットします。 {{remaining}} があります。",
+        "confirmDescription": "Codexリセットを1回使用して、現在の使用枠をリセットします。{{remaining}}。",
         "progress": "リセット中...",
-        "remaining_one": "{{value}} 左にリセット",
-        "remaining_other": "{{value}} が左にリセットされます",
-        "remainingUnavailable": "リセットが利用できないままになる",
-        "title": "Codex の使用状況をリセットしますか?"
+        "remaining_one": "リセット残り{{value}}回",
+        "remaining_other": "リセット残り{{value}}回",
+        "remainingUnavailable": "残りのリセット回数を取得できません",
+        "title": "Codexの使用量をリセットしますか？"
       },
       "stale": {
-        "claudeExpired": "Claude コード セッションの有効期限が切れました。続行するには再接続してください。",
-        "claudeFailed": "Claude コードの更新に失敗しました。再接続して再試行してください。",
-        "claudeTitle": "Claude コード セッションは再接続が必要です",
+        "claudeExpired": "Claude Codeセッションの有効期限が切れました。続行するには再接続してください。",
+        "claudeFailed": "Claude Codeの更新に失敗しました。再接続してもう一度お試しください。",
+        "claudeTitle": "Claude Codeセッションの再接続が必要です",
         "codexExpired": "ChatGPT セッションの有効期限が切れました。続行するには再接続してください。",
         "codexFailed": "ChatGPT の更新に失敗しました。再接続して再試行してください。",
         "codexInvalidated": "ChatGPT セッションが取り消されました。再接続します。",
@@ -4469,7 +4469,7 @@
       "contactSupport": "サポート",
       "description": "もう一度試すか、お問い合わせください",
       "help": "私たちはお手伝いします",
-      "title": "おっと！何かが横に逸れた"
+      "title": "問題が発生しました"
     },
     "forceUpgrade": {
       "action": "リフレッシュ",
