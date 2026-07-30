@@ -16,6 +16,7 @@ import mitm_addon
 import upstream_destination_binding
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
+from tests.firewall_helpers import cancel_pending_task
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.request_handler_helpers import (
     _shared_route_vm,
@@ -24,7 +25,7 @@ from tests.request_handler_helpers import (
     _write_registry,
 )
 from tests.requestheaders_helpers import await_requestheaders_result
-from tests.upstream_connection_helpers import seed_server_binding
+from tests.upstream_connection_helpers import mark_connected_tls_upstream, seed_server_binding
 
 
 def _resolved_firewall_auth() -> auth_client.FirewallAuthSuccess:
@@ -420,7 +421,103 @@ async def test_firewall_permission_blocks_unmatched(tmp_path, real_flow, mitm_ct
     assert proxy_log_entry["type"] == "firewall_block"
     assert proxy_log_entry["name"] == "github"
     assert proxy_log_entry["reason"] == "unknown_endpoint"
-    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+    assert flow.server_conn.id in upstream_destination_binding.binding_snapshot_for_tests()
+
+
+async def test_local_response_preserves_shared_binding_for_concurrent_auth(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [
+                    {
+                        "name": "read-repos",
+                        "rules": ["GET /repos/{owner}/{repo}"],
+                    },
+                ],
+            },
+            network_policy={
+                "allow": ["read-repos"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+        ),
+    )
+    allowed_flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        path="/repos/octocat/hello",
+        request_headers=headers(("Host", "api.github.com")),
+    )
+    mark_connected_tls_upstream(
+        allowed_flow,
+        sni="api.github.com",
+        server_address=("203.0.113.10", 443),
+        peername=("203.0.113.10", 443),
+    )
+    denied_flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        path="/orgs",
+        request_headers=headers(("Host", "api.github.com")),
+    )
+    denied_flow.client_conn = allowed_flow.client_conn
+    denied_flow.server_conn = allowed_flow.server_conn
+
+    auth_resolution_entered = asyncio.Event()
+    release_auth_resolution = asyncio.Event()
+
+    async def resolve_auth(*_args, **_kwargs):
+        auth_resolution_entered.set()
+        await release_auth_resolution.wait()
+        return {
+            "headers": {"Authorization": "Bearer resolved"},
+            "resolved_secrets": [],
+            "refreshed_connectors": [],
+            "refreshed_secrets": [],
+            "cache_hit": False,
+        }
+
+    auth_fetch = AsyncMock(side_effect=resolve_auth)
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", auth_fetch),
+    ):
+        allowed_task = asyncio.create_task(mitm_addon.request(allowed_flow))
+        try:
+            await asyncio.wait_for(auth_resolution_entered.wait(), timeout=1)
+            assert (
+                allowed_flow.server_conn.id
+                in upstream_destination_binding.binding_snapshot_for_tests()
+            )
+
+            await mitm_addon.request(denied_flow)
+
+            assert denied_flow.response is not None
+            assert denied_flow.response.status_code == 403
+            assert (
+                allowed_flow.server_conn.id
+                in upstream_destination_binding.binding_snapshot_for_tests()
+            )
+
+            release_auth_resolution.set()
+            await allowed_task
+        finally:
+            release_auth_resolution.set()
+            await cancel_pending_task(allowed_task)
+
+    auth_fetch.assert_awaited_once()
+    assert allowed_flow.response is None
+    assert allowed_flow.request.headers["Authorization"] == "Bearer resolved"
+    assert allowed_flow.metadata.get(metadata_keys.FIREWALL_ERROR) is None
 
 
 @pytest.mark.parametrize(
@@ -1397,7 +1494,7 @@ async def test_https_firewall_with_ordinary_credentials_blocks_when_upstream_is_
     assert "Authorization" not in flow.request.headers
 
 
-async def test_firewall_auth_cancellation_clears_upstream_binding(
+async def test_firewall_auth_cancellation_preserves_upstream_binding(
     tmp_path, real_flow, mitm_ctx, headers
 ):
     reg_path = _write_registry(
@@ -1433,10 +1530,12 @@ async def test_firewall_auth_cancellation_clears_upstream_binding(
     ):
         await mitm_addon.request(flow)
 
-    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+    assert flow.server_conn.id in upstream_destination_binding.binding_snapshot_for_tests()
 
 
-async def test_request_stream_metadata_error_clears_upstream_binding(tmp_path, real_flow, mitm_ctx):
+async def test_request_stream_metadata_error_preserves_upstream_binding(
+    tmp_path, real_flow, mitm_ctx
+):
     reg_path = _write_github_firewall_registry(tmp_path)
     flow = real_flow(
         with_response=False,
@@ -1460,7 +1559,7 @@ async def test_request_stream_metadata_error_clears_upstream_binding(tmp_path, r
     ):
         await mitm_addon.request(flow)
 
-    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+    assert flow.server_conn.id in upstream_destination_binding.binding_snapshot_for_tests()
 
 
 @pytest.mark.parametrize(

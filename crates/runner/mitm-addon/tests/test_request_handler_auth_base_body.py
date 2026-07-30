@@ -151,7 +151,7 @@ async def test_auth_base_requestheaders_rejects_oversized_content_length_before_
     assert flow.error.msg == Error.KILLED_MESSAGE
     assert flow.live is False
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "auth_base_request_body_too_large"
-    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+    assert flow.server_conn.id in upstream_destination_binding.binding_snapshot_for_tests()
 
     network_log_text = read_jsonl_text_after_flush(tmp_path / "net.jsonl")
     network_log_entry = json.loads(network_log_text)
@@ -471,7 +471,7 @@ async def test_auth_base_requestheaders_admission_released_after_success(
     assert flow.response is not None
     assert flow.response.status_code == 202
     assert flow.response.content == b"accepted"
-    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+    assert flow.server_conn.id in upstream_destination_binding.binding_snapshot_for_tests()
     assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
 
 
@@ -643,5 +643,5 @@ async def test_auth_base_requestheaders_admission_released_when_request_already_
     assert flow.response is not None
     assert flow.response.status_code == 204
     assert metadata_keys.AUTH_BASE_FORWARD_ADMISSION not in flow.metadata
-    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+    assert flow.server_conn.id in upstream_destination_binding.binding_snapshot_for_tests()
     assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
