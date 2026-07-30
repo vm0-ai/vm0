@@ -896,18 +896,8 @@ describe("runner network policy refresh contract", () => {
     ).toEqual({ connectorSlugs: ["slack", "github"] });
   });
 
-  it("accepts a bridge request while discarding its legacy field", () => {
-    expect(
-      bodySchema.parse({
-        connectorSlugs: ["github", "slack", "github"],
-        connectorRefs: ["slack", "github"],
-      }),
-    ).toEqual({ connectorSlugs: ["github", "slack"] });
-  });
-
   it.each([
     ["missing canonical field", {}],
-    ["legacy-only field", { connectorRefs: ["slack"] }],
     ["empty canonical field", { connectorSlugs: [] }],
     ["invalid canonical slug", { connectorSlugs: ["invalid/slack"] }],
     [

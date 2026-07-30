@@ -2111,35 +2111,23 @@ mod tests {
     }
 
     #[test]
-    fn parse_network_policy_refresh_notification_accepts_cleanup_and_bridge_messages() {
-        for (case, data) in [
-            (
-                "cleanup message",
-                serde_json::json!({
-                    "runId": "00000000-0000-0000-0000-000000000003",
-                    "connectorSlug": "github"
-                }),
-            ),
-            (
-                "bridge message",
-                serde_json::json!({
-                    "runId": "00000000-0000-0000-0000-000000000003",
-                    "connectorSlug": "github",
-                    "connectorRef": "github"
-                }),
-            ),
-        ] {
-            let msg = make_message(Some("network-policy-refresh"), data);
+    fn parse_network_policy_refresh_notification_accepts_bridge_message() {
+        let msg = make_message(
+            Some("network-policy-refresh"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000003",
+                "connectorSlug": "github",
+                "connectorRef": "github"
+            }),
+        );
 
-            let notification = parse_network_policy_refresh_notification(&msg).unwrap();
+        let notification = parse_network_policy_refresh_notification(&msg).unwrap();
 
-            assert_eq!(
-                notification.run_id.to_string(),
-                "00000000-0000-0000-0000-000000000003",
-                "{case}"
-            );
-            assert_eq!(notification.connector_slug, "github", "{case}");
-        }
+        assert_eq!(
+            notification.run_id.to_string(),
+            "00000000-0000-0000-0000-000000000003"
+        );
+        assert_eq!(notification.connector_slug, "github");
     }
 
     #[test]

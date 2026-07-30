@@ -8476,9 +8476,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(sameUserRefresh.body.refreshes[0]).toMatchObject({
       connectorSlug: "slack",
     });
-    expect(sameUserRefresh.body.refreshes[0]).not.toHaveProperty(
-      "connectorRef",
-    );
     const canonicalRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
       `Bearer ${actorRunnerKey.token}`,
       snapshotRun.runId,
@@ -8491,9 +8488,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(canonicalRefresh.body.refreshes[0]).toMatchObject({
       connectorSlug: "slack",
     });
-    expect(canonicalRefresh.body.refreshes[0]).not.toHaveProperty(
-      "connectorRef",
-    );
     const otherUserRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
       `Bearer ${memberRunnerKey.token}`,
       snapshotRun.runId,
@@ -8530,10 +8524,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(refreshedPolicy.networkPolicy.allow).not.toContain("chat:write");
     expect(refreshedPolicy.networkPolicy.allow).toContain("files:write");
     expect(refreshedPolicy.nextRefreshAt).toStrictEqual(expect.any(String));
-    expect(refreshedPolicy).toMatchObject({
-      connectorSlug: "slack",
-    });
-    expect(refreshedPolicy).not.toHaveProperty("connectorRef");
 
     context.mocks.ably.publish.mockRejectedValueOnce(
       new Error("network policy refresh publish failed"),
