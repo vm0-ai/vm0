@@ -69,11 +69,6 @@ export const chatThreads = pgTable(
       },
       { onDelete: "set null" },
     ),
-    /**
-     * Draft text content for the thread's composer. Null when no draft is saved.
-     * Persisted with local-first sync: local state takes precedence on first visit.
-     */
-    draftContent: text("draft_content"),
     /** Canonical rich document for the thread composer's saved draft. */
     draftUserMessage:
       jsonb("draft_user_message").$type<ChatThreadDraftUserMessage>(),
@@ -165,10 +160,7 @@ export const chatThreads = pgTable(
       check(
         "chat_threads_draft_user_message_check",
         sql`${table.draftUserMessage} IS NOT NULL
-          OR (
-            COALESCE(${table.draftContent}, '') = ''
-            AND COALESCE(${table.draftAttachments}, '[]'::jsonb) = '[]'::jsonb
-          )`,
+          OR COALESCE(${table.draftAttachments}, '[]'::jsonb) = '[]'::jsonb`,
       ),
       index("idx_chat_threads_user_compose_updated").on(
         table.userId,

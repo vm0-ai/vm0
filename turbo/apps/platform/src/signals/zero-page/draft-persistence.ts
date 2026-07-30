@@ -9,7 +9,6 @@ import {
 } from "./user-message-document-codec.ts";
 
 export interface DraftPersistencePayload {
-  readonly content: string | null;
   readonly userMessage: UserMessageDocument | null;
   readonly attachments: PersistedAttachment[] | null;
 }
@@ -45,5 +44,5 @@ export function buildDraftPersistencePayload(
     }
   }
 
-  return { content, userMessage, attachments };
+  return { userMessage, attachments };
 }

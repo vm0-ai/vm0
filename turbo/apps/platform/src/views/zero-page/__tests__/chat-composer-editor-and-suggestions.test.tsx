@@ -637,7 +637,6 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(draftPatches).toContainEqual(
         expect.objectContaining({
-          draftContent: `[Zeta Agent](/agents/${zetaAgentId}/chat)`,
           draftUserMessage: expect.objectContaining({
             version: 1,
             parts: expect.arrayContaining([
@@ -671,7 +670,7 @@ describe("chat composer models", () => {
     ]);
     context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
       return respond(200, {
-        draftContent: mention,
+        draftContent: null,
         draftUserMessage: {
           version: 1,
           parts: [{ type: "text", text: mention }],

@@ -36,7 +36,7 @@ export function requiredUserMessageForEvent(
   return document;
 }
 
-export function maybeCreateUserMessageDocument(args: {
+function maybeCreateUserMessageDocument(args: {
   readonly text: string | null;
   readonly files?: readonly UserMessageFile[];
 }): UserMessageDocument | null {
