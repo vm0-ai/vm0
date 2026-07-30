@@ -1,5 +1,25 @@
 # Changelog
 
+## [9.270.1](https://github.com/vm0-ai/vm0/compare/cli-v9.270.0...cli-v9.270.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* **cli:** emit connector slug in permission action urls ([#24062](https://github.com/vm0-ai/vm0/issues/24062)) ([1a42e7a](https://github.com/vm0-ai/vm0/commit/1a42e7af131bcae9629b507229f3b0fe3f96ce4f))
+
+
+### Refactoring
+
+* remove legacy chat message capability aliases ([#24063](https://github.com/vm0-ai/vm0/issues/24063)) ([9ecc474](https://github.com/vm0-ai/vm0/commit/9ecc4744be290710c473f47a06460cd49a158a52))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.251.1
+    * @vm0/core bumped to 8.491.0
+
 ## [9.270.0](https://github.com/vm0-ai/vm0/compare/cli-v9.269.5...cli-v9.270.0) (2026-07-30)
 
 

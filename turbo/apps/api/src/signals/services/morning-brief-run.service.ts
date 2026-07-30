@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { chatInputQueueParams } from "@vm0/db/schema/chat-input-queue-params";
+import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import {
   morningBriefDeliveries,
   morningBriefSchedules,
@@ -616,12 +616,12 @@ async function hasPendingMorningBriefQueueEvent(
   }
   const messages = await db
     .select({
-      encryptedParams: chatInputQueueParams.encryptedParams,
+      encryptedParams: chatEventInputParams.encryptedParams,
     })
     .from(chatEvents)
     .leftJoin(
-      chatInputQueueParams,
-      eq(chatInputQueueParams.eventId, chatEvents.id),
+      chatEventInputParams,
+      eq(chatEventInputParams.eventId, chatEvents.id),
     )
     .where(
       and(

@@ -40,7 +40,7 @@ import {
   completeRunWithoutCallbacksFixture,
   holdChatEventQueueAdmissionLockFixture,
   holdOrgAdmissionLockFixture,
-  readChatInputQueueParamsFixture,
+  readChatEventInputParamsFixture,
   setQueuedUserMessageCreatedAtFixture,
   setWorkflowQueueEventCreatedAtFixture,
 } from "../../../test-fixtures/chat-events";
@@ -573,13 +573,13 @@ describe("workflow queue", () => {
       throw new Error("Expected two pending workflow queue events");
     }
     await expect(
-      readChatInputQueueParamsFixture(secondEvent.id),
+      readChatEventInputParamsFixture(secondEvent.id),
     ).resolves.toMatchObject({
       eventId: secondEvent.id,
       encryptedParams: expect.any(String),
     });
     await expect(
-      readChatInputQueueParamsFixture(thirdEvent.id),
+      readChatEventInputParamsFixture(thirdEvent.id),
     ).resolves.toMatchObject({
       eventId: thirdEvent.id,
       encryptedParams: expect.any(String),
@@ -595,7 +595,7 @@ describe("workflow queue", () => {
     const afterFirst = await workflowRunIds(automation.threadId);
     expect(afterFirst).toHaveLength(2);
     await expect(
-      readChatInputQueueParamsFixture(secondEvent.id),
+      readChatEventInputParamsFixture(secondEvent.id),
     ).resolves.toBeNull();
     const secondClaim = await completeRunThroughSandbox(
       scenario,
@@ -603,7 +603,7 @@ describe("workflow queue", () => {
     );
     expect(secondClaim.apiStartTime).toBe(dequeuedAt);
     await expect(
-      readChatInputQueueParamsFixture(thirdEvent.id),
+      readChatEventInputParamsFixture(thirdEvent.id),
     ).resolves.toBeNull();
   });
 
@@ -759,7 +759,7 @@ describe("workflow queue", () => {
       throw new Error("Expected one coalesced schedule queue event");
     }
     await expect(
-      readChatInputQueueParamsFixture(coalescedEvent.id),
+      readChatEventInputParamsFixture(coalescedEvent.id),
     ).resolves.toMatchObject({
       eventId: coalescedEvent.id,
       encryptedParams: expect.any(String),
@@ -1001,7 +1001,7 @@ describe("workflow queue", () => {
       throw new Error("Expected the rejected event to revoke its queue input");
     }
     await expect(
-      readChatInputQueueParamsFixture(rejectedEvent.revokesEventId),
+      readChatEventInputParamsFixture(rejectedEvent.revokesEventId),
     ).resolves.toBeNull();
 
     await runsApi.ensureOrgModelProvider(scenario.actor);

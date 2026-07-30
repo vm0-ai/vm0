@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { chatInputQueueParams } from "@vm0/db/schema/chat-input-queue-params";
+import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { morningBriefDeliveries } from "@vm0/db/schema/morning-brief";
 import { and, eq } from "drizzle-orm";
@@ -51,12 +51,12 @@ export async function readMorningBriefQueuedParamsForDeliveryFixture(args: {
 }) {
   const messages = await db()
     .select({
-      encryptedParams: chatInputQueueParams.encryptedParams,
+      encryptedParams: chatEventInputParams.encryptedParams,
     })
     .from(chatEvents)
     .leftJoin(
-      chatInputQueueParams,
-      eq(chatInputQueueParams.eventId, chatEvents.id),
+      chatEventInputParams,
+      eq(chatEventInputParams.eventId, chatEvents.id),
     )
     .where(eq(chatEvents.chatThreadId, args.threadId));
   for (const message of messages) {
@@ -86,17 +86,17 @@ export async function replaceMorningBriefQueuedCallbackPayloadFixture(args: {
   const messages = await db()
     .select({
       id: chatEvents.id,
-      encryptedParams: chatInputQueueParams.encryptedParams,
+      encryptedParams: chatEventInputParams.encryptedParams,
       userMessage: chatEvents.userMessage,
       attachFiles: chatEvents.attachFiles,
-      attachFileMetadata: chatInputQueueParams.attachFileMetadata,
+      attachFileMetadata: chatEventInputParams.attachFileMetadata,
       generationTemplate: chatEvents.generationTemplate,
       triggerSource: chatEvents.triggerSource,
     })
     .from(chatEvents)
     .leftJoin(
-      chatInputQueueParams,
-      eq(chatInputQueueParams.eventId, chatEvents.id),
+      chatEventInputParams,
+      eq(chatEventInputParams.eventId, chatEvents.id),
     )
     .where(eq(chatEvents.chatThreadId, args.threadId));
   for (const message of messages) {
@@ -153,12 +153,12 @@ export async function readMorningBriefQueuedParamsFixture(args: {
 }) {
   const [event] = await db()
     .select({
-      encryptedParams: chatInputQueueParams.encryptedParams,
+      encryptedParams: chatEventInputParams.encryptedParams,
     })
     .from(chatEvents)
     .leftJoin(
-      chatInputQueueParams,
-      eq(chatInputQueueParams.eventId, chatEvents.id),
+      chatEventInputParams,
+      eq(chatEventInputParams.eventId, chatEvents.id),
     )
     .where(eq(chatEvents.id, args.messageId))
     .limit(1);

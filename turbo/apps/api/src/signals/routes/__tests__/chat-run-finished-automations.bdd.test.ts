@@ -261,7 +261,7 @@ describe("chat-run-finished workflow automations", () => {
   });
 
   it(
-    "fires matching automations when a watched run completes",
+    "fires claimable matching automations when a watched run completes",
     { timeout: 30_000 },
     async () => {
       const fixture = await setupChatAutomationFixture();
@@ -304,6 +304,17 @@ describe("chat-run-finished workflow automations", () => {
       await expectAutomationFired(patternMatch);
       await expect(automationLastRunAt(failedOnly)).resolves.toBeNull();
       await expect(automationLastRunAt(patternMiss)).resolves.toBeNull();
+
+      const automationRuns = await api.listAgentRuns(fixture.actor, {
+        status: "pending",
+        limit: 20,
+      });
+      expect(automationRuns.runs).toHaveLength(2);
+      const automationRunId = automationRuns.runs[0]?.id;
+      if (!automationRunId) {
+        throw new Error("Expected a triggered automation run");
+      }
+      await claimChatRun(fixture.runnerGroup, automationRunId);
     },
   );
 
