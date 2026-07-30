@@ -97,6 +97,19 @@ export const chatEvents = pgTable(
     // runs rendered in a chat thread.
     runGroupId: uuid("run_group_id"),
     eventType: text("event_type").$type<ChatEventType>().notNull(),
+    /**
+     * Optional polymorphic trigger-context pointer.
+     *
+     * context_id is not unique: when a pending event is claimed, the revoke +
+     * insert replacement reuses it. A context row belongs to one trigger, not
+     * one event row. The pointer has no foreign key because context_type
+     * selects its table. Legal (event_type, context_type) combinations are
+     * enforced by the NewChatEvent TypeScript write union, not by SQL.
+     */
+    contextType: text("context_type").$type<
+      "slack" | "feishu" | "automation" | "goal"
+    >(),
+    contextId: uuid("context_id"),
     automationId: uuid("automation_id"),
     triggerSource: text("trigger_source").$type<TriggerSource>(),
     triggerBrief: text("trigger_brief"),
@@ -206,6 +219,14 @@ export const chatEvents = pgTable(
         "chat_events_input_content_check",
         sql`${table.eventType} NOT IN ('input.prompt', 'input.rejected')
           OR ${table.content} IS NULL`,
+      ),
+      check(
+        "chat_events_context_pair_check",
+        sql`(${table.contextType} IS NULL) = (${table.contextId} IS NULL)`,
+      ),
+      check(
+        "chat_events_context_type_check",
+        sql`${table.contextType} IN ('slack', 'feishu', 'automation', 'goal')`,
       ),
     ];
   },

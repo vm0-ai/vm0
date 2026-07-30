@@ -1,6 +1,6 @@
 {
-  "id": "5a5e12ca-e028-4ecc-a3b2-6a78ef40b7bc",
-  "prevId": "c5725b6d-4db5-458c-82ef-73c252076251",
+  "id": "c5725b6d-4db5-458c-82ef-73c252076251",
+  "prevId": "f0fcae25-ecbe-4360-9ee6-5219b9453c9d",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4337,6 +4337,18 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "context_type": {
+          "name": "context_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "context_id": {
+          "name": "context_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -4644,6 +4656,14 @@
         "chat_events_input_content_check": {
           "name": "chat_events_input_content_check",
           "value": "\"chat_events\".\"event_type\" NOT IN ('input.prompt', 'input.rejected')\n          OR \"chat_events\".\"content\" IS NULL"
+        },
+        "chat_events_context_pair_check": {
+          "name": "chat_events_context_pair_check",
+          "value": "(\"chat_events\".\"context_type\" IS NULL) = (\"chat_events\".\"context_id\" IS NULL)"
+        },
+        "chat_events_context_type_check": {
+          "name": "chat_events_context_type_check",
+          "value": "\"chat_events\".\"context_type\" IN ('slack', 'feishu', 'automation', 'goal')"
         }
       },
       "isRLSEnabled": false

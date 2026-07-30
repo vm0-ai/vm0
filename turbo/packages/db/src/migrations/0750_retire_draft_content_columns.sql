@@ -9,5 +9,5 @@ ALTER TABLE "chat_threads"
 ALTER TABLE "zero_agent_drafts"
   DROP CONSTRAINT "zero_agent_drafts_draft_user_message_check",
   DROP COLUMN "draft_content";--> statement-breakpoint
-ALTER TABLE "chat_threads" RENAME CONSTRAINT "chat_threads_draft_user_message_check_0747" TO "chat_threads_draft_user_message_check";--> statement-breakpoint
-ALTER TABLE "zero_agent_drafts" RENAME CONSTRAINT "zero_agent_drafts_draft_user_message_check_0747" TO "zero_agent_drafts_draft_user_message_check";
+ALTER TABLE "chat_threads" RENAME CONSTRAINT "chat_threads_draft_user_message_check_0748" TO "chat_threads_draft_user_message_check";--> statement-breakpoint
+ALTER TABLE "zero_agent_drafts" RENAME CONSTRAINT "zero_agent_drafts_draft_user_message_check_0748" TO "zero_agent_drafts_draft_user_message_check";

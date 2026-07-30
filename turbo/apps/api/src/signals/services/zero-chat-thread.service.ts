@@ -1415,7 +1415,7 @@ export function zeroChatThreadArtifacts(args: {
 function artifactCallerVisibilityConditions(args: {
   readonly userId: string;
   readonly orgId: string;
-}): SQL[] {
+}): readonly [SQL, SQL, SQL] {
   return [
     eq(agentRuns.orgId, args.orgId),
     eq(chatThreads.userId, args.userId),
@@ -1646,7 +1646,6 @@ async function listChangedArtifacts(args: {
         effectiveUpdatedAt,
         sql`(${args.updatedAfter}::timestamptz AT TIME ZONE 'UTC') - (${ARTIFACT_SYNC_REPLAY_WINDOW_MINUTES} * interval '1 minute')`,
       );
-  const callerConditions = artifactCallerVisibilityConditions(args.query);
   const fileConditions = artifactFileVisibilityConditions(args.db);
   const rows = await executeRawRows(
     args.db,
@@ -1668,7 +1667,7 @@ async function listChangedArtifacts(args: {
           ON ${eq(agentComposes.id, chatThreads.agentComposeId)}
         INNER JOIN ${zeroAgents}
           ON ${eq(zeroAgents.id, agentComposes.id)}
-        WHERE ${sql.join(callerConditions, sql` AND `)}
+        WHERE ${and(...artifactCallerVisibilityConditions(args.query))}
       ),
       changed_artifact_ids AS MATERIALIZED (
         SELECT

@@ -5954,6 +5954,38 @@ describe("connector catalog rejection and latest-valid retention", () => {
       },
     },
     {
+      name: "duplicate connector slug",
+      expected: "invalid-artifact",
+      release: () => {
+        return buildRelease({
+          version: "duplicate-connector-slug",
+          mutateCatalog: (artifact) => {
+            const connectors = arrayValue(artifact.connectors, "connectors");
+            connectors.push(
+              structuredClone(firstRecord(connectors, "connectors")),
+            );
+          },
+        });
+      },
+    },
+    {
+      name: "unknown category group",
+      expected: "relationship-mismatch",
+      release: () => {
+        return buildRelease({
+          version: "unknown-category-group",
+          mutateCatalog: (artifact) => {
+            const categoryMetadata = recordValue(
+              artifact.categoryMetadata,
+              "categoryMetadata",
+            );
+            firstRecord(categoryMetadata.categories, "categories").groupId =
+              "unknown";
+          },
+        });
+      },
+    },
+    {
       name: "duplicate auth method id",
       expected: "invalid-artifact",
       release: () => {

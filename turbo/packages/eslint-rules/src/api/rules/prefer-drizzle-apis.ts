@@ -20,6 +20,7 @@ import {
   isVariableDeclaration,
   isVariableDeclarationList,
   NodeFlags,
+  TypeFlags,
   type Expression as TypeScriptExpression,
   type Node,
   type Signature,
@@ -233,6 +234,9 @@ export const preferDrizzleApis = createRule({
       if (isRelationalWhereCallbackResult(node)) {
         return true;
       }
+      if (hasExplicitOptionalSqlReturnContract(node)) {
+        return true;
+      }
       const parent = node.parent;
       if (
         parent.type === AST_NODE_TYPES.TemplateLiteral &&
@@ -264,6 +268,62 @@ export const preferDrizzleApis = createRule({
         predicateIndex !== undefined &&
         parent.arguments[predicateIndex] === node &&
         isDrizzleMethodCall(parent, method)
+      );
+    }
+
+    function isOptionalDrizzleSqlType(type: Type, location: Node): boolean {
+      const members = type.isUnion() ? type.types : [type];
+      let hasOptional = false;
+      let hasSql = false;
+      for (const member of members) {
+        if ((member.flags & (TypeFlags.Undefined | TypeFlags.Void)) !== 0) {
+          hasOptional = true;
+          continue;
+        }
+        if (
+          (member.flags & (TypeFlags.Any | TypeFlags.Unknown)) !== 0 ||
+          !isDrizzleSqlType(checker, member, location)
+        ) {
+          return false;
+        }
+        hasSql = true;
+      }
+      return hasOptional && hasSql;
+    }
+
+    function hasExplicitOptionalSqlReturnContract(
+      node: TSESTree.Expression,
+    ): boolean {
+      const result = outerTransparentNode(node);
+      const returnStatement = result.parent;
+      if (
+        returnStatement?.type !== AST_NODE_TYPES.ReturnStatement ||
+        returnStatement.argument !== result ||
+        returnStatement.parent.type !== AST_NODE_TYPES.BlockStatement
+      ) {
+        return false;
+      }
+      const declaration = returnStatement.parent.parent;
+      if (
+        declaration.type !== AST_NODE_TYPES.FunctionDeclaration ||
+        declaration.body !== returnStatement.parent
+      ) {
+        return false;
+      }
+      const tsDeclaration = services.esTreeNodeToTSNodeMap.get(declaration);
+      if (
+        !isFunctionDeclaration(tsDeclaration) ||
+        tsDeclaration.type === undefined
+      ) {
+        return false;
+      }
+      const signature = checker.getSignatureFromDeclaration(tsDeclaration);
+      return (
+        signature !== undefined &&
+        isOptionalDrizzleSqlType(
+          checker.getReturnTypeOfSignature(signature),
+          tsDeclaration,
+        )
       );
     }
 
@@ -608,6 +668,20 @@ export const preferDrizzleApis = createRule({
         if (method === "innerJoin" && isTrueJoinPredicate) {
           context.report({ node, messageId: "crossJoin" });
         }
+      });
+    }
+
+    function inspectSqlJoinCall(node: TSESTree.CallExpression): void {
+      if (
+        node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+        memberName(node.callee) !== "join" ||
+        !acceptsOptionalSql(node) ||
+        !sqlSourceComposer.couldCompose(node)
+      ) {
+        return;
+      }
+      structuralCallInspections.push(() => {
+        reportAnalysis(node, "predicate");
       });
     }
 
@@ -1309,6 +1383,32 @@ export const preferDrizzleApis = createRule({
         }
         current = current.callee.object;
       }
+    }
+
+    function inspectNestedDirectColumn(
+      node: TSESTree.TaggedTemplateExpression,
+    ): void {
+      const template = node.parent;
+      const outer =
+        template.type === AST_NODE_TYPES.TemplateLiteral
+          ? template.parent
+          : undefined;
+      const expression = node.quasi.expressions[0];
+      if (
+        outer?.type !== AST_NODE_TYPES.TaggedTemplateExpression ||
+        outer.quasi !== template ||
+        !template.expressions.includes(node) ||
+        expression === undefined ||
+        !isDrizzleSqlTag(checker, services, node.tag) ||
+        !isDrizzleSqlTag(checker, services, outer.tag) ||
+        !isConventionalColumnExpression(expression) ||
+        columnMetadata(expression) === undefined ||
+        reportedDirectColumnSelections.has(node)
+      ) {
+        return;
+      }
+      reportedDirectColumnSelections.add(node);
+      context.report({ node, messageId: "directColumn" });
     }
 
     function inspectDirectColumnSelection(node: TSESTree.Expression): void {
@@ -2146,6 +2246,7 @@ export const preferDrizzleApis = createRule({
       CallExpression(node: TSESTree.CallExpression): void {
         inspectRawQueryCall(node);
         inspectPredicateCall(node);
+        inspectSqlJoinCall(node);
         inspectUnstableGroupingCall(node);
         inspectAdditionalContextCall(node);
         inspectConflictUpdateCall(node);
@@ -2234,6 +2335,9 @@ export const preferDrizzleApis = createRule({
         reportSourceLocal(sourceLocalCandidates);
         for (const inspect of structuralCallInspections) {
           inspect();
+        }
+        for (const node of directColumnCandidates) {
+          inspectNestedDirectColumn(node);
         }
         inspectStructuredSelections();
         reportSourceLocal(deferredSourceLocalCandidates);
