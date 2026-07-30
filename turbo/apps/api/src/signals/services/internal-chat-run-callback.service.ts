@@ -2132,6 +2132,31 @@ function formatPriorRunEvent(
   return attach ? `${body}\n${attach}` : body;
 }
 
+function priorRunsContextLabel(
+  triggerSource: QueuedUserMessage["triggerSource"],
+): string {
+  switch (triggerSource) {
+    case "slack": {
+      return "Slack";
+    }
+    case "feishu": {
+      return "Feishu";
+    }
+    case "teams": {
+      return "Microsoft Teams";
+    }
+    case "telegram": {
+      return "Telegram";
+    }
+    case "workflow-schedule": {
+      return "Workflow Automation";
+    }
+    default: {
+      return "Web Chat";
+    }
+  }
+}
+
 function buildChatPriorRunsContext(
   runs: readonly PriorRun[],
   triggerSource: QueuedUserMessage["triggerSource"],
@@ -2161,21 +2186,8 @@ function buildChatPriorRunsContext(
     ].join("\n");
   });
   return [
-    `# ${
-      triggerSource === "slack"
-        ? "Slack"
-        : triggerSource === "feishu"
-          ? "Feishu"
-          : triggerSource === "teams"
-            ? "Microsoft Teams"
-            : triggerSource === "telegram"
-              ? "Telegram"
-              : triggerSource === "workflow-schedule"
-                ? "Morning Brief"
-                : "Web Chat"
-    } Run Context`,
+    `# ${priorRunsContextLabel(triggerSource)} Run Context`,
     "The current CLI session is fresh, so recent visible chat rounds are provided here for continuity.",
-    "Use these messages as context for the user's current request.",
     "- Treat the newest run below as the most recent prior round.",
     "- Use the LOG_COMMAND for a run if you need more detailed agent log context.",
     "",
