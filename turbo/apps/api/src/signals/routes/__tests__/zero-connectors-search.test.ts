@@ -95,6 +95,7 @@ describe("GET /api/zero/connectors/search", () => {
     expect(response.body.connectors.length).toBeGreaterThan(0);
     for (const connector of response.body.connectors) {
       expect(connector).toHaveProperty("id");
+      expect(connector.slug).toBe(connector.id);
       expect(connector).toHaveProperty("label");
       expect(connector).toHaveProperty("description");
       expect(connector).toHaveProperty("authMethods");

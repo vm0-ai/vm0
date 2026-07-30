@@ -179,7 +179,7 @@ async function rejectProviderAuthorization(
   await app.request(callbackUrl.toString());
 }
 
-describe("POST /api/zero/connectors/:type/oauth/start", () => {
+describe("POST /api/zero/connectors/:connectorSlug/oauth/start", () => {
   beforeEach(() => {
     mockEnv("VM0_API_BACKEND_URL", API_ORIGIN);
     mockEnv("VM0_WEB_URL", WEB_ORIGIN);

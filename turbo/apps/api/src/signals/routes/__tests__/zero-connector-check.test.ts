@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  addClientCapabilityToVersion,
+  CLIENT_CAPABILITY_CONNECTOR_SLUG_IDENTITIES,
+  CLIENT_VERSION_HEADER,
+} from "@vm0/api-contracts/contracts/client-headers";
+import {
   type ConnectorCheckRequest,
   zeroConnectorCheckContract,
 } from "@vm0/api-contracts/contracts/zero-connector-check";
@@ -37,6 +42,10 @@ const connectorsApi = createConnectorBddApi(context);
 const authDevice = createAuthDeviceApiActions(context);
 const runsApi = createRunsApi(context);
 const store = createStore();
+const CONNECTOR_SLUG_CAPABLE_CLIENT_VERSION = addClientCapabilityToVersion(
+  "0.0.0-test",
+  CLIENT_CAPABILITY_CONNECTOR_SLUG_IDENTITIES,
+);
 
 interface ConnectedFixture {
   readonly actor: ApiTestUser;
@@ -77,6 +86,23 @@ async function checkWithSession(
   return await accept(
     client().check({
       headers: { authorization: "Bearer clerk-session" },
+      extraHeaders: {
+        [CLIENT_VERSION_HEADER]: CONNECTOR_SLUG_CAPABLE_CLIENT_VERSION,
+      },
+      body,
+    }),
+    [200],
+  );
+}
+
+async function checkWithLegacySession(
+  actor: ApiTestUser,
+  body: ConnectorCheckRequest,
+) {
+  mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+  return await accept(
+    client().check({
+      headers: { authorization: "Bearer clerk-session" },
       body,
     }),
     [200],
@@ -87,6 +113,9 @@ async function checkWithToken(token: string, body: ConnectorCheckRequest) {
   return await accept(
     client().check({
       headers: { authorization: `Bearer ${token}` },
+      extraHeaders: {
+        [CLIENT_VERSION_HEADER]: CONNECTOR_SLUG_CAPABLE_CLIENT_VERSION,
+      },
       body,
     }),
     [200],
@@ -261,7 +290,11 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
     expect(allowed.body).toMatchObject({
       outcome: "resolved",
       mode: "url",
-      connector: { connectorRef: "slack", label: "Slack" },
+      connector: {
+        connectorRef: "slack",
+        connectorSlug: "slack",
+        label: "Slack",
+      },
       run: { status: "configured" },
       permission: {
         kind: "matched",
@@ -337,6 +370,94 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
     });
   });
 
+  it("accepts canonical and matching dual connector identities but rejects conflicts", async () => {
+    const actor = bdd.user();
+    const base = {
+      mode: "url" as const,
+      method: "GET",
+      url: "https://api.github.com/repos/vm0-ai/vm0",
+    };
+
+    const canonical = await checkWithSession(actor, {
+      ...base,
+      connectorSlug: "github",
+    });
+    expect(canonical.body).toMatchObject({
+      outcome: "resolved",
+      connector: {
+        connectorRef: "github",
+        connectorSlug: "github",
+      },
+    });
+
+    const dual = await checkWithSession(actor, {
+      ...base,
+      connectorRef: "github",
+      connectorSlug: "github",
+    });
+    expect(dual.body).toMatchObject({
+      outcome: "resolved",
+      connector: {
+        connectorRef: "github",
+        connectorSlug: "github",
+      },
+    });
+
+    mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const conflicting = await accept(
+      client().check({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          ...base,
+          connectorRef: "github",
+          connectorSlug: "slack",
+        },
+      }),
+      [400],
+    );
+    expect(conflicting.body.error.code).toBe("BAD_REQUEST");
+  });
+
+  it("preserves strict legacy CLI response shapes without the slug capability", async () => {
+    const actor = bdd.user();
+    const resolved = await checkWithLegacySession(actor, {
+      mode: "environment",
+      environmentName: "GH_TOKEN",
+    });
+    expect(resolved.body).toStrictEqual({
+      outcome: "resolved",
+      mode: "environment",
+      connector: {
+        connectorRef: "github",
+        label: "GitHub",
+        visibility: "available",
+        credentialResolution: "network-boundary",
+      },
+      environmentName: "GH_TOKEN",
+      run: { status: "not-scoped" },
+      permission: null,
+    });
+
+    const ambiguous = await checkWithLegacySession(actor, {
+      mode: "url",
+      method: "GET",
+      url: "https://api.accounts.nintendo.com/2.0.0/users/me",
+    });
+    expect(ambiguous.body).toStrictEqual({
+      outcome: "ambiguous",
+      candidates: [
+        {
+          connectorRef: "nintendo-store",
+          label: "Nintendo Store",
+        },
+        {
+          connectorRef: "nintendo-switch-parental-controls",
+          label: "Nintendo Switch Parental Controls",
+        },
+      ],
+    });
+  });
+
   it("supports a real PAT and resolves hidden server-authored metadata without private refs", async () => {
     const actor = bdd.user();
     const token = await issueDevicePat(actor);
@@ -405,6 +526,7 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
       mode: "environment",
       connector: {
         connectorRef: "github",
+        connectorSlug: "github",
         label: "GitHub",
         visibility: "available",
         credentialResolution: "network-boundary",
@@ -441,9 +563,14 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
     expect(ambiguous.body).toStrictEqual({
       outcome: "ambiguous",
       candidates: [
-        { connectorRef: "nintendo-store", label: "Nintendo Store" },
+        {
+          connectorRef: "nintendo-store",
+          connectorSlug: "nintendo-store",
+          label: "Nintendo Store",
+        },
         {
           connectorRef: "nintendo-switch-parental-controls",
+          connectorSlug: "nintendo-switch-parental-controls",
           label: "Nintendo Switch Parental Controls",
         },
       ],
@@ -496,6 +623,7 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
       outcome: "environment-not-used",
       connector: {
         connectorRef: "nintendo-switch-parental-controls",
+        connectorSlug: "nintendo-switch-parental-controls",
         label: "Nintendo Switch Parental Controls",
         visibility: "available",
         credentialResolution: "network-boundary",

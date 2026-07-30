@@ -5185,8 +5185,15 @@
     {
       "idx": 740,
       "version": "7",
-      "when": 1785374328760,
-      "tag": "0740_thread_browser_lifecycle",
+      "when": 1785376274586,
+      "tag": "0740_drop_chat_message_asset_refs_compatibility_view",
+      "breakpoints": true
+    },
+    {
+      "idx": 741,
+      "version": "7",
+      "when": 1785378010482,
+      "tag": "0741_thread_browser_lifecycle",
       "breakpoints": true
     }
   ]

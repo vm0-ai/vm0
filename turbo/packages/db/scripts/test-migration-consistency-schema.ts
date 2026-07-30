@@ -4446,6 +4446,7 @@ async function validateChatInputGoalEvent(): Promise<void> {
 
 const CHAT_EVENT_ASSET_REF_TABLE_RENAME_PREVIOUS_MIGRATION = 724;
 const CHAT_EVENT_ASSET_REF_TABLE_RENAME_MIGRATION = 725;
+const CHAT_EVENT_ASSET_REF_VIEW_CONTRACTION_MIGRATION = 740;
 
 async function validateChatEventAssetRefTableRename(): Promise<void> {
   console.log(
@@ -4828,6 +4829,59 @@ async function validateChatEventAssetRefTableRename(): Promise<void> {
         },
       ]);
       assert.deepEqual(physicalRows.rows, compatibilityRows.rows);
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        CHAT_EVENT_ASSET_REF_VIEW_CONTRACTION_MIGRATION,
+      );
+
+      const contractedRelations = await client.query<{
+        relationKind: string;
+        relationName: string;
+      }>(`
+        SELECT
+          "relname" AS "relationName",
+          "relkind"::text AS "relationKind"
+        FROM "pg_class"
+        INNER JOIN "pg_namespace"
+          ON "pg_namespace"."oid" = "pg_class"."relnamespace"
+        WHERE "pg_namespace"."nspname" = 'public'
+          AND "pg_class"."relname" IN (
+            'chat_event_asset_refs',
+            'chat_message_asset_refs'
+          )
+        ORDER BY "pg_class"."relname"
+      `);
+      assert.deepEqual(contractedRelations.rows, [
+        { relationKind: "r", relationName: "chat_event_asset_refs" },
+      ]);
+
+      const contractedPhysicalColumns = await client.query<{
+        columnName: string;
+      }>(`
+        SELECT "column_name" AS "columnName"
+        FROM "information_schema"."columns"
+        WHERE "table_schema" = 'public'
+          AND "table_name" = 'chat_event_asset_refs'
+        ORDER BY "column_name"
+      `);
+      assert.deepEqual(contractedPhysicalColumns.rows, physicalColumns.rows);
+
+      const contractedRows = await client.query<{
+        assetId: string;
+        chatMessageId: string;
+        position: number;
+      }>(
+        `
+          SELECT
+            "chat_event_id" AS "chatMessageId",
+            "asset_id" AS "assetId",
+            "position"
+          FROM "chat_event_asset_refs"
+          ORDER BY "position"
+        `,
+      );
+      assert.deepEqual(contractedRows.rows, physicalRows.rows);
     } finally {
       await client.end();
     }
@@ -4836,7 +4890,7 @@ async function validateChatEventAssetRefTableRename(): Promise<void> {
   }
 
   console.log(
-    "   ✅ Historical refs survive, the aliased compatibility view supports previous-API SELECT/INSERT RETURNING/DELETE without triggers, current-API writes succeed, and physical objects are renamed\n",
+    "   ✅ Historical refs survive the rename and compatibility-view contraction, previous-API access remains compatible through the expand step, and the physical table and aliased schema column stay intact\n",
   );
 }
 

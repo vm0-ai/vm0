@@ -499,7 +499,10 @@ const getAgentUserConnectorsInner$ = computed(async (get) => {
   }
   return {
     status: 200 as const,
-    body: { enabledTypes: availableEnabledConnectorSlugs },
+    body: {
+      enabledTypes: availableEnabledConnectorSlugs,
+      enabledConnectorSlugs: availableEnabledConnectorSlugs,
+    },
   };
 });
 
@@ -817,7 +820,9 @@ const updateAgentUserConnectorsInner$ = command(
       return agentNotFound(params.id);
     }
 
-    const uniqueConnectorSlugs = Array.from(new Set(body.data.enabledTypes));
+    const uniqueConnectorSlugs = Array.from(
+      new Set(body.data.enabledConnectorSlugs),
+    );
     const operation = body.data.operation ?? "replace";
     if (operation !== "remove") {
       // Agent connector selection is persisted execution configuration, not a
@@ -868,9 +873,13 @@ const updateAgentUserConnectorsInner$ = command(
       return agentNotFound(params.id);
     }
 
+    const enabledConnectorSlugs = [...updated.enabledConnectorSlugs];
     return {
       status: 200 as const,
-      body: { enabledTypes: [...updated.enabledConnectorSlugs] },
+      body: {
+        enabledTypes: enabledConnectorSlugs,
+        enabledConnectorSlugs,
+      },
     };
   },
 );

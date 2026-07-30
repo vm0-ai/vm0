@@ -32,7 +32,7 @@ async function startGithubOauth(): Promise<URL> {
   mockAuthenticatedSession();
   const response = await accept(
     setupApp({ context })(zeroConnectorOauthStartContract).start({
-      params: { type: "github" },
+      params: { connectorSlug: "github" },
       headers: { authorization: "Bearer clerk-session" },
       body: { authMethod: "oauth" },
     }),
@@ -83,7 +83,7 @@ describe("connector OAuth state cleanup cron", () => {
     expect(cleanup.body.deleted).toBeGreaterThanOrEqual(1);
     const continuation = await accept(
       setupApp({ context })(zeroConnectorOauthContinueContract).continue({
-        params: { type: "github" },
+        params: { connectorSlug: "github" },
         query: {
           state: usableContinuationUrl.searchParams.get("state") ?? "",
         },

@@ -76,7 +76,7 @@ export const deleteConnector$ = command(
     const client = createClient(zeroConnectorsBySlugContract);
     await accept(
       client.delete({
-        params: { type: connectorSlug },
+        params: { connectorSlug },
         fetchOptions: { signal },
       }),
       [204],

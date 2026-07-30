@@ -579,7 +579,8 @@ export async function refreshConnectorCredentialAccess(
   args.signal.throwIfAborted();
   if (!refreshed.ok) {
     log.warn("Connector credential refresh failed", {
-      // TODO(#23619): Rename only with the structured-log schema.
+      // TODO(#23837): Remove the legacy field after the seven-day Axiom window.
+      connectorSlug: args.connection.connectorSlug,
       connectorRef: args.connection.connectorSlug,
       authMethodId: args.connection.runtimeMethod.authMethodId,
       error: refreshed.error,

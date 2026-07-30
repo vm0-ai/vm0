@@ -99,6 +99,7 @@ export async function publishConnectorChangedForUserSafely(
   await tapError(
     publishUserSignal([userId], "connector:changed", {
       connectorRef: connectorSlug,
+      connectorSlug,
     } satisfies ConnectorChangedPayload),
     (error) => {
       L.warn("Failed to publish connector changed signal", {

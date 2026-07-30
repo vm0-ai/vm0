@@ -865,6 +865,7 @@ export const startConnectorExternalCodeSession$ = command(
       sessionId: session.id,
       sessionToken,
       type: resolved.connectorSlug,
+      connectorSlug: resolved.connectorSlug,
       status: "pending",
       authorizationUrl: startResult.authorizationUrl,
       expiresIn: startResult.expiresIn,

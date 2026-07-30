@@ -446,7 +446,7 @@ describe("onboarding flow", () => {
     context.mocks.api(
       zeroConnectorOauthStartContract.start,
       ({ params, respond }) => {
-        expect(params.type).toBe("github");
+        expect(params.connectorSlug).toBe("github");
         return respond(200, {
           authorizationUrl: "https://oauth.test/github/authorize",
         });
@@ -502,7 +502,7 @@ describe("onboarding flow", () => {
     context.mocks.api(
       zeroConnectorManualGrantContract.connect,
       ({ body, params, respond }) => {
-        expect(params.type).toBe("ahrefs");
+        expect(params.connectorSlug).toBe("ahrefs");
         expect(body.authMethod).toBe("api-token");
         expect(body.authorizeAgent).toBeTruthy();
         expect(body.agentId).toBeUndefined();

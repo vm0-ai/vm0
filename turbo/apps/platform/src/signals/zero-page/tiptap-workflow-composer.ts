@@ -24,6 +24,7 @@ import {
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
+import { agents$ } from "../agent.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { onRef, resetSignal } from "../utils.ts";
 import type { DraftInputSyncTarget, DraftSignals } from "./chat-draft.ts";
@@ -41,6 +42,16 @@ import {
   type ComposerChatThreadSuggestion,
 } from "./chat-thread-suggestion-domain.ts";
 import {
+  splitAgentMentionSegments,
+  type ComposerAgentSuggestion,
+} from "./composer-agent-suggestion-domain.ts";
+import {
+  agentMentionText,
+  createAgentMentionAvatarRuntime,
+  createAgentMentionNode,
+  type AgentMentionAvatarRuntime,
+} from "./composer-agent-mention-node.ts";
+import {
   createComposerChatThreadSuggestions,
   type ComposerChatThreadSuggestionResult,
 } from "./composer-chat-thread-suggestions.ts";
@@ -52,6 +63,7 @@ import {
   type SlashWorkflowRange,
 } from "./workflow-composer-domain.ts";
 import {
+  AGENT_MENTION_NODE_NAME,
   CHAT_THREAD_MENTION_NODE_NAME,
   createEditorDocumentSnapshot,
   INLINE_TEMPLATE_NODE_NAME,
@@ -71,6 +83,7 @@ type WorkflowNamesSyncCommand = Command<
   Promise<void>,
   [AbortSignal, AbortSignal]
 >;
+type AgentMentionAvatarsSyncCommand = Command<Promise<void>, [AbortSignal]>;
 
 interface MountedWorkflowNamesSync {
   readonly command$: WorkflowNamesSyncCommand;
@@ -192,6 +205,7 @@ export interface WorkflowComposerSignals {
   readonly setSelectedSuggestionIndex$: Command<void, [number]>;
   readonly closeSuggestionMenu$: Command<void, []>;
   readonly insertWorkflow$: Command<void, [ComposerSlashWorkflow]>;
+  readonly insertAgent$: Command<void, [ComposerAgentSuggestion]>;
   readonly insertChatThread$: Command<void, [ComposerChatThreadSuggestion]>;
   readonly insertPromptMarkdown$: Command<void, [string]>;
   readonly insertUserMessage$: Command<void, [UserMessageDocument]>;
@@ -1074,22 +1088,41 @@ function setTemplateAttachmentNode(
   );
 }
 
+function agentMentionInlineContent(value: string): JSONContent[] {
+  return splitAgentMentionSegments(value).map((segment): JSONContent => {
+    return segment.type === "text"
+      ? { type: "text", text: segment.text }
+      : {
+          type: AGENT_MENTION_NODE_NAME,
+          attrs: {
+            agentId: segment.agentId,
+            name: segment.name,
+            avatarUrl: null,
+          },
+        };
+  });
+}
+
+function composerInlineReferenceContent(line: string): JSONContent[] {
+  const content: JSONContent[] = [];
+  for (const segment of splitChatThreadMentionSegments(line)) {
+    if (segment.type === "text") {
+      content.push(...agentMentionInlineContent(segment.text));
+      continue;
+    }
+    content.push({
+      type: CHAT_THREAD_MENTION_NODE_NAME,
+      attrs: { threadId: segment.threadId, title: segment.title },
+    });
+  }
+  return content;
+}
+
 function valueToWorkflowComposerDoc(value: string): JSONContent {
   const content: JSONContent[] = value.split("\n").map((line) => {
-    if (line.length === 0) {
-      return { type: "paragraph" };
-    }
-    const inlineContent = splitChatThreadMentionSegments(line).map(
-      (segment): JSONContent => {
-        return segment.type === "text"
-          ? { type: "text", text: segment.text }
-          : {
-              type: CHAT_THREAD_MENTION_NODE_NAME,
-              attrs: { threadId: segment.threadId, title: segment.title },
-            };
-      },
-    );
-    return { type: "paragraph", content: inlineContent };
+    return line.length === 0
+      ? { type: "paragraph" }
+      : { type: "paragraph", content: composerInlineReferenceContent(line) };
   });
   return { type: "doc", content };
 }
@@ -1099,6 +1132,9 @@ function nodeText(
   to: number = node.content.size,
 ): string {
   return node.textBetween(0, to, "\n", (leafNode) => {
+    if (leafNode.type.name === AGENT_MENTION_NODE_NAME) {
+      return agentMentionText(leafNode);
+    }
     if (leafNode.type.name === CHAT_THREAD_MENTION_NODE_NAME) {
       return chatThreadMentionText(leafNode);
     }
@@ -1442,7 +1478,10 @@ function createFeedbackItemNode(
   });
 }
 
-function createWorkflowEditor(runtime: WorkflowComposerRuntime): Editor {
+function createWorkflowEditor(
+  runtime: WorkflowComposerRuntime,
+  agentMentionAvatarRuntime: AgentMentionAvatarRuntime,
+): Editor {
   return new Editor({
     element: null,
     extensions: [
@@ -1450,6 +1489,10 @@ function createWorkflowEditor(runtime: WorkflowComposerRuntime): Editor {
       createTemplateAttachmentNode(runtime),
       createInlineTemplateNode(runtime),
       createFeedbackItemNode(runtime),
+      createAgentMentionNode(
+        COMPOSER_INLINE_REFERENCE_CLASS,
+        agentMentionAvatarRuntime,
+      ),
       ChatThreadMentionNode,
       WorkflowHighlight,
     ],
@@ -1629,6 +1672,16 @@ function createSyncWorkflowNamesCommand(
   );
 }
 
+function createSyncAgentMentionAvatarsCommand(
+  avatarRuntime: AgentMentionAvatarRuntime,
+): AgentMentionAvatarsSyncCommand {
+  return command(async ({ get }, signal: AbortSignal): Promise<void> => {
+    const agents = await get(agents$);
+    signal.throwIfAborted();
+    avatarRuntime.replaceAgents(agents);
+  });
+}
+
 function mountCompositionListeners(
   editor: Editor,
   compositionGate: CompositionGate,
@@ -1656,6 +1709,7 @@ interface MountEditorOptions {
   feedback: FeedbackSignals;
   compositionGate: CompositionGate;
   syncWorkflowNames$: WorkflowNamesSyncCommand;
+  syncAgentMentionAvatars$: AgentMentionAvatarsSyncCommand;
   inlineTemplatesEnabled: boolean;
   autoFocus: boolean;
   singleLineOnMobile: boolean;
@@ -1671,6 +1725,7 @@ function createMountEditorCommand({
   feedback,
   compositionGate,
   syncWorkflowNames$,
+  syncAgentMentionAvatars$,
   inlineTemplatesEnabled,
   autoFocus,
   singleLineOnMobile,
@@ -1780,7 +1835,10 @@ function createMountEditorCommand({
         set(editorFocusedState$, false);
         editor.unmount();
       });
-      await set(syncWorkflowNames$, signal, signal);
+      await Promise.all([
+        set(syncWorkflowNames$, signal, signal),
+        set(syncAgentMentionAvatars$, signal),
+      ]);
     }),
   );
 }
@@ -1811,6 +1869,43 @@ function createInsertWorkflowCommand(
         { type: "text", text: `${token}${suffix}` },
       ])
       .setTextSelection(from + token.length + suffix.length)
+      .run();
+  });
+}
+
+function createInsertAgentCommand(
+  editor: Editor,
+  activeRange$: Computed<ChatThreadSuggestionRange | null>,
+) {
+  return command(({ get }, agent: ComposerAgentSuggestion) => {
+    const range = get(activeRange$);
+    if (!range) {
+      return;
+    }
+    const textblock = activeTextblock(editor);
+    if (!textblock) {
+      return;
+    }
+    const head = editor.state.selection.head;
+    const from = head - (range.end - range.start);
+    const content: JSONContent[] = [
+      {
+        type: AGENT_MENTION_NODE_NAME,
+        attrs: {
+          agentId: agent.id,
+          name: agent.name,
+          avatarUrl: agent.avatarUrl,
+        },
+      },
+    ];
+    if (!textblock.value.slice(range.end).startsWith(" ")) {
+      content.push({ type: "text", text: " " });
+    }
+    editor
+      .chain()
+      .focus()
+      .insertContentAt({ from, to: head }, content)
+      .setTextSelection(from + 2)
       .run();
   });
 }
@@ -1848,6 +1943,21 @@ function createInsertChatThreadCommand(
       .setTextSelection(from + 2)
       .run();
   });
+}
+
+function createSuggestionInsertionCommands(
+  editor: Editor,
+  activeSlashRange$: Computed<SlashWorkflowRange | null>,
+  activeMentionRange$: Computed<ChatThreadSuggestionRange | null>,
+) {
+  return {
+    insertWorkflow$: createInsertWorkflowCommand(editor, activeSlashRange$),
+    insertAgent$: createInsertAgentCommand(editor, activeMentionRange$),
+    insertChatThread$: createInsertChatThreadCommand(
+      editor,
+      activeMentionRange$,
+    ),
+  };
 }
 
 function createInsertTextCommands(editor: Editor) {
@@ -2148,15 +2258,19 @@ export function createWorkflowComposerSignals<
   const editorFocusedState$ = state(false);
   const selectedSuggestionIndexState$ = state(0);
   const runtime = createWorkflowComposerRuntime();
+  const agentMentionAvatarRuntime = createAgentMentionAvatarRuntime();
   const templatePreview = createTemplatePreviewRuntime();
   const compositionGate = createCompositionGate();
   const { agentId$, workflows$ } = createComposerAgentResources(agentIdSource$);
 
-  const editor = createWorkflowEditor(runtime);
+  const editor = createWorkflowEditor(runtime, agentMentionAvatarRuntime);
   const syncWorkflowNames$ = createSyncWorkflowNamesCommand(
     editor,
     agentId$,
     workflows$,
+  );
+  const syncAgentMentionAvatars$ = createSyncAgentMentionAvatarsCommand(
+    agentMentionAvatarRuntime,
   );
   const templateAttachment = createTemplateAttachmentControls(editor, runtime);
   const feedback = createComposerFeedback(threadId, editor);
@@ -2211,17 +2325,15 @@ export function createWorkflowComposerSignals<
       feedback,
       compositionGate,
       syncWorkflowNames$,
+      syncAgentMentionAvatars$,
       inlineTemplatesEnabled,
       autoFocus,
       singleLineOnMobile,
     });
   };
-  const insertWorkflow$ = createInsertWorkflowCommand(
+  const suggestionInsertionCommands = createSuggestionInsertionCommands(
     editor,
     activeSlashRange$,
-  );
-  const insertChatThread$ = createInsertChatThreadCommand(
-    editor,
     activeChatThreadSuggestionRange$,
   );
   const textCommands = createInsertTextCommands(editor);
@@ -2256,8 +2368,7 @@ export function createWorkflowComposerSignals<
     selectedSuggestionIndex$,
     setSelectedSuggestionIndex$,
     closeSuggestionMenu$,
-    insertWorkflow$,
-    insertChatThread$,
+    ...suggestionInsertionCommands,
     ...textCommands,
     ...templateCommands,
     insertUserMessage$,

@@ -1,7 +1,7 @@
 //! Proxy registry schema and file persistence.
 //!
-//! TODO(#23619): Rename retained `connector_ref` tracing fields only with the
-//! operational log schema.
+//! TODO(#23837): Remove retained `connector_ref` tracing fields after the
+//! seven-day operational log compatibility window.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -270,6 +270,7 @@ impl ProxyRegistryHandle {
         info!(
             source_ip,
             run_id,
+            connector_slug = connector_slug,
             connector_ref = connector_slug,
             "failed closed connector network policy in proxy registry"
         );
@@ -301,6 +302,7 @@ impl ProxyRegistryHandle {
         info!(
             source_ip,
             run_id,
+            connector_slug = connector_slug,
             connector_ref = connector_slug,
             "patched connector network policy in proxy registry"
         );

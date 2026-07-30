@@ -1,6 +1,11 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import {
+  chatThreadByIdContract,
+  chatThreadDraftContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
+import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { pathname } from "../../../signals/location.ts";
@@ -27,6 +32,29 @@ import {
   placeCaretAfterText,
   workflowSummary,
 } from "./chat-composer-test-helpers.ts";
+
+function suggestionAgent({
+  id,
+  displayName,
+  avatarUrl = null,
+  visibility = "public",
+}: {
+  readonly id: string;
+  readonly displayName: string;
+  readonly avatarUrl?: string | null;
+  readonly visibility?: "public" | "private";
+}): TeamComposeItem {
+  return {
+    id,
+    displayName,
+    description: null,
+    sound: null,
+    avatarUrl,
+    visibility,
+    headVersionId: id,
+    updatedAt: "2024-01-01T00:00:00Z",
+  };
+}
 
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
@@ -464,6 +492,193 @@ describe("chat composer models", () => {
       `span[data-chat-thread-mention="${SUGGESTED_THREAD_ID}"]`,
     );
     expect(chip).toHaveTextContent("Project Alpha");
+  });
+
+  it("keeps public agent suggestions behind zero chat messaging", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    mockThread();
+    context.mocks.data.team([
+      suggestionAgent({ id: AGENT_ID, displayName: "Scout" }),
+      suggestionAgent({
+        id: OTHER_AGENT_ID,
+        displayName: "Other Agent",
+      }),
+    ]);
+    mockComposerThreadSnapshot([
+      { id: THREAD_ID, agentId: AGENT_ID, title: null },
+      {
+        id: SUGGESTED_THREAD_ID,
+        agentId: AGENT_ID,
+        title: "Other thread",
+      },
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("@other");
+
+    const menu = await screen.findByTestId("chat-thread-suggestion-menu");
+    expect(within(menu).getByText("Other thread")).toBeInTheDocument();
+    expect(within(menu).queryByText("Other Agent")).not.toBeInTheDocument();
+  });
+
+  it("suggests public agents above chat threads and inserts an agent item", async () => {
+    const alphaAgentId = "a1000000-0000-4000-a000-000000000001";
+    const betaAgentId = "a1000000-0000-4000-a000-000000000002";
+    const gammaAgentId = "a1000000-0000-4000-a000-000000000003";
+    const zetaAgentId = "a1000000-0000-4000-a000-000000000004";
+    const privateAgentId = "a1000000-0000-4000-a000-000000000005";
+    const zetaAvatarUrl = "https://example.com/zeta-avatar.png";
+    const draftPatches: Record<string, unknown>[] = [];
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    mockThread();
+    context.mocks.data.team([
+      suggestionAgent({ id: AGENT_ID, displayName: "Scout" }),
+      suggestionAgent({
+        id: alphaAgentId,
+        displayName: "Alpha Agent",
+        avatarUrl: "preset:0",
+      }),
+      suggestionAgent({
+        id: betaAgentId,
+        displayName: "Beta Agent",
+        avatarUrl: "preset:1",
+      }),
+      suggestionAgent({
+        id: gammaAgentId,
+        displayName: "Gamma Agent",
+        avatarUrl: "preset:2",
+      }),
+      suggestionAgent({
+        id: zetaAgentId,
+        displayName: "Zeta Agent",
+        avatarUrl: zetaAvatarUrl,
+      }),
+      suggestionAgent({
+        id: privateAgentId,
+        displayName: "Private Agent",
+        visibility: "private",
+      }),
+    ]);
+    mockComposerThreadSnapshot([
+      { id: THREAD_ID, agentId: AGENT_ID, title: null },
+      {
+        id: SUGGESTED_THREAD_ID,
+        agentId: AGENT_ID,
+        title: "Project Alpha",
+      },
+    ]);
+    context.mocks.api(chatThreadByIdContract.patch, ({ body, respond }) => {
+      draftPatches.push(body as Record<string, unknown>);
+      return respond(204);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroChatMessaging]: true,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("@");
+
+    const menu = await screen.findByTestId("chat-thread-suggestion-menu");
+    expect(
+      queryAllByRoleFast("button", menu).map((button) => {
+        return button.textContent;
+      }),
+    ).toStrictEqual([
+      "Alpha Agent",
+      "Beta Agent",
+      "Gamma Agent",
+      "Project Alpha",
+    ]);
+    expect(within(menu).queryByText("Scout")).not.toBeInTheDocument();
+    expect(within(menu).queryByText("Zeta Agent")).not.toBeInTheDocument();
+    expect(within(menu).queryByText("Private Agent")).not.toBeInTheDocument();
+
+    await user.keyboard("zeta");
+    await waitFor(() => {
+      const filteredMenu = screen.getByTestId("chat-thread-suggestion-menu");
+      expect(within(filteredMenu).getByText("Zeta Agent")).toBeInTheDocument();
+      expect(
+        within(filteredMenu).queryByText("Project Alpha"),
+      ).not.toBeInTheDocument();
+    });
+    await user.keyboard("{Enter}");
+
+    const item = editor.querySelector(
+      `span[data-agent-mention="${zetaAgentId}"]`,
+    );
+    expect(item).toHaveTextContent("Zeta Agent");
+    expect(item?.querySelector("img")).toHaveAttribute("src", zetaAvatarUrl);
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual(
+        expect.objectContaining({
+          draftContent: `[Zeta Agent](/agents/${zetaAgentId}/chat)`,
+        }),
+      );
+    });
+  });
+
+  it("restores a persisted agent item with its current avatar", async () => {
+    const mentionedAgentId = "a1000000-0000-4000-a000-000000000006";
+    const mentionedAgentAvatarUrl =
+      "https://example.com/restored-agent-avatar.png";
+    const mention = `[Restored Agent](/agents/${mentionedAgentId}/chat)`;
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    mockThread();
+    context.mocks.data.team([
+      suggestionAgent({ id: AGENT_ID, displayName: "Scout" }),
+      suggestionAgent({
+        id: mentionedAgentId,
+        displayName: "Restored Agent",
+        avatarUrl: mentionedAgentAvatarUrl,
+      }),
+    ]);
+    context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
+      return respond(200, {
+        draftContent: mention,
+        draftUserMessage: {
+          version: 1,
+          parts: [{ type: "text", text: mention }],
+        },
+        draftAttachments: null,
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroChatMessaging]: true,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    await waitFor(() => {
+      const item = editor.querySelector(
+        `span[data-agent-mention="${mentionedAgentId}"]`,
+      );
+      expect(item).toHaveTextContent("Restored Agent");
+      expect(item?.querySelector("img")).toHaveAttribute(
+        "src",
+        mentionedAgentAvatarUrl,
+      );
+    });
   });
 
   it("hides @ suggestions when no titled thread matches", async () => {

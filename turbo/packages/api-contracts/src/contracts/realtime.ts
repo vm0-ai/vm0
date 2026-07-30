@@ -7,8 +7,9 @@ import { runnerGroupSchema } from "./runners";
 const c = initContract();
 
 export const connectorChangedPayloadSchema = z.object({
-  // TODO(#23619): Rename this realtime field after all deployed clients migrate.
+  // TODO(#23821): Remove this legacy field after deployed clients migrate.
   connectorRef: connectorSlugSchema,
+  connectorSlug: connectorSlugSchema.optional(),
 });
 
 export type ConnectorChangedPayload = z.infer<

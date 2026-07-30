@@ -920,3 +920,47 @@ export async function insertOutputEventWithConflictingLegacyPayloadFixture(args:
   });
   return event;
 }
+
+/**
+ * Appends the retired queue pause/resume marker rows exactly as the 0714
+ * cutover backfill persisted them (reason in the error column). Product
+ * writers intentionally cannot create these event types anymore; the fixture
+ * proves the transcript read path serves the complete historical event stream
+ * instead of skipping their seqIds.
+ */
+export async function insertRetiredQueuePauseEventsFixture(args: {
+  readonly threadId: string;
+  readonly pauseReason: string;
+}): Promise<{ readonly pausedSeqId: number; readonly resumedSeqId: number }> {
+  return await db().transaction(async (tx) => {
+    const [thread] = await tx
+      .update(chatThreads)
+      .set({
+        lastChatMessageSeqId: sql`${chatThreads.lastChatMessageSeqId} + 2`,
+      })
+      .where(eq(chatThreads.id, args.threadId))
+      .returning({ lastSeqId: chatThreads.lastChatMessageSeqId });
+    if (!thread) {
+      throw new Error(`Chat thread ${args.threadId} not found`);
+    }
+    const pausedSeqId = thread.lastSeqId - 1;
+    const resumedSeqId = thread.lastSeqId;
+    const retiredEventType = (eventType: string) => {
+      return eventType as (typeof chatMessages.$inferInsert)["eventType"];
+    };
+    await tx.insert(chatMessages).values([
+      {
+        chatThreadId: args.threadId,
+        eventType: retiredEventType("queue.automation_paused"),
+        error: args.pauseReason,
+        seqId: pausedSeqId,
+      },
+      {
+        chatThreadId: args.threadId,
+        eventType: retiredEventType("queue.automation_resumed"),
+        seqId: resumedSeqId,
+      },
+    ]);
+    return { pausedSeqId, resumedSeqId };
+  });
+}
