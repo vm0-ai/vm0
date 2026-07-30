@@ -3,7 +3,6 @@ import { z } from "zod";
 import {
   SUPPORTED_RUN_MODELS,
   VM0_MODEL_PRICE_TIER,
-  VM0_MODEL_PRICE_TIER_LABEL,
   type SupportedRunModel,
   type Vm0ModelPriceTier,
 } from "./model-price-tiers";
@@ -25,7 +24,6 @@ export type {
 export {
   SUPPORTED_RUN_MODELS,
   VM0_MODEL_PRICE_TIER,
-  VM0_MODEL_PRICE_TIER_LABEL,
   type SupportedRunModel,
   type Vm0ModelPriceTier,
 };
@@ -226,10 +224,6 @@ export function getVm0ModelPriceTier(
   model: string,
 ): Vm0ModelPriceTier | undefined {
   return isSupportedRunModel(model) ? VM0_MODEL_PRICE_TIER[model] : undefined;
-}
-
-export function getVm0ModelPriceTierLabel(tier: Vm0ModelPriceTier): string {
-  return VM0_MODEL_PRICE_TIER_LABEL[tier];
 }
 
 export function getCanonicalModelDisplayName(model: string): string {

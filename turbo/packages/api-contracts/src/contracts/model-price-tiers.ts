@@ -58,12 +58,3 @@ export const VM0_MODEL_PRICE_TIER = Object.freeze<
   "mimo-v2.5": "$",
   "hy3-preview": "$",
 });
-
-export const VM0_MODEL_PRICE_TIER_LABEL = Object.freeze<
-  Record<Vm0ModelPriceTier, string>
->({
-  $: "Economy tier for everyday simple tasks",
-  $$: "Balanced cost and performance",
-  $$$: "Frontier flagship model",
-  $$$$: "Premium frontier model for the hardest tasks",
-});

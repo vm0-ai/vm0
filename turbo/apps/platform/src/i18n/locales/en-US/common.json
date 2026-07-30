@@ -1528,11 +1528,15 @@
       "connectedDescription": "Your account has been connected. You can close this window.",
       "connecting": "Connecting {{connector}}…",
       "connectingDescription": "Please wait while we finish connecting your account.",
+      "customConnectorLabel": "Custom connector",
+      "documentTitle": "Connect {{connector}}",
       "errorDescription": "{{error}} Close this window and try again.",
       "errorFallback": "An error occurred during connection.",
       "failed": "Connection failed",
       "failedTitle": "Couldn’t connect {{connector}}",
       "finishing": "Finishing the secure connection",
+      "genericLabel": "Connector",
+      "invalidUrl": "Invalid connector callback URL.",
       "success": "Connected"
     },
     "card": {
@@ -1654,6 +1658,14 @@
         "verificationCode": "Verification code",
         "waiting": "Waiting for approval. Keep this dialog open."
       },
+      "errors": {
+        "authorizationWindow": "Failed to open authorization window",
+        "codeRequired": "Enter the code from {{connector}}.",
+        "denied": "Connection was denied. Start again to retry.",
+        "expired": "Connection session expired. Start again to retry.",
+        "failed": "Connection failed. Start again to retry.",
+        "verificationOpen": "Could not open the verification page. Try again."
+      },
       "external": {
         "code": "Code",
         "complete": "Complete connection",
@@ -1677,19 +1689,68 @@
       }
     },
     "custom": {
+      "agentUsage": {
+        "none": "Not used by any agents",
+        "usedBy": "Used by {{agents}}",
+        "usedByOverflow_one": "Used by {{agents}} +{{value}}",
+        "usedByOverflow_other": "Used by {{agents}} +{{value}}"
+      },
       "connect": {
+        "apiAuthentication": "API authentication",
+        "apiDescription": "Enter the API secret issued by the provider.",
+        "back": "Back",
+        "connecting": "Connecting…",
+        "continue": "Continue",
+        "continueToProvider": "Continue to the provider to authorize access.",
         "description": "Your secret is encrypted at rest and injected into outbound requests by the firewall. It's never exposed to the agent as an environment variable.",
+        "oauthDescription": "Authorize access with the connector's OAuth app.",
+        "save": "Save",
+        "saving": "Saving…",
         "secret": "Secret",
         "title": "Connect {{connector}}"
       },
       "create": {
+        "addAuthentication": "Add authentication",
+        "advancedApiPreserved": "Advanced API fields and injections are preserved when you save.",
+        "advancedSettings": "Advanced settings",
+        "apiAuthentication": "API authentication",
+        "apiAuthenticationDescription": "Inject a user-provided secret into every matching request.",
+        "authorizationParameters": "Authorization parameters",
+        "authorizationParametersDescription": "Add only the parameters your provider requires.",
+        "authorizationUrl": "Authorization URL",
+        "clientId": "Client ID",
+        "clientSecret": "Client secret",
         "displayName": "Display name",
         "headerName": "Header name",
         "headerTemplate": "Header template",
         "headerTemplateHint": "(must contain {{placeholder}})",
+        "httpBasicAuthentication": "HTTP Basic authentication",
+        "keepClientSecret": "Leave the client secret blank to keep the stored value.",
+        "keepClientSecretPlaceholder": "Leave blank to keep current",
+        "newClientSecret": "New client secret",
+        "none": "None",
+        "oauthChangesDisconnect": "Changing OAuth settings or client credentials disconnects existing OAuth connections.",
+        "oauthDescription": "Configure one OAuth app for members to authorize.",
+        "optional": "(optional)",
+        "parameters": {
+          "accessType": "Access type",
+          "audience": "Audience",
+          "prompt": "Prompt",
+          "resource": "Resource"
+        },
         "prefixes": "Prefixes",
         "prefixesHint": "(one per line, https only)",
-        "title": "New custom connector"
+        "redirectCopy": "Copy Redirect URL",
+        "redirectHint": "(Register this URL in the provider's OAuth application.)",
+        "redirectUrl": "Redirect URL",
+        "removeApiAuthentication": "Remove API authentication",
+        "removeOauth": "Remove OAuth 2.0",
+        "scopes": "Scopes",
+        "scopesHint": "(one per line)",
+        "secretInRequestBody": "Client secret in request body",
+        "title": "New custom connector",
+        "tokenEndpointAuthentication": "Token endpoint authentication",
+        "tokenUrl": "Token URL"
       },
       "delete": {
         "description": "This removes the connector and every member's stored secret for it. Agents authorized for this connector will lose access immediately. This can't be undone.",
@@ -1712,6 +1773,11 @@
         "deleted": "Custom connector deleted",
         "disconnected": "Disconnected",
         "renamed": "Renamed to \"{{connector}}\""
+      },
+      "updateConfirm": {
+        "action": "Save and disconnect",
+        "description": "These OAuth changes will disconnect every member currently connected with OAuth. They'll need to connect this custom connector again.",
+        "title": "Disconnect existing OAuth connections?"
       }
     },
     "customProposal": {
@@ -1922,6 +1988,66 @@
         "sendVerification": "Send verification",
         "verificationSent": "Verification text sent to {{phone}}. Open the link in that text to finish connecting."
       },
+      "catalogDiagnostics": {
+        "fields": {
+          "activated": "Activated",
+          "activeCatalogDigest": "Active catalog digest",
+          "activeVersion": "Active version",
+          "evaluated": "Evaluated",
+          "evaluation": "Evaluation",
+          "executableCapabilityDigest": "Executable capability digest",
+          "failureCode": "Failure code",
+          "filteredAuthMethods": "Filtered auth methods",
+          "lastAttempt": "Last attempt",
+          "lastAttemptAt": "Last attempt at",
+          "lastSuccess": "Last success",
+          "missingVersions": "Missing versions",
+          "rejectedCatalogDigest": "Rejected catalog digest",
+          "rejectedVersion": "Rejected version",
+          "rejectingBackend": "Rejecting backend",
+          "rejectionCache": "Rejection cache",
+          "rejectionFailure": "Rejection failure",
+          "syncState": "Sync state",
+          "unownedSecrets": "Unowned secrets",
+          "unownedVariables": "Unowned variables",
+          "unresolvedBridgeCredentials": "Unresolved bridge credentials"
+        },
+        "loading": "Loading",
+        "none": "None",
+        "notReused": "Not reused",
+        "reused": "Reused",
+        "sections": {
+          "compatibility": "Compatibility",
+          "credentialStorage": "Credential storage",
+          "rejectedCandidate": "Rejected candidate"
+        },
+        "title": "Connector catalog",
+        "unavailable": "Unavailable",
+        "values": {
+          "accepted": "Accepted",
+          "current": "Current",
+          "digestMismatch": "Digest mismatch",
+          "invalidArtifact": "Invalid artifact",
+          "invalidCompression": "Invalid compression",
+          "invalidJson": "Invalid JSON",
+          "invalidPointer": "Invalid pointer",
+          "invalidReference": "Invalid reference",
+          "missingAccessProvider": "Missing access provider",
+          "missingGrantProvider": "Missing grant provider",
+          "missingPlatformConfiguration": "Missing platform configuration",
+          "missingRevokeProvider": "Missing revoke provider",
+          "neverSynced": "Never synced",
+          "objectTooLarge": "Object too large",
+          "providerContractMismatch": "Provider contract mismatch",
+          "publicLeakage": "Public leakage",
+          "rejected": "Rejected",
+          "relationshipMismatch": "Relationship mismatch",
+          "sourceUnavailable": "Source unavailable",
+          "stale": "Stale",
+          "unchanged": "Unchanged",
+          "unsupportedSchema": "Unsupported schema"
+        }
+      },
       "errors": {
         "agentphonePhone": "Enter a phone number with country code, like +1 555 555 1212.",
         "githubAuthorizationWindow": "Failed to open authorization window",
@@ -1953,12 +2079,15 @@
           "title": "Create an enterprise custom app"
         },
         "credentials": {
+          "appId": "App ID",
+          "appSecret": "App Secret",
           "description": "Copy the App ID and App Secret from Credentials & Basic Information.",
           "imageAlt": "Feishu app creation result showing where to find the App ID and App Secret",
           "title": "Add the app credentials"
         },
         "defaultAgent": "Default agent",
         "defaultAgentAria": "Default agent for {{appId}}",
+        "developerConsole": "Feishu developer console",
         "dialogAdminRequired": "An organization admin must configure the app. You can connect your own account from the Feishu bot list after setup is complete.",
         "emptyAdmin": "Add a custom app to route Feishu messages to an agent.",
         "emptyMember": "Ask an organization admin to add a Feishu bot.",
@@ -2032,12 +2161,53 @@
         "tokens": {
           "descriptionAfter": ", select the app you just created, and enter its configuration page. Open Event Configuration → Encryption Strategy, then copy the Encrypt Key and Verification Token.",
           "descriptionBefore": "Open the ",
+          "encryptKey": "Encrypt Key",
           "imageAlt": "Feishu Encryption Strategy screen showing the Encrypt Key and Verification Token",
-          "title": "Add the event verification tokens"
+          "title": "Add the event verification tokens",
+          "verificationToken": "Verification Token"
         },
         "uninstallDescription": "This uninstalls {{bot}} from the workspace and disconnects every {{brandName}} account using it. This action cannot be undone.",
         "uninstallTargetFallback": "this bot",
         "uninstallTitle": "Uninstall Feishu bot?"
+      },
+      "strapi": {
+        "actions": {
+          "cancel": "Cancel",
+          "checkTest": "Check test",
+          "copy": "Copy",
+          "create": "Create integration",
+          "remove": "Remove",
+          "revealAuthorization": "Reveal authorization header"
+        },
+        "addDescription": "One integration can serve multiple workflow automations.",
+        "addTitle": "Add Strapi instance",
+        "adminRequired": "Ask an organization admin to add or update Strapi integrations.",
+        "authorizationHeader": "Authorization header",
+        "copied": "{{label}} copied",
+        "description": "Let Zero react to published Strapi entries and automate downstream work.",
+        "documentTitle": "Strapi",
+        "empty": "No Strapi instances connected yet.",
+        "form": {
+          "name": "Name",
+          "namePlaceholder": "Company CMS",
+          "url": "Strapi URL"
+        },
+        "instructions": "In Strapi, open Settings → Webhooks, add this URL and Authorization header, select entry.publish, then click Trigger to send a Strapi test webhook.",
+        "lastPublish": "Last publish: {{date}}",
+        "lastTest": "Last test: {{date}}",
+        "notReceived": "Not received",
+        "removeDescription": "Remove its workflow automations first. Strapi webhook requests to this URL will stop working.",
+        "removeTitle": "Remove Strapi integration?",
+        "tested": "Webhook tested",
+        "title": "Strapi",
+        "toasts": {
+          "created": "Strapi integration created",
+          "noTestReceived": "No Strapi test webhook received yet",
+          "removed": "Strapi integration removed",
+          "testReceived": "Strapi test webhook received"
+        },
+        "webhookUrl": "Webhook URL",
+        "whereZeroWorks": "Where Zero works"
       },
       "telegram": {
         "addBot": "Add bot",
@@ -3676,10 +3846,18 @@
   "settings": {
     "accountMenu": {
       "addAccount": "Add account",
+      "creditBalance_one": "{{value}} credit",
+      "creditBalance_other": "{{value}} credits",
       "exportData": "Export data",
       "lab": "Lab",
       "settings": "Settings",
       "signOut": "Sign out",
+      "subscriptions": {
+        "reset": "Reset",
+        "resetTimeUnavailable": "Reset time unavailable",
+        "usage": "{{provider}} usage",
+        "usageRemaining": "{{provider}} {{window}} remaining"
+      },
       "switchAccount": "Switch account",
       "userFallback": "User"
     },
@@ -3892,6 +4070,28 @@
           "week": "Week"
         }
       },
+      "picker": {
+        "balancedUse": "Balanced use",
+        "builtInModel": "Built-in model",
+        "byokHelp": "Uses your configured provider",
+        "fast": "Fast",
+        "inheritDefault": "Inherit from org default",
+        "loadError": "Unable to load models.",
+        "loading": "Loading models...",
+        "models": "Models",
+        "moreCodexCredits": "Uses more Codex credits.",
+        "noConfiguredModels": "No configured models",
+        "priceTiers": {
+          "balanced": "Balanced cost and performance",
+          "economy": "Economy tier for everyday simple tasks",
+          "frontier": "Frontier flagship model",
+          "premium": "Premium frontier model for the hardest tasks"
+        },
+        "prioritizeSpeed": "Prioritize speed",
+        "pro": "Pro",
+        "runSpeed": "Run speed",
+        "standard": "Standard"
+      },
       "policies": {
         "actionsFor": "Actions for {{model}}",
         "apiKey": "API key",
@@ -3930,8 +4130,8 @@
       "reset": {
         "confirmDescription": "Use one Codex reset to reset your current usage windows. You have {{remaining}}.",
         "progress": "Resetting...",
-        "remaining_one": "{{count}} reset left",
-        "remaining_other": "{{count}} resets left",
+        "remaining_one": "{{value}} reset left",
+        "remaining_other": "{{value}} resets left",
         "remainingUnavailable": "Resets left unavailable",
         "title": "Reset Codex usage?"
       },
@@ -3947,6 +4147,7 @@
       },
       "toasts": {
         "disconnected": "{{provider}} disconnected",
+        "policiesUpdated": "Model provider settings updated",
         "reset": "Codex usage reset",
         "resetUnavailable": "No Codex usage resets available",
         "resetUnneeded": "Codex usage does not need a reset right now"

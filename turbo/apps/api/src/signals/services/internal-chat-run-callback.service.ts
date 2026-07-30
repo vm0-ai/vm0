@@ -137,10 +137,10 @@ import { handleMorningBriefEmailInternalCallback } from "./internal-morning-brie
 import { sendUserPushNotifications } from "./zero-push-notifications.service";
 import {
   type ChatCompletionContextMessage,
-  generateAndPersistChatThreadTitleFromCallback,
   generateChatThreadRecommendedFollowupsFromContext,
   generateChatNotificationSummary,
   loadChatThreadRecommendedFollowupContext,
+  scheduleChatThreadTitleGeneration,
 } from "./zero-chat-title.service";
 import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
 import { loadActiveGoalForThread } from "./zero-goal.service";
@@ -2013,16 +2013,6 @@ async function runCompletedChatCallbackSideEffects(args: {
     args.signal,
   );
 
-  const titleStep = generateAndPersistChatThreadTitleFromCallback({
-    db: args.db,
-    threadId: args.chatThread.chatThreadId,
-    userId: args.chatThread.userId,
-    orgId: args.chatThread.orgId,
-    runId: args.runId,
-    prompt: args.run.prompt,
-    currentAssistantReply: args.lastResultText ?? undefined,
-  });
-
   const followupsStep = (async () => {
     const recommendedFollowups =
       await generateRecommendedFollowupsForCompletedRun({
@@ -2074,7 +2064,6 @@ async function runCompletedChatCallbackSideEffects(args: {
   const results = await Promise.allSettled([
     saveSummaryStep,
     chatRunFinishedStep,
-    titleStep,
     followupsStep,
     pushStep,
   ]);
@@ -3544,6 +3533,16 @@ async function autoSendQueuedMessageForThread(
     }),
   );
   if (run) {
+    // Ingress channels never touch the web send route, so this is where their
+    // threads get an eager title instead of waiting for the run to finish.
+    scheduleChatThreadTitleGeneration({
+      db: args.db,
+      threadId,
+      userId,
+      orgId: runInput.orgId,
+      prompt: runInput.prompt,
+      includePriorRounds: true,
+    });
     args.timing.flush(run.runId, runInput.triggerSource);
   }
 }

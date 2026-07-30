@@ -9260,8 +9260,8 @@ async function validateBrowserResizeStateRolloutCompatibility(): Promise<void> {
   );
 }
 
-const CUSTOM_MODEL_GATEWAY_PREVIOUS_MIGRATION = 745;
-const CUSTOM_MODEL_GATEWAY_MIGRATION = 746;
+const CUSTOM_MODEL_GATEWAY_PREVIOUS_MIGRATION = 746;
+const CUSTOM_MODEL_GATEWAY_MIGRATION = 747;
 
 async function customModelGatewaySchemaAvailable(
   client: Client,
@@ -9376,7 +9376,7 @@ async function validateCustomModelGatewayRolloutCompatibility(): Promise<void> {
     await dropDatabase(testDb);
   }
   console.log(
-    "   ✅ Current API reads the pre-0746 policy shape and previous API writes remain valid after 0746\n",
+    "   ✅ Current API reads the pre-0747 policy shape and previous API writes remain valid after 0747\n",
   );
 }
 
