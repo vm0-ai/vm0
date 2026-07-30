@@ -85,7 +85,9 @@ function zeroToken(args: {
     scope: "zero",
     userId: args.userId,
     orgId: args.orgId,
-    runId: args.runId ?? `run_${randomUUID()}`,
+    // Run tokens always carry a real run id, and thread creation reads that
+    // run's model, so an unrelated id still has to be a uuid.
+    runId: args.runId ?? randomUUID(),
     capabilities: [...args.capabilities],
     iat: seconds,
     exp: seconds + 600,
