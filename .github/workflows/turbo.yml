@@ -1384,15 +1384,6 @@ jobs:
             --content-type application/gzip \
             --cache-control "$cache_control"
 
-          # Keep the per-file layout until every release or rollback workflow
-          # created before archive readers shipped has finished. Those queued
-          # workflows cannot extract dist.tar.gz. Remove this copy after that
-          # reader rollout window has drained.
-          aws s3 cp turbo/apps/platform/dist "$artifact_uri/" \
-            --endpoint-url "$r2_endpoint" \
-            --recursive \
-            --cache-control "$cache_control"
-
           aws s3api put-object \
             --endpoint-url "$r2_endpoint" \
             --bucket "$R2_BUCKET_NAME" \
