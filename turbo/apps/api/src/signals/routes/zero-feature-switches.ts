@@ -26,6 +26,7 @@ function featureSwitchResponseBody(params: {
   readonly switches: Record<string, boolean>;
   readonly supportsStructuredInlineTemplates: boolean;
   readonly supportsCustomConnectorOAuth2: boolean;
+  readonly supportsThreadKeyedBrowserLifecycle: boolean;
 }) {
   const effectiveSwitches = getAllFeatureStates({
     orgId: params.orgId,
@@ -42,6 +43,8 @@ function featureSwitchResponseBody(params: {
     effectiveSwitches,
     supportsStructuredInlineTemplates: params.supportsStructuredInlineTemplates,
     supportsCustomConnectorOAuth2: params.supportsCustomConnectorOAuth2,
+    supportsThreadKeyedBrowserLifecycle:
+      params.supportsThreadKeyedBrowserLifecycle,
   };
 }
 
@@ -58,6 +61,7 @@ const getFeatureSwitchesInner$ = computed(async (get): Promise<unknown> => {
       switches,
       supportsStructuredInlineTemplates: true,
       supportsCustomConnectorOAuth2: true,
+      supportsThreadKeyedBrowserLifecycle: true,
     }),
   };
 });
@@ -93,6 +97,7 @@ const updateFeatureSwitchesInner$ = command(
         switches,
         supportsStructuredInlineTemplates: true,
         supportsCustomConnectorOAuth2: true,
+        supportsThreadKeyedBrowserLifecycle: true,
       }),
     };
   },

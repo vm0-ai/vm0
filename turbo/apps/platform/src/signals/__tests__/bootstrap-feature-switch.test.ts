@@ -50,6 +50,27 @@ describe("bootstrap feature switch hydration", () => {
     ).toBeFalsy();
   });
 
+  it("keeps thread-keyed browser controls disabled against the previous API", async () => {
+    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+      return respond(200, {
+        switches: { [FeatureSwitchKey.ZeroBrowser]: true },
+        effectiveSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
+        supportsStructuredInlineTemplates: true,
+        supportsCustomConnectorOAuth2: true,
+      });
+    });
+
+    await setupPage({
+      context,
+      path: "/error",
+      withoutRender: true,
+    });
+
+    expect(
+      context.store.get(featureSwitch$)[FeatureSwitchKey.ZeroBrowser],
+    ).toBeFalsy();
+  });
+
   it("skips feature switch hydration without an authenticated organization", async () => {
     context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
       return respond(500, {

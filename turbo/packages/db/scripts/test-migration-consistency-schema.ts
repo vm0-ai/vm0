@@ -372,6 +372,121 @@ async function validateCurrentBrowserApiBeforeBillingMigration(): Promise<void> 
   }
 }
 
+async function validatePreviousBrowserApiAfterThreadLifecycleMigration(
+  dbUrl: string,
+): Promise<void> {
+  console.log(
+    "=== Phase 2.4: Validate previous browser API after thread lifecycle migration ===\n",
+  );
+  const client = new Client({ connectionString: dbUrl });
+  await client.connect();
+
+  const browserProfileId = "00000000-0000-4000-8000-000000074101";
+  const providerProfileId = "00000000-0000-4000-8000-000000074102";
+  const browserSessionId = "00000000-0000-4000-8000-000000074103";
+  const providerSessionId = "00000000-0000-4000-8000-000000074104";
+  const chatThreadId = "00000000-0000-4000-8000-000000074105";
+  const runId = "00000000-0000-4000-8000-000000074106";
+
+  try {
+    // Execute the previous API's real browser session and provider-instance
+    // insert shapes after every migration, including the thread-key rollout.
+    await client.query(
+      `
+        INSERT INTO "browser_profiles" (
+          "id",
+          "org_id",
+          "user_id",
+          "provider_profile_id"
+        )
+        VALUES ($1, 'browser-drain-org', 'browser-drain-user', $2)
+      `,
+      [browserProfileId, providerProfileId],
+    );
+    await client.query(
+      `
+        INSERT INTO "browser_sessions" (
+          "id",
+          "chat_thread_id",
+          "run_id",
+          "org_id",
+          "user_id",
+          "name",
+          "browser_profile_id",
+          "status",
+          "proxy_country_code",
+          "timeout_minutes",
+          "max_credits"
+        )
+        VALUES (
+          $1,
+          $2,
+          NULL,
+          'browser-drain-org',
+          'browser-drain-user',
+          'previous-api-start',
+          $3,
+          'creating',
+          NULL,
+          240,
+          500
+        )
+      `,
+      [browserSessionId, chatThreadId, browserProfileId],
+    );
+    const started = await client.query<{
+      pricingUnitPrice: string;
+      pricingUnitSize: string;
+    }>(
+      `
+        INSERT INTO "browser_session_instances" (
+          "provider_session_id",
+          "browser_session_id",
+          "chat_thread_id",
+          "run_id",
+          "status",
+          "pricing_unit_price",
+          "pricing_unit_size",
+          "timeout_at",
+          "started_at",
+          "last_touched_at",
+          "idle_expires_at"
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          'active',
+          0,
+          1,
+          now() + interval '240 minutes',
+          now(),
+          now(),
+          now() + interval '10 minutes'
+        )
+        RETURNING
+          "pricing_unit_price"::text AS "pricingUnitPrice",
+          "pricing_unit_size"::text AS "pricingUnitSize"
+      `,
+      [providerSessionId, browserSessionId, chatThreadId, runId],
+    );
+    assert.deepEqual(started.rows, [
+      { pricingUnitPrice: "0", pricingUnitSize: "1" },
+    ]);
+    console.log("   ✅ previous API browser session insert remains valid");
+    console.log("   ✅ previous API provider-instance insert remains valid\n");
+  } finally {
+    await client.query(`DELETE FROM "browser_sessions" WHERE "id" = $1`, [
+      browserSessionId,
+    ]);
+    await client.query(`DELETE FROM "browser_profiles" WHERE "id" = $1`, [
+      browserProfileId,
+    ]);
+    await client.end();
+  }
+}
+
 function databaseErrorCode(error: unknown): string | undefined {
   if (typeof error !== "object" || error === null || !("code" in error)) {
     return undefined;
@@ -8791,6 +8906,7 @@ async function main(): Promise<void> {
     await runMigrations(dbUrl1);
     console.log("   ✅ Migrations applied successfully\n");
 
+    await validatePreviousBrowserApiAfterThreadLifecycleMigration(dbUrl1);
     await validateChatEventSourcesAreAppendOnly(dbUrl1);
     await validateConnectorCatalogFinalConstraints(dbUrl1);
     await validateCustomConnectorOauthModeConstraints(dbUrl1);

@@ -3,15 +3,19 @@ import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { bodyResultOf, pathParamsOf } from "../context/request";
+import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
 import {
   createZeroBrowser$,
   getCurrentZeroBrowser$,
+  getZeroBrowserById$,
   getZeroBrowser$,
   leaseCurrentZeroBrowser$,
+  leaseZeroBrowserById$,
   leaseZeroBrowserByThread$,
+  resizeZeroBrowserById$,
   resizeZeroBrowserByThread$,
+  resumeZeroBrowserFromViewer$,
   startZeroBrowserForThread$,
   stopZeroBrowserForThread$,
   useZeroBrowser$,
@@ -129,6 +133,32 @@ const leaseBrowserByThreadInner$ = command(
   },
 );
 
+const leaseByIdParams$ = pathParamsOf(zeroBrowserContract.leaseById);
+const leaseByIdBody$ = bodyResultOf(zeroBrowserContract.leaseById);
+const leaseBrowserByIdInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const body = await get(leaseByIdBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+    const auth = get(organizationAuthContext$);
+    const result = await set(
+      leaseZeroBrowserById$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        browserId: get(leaseByIdParams$).browserId,
+        ...("runId" in auth ? { runId: auth.runId } : {}),
+      },
+      signal,
+    );
+    return result.kind === "error"
+      ? errorResponse(result)
+      : { status: 200 as const, body: { browser: result.value } };
+  },
+);
+
 const startParams$ = pathParamsOf(zeroBrowserContract.start);
 const startBody$ = bodyResultOf(zeroBrowserContract.start);
 const startBrowserInner$ = command(
@@ -153,6 +183,32 @@ const startBrowserInner$ = command(
     return result.kind === "error"
       ? errorResponse(result)
       : { status: 200 as const, body: result.value };
+  },
+);
+
+const resumeByIdParams$ = pathParamsOf(zeroBrowserContract.resumeById);
+const resumeByIdBody$ = bodyResultOf(zeroBrowserContract.resumeById);
+const resumeBrowserByIdInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const body = await get(resumeByIdBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+    const auth = get(organizationAuthContext$);
+    const result = await set(
+      resumeZeroBrowserFromViewer$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        browserId: get(resumeByIdParams$).browserId,
+        ...("runId" in auth ? { runId: auth.runId } : {}),
+      },
+      signal,
+    );
+    return result.kind === "error"
+      ? errorResponse(result)
+      : { status: 200 as const, body: { browser: result.value } };
   },
 );
 
@@ -207,6 +263,33 @@ const resizeBrowserByThreadInner$ = command(
   },
 );
 
+const resizeByIdParams$ = pathParamsOf(zeroBrowserContract.resizeById);
+const resizeByIdBody$ = bodyResultOf(zeroBrowserContract.resizeById);
+const resizeBrowserByIdInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const body = await get(resizeByIdBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+    const auth = get(organizationAuthContext$);
+    const result = await set(
+      resizeZeroBrowserById$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        browserId: get(resizeByIdParams$).browserId,
+        aspectRatio: body.data.aspectRatio,
+        ...("runId" in auth ? { runId: auth.runId } : {}),
+      },
+      signal,
+    );
+    return result.kind === "error"
+      ? errorResponse(result)
+      : { status: 200 as const, body: { browser: result.value } };
+  },
+);
+
 const currentBrowserInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
@@ -242,6 +325,29 @@ const getBrowserInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     ? errorResponse(result)
     : { status: 200 as const, body: { browser: result.value } };
 });
+
+const getByIdParams$ = pathParamsOf(zeroBrowserContract.getById);
+const getByIdQuery$ = queryOf(zeroBrowserContract.getById);
+const getBrowserByIdInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const chatThreadId = get(getByIdQuery$).chatThreadId;
+    const result = await set(
+      getZeroBrowserById$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        browserId: get(getByIdParams$).browserId,
+        ...(chatThreadId ? { chatThreadId } : {}),
+        ...("runId" in auth ? { runId: auth.runId } : {}),
+      },
+      signal,
+    );
+    return result.kind === "error"
+      ? errorResponse(result)
+      : { status: 200 as const, body: { browser: result.value } };
+  },
+);
 
 const browserReadAuth = Object.freeze({
   requireOrganization: true,
@@ -295,8 +401,16 @@ export const zeroBrowserRoutes: readonly RouteEntry[] = [
     handler: authRoute(browserViewerWriteAuth, leaseBrowserByThreadInner$),
   },
   {
+    route: zeroBrowserContract.leaseById,
+    handler: authRoute(browserViewerWriteAuth, leaseBrowserByIdInner$),
+  },
+  {
     route: zeroBrowserContract.start,
     handler: authRoute(browserViewerWriteAuth, startBrowserInner$),
+  },
+  {
+    route: zeroBrowserContract.resumeById,
+    handler: authRoute(browserViewerWriteAuth, resumeBrowserByIdInner$),
   },
   {
     route: zeroBrowserContract.stop,
@@ -307,11 +421,19 @@ export const zeroBrowserRoutes: readonly RouteEntry[] = [
     handler: authRoute(browserViewerWriteAuth, resizeBrowserByThreadInner$),
   },
   {
+    route: zeroBrowserContract.resizeById,
+    handler: authRoute(browserViewerWriteAuth, resizeBrowserByIdInner$),
+  },
+  {
     route: zeroBrowserContract.current,
     handler: authRoute(browserCurrentAuth, currentBrowserInner$),
   },
   {
     route: zeroBrowserContract.get,
     handler: authRoute(browserReadAuth, getBrowserInner$),
+  },
+  {
+    route: zeroBrowserContract.getById,
+    handler: authRoute(browserReadAuth, getBrowserByIdInner$),
   },
 ];

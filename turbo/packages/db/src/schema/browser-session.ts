@@ -70,9 +70,15 @@ export const browserThreadProfiles = pgTable(
 export const browserSessions = pgTable(
   "browser_sessions",
   {
+    /**
+     * Compatibility key for the API version deployed before thread-keyed
+     * browsers. New code owns sessions by chatThreadId; remove this only after
+     * the previous API and frontend have drained.
+     */
+    id: uuid("id").defaultRandom().primaryKey(),
     // External browser cleanup must survive chat-thread deletion. The delete
     // path and reconciler use this durable key after the parent thread is gone.
-    chatThreadId: uuid("chat_thread_id").primaryKey(),
+    chatThreadId: uuid("chat_thread_id").notNull(),
     runId: uuid("run_id").references(
       () => {
         return agentRuns.id;
@@ -109,6 +115,11 @@ export const browserSessions = pgTable(
   },
   (table) => {
     return [
+      index("idx_browser_sessions_chat_thread_created").on(
+        table.chatThreadId,
+        table.createdAt.desc(),
+      ),
+      uniqueIndex("uq_browser_sessions_thread").on(table.chatThreadId),
       index("idx_browser_sessions_owner_created").on(
         table.orgId,
         table.userId,
@@ -151,6 +162,18 @@ export const browserSessionInstances = pgTable(
   "browser_session_instances",
   {
     providerSessionId: uuid("provider_session_id").primaryKey(),
+    /**
+     * Compatibility relation for the API version deployed before thread-keyed
+     * browser instances. Current writers dual-write it with chatThreadId.
+     */
+    browserSessionId: uuid("browser_session_id")
+      .notNull()
+      .references(
+        () => {
+          return browserSessions.id;
+        },
+        { onDelete: "cascade" },
+      ),
     // These IDs are immutable attribution keys rather than ownership FKs.
     // Provider cleanup must outlive deletion of either parent.
     chatThreadId: uuid("chat_thread_id").notNull(),
@@ -176,6 +199,10 @@ export const browserSessionInstances = pgTable(
   },
   (table) => {
     return [
+      index("idx_browser_session_instances_session").on(
+        table.browserSessionId,
+        table.createdAt.desc(),
+      ),
       index("idx_browser_session_instances_thread").on(
         table.chatThreadId,
         table.createdAt.desc(),

@@ -1,6 +1,9 @@
 import { command, computed } from "ccstate";
 
-import { chatThreadSidebarAutoOpenEnabled$ } from "../external/feature-switch.ts";
+import {
+  chatThreadSidebarAutoOpenEnabled$,
+  zeroBrowserEnabled$,
+} from "../external/feature-switch.ts";
 import {
   classifyChatAttachment,
   previewAttachmentFromUrl,
@@ -79,6 +82,7 @@ const autoOpenThreadSidebarFromBrowserLifecycle$ = command(
   ): Promise<void> => {
     if (
       !get(chatThreadSidebarAutoOpenEnabled$) ||
+      !get(zeroBrowserEnabled$) ||
       typeof window === "undefined" ||
       !window.matchMedia(CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY).matches
     ) {
@@ -106,6 +110,7 @@ const autoOpenThreadSidebarFromBrowserLifecycle$ = command(
     }
     if (
       !get(chatThreadSidebarAutoOpenEnabled$) ||
+      !get(zeroBrowserEnabled$) ||
       typeof window === "undefined" ||
       !window.matchMedia(CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY).matches ||
       get(activeThreadSidebar$) !== null
@@ -123,6 +128,11 @@ export const autoOpenInitialThreadSidebar$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     await get(thread.indexedDbEventsInitialized$);
+    signal.throwIfAborted();
+    // IndexedDB is only a local-first rendering cache. Wait for the initial
+    // remote page to merge before deciding whether its lifecycle projection is
+    // authoritative enough to open browser chrome.
+    await get(thread.hasNewEvents$);
     signal.throwIfAborted();
     const result = await settle(
       set(autoOpenThreadSidebarFromBrowserLifecycle$, thread, signal),

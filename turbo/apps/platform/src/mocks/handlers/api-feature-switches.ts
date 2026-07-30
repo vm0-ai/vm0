@@ -20,6 +20,7 @@ export const apiFeatureSwitchesHandlers = [
     return respond(200, {
       switches: DEFAULT_SWITCH_OVERRIDES,
       effectiveSwitches: DEFAULT_SWITCH_OVERRIDES,
+      supportsThreadKeyedBrowserLifecycle: true,
     });
   }),
 
@@ -27,6 +28,7 @@ export const apiFeatureSwitchesHandlers = [
     return respond(200, {
       switches: body.switches,
       effectiveSwitches: body.switches,
+      supportsThreadKeyedBrowserLifecycle: true,
     });
   }),
 

@@ -47,6 +47,7 @@ function browserSession(
   overrides: Partial<ZeroBrowserSession> = {},
 ): ZeroBrowserSession {
   return {
+    id: THREAD_ID,
     threadId: THREAD_ID,
     name: "Thread browser",
     status: "active",
@@ -162,6 +163,7 @@ function setupArtifactCatalog(
 function setupChatThread({
   artifactFiles = [],
   autoOpenEnabled = false,
+  browserEnabled = true,
   messages = [
     {
       id: "msg-sidebar-user",
@@ -191,6 +193,7 @@ function setupChatThread({
 }: {
   artifactFiles?: ChatThreadArtifactFile[];
   autoOpenEnabled?: boolean;
+  browserEnabled?: boolean;
   messages?: MockChatEventInput[];
 } = {}) {
   let servedMessages = [...messages];
@@ -266,6 +269,7 @@ function setupChatThread({
     path: THREAD_PATH,
     featureSwitches: {
       [FeatureSwitchKey.ChatThreadSidebarAutoOpen]: autoOpenEnabled,
+      [FeatureSwitchKey.ZeroBrowser]: browserEnabled,
     },
   });
 
@@ -316,6 +320,14 @@ function menuItemByText(text: string): HTMLElement {
 }
 
 describe("thread-owned utility sidebar", () => {
+  it("keeps the browser icon inert until the backend supports thread lifecycle", async () => {
+    setupChatThread({ browserEnabled: false });
+
+    const button = await screen.findByLabelText("Open browser");
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("aria-pressed", "false");
+  });
+
   it("always opens the thread browser from the header", async () => {
     context.mocks.api(zeroBrowserContract.get, ({ params, respond }) => {
       expect(params.threadId).toBe(THREAD_ID);

@@ -28,7 +28,11 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import { setComputerUseHostAsPreviousApi } from "./helpers/runtime-state";
+import {
+  readBrowserProfileAsPreviousApi,
+  setBrowserInstanceAsPreviousApi,
+  setComputerUseHostAsPreviousApi,
+} from "./helpers/runtime-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -506,6 +510,7 @@ describe("zero browser route", () => {
     expect(createdInOtherThread.body.browser.threadId).not.toBe(
       created.body.browser.threadId,
     );
+    expect(created.body.browser.id).not.toBe(created.body.browser.threadId);
     expect(profileCreates).toBe(2);
     expect(providerCreates).toBe(2);
     expect(
@@ -524,6 +529,30 @@ describe("zero browser route", () => {
       }),
     ).toStrictEqual(expect.arrayContaining([...profileIds]));
     expect(deletedProfiles).toStrictEqual([]);
+
+    if (!actor.orgId) {
+      throw new Error("Expected a browser test actor with an organization");
+    }
+    const actorOrgId = actor.orgId;
+    const previousApiRows = await Promise.all(
+      [created.body.browser.id, createdInOtherThread.body.browser.id].map(
+        async (browserId) => {
+          return await readBrowserProfileAsPreviousApi(context, {
+            browserId,
+            orgId: actorOrgId,
+            userId: actor.userId,
+          });
+        },
+      ),
+    );
+    expect(
+      new Set(
+        previousApiRows.map((row) => {
+          return row.browserProfileId;
+        }),
+      ).size,
+    ).toBe(1);
+    expect([...profileIds]).toContain(previousApiRows[0]?.providerProfileId);
 
     const createdProviderId = new URL(created.body.cdpUrl).hostname.split(
       ".",
@@ -594,6 +623,35 @@ describe("zero browser route", () => {
       height: 1920,
       resizable: true,
     });
+    const restoredForPreviousViewer = await accept(
+      client().getById({
+        headers: { authorization: "Bearer clerk-session" },
+        // The new API's viewer URL is thread-keyed, while the previous
+        // frontend still sends its path segment through the browser-ID route.
+        params: { browserId: created.body.browser.threadId },
+        query: { chatThreadId: created.body.browser.threadId },
+      }),
+      [200],
+    );
+    expect(restoredForPreviousViewer.body.browser).toMatchObject({
+      id: created.body.browser.id,
+      threadId: created.body.browser.threadId,
+      status: "active",
+    });
+
+    await setBrowserInstanceAsPreviousApi(
+      context,
+      createdInOtherThread.body.browser.id,
+    );
+    const previousApiBrowser = await accept(
+      client().getById({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { browserId: createdInOtherThread.body.browser.id },
+        query: {},
+      }),
+      [200],
+    );
+    expect(previousApiBrowser.body.browser.screen).toBeUndefined();
 
     const copiedToAnotherThread = await createApp({
       signal: context.signal,
@@ -854,7 +912,7 @@ describe("zero browser route", () => {
       "Open a managed browser",
     );
 
-    const providerIds = [randomUUID(), randomUUID()] as const;
+    const providerIds = [randomUUID(), randomUUID(), randomUUID()] as const;
     let providerCreates = 0;
     let providerStops = 0;
     let firstStopFailures = 0;
@@ -908,6 +966,7 @@ describe("zero browser route", () => {
       [200],
     );
     const threadId = opened.body.browser.threadId;
+    const browserId = opened.body.browser.id;
     expect(opened.body.browser).toMatchObject({
       status: "active",
       idleExpiresAt: isoAt(10 * MINUTE_MS),
@@ -994,7 +1053,7 @@ describe("zero browser route", () => {
     });
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "browserSessionChanged",
-      { threadId },
+      { browserId, threadId },
     );
     await flushWaitUntilForTest();
     expect(firstStopFailures).toBe(1);
@@ -1063,7 +1122,7 @@ describe("zero browser route", () => {
     expect(providerCreates).toBe(2);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "browserSessionChanged",
-      { threadId },
+      { browserId, threadId },
     );
 
     mockNow(STARTED_AT_MS + 20 * MINUTE_MS);
@@ -1103,7 +1162,7 @@ describe("zero browser route", () => {
       "Open a managed browser",
     );
 
-    const providerIds = [randomUUID(), randomUUID()] as const;
+    const providerIds = [randomUUID(), randomUUID(), randomUUID()] as const;
     let providerCreates = 0;
     let providerStops = 0;
     server.use(
@@ -1246,8 +1305,26 @@ describe("zero browser route", () => {
       }),
     ).toBeFalsy();
 
+    const collided = await createApp({
+      signal: context.signal,
+    }).request(`/api/zero/chat-threads/${first.threadId}/browser/start`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer clerk-session",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ eventId: stopEventId }),
+    });
+    expect(collided.status).toBe(409);
+    await expect(collided.json()).resolves.toMatchObject({
+      error: { code: "BROWSER_EVENT_ID_CONFLICT" },
+    });
+    expect(providerCreates).toBe(3);
+    await flushWaitUntilForTest();
+    expect(providerStops).toBe(3);
+
     await chat.deleteThread(actor, first.threadId);
     await flushWaitUntilForTest();
-    expect(providerStops).toBe(2);
+    expect(providerStops).toBe(3);
   }, 120_000);
 });

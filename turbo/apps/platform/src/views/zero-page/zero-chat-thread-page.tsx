@@ -450,6 +450,7 @@ export function AutomationMenuButton({
 function BrowserMenuButton({ thread }: { thread: ChatThreadSignals }) {
   const sidebarTarget = useGet(thread.sidebar.target$);
   const openBrowserSidebar = useSet(openThreadBrowserSession$);
+  const enabled = useGet(featureSwitch$)[FeatureSwitchKey.ZeroBrowser] ?? false;
 
   const open = sidebarTarget?.type === "browser";
   return (
@@ -458,16 +459,20 @@ function BrowserMenuButton({ thread }: { thread: ChatThreadSignals }) {
         <TooltipTrigger asChild>
           <button
             type="button"
+            disabled={!enabled}
             className={cn(
               "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
               open
                 ? "bg-primary/10 text-primary"
                 : "text-muted-foreground/70 hover:bg-accent hover:text-foreground",
+              !enabled && "cursor-not-allowed opacity-50",
             )}
             aria-label="Open browser"
             aria-pressed={open}
             onClick={() => {
-              openBrowserSidebar(thread.threadId);
+              if (enabled) {
+                openBrowserSidebar(thread.threadId);
+              }
             }}
           >
             <IconWorld size={18} stroke={1.5} />

@@ -3718,6 +3718,7 @@ describe("chat event action cards", () => {
     const liveUrl =
       "https://live.browser-use.com/?wss=test-browser-session-token";
     let browser: ZeroBrowserSession = {
+      id: threadId,
       threadId,
       name: "booking",
       status: "active",
@@ -3768,6 +3769,7 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     await waitFor(() => {

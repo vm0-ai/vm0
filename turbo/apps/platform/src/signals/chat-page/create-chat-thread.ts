@@ -2767,7 +2767,6 @@ function createLoadMoreRenderedChatGroupsWithPrependScroll(
 interface RunTrackingDeps {
   threadId: string;
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
-  initialAutoOpenDecisionCompleted$: Computed<Promise<void>>;
   initializeIndexedDbEvents$: Command<Promise<void>, [AbortSignal]>;
   mergePersistentEvents$: Command<void, [PersistedChatEvent[]]>;
   syncRemoteEvents$: Command<Promise<void>, [AbortSignal]>;
@@ -2956,7 +2955,6 @@ function createMarkThreadReadIfNeeded({
 
 function createOnSubscribedCommand({
   threadId,
-  initialAutoOpenDecisionCompleted$,
   syncRemoteEvents$,
   settleEventSync$,
   reloadArtifacts$,
@@ -2966,7 +2964,6 @@ function createOnSubscribedCommand({
 }: Pick<
   RunTrackingDeps,
   | "threadId"
-  | "initialAutoOpenDecisionCompleted$"
   | "syncRemoteEvents$"
   | "settleEventSync$"
   | "reloadArtifacts$"
@@ -2980,8 +2977,6 @@ function createOnSubscribedCommand({
   const hasSubscribed$ = state(false);
   return command(async ({ get, set }, signal: AbortSignal) => {
     L.debug("subscribeChatThread$ catchup start", { threadId });
-    await get(initialAutoOpenDecisionCompleted$);
-    signal.throwIfAborted();
     set(reloadArtifacts$);
     if (get(hasSubscribed$)) {
       set(reloadMailDrafts$);
@@ -3039,7 +3034,6 @@ function createReceiveSyncedEventsCommand({
 function createRunTracking({
   threadId,
   latestRunFinishCreatedAt$,
-  initialAutoOpenDecisionCompleted$,
   initializeIndexedDbEvents$,
   mergePersistentEvents$,
   syncRemoteEvents$,
@@ -3070,7 +3064,6 @@ function createRunTracking({
 
   const onSubscribed$ = createOnSubscribedCommand({
     threadId,
-    initialAutoOpenDecisionCompleted$,
     syncRemoteEvents$,
     settleEventSync$,
     reloadArtifacts$,
@@ -4493,8 +4486,6 @@ export function createChatThreadSignals(
   const runTracking = createRunTracking({
     threadId,
     latestRunFinishCreatedAt$: events.latestRunFinishCreatedAt$,
-    initialAutoOpenDecisionCompleted$:
-      threadOwned.sidebar.initialAutoOpenDecisionCompleted$,
     initializeIndexedDbEvents$: events.initializeIndexedDbEvents$,
     mergePersistentEvents$: events.mergePersistentEvents$,
     syncRemoteEvents$: events.syncRemoteEvents$,

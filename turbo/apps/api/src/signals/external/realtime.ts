@@ -249,14 +249,18 @@ export async function publishConnectorPermissionUpdatedSafely(
  */
 export async function publishBrowserSessionChangedSafely(
   userId: string,
-  threadId: string,
+  browser: {
+    readonly browserId: string;
+    readonly threadId: string;
+  },
 ): Promise<void> {
-  const payload: BrowserSessionChangedPayload = { threadId };
+  const payload: BrowserSessionChangedPayload = browser;
   await tapError(
     publishUserSignal([userId], "browserSessionChanged", payload),
     (error) => {
       L.warn("Failed to publish browser session changed signal", {
-        threadId,
+        browserId: browser.browserId,
+        threadId: browser.threadId,
         error,
       });
     },

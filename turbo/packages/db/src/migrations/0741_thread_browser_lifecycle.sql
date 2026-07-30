@@ -26,16 +26,9 @@ WHERE "browser_sessions"."id" = "ranked_browser_sessions"."id"
   AND "ranked_browser_sessions"."row_number" > 1;--> statement-breakpoint
 
 ALTER TABLE "chat_events" DROP CONSTRAINT "chat_events_event_type_check";--> statement-breakpoint
-ALTER TABLE "browser_session_instances" DROP CONSTRAINT "browser_session_instances_browser_session_id_browser_sessions_id_fk";
---> statement-breakpoint
-DROP INDEX "idx_browser_session_instances_session";--> statement-breakpoint
-DROP INDEX "idx_browser_sessions_chat_thread_created";--> statement-breakpoint
 DROP INDEX "uq_browser_sessions_thread_owned";--> statement-breakpoint
-ALTER TABLE "browser_sessions" DROP CONSTRAINT "browser_sessions_pkey";--> statement-breakpoint
-ALTER TABLE "browser_sessions" ADD PRIMARY KEY ("chat_thread_id");--> statement-breakpoint
 CREATE INDEX "idx_browser_session_instances_thread" ON "browser_session_instances" USING btree ("chat_thread_id","created_at" DESC NULLS LAST);--> statement-breakpoint
-ALTER TABLE "browser_session_instances" DROP COLUMN "browser_session_id";--> statement-breakpoint
-ALTER TABLE "browser_sessions" DROP COLUMN "id";--> statement-breakpoint
+CREATE UNIQUE INDEX "uq_browser_sessions_thread" ON "browser_sessions" USING btree ("chat_thread_id");--> statement-breakpoint
 ALTER TABLE "chat_events" ADD CONSTRAINT "chat_events_event_type_check" CHECK ("chat_events"."event_type" IN (
           'input.prompt',
           'input.automation',

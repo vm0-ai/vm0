@@ -46,31 +46,47 @@ const zeroBrowserScreenSchema = z.object({
   resizable: z.boolean(),
 });
 
-export const zeroBrowserSessionSchema = z.object({
-  threadId: z.uuid(),
-  name: z.string().min(1).max(64),
-  status: zeroBrowserStatusSchema,
-  viewerUrl: z.url(),
-  liveUrl: z.url().nullable(),
-  proxyCountryCode: z.string().length(2).nullable(),
-  timeoutMinutes: z.number().int().positive(),
-  // Deprecated compatibility fields for clients deployed before browser
-  // billing moved to organization concurrency. Remove after that client
-  // version has drained.
-  maxCredits: z.number().int().positive(),
-  grossCredits: z.number().int().nonnegative(),
-  creditsCharged: z.number().int().nonnegative(),
-  // Optional so a newly deployed frontend remains compatible with the
-  // previous API during rollout. New APIs include it for live instances.
-  screen: zeroBrowserScreenSchema.optional(),
-  // When Zero reclaims the live provider instance unless somebody leases it
-  // again. Null once no provider instance is running.
-  idleExpiresAt: z.iso.datetime().nullable(),
-  suspendedAt: z.iso.datetime().nullable(),
-  suspensionReason: zeroBrowserSuspensionReasonSchema.nullable(),
-  createdAt: z.iso.datetime(),
-  updatedAt: z.iso.datetime(),
-});
+export const zeroBrowserSessionSchema = z
+  .object({
+    /**
+     * Compatibility identifier for frontend/CLI bundles deployed before the
+     * thread-keyed browser model. New clients must use threadId.
+     */
+    id: z.uuid(),
+    /**
+     * Optional on the wire while an app-first production rollout can still
+     * reach the previous API. The parser normalizes it to id for new clients.
+     */
+    threadId: z.uuid().optional(),
+    name: z.string().min(1).max(64),
+    status: zeroBrowserStatusSchema,
+    viewerUrl: z.url(),
+    liveUrl: z.url().nullable(),
+    proxyCountryCode: z.string().length(2).nullable(),
+    timeoutMinutes: z.number().int().positive(),
+    // Deprecated compatibility fields for clients deployed before browser
+    // billing moved to organization concurrency. Remove after that client
+    // version has drained.
+    maxCredits: z.number().int().positive(),
+    grossCredits: z.number().int().nonnegative(),
+    creditsCharged: z.number().int().nonnegative(),
+    // Optional so a newly deployed frontend remains compatible with the
+    // previous API during rollout. New APIs include it for live instances.
+    screen: zeroBrowserScreenSchema.optional(),
+    // When Zero reclaims the live provider instance unless somebody leases it
+    // again. Null once no provider instance is running.
+    idleExpiresAt: z.iso.datetime().nullable(),
+    suspendedAt: z.iso.datetime().nullable(),
+    suspensionReason: zeroBrowserSuspensionReasonSchema.nullable(),
+    createdAt: z.iso.datetime(),
+    updatedAt: z.iso.datetime(),
+  })
+  .transform((browser) => {
+    return {
+      ...browser,
+      threadId: browser.threadId ?? browser.id,
+    };
+  });
 
 export type ZeroBrowserStatus = z.infer<typeof zeroBrowserStatusSchema>;
 export type ZeroBrowserSuspensionReason = z.infer<
@@ -97,6 +113,14 @@ export type ZeroBrowserCreateRequest = z.infer<
 
 const browserThreadParamsSchema = z.object({
   threadId: z.uuid(),
+});
+
+const browserIdParamsSchema = z.object({
+  browserId: z.uuid(),
+});
+
+const browserGetByIdQuerySchema = z.object({
+  chatThreadId: z.uuid().optional(),
 });
 
 const browserResponseSchema = z.object({
@@ -137,7 +161,9 @@ const browserAuthorizationRequestApplyResponseSchema = z.object({
 
 const browserConnectionResponseSchema = browserResponseSchema.extend({
   cdpUrl: z.url(),
-  lifecycleEventId: z.uuid().nullable(),
+  // Previous APIs omit this field. It is advisory for CLI callers and is only
+  // required by the thread-keyed start/stop mutation responses below.
+  lifecycleEventId: z.uuid().nullable().optional(),
 });
 
 const commonErrorResponses = {
@@ -210,6 +236,19 @@ export const zeroBrowserContract = c.router({
     },
     summary: "Extend the idle lease of a live browser from its viewer",
   },
+  leaseById: {
+    method: "POST",
+    path: "/api/zero/browsers/:browserId/lease",
+    headers: authHeadersSchema,
+    pathParams: browserIdParamsSchema,
+    body: z.object({}),
+    responses: {
+      200: browserResponseSchema,
+      ...commonErrorResponses,
+    },
+    summary:
+      "Compatibility lease route for browser-ID clients during the thread-key rollout",
+  },
   start: {
     method: "POST",
     path: "/api/zero/chat-threads/:threadId/browser/start",
@@ -221,6 +260,19 @@ export const zeroBrowserContract = c.router({
       ...commonErrorResponses,
     },
     summary: "Create, reuse, or resume a chat thread's managed browser",
+  },
+  resumeById: {
+    method: "POST",
+    path: "/api/zero/browsers/:browserId/resume",
+    headers: authHeadersSchema,
+    pathParams: browserIdParamsSchema,
+    body: z.object({}),
+    responses: {
+      200: browserResponseSchema,
+      ...commonErrorResponses,
+    },
+    summary:
+      "Compatibility resume route for browser-ID clients during the thread-key rollout",
   },
   stop: {
     method: "POST",
@@ -246,6 +298,19 @@ export const zeroBrowserContract = c.router({
     },
     summary: "Resize a live browser to match a viewer aspect ratio",
   },
+  resizeById: {
+    method: "POST",
+    path: "/api/zero/browsers/:browserId/resize",
+    headers: authHeadersSchema,
+    pathParams: browserIdParamsSchema,
+    body: browserResizeRequestSchema,
+    responses: {
+      200: browserResponseSchema,
+      ...commonErrorResponses,
+    },
+    summary:
+      "Compatibility resize route for browser-ID clients during the thread-key rollout",
+  },
   current: {
     method: "GET",
     path: "/api/zero/browsers/current",
@@ -266,6 +331,19 @@ export const zeroBrowserContract = c.router({
       ...commonErrorResponses,
     } as const,
     summary: "Get a chat thread's managed browser",
+  },
+  getById: {
+    method: "GET",
+    path: "/api/zero/browsers/:browserId",
+    headers: authHeadersSchema,
+    pathParams: browserIdParamsSchema,
+    query: browserGetByIdQuerySchema,
+    responses: {
+      200: browserResponseSchema,
+      ...commonErrorResponses,
+    } as const,
+    summary:
+      "Compatibility read route for browser-ID clients during the thread-key rollout",
   },
 });
 

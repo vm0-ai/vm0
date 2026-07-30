@@ -49,7 +49,7 @@ Current link-backed card patterns include:
 - `/computer-use/authorize/:requestToken`
 - `/?settings=billing&billingView=plans`
 - `/mail/drafts/:vm0DraftId`
-- `/browsers/:browserId`
+- `/browsers/:threadId`
 - platform artifact URLs such as `/f/...` and `/artifacts/...`, plus hosted
   site URLs that support an inline preview
 
@@ -270,12 +270,13 @@ sidebar surface. Deleted cards retain their summary but are not interactive.
 
 ### Provider-backed live resource: managed browser
 
-A managed-browser link matches `/browsers/:browserId`, where `browserId` is the
-vm0 logical browser UUID. The card never accepts a Browser Use `liveUrl` or CDP
-URL from message content. Instead, its thread-scoped computed reads the browser
-through the authenticated Zero Browser API and includes the current chat thread
-ID in that request. A copied card therefore cannot resolve a browser owned by a
-different thread.
+A managed-browser link matches `/browsers/:threadId`. The chat thread ID is the
+canonical resource key: each thread owns at most one logical browser, and every
+provider instance for that browser carries the same thread attribution. The card
+never accepts a Browser Use `liveUrl` or CDP URL from message content. Instead,
+its thread-scoped computed reads the browser through
+`/api/zero/chat-threads/:threadId/browser`. A copied card therefore cannot
+resolve a browser owned by a different thread.
 
 The compact `268px × 48px` card shows `Cloud browser` and a simplified `Live`
 or `Stopped` status without browser-specific metadata or charged credits. Its
@@ -289,32 +290,53 @@ only extends the instance's idle lease, so the user can keep working in the same
 window and a later run in the same thread attaches to it with
 `zero browser use`. The reconciler reclaims an instance once its lease expires,
 its hard timeout is reached, or the provider ends it. Deleting a chat thread
-also reclaims all of its browsers. While the sidebar or full-page viewer is open
+also reclaims its browser. While the sidebar or full-page viewer is open
 and its page is visible, it refreshes the lease on a timer; the CLI can do the
 same with `zero browser lease`. Each lease is a fixed window from now and cannot
 be stacked.
 
-Once an instance is reclaimed the card shows the suspended state and keeps the
-stable `/browsers/:browserId` link. The viewer's resume action, and
-`zero browser use` in a later run, start a new provider instance from the saved
-profile: cookies and storage come back, the previous pages and tabs do not.
-Resume and reclamation publish a user-scoped realtime event carrying the
-logical browser ID. Each open thread subscribes once and reloads only the
-matching shared card signals, so repeated cards and the sidebar move between
-live and suspended state together.
-Logical browsers remain scoped to their chat threads, while every thread for the
-same user in the same organization uses one shared login profile. Multiple
-threads may run provider instances with that profile in parallel up to the
-organization's run concurrency entitlement. Before starting another provider
-instance, the API reclaims the active browser with the earliest idle lease
-until a slot is available. Provider stop requests are best-effort and do not
-delay the new start. The API serializes only the profile's first creation so
-concurrent first use still creates one provider profile.
+Starting or resuming appends a payload-free `browser.started` chat event;
+stopping or automatic reclamation appends a payload-free `browser.stopped`
+event. The frontend supplies each mutation's event UUID so it can optimistically
+project the same event without duplicating it when the server response or
+realtime delivery arrives. Folding these events in order yields the thread's
+browser activity state. Opening a thread waits for the authoritative initial
+event page before using that projection to auto-open the sidebar, so stale
+IndexedDB events cannot override a later server stop. A `browser.started`
+projection opens the sidebar only when no other utility sidebar is already open;
+a terminal `browser.stopped` projection does not auto-open it. The browser icon
+in the thread header remains available in either state, and both a never-created
+browser and a non-live browser use the same empty/start presentation.
+
+Once an instance is reclaimed, the viewer keeps the stable
+`/browsers/:threadId` link. Its Start action, and `zero browser use` in a later
+run, create a new provider instance from the saved profile: cookies and storage
+come back, but previous pages and tabs do not. Provider state changes also
+publish a user-scoped realtime event carrying both the compatibility browser
+UUID and canonical thread ID so previous and current clients refresh the card,
+sidebar, and full-page viewer together.
+
+Every thread for the same user in the same organization uses one shared login
+profile. Multiple threads may run provider instances with that profile in
+parallel up to the organization's run concurrency entitlement. Before starting
+another provider instance, the API reclaims the active browser with the earliest
+idle lease until a slot is available. Provider stop requests are best-effort and
+do not delay the new start. The API serializes only the profile's first creation
+so concurrent first use still creates one provider profile.
 
 The same universal link also has an authenticated full-page route. The browser
 provider's CDP URL is reserved for the Zero CLI to connect `agent-browser` and
 is never returned by the card read, lease, or resume endpoints, nor printed in
 CLI output.
+
+During the one-release thread-key rollout, the physical browser UUID, response
+`id`, and `/api/zero/browsers/:browserId` read/lease/resume/resize routes remain
+compatibility-only aliases for already-deployed clients. Current product code
+must not use them; remove them only after the previous frontend and API have
+drained. The feature-switch response advertises
+`supportsThreadKeyedBrowserLifecycle`; a new frontend keeps its browser controls
+inert when the previous API omits that capability, preventing app-first
+promotion from calling thread-keyed routes before they exist.
 
 ## Adding a Card Type
 

@@ -17,6 +17,12 @@ export const featureSwitchesResponseSchema = z.object({
    * Older API deployments omit this field.
    */
   supportsCustomConnectorOAuth2: z.boolean().optional(),
+  /**
+   * Optional capability handshake for the thread-keyed managed-browser API.
+   * Older API deployments omit this field, so an app-first rollout must keep
+   * the new browser controls inert until the backend advertises support.
+   */
+  supportsThreadKeyedBrowserLifecycle: z.boolean().optional(),
 });
 
 export type FeatureSwitchesResponse = z.infer<

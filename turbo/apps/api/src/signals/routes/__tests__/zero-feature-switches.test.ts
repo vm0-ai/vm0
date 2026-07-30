@@ -46,6 +46,7 @@ describe("/api/zero/feature-switches", () => {
       [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
     });
     expect(current.body.supportsCustomConnectorOAuth2).toBeTruthy();
+    expect(current.body.supportsThreadKeyedBrowserLifecycle).toBeTruthy();
     expect(
       current.body.effectiveSwitches[
         FeatureSwitchKey.StructuredPromptInlineTemplates

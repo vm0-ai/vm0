@@ -1,5 +1,5 @@
 {
-  "id": "b0336fdc-3033-4874-bd19-d5ff8ccd999d",
+  "id": "7b05a24e-2580-4822-b852-66d41d00624d",
   "prevId": "387dcec5-7303-4c39-94bf-54dc1e371517",
   "version": "7",
   "dialect": "postgresql",
@@ -3193,6 +3193,12 @@
           "primaryKey": true,
           "notNull": true
         },
+        "browser_session_id": {
+          "name": "browser_session_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
         "chat_thread_id": {
           "name": "chat_thread_id",
           "type": "uuid",
@@ -3331,6 +3337,27 @@
         }
       },
       "indexes": {
+        "idx_browser_session_instances_session": {
+          "name": "idx_browser_session_instances_session",
+          "columns": [
+            {
+              "expression": "browser_session_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "idx_browser_session_instances_thread": {
           "name": "idx_browser_session_instances_thread",
           "columns": [
@@ -3412,18 +3439,31 @@
         }
       },
       "foreignKeys": {
-        "browser_session_instances_usage_event_id_usage_event_id_fk": {
-          "name": "browser_session_instances_usage_event_id_usage_event_id_fk",
+        "browser_session_instances_browser_session_id_browser_sessions_id_fk": {
+          "name": "browser_session_instances_browser_session_id_browser_sessions_id_fk",
           "tableFrom": "browser_session_instances",
-          "tableTo": "usage_event",
           "columnsFrom": [
-            "usage_event_id"
+            "browser_session_id"
           ],
+          "tableTo": "browser_sessions",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "browser_session_instances_usage_event_id_usage_event_id_fk": {
+          "name": "browser_session_instances_usage_event_id_usage_event_id_fk",
+          "tableFrom": "browser_session_instances",
+          "columnsFrom": [
+            "usage_event_id"
+          ],
+          "tableTo": "usage_event",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
         }
       },
       "compositePrimaryKeys": {},
@@ -3495,10 +3535,17 @@
       "name": "browser_sessions",
       "schema": "",
       "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
         "chat_thread_id": {
           "name": "chat_thread_id",
           "type": "uuid",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true
         },
         "run_id": {
@@ -3604,6 +3651,42 @@
         }
       },
       "indexes": {
+        "idx_browser_sessions_chat_thread_created": {
+          "name": "idx_browser_sessions_chat_thread_created",
+          "columns": [
+            {
+              "expression": "chat_thread_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "uq_browser_sessions_thread": {
+          "name": "uq_browser_sessions_thread",
+          "columns": [
+            {
+              "expression": "chat_thread_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "idx_browser_sessions_owner_created": {
           "name": "idx_browser_sessions_owner_created",
           "columns": [

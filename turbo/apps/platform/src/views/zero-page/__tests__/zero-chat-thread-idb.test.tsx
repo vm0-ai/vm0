@@ -6,6 +6,7 @@ import {
   chatThreadEventsContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroBrowserContract } from "@vm0/api-contracts/contracts/zero-browser";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -64,6 +65,7 @@ function setupChatPage({
     },
     featureSwitches: {
       [FeatureSwitchKey.ChatThreadSidebarAutoOpen]: autoOpenEnabled,
+      [FeatureSwitchKey.ZeroBrowser]: true,
     },
   });
 }
@@ -223,6 +225,69 @@ describe("zero chat thread IndexedDB fallback", () => {
       if (!releaseCatchUp.settled()) {
         releaseCatchUp.resolve();
       }
+      runtimeDb.close();
+    }
+  });
+
+  it("does not auto-open from a cached browser start superseded by a remote stop", async () => {
+    prepareDefaultAgent();
+    mockCurrentThreadDetail();
+    mockSidebarThread();
+    context.mocks.browser.matchMedia((query) => {
+      return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
+    });
+    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "BROWSER_NOT_FOUND",
+          message: "Managed browser not found",
+        },
+      });
+    });
+
+    const runtimeDb = await primeRuntimeChatDb();
+    await runtimeDb.put(CHAT_MESSAGES_STORE, {
+      id: "00000000-0000-4000-8000-000000000094",
+      threadId: THREAD_ID,
+      eventType: "browser.started",
+      content: null,
+      seqId: 1,
+      createdAt: "2026-03-10T00:00:00Z",
+    });
+    context.mocks.api(chatThreadEventsContract.list, ({ respond }) => {
+      return respond(200, {
+        events: [
+          {
+            id: "00000000-0000-4000-8000-000000000095",
+            threadId: THREAD_ID,
+            eventType: "browser.stopped",
+            content: null,
+            seqId: 2,
+            createdAt: "2026-03-10T00:00:01Z",
+          },
+          {
+            id: "00000000-0000-4000-8000-000000000096",
+            threadId: THREAD_ID,
+            eventType: "output.message",
+            content: "Browser stopped remotely",
+            seqId: 3,
+            createdAt: "2026-03-10T00:00:02Z",
+          },
+        ],
+        hasHistoryBefore: false,
+      });
+    });
+
+    try {
+      setupChatPage({ autoOpenEnabled: true });
+
+      await expect(
+        screen.findByText("Browser stopped remotely"),
+      ).resolves.toBeInTheDocument();
+      expect(
+        document.querySelector("[data-browser-session-sidebar]"),
+      ).toBeNull();
+    } finally {
       runtimeDb.close();
     }
   });
