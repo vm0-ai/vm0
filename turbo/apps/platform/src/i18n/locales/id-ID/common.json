@@ -339,6 +339,7 @@
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
+      "test": "Tes",
       "web": "Web",
       "webhook": "Webhook",
       "workflowEvent": "Peristiwa alur kerja",
@@ -1286,6 +1287,18 @@
       "providerDeletedSuffix": "untuk melanjutkan.",
       "providerIncompatibleAction": "Mulai sesi baru",
       "providerIncompatiblePrefix": "Sesi ini dimulai dengan provider model yang berbeda dan tidak bisa dilanjutkan dengan yang saat ini.",
+      "recovery": {
+        "capacityDescription": "Model ini sementara mencapai kapasitas. Coba lagi dalam beberapa menit, atau ganti model sekarang.",
+        "capacityTitle": "Model {{framework}} sedang sibuk",
+        "claudeCode": "Claude Code",
+        "codex": "Codex",
+        "resetAndTryAgain": "Atur ulang dan coba lagi",
+        "resetsAt": "Direset pada {{time}}",
+        "selectModel": "Ganti model",
+        "tryAgain": "Coba lagi",
+        "usageDescription": "Anda dapat melanjutkan saat batas penggunaan direset, atau ganti model sekarang.",
+        "usageTitle": "Batas {{framework}} tercapai"
+      },
       "runCancelled": "Tertunda di tengah pikiran — lanjutkan kapan saja."
     },
     "feedback": {
