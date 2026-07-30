@@ -42,8 +42,8 @@
       "networkPolicies": "Netzwerkrichtlinien",
       "none": "Keiner",
       "prompt": "Prompt",
-      "runId": "Lauf-ID",
-      "secrets": "Geheimnisse",
+      "runId": "Ausführungs-ID",
+      "secrets": "Secrets",
       "session": "Sitzung",
       "storageName": "Speichername",
       "systemPrompt": "Systemaufforderung",
@@ -55,17 +55,17 @@
     "detail": {
       "activity": "Aktivität",
       "contextUnavailable": {
-        "description": "Für diese Ausführung ist kein Ausführungskontext verfügbar. Möglicherweise handelt es sich um einen älteren Lauf, der erstellt wurde, bevor Kontext-Snapshots aktiviert wurden.",
+        "description": "Für diese Ausführung ist kein Ausführungskontext verfügbar. Möglicherweise handelt es sich um eine ältere Ausführung, die erstellt wurde, bevor Kontext-Snapshots aktiviert wurden.",
         "title": "Kontext nicht verfügbar"
       },
       "downloadRawData": "Rohdaten herunterladen",
       "errorGuidance": {
         "computerUseAuthorizationRequired": {
-          "guidance": "Fordern Sie einen Autorisierungslink für die delegierte Computernutzung an, bitten Sie den Benutzer, einen Zero Desktop-Host für diesen Chat oder Slack-Thread auszuwählen, und starten Sie dann eine neue Ausführung. Vorhandene Lauftoken können nicht direkt aktualisiert werden.",
+          "guidance": "Fordern Sie einen Autorisierungslink für die delegierte Computernutzung an, bitten Sie den Benutzer, einen Zero Desktop-Host für diesen Chat oder Slack-Thread auszuwählen, und starten Sie dann eine neue Ausführung. Vorhandene Ausführungs-Token können nicht direkt aktualisiert werden.",
           "title": "Computernutzungsgenehmigung erforderlich"
         },
         "concurrentRunLimitReached": {
-          "guidance": "Warten Sie, bis Ihr aktueller Lauf abgeschlossen ist, bevor Sie einen neuen starten.",
+          "guidance": "Warten Sie, bis Ihre aktuelle Ausführung abgeschlossen ist, bevor Sie eine neue starten.",
           "title": "Das Limit für die gleichzeitige Ausführung wurde erreicht"
         },
         "creditsDepleted": {
@@ -104,7 +104,7 @@
       "log": "Log",
       "modelProvidedBy": "{{model}} bereitgestellt von {{provider}}",
       "networkEmpty": {
-        "description": "Für diesen Lauf wurde kein Netzwerkverkehr aufgezeichnet.",
+        "description": "Für diese Ausführung wurde kein Netzwerkverkehr aufgezeichnet.",
         "title": "Keine Netzwerkprotokolle"
       },
       "notFound": {
@@ -114,7 +114,7 @@
       },
       "runner": {
         "deviceLimitMismatch": "Der Leerlauf-Pool-Eintrag ist vorhanden, aber der Geräteratenbegrenzerstatus stimmt nicht überein.",
-        "featureDisabled": "Die Wiederverwendung von Sandboxen ist für diesen Lauf deaktiviert.",
+        "featureDisabled": "Die Wiederverwendung von Sandboxen ist für diese Ausführung deaktiviert.",
         "noSessionId": "Es ist keine Sitzungs-ID für den Abgleich mit dem Leerlaufpool verfügbar.",
         "notReused": "Nicht wiederverwendet",
         "poolMiss": "Im Leerlaufpool wurde keine passende Sandbox gefunden.",
@@ -122,7 +122,7 @@
         "reused": "Wiederverwendet",
         "reusedDescription": "Sandbox wurde aus dem Ruhepool entparkt.",
         "sandbox": "Sandbox",
-        "unknown": "Unbekannt (älterer Lauf, aufgezeichnet, bevor die Nachverfolgung der Sandbox-Wiederverwendung hinzugefügt wurde).",
+        "unknown": "Unbekannt (ältere Ausführung, aufgezeichnet, bevor die Nachverfolgung der Sandbox-Wiederverwendung hinzugefügt wurde).",
         "unparkFailed": "Entparkversuch fehlgeschlagen; Eine neue Sandbox wurde bereitgestellt."
       },
       "steps": {
@@ -229,22 +229,22 @@
         "binaryData": "[Binärdaten, {{size}} base64-kodiert]",
         "complete": "vollständig",
         "headersWithCount": "{{title}} ({{formattedCount}})",
-        "requestBody": "Anforderungstext",
-        "requestHeaders": "Anforderungsheader",
-        "responseBody": "Antwortgremium",
-        "responseHeaders": "Antwortheader",
+        "requestBody": "Anfrage-Body",
+        "requestHeaders": "Anfrage-Header",
+        "responseBody": "Antwort-Body",
+        "responseHeaders": "Antwort-Header",
         "truncated": "gekürzt"
       },
       "details": {
         "action": "Aktion",
         "authCacheHit": "Cache-Treffer",
         "authRefreshedConnectors": "Aktualisierte Integrationen",
-        "authRefreshedSecrets": "Aktualisierte Geheimnisse",
-        "authResolvedSecrets": "Aufgelöste Geheimnisse",
+        "authRefreshedSecrets": "Aktualisierte Secrets",
+        "authResolvedSecrets": "Aufgelöste Secrets",
         "authUrlRewrite": "URL-Umschreibung",
         "baseUrl": "Basis-URL",
         "billable": "Abrechnungsfähig",
-        "browserUserAgent": "Browser-Benutzeragent",
+        "browserUserAgent": "Browser-User-Agent",
         "connectorBaseUrl": "Integration-Basis-URL",
         "connectorDiagnostic": "Integrationsdiagnose",
         "connectorEnvNames": "Integration-Umgebungsnamen",
@@ -664,7 +664,7 @@
         "forestEditorial": "Moosbibliothek",
         "goldLuxe": "Preisverleihungsabend",
         "mauveDusk": "Lavendeldämmerung",
-        "midnightMono": "Nachtlauf",
+        "midnightMono": "Mitternachts-Monochrom",
         "mintTech": "Mint-Labor",
         "monoInk": "Zeitungspapier rot",
         "nordicFrost": "Eissee",
@@ -895,11 +895,11 @@
         "emailSupport": "E-Mail-Support",
         "existingCredits": "Nur vorhandene Gratisguthaben",
         "monthlyCredits": "{{value}} Credits / Monat",
-        "oneConcurrentRun": "1 gleichzeitiger Lauf",
+        "oneConcurrentRun": "1 gleichzeitige Ausführung",
         "payAsYouGo": "Danach zahlen Sie nach Bedarf",
         "prioritySupport": "Vorrangiger Support",
-        "tenConcurrentRuns": "10 gleichzeitige Läufe",
-        "twoConcurrentRuns": "2 gleichzeitige Läufe",
+        "tenConcurrentRuns": "10 gleichzeitige Ausführungen",
+        "twoConcurrentRuns": "2 gleichzeitige Ausführungen",
         "unlimitedAgents": "Unbegrenzte Gesamtanzahl an Agenten",
         "voiceInput": "Spracheingabe",
         "voiceInputLifetime": "Spracheingabe (10 lebenslange Nutzungen pro Mitglied)"
@@ -945,7 +945,7 @@
       "title": "{{plan}}-Plan wiederherstellen?"
     },
     "sidebar": {
-      "description": "Mehr Credits und gleichzeitige Läufe",
+      "description": "Mehr Credits und gleichzeitige Ausführungen",
       "getPlan": "Holen Sie sich {{plan}}"
     },
     "toasts": {
@@ -972,32 +972,32 @@
         "hour": "{{value}}h",
         "minute": "{{value}}m",
         "remaining": "{{remaining}} / {{total}} Credits",
-        "remainingAria": "Nutzungskontingent {{label}} verbleibend",
-        "resets": "Setzt {{date}} zurück",
-        "resetsRaw": "Setzt {{value}} zurück",
-        "title": "Nutzungsentschädigung",
+        "remainingAria": "Verbleibendes Nutzungskontingent für {{label}}",
+        "resets": "Wird am {{date}} zurückgesetzt",
+        "resetsRaw": "Wird in {{value}} zurückgesetzt",
+        "title": "Nutzungskontingent",
         "week": "{{value}}w"
       },
       "breakdown": {
-        "currentPlanDescription": "Monatliche Plangutschriften, die bei jedem Abrechnungszeitraum zurückgesetzt werden",
-        "freeDescription": "Startguthaben, das bis zur vollständigen Nutzung verfügbar ist",
-        "freePlan": "Kostenloser Plan",
-        "payAsYouGo": "Bezahlen Sie je nach Bedarf",
-        "payAsYouGoDescription": "Credits automatisch aufladen, nie verfallen",
-        "previousPlanDescription": "Restguthaben aus dem vorherigen Plan",
-        "promotional": "Werbeartikel",
-        "promotionalDescription": "Kampagnengutschriften verfallen nach einem festgelegten Zeitraum",
-        "proPlan": "Pro-Plan",
-        "teamPlan": "Teamplan"
+        "currentPlanDescription": "Monatliche Tarif-Credits; werden in jedem Abrechnungszeitraum zurückgesetzt",
+        "freeDescription": "Startguthaben; verfügbar, bis es aufgebraucht ist",
+        "freePlan": "Kostenloser Tarif",
+        "payAsYouGo": "Nutzungsabhängige Zahlung",
+        "payAsYouGoDescription": "Automatische Aufladung; Credits verfallen nie",
+        "previousPlanDescription": "Restguthaben aus dem vorherigen Tarif",
+        "promotional": "Aktionsguthaben",
+        "promotionalDescription": "Aktions-Credits; verfallen nach einem festgelegten Zeitraum",
+        "proPlan": "Pro-Tarif",
+        "teamPlan": "Team-Tarif"
       },
       "creditAdditions": "Hinzugefügte Credits",
       "creditsRemaining_one": "{{value}} verbleibender Credit",
       "creditsRemaining_other": "Es verbleiben noch {{value}} Credits",
-      "expires": "Läuft ab {{date}}",
+      "expires": "Verfällt am {{date}}",
       "left": "{{value}} übrig",
       "member": "Mitglied",
       "neverExpires": "Läuft nie ab",
-      "unavailable": "Credits nicht verfügbar.",
+      "unavailable": "Credit-Guthaben nicht verfügbar.",
       "upgradeDescription": "Pro beinhaltet monatliche Credits und schaltet zusätzliche Credit-Optionen frei.",
       "upgradeTitle": "Upgraden Sie auf Pro, um mehr Credits zu erhalten",
       "used": "Verwendet"
@@ -1152,7 +1152,7 @@
         "doesNotContain": "{{field}} enthält nicht",
         "from": "Von",
         "is": "Ist",
-        "labelName": "Labelname",
+        "labelName": "Label-Name",
         "labelPlaceholder": "Unterstützung",
         "subject": "Betreff",
         "threadId": "Thread-ID",
@@ -1161,7 +1161,7 @@
         "threadIdValue": "Thread-ID-Wert",
         "to": "An"
       },
-      "lastRun": "Letzter Lauf",
+      "lastRun": "Letzte Ausführung",
       "match": "Übereinstimmen",
       "matchSummary": {
         "allInboundMessages": "Alle eingehenden Nachrichten",
@@ -1185,9 +1185,9 @@
         "threadIdIs": "Thread-ID ist {{value}}"
       },
       "monthlyAt": "Jeden Monat am Tag {{day}} um {{time}}",
-      "nextRun": "Nächster Lauf",
-      "noRuns": "Noch keine Läufe",
-      "noUpcomingRun": "Kein bevorstehender Lauf",
+      "nextRun": "Nächste Ausführung",
+      "noRuns": "Noch keine Ausführungen",
+      "noUpcomingRun": "Keine bevorstehende Ausführung",
       "onceAt": "Einmal am {{date}} um {{time}}",
       "open": "Offene Automatisierungen",
       "runAt": "Ausführen am",
@@ -1404,7 +1404,7 @@
       "openGoalDetails": "Zieldetails öffnen",
       "pendingAutomationEvent": "Ausstehendes Automatisierungsereignis",
       "queuedMessage": "Nachricht in der Warteschlange",
-      "queuedMessageDescription": "Wartet in der Schlange und sendet, sobald der aktuelle Lauf beendet ist.",
+      "queuedMessageDescription": "Wartet in der Warteschlange und wird gesendet, sobald die aktuelle Ausführung beendet ist.",
       "removeQueuedMessage": "Nachricht aus der Warteschlange entfernen",
       "skipAutomationEvent": "Automatisierungsereignis überspringen"
     },
@@ -1463,7 +1463,7 @@
         "wiring": "Komponenten werden verbunden..."
       },
       "viewActivityLogs": "Aktivitätsprotokolle anzeigen",
-      "viewLogs": "Laufprotokolle anzeigen",
+      "viewLogs": "Ausführungsprotokolle anzeigen",
       "waitingIn": "Warten",
       "worked": "Ausgeführt",
       "workedFor": "Ausgeführt in {{duration}}"
@@ -1779,16 +1779,16 @@
       },
       "connect": {
         "apiAuthentication": "API-Authentifizierung",
-        "apiDescription": "Geben Sie das vom Anbieter ausgegebene API-Geheimnis ein.",
+        "apiDescription": "Geben Sie das vom Anbieter ausgegebene API-Secret ein.",
         "back": "Zurück",
         "connecting": "Verbinden…",
         "continue": "Weitermachen",
         "continueToProvider": "Gehen Sie weiter zum Anbieter, um den Zugriff zu autorisieren.",
-        "description": "Ihr Geheimnis wird im Ruhezustand verschlüsselt und von der Firewall in ausgehende Anfragen eingefügt. Es wird dem Agenten niemals als Umgebungsvariable angezeigt.",
+        "description": "Ihr Secret wird im Ruhezustand verschlüsselt und von der Firewall in ausgehende Anfragen eingefügt. Es wird dem Agenten niemals als Umgebungsvariable angezeigt.",
         "oauthDescription": "Autorisieren Sie den Zugriff mit der OAuth-App des Integrationen.",
         "save": "Speichern",
         "saving": "Speichern…",
-        "secret": "Geheimnis",
+        "secret": "Secret",
         "title": "Verbinden Sie {{connector}}"
       },
       "create": {
@@ -1796,20 +1796,20 @@
         "advancedApiPreserved": "Erweiterte API-Felder und Injektionen bleiben beim Speichern erhalten.",
         "advancedSettings": "Erweiterte Einstellungen",
         "apiAuthentication": "API-Authentifizierung",
-        "apiAuthenticationDescription": "Fügen Sie in jede passende Anfrage ein vom Benutzer bereitgestelltes Geheimnis ein.",
+        "apiAuthenticationDescription": "Fügen Sie in jede passende Anfrage ein vom Benutzer bereitgestelltes Secret ein.",
         "authorizationParameters": "Autorisierungsparameter",
         "authorizationParametersDescription": "Fügen Sie nur die Parameter hinzu, die Ihr Anbieter benötigt.",
         "authorizationUrl": "Autorisierungs-URL",
         "clientId": "Kunden-ID",
-        "clientSecret": "Kundengeheimnis",
+        "clientSecret": "Client-Secret",
         "displayName": "Anzeigename",
         "headerName": "Headername",
         "headerTemplate": "Header-Vorlage",
         "headerTemplateHint": "(muss {{placeholder}} enthalten)",
         "httpBasicAuthentication": "HTTP-Basisauthentifizierung",
-        "keepClientSecret": "Lassen Sie das Client-Geheimnis leer, um den gespeicherten Wert beizubehalten.",
-        "keepClientSecretPlaceholder": "Lassen Sie das Feld leer, um auf dem neuesten Stand zu bleiben",
-        "newClientSecret": "Neues Kundengeheimnis",
+        "keepClientSecret": "Lassen Sie das Client-Secret leer, um den gespeicherten Wert beizubehalten.",
+        "keepClientSecretPlaceholder": "Leer lassen, um den aktuellen Wert beizubehalten",
+        "newClientSecret": "Neues Client-Secret",
         "none": "Keiner",
         "oauthChangesDisconnect": "Durch das Ändern von OAuth-Einstellungen oder Client-Anmeldeinformationen werden bestehende OAuth-Verbindungen getrennt.",
         "oauthDescription": "Konfigurieren Sie eine OAuth-App für die Autorisierung durch Mitglieder.",
@@ -1829,7 +1829,7 @@
         "removeOauth": "Entfernen Sie OAuth 2.0",
         "scopes": "Bereiche",
         "scopesHint": "(eine pro Zeile)",
-        "secretInRequestBody": "Client-Geheimnis im Anforderungstext",
+        "secretInRequestBody": "Client-Secret im Anfrage-Body",
         "title": "Neue benutzerdefinierte Integration",
         "tokenEndpointAuthentication": "Token-Endpunktauthentifizierung",
         "tokenUrl": "Token-URL"
@@ -2098,7 +2098,7 @@
           "rejectionCache": "Ablehnungscache",
           "rejectionFailure": "Ablehnungsfehler",
           "syncState": "Synchronisierungsstatus",
-          "unownedSecrets": "Unbekannte Geheimnisse",
+          "unownedSecrets": "Nicht zugeordnete Secrets",
           "unownedVariables": "Unbesessene Variablen",
           "unresolvedBridgeCredentials": "Ungelöste Bridge-Anmeldeinformationen"
         },
@@ -2119,21 +2119,21 @@
           "digestMismatch": "Digest-Konflikt",
           "invalidArtifact": "Ungültiges Artefakt",
           "invalidCompression": "Ungültige Komprimierung",
-          "invalidJson": "Ungültiger JSON",
+          "invalidJson": "Ungültiges JSON",
           "invalidPointer": "Ungültiger Zeiger",
           "invalidReference": "Ungültige Referenz",
-          "missingAccessProvider": "Fehlender Zugangsanbieter",
-          "missingGrantProvider": "Fehlender Fördergeber",
+          "missingAccessProvider": "Fehlender Access-Provider",
+          "missingGrantProvider": "Fehlender Grant-Provider",
           "missingPlatformConfiguration": "Fehlende Plattformkonfiguration",
-          "missingRevokeProvider": "Fehlender Widerrufanbieter",
+          "missingRevokeProvider": "Fehlender Revoke-Provider",
           "neverSynced": "Nie synchronisiert",
           "objectTooLarge": "Objekt zu groß",
-          "providerContractMismatch": "Nichtübereinstimmung des Anbietervertrags",
-          "publicLeakage": "Öffentliches Durchsickern",
+          "providerContractMismatch": "Provider-Vertrag stimmt nicht überein",
+          "publicLeakage": "Öffentliche Datenfreigabe",
           "rejected": "Abgelehnt",
           "relationshipMismatch": "Beziehungskonflikt",
           "sourceUnavailable": "Quelle nicht verfügbar",
-          "stale": "Abgestanden",
+          "stale": "Veraltet",
           "unchanged": "Unverändert",
           "unsupportedSchema": "Nicht unterstütztes Schema"
         }
@@ -2170,9 +2170,9 @@
         },
         "credentials": {
           "appId": "App-ID",
-          "appSecret": "App-Geheimnis",
-          "description": "Kopieren Sie die App-ID und das App-Geheimnis aus Anmeldeinformationen und Basisinformationen.",
-          "imageAlt": "Ergebnis der Feishu-App-Erstellung, das zeigt, wo sich die App-ID und das App-Geheimnis befinden",
+          "appSecret": "App-Secret",
+          "description": "Kopieren Sie die App-ID und das App-Secret aus den Anmeldeinformationen und Basisinformationen.",
+          "imageAlt": "Ergebnis der Feishu-App-Erstellung mit der Position von App-ID und App-Secret",
           "title": "Fügen Sie die App-Anmeldeinformationen hinzu"
         },
         "defaultAgent": "Standardagent",
@@ -2227,9 +2227,9 @@
           "label": "OAuth-Umleitungs-URL",
           "title": "Konfigurieren Sie die OAuth-Umleitungs-URL"
         },
-        "reviewGuide": "Rezensionsleitfaden",
+        "reviewGuide": "Review-Leitfaden",
         "reviewGuideDescription": "Sehen Sie sich die abgeschlossenen Einrichtungsschritte für diesen Feishu-Bot an.",
-        "reviewGuideTitle": "Feishu-Rezensionsleitfaden",
+        "reviewGuideTitle": "Feishu-Review-Leitfaden",
         "routeDescription": "Leiten Sie Feishu-Nachrichten an Agenten weiter",
         "selectAgent": "Wählen Sie einen Agenten aus",
         "setupIncomplete": "Einrichtung unvollständig",
@@ -2793,7 +2793,7 @@
       }
     },
     "workflowDiagram": {
-      "preparedDescription": "Zero bereitet aus Ihren Werkzeugen den nächsten Schritt vor.",
+      "preparedDescription": "Zero bereitet aus Ihren Tools den nächsten Schritt vor.",
       "preparedTitle": "Workflow vorbereitet",
       "reviewDescription": "Zero schließt den Workflow ab und gibt das Ergebnis zurück.",
       "reviewTitle": "Bereit zur Überprüfung",
@@ -2843,23 +2843,23 @@
         "title": "Warnung, wenn sich eine Metrik ändert"
       },
       "auto-merge-github-prs": {
-        "description": "Überprüfen Sie PRs, die als bereit zur Zusammenführung gekennzeichnet sind, warten Sie auf CI, führen Sie sie dann zusammen und posten Sie sie in Slack.",
-        "scenario": "Das Zusammenführen einer PR bedeutet, CI zu betreuen, den Unterschied noch einmal zu überprüfen und daran zu denken, zu posten, dass er versendet wurde. Zero sucht nach dem Label „Ready-to-Merge“, überprüft die Änderung, wartet darauf, dass die Schecks grün werden, führt die Zusammenführung durch und teilt dies dem Kanal mit.",
+        "description": "PRs mit dem Label „Ready-to-Merge“ prüfen, auf CI warten, mergen und das Ergebnis in Slack posten.",
+        "scenario": "Das Mergen eines Pull-Requests bedeutet, CI im Blick zu behalten, den Diff erneut zu prüfen und die Auslieferung im Kanal zu melden. Zero achtet auf das Label „Ready-to-Merge“, prüft die Änderung, wartet auf grüne Checks, führt den Merge durch und informiert den Kanal.",
         "steps": {
           "one": {
-            "description": "Zero nimmt Pull-Requests entgegen, sobald diese Ihr Merge-Label tragen.",
-            "title": "Ein PR wird als bereit zum Zusammenführen gekennzeichnet"
+            "description": "Zero erkennt Pull-Requests, sobald sie Ihr Merge-Label tragen.",
+            "title": "Ein PR erhält das Label „Ready-to-Merge“"
           },
           "three": {
-            "description": "Zero führt die PR zusammen und veröffentlicht das Ergebnis auf Ihrem Kanal.",
-            "title": "Zusammengeführt und in Slack gepostet"
+            "description": "Zero mergt die PR und veröffentlicht das Ergebnis in Ihrem Kanal.",
+            "title": "Gemergt und in Slack gepostet"
           },
           "two": {
-            "description": "Zero liest den Diff und hält ihn, bis alle erforderlichen Prüfungen erfolgreich sind.",
-            "title": "Zero überprüft und wartet auf CI"
+            "description": "Zero liest den Diff und wartet, bis alle erforderlichen Checks erfolgreich sind.",
+            "title": "Zero prüft und wartet auf CI"
           }
         },
-        "title": "GitHub-PRs automatisch zusammenführen"
+        "title": "GitHub-PRs automatisch mergen"
       },
       "blog-posts-to-x": {
         "description": "Jeden Tag wandelt Zero neu veröffentlichte Blogbeiträge in soziale Varianten um und stellt sie über Buffer in die Warteschlange von X.",
@@ -2870,19 +2870,19 @@
             "title": "Zero findet neue Beiträge"
           },
           "three": {
-            "description": "Zero plant die Varianten zur Überprüfung.",
+            "description": "Zero plant die Varianten zur Review ein.",
             "title": "In Buffer eingereiht"
           },
           "two": {
             "description": "Zero entwirft für jeden Artikel mehrere X-Beiträge.",
-            "title": "In soziale Varianten schneiden"
+            "title": "In Social-Media-Varianten aufgeteilt"
           }
         },
         "title": "Verwandeln Sie Blog-Beiträge in soziale Beiträge"
       },
       "build-weekly-deck-gamma": {
         "description": "Verwandeln Sie die Kennzahlen der Woche in ein präsentationsfertiges Deck in Gamma.",
-        "scenario": "Das wöchentliche Kennzahlendeck besteht aus den gleichen Folien mit jedes Mal neuen Zahlen. Zero ruft die Daten ab, erstellt das Deck in Gamma und veröffentlicht es auf Slack, damit die Überprüfung vor dem Meeting fertig ist.",
+        "scenario": "Das wöchentliche Metrik-Deck besteht immer aus denselben Folien mit neuen Zahlen. Zero ruft die Daten ab, erstellt das Deck in Gamma und veröffentlicht es in Slack, damit es vor dem Meeting zur Review bereitsteht.",
         "steps": {
           "one": {
             "description": "Zero liest Metriken aus Google Sheets und Analysen.",
@@ -2894,17 +2894,17 @@
           },
           "two": {
             "description": "Zero stellt das wiederkehrende Metrik-Deck zusammen.",
-            "title": "Deck in Gamma gebaut"
+            "title": "Deck in Gamma erstellt"
           }
         },
         "title": "Baue das wöchentliche Deck in Gamma"
       },
       "business-review-gamma": {
-        "description": "Verwandeln Sie die Kennzahlen des Monats in ein Geschäftsbewertungsdeck in Gamma.",
-        "scenario": "Der wöchentliche Geschäftsrückblick ist ein wiederkehrendes Deck, das jemand von Hand neu zusammenstellt. Zero sorgt für Umsatz und Wachstum, baut das Deck in Gamma auf und hält es vor dem Meeting bereit.",
+        "description": "Verwandeln Sie die Kennzahlen des Monats in ein Business-Review-Deck in Gamma.",
+        "scenario": "Das wöchentliche Business-Review-Deck wird immer wieder manuell erstellt. Zero ruft Umsatz und Wachstum ab, baut das Deck in Gamma und stellt es vor dem Meeting bereit.",
         "steps": {
           "one": {
-            "description": "Zero liest MRR, Verbrennung und Wachstum von Stripe und Clerk.",
+            "description": "Zero liest MRR, Burn Rate und Wachstum aus Stripe und Clerk.",
             "title": "Zero zieht die Zahlen"
           },
           "three": {
@@ -2912,11 +2912,11 @@
             "title": "Bereit zur Präsentation"
           },
           "two": {
-            "description": "Zero stellt die wiederkehrende Geschäftsbewertung zusammen.",
-            "title": "Deck in Gamma gebaut"
+            "description": "Zero stellt das wiederkehrende Business-Review-Deck zusammen.",
+            "title": "Deck in Gamma erstellt"
           }
         },
-        "title": "Erstellen Sie den Geschäftsbericht in Gamma"
+        "title": "Business-Review in Gamma erstellen"
       },
       "catch-calendar-conflicts": {
         "description": "Scannen Sie Ihren Kalender auf Doppelbuchungen und benachrichtigen Sie frühzeitig.",
@@ -2965,7 +2965,7 @@
             "title": "Zero scannt Asana"
           },
           "three": {
-            "description": "Zero DMs, jeder Besitzer seiner überfälligen Liste.",
+            "description": "Zero sendet jedem Verantwortlichen eine DM mit dessen überfälliger Liste.",
             "title": "In Slack gesendete Anstöße"
           },
           "two": {
@@ -3053,7 +3053,7 @@
       },
       "draft-github-release-notes-notion": {
         "description": "Wandeln Sie die seit der letzten Veröffentlichung zusammengeführten PRs in saubere Notizen in Notion um.",
-        "scenario": "Das Schreiben von Versionshinweisen bedeutet, den PR-Verlauf durchzublättern und Commits in einfache Sprache zu übersetzen. Zero erledigt dies, wenn Sie eine versandte PR kennzeichnen: Es sammelt alles, was seit dem letzten Tag zusammengeführt wurde, und erstellt lesbare Notizen in Notion.",
+        "scenario": "Das Schreiben von Versionshinweisen bedeutet, den PR-Verlauf durchzublättern und Commits in einfache Sprache zu übersetzen. Zero erledigt dies, wenn Sie eine ausgelieferte PR kennzeichnen: Es sammelt alles, was seit dem letzten Release-Tag gemergt wurde, und erstellt lesbare Notizen in Notion.",
         "steps": {
           "one": {
             "description": "Zero reagiert auf Ihr Release-Label.",
@@ -3083,7 +3083,7 @@
             "title": "Inszeniert in Mailchimp"
           },
           "two": {
-            "description": "Zero schreibt das Problem mit Ihrer Stimme.",
+            "description": "Zero schreibt die Ausgabe in Ihrem Ton.",
             "title": "Newsletter erstellt"
           }
         },
@@ -3109,7 +3109,7 @@
         "title": "Antwortentwürfe aus Ihren Notion-FAQs"
       },
       "file-gmail-invoices-drive": {
-        "description": "Reichen Sie Rechnungs-E-Mails in Drive ein und protokollieren Sie jede einzelne in einem Blatt.",
+        "description": "Legen Sie Rechnungs-E-Mails in Google Drive ab und protokollieren Sie jede einzelne in Google Sheets.",
         "scenario": "Rechnungen stapeln sich im Posteingang und der Abgleich ist ein Rätsel. Zero legt jede beschriftete Rechnung im richtigen Drive-Ordner ab und protokolliert den Betrag und das Fälligkeitsdatum in Ihrer Spesenabrechnung, sobald sie eintrifft.",
         "steps": {
           "one": {
@@ -3118,7 +3118,7 @@
           },
           "three": {
             "description": "Zero zeichnet den Betrag und das Fälligkeitsdatum in der Spesenabrechnung auf.",
-            "title": "Ein Blatt angemeldet"
+            "title": "In Google Sheets protokolliert"
           },
           "two": {
             "description": "Zero speichert den Anhang im richtigen Ordner.",
@@ -3308,7 +3308,7 @@
           },
           "three": {
             "description": "Zero schreibt die Notizen in den Geschäftsdatensatz.",
-            "title": "Bei HubSpot angemeldet"
+            "title": "In HubSpot protokolliert"
           },
           "two": {
             "description": "Zero extrahiert Entscheidungen und Folgemaßnahmen.",
@@ -3384,7 +3384,7 @@
           },
           "three": {
             "description": "Zero zeichnet den Kontakt und die Quelle auf der Timeline auf.",
-            "title": "Zur Nachverfolgung angemeldet"
+            "title": "Zur Nachverfolgung protokolliert"
           },
           "two": {
             "description": "Zero fügt die Person zu HubSpot hinzu und bereichert sie mit Apollo.",
@@ -3398,7 +3398,7 @@
         "scenario": "Das Onboarding ist jedes Mal die gleiche Checkliste, die jedes Mal manuell durchgeführt wird. Zero erkennt einen neuen Mitarbeiter, startet das Onboarding-Projekt in Asana und richtet seine Starterdokumente in Drive ein.",
         "steps": {
           "one": {
-            "description": "Zero entdeckt den neuen Rekord in Deel.",
+            "description": "Zero erkennt den neuen Datensatz in Deel.",
             "title": "Ein neuer Mitarbeiter wird hinzugefügt"
           },
           "three": {
@@ -3407,14 +3407,14 @@
           },
           "two": {
             "description": "Zero startet das Onboarding-Projekt mit zugewiesenen Aufgaben.",
-            "title": "Checkliste erstellt in Asana"
+            "title": "Checkliste in Asana erstellt"
           }
         },
         "title": "Onboarding neuer Mitarbeiter in Asana"
       },
       "post-daily-metrics-slack": {
         "description": "Veröffentlichen Sie tägliche Besucher, Anmeldungen und Aktivierungsnummern in Slack.",
-        "scenario": "Vor dem Kaffeetrinken drei Armaturenbretter zu überprüfen, ist niemandes Lieblingsritual. Zero ruft jeden Morgen Besucher, Anmeldungen und Aktivierungen ab und veröffentlicht die Zahlen an Slack, sodass der Tag mit den KPIs beginnt, die bereits im Kanal vorhanden sind.",
+        "scenario": "Niemand prüft gern noch vor dem ersten Kaffee drei Dashboards. Zero ruft jeden Morgen Besucher, Anmeldungen und Aktivierungen ab und veröffentlicht die Zahlen in Slack, sodass der Tag mit den KPIs beginnt, die bereits im Kanal stehen.",
         "steps": {
           "one": {
             "description": "Zero liest Datenverkehr, Anmeldungen und Aktivierung aus Ihren Analysetools.",
@@ -3452,11 +3452,11 @@
       },
       "post-release-notes-slack": {
         "description": "Erstellen Sie ein Änderungsprotokoll der kürzlich versendeten Arbeit und veröffentlichen Sie es in Slack.",
-        "scenario": "Das Änderungsprotokoll, das Benutzer sehen, unterscheidet sich vom Festschreibungsprotokoll. Zero löst auf dem Veröffentlichungsetikett aus, erstellt eine benutzerfreundliche Zusammenfassung der versendeten Inhalte und veröffentlicht sie auf Slack und Notion.",
+        "scenario": "Der für Benutzer sichtbare Changelog unterscheidet sich vom Commit-Verlauf. Zero reagiert auf das Release-Label, erstellt eine verständliche Zusammenfassung der ausgelieferten Änderungen und veröffentlicht sie in Slack und Notion.",
         "steps": {
           "one": {
             "description": "Zero reagiert auf das Release-Label.",
-            "title": "Eine PR wird als Veröffentlichung bezeichnet"
+            "title": "Eine PR erhält das Release-Label"
           },
           "three": {
             "description": "Zero teilt die Ankündigung an beiden Stellen.",
@@ -3520,7 +3520,7 @@
             "title": "Auf Slack gepostet"
           },
           "two": {
-            "description": "Zero Gesamtausgaben und p95 pro Modell und pro Route.",
+            "description": "Zero fasst Ausgaben und p95-Latenz nach Modell und Route zusammen.",
             "title": "Aufgeschlüsselt nach Modell und Route"
           }
         },
@@ -3718,7 +3718,7 @@
       },
       "sync-asana-projects-notion": {
         "description": "Fassen Sie den Asana-Projektstatus in einem einzigen Board in Notion zusammen.",
-        "scenario": "Der Status lebt in Asana, aber die Führung lautet Begriff. Zero fasst den Aufgabenstatus täglich in einem Notion-Board zusammen und veröffentlicht einen Überblick, sodass jeder ohne Statusbesprechung das gleiche Bild sieht.",
+        "scenario": "Der Status wird in Asana gepflegt, doch die Führung liest ihn in Notion. Zero fasst den Aufgabenstatus täglich in einem Notion-Board zusammen und veröffentlicht einen Überblick, sodass alle ohne Statusmeeting dasselbe Bild sehen.",
         "steps": {
           "one": {
             "description": "Zero ruft den Aufgaben- und Projektstatus teamübergreifend ab.",
@@ -3730,7 +3730,7 @@
           },
           "two": {
             "description": "Zero aktualisiert ein einzelnes Notion-Statusboard.",
-            "title": "Zu einem Brett zusammengerollt"
+            "title": "In einem Board zusammengeführt"
           }
         },
         "title": "Synchronisieren Sie Asana-Projekte mit Notion"
@@ -3794,15 +3794,15 @@
       },
       "track-signup-sources-sheets": {
         "description": "Ordnen Sie jede neue Anmeldung in einem Tracking-Sheet ihrer Quelle zu.",
-        "scenario": "Um zu wissen, woher die Anmeldungen kommen, muss Clerk manuell mit den Analysen verknüpft werden. Zero ordnet jede neue Anmeldung täglich seinem Kanal und seiner Kampagne zu und protokolliert sie in einer Google-Tabelle, die Sie pivotieren können.",
+        "scenario": "Um zu wissen, woher Anmeldungen kommen, muss Clerk manuell mit den Analysen verknüpft werden. Zero ordnet jede neue Anmeldung täglich ihrem Kanal und ihrer Kampagne zu und protokolliert sie in Google Sheets, wo Sie die Daten als Pivot auswerten können.",
         "steps": {
           "one": {
-            "description": "Zero zieht neue Benutzer von Clerk ab.",
+            "description": "Zero ruft neue Benutzer aus Clerk ab.",
             "title": "Zero liest neue Anmeldungen"
           },
           "three": {
-            "description": "Zero hängt die attributierten Zeilen an Ihr Blatt an.",
-            "title": "Bei Google Sheets angemeldet"
+            "description": "Zero fügt die zugeordneten Zeilen in Google Sheets hinzu.",
+            "title": "In Google Sheets protokolliert"
           },
           "two": {
             "description": "Zero ordnet über Plausible jede Anmeldung ihrer Quelle und Kampagne zu.",
@@ -3820,7 +3820,7 @@
             "title": "Zero sucht nach Erwähnungen"
           },
           "three": {
-            "description": "Zero Beiträge, jede Erwähnung mit Link und Kontext.",
+            "description": "Zero veröffentlicht jede Erwähnung mit Link und Kontext.",
             "title": "Auf Slack gepostet"
           },
           "two": {
@@ -3831,23 +3831,23 @@
         "title": "Achten Sie auf Markenerwähnungen in HN und X"
       },
       "watch-sentry-after-release": {
-        "description": "Nach jeder Veröffentlichung vergleicht Zero die Absturzfreiheitsrate der neuen Version mit dem Ausgangswert und markiert eine Regression mit einem Rollback-Vorschlag.",
-        "scenario": "Das riskanteste Zeitfenster ist direkt nach einer Bereitstellung. Zero überwacht die Absturzfreiheits- und Fehlerraten der neuen Version im Vergleich zur vorherigen Baseline, und wenn sich die Lage verschlimmert, markiert es die Regression und schlägt ein Zurücksetzen vor.",
+        "description": "Nach jedem Release vergleicht Zero die Absturzfreiheitsrate der neuen Version mit der Baseline und markiert Regressionen samt Rollback-Vorschlag.",
+        "scenario": "Das riskanteste Zeitfenster liegt direkt nach einem Deployment. Zero vergleicht die Absturzfreiheits- und Fehlerraten des neuen Releases mit der vorherigen Baseline. Verschlechtern sich die Werte, markiert Zero die Regression und schlägt einen Rollback vor.",
         "steps": {
           "one": {
-            "description": "Nach einer Bereitstellung verfolgt Zero die Absturzfreiheit und Fehlerrate der Version in Sentry.",
-            "title": "Zero schaut sich die neue Veröffentlichung an"
+            "description": "Nach einem Deployment verfolgt Zero die Absturzfreiheits- und Fehlerrate des Releases in Sentry.",
+            "title": "Zero überwacht den neuen Release"
           },
           "three": {
-            "description": "Wenn die Veröffentlichung rückläufig ist, alarmiert Zero Slack und schlägt ein Rollback vor.",
-            "title": "Regression mit einem Rollback-Tipp gekennzeichnet"
+            "description": "Wenn sich der Release verschlechtert, warnt Zero in Slack und schlägt einen Rollback vor.",
+            "title": "Regression markiert und Rollback empfohlen"
           },
           "two": {
-            "description": "Zero vergleicht Live-Zahlen mit der Basislinie der vorherigen Version.",
-            "title": "Im Vergleich zum Ausgangswert"
+            "description": "Zero vergleicht Live-Zahlen mit der Baseline des vorherigen Releases.",
+            "title": "Mit der Baseline verglichen"
           }
         },
-        "title": "Sehen Sie sich Sentry nach einer Veröffentlichung an"
+        "title": "Sentry nach einem Release überwachen"
       }
     }
   },
@@ -3872,8 +3872,8 @@
     },
     "redirecting": "Weiterleitung...",
     "status": {
-      "atLimit_one": "Sie können jeweils nur {{limit}} Aufgabe gleichzeitig ausführen. Neue Läufe warten in einer Warteschlange, bis einer beendet ist.",
-      "atLimit_other": "Sie können jeweils nur {{limit}} Aufgaben gleichzeitig ausführen. Neue Läufe warten in einer Warteschlange, bis einer beendet ist.",
+      "atLimit_one": "Sie können jeweils nur {{limit}} Aufgabe gleichzeitig ausführen. Neue Ausführungen warten in einer Warteschlange, bis eine beendet ist.",
+      "atLimit_other": "Sie können jeweils nur {{limit}} Aufgaben gleichzeitig ausführen. Neue Ausführungen warten in einer Warteschlange, bis eine beendet ist.",
       "available_one": "{{count}} Slot verfügbar",
       "available_other": "{{count}} Slots verfügbar",
       "inUse_one": "{{active}} von {{limit}} Slot belegt",
@@ -3900,11 +3900,11 @@
       },
       "proDescription": "Führen Sie mehrere Aufgaben parallel aus und überspringen Sie die Warteschlange.",
       "recommended": "Empfohlen",
-      "teamDescription": "Skalieren Sie Ihr Team mit 10 parallelen Läufen und mehr Credits."
+      "teamDescription": "Skalieren Sie Ihr Team mit 10 parallelen Ausführungen und mehr Credits."
     }
   },
   "reportError": {
-    "description": "Senden Sie Diagnoseinformationen für diesen fehlgeschlagenen Lauf an das Entwicklerteam. Wir werden die Angelegenheit in Kürze untersuchen und weiterverfolgen.",
+    "description": "Senden Sie Diagnoseinformationen für diese fehlgeschlagene Ausführung an das Entwicklerteam. Wir werden die Angelegenheit in Kürze untersuchen und weiterverfolgen.",
     "disclosure": {
       "agentConfiguration": "Agentenkonfiguration",
       "agentTelemetry": "Agententelemetrie und Ausführungsprotokolle",
@@ -3917,7 +3917,7 @@
     "documentTitle": "Fehler melden",
     "error": {
       "loadFailed": "Ausführungsdetails konnten nicht geladen werden",
-      "notFailed": "Dieser Lauf ist nicht fehlgeschlagen und kann nicht gemeldet werden",
+      "notFailed": "Diese Ausführung ist nicht fehlgeschlagen und kann nicht gemeldet werden",
       "title": "Fehler",
       "tryAgain": "Versuchen Sie es erneut"
     },
@@ -3927,7 +3927,7 @@
       "title": "Titel",
       "titlePlaceholder": "Kurze Zusammenfassung des Problems"
     },
-    "loading": "Laufdetails werden geladen",
+    "loading": "Ausführungsdetails werden geladen",
     "send": "Bericht senden",
     "sending": "Senden...",
     "success": {
@@ -3997,7 +3997,7 @@
           "title": "Rechnungen"
         },
         "model": {
-          "description": "Wählen Sie aus, welche KI-Modelle Ihr Arbeitsbereich und Ihre Läufe verwenden.",
+          "description": "Wählen Sie aus, welche KI-Modelle Ihr Arbeitsbereich und Ihre Ausführungen verwenden.",
           "title": "Modelle"
         },
         "people": {
@@ -4138,7 +4138,7 @@
         "claudeTitle": "Claude Code OAuth",
         "codexDescription": "Stellen Sie eine Verbindung mit der Codex-Geräteanmeldung her, um von Codex unterstützte Modellrouten zu erhalten.",
         "codexTitle": "ChatGPT (Codex)",
-        "description": "Wird nur bei Ihren Läufen mit Ihren eigenen Anmeldeinformationen verwendet.",
+        "description": "Wird nur bei Ihren Ausführungen mit Ihren eigenen Anmeldeinformationen verwendet.",
         "sectionTitle": "Persönlich",
         "status": {
           "connected": "Verbunden",
@@ -4173,7 +4173,7 @@
           "claudeCodeOauth": "Claude Code (OAuth-Token)",
           "deepseek": "Deepseek"
         },
-        "runSpeed": "Laufgeschwindigkeit",
+        "runSpeed": "Ausführungsgeschwindigkeit",
         "standard": "Standard"
       },
       "policies": {
@@ -4199,7 +4199,7 @@
         "providedBy": "Bereitgestellt von",
         "provider": "Anbieter",
         "providerApiKey": "{{provider}} API-Schlüssel",
-        "secretStored": "In Arbeitsbereichsgeheimnissen gespeichert.",
+        "secretStored": "In den Workspace-Secrets gespeichert.",
         "selectDefaultModel": "Wählen Sie ein Standardmodell aus",
         "selectModel": "Wählen Sie ein Modell aus",
         "selectProvider": "Wählen Sie einen Anbieter aus",
@@ -4263,11 +4263,11 @@
       },
       "debug": {
         "capture": {
-          "description": "Erfassen Sie HTTP-Header-Namen, ausgewählte sichere Header-Werte und Textkörper in Netzwerkprotokollen zum Debuggen.",
+          "description": "Erfassen Sie HTTP-Header-Namen, ausgewählte sichere Header-Werte und Textinhalte in Netzwerkprotokollen zum Debuggen.",
           "disabled": "Deaktiviert",
           "enabled_one": "Für {{count}} kommende Ausführung aktiviert",
           "enabled_other": "Für {{count}} kommende Ausführungen aktiviert",
-          "title": "Erfassen Sie Netzwerkkörper"
+          "title": "Netzwerk-Bodys erfassen"
         },
         "tab": "Debuggen"
       },
@@ -4310,7 +4310,7 @@
         "timezone": "Zeitzone"
       },
       "timezone": {
-        "description": "Zeiten, die Ihnen angezeigt und für Automatisierungsläufe verwendet werden.",
+        "description": "Zeiten, die Ihnen angezeigt und für Automatisierungsausführungen verwendet werden.",
         "rowDescription": "Ihre Agenten verwenden diese Zeitzone während der Ausführung",
         "rowTitle": "Zeitzone",
         "sectionTitle": "Zeitzone",
@@ -4608,21 +4608,21 @@
         "addTitle": "Chat-Automatisierung hinzufügen",
         "anyOutput": "Beliebige Ausgabe",
         "anyStatus": "Beliebiger Endstatus",
-        "patternHint": "Optionaler *-Platzhalter, der mit der endgültigen Antwort des Laufs abgeglichen wird. Lassen Sie das Feld leer, damit es mit einer beliebigen Ausgabe übereinstimmt.",
+        "patternHint": "Optionaler *-Platzhalter, der mit der endgültigen Antwort der Ausführung abgeglichen wird. Lassen Sie das Feld leer, damit jede Ausgabe übereinstimmt.",
         "patternLabel": "Ausgabemuster",
         "patternPlaceholder": "*Bereitstellung fehlgeschlagen*",
         "runFinishedDescription": "Wird ausgeführt, wenn eine Ausführung in einem Ihrer Chat-Threads beendet ist.",
-        "runFinishedTitle": "Chatlauf beendet",
+        "runFinishedTitle": "Chat-Ausführung beendet",
         "statusCancelled": "Abgesagt",
-        "statusCompleted": "Vollendet",
-        "statusesHint": "Für fehlgeschlagene und abgebrochene Läufe gibt es keinen Antworttext, sodass ein Ausgabemuster nie mit ihnen übereinstimmt.",
+        "statusCompleted": "Abgeschlossen",
+        "statusesHint": "Fehlgeschlagene und abgebrochene Ausführungen haben keinen Antworttext, daher kann ein Ausgabemuster nie mit ihnen übereinstimmen.",
         "statusesLabel": "Abschlussstatus",
         "statusFailed": "Fehlgeschlagen",
         "threadIdHint": "Öffnen Sie den Chat und kopieren Sie die Thread-ID aus seiner URL. Der Thread muss einer Ihrer eigenen Chats sein.",
         "threadIdLabel": "Chat-Thread-ID",
         "viewDescription": "Die Filter dieser Automatisierung werden nach der Erstellung festgelegt.",
-        "viewTitle": "Der Chatlauf hat die Automatisierung abgeschlossen",
-        "watchedThreadLabel": "Chat-Thread angesehen"
+        "viewTitle": "Automatisierung für abgeschlossene Chat-Ausführungen",
+        "watchedThreadLabel": "Überwachter Chat-Thread"
       },
       "common": {
         "addAutomation": "Fügen Sie Automatisierung hinzu",
@@ -4631,7 +4631,7 @@
         "chooseAutomation": "Wählen Sie eine Automatisierung aus, um diesen Workflow zu starten.",
         "deleteAutomation": "Automatisierung löschen",
         "disable": "Deaktivieren Sie {{title}}",
-        "disabledPaidPlan": "Behinderte – kostenpflichtiger Plan erforderlich",
+        "disabledPaidPlan": "Deaktiviert – kostenpflichtiger Tarif erforderlich",
         "done": "Erledigt",
         "editAutomation": "Automatisierung bearbeiten",
         "enable": "Aktivieren Sie {{title}}",
@@ -4655,55 +4655,55 @@
       },
       "github": {
         "accountConnect": "GitHub verbinden",
-        "accountRequired": "Verbinden Sie Ihr GitHub-Konto, um Me zu verwenden.",
-        "actorAnyone": "Irgendjemand",
-        "actorMe": "Mich",
-        "actors": "Schauspieler",
+        "accountRequired": "Verbinden Sie Ihr GitHub-Konto, um „Ich“ zu verwenden.",
+        "actorAnyone": "Alle",
+        "actorMe": "Ich",
+        "actors": "Akteure",
         "actorsPlaceholder": "octocat, dependabot[bot]",
-        "addLabelAction": "Fügen Sie Etikettenautomatisierung hinzu",
+        "addLabelAction": "Label-Automatisierung hinzufügen",
         "addLabelAria": "GitHub-Label-Automatisierung hinzufügen",
         "addLabelDescription": "Führen Sie diesen Workflow aus, wenn ein GitHub-Label angewendet wird.",
         "addLabelTitle": "GitHub-Label-Automatisierung hinzufügen",
-        "addWebhookAction": "Fügen Sie Automatisierung hinzu",
+        "addWebhookAction": "Automatisierung hinzufügen",
         "addWebhookAria": "{{title}}-Automatisierung hinzufügen",
         "addWebhookDescription": "Führen Sie diesen Workflow aus, wenn ein passendes GitHub-Webhook-Ereignis eintrifft.",
-        "addWorkflowAction": "Fügen Sie Workflow-Automatisierung hinzu",
-        "addWorkflowAria": "Fügen Sie GitHub-Workflow-Automatisierung hinzu",
-        "addWorkflowDescription": "Führen Sie diesen Workflow aus, wenn die Ausführung eines entsprechenden GitHub Actions-Workflows abgeschlossen ist.",
-        "addWorkflowTitle": "Fügen Sie GitHub-Workflow-Automatisierung hinzu",
+        "addWorkflowAction": "Workflow-Automatisierung hinzufügen",
+        "addWorkflowAria": "GitHub-Workflow-Automatisierung hinzufügen",
+        "addWorkflowDescription": "Führen Sie diesen Workflow aus, wenn eine passende GitHub-Actions-Workflow-Ausführung abgeschlossen ist.",
+        "addWorkflowTitle": "GitHub-Workflow-Automatisierung hinzufügen",
         "aJob": "ein GitHub-Workflow-Job",
         "any": "Beliebig",
         "anyAuthor": "Jeder Autor",
-        "anyComment": "Irgendein Kommentar",
-        "anyConclusion": "Irgendeine Schlussfolgerung",
+        "anyComment": "Beliebiger Kommentar",
+        "anyConclusion": "Beliebiges Ergebnis",
         "anyDeploymentState": "Jeder Bereitstellungsstatus",
         "anyEnvironment": "Jede Umgebung",
         "anyJob": "Jeder Job",
         "anyRepository": "Jedes Repository",
-        "anyResult": "Irgendein Ergebnis",
-        "anyReview": "Irgendeine Review",
-        "anyReviewState": "Beliebiger Überprüfungsstatus",
+        "anyResult": "Beliebiges Ergebnis",
+        "anyReview": "Beliebiges Review",
+        "anyReviewState": "Beliebiger Review-Status",
         "anyWorkflow": "Jeder Workflow",
         "apps": "GitHub Apps",
         "appsPlaceholder": "vercel, 12345",
         "authorsPlaceholder": "octocat, e7h4n",
         "authorsSummary": "Autoren {{values}}",
         "aWorkflow": "ein GitHub-Workflow",
-        "baseBranches": "Basiszweige",
+        "baseBranches": "Basis-Branches",
         "branches": "Branches",
         "branchesPlaceholder": "main, release",
         "commentPrefixes": "Kommentarpräfixe",
         "commentPrefixesPlaceholder": "/zero, /verify, /deploy",
-        "conclusions": "Schlussfolgerungen",
-        "conclusionsSummary": "Schlussfolgerungen {{values}}",
-        "creators": "Schöpfer",
+        "conclusions": "Ergebnisse",
+        "conclusionsSummary": "Ergebnisse {{values}}",
+        "creators": "Ersteller",
         "creatorsPlaceholder": "octocat, 12345",
         "deploymentStates": "Bereitstellungsstatus",
         "deploymentStatesSummary": "Bereitstellungsstatus: {{values}}",
         "deploymentStatusDescription": "Wird ausgeführt, wenn ein passender Bereitstellungsstatus erstellt wird.",
         "deploymentStatusRule": "Wenn ein passender GitHub-Bereitstellungsstatus erstellt wird",
         "deploymentStatusTitle": "GitHub-Bereitstellungsstatus erstellt",
-        "editLabel": "Etikett bearbeiten",
+        "editLabel": "Label bearbeiten",
         "editWebhookFilters": "Bearbeiten Sie {{title}}-Filter",
         "editWorkflowFilters": "Bearbeiten Sie GitHub-Workflowfilter",
         "environments": "Umgebungen",
@@ -4711,8 +4711,8 @@
         "environmentsSummary": "Umgebungen {{values}}",
         "events": "Auslösende Ereignisse",
         "eventsPlaceholder": "push, pull_request, workflow_dispatch",
-        "filterHelp": "Lassen Sie einen Filter leer, um einen beliebigen Wert zu finden. Trennen Sie mehrere Werte durch Kommas.",
-        "headBranches": "Hauptzweige",
+        "filterHelp": "Lassen Sie einen Filter leer, um jeden Wert zuzulassen. Trennen Sie mehrere Werte durch Kommas.",
+        "headBranches": "Head-Branches",
         "headBranchesPlaceholder": "feature/, dependabot/",
         "installAdminRequired": "Bitten Sie einen Organisationsadministrator, es zu installieren.",
         "installApp": "Installieren Sie die GitHub-App",
@@ -4728,8 +4728,8 @@
         "labelAppliedDescription": "Wird ausgeführt, wenn ein Issue oder Pull-Request ein Label erhält.",
         "labelAppliedRule": "Wenn das GitHub-Label {{label}} angewendet wird",
         "labelAppliedTitle": "GitHub-Label angewendet",
-        "labelName": "Labelname",
-        "labelOnlySummary": "Bezeichnung {{label}}",
+        "labelName": "Label-Name",
+        "labelOnlySummary": "Label {{label}}",
         "labelPlaceholder": "Triage",
         "labelSummary": "Label {{label}} · {{subject}} · Akteur {{actor}}",
         "loadError": "GitHub-Einstellungen konnten nicht geladen werden.",
@@ -4737,22 +4737,22 @@
         "option": {
           "actionRequired": "Aktion erforderlich",
           "approved": "Genehmigt",
-          "cancelled": "Abgesagt",
-          "changesRequested": "Änderungen erbeten",
+          "cancelled": "Abgebrochen",
+          "changesRequested": "Änderungen angefordert",
           "commented": "Kommentiert",
           "error": "Fehler",
-          "failure": "Versagen",
+          "failure": "Fehlgeschlagen",
           "inactive": "Inaktiv",
-          "inProgress": "Im Gange",
+          "inProgress": "In Bearbeitung",
           "neutral": "Neutral",
           "pending": "Ausstehend",
-          "queued": "In der Warteschlange",
+          "queued": "In Warteschlange",
           "skipped": "Übersprungen",
-          "stale": "Abgestanden",
-          "startupFailure": "Startfehler",
-          "success": "Erfolg",
+          "stale": "Veraltet",
+          "startupFailure": "Start fehlgeschlagen",
+          "success": "Erfolgreich",
           "timedOut": "Zeitüberschreitung",
-          "waiting": "Warten"
+          "waiting": "Wartend"
         },
         "productionEnvironment": "Produktionsumgebung",
         "productionOnly": "Nur Produktion",
@@ -4762,29 +4762,29 @@
         "repositories": "Repositories",
         "repositoriesPlaceholder": "vm0-ai/vm0, owner/another-repo",
         "repositoriesSummary": "Repositorys {{values}}",
-        "reviewDescription": "Wird ausgeführt, wenn eine passende Bewertung eingereicht wird.",
-        "reviewRule": "Wenn eine passende GitHub-Pull-Request-Überprüfung eingereicht wird",
-        "reviewStates": "Überprüfen Sie die Zustände",
-        "reviewTitle": "GitHub-Pull-Request-Überprüfung eingereicht",
+        "reviewDescription": "Wird ausgeführt, wenn ein passendes Review eingereicht wird.",
+        "reviewRule": "Wenn ein passendes GitHub-Pull-Request-Review eingereicht wird",
+        "reviewStates": "Review-Status",
+        "reviewTitle": "GitHub-Pull-Request-Review eingereicht",
         "runnerGroups": "Runner-Gruppen",
         "runnerGroupsPlaceholder": "Default, production",
         "runnerLabels": "Runner-Labels",
         "runnerLabelsPlaceholder": "self-hosted, linux",
         "saveFilters": "Filter speichern",
-        "selectNoneAny": "Wählen Sie „Keine“ aus, um einen beliebigen Wert zu finden.",
-        "selectNoneConclusion": "Wählen Sie „Keine“ aus, um einer abgeschlossenen Schlussfolgerung zu entsprechen.",
-        "startedBy": "Begonnen von",
+        "selectNoneAny": "Wählen Sie „Keine“ aus, um jeden Wert zuzulassen.",
+        "selectNoneConclusion": "Wählen Sie „Keine“ aus, um jedes abgeschlossene Ergebnis zuzulassen.",
+        "startedBy": "Gestartet von",
         "subject": "Betreff",
         "trustedAuthors": "Vertrauenswürdige Autoren",
-        "updateLabelAria": "Aktualisieren Sie die GitHub-Label-Automatisierung",
-        "updateWebhookAria": "Aktualisieren Sie die {{title}}-Automatisierung",
-        "updateWorkflowAria": "Aktualisieren Sie die GitHub-Workflow-Automatisierung",
+        "updateLabelAria": "GitHub-Label-Automatisierung aktualisieren",
+        "updateWebhookAria": "{{title}}-Automatisierung aktualisieren",
+        "updateWorkflowAria": "GitHub-Workflow-Automatisierung aktualisieren",
         "withConclusions": " mit {{values}}",
-        "workflowJobDescription": "Wird ausgeführt, wenn ein passender Aktionsauftrag abgeschlossen ist.",
-        "workflowJobRule": "Wenn {{jobs}} abgeschlossen ist",
+        "workflowJobDescription": "Wird ausgeführt, wenn ein passender GitHub-Actions-Job abgeschlossen ist.",
+        "workflowJobRule": "Nach Abschluss von {{jobs}}",
         "workflowJobTitle": "GitHub-Workflow-Job abgeschlossen",
-        "workflowRunDescription": "Wird ausgeführt, wenn die Ausführung eines entsprechenden Aktionsworkflows abgeschlossen ist.",
-        "workflowRunRule": "Wenn {{workflows}} abgeschlossen ist{{conclusions}}",
+        "workflowRunDescription": "Wird ausgeführt, wenn eine passende GitHub-Actions-Workflow-Ausführung abgeschlossen ist.",
+        "workflowRunRule": "Nach Abschluss von {{workflows}}{{conclusions}}",
         "workflowRunTitle": "GitHub-Workflow abgeschlossen",
         "workflows": "GitHub-Workflows",
         "workflowsPlaceholder": "Turbo, .github/workflows/release.yml",
@@ -4793,46 +4793,46 @@
       },
       "gmail": {
         "addCondition": "Bedingung hinzufügen",
-        "addLabelAction": "Fügen Sie Etikettenautomatisierung hinzu",
-        "addLabelAria": "Fügen Sie die Gmail-Label-Automatisierung hinzu",
+        "addLabelAction": "Label-Automatisierung hinzufügen",
+        "addLabelAria": "Gmail-Label-Automatisierung hinzufügen",
         "addLabelDescription": "Führen Sie diesen Workflow aus, wenn ein benanntes Gmail-Label angewendet wird.",
-        "addLabelTitle": "Fügen Sie die Gmail-Label-Automatisierung hinzu",
-        "addMessageAction": "Fügen Sie die Gmail-Automatisierung hinzu",
-        "addMessageAria": "Fügen Sie die Gmail-Automatisierung hinzu",
+        "addLabelTitle": "Gmail-Label-Automatisierung hinzufügen",
+        "addMessageAction": "Gmail-Automatisierung hinzufügen",
+        "addMessageAria": "Gmail-Automatisierung hinzufügen",
         "addMessageDescription": "Führen Sie diesen Workflow aus, wenn eine passende Nachricht eintrifft.",
-        "addMessageTitle": "Fügen Sie die Gmail-Automatisierung hinzu",
+        "addMessageTitle": "Gmail-Automatisierung hinzufügen",
         "allInboundMessages": "alle eingehenden Nachrichten",
         "anyMessageRule": "Wenn eine Gmail-Nachricht eintrifft",
         "conditionField": "Bedingung {{number}} Feld",
         "conditionOperator": "Bedingung {{number}} Operator",
-        "editLabel": "Etikett bearbeiten",
+        "editLabel": "Label bearbeiten",
         "editMatch": "Übereinstimmung bearbeiten",
         "enterValue": "Geben Sie einen Wert ein",
         "field": {
           "body": "Inhalt",
           "cc": "Cc",
-          "from": "Aus",
+          "from": "Von",
           "subject": "Betreff",
           "threadId": "Thread-ID",
-          "to": "Zu"
+          "to": "An"
         },
         "labelAppliedRule": "Wenn das Gmail-Label {{label}} angewendet wird",
         "labelAppliedTitle": "Gmail-Label angewendet",
-        "labelName": "Labelname",
+        "labelName": "Label-Name",
         "labelPlaceholder": "Unterstützung",
-        "labelSummary": "Bezeichnung {{label}}",
+        "labelSummary": "Label {{label}}",
         "messageMatchesRule": "Wenn die Gmail-Nachricht mit {{summary}} übereinstimmt",
         "newMessageDescription": "Führen Sie diesen Workflow über die passende E-Mail aus.",
         "newMessageTitle": "Neue Gmail-Nachricht",
         "operator": {
           "contains": "Enthält",
-          "containsAny": "Enthält alle",
+          "containsAny": "Enthält eines von",
           "doesNotContain": "Enthält nicht",
           "is": "Ist"
         },
         "removeCondition": "Bedingung {{number}} entfernen",
-        "saveLabel": "Etikett speichern",
-        "saveMatch": "Spiel speichern",
+        "saveLabel": "Label speichern",
+        "saveMatch": "Bedingung speichern",
         "summary": {
           "contains": "{{field}} enthält {{value}}",
           "containsAny": "{{field}} enthält eines von {{value}}",
@@ -4840,8 +4840,8 @@
           "doesNotContainAny": "{{field}} enthält nichts von {{value}}",
           "threadId": "Thread-ID ist {{value}}"
         },
-        "updateLabelAria": "Aktualisieren Sie die Gmail-Label-Automatisierung",
-        "updateMessageAria": "Aktualisieren Sie die Gmail-Automatisierung für neue Nachrichten"
+        "updateLabelAria": "Gmail-Label-Automatisierung aktualisieren",
+        "updateMessageAria": "Gmail-Automatisierung für neue Nachrichten aktualisieren"
       },
       "meet": {
         "addAction": "Fügen Sie Meet-Automatisierung hinzu",
@@ -4906,7 +4906,7 @@
         "addIntervalAria": "Fügen Sie eine Intervallautomatisierung hinzu",
         "addIntervalDescription": "Wählen Sie aus, wie oft dieser Workflow ausgeführt werden soll.",
         "addIntervalTitle": "Fügen Sie eine Intervallautomatisierung hinzu",
-        "addOnceAction": "Fügen Sie einen einmaligen Lauf hinzu",
+        "addOnceAction": "Einmalige Ausführung hinzufügen",
         "addOnceAria": "Fügen Sie eine einmalige Automatisierung hinzu",
         "addOnceDescription": "Wählen Sie das Datum und die Uhrzeit für die einmalige Ausführung dieses Workflows aus.",
         "addOnceTitle": "Fügen Sie eine einmalige Automatisierung hinzu",
@@ -4933,15 +4933,15 @@
         "frequencyIntervalDescription": "Führen Sie diesen Workflow in einem festen Intervall aus.",
         "frequencyIntervalTitle": "Intervall",
         "frequencyOnceDescription": "Führen Sie diesen Workflow einmal zu einem bestimmten Datum und zu einer bestimmten Uhrzeit aus.",
-        "frequencyOnceTitle": "Einmaliger Lauf",
+        "frequencyOnceTitle": "Einmalige Ausführung",
         "frequencyScheduleDescription": "Führen Sie diesen Workflow anhand einer Zeitregel aus.",
         "frequencyScheduleTitle": "Geplante Zeit",
         "hour": "Stunde",
         "last": "Zuletzt",
         "minute": "Minute",
         "next": "Nächste",
-        "noRunsYet": "Noch keine Läufe",
-        "noUpcomingRun": "Kein bevorstehender Lauf",
+        "noRunsYet": "Noch keine Ausführungen",
+        "noUpcomingRun": "Keine bevorstehende Ausführung",
         "onceOn": "Einmal am {{date}} um {{time}}",
         "repeatEvery": "Jeden {{interval}}",
         "repeats": "Wiederholt",
@@ -4989,13 +4989,13 @@
         "createTitle": "Webhook",
         "hidden": "Webhook-URL ausgeblendet",
         "paidBadge": "Team",
-        "reveal": "Geheimnis enthüllen",
-        "revealDescription": "Enthüllen Sie den signierten Endpunkt und das Geheimnis, das auf {{suffix}} endet.",
-        "revealTitle": "Webhook-Geheimnis anzeigen",
-        "secret": "Unterzeichnungsgeheimnis",
-        "secretHiddenHint": "Geheime Werte werden in der Automatisierungsliste ausgeblendet. Zeigen Sie sie nur an, wenn Sie diesen Webhook konfigurieren oder testen müssen.",
-        "secretOneTimeHint": "Das Signaturgeheimnis wird erst nach der Erstellung angezeigt.",
-        "signedCurl": "Signierte Locke",
+        "reveal": "Secret anzeigen",
+        "revealDescription": "Zeigen Sie den signierten Endpunkt und das auf {{suffix}} endende Secret an.",
+        "revealTitle": "Webhook-Secret anzeigen",
+        "secret": "Signatur-Secret",
+        "secretHiddenHint": "Secret-Werte werden in der Automatisierungsliste ausgeblendet. Zeigen Sie sie nur an, wenn Sie diesen Webhook konfigurieren oder testen müssen.",
+        "secretOneTimeHint": "Das Signatur-Secret wird nur direkt nach der Erstellung angezeigt.",
+        "signedCurl": "Signierter curl-Befehl",
         "upgrade": {
           "adminHint": "Bitten Sie einen Arbeitsbereichsadministrator um ein Upgrade.",
           "benefitDescription": "Erstellen Sie signierte Endpunkte, die Workflows von externen Systemen starten.",
@@ -5195,8 +5195,8 @@
       "sort": {
         "alphabetical": "Alphabetisch",
         "created": "Zeit geschaffen",
-        "label": "Nächster Lauf",
-        "nextRun": "Nächster Lauf"
+        "label": "Nächste Ausführung",
+        "nextRun": "Nächste Ausführung"
       },
       "title": "Workflows",
       "viewAutomations": "Automatisierungen anzeigen"

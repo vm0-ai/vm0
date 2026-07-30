@@ -428,9 +428,30 @@ describe("bootstrap locale", () => {
     );
     expect(
       i18n.t(($) => {
+        return $.billing.usage.allowance.title;
+      }),
+    ).toBe("Nutzungskontingent");
+    expect(
+      i18n.t(($) => {
+        return $.workflows.automations.github.actors;
+      }),
+    ).toBe("Akteure");
+    expect(
+      i18n.t(($) => {
+        return $.workflows.automations.webhook.signedCurl;
+      }),
+    ).toBe("Signierter curl-Befehl");
+    expect(
+      i18n.t(($) => {
+        return $.onboarding.workflows["watch-brand-mentions"].steps.three
+          .description;
+      }),
+    ).toBe("Zero veröffentlicht jede Erwähnung mit Link und Kontext.");
+    expect(
+      i18n.t(($) => {
         return $.onboarding.workflows["auto-merge-github-prs"].steps.two.title;
       }),
-    ).toBe("Zero überprüft und wartet auf CI");
+    ).toBe("Zero prüft und wartet auf CI");
 
     await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
   });

@@ -125,8 +125,8 @@
       "engineering": {
         "cases": {
           "batch-create-issues": {
-            "description": "Fügen Sie eine Liste ein und Zero öffnet die Probleme für Sie",
-            "title": "Probleme bei der Stapelerstellung"
+            "description": "Fügen Sie eine Liste ein und Zero erstellt die Issues für Sie",
+            "title": "Issues stapelweise erstellen"
           },
           "browserbase-web-testing": {
             "description": "Automatisierte Browsertests für Ihre Web-App",
@@ -173,8 +173,8 @@
             "title": "Übersicht über Sicherheits- und Abhängigkeitswarnungen"
           },
           "sentry-issue-digest": {
-            "description": "Morgendliche Zusammenfassung der Probleme, gruppiert nach Schweregrad",
-            "title": "Zusammenfassung der Sentry-Probleme"
+            "description": "Morgendliche Zusammenfassung der Sentry-Issues nach Schweregrad",
+            "title": "Sentry-Issue-Zusammenfassung"
           },
           "vercel-deploy-digest": {
             "description": "Es verknüpft jede Bereitstellung mit ihrem Commit und benachrichtigt Slack, wenn eine Bereitstellung fehlschlägt",
