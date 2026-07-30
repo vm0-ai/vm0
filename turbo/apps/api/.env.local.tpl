@@ -141,6 +141,10 @@ BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED=true
 # Korean locale preferences.
 KOREAN_LOCALE_ROLLOUT_ENABLED=false
 
+# Enable Indonesian in development so the capable Platform client can exercise
+# the rollout path.
+INDONESIAN_LOCALE_ROLLOUT_ENABLED=true
+
 # Optional: Google Ads API (developer token + login customer ID for MCC)
 GOOGLE_ADS_DEVELOPER_TOKEN=op://Development/google/GOOGLE_ADS_DEVELOPER_TOKEN
 GOOGLE_ADS_LOGIN_CUSTOMER_ID=op://Development/google/GOOGLE_ADS_LOGIN_CUSTOMER_ID
