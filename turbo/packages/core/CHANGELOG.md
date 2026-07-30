@@ -1,5 +1,28 @@
 # Changelog
 
+## [8.488.1](https://github.com/vm0-ai/vm0/compare/core-v8.488.0...core-v8.488.1) (2026-07-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.249.2
+
+## [8.488.0](https://github.com/vm0-ai/vm0/compare/core-v8.487.0...core-v8.488.0) (2026-07-30)
+
+
+### Features
+
+* enable codex session pruning globally ([#23937](https://github.com/vm0-ai/vm0/issues/23937)) ([e186ffe](https://github.com/vm0-ai/vm0/commit/e186ffe85a92fe9a5b960e5e3174893d54526557))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.249.1
+
 ## [8.487.0](https://github.com/vm0-ai/vm0/compare/core-v8.486.3...core-v8.487.0) (2026-07-30)
 
 

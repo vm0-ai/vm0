@@ -2219,7 +2219,7 @@ describe("CHAT-03 run usage events", () => {
 });
 
 describe("CHAT-01 chat search", () => {
-  it("rejects search without an org session or the chat-message:read capability", async () => {
+  it("rejects search without an org session or the chat-event:read capability", async () => {
     const unauthenticated = await chat.requestSearchChat(
       null,
       "hello",
@@ -2246,7 +2246,7 @@ describe("CHAT-01 chat search", () => {
     );
     expectApiError(forbidden.body);
     expect(forbidden.body.error.code).toBe("FORBIDDEN");
-    expect(forbidden.body.error.message).toContain("chat-message:read");
+    expect(forbidden.body.error.message).toContain("chat-event:read");
   });
 
   it("searches own messages with filters, context, and like-escaping", async () => {

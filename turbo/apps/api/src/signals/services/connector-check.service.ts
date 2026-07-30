@@ -265,7 +265,7 @@ async function loadStoredRuntimeState(
     const connectorRows = await tx
       .select({
         connectorId: connectors.id,
-        connectorSlug: sql`${connectors.type}`
+        connectorSlug: sql`${connectors.connectorSlug}`
           .mapWith(pgTextDecoder)
           .as("connector_slug"),
         authMethod: connectors.authMethod,
@@ -276,7 +276,7 @@ async function loadStoredRuntimeState(
         and(
           eq(connectors.orgId, args.orgId),
           eq(connectors.userId, args.userId),
-          isNotNull(connectors.type),
+          isNotNull(connectors.connectorSlug),
         ),
       );
 

@@ -38,7 +38,6 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatEvents,
   type ChatEventUsagePayload,
-  type ChatEventAttachFileMetadata,
   type ChatEventGenerationTemplate,
   type ChatEventRecommendedFollowups,
   type ChatEventUserMessage,
@@ -104,7 +103,6 @@ import { type Db, db$, type ReadonlyDb, writeDb$ } from "../external/db";
 import {
   inferMimetype,
   insertAssistantEvents$,
-  resolveAttachFileMetadataUrls,
   resolveAttachFileUrls,
   visibleChatEventCondition,
 } from "./zero-chat-event-shared.service";
@@ -127,8 +125,8 @@ const nullableTriggerSourceDecoder = nullableDriverValueDecoder(
   zodEnumDriverValueDecoder(triggerSourceSchema),
 );
 const nullableTextDecoder = nullableDriverValueDecoder(pgTextDecoder);
-const matchedChatEvent = alias(chatEvents, "matched_chat_message");
-const revokedChatEvent = alias(chatEvents, "revoked_chat_message");
+const matchedChatEvent = alias(chatEvents, "matched_chat_event");
+const revokedChatEvent = alias(chatEvents, "revoked_chat_event");
 const hostedRunUploadedFiles = alias(runUploadedFiles, "hosted_files");
 const HOSTED_ARTIFACT_KINDS = ["hosted-site", "presentation-html"] as const;
 
@@ -157,7 +155,6 @@ type ChatEventRow = {
   readonly sequenceNumber: number | null;
   readonly createdAt: Date;
   readonly attachFiles: readonly string[] | null;
-  readonly attachFileMetadata: readonly ChatEventAttachFileMetadata[] | null;
   readonly generationTemplate: ChatEventGenerationTemplate | null;
   readonly recommendedFollowups: ChatEventRecommendedFollowups | null;
   readonly revokesEventId: string | null;
@@ -314,7 +311,6 @@ const eventColumns = {
   sequenceNumber: chatEvents.sequenceNumber,
   createdAt: chatEvents.createdAt,
   attachFiles: chatEvents.attachFiles,
-  attachFileMetadata: chatEvents.attachFileMetadata,
   generationTemplate: chatEvents.generationTemplate,
   recommendedFollowups: chatEvents.recommendedFollowups,
   revokesEventId: chatEvents.revokesEventId,
@@ -409,7 +405,7 @@ function chatEventMetadataSubquery(db: Pick<Db, "select">) {
     )
     .where(eq(zeroRuns.id, chatEvents.runId))
     .limit(1)
-    .as("chat_message_metadata");
+    .as("chat_event_metadata");
 }
 
 function selectChatEventsWithMetadata(db: Pick<Db, "select">) {
@@ -647,6 +643,8 @@ async function canonicalEventAttachments(
       status: runUploadedFiles.materializationStatus,
       error: runUploadedFiles.materializationError,
       provenance: runUploadedFiles.provenance,
+      source: runUploadedFiles.source,
+      externalId: runUploadedFiles.externalId,
       url: runUploadedFiles.url,
       classification: runUploadedFiles.classification,
       accessLevel: runUploadedFiles.accessLevel,
@@ -686,14 +684,19 @@ async function canonicalEventAttachments(
       row.accessLevel === "published";
     const attachments = byEvent.get(row.eventId) ?? [];
     attachments.push({
-      id: row.assetId,
+      id:
+        !isPublishedOutput && row.source === "web"
+          ? row.externalId
+          : row.assetId,
       filename,
       contentType: row.contentType ?? inferMimetype(filename),
       size: row.sizeBytes ?? 0,
       url:
         isPublishedOutput && row.url
           ? row.url
-          : privateCanonicalAssetUrl(row.assetId),
+          : row.source === "web" && row.url
+            ? row.url
+            : privateCanonicalAssetUrl(row.assetId),
       assetRef: {
         id: row.assetId,
         classification: isPublishedOutput ? "published-output" : "input",
@@ -717,9 +720,6 @@ function chatEventAttachFiles(
   return computed(async (get) => {
     if (canonicalAttachments.length > 0) {
       return canonicalAttachments;
-    }
-    if (row.attachFileMetadata && row.attachFileMetadata.length > 0) {
-      return resolveAttachFileMetadataUrls(row.attachFileMetadata);
     }
     if (row.attachFiles && row.attachFiles.length > 0) {
       return await get(resolveAttachFileUrls(userId, row.attachFiles));
@@ -1431,7 +1431,7 @@ export function zeroChatThreadArtifacts(args: {
 function artifactCallerVisibilityConditions(args: {
   readonly userId: string;
   readonly orgId: string;
-}): SQL[] {
+}): readonly [SQL, SQL, SQL] {
   return [
     eq(agentRuns.orgId, args.orgId),
     eq(chatThreads.userId, args.userId),
@@ -1662,7 +1662,6 @@ async function listChangedArtifacts(args: {
         effectiveUpdatedAt,
         sql`(${args.updatedAfter}::timestamptz AT TIME ZONE 'UTC') - (${ARTIFACT_SYNC_REPLAY_WINDOW_MINUTES} * interval '1 minute')`,
       );
-  const callerConditions = artifactCallerVisibilityConditions(args.query);
   const fileConditions = artifactFileVisibilityConditions(args.db);
   const rows = await executeRawRows(
     args.db,
@@ -1684,7 +1683,7 @@ async function listChangedArtifacts(args: {
           ON ${eq(agentComposes.id, chatThreads.agentComposeId)}
         INNER JOIN ${zeroAgents}
           ON ${eq(zeroAgents.id, agentComposes.id)}
-        WHERE ${sql.join(callerConditions, sql` AND `)}
+        WHERE ${and(...artifactCallerVisibilityConditions(args.query))}
       ),
       changed_artifact_ids AS MATERIALIZED (
         SELECT

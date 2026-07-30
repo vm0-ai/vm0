@@ -3289,6 +3289,77 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("localizes the custom connector OAuth entry flow in Portuguese", async () => {
+    const researchAgentId = "c0000000-0000-4000-a000-000000000033";
+    const connector = customConnector({
+      connected: true,
+      missingRequiredFields: [],
+      configuredFieldKeys: ["secret"],
+      hasSecret: true,
+    });
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
+    context.mocks.data.team([teamAgent(researchAgentId, "Research")]);
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledIds: [connector.id] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors?tab=custom",
+      featureSwitches: {
+        [FeatureSwitchKey.CustomConnectorOAuth2]: true,
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
+    });
+
+    await waitFor(() => {
+      const card = connectorCardByLabel("Acme Search");
+      expect(within(card).getByText("Conectado")).toBeInTheDocument();
+      expect(
+        within(card).getByTestId("custom-connector-card-agent-usage"),
+      ).toHaveTextContent("Usado por Research");
+    });
+
+    click(await screen.findByText("Novo conector"));
+    const createDialog = await screen.findByRole("dialog", {
+      name: "Novo conector personalizado",
+    });
+    expect(
+      within(createDialog).getByLabelText("Nome de exibição"),
+    ).toBeInTheDocument();
+    expect(within(createDialog).getByLabelText("Fechar")).toBeInTheDocument();
+
+    click(buttonByText("Adicionar autenticação", createDialog));
+    click(menuItemByText("OAuth 2.0"));
+
+    expect(
+      within(createDialog).getByText(
+        "Configure um app OAuth para os membros autorizarem.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(createDialog).getByLabelText("URL do token"),
+    ).toBeInTheDocument();
+    expect(
+      within(createDialog).getByLabelText("ID do cliente"),
+    ).toBeInTheDocument();
+    expect(
+      within(createDialog).getByText("Configurações avançadas"),
+    ).toBeInTheDocument();
+    expect(within(createDialog).getByLabelText("PKCE")).toHaveTextContent(
+      "Nenhum",
+    );
+  });
+
   it("configures OAuth app credentials at creation and authorizes on connect", async () => {
     const defaultAgentId = "c0000000-0000-4000-a000-000000000001";
     const researchAgentId = "c0000000-0000-4000-a000-000000000041";

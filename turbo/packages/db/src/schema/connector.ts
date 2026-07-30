@@ -27,8 +27,8 @@ export const connectors = pgTable(
   "connectors",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    // Legacy built-in rollout bridge. Switch in #23793 and remove in #23794.
-    type: varchar("type", { length: 64 }), // "github"
+    // Compatibility bridge for pre-#23793 releases. Remove in #23794.
+    legacyType: varchar("type", { length: 64 }), // "github"
     connectorSlug: varchar("connector_slug", { length: 64 }),
     customConnectorId: uuid("custom_connector_id"),
     authMethod: varchar("auth_method", { length: 50 }).notNull(), // "oauth"
@@ -53,8 +53,8 @@ export const connectors = pgTable(
     return [
       index("idx_connectors_org").on(table.orgId),
       uniqueIndex("idx_connectors_org_user_type")
-        .on(table.orgId, table.userId, table.type)
-        .where(sql`${table.type} IS NOT NULL`),
+        .on(table.orgId, table.userId, table.legacyType)
+        .where(sql`${table.legacyType} IS NOT NULL`),
       uniqueIndex("idx_connectors_org_user_custom_connector")
         .on(table.orgId, table.userId, table.customConnectorId)
         .where(sql`${table.customConnectorId} IS NOT NULL`),
@@ -70,7 +70,7 @@ export const connectors = pgTable(
       }).onDelete("cascade"),
       check(
         "chk_connectors_identity",
-        sql`num_nonnulls(${table.type}, ${table.customConnectorId}) = 1`,
+        sql`num_nonnulls(${table.legacyType}, ${table.customConnectorId}) = 1`,
       ),
       uniqueIndex("idx_connectors_org_user_slug")
         .on(table.orgId, table.userId, table.connectorSlug)
@@ -81,7 +81,7 @@ export const connectors = pgTable(
       ),
       check(
         "chk_connectors_connector_slug_matches_type",
-        sql`${table.connectorSlug} IS NOT DISTINCT FROM ${table.type}`,
+        sql`${table.connectorSlug} IS NOT DISTINCT FROM ${table.legacyType}`,
       ),
     ];
   },

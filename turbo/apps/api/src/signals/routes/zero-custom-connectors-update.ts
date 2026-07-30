@@ -55,7 +55,6 @@ const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       },
     };
   }
-
   const result = await set(
     updateCustomConnectorDefinition$,
     {

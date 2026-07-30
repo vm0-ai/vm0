@@ -616,7 +616,7 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         db.select({
           qualified: sql\`CASE
             WHEN \${eq(users.id, 1)} THEN \${"one"}
-            ELSE \${sql\`\${users.name}\`}
+            ELSE \${sql\`\${users.name}\`.mapWith(users.name)}
           END\`.mapWith(users.name),
           distinctAlias: sql\`\${users.name}\`
             .mapWith(users.name)
@@ -639,6 +639,63 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         export function exportedColumnSql() {
           return sql\`\${users.name}\`;
         }
+      `,
+    },
+    {
+      name: "concrete and optional-element conjunction contracts stay raw",
+      code: `${drizzlePreamble}
+        import { eq, sql, type SQL } from "drizzle-orm";
+        declare const optionalCondition: SQL | undefined;
+        declare const optionalSeparator: SQL | undefined;
+        function concreteCondition(): SQL {
+          return sql.join(
+            [eq(users.id, 1), eq(users.name, "name")],
+            sql\` AND \`,
+          );
+        }
+        function dynamicConditions(): SQL[] {
+          const conditions = [
+            eq(users.id, 1),
+            eq(users.name, "name"),
+          ];
+          return conditions;
+        }
+        function optionalConditions(): (SQL | undefined)[] {
+          return [eq(users.id, 1), optionalCondition];
+        }
+        db.select()
+          .from(users)
+          .where(
+            sql.join(
+              [eq(users.id, 1), optionalCondition],
+              sql\` AND \`,
+            ),
+          );
+        db.select()
+          .from(users)
+          .where(
+            sql.join(
+              [eq(users.id, 1), eq(users.name, "name")],
+              optionalSeparator,
+            ),
+          );
+        db.select()
+          .from(users)
+          .where(sql.join(dynamicConditions(), sql\` AND \`));
+        db.select()
+          .from(users)
+          .where(sql.join(optionalConditions(), sql\` AND \`));
+        const castIdentity = sql\`CASE
+          WHEN \${eq(users.id, 1)} THEN \${"one"}
+          ELSE \${sql\`\${users.name}\` as SQL}
+        END\`;
+        const aliasedIdentity = sql\`CASE
+          WHEN \${eq(users.id, 1)} THEN \${"one"}
+          ELSE \${sql\`\${users.name}\`.as("nested_name")}
+        END\`;
+        void concreteCondition();
+        void castIdentity;
+        void aliasedIdentity;
       `,
     },
     {
@@ -847,6 +904,72 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
     },
   ],
   invalid: [
+    {
+      name: "directly nested identity column wrapper",
+      code: `${drizzlePreamble}
+        import { eq, sql } from "drizzle-orm";
+        const expression = sql\`CASE
+          WHEN \${eq(users.id, 1)} THEN \${"one"}
+          ELSE \${sql\`\${users.name}\`}
+        END\`.mapWith(users.name);
+        void expression;
+      `,
+      errors: [{ messageId: "directColumn", line: 22 }],
+    },
+    {
+      name: "fixed conjunction under explicit optional SQL return",
+      code: `${drizzlePreamble}
+        import { eq, or, sql, type SQL } from "drizzle-orm";
+        declare const optionalCondition: SQL | undefined;
+        function visibleCondition(): SQL | undefined {
+          return sql.join(
+            [
+              eq(users.id, 1),
+              or(eq(users.name, "name"), optionalCondition),
+            ],
+            sql\` AND \`,
+          );
+        }
+        void visibleCondition();
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 22,
+        },
+      ],
+    },
+    {
+      name: "fixed conjunction from local array factory",
+      code: `${drizzlePreamble}
+        import { eq, sql, type SQL } from "drizzle-orm";
+        function callerConditions(id: number, name: string): SQL[] {
+          return [eq(users.id, id), eq(users.name, name)];
+        }
+        const conditions = callerConditions(1, "name");
+        db.select()
+          .from(users)
+          .where(sql.join(conditions, sql\` AND \`));
+        db.select()
+          .from(users)
+          .where(
+            sql.join(callerConditions(2, "other"), sql\` AND \`),
+          );
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 26,
+        },
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 30,
+        },
+      ],
+    },
     {
       name: "repeated selected grouping expression",
       code: `${drizzlePreamble}

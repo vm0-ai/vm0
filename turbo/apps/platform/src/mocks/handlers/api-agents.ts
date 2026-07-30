@@ -134,9 +134,15 @@ export const apiAgentsHandlers = [
   mockApi(
     zeroAgentCustomConnectorsContract.update,
     ({ body, params, respond }) => {
+      const requestedIds =
+        "enabledIds" in body
+          ? body.enabledIds
+          : body.grants.map((grant) => {
+              return grant.customConnectorId;
+            });
       const enabledIds = mockConnectorUpdateResponse(
         mockEnabledCustomConnectorIdsByAgent.get(params.id) ?? [],
-        body.enabledIds,
+        requestedIds,
         body.operation,
       );
       mockEnabledCustomConnectorIdsByAgent.set(params.id, enabledIds);

@@ -13,7 +13,7 @@
 # 2. Connect test-oauth through the real authorization-code OAuth flow.
 # 3. Enable the connector for the compose via /api/cli/auth/test-enable-connector
 #    so the zero run flow passes it in allowedConnectorTypes.
-# 4. Create a zero run through the API for an agent that curls the echo endpoint.
+# 4. Create a Zero chat run for an agent that curls the echo endpoint.
 #    The firewall rule
 #    matches any `{pr}.vm6.ai` subdomain; mitm-addon intercepts, the webhook
 #    detects expiry, hits the fake provider's refresh grant, injects a fresh
@@ -129,26 +129,24 @@ EOF
     fi
 }
 
-run_zero_agent_via_api() {
+run_zero_agent_via_chat() {
     local agent_id="$1"
     local prompt="$2"
     local expected_log="${3:-ECHO_STATUS=}"
-    local payload body run_id logs status_value start timeout
+    local run_id logs status_value start timeout
 
-    payload=$(jq -nc \
-        --arg agentId "$agent_id" \
-        --arg prompt "$prompt" \
-        '{agentId: $agentId, prompt: $prompt}')
-
-    body=$(e2e_api_curl "/api/zero/runs" -X POST -d "$payload") || {
+    zero_chat_run_with_model \
+        "$agent_id" \
+        "$prompt" \
+        "claude-sonnet-4-6" \
+        "true" || {
         echo "# Failed to create zero run"
         return 1
     }
 
-    run_id=$(printf '%s' "$body" | jq -r '.runId // ""')
+    run_id="$LAST_RUN_ID"
     [ -n "$run_id" ] || {
         echo "# Failed to extract runId from zero run response"
-        echo "# Response: $body"
         return 1
     }
 
@@ -334,7 +332,7 @@ EOF
     # so this test continues to exercise sandbox firewall/mitm token refresh
     # without depending on Next external rewrites to preserve preview guard
     # headers. The web-to-api rewrite is covered by web rewrite tests.
-    run run_zero_agent_via_api "$COMPOSE_ID" \
+    run run_zero_agent_via_chat "$COMPOSE_ID" \
         "STATUS=\$(curl -s -o /tmp/echo-body -w '%{http_code}' -H 'x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' -H 'x-vm0-test-endpoint-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' '${TEST_OAUTH_PROVIDER_URL}/api/test/oauth-provider/echo') && echo \"ECHO_STATUS=\$STATUS\" && echo \"ECHO_BODY=\$(cat /tmp/echo-body)\""
 
     echo "$output"
@@ -409,7 +407,7 @@ EOF
     echo "$output"
     assert_success
 
-    run run_zero_agent_via_api "$COMPOSE_ID" \
+    run run_zero_agent_via_chat "$COMPOSE_ID" \
         "STATUS=\$(curl -s -o /tmp/echo-body -w '%{http_code}' -H 'x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' -H 'x-vm0-test-endpoint-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}' '${TEST_OAUTH_PROVIDER_URL}/api/test/oauth-provider/echo') && echo \"ECHO_STATUS=\$STATUS\" && echo \"ECHO_BODY=\$(cat /tmp/echo-body)\""
 
     echo "$output"

@@ -223,6 +223,7 @@ jobs:
             .github/scripts/check-release-please-component-releases.sh \
             .github/scripts/check-workflow-shell-compatibility.sh \
             .github/scripts/cloudflare-ssh-preconnect.sh \
+            .github/scripts/pass-release-pr-ci-gates.sh \
             .github/scripts/run-semgrep.sh \
             .github/scripts/runner-behavior-*.sh \
             .github/scripts/tests/ansible-ssh-control-path-test.sh \

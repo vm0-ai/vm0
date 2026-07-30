@@ -128,6 +128,19 @@ function inspectFile(
       firewall_name: "github",
       firewall_permission: "read-repos",
       browser_user_agent: true,
+      connector_diagnostic_slug: "github-connector",
+    },
+    {
+      timestamp: "2026-03-10T14:56:04.000Z",
+      type: "http",
+      action: "ALLOW",
+      method: "POST",
+      url: "https://slack.com/api/auth.test",
+      status: 401,
+      latency_ms: 87,
+      request_size: 24,
+      response_size: 512,
+      connector_diagnostic_type: "slack-connector",
     },
   ];
 
@@ -484,6 +497,32 @@ describe("activity inspect page", () => {
     expect(within(networkTable).getByText("200")).toBeInTheDocument();
     expect(within(networkTable).getByText("123ms")).toBeInTheDocument();
     expect(within(networkTable).getByText("github")).toBeInTheDocument();
+
+    const networkRows = within(networkTable).getAllByRole("row");
+    const networkRow = networkRows[1];
+    if (!networkRow) {
+      throw new Error("Expected a network log row");
+    }
+    await user.click(networkRow);
+    await waitFor(() => {
+      expect(screen.getByText("github-connector")).toBeInTheDocument();
+    });
+    expect(screen.getAllByText("Connector Diagnostic")).toHaveLength(1);
+
+    await user.click(networkRow);
+    await waitFor(() => {
+      expect(screen.queryByText("github-connector")).not.toBeInTheDocument();
+    });
+
+    const legacyNetworkRow = networkRows[2];
+    if (!legacyNetworkRow) {
+      throw new Error("Expected a legacy network log row");
+    }
+    await user.click(legacyNetworkRow);
+    await waitFor(() => {
+      expect(screen.getByText("slack-connector")).toBeInTheDocument();
+    });
+    expect(screen.getAllByText("Connector Diagnostic")).toHaveLength(1);
   });
 
   it("ignores debug tab query params when debug tabs are disabled", async () => {

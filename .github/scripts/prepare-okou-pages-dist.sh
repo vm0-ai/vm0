@@ -43,6 +43,7 @@ fi
 find "$pages_dist" -type f -name '*.map' -delete
 rm -f \
   "${pages_dist}/.gitkeep" \
+  "${pages_dist}/dist.tar.gz" \
   "${pages_dist}/manifest.json" \
   "${pages_dist}/ready.json"
 cp -a "${pages_config_dir}/." "$pages_dist/"

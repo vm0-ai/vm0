@@ -31,14 +31,6 @@ fn set_claude_session_pruning(runtime: &mut guest_agent::run_context::GuestRunti
         .insert("claudeSessionPruning".to_string(), enabled);
 }
 
-fn set_codex_session_pruning(runtime: &mut guest_agent::run_context::GuestRuntime, enabled: bool) {
-    runtime.config.framework = guest_agent::env::Framework::Codex;
-    runtime
-        .config
-        .feature_flags
-        .insert("codexSessionPruning".to_string(), enabled);
-}
-
 fn session_file_paths() -> (String, String) {
     let paths = shared_guest_paths();
     (
@@ -502,51 +494,12 @@ async fn success_checkpoint_preserves_oversized_claude_history_when_pruning_disa
 }
 
 #[tokio::test]
-async fn success_checkpoint_preserves_oversized_codex_history_when_pruning_disabled() {
+async fn success_checkpoint_preserves_small_codex_history() {
     let api = SharedApiMock::new().await;
     let server = api.server();
 
     let mut runtime = runtime_from_process_env().unwrap();
-    set_codex_session_pruning(&mut runtime, false);
-    let _files_guard = SessionCheckpointFilesGuard::new();
-    let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-    let (history_dir, history_path, _) = write_prunable_codex_history(session_id).unwrap();
-    runtime.config.home_dir = history_dir.path().to_string_lossy().into_owned();
-    let source_size = std::fs::metadata(&history_path).unwrap().len();
-
-    let prepare_mock = server.mock(|when, then| {
-        when.method(POST)
-            .path("/api/webhooks/agent/checkpoints/prepare-history");
-        then.status(200);
-    });
-    let checkpoint_mock = server.mock(|when, then| {
-        when.method(POST).path("/api/webhooks/agent/checkpoints");
-        then.status(200);
-    });
-
-    let error = guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime)
-        .await
-        .unwrap_err();
-
-    assert!(
-        error
-            .to_string()
-            .contains("Session history exceeds maximum size"),
-        "disabled Codex pruning must retain the original hard-limit behavior: {error}"
-    );
-    assert_eq!(std::fs::metadata(&history_path).unwrap().len(), source_size);
-    assert!(!std::path::Path::new(runtime.paths.final_session_history_identity_file()).exists());
-    prepare_mock.assert_calls_async(0).await;
-    checkpoint_mock.assert_calls_async(0).await;
-}
-
-#[tokio::test]
-async fn success_checkpoint_preserves_small_codex_history_when_pruning_enabled() {
-    let api = SharedApiMock::new().await;
-    let server = api.server();
-
-    let mut runtime = runtime_from_process_env().unwrap();
-    set_codex_session_pruning(&mut runtime, true);
+    runtime.config.framework = guest_agent::env::Framework::Codex;
     let _files_guard = SessionCheckpointFilesGuard::new();
     let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     let (history_dir, history_path, history) = write_prunable_codex_history(session_id).unwrap();
@@ -679,7 +632,7 @@ async fn success_checkpoint_reconciles_codex_compact_generation_after_commit() {
     let server = api.server();
 
     let mut runtime = runtime_from_process_env().unwrap();
-    set_codex_session_pruning(&mut runtime, true);
+    runtime.config.framework = guest_agent::env::Framework::Codex;
     let _files_guard = SessionCheckpointFilesGuard::new();
     let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     let (history_dir, history_path, candidate) = write_prunable_codex_history(session_id).unwrap();
@@ -1628,7 +1581,7 @@ async fn recovery_checkpoint_does_not_prune_eligible_codex_history() {
     let server = api.server();
 
     let mut runtime = runtime_from_process_env().unwrap();
-    set_codex_session_pruning(&mut runtime, true);
+    runtime.config.framework = guest_agent::env::Framework::Codex;
     let _files_guard = SessionCheckpointFilesGuard::new();
     let session_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
     let (history_dir, history_path, _) = write_prunable_codex_history(session_id).unwrap();

@@ -313,8 +313,8 @@
       "telegram": "Telegram",
       "web": "Web",
       "webhook": "Webhook",
-      "workflowEvent": "Evento de workflow",
-      "workflowSchedule": "Agendamento de workflow"
+      "workflowEvent": "Evento de fluxo de trabalho",
+      "workflowSchedule": "Agendamento de fluxo de trabalho"
     },
     "statuses": {
       "cancelled": "Cancelado",
@@ -456,7 +456,7 @@
       "rail": {
         "activity": "Atividade",
         "new": "Novo",
-        "workflows": "Fluxos",
+        "workflows": "Fluxos de trabalho",
         "works": "Trabalha"
       },
       "searchConversations": "Buscar conversas",
@@ -1067,7 +1067,7 @@
       "disabled": "Desativada",
       "displaysIn": "Exibido em {{timezone}}",
       "edit": "Editar automação",
-      "editDescription": "Atualize esta automação de workflow.",
+      "editDescription": "Atualize esta automação de fluxo de trabalho.",
       "empty": "Ainda não há automações.",
       "event": "Evento",
       "events": {
@@ -1075,8 +1075,8 @@
         "githubIssueComment": "Comentário em issue do GitHub criado",
         "githubLabelApplied": "Label do GitHub aplicada",
         "githubReviewSubmitted": "Revisão de pull request do GitHub enviada",
-        "githubWorkflowCompleted": "Workflow do GitHub concluído",
-        "githubWorkflowJobCompleted": "Job de workflow do GitHub concluído",
+        "githubWorkflowCompleted": "Fluxo de trabalho do GitHub concluído",
+        "githubWorkflowJobCompleted": "Job de fluxo de trabalho do GitHub concluído",
         "gmailLabelApplied": "Label do Gmail aplicada",
         "gmailNewMessage": "Nova mensagem do Gmail",
         "googleCalendarCancelled": "Evento do Google Calendar cancelado",
@@ -1179,20 +1179,20 @@
     "composer": {
       "agentSuggestions": "Agentes",
       "configureModel": "Configurar modelo",
-      "createWorkflow": "Criar workflow",
+      "createWorkflow": "Criar fluxo de trabalho",
       "message": "Mensagem",
       "modelConfigureAction": "Configurar modelo",
-      "placeholder": "Peça para automatizar workflows, gerenciar tarefas...",
+      "placeholder": "Peça para automatizar fluxos de trabalho, gerenciar tarefas...",
       "selectedModelUnavailable": "O modelo selecionado não está disponível. Configure-o antes de enviar.",
       "selectedModelUnavailableToast": "O modelo selecionado não está disponível",
       "selectModel": "Selecionar modelo",
       "threadSuggestions": "Conversas",
       "visualAttachmentsUnsupported": "{{modelName}} não reconhece imagens nem vídeos. Troque para um modelo com visão para anexá-los.",
       "workflows": {
-        "empty": "Nenhum workflow correspondente",
-        "loading": "Carregando workflows...",
-        "title": "Workflows",
-        "viewAll": "Ver todos os workflows"
+        "empty": "Nenhum fluxo de trabalho correspondente",
+        "loading": "Carregando fluxos de trabalho...",
+        "title": "Fluxos de trabalho",
+        "viewAll": "Ver todos os fluxos de trabalho"
       }
     },
     "computerUse": {
@@ -1359,7 +1359,7 @@
       "skipAutomationEvent": "Ignorar evento de automação"
     },
     "replaceDraft": {
-      "description": "Continuar limpará o rascunho atual do editor e iniciará um prompt de workflow.",
+      "description": "Continuar limpará o rascunho atual do editor e iniciará um prompt de fluxo de trabalho.",
       "title": "Substituir rascunho do editor?"
     },
     "run": {
@@ -1455,17 +1455,17 @@
         "presentation": "Apresentação",
         "video": "Vídeo",
         "website": "Site",
-        "workflow": "Workflow"
+        "workflow": "Fluxo de trabalho"
       },
       "messageTemplate": "Template da mensagem: {{title}}",
       "previewTemplate": "Visualizar template {{title}}",
       "previewVideo": "Visualizar template de vídeo {{title}}",
       "previewWebsite": "Visualizar template de site {{title}}",
-      "previewWorkflow": "Visualizar template de workflow {{title}}",
+      "previewWorkflow": "Visualizar template de fluxo de trabalho {{title}}",
       "removeTemplate": "Remover template {{title}}",
       "removeVideo": "Remover template de vídeo {{title}}",
       "removeWebsite": "Remover template de site {{title}}",
-      "removeWorkflow": "Remover template de workflow {{title}}"
+      "removeWorkflow": "Remover template de fluxo de trabalho {{title}}"
     },
     "thread": {
       "ariaLabel": "Conversa",
@@ -1513,8 +1513,8 @@
       "transcriptionFailed": "Falha na transcrição de voz. Tente novamente."
     },
     "workflows": {
-      "named": "Workflow {{title}}",
-      "open": "Abrir workflow {{title}}"
+      "named": "Fluxo de trabalho {{title}}",
+      "open": "Abrir fluxo de trabalho {{title}}"
     }
   },
   "connectors": {
@@ -1565,11 +1565,15 @@
       "connectedDescription": "Sua conta foi conectada. Você pode fechar esta janela.",
       "connecting": "Conectando {{connector}}…",
       "connectingDescription": "Aguarde enquanto terminamos de conectar sua conta.",
+      "customConnectorLabel": "Conector personalizado",
+      "documentTitle": "Conectar {{connector}}",
       "errorDescription": "{{error}} Feche esta janela e tente novamente.",
       "errorFallback": "Ocorreu um erro durante a conexão.",
       "failed": "Falha na conexão",
       "failedTitle": "Não foi possível conectar {{connector}}",
       "finishing": "Finalizando a conexão segura",
+      "genericLabel": "Conector",
+      "invalidUrl": "A URL de callback do conector é inválida.",
       "success": "Conectado"
     },
     "card": {
@@ -1691,6 +1695,14 @@
         "verificationCode": "Código de verificação",
         "waiting": "Aguardando aprovação. Mantenha esta caixa de diálogo aberta."
       },
+      "errors": {
+        "authorizationWindow": "Falha ao abrir a janela de autorização",
+        "codeRequired": "Insira o código do {{connector}}.",
+        "denied": "A conexão foi negada. Inicie novamente para tentar de novo.",
+        "expired": "A sessão de conexão expirou. Inicie novamente para tentar de novo.",
+        "failed": "Falha na conexão. Inicie novamente para tentar de novo.",
+        "verificationOpen": "Não foi possível abrir a página de verificação. Tente novamente."
+      },
       "external": {
         "code": "Código",
         "complete": "Concluir conexão",
@@ -1714,19 +1726,69 @@
       }
     },
     "custom": {
+      "agentUsage": {
+        "none": "Não é usado por nenhum agente",
+        "usedBy": "Usado por {{agents}}",
+        "usedByOverflow_one": "Usado por {{agents}} +{{value}}",
+        "usedByOverflow_many": "Usado por {{agents}} +{{value}}",
+        "usedByOverflow_other": "Usado por {{agents}} +{{value}}"
+      },
       "connect": {
+        "apiAuthentication": "Autenticação por API",
+        "apiDescription": "Insira o segredo de API fornecido pelo provedor.",
+        "back": "Voltar",
+        "connecting": "Conectando…",
+        "continue": "Continuar",
+        "continueToProvider": "Continue no provedor para autorizar o acesso.",
         "description": "Seu segredo é criptografado em repouso e injetado nas solicitações de saída pelo firewall. Ele nunca é exposto ao agente como uma variável de ambiente.",
+        "oauthDescription": "Autorize o acesso com o app OAuth do conector.",
+        "save": "Salvar",
+        "saving": "Salvando…",
         "secret": "Segredo",
         "title": "Conectar {{connector}}"
       },
       "create": {
+        "addAuthentication": "Adicionar autenticação",
+        "advancedApiPreserved": "Os campos e as injeções avançadas de API são preservados ao salvar.",
+        "advancedSettings": "Configurações avançadas",
+        "apiAuthentication": "Autenticação por API",
+        "apiAuthenticationDescription": "Injete um segredo fornecido pelo usuário em cada solicitação correspondente.",
+        "authorizationParameters": "Parâmetros de autorização",
+        "authorizationParametersDescription": "Adicione somente os parâmetros exigidos pelo provedor.",
+        "authorizationUrl": "URL de autorização",
+        "clientId": "ID do cliente",
+        "clientSecret": "Segredo do cliente",
         "displayName": "Nome de exibição",
         "headerName": "Nome do header",
         "headerTemplate": "Modelo do header",
         "headerTemplateHint": "(deve conter {{placeholder}})",
+        "httpBasicAuthentication": "Autenticação HTTP Basic",
+        "keepClientSecret": "Deixe o segredo do cliente em branco para manter o valor armazenado.",
+        "keepClientSecretPlaceholder": "Deixe em branco para manter o atual",
+        "newClientSecret": "Novo segredo do cliente",
+        "none": "Nenhum",
+        "oauthChangesDisconnect": "Alterar as configurações OAuth ou as credenciais do cliente desconecta as conexões OAuth existentes.",
+        "oauthDescription": "Configure um app OAuth para os membros autorizarem.",
+        "optional": "(opcional)",
+        "parameters": {
+          "accessType": "Tipo de acesso",
+          "audience": "Público",
+          "prompt": "Prompt",
+          "resource": "Recurso"
+        },
         "prefixes": "Prefixos",
         "prefixesHint": "(um por linha, somente https)",
-        "title": "Novo conector personalizado"
+        "redirectCopy": "Copiar URL de redirecionamento",
+        "redirectHint": "(Cadastre esta URL no app OAuth do provedor.)",
+        "redirectUrl": "URL de redirecionamento",
+        "removeApiAuthentication": "Remover autenticação por API",
+        "removeOauth": "Remover OAuth 2.0",
+        "scopes": "Escopos",
+        "scopesHint": "(um por linha)",
+        "secretInRequestBody": "Segredo do cliente no corpo da solicitação",
+        "title": "Novo conector personalizado",
+        "tokenEndpointAuthentication": "Autenticação do endpoint de token",
+        "tokenUrl": "URL do token"
       },
       "delete": {
         "description": "Isso remove o conector e o segredo armazenado de cada membro. Os agentes autorizados para este conector perderão o acesso imediatamente. Esta ação não pode ser desfeita.",
@@ -1749,6 +1811,11 @@
         "deleted": "Conector personalizado excluído",
         "disconnected": "Desconectado",
         "renamed": "Renomeado para \"{{connector}}\""
+      },
+      "updateConfirm": {
+        "action": "Salvar e desconectar",
+        "description": "Estas alterações OAuth desconectarão todos os membros conectados atualmente via OAuth. Eles precisarão conectar este conector personalizado novamente.",
+        "title": "Desconectar as conexões OAuth existentes?"
       }
     },
     "customProposal": {
@@ -1962,6 +2029,66 @@
         "sendVerification": "Enviar verificação",
         "verificationSent": "Mensagem de verificação enviada para {{phone}}. Abra o link dessa mensagem para concluir a conexão."
       },
+      "catalogDiagnostics": {
+        "fields": {
+          "activated": "Ativado",
+          "activeCatalogDigest": "Digest do catálogo ativo",
+          "activeVersion": "Versão ativa",
+          "evaluated": "Avaliado",
+          "evaluation": "Avaliação",
+          "executableCapabilityDigest": "Digest de recursos executáveis",
+          "failureCode": "Código da falha",
+          "filteredAuthMethods": "Métodos de autenticação filtrados",
+          "lastAttempt": "Última tentativa",
+          "lastAttemptAt": "Data da última tentativa",
+          "lastSuccess": "Último sucesso",
+          "missingVersions": "Versões ausentes",
+          "rejectedCatalogDigest": "Digest do catálogo rejeitado",
+          "rejectedVersion": "Versão rejeitada",
+          "rejectingBackend": "Backend que rejeitou",
+          "rejectionCache": "Cache de rejeição",
+          "rejectionFailure": "Falha da rejeição",
+          "syncState": "Estado da sincronização",
+          "unownedSecrets": "Segredos sem proprietário",
+          "unownedVariables": "Variáveis sem proprietário",
+          "unresolvedBridgeCredentials": "Credenciais de ponte não resolvidas"
+        },
+        "loading": "Carregando",
+        "none": "Nenhum",
+        "notReused": "Não reutilizado",
+        "reused": "Reutilizado",
+        "sections": {
+          "compatibility": "Compatibilidade",
+          "credentialStorage": "Armazenamento de credenciais",
+          "rejectedCandidate": "Candidato rejeitado"
+        },
+        "title": "Catálogo de conectores",
+        "unavailable": "Indisponível",
+        "values": {
+          "accepted": "Aceito",
+          "current": "Atual",
+          "digestMismatch": "Digest incompatível",
+          "invalidArtifact": "Artefato inválido",
+          "invalidCompression": "Compactação inválida",
+          "invalidJson": "JSON inválido",
+          "invalidPointer": "Ponteiro inválido",
+          "invalidReference": "Referência inválida",
+          "missingAccessProvider": "Provedor de acesso ausente",
+          "missingGrantProvider": "Provedor de concessão ausente",
+          "missingPlatformConfiguration": "Configuração da plataforma ausente",
+          "missingRevokeProvider": "Provedor de revogação ausente",
+          "neverSynced": "Nunca sincronizado",
+          "objectTooLarge": "Objeto grande demais",
+          "providerContractMismatch": "Contrato do provedor incompatível",
+          "publicLeakage": "Vazamento público",
+          "rejected": "Rejeitado",
+          "relationshipMismatch": "Relacionamento incompatível",
+          "sourceUnavailable": "Origem indisponível",
+          "stale": "Desatualizado",
+          "unchanged": "Sem alterações",
+          "unsupportedSchema": "Schema não compatível"
+        }
+      },
       "errors": {
         "agentphonePhone": "Digite um número de telefone com código do país, como +1 555 555 1212.",
         "githubAuthorizationWindow": "Falha ao abrir a janela de autorização",
@@ -1980,7 +2107,7 @@
         "callbackStatusVerified": "Callback verificado",
         "callbackStatusWaiting": "Aguardando callback",
         "configured": "Configurado",
-        "copied": "{{label}} copiado",
+        "copied": "Copiado: {{label}}",
         "copy": "Copiar",
         "create": {
           "descriptionAfter": ", crie um app personalizado empresarial chamado {{brandName}}, envie o ícone do {{brandName}} e adicione o recurso Bot.",
@@ -1993,12 +2120,15 @@
           "title": "Criar um app personalizado empresarial"
         },
         "credentials": {
-          "description": "Copie o App ID e o App Secret de Credentials & Basic Information.",
+          "appId": "ID do app",
+          "appSecret": "Segredo do app",
+          "description": "Copie o ID e o segredo do app em Credentials & Basic Information.",
           "imageAlt": "Resultado da criação do app do Feishu mostrando onde encontrar o App ID e o App Secret",
           "title": "Adicionar as credenciais do app"
         },
         "defaultAgent": "Agente padrão",
         "defaultAgentAria": "Agente padrão para {{appId}}",
+        "developerConsole": "console de desenvolvedor do Feishu",
         "dialogAdminRequired": "Um administrador da organização deve configurar o app. Você poderá conectar sua própria conta pela lista de bots do Feishu após a conclusão da configuração.",
         "emptyAdmin": "Adicione um app personalizado para encaminhar mensagens do Feishu a um agente.",
         "emptyMember": "Peça a um administrador da organização para adicionar um bot do Feishu.",
@@ -2072,12 +2202,53 @@
         "tokens": {
           "descriptionAfter": ", selecione o app que você acabou de criar e abra sua página de configuração. Acesse Event Configuration → Encryption Strategy e copie o Encrypt Key e o Verification Token.",
           "descriptionBefore": "Abra o ",
+          "encryptKey": "Chave de criptografia",
           "imageAlt": "Tela Encryption Strategy do Feishu mostrando o Encrypt Key e o Verification Token",
-          "title": "Adicionar os tokens de verificação de eventos"
+          "title": "Adicionar os tokens de verificação de eventos",
+          "verificationToken": "Token de verificação"
         },
         "uninstallDescription": "Isso desinstala {{bot}} do workspace e desconecta todas as contas do {{brandName}} que o utilizam. Esta ação não pode ser desfeita.",
         "uninstallTargetFallback": "este bot",
         "uninstallTitle": "Desinstalar o bot do Feishu?"
+      },
+      "strapi": {
+        "actions": {
+          "cancel": "Cancelar",
+          "checkTest": "Verificar teste",
+          "copy": "Copiar",
+          "create": "Criar integração",
+          "remove": "Remover",
+          "revealAuthorization": "Revelar header de autorização"
+        },
+        "addDescription": "Uma integração pode atender a várias automações de fluxos de trabalho.",
+        "addTitle": "Adicionar instância do Strapi",
+        "adminRequired": "Peça a um administrador da organização para adicionar ou atualizar integrações do Strapi.",
+        "authorizationHeader": "Header de autorização",
+        "copied": "{{label}} copiado",
+        "description": "Permita que o Zero reaja a entradas publicadas no Strapi e automatize o trabalho subsequente.",
+        "documentTitle": "Strapi",
+        "empty": "Ainda não há instâncias do Strapi conectadas.",
+        "form": {
+          "name": "Nome",
+          "namePlaceholder": "CMS da empresa",
+          "url": "URL do Strapi"
+        },
+        "instructions": "No Strapi, abra Settings → Webhooks, adicione esta URL e o header Authorization, selecione entry.publish e clique em Trigger para enviar um webhook de teste do Strapi.",
+        "lastPublish": "Última publicação: {{date}}",
+        "lastTest": "Último teste: {{date}}",
+        "notReceived": "Não recebido",
+        "removeDescription": "Remova primeiro as automações de fluxos de trabalho. As solicitações de webhook do Strapi para esta URL deixarão de funcionar.",
+        "removeTitle": "Remover a integração do Strapi?",
+        "tested": "Webhook testado",
+        "title": "Strapi",
+        "toasts": {
+          "created": "Integração do Strapi criada",
+          "noTestReceived": "Nenhum webhook de teste do Strapi foi recebido ainda",
+          "removed": "Integração do Strapi removida",
+          "testReceived": "Webhook de teste do Strapi recebido"
+        },
+        "webhookUrl": "URL do webhook",
+        "whereZeroWorks": "Onde o Zero funciona"
       },
       "telegram": {
         "addBot": "Adicionar bot",
@@ -3739,10 +3910,19 @@
   "settings": {
     "accountMenu": {
       "addAccount": "Adicionar conta",
+      "creditBalance_one": "{{value}} crédito",
+      "creditBalance_many": "{{value}} créditos",
+      "creditBalance_other": "{{value}} créditos",
       "exportData": "Exportar dados",
       "lab": "Lab",
       "settings": "Configurações",
       "signOut": "Sair",
+      "subscriptions": {
+        "reset": "Redefinir",
+        "resetTimeUnavailable": "Horário de redefinição indisponível",
+        "usage": "Uso de {{provider}}",
+        "usageRemaining": "{{provider}}: {{window}} restante"
+      },
       "switchAccount": "Trocar de conta",
       "userFallback": "Usuário"
     },
@@ -3931,6 +4111,28 @@
           "week": "Semana"
         }
       },
+      "picker": {
+        "balancedUse": "Uso equilibrado",
+        "builtInModel": "Modelo integrado",
+        "byokHelp": "Usa seu provedor configurado",
+        "fast": "Rápido",
+        "inheritDefault": "Herdar o padrão da organização",
+        "loadError": "Não foi possível carregar os modelos.",
+        "loading": "Carregando modelos...",
+        "models": "Modelos",
+        "moreCodexCredits": "Usa mais créditos do Codex.",
+        "noConfiguredModels": "Nenhum modelo configurado",
+        "priceTiers": {
+          "balanced": "Custo e desempenho equilibrados",
+          "economy": "Nível econômico para tarefas simples do dia a dia",
+          "frontier": "Modelo principal de ponta",
+          "premium": "Modelo premium de ponta para as tarefas mais difíceis"
+        },
+        "prioritizeSpeed": "Prioriza a velocidade",
+        "pro": "Pro",
+        "runSpeed": "Velocidade de execução",
+        "standard": "Padrão"
+      },
       "policies": {
         "actionsFor": "Ações para {{model}}",
         "apiKey": "Chave de API",
@@ -3964,9 +4166,9 @@
       "reset": {
         "confirmDescription": "Use uma redefinição do Codex para redefinir suas janelas de uso atuais. Você tem {{remaining}}.",
         "progress": "Redefinindo...",
-        "remaining_one": "{{count}} redefinição restante",
-        "remaining_many": "{{count}} redefinições restantes",
-        "remaining_other": "{{count}} redefinições restantes",
+        "remaining_one": "{{value}} redefinição restante",
+        "remaining_many": "{{value}} redefinições restantes",
+        "remaining_other": "{{value}} redefinições restantes",
         "remainingUnavailable": "Redefinições restantes indisponíveis",
         "title": "Redefinir o uso do Codex?"
       },
@@ -3982,6 +4184,7 @@
       },
       "toasts": {
         "disconnected": "{{provider}} desconectado",
+        "policiesUpdated": "Configurações dos provedores de modelo atualizadas",
         "reset": "Uso do Codex redefinido",
         "resetUnavailable": "Nenhuma redefinição de uso do Codex disponível",
         "resetUnneeded": "O uso do Codex não precisa ser redefinido agora"
@@ -4414,11 +4617,11 @@
         "addWebhookAction": "Adicionar automação",
         "addWebhookAria": "Adicionar automação de {{title}}",
         "addWebhookDescription": "Execute este fluxo de trabalho quando chegar um evento de webhook correspondente do GitHub.",
-        "addWorkflowAction": "Adicionar automação de workflow",
-        "addWorkflowAria": "Adicionar automação de workflow do GitHub",
+        "addWorkflowAction": "Adicionar automação de fluxo de trabalho",
+        "addWorkflowAria": "Adicionar automação de fluxo de trabalho do GitHub",
         "addWorkflowDescription": "Execute este fluxo de trabalho quando uma execução correspondente do GitHub Actions for concluída.",
-        "addWorkflowTitle": "Adicionar automação de workflow do GitHub",
-        "aJob": "um job de workflow do GitHub",
+        "addWorkflowTitle": "Adicionar automação de fluxo de trabalho do GitHub",
+        "aJob": "um job de fluxo de trabalho do GitHub",
         "any": "Qualquer",
         "anyAuthor": "Qualquer autor",
         "anyComment": "Qualquer comentário",
@@ -4430,10 +4633,10 @@
         "anyResult": "Qualquer resultado",
         "anyReview": "Qualquer revisão",
         "anyReviewState": "Qualquer status de revisão",
-        "anyWorkflow": "Qualquer workflow",
+        "anyWorkflow": "Qualquer fluxo de trabalho",
         "apps": "GitHub Apps",
         "authorsSummary": "Autores {{values}}",
-        "aWorkflow": "um workflow do GitHub",
+        "aWorkflow": "um fluxo de trabalho do GitHub",
         "baseBranches": "Branches base",
         "branches": "Branches",
         "commentPrefixes": "Prefixos de comentário",
@@ -4447,12 +4650,14 @@
         "deploymentStatusTitle": "Status de implantação do GitHub criado",
         "editLabel": "Editar rótulo",
         "editWebhookFilters": "Editar filtros de {{title}}",
-        "editWorkflowFilters": "Editar filtros do workflow do GitHub",
+        "editWorkflowFilters": "Editar filtros do fluxo de trabalho do GitHub",
         "environments": "Ambientes",
         "environmentsSummary": "Ambientes {{values}}",
         "events": "Eventos de acionamento",
         "filterHelp": "Deixe um filtro vazio para corresponder a qualquer valor. Separe vários valores com vírgulas.",
         "headBranches": "Branches de origem",
+        "installAdminRequired": "Peça a um administrador da organização para instalá-lo.",
+        "installApp": "Instalar o GitHub App",
         "installedRequired": "O GitHub não está instalado neste espaço de trabalho.",
         "issueCommentDescription": "Execute quando um comentário correspondente em issue ou PR for criado.",
         "issueCommentRule": "Quando um comentário correspondente em issue ou pull request for criado no GitHub",
@@ -4509,16 +4714,16 @@
         "trustedAuthors": "Autores confiáveis",
         "updateLabelAria": "Atualizar automação de rótulo do GitHub",
         "updateWebhookAria": "Atualizar automação de {{title}}",
-        "updateWorkflowAria": "Atualizar automação de workflow do GitHub",
+        "updateWorkflowAria": "Atualizar automação de fluxo de trabalho do GitHub",
         "withConclusions": " com {{values}}",
         "workflowJobDescription": "Execute quando um job correspondente do Actions for concluído.",
         "workflowJobRule": "Quando {{jobs}} for concluído",
-        "workflowJobTitle": "Job do workflow do GitHub concluído",
+        "workflowJobTitle": "Job do fluxo de trabalho do GitHub concluído",
         "workflowRunDescription": "Execute quando uma execução correspondente do Actions for concluída.",
         "workflowRunRule": "Quando {{workflows}} for concluído{{conclusions}}",
-        "workflowRunTitle": "Workflow do GitHub concluído",
-        "workflows": "Workflows do GitHub",
-        "workflowsSummary": "Workflows {{values}}"
+        "workflowRunTitle": "Fluxo de trabalho do GitHub concluído",
+        "workflows": "Fluxos de trabalho do GitHub",
+        "workflowsSummary": "Fluxos de trabalho {{values}}"
       },
       "gmail": {
         "addCondition": "Adicionar condição",

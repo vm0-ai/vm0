@@ -9,7 +9,7 @@
       "schedule": "* * * * *"
     },
     {
-      "path": "/api/cron/monitor-chat-message-queue",
+      "path": "/api/cron/monitor-chat-event-queue",
       "schedule": "* * * * *"
     },
     {

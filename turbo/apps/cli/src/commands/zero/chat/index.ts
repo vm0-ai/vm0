@@ -1,6 +1,7 @@
 import { Command } from "commander";
 
 import { cancelCommand } from "./cancel";
+import { createCommand } from "./create";
 import { getCommand } from "./get";
 import { listCommand } from "./list";
 import { modelCommand } from "./model";
@@ -11,6 +12,7 @@ import { sendCommand } from "./send";
 export const zeroChatCommand = new Command()
   .name("chat")
   .description("Manage web chat threads")
+  .addCommand(createCommand)
   .addCommand(sendCommand)
   .addCommand(queuedCommand)
   .addCommand(cancelCommand)
@@ -22,6 +24,7 @@ export const zeroChatCommand = new Command()
     "after",
     `
 Examples:
+  Create a chat:     zero chat create "Launch plan"
   Send a message:    zero chat send --text "Continue"
   Show queued:       zero chat queued --thread-id <thread-id>
   Cancel a run:      zero chat cancel --thread-id <thread-id> --run-id <run-id>

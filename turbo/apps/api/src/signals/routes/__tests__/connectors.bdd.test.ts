@@ -2541,6 +2541,80 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     ).resolves.toStrictEqual([]);
   });
 
+  it("persists permission bundles and skill markdown with security-sensitive revisions", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorOAuth2]: true,
+    });
+    const slug = uniqueSlug("bdd-permission-skill");
+
+    const created = await connectorsApi.createCustomConnector(admin, {
+      ...customConnectorBody(slug),
+      permissionBundleRef: "builtin:slack@1",
+      skillMarkdown: "Use this connector to coordinate Slack conversations.",
+    });
+    expect(created).toMatchObject({
+      permissionBundleRef: "builtin:slack@1",
+      skillMarkdown: "Use this connector to coordinate Slack conversations.",
+      revision: 1,
+    });
+
+    const skillUpdated = await connectorsApi.updateCustomConnector(
+      admin,
+      created.id,
+      {
+        displayName: created.displayName,
+        prefixTemplates: created.prefixTemplates,
+        fields: created.fields,
+        headerInjections: created.headerInjections,
+        queryInjections: created.queryInjections,
+        authMode: created.authMode,
+        skillMarkdown: "Updated Slack operating instructions.",
+      },
+    );
+    expect(skillUpdated).toMatchObject({
+      permissionBundleRef: "builtin:slack@1",
+      skillMarkdown: "Updated Slack operating instructions.",
+      revision: 1,
+    });
+
+    const permissionBundleCleared = await connectorsApi.updateCustomConnector(
+      admin,
+      created.id,
+      {
+        displayName: skillUpdated.displayName,
+        prefixTemplates: skillUpdated.prefixTemplates,
+        fields: skillUpdated.fields,
+        headerInjections: skillUpdated.headerInjections,
+        queryInjections: skillUpdated.queryInjections,
+        authMode: skillUpdated.authMode,
+        permissionBundleRef: null,
+      },
+    );
+    expect(permissionBundleCleared).toMatchObject({
+      permissionBundleRef: null,
+      skillMarkdown: "Updated Slack operating instructions.",
+      revision: 2,
+    });
+
+    const unknownBundle = await connectorsApi.requestCreateCustomConnector(
+      admin,
+      {
+        ...customConnectorBody(uniqueSlug("bdd-unknown-bundle")),
+        permissionBundleRef: "builtin:not-a-connector@1",
+      },
+      [400],
+    );
+    expectApiError(unknownBundle.body);
+    expect(unknownBundle.body.error.message).toContain(
+      "Unknown custom connector permission bundle",
+    );
+
+    await connectorsApi.deleteCustomConnector(admin, created.id);
+  });
+
   it("rejects prefix collisions introduced by edits", async () => {
     const admin = createBddApi(context).user();
     await connectorsApi.updateFeatureSwitches(admin, {
