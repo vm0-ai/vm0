@@ -8,14 +8,26 @@ import {
   DialogTitle,
 } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
+import { formatLocalizedNumber } from "../../../../i18n/format.ts";
+import { i18n } from "../../../../i18n/index.ts";
 
 export function formatCodexResetCredits(
   value: number | null | undefined,
 ): string {
   if (value === null || value === undefined) {
-    return "Resets left unavailable";
+    return i18n.t(($) => {
+      return $.settings.models.reset.remainingUnavailable;
+    });
   }
-  return `${value} ${value === 1 ? "reset" : "resets"} left`;
+  return i18n.t(
+    ($) => {
+      return $.settings.models.reset.remaining;
+    },
+    {
+      count: value,
+      value: formatLocalizedNumber(value),
+    },
+  );
 }
 
 export function CodexResetUsageDialog({
@@ -32,19 +44,7 @@ export function CodexResetUsageDialog({
   onConfirm: () => void;
 }) {
   const { t } = useTranslation();
-  const remaining =
-    resetCredits === null
-      ? t(($) => {
-          return $.settings.models.reset.remainingUnavailable;
-        })
-      : t(
-          ($) => {
-            return $.settings.models.reset.remaining;
-          },
-          {
-            count: resetCredits,
-          },
-        );
+  const remaining = formatCodexResetCredits(resetCredits);
 
   return (
     <Dialog

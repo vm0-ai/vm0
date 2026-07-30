@@ -1,15 +1,11 @@
 import { command } from "ccstate";
-import { and, eq, exists, or, sql, type SQL } from "drizzle-orm";
+import { and, eq, exists, sql, type SQL } from "drizzle-orm";
 import { artifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { chatEvents } from "@vm0/db/schema/chat-event";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { imageArtifactEditSnapshots } from "@vm0/db/schema/image-artifact-edit-snapshot";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { z } from "zod";
 
 import { executeRawRows } from "../../lib/db-raw-rows";
-import { env } from "../../lib/env";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, queryOf } from "../context/request";
@@ -31,23 +27,6 @@ function artifactNotFound() {
   return notFound("Artifact not found");
 }
 
-function publicArtifactObjectKey(url: string): string | null {
-  const base = new URL(env("PUBLIC_ARTIFACTS_BASE_URL"));
-  const parsed = new URL(url);
-  if (parsed.origin !== base.origin) {
-    return null;
-  }
-
-  const basePath = base.pathname.replace(/\/+$/, "");
-  const pathPrefix = basePath === "" ? "/" : `${basePath}/`;
-  if (!parsed.pathname.startsWith(pathPrefix)) {
-    return null;
-  }
-
-  const key = parsed.pathname.slice(pathPrefix.length);
-  return key.length > 0 ? key : null;
-}
-
 function uploadedArtifactAccessCondition(
   db: Pick<Db, "select">,
   args: UserArtifactUrlAccessArgs,
@@ -66,43 +45,6 @@ function uploadedArtifactAccessCondition(
   );
 }
 
-function attachedArtifactAccessCondition(
-  db: Pick<Db, "select">,
-  args: UserArtifactUrlAccessArgs,
-): SQL {
-  const objectKey = publicArtifactObjectKey(args.artifactUrl);
-  if (objectKey === null) {
-    return sql`FALSE`;
-  }
-
-  const attachedFile = sql`jsonb_array_elements(
-    COALESCE(${chatEvents.attachFileMetadata}, '[]'::jsonb)
-  ) AS attached_file`;
-  const attachedFileObjectKey = sql`attached_file->>'objectKey'`;
-  return exists(
-    db
-      .select({ id: chatEvents.id })
-      .from(chatEvents)
-      .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
-      .innerJoin(
-        agentComposes,
-        eq(agentComposes.id, chatThreads.agentComposeId),
-      )
-      .where(
-        and(
-          eq(chatThreads.userId, args.userId),
-          eq(agentComposes.orgId, args.orgId),
-          exists(
-            db
-              .select({ one: sql`1`.mapWith(Number) })
-              .from(attachedFile)
-              .where(eq(attachedFileObjectKey, objectKey)),
-          ),
-        ),
-      ),
-  );
-}
-
 async function userCanAccessArtifactUrl(
   db: Db,
   args: UserArtifactUrlAccessArgs,
@@ -110,10 +52,7 @@ async function userCanAccessArtifactUrl(
   const rows = await executeRawRows(
     db,
     sql`
-      SELECT ${or(
-        uploadedArtifactAccessCondition(db, args),
-        attachedArtifactAccessCondition(db, args),
-      )} AS "canAccess"
+      SELECT ${uploadedArtifactAccessCondition(db, args)} AS "canAccess"
     `,
     artifactAccessRowSchema,
   );

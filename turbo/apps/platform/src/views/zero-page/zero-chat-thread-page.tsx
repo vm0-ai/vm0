@@ -17,6 +17,7 @@ import { equalArrays } from "../../lib/equality.ts";
 import { now } from "../../lib/time.ts";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
+import { resolvedAppLocale } from "../../i18n/format.ts";
 import { i18n } from "../../i18n/index.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
@@ -403,7 +404,7 @@ function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
 // automation.
 export function AutomationMenuButton({
   thread,
-  ariaLabel = "Automations",
+  ariaLabel,
 }: {
   thread: ChatThreadSignals;
   ariaLabel?: string;
@@ -928,7 +929,7 @@ function ChatThreadEmojiGrid({
 }
 
 function formatChatTimestamp(value: string): string {
-  return new Date(value).toLocaleString("en-US", {
+  return new Date(value).toLocaleString(resolvedAppLocale(), {
     month: "short",
     day: "numeric",
     hour: "numeric",

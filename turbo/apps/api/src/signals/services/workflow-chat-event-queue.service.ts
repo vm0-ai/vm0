@@ -323,10 +323,7 @@ export async function loadNextWorkflowQueueEvent(
         chatThreadId: chatEvents.chatThreadId,
         triggerSource: chatEvents.triggerSource,
         triggerBrief: chatEvents.triggerBrief,
-        encryptedParams: sql`COALESCE(
-          ${chatInputQueueParams.encryptedParams},
-          ${chatEvents.encryptedParams}
-        )`.mapWith(chatEvents.encryptedParams),
+        encryptedParams: chatInputQueueParams.encryptedParams,
         createdAt: chatEvents.createdAt,
       })
       .from(chatEvents)
