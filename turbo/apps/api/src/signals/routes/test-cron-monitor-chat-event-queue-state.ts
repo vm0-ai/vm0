@@ -8,6 +8,7 @@ import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { command } from "ccstate";
@@ -126,6 +127,25 @@ async function seedFixture(
       }),
       runId: null,
     };
+    if (
+      fixtureKind === "legacy-automation" ||
+      fixtureKind === "orphaned-automation"
+    ) {
+      const [orphanedAutomation] = await tx
+        .insert(chatEvents)
+        .values({
+          chatThreadId: thread.id,
+          eventType: "input.automation",
+          runId: null,
+          triggerSource: "workflow-event",
+          ...(fixtureKind === "legacy-automation"
+            ? { automationId: randomUUID() }
+            : {}),
+          seqId: 1,
+        })
+        .returning({ id: chatEvents.id });
+      return orphanedAutomation ?? null;
+    }
     return fixtureKind === "failed-message"
       ? await insertChatEvent(tx, {
           ...baseEvent,
@@ -146,7 +166,11 @@ async function seedFixture(
     throw new Error("Failed to seed orphan monitor message");
   }
 
-  if (fixtureKind === "queued-integration") {
+  if (
+    fixtureKind === "legacy-automation" ||
+    fixtureKind === "queued-integration" ||
+    fixtureKind === "orphaned-automation"
+  ) {
     await db.insert(chatEventInputParams).values({
       eventId: event.id,
       encryptedParams: "encrypted-monitor-params",
