@@ -165,6 +165,18 @@ test("send a chat message, preserve media layout, cap long drafts, and preserve 
   const composer = page.locator('[contenteditable="true"]').first();
   await expect(composer).toBeVisible({ timeout: 20_000 });
 
+  // Own the runner precondition below instead of relying on the workspace's
+  // default model. USE_MOCK_CLAUDE only makes Claude runtimes execute the
+  // prompt as bash; Codex runtimes can answer the command as natural language.
+  const modelPicker = page.locator(".zero-composer").getByRole("combobox");
+  await modelPicker.click();
+  await page.getByRole("option", { name: /Claude Sonnet 5/ }).click();
+  await expect(
+    page
+      .locator(".zero-composer")
+      .getByRole("combobox", { name: "Claude Sonnet 5", exact: true }),
+  ).toBeVisible();
+
   // Send a message with an image attachment. Mock claude executes the prompt
   // as bash and emits a second image URL in the assistant's Markdown.
   const marker = `e2e-${Date.now()}`;
