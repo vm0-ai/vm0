@@ -392,9 +392,8 @@ export async function holdOrgAdmissionLockFixture(args: {
 }
 
 /**
- * Holds the canonical workflow queue admission key so tests can observe the
- * Release 1 lock chain: the first request holds the legacy key while waiting
- * here, and a concurrent request for the same thread waits behind it.
+ * Holds the workflow queue admission key so tests can observe concurrent
+ * requests waiting on the per-thread lock.
  */
 export async function holdChatEventQueueAdmissionLockFixture(args: {
   readonly threadId: string;
@@ -403,7 +402,6 @@ export async function holdChatEventQueueAdmissionLockFixture(args: {
   readonly release: () => void;
   readonly done: Promise<void>;
   readonly directWaiterCount: () => Promise<number>;
-  readonly transitiveWaiterCount: () => Promise<number>;
 }> {
   const started = createDeferredPromise<number>(args.signal);
   const released = createDeferredPromise<void>(args.signal);
@@ -436,9 +434,6 @@ export async function holdChatEventQueueAdmissionLockFixture(args: {
     done,
     directWaiterCount: async () => {
       return await directBlockedWaiterCount(holderPid);
-    },
-    transitiveWaiterCount: async () => {
-      return await transitiveBlockedWaiterCount(holderPid);
     },
   };
 }

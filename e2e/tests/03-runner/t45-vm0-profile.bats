@@ -64,9 +64,9 @@ EOF
     assert_success
 
     run run_compose_fixture "$AGENT_NAME" \
-        "agent-browser open https://github.com && agent-browser get title | grep -Fq GitHub && agent-browser close" \
+        "agent-browser open 'data:text/html,%3Ctitle%3EVM0%20Browser%20E2E%3C%2Ftitle%3E' && agent-browser get title && agent-browser close" \
         "$(jq -nc --arg name "$ARTIFACT_NAME" \
             '{artifacts: [{name: $name, mountPath: "/home/user/workspace"}]}')"
     assert_success
-    assert_output --partial "https://github.com/"
+    assert_output --partial "VM0 Browser E2E"
 }

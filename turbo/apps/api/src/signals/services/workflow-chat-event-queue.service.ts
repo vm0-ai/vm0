@@ -109,18 +109,9 @@ async function chatEventQueueAdmissionLock(
   tx: WorkflowQueueAdmissionTransaction,
   chatThreadId: string,
 ): Promise<void> {
-  // Release 1 of the two-phase namespace migration: every admission acquires
-  // the legacy key before the canonical key while API revisions overlap.
-  // Release 2 may drop the legacy key only after Release 1 is fully rolled out
-  // and its rollback target has drained.
-  const compatibilityKey = `chat_message_queue:${chatThreadId}`;
-  const canonicalKey = `chat_event_queue:${chatThreadId}`;
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtext(${compatibilityKey}))`,
-  );
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtext(${canonicalKey}))`,
-  );
+  // Serialize every admission and claim transaction for the same chat thread.
+  const lockKey = `chat_event_queue:${chatThreadId}`;
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${lockKey}))`);
 }
 
 /** Any active thread-bound run preserves strict per-thread serialization. */
