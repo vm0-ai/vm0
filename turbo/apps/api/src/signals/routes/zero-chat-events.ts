@@ -16,7 +16,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatInputQueueParams } from "@vm0/db/schema/chat-input-queue-params";
+import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import {
   chatEvents,
   type ChatEventAttachFileMetadata,
@@ -2749,14 +2749,14 @@ async function appendQueueFirstInsufficientCreditsEvents(params: {
       .select({
         userMessage: chatEvents.userMessage,
         attachFiles: chatEvents.attachFiles,
-        attachFileMetadata: chatInputQueueParams.attachFileMetadata,
+        attachFileMetadata: chatEventInputParams.attachFileMetadata,
         generationTemplate: chatEvents.generationTemplate,
         createdAt: chatEvents.createdAt,
       })
       .from(chatEvents)
       .leftJoin(
-        chatInputQueueParams,
-        eq(chatInputQueueParams.eventId, chatEvents.id),
+        chatEventInputParams,
+        eq(chatEventInputParams.eventId, chatEvents.id),
       )
       .where(
         and(
