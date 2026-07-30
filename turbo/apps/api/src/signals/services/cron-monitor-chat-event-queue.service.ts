@@ -14,7 +14,7 @@ class OrphanedQueuedChatEventsError extends Error {
 
   constructor(readonly orphanedMessages: number) {
     super("Orphaned queued chat messages detected");
-    this.name = "OrphanedQueuedChatMessagesError";
+    this.name = "OrphanedQueuedChatEventsError";
   }
 }
 

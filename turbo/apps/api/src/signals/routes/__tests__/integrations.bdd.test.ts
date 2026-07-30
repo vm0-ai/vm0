@@ -1701,7 +1701,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       payload: {
         channelId,
         threadTs,
-        chatMessageId: expect.any(String),
+        chatEventId: expect.any(String),
       },
     });
     const run1 = await runs.readRun(actor, run1Id);
@@ -4792,6 +4792,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
   });
 
   it("keeps GitHub no-install read and upload-init surfaces visible through APIs", async () => {
+    integrations.configureGithubAppInstallProvider();
     const actor = integrations.user();
 
     const installation = await integrations.readGithubInstallation(actor);
@@ -4802,6 +4803,33 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
         code: "NOT_FOUND",
       },
     });
+    const adminInstallUrl =
+      "installUrl" in installation.body ? installation.body.installUrl : null;
+    if (!adminInstallUrl) {
+      throw new Error("Expected an install URL for organization admins");
+    }
+    expect(adminInstallUrl).toContain(
+      "https://github.com/apps/bdd-github-app/installations/new",
+    );
+    expect(
+      new URL(adminInstallUrl).searchParams
+        .get("redirect_uri")
+        ?.endsWith("/api/github/app/setup/callback"),
+    ).toBeTruthy();
+
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected GitHub admin test user to have an org");
+    }
+    const member = integrations.user({ orgId, orgRole: "org:member" });
+    const memberInstallation =
+      await integrations.readGithubInstallation(member);
+    expect(memberInstallation.status).toBe(404);
+    expect(
+      "installUrl" in memberInstallation.body
+        ? memberInstallation.body.installUrl
+        : "unset",
+    ).toBeNull();
 
     const upload = await integrations.requestGithubUploadInit(
       actor,

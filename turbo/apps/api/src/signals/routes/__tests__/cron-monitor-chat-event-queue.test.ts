@@ -14,7 +14,7 @@ import { createFixtureTracker } from "./helpers/zero-route-test";
 
 const context = testContext();
 const CRON_SECRET = "test-cron-secret";
-const STATE_ROUTE = "/api/test/cron-monitor-chat-message-queue-state/action";
+const STATE_ROUTE = "/api/test/cron-monitor-chat-event-queue-state/action";
 
 interface MonitorFixture {
   readonly composeId: string;
@@ -32,7 +32,7 @@ async function rawCronRequest(
   headers: Record<string, string> = {},
 ): Promise<Response> {
   const app = createApp({ signal: context.signal });
-  return await app.request("/api/cron/monitor-chat-message-queue", {
+  return await app.request("/api/cron/monitor-chat-event-queue", {
     method: "GET",
     headers,
   });
@@ -135,18 +135,18 @@ describe("cron monitor chat event queue", () => {
     expect(
       context.mocks.sentry.captureException.mock.calls.at(-1)?.[0],
     ).toMatchObject({
-      name: "OrphanedQueuedChatMessagesError",
+      name: "OrphanedQueuedChatEventsError",
       code: "ORPHANED_QUEUED_CHAT_MESSAGES",
       orphanedMessages: 1,
     });
     const [, fields] = context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
     expect(fields).toMatchObject({
       type: "unhandled_request_error",
-      route: "/api/cron/monitor-chat-message-queue",
+      route: "/api/cron/monitor-chat-event-queue",
       method: "GET",
       errorCode: "ORPHANED_QUEUED_CHAT_MESSAGES",
       error: {
-        name: "OrphanedQueuedChatMessagesError",
+        name: "OrphanedQueuedChatEventsError",
         code: "ORPHANED_QUEUED_CHAT_MESSAGES",
         orphanedMessages: 1,
       },

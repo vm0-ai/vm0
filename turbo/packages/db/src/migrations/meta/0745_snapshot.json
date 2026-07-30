@@ -1,5 +1,5 @@
 {
-  "id": "63a59b03-098c-457b-91a9-e7c483513207",
+  "id": "d5310781-18f7-48b5-b3d2-42cb88fed494",
   "prevId": "1bcd2d2b-6cbb-4032-8df3-6e3a9d9e4649",
   "version": "7",
   "dialect": "postgresql",
@@ -3341,11 +3341,71 @@
           "primaryKey": false,
           "notNull": true
         },
+        "billing_run_id": {
+          "name": "billing_run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "status": {
           "name": "status",
           "type": "varchar(20)",
           "primaryKey": false,
           "notNull": true
+        },
+        "browser_cost_microusd": {
+          "name": "browser_cost_microusd",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "proxy_cost_microusd": {
+          "name": "proxy_cost_microusd",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "proxy_used_mb": {
+          "name": "proxy_used_mb",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "pricing_unit_price": {
+          "name": "pricing_unit_price",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "pricing_unit_size": {
+          "name": "pricing_unit_size",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "gross_credits": {
+          "name": "gross_credits",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "credits_charged": {
+          "name": "credits_charged",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "usage_event_id": {
+          "name": "usage_event_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         },
         "timeout_at": {
           "name": "timeout_at",
@@ -3382,66 +3442,6 @@
         "finished_at": {
           "name": "finished_at",
           "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "billing_run_id": {
-          "name": "billing_run_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "pricing_unit_price": {
-          "name": "pricing_unit_price",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "pricing_unit_size": {
-          "name": "pricing_unit_size",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "gross_credits": {
-          "name": "gross_credits",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "credits_charged": {
-          "name": "credits_charged",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "proxy_used_mb": {
-          "name": "proxy_used_mb",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
-        },
-        "browser_cost_microusd": {
-          "name": "browser_cost_microusd",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "proxy_cost_microusd": {
-          "name": "proxy_cost_microusd",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "usage_event_id": {
-          "name": "usage_event_id",
-          "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
@@ -5106,6 +5106,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "draft_content": {
+          "name": "draft_content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "draft_user_message": {
           "name": "draft_user_message",
           "type": "jsonb",
@@ -5377,7 +5383,7 @@
         },
         "chat_threads_draft_user_message_check": {
           "name": "chat_threads_draft_user_message_check",
-          "value": "\"chat_threads\".\"draft_user_message\" IS NOT NULL\n          OR COALESCE(\"chat_threads\".\"draft_attachments\", '[]'::jsonb) = '[]'::jsonb"
+          "value": "\"chat_threads\".\"draft_user_message\" IS NOT NULL\n          OR (\n            COALESCE(\"chat_threads\".\"draft_content\", '') = ''\n            AND COALESCE(\"chat_threads\".\"draft_attachments\", '[]'::jsonb) = '[]'::jsonb\n          )"
         }
       },
       "isRLSEnabled": false
@@ -6828,7 +6834,7 @@
           "name": "connector_slug",
           "type": "varchar(64)",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "auth_method": {
           "name": "auth_method",
@@ -7075,7 +7081,7 @@
           "name": "connector_slug",
           "type": "varchar(64)",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "auth_method": {
           "name": "auth_method",
@@ -21035,7 +21041,7 @@
           "name": "connector_slug",
           "type": "varchar(64)",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "created_at": {
           "name": "created_at",
@@ -21414,7 +21420,7 @@
           "name": "connector_slug",
           "type": "varchar(64)",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "permission": {
           "name": "permission",
@@ -21913,6 +21919,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "draft_content": {
+          "name": "draft_content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "draft_user_message": {
           "name": "draft_user_message",
           "type": "jsonb",
@@ -21990,7 +22002,7 @@
       "checkConstraints": {
         "zero_agent_drafts_draft_user_message_check": {
           "name": "zero_agent_drafts_draft_user_message_check",
-          "value": "\"zero_agent_drafts\".\"draft_user_message\" IS NOT NULL\n          OR COALESCE(\"zero_agent_drafts\".\"draft_attachments\", '[]'::jsonb) = '[]'::jsonb"
+          "value": "\"zero_agent_drafts\".\"draft_user_message\" IS NOT NULL\n          OR (\n            COALESCE(\"zero_agent_drafts\".\"draft_content\", '') = ''\n            AND COALESCE(\"zero_agent_drafts\".\"draft_attachments\", '[]'::jsonb) = '[]'::jsonb\n          )"
         }
       },
       "isRLSEnabled": false

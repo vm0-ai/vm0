@@ -732,9 +732,10 @@ const chatThreadCreateBodySchema = z.preprocess(
     eventId: chatThreadEventIdSchema.optional(),
     /**
      * Selected model id. The API resolves the effective model provider from org
-     * policy and available credentials.
+     * policy and available credentials. Omit it to inherit the model of the run
+     * that owns the calling token; callers without a run must send it.
      */
-    model: selectedModelRequestSchema,
+    model: selectedModelRequestSchema.optional(),
     title: z.string().optional(),
   }),
 );
@@ -876,10 +877,15 @@ export const chatThreadsContract = c.router({
         id: z.string(),
         title: z.string().nullable(),
         createdAt: z.string(),
+        // The model the thread was pinned to, echoed so a caller that omitted
+        // `model` learns what it inherited. Remove optionality only after
+        // pre-echo APIs cannot serve a newly released CLI during rollout.
+        selectedModel: z.string().optional(),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,
       402: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Create a new chat thread",
