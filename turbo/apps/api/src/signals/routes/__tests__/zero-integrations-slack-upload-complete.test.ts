@@ -454,6 +454,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
       await seedRunScoped();
     await updateFeatureSwitchesForUser(context, actorFor({ orgId, userId }), {
       [FeatureSwitchKey.Artifacts]: true,
+      [FeatureSwitchKey.ArtifactKeyV2]: true,
     });
     const objectStore = chatCallbacks.acceptChatObjectStorage();
     const operationId = randomUUID();
@@ -474,6 +475,7 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
         body: {
           filename: "report.csv",
           length: 42,
+          supportsUploadHeaders: true,
           canonical: {
             operationId,
             contentType: "text/csv",
@@ -492,14 +494,30 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     }
     const canonicalAssetId = initialized.body.assetId;
     expect(initialized.body.kind).toBe("canonical");
+    expect(initialized.body).toMatchObject({
+      uploadHeaders: {
+        "x-amz-meta-artifact-id": canonicalAssetId,
+        "x-amz-meta-filename": "report.csv",
+        "x-amz-meta-user-id": encodeURIComponent(userId),
+      },
+    });
     expect(
       context.mocks.slack.files.getUploadURLExternal,
     ).not.toHaveBeenCalled();
+    const storageKey = new URL(initialized.body.url).pathname.replace(
+      /^\/+/u,
+      "",
+    );
     objectStore.addObject({
       bucket: "test-user-artifacts",
-      key: `artifacts/${userId}/${canonicalAssetId}/report.csv`,
+      key: storageKey,
       size: 42,
       body: Buffer.alloc(42, "a"),
+      metadata: {
+        "artifact-id": canonicalAssetId,
+        filename: "report.csv",
+        "user-id": encodeURIComponent(userId),
+      },
     });
 
     const materializeClient = setupApp({ context })(

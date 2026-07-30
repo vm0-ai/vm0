@@ -4,14 +4,11 @@ import {
   type GithubUploadCompleteBody,
 } from "@vm0/api-contracts/contracts/integrations";
 
-import { env } from "../../lib/env";
-import { buildArtifactPrefix, buildFileUrl } from "../../lib/file-url";
-import { inferMimetype } from "../../lib/mimetype";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { db$ } from "../external/db";
-import { listS3Objects } from "../external/s3";
+import { resolveArtifactObject$ } from "../services/artifact-storage.service";
 import { postGithubIssueComment } from "../services/github-issues-api.service";
 import {
   getGithubIntegrationAccessToken,
@@ -96,18 +93,18 @@ const complete$ = command(async ({ get, set }, signal: AbortSignal) => {
     return routeError(404, "No GitHub installation found", "NOT_FOUND");
   }
 
-  const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
-  const prefix = buildArtifactPrefix(auth.userId, body.uploadId);
-  const objects = await get(listS3Objects(bucket, prefix));
-  signal.throwIfAborted();
-  const object = objects[0];
+  const object = await set(
+    resolveArtifactObject$,
+    { userId: auth.userId, id: body.uploadId },
+    signal,
+  );
   if (!object) {
     return routeError(404, "Uploaded file not found", "NOT_FOUND");
   }
 
-  const filename = object.key.split("/").pop() ?? body.uploadId;
-  const fileUrl = buildFileUrl(auth.userId, body.uploadId, filename);
-  const mimetype = body.contentType ?? inferMimetype(filename);
+  const filename = object.filename;
+  const fileUrl = object.url;
+  const mimetype = body.contentType ?? object.contentType;
   const commentBody = buildCommentBody({
     filename,
     fileUrl,

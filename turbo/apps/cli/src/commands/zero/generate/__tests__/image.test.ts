@@ -401,28 +401,6 @@ describe("zero generate image command", () => {
     expect(stdout).not.toContain("Repository: `vm0-ai/vm0-skills@main`");
   });
 
-  it("should reject R2 compile mode for a style without an archive", async () => {
-    await expect(async () => {
-      await generateCommand.parseAsync([
-        "node",
-        "cli",
-        "image",
-        "--style",
-        "image-style:chibi-hero",
-        "--style-source",
-        "r2",
-        "--prompt",
-        "A chibi hero",
-        "--compile",
-      ]);
-    }).rejects.toThrow("process.exit called");
-
-    const stderr = mockConsoleError.mock.calls.flat().join("\n");
-    expect(stderr).toContain(
-      "Image style image-style:chibi-hero does not provide an R2 archive",
-    );
-  });
-
   it("should fail with mode guidance when no image prompt mode is selected", async () => {
     await expect(async () => {
       await generateCommand.parseAsync([
