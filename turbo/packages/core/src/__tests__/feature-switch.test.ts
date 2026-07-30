@@ -133,6 +133,7 @@ describe("getAllFeatureStates", () => {
     );
     expect(staffOrgStates[FeatureSwitchKey.JapaneseLocale]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
       true,
@@ -167,6 +168,7 @@ describe("getAllFeatureStates", () => {
     );
     expect(otherOrgStates[FeatureSwitchKey.JapaneseLocale]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
       false,
     );
