@@ -11,7 +11,7 @@ export function isConnectorChangedPayloadFor(
   if (payload === null) {
     return true;
   }
-  if (typeof payload !== "object" || payload === null) {
+  if (typeof payload !== "object") {
     return false;
   }
   // TODO(#23821): Remove the legacy realtime payload fallback.
