@@ -5,19 +5,16 @@ import {
 import {
   createEvent,
   fireEvent,
-  render,
   screen,
   waitFor,
   within,
 } from "@testing-library/react";
-import { StoreProvider } from "ccstate-react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { initializeI18n } from "../../../i18n/index.ts";
 import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
-import { Markdown } from "../../components/markdown.tsx";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -926,7 +923,7 @@ describe("zero attachment chips", () => {
     ).resolves.toBeInTheDocument();
   });
 
-  it("renders canonical user video attachments at the same size as image attachments", async () => {
+  it("keeps canonical image and video attachment frames stable while media loads", async () => {
     const imageUrl = "https://cdn.vm7.io/artifacts/test/media/photo.png";
     const videoUrl = "https://cdn.vm7.io/artifacts/test/media/screencast.mp4";
     mockChatLifecycle(context, {
@@ -961,6 +958,10 @@ describe("zero attachment chips", () => {
 
     const imagePreview = await screen.findByLabelText("Preview photo.png");
     const videoPreview = screen.getByLabelText("Preview screencast.mp4");
+    const image = within(imagePreview).getByAltText("photo.png");
+    const imageFrame = within(imagePreview).getByTestId(
+      "chat-image-preview-frame",
+    );
 
     const inlineMediaPreviewSizeClasses = [
       "aspect-[10/9]",
@@ -970,6 +971,22 @@ describe("zero attachment chips", () => {
 
     expect(imagePreview).toHaveClass(...inlineMediaPreviewSizeClasses);
     expect(videoPreview).toHaveClass(...inlineMediaPreviewSizeClasses);
+    expect(imageFrame).toHaveClass("block", "h-full", "w-full");
+    expect(
+      within(imagePreview).getByTestId("chat-image-preview-loading"),
+    ).toHaveClass("absolute", "inset-0");
+    expect(image).toHaveClass("absolute", "inset-0", "opacity-0");
+
+    fireEvent.load(image);
+
+    await waitFor(() => {
+      expect(
+        within(imagePreview).queryByTestId("chat-image-preview-loading"),
+      ).not.toBeInTheDocument();
+    });
+    expect(imageFrame).toBeInTheDocument();
+    expect(image).toHaveClass("absolute", "inset-0");
+    expect(image).not.toHaveClass("opacity-0");
     expect(videoPreview).toHaveClass("cursor-pointer", "bg-black");
     expect(
       within(videoPreview).getByTestId("chat-video-preview-poster"),
@@ -1847,7 +1864,13 @@ describe("zero attachment chips", () => {
     });
 
     const thumbnail = await screen.findByTestId("attachment-preview-thumbnail");
+    const previewFrame = thumbnail.parentElement;
+    if (!previewFrame) {
+      throw new Error("Hosted site preview frame not found");
+    }
     expect(thumbnail).toHaveAttribute("src", previewImageUrl);
+    expect(previewFrame).toHaveClass("relative", "aspect-[16/10]");
+    expect(thumbnail).toHaveClass("absolute", "inset-0");
     expect(
       screen.queryByTitle("Site preview for Thumbnail soft switch"),
     ).not.toBeInTheDocument();
@@ -1859,6 +1882,10 @@ describe("zero attachment chips", () => {
         screen.getByTitle("Site preview for Thumbnail soft switch"),
       ).toHaveAttribute("src", htmlUrl);
     });
+    expect(previewFrame).toBeInTheDocument();
+    expect(screen.getByTestId("attachment-preview-html-viewport")).toHaveClass(
+      "absolute",
+    );
   });
 
   it("localizes a hosted-site preview and its artifact actions", async () => {
@@ -1940,7 +1967,16 @@ describe("zero attachment chips", () => {
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     const thumbnail = await screen.findByTestId("chat-video-preview-thumbnail");
+    const videoPreview = thumbnail.closest("button");
+    if (!videoPreview) {
+      throw new Error("Video artifact preview button not found");
+    }
+    const posterFrame = within(videoPreview).getByTestId(
+      "chat-video-preview-poster",
+    );
     expect(thumbnail).toHaveAttribute("src", previewImageUrl);
+    expect(thumbnail).toHaveClass("absolute", "inset-0");
+    expect(posterFrame).toHaveClass("block", "h-full", "w-full");
     expect(
       screen.queryByTestId("chat-video-preview-fallback"),
     ).not.toBeInTheDocument();
@@ -1953,6 +1989,11 @@ describe("zero attachment chips", () => {
         `${videoUrl}#t=0.001`,
       );
     });
+    expect(posterFrame).toBeInTheDocument();
+    expect(screen.getByTestId("chat-video-preview-fallback")).toHaveClass(
+      "absolute",
+      "inset-0",
+    );
   });
 
   it("opens only the dialog download menu when the same artifact is in split view", async () => {
@@ -2199,7 +2240,7 @@ describe("zero attachment chips", () => {
     });
   });
 
-  it("renders bare image URLs through markdown image preview", async () => {
+  it("keeps bare markdown image preview frames stable while images load", async () => {
     const imageUrl = "https://cdn.vm7.io/artifacts/test/body-image/chart.png";
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
@@ -2227,9 +2268,19 @@ describe("zero attachment chips", () => {
       "max-w-full",
       "cursor-pointer",
     );
+    const frame = within(preview).getByTestId("markdown-image-preview-frame");
+    expect(frame).toHaveClass("block", "h-full", "w-full");
     expect(
       within(preview).getByTestId("markdown-image-preview-loading"),
-    ).toHaveClass("h-full", "w-full");
+    ).toHaveClass("absolute", "inset-0", "h-full", "w-full");
+    expect(image).toHaveClass(
+      "absolute",
+      "inset-0",
+      "h-full",
+      "w-full",
+      "object-contain",
+      "opacity-0",
+    );
 
     fireEvent.load(image);
 
@@ -2244,47 +2295,15 @@ describe("zero attachment chips", () => {
       "max-w-full",
       "cursor-pointer",
     );
-    expect(image).toHaveClass("h-full", "w-full", "object-contain");
-  });
-
-  it("keeps markdown image preview dimensions stable while the image loads", async () => {
-    const imageUrl =
-      "https://cdn.vm7.io/artifacts/test/body-image/kitten-1280x720.png";
-    render(
-      <StoreProvider value={context.store}>
-        <Markdown source={`![1280x720](${imageUrl})`} mediaPreview />
-      </StoreProvider>,
+    expect(frame).toBeInTheDocument();
+    expect(image).toHaveClass(
+      "absolute",
+      "inset-0",
+      "h-full",
+      "w-full",
+      "object-contain",
     );
-
-    const image = await screen.findByAltText("1280x720");
-    const preview = image.closest("button");
-    if (!preview) {
-      throw new Error("Markdown image preview button not found");
-    }
-    expect(preview).toHaveClass(
-      "aspect-[10/9]",
-      "w-[200px]",
-      "max-w-full",
-      "cursor-pointer",
-    );
-    expect(
-      within(preview).getByTestId("markdown-image-preview-loading"),
-    ).toHaveClass("h-full", "w-full");
-
-    fireEvent.load(image);
-
-    await waitFor(() => {
-      expect(
-        within(preview).queryByTestId("markdown-image-preview-loading"),
-      ).not.toBeInTheDocument();
-    });
-    expect(preview).toHaveClass(
-      "aspect-[10/9]",
-      "w-[200px]",
-      "max-w-full",
-      "cursor-pointer",
-    );
-    expect(image).toHaveClass("h-full", "w-full", "object-contain");
+    expect(image).not.toHaveClass("opacity-0");
   });
 
   it("renders canonical user markdown image syntax literally", async () => {
