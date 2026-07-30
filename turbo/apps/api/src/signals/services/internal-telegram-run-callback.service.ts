@@ -32,10 +32,7 @@ import {
 import type { InternalRunCallbackEnvelope } from "./internal-run-callback";
 import { getRunOutputText } from "./run-output.service";
 import { formatRunErrorForRunOwner$ } from "./run-error-format.service";
-import {
-  saveTelegramThreadSession,
-  storeTelegramBotMessage,
-} from "./zero-telegram-callback-persistence.service";
+import { storeTelegramBotMessage } from "./zero-telegram-callback-persistence.service";
 import { resolveTelegramAgentReplyFooterText } from "./zero-telegram-footer.service";
 import { bestEffort } from "../utils";
 
@@ -47,10 +44,8 @@ const telegramCallbackPayloadSchema = z
     installationId: z.string(),
     chatId: z.string(),
     messageId: z.string(),
-    rootMessageId: z.string().nullable().optional(),
     userLinkId: z.string(),
     agentId: z.string(),
-    existingSessionId: z.string().nullable().optional(),
     isDM: z.boolean(),
     thinkingMessageId: z.string().nullable().optional(),
   })
@@ -61,7 +56,6 @@ type TelegramCallbackPayload = z.infer<typeof telegramCallbackPayloadSchema>;
 interface RunContext {
   readonly userId: string;
   readonly orgId: string;
-  readonly sessionId: string;
   readonly lastEventSequence: number | null;
   readonly chatThreadId: string | null;
 }
@@ -330,7 +324,6 @@ async function loadRunContext(args: {
     .select({
       userId: agentRuns.userId,
       orgId: agentRuns.orgId,
-      sessionId: agentRuns.sessionId,
       lastEventSequence: agentRuns.lastEventSequence,
       chatThreadId: zeroRuns.chatThreadId,
     })
@@ -444,7 +437,6 @@ async function persistCompletionResult(args: {
   readonly payload: TelegramCallbackPayload;
   readonly botReplyMessageId: number | undefined;
   readonly responseText: string | undefined;
-  readonly status: "completed" | "failed";
   readonly signal: AbortSignal;
 }): Promise<void> {
   if (args.botReplyMessageId === undefined) {
@@ -464,26 +456,6 @@ async function persistCompletionResult(args: {
     chatId: args.payload.chatId,
     messageId: args.botReplyMessageId,
     text: args.responseText,
-  });
-  args.signal.throwIfAborted();
-
-  if (!args.run) {
-    return;
-  }
-
-  await saveTelegramThreadSession({
-    db: args.db,
-    userLinkId: args.payload.userLinkId,
-    userLinkKind: args.isOfficial ? "official" : "custom",
-    chatId: args.payload.chatId,
-    rootMessageId: args.payload.isDM ? "dm" : String(args.botReplyMessageId),
-    previousRootMessageId: args.payload.rootMessageId ?? undefined,
-    existingSessionId: args.payload.existingSessionId ?? undefined,
-    newSessionId: args.payload.existingSessionId
-      ? undefined
-      : args.run.sessionId,
-    messageId: args.payload.messageId,
-    runStatus: args.status,
   });
   args.signal.throwIfAborted();
 }
@@ -598,7 +570,6 @@ async function handleCompletion(args: {
     payload: args.payload,
     botReplyMessageId: sendResult.firstMessageId,
     responseText,
-    status: args.status,
     signal: args.signal,
   });
 
