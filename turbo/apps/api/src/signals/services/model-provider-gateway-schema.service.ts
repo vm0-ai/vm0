@@ -7,7 +7,7 @@ export async function modelProviderGatewaySchemaAvailable(
   db: Db | ReadonlyDb,
 ): Promise<boolean> {
   // This probe keeps the current API safe when it deploys before migration
-  // 0759. Remove it after 0759 is guaranteed everywhere and rollback closes.
+  // 0760. Remove it after 0760 is guaranteed everywhere and rollback closes.
   const [state] = await db
     .select({
       available: sql`
