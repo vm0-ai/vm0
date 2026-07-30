@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.59.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.11...guest-agent-v0.59.0) (2026-07-30)
+
+
+### Features
+
+* enable codex session pruning globally ([#23937](https://github.com/vm0-ai/vm0/issues/23937)) ([e186ffe](https://github.com/vm0-ai/vm0/commit/e186ffe85a92fe9a5b960e5e3174893d54526557))
+
 ## [0.58.11](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.10...guest-agent-v0.58.11) (2026-07-30)
 
 
