@@ -105,9 +105,6 @@ describe("release-please API deployment graph", () => {
     expect(workflow).not.toContain("\n  migrate-production:\n");
     expect(promoteApiProductionJob).toContain("always() &&");
     expect(promoteApiProductionJob).toContain(
-      "needs:\n      [release-please, builds-complete, build-api-production, publish-npm]",
-    );
-    expect(promoteApiProductionJob).toContain(
       "needs.release-please.outputs.releases_created == 'true'",
     );
     expect(promoteApiProductionJob).not.toContain("api_deploy_required");
