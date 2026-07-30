@@ -370,7 +370,7 @@ describe("CLI-TEST: test-token provisioning", () => {
     const seeded = await authDevice.requestTestConnector(
       { email: firstActor.email },
       {
-        connectorName: "github",
+        connectorSlug: "github",
         authMethod: "oauth",
         accessToken: "cached-identity-access-token",
       },
@@ -385,7 +385,7 @@ describe("CLI-TEST: test-token provisioning", () => {
 
 describe("CLI-TEST: test-connector", () => {
   const githubOauthBody = {
-    connectorName: "github",
+    connectorSlug: "github",
     authMethod: "oauth",
     accessToken: "github-access-token",
   } as const;
@@ -400,17 +400,17 @@ describe("CLI-TEST: test-connector", () => {
     expect(response.body).toBe("Not found");
   });
 
-  it("rejects malformed and unsupported connector seeds with legacy errors", async () => {
+  it("rejects malformed and unsupported connector seeds", async () => {
     const invalidJson = await authDevice.requestTestConnectorRaw("{ not json");
     expect(invalidJson.status).toBe(400);
     expect(invalidJson.body).toStrictEqual({ error: "Invalid JSON body" });
 
     const missingFields = await authDevice.requestTestConnectorRaw(
-      JSON.stringify({ connectorName: "github" }),
+      JSON.stringify({ connectorSlug: "github" }),
     );
     expect(missingFields.status).toBe(400);
     expect(missingFields.body).toStrictEqual({
-      error: "connectorName, authMethod, and accessToken are required",
+      error: "connectorSlug, authMethod, and accessToken are required",
     });
 
     const emptyRefreshToken = await authDevice.requestTestConnector(
@@ -419,16 +419,25 @@ describe("CLI-TEST: test-connector", () => {
       [400],
     );
     expect(emptyRefreshToken.body).toStrictEqual({
-      error: "connectorName, authMethod, and accessToken are required",
+      error: "connectorSlug, authMethod, and accessToken are required",
     });
 
-    const unknownType = await authDevice.requestTestConnector(
+    const malformedSlug = await authDevice.requestTestConnector(
       {},
-      { ...githubOauthBody, connectorName: "unknown-connector" },
+      { ...githubOauthBody, connectorSlug: "not a connector slug" },
       [400],
     );
-    expect(unknownType.body).toStrictEqual({
-      error: 'Unknown connector type: "unknown-connector"',
+    expect(malformedSlug.body).toStrictEqual({
+      error: 'Unknown connector slug: "not a connector slug"',
+    });
+
+    const unknownSlug = await authDevice.requestTestConnector(
+      {},
+      { ...githubOauthBody, connectorSlug: "unknown-connector" },
+      [400],
+    );
+    expect(unknownSlug.body).toStrictEqual({
+      error: 'Unknown connector slug: "unknown-connector"',
     });
 
     const freshActor = bdd.user();
@@ -448,7 +457,7 @@ describe("CLI-TEST: test-connector", () => {
     const wrongGrantKind = await authDevice.requestTestConnector(
       { email: actor.email },
       {
-        connectorName: "cloudinary",
+        connectorSlug: "cloudinary",
         authMethod: "api-token",
         accessToken: "cloudinary-access-token",
       },
@@ -479,7 +488,7 @@ describe("CLI-TEST: test-connector", () => {
     const seeded = await authDevice.requestTestConnector(
       { email: actor.email },
       {
-        connectorName: "test-oauth",
+        connectorSlug: "test-oauth",
         authMethod: "oauth",
         accessToken: "test-oauth-access-token",
         refreshToken: "test-oauth-refresh-token",
@@ -489,7 +498,7 @@ describe("CLI-TEST: test-connector", () => {
     );
     expect(seeded.body).toStrictEqual({
       ok: true,
-      connectorType: "test-oauth",
+      connectorSlug: "test-oauth",
       orgId: actor.orgId,
     });
 
@@ -506,7 +515,7 @@ describe("CLI-TEST: test-connector", () => {
     const reSeeded = await authDevice.requestTestConnector(
       { email: actor.email },
       {
-        connectorName: "test-oauth",
+        connectorSlug: "test-oauth",
         authMethod: "api",
         accessToken: "test-oauth-api-access-token",
         refreshToken: "test-oauth-api-refresh-token",
@@ -515,7 +524,7 @@ describe("CLI-TEST: test-connector", () => {
     );
     expect(reSeeded.body).toStrictEqual({
       ok: true,
-      connectorType: "test-oauth",
+      connectorSlug: "test-oauth",
       orgId: actor.orgId,
     });
     const apiState = await support.readConnectorBySlug(actor, "test-oauth");
@@ -551,13 +560,13 @@ describe("CLI-TEST: test-enable-connector", () => {
     mockEnv("ENV", "production");
     const response = await authDevice.requestTestEnableConnector(
       {},
-      { composeId: ZERO_COMPOSE_ID, connectorTypes: ["github"] },
+      { composeId: ZERO_COMPOSE_ID, connectorSlugs: ["github"] },
       [404],
     );
     expect(response.body).toBe("Not found");
   });
 
-  it("rejects malformed enable-connector requests with legacy errors", async () => {
+  it("rejects malformed enable-connector requests", async () => {
     const invalidJson =
       await authDevice.requestTestEnableConnectorRaw("{ not json");
     expect(invalidJson.status).toBe(400);
@@ -565,32 +574,41 @@ describe("CLI-TEST: test-enable-connector", () => {
 
     for (const rawBody of [
       {},
-      { composeId: "not-a-uuid", connectorTypes: ["github"] },
-      { composeId: ZERO_COMPOSE_ID, connectorTypes: [] },
+      { composeId: "not-a-uuid", connectorSlugs: ["github"] },
+      { composeId: ZERO_COMPOSE_ID, connectorSlugs: [] },
     ]) {
       const invalidBody = await authDevice.requestTestEnableConnectorRaw(
         JSON.stringify(rawBody),
       );
       expect(invalidBody.status).toBe(400);
       expect(invalidBody.body).toStrictEqual({
-        error: "composeId and connectorTypes are required",
+        error: "composeId and connectorSlugs are required",
       });
     }
 
-    const unknownTypes = await authDevice.requestTestEnableConnector(
+    const malformedSlugs = await authDevice.requestTestEnableConnector(
       {},
-      { composeId: ZERO_COMPOSE_ID, connectorTypes: ["not-a-real-connector"] },
+      { composeId: ZERO_COMPOSE_ID, connectorSlugs: ["not a connector slug"] },
       [400],
     );
-    expect(unknownTypes.body).toStrictEqual({
-      error: "Unknown connector types: not-a-real-connector",
+    expect(malformedSlugs.body).toStrictEqual({
+      error: "Unknown connector slugs: not a connector slug",
+    });
+
+    const unknownSlugs = await authDevice.requestTestEnableConnector(
+      {},
+      { composeId: ZERO_COMPOSE_ID, connectorSlugs: ["not-a-real-connector"] },
+      [400],
+    );
+    expect(unknownSlugs.body).toStrictEqual({
+      error: "Unknown connector slugs: not-a-real-connector",
     });
 
     const freshActor = bdd.user();
     authDevice.seedClerkDirectory(freshActor);
     const noOrg = await authDevice.requestTestEnableConnector(
       { email: freshActor.email },
-      { composeId: ZERO_COMPOSE_ID, connectorTypes: ["github"] },
+      { composeId: ZERO_COMPOSE_ID, connectorSlugs: ["github"] },
       [400],
     );
     expect(noOrg.body).toStrictEqual({
@@ -601,7 +619,7 @@ describe("CLI-TEST: test-enable-connector", () => {
     await authDevice.provisionTestOrg(actor);
     const missingCompose = await authDevice.requestTestEnableConnector(
       { email: actor.email },
-      { composeId: ZERO_COMPOSE_ID, connectorTypes: ["github"] },
+      { composeId: ZERO_COMPOSE_ID, connectorSlugs: ["github"] },
       [404],
     );
     expect(missingCompose.body).toStrictEqual({
@@ -619,13 +637,13 @@ describe("CLI-TEST: test-enable-connector", () => {
 
     const enabled = await authDevice.requestTestEnableConnector(
       { email: actor.email },
-      { composeId: compose.composeId, connectorTypes: ["github", "slack"] },
+      { composeId: compose.composeId, connectorSlugs: ["github", "slack"] },
       [200],
     );
     expect(enabled.body).toStrictEqual({
       ok: true,
       composeId: compose.composeId,
-      connectorTypes: ["github", "slack"],
+      connectorSlugs: ["github", "slack"],
     });
 
     const agent = await bdd.readAgent(actor, compose.composeId);
@@ -646,7 +664,7 @@ describe("CLI-TEST: test-enable-connector", () => {
     });
     await authDevice.requestTestEnableConnector(
       { email: actor.email },
-      { composeId: publicAgent.agentId, connectorTypes: ["github"] },
+      { composeId: publicAgent.agentId, connectorSlugs: ["github"] },
       [200],
     );
     const updatedPublicAgent = await bdd.readAgent(actor, publicAgent.agentId);
@@ -659,7 +677,7 @@ describe("CLI-TEST: test-enable-connector", () => {
     );
     await authDevice.requestTestEnableConnector(
       { email: "custom@test.com" },
-      { composeId: customEmailCompose.composeId, connectorTypes: ["github"] },
+      { composeId: customEmailCompose.composeId, connectorSlugs: ["github"] },
       [200],
     );
     expect(context.mocks.clerk.users.getUserList).toHaveBeenCalledWith({
@@ -679,7 +697,7 @@ describe("CLI-TEST: test-enable-connector", () => {
     await authDevice.provisionTestOrg(other);
     const response = await authDevice.requestTestEnableConnector(
       { email: other.email },
-      { composeId: compose.composeId, connectorTypes: ["github"] },
+      { composeId: compose.composeId, connectorSlugs: ["github"] },
       [404],
     );
     expect(response.body).toStrictEqual({
@@ -701,13 +719,13 @@ describe("CLI-TEST: test-enable-connector", () => {
 
     const enabled = await authDevice.requestTestEnableConnector(
       { email: actor.email },
-      { composeId: compose.composeId, connectorTypes: ["github"] },
+      { composeId: compose.composeId, connectorSlugs: ["github"] },
       [200],
     );
     expect(enabled.body).toStrictEqual({
       ok: true,
       composeId: compose.composeId,
-      connectorTypes: ["github"],
+      connectorSlugs: ["github"],
     });
   });
 });

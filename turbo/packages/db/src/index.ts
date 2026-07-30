@@ -45,7 +45,6 @@ import * as telegramChatThreadRouteSchema from "./schema/telegram-chat-thread-ro
 import * as telegramMessageSchema from "./schema/telegram-message";
 import * as agentphoneUserLinkSchema from "./schema/agentphone-user-link";
 import * as agentphoneUserAgentPreferenceSchema from "./schema/agentphone-user-agent-preference";
-import * as agentphoneThreadSessionSchema from "./schema/agentphone-thread-session";
 import * as agentphoneChatThreadRouteSchema from "./schema/agentphone-chat-thread-route";
 import * as agentphoneMessageSchema from "./schema/agentphone-message";
 import * as agentphoneVerificationSendCooldownSchema from "./schema/agentphone-verification-send-cooldown";
@@ -184,7 +183,6 @@ export const schema = {
   ...telegramMessageSchema,
   ...agentphoneUserLinkSchema,
   ...agentphoneUserAgentPreferenceSchema,
-  ...agentphoneThreadSessionSchema,
   ...agentphoneChatThreadRouteSchema,
   ...agentphoneMessageSchema,
   ...agentphoneVerificationSendCooldownSchema,

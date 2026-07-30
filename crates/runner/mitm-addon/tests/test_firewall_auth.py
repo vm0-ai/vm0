@@ -19,7 +19,7 @@ import flow_metadata_keys as metadata_keys
 import matching
 import platform_api
 from aws_sigv4 import AwsSigV4Credentials
-from tests.auth_endpoint_helpers import FakeAuthEndpoint
+from tests.auth_endpoint_helpers import FakeAuthEndpoint, firewall_auth_success_response
 from tests.auth_state_helpers import (
     auth_cache_key,
     cached_headers,
@@ -48,6 +48,7 @@ from tests.jsonl_log_helpers import read_jsonl_text_after_flush
 from url_utils import get_trusted_authority
 
 _MALFORMED_SUCCESS_PREFIX = "Firewall auth endpoint returned malformed success response"
+_MISSING_FIELD = object()
 
 
 def _fail_if_ordinary_upstream_credentials_are_revalidated() -> bool:
@@ -68,7 +69,7 @@ def _http_error(url: str, status: int, reason: str, body: bytes) -> urllib.error
 def _auth_success(
     *,
     headers: dict[str, str],
-    expires_at: object = None,
+    expires_at: int | float | None = None,
     resolved_secrets: list[str] | None = None,
     refreshed_connectors: list[str] | None = None,
     refreshed_secrets: list[str] | None = None,
@@ -1419,6 +1420,180 @@ class TestHandleFirewallRequest:
         assert "connectors" not in body
         mock_resp.__exit__.assert_called_once()
 
+    @pytest.mark.parametrize(
+        ("field_name", "invalid_value", "expected_reason"),
+        [
+            pytest.param(
+                "expiresAt",
+                _MISSING_FIELD,
+                "expiresAt is required",
+                id="expires-at-missing",
+            ),
+            pytest.param(
+                "expiresAt",
+                True,
+                "expiresAt must be a finite number or null",
+                id="expires-at-bool",
+            ),
+            pytest.param(
+                "expiresAt",
+                "123",
+                "expiresAt must be a finite number or null",
+                id="expires-at-string",
+            ),
+            pytest.param(
+                "expiresAt",
+                [],
+                "expiresAt must be a finite number or null",
+                id="expires-at-array",
+            ),
+            pytest.param(
+                "expiresAt",
+                float("nan"),
+                "expiresAt must be a finite number or null",
+                id="expires-at-nan",
+            ),
+            pytest.param(
+                "expiresAt",
+                float("inf"),
+                "expiresAt must be a finite number or null",
+                id="expires-at-positive-infinity",
+            ),
+            pytest.param(
+                "expiresAt",
+                float("-inf"),
+                "expiresAt must be a finite number or null",
+                id="expires-at-negative-infinity",
+            ),
+            pytest.param(
+                "resolvedSecrets",
+                _MISSING_FIELD,
+                "resolvedSecrets is required",
+                id="resolved-secrets-missing",
+            ),
+            pytest.param(
+                "resolvedSecrets",
+                None,
+                "resolvedSecrets must be an array",
+                id="resolved-secrets-null",
+            ),
+            pytest.param(
+                "resolvedSecrets",
+                "TOKEN",
+                "resolvedSecrets must be an array",
+                id="resolved-secrets-string",
+            ),
+            pytest.param(
+                "resolvedSecrets",
+                [123],
+                "resolvedSecrets values must be strings",
+                id="resolved-secrets-item-number",
+            ),
+            pytest.param(
+                "refreshedConnectors",
+                _MISSING_FIELD,
+                "refreshedConnectors is required",
+                id="refreshed-connectors-missing",
+            ),
+            pytest.param(
+                "refreshedConnectors",
+                None,
+                "refreshedConnectors must be an array",
+                id="refreshed-connectors-null",
+            ),
+            pytest.param(
+                "refreshedConnectors",
+                "github",
+                "refreshedConnectors must be an array",
+                id="refreshed-connectors-string",
+            ),
+            pytest.param(
+                "refreshedConnectors",
+                [123],
+                "refreshedConnectors values must be strings",
+                id="refreshed-connectors-item-number",
+            ),
+            pytest.param(
+                "refreshedSecrets",
+                _MISSING_FIELD,
+                "refreshedSecrets is required",
+                id="refreshed-secrets-missing",
+            ),
+            pytest.param(
+                "refreshedSecrets",
+                None,
+                "refreshedSecrets must be an array",
+                id="refreshed-secrets-null",
+            ),
+            pytest.param(
+                "refreshedSecrets",
+                "TOKEN",
+                "refreshedSecrets must be an array",
+                id="refreshed-secrets-string",
+            ),
+            pytest.param(
+                "refreshedSecrets",
+                [None],
+                "refreshedSecrets values must be strings",
+                id="refreshed-secrets-item-null",
+            ),
+        ],
+    )
+    async def test_invalid_required_success_metadata_is_not_cached_or_applied(
+        self,
+        field_name: str,
+        invalid_value: object,
+        expected_reason: str,
+        real_flow,
+        mitm_ctx,
+        tmp_path,
+    ):
+        flow = _firewall_flow(real_flow, path="/repos?existing=1")
+        api_entry = _api_entry(
+            auth_config={
+                "headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"},
+                "query": {"api_key": "${{ secrets.GITHUB_TOKEN }}"},
+            },
+        )
+        vm_info = _vm_info(tmp_path)
+        allow = _allow(api_entry)
+        response = firewall_auth_success_response(
+            {"Authorization": "Bearer resolved"},
+            resolved_secrets=["GITHUB_TOKEN"],
+        )
+        response["query"] = {"api_key": "resolved-key"}
+        if invalid_value is _MISSING_FIELD:
+            response.pop(field_name)
+        else:
+            response[field_name] = invalid_value
+        mock_resp = _json_response(response)
+
+        with (
+            patch("firewall_auth_client._opener.open", return_value=mock_resp),
+            mitm_ctx(),
+        ):
+            result = await handle_firewall_request_without_upstream_admission(
+                flow,
+                allow,
+                vm_info,
+            )
+
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "auth_failed"
+        assert "Authorization" not in flow.request.headers
+        assert "api_key" not in flow.request.query
+        assert flow.request.query["existing"] == "1"
+        assert cached_headers(flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY]) is None
+        body = json.loads(flow.response.content)
+        assert body["error"] == "auth_failed"
+        assert body["message"] == (
+            f"Failed to resolve auth headers: {_MALFORMED_SUCCESS_PREFIX}: {expected_reason}"
+        )
+        mock_resp.__exit__.assert_called_once()
+
     async def test_strategy_inconsistent_success_returns_502_without_auth_mutation(
         self,
         real_flow,
@@ -1436,8 +1611,8 @@ class TestHandleFirewallRequest:
         vm_info = _vm_info(tmp_path)
         allow = _allow(api_entry)
         mock_resp = _json_response(
-            {
-                "headers": {"Authorization": "Bearer resolved"},
+            firewall_auth_success_response({"Authorization": "Bearer resolved"})
+            | {
                 "query": {"api_key": "resolved-key"},
             }
         )
@@ -1961,7 +2136,9 @@ class TestMakeApiRequest:
 class TestFetchFirewallHeaders:
     async def test_sends_request_and_maps_basic_success(self, mitm_ctx):
         endpoint = FakeAuthEndpoint()
-        endpoint.queue_json_response({"headers": {"Authorization": "Bearer tok"}})
+        endpoint.queue_json_response(
+            firewall_auth_success_response({"Authorization": "Bearer tok"})
+        )
 
         with (
             endpoint.run(),
@@ -1999,17 +2176,19 @@ class TestFetchFirewallHeaders:
         expires_at = time.time() + 30
         endpoint = FakeAuthEndpoint()
         endpoint.queue_json_response(
-            {
-                "headers": {
+            firewall_auth_success_response(
+                {
                     "Authorization": "Bearer tok",
                     "X-Custom": "custom",
                 },
+                expires_at=expires_at,
+                resolved_secrets=["API_TOKEN"],
+                refreshed_connectors=["notion"],
+                refreshed_secrets=["NOTION_TOKEN"],
+            )
+            | {
                 "base": "https://example.com/webhook/secret",
                 "query": {"api_key": "resolved-key"},
-                "expiresAt": expires_at,
-                "resolvedSecrets": ["API_TOKEN"],
-                "refreshedConnectors": ["notion"],
-                "refreshedSecrets": ["NOTION_TOKEN"],
                 "futureField": {"ignored": True},
             }
         )
@@ -2070,8 +2249,8 @@ class TestFetchFirewallHeaders:
 
         endpoint = FakeAuthEndpoint()
         endpoint.queue_json_response(
-            {
-                "headers": {},
+            firewall_auth_success_response({})
+            | {
                 "awsSigv4": response_aws_sigv4,
             }
         )
@@ -2176,7 +2355,7 @@ class TestFetchFirewallHeaders:
         expected_reason: str,
     ):
         endpoint = FakeAuthEndpoint()
-        endpoint.queue_json_response({"headers": {}, "awsSigv4": aws_sigv4})
+        endpoint.queue_json_response(firewall_auth_success_response({}) | {"awsSigv4": aws_sigv4})
         cache_key = auth_cache_key()
 
         with (
@@ -2203,15 +2382,15 @@ class TestFetchFirewallHeaders:
         [
             (
                 _firewall_auth_request(auth_base="${{ secrets.WEBHOOK_URL }}"),
-                {"headers": {}},
+                firewall_auth_success_response({}),
             ),
             (
                 _firewall_auth_request(),
-                {"headers": {}, "base": "https://hooks.example.com/secret"},
+                firewall_auth_success_response({}) | {"base": "https://hooks.example.com/secret"},
             ),
             (
                 _firewall_auth_request(auth_base="${{ secrets.WEBHOOK_URL }}"),
-                {"headers": {}, "base": ""},
+                firewall_auth_success_response({}) | {"base": ""},
             ),
             (
                 _firewall_auth_request(
@@ -2220,12 +2399,12 @@ class TestFetchFirewallHeaders:
                         "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
                     }
                 ),
-                {"headers": {}},
+                firewall_auth_success_response({}),
             ),
             (
                 _firewall_auth_request(),
-                {
-                    "headers": {},
+                firewall_auth_success_response({})
+                | {
                     "awsSigv4": {
                         "accessKeyId": "access-key-id",
                         "secretAccessKey": "secret-access-key",
@@ -2239,8 +2418,8 @@ class TestFetchFirewallHeaders:
                         "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
                     }
                 ),
-                {
-                    "headers": {},
+                firewall_auth_success_response({})
+                | {
                     "awsSigv4": {
                         "accessKeyId": "access-key-id",
                         "secretAccessKey": "secret-access-key",
@@ -2256,8 +2435,8 @@ class TestFetchFirewallHeaders:
                         "sessionToken": "${{ secrets.AWS_SESSION_TOKEN }}",
                     }
                 ),
-                {
-                    "headers": {},
+                firewall_auth_success_response({})
+                | {
                     "awsSigv4": {
                         "accessKeyId": "access-key-id",
                         "secretAccessKey": "secret-access-key",
@@ -2266,11 +2445,11 @@ class TestFetchFirewallHeaders:
             ),
             (
                 _firewall_auth_request(auth_headers={"Authorization": "template"}),
-                {"headers": {"X-Unexpected": "value"}},
+                firewall_auth_success_response({"X-Unexpected": "value"}),
             ),
             (
                 _firewall_auth_request(auth_query={"api_key": "template"}),
-                {"headers": {}, "query": {"unexpected": "value"}},
+                firewall_auth_success_response({}) | {"query": {"unexpected": "value"}},
             ),
         ],
         ids=[
@@ -2304,7 +2483,7 @@ class TestFetchFirewallHeaders:
 
     async def test_inconsistent_response_is_not_cached(self, mitm_ctx):
         endpoint = FakeAuthEndpoint()
-        endpoint.queue_json_response({"headers": {}})
+        endpoint.queue_json_response(firewall_auth_success_response({}))
         cache_key = auth_cache_key()
 
         with (
@@ -2323,11 +2502,10 @@ class TestFetchFirewallHeaders:
     async def test_sends_optional_request_body_fields(self, mitm_ctx):
         endpoint = FakeAuthEndpoint()
         endpoint.queue_json_response(
-            {
-                "headers": {},
+            firewall_auth_success_response({}, expires_at=time.time() + 30)
+            | {
                 "base": "https://hooks.example.com/secret",
                 "query": {"api_key": "resolved-key"},
-                "expiresAt": time.time() + 30,
             }
         )
 
@@ -2365,8 +2543,8 @@ class TestFetchFirewallHeaders:
     async def test_sends_sigv4_request_body(self, mitm_ctx):
         endpoint = FakeAuthEndpoint()
         endpoint.queue_json_response(
-            {
-                "headers": {},
+            firewall_auth_success_response({})
+            | {
                 "awsSigv4": {
                     "accessKeyId": "access-key-id",
                     "secretAccessKey": "secret-access-key",
@@ -2402,7 +2580,7 @@ class TestFetchFirewallHeaders:
 
     async def test_omits_empty_optional_request_body_fields(self, mitm_ctx):
         endpoint = FakeAuthEndpoint()
-        endpoint.queue_json_response({"headers": {}})
+        endpoint.queue_json_response(firewall_auth_success_response({}))
 
         with (
             endpoint.run(),
@@ -2438,7 +2616,7 @@ class TestFetchFirewallHeaders:
 
     async def test_includes_vercel_bypass_header(self, mitm_ctx):
         endpoint = FakeAuthEndpoint()
-        endpoint.queue_json_response({"headers": {}})
+        endpoint.queue_json_response(firewall_auth_success_response({}))
         with (
             endpoint.run(),
             mitm_ctx(api_url=endpoint.api_url),
@@ -2752,7 +2930,7 @@ class TestFetchFirewallHeaders:
 
     async def test_async_wrapper_uses_api_url_from_ctx(self, mitm_ctx):
         endpoint = FakeAuthEndpoint()
-        endpoint.queue_json_response({"headers": {"Auth": "tok"}})
+        endpoint.queue_json_response(firewall_auth_success_response({"Auth": "tok"}))
 
         with (
             endpoint.run(),
@@ -2779,20 +2957,46 @@ class TestFirewallAuthSuccessParser:
             pytest.param(None, id="null"),
             pytest.param("plain string", id="string"),
             pytest.param(123, id="number"),
-            pytest.param({}, id="missing-headers"),
-            pytest.param({"headers": []}, id="headers-array"),
-            pytest.param({"headers": {"Authorization": 123}}, id="header-value-number"),
-            pytest.param({"headers": {}, "base": []}, id="base-array"),
-            pytest.param({"headers": {}, "base": ""}, id="base-empty"),
-            pytest.param({"headers": {}, "query": []}, id="query-array"),
-            pytest.param({"headers": {}, "query": {"api_key": 123}}, id="query-value-number"),
-            pytest.param({"headers": {}, "resolvedSecrets": "TOKEN"}, id="resolved-secrets-string"),
             pytest.param(
-                {"headers": {}, "refreshedConnectors": [123]},
+                {
+                    "expiresAt": None,
+                    "resolvedSecrets": [],
+                    "refreshedConnectors": [],
+                    "refreshedSecrets": [],
+                },
+                id="missing-headers",
+            ),
+            pytest.param(firewall_auth_success_response({}) | {"headers": []}, id="headers-array"),
+            pytest.param(
+                firewall_auth_success_response({}) | {"headers": {"Authorization": 123}},
+                id="header-value-number",
+            ),
+            pytest.param(
+                firewall_auth_success_response({}) | {"base": []},
+                id="base-array",
+            ),
+            pytest.param(
+                firewall_auth_success_response({}) | {"base": ""},
+                id="base-empty",
+            ),
+            pytest.param(
+                firewall_auth_success_response({}) | {"query": []},
+                id="query-array",
+            ),
+            pytest.param(
+                firewall_auth_success_response({}) | {"query": {"api_key": 123}},
+                id="query-value-number",
+            ),
+            pytest.param(
+                firewall_auth_success_response({}) | {"resolvedSecrets": "TOKEN"},
+                id="resolved-secrets-string",
+            ),
+            pytest.param(
+                firewall_auth_success_response({}) | {"refreshedConnectors": [123]},
                 id="refreshed-connectors-number",
             ),
             pytest.param(
-                {"headers": {}, "refreshedSecrets": [None]},
+                firewall_auth_success_response({}) | {"refreshedSecrets": [None]},
                 id="refreshed-secrets-null",
             ),
         ],
@@ -2835,7 +3039,7 @@ class TestFetchFirewallHeadersResourceBoundary:
         """Success path must close the HTTP response — FD leak guard (#10475)."""
         mock_resp = MagicMock()
         mock_resp.__enter__.return_value = mock_resp
-        mock_resp.read.return_value = json.dumps({"headers": {}}).encode()
+        mock_resp.read.return_value = json.dumps(firewall_auth_success_response({})).encode()
 
         with (
             mitm_ctx(),

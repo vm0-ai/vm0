@@ -43,6 +43,7 @@ export enum FeatureSwitchKey {
   ZeroDebug = "zeroDebug",
   LanguagePreference = "languagePreference",
   BrazilianPortugueseLocale = "brazilianPortugueseLocale",
+  JapaneseLocale = "japaneseLocale",
   ZeroBrowser = "zeroBrowser",
   ZeroChatMessaging = "zeroChatMessaging",
   ZeroMailReplyFollowUp = "zeroMailReplyFollowUp",
@@ -81,5 +82,6 @@ export enum FeatureSwitchKey {
   ComposerConnectorPermissions = "composerConnectorPermissions",
   ThreeColumnNav = "threeColumnNav",
   ChatThreadSidebarAutoOpen = "chatThreadSidebarAutoOpen",
+  CustomConnectorCliCreate = "customConnectorCliCreate",
   CustomConnectorOAuth2 = "customConnectorOAuth2",
 }

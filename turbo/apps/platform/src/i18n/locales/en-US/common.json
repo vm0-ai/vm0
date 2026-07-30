@@ -4317,6 +4317,7 @@
         "label": "Language",
         "options": {
           "english": "English",
+          "japanese": "日本語",
           "portugueseBrazil": "Português (Brasil)"
         },
         "title": "Language"
