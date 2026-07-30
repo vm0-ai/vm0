@@ -85,9 +85,7 @@ export function createVideoTemplateAuthoringPacket(
       templates: [],
       designSystems: [],
       imageStyles: [],
-      audioStyles: [],
       videoTemplates: [options.template],
-      bundleTemplates: [],
     },
   };
   const selectionSchema = {

@@ -98,9 +98,7 @@ export interface ResourceCandidateSlice {
     readonly templates: readonly RegistryEntry[];
     readonly designSystems: readonly RegistryEntry[];
     readonly imageStyles: readonly RegistryEntry[];
-    readonly audioStyles: readonly RegistryEntry[];
     readonly videoTemplates: readonly VideoTemplateRegistryEntry[];
-    readonly bundleTemplates: readonly RegistryEntry[];
   };
 }
 
@@ -3986,9 +3984,7 @@ export function selectResourceCandidates(
       templates: listTemplates(target),
       designSystems: filterByKind("design-system"),
       imageStyles: filterByKind("image-style"),
-      audioStyles: filterByKind("audio-style"),
       videoTemplates: listVideoTemplates(),
-      bundleTemplates: filterByKind("bundle-template"),
     },
   };
 }
