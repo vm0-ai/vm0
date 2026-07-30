@@ -130,7 +130,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.BrazilianPortugueseLocale]).toBe(
       false,
     );
-    expect(staffOrgStates[FeatureSwitchKey.CodexSessionPruning]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
@@ -164,7 +163,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.BrazilianPortugueseLocale]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.CodexSessionPruning]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
       false,

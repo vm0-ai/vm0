@@ -83,7 +83,7 @@ describe("chat lifecycle", () => {
     const credit = await waitFor(() => {
       return buttonByLabel("Credit usage 24,734");
     });
-    const actions = credit.closest('[data-testid="chat-message-actions"]');
+    const actions = credit.closest('[data-testid="chat-event-actions"]');
     expect(actions).not.toBeNull();
     const copy = within(actions as HTMLElement).getByLabelText("Copy message");
     expect(
