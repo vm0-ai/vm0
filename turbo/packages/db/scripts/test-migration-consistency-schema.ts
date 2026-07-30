@@ -554,6 +554,18 @@ async function validateCanonicalChatMessageStorage(
   client: Client,
   threadId: string,
 ): Promise<string> {
+  const sequenceReservation = await client.query<{ lastSeqId: string }>(
+    `
+      UPDATE "chat_threads"
+      SET "last_chat_event_seq_id" = "last_chat_event_seq_id" + 2
+      WHERE "id" = $1
+      RETURNING "last_chat_event_seq_id" AS "lastSeqId"
+    `,
+    [threadId],
+  );
+  const lastSeqId = Number(sequenceReservation.rows[0]?.lastSeqId);
+  assert.ok(Number.isSafeInteger(lastSeqId));
+  const firstSeqId = lastSeqId - 1;
   const userMessage = {
     version: 1,
     parts: [{ type: "text", text: "canonical API migration test" }],
@@ -569,13 +581,15 @@ async function validateCanonicalChatMessageStorage(
         "chat_thread_id",
         "content",
         "event_type",
+        "seq_id",
         "user_message"
       )
       VALUES (
         $1,
         NULL,
         'input.prompt',
-        $2::jsonb
+        $2,
+        $3::jsonb
       )
       RETURNING
         "id",
@@ -583,13 +597,13 @@ async function validateCanonicalChatMessageStorage(
         "content",
         "user_message" AS "userMessage"
     `,
-    [threadId, JSON.stringify(userMessage)],
+    [threadId, firstSeqId, JSON.stringify(userMessage)],
   );
   const messageRow = message.rows[0];
   if (!messageRow) {
     throw new Error("Failed to create append-only chat message fixture");
   }
-  assert.equal(messageRow.seqId, "1");
+  assert.equal(messageRow.seqId, String(firstSeqId));
   assert.equal(messageRow.content, null);
   assert.deepEqual(messageRow.userMessage, userMessage);
 
@@ -598,18 +612,20 @@ async function validateCanonicalChatMessageStorage(
       INSERT INTO "chat_events" (
         "chat_thread_id",
         "content",
-        "event_type"
+        "event_type",
+        "seq_id"
       )
       VALUES (
         $1,
         'second typed API migration test',
-        'output.message'
+        'output.message',
+        $2
       )
       RETURNING "seq_id" AS "seqId"
     `,
-    [threadId],
+    [threadId, lastSeqId],
   );
-  assert.equal(nextMessage.rows[0]?.seqId, "2");
+  assert.equal(nextMessage.rows[0]?.seqId, String(lastSeqId));
 
   const sequenceState = await client.query<{ lastSeqId: string }>(
     `
@@ -619,7 +635,7 @@ async function validateCanonicalChatMessageStorage(
     `,
     [threadId],
   );
-  assert.equal(sequenceState.rows[0]?.lastSeqId, "2");
+  assert.equal(sequenceState.rows[0]?.lastSeqId, String(lastSeqId));
 
   return messageRow.id;
 }
@@ -686,8 +702,7 @@ async function validateChatEventSourcesAreAppendOnly(
       throw new Error("Failed to create append-only chat thread fixture");
     }
 
-    // Insert through the canonical table without seq_id and rely on the
-    // database allocator.
+    // Insert through the canonical table with application-reserved seq_ids.
     messageId = await validateCanonicalChatMessageStorage(client, threadId);
     await validateCanonicalDraftStorage(client, threadId);
 
@@ -797,7 +812,7 @@ async function validateChatEventSourcesAreAppendOnly(
 
     console.log("   ✅ chat_events rejects UPDATE");
     console.log("   ✅ chat_thread_events rejects UPDATE\n");
-    console.log("   ✅ chat event writes receive database-allocated seq_ids\n");
+    console.log("   ✅ chat event writes use application-reserved seq_ids\n");
   } finally {
     await client.query(
       `
@@ -846,9 +861,16 @@ async function validateChatEventContextPointerConstraints(
           "id",
           "user_id",
           "agent_compose_id",
+          "last_chat_event_seq_id",
           "title"
         )
-        VALUES ($1, 'context-pointer-test-user', $2, 'context pointer test')
+        VALUES (
+          $1,
+          'context-pointer-test-user',
+          $2,
+          2,
+          'context pointer test'
+        )
       `,
       [threadId, agentComposeId],
     );
@@ -863,16 +885,25 @@ async function validateChatEventContextPointerConstraints(
           "chat_thread_id",
           "event_type",
           "context_type",
-          "context_id"
+          "context_id",
+          "seq_id"
         )
         VALUES
-          ('00000000-0000-4000-8000-000000074510', $1, 'output.message', NULL, NULL),
+          (
+            '00000000-0000-4000-8000-000000074510',
+            $1,
+            'output.message',
+            NULL,
+            NULL,
+            1
+          ),
           (
             '00000000-0000-4000-8000-000000074511',
             $1,
             'output.message',
             'slack',
-            '00000000-0000-4000-8000-000000074503'
+            '00000000-0000-4000-8000-000000074503',
+            2
           )
         RETURNING
           "context_type" AS "contextType",
@@ -896,13 +927,15 @@ async function validateChatEventContextPointerConstraints(
           "id",
           "chat_thread_id",
           "event_type",
-          "context_type"
+          "context_type",
+          "seq_id"
         )
         VALUES (
           '00000000-0000-4000-8000-000000074512',
           $1,
           'output.message',
-          'slack'
+          'slack',
+          3
         )
       `,
       values: [threadId],
@@ -915,13 +948,15 @@ async function validateChatEventContextPointerConstraints(
           "id",
           "chat_thread_id",
           "event_type",
-          "context_id"
+          "context_id",
+          "seq_id"
         )
         VALUES (
           '00000000-0000-4000-8000-000000074513',
           $1,
           'output.message',
-          '00000000-0000-4000-8000-000000074504'
+          '00000000-0000-4000-8000-000000074504',
+          3
         )
       `,
       values: [threadId],
@@ -935,14 +970,16 @@ async function validateChatEventContextPointerConstraints(
           "chat_thread_id",
           "event_type",
           "context_type",
-          "context_id"
+          "context_id",
+          "seq_id"
         )
         VALUES (
           '00000000-0000-4000-8000-000000074514',
           $1,
           'output.message',
           'telegram',
-          '00000000-0000-4000-8000-000000074505'
+          '00000000-0000-4000-8000-000000074505',
+          3
         )
       `,
       values: [threadId],
@@ -5444,6 +5481,7 @@ const REVOKES_EVENT_ID_EXPANSION_MIGRATION = 755;
 const LAST_CHAT_EVENT_SEQ_ID_EXPANSION_MIGRATION = 756;
 const FIRST_ASSISTANT_EVENT_ACK_EXPANSION_MIGRATION = 757;
 const CHAT_EVENT_PROPERTY_COLUMNS_CONTRACT_MIGRATION = 768;
+const LEGACY_CHAT_EVENT_SEQ_ID_ALLOCATOR_DROP_MIGRATION = 774;
 
 const chatEventPropertyColumnFixture = {
   composeId: "99000000-0000-4000-8000-000000000001",
@@ -5470,6 +5508,10 @@ const chatEventPropertyColumnFixture = {
   contractRunId: "99000000-0000-4000-8000-000000000022",
   contractTargetEventId: "99000000-0000-4000-8000-000000000023",
   contractRevokerEventId: "99000000-0000-4000-8000-000000000024",
+  allocatorDropTargetEventId: "99000000-0000-4000-8000-000000000025",
+  allocatorDropNextEventId: "99000000-0000-4000-8000-000000000026",
+  allocatorDropDuplicateEventId: "99000000-0000-4000-8000-000000000027",
+  allocatorDropMissingSeqEventId: "99000000-0000-4000-8000-000000000028",
 } as const;
 
 async function assertChatEventsAppendOnlyProtection(
@@ -6620,6 +6662,181 @@ async function validateChatEventPropertyColumnContraction(
   );
 }
 
+async function validateLegacyChatEventSeqIdAllocatorDrop(
+  client: Client,
+): Promise<void> {
+  const fixture = chatEventPropertyColumnFixture;
+  await applyMigrationsUpToInTransaction(
+    client,
+    LEGACY_CHAT_EVENT_SEQ_ID_ALLOCATOR_DROP_MIGRATION,
+  );
+  const database = drizzle(client);
+
+  const legacyAllocatorObjects = await client.query<{
+    objectName: string;
+    objectType: string;
+  }>(`
+    SELECT
+      'trigger' AS "objectType",
+      "tgname" AS "objectName"
+    FROM "pg_trigger"
+    WHERE NOT "tgisinternal"
+      AND "tgname" = 'allocate_legacy_chat_message_seq_id'
+    UNION ALL
+    SELECT
+      'function',
+      "proname"
+    FROM "pg_proc"
+    WHERE "pronamespace" = 'public'::regnamespace
+      AND "proname" = 'allocate_legacy_chat_message_seq_id'
+  `);
+  assert.deepEqual(legacyAllocatorObjects.rows, []);
+
+  const sequenceIndex = await client.query<{
+    indexDefinition: string;
+    indexName: string;
+  }>(`
+    SELECT
+      "indexname" AS "indexName",
+      "indexdef" AS "indexDefinition"
+    FROM "pg_indexes"
+    WHERE "schemaname" = 'public'
+      AND "tablename" = 'chat_events'
+      AND "indexname" = 'chat_events_thread_seq_unique'
+  `);
+  assert.equal(sequenceIndex.rows.length, 1);
+  assert.match(
+    sequenceIndex.rows[0]?.indexDefinition ?? "",
+    /^CREATE UNIQUE INDEX .* \(chat_thread_id, seq_id\)$/u,
+  );
+
+  const sequenceBefore = await client.query<{
+    lastSeqId: string;
+    maxSeqId: string;
+  }>(
+    `
+      SELECT
+        "thread"."last_chat_event_seq_id" AS "lastSeqId",
+        max("event"."seq_id")::text AS "maxSeqId"
+      FROM "chat_threads" AS "thread"
+      INNER JOIN "chat_events" AS "event"
+        ON "event"."chat_thread_id" = "thread"."id"
+      WHERE "thread"."id" = $1
+      GROUP BY "thread"."last_chat_event_seq_id"
+    `,
+    [fixture.threadId],
+  );
+  assert.equal(sequenceBefore.rows.length, 1);
+  const previousLastSeqId = Number(sequenceBefore.rows[0]?.lastSeqId);
+  assert.ok(Number.isSafeInteger(previousLastSeqId));
+  assert.equal(sequenceBefore.rows[0]?.maxSeqId, String(previousLastSeqId));
+
+  const [reservation] = await database
+    .update(chatThreads)
+    .set({
+      lastChatEventSeqId: sql`${chatThreads.lastChatEventSeqId} + 2`,
+    })
+    .where(eq(chatThreads.id, fixture.threadId))
+    .returning({ lastSeqId: chatThreads.lastChatEventSeqId });
+  assert.ok(reservation);
+  assert.equal(reservation.lastSeqId, previousLastSeqId + 2);
+  const firstSeqId = reservation.lastSeqId - 1;
+  const canonicalInserts = await database
+    .insert(chatEvents)
+    .values([
+      {
+        id: fixture.allocatorDropTargetEventId,
+        chatThreadId: fixture.threadId,
+        eventType: "output.message",
+        content: "canonical target after allocator drop",
+        seqId: firstSeqId,
+      },
+      {
+        id: fixture.allocatorDropNextEventId,
+        chatThreadId: fixture.threadId,
+        eventType: "output.message",
+        content: "canonical next event after allocator drop",
+        seqId: reservation.lastSeqId,
+      },
+    ])
+    .returning({
+      id: chatEvents.id,
+      seqId: chatEvents.seqId,
+    });
+  assert.deepEqual(canonicalInserts, [
+    {
+      id: fixture.allocatorDropTargetEventId,
+      seqId: firstSeqId,
+    },
+    {
+      id: fixture.allocatorDropNextEventId,
+      seqId: reservation.lastSeqId,
+    },
+  ]);
+
+  const sequenceState = await client.query<{
+    lastSeqId: string;
+    maxSeqId: string;
+  }>(
+    `
+      SELECT
+        "thread"."last_chat_event_seq_id" AS "lastSeqId",
+        max("event"."seq_id")::text AS "maxSeqId"
+      FROM "chat_threads" AS "thread"
+      INNER JOIN "chat_events" AS "event"
+        ON "event"."chat_thread_id" = "thread"."id"
+      WHERE "thread"."id" = $1
+      GROUP BY "thread"."last_chat_event_seq_id"
+    `,
+    [fixture.threadId],
+  );
+  assert.deepEqual(sequenceState.rows, [
+    {
+      lastSeqId: String(reservation.lastSeqId),
+      maxSeqId: String(reservation.lastSeqId),
+    },
+  ]);
+
+  await expectDatabaseError(client, {
+    code: "23505",
+    messageIncludes: "chat_events_thread_seq_unique",
+    query: `
+      INSERT INTO "chat_events" (
+        "id",
+        "chat_thread_id",
+        "event_type",
+        "content",
+        "seq_id"
+      )
+      VALUES ($1, $2, 'output.message', 'duplicate seq_id', $3)
+    `,
+    values: [
+      fixture.allocatorDropDuplicateEventId,
+      fixture.threadId,
+      reservation.lastSeqId,
+    ],
+  });
+  await expectDatabaseError(client, {
+    code: "23502",
+    messageIncludes: "seq_id",
+    query: `
+      INSERT INTO "chat_events" (
+        "id",
+        "chat_thread_id",
+        "event_type",
+        "content"
+      )
+      VALUES ($1, $2, 'output.message', 'missing seq_id')
+    `,
+    values: [fixture.allocatorDropMissingSeqEventId, fixture.threadId],
+  });
+
+  await assertChatEventsAppendOnlyProtection(
+    client,
+    fixture.allocatorDropNextEventId,
+  );
+}
+
 async function validateChatEventPropertyColumnRollout(): Promise<void> {
   console.log(
     "=== Validate populated ChatEvent property column runtime cutover ===\n",
@@ -6646,6 +6863,7 @@ async function validateChatEventPropertyColumnRollout(): Promise<void> {
       await validateFirstAssistantEventAckExpansion(client);
       await validateChatEventPropertyColumnRuntimeCutover(client);
       await validateChatEventPropertyColumnContraction(client);
+      await validateLegacyChatEventSeqIdAllocatorDrop(client);
     } finally {
       await client.end();
     }
@@ -6654,7 +6872,7 @@ async function validateChatEventPropertyColumnRollout(): Promise<void> {
   }
 
   console.log(
-    "   ✅ The expanded legacy/current window remains compatible, historical values survive contraction, canonical sequence/revoke/acknowledgement paths stay healthy, legacy compatibility objects are gone, and strict append-only protection remains enabled\n",
+    "   ✅ The expanded legacy/current window remains compatible, historical values survive contraction, canonical sequence/revoke/acknowledgement paths stay healthy, legacy compatibility objects are gone, missing seq_ids fail loudly, and strict append-only protection remains enabled\n",
   );
 }
 
