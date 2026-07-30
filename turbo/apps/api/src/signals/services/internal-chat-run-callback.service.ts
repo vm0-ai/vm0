@@ -97,6 +97,7 @@ import {
   type CanonicalSlackThreadStatusTarget,
 } from "./canonical-slack-thread-status.service";
 import { saveRunSummary, saveRunSummary$ } from "./run-summary.service";
+import type { ChatRunFinishedEvent } from "./chat-run-finished-workflow-event.service";
 import {
   insertAssistantEvents,
   insertAssistantEvents$,
@@ -433,6 +434,10 @@ interface ChatCallbackDependencies {
     runId: string,
     prompt: string,
     resultText: string,
+    signal: AbortSignal,
+  ) => Promise<void>;
+  readonly dispatchChatRunFinishedAutomations: (
+    event: ChatRunFinishedEvent,
     signal: AbortSignal,
   ) => Promise<void>;
   readonly formatRunError: (
@@ -1865,10 +1870,21 @@ async function runCompletedChatCallbackSideEffects(args: {
   readonly followupContext: readonly ChatCompletionContextMessage[];
   readonly signal: AbortSignal;
   readonly saveRunSummary: (resultText: string) => Promise<void>;
+  readonly dispatchChatRunFinishedAutomations: ChatCallbackDependencies["dispatchChatRunFinishedAutomations"];
 }): Promise<void> {
   // The post-processing steps are mutually independent. Run them after queued
   // auto-send so LLM/push latency does not delay the next run.
   const saveSummaryStep = args.saveRunSummary(args.lastResultText ?? "");
+
+  const chatRunFinishedStep = args.dispatchChatRunFinishedAutomations(
+    {
+      chatThreadId: args.chatThread.chatThreadId,
+      runId: args.runId,
+      runStatus: "completed",
+      lastResultText: args.lastResultText,
+    },
+    args.signal,
+  );
 
   const titleStep = generateAndPersistChatThreadTitleFromCallback({
     db: args.db,
@@ -1930,6 +1946,7 @@ async function runCompletedChatCallbackSideEffects(args: {
 
   const results = await Promise.allSettled([
     saveSummaryStep,
+    chatRunFinishedStep,
     titleStep,
     followupsStep,
     pushStep,
@@ -1982,11 +1999,28 @@ async function handleFailedChatCallback(args: {
 
 async function runFailedChatCallbackSideEffects(args: {
   readonly db: Db;
+  readonly runId: string;
   readonly run: ChatRunInfo;
   readonly chatThread: ChatThreadForRunRow;
   readonly suppressWebPushForActiveGoal: boolean;
   readonly displayErrorMessage: string;
+  readonly runStatus: "failed" | "cancelled";
+  readonly signal: AbortSignal;
+  readonly dispatchChatRunFinishedAutomations: ChatCallbackDependencies["dispatchChatRunFinishedAutomations"];
 }): Promise<void> {
+  const chatRunFinishedStep = args.dispatchChatRunFinishedAutomations(
+    {
+      chatThreadId: args.chatThread.chatThreadId,
+      runId: args.runId,
+      runStatus: args.runStatus,
+      // Failed runs surface their error separately; patterns only ever match
+      // assistant output, so terminal errors dispatch with no matchable text.
+      lastResultText: null,
+    },
+    args.signal,
+  );
+
+  await chatRunFinishedStep;
   if (args.suppressWebPushForActiveGoal) {
     return;
   }
@@ -3427,6 +3461,8 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
             args.signal,
           );
         },
+        dispatchChatRunFinishedAutomations:
+          args.dependencies.dispatchChatRunFinishedAutomations,
       });
     },
   };
@@ -3489,10 +3525,18 @@ async function prepareFailedTerminalChatCallbackWork(args: {
     deferredSideEffects: () => {
       return runFailedChatCallbackSideEffects({
         db: args.db,
+        runId: args.runId,
         run: args.run,
         chatThread: args.chatThread,
         suppressWebPushForActiveGoal: args.suppressWebPushForActiveGoal,
         displayErrorMessage: failed.displayErrorMessage,
+        runStatus:
+          args.errorMessage.trim().toLowerCase() === "run cancelled"
+            ? "cancelled"
+            : "failed",
+        signal: args.signal,
+        dispatchChatRunFinishedAutomations:
+          args.dependencies.dispatchChatRunFinishedAutomations,
       });
     },
   };
@@ -3872,6 +3916,8 @@ function withoutQueuedRunDependency(
     releaseBrowsersForRun: dependencies.releaseBrowsersForRun,
     insertAssistantItems: dependencies.insertAssistantItems,
     saveRunSummary: dependencies.saveRunSummary,
+    dispatchChatRunFinishedAutomations:
+      dependencies.dispatchChatRunFinishedAutomations,
     formatRunError: dependencies.formatRunError,
     dispatchSlackDelivery: dependencies.dispatchSlackDelivery,
     clearSlackThreadStatusIfIdle: dependencies.clearSlackThreadStatusIfIdle,
@@ -4111,6 +4157,15 @@ export async function handleChatInternalCallbackWithoutCcstate(
           inputSignal,
         );
       },
+      dispatchChatRunFinishedAutomations: async (event, inputSignal) => {
+        const { dispatchChatRunFinishedWorkflowEvents$ } =
+          await import("./chat-run-finished-workflow-event.service");
+        return createStore().set(
+          dispatchChatRunFinishedWorkflowEvents$,
+          event,
+          inputSignal,
+        );
+      },
       formatRunError: (params) => {
         return Promise.resolve(
           formatRunErrorForExternalSurface({
@@ -4170,6 +4225,13 @@ const buildChatCallbackDependencies$ = command(
       },
       insertAssistantItems: async (args, inputSignal) => {
         await set(insertAssistantEvents$, args, inputSignal);
+      },
+      dispatchChatRunFinishedAutomations: async (event, inputSignal) => {
+        // Imported lazily: the dispatcher reaches runWorkflowAutomationNow$,
+        // whose queue-drain path imports this module back.
+        const { dispatchChatRunFinishedWorkflowEvents$ } =
+          await import("./chat-run-finished-workflow-event.service");
+        return set(dispatchChatRunFinishedWorkflowEvents$, event, inputSignal);
       },
       saveRunSummary: (runId, prompt, resultText, inputSignal) => {
         return set(
