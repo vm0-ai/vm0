@@ -74,9 +74,3 @@ export async function withNowScopeForTest<T>(
 ): Promise<T> {
   return await scopedMockNow().run({ value: undefined }, work);
 }
-
-export function startNowScopeForTest(value?: Date | number): void {
-  scopedMockNow().enterWith({
-    value: value === undefined ? undefined : timestamp(value),
-  });
-}

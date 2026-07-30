@@ -11,14 +11,14 @@ import {
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { HttpResponse, http } from "msw";
-import { beforeEach, describe, expect, it } from "vitest";
+import { aroundEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { createApp } from "../../../app-factory";
 import { browserUseCdpHandler } from "../../../__tests__/mocks";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
-import { mockNow, now, startNowScopeForTest } from "../../../lib/time";
+import { mockNow, now, withMockNowForTest } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
@@ -228,8 +228,8 @@ async function reconcileBrowsers() {
 }
 
 describe("zero browser route", () => {
-  beforeEach(() => {
-    startNowScopeForTest(STARTED_AT_MS);
+  aroundEach(async (runTest) => {
+    await withMockNowForTest(STARTED_AT_MS, runTest);
   });
 
   it("keeps managed browser access off for a default chat thread", async () => {

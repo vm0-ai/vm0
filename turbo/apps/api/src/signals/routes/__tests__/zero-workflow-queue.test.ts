@@ -11,13 +11,13 @@ import {
 import { RUNNER_CANCELLATION_RECOVERY_CAPABILITY } from "@vm0/api-contracts/contracts/runners";
 import { zeroModelProvidersByTypeContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
-import { beforeEach, onTestFinished } from "vitest";
+import { aroundEach, onTestFinished } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { mockNow, now, startNowScopeForTest } from "../../../lib/time";
+import { mockNow, now, withNowScopeForTest } from "../../../lib/time";
 import {
   createActiveGoalQueueEventFixture,
   readGoalQueueStateFixture,
@@ -358,8 +358,8 @@ async function expectSweepLeftQueueUntouched(
 }
 
 describe("workflow queue", () => {
-  beforeEach(() => {
-    startNowScopeForTest();
+  aroundEach(async (runTest) => {
+    await withNowScopeForTest(runTest);
   });
 
   it("runs a pending workflow event before an older goal continuation on the same thread", async () => {
