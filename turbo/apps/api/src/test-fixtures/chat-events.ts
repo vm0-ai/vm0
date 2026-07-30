@@ -404,6 +404,58 @@ export async function holdOrgAdmissionLockFixture(args: {
 }
 
 /**
+ * Holds the canonical workflow queue admission key so tests can observe the
+ * Release 1 lock chain: the first request holds the legacy key while waiting
+ * here, and a concurrent request for the same thread waits behind it.
+ */
+export async function holdChatEventQueueAdmissionLockFixture(args: {
+  readonly threadId: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly directWaiterCount: () => Promise<number>;
+  readonly transitiveWaiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const lockKey = `chat_event_queue:${args.threadId}`;
+    const rows = await executeRawRows(
+      tx,
+      sql`
+        SELECT
+          pg_backend_pid() AS "pid",
+          pg_advisory_xact_lock(hashtext(${lockKey}))
+      `,
+      databasePidRowSchema,
+    );
+    const holderPid = rows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the queue admission lock holder pid");
+    }
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    directWaiterCount: async () => {
+      return await directBlockedWaiterCount(holderPid);
+    },
+    transitiveWaiterCount: async () => {
+      return await transitiveBlockedWaiterCount(holderPid);
+    },
+  };
+}
+
+/**
  * Stages the canonical conversation clear inside an open transaction so a
  * concurrent run still resolves the pre-clear snapshot, then blocks on this
  * transaction when its launch commit re-reads the session row `FOR UPDATE`.
