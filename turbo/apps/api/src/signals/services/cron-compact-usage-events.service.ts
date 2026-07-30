@@ -80,10 +80,6 @@ const compactionRowSchema = z.object({
   reconciled: z.boolean(),
 });
 
-const remainingRawRowSchema = z.object({
-  hasMoreRaw: z.boolean(),
-});
-
 // The explicit null order matches a reverse scan of the deployed
 // idx_usage_event_processed_org_user index. Eligible rows are always non-null.
 const oldestProcessedEventOrder = sql`${asc(event.processedAt)} NULLS FIRST`;
@@ -557,28 +553,15 @@ async function loadHoldProbe(
 }
 
 async function hasRemainingRawUsage(
-  db: Pick<Db, "execute">,
+  db: Pick<Db, "select">,
   cutoff: string,
 ): Promise<boolean> {
-  const rows = await executeRawRows(
-    db,
-    sql`
-      SELECT EXISTS (
-        SELECT 1
-        FROM ${usageEvent} ${event}
-        WHERE ${eligibleRawPredicate(cutoff)}
-        LIMIT 1
-      ) AS "hasMoreRaw"
-    `,
-    remainingRawRowSchema,
-  );
-  const remaining = rows[0];
-  if (!remaining) {
-    throw new Error(
-      "Usage event compaction remaining probe returned no summary row",
-    );
-  }
-  return remaining.hasMoreRaw;
+  const [remaining] = await db
+    .select({ id: event.id })
+    .from(event)
+    .where(eligibleRawPredicate(cutoff))
+    .limit(1);
+  return remaining !== undefined;
 }
 
 async function compactUsageEventBatch(

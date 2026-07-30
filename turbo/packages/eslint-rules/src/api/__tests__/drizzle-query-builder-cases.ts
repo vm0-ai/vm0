@@ -1467,6 +1467,182 @@ const queryBuilderCases = {
   ],
   readValid: [
     {
+      name: "typed existence wrappers keep non-row-select builders opaque",
+      code: `${rawRowsImport}${structuredSelectionPreamble}
+        import { count, eq, exists, sql } from "drizzle-orm";
+        declare const rowSchema: never;
+        const joined = db
+          .select({ id: users.id })
+          .from(users)
+          .innerJoin(messages, eq(messages.userId, users.id));
+        const extraTargets = db
+          .select({ id: users.id, name: users.name })
+          .from(users);
+        const computed = db
+          .select({ id: sql\`\${users.id}\` })
+          .from(users);
+        const aggregate = db
+          .select({ id: count(users.id) })
+          .from(users);
+        const grouped = db
+          .select({ id: users.id })
+          .from(users)
+          .groupBy(users.id);
+        const ordered = db
+          .select({ id: users.id })
+          .from(users)
+          .orderBy(users.id);
+        const limited = db
+          .select({ id: users.id })
+          .from(users)
+          .limit(1);
+        const rawSource = db
+          .select({ id: users.id })
+          .from(sql\`users\`);
+        const locked = db
+          .select({ id: users.id })
+          .from(users)
+          .for("update");
+        const unioned = db
+          .select({ id: users.id })
+          .from(users)
+          .union(db.select({ id: users.id }).from(users));
+        const sq = db.$with("sq").as(
+          db.select({ id: users.id }).from(users),
+        );
+        const withCte = db
+          .with(sq)
+          .select({ id: sq.id })
+          .from(sq);
+        await executeRawRows(
+          db,
+          sql\`SELECT \${exists(joined)} AS visible\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`SELECT \${exists(extraTargets)} AS visible\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`SELECT \${exists(computed)} AS visible\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`SELECT \${exists(aggregate)} AS visible\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`SELECT \${exists(grouped)} AS visible\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`SELECT \${exists(ordered)} AS visible\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`SELECT \${exists(limited)} AS visible\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`SELECT \${exists(rawSource)} AS visible\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`SELECT \${exists(locked)} AS visible\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`SELECT \${exists(unioned)} AS visible\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`SELECT \${exists(withCte)} AS visible\`,
+          rowSchema,
+        );
+        const [directRow] = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.id, 1))
+          .limit(1);
+        void directRow;
+      `,
+    },
+    {
+      name: "typed existence wrappers keep uncertain provenance and outer shapes opaque",
+      code: `${rawRowsImport}${structuredSelectionPreamble}
+        import {
+          eq,
+          exists as drizzleExists,
+          sql,
+          type SQL,
+        } from "drizzle-orm";
+        declare const rowSchema: never;
+        declare const choose: boolean;
+        const selected = db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.id, 1));
+        let mutable = drizzleExists(selected);
+        const conditional = choose
+          ? drizzleExists(selected)
+          : drizzleExists(selected);
+        declare function opaque(): SQL;
+        function multiStatement() {
+          const condition = drizzleExists(selected);
+          return condition;
+        }
+        function exists(value: unknown): SQL {
+          return sql\`\${value}\`;
+        }
+        await executeRawRows(
+          db,
+          sql\`SELECT \${mutable} AS visible\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`SELECT \${conditional} AS visible\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`SELECT \${opaque()} AS visible\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`SELECT \${multiStatement()} AS visible\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`SELECT \${exists(selected)} AS visible\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`SELECT \${drizzleExists(selected)} AS visible ORDER BY 1\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`SELECT \${drizzleExists(selected)} AS visible, 1 AS extra\`,
+          rowSchema,
+        );
+        void mutable;
+      `,
+    },
+    {
       code: `${rawRowsImport}${schemaPreamble}
         import { sql } from "drizzle-orm";
         await executeRawRows(
@@ -2278,6 +2454,76 @@ const queryBuilderCases = {
     },
   ],
   readInvalid: [
+    {
+      name: "single-table scalar existence uses a row-presence builder",
+      code: `${rawRowsImport}${schemaPreamble}
+        import { eq, sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT EXISTS (
+              SELECT 1
+              FROM \${runs}
+              WHERE \${eq(runs.threadId, threadId)}
+              LIMIT 1
+            ) AS visible
+          \`,
+          rowSchema,
+        );
+      `,
+      errors: [
+        { messageId: "existsQueryBuilder" },
+        {
+          messageId: "existencePredicate",
+          data: { helper: "exists" },
+        },
+      ],
+    },
+    {
+      name: "typed scalar existence resolves conventional local provenance",
+      code: `${rawRowsImport}${structuredSelectionPreamble}
+        import { eq, exists, sql } from "drizzle-orm";
+        declare const rowSchema: never;
+        const selected = db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.id, 1));
+        const visible = exists(selected);
+        function userExists(database: typeof db, userId: number) {
+          return exists(
+            database
+              .select({ id: users.id })
+              .from(users)
+              .where(eq(users.id, userId)),
+          );
+        }
+        await executeRawRows(
+          db,
+          sql\`SELECT \${exists(
+            db
+              .select({ id: users.id })
+              .from(users)
+              .where(eq(users.id, 1)),
+          )} AS visible\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`SELECT \${visible} AS visible\`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`SELECT \${userExists(db, 1)} AS visible\`,
+          rowSchema,
+        );
+      `,
+      errors: [
+        { messageId: "existsQueryBuilder" },
+        { messageId: "existsQueryBuilder" },
+        { messageId: "existsQueryBuilder" },
+      ],
+    },
     {
       code: `${rawRowsImport}${schemaPreamble}
         import { eq, gt, sql, sum } from "drizzle-orm";

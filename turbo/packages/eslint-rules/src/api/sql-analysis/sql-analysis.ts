@@ -114,6 +114,7 @@ export interface SqlCapabilityChecks {
   hasDirectResultMapping(node: TSESTree.Expression): boolean;
   hasParameterListOrigin(node: TSESTree.Expression): boolean;
   isInlineParameterList(node: TSESTree.Expression): boolean;
+  isSelectExistence(node: TSESTree.Expression): boolean;
 }
 
 const NO_CAPABILITY_CHECKS: SqlCapabilityChecks = {
@@ -130,6 +131,9 @@ const NO_CAPABILITY_CHECKS: SqlCapabilityChecks = {
     return false;
   },
   isInlineParameterList(): boolean {
+    return false;
+  },
+  isSelectExistence(): boolean {
     return false;
   },
 };
@@ -207,6 +211,7 @@ interface SqlMarker {
   readonly isNumber: boolean;
   readonly isPatternOperand: boolean;
   readonly isSelect: boolean;
+  readonly isSelectExistence: boolean;
   readonly isStringOrWrapper: boolean;
   readonly isAnalyzableWriteInterpolation: boolean;
   readonly isTable: boolean;
@@ -1135,6 +1140,7 @@ function parseSqlVariant(
   checker: TypeChecker,
   services: ParserServicesWithTypeInformation,
   schemaTarget: SqlSchemaTarget | undefined,
+  capabilities: SqlCapabilityChecks = NO_CAPABILITY_CHECKS,
 ): ParsedSql | null {
   const literals = variant.chunks.flatMap((chunk) => {
     return chunk.kind === "literal" ? [chunk.text] : [];
@@ -1185,6 +1191,7 @@ function parseSqlVariant(
     let cachedNumber: boolean | undefined;
     let cachedPatternOperand: boolean | undefined;
     let cachedSelect: boolean | undefined;
+    let cachedSelectExistence: boolean | undefined;
     let cachedAnalyzableWriteInterpolation: boolean | undefined;
     let cachedStringOrWrapper: boolean | undefined;
     let cachedTable: boolean | undefined;
@@ -1251,6 +1258,10 @@ function parseSqlVariant(
       get isSelect(): boolean {
         cachedSelect ??= markerIsSelect(expression, checker, services);
         return cachedSelect;
+      },
+      get isSelectExistence(): boolean {
+        cachedSelectExistence ??= capabilities.isSelectExistence(expression);
+        return cachedSelectExistence;
       },
       get isAnalyzableWriteInterpolation(): boolean {
         cachedAnalyzableWriteInterpolation ??=
@@ -3632,7 +3643,7 @@ const PAGINATED_SELECT_KEYS = new Set([
   "whereClause",
 ]);
 
-function isPaginatedJoinedSelect(
+function isPaginatedSchemaSelect(
   select: Record<string, unknown>,
   markers: ReadonlyMap<string, SqlMarker>,
 ): boolean {
@@ -3661,7 +3672,6 @@ function isPaginatedJoinedSelect(
   const relation = schemaJoinGraph(select.fromClause[0], markers);
   if (
     relation === undefined ||
-    relation.joinCount === 0 ||
     !relation.conditions.every((condition) => {
       return markersMatch(condition, markers, (marker) => {
         return marker.isWrapper;
@@ -3708,15 +3718,22 @@ function isPaginatedExistsSelect(
     return false;
   }
   const target = recordProperty(select.targetList[0], "ResTarget");
+  if (
+    target === undefined ||
+    typeof target.name !== "string" ||
+    !hasOnlyKeys(target, new Set(["location", "name", "val"]))
+  ) {
+    return false;
+  }
+  if (columnMarker(target.val, markers)?.isSelectExistence === true) {
+    return true;
+  }
   const subLink = exactSubLink(target?.val);
   const inner = recordProperty(subLink?.subselect, "SelectStmt");
   return (
-    target !== undefined &&
-    typeof target.name === "string" &&
-    hasOnlyKeys(target, new Set(["location", "name", "val"])) &&
     subLink?.subLinkType === "EXISTS_SUBLINK" &&
     inner !== undefined &&
-    isPaginatedJoinedSelect(inner, markers)
+    isPaginatedSchemaSelect(inner, markers)
   );
 }
 
@@ -5803,6 +5820,7 @@ function replacementBoundaryForFinding(
         checker,
         services,
         schemaTarget,
+        capabilities,
       );
       if (
         parsed === null ||
@@ -6388,6 +6406,7 @@ export function analyzeSql(
           checker,
           services,
           schemaTarget,
+          capabilities,
         );
         if (parsed === null) {
           variants.length = 0;
