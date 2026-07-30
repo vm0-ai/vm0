@@ -127,7 +127,7 @@ describe("workflow queue panel", () => {
         query.sinceId ||
         query.beforeId
       ) {
-        return respond(200, { events: [], hasHistoryBefore: false });
+        return respond(200, { events: [] });
       }
       return respond(200, {
         events: [
@@ -160,7 +160,6 @@ describe("workflow queue panel", () => {
             createdAt: "2026-07-10T01:02:00Z",
           },
         ],
-        hasHistoryBefore: false,
       });
     });
     setMockWorkflowAutomations([

@@ -1376,7 +1376,6 @@ export const chatThreadEventsContract = c.router({
     responses: {
       200: z.object({
         events: z.array(chatEventResponseSchema),
-        hasHistoryBefore: z.boolean().optional(),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,

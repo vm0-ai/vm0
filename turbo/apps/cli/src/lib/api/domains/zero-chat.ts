@@ -27,11 +27,6 @@ export type ZeroChatThreadEvent = Omit<ChatThreadEvent, "seqId"> & {
   readonly seqId?: number;
 };
 
-interface ZeroChatEventsPage {
-  readonly events: readonly ChatEvent[];
-  readonly hasHistoryBefore: boolean;
-}
-
 interface ZeroChatEventSendResult {
   readonly runId: string | null;
   readonly threadId: string;
@@ -180,7 +175,7 @@ export async function listZeroChatEvents(options: {
   threadId: string;
   beforeSeqId?: number;
   limit?: number;
-}): Promise<ZeroChatEventsPage> {
+}): Promise<readonly ChatEvent[]> {
   const config = await getClientConfig();
   const client = initClient(chatThreadEventsContract, config);
   const result = await client.list({
@@ -191,10 +186,7 @@ export async function listZeroChatEvents(options: {
     },
   });
   if (result.status === 200) {
-    return {
-      events: result.body.events.filter(isCanonicalChatEventResponse),
-      hasHistoryBefore: result.body.hasHistoryBefore ?? false,
-    };
+    return result.body.events.filter(isCanonicalChatEventResponse);
   }
   handleError(result, "Failed to list chat events");
 }

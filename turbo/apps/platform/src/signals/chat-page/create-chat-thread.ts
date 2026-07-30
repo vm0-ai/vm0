@@ -2226,6 +2226,9 @@ function createLatestEventSignals(
 
 const HISTORY_BACKFILL_MERGE_BATCH_SIZE = 300;
 
+/** Per-thread chat event sequences start at 1, so this marks the oldest event. */
+const FIRST_CHAT_EVENT_SEQ_ID = 1;
+
 function createSyncRemoteEventsCommand({
   threadId,
   persistentEvents$,
@@ -2250,7 +2253,7 @@ function createSyncRemoteEventsCommand({
     async function syncEventsAfter(): Promise<void> {
       const requestedSinceSeqId = sinceSeqId;
       const isInitialPage = requestedSinceSeqId === undefined;
-      const result = await set(
+      const events = await set(
         dataSource.listEventsAfter$,
         { threadId, sinceSeqId: requestedSinceSeqId },
         signal,
@@ -2259,26 +2262,26 @@ function createSyncRemoteEventsCommand({
       L.debug("syncRemoteMessages$ listEventsAfter result", {
         threadId,
         sinceSeqId: requestedSinceSeqId ?? null,
-        gotCount: result.events.length,
+        gotCount: events.length,
       });
 
-      if (result.events.length === 0) {
+      if (events.length === 0) {
         return;
       }
 
-      await set(writeIndexedDbChatEvents$, threadId, result.events, signal);
+      await set(writeIndexedDbChatEvents$, threadId, events, signal);
       signal.throwIfAborted();
       if (isInitialPage) {
-        initialPageOldestEvent = result.events[0]!;
-        set(mergePersistentEvents$, result.events);
+        initialPageOldestEvent = events[0]!;
+        set(mergePersistentEvents$, events);
       } else {
-        accumulatedEvents.push(...result.events);
+        accumulatedEvents.push(...events);
       }
-      sinceSeqId = result.events.at(-1)!.seqId;
+      sinceSeqId = events.at(-1)!.seqId;
 
       if (
         requestedSinceSeqId !== undefined &&
-        result.events.length < CHAT_EVENTS_PAGE_LIMIT
+        events.length < CHAT_EVENTS_PAGE_LIMIT
       ) {
         return;
       }
@@ -2295,7 +2298,7 @@ function createSyncRemoteEventsCommand({
       if (oldestEvent !== undefined) {
         let beforeSeqId = oldestEvent.seqId;
         async function syncEventsBefore(): Promise<void> {
-          const result = await set(
+          const events = await set(
             dataSource.listEventsBefore$,
             { threadId, beforeSeqId },
             signal,
@@ -2304,18 +2307,13 @@ function createSyncRemoteEventsCommand({
           L.debug("syncRemoteMessages$ listEventsBefore result", {
             threadId,
             beforeSeqId,
-            gotCount: result.events.length,
-            hasHistoryBefore: result.hasHistoryBefore,
+            gotCount: events.length,
           });
 
-          if (result.events.length > 0) {
-            accumulatedEvents.push(...result.events);
-            await set(
-              writeIndexedDbChatEvents$,
-              threadId,
-              result.events,
-              signal,
-            );
+          const oldestInPage = events[0];
+          if (oldestInPage !== undefined) {
+            accumulatedEvents.push(...events);
+            await set(writeIndexedDbChatEvents$, threadId, events, signal);
             signal.throwIfAborted();
             // Flush periodically so long backfills surface incrementally
             // (e.g. the history backfill progress bar) instead of appearing
@@ -2332,11 +2330,17 @@ function createSyncRemoteEventsCommand({
             }
           }
 
-          if (!result.hasHistoryBefore) {
+          // A thread's first event always carries seqId 1, so reaching it is
+          // the only stop condition for walking history backwards. An empty
+          // page leaves no usable cursor, which also ends the walk.
+          if (
+            oldestInPage === undefined ||
+            oldestInPage.seqId <= FIRST_CHAT_EVENT_SEQ_ID
+          ) {
             return;
           }
 
-          beforeSeqId = result.events[0]!.seqId;
+          beforeSeqId = oldestInPage.seqId;
 
           return syncEventsBefore();
         }
@@ -2619,7 +2623,9 @@ function createPagedEvents(
   }
   const persistentChatEvents$ = state<RegisteredChatEvent[]>([]);
   const hasReachedOldestEvent$ = computed((get): boolean => {
-    return get(persistentChatEvents$)[0]?.event.seqId === 1;
+    return (
+      get(persistentChatEvents$)[0]?.event.seqId === FIRST_CHAT_EVENT_SEQ_ID
+    );
   });
   const optimisticEvents$ = createOptimisticChatEventsForThread(threadId);
   const appendOptimisticEvent$ = command(

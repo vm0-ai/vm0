@@ -155,7 +155,6 @@ describe("GET /api/zero/chat-threads/:threadId/events", () => {
 
     expect(response.body).toStrictEqual({
       events: [],
-      hasHistoryBefore: false,
     });
   });
 

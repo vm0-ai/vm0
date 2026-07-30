@@ -753,7 +753,6 @@ describe("zero sidebar", () => {
                   },
                 ]
               : [],
-          hasHistoryBefore: false,
         });
       },
     );

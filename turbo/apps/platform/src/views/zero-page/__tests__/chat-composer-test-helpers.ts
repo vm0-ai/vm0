@@ -426,11 +426,10 @@ export function mockThread(options?: {
       query.sinceId ||
       query.beforeId
     ) {
-      return respond(200, { events: [], hasHistoryBefore: false });
+      return respond(200, { events: [] });
     }
     return respond(200, {
       events: normalizeMockChatEvents(options?.messages ?? []),
-      hasHistoryBefore: false,
     });
   });
 }

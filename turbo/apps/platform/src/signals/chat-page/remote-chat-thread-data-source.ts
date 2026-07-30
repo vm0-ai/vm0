@@ -233,7 +233,7 @@ export const listEventsAfter$ = command(
     { threadId, sinceSeqId }: ListEventsAfterArgs,
     signal: AbortSignal,
   ) => {
-    const result = await listChatEvents(
+    const events = await listChatEvents(
       get(zeroClient$),
       threadId,
       { sinceSeqId, limit: CHAT_EVENTS_PAGE_LIMIT },
@@ -243,8 +243,8 @@ export const listEventsAfter$ = command(
     L.debug("listEventsAfter$", {
       threadId,
       sinceSeqId,
-      count: result.events.length,
-      runEvents: result.events.flatMap((event) => {
+      count: events.length,
+      runEvents: events.flatMap((event) => {
         if (!event.runId) {
           return [];
         }
@@ -256,7 +256,7 @@ export const listEventsAfter$ = command(
         ];
       }),
     });
-    return result;
+    return events;
   },
 );
 
@@ -269,7 +269,7 @@ const listEventsBefore$ = command(
     return await listChatEvents(
       get(zeroClient$),
       threadId,
-      { beforeSeqId, limit: 50 },
+      { beforeSeqId, limit: CHAT_EVENTS_PAGE_LIMIT },
       signal,
     );
   },

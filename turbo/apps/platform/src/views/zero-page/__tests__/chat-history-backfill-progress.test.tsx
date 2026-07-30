@@ -73,7 +73,6 @@ function mockPagedHistory(): {
       if (query.beforeSeqId === undefined) {
         return respond(200, {
           events: eventsInRange(TOTAL_MESSAGES - PAGE_SIZE + 1, TOTAL_MESSAGES),
-          hasHistoryBefore: true,
         });
       }
       beforeSeqIds.push(query.beforeSeqId);
@@ -82,10 +81,7 @@ function mockPagedHistory(): {
       }
       const toSeqId = query.beforeSeqId - 1;
       const fromSeqId = Math.max(1, toSeqId - PAGE_SIZE + 1);
-      return respond(200, {
-        events: eventsInRange(fromSeqId, toSeqId),
-        hasHistoryBefore: fromSeqId > 1,
-      });
+      return respond(200, { events: eventsInRange(fromSeqId, toSeqId) });
     },
   );
   return { finalHistoryPage, beforeSeqIds };
