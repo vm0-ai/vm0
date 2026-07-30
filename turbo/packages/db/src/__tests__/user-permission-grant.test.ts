@@ -51,7 +51,6 @@ describe("userPermissionGrants schema", () => {
     expect(userPermissionGrants.orgId.name).toBe("org_id");
     expect(userPermissionGrants.userId.name).toBe("user_id");
     expect(userPermissionGrants.agentId.name).toBe("agent_id");
-    expect(userPermissionGrants.legacyConnectorRef.name).toBe("connector_ref");
     expect(userPermissionGrants.connectorSlug.name).toBe("connector_slug");
     expect(userPermissionGrants.connectorSlug.notNull).toBe(true);
     expect(userPermissionGrants.permission.name).toBe("permission");
@@ -64,7 +63,7 @@ describe("userPermissionGrants schema", () => {
   it("declares grant uniqueness, lookup, and action checks", () => {
     expect(getExtraConfigNames(userPermissionGrants)).toEqual(
       expect.arrayContaining([
-        "uq_user_permission_grants_grant",
+        "uq_user_permission_grants_slug_permission",
         "idx_user_permission_grants_lookup",
         "idx_user_permission_grants_user_id",
         "idx_user_permission_grants_agent_id",

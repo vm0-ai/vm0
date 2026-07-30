@@ -12,7 +12,6 @@ import {
   type NetworkPolicies,
   type NetworkPolicy,
 } from "@vm0/connectors/firewall-types";
-import { connectorSlugCanonicalInsertUserPermissionGrants } from "@vm0/db/compat/connector-slug-canonical-insert";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import {
   connectorCatalogActiveSnapshot,
@@ -75,22 +74,9 @@ const userPermissionGrantSelection = Object.freeze({
   updatedAt: userPermissionGrants.updatedAt,
 });
 
-const connectorSlugCanonicalInsertUserPermissionGrantSelection = Object.freeze({
-  id: connectorSlugCanonicalInsertUserPermissionGrants.id,
-  orgId: connectorSlugCanonicalInsertUserPermissionGrants.orgId,
-  userId: connectorSlugCanonicalInsertUserPermissionGrants.userId,
-  agentId: connectorSlugCanonicalInsertUserPermissionGrants.agentId,
-  connectorRef: connectorSlugCanonicalInsertUserPermissionGrants.connectorSlug,
-  permission: connectorSlugCanonicalInsertUserPermissionGrants.permission,
-  action: connectorSlugCanonicalInsertUserPermissionGrants.action,
-  expiresAt: connectorSlugCanonicalInsertUserPermissionGrants.expiresAt,
-  createdAt: connectorSlugCanonicalInsertUserPermissionGrants.createdAt,
-  updatedAt: connectorSlugCanonicalInsertUserPermissionGrants.updatedAt,
-});
-
 type UserPermissionGrantRow = Omit<
   typeof userPermissionGrants.$inferSelect,
-  "connectorSlug" | "legacyConnectorRef"
+  "connectorSlug"
 > & { readonly connectorRef: string };
 type StoredPermissionGrantRow = UserPermissionGrantRow;
 type ResolvedPermissionGrant = Pick<
@@ -812,7 +798,7 @@ async function applyVisibleAgentGrantRows(
             )
             .returning(userPermissionGrantSelection)
         : await tx
-            .insert(connectorSlugCanonicalInsertUserPermissionGrants)
+            .insert(userPermissionGrants)
             .values({
               orgId: args.orgId,
               userId: args.userId,
@@ -824,9 +810,7 @@ async function applyVisibleAgentGrantRows(
               createdAt: timestamp,
               updatedAt: timestamp,
             })
-            .returning(
-              connectorSlugCanonicalInsertUserPermissionGrantSelection,
-            );
+            .returning(userPermissionGrantSelection);
       if (!row) {
         throw new Error("User permission grant apply did not return a row");
       }
