@@ -6,6 +6,9 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 WRAPPER="${REPO_ROOT}/.github/scripts/cloudflare-ssh-command.sh"
 SSH_ACTION="${REPO_ROOT}/.github/actions/setup-ssh-tunnel/action.yml"
 SECURITY_WORKFLOW="${REPO_ROOT}/.github/workflows/security.yml"
+LINUX_UNIX_SOCKET_PATH_BYTES=108
+OPENSSH_TEMPORARY_CONTROL_PATH_SUFFIX_BYTES=17
+OBSERVED_GITHUB_STATE_DIR_BYTES=43
 
 fail() {
   echo "$1" >&2
@@ -55,6 +58,20 @@ assert_match_count() {
     echo "expected ${file} to contain ${expected} matching line(s): ${pattern}; got ${actual}" >&2
     cat "$file" >&2
     exit 1
+  fi
+}
+
+assert_control_path_fits() {
+  local control_path=$1
+  local control_path_bytes
+  local openssh_temporary_path_bytes
+  control_path_bytes=$(printf '%s' "$control_path" | wc -c)
+  openssh_temporary_path_bytes=$((
+    control_path_bytes
+      + OPENSSH_TEMPORARY_CONTROL_PATH_SUFFIX_BYTES
+  ))
+  if [ "$openssh_temporary_path_bytes" -ge "$LINUX_UNIX_SOCKET_PATH_BYTES" ]; then
+    fail "recovery ControlPath exceeds the OpenSSH/Linux socket budget: ${openssh_temporary_path_bytes} bytes"
   fi
 }
 
@@ -311,7 +328,11 @@ assert_line_count "$actual_failure/actual-ssh.log" 1 \
 assert_line_count "$actual_failure/stdout" 1 "actual stdout"
 assert_line_count "$actual_failure/stderr" 1 "actual stderr"
 
-recovery="${tmp}/recovery"
+recovery="${tmp}/github-runner-work-temp-cf-ssh"
+recovery_state_dir_bytes=$(printf '%s' "${recovery}/state" | wc -c)
+if [ "$recovery_state_dir_bytes" -lt "$OBSERVED_GITHUB_STATE_DIR_BYTES" ]; then
+  fail "recovery test state path is shorter than the observed GitHub runner path"
+fi
 run_wrapper "$recovery" stale-success ssh \
   metal@dev-11.gcp.vm3.ai touch /tmp/recovered-operation
 assert_contains "$recovery/status" "0"
@@ -331,6 +352,7 @@ state_file=$(find "$recovery/state" -name '*.control-path' -print -quit)
 [ -n "$state_file" ] || fail "expected recovery control-path state"
 selected_control_path=$(< "$state_file")
 [ -n "$selected_control_path" ] || fail "expected selected recovery socket"
+assert_control_path_fits "$selected_control_path"
 assert_line_count "$recovery/ssh.log" 1 \
   "-S ${selected_control_path} -n -M -N -f metal@dev-11.gcp.vm3.ai"
 assert_line_count "$recovery/ssh.log" 1 \
@@ -417,6 +439,7 @@ new_control_path=$(< "$state_file")
 if [ "$new_control_path" = "$old_control_path" ]; then
   fail "stale selected transport must be replaced with a unique socket"
 fi
+assert_control_path_fits "$new_control_path"
 assert_match_count "$recovery/ssh.log" 2 "-M -N -f"
 assert_line_count "$recovery/actual-ssh.log" 1 \
   "-o ControlPath=${new_control_path} metal@dev-11.gcp.vm3.ai touch /tmp/second-recovery"

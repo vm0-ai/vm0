@@ -504,8 +504,10 @@ if [ "$probe_status" -ne 0 ]; then
   emit_probe_failure \
     1 "$probe_status" "$first_probe_stderr" warning \
     "${current_control_path:+${current_control_path}.stderr}"
-  recovery_dir=$(mktemp -d "${STATE_DIR}/${target_key}.recovery.XXXXXX")
-  recovery_control_path="${recovery_dir}/master.sock"
+  # Keep this path compact: OpenSSH appends a 17-byte temporary suffix before
+  # binding it against Linux's 108-byte Unix socket path limit.
+  recovery_dir=$(mktemp -d "${STATE_DIR}/r.XXXXXX")
+  recovery_control_path="${recovery_dir}/m"
   recovery_status=0
   CLOUDFLARE_SSH_BIN="$REAL_SSH" \
     "${SCRIPTS_DIR}/cloudflare-ssh-preconnect.sh" \
