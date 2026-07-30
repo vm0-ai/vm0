@@ -23,10 +23,7 @@ import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createOpsLogsApi } from "./helpers/api-bdd-ops-logs";
-import {
-  createRunsApi,
-  zeroBackedDirectRunRequest,
-} from "./helpers/api-bdd-runs";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { commitMemoryVersion } from "./helpers/zero-memory";
 import { createFixtureTracker } from "./helpers/zero-route-test";
@@ -898,13 +895,11 @@ describe("OPS-01: user data export", () => {
       displayName: "BDD Export History Agent",
       visibility: "private",
     });
-    const run = await runs.createDirectRun(
-      actor,
-      zeroBackedDirectRunRequest({
-        agentId: agent.agentId,
-        prompt: "checkpoint compressed history",
-      }),
-    );
+    const run = await runs.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "checkpoint compressed history",
+      modelProvider: "anthropic-api-key",
+    });
     const claim = await runs.claimRunnerJob(run.runId);
     const headers = { authorization: `Bearer ${claim.sandboxToken}` };
     const history = Buffer.concat([
@@ -1001,13 +996,11 @@ describe("OPS-01: user data export", () => {
       displayName: "BDD Export Zstd History Agent",
       visibility: "private",
     });
-    const run = await runs.createDirectRun(
-      actor,
-      zeroBackedDirectRunRequest({
-        agentId: agent.agentId,
-        prompt: "checkpoint zstd compressed history",
-      }),
-    );
+    const run = await runs.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "checkpoint zstd compressed history",
+      modelProvider: "anthropic-api-key",
+    });
     const claim = await runs.claimRunnerJob(run.runId);
     const headers = { authorization: `Bearer ${claim.sandboxToken}` };
     const history = Buffer.concat([

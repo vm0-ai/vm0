@@ -11,8 +11,6 @@ import {
   composesMainContract,
   type ZeroCapability,
 } from "@vm0/api-contracts/contracts/composes";
-import { chatEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
 import { runsMainContract } from "@vm0/api-contracts/contracts/runs";
 import { webhookStripeContract } from "@vm0/api-contracts/contracts/webhooks";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
@@ -25,10 +23,7 @@ import {
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
-import {
-  DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-  type ModelProviderResponse,
-} from "@vm0/api-contracts/contracts/model-providers";
+import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import {
   cronAggregateInsightsContract,
   cronAggregateUsageContract,
@@ -81,18 +76,18 @@ import { zeroBillingStatusRoutes } from "../../zero-billing-status";
 import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
 import { zeroRunDetailRoutes } from "../../zero-run-detail";
-import { zeroChatEventsRoutes } from "../../zero-chat-events";
-import { zeroLogsRoutes } from "../../zero-logs";
 import { zeroRunsCancelRoutes } from "../../zero-runs-cancel";
 import { zeroRunsRoutes } from "../../zero-runs";
+import {
+  zeroRunFixtureContract,
+  zeroRunFixtureRoutes,
+} from "../../test-zero-run-fixture";
 import { zeroUserPermissionGrantsRoutes } from "../../zero-user-permission-grants";
 import { createBddApi, type ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 type AuthHeaders = { readonly authorization?: string };
-type ZeroRunRequest = z.infer<typeof zeroRunCreateBodySchema> & {
-  readonly threadId?: string;
-};
+type ZeroRunRequest = z.infer<typeof zeroRunCreateBodySchema>;
 type DirectRunRequest = z.infer<(typeof runsMainContract.create)["body"]>;
 type RunsListQuery = z.input<(typeof runsMainContract.list)["query"]>;
 type RunnerJobClaimRequest = z.infer<
@@ -168,8 +163,7 @@ const runRoutes = [
   ...zeroModelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
   ...zeroRunDetailRoutes,
-  ...zeroChatEventsRoutes,
-  ...zeroLogsRoutes,
+  ...zeroRunFixtureRoutes,
   ...zeroRunsRoutes,
   ...zeroRunsCancelRoutes,
   ...zeroAgentsRoutes,
@@ -266,57 +260,6 @@ function runnerHeartbeatBody(
     admittableProfiles: args.admittableProfiles ?? ["vm0/default"],
     heldSessionStates: args.heldSessionStates ?? [],
     mode: args.mode ?? "running",
-  };
-}
-
-function chatEventBodyFromRunRequest(body: ZeroRunRequest) {
-  return {
-    agentId: body.agentId ?? "",
-    model:
-      body.modelProvider === "vm0"
-        ? DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL
-        : "claude-sonnet-4-6",
-    prompt: body.prompt,
-    ...(body.threadId === undefined ? {} : { threadId: body.threadId }),
-    ...(body.realAgentInPreview === undefined
-      ? {}
-      : { realAgentInPreview: body.realAgentInPreview }),
-    userMessage: {
-      version: 1 as const,
-      parts: [{ type: "text" as const, text: body.prompt }],
-    },
-  };
-}
-
-export function zeroBackedDirectRunRequest(args: {
-  readonly agentId: string;
-  readonly prompt: string;
-  readonly sessionId?: string;
-}): DirectRunRequest {
-  return {
-    ...(args.sessionId
-      ? { sessionId: args.sessionId }
-      : {
-          agentComposeId: args.agentId,
-          modelProviderType: "anthropic-api-key" as const,
-        }),
-    prompt: args.prompt,
-    vars: { ZERO_AGENT_ID: args.agentId },
-    secrets: { ZERO_TOKEN: "bdd-zero-direct-token" },
-  };
-}
-
-function requireCreatedChatRun(
-  body: z.infer<(typeof chatEventsContract.send)["responses"][201]>,
-) {
-  if (body.runId === null || body.status === undefined) {
-    throw new Error("Expected chat event to create a run");
-  }
-  return {
-    runId: body.runId,
-    threadId: body.threadId,
-    status: body.status,
-    createdAt: body.createdAt,
   };
 }
 
@@ -503,13 +446,13 @@ export function createRunsApi(context: TestContext) {
 
     async createRun(actor: ApiTestUser, body: ZeroRunRequest) {
       const response = await accept(
-        runApp(context)(chatEventsContract).send({
+        runApp(context)(zeroRunFixtureContract).create({
           headers: authenticate(context, actor),
-          body: chatEventBodyFromRunRequest(body),
+          body,
         }),
         [201],
       );
-      return requireCreatedChatRun(response.body);
+      return response.body;
     },
 
     async claimRunnerJob(runId: string, body: RunnerJobClaimRequest = {}) {
@@ -922,53 +865,33 @@ export function createRunsApi(context: TestContext) {
       return response.body;
     },
 
-    async requestCreateRun<
-      Status extends 201 | 400 | 401 | 402 | 403 | 404 | 409 | 422,
-    >(
+    async requestCreateRun(
       actor: ApiTestUser | null,
       body: ZeroRunRequest,
-      statuses: readonly Status[],
+      statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
       extraHeaders?: Readonly<Record<string, string>>,
     ) {
       return await accept(
-        runApp(context)(chatEventsContract).send({
+        runApp(context)(zeroRunFixtureContract).create({
           headers: {
             ...authenticate(context, actor),
             ...extraHeaders,
           },
-          body: chatEventBodyFromRunRequest(body),
+          body,
         }),
         statuses,
       );
     },
 
-    async requestCreateRunUnchecked<
-      Status extends 201 | 400 | 401 | 402 | 403 | 404 | 409 | 422,
-    >(actor: ApiTestUser | null, body: unknown, statuses: readonly Status[]) {
-      return await accept(
-        runApp(context)(chatEventsContract).send({
-          headers: authenticate(context, actor),
-          body: chatEventBodyFromRunRequest(body as ZeroRunRequest),
-        }),
-        statuses,
-      );
-    },
-
-    /**
-     * Sends a chat run request with a raw bearer credential instead of a
-     * Clerk session.
-     */
-    async requestCreateRunAs<
-      Status extends 201 | 400 | 401 | 402 | 403 | 404 | 409 | 422,
-    >(
-      authorization: string,
-      body: ZeroRunRequest,
-      statuses: readonly Status[],
+    async requestCreateRunUnchecked(
+      actor: ApiTestUser | null,
+      body: unknown,
+      statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
     ) {
       return await accept(
-        runApp(context)(chatEventsContract).send({
-          headers: { authorization },
-          body: chatEventBodyFromRunRequest(body),
+        runApp(context)(zeroRunFixtureContract).create({
+          headers: authenticate(context, actor),
+          body: body as ZeroRunRequest,
         }),
         statuses,
       );
@@ -983,20 +906,6 @@ export function createRunsApi(context: TestContext) {
         [200],
       );
       return response.body;
-    },
-
-    async readRunSessionId(actor: ApiTestUser, runId: string): Promise<string> {
-      const detail = await accept(
-        runApp(context)(logsByIdContract).getById({
-          headers: authenticate(context, actor),
-          params: { id: runId },
-        }),
-        [200],
-      );
-      if (detail.body.sessionId === null) {
-        throw new Error(`Expected run ${runId} to expose a session id`);
-      }
-      return detail.body.sessionId;
     },
 
     async requestReadRun(
@@ -1076,10 +985,10 @@ export function createRunsApi(context: TestContext) {
       );
     },
 
-    async requestCancelRunAs<Status extends 200 | 400 | 401 | 403 | 404>(
+    async requestCancelRunAs(
       authorization: string,
       runId: string,
-      statuses: readonly Status[],
+      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
         runApp(context)(zeroRunsCancelContract).cancel({

@@ -466,10 +466,11 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
     expect(agentQueue.body.estimatedTimePerRun).not.toBeNull();
 
     const longPrompt = "q".repeat(220);
-    const seedSessionId = await api.readRunSessionId(actor, seedRun.runId);
-    const queuedOwn = await api.createDirectRun(actor, {
-      sessionId: seedSessionId,
+    const queuedOwn = await api.createRun(actor, {
+      agentId: agent.agentId,
+      sessionId: seedRun.sessionId,
       prompt: longPrompt,
+      modelProvider: "anthropic-api-key",
     });
     expect(queuedOwn.status).toBe("queued");
     const queuedForeign = await api.createRun(member, {
@@ -487,7 +488,7 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
       runId: queuedOwn.runId,
       prompt: `${"q".repeat(200)}...`,
       userEmail: actor.email,
-      sessionLink: `/chat/${seedSessionId}`,
+      sessionLink: `/chat/${seedRun.sessionId}`,
     });
     expect(zeroQueue.body.queue[1]).toMatchObject({
       position: 2,

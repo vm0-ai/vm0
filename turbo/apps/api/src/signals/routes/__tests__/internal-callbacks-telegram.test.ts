@@ -23,10 +23,7 @@ import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { seedTelegramUserLink$ } from "./helpers/zero-telegram";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createComposesBddApi } from "./helpers/api-bdd-composes";
-import {
-  createRunsApi,
-  zeroBackedDirectRunRequest,
-} from "./helpers/api-bdd-runs";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 
 const context = testContext();
 const store = createStore();
@@ -300,7 +297,7 @@ async function seedTelegramCallback(args: {
 /**
  * Seeds an org-scoped actor with credits (Stripe webhook grant) and an agent
  * created through the product agent API whose compose head declares an inline
- * ANTHROPIC_API_KEY, so real runs can be created through POST /api/agent/runs
+ * ANTHROPIC_API_KEY, so real runs can be created through the test fixture
  * without an org model provider (the run then records no selected model,
  * matching the pre-existing fixture runs these tests were written against).
  */
@@ -346,10 +343,7 @@ async function createFixtureRun(
 ): Promise<{ readonly runId: string }> {
   api.acceptStorageDownloads();
   api.acceptTelemetryIngest();
-  const run = await api.createDirectRun(
-    actor,
-    zeroBackedDirectRunRequest({ agentId, prompt }),
-  );
+  const run = await api.createRun(actor, { agentId, prompt });
   return { runId: run.runId };
 }
 

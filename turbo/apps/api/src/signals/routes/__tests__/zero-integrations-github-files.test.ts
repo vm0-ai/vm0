@@ -16,10 +16,7 @@ import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createGithubBddApi } from "./helpers/api-bdd-github";
-import {
-  createRunsApi,
-  zeroBackedDirectRunRequest,
-} from "./helpers/api-bdd-runs";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createComposesBddApi } from "./helpers/api-bdd-composes";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -98,7 +95,7 @@ describe("GitHub zero file integration routes", () => {
   }
 
   /**
-   * Creates a real run for the fixture agent through POST /api/agent/runs.
+   * Creates a real run for the fixture agent through the test-only adapter.
    * Run admission needs org credits, granted through the Stripe webhook
    * product path; the agent compose head is updated (through the product
    * compose upsert) to declare an inline ANTHROPIC_API_KEY so run creation
@@ -125,13 +122,10 @@ describe("GitHub zero file integration routes", () => {
     });
     api.acceptStorageDownloads();
     api.acceptTelemetryIngest();
-    const run = await api.createDirectRun(
-      fixture.actor,
-      zeroBackedDirectRunRequest({
-        agentId: fixture.composeId,
-        prompt: "deliver github file",
-      }),
-    );
+    const run = await api.createRun(fixture.actor, {
+      agentId: fixture.composeId,
+      prompt: "deliver github file",
+    });
     return { runId: run.runId };
   }
 

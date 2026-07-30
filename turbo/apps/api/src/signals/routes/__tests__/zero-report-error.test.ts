@@ -10,10 +10,7 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
-import {
-  createRunsApi,
-  zeroBackedDirectRunRequest,
-} from "./helpers/api-bdd-runs";
+import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -152,22 +149,14 @@ async function createReportRun(
   options: { readonly prompt?: string; readonly sessionId?: string } = {},
 ): Promise<ReportRun> {
   const api = createRunsApi(context);
-  const prompt = options.prompt ?? "Report precondition";
-  if (options.sessionId === undefined) {
-    const run = await api.createDirectRun(
-      seed.actor,
-      zeroBackedDirectRunRequest({ agentId: seed.agentId, prompt }),
-    );
-    return { runId: run.runId, sessionId: run.sessionId };
-  }
-  const run = await api.createDirectRun(
-    seed.actor,
-    zeroBackedDirectRunRequest({
-      agentId: seed.agentId,
-      prompt,
-      sessionId: options.sessionId,
-    }),
-  );
+  const run = await api.createRun(seed.actor, {
+    agentId: seed.agentId,
+    ...(options.sessionId === undefined
+      ? {}
+      : { sessionId: options.sessionId }),
+    prompt: options.prompt ?? "Report precondition",
+    modelProvider: "anthropic-api-key",
+  });
   return { runId: run.runId, sessionId: run.sessionId };
 }
 
