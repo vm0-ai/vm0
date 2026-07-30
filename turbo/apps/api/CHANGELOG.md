@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.351.0](https://github.com/vm0-ai/vm0/compare/api-v1.350.0...api-v1.351.0) (2026-07-30)
+
+
+### Features
+
+* **connectors:** add agent-driven custom connector creation ([#24020](https://github.com/vm0-ai/vm0/issues/24020)) ([49a30be](https://github.com/vm0-ai/vm0/commit/49a30bed8aa3295f875ea56ad81edcd473a49fce))
+
+
+### Bug Fixes
+
+* **api:** reject redirected axiom ingestion ([#24022](https://github.com/vm0-ai/vm0/issues/24022)) ([ac5e94f](https://github.com/vm0-ai/vm0/commit/ac5e94f18ea92e51732567faacb77dc018931d4f))
+
+
+### Refactoring
+
+* **test-api:** use slug fields in connector auth fixtures ([#24024](https://github.com/vm0-ai/vm0/issues/24024)) ([c655087](https://github.com/vm0-ai/vm0/commit/c65508731a6db6648f28253d1657aff63822e3d9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.251.0
+    * @vm0/core bumped to 8.490.0
+    * @vm0/db bumped to 1.156.3
+
 ## [1.350.0](https://github.com/vm0-ai/vm0/compare/api-v1.349.1...api-v1.350.0) (2026-07-30)
 
 
