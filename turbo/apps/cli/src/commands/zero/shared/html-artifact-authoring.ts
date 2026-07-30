@@ -1,8 +1,11 @@
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { decodeZeroTokenPayload } from "../../../lib/api/zero-token";
 import {
+  buildResourceCandidateSlice,
   type GenerationOutputKind,
   type ResourceCandidateSlice,
   type GenerationTarget,
-  selectResourceCandidates,
 } from "./resource-registry";
 
 type HtmlArtifactKind = GenerationTarget;
@@ -85,13 +88,13 @@ function outputDirForSite(site: string): string {
   return `./generated/mockups/${site}`;
 }
 
-function formatCandidateSource(
-  source: ResourceCandidateSlice["sources"][number],
-): string {
-  if ("repo" in source) {
-    return `- \`${source.repo}@${source.ref}\``;
-  }
-  return `- ${source.description}`;
+function artifactResourceCandidateSamplingEnabled(): boolean {
+  const payload = decodeZeroTokenPayload();
+  return isFeatureEnabled(FeatureSwitchKey.ArtifactResourceCandidateSampling, {
+    userId: payload?.userId,
+    orgId: payload?.orgId,
+    overrides: payload?.featureSwitchOverrides,
+  });
 }
 
 export function createHtmlArtifactAuthoringPacket(
@@ -106,7 +109,16 @@ export function createHtmlArtifactAuthoringPacket(
     options.kind === "website" ? " --spa" : ""
   }`;
   const title = titleForKind(options.kind);
-  const candidateSlice = selectResourceCandidates(options.kind);
+  const candidateSlice = buildResourceCandidateSlice(options.kind, {
+    samplingEnabled: artifactResourceCandidateSamplingEnabled(),
+  });
+  const openDesignSource = candidateSlice.candidates.skills.source;
+  const r2ResolutionInstructions =
+    candidateSlice.candidates.templates.websiteR2 === undefined
+      ? []
+      : [
+          "- For the `templates.websiteR2` pool, pull the selected private R2 archive with `zero resource pull <resource-id> --dir ./generated/resources`; the CLI requests an authenticated short-lived download URL, verifies the digest, and extracts `source.path`.",
+        ];
   const selectionSchema = {
     skills: "string[]",
     template: "string",
@@ -147,14 +159,14 @@ export function createHtmlArtifactAuthoringPacket(
   const instructions = [
     `# Zero generate ${options.kind}`,
     "",
-    "This is a federated generation source-selection packet for the current agent.",
+    "This is a generation resource-selection packet for the current agent.",
     `Zero is not generating this ${title} on the server. You select resources, resolve them, and author the artifact.`,
     "",
     "## User Prompt",
     options.prompt,
     "",
     "## Stage 1: Resource Selection",
-    "- Choose generation resources from the bundled federated registry slice below.",
+    "- Choose generation resources from the typed candidate pools below.",
     "- Select one template, one or more skills, and zero or one design system.",
     "- Choose only IDs present in this packet; do not invent registry IDs.",
     "- Prefer compatible resources, but the user prompt is the highest-priority signal.",
@@ -167,8 +179,7 @@ export function createHtmlArtifactAuthoringPacket(
     "",
     "## Candidate Registry Slice",
     `Registry: \`${candidateSlice.registryVersion}\``,
-    "Sources:",
-    ...candidateSlice.sources.map(formatCandidateSource),
+    `Source: \`${openDesignSource.repo}@${openDesignSource.ref}\``,
     "",
     "```json",
     JSON.stringify(candidateSlice.candidates, null, 2),
@@ -176,8 +187,9 @@ export function createHtmlArtifactAuthoringPacket(
     "",
     "## Stage 2: Resolve Selected Resources",
     "- First resolve every required resource listed above, then resolve every selected resource before authoring.",
-    "- Each candidate carries a `source` object with `path` and optional `repo`/`ref`; when `repo`/`ref` are omitted, fall back to the registry-level source above.",
-    "- If `source.archive` is present, pull the private R2 archive with `zero resource pull <resource-id> --dir ./generated/resources`; the CLI requests an authenticated short-lived download URL, verifies the digest, and then extracts `source.path`.",
+    "- Each candidate pool declares its source type and contains its entries under `items`.",
+    "- For a `git` pool, resolve each selected entry's `source.path` from the pool's pinned `repo` and `ref`.",
+    ...r2ResolutionInstructions,
     "- For directory refs, inspect the most relevant files such as `SKILL.md`, `DESIGN.md`, `README.md`, tokens, examples, and templates.",
     "- If a source file cannot be fetched, state that limitation and fall back to the registry metadata for that resource.",
     "",

@@ -438,6 +438,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the Artifacts manage page for generated artifacts in the current organization.",
     enabled: true,
   },
+  [FeatureSwitchKey.ArtifactResourceCandidateSampling]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Sample target-compatible skills, design systems, and R2 website templates in HTML artifact generation prompts.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ArtifactKeyV2]: {
     maintainer: "yuma@vm0.ai",
     description:

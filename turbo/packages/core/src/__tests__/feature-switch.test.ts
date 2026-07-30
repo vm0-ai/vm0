@@ -54,6 +54,9 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.ZeroChatMessaging, {})).toBe(
       false,
     );
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.ArtifactResourceCandidateSampling, {}),
+    ).toBe(false);
   });
 
   it("should return false for disabled switch with non-matching userId", () => {
@@ -141,6 +144,9 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.Artifacts]).toBe(true);
+    expect(
+      staffOrgStates[FeatureSwitchKey.ArtifactResourceCandidateSampling],
+    ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ImageStyleR2]).toBe(true);
@@ -178,6 +184,9 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.Artifacts]).toBe(true);
+    expect(
+      otherOrgStates[FeatureSwitchKey.ArtifactResourceCandidateSampling],
+    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ImageStyleR2]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);

@@ -1,8 +1,32 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import chalk from "chalk";
 import { generateCommand } from "../index";
 import { reportCommand } from "../artifacts";
-import { selectResourceCandidates } from "../../shared/resource-registry";
+import {
+  buildResourceCandidateSlice,
+  listDesignSystems,
+  listSkills,
+  listTemplates,
+} from "../../shared/resource-registry";
+
+function zeroToken(sampleCandidates: boolean): string {
+  const payload = Buffer.from(
+    JSON.stringify({
+      userId: "user-123",
+      runId: "run-123",
+      orgId: "org-123",
+      scope: "zero",
+      capabilities: [],
+      featureSwitchOverrides: {
+        [FeatureSwitchKey.ArtifactResourceCandidateSampling]: sampleCandidates,
+      },
+      iat: 1,
+      exp: 4_102_444_800,
+    }),
+  ).toString("base64url");
+  return `vm0_sandbox_header.${payload}.signature`;
+}
 
 describe("zero generate source-backed artifact commands", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
@@ -15,7 +39,7 @@ describe("zero generate source-backed artifact commands", () => {
 
   beforeEach(() => {
     chalk.level = 0;
-    vi.stubEnv("ZERO_TOKEN", "test-zero-token");
+    vi.stubEnv("ZERO_TOKEN", zeroToken(true));
   });
 
   afterEach(() => {
@@ -26,6 +50,14 @@ describe("zero generate source-backed artifact commands", () => {
 
   function output(): string {
     return mockConsoleLog.mock.calls.flat().join("\n");
+  }
+
+  function pickFirst(): number {
+    return 0;
+  }
+
+  function pickLast(): number {
+    return 0.999_999;
   }
 
   it.each([
@@ -71,9 +103,16 @@ describe("zero generate source-backed artifact commands", () => {
 
       const stdout = output();
       expect(stdout).toContain(`# Zero generate ${command}`);
-      expect(stdout).toContain("federated generation source-selection packet");
+      expect(stdout).toContain("generation resource-selection packet");
+      expect(stdout).not.toContain("federated");
       expect(stdout).toContain(prompt);
       expect(stdout).toContain(template);
+      expect(stdout).toContain('"type": "git"');
+      expect(stdout).not.toContain("vm0-ai/vm0-skills");
+      expect(stdout).toContain(
+        "Source: `nexu-io/open-design@3fb620af423534643677c7c6fae76be088fa770a`",
+      );
+      expect(stdout).not.toContain("Sources:");
       expect(stdout).toContain(`Artifact kind: ${command}`);
       expect(stdout).toContain("## Artifact Output Model");
       expect(stdout).toContain(
@@ -91,16 +130,6 @@ describe("zero generate source-backed artifact commands", () => {
       expect(stdout).toContain(
         "Check that shapes, charts, images, or decorative graphics do not cover readable text",
       );
-      expect(stdout).toContain('"id": "skill:article-magazine"');
-      expect(stdout).not.toContain('"id": "skill:design-brief"');
-      if (command === "poster") {
-        expect(stdout).toContain('"id": "skill:algorithmic-art"');
-      } else {
-        expect(stdout).not.toContain('"id": "skill:algorithmic-art"');
-      }
-      expect(stdout).not.toContain('"id": "skill:slides"');
-      expect(stdout).not.toContain('"id": "skill:video-hyperframes"');
-      expect(stdout).not.toContain('"id": "skill:8-bit-orbit-video-template"');
     },
   );
 
@@ -127,9 +156,7 @@ describe("zero generate source-backed artifact commands", () => {
   });
 
   it("returns every registered skill when no target is requested", () => {
-    const selection = selectResourceCandidates();
-
-    expect(selection.candidates.skills).toEqual(
+    expect(listSkills()).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: "skill:theme-factory",
@@ -145,34 +172,22 @@ describe("zero generate source-backed artifact commands", () => {
   });
 
   it("filters skill candidates by target when requested", () => {
-    const websiteSkillIds = selectResourceCandidates(
-      "website",
-    ).candidates.skills.map((skill) => {
+    const websiteSkillIds = listSkills("website").map((skill) => {
       return skill.id;
     });
-    const reportSkillIds = selectResourceCandidates(
-      "report",
-    ).candidates.skills.map((skill) => {
+    const reportSkillIds = listSkills("report").map((skill) => {
       return skill.id;
     });
-    const posterSkillIds = selectResourceCandidates(
-      "poster",
-    ).candidates.skills.map((skill) => {
+    const posterSkillIds = listSkills("poster").map((skill) => {
       return skill.id;
     });
-    const presentationSkillIds = selectResourceCandidates(
-      "presentation",
-    ).candidates.skills.map((skill) => {
+    const presentationSkillIds = listSkills("presentation").map((skill) => {
       return skill.id;
     });
-    const imageSkillIds = selectResourceCandidates(
-      "image",
-    ).candidates.skills.map((skill) => {
+    const imageSkillIds = listSkills("image").map((skill) => {
       return skill.id;
     });
-    const videoSkillIds = selectResourceCandidates(
-      "intro-video",
-    ).candidates.skills.map((skill) => {
+    const videoSkillIds = listSkills("intro-video").map((skill) => {
       return skill.id;
     });
 
@@ -199,10 +214,58 @@ describe("zero generate source-backed artifact commands", () => {
     expect(videoSkillIds).toContain("skill:8-bit-orbit-video-template");
   });
 
-  it("returns every registered template and design system", () => {
-    const selection = selectResourceCandidates();
+  it("samples five target-compatible skills and design systems without replacement", () => {
+    const first = buildResourceCandidateSlice("report", {
+      samplingEnabled: true,
+      random: pickFirst,
+    });
+    const repeated = buildResourceCandidateSlice("report", {
+      samplingEnabled: true,
+      random: pickFirst,
+    });
+    const alternate = buildResourceCandidateSlice("report", {
+      samplingEnabled: true,
+      random: pickLast,
+    });
+    const skillIds = first.candidates.skills.items.map((skill) => {
+      return skill.id;
+    });
+    const designSystemIds = first.candidates.designSystems.items.map(
+      (designSystem) => {
+        return designSystem.id;
+      },
+    );
 
-    expect(selection.candidates.templates).toEqual(
+    expect(skillIds).toHaveLength(5);
+    expect(new Set(skillIds).size).toBe(5);
+    expect(first.candidates.skills.source).toEqual({
+      type: "git",
+      repo: "nexu-io/open-design",
+      ref: "3fb620af423534643677c7c6fae76be088fa770a",
+    });
+    expect(
+      first.candidates.skills.items.every((skill) => {
+        return skill.targets?.includes("report") ?? false;
+      }),
+    ).toBe(true);
+    expect(designSystemIds).toHaveLength(5);
+    expect(new Set(designSystemIds).size).toBe(5);
+    expect(repeated.candidates.skills.items).toEqual(
+      first.candidates.skills.items,
+    );
+    expect(repeated.candidates.designSystems.items).toEqual(
+      first.candidates.designSystems.items,
+    );
+    expect(alternate.candidates.skills.items).not.toEqual(
+      first.candidates.skills.items,
+    );
+    expect(alternate.candidates.designSystems.items).not.toEqual(
+      first.candidates.designSystems.items,
+    );
+  });
+
+  it("returns every registered template and design system", () => {
+    expect(listTemplates()).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: "template:finance-report",
@@ -210,7 +273,7 @@ describe("zero generate source-backed artifact commands", () => {
         }),
       ]),
     );
-    expect(selection.candidates.designSystems).toEqual(
+    expect(listDesignSystems()).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: "design-system:shopify",
@@ -240,40 +303,114 @@ describe("zero generate source-backed artifact commands", () => {
     expect(stdout).not.toContain('"audioStyle"');
     expect(stdout).not.toContain('"videoTemplate"');
     expect(stdout).not.toContain('"bundleTemplate"');
+    expect(stdout).not.toContain('"websiteR2"');
+    expect(stdout).not.toContain('"type": "r2-archive"');
+    expect(stdout.match(/"kind": "skill"/gu)).toHaveLength(5);
+    expect(stdout.match(/"kind": "design-system"/gu)).toHaveLength(5);
   });
 
-  it("filters template candidates by target when requested", () => {
-    const websiteSelection = selectResourceCandidates("website");
-    const presentationSelection = selectResourceCandidates("presentation");
+  it("keeps full candidate pools when candidate sampling is disabled", async () => {
+    vi.stubEnv("ZERO_TOKEN", zeroToken(false));
 
-    expect(websiteSelection.candidates.templates).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: "template:warm-cards",
-          source: expect.objectContaining({
-            path: "warm-cards",
-            archive: expect.objectContaining({ type: "tar.gz" }),
-          }),
-        }),
-      ]),
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "report",
+      "--prompt",
+      "Q2 generation usage report",
+      "--site-slug",
+      "report-demo",
+    ]);
+
+    const stdout = output();
+    expect(stdout.match(/"kind": "skill"/gu)).toHaveLength(
+      listSkills("report").length,
     );
-    expect(websiteSelection.candidates.templates).toEqual(
+    expect(stdout.match(/"kind": "design-system"/gu)).toHaveLength(
+      listDesignSystems().length,
+    );
+  });
+
+  it("keeps filtered Open Design templates and samples five R2 website templates", () => {
+    const websiteSelection = buildResourceCandidateSlice("website", {
+      samplingEnabled: true,
+      random: pickFirst,
+    });
+    const repeatedWebsiteSelection = buildResourceCandidateSlice("website", {
+      samplingEnabled: true,
+      random: pickFirst,
+    });
+    const alternateWebsiteSelection = buildResourceCandidateSlice("website", {
+      samplingEnabled: true,
+      random: pickLast,
+    });
+    const fullWebsiteSelection = buildResourceCandidateSlice("website", {
+      samplingEnabled: false,
+      random: pickFirst,
+    });
+    const presentationSelection = buildResourceCandidateSlice("presentation", {
+      samplingEnabled: true,
+      random: pickFirst,
+    });
+    const websiteR2 = websiteSelection.candidates.templates.websiteR2;
+    const expectedOpenDesignTemplates = listTemplates("website").filter(
+      (template) => {
+        return template.source.archive === undefined;
+      },
+    );
+
+    expect(websiteSelection.candidates.templates.openDesign.items).toEqual(
+      expectedOpenDesignTemplates,
+    );
+    expect(websiteSelection.candidates.templates.openDesign.items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: "template:saas-landing" }),
         expect.objectContaining({ id: "template:web-prototype" }),
       ]),
     );
-    expect(websiteSelection.candidates.templates).not.toEqual(
+    expect(websiteSelection.candidates.templates.openDesign.items).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: "template:html-ppt-pitch-deck" }),
       ]),
     );
-    expect(presentationSelection.candidates.templates).toHaveLength(0);
+    expect(websiteR2?.source).toEqual({
+      type: "r2-archive",
+      resolver: "zero-resource-pull",
+    });
+    expect(websiteR2?.items).toHaveLength(5);
+    expect(
+      new Set(
+        websiteR2?.items.map((template) => {
+          return template.id;
+        }),
+      ).size,
+    ).toBe(5);
+    expect(
+      websiteR2?.items.every((template) => {
+        return template.source.archive?.type === "tar.gz";
+      }),
+    ).toBe(true);
+    expect(
+      repeatedWebsiteSelection.candidates.templates.websiteR2?.items,
+    ).toEqual(websiteR2?.items);
+    expect(
+      alternateWebsiteSelection.candidates.templates.websiteR2?.items,
+    ).not.toEqual(websiteR2?.items);
+    expect(fullWebsiteSelection.candidates.templates.websiteR2?.items).toEqual(
+      listTemplates("website").filter((template) => {
+        return template.source.archive !== undefined;
+      }),
+    );
+    expect(
+      presentationSelection.candidates.templates.openDesign.items,
+    ).toHaveLength(0);
+    expect(
+      presentationSelection.candidates.templates.websiteR2,
+    ).toBeUndefined();
   });
 
   it("annotates every template entry with at least one target", () => {
-    const selection = selectResourceCandidates();
-    for (const template of selection.candidates.templates) {
+    for (const template of listTemplates()) {
       expect(
         template.targets,
         `${template.id} is missing the targets field`,
@@ -286,8 +423,7 @@ describe("zero generate source-backed artifact commands", () => {
   });
 
   it("annotates every skill entry with targets", () => {
-    const selection = selectResourceCandidates();
-    for (const skill of selection.candidates.skills) {
+    for (const skill of listSkills()) {
       expect(
         skill.targets,
         `${skill.id} is missing the targets field`,

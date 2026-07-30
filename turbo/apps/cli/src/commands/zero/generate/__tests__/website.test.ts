@@ -48,20 +48,20 @@ describe("zero generate website command", () => {
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain("# Zero generate website");
-    expect(stdout).toContain("federated generation source-selection packet");
+    expect(stdout).toContain("generation resource-selection packet");
+    expect(stdout).not.toContain("federated");
     expect(stdout).toContain("## Stage 1: Resource Selection");
     expect(stdout).toContain("## Candidate Registry Slice");
     expect(stdout).toContain("observability launch site");
-    expect(stdout).toContain("template:black-slabs");
+    expect(stdout).toContain('"websiteR2"');
+    expect(stdout).toContain('"type": "r2-archive"');
+    expect(stdout).toContain('"resolver": "zero-resource-pull"');
     expect(stdout).toContain("template:web-prototype-taste-editorial");
     expect(stdout).toContain(
-      "For landing, marketing, official brand or product, and launch pages, select a vm0 built-in website template.",
+      "For landing, marketing, official brand or product, and launch pages, select a template from `templates.websiteR2.items`.",
     );
     expect(stdout).toContain(
-      "For other HTML or website requests, select an Open Design template based on intent; when ambiguous, prefer Open Design.",
-    );
-    expect(stdout).toContain(
-      "Built-in website candidates have `source.archive`; candidates without it are Open Design templates.",
+      "For other HTML or website requests, select from `templates.openDesign.items` based on intent; when ambiguous, prefer Open Design.",
     );
     expect(stdout).not.toContain("template:html-ppt-pitch-deck");
     expect(stdout).toContain(
@@ -138,11 +138,7 @@ describe("zero generate website command", () => {
     expect(stdout).toContain(
       "Selected template package: zero resource pull template:dot-matrix --dir ./generated/resources",
     );
-    expect(stdout).toContain('"id": "template:dot-matrix"');
     expect(stdout).toContain('"type": "tar.gz"');
-    expect(stdout).toContain(
-      '"sha256": "f489a51fb99d8fadff8712d0406df06ac1a530116ebe612ab3f8605daa2bcce2"',
-    );
   });
 
   it("should accept the built-in website picker id for --template", async () => {
