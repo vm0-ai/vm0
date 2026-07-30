@@ -1116,7 +1116,6 @@ export {
   type ZeroComposesListContract,
 } from "./zero-composes";
 export {
-  zeroRunsMainContract,
   zeroRunsByIdContract,
   zeroRunsCancelContract,
   zeroRunsQueueContract,
@@ -1125,7 +1124,6 @@ export {
   zeroRunNetworkLogsContract,
   zeroRunRunnerContract,
   zeroLogsSearchContract,
-  type ZeroRunsMainContract,
   type ZeroRunsByIdContract,
   type ZeroRunsCancelContract,
   type ZeroRunsQueueContract,

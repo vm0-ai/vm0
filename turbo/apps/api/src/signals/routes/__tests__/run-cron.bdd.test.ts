@@ -64,10 +64,12 @@ async function createAgentWithModelProvider(actor: ApiTestUser): Promise<{
 }
 
 describe("RUN-01: run creation admission and validation", () => {
-  it("rejects invalid or unauthorized run creation requests through API validation", async () => {
+  it("rejects invalid or unauthorized chat run requests through API validation", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const actor = bdd.user();
+
+    await expect(api.requestRemovedZeroRunCreation(actor)).resolves.toBe(404);
 
     const unauthenticated = await api.requestCreateRun(
       null,
@@ -88,31 +90,6 @@ describe("RUN-01: run creation admission and validation", () => {
     );
     expectApiError(missingAgent.body);
     expect(missingAgent.body.error.code).toBe("BAD_REQUEST");
-
-    const invalidTools = await api.requestCreateRun(
-      actor,
-      {
-        agentId: randomUUID(),
-        prompt: "use a malformed tool list",
-        tools: ["Bash,Read"],
-        modelProvider: "anthropic-api-key",
-      },
-      [400],
-    );
-    expectApiError(invalidTools.body);
-    expect(invalidTools.body.error.code).toBe("BAD_REQUEST");
-
-    const missingSession = await api.requestCreateRun(
-      actor,
-      {
-        sessionId: randomUUID(),
-        prompt: "resume a missing session",
-        modelProvider: "anthropic-api-key",
-      },
-      [404],
-    );
-    expectApiError(missingSession.body);
-    expect(missingSession.body.error.code).toBe("NOT_FOUND");
 
     const missingAgentId = await api.requestCreateRun(
       actor,
@@ -141,13 +118,10 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
         agentId,
         prompt: "Produce a concise status report.",
         modelProvider: "anthropic-api-key",
-        tools: ["Bash"],
-        settings: "{}",
       },
-      [402],
+      [201],
     );
-    expectApiError(denied.body);
-    expect(denied.body.error.code).toBe("INSUFFICIENT_CREDITS");
+    expect(denied.body.runId).toBeNull();
 
     const queue = await api.readRunQueue(actor);
     expect(queue.body.concurrency.active).toBe(0);

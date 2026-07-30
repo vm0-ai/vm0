@@ -9,11 +9,7 @@ import {
   seedOrgMetadata,
   seedUsagePricingRows,
 } from "../../../test-fixtures/system-config-seeds";
-import {
-  createBddApi,
-  expectApiError,
-  type ApiTestUser,
-} from "./helpers/api-bdd";
+import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -456,7 +452,7 @@ describe("Usage Allowance", () => {
     await expect(readRunCreditsCharged(actor, run.runId)).resolves.toBe(10);
   });
 
-  it("rejects vm0 run admission after allowance is exhausted", async () => {
+  it("does not create a vm0 run after allowance is exhausted", async () => {
     const { actor, agentId } = await vm0AllowanceActor({
       credits: 0,
       allowance: { shortWindowUnits: 1, weeklyWindowUnits: 1 },
@@ -483,11 +479,10 @@ describe("Usage Allowance", () => {
         prompt: "vm0 run rejected after allowance exhaustion",
         modelProvider: "vm0",
       },
-      [402],
+      [201],
     );
 
-    expectApiError(rejected.body);
-    expect(rejected.body.error.code).toBe("INSUFFICIENT_CREDITS");
+    expect(rejected.body.runId).toBeNull();
   });
 
   it("leases billable firewall auth from allowance and denies it after exhaustion", async () => {

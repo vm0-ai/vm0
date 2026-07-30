@@ -145,13 +145,21 @@ async function createSupportRun(
   options: { readonly prompt?: string; readonly sessionId?: string } = {},
 ): Promise<SupportRun> {
   const api = createRunsApi(context);
-  const run = await api.createRun(seed.actor, {
-    agentId: seed.agentId,
-    ...(options.sessionId === undefined
-      ? {}
-      : { sessionId: options.sessionId }),
-    prompt: options.prompt ?? "Support precondition",
-    modelProvider: "anthropic-api-key",
+  const prompt = options.prompt ?? "Support precondition";
+  if (options.sessionId === undefined) {
+    const run = await api.createRun(seed.actor, {
+      agentId: seed.agentId,
+      prompt,
+      modelProvider: "anthropic-api-key",
+    });
+    return {
+      runId: run.runId,
+      sessionId: await api.readRunSessionId(seed.actor, run.runId),
+    };
+  }
+  const run = await api.createDirectRun(seed.actor, {
+    sessionId: options.sessionId,
+    prompt,
   });
   return { runId: run.runId, sessionId: run.sessionId };
 }

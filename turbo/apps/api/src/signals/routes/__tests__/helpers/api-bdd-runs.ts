@@ -11,6 +11,8 @@ import {
   composesMainContract,
   type ZeroCapability,
 } from "@vm0/api-contracts/contracts/composes";
+import { chatEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
 import { runsMainContract } from "@vm0/api-contracts/contracts/runs";
 import { webhookStripeContract } from "@vm0/api-contracts/contracts/webhooks";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
@@ -41,10 +43,10 @@ import {
 } from "@vm0/api-contracts/contracts/runners";
 import {
   zeroRunsCancelContract,
+  zeroRunCreateBodySchema,
   zeroRunContextContract,
   zeroRunRunnerContract,
   zeroRunsByIdContract,
-  zeroRunsMainContract,
   zeroRunsQueueContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
@@ -76,6 +78,8 @@ import { zeroBillingStatusRoutes } from "../../zero-billing-status";
 import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
 import { zeroModelProvidersRoutes } from "../../zero-model-providers";
 import { zeroRunDetailRoutes } from "../../zero-run-detail";
+import { zeroChatEventsRoutes } from "../../zero-chat-events";
+import { zeroLogsRoutes } from "../../zero-logs";
 import { zeroRunsCancelRoutes } from "../../zero-runs-cancel";
 import { zeroRunsRoutes } from "../../zero-runs";
 import { zeroUserPermissionGrantsRoutes } from "../../zero-user-permission-grants";
@@ -83,7 +87,9 @@ import { createBddApi, type ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 type AuthHeaders = { readonly authorization?: string };
-type ZeroRunRequest = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
+type ZeroRunRequest = z.infer<typeof zeroRunCreateBodySchema> & {
+  readonly threadId?: string;
+};
 type DirectRunRequest = z.infer<(typeof runsMainContract.create)["body"]>;
 type RunsListQuery = z.input<(typeof runsMainContract.list)["query"]>;
 type RunnerJobClaimRequest = z.infer<
@@ -159,6 +165,8 @@ const runRoutes = [
   ...zeroModelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
   ...zeroRunDetailRoutes,
+  ...zeroChatEventsRoutes,
+  ...zeroLogsRoutes,
   ...zeroRunsRoutes,
   ...zeroRunsCancelRoutes,
   ...zeroAgentsRoutes,
@@ -258,6 +266,35 @@ function runnerHeartbeatBody(
   };
 }
 
+function chatEventBodyFromRunRequest(body: ZeroRunRequest) {
+  return {
+    agentId: body.agentId ?? "",
+    prompt: body.prompt,
+    ...(body.threadId === undefined ? {} : { threadId: body.threadId }),
+    ...(body.realAgentInPreview === undefined
+      ? {}
+      : { realAgentInPreview: body.realAgentInPreview }),
+    userMessage: {
+      version: 1 as const,
+      parts: [{ type: "text" as const, text: body.prompt }],
+    },
+  };
+}
+
+function requireCreatedChatRun(
+  body: z.infer<(typeof chatEventsContract.send)["responses"][201]>,
+) {
+  if (body.runId === null || body.status === undefined) {
+    throw new Error("Expected chat event to create a run");
+  }
+  return {
+    runId: body.runId,
+    threadId: body.threadId,
+    status: body.status,
+    createdAt: body.createdAt,
+  };
+}
+
 export function createRunsApi(context: TestContext) {
   const applyUserPermissionGrantRequestBody = (
     body: {
@@ -285,6 +322,23 @@ export function createRunsApi(context: TestContext) {
   };
 
   return {
+    async requestRemovedZeroRunCreation(actor: ApiTestUser): Promise<number> {
+      const { authorization } = authenticate(context, actor);
+      const app = createAppWithRoutes({
+        signal: context.signal,
+        routes: runRoutes,
+      });
+      const response = await app.request("/api/zero/runs", {
+        method: "POST",
+        headers: {
+          ...(authorization === undefined ? {} : { authorization }),
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ agentId: randomUUID(), prompt: "removed" }),
+      });
+      return response.status;
+    },
+
     configureRunnerGroup(): string {
       const group = `vm0/bdd-${randomUUID().slice(0, 8)}`;
       mockOptionalEnv("RUNNER_DEFAULT_GROUP", group);
@@ -424,13 +478,13 @@ export function createRunsApi(context: TestContext) {
 
     async createRun(actor: ApiTestUser, body: ZeroRunRequest) {
       const response = await accept(
-        runApp(context)(zeroRunsMainContract).create({
+        runApp(context)(chatEventsContract).send({
           headers: authenticate(context, actor),
-          body,
+          body: chatEventBodyFromRunRequest(body),
         }),
         [201],
       );
-      return response.body;
+      return requireCreatedChatRun(response.body);
     },
 
     async claimRunnerJob(runId: string, body: RunnerJobClaimRequest = {}) {
@@ -843,51 +897,53 @@ export function createRunsApi(context: TestContext) {
       return response.body;
     },
 
-    async requestCreateRun(
+    async requestCreateRun<
+      Status extends 201 | 400 | 401 | 402 | 403 | 404 | 409 | 422,
+    >(
       actor: ApiTestUser | null,
       body: ZeroRunRequest,
-      statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
+      statuses: readonly Status[],
       extraHeaders?: Readonly<Record<string, string>>,
     ) {
       return await accept(
-        runApp(context)(zeroRunsMainContract).create({
+        runApp(context)(chatEventsContract).send({
           headers: {
             ...authenticate(context, actor),
             ...extraHeaders,
           },
-          body,
+          body: chatEventBodyFromRunRequest(body),
         }),
         statuses,
       );
     },
 
-    async requestCreateRunUnchecked(
-      actor: ApiTestUser | null,
-      body: unknown,
-      statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
-    ) {
+    async requestCreateRunUnchecked<
+      Status extends 201 | 400 | 401 | 402 | 403 | 404 | 409 | 422,
+    >(actor: ApiTestUser | null, body: unknown, statuses: readonly Status[]) {
       return await accept(
-        runApp(context)(zeroRunsMainContract).create({
+        runApp(context)(chatEventsContract).send({
           headers: authenticate(context, actor),
-          body: body as ZeroRunRequest,
+          body: chatEventBodyFromRunRequest(body as ZeroRunRequest),
         }),
         statuses,
       );
     },
 
     /**
-     * Creates a zero run with a raw bearer credential (run-scoped zero token
-     * or sandbox token taken from a runner claim) instead of a Clerk session.
+     * Sends a chat run request with a raw bearer credential instead of a
+     * Clerk session.
      */
-    async requestCreateRunAs(
+    async requestCreateRunAs<
+      Status extends 201 | 400 | 401 | 402 | 403 | 404 | 409 | 422,
+    >(
       authorization: string,
       body: ZeroRunRequest,
-      statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
+      statuses: readonly Status[],
     ) {
       return await accept(
-        runApp(context)(zeroRunsMainContract).create({
+        runApp(context)(chatEventsContract).send({
           headers: { authorization },
-          body,
+          body: chatEventBodyFromRunRequest(body),
         }),
         statuses,
       );
@@ -902,6 +958,20 @@ export function createRunsApi(context: TestContext) {
         [200],
       );
       return response.body;
+    },
+
+    async readRunSessionId(actor: ApiTestUser, runId: string): Promise<string> {
+      const detail = await accept(
+        runApp(context)(logsByIdContract).getById({
+          headers: authenticate(context, actor),
+          params: { id: runId },
+        }),
+        [200],
+      );
+      if (detail.body.sessionId === null) {
+        throw new Error(`Expected run ${runId} to expose a session id`);
+      }
+      return detail.body.sessionId;
     },
 
     async requestReadRun(
@@ -975,6 +1045,20 @@ export function createRunsApi(context: TestContext) {
       return await accept(
         runApp(context)(zeroRunsCancelContract).cancel({
           headers: authenticate(context, actor),
+          params: { id: runId },
+        }),
+        statuses,
+      );
+    },
+
+    async requestCancelRunAs<Status extends 200 | 400 | 401 | 403 | 404>(
+      authorization: string,
+      runId: string,
+      statuses: readonly Status[],
+    ) {
+      return await accept(
+        runApp(context)(zeroRunsCancelContract).cancel({
+          headers: { authorization },
           params: { id: runId },
         }),
         statuses,
