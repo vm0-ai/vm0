@@ -413,7 +413,7 @@ async def test_unavailable_flow_stays_unavailable_after_cache_recovers(
 
     assert unavailable_flow.response.status_code == 401
     assert unavailable_flow.response.content == b"upstream auth error"
-    assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in unavailable_flow.metadata
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in unavailable_flow.metadata
     assert _response_connector(recovered_flow) == "recovered"
 
 
@@ -473,4 +473,4 @@ async def test_untrusted_or_invalid_cache_has_no_generated_diagnostic_fallback(
 
     assert flow.response.status_code == 401
     assert flow.response.content == b"upstream auth error"
-    assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
