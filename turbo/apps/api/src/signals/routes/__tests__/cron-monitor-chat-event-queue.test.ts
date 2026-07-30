@@ -105,6 +105,8 @@ describe("cron monitor chat event queue", () => {
     await Promise.all([
       trackFixture(seedFixture("active-run")),
       trackFixture(seedFixture("failed-message")),
+      trackFixture(seedFixture("legacy-queued-integration")),
+      trackFixture(seedFixture("queued-integration")),
       trackFixture(seedFixture("queued-message")),
       trackFixture(seedFixture("revoked-message")),
     ]);

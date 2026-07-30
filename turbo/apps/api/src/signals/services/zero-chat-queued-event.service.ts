@@ -1,5 +1,6 @@
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
+import { chatInputQueueParams } from "@vm0/db/schema/chat-input-queue-params";
 import {
   chatEvents,
   type ChatEventAttachFileMetadata,
@@ -109,6 +110,14 @@ type QueuedUserMessageRunParams = z.infer<
 
 const queuedChatEvent = alias(chatEvents, "queued_chat_message");
 const queuedChatEventRevoker = alias(chatEvents, "queued_chat_message_revoker");
+const queuedEncryptedParams = sql`COALESCE(
+  ${chatInputQueueParams.encryptedParams},
+  ${chatEvents.encryptedParams}
+)`.mapWith(chatEvents.encryptedParams);
+const queuedAttachFileMetadata = sql`COALESCE(
+  ${chatInputQueueParams.attachFileMetadata},
+  ${chatEvents.attachFileMetadata}
+)`.mapWith(chatEvents.attachFileMetadata);
 
 export interface QueuedUserMessage {
   readonly id: string;
@@ -246,17 +255,21 @@ export async function loadNextUnclaimedQueuedUserMessage(
       id: chatEvents.id,
       userMessage: chatEvents.userMessage,
       attachFiles: chatEvents.attachFiles,
-      attachFileMetadata: chatEvents.attachFileMetadata,
+      attachFileMetadata: queuedAttachFileMetadata,
       generationTemplate: chatEvents.generationTemplate,
       modelProviderId: sql`NULL`.mapWith(pgNullDecoder),
       modelProviderType: sql`NULL`.mapWith(pgNullDecoder),
       modelProviderCredentialScope: sql`NULL`.mapWith(pgNullDecoder),
       selectedModel: chatThreads.selectedModel,
       triggerSource: chatEvents.triggerSource,
-      encryptedParams: chatEvents.encryptedParams,
+      encryptedParams: queuedEncryptedParams,
     })
     .from(chatEvents)
     .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
+    .leftJoin(
+      chatInputQueueParams,
+      eq(chatInputQueueParams.eventId, chatEvents.id),
+    )
     .where(
       and(
         eq(chatEvents.id, head.id),
@@ -330,11 +343,15 @@ async function appendClaimedUserMessage(
     .select({
       userMessage: chatEvents.userMessage,
       attachFiles: chatEvents.attachFiles,
-      attachFileMetadata: chatEvents.attachFileMetadata,
+      attachFileMetadata: queuedAttachFileMetadata,
       generationTemplate: chatEvents.generationTemplate,
       triggerSource: chatEvents.triggerSource,
     })
     .from(chatEvents)
+    .leftJoin(
+      chatInputQueueParams,
+      eq(chatInputQueueParams.eventId, chatEvents.id),
+    )
     .where(
       and(
         eq(chatEvents.id, args.eventId),
@@ -343,7 +360,7 @@ async function appendClaimedUserMessage(
         isNull(chatEvents.runId),
       ),
     )
-    .for("update")
+    .for("update", { of: chatEvents })
     .limit(1);
   if (!queued) {
     return null;
@@ -692,10 +709,14 @@ export async function failQueuedUserMessage(
       .select({
         userMessage: chatEvents.userMessage,
         attachFiles: chatEvents.attachFiles,
-        attachFileMetadata: chatEvents.attachFileMetadata,
+        attachFileMetadata: queuedAttachFileMetadata,
         generationTemplate: chatEvents.generationTemplate,
       })
       .from(chatEvents)
+      .leftJoin(
+        chatInputQueueParams,
+        eq(chatInputQueueParams.eventId, chatEvents.id),
+      )
       .where(
         and(
           eq(chatEvents.id, args.eventId),
@@ -704,7 +725,7 @@ export async function failQueuedUserMessage(
           isNull(chatEvents.runId),
         ),
       )
-      .for("update")
+      .for("update", { of: chatEvents })
       .limit(1);
     if (!queued) {
       return null;
