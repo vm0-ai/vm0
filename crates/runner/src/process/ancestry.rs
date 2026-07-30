@@ -67,7 +67,7 @@ fn is_orphan_from_walk(walk: PpidChainWalk) -> bool {
 /// `runner → sudo → ip netns exec → sudo -u → firecracker`, so checking
 /// only the immediate ppid is insufficient. This function walks up the
 /// process tree until it either finds a runner PID (not orphan) or reaches
-/// PID 1 / init or the PPid 0 boundary (orphan), reading at most 16 parent
+/// PID 1 / init or the PPID 0 boundary (orphan), reading at most 16 parent
 /// entries.
 ///
 /// Returns `false` (not orphan) when the ppid chain cannot be read or the
