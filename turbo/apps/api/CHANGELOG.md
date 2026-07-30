@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.355.0](https://github.com/vm0-ai/vm0/compare/api-v1.354.0...api-v1.355.0) (2026-07-30)
+
+
+### Features
+
+* **platform:** support italian locale ([#24056](https://github.com/vm0-ai/vm0/issues/24056)) ([21d5c14](https://github.com/vm0-ai/vm0/commit/21d5c1459b5a044d3973fa9431ea3ce80c4deacd))
+* **platform:** support spanish locale ([#24052](https://github.com/vm0-ai/vm0/issues/24052)) ([e6bb124](https://github.com/vm0-ai/vm0/commit/e6bb12414447aad1817787f4b3c1b01010a3102f))
+
+
+### Bug Fixes
+
+* **api:** enforce column encoding for typed comparison values ([#24104](https://github.com/vm0-ai/vm0/issues/24104)) ([6b4299c](https://github.com/vm0-ai/vm0/commit/6b4299ce543e93e1dace83f137d17c0c8e19d5d8))
+
+
+### Refactoring
+
+* **api:** remove legacy connector client schema aliases ([#24108](https://github.com/vm0-ai/vm0/issues/24108)) ([cfde606](https://github.com/vm0-ai/vm0/commit/cfde606e0e7dc755e8ff3e407b0b0cf79f19a3cc))
+* **api:** retire legacy integration callbacks ([#24123](https://github.com/vm0-ai/vm0/issues/24123)) ([ef51913](https://github.com/vm0-ai/vm0/commit/ef519139c96fb14e7bf1d568210459eb8aeedb2e))
+* **api:** write test trigger source explicitly ([#24114](https://github.com/vm0-ai/vm0/issues/24114)) ([a4d2cde](https://github.com/vm0-ai/vm0/commit/a4d2cde9fa674807337db05b756bbc9f466f97d4))
+* **connectors:** write canonical authorization state ([#24125](https://github.com/vm0-ai/vm0/issues/24125)) ([83786a4](https://github.com/vm0-ai/vm0/commit/83786a4080292da076976d3a1d35515f539c22a3))
+* **db:** add chat automation context ([#24119](https://github.com/vm0-ai/vm0/issues/24119)) ([97e1ae6](https://github.com/vm0-ai/vm0/commit/97e1ae620722818b78494a88484bdc5cbecb1b94))
+* **insights:** remove legacy connector type ([#24101](https://github.com/vm0-ai/vm0/issues/24101)) ([e6de42c](https://github.com/vm0-ai/vm0/commit/e6de42c3e36d3bbe904b976dff3efd46b1152d9f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.255.0
+    * @vm0/core bumped to 8.495.0
+    * @vm0/db bumped to 1.157.2
+
 ## [1.354.0](https://github.com/vm0-ai/vm0/compare/api-v1.353.0...api-v1.354.0) (2026-07-30)
 
 

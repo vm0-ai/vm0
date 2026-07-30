@@ -45,7 +45,6 @@ import {
   type DayAutomation,
   type DayChat,
   type NetworkInsightsData,
-  type PermissionEntry,
 } from "../../signals/network-insights/network-insights-signals.ts";
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
@@ -970,12 +969,6 @@ function connectorLabel(
   );
 }
 
-function permissionConnectorSlug(
-  permission: PermissionEntry,
-): string | undefined {
-  return permission.connectorSlug ?? permission.connectorType;
-}
-
 function permissionLabel(
   label: string,
   connectorSlug: string | undefined,
@@ -1132,7 +1125,7 @@ function PermissionsAllowedCard({
         {visible.map((p) => {
           const isActive =
             hoveredAgent === null || p.agentNames.includes(hoveredAgent);
-          const connectorSlug = permissionConnectorSlug(p);
+          const connectorSlug = p.connectorSlug;
           const hasDescription =
             connectorSlug !== undefined && p.label !== connectorSlug;
           return (
@@ -1232,7 +1225,7 @@ function PermissionsBlockedCard({
           const isActive =
             hoveredAgent === null || p.agentNames.includes(hoveredAgent);
           const fullyBlocked = p.allowed === 0;
-          const connectorSlug = permissionConnectorSlug(p);
+          const connectorSlug = p.connectorSlug;
           return (
             <div
               key={`${connectorSlug ?? ""}:${p.label}`}

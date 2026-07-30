@@ -5388,8 +5388,15 @@
     {
       "idx": 769,
       "version": "7",
-      "when": 1785426016049,
-      "tag": "0769_rainy_umar",
+      "when": 1785425635301,
+      "tag": "0769_remove_insights_connector_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 770,
+      "version": "7",
+      "when": 1785427788905,
+      "tag": "0770_youthful_nightmare",
       "breakpoints": true
     }
   ]

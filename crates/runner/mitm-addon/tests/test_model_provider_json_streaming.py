@@ -337,6 +337,46 @@ class TestModelProviderJsonStreaming:
         assert usage_warnings[0]["error"] == "incomplete compressed body"
 
     @pytest.mark.parametrize("encoding_case", ["gzip", "deflate"])
+    def test_full_pipeline_corrupt_trailing_zlib_member_does_not_report_decoded_usage(
+        self, tmp_path, real_flow, encoding_case
+    ):
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        flow = model_provider_flow(
+            real_flow,
+            tmp_path,
+            ANTHROPIC_JSON_CASE,
+            proxy_log_path=proxy_log_path,
+        )
+        payload = standard_success_payload(ANTHROPIC_JSON_CASE)
+        compress = gzip.compress if encoding_case == "gzip" else zlib.compress
+        trailing_member = bytearray(compress(b""))
+        checksum_offset = -8 if encoding_case == "gzip" else -1
+        trailing_member[checksum_offset] ^= 0xFF
+        compressed = compress(payload) + bytes(trailing_member)
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map(
+                {"content-type": "application/json", "content-encoding": encoding_case}
+            ),
+        )
+
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(compressed)
+
+        webhook = run_response(flow, self._usage_webhook_api)
+
+        assert webhook.request_count == 0
+        assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
+        entries = read_jsonl_entries_after_flush(proxy_log_path)
+        usage_warnings = [
+            entry
+            for entry in entries
+            if entry.get("message") == "Model provider JSON usage extraction failed"
+        ]
+        assert len(usage_warnings) == 1
+        assert usage_warnings[0]["error"] == "invalid compressed body"
+
+    @pytest.mark.parametrize("encoding_case", ["gzip", "deflate"])
     def test_full_pipeline_concatenated_zlib_model_json_reports_usage(
         self, tmp_path, real_flow, encoding_case
     ):
