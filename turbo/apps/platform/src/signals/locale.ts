@@ -57,12 +57,14 @@ export const setLocale$ = command(
 
 const applyLocalePreference$ = command(
   async (
-    { set },
+    { get, set },
     orgId: string,
     locale: SupportedLocale,
     signal: AbortSignal,
   ) => {
-    await set(setLocale$, locale, signal);
+    if (get(internalLocale$) !== locale) {
+      await set(setLocale$, locale, signal);
+    }
     set(writeCachedLocale$, orgId, locale);
   },
 );

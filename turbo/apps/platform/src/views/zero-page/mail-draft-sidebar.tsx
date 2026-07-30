@@ -250,13 +250,23 @@ function MailMessageHeader({
             {draft.cc.length > 0 ? (
               <>
                 <span aria-hidden="true"> · </span>
-                <span>cc {draft.cc.join(", ")}</span>
+                <span>
+                  {t(($) => {
+                    return $.chat.mail.cc;
+                  })}{" "}
+                  {draft.cc.join(", ")}
+                </span>
               </>
             ) : null}
             {draft.bcc.length > 0 ? (
               <>
                 <span aria-hidden="true"> · </span>
-                <span>bcc {draft.bcc.join(", ")}</span>
+                <span>
+                  {t(($) => {
+                    return $.chat.mail.bcc;
+                  })}{" "}
+                  {draft.bcc.join(", ")}
+                </span>
               </>
             ) : null}
           </div>

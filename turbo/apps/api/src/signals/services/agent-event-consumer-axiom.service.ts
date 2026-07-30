@@ -1,56 +1,35 @@
-import { command } from "ccstate";
-
-import { eventConsumerPayload$ } from "../../lib/event-consumer/route";
-import { flushAxiom, getDatasetName, ingestToAxiom } from "../external/axiom";
-import { tapError } from "../utils";
+import type { EventConsumerPayload } from "../../lib/event-consumer/verify";
+import { getDatasetName, ingestAxiomDirect } from "../external/axiom";
 
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
+const AXIOM_EVENT_INGEST_TIMEOUT_MS = 10_000;
 
-export const ingestAxiomEvents$ = command(
-  async ({ get }, signal: AbortSignal) => {
-    const payload = get(eventConsumerPayload$);
-    signal.throwIfAborted();
-
-    const axiomEvents = payload.events.map((event) => {
-      return {
-        runId: payload.runId,
-        userId: payload.context.userId,
-        sequenceNumber: event.sequenceNumber,
-        eventType: event.type,
-        eventData: event,
-      };
-    });
-
-    const ingested = ingestToAxiom(
-      getDatasetName(AGENT_RUN_EVENTS_DATASET),
-      axiomEvents,
-    );
-    if (!ingested) {
-      return {
-        status: 503 as const,
-        body: {
-          error: "Axiom agent-run-events dataset is not configured",
-        },
-      };
-    }
-
-    const flushed = await tapError(
-      (async () => {
-        await flushAxiom({ throwOnError: true, client: "sessions" });
-        return true;
-      })(),
-    );
-    signal.throwIfAborted();
-    if (!flushed) {
-      return {
-        status: 503 as const,
-        body: { error: "Axiom agent-run-events flush failed" },
-      };
-    }
-
+export async function ingestAxiomEvents(
+  payload: EventConsumerPayload,
+  signal: AbortSignal,
+): Promise<void> {
+  signal.throwIfAborted();
+  const axiomEvents = payload.events.map((event) => {
     return {
-      status: 200 as const,
-      body: { received: payload.events.length },
+      runId: payload.runId,
+      userId: payload.context.userId,
+      sequenceNumber: event.sequenceNumber,
+      eventType: event.type,
+      eventData: event,
     };
-  },
-);
+  });
+  const ingestSignal = AbortSignal.any([
+    signal,
+    AbortSignal.timeout(AXIOM_EVENT_INGEST_TIMEOUT_MS),
+  ]);
+
+  const result = await ingestAxiomDirect(
+    getDatasetName(AGENT_RUN_EVENTS_DATASET),
+    axiomEvents,
+    ingestSignal,
+  );
+  signal.throwIfAborted();
+  if (!result.configured) {
+    throw new Error("Axiom agent-run-events dataset is not configured");
+  }
+}

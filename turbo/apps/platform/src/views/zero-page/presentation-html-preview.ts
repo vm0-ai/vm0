@@ -1,3 +1,5 @@
+import { i18n } from "../../i18n/index.ts";
+
 const EDITABLE_SELECTOR = '[data-vm0-editable="text"]';
 const METADATA_SCRIPT_ID = "vm0-deck-metadata";
 const SLIDE_SELECTORS = [
@@ -283,7 +285,15 @@ export function parsePresentationPreviewDraft(
     return {
       id,
       notes: metadata.slides?.[id]?.speakerNotes ?? "",
-      title: slideTitle(slide, `Slide ${index + 1}`),
+      title: slideTitle(
+        slide,
+        i18n.t(
+          ($) => {
+            return $.artifacts.preview.slideTitle;
+          },
+          { number: index + 1 },
+        ),
+      ),
     };
   });
   const blocks = slideElements.flatMap(

@@ -1,3 +1,5 @@
+import { i18n } from "../../i18n/index.ts";
+
 export interface GithubConnectParams {
   installationId: string;
   githubUserId: string;
@@ -6,14 +8,16 @@ export interface GithubConnectParams {
   signature: string;
 }
 
+type GithubConnectParamErrorCode =
+  | "incomplete"
+  | "invalid_installation"
+  | "invalid_signature"
+  | "invalid_timestamp"
+  | "invalid_user"
+  | "invalid_username";
+
 interface GithubConnectParamError {
-  code:
-    | "incomplete"
-    | "invalid_installation"
-    | "invalid_signature"
-    | "invalid_timestamp"
-    | "invalid_user"
-    | "invalid_username";
+  code: GithubConnectParamErrorCode;
   title: string;
   message: string;
 }
@@ -56,6 +60,58 @@ function encodeReturnPath(params: GithubConnectParams): string {
   return `/github/connect?${search.toString()}`;
 }
 
+function githubConnectParamError(
+  code: GithubConnectParamErrorCode,
+): ParsedGithubConnectParams {
+  const title =
+    code === "incomplete"
+      ? i18n.t(($) => {
+          return $.connectors.providerConnect.github.linkIncompleteTitle;
+        })
+      : i18n.t(($) => {
+          return $.connectors.providerConnect.github.invalidTitle;
+        });
+  const message = (() => {
+    switch (code) {
+      case "incomplete": {
+        return i18n.t(($) => {
+          return $.connectors.providerConnect.github.linkIncomplete;
+        });
+      }
+      case "invalid_installation": {
+        return i18n.t(($) => {
+          return $.connectors.providerConnect.github.invalidInstallation;
+        });
+      }
+      case "invalid_signature": {
+        return i18n.t(($) => {
+          return $.connectors.providerConnect.github.invalidSignature;
+        });
+      }
+      case "invalid_timestamp": {
+        return i18n.t(($) => {
+          return $.connectors.providerConnect.github.invalidTimestamp;
+        });
+      }
+      case "invalid_user": {
+        return i18n.t(($) => {
+          return $.connectors.providerConnect.github.invalidUser;
+        });
+      }
+      case "invalid_username": {
+        return i18n.t(($) => {
+          return $.connectors.providerConnect.github.invalidUsername;
+        });
+      }
+    }
+  })();
+  return {
+    ok: false,
+    returnPath: "/github/connect",
+    error: { code, title, message },
+  };
+}
+
 export function parseGithubConnectParams(
   searchParams: SearchParams,
 ): ParsedGithubConnectParams {
@@ -68,88 +124,32 @@ export function parseGithubConnectParams(
   const signature = firstParam(searchParams, "sig")?.trim();
 
   if (!installationId || !githubUserId || !tsRaw || !signature) {
-    return {
-      ok: false,
-      returnPath: "/github/connect",
-      error: {
-        code: "incomplete",
-        title: "Connect link is incomplete",
-        message: "Open a fresh GitHub connect link and try again.",
-      },
-    };
+    return githubConnectParamError("incomplete");
   }
 
   if (!/^\d+$/.test(installationId)) {
-    return {
-      ok: false,
-      returnPath: "/github/connect",
-      error: {
-        code: "invalid_installation",
-        title: "Connect link is invalid",
-        message: "The GitHub installation on this link is not valid.",
-      },
-    };
+    return githubConnectParamError("invalid_installation");
   }
 
   if (!/^\d+$/.test(githubUserId)) {
-    return {
-      ok: false,
-      returnPath: "/github/connect",
-      error: {
-        code: "invalid_user",
-        title: "Connect link is invalid",
-        message: "The GitHub user on this link is not valid.",
-      },
-    };
+    return githubConnectParamError("invalid_user");
   }
 
   if (!/^\d+$/.test(tsRaw)) {
-    return {
-      ok: false,
-      returnPath: "/github/connect",
-      error: {
-        code: "invalid_timestamp",
-        title: "Connect link is invalid",
-        message: "The timestamp on this link is not valid.",
-      },
-    };
+    return githubConnectParamError("invalid_timestamp");
   }
 
   const timestamp = Number(tsRaw);
   if (!Number.isSafeInteger(timestamp) || timestamp <= 0) {
-    return {
-      ok: false,
-      returnPath: "/github/connect",
-      error: {
-        code: "invalid_timestamp",
-        title: "Connect link is invalid",
-        message: "The timestamp on this link is not valid.",
-      },
-    };
+    return githubConnectParamError("invalid_timestamp");
   }
 
   if (!/^[0-9a-f]{64}$/i.test(signature)) {
-    return {
-      ok: false,
-      returnPath: "/github/connect",
-      error: {
-        code: "invalid_signature",
-        title: "Connect link is invalid",
-        message: "The signature on this link is not valid.",
-      },
-    };
+    return githubConnectParamError("invalid_signature");
   }
 
   if (githubUsername && githubUsername.length > 255) {
-    return {
-      ok: false,
-      returnPath: "/github/connect",
-      error: {
-        code: "invalid_username",
-        title: "Connect link is invalid",
-        message: "The GitHub username on this link is not valid.",
-      },
-    };
+    return githubConnectParamError("invalid_username");
   }
 
   const params = {

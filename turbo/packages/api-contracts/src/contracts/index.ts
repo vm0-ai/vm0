@@ -156,6 +156,10 @@ export {
   type QueueResponse,
 } from "./runs";
 export {
+  testAgentRunsContract,
+  type TestAgentRunsContract,
+} from "./test-agent-runs";
+export {
   zeroModelPoliciesMainContract,
   type ZeroModelPoliciesMainContract,
 } from "./zero-model-policies";

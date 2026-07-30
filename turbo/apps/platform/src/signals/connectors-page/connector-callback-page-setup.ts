@@ -58,7 +58,11 @@ function connectorLabel(connectorSlug: ConnectorCallbackSlug | null): string {
       return $.connectors.callback.customConnectorLabel;
     });
   }
-  return connectorSlug === "github" ? "GitHub" : connectorSlug.toUpperCase();
+  return connectorSlug === "github"
+    ? i18n.t(($) => {
+        return $.connectors.callback.githubLabel;
+      })
+    : connectorSlug.toUpperCase();
 }
 
 function connectorCallbackDocumentTitle(label: string): string {

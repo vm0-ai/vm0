@@ -43,7 +43,7 @@ create_run_fixture() {
 
     local request_json="$1" response
     _validate_run_fixture_json "run fixture request" "$request_json" || return 1
-    response="$(e2e_api_curl "/api/agent/runs" -X POST --data-binary "$request_json")" || return 1
+    response="$(e2e_api_curl "/api/test/agent-runs" -X POST --data-binary "$request_json")" || return 1
     jq -e '
         (.runId | type == "string" and length > 0)
         and (.sessionId | type == "string" and length > 0)

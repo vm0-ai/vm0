@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useGet, useSet } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 import { handleZeroAccountAction$ } from "../../signals/zero-page/zero-nav.ts";
 import {
   closeSettingsModal$,
@@ -41,6 +42,7 @@ export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
 }
 
 export function Vm0LogoLink() {
+  const { t } = useTranslation();
   return (
     <Link pathname="/connectors" className="no-underline text-foreground">
       <svg
@@ -49,7 +51,9 @@ export function Vm0LogoLink() {
         viewBox="0 0 100 30"
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
-        aria-label="VM0"
+        aria-label={t(($) => {
+          return $.appShell.logoAlt;
+        })}
       >
         <path
           d="M13.3915 0.0627979C13.2455 -0.0209506 13.0657 -0.020839 12.9198 0.0630906L1.0053 6.91543C0.692394 7.09539 0.690093 7.54442 1.00114 7.72755L12.9156 14.7423C13.0636 14.8295 13.2475 14.8296 13.3957 14.7426L25.3445 7.72785C25.6562 7.54485 25.6539 7.09497 25.3404 6.91514L13.3915 0.0627979Z"

@@ -494,7 +494,6 @@ function permissionDescription(description: string): string {
   return description
     .replace(/^Connect your \w+ account to /iu, "")
     .replace(/^access /iu, "")
-    .replace(/^create /iu, "Create ")
     .replace(/^./u, (character) => {
       return character.toUpperCase();
     });

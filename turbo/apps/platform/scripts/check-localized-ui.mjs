@@ -1,34 +1,40 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const appRoot = path.resolve(__dirname, "..");
+const scriptPath = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(scriptPath);
+const defaultAppRoot = path.resolve(__dirname, "..");
 
-function getCheckedFiles() {
-  return [
-    "src/signals/connectors-page/connector-callback-page-setup.ts",
-    "src/signals/external/org-model-policies.ts",
-    "src/signals/zero-page/settings/connectors.ts",
-    "src/signals/zero-page/strapi-settings-page.ts",
-    "src/signals/zero-page/zero-strapi.ts",
-    "src/views/zero-page/components/model-provider-picker.tsx",
-    "src/views/zero-page/components/org-manage/org-model-policies-section.tsx",
-    "src/views/zero-page/components/preferences/codex-reset-usage-dialog.tsx",
-    "src/views/zero-page/components/settings/connector-catalog-diagnostics-block.tsx",
-    "src/views/zero-page/components/settings/custom-connector-connect-dialog.tsx",
-    "src/views/zero-page/components/settings/custom-connector-create-dialog.tsx",
-    "src/views/zero-page/components/settings/custom-connector-update-confirm.tsx",
-    "src/views/zero-page/components/settings/custom-connectors-panel.tsx",
-    "src/views/zero-page/components/settings/provider-ui-config.ts",
-    "src/views/zero-page/feishu-card.tsx",
-    "src/views/zero-page/strapi-settings-page.tsx",
-    "src/views/zero-page/zero-chat-thread-page.tsx",
-    "src/views/zero-page/zero-sidebar-account.tsx",
-    "src/views/zero-page/zero-sidebar-subscriptions.tsx",
-  ];
+function getCheckedFiles(appRoot) {
+  const excludedDirectories = new Set(["__tests__", "i18n", "mocks", "test"]);
+  const checkedFiles = [];
+
+  function collectFiles(relativeDirectory) {
+    for (const entry of readdirSync(path.join(appRoot, relativeDirectory), {
+      withFileTypes: true,
+    })) {
+      const relativePath = path.posix.join(relativeDirectory, entry.name);
+      if (entry.isDirectory()) {
+        if (!excludedDirectories.has(entry.name)) {
+          collectFiles(relativePath);
+        }
+        continue;
+      }
+      if (
+        (relativePath.endsWith(".ts") || relativePath.endsWith(".tsx")) &&
+        !relativePath.endsWith(".test.ts") &&
+        !relativePath.endsWith(".test.tsx")
+      ) {
+        checkedFiles.push(relativePath);
+      }
+    }
+  }
+
+  collectFiles("src");
+  return checkedFiles.sort();
 }
 
 function isUserVisibleAttribute(value) {
@@ -36,6 +42,7 @@ function isUserVisibleAttribute(value) {
     "alt",
     "aria-description",
     "aria-label",
+    "aria-placeholder",
     "description",
     "label",
     "placeholder",
@@ -45,13 +52,29 @@ function isUserVisibleAttribute(value) {
 
 function isUserVisibleProperty(value) {
   return [
+    "actionLabel",
     "ariaLabel",
+    "buttonLabel",
+    "caption",
+    "content",
     "description",
+    "emptyLabel",
+    "emptyMessage",
     "errorMessage",
+    "heading",
+    "help",
+    "helperText",
+    "hint",
     "label",
     "message",
+    "name",
     "placeholder",
+    "result",
+    "subtitle",
+    "summary",
     "title",
+    "tooltip",
+    "tooltipLabel",
   ].includes(value);
 }
 
@@ -59,26 +82,66 @@ function isToastMethod(value) {
   return ["error", "info", "success", "warning"].includes(value);
 }
 
+function isUserVisibleFunctionName(value) {
+  return (
+    /(caption|copy|description|displayName|displayText|heading|help|hint|label|message|plainText|summary|title|tooltip)$/iu.test(
+      value,
+    ) ||
+    /^format.*(?:Codex|Plan)/u.test(value) ||
+    [
+      "formatMessageHtml",
+      "normalizeCodexRunEvent",
+      "stringifyArrayJsonValue",
+      "stringifyObjectJsonValue",
+    ].includes(value)
+  );
+}
+
 // These literals are intentionally shown as protocol identifiers, provider or
 // product names, or example input values. Keep exclusions exact and explain why
 // each value must remain untranslated.
-function getAllowedLiterals() {
-  return new Map([
+function getInternalAllowedLiterals() {
+  return [
+    [
+      "src/signals/zero-page/chat-feedback.ts\u0000a sent email (mail ID: {…}{…})",
+      "locale-neutral serialized agent prompt metadata",
+    ],
+    [
+      "src/signals/zero-page/chat-feedback.ts\u0000an email draft (mail draft ID: {…})",
+      "locale-neutral serialized agent prompt metadata",
+    ],
+    [
+      "src/signals/activity-page/log-detail-utils.ts\u0000null",
+      "JSON null literal in user-visible diagnostic serialization",
+    ],
+    [
+      "src/signals/chat-page/create-chat-thread.ts\u0000Run cancelled",
+      "internal run event payload; the rendered cancellation message uses typed i18n",
+    ],
+    [
+      "src/signals/zero-page/tiptap-workflow-composer.ts\u0000paragraph+",
+      "Tiptap document schema expression",
+    ],
+    [
+      "src/signals/zero-page/tiptap-workflow-composer.ts\u0000workflowHighlight",
+      "Tiptap extension identifier",
+    ],
+    [
+      "src/views/zero-page/tiptap-instructions-editor.tsx\u0000baselineMarkdown",
+      "Tiptap storage plugin identifier",
+    ],
+    [
+      "src/views/zero-page/tiptap-instructions-editor.tsx\u0000lowlightHighlight",
+      "Tiptap extension identifier",
+    ],
+  ];
+}
+
+function getConnectorAllowedLiterals() {
+  return [
     [
       "src/views/zero-page/components/model-provider-picker.tsx\u0000BYOK",
       "bring-your-own-key product acronym",
-    ],
-    [
-      "src/views/zero-page/components/settings/provider-ui-config.ts\u0000Azure foundry portal",
-      "provider product name",
-    ],
-    [
-      "src/views/zero-page/components/settings/provider-ui-config.ts\u0000Claude Code (OAuth token)",
-      "provider product name with OAuth credential type",
-    ],
-    [
-      "src/views/zero-page/components/settings/provider-ui-config.ts\u0000Deepseek",
-      "provider brand name",
     ],
     [
       "src/views/zero-page/components/settings/custom-connector-connect-dialog.tsx\u0000OAuth 2.0",
@@ -121,10 +184,6 @@ function getAllowedLiterals() {
       "locale-neutral persisted field metadata",
     ],
     [
-      "src/views/zero-page/components/settings/custom-connector-create-dialog.tsx\u0000cli_...",
-      "example provider application identifier",
-    ],
-    [
       "src/views/zero-page/components/settings/custom-connector-create-dialog.tsx\u0000consent",
       "example OAuth prompt value",
     ],
@@ -135,14 +194,6 @@ function getAllowedLiterals() {
     [
       "src/views/zero-page/components/settings/custom-connector-create-dialog.tsx\u0000https://api.provider.example",
       "example OAuth audience",
-    ],
-    [
-      "src/views/zero-page/components/settings/custom-connector-create-dialog.tsx\u0000https://api.provider.example/authorize",
-      "example OAuth authorization URL",
-    ],
-    [
-      "src/views/zero-page/components/settings/custom-connector-create-dialog.tsx\u0000https://api.provider.example/token",
-      "example OAuth token URL",
     ],
     [
       "src/views/zero-page/components/settings/custom-connector-create-dialog.tsx\u0000https://provider.example.com/oauth/authorize",
@@ -164,7 +215,6 @@ function getAllowedLiterals() {
       "src/views/zero-page/feishu-card.tsx\u0000cli_...",
       "example Feishu application identifier",
     ],
-    ["src/views/zero-page/feishu-card.tsx\u0000Feishu", "provider name"],
     [
       "src/views/zero-page/feishu-card.tsx\u0000im.message.receive_v1",
       "Feishu event identifier",
@@ -173,20 +223,73 @@ function getAllowedLiterals() {
       "src/views/zero-page/strapi-settings-page.tsx\u0000https://cms.example.com",
       "example Strapi URL",
     ],
+  ];
+}
+
+function getFileAllowedLiterals() {
+  return [
     [
-      "src/views/zero-page/zero-chat-thread-page.tsx\u0000Feishu",
-      "provider name",
+      "src/views/zero-page/zero-file-preview-icon.tsx\u0000DB",
+      "database file format abbreviation",
     ],
     [
-      "src/views/zero-page/zero-chat-thread-page.tsx\u0000Slack",
-      "provider name",
+      "src/views/zero-page/zero-file-preview-icon.tsx\u0000DOC",
+      "document file format abbreviation",
     ],
+    [
+      "src/views/zero-page/zero-file-preview-icon.tsx\u0000HTML",
+      "HTML file format abbreviation",
+    ],
+    [
+      "src/views/zero-page/zero-file-preview-icon.tsx\u0000JSON",
+      "JSON file format abbreviation",
+    ],
+    [
+      "src/views/zero-page/zero-file-preview-icon.tsx\u0000MD",
+      "Markdown file extension",
+    ],
+    [
+      "src/views/zero-page/zero-file-preview-icon.tsx\u0000PDF",
+      "PDF file format abbreviation",
+    ],
+    [
+      "src/views/zero-page/zero-file-preview-icon.tsx\u0000PPT",
+      "presentation file format abbreviation",
+    ],
+    [
+      "src/views/zero-page/zero-file-preview-icon.tsx\u0000TXT",
+      "plain-text file extension",
+    ],
+    [
+      "src/views/zero-page/zero-file-preview-icon.tsx\u0000XLS",
+      "spreadsheet file format abbreviation",
+    ],
+    [
+      "src/views/zero-page/zero-file-preview-icon.tsx\u0000ZIP",
+      "archive file format abbreviation",
+    ],
+  ];
+}
+
+function getAllowedLiterals() {
+  return new Map([
+    ...getInternalAllowedLiterals(),
+    ...getConnectorAllowedLiterals(),
+    ...getFileAllowedLiterals(),
   ]);
 }
 
 function getLiteralValue(node) {
   if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
     return node.text;
+  }
+  if (ts.isTemplateExpression(node)) {
+    return [
+      node.head.text,
+      ...node.templateSpans.flatMap((span) => {
+        return ["{…}", span.literal.text];
+      }),
+    ].join("");
   }
   return null;
 }
@@ -199,16 +302,387 @@ function getPropertyName(node) {
 }
 
 function hasHumanText(value) {
-  return /\p{L}/u.test(value);
+  const withoutEntities = value.replace(
+    /&(?:[a-z][a-z0-9]+|#\d+|#x[0-9a-f]+);/giu,
+    "",
+  );
+  return /\p{L}/u.test(withoutEntities);
+}
+
+function bindingNames(node) {
+  if (ts.isIdentifier(node)) {
+    return [node.text];
+  }
+  if (ts.isObjectBindingPattern(node) || ts.isArrayBindingPattern(node)) {
+    return node.elements.flatMap((element) => {
+      return ts.isBindingElement(element) ? bindingNames(element.name) : [];
+    });
+  }
+  return [];
+}
+
+function variableBindingScope(node) {
+  if (ts.isCatchClause(node.parent)) {
+    return node.parent;
+  }
+  let parent = node.parent;
+  while (parent) {
+    if (ts.isBlock(parent) || ts.isSourceFile(parent)) {
+      return parent;
+    }
+    parent = parent.parent;
+  }
+  return null;
+}
+
+function declarationBindingScope(node) {
+  let parent = node.parent;
+  while (parent) {
+    if (ts.isBlock(parent) || ts.isSourceFile(parent)) {
+      return parent;
+    }
+    parent = parent.parent;
+  }
+  return null;
+}
+
+function addBinding(scopeBindings, scope, name, kind) {
+  if (!scope) {
+    return;
+  }
+  let bindings = scopeBindings.get(scope);
+  if (!bindings) {
+    bindings = new Map();
+    scopeBindings.set(scope, bindings);
+  }
+  const existing = bindings.get(name);
+  bindings.set(name, existing && existing !== kind ? "other" : kind);
+}
+
+function resolveBindingKind(node, name, scopeBindings) {
+  let parent = node;
+  while (parent) {
+    const kind = scopeBindings.get(parent)?.get(name);
+    if (kind) {
+      return kind;
+    }
+    parent = parent.parent;
+  }
+  return null;
+}
+
+function getTranslationBindings(sourceFile) {
+  const scopeBindings = new Map();
+  const translationCandidates = [];
+
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteral(statement.moduleSpecifier)
+    ) {
+      continue;
+    }
+    const moduleName = statement.moduleSpecifier.text;
+    const importClause = statement.importClause;
+    if (!importClause) {
+      continue;
+    }
+    if (importClause.name) {
+      addBinding(scopeBindings, sourceFile, importClause.name.text, "other");
+    }
+    const namedBindings = importClause.namedBindings;
+    if (namedBindings && ts.isNamespaceImport(namedBindings)) {
+      addBinding(scopeBindings, sourceFile, namedBindings.name.text, "other");
+      continue;
+    }
+    if (!namedBindings || !ts.isNamedImports(namedBindings)) {
+      continue;
+    }
+    for (const element of namedBindings.elements) {
+      const imported = element.propertyName?.text ?? element.name.text;
+      const kind =
+        moduleName === "react-i18next" && imported === "useTranslation"
+          ? "useTranslation"
+          : /(?:^|\/)i18n\/index(?:\.ts)?$/u.test(moduleName) &&
+              imported === "i18n"
+            ? "i18n"
+            : "other";
+      addBinding(scopeBindings, sourceFile, element.name.text, kind);
+    }
+  }
+
+  function visit(node) {
+    if (ts.isVariableDeclaration(node)) {
+      const scope = variableBindingScope(node);
+      const isTranslationCandidate =
+        ts.isObjectBindingPattern(node.name) &&
+        node.initializer &&
+        ts.isCallExpression(node.initializer) &&
+        ts.isIdentifier(node.initializer.expression);
+      for (const name of bindingNames(node.name)) {
+        const element = ts.isObjectBindingPattern(node.name)
+          ? node.name.elements.find((candidate) => {
+              return (
+                ts.isIdentifier(candidate.name) && candidate.name.text === name
+              );
+            })
+          : undefined;
+        const imported = element?.propertyName?.getText(sourceFile) ?? name;
+        if (isTranslationCandidate && imported === "t") {
+          translationCandidates.push({
+            hookCall: node.initializer,
+            localName: name,
+            scope,
+          });
+        } else {
+          addBinding(scopeBindings, scope, name, "other");
+        }
+      }
+    } else if (ts.isParameter(node)) {
+      const scope = ts.isFunctionLike(node.parent) ? node.parent : null;
+      for (const name of bindingNames(node.name)) {
+        addBinding(scopeBindings, scope, name, "other");
+      }
+    } else if (
+      (ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) &&
+      node.name
+    ) {
+      addBinding(
+        scopeBindings,
+        declarationBindingScope(node),
+        node.name.text,
+        "other",
+      );
+    } else if (ts.isFunctionExpression(node) && node.name) {
+      addBinding(scopeBindings, node, node.name.text, "other");
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  for (const candidate of translationCandidates) {
+    const hookName = candidate.hookCall.expression.text;
+    const kind =
+      resolveBindingKind(candidate.hookCall, hookName, scopeBindings) ===
+      "useTranslation"
+        ? "translation"
+        : "other";
+    addBinding(scopeBindings, candidate.scope, candidate.localName, kind);
+  }
+  return scopeBindings;
+}
+
+function isTranslationCall(node, translationBindings) {
+  if (!ts.isCallExpression(node)) {
+    return false;
+  }
+  if (ts.isIdentifier(node.expression)) {
+    return (
+      resolveBindingKind(node, node.expression.text, translationBindings) ===
+      "translation"
+    );
+  }
+  return (
+    ts.isPropertyAccessExpression(node.expression) &&
+    node.expression.name.text === "t" &&
+    ts.isIdentifier(node.expression.expression) &&
+    resolveBindingKind(
+      node,
+      node.expression.expression.text,
+      translationBindings,
+    ) === "i18n"
+  );
+}
+
+function isPotentialTranslationCall(node) {
+  return (
+    ts.isCallExpression(node) &&
+    ((ts.isIdentifier(node.expression) && node.expression.text === "t") ||
+      (ts.isPropertyAccessExpression(node.expression) &&
+        node.expression.name.text === "t"))
+  );
+}
+
+function checkVisibleExpression(node, record, kind, translationBindings) {
+  if (isTranslationCall(node, translationBindings)) {
+    return;
+  }
+  const value = getLiteralValue(node);
+  if (value !== null) {
+    record(node, value, kind);
+    return;
+  }
+  if (ts.isConditionalExpression(node)) {
+    checkVisibleExpression(node.whenTrue, record, kind, translationBindings);
+    checkVisibleExpression(node.whenFalse, record, kind, translationBindings);
+    return;
+  }
+  if (ts.isBinaryExpression(node)) {
+    if (
+      node.operatorToken.kind === ts.SyntaxKind.PlusToken ||
+      node.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
+      node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
+    ) {
+      checkVisibleExpression(node.left, record, kind, translationBindings);
+      checkVisibleExpression(node.right, record, kind, translationBindings);
+      return;
+    }
+    if (node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
+      checkVisibleExpression(node.right, record, kind, translationBindings);
+    }
+    return;
+  }
+  if (
+    ts.isParenthesizedExpression(node) ||
+    ts.isAsExpression(node) ||
+    ts.isTypeAssertionExpression(node) ||
+    ts.isNonNullExpression(node) ||
+    ts.isSatisfiesExpression(node)
+  ) {
+    checkVisibleExpression(node.expression, record, kind, translationBindings);
+    return;
+  }
+  if (ts.isArrayLiteralExpression(node)) {
+    for (const element of node.elements) {
+      checkVisibleExpression(element, record, kind, translationBindings);
+    }
+    return;
+  }
+  if (isPotentialTranslationCall(node)) {
+    for (const argument of node.arguments) {
+      checkVisibleExpression(argument, record, kind, translationBindings);
+    }
+  }
+}
+
+function checkVisibleCallChain(node, record, kind, translationBindings) {
+  if (isTranslationCall(node, translationBindings)) {
+    return;
+  }
+  if (ts.isCallExpression(node)) {
+    if (ts.isPropertyAccessExpression(node.expression)) {
+      checkVisibleCallChain(
+        node.expression.expression,
+        record,
+        kind,
+        translationBindings,
+      );
+    }
+    for (const argument of node.arguments) {
+      checkVisibleCallChain(argument, record, kind, translationBindings);
+    }
+    return;
+  }
+  checkVisibleExpression(node, record, kind, translationBindings);
+}
+
+function checkVisibleStructure(node, record, kind, translationBindings) {
+  if (ts.isObjectLiteralExpression(node)) {
+    for (const property of node.properties) {
+      if (ts.isPropertyAssignment(property)) {
+        checkVisibleStructure(
+          property.initializer,
+          record,
+          kind,
+          translationBindings,
+        );
+      }
+    }
+    return;
+  }
+  if (ts.isArrayLiteralExpression(node)) {
+    for (const element of node.elements) {
+      checkVisibleStructure(element, record, kind, translationBindings);
+    }
+    return;
+  }
+  if (
+    ts.isParenthesizedExpression(node) ||
+    ts.isAsExpression(node) ||
+    ts.isTypeAssertionExpression(node) ||
+    ts.isNonNullExpression(node) ||
+    ts.isSatisfiesExpression(node)
+  ) {
+    checkVisibleStructure(node.expression, record, kind, translationBindings);
+    return;
+  }
+  checkVisibleExpression(node, record, kind, translationBindings);
+}
+
+function checkHtmlExpression(node, record, kind, translationBindings) {
+  if (isTranslationCall(node, translationBindings)) {
+    return;
+  }
+  const value = getLiteralValue(node);
+  if (value !== null) {
+    const visibleText = value
+      .replace(/<[^>]*>/gu, " ")
+      .replaceAll("{…}", " ")
+      .trim();
+    record(node, visibleText, kind);
+    if (ts.isTemplateExpression(node)) {
+      for (const span of node.templateSpans) {
+        checkHtmlExpression(span.expression, record, kind, translationBindings);
+      }
+    }
+    return;
+  }
+  if (ts.isConditionalExpression(node)) {
+    checkHtmlExpression(node.whenTrue, record, kind, translationBindings);
+    checkHtmlExpression(node.whenFalse, record, kind, translationBindings);
+    return;
+  }
+  if (ts.isBinaryExpression(node)) {
+    checkHtmlExpression(node.left, record, kind, translationBindings);
+    checkHtmlExpression(node.right, record, kind, translationBindings);
+    return;
+  }
+  if (
+    ts.isParenthesizedExpression(node) ||
+    ts.isAsExpression(node) ||
+    ts.isTypeAssertionExpression(node) ||
+    ts.isNonNullExpression(node) ||
+    ts.isSatisfiesExpression(node)
+  ) {
+    checkHtmlExpression(node.expression, record, kind, translationBindings);
+    return;
+  }
+  if (ts.isArrayLiteralExpression(node)) {
+    for (const element of node.elements) {
+      checkHtmlExpression(element, record, kind, translationBindings);
+    }
+    return;
+  }
+  if (ts.isCallExpression(node)) {
+    if (ts.isPropertyAccessExpression(node.expression)) {
+      checkHtmlExpression(
+        node.expression.expression,
+        record,
+        kind,
+        translationBindings,
+      );
+    }
+    for (const argument of node.arguments) {
+      checkHtmlExpression(argument, record, kind, translationBindings);
+    }
+  }
+}
+
+function isStyleElement(node) {
+  if (!ts.isJsxElement(node)) {
+    return false;
+  }
+  const tagName = node.openingElement.tagName;
+  return ts.isIdentifier(tagName) && tagName.text === "style";
 }
 
 function checkJsxText(node, record) {
-  if (ts.isJsxText(node)) {
+  if (ts.isJsxText(node) && !isStyleElement(node.parent)) {
     record(node, node.text, "JSX text");
   }
 }
 
-function checkJsxAttribute(node, record) {
+function checkJsxAttribute(node, record, translationBindings) {
   if (!ts.isJsxAttribute(node)) {
     return;
   }
@@ -225,27 +699,32 @@ function checkJsxAttribute(node, record) {
     return;
   }
   if (ts.isJsxExpression(node.initializer) && node.initializer.expression) {
-    const value = getLiteralValue(node.initializer.expression);
-    if (value !== null) {
-      record(node.initializer.expression, value, attributeName);
-    }
+    checkVisibleExpression(
+      node.initializer.expression,
+      record,
+      attributeName,
+      translationBindings,
+    );
   }
 }
 
-function checkJsxExpression(node, record) {
+function checkJsxExpression(node, record, translationBindings) {
   if (
     ts.isJsxExpression(node) &&
     node.expression &&
-    (ts.isJsxElement(node.parent) || ts.isJsxFragment(node.parent))
+    (ts.isJsxElement(node.parent) || ts.isJsxFragment(node.parent)) &&
+    !isStyleElement(node.parent)
   ) {
-    const value = getLiteralValue(node.expression);
-    if (value !== null) {
-      record(node.expression, value, "JSX expression");
-    }
+    checkVisibleExpression(
+      node.expression,
+      record,
+      "JSX expression",
+      translationBindings,
+    );
   }
 }
 
-function checkPropertyAssignment(node, record) {
+function checkPropertyAssignment(node, record, translationBindings) {
   if (!ts.isPropertyAssignment(node)) {
     return;
   }
@@ -253,13 +732,15 @@ function checkPropertyAssignment(node, record) {
   if (!propertyName || !isUserVisibleProperty(propertyName)) {
     return;
   }
-  const value = getLiteralValue(node.initializer);
-  if (value !== null) {
-    record(node.initializer, value, propertyName);
-  }
+  checkVisibleExpression(
+    node.initializer,
+    record,
+    propertyName,
+    translationBindings,
+  );
 }
 
-function checkDocumentTitle(node, record) {
+function checkDocumentTitle(node, record, translationBindings) {
   if (
     !ts.isCallExpression(node) ||
     node.arguments.length < 2 ||
@@ -268,13 +749,15 @@ function checkDocumentTitle(node, record) {
   ) {
     return;
   }
-  const value = getLiteralValue(node.arguments[1]);
-  if (value !== null) {
-    record(node.arguments[1], value, "document title");
-  }
+  checkVisibleExpression(
+    node.arguments[1],
+    record,
+    "document title",
+    translationBindings,
+  );
 }
 
-function checkToastCall(node, record) {
+function checkToastCall(node, record, translationBindings) {
   if (
     !ts.isCallExpression(node) ||
     node.arguments.length === 0 ||
@@ -285,15 +768,229 @@ function checkToastCall(node, record) {
   ) {
     return;
   }
-  const value = getLiteralValue(node.arguments[0]);
-  if (value !== null) {
-    record(node.arguments[0], value, "toast");
+  checkVisibleExpression(
+    node.arguments[0],
+    record,
+    "toast",
+    translationBindings,
+  );
+}
+
+function checkBrowserDialogCall(node, record, translationBindings) {
+  if (!ts.isCallExpression(node) || node.arguments.length === 0) {
+    return;
+  }
+  const expression = node.expression;
+  const methodName = ts.isIdentifier(expression)
+    ? expression.text
+    : ts.isPropertyAccessExpression(expression)
+      ? expression.name.text
+      : null;
+  if (!methodName || !["alert", "confirm", "prompt"].includes(methodName)) {
+    return;
+  }
+  checkVisibleExpression(
+    node.arguments[0],
+    record,
+    `browser ${methodName}`,
+    translationBindings,
+  );
+}
+
+function functionLikeName(node) {
+  if (
+    (ts.isFunctionDeclaration(node) ||
+      ts.isFunctionExpression(node) ||
+      ts.isMethodDeclaration(node)) &&
+    node.name &&
+    (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name))
+  ) {
+    return node.name.text;
+  }
+  if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
+    const parent = node.parent;
+    if (ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) {
+      return parent.name.text;
+    }
+    if (
+      ts.isPropertyAssignment(parent) &&
+      (ts.isIdentifier(parent.name) || ts.isStringLiteral(parent.name))
+    ) {
+      return parent.name.text;
+    }
+  }
+  return null;
+}
+
+function enclosingUserVisibleFunctionName(node) {
+  let parent = node.parent;
+  while (parent && !ts.isSourceFile(parent)) {
+    if (ts.isFunctionLike(parent)) {
+      const name = functionLikeName(parent);
+      return name && isUserVisibleFunctionName(name) ? name : null;
+    }
+    parent = parent.parent;
+  }
+  return null;
+}
+
+function checkUserVisibleFunctionReturn(node, record, translationBindings) {
+  if (!ts.isReturnStatement(node) || !node.expression) {
+    return;
+  }
+  const name = enclosingUserVisibleFunctionName(node);
+  if (name) {
+    const checkExpression =
+      name === "formatMessageHtml"
+        ? checkHtmlExpression
+        : /(?:Codex|Plan|plainText)/iu.test(name)
+          ? checkVisibleCallChain
+          : checkVisibleExpression;
+    checkExpression(
+      node.expression,
+      record,
+      `${name} return`,
+      translationBindings,
+    );
   }
 }
 
-function checkFile(relativePath, allowedLiterals) {
-  const absolutePath = path.join(appRoot, relativePath);
-  const sourceText = readFileSync(absolutePath, "utf8");
+function checkUserVisibleFunctionMutation(node, record, translationBindings) {
+  const name = enclosingUserVisibleFunctionName(node);
+  if (!name) {
+    return;
+  }
+  if (
+    ts.isBinaryExpression(node) &&
+    node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken
+  ) {
+    checkVisibleExpression(
+      node.right,
+      record,
+      `${name} output`,
+      translationBindings,
+    );
+    return;
+  }
+  if (
+    ts.isCallExpression(node) &&
+    ts.isPropertyAccessExpression(node.expression) &&
+    ["push", "unshift"].includes(node.expression.name.text)
+  ) {
+    const checkExpression = [
+      "stringifyArrayJsonValue",
+      "stringifyObjectJsonValue",
+    ].includes(name)
+      ? checkVisibleCallChain
+      : checkVisibleExpression;
+    for (const argument of node.arguments) {
+      checkExpression(argument, record, `${name} output`, translationBindings);
+    }
+    return;
+  }
+  if (
+    ts.isCallExpression(node) &&
+    ts.isIdentifier(node.expression) &&
+    node.expression.text === "makeCodexAssistantTextEvent"
+  ) {
+    for (const argument of node.arguments.slice(1)) {
+      checkVisibleCallChain(
+        argument,
+        record,
+        `${name} output`,
+        translationBindings,
+      );
+    }
+  }
+}
+
+function checkUserVisibleFunctionInitializer(
+  node,
+  record,
+  translationBindings,
+) {
+  if (!ts.isVariableDeclaration(node) || !node.initializer) {
+    return;
+  }
+  const name = enclosingUserVisibleFunctionName(node);
+  if (name === "formatMessageHtml") {
+    checkHtmlExpression(
+      node.initializer,
+      record,
+      `${name} output`,
+      translationBindings,
+    );
+  }
+}
+
+function checkUserVisibleNamedInitializer(node, record, translationBindings) {
+  if (
+    !ts.isVariableDeclaration(node) ||
+    !ts.isIdentifier(node.name) ||
+    !node.name.text.endsWith("_DISPLAY_NAMES") ||
+    !node.initializer
+  ) {
+    return;
+  }
+  checkVisibleStructure(
+    node.initializer,
+    record,
+    `${node.name.text} initializer`,
+    translationBindings,
+  );
+}
+
+function checkSetAttributeCall(node, record, translationBindings) {
+  if (
+    !ts.isCallExpression(node) ||
+    node.arguments.length < 2 ||
+    !ts.isPropertyAccessExpression(node.expression) ||
+    node.expression.name.text !== "setAttribute"
+  ) {
+    return;
+  }
+  const attribute = getLiteralValue(node.arguments[0]);
+  if (!attribute || !isUserVisibleAttribute(attribute)) {
+    return;
+  }
+  checkVisibleExpression(
+    node.arguments[1],
+    record,
+    `setAttribute(${attribute})`,
+    translationBindings,
+  );
+}
+
+function checkUserVisibleAssignment(node, record, translationBindings) {
+  if (
+    !ts.isBinaryExpression(node) ||
+    node.operatorToken.kind !== ts.SyntaxKind.EqualsToken ||
+    !ts.isPropertyAccessExpression(node.left)
+  ) {
+    return;
+  }
+  const propertyName = node.left.name.text;
+  if (
+    !["alt", "ariaLabel", "innerText", "placeholder", "title"].includes(
+      propertyName,
+    )
+  ) {
+    return;
+  }
+  checkVisibleExpression(
+    node.right,
+    record,
+    `${propertyName} assignment`,
+    translationBindings,
+  );
+}
+
+export function checkSource(
+  relativePath,
+  sourceText,
+  allowedLiterals = new Map(),
+  usedAllowedLiterals = new Set(),
+) {
   const sourceFile = ts.createSourceFile(
     relativePath,
     sourceText,
@@ -301,6 +998,7 @@ function checkFile(relativePath, allowedLiterals) {
     true,
     relativePath.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
   );
+  const translationBindings = getTranslationBindings(sourceFile);
   const violations = [];
 
   function record(node, value, kind) {
@@ -310,6 +1008,7 @@ function checkFile(relativePath, allowedLiterals) {
     }
     const exclusionKey = `${relativePath}\u0000${normalizedValue}`;
     if (allowedLiterals.has(exclusionKey)) {
+      usedAllowedLiterals.add(exclusionKey);
       return;
     }
     const position = sourceFile.getLineAndCharacterOfPosition(node.getStart());
@@ -323,11 +1022,18 @@ function checkFile(relativePath, allowedLiterals) {
 
   function visit(node) {
     checkJsxText(node, record);
-    checkJsxAttribute(node, record);
-    checkJsxExpression(node, record);
-    checkPropertyAssignment(node, record);
-    checkDocumentTitle(node, record);
-    checkToastCall(node, record);
+    checkJsxAttribute(node, record, translationBindings);
+    checkJsxExpression(node, record, translationBindings);
+    checkPropertyAssignment(node, record, translationBindings);
+    checkDocumentTitle(node, record, translationBindings);
+    checkToastCall(node, record, translationBindings);
+    checkBrowserDialogCall(node, record, translationBindings);
+    checkUserVisibleFunctionReturn(node, record, translationBindings);
+    checkUserVisibleFunctionMutation(node, record, translationBindings);
+    checkUserVisibleFunctionInitializer(node, record, translationBindings);
+    checkUserVisibleNamedInitializer(node, record, translationBindings);
+    checkSetAttributeCall(node, record, translationBindings);
+    checkUserVisibleAssignment(node, record, translationBindings);
     ts.forEachChild(node, visit);
   }
 
@@ -335,30 +1041,74 @@ function checkFile(relativePath, allowedLiterals) {
   return violations;
 }
 
+function checkFile(
+  appRoot,
+  relativePath,
+  allowedLiterals,
+  usedAllowedLiterals,
+) {
+  const absolutePath = path.join(appRoot, relativePath);
+  const sourceText = readFileSync(absolutePath, "utf8");
+  return checkSource(
+    relativePath,
+    sourceText,
+    allowedLiterals,
+    usedAllowedLiterals,
+  );
+}
+
 function main() {
+  const appRoot = defaultAppRoot;
   const allowedLiterals = getAllowedLiterals();
-  const checkedFiles = getCheckedFiles();
+  const usedAllowedLiterals = new Set();
+  const checkedFiles = getCheckedFiles(appRoot);
   const violations = checkedFiles.flatMap((relativePath) => {
-    return checkFile(relativePath, allowedLiterals).map((violation) => {
+    return checkFile(
+      appRoot,
+      relativePath,
+      allowedLiterals,
+      usedAllowedLiterals,
+    ).map((violation) => {
       return { relativePath, ...violation };
     });
   });
+  const unusedAllowedLiterals = Array.from(allowedLiterals.entries()).filter(
+    ([key]) => {
+      return !usedAllowedLiterals.has(key);
+    },
+  );
 
-  if (violations.length > 0) {
+  if (violations.length > 0 || unusedAllowedLiterals.length > 0) {
     process.stderr.write(`Platform localized UI lint failed.
 
 Move these user-visible literals into the typed i18n resources. If a literal is
 an intentional protocol identifier, provider/product name, or example value,
 add a narrow file-and-value exclusion with a reason.
 
-${violations
-  .map((violation) => {
-    return `  - ${violation.relativePath}:${violation.line}:${violation.column} (${violation.kind}) ${JSON.stringify(violation.value)}`;
-  })
-  .join("\n")}
+${
+  violations.length > 0
+    ? `Hardcoded UI copy:\n${violations
+        .map((violation) => {
+          return `  - ${violation.relativePath}:${violation.line}:${violation.column} (${violation.kind}) ${JSON.stringify(violation.value)}`;
+        })
+        .join("\n")}\n`
+    : ""
+}
+${
+  unusedAllowedLiterals.length > 0
+    ? `Unused exclusions (remove stale entries):\n${unusedAllowedLiterals
+        .map(([key, reason]) => {
+          const [relativePath, value] = key.split("\u0000");
+          return `  - ${relativePath} ${JSON.stringify(value)} (${reason})`;
+        })
+        .join("\n")}\n`
+    : ""
+}
 `);
     process.exit(1);
   }
 }
 
-main();
+if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
+  main();
+}

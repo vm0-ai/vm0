@@ -71,7 +71,9 @@ function workflowAutomationSummary(
 ): string {
   if (automation.kind === "event") {
     if (automation.eventType === "chat-run-finished") {
-      return "Chat run finished";
+      return i18n.t(($) => {
+        return $.workflows.automations.chat.runFinishedTitle;
+      });
     }
     if (automation.eventType === "gmail-new-message") {
       return i18n.t(($) => {

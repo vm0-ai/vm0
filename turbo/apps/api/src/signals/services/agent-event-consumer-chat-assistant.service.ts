@@ -1,17 +1,69 @@
 import { command } from "ccstate";
-import { sql, eq } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { chatOutputMaterializations } from "@vm0/db/schema/chat-output-materialization";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 
+import { env } from "../../lib/env";
 import { eventConsumerPayload$ } from "../../lib/event-consumer/route";
-import type { AgentEvent } from "../../lib/event-consumer/verify";
+import type {
+  AgentEvent,
+  EventConsumerPayload,
+} from "../../lib/event-consumer/verify";
+import { logger } from "../../lib/log";
+import { singleton } from "../../lib/singleton";
 import { nowDate } from "../../lib/time";
-import { writeDb$ } from "../external/db";
+import { onRejection } from "../utils";
+import { writeDb$, type Db } from "../external/db";
 import {
-  chatThreadForRun,
-  insertAssistantEvents$,
-} from "../services/zero-chat-thread.service";
+  publishChatThreadMessageCreatedSafely,
+  publishThreadListChangedSafely,
+} from "../external/realtime";
+import {
+  insertAssistantEventsInTransaction,
+  type InsertAssistantEventsInput,
+} from "./zero-chat-event-shared.service";
+import {
+  publishFirstAssistantEventCreatedSignalSafely,
+  recordFirstAssistantEventAcknowledgementMetric,
+} from "./zero-chat-first-assistant-event-metric.service";
+import { chatThreadForRunFromDb } from "./zero-chat-thread.service";
 
 const INITIAL_PROCESSED_THROUGH_SEQUENCE = -1;
+const CHAT_PROJECTION_LOCK_TIMEOUT = "1s";
+const CHAT_PROJECTION_STATEMENT_TIMEOUT = "5s";
+
+const L = logger("webhook:events:chat-projection");
+
+class ChatProjectionAdmission {
+  private active = 0;
+  private readonly capacity = Math.max(1, Math.floor(env("DB_POOL_MAX") / 2));
+
+  tryAcquire(): (() => void) | null {
+    if (this.active >= this.capacity) {
+      return null;
+    }
+    this.active += 1;
+    return () => {
+      this.active -= 1;
+    };
+  }
+}
+
+const chatProjectionAdmission = singleton(() => {
+  return new ChatProjectionAdmission();
+});
+
+interface ChatProjection {
+  readonly thread: {
+    readonly chatThreadId: string;
+    readonly userId: string;
+  };
+  readonly insertedRowCount: number;
+  readonly firstAssistantAcknowledgement: {
+    readonly apiStartedAt: number;
+    readonly acknowledgedAt: number;
+  } | null;
+}
 
 function recordOf(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null
@@ -149,48 +201,56 @@ function latestResultSequence(events: readonly AgentEvent[]): number | null {
   return latestSequence;
 }
 
-export const processChatAssistantEvents$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const payload = get(eventConsumerPayload$);
+function assistantEventItems(
+  events: readonly AgentEvent[],
+): InsertAssistantEventsInput["items"] {
+  return events.flatMap((event) => {
+    const text = eventText(event);
+    if (text === null) {
+      return [];
+    }
+    return [
+      {
+        sequenceNumber: event.sequenceNumber,
+        content: text,
+        runEventId: eventMessageId(event),
+      },
+    ];
+  });
+}
+
+function projectChatAssistantEvents(
+  writeDb: Db,
+  payload: EventConsumerPayload,
+  items: InsertAssistantEventsInput["items"],
+  signal: AbortSignal,
+): Promise<ChatProjection | null> {
+  return writeDb.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT set_config('lock_timeout', ${CHAT_PROJECTION_LOCK_TIMEOUT}, true)`,
+    );
+    await tx.execute(
+      sql`SELECT set_config('statement_timeout', ${CHAT_PROJECTION_STATEMENT_TIMEOUT}, true)`,
+    );
     signal.throwIfAborted();
 
-    const items = payload.events.flatMap((event) => {
-      const text = eventText(event);
-      if (text === null) {
-        return [];
-      }
-      return [
-        {
-          sequenceNumber: event.sequenceNumber,
-          content: text,
-          runEventId: eventMessageId(event),
-        },
-      ];
-    });
-
-    const thread = await get(chatThreadForRun(payload.runId));
+    const thread = await chatThreadForRunFromDb(tx, payload.runId);
     signal.throwIfAborted();
     if (!thread) {
-      return { status: 200 as const, body: { processed: 0 } };
+      return null;
     }
 
-    const written =
-      items.length === 0
-        ? 0
-        : await set(
-            insertAssistantEvents$,
-            {
-              runId: payload.runId,
-              threadId: thread.chatThreadId,
-              userId: thread.userId,
-              items,
-            },
-            signal,
-          );
-    signal.throwIfAborted();
-
-    const writeDb = set(writeDb$);
-    const [existingState] = await writeDb
+    const insertion = await insertAssistantEventsInTransaction(
+      tx,
+      {
+        runId: payload.runId,
+        threadId: thread.chatThreadId,
+        userId: thread.userId,
+        items,
+      },
+      signal,
+    );
+    const [existingState] = await tx
       .select({
         processedThroughSequence:
           chatOutputMaterializations.processedThroughSequence,
@@ -207,8 +267,7 @@ export const processChatAssistantEvents$ = command(
     );
     const resultSequence = latestResultSequence(payload.events);
     const updatedAt = nowDate();
-
-    await writeDb
+    await tx
       .insert(chatOutputMaterializations)
       .values({
         runId: payload.runId,
@@ -229,6 +288,113 @@ export const processChatAssistantEvents$ = command(
       });
     signal.throwIfAborted();
 
-    return { status: 200 as const, body: { processed: written } };
+    const acknowledgedAt = nowDate();
+    const [firstAssistantClaim] =
+      insertion.insertedRowCount > 0 &&
+      insertion.shouldAttemptFirstAssistantEventClaim
+        ? await tx
+            .update(zeroRuns)
+            .set({ firstAssistantEventAcknowledgedAt: acknowledgedAt })
+            .where(
+              and(
+                eq(zeroRuns.id, payload.runId),
+                isNotNull(zeroRuns.apiStartedAt),
+                isNull(zeroRuns.firstAssistantEventAcknowledgedAt),
+              ),
+            )
+            .returning({ apiStartedAt: zeroRuns.apiStartedAt })
+        : [];
+    signal.throwIfAborted();
+
+    return {
+      thread,
+      insertedRowCount: insertion.insertedRowCount,
+      firstAssistantAcknowledgement:
+        firstAssistantClaim?.apiStartedAt === null ||
+        firstAssistantClaim?.apiStartedAt === undefined
+          ? null
+          : {
+              apiStartedAt: firstAssistantClaim.apiStartedAt.getTime(),
+              acknowledgedAt: acknowledgedAt.getTime(),
+            },
+    };
+  });
+}
+
+async function publishChatProjection(
+  payload: EventConsumerPayload,
+  projection: ChatProjection,
+  signal: AbortSignal,
+): Promise<void> {
+  if (projection.insertedRowCount === 0) {
+    return;
+  }
+  if (projection.firstAssistantAcknowledgement) {
+    await publishFirstAssistantEventCreatedSignalSafely({
+      userId: projection.thread.userId,
+      threadId: projection.thread.chatThreadId,
+      runId: payload.runId,
+    });
+    recordFirstAssistantEventAcknowledgementMetric({
+      runId: payload.runId,
+      ...projection.firstAssistantAcknowledgement,
+    });
+  } else {
+    await publishChatThreadMessageCreatedSafely(
+      projection.thread.userId,
+      projection.thread.chatThreadId,
+    );
+  }
+  signal.throwIfAborted();
+  await publishThreadListChangedSafely(projection.thread.userId);
+  signal.throwIfAborted();
+}
+
+async function runAdmittedChatProjection(
+  writeDb: Db,
+  payload: EventConsumerPayload,
+  signal: AbortSignal,
+  release: () => void,
+) {
+  const projection = await projectChatAssistantEvents(
+    writeDb,
+    payload,
+    assistantEventItems(payload.events),
+    signal,
+  );
+  signal.throwIfAborted();
+  if (projection) {
+    await publishChatProjection(payload, projection, signal);
+    signal.throwIfAborted();
+  }
+
+  release();
+  return {
+    status: 200 as const,
+    body: { processed: projection?.insertedRowCount ?? 0 },
+  };
+}
+
+export const processChatAssistantEvents$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const payload = get(eventConsumerPayload$);
+    signal.throwIfAborted();
+    const firstSequence = payload.events[0]!.sequenceNumber;
+    const lastSequence =
+      payload.events[payload.events.length - 1]!.sequenceNumber;
+    const release = chatProjectionAdmission().tryAcquire();
+    if (!release) {
+      L.warn("Skipping live chat projection at the concurrency limit", {
+        runId: payload.runId,
+        firstSequence,
+        lastSequence,
+      });
+      return { status: 200 as const, body: { processed: 0 } };
+    }
+
+    return await onRejection(
+      runAdmittedChatProjection(set(writeDb$), payload, signal, release),
+      release,
+    );
   },
 );

@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.149.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.149.0...runner-rs-v0.149.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* **runner:** cancel blocked network policy fail-close waits ([#23979](https://github.com/vm0-ai/vm0/issues/23979)) ([ef31f52](https://github.com/vm0-ai/vm0/commit/ef31f5298e115790af66f3b0fff37eb9e8fd5c01))
+* **runner:** reconcile terminal network policy refreshes ([#23975](https://github.com/vm0-ai/vm0/issues/23975)) ([5c57871](https://github.com/vm0-ai/vm0/commit/5c5787153a35882762ef786b734555a85243739d))
+* **runner:** treat ancestry depth cutoff as unknown ([#24006](https://github.com/vm0-ai/vm0/issues/24006)) ([930726c](https://github.com/vm0-ai/vm0/commit/930726c1243c1015ce6b9936f7a6185508b08594))
+
 ## [0.149.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.39...runner-rs-v0.149.0) (2026-07-30)
 
 

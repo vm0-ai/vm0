@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.661.1](https://github.com/vm0-ai/vm0/compare/app-v0.661.0...app-v0.661.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* **platform:** enforce localized ui copy ([#23973](https://github.com/vm0-ai/vm0/issues/23973)) ([2fd5962](https://github.com/vm0-ai/vm0/commit/2fd596255dc6ef490390e4acc6b00bd001d0de94))
+
+
+### Refactoring
+
+* **platform:** consume slug-named connector contracts ([#23981](https://github.com/vm0-ai/vm0/issues/23981)) ([497e7ac](https://github.com/vm0-ai/vm0/commit/497e7ac9b5ba69cc567edf239756f65efe3e0060))
+* retire draft content storage ([#23940](https://github.com/vm0-ai/vm0/issues/23940)) ([baa4589](https://github.com/vm0-ai/vm0/commit/baa45899ef04ae8607ea6d5552632c95940ea259))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.250.1
+    * @vm0/core bumped to 8.488.3
+
 ## [0.661.0](https://github.com/vm0-ai/vm0/compare/app-v0.660.2...app-v0.661.0) (2026-07-30)
 
 

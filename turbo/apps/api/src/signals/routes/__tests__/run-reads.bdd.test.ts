@@ -9,7 +9,7 @@ import {
 import { delay } from "signal-timers";
 import { describe, expect, it } from "vitest";
 
-import { mockEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import {
@@ -35,8 +35,8 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
  * end in those reads (session continuation, memory root policies, volume
  * pinning, concurrency caps, and the production capture gate).
  *
- * All state is constructed through public APIs: direct runs via compose
- * create + POST /api/agent/runs, runner claims, and sandbox webhooks
+ * All state is constructed through route boundaries: direct runs via compose
+ * create plus the gated E2E test route, runner claims, and sandbox webhooks
  * (events/checkpoint/complete). Axiom reads are answered by an
  * APL-dispatching mock so the run-event visibility poll is never left
  * unanswered (an unanswered poll burns its 2s timeout per read).
@@ -1583,6 +1583,7 @@ describe("RUN-01: direct run admission boundaries", () => {
     await api.requestCancelRun(actor, second.runId, [200]);
 
     mockEnv("ENV", "production");
+    mockOptionalEnv("VERCEL_ENV", "preview");
     const uncachedGate = await reads.requestCreateDirectRun(
       actor,
       {

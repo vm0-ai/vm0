@@ -80,8 +80,17 @@ export function LanguageSettings() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="en-US">English</SelectItem>
-              <SelectItem value="pt-BR">Português (Brasil)</SelectItem>
+              <SelectItem value="en-US">
+                {t(($) => {
+                  return $.settings.preferences.language.options.english;
+                })}
+              </SelectItem>
+              <SelectItem value="pt-BR">
+                {t(($) => {
+                  return $.settings.preferences.language.options
+                    .portugueseBrazil;
+                })}
+              </SelectItem>
             </SelectContent>
           </Select>
         </div>
