@@ -137,13 +137,13 @@ describe("zero connector list command", () => {
   });
 
   describe("without agent context", () => {
-    it("renders TYPE and CONNECTED AS columns for a connected connector", async () => {
+    it("renders SLUG and CONNECTED AS columns for a connected connector", async () => {
       server.use(stubConnectors([connectedGithub]));
 
       await listCommand.parseAsync(["node", "cli"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("TYPE");
+      expect(logCalls).toContain("SLUG");
       expect(logCalls).toContain("CONNECTED AS");
       expect(logCalls).not.toContain("ACCOUNT");
       expect(logCalls).not.toContain("STATUS");
@@ -152,7 +152,29 @@ describe("zero connector list command", () => {
       expect(logCalls).toContain("@octocat");
     });
 
-    it("renders (not connected) for types with no connector", async () => {
+    it("prefers canonical catalog slugs and falls back to legacy-only responses", async () => {
+      server.use(
+        stubConnectorCatalogStatus([
+          {
+            ...catalogStatusItem({ connectorSlug: "legacy-canonical" }),
+            slug: "canonical",
+          },
+          {
+            ...catalogStatusItem({ connectorSlug: "legacy-only" }),
+            slug: undefined,
+          },
+        ]),
+      );
+
+      await listCommand.parseAsync(["node", "cli"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("canonical");
+      expect(logCalls).toContain("legacy-only");
+      expect(logCalls).not.toContain("legacy-canonical");
+    });
+
+    it("renders (not connected) for slugs with no connector", async () => {
       server.use(stubConnectors([]));
 
       await listCommand.parseAsync(["node", "cli"]);

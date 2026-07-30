@@ -12,10 +12,10 @@ import {
   listZeroUserPermissionGrants,
 } from "../../lib/api";
 import { withErrorHandler } from "../../lib/command";
-import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata/policy";
 import { policyIcon } from "../../lib/utils/format-utils";
 import {
   loadConnectorPermissionInfos,
+  connectorPermissionGrantsToFirewallPolicies,
   type ConnectorPermissionInfo,
 } from "./shared/firewall-permissions";
 
@@ -125,10 +125,10 @@ async function showSandboxInfo(showPermissions: boolean): Promise<void> {
       if (permissionDataAvailable) {
         const permissionInfos = await loadConnectorPermissionInfos({
           displayConnectorSlugs: identities.map((connector) => {
-            return connector.type;
+            return connector.slug;
           }),
           defaultPolicyConnectorSlugs: enabledResult.value,
-          storedPolicies: permissionGrantsToFirewallPolicies(
+          storedPolicies: connectorPermissionGrantsToFirewallPolicies(
             grantsResult.value,
           ),
         });
@@ -143,10 +143,10 @@ async function showSandboxInfo(showPermissions: boolean): Promise<void> {
       console.log(chalk.bold("Connectors:"));
       for (const connector of identities) {
         const identity = formatConnectorIdentity(connector);
-        console.log(`  ${connector.type.padEnd(14)}${identity}`);
+        console.log(`  ${connector.slug.padEnd(14)}${identity}`);
 
         if (permissionDataAvailable) {
-          const info = permissionInfoBySlug.get(connector.type);
+          const info = permissionInfoBySlug.get(connector.slug);
           if (info) {
             printConnectorPermissions(info);
           }
@@ -165,7 +165,7 @@ async function showSandboxInfo(showPermissions: boolean): Promise<void> {
       console.log(chalk.bold("Connectors:"));
       for (const connector of identities) {
         const identity = formatConnectorIdentity(connector);
-        console.log(`  ${connector.type.padEnd(14)}${identity}`);
+        console.log(`  ${connector.slug.padEnd(14)}${identity}`);
       }
     }
   } catch {

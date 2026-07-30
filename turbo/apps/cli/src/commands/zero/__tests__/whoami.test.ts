@@ -230,7 +230,8 @@ describe("zero whoami command", () => {
             connectors: [
               {
                 id: "1",
-                type: "github",
+                type: "legacy-github",
+                slug: "github",
                 authMethod: "oauth",
                 externalId: "12345",
                 externalUsername: "octocat",
@@ -270,7 +271,10 @@ describe("zero whoami command", () => {
       expect(
         output.some((line) => {
           return (
-            line.includes("@octocat") && line.includes("(octocat@github.com)")
+            line.includes("github") &&
+            line.includes("@octocat") &&
+            line.includes("(octocat@github.com)") &&
+            !line.includes("legacy-github")
           );
         }),
       ).toBe(true);
