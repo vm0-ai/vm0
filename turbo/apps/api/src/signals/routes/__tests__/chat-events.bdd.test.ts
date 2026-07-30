@@ -6128,20 +6128,60 @@ describe("CHAT-02: shared user message queue", () => {
       signal: context.signal,
     });
 
+    await webhooks.requestAgentEvents(
+      {
+        runId: anchor.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 0,
+            message: {
+              content: [
+                { type: "text", text: "terminal callback race complete" },
+              ],
+            },
+          },
+        ],
+      },
+      anchorClaim.sandboxHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    // Pause the database-backed callback after its lifecycle marker commits
+    // but before its queue drain. The output event is projected above before
+    // this timing gate is installed, so neither path depends on Axiom.
+    const callbackPublishStarted = createDeferredPromise<void>(context.signal);
+    const releaseCallbackPublish = createDeferredPromise<void>(context.signal);
+    let callbackPublishBlocked = false;
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (
+        topic === `chatThreadMessageCreated:${anchor.threadId}` &&
+        !callbackPublishBlocked
+      ) {
+        callbackPublishBlocked = true;
+        callbackPublishStarted.resolve(undefined);
+        return releaseCallbackPublish.promise;
+      }
+      return Promise.resolve(undefined);
+    });
+
     onTestFinished(async () => {
+      if (!releaseCallbackPublish.settled()) {
+        releaseCallbackPublish.resolve(undefined);
+      }
       admissionLock.release();
       await admissionLock.done;
     });
 
-    chatCallbacks.mockChatOutputEvents([
-      assistantEvent(0, "terminal callback race complete"),
-    ]);
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
       lastEventSequence: 0,
     });
-    // Completing the anchor starts both the org run-queue drain and the
-    // database-backed terminal callback's chat-message drain.
-    await expect.poll(admissionLock.waiterCount).toBe(2);
+    await callbackPublishStarted.promise;
+    // Completing the anchor also starts the org run-queue drain. Pin that
+    // known waiter first so the next two waiters identify the inline send and
+    // the terminal callback's chat-message drain respectively.
+    await expect.poll(admissionLock.waiterCount).toBe(1);
 
     const prompt = "terminal drain and inline send share one claim";
     const messageId = randomUUID();
@@ -6163,6 +6203,9 @@ describe("CHAT-02: shared user message queue", () => {
         });
       })
       .toBe(true);
+    await expect.poll(admissionLock.waiterCount).toBe(2);
+
+    releaseCallbackPublish.resolve(undefined);
     await expect.poll(admissionLock.waiterCount).toBe(3);
     admissionLock.release();
 
