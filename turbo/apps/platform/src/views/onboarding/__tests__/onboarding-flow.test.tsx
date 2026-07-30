@@ -237,11 +237,9 @@ describe("onboarding flow", () => {
         name: "Escolha um modelo de apresentação para começar",
       }),
     ).resolves.toBeInTheDocument();
-    expect(screen.getByText("Lançamento divertido")).toBeVisible();
+    expect(screen.getByText("Sunburst playroom")).toBeVisible();
     expect(
-      buttonByAriaLabel(
-        "Selecionar modelo de apresentação Lançamento divertido",
-      ),
+      buttonByAriaLabel("Selecionar modelo de apresentação Sunburst playroom"),
     ).toBeInTheDocument();
     expect(document.title).toBe("Escolha um modelo de apresentação | VM0");
   });
