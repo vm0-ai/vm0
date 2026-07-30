@@ -154,6 +154,10 @@ GERMAN_LOCALE_ROLLOUT_ENABLED=true
 # client can exercise the rollout path.
 FRENCH_LOCALE_ROLLOUT_ENABLED=true
 
+# Japanese has not shipped yet. Enable the deployment gate in development so
+# users can opt into the locale through the feature switch.
+JAPANESE_LOCALE_ROLLOUT_ENABLED=true
+
 # Optional: Google Ads API (developer token + login customer ID for MCC)
 GOOGLE_ADS_DEVELOPER_TOKEN=op://Development/google/GOOGLE_ADS_DEVELOPER_TOKEN
 GOOGLE_ADS_LOGIN_CUSTOMER_ID=op://Development/google/GOOGLE_ADS_LOGIN_CUSTOMER_ID

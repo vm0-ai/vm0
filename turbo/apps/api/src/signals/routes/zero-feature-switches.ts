@@ -47,7 +47,8 @@ function featureSwitchResponseBody(params: {
   effectiveSwitches[FeatureSwitchKey.BrazilianPortugueseLocale] =
     isBrazilianPortugueseLocaleRolloutEnabled();
   effectiveSwitches[FeatureSwitchKey.JapaneseLocale] =
-    isJapaneseLocaleRolloutEnabled();
+    isJapaneseLocaleRolloutEnabled() &&
+    effectiveSwitches[FeatureSwitchKey.JapaneseLocale];
   effectiveSwitches[FeatureSwitchKey.KoreanLocale] =
     isKoreanLocaleRolloutEnabled();
   effectiveSwitches[FeatureSwitchKey.IndonesianLocale] =

@@ -388,9 +388,17 @@ describe("settings dialog", () => {
 
   it("selects and persists Japanese when the API advertises it", async () => {
     const submittedLocales: UserLocale[] = [];
+    const reloadStarted = context.mocks.deferred<void>();
+    const releaseReload = context.mocks.deferred<void>();
+    let preferenceRequestCount = 0;
     let serverLocale: UserLocale | null = "en-US";
     const supportedLocales: UserLocale[] = ["en-US", "pt-BR", "ja-JP"];
-    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+    context.mocks.api(zeroUserPreferencesContract.get, async ({ respond }) => {
+      preferenceRequestCount += 1;
+      if (preferenceRequestCount > 1) {
+        reloadStarted.resolve();
+        await releaseReload.promise;
+      }
       return respond(200, createPreferences(serverLocale, supportedLocales));
     });
     context.mocks.api(
@@ -414,6 +422,12 @@ describe("settings dialog", () => {
       }),
     );
     click(screen.getByRole("option", { name: "日本語" }));
+
+    await reloadStarted.promise;
+    expect(screen.getByRole("combobox", { name: "言語" })).toHaveTextContent(
+      "日本語",
+    );
+    releaseReload.resolve();
 
     await waitFor(() => {
       expect(submittedLocales).toContain("ja-JP");

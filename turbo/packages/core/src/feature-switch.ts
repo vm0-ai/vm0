@@ -251,7 +251,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Allow ja-JP preference writes after incompatible API readers and rollback candidates have drained.",
     enabled: false,
-    userOverridable: false,
   },
   [FeatureSwitchKey.KoreanLocale]: {
     maintainer: "yuma@vm0.ai",

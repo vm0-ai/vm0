@@ -16,6 +16,8 @@ import {
   type UserPreferencesResponse,
   zeroUserPreferencesContract,
 } from "@vm0/api-contracts/contracts/zero-user-preferences";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { isBrazilianPortugueseLocaleRolloutEnabled } from "../../lib/brazilian-portuguese-locale-rollout";
 import { isFrenchLocaleRolloutEnabled } from "../../lib/french-locale-rollout";
@@ -31,6 +33,7 @@ import { authRoute } from "../auth/auth-route";
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
+import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import {
   updateUserPreferences$,
   userPreferences,
@@ -56,7 +59,8 @@ function addSupportedLocale(
   }
 }
 
-const localeRollout$ = computed((get): LocaleRollout => {
+const localeRollout$ = computed(async (get): Promise<LocaleRollout> => {
+  const auth = get(organizationAuthContext$);
   const clientVersion = get(request$).raw.headers.get(CLIENT_VERSION_HEADER);
   const clientSupportsBrazilianPortuguese = clientVersionSupportsCapability(
     clientVersion,
@@ -90,6 +94,16 @@ const localeRollout$ = computed((get): LocaleRollout => {
     clientVersion,
     CLIENT_CAPABILITY_FR_FR_LOCALE,
   );
+  const japaneseEnabled =
+    clientSupportsJapanese &&
+    isJapaneseLocaleRolloutEnabled() &&
+    isFeatureEnabled(FeatureSwitchKey.JapaneseLocale, {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      overrides: await get(
+        userFeatureSwitchOverrides(auth.orgId, auth.userId),
+      ),
+    });
   const supportedLocales: UserLocale[] = ["en-US"];
   addSupportedLocale(
     supportedLocales,
@@ -101,7 +115,7 @@ const localeRollout$ = computed((get): LocaleRollout => {
     supportedLocales,
     "ja-JP",
     clientSupportsJapanese,
-    isJapaneseLocaleRolloutEnabled(),
+    japaneseEnabled,
   );
   addSupportedLocale(
     supportedLocales,

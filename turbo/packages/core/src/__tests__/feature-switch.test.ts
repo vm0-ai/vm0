@@ -271,7 +271,7 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.BrazilianPortugueseLocale,
     );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+    expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.JapaneseLocale,
     );
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
@@ -334,6 +334,7 @@ describe("user-overridable switches", () => {
       [FeatureSwitchKey.ZeroBrowser]: true,
       [FeatureSwitchKey.ComposerConnectorPermissions]: true,
       [FeatureSwitchKey.Dummy]: false,
+      [FeatureSwitchKey.JapaneseLocale]: true,
       [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
     });
   });

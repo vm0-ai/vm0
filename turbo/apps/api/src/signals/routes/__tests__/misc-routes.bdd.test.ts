@@ -572,13 +572,13 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
       },
     );
 
-    const publicOverrideRejected = await api.updatePreferences(
+    const deploymentGateRejected = await api.updatePreferences(
       admin,
       { locale: "ja-JP" },
       [400],
       JAPANESE_CLIENT_VERSION,
     );
-    expectApiError(publicOverrideRejected.body);
+    expectApiError(deploymentGateRejected.body);
 
     mockOptionalEnv("JAPANESE_LOCALE_ROLLOUT_ENABLED", "true");
 
