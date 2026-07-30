@@ -780,7 +780,12 @@ export function messageDocumentToDisplayText(
       continue;
     }
     if (part.type === "agent") {
-      inlineText += `[Agent: ${part.nameSnapshot}]`;
+      inlineText += i18n.t(
+        ($) => {
+          return $.chat.messageDocument.agent;
+        },
+        { name: part.nameSnapshot },
+      );
       continue;
     }
     if (part.type === "template") {

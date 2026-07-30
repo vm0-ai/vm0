@@ -1374,6 +1374,7 @@
       "unavailable": "Este e-mail não está mais disponível."
     },
     "messageDocument": {
+      "agent": "[Agente: {{name}}]",
       "chatThread": "[Conversa: {{title}}]",
       "file": "[Arquivo: {{filename}}]",
       "template": "[Modelo: {{title}}]"

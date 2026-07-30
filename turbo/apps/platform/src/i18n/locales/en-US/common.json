@@ -1345,6 +1345,7 @@
       "unavailable": "This email is no longer available."
     },
     "messageDocument": {
+      "agent": "[Agent: {{name}}]",
       "chatThread": "[Chat thread: {{title}}]",
       "file": "[File: {{filename}}]",
       "template": "[Template: {{title}}]"

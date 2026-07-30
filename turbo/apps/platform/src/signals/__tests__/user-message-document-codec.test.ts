@@ -148,6 +148,7 @@ describe("user message document codec", () => {
       `  Review [Project Alpha](/chats/${THREAD_ID}) with ` +
         `[Ada](/agents/${MENTIONED_AGENT_ID}/chat) then\ncontinue  \nlast`,
     );
+    expect(messageDocumentToDisplayText(structured)).toContain("[Agent: Ada]");
 
     const restored = messageDocumentToEditorDoc(structured);
     expect(restored).toStrictEqual({
