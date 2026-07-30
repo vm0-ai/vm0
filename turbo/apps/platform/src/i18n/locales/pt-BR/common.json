@@ -1488,6 +1488,7 @@
       "noEmojiFound": "Nenhum emoji encontrado",
       "openArtifacts": "Abrir artefatos",
       "openBrowser": "Abrir navegador",
+      "openNamedAgent": "Abrir agente {{name}}",
       "openNamedChat": "Abrir conversa {{title}}",
       "scrollToBottom": "Rolar até o final",
       "searchEmoji": "Buscar emoji"

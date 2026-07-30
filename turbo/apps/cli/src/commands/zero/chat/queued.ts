@@ -10,6 +10,9 @@ import { resolveChatThreadId } from "./shared";
 
 const PAGE_LIMIT = 50;
 
+/** Per-thread chat event sequences start at 1, so this marks the oldest event. */
+const FIRST_CHAT_EVENT_SEQ_ID = 1;
+
 interface QueuedOptions {
   readonly json?: boolean;
   readonly threadId?: string;
@@ -25,25 +28,25 @@ interface QueuedEventSummary {
 async function loadAllChatEvents(threadId: string): Promise<ChatEvent[]> {
   let beforeSeqId: number | undefined;
   const newestFirstPages: ChatEvent[][] = [];
-  const seenCursors = new Set<number>();
 
   for (;;) {
-    const page = await listZeroChatEvents({
+    const events = await listZeroChatEvents({
       threadId,
       beforeSeqId,
       limit: PAGE_LIMIT,
     });
-    newestFirstPages.push([...page.events]);
-    if (!page.hasHistoryBefore) {
+    newestFirstPages.push([...events]);
+
+    // A thread's first event always carries seqId 1, so reaching it is the only
+    // stop condition. The cursor strictly decreases, so the walk terminates.
+    const oldestInPage = events[0];
+    if (
+      oldestInPage === undefined ||
+      oldestInPage.seqId <= FIRST_CHAT_EVENT_SEQ_ID
+    ) {
       return newestFirstPages.reverse().flat();
     }
-
-    const nextCursor = page.events[0]?.seqId;
-    if (nextCursor === undefined || seenCursors.has(nextCursor)) {
-      throw new Error("Chat event pagination did not return a usable cursor");
-    }
-    seenCursors.add(nextCursor);
-    beforeSeqId = nextCursor;
+    beforeSeqId = oldestInPage.seqId;
   }
 }
 

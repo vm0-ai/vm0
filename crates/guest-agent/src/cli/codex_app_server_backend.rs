@@ -148,11 +148,7 @@ pub(super) async fn execute_codex_app_server_for_runtime(
     log_info!(LOG_TAG, "Starting codex app-server execution...");
 
     let should_send_events = http.has_api();
-    let event_delivery = EventDeliveryRuntime::start(
-        http.clone(),
-        runtime.event_error_flag.to_string(),
-        &runtime.run_id,
-    )?;
+    let event_delivery = EventDeliveryRuntime::start(http.clone(), &runtime.run_id)?;
 
     let run_result = run_codex_app_server(
         masker,
@@ -166,12 +162,16 @@ pub(super) async fn execute_codex_app_server_for_runtime(
     .await;
 
     match run_result {
-        Ok(result) if result.control_error.is_some() => {
-            event_delivery.abort().await;
+        Ok(mut result) if result.control_error.is_some() => {
+            let delivery_report = event_delivery.abort().await;
+            result.last_event_sequence = delivery_report.last_acknowledged_sequence;
+            result.event_delivery = delivery_report.diagnostic;
             Ok(result)
         }
         Ok(mut result) => {
-            result.last_event_sequence = event_delivery.finish().await?;
+            let delivery_report = event_delivery.finish().await?;
+            result.last_event_sequence = delivery_report.last_acknowledged_sequence;
+            result.event_delivery = delivery_report.diagnostic;
             Ok(result)
         }
         Err(error) => {
@@ -365,6 +365,7 @@ async fn run_codex_app_server(
             cli_observed_exit: None,
             stderr_lines: Vec::new(),
             last_event_sequence: None,
+            event_delivery: None,
             claude_result: None,
             post_result_cleanup_result: None,
             failure_diagnostic: ingestor.failure_diagnostic(),
@@ -421,6 +422,7 @@ async fn run_codex_app_server(
                 cli_observed_exit: None,
                 stderr_lines,
                 last_event_sequence: None,
+                event_delivery: None,
                 claude_result: None,
                 post_result_cleanup_result: None,
                 failure_diagnostic: ingestor.failure_diagnostic(),
@@ -445,6 +447,7 @@ async fn run_codex_app_server(
                 cli_observed_exit: None,
                 stderr_lines,
                 last_event_sequence: None,
+                event_delivery: None,
                 claude_result: None,
                 post_result_cleanup_result: None,
                 failure_diagnostic: ingestor.failure_diagnostic(),

@@ -688,7 +688,7 @@ describe("chat thread event sourcing local-first list", () => {
     context.mocks.api(chatThreadEventsContract.list, ({ params, respond }) => {
       initialEventsRequests += 1;
       expect(params.threadId).toBe(OPTIMISTIC_THREAD_ID);
-      return respond(200, { events: [], hasHistoryBefore: false });
+      return respond(200, { events: [] });
     });
 
     const dataSource = createRemoteChatThreadDataSource(OPTIMISTIC_THREAD_ID);
@@ -723,10 +723,7 @@ describe("chat thread event sourcing local-first list", () => {
         { threadId: OPTIMISTIC_THREAD_ID, sinceSeqId: undefined },
         context.signal,
       ),
-    ).resolves.toStrictEqual({
-      events: [],
-      hasHistoryBefore: false,
-    });
+    ).resolves.toStrictEqual([]);
     expect(threadDraftRequests).toBe(1);
     expect(initialEventsRequests).toBe(1);
   });

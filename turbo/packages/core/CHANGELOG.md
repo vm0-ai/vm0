@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.488.2](https://github.com/vm0-ai/vm0/compare/core-v8.488.1...core-v8.488.2) (2026-07-30)
+
+
+### Refactoring
+
+* **cli:** remove unnecessary resource candidate groups ([#23961](https://github.com/vm0-ai/vm0/issues/23961)) ([6c46502](https://github.com/vm0-ai/vm0/commit/6c46502cc34dc59fcd6b612cb72c7c21659178da))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.250.0
+
 ## [8.488.1](https://github.com/vm0-ai/vm0/compare/core-v8.488.0...core-v8.488.1) (2026-07-30)
 
 

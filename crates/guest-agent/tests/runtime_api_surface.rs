@@ -29,7 +29,6 @@ const RUN_SCOPED_PATH_READER_NAMES: &[&str] = &[
     "runtime_dir",
     "session_id_file",
     "session_history_path_file",
-    "event_error_flag",
     "checkpoint_error_file",
     "final_session_history_identity_file",
     "failure_diagnostic_file",

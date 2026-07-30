@@ -405,7 +405,6 @@ export function mockKeyboardNavigationThreads({
               ]
             : [],
         ),
-        hasHistoryBefore: false,
       });
     },
   );
@@ -599,7 +598,6 @@ export function mockServerQueuedThreadStories(): void {
         events: normalizeMockChatEvents(
           byId.get(params.threadId)?.messages ?? [],
         ),
-        hasHistoryBefore: false,
       });
     },
   );

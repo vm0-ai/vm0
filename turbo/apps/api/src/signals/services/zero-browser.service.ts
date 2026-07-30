@@ -328,7 +328,7 @@ async function browserTabSnapshotTableAvailable(
   signal: AbortSignal,
 ): Promise<boolean> {
   // This probe keeps the current API safe when it deploys before migration
-  // 0749. Remove it after 0749 is guaranteed everywhere and rollback closes.
+  // 0750. Remove it after 0750 is guaranteed everywhere and rollback closes.
   const [state] = await executeRawRows(
     db,
     sql`

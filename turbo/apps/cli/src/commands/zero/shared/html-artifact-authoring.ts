@@ -41,10 +41,6 @@ interface HtmlArtifactAuthoringPacket {
       readonly skills: "string[]";
       readonly template: "string";
       readonly designSystem: "string | null";
-      readonly imageStyle: "string | null";
-      readonly audioStyle: "string | null";
-      readonly videoTemplate: "string | null";
-      readonly bundleTemplate: "string | null";
       readonly rationale: "string";
     };
   };
@@ -115,10 +111,6 @@ export function createHtmlArtifactAuthoringPacket(
     skills: "string[]",
     template: "string",
     designSystem: "string | null",
-    imageStyle: "string | null",
-    audioStyle: "string | null",
-    videoTemplate: "string | null",
-    bundleTemplate: "string | null",
     rationale: "string",
   } as const;
   const artifact = {
@@ -163,7 +155,7 @@ export function createHtmlArtifactAuthoringPacket(
     "",
     "## Stage 1: Resource Selection",
     "- Choose generation resources from the bundled federated registry slice below.",
-    "- Select one template, one or more skills, zero or one design system, and optional media/style resources when relevant.",
+    "- Select one template, one or more skills, and zero or one design system.",
     "- Choose only IDs present in this packet; do not invent registry IDs.",
     "- Prefer compatible resources, but the user prompt is the highest-priority signal.",
     "- Treat the selection JSON as internal working state, then continue to authoring.",

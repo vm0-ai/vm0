@@ -242,7 +242,7 @@ function setupChatThread({
     async ({ query, respond }) => {
       if (query.beforeSeqId !== undefined) {
         await waitForHistoryResponse?.();
-        return respond(200, { events: [], hasHistoryBefore: false });
+        return respond(200, { events: [] });
       }
       const events = normalizeMockChatEvents(
         servedMessages.map((message) => {
@@ -255,12 +255,10 @@ function setupChatThread({
           events: events.filter((event) => {
             return event.seqId > sinceSeqId;
           }),
-          hasHistoryBefore: false,
         });
       }
       return respond(200, {
         events,
-        hasHistoryBefore: waitForHistoryResponse !== undefined,
       });
     },
   );

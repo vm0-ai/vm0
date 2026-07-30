@@ -5241,15 +5241,22 @@
     {
       "idx": 748,
       "version": "7",
-      "when": 1785395446646,
-      "tag": "0748_thread_browser_lifecycle",
+      "when": 1785395016610,
+      "tag": "0748_secret_alex_power",
       "breakpoints": true
     },
     {
       "idx": 749,
       "version": "7",
+      "when": 1785395446646,
+      "tag": "0749_thread_browser_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 750,
+      "version": "7",
       "when": 1785399306937,
-      "tag": "0749_browser_session_tab_snapshots",
+      "tag": "0750_browser_session_tab_snapshots",
       "breakpoints": true
     }
   ]

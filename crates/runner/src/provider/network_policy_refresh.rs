@@ -313,7 +313,7 @@ impl NetworkPolicyRefreshCore {
             connector_slugs: vec![connector_slug],
         };
         if let Err(error) = self.request_tx.try_send(request) {
-            self.handle_notification_enqueue_error(error).await;
+            self.handle_notification_enqueue_error(error, cancel).await;
         }
     }
 
@@ -330,7 +330,11 @@ impl NetworkPolicyRefreshCore {
             .then(|| active.cancel.clone())
     }
 
-    async fn handle_notification_enqueue_error(&self, error: TrySendError<RefreshRequest>) {
+    async fn handle_notification_enqueue_error(
+        &self,
+        error: TrySendError<RefreshRequest>,
+        cancel: Option<&CancellationToken>,
+    ) {
         match error {
             Full(request) => {
                 warn!(
@@ -340,8 +344,17 @@ impl NetworkPolicyRefreshCore {
                     connector_refs = ?request.connector_slugs,
                     "network policy refresh queue full; failing closed after network policy refresh notification"
                 );
-                self.fail_closed_active_connectors(request.run_id, &request.connector_slugs)
+                if let Some(cancel) = cancel {
+                    self.fail_closed_active_connectors_until_cancelled(
+                        request.run_id,
+                        &request.connector_slugs,
+                        cancel,
+                    )
                     .await;
+                } else {
+                    self.fail_closed_active_connectors(request.run_id, &request.connector_slugs)
+                        .await;
+                }
             }
             Closed(error) => {
                 warn!(
@@ -557,6 +570,39 @@ impl NetworkPolicyRefreshCore {
         }
     }
 
+    async fn fail_closed_active_connectors_until_cancelled(
+        &self,
+        run_id: RunId,
+        connector_slugs: &[String],
+        cancel: &CancellationToken,
+    ) {
+        for connector_slug in connector_slugs {
+            if cancel.is_cancelled() {
+                return;
+            }
+            if let Some(snapshot) = self.active_snapshot(run_id, connector_slug).await {
+                match snapshot
+                    .registry
+                    .fail_closed_network_policy_if_run_matches_until_cancelled(
+                        &snapshot.source_ip,
+                        &run_id.to_string(),
+                        connector_slug,
+                        cancel,
+                    )
+                    .await
+                {
+                    Ok(Some(result)) => {
+                        log_fail_closed_network_policy_result(run_id, connector_slug, Ok(result));
+                    }
+                    Ok(None) => return,
+                    Err(error) => {
+                        log_fail_closed_network_policy_result(run_id, connector_slug, Err(error));
+                    }
+                }
+            }
+        }
+    }
+
     async fn active_snapshot(
         &self,
         run_id: RunId,
@@ -748,15 +794,23 @@ async fn fail_closed_network_policy(
     connector_slug: &str,
     snapshot: ActiveRunNetworkPolicySnapshot,
 ) {
-    match snapshot
+    let result = snapshot
         .registry
         .fail_closed_network_policy_if_run_matches(
             &snapshot.source_ip,
             &run_id.to_string(),
             connector_slug,
         )
-        .await
-    {
+        .await;
+    log_fail_closed_network_policy_result(run_id, connector_slug, result);
+}
+
+fn log_fail_closed_network_policy_result(
+    run_id: RunId,
+    connector_slug: &str,
+    result: crate::error::RunnerResult<bool>,
+) {
+    match result {
         Ok(true) => {
             warn!(
                 run_id = %run_id,
@@ -1434,6 +1488,54 @@ mod tests {
         })
         .await;
         assert_fail_closed_policy(&policy);
+    }
+
+    #[tokio::test]
+    async fn cancelled_full_queue_notification_does_not_wait_for_busy_registry_lock() {
+        let server = MockServer::start();
+        let (core, mut requests) = core_without_worker(&server);
+        let run_id = RunId::nil();
+        let (_dir, registry, _registry_path, lock_path) = registered_slack_registry(run_id).await;
+        core.inner
+            .active_runs
+            .lock()
+            .await
+            .insert(run_id, active_run_network_policy_state(registry));
+        for _ in 0..REFRESH_REQUEST_QUEUE_CAPACITY {
+            core.request_tx
+                .try_send(refresh_request(run_id, "slack"))
+                .expect("refresh queue should accept request");
+        }
+        let lock_guard = crate::lock::acquire(lock_path)
+            .await
+            .expect("registry lock should be acquired");
+        let cancel = CancellationToken::new();
+
+        let notify = core.notify_network_policy_refresh_until_cancelled(
+            run_id,
+            "slack".to_string(),
+            &cancel,
+        );
+        tokio::pin!(notify);
+        tokio::select! {
+            biased;
+            () = &mut notify => {
+                panic!("full queue notification should wait for the registry lock");
+            }
+            () = tokio::task::yield_now() => {}
+        }
+
+        cancel.cancel();
+        tokio::time::timeout(Duration::from_secs(1), &mut notify)
+            .await
+            .expect("cancelled notification should finish before registry lock release");
+
+        let mut queued = 0;
+        while requests.try_recv().is_ok() {
+            queued += 1;
+        }
+        assert_eq!(queued, REFRESH_REQUEST_QUEUE_CAPACITY);
+        drop(lock_guard);
     }
 
     #[tokio::test]

@@ -9369,8 +9369,8 @@ async function validateBrowserResizeStateRolloutCompatibility(): Promise<void> {
   );
 }
 
-const BROWSER_TAB_SNAPSHOT_PREVIOUS_MIGRATION = 748;
-const BROWSER_TAB_SNAPSHOT_MIGRATION = 749;
+const BROWSER_TAB_SNAPSHOT_PREVIOUS_MIGRATION = 749;
+const BROWSER_TAB_SNAPSHOT_MIGRATION = 750;
 
 async function browserTabSnapshotTableAvailable(
   client: Client,
@@ -9471,7 +9471,7 @@ async function validateBrowserTabSnapshotRolloutCompatibility(): Promise<void> {
     await dropDatabase(testDb);
   }
   console.log(
-    "   ✅ Current API skips snapshots before 0749, previous browser writes remain compatible, and snapshots follow stable thread identity\n",
+    "   ✅ Current API skips snapshots before 0750, previous browser writes remain compatible, and snapshots follow stable thread identity\n",
   );
 }
 

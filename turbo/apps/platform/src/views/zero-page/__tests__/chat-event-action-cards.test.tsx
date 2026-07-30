@@ -1117,10 +1117,7 @@ describe("chat event action cards", () => {
           query.beforeSeqId ||
           query.sinceSeqId
         ) {
-          return respond(200, {
-            events: [],
-            ...(query.beforeSeqId ? { hasHistoryBefore: false } : {}),
-          });
+          return respond(200, { events: [] });
         }
         return respond(200, {
           events: [
@@ -1133,7 +1130,6 @@ describe("chat event action cards", () => {
               createdAt,
             },
           ],
-          hasHistoryBefore: false,
         });
       },
     );

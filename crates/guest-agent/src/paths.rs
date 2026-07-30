@@ -25,7 +25,6 @@ pub struct GuestPaths {
     runtime_dir: PathBuf,
     session_id_file: String,
     session_history_path_file: String,
-    event_error_flag: String,
     checkpoint_error_file: String,
     final_session_history_identity_file: String,
     failure_diagnostic_file: String,
@@ -49,9 +48,6 @@ impl GuestPaths {
             session_history_path_file: path_to_string(
                 guest_contracts::runtime_paths::session_history_marker_file(&runtime_dir),
             ),
-            event_error_flag: path_to_string(guest_contracts::runtime_paths::event_error_file(
-                &runtime_dir,
-            )),
             checkpoint_error_file: path_to_string(
                 guest_contracts::runtime_paths::checkpoint_error_file(&runtime_dir),
             ),
@@ -126,10 +122,6 @@ impl GuestPaths {
 
     pub fn session_history_path_file(&self) -> &str {
         &self.session_history_path_file
-    }
-
-    pub fn event_error_flag(&self) -> &str {
-        &self.event_error_flag
     }
 
     pub fn checkpoint_error_file(&self) -> &str {
@@ -213,10 +205,6 @@ mod tests {
             paths.session_history_path_file(),
             guest_contracts::runtime_paths::session_history_marker_file(&runtime_dir)
                 .to_string_lossy()
-        );
-        assert_eq!(
-            paths.event_error_flag(),
-            guest_contracts::runtime_paths::event_error_file(&runtime_dir).to_string_lossy()
         );
         assert_eq!(
             paths.checkpoint_error_file(),

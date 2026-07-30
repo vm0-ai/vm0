@@ -211,7 +211,7 @@ describe("zero chat thread IndexedDB fallback", () => {
     context.mocks.api(chatThreadEventsContract.list, async ({ respond }) => {
       catchUpRequested.resolve();
       await releaseCatchUp.promise;
-      return respond(200, { events: [], hasHistoryBefore: false });
+      return respond(200, { events: [] });
     });
 
     try {
@@ -331,7 +331,7 @@ describe("zero chat thread IndexedDB fallback", () => {
     context.mocks.api(chatThreadEventsContract.list, async ({ respond }) => {
       catchUpRequested.resolve();
       await releaseCatchUp.promise;
-      return respond(200, { events: [], hasHistoryBefore: false });
+      return respond(200, { events: [] });
     });
 
     try {
@@ -427,7 +427,7 @@ describe("zero chat thread IndexedDB fallback", () => {
     context.mocks.api(chatThreadEventsContract.list, async ({ respond }) => {
       messageListRequested.resolve();
       await initialMessageList.promise;
-      return respond(200, { events: [], hasHistoryBefore: false });
+      return respond(200, { events: [] });
     });
 
     try {

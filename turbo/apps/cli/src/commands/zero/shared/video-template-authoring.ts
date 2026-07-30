@@ -1,8 +1,7 @@
 import {
   type GenerationOutputKind,
-  type ResourceCandidateSlice,
   type VideoTemplateRegistryEntry,
-  selectResourceCandidates,
+  RESOURCE_REGISTRY_VERSION,
 } from "./resource-registry";
 
 interface VideoTemplateAuthoringOptions {
@@ -31,7 +30,9 @@ interface VideoTemplateAuthoringPacket {
     readonly outputDir: string;
   };
   readonly selection: {
-    readonly candidates: ResourceCandidateSlice["candidates"];
+    readonly candidates: {
+      readonly videoTemplates: readonly VideoTemplateRegistryEntry[];
+    };
     readonly outputSchema: {
       readonly videoTemplate: "string";
       readonly rationale: "string";
@@ -43,15 +44,6 @@ interface VideoTemplateAuthoringPacket {
   };
   readonly outputDir: string;
   readonly instructions: string;
-}
-
-function formatCandidateSource(
-  source: ResourceCandidateSlice["sources"][number],
-): string {
-  if ("repo" in source) {
-    return `- \`${source.repo}@${source.ref}\``;
-  }
-  return `- ${source.description}`;
 }
 
 const outputDir = "./generated/videos";
@@ -67,28 +59,8 @@ const artifactRules = [
 export function createVideoTemplateAuthoringPacket(
   options: VideoTemplateAuthoringOptions,
 ): VideoTemplateAuthoringPacket {
-  const baseSlice = selectResourceCandidates();
-  const candidateSlice: ResourceCandidateSlice = {
-    registryVersion: baseSlice.registryVersion,
-    source: {
-      repo: options.template.source.repo,
-      ref: options.template.source.ref,
-    },
-    sources: [
-      {
-        repo: options.template.source.repo,
-        ref: options.template.source.ref,
-      },
-    ],
-    candidates: {
-      skills: [],
-      templates: [],
-      designSystems: [],
-      imageStyles: [],
-      audioStyles: [],
-      videoTemplates: [options.template],
-      bundleTemplates: [],
-    },
+  const candidates = {
+    videoTemplates: [options.template],
   };
   const selectionSchema = {
     videoTemplate: "string",
@@ -133,12 +105,11 @@ export function createVideoTemplateAuthoringPacket(
     "```",
     "",
     "## Locked Template Source",
-    `Registry: \`${candidateSlice.registryVersion}\``,
-    "Sources:",
-    ...candidateSlice.sources.map(formatCandidateSource),
+    `Registry: \`${RESOURCE_REGISTRY_VERSION}\``,
+    `Git source: \`${options.template.source.repo}@${options.template.source.ref}\``,
     "",
     "```json",
-    JSON.stringify(candidateSlice.candidates, null, 2),
+    JSON.stringify(candidates, null, 2),
     "```",
     "",
     "## Stage 2: Resolve Selected Resources",
@@ -177,10 +148,10 @@ export function createVideoTemplateAuthoringPacket(
     type: "generation-source-selection",
     kind: "video",
     prompt: options.prompt,
-    registryVersion: candidateSlice.registryVersion,
+    registryVersion: RESOURCE_REGISTRY_VERSION,
     artifact,
     selection: {
-      candidates: candidateSlice.candidates,
+      candidates,
       outputSchema: selectionSchema,
     },
     authoring: {

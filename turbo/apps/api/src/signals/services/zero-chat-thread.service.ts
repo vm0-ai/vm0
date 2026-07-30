@@ -1951,10 +1951,12 @@ function userMessageSearchText(): SQL {
     ' ',
     jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].text')::text,
     jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].titleSnapshot')::text,
+    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].nameSnapshot')::text,
     jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].filenameSnapshot')::text,
     jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].quote')::text,
     jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].note[*].text')::text,
-    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].note[*].titleSnapshot')::text
+    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].note[*].titleSnapshot')::text,
+    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].note[*].nameSnapshot')::text
   )`;
 }
 
@@ -2180,12 +2182,7 @@ export function zeroChatThreadEventsPage(args: {
   readonly sinceId: string | undefined;
   readonly beforeId: string | undefined;
   readonly limit: number;
-}): Computed<
-  Promise<{
-    readonly events: readonly ChatEventResponse[];
-    readonly hasHistoryBefore: boolean;
-  } | null>
-> {
+}): Computed<Promise<readonly ChatEventResponse[] | null>> {
   return computed(async (get) => {
     const db = get(db$);
     const [owned] = await db
@@ -2231,7 +2228,7 @@ export function zeroChatThreadEventsPage(args: {
             )
             .limit(1);
     if (legacyCursorId !== undefined && !legacyCursor) {
-      return { events: [], hasHistoryBefore: false };
+      return [];
     }
 
     const sinceSeqId =
@@ -2240,7 +2237,6 @@ export function zeroChatThreadEventsPage(args: {
       args.beforeSeqId ?? (args.beforeId ? legacyCursor?.seqId : undefined);
     const threadFilter = eq(chatEvents.chatThreadId, args.threadId);
     let rows: ChatEventRow[];
-    let hasHistoryBefore = false;
 
     if (sinceSeqId !== undefined) {
       rows = await selectChatEventsWithMetadata(db)
@@ -2248,30 +2244,27 @@ export function zeroChatThreadEventsPage(args: {
         .orderBy(asc(chatEvents.seqId))
         .limit(args.limit);
     } else if (beforeSeqId !== undefined) {
-      const previousRows = await selectChatEventsWithMetadata(db)
-        .where(and(threadFilter, lt(chatEvents.seqId, beforeSeqId)))
-        .orderBy(desc(chatEvents.seqId))
-        .limit(args.limit + 1);
-      hasHistoryBefore = previousRows.length > args.limit;
-      rows = previousRows.slice(0, args.limit).reverse();
+      rows = (
+        await selectChatEventsWithMetadata(db)
+          .where(and(threadFilter, lt(chatEvents.seqId, beforeSeqId)))
+          .orderBy(desc(chatEvents.seqId))
+          .limit(args.limit)
+      ).reverse();
     } else {
-      const latestRows = await selectChatEventsWithMetadata(db)
-        .where(threadFilter)
-        .orderBy(desc(chatEvents.seqId))
-        .limit(args.limit + 1);
-      hasHistoryBefore = latestRows.length > args.limit;
-      rows = latestRows.slice(0, args.limit).reverse();
+      rows = (
+        await selectChatEventsWithMetadata(db)
+          .where(threadFilter)
+          .orderBy(desc(chatEvents.seqId))
+          .limit(args.limit)
+      ).reverse();
     }
 
-    return {
-      events: await get(
-        chatEventsWithAssets({
-          userId: args.userId,
-          rows,
-        }),
-      ),
-      hasHistoryBefore,
-    };
+    return await get(
+      chatEventsWithAssets({
+        userId: args.userId,
+        rows,
+      }),
+    );
   });
 }
 
