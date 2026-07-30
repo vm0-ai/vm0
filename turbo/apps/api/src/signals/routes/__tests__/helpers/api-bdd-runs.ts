@@ -12,6 +12,7 @@ import {
   type ZeroCapability,
 } from "@vm0/api-contracts/contracts/composes";
 import { runsMainContract } from "@vm0/api-contracts/contracts/runs";
+import { testAgentRunsContract } from "@vm0/api-contracts/contracts/test-agent-runs";
 import { webhookStripeContract } from "@vm0/api-contracts/contracts/webhooks";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import {
@@ -61,7 +62,6 @@ import {
 import { mockStripeClient } from "../../../external/stripe-client";
 import { agentComposesReadRoutes } from "../../agent-composes-read";
 import { agentComposesRoutes } from "../../agent-composes";
-import { agentRunsCreateRoutes } from "../../agent-runs-create";
 import { agentRunsReadRoutes } from "../../agent-runs-read";
 import { cliAuthRoutes } from "../../cli-auth";
 import { cronAggregateInsightsRoutes } from "../../cron-aggregate-insights";
@@ -83,12 +83,13 @@ import {
   zeroRunFixtureRoutes,
 } from "../../test-zero-run-fixture";
 import { zeroUserPermissionGrantsRoutes } from "../../zero-user-permission-grants";
+import { testAgentRunsRoutes } from "../../test-agent-runs";
 import { createBddApi, type ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 type AuthHeaders = { readonly authorization?: string };
 type ZeroRunRequest = z.infer<typeof zeroRunCreateBodySchema>;
-type DirectRunRequest = z.infer<(typeof runsMainContract.create)["body"]>;
+type DirectRunRequest = z.infer<(typeof testAgentRunsContract.create)["body"]>;
 type RunsListQuery = z.input<(typeof runsMainContract.list)["query"]>;
 type RunnerJobClaimRequest = z.infer<
   (typeof runnersJobClaimContract.claim)["body"]
@@ -157,7 +158,7 @@ const runRoutes = [
   ...cronReconcileBillingEntitlementsRoutes,
   ...cronTelegramCleanupRoutes,
   ...runnersRoutes,
-  ...agentRunsCreateRoutes,
+  ...testAgentRunsRoutes,
   ...agentRunsReadRoutes,
   ...webhooksStripeRoutes,
   ...zeroBillingStatusRoutes,
@@ -663,7 +664,7 @@ export function createRunsApi(context: TestContext) {
 
     async createDirectRun(actor: ApiTestUser, body: DirectRunRequest) {
       const response = await accept(
-        runApp(context)(runsMainContract).create({
+        runApp(context)(testAgentRunsContract).create({
           headers: authenticate(context, actor),
           body,
         }),
@@ -678,7 +679,7 @@ export function createRunsApi(context: TestContext) {
       statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
     ) {
       return await accept(
-        runApp(context)(runsMainContract).create({
+        runApp(context)(testAgentRunsContract).create({
           headers: authenticate(context, actor),
           body,
         }),
