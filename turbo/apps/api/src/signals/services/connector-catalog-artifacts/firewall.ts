@@ -185,8 +185,6 @@ export const firewallCategoriesSchema = z
 
 const firewallGeneratorResultSchema = z
   .object({
-    // TODO(#23619): Rename only with the external generator artifact version.
-    connectorRef: connectorSlugSchema,
     firewall: firewallConfigSchema,
     categories: firewallCategoriesSchema.nullable(),
     defaultAllowed: z.array(z.string().min(1)).nullable(),
@@ -370,23 +368,19 @@ function validateHostPolicy(connectorSlug: string, api: FirewallApi): void {
 export function validateFirewallGeneratorResult(
   result: FirewallGeneratorResult,
 ): void {
-  if (result.connectorRef !== result.firewall.name) {
-    throw new Error(
-      `Firewall result ref mismatch: ${result.connectorRef} != ${result.firewall.name}`,
-    );
-  }
+  const connectorSlug = result.firewall.name;
   const permissionNames = firewallPermissionNames(result.firewall);
   for (const api of result.firewall.apis) {
-    parseFirewallBaseUrl(api.base, result.connectorRef);
+    parseFirewallBaseUrl(api.base, connectorSlug);
     validateBaseUrlHostPolicy({
       base: api.base,
-      serviceName: result.connectorRef,
+      serviceName: connectorSlug,
       hostPolicy: api.hostPolicy,
     });
     if (api.auth.base !== undefined) {
-      validateAuthBaseUrl(api.auth.base, result.connectorRef);
+      validateAuthBaseUrl(api.auth.base, connectorSlug);
     }
-    validateHostPolicy(result.connectorRef, api);
+    validateHostPolicy(connectorSlug, api);
   }
 
   if (result.categories !== null) {
@@ -399,7 +393,7 @@ export function validateFirewallGeneratorResult(
     });
     if (missing.length > 0 || unknown.length > 0) {
       throw new Error(
-        `Firewall categories do not match permissions for ${result.connectorRef}`,
+        `Firewall categories do not match permissions for ${connectorSlug}`,
       );
     }
     const categoryNames = new Set(
@@ -416,7 +410,7 @@ export function validateFirewallGeneratorResult(
       })
     ) {
       throw new Error(
-        `Firewall category order does not match categories for ${result.connectorRef}`,
+        `Firewall category order does not match categories for ${connectorSlug}`,
       );
     }
   }
@@ -428,7 +422,7 @@ export function validateFirewallGeneratorResult(
     });
     if (duplicates.length > 0 || unknown.length > 0) {
       throw new Error(
-        `Firewall default allowlist is invalid for ${result.connectorRef}`,
+        `Firewall default allowlist is invalid for ${connectorSlug}`,
       );
     }
   }
