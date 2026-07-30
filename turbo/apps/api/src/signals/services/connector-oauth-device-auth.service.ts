@@ -8,7 +8,6 @@ import type {
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
   connectorAuthMethodIdSchema,
-  connectorSlugSchema,
   type ConnectorAuthMethodId,
   type ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
@@ -27,7 +26,6 @@ import type {
 import { connectorOauthDeviceAuthorizationSessions } from "@vm0/db/schema/connector-oauth-device-authorization-session";
 import { command } from "ccstate";
 import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
-import { z } from "zod";
 
 import { badRequestMessage, notFound } from "../../lib/error";
 import { optionalEnv } from "../../lib/env";
@@ -38,6 +36,10 @@ import {
   decryptPersistentSecretValue,
   encryptPersistentSecretValue,
 } from "./crypto.utils";
+import {
+  parseConnectorOauthDeviceProviderState,
+  serializeConnectorOauthDeviceProviderState,
+} from "./connector-authorization-provider-state";
 import {
   connectorActionResolver,
   type ConnectorActionMethodResolution,
@@ -137,15 +139,6 @@ function deviceAuthStartResponse(args: {
 }
 
 const DEVICE_AUTH_POLL_STATE_MAX_BYTES = 4096;
-
-const encryptedProviderStateSchema = z.object({
-  // TODO(#23619): Rename with the persisted encrypted provider-state format.
-  connectorType: connectorSlugSchema,
-  deviceCode: z.string(),
-  pollState: z.string().optional(),
-});
-
-type EncryptedProviderState = z.infer<typeof encryptedProviderStateSchema>;
 
 function validatedDeviceAuthPollState(
   pollState: string | undefined,
@@ -558,7 +551,7 @@ async function claimSession(args: {
 async function parseEncryptedProviderState(args: {
   readonly session: DeviceAuthSessionRow;
   readonly connectorSlug: ConnectorSlug;
-}): Promise<EncryptedProviderState> {
+}) {
   const decrypted = await decryptPersistentSecretValue(
     args.session.encryptedProviderState,
     {
@@ -566,13 +559,10 @@ async function parseEncryptedProviderState(args: {
       userId: args.session.userId,
     },
   );
-  const providerState = encryptedProviderStateSchema.parse(
-    JSON.parse(decrypted) as unknown,
-  );
-  if (providerState.connectorType !== args.connectorSlug) {
-    throw new Error("OAuth device provider state connector type mismatch");
-  }
-  return providerState;
+  return parseConnectorOauthDeviceProviderState({
+    serializedState: decrypted,
+    connectorSlug: args.connectorSlug,
+  });
 }
 
 async function claimStillCurrent(args: {
@@ -980,10 +970,10 @@ export const startConnectorOauthDeviceAuthSession$ = command(
     const expiresAt = new Date(now.getTime() + startResult.expiresIn * 1000);
     const pollState = validatedDeviceAuthPollState(startResult.pollState);
     const encryptedProviderState = await encryptPersistentSecretValue(
-      JSON.stringify({
-        connectorType: resolvedMethod.connectorSlug,
+      serializeConnectorOauthDeviceProviderState({
+        connectorSlug: resolvedMethod.connectorSlug,
         deviceCode: startResult.deviceCode,
-        ...(pollState === undefined ? {} : { pollState }),
+        pollState,
       }),
       {
         orgId: args.orgId,
