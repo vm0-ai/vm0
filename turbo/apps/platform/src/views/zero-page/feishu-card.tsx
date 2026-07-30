@@ -366,11 +366,14 @@ function FeishuAppCredentialFields({
   saving: boolean;
   readOnly: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <FeishuCredentialInput
         field="appId"
-        label="App ID"
+        label={t(($) => {
+          return $.connectors.providerSettings.feishu.credentials.appId;
+        })}
         form={form}
         saving={saving}
         readOnly={readOnly}
@@ -378,7 +381,9 @@ function FeishuAppCredentialFields({
       />
       <FeishuCredentialInput
         field="appSecret"
-        label="App Secret"
+        label={t(($) => {
+          return $.connectors.providerSettings.feishu.credentials.appSecret;
+        })}
         form={form}
         saving={saving}
         readOnly={readOnly}
@@ -396,18 +401,23 @@ function FeishuEventCredentialFields({
   saving: boolean;
   readOnly: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <FeishuCredentialInput
         field="encryptKey"
-        label="Encrypt Key"
+        label={t(($) => {
+          return $.connectors.providerSettings.feishu.tokens.encryptKey;
+        })}
         form={form}
         saving={saving}
         readOnly={readOnly}
       />
       <FeishuCredentialInput
         field="verificationToken"
-        label="Verification Token"
+        label={t(($) => {
+          return $.connectors.providerSettings.feishu.tokens.verificationToken;
+        })}
         form={form}
         saving={saving}
         readOnly={readOnly}
@@ -508,7 +518,9 @@ function FeishuCreateStep() {
             rel="noreferrer"
             className="font-medium text-foreground underline underline-offset-4"
           >
-            Feishu developer console
+            {t(($) => {
+              return $.connectors.providerSettings.feishu.developerConsole;
+            })}
           </a>
           {t(
             ($) => {
@@ -641,7 +653,9 @@ function FeishuTokensStep({
             rel="noreferrer"
             className="font-medium text-foreground underline underline-offset-4"
           >
-            Feishu developer console
+            {t(($) => {
+              return $.connectors.providerSettings.feishu.developerConsole;
+            })}
           </a>
           {t(($) => {
             return $.connectors.providerSettings.feishu.tokens.descriptionAfter;
@@ -771,7 +785,9 @@ function FeishuRedirectStep({ data }: { data: FeishuDialogData | null }) {
             rel="noreferrer"
             className="font-medium text-foreground underline underline-offset-4"
           >
-            Feishu developer console
+            {t(($) => {
+              return $.connectors.providerSettings.feishu.developerConsole;
+            })}
           </a>
           {t(
             ($) => {
@@ -1829,6 +1845,9 @@ function FeishuSetupDialog({
     >
       <DialogContent
         className="max-h-[90vh] max-w-2xl overflow-y-auto"
+        closeLabel={t(($) => {
+          return $.connectors.actions.close;
+        })}
         onOpenAutoFocus={(event) => {
           event.preventDefault();
         }}
@@ -1874,7 +1893,11 @@ function FeishuUninstallDialog({ bot }: { bot: FeishuBotInstallation | null }) {
         }
       }}
     >
-      <DialogContent>
+      <DialogContent
+        closeLabel={t(($) => {
+          return $.connectors.actions.close;
+        })}
+      >
         <DialogHeader>
           <DialogTitle>
             {t(($) => {

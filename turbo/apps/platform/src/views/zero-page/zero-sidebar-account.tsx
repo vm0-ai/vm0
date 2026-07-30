@@ -65,6 +65,8 @@ import {
   useSubscriptionUsageRows,
 } from "./zero-sidebar-subscriptions.tsx";
 import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.tsx";
+import { formatLocalizedNumber } from "../../i18n/format.ts";
+import { i18n } from "../../i18n/index.ts";
 
 interface SessionAccount {
   sessionId: string;
@@ -73,6 +75,18 @@ interface SessionAccount {
   initial: string;
   imageUrl: string | undefined;
   isActive: boolean;
+}
+
+function formatCreditBalance(credits: number): string {
+  return i18n.t(
+    ($) => {
+      return $.settings.accountMenu.creditBalance;
+    },
+    {
+      count: credits,
+      value: formatLocalizedNumber(credits),
+    },
+  );
 }
 
 function AccountAvatar({
@@ -286,10 +300,7 @@ function AccountCreditBalanceGroup({
   const credits =
     billingLoadable.state === "hasData" ? billingLoadable.data.credits : null;
   const loading = billingLoadable.state === "loading" && credits === null;
-  const creditLabel =
-    credits !== null
-      ? `${credits.toLocaleString("en-US")} ${credits === 1 ? "credit" : "credits"}`
-      : null;
+  const creditLabel = credits !== null ? formatCreditBalance(credits) : null;
 
   if (!loading && creditLabel === null) {
     return null;
@@ -325,10 +336,7 @@ function AccountUsageGroupWithCredit({
   const credits =
     billingLoadable.state === "hasData" ? billingLoadable.data.credits : null;
   const creditLoading = billingLoadable.state === "loading" && credits === null;
-  const creditLabel =
-    credits !== null
-      ? `${credits.toLocaleString("en-US")} ${credits === 1 ? "credit" : "credits"}`
-      : null;
+  const creditLabel = credits !== null ? formatCreditBalance(credits) : null;
   const showCredit = creditLoading || creditLabel !== null;
   const showSubscriptions = subscriptionsLoading || rows.length > 0;
 

@@ -33,7 +33,10 @@ import { PersonalCodexDeviceAuthDialog } from "../settings/codex-device-auth-dia
 import { SettingsSectionHeading } from "../settings/settings-section-heading.tsx";
 import { DropdownMenuModalItem } from "../../../components/dropdown-menu-modal-item.tsx";
 import { formatSubscriptionUsageReset } from "../../subscription-usage-format.ts";
-import { CodexResetUsageDialog } from "./codex-reset-usage-dialog.tsx";
+import {
+  CodexResetUsageDialog,
+  formatCodexResetCredits,
+} from "./codex-reset-usage-dialog.tsx";
 
 type OAuthStatus = "connected" | "stale" | "missing";
 type SubscriptionUsage = NonNullable<
@@ -273,19 +276,7 @@ function CodexOAuthCredentialRow({
   onOpenReset: () => void;
 }) {
   const { t } = useTranslation();
-  const resetCreditLabel =
-    resetCredits === null
-      ? t(($) => {
-          return $.settings.models.reset.remainingUnavailable;
-        })
-      : t(
-          ($) => {
-            return $.settings.models.reset.remaining;
-          },
-          {
-            count: resetCredits,
-          },
-        );
+  const resetCreditLabel = formatCodexResetCredits(resetCredits);
   return (
     <OAuthCredentialRow
       type="codex-oauth-token"
@@ -493,7 +484,7 @@ function SubscriptionUsageMeter({
             window.remainingPercent ??
             (window.usedPercent === null ? null : 100 - window.usedPercent);
           const displayPercent = formatUsagePercent(remainingPercent);
-          const reset = formatSubscriptionUsageReset(window.resetAt, true);
+          const reset = formatSubscriptionUsageReset(window.resetAt);
           const tone = usageTone(remainingPercent);
           return (
             <div key={label} className="space-y-1">

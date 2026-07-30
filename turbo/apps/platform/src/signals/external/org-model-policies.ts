@@ -3,6 +3,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import type { UpdateOrgModelPolicy } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroClient$ } from "../api-client.ts";
+import { i18n } from "../../i18n/index.ts";
 import { accept } from "../../lib/accept.ts";
 
 const internalReloadOrgModelPolicies$ = state(0);
@@ -55,7 +56,11 @@ export const updateOrgModelPolicies$ = command(
       return value + 1;
     });
     if (params.toast !== false) {
-      toast.success("Model provider settings updated");
+      toast.success(
+        i18n.t(($) => {
+          return $.settings.models.toasts.policiesUpdated;
+        }),
+      );
     }
     return result.body;
   },
