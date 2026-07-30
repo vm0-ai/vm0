@@ -9,6 +9,7 @@ import { isIndonesianLocaleRolloutEnabled } from "../../lib/indonesian-locale-ro
 import { isJapaneseLocaleRolloutEnabled } from "../../lib/japanese-locale-rollout";
 import { isKoreanLocaleRolloutEnabled } from "../../lib/korean-locale-rollout";
 import { isSpanishLocaleRolloutEnabled } from "../../lib/spanish-locale-rollout";
+import { isItalianLocaleRolloutEnabled } from "../../lib/italian-locale-rollout";
 import { isZeroMailReplyFollowUpRolloutEnabled } from "../../lib/zero-mail-reply-follow-up-rollout";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -54,6 +55,8 @@ function featureSwitchResponseBody(params: {
     isGermanLocaleRolloutEnabled();
   effectiveSwitches[FeatureSwitchKey.SpanishLocale] =
     isSpanishLocaleRolloutEnabled();
+  effectiveSwitches[FeatureSwitchKey.ItalianLocale] =
+    isItalianLocaleRolloutEnabled();
 
   return {
     switches: params.switches,

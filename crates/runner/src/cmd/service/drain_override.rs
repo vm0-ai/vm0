@@ -21,6 +21,10 @@ pub(super) fn remove_drain_restart_override(unit: &RunnerServiceUnit) -> RunnerR
     remove_drain_restart_override_at(Path::new(RUNTIME_SYSTEMD_SYSTEM_DIR), unit)
 }
 
+pub(super) fn drain_restart_override_path(unit: &RunnerServiceUnit) -> PathBuf {
+    drain_restart_override_path_at(Path::new(RUNTIME_SYSTEMD_SYSTEM_DIR), unit)
+}
+
 fn drain_restart_override_dir_at(root: &Path, unit: &RunnerServiceUnit) -> PathBuf {
     root.join(format!("{}.d", unit.service_name()))
 }

@@ -252,6 +252,94 @@ pub(crate) async fn is_unit_active(unit: &RunnerServiceUnit) -> RunnerResult<boo
     unit_active_from_systemctl_show(svc, &properties, &output.status, &values, &output.stderr)
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SystemdUnitLoadState {
+    Stub,
+    Loaded,
+    NotFound,
+    BadSetting,
+    Error,
+    Merged,
+    Masked,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct SystemdReloadState {
+    load_state: SystemdUnitLoadState,
+    need_daemon_reload: bool,
+    drop_in_paths: Vec<String>,
+}
+
+impl SystemdReloadState {
+    pub(super) fn is_not_found(&self) -> bool {
+        self.load_state == SystemdUnitLoadState::NotFound
+    }
+
+    pub(super) fn need_daemon_reload(&self) -> bool {
+        self.need_daemon_reload
+    }
+
+    pub(super) fn has_drop_in_path(&self, path: &std::path::Path) -> bool {
+        let path = path.to_string_lossy();
+        self.drop_in_paths
+            .iter()
+            .any(|loaded| loaded == path.as_ref())
+    }
+
+    #[cfg(test)]
+    pub(super) fn for_test(
+        is_not_found: bool,
+        need_daemon_reload: bool,
+        drop_in_paths: Vec<String>,
+    ) -> Self {
+        Self {
+            load_state: if is_not_found {
+                SystemdUnitLoadState::NotFound
+            } else {
+                SystemdUnitLoadState::Loaded
+            },
+            need_daemon_reload,
+            drop_in_paths,
+        }
+    }
+}
+
+/// Read systemd's authoritative dirty state for reload coalescing.
+pub(super) async fn read_systemd_reload_state(
+    unit: &RunnerServiceUnit,
+) -> RunnerResult<SystemdReloadState> {
+    let svc = unit.service_name();
+    let properties = ["LoadState", "NeedDaemonReload", "DropInPaths"];
+    let output = run_systemctl_show(svc, &properties).await?;
+    systemd_reload_state_from_output(svc, &properties, &output)
+}
+
+/// Read systemd's authoritative dirty state with cleanup timeout semantics.
+pub(super) async fn read_systemd_reload_state_bounded(
+    unit: &RunnerServiceUnit,
+    duration: Duration,
+) -> RunnerResult<SystemdReloadState> {
+    let svc = unit.service_name();
+    let properties = ["LoadState", "NeedDaemonReload", "DropInPaths"];
+    let output = run_systemctl_show_bounded(svc, &properties, duration).await?;
+    systemd_reload_state_from_output(svc, &properties, &output)
+}
+
+fn systemd_reload_state_from_output(
+    svc: &str,
+    properties: &[&str],
+    output: &Output,
+) -> RunnerResult<SystemdReloadState> {
+    let values = parse_systemctl_show_output(svc, properties, output)?;
+    systemd_reload_state_from_systemctl_show(
+        svc,
+        properties,
+        &output.status,
+        &values,
+        &output.stderr,
+    )
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct CleanupUnitActiveState {
     active_state: String,
@@ -413,13 +501,72 @@ fn cleanup_unit_active_state_from_output(
     )
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum SystemdUnitEnablement {
+    Enabled,
+    EnabledRuntime,
+    NotEnabled,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SystemdEnablementRestoreAction {
+    Disable,
+    Enable,
+    EnableRuntime,
+}
+
+impl SystemdUnitEnablement {
+    fn is_enabled(self) -> bool {
+        matches!(self, Self::Enabled | Self::EnabledRuntime)
+    }
+
+    fn restore_actions(self) -> &'static [SystemdEnablementRestoreAction] {
+        use SystemdEnablementRestoreAction::{Disable, Enable, EnableRuntime};
+
+        match self {
+            Self::Enabled => &[Enable],
+            Self::EnabledRuntime => &[Disable, EnableRuntime],
+            Self::NotEnabled => &[Disable],
+        }
+    }
+}
+
+/// Read the unit-file enablement state needed for exact lifecycle rollback.
+pub(super) async fn read_unit_enablement(
+    unit: &RunnerServiceUnit,
+) -> RunnerResult<SystemdUnitEnablement> {
+    read_unit_enablement_bounded(unit, SYSTEMCTL_QUERY_TIMEOUT).await
+}
+
+pub(super) async fn restore_unit_enablement(
+    unit: &RunnerServiceUnit,
+    enablement: SystemdUnitEnablement,
+) -> RunnerResult<()> {
+    for action in enablement.restore_actions() {
+        match action {
+            SystemdEnablementRestoreAction::Disable => {
+                run_systemctl(&["disable", "--no-reload", unit.service_name()]).await?;
+            }
+            SystemdEnablementRestoreAction::Enable => {
+                run_systemctl(&["enable", "--no-reload", unit.service_name()]).await?;
+            }
+            SystemdEnablementRestoreAction::EnableRuntime => {
+                run_systemctl(&["enable", "--runtime", "--no-reload", unit.service_name()]).await?;
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Check whether systemd reports a unit file as enabled.
 ///
 /// Returns `true` for both the persistent `enabled` state and the transient
 /// `enabled-runtime` state. This does not indicate whether the unit is active
 /// or whether it will remain enabled after a reboot.
 pub(crate) async fn is_unit_enabled(unit: &RunnerServiceUnit) -> RunnerResult<bool> {
-    is_unit_enabled_bounded(unit, SYSTEMCTL_QUERY_TIMEOUT).await
+    read_unit_enablement(unit)
+        .await
+        .map(SystemdUnitEnablement::is_enabled)
 }
 
 /// Check whether systemd reports a unit file as enabled.
@@ -431,9 +578,18 @@ pub(super) async fn is_unit_enabled_bounded(
     unit: &RunnerServiceUnit,
     duration: Duration,
 ) -> RunnerResult<bool> {
+    read_unit_enablement_bounded(unit, duration)
+        .await
+        .map(SystemdUnitEnablement::is_enabled)
+}
+
+async fn read_unit_enablement_bounded(
+    unit: &RunnerServiceUnit,
+    duration: Duration,
+) -> RunnerResult<SystemdUnitEnablement> {
     let svc = unit.service_name();
     let output = run_command_output_bounded("systemctl", &["is-enabled", svc], duration).await?;
-    unit_enabled_from_systemctl_is_enabled(svc, &output.status, &output.stdout, &output.stderr)
+    unit_enablement_from_systemctl_is_enabled(svc, &output.status, &output.stdout, &output.stderr)
 }
 
 /// Check whether systemd currently reports a main process for a unit.
@@ -584,6 +740,63 @@ fn systemctl_property<'a>(
 fn classify_unit_active(svc: &str, load_state: &str, active_state: &str) -> RunnerResult<bool> {
     let normalized_state = normalize_unit_state(svc, load_state, active_state)?;
     Ok(normalized_state.is_active_like() && active_state != "deactivating")
+}
+
+fn parse_systemd_unit_load_state(svc: &str, value: &str) -> RunnerResult<SystemdUnitLoadState> {
+    match value {
+        "stub" => Ok(SystemdUnitLoadState::Stub),
+        "loaded" => Ok(SystemdUnitLoadState::Loaded),
+        "not-found" => Ok(SystemdUnitLoadState::NotFound),
+        "bad-setting" => Ok(SystemdUnitLoadState::BadSetting),
+        "error" => Ok(SystemdUnitLoadState::Error),
+        "merged" => Ok(SystemdUnitLoadState::Merged),
+        "masked" => Ok(SystemdUnitLoadState::Masked),
+        other => Err(RunnerError::Internal(format!(
+            "unknown LoadState for {svc}: {other:?}"
+        ))),
+    }
+}
+
+fn parse_systemd_boolean(svc: &str, property: &str, value: &str) -> RunnerResult<bool> {
+    match value {
+        "yes" => Ok(true),
+        "no" => Ok(false),
+        other => Err(RunnerError::Internal(format!(
+            "unknown {property} for {svc}: {other:?}"
+        ))),
+    }
+}
+
+fn systemd_reload_state_from_systemctl_show(
+    svc: &str,
+    properties: &[&str],
+    status: &ExitStatus,
+    values: &BTreeMap<String, String>,
+    stderr: &[u8],
+) -> RunnerResult<SystemdReloadState> {
+    let load_state =
+        parse_systemd_unit_load_state(svc, required_systemctl_property(svc, values, "LoadState")?)?;
+    let need_daemon_reload = parse_systemd_boolean(
+        svc,
+        "NeedDaemonReload",
+        required_systemctl_property(svc, values, "NeedDaemonReload")?,
+    )?;
+    let drop_in_paths = systemctl_property(svc, values, "DropInPaths")?
+        .split_ascii_whitespace()
+        .map(str::to_owned)
+        .collect();
+    ensure_systemctl_show_status(
+        svc,
+        properties,
+        status,
+        stderr,
+        load_state == SystemdUnitLoadState::NotFound,
+    )?;
+    Ok(SystemdReloadState {
+        load_state,
+        need_daemon_reload,
+        drop_in_paths,
+    })
 }
 
 fn normalize_unit_state(
@@ -742,12 +955,12 @@ fn systemctl_cat_status_error(svc: &str, status: &ExitStatus, stderr: &str) -> R
     }
 }
 
-fn unit_enabled_from_systemctl_is_enabled(
+fn unit_enablement_from_systemctl_is_enabled(
     svc: &str,
     status: &ExitStatus,
     stdout: &[u8],
     stderr: &[u8],
-) -> RunnerResult<bool> {
+) -> RunnerResult<SystemdUnitEnablement> {
     let state = std::str::from_utf8(stdout).map_err(|e| {
         RunnerError::Internal(format!(
             "systemctl is-enabled {svc} returned non-UTF-8 output: {e}"
@@ -755,9 +968,12 @@ fn unit_enabled_from_systemctl_is_enabled(
     })?;
     let state = state.trim();
     match state {
-        "enabled" | "enabled-runtime" => Ok(true),
+        "enabled" => Ok(SystemdUnitEnablement::Enabled),
+        "enabled-runtime" => Ok(SystemdUnitEnablement::EnabledRuntime),
         "alias" | "disabled" | "generated" | "indirect" | "linked" | "linked-runtime"
-        | "masked" | "masked-runtime" | "not-found" | "static" | "transient" => Ok(false),
+        | "masked" | "masked-runtime" | "not-found" | "static" | "transient" => {
+            Ok(SystemdUnitEnablement::NotEnabled)
+        }
         "" if !status.success() => Err(systemctl_is_enabled_status_error(svc, status, stderr)),
         other if !status.success() => Err(RunnerError::Internal(format!(
             "unknown UnitFileState for {svc}: {other:?}; {}",
@@ -767,6 +983,17 @@ fn unit_enabled_from_systemctl_is_enabled(
             "unknown UnitFileState for {svc}: {other:?}"
         ))),
     }
+}
+
+#[cfg(test)]
+fn unit_enabled_from_systemctl_is_enabled(
+    svc: &str,
+    status: &ExitStatus,
+    stdout: &[u8],
+    stderr: &[u8],
+) -> RunnerResult<bool> {
+    unit_enablement_from_systemctl_is_enabled(svc, status, stdout, stderr)
+        .map(SystemdUnitEnablement::is_enabled)
 }
 
 fn systemctl_is_enabled_status_error(svc: &str, status: &ExitStatus, stderr: &[u8]) -> RunnerError {
@@ -1081,6 +1308,83 @@ mod tests {
         let message = err.to_string();
 
         assert!(message.contains("empty systemctl show property"));
+    }
+
+    #[test]
+    fn systemd_reload_state_parses_loaded_dirty_unit() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["LoadState", "NeedDaemonReload", "DropInPaths"];
+        let output = systemctl_show_output(
+            ExitStatus::from_raw(0),
+            b"LoadState=loaded\nNeedDaemonReload=yes\nDropInPaths=/run/systemd/system/vm0-runner-test.service.d/50-vm0-drain.conf\n",
+            b"",
+        );
+
+        let state =
+            systemd_reload_state_from_output("vm0-runner-test.service", &properties, &output)
+                .unwrap();
+
+        assert!(!state.is_not_found());
+        assert!(state.need_daemon_reload());
+        assert!(state.has_drop_in_path(std::path::Path::new(
+            "/run/systemd/system/vm0-runner-test.service.d/50-vm0-drain.conf"
+        )));
+    }
+
+    #[test]
+    fn systemd_reload_state_accepts_not_found_with_failed_status() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["LoadState", "NeedDaemonReload", "DropInPaths"];
+        let output = systemctl_show_output(
+            ExitStatus::from_raw(0x100),
+            b"LoadState=not-found\nNeedDaemonReload=no\nDropInPaths=\n",
+            b"Unit not found\n",
+        );
+
+        let state =
+            systemd_reload_state_from_output("vm0-runner-test.service", &properties, &output)
+                .unwrap();
+
+        assert!(state.is_not_found());
+        assert!(!state.need_daemon_reload());
+    }
+
+    #[test]
+    fn systemd_reload_state_rejects_unknown_boolean() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["LoadState", "NeedDaemonReload", "DropInPaths"];
+        let output = systemctl_show_output(
+            ExitStatus::from_raw(0),
+            b"LoadState=loaded\nNeedDaemonReload=maybe\nDropInPaths=\n",
+            b"",
+        );
+
+        let error =
+            systemd_reload_state_from_output("vm0-runner-test.service", &properties, &output)
+                .unwrap_err();
+
+        assert!(error.to_string().contains("unknown NeedDaemonReload"));
+    }
+
+    #[test]
+    fn systemd_reload_state_rejects_unknown_load_state() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let properties = ["LoadState", "NeedDaemonReload", "DropInPaths"];
+        let output = systemctl_show_output(
+            ExitStatus::from_raw(0),
+            b"LoadState=half-loaded\nNeedDaemonReload=yes\nDropInPaths=\n",
+            b"",
+        );
+
+        let error =
+            systemd_reload_state_from_output("vm0-runner-test.service", &properties, &output)
+                .unwrap_err();
+
+        assert!(error.to_string().contains("unknown LoadState"));
     }
 
     #[test]
@@ -1466,6 +1770,29 @@ mod tests {
                 .unwrap()
             );
         }
+    }
+
+    #[test]
+    fn unit_enablement_preserves_runtime_only_state() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let status = ExitStatus::from_raw(0);
+        let enablement = unit_enablement_from_systemctl_is_enabled(
+            "vm0-runner-test.service",
+            &status,
+            b"enabled-runtime\n",
+            b"",
+        )
+        .unwrap();
+
+        assert_eq!(enablement, SystemdUnitEnablement::EnabledRuntime);
+        assert_eq!(
+            enablement.restore_actions(),
+            [
+                SystemdEnablementRestoreAction::Disable,
+                SystemdEnablementRestoreAction::EnableRuntime,
+            ]
+        );
     }
 
     #[test]

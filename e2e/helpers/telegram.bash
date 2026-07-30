@@ -76,25 +76,6 @@ telegram_post_webhook() {
         "$VM0_API_BACKEND_URL/api/telegram/webhook/$bot_id"
 }
 
-telegram_dispatch_probe() {
-    local bot_id="$1" chat_id="$2" telegram_user_id="$3" text="$4"
-    local body
-    body=$(jq -nc \
-        --arg bot_id "$bot_id" \
-        --arg chat_id "$chat_id" \
-        --arg telegram_user_id "$telegram_user_id" \
-        --arg message_text "$text" \
-        '{bot_id: $bot_id, chat_id: $chat_id,
-          telegram_user_id: $telegram_user_id, message_text: $message_text}')
-    local -a bypass=()
-    _telegram_bypass_args bypass
-    curl -sS --max-time 60 -X POST \
-        -H "Content-Type: application/json" \
-        "${bypass[@]}" \
-        --data "$body" \
-        "$VM0_API_BACKEND_URL/api/test/telegram-dispatch-probe"
-}
-
 wait_for_telegram_run_completion() {
     local bot_id="$1"
     local timeout="${2:-180}"

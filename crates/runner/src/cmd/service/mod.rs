@@ -15,6 +15,7 @@ mod diagnostic;
 mod drain_override;
 mod drain_resume;
 mod gate;
+mod reload;
 mod signal;
 mod state;
 mod stop;
@@ -29,7 +30,11 @@ pub(crate) use unit_config::read_unit_config_path;
 
 use drain_override::{remove_drain_restart_override, write_drain_restart_override};
 use gate::check_active_jobs_gate;
-use systemctl::{journalctl_logs_status, run_systemctl};
+use reload::{SystemdReloadRequirement, coordinate_systemd_reload};
+use systemctl::{
+    SystemdUnitEnablement, journalctl_logs_status, read_unit_enablement, restore_unit_enablement,
+    run_systemctl,
+};
 use unit_file::{
     RUNNER_SERVICE_NOFILE_LIMIT_DIRECTIVE, cleanup_unit_staging_files, generate_unit_file,
     remove_unit_file_if_exists, resolve_config_path, validate_current_exe_path, validate_env_vars,
@@ -202,7 +207,12 @@ async fn restore_drain_restart_override_after_failed_cleanup(
             unit.unit_name()
         )));
     }
-    if let Err(e) = run_systemctl(&["daemon-reload"]).await {
+    if let Err(e) = coordinate_systemd_reload(
+        unit,
+        SystemdReloadRequirement::dirty().with_drain_override(true),
+    )
+    .await
+    {
         return Err(RunnerError::Internal(format!(
             "failed to reload systemd after restoring drain restart override for {} ({context}): {e}",
             unit.unit_name()
@@ -218,7 +228,12 @@ async fn reload_systemd_if_drain_restart_override_removed(
         return Ok(false);
     }
 
-    if let Err(reload_error) = run_systemctl(&["daemon-reload"]).await {
+    if let Err(reload_error) = coordinate_systemd_reload(
+        unit,
+        SystemdReloadRequirement::dirty().with_drain_override(false),
+    )
+    .await
+    {
         if let Err(restore_error) =
             restore_drain_restart_override_after_failed_cleanup(unit, "remove_reload").await
         {
@@ -232,6 +247,41 @@ async fn reload_systemd_if_drain_restart_override_removed(
     }
 
     Ok(true)
+}
+
+async fn restore_service_state_after_reload_failure(
+    unit: &RunnerServiceUnit,
+    prior_enablement: SystemdUnitEnablement,
+    restore_drain_override: bool,
+) -> RunnerResult<()> {
+    let mut failures = Vec::new();
+
+    if restore_drain_override && let Err(error) = write_drain_restart_override(unit) {
+        failures.push(format!("restore drain restart override: {error}"));
+    }
+
+    if let Err(error) = restore_unit_enablement(unit, prior_enablement).await {
+        failures.push(format!("restore boot enablement: {error}"));
+    }
+
+    let requirement = if restore_drain_override {
+        SystemdReloadRequirement::dirty_or_not_found().with_drain_override(true)
+    } else {
+        SystemdReloadRequirement::dirty_or_not_found()
+    };
+    if let Err(error) = coordinate_systemd_reload(unit, requirement).await {
+        failures.push(format!("reload restored systemd state: {error}"));
+    }
+
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(RunnerError::Internal(format!(
+            "failed to restore service state for {}: {}",
+            unit.unit_name(),
+            failures.join("; ")
+        )))
+    }
 }
 
 async fn prepare_service_activation_config(
@@ -387,6 +437,7 @@ async fn install(args: ServiceRunArgs) -> RunnerResult<()> {
 
     let unit_for_activation = unit.clone();
     let upath = unit.unit_file_path().to_path_buf();
+    let prior_enablement = read_unit_enablement(&unit).await?;
 
     with_service_activation_image_artifacts(
         &unit,
@@ -400,19 +451,56 @@ async fn install(args: ServiceRunArgs) -> RunnerResult<()> {
                 &args.env,
                 args.local,
             );
-            if is_unit_active(&unit_for_activation).await? {
+            let drain_override_removed = if is_unit_active(&unit_for_activation).await? {
                 warn!(
                     unit = %unit_for_activation.unit_name(),
                     "skipping drain restart override cleanup while service is active"
                 );
+                false
             } else {
-                reload_systemd_if_drain_restart_override_removed(&unit_for_activation).await?;
-            }
+                remove_drain_restart_override(&unit_for_activation)?
+            };
             cleanup_unit_staging_files(&upath)?;
             write_unit_file(&upath, &unit_content)?;
 
-            run_systemctl(&["daemon-reload"]).await?;
-            run_systemctl(&["enable", "--now", unit_for_activation.service_name()]).await?;
+            let enable_result = run_systemctl(&[
+                "enable",
+                "--no-reload",
+                unit_for_activation.service_name(),
+            ])
+            .await;
+            let requirement = if drain_override_removed {
+                SystemdReloadRequirement::dirty_or_not_found().with_drain_override(false)
+            } else {
+                SystemdReloadRequirement::dirty_or_not_found()
+            };
+            let reload_result =
+                coordinate_systemd_reload(&unit_for_activation, requirement).await;
+
+            if let Err(reload_error) = reload_result {
+                let primary_error = match enable_result {
+                    Ok(()) => reload_error,
+                    Err(enable_error) => RunnerError::Internal(format!(
+                        "failed to enable {}: {enable_error}; additionally failed to reload systemd: {reload_error}",
+                        unit_for_activation.unit_name()
+                    )),
+                };
+                return match restore_service_state_after_reload_failure(
+                    &unit_for_activation,
+                    prior_enablement,
+                    drain_override_removed,
+                )
+                .await
+                {
+                    Ok(()) => Err(primary_error),
+                    Err(rollback_error) => Err(RunnerError::Internal(format!(
+                        "install failed for {}: {primary_error}; additionally failed to restore service state: {rollback_error}",
+                        unit_for_activation.unit_name()
+                    ))),
+                };
+            }
+            enable_result?;
+            run_systemctl(&["start", unit_for_activation.service_name()]).await?;
             Ok(())
         },
     )
@@ -453,7 +541,7 @@ pub(crate) async fn uninstall_service_unit(unit: &RunnerServiceUnit) -> RunnerRe
         },
     };
 
-    let _ = run_systemctl(&["disable", unit.service_name()]).await;
+    let _ = run_systemctl(&["disable", "--no-reload", unit.service_name()]).await;
 
     // Remove the unit file if it exists.
     let upath = unit.unit_file_path();
@@ -463,26 +551,18 @@ pub(crate) async fn uninstall_service_unit(unit: &RunnerServiceUnit) -> RunnerRe
     if let Err(e) = remove_unit_file_if_exists(upath) {
         warn!(unit = %unit.unit_name(), error = %e, "failed to remove unit file");
     }
-    let drain_override_cleanup_reloaded = match reload_systemd_if_drain_restart_override_removed(
-        unit,
-    )
-    .await
-    {
-        Ok(removed) => removed,
+    match remove_drain_restart_override(unit) {
+        Ok(_) => {}
         Err(e) => {
             warn!(unit = %unit.unit_name(), error = %e, "failed to remove drain restart override");
-            false
         }
-    };
-
-    if drain_override_cleanup_reloaded {
-        info!(unit = %unit.unit_name(), "service uninstalled");
-        return Ok(());
     }
 
-    if let Err(e) = run_systemctl(&["daemon-reload"]).await {
-        warn!(unit = %unit.unit_name(), error = %e, "failed to reload systemd daemon");
-    }
+    coordinate_systemd_reload(
+        unit,
+        SystemdReloadRequirement::dirty().with_drain_override(false),
+    )
+    .await?;
 
     info!(unit = %unit.unit_name(), "service uninstalled");
     Ok(())

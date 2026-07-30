@@ -261,6 +261,30 @@ export default [
     },
   },
   {
+    files: ["src/**/*.ts"],
+    ignores: [
+      "src/**/__tests__/**/*.ts",
+      "src/**/*.test.ts",
+      "src/test-fixtures/thread-bound-run-admission.ts",
+      "src/signals/routes/test-zero-run-fixture.ts",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["**/zero-runs-create.service"],
+              importNames: ["createTestFixtureZeroRun$"],
+              message:
+                "Production run sources must use createQueueFirstZeroRun$ so every run is bound to a chat thread.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // Keep finite persisted/state-machine contract matrices as narrow
     // exceptions. Route tests cover constructible behavior, while these exact
     // transition inputs are not available through production APIs.
@@ -282,6 +306,12 @@ export default [
             {
               group: ["./routes/test-*", "./routes/test-*/**"],
               message: productionRouteTestImportMessage,
+            },
+            {
+              group: ["**/zero-runs-create.service"],
+              importNames: ["createTestFixtureZeroRun$"],
+              message:
+                "Production run sources must use createQueueFirstZeroRun$ so every run is bound to a chat thread.",
             },
           ],
           paths: [

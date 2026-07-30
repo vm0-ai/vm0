@@ -192,6 +192,7 @@ runs:
             add_env INDONESIAN_LOCALE_ROLLOUT_ENABLED "true"
             add_env GERMAN_LOCALE_ROLLOUT_ENABLED "true"
           fi
+          add_env ITALIAN_LOCALE_ROLLOUT_ENABLED "$(first_non_empty "$(repo_var ITALIAN_LOCALE_ROLLOUT_ENABLED)" "false")"
           if [[ "$INPUT_ENVIRONMENT" == "production" ]]; then
             add_secret CLOUDFLARE_BROWSER_RENDERING_API_TOKEN CLOUDFLARE_BROWSER_RENDERING_API_TOKEN
             add_secret ARTIFACT_PREVIEW_WAF_SECRET ARTIFACT_PREVIEW_WAF_SECRET

@@ -30,8 +30,6 @@ export interface ServiceUsage {
 export interface PermissionEntry {
   label: string;
   connectorSlug?: string;
-  // TODO(#23840): Remove after legacy Insights API responses have drained.
-  connectorType?: string;
   allowed: number;
   denied: number;
   /** Which agents triggered this permission */

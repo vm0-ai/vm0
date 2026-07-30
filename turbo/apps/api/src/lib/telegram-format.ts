@@ -118,17 +118,6 @@ export function buildTelegramResponse(
 }
 
 /**
- * Build an error response for Telegram without adding a title wrapper.
- */
-export function buildTelegramErrorResponse(
-  errorDetail: string,
-  logsUrl?: string,
-  footerText?: string,
-): string {
-  return buildTelegramResponse(errorDetail, logsUrl, footerText);
-}
-
-/**
  * Split a message into chunks that fit within Telegram's message length limit.
  */
 export function splitMessage(

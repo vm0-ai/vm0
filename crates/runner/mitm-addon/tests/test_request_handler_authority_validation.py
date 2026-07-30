@@ -72,7 +72,9 @@ async def test_rejects_spoofed_host_before_firewall_auth(
     }
     auth_fetch.assert_not_called()
     assert "Authorization" not in flow.request.headers
-    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.host == "api.github.com"
+    assert binding.kinds == frozenset(("connector_auth",))
 
 
 async def test_authority_validation_deny_response_logs_network_target(
