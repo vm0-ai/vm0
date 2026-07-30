@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.345.1](https://github.com/vm0-ai/vm0/compare/api-v1.345.0...api-v1.345.1) (2026-07-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.153.1
+
 ## [1.345.0](https://github.com/vm0-ai/vm0/compare/api-v1.344.0...api-v1.345.0) (2026-07-29)
 
 
