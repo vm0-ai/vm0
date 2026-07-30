@@ -212,6 +212,7 @@ async function materializeRunOutputEvents(
   const assistantItems = assistantEventItems(payload.events);
   const latestResult = latestCandidate(payload.events, resultText);
   const latestOutput = latestCandidate(payload.events, callbackOutputText);
+  const projectionLockKey = `run_output_projection:${payload.runId}`;
 
   return await writeDb.transaction(async (tx) => {
     await tx.execute(
@@ -219,6 +220,9 @@ async function materializeRunOutputEvents(
     );
     await tx.execute(
       sql`SELECT set_config('statement_timeout', ${RUN_OUTPUT_PROJECTION_STATEMENT_TIMEOUT}, true)`,
+    );
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${projectionLockKey}, 0))`,
     );
     signal.throwIfAborted();
 

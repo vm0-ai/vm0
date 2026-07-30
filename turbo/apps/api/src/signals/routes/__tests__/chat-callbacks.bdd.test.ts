@@ -489,9 +489,16 @@ async function completeChatRunOk(
   options: { readonly lastEventSequence?: number } = {},
 ): Promise<void> {
   const stagedOutputEvents = chatCallbacks.consumeMockChatOutputEvents();
-  if (stagedOutputEvents.length > 0) {
+  const { lastEventSequence } = options;
+  const acknowledgedOutputEvents =
+    lastEventSequence === undefined
+      ? stagedOutputEvents
+      : stagedOutputEvents.filter((event) => {
+          return event.sequenceNumber <= lastEventSequence;
+        });
+  if (acknowledgedOutputEvents.length > 0) {
     await webhooks.requestAgentEvents(
-      { runId, events: stagedOutputEvents },
+      { runId, events: acknowledgedOutputEvents },
       sandboxHeaders,
       [200],
     );
@@ -513,9 +520,7 @@ async function completeChatRunOk(
     {
       runId,
       exitCode: 0,
-      ...(options.lastEventSequence === undefined
-        ? {}
-        : { lastEventSequence: options.lastEventSequence }),
+      ...(lastEventSequence === undefined ? {} : { lastEventSequence }),
     },
     sandboxHeaders,
     [200],
@@ -2345,6 +2350,22 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
 
     const messages = await chat.listThreadEvents(actor, run.threadId);
     expect(eventBackedContents(messages.events, run.runId)).toHaveLength(6);
+
+    context.mocks.axiomLogging.warn.mockClear();
+    await completeChatRunOk(run.runId, sandboxHeaders, {
+      lastEventSequence: 5,
+    });
+    await flushWaitUntilForTest();
+    expect(
+      context.mocks.axiomLogging.warn.mock.calls.some(([message, fields]) => {
+        return (
+          message ===
+            "Run output projection is incomplete at terminal callback" &&
+          isRecord(fields) &&
+          fields.runId === run.runId
+        );
+      }),
+    ).toBeFalsy();
   }, 30_000);
 
   it("keeps repeated at-least-once event batches idempotent", async () => {
