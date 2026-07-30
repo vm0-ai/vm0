@@ -1432,6 +1432,7 @@
       "automationEvent": "Événement d'automatisation",
       "automationEventDescription": "Attend derrière les messages en file d'attente et s'exécute une fois que l'exécution en cours est terminée.",
       "cancelGoal": "Annuler l'objectif",
+      "cancellationRecoveryPending": "Préparation de la session annulée avant de poursuivre le travail en file d'attente.",
       "event_one": "{{count}} événement",
       "event_many": "{{count}} événements",
       "event_other": "{{count}} événements",
