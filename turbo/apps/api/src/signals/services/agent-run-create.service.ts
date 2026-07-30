@@ -722,7 +722,7 @@ export interface CreateAgentRunArgs {
 function assertThreadBoundRunHasQueueAssociation(
   args: CreateAgentRunArgs,
 ): void {
-  if (args.chatThreadId && !args.queueFirstAssociation) {
+  if (args.chatThreadId !== undefined && !args.queueFirstAssociation) {
     throw new Error("Thread-bound run requires a queue-first association");
   }
 }

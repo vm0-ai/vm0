@@ -742,6 +742,16 @@ describe("CHAT-02: thread run admission invariant", () => {
     await expect(
       createUnassociatedThreadBoundAgentRunFixture(),
     ).rejects.toThrow("Thread-bound run requires a queue-first association");
+
+    await expect(
+      createUnassociatedThreadBoundZeroRunFixture(""),
+    ).rejects.toThrow(
+      "Thread-bound Zero run requires a queue-first association",
+    );
+
+    await expect(
+      createUnassociatedThreadBoundAgentRunFixture(""),
+    ).rejects.toThrow("Thread-bound run requires a queue-first association");
   });
 });
 

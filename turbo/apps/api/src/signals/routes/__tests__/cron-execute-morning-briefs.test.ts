@@ -47,6 +47,7 @@ import {
   readMorningBriefDeliveryFixture,
   readMorningBriefQueuedParamsForDeliveryFixture,
   readMorningBriefQueuedParamsFixture,
+  replaceMorningBriefQueuedCallbackPayloadFixture,
 } from "../../../test-fixtures/morning-brief";
 import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
 import { readRunApiStart } from "./helpers/runtime-state";
@@ -1066,6 +1067,96 @@ describe("cron execute morning briefs", () => {
     expect(sentMorningBriefEmails()).toHaveLength(0);
     clearMockNow();
   });
+
+  it("processes terminal chat state before a failed Morning Brief callback", async () => {
+    const scenario = await setupMorningBriefActor();
+    await updateFeatureSwitchesForUser(context, scenario.actor, {
+      [FeatureSwitchKey.ManualMorningBrief]: true,
+    });
+
+    mockNow(AFTER_SEVEN_LOCAL - DAY_MS);
+    routeMocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
+    const previous = await accept(
+      morningBriefTriggerClient().trigger({
+        headers: actorHeaders(),
+        body: {},
+      }),
+      [200],
+    );
+    if (!previous.body.runId) {
+      throw new Error("Expected the active predecessor run");
+    }
+
+    mockNow(AFTER_SEVEN_LOCAL);
+    routeMocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
+    const queued = await accept(
+      morningBriefTriggerClient().trigger({
+        headers: actorHeaders(),
+        body: {},
+      }),
+      [200],
+    );
+    expect(queued.body).toStrictEqual({
+      runId: null,
+      briefDate: BRIEF_DATE,
+      queued: true,
+    });
+
+    const threadId = await findMorningBriefThreadIdOrNull(scenario);
+    if (!threadId) {
+      throw new Error("Expected the Morning Brief thread");
+    }
+    const delivery = await readMorningBriefDeliveryFixture({
+      orgId: scenario.actor.orgId,
+      userId: scenario.actor.userId,
+      briefDate: BRIEF_DATE,
+    });
+    if (!delivery) {
+      throw new Error("Expected the queued Morning Brief delivery");
+    }
+    await replaceMorningBriefQueuedCallbackPayloadFixture({
+      deliveryId: delivery.id,
+      threadId,
+      orgId: scenario.actor.orgId,
+      userId: scenario.actor.userId,
+      payload: { deliveryId: "not-a-uuid" },
+    });
+
+    useSecretKmsProbe((_command, callNumber) => {
+      return callNumber === 1
+        ? Promise.reject(new Error("Morning Brief launch encryption failed"))
+        : undefined;
+    });
+    await completeMorningBriefRun(scenario, previous.body.runId, 1);
+    await flushWaitUntilForTest();
+
+    const failedDelivery = await readMorningBriefDeliveryFixture({
+      orgId: scenario.actor.orgId,
+      userId: scenario.actor.userId,
+      briefDate: BRIEF_DATE,
+    });
+    expect(failedDelivery).toStrictEqual(
+      expect.objectContaining({
+        status: "failed",
+        runId: expect.any(String),
+        error: null,
+      }),
+    );
+    if (!failedDelivery?.runId) {
+      throw new Error("Expected the failed Morning Brief run");
+    }
+    const run = await api.readRun(scenario.actor, failedDelivery.runId);
+    expect(run.status).toBe("failed");
+    const events = await readMorningBriefThreadEvents(scenario, threadId);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        eventType: "run.failed",
+        runId: failedDelivery.runId,
+      }),
+    );
+    expect(sentMorningBriefEmails()).toHaveLength(0);
+    clearMockNow();
+  }, 90_000);
 
   it("rejects a Morning Brief admission failure and keeps the thread drainable", async () => {
     const scenario = await setupMorningBriefActor();

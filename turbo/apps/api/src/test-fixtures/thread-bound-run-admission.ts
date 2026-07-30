@@ -13,7 +13,9 @@ const ORG_ID = "thread-run-invariant-org";
  * Exercise the internal Zero service boundary that public contracts cannot
  * construct: a chat-thread id without an atomic queue association.
  */
-export async function createUnassociatedThreadBoundZeroRunFixture(): Promise<void> {
+export async function createUnassociatedThreadBoundZeroRunFixture(
+  chatThreadId: string = randomUUID(),
+): Promise<void> {
   await createStore().set(
     createZeroRun$,
     {
@@ -28,7 +30,7 @@ export async function createUnassociatedThreadBoundZeroRunFixture(): Promise<voi
         prompt: "must be rejected before Zero run preparation",
       },
       apiStartTime: now(),
-      chatThreadId: randomUUID(),
+      chatThreadId,
     },
     new AbortController().signal,
   );
@@ -38,7 +40,9 @@ export async function createUnassociatedThreadBoundZeroRunFixture(): Promise<voi
  * Exercise the lower agent-run boundary so non-Zero internal callers cannot
  * bypass the same queue-claim invariant.
  */
-export async function createUnassociatedThreadBoundAgentRunFixture(): Promise<void> {
+export async function createUnassociatedThreadBoundAgentRunFixture(
+  chatThreadId: string = randomUUID(),
+): Promise<void> {
   await createStore().set(
     createAgentRun$,
     {
@@ -48,7 +52,7 @@ export async function createUnassociatedThreadBoundAgentRunFixture(): Promise<vo
         prompt: "must be rejected before agent run preparation",
       },
       apiStartTime: now(),
-      chatThreadId: randomUUID(),
+      chatThreadId,
     },
     new AbortController().signal,
   );

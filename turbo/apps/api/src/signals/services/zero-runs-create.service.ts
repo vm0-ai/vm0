@@ -198,7 +198,7 @@ function assertThreadBoundZeroRunHasQueueAssociation(
   args: AnyCreateZeroRunCommandArgs,
 ): void {
   if (
-    args.chatThreadId &&
+    args.chatThreadId !== undefined &&
     (!("queueFirstAssociation" in args) || !args.queueFirstAssociation)
   ) {
     throw new Error("Thread-bound Zero run requires a queue-first association");

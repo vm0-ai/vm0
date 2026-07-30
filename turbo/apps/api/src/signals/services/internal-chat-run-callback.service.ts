@@ -3916,20 +3916,6 @@ function buildQueuedChatDispatchFailedCallbacks(args: {
       telegramDelivery: args.runInput.telegramDelivery,
       morningBriefDelivery: args.runInput.morningBriefDelivery,
     };
-    if (payload.morningBriefDelivery) {
-      const deliveryResult = await handleMorningBriefEmailInternalCallback(db, {
-        runId,
-        status: "failed",
-        error,
-        payload: payload.morningBriefDelivery.payload,
-      });
-      if (!deliveryResult.success) {
-        log.error("Failed to process Morning Brief dispatch-failed callback", {
-          runId,
-          error: deliveryResult.error,
-        });
-      }
-    }
     const suppressWebPushForActiveGoal = await runHasActiveGoal(db, runId);
     args.signal.throwIfAborted();
     await processTerminalChatCallback({
@@ -3945,6 +3931,20 @@ function buildQueuedChatDispatchFailedCallbacks(args: {
       dependencies: withoutQueuedRunDependency(args.dependencies),
       signal: args.signal,
     });
+    if (payload.morningBriefDelivery) {
+      const deliveryResult = await handleMorningBriefEmailInternalCallback(db, {
+        runId,
+        status: "failed",
+        error,
+        payload: payload.morningBriefDelivery.payload,
+      });
+      if (!deliveryResult.success) {
+        log.error("Failed to process Morning Brief dispatch-failed callback", {
+          runId,
+          error: deliveryResult.error,
+        });
+      }
+    }
   };
 }
 
