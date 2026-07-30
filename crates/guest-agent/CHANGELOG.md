@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.58.11](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.10...guest-agent-v0.58.11) (2026-07-30)
+
+
+### Bug Fixes
+
+* **guest-agent:** checkpoint user cancellations before completion ([#23899](https://github.com/vm0-ai/vm0/issues/23899)) ([ba905f6](https://github.com/vm0-ai/vm0/commit/ba905f65bb5f99fac077c236b4ca57175708ead5))
+
 ## [0.58.10](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.9...guest-agent-v0.58.10) (2026-07-29)
 
 ## [0.58.9](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.8...guest-agent-v0.58.9) (2026-07-29)

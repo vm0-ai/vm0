@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.660.0](https://github.com/vm0-ai/vm0/compare/app-v0.659.0...app-v0.660.0) (2026-07-30)
+
+
+### Features
+
+* add chat-run-finished workflow automation event trigger ([#23861](https://github.com/vm0-ai/vm0/issues/23861)) ([402ce7e](https://github.com/vm0-ai/vm0/commit/402ce7e1484a34a172624ea0047ccd1ffcc1441b))
+* **platform:** show custom connectors in chat composer ([#23853](https://github.com/vm0-ai/vm0/issues/23853)) ([d657866](https://github.com/vm0-ai/vm0/commit/d65786664af4cb80f78b2698f4786117134f990e))
+* rename presentation picker templates and palettes ([#23879](https://github.com/vm0-ai/vm0/issues/23879)) ([68e29a5](https://github.com/vm0-ai/vm0/commit/68e29a5f25798f10561afb25c217233c5381316d))
+
+
+### Bug Fixes
+
+* **platform:** include private agents in composer mentions ([#23903](https://github.com/vm0-ai/vm0/issues/23903)) ([d194ec6](https://github.com/vm0-ai/vm0/commit/d194ec67f5fea4a93ef7ec8f613499d24098facf))
+
+
+### Refactoring
+
+* **api:** unify server chat naming with chat events ([#23896](https://github.com/vm0-ai/vm0/issues/23896)) ([90ea01f](https://github.com/vm0-ai/vm0/commit/90ea01f6748bc3ccfcc289437aa48a621ab254ff))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.249.0
+    * @vm0/core bumped to 8.487.0
+
 ## [0.659.0](https://github.com/vm0-ai/vm0/compare/app-v0.658.0...app-v0.659.0) (2026-07-30)
 
 
