@@ -299,7 +299,7 @@ export default [
       // Central test lifecycle owns connection-pool teardown; it does not
       // construct or assert API behavior.
       "src/__tests__/test-context.ts",
-      // A pre-0760 database cannot be constructed through a production API.
+      // A pre-0761 database cannot be constructed through a production API.
       // This focused rollout test only redirects the real route to PostgreSQL's
       // empty template database; setup is internal, but assertions remain HTTP.
       "src/signals/routes/__tests__/zero-model-provider-gateways-rollout.test.ts",
