@@ -254,7 +254,7 @@ export const dispatchCancelSideEffects$ = command(
     signal.throwIfAborted();
     // Once the callback's durable lifecycle marker exists, replay would only
     // repeat its pre-marker work. The direct scheduler redrive below is enough.
-    const redriveCallbackId =
+    const redriveChatCallbackId =
       recoveryRedrive &&
       chatCallbackId !== undefined &&
       !(await cancellationLifecyclePublished(db, result.runId))
@@ -262,7 +262,7 @@ export const dispatchCancelSideEffects$ = command(
         : undefined;
     signal.throwIfAborted();
     const callbackResults =
-      recoveryRedrive && redriveCallbackId === undefined
+      recoveryRedrive && redriveChatCallbackId === undefined
         ? []
         : await tapError(
             set(
@@ -272,8 +272,8 @@ export const dispatchCancelSideEffects$ = command(
                 runId: result.runId,
                 status: "failed",
                 error: "Run cancelled",
-                ...(redriveCallbackId !== undefined
-                  ? { redriveCallbackId }
+                ...(redriveChatCallbackId !== undefined
+                  ? { redriveChatCallbackId }
                   : {}),
               },
               signal,
