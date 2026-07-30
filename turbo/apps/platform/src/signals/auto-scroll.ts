@@ -8,8 +8,8 @@ const USER_INPUT_WINDOW_MS = 200;
 const KEY_SCROLL_STEP_PX = 72;
 const COARSE_POINTER_QUERY = "(pointer: coarse)";
 
-export type ScrollStepDirection = "up" | "down";
-export type PrependScrollCompensationToken = symbol;
+type ScrollStepDirection = "up" | "down";
+type PrependScrollCompensationToken = symbol;
 
 interface PendingPrependScrollRecord {
   readonly token: PrependScrollCompensationToken;

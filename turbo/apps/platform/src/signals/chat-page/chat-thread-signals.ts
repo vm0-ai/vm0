@@ -8,7 +8,6 @@ import type {
   ChatThreadDraft,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
-import type { ScrollStepDirection } from "../auto-scroll.ts";
 import type { ChatClipboardPayload } from "../zero-page/clipboard.ts";
 import type { DraftSignals } from "../zero-page/chat-draft.ts";
 import type { WorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
@@ -24,6 +23,7 @@ import type { EditorDocumentSnapshot } from "../zero-page/user-message-document-
 import type { AgentReferenceSignals } from "./agent-reference-signals.ts";
 import type { ArtifactSignals } from "./artifact-card-signals.ts";
 import type { ThreadSidebarAutoOpenCandidate } from "./thread-sidebar-auto-open.ts";
+import type { ThreadScrollPosition } from "./chat-thread-scroll.ts";
 
 type RecommendedFollowup = NonNullable<
   ChatFollowupsEvent["recommendedFollowups"]
@@ -118,12 +118,14 @@ export interface ChatThreadSignals {
   recallMessage$: Command<Promise<void>, [string, AbortSignal]>;
   skipAutomationEvent$: Command<Promise<void>, [string, AbortSignal]>;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;
-  setScrollContainer$: Command<(() => void) | undefined, [HTMLElement | null]>;
-  autoScroll$: Command<void, []>;
+  scrollContainerOnRef$: Command<
+    (() => void) | undefined,
+    [HTMLElement | null]
+  >;
+  threadScrollPosition$: Computed<ThreadScrollPosition | null>;
+  scrollTo$: Command<boolean, [ThreadScrollPosition]>;
   scrollToBottom$: Command<void, []>;
   scrollToTop$: Command<void, []>;
-  scrollBy$: Command<boolean, [ScrollStepDirection]>;
-  prepareKeyboardScroll$: Command<boolean, []>;
   containerEl$: Computed<HTMLElement | null>;
   setContainerRef$: Command<(() => void) | undefined, [HTMLElement | null]>;
   setMainContainerRef$: Command<(() => void) | undefined, [HTMLElement | null]>;

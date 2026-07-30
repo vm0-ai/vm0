@@ -22,9 +22,9 @@ import { createHeaderAutomationSignals } from "./header-automation-menu.ts";
 import { createThreadSidebarSignals } from "./thread-sidebar.ts";
 import { createThreadSidebarAutoOpenCandidate } from "./thread-sidebar-auto-open.ts";
 import {
-  createScrollSignals,
-  type PrependScrollCompensationToken,
-} from "../auto-scroll.ts";
+  createChatThreadScrollSignals,
+  type ThreadScrollPosition,
+} from "./chat-thread-scroll.ts";
 import {
   createDraftSignals,
   createRestoredAttachment,
@@ -181,12 +181,6 @@ type ChatThreadRemote = ReturnType<typeof createRemoteChatThreadDataSource>;
 export type { DraftSignals } from "../zero-page/chat-draft.ts";
 
 const L = logger("ChatThread");
-
-function createChatThreadScrollSignals(threadId: string) {
-  return createScrollSignals(threadId, {
-    observeViewportResizeOnMobile: true,
-  });
-}
 
 type RecallControlEvent = Extract<
   ChatEvent,
@@ -2268,15 +2262,34 @@ function createSyncRemoteEventsCommand({
   persistentEvents$,
   hasReachedOldestEvent$,
   mergePersistentEvents$,
+  threadScrollPosition$,
+  scrollTo$,
+  scrollToBottom$,
   dataSource,
 }: {
   threadId: string;
   persistentEvents$: PersistentChatEvents$;
   hasReachedOldestEvent$: Computed<boolean>;
   mergePersistentEvents$: Command<void, [PersistedChatEvent[]]>;
+  threadScrollPosition$: Computed<ThreadScrollPosition | null>;
+  scrollTo$: Command<boolean, [ThreadScrollPosition]>;
+  scrollToBottom$: Command<void, []>;
   dataSource: ChatThreadRemote;
 }): Command<Promise<void>, [AbortSignal]> {
   return command(async ({ get, set }, signal: AbortSignal) => {
+    const mergeEvents = (events: PersistedChatEvent[]): void => {
+      const scrollPosition = get(threadScrollPosition$);
+      set(mergePersistentEvents$, events);
+      animationFrame(
+        () => {
+          if (scrollPosition && set(scrollTo$, scrollPosition)) {
+            return;
+          }
+          set(scrollToBottom$);
+        },
+        { signal },
+      );
+    };
     const persistentEvents = get(persistentEvents$);
     const accumulatedEvents: PersistedChatEvent[] = [];
     let mergedEventCount = 0;
@@ -2307,7 +2320,7 @@ function createSyncRemoteEventsCommand({
       signal.throwIfAborted();
       if (isInitialPage) {
         initialPageOldestEvent = events[0]!;
-        set(mergePersistentEvents$, events);
+        mergeEvents(events);
       } else {
         accumulatedEvents.push(...events);
       }
@@ -2356,10 +2369,7 @@ function createSyncRemoteEventsCommand({
               accumulatedEvents.length - mergedEventCount >=
               HISTORY_BACKFILL_MERGE_BATCH_SIZE
             ) {
-              set(
-                mergePersistentEvents$,
-                accumulatedEvents.slice(mergedEventCount),
-              );
+              mergeEvents(accumulatedEvents.slice(mergedEventCount));
               mergedEventCount = accumulatedEvents.length;
             }
           }
@@ -2382,7 +2392,7 @@ function createSyncRemoteEventsCommand({
       }
     }
     signal.throwIfAborted();
-    set(mergePersistentEvents$, accumulatedEvents.slice(mergedEventCount));
+    mergeEvents(accumulatedEvents.slice(mergedEventCount));
   });
 }
 
@@ -2666,6 +2676,11 @@ function createPagedEvents(
   dataSource: ChatThreadRemote,
   initialOptimisticEntries: readonly OptimisticChatEventEntry[],
   previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
+  scroll: {
+    threadScrollPosition$: Computed<ThreadScrollPosition | null>;
+    scrollTo$: Command<boolean, [ThreadScrollPosition]>;
+    scrollToBottom$: Command<void, []>;
+  },
 ) {
   const {
     agentReferenceSignals,
@@ -2752,6 +2767,9 @@ function createPagedEvents(
     persistentEvents$: persistentChatEvents$,
     hasReachedOldestEvent$,
     mergePersistentEvents$,
+    threadScrollPosition$: scroll.threadScrollPosition$,
+    scrollTo$: scroll.scrollTo$,
+    scrollToBottom$: scroll.scrollToBottom$,
     dataSource,
   });
   const syncRemoteEvents$ = createTrackedEventSyncCommand(
@@ -2789,22 +2807,18 @@ function createChatThreadEventPipeline({
   threadId,
   dataSource,
   initialOptimisticEntries,
-  recordScrollHeightForPrepend$,
-  clearScrollHeightForPrepend$,
+  threadScrollPosition$,
+  scrollTo$,
+  scrollToBottom$,
   awayFromBottom$,
   previewImageUrlsByUrl$,
 }: {
   threadId: string;
   dataSource: ChatThreadRemote;
   initialOptimisticEntries: readonly OptimisticChatEventEntry[];
-  recordScrollHeightForPrepend$: Command<
-    PrependScrollCompensationToken | null,
-    []
-  >;
-  clearScrollHeightForPrepend$: Command<
-    void,
-    [PrependScrollCompensationToken | null | undefined]
-  >;
+  threadScrollPosition$: Computed<ThreadScrollPosition | null>;
+  scrollTo$: Command<boolean, [ThreadScrollPosition]>;
+  scrollToBottom$: Command<void, []>;
   awayFromBottom$: Computed<boolean>;
   previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>;
 }) {
@@ -2813,17 +2827,20 @@ function createChatThreadEventPipeline({
     dataSource,
     initialOptimisticEntries,
     previewImageUrlsByUrl$,
+    { threadScrollPosition$, scrollTo$, scrollToBottom$ },
   );
   const renderWindow = createChatRenderWindow({
     threadId,
     allRenderedChatGroups$: pagedEvents.allRenderedChatGroups$,
+    threadScrollPosition$,
     awayFromBottom$,
   });
 
   const loadMoreRenderedChatGroups$ =
     createLoadMoreRenderedChatGroupsWithPrependScroll(
-      recordScrollHeightForPrepend$,
-      clearScrollHeightForPrepend$,
+      threadScrollPosition$,
+      scrollTo$,
+      scrollToBottom$,
       renderWindow.loadMoreRenderedChatGroups$,
     );
   return {
@@ -2903,21 +2920,25 @@ function createEventRunIndicatorState(
 }
 
 function createLoadMoreRenderedChatGroupsWithPrependScroll(
-  recordScrollHeightForPrepend$: Command<
-    PrependScrollCompensationToken | null,
-    []
-  >,
-  clearScrollHeightForPrepend$: Command<
-    void,
-    [PrependScrollCompensationToken | null | undefined]
-  >,
+  threadScrollPosition$: Computed<ThreadScrollPosition | null>,
+  scrollTo$: Command<boolean, [ThreadScrollPosition]>,
+  scrollToBottom$: Command<void, []>,
   loadMoreRenderedChatGroups$: Command<Promise<boolean>, [AbortSignal]>,
 ) {
-  return command(async ({ set }, signal: AbortSignal) => {
-    const compensationToken = set(recordScrollHeightForPrepend$);
+  return command(async ({ get, set }, signal: AbortSignal) => {
+    const scrollPosition = get(threadScrollPosition$);
     const didPrepend = await set(loadMoreRenderedChatGroups$, signal);
-    if (!didPrepend) {
-      set(clearScrollHeightForPrepend$, compensationToken);
+    signal.throwIfAborted();
+    if (didPrepend) {
+      animationFrame(
+        () => {
+          if (scrollPosition && set(scrollTo$, scrollPosition)) {
+            return;
+          }
+          set(scrollToBottom$);
+        },
+        { signal },
+      );
     }
     return didPrepend;
   });
@@ -2939,7 +2960,9 @@ interface RunTrackingDeps {
   reloadMailDrafts$: Command<void, []>;
   subscribeBrowserSessions$: Command<Promise<void>, [AbortSignal]>;
   reloadComposerWorkflows$: Command<Promise<void>, [AbortSignal]>;
-  autoScroll$: Command<void, []>;
+  threadScrollPosition$: Computed<ThreadScrollPosition | null>;
+  scrollTo$: Command<boolean, [ThreadScrollPosition]>;
+  scrollToBottom$: Command<void, []>;
   automationSignals: Pick<ChatThreadSignals, "headerAutomations">;
   dataSource: ChatThreadRemote;
 }
@@ -3001,13 +3024,48 @@ function setThreadRenderWindowState(
   return next;
 }
 
+function scrollTargetStartIndex(
+  groups: readonly ChatEventGroup[],
+  targetEventId: string | null,
+): number | null {
+  if (targetEventId === null) {
+    return null;
+  }
+  const targetGroupIndex = groups.findIndex((group) => {
+    return group.events.some((event) => {
+      return event.id === targetEventId;
+    });
+  });
+  if (targetGroupIndex === -1) {
+    return null;
+  }
+  const targetRunId = groups[targetGroupIndex]?.events.find((event) => {
+    return event.id === targetEventId;
+  })?.runId;
+  if (targetRunId === undefined) {
+    return targetGroupIndex;
+  }
+  let startIndex = targetGroupIndex;
+  while (
+    startIndex > 0 &&
+    groups[startIndex - 1]?.events.some((event) => {
+      return event.runId === targetRunId;
+    })
+  ) {
+    startIndex--;
+  }
+  return startIndex;
+}
+
 function createChatRenderWindow({
   threadId,
   allRenderedChatGroups$,
+  threadScrollPosition$,
   awayFromBottom$,
 }: {
   threadId: string;
   allRenderedChatGroups$: Computed<Promise<ChatEventGroup[]>>;
+  threadScrollPosition$: Computed<ThreadScrollPosition | null>;
   awayFromBottom$: Computed<boolean>;
 }) {
   const visibleRenderedChatGroups$ = computed(
@@ -3017,7 +3075,16 @@ function createChatRenderWindow({
         get(renderWindowStateByThreadId$),
         threadId,
       );
-      return groups.slice(renderWindowStartIndex(groups, cursorGroupId));
+      const requestedStartIndex = renderWindowStartIndex(groups, cursorGroupId);
+      const targetStartIndex = scrollTargetStartIndex(
+        groups,
+        get(threadScrollPosition$)?.targetEventId ?? null,
+      );
+      return groups.slice(
+        targetStartIndex === null
+          ? requestedStartIndex
+          : Math.min(requestedStartIndex, targetStartIndex),
+      );
     },
   );
   const visibleRenderedChatGroupsReady$ = computed(
@@ -3035,7 +3102,18 @@ function createChatRenderWindow({
       );
       const groups = await get(allRenderedChatGroups$);
       signal.throwIfAborted();
-      const startIndex = renderWindowStartIndex(groups, current.cursorGroupId);
+      const requestedStartIndex = renderWindowStartIndex(
+        groups,
+        current.cursorGroupId,
+      );
+      const targetStartIndex = scrollTargetStartIndex(
+        groups,
+        get(threadScrollPosition$)?.targetEventId ?? null,
+      );
+      const startIndex =
+        targetStartIndex === null
+          ? requestedStartIndex
+          : Math.min(requestedStartIndex, targetStartIndex);
       const nextStartIndex = previousRenderWindowStartIndex(groups, startIndex);
       if (nextStartIndex === startIndex) {
         return false;
@@ -3168,16 +3246,22 @@ function createReceiveSyncedEventsCommand({
   threadId,
   mergePersistentEvents$,
   markThreadReadIfNeeded$,
-  autoScroll$,
+  threadScrollPosition$,
+  scrollTo$,
+  scrollToBottom$,
 }: Pick<
   RunTrackingDeps,
-  "threadId" | "mergePersistentEvents$" | "autoScroll$"
+  | "threadId"
+  | "mergePersistentEvents$"
+  | "threadScrollPosition$"
+  | "scrollTo$"
+  | "scrollToBottom$"
 > & {
   markThreadReadIfNeeded$: Command<Promise<void>, [AbortSignal]>;
 }): Command<Promise<void>, [PersistedChatEvent[], AbortSignal]> {
   return command(
     async (
-      { set },
+      { get, set },
       events: PersistedChatEvent[],
       signal: AbortSignal,
     ): Promise<void> => {
@@ -3186,15 +3270,19 @@ function createReceiveSyncedEventsCommand({
         threadId,
         count: events.length,
       });
+      const scrollPosition = get(threadScrollPosition$);
       set(mergePersistentEvents$, events);
-      await set(markThreadReadIfNeeded$, signal);
-      signal.throwIfAborted();
       animationFrame(
         () => {
-          set(autoScroll$);
+          if (scrollPosition && set(scrollTo$, scrollPosition)) {
+            return;
+          }
+          set(scrollToBottom$);
         },
         { signal },
       );
+      await set(markThreadReadIfNeeded$, signal);
+      signal.throwIfAborted();
     },
   );
 }
@@ -3211,7 +3299,9 @@ function createRunTracking({
   reloadMailDrafts$,
   subscribeBrowserSessions$,
   reloadComposerWorkflows$,
-  autoScroll$,
+  threadScrollPosition$,
+  scrollTo$,
+  scrollToBottom$,
   automationSignals,
   dataSource,
 }: RunTrackingDeps) {
@@ -3228,7 +3318,9 @@ function createRunTracking({
     threadId,
     mergePersistentEvents$,
     markThreadReadIfNeeded$,
-    autoScroll$,
+    threadScrollPosition$,
+    scrollTo$,
+    scrollToBottom$,
   });
 
   const onSubscribed$ = createOnSubscribedCommand({
@@ -3517,6 +3609,8 @@ interface SendMessageDeps {
   draft: DraftSignals;
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
+  threadScrollPosition$: Computed<ThreadScrollPosition | null>;
+  scrollTo$: Command<boolean, [ThreadScrollPosition]>;
   scrollToBottom$: Command<void, []>;
   syncRemoteEvents$: Command<Promise<void>, [AbortSignal]>;
   appendOptimisticEvent$: Command<void, [OptimisticChatEventInput]>;
@@ -3582,6 +3676,8 @@ function createPerformSendMessage(deps: SendMessageDeps) {
     draft,
     cancelDraftSync$,
     flushDraftClear$,
+    threadScrollPosition$,
+    scrollTo$,
     scrollToBottom$,
     syncRemoteEvents$,
     appendOptimisticEvent$,
@@ -3629,6 +3725,7 @@ function createPerformSendMessage(deps: SendMessageDeps) {
       const clientEventId = crypto.randomUUID();
       const chatThreadSortEventId = crypto.randomUUID();
       const createdAt = nowDate().toISOString();
+      const scrollPosition = get(threadScrollPosition$);
       set(appendOptimisticSendEvent$, {
         threadId,
         agentId: request.agentId,
@@ -3642,6 +3739,9 @@ function createPerformSendMessage(deps: SendMessageDeps) {
       });
       animationFrame(
         () => {
+          if (scrollPosition && set(scrollTo$, scrollPosition)) {
+            return;
+          }
           set(scrollToBottom$);
         },
         { signal },
@@ -3670,7 +3770,6 @@ function createPerformSendMessage(deps: SendMessageDeps) {
         set(reloadBillingStatus$);
         await set(syncRemoteEvents$, signal);
         signal.throwIfAborted();
-        set(scrollToBottom$);
       }
       return true;
     },
@@ -3735,6 +3834,8 @@ interface QueueMessageDeps {
   draft: DraftSignals;
   cancelDraftSync$: Command<void, []>;
   flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
+  threadScrollPosition$: Computed<ThreadScrollPosition | null>;
+  scrollTo$: Command<boolean, [ThreadScrollPosition]>;
   scrollToBottom$: Command<void, []>;
   appendOptimisticEvent$: Command<void, [OptimisticChatEventInput]>;
   dataSource: ChatThreadRemote;
@@ -3748,6 +3849,8 @@ function createQueueMessage(deps: QueueMessageDeps) {
     draft,
     cancelDraftSync$,
     flushDraftClear$,
+    threadScrollPosition$,
+    scrollTo$,
     scrollToBottom$,
     appendOptimisticEvent$,
     dataSource,
@@ -3801,6 +3904,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
       const clientEventId = crypto.randomUUID();
       const chatThreadSortEventId = crypto.randomUUID();
       const nowIso = nowDate().toISOString();
+      const scrollPosition = get(threadScrollPosition$);
       set(touchOptimisticChatThreadSort$, {
         id: chatThreadSortEventId,
         threadId,
@@ -3823,6 +3927,9 @@ function createQueueMessage(deps: QueueMessageDeps) {
       });
       animationFrame(
         () => {
+          if (scrollPosition && set(scrollTo$, scrollPosition)) {
+            return;
+          }
           set(scrollToBottom$);
         },
         { signal },
@@ -4622,12 +4729,7 @@ export function createChatThreadSignals(
     threadMeta$,
     dataSource,
   );
-  const {
-    recordScrollHeightForPrepend$,
-    clearScrollHeightForPrepend$,
-    awayFromBottom$,
-    ...scrollSignals
-  } = createChatThreadScrollSignals(threadId);
+  const scroll = createChatThreadScrollSignals(threadId);
   const container = createChatThreadContainerSignals();
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
@@ -4647,9 +4749,10 @@ export function createChatThreadSignals(
     threadId,
     dataSource,
     initialOptimisticEntries,
-    recordScrollHeightForPrepend$,
-    clearScrollHeightForPrepend$,
-    awayFromBottom$,
+    threadScrollPosition$: scroll.threadScrollPosition$,
+    scrollTo$: scroll.scrollTo$,
+    scrollToBottom$: scroll.scrollToBottom$,
+    awayFromBottom$: scroll.awayFromBottom$,
     previewImageUrlsByUrl$,
   });
   const { queueDraftSync$, cancelDraftSync$, flushDraftClear$ } =
@@ -4668,7 +4771,9 @@ export function createChatThreadSignals(
     reloadMailDrafts$: events.reloadMailDrafts$,
     subscribeBrowserSessions$: events.subscribeBrowserSessions$,
     reloadComposerWorkflows$: composer.workflowComposer.reloadWorkflows$,
-    autoScroll$: scrollSignals.autoScroll$,
+    threadScrollPosition$: scroll.threadScrollPosition$,
+    scrollTo$: scroll.scrollTo$,
+    scrollToBottom$: scroll.scrollToBottom$,
     automationSignals: threadOwned,
     dataSource,
   });
@@ -4682,7 +4787,9 @@ export function createChatThreadSignals(
     queueDraftSync$,
     cancelDraftSync$,
     flushDraftClear$,
-    scrollToBottom$: scrollSignals.scrollToBottom$,
+    threadScrollPosition$: scroll.threadScrollPosition$,
+    scrollTo$: scroll.scrollTo$,
+    scrollToBottom$: scroll.scrollToBottom$,
     syncRemoteEvents$: events.syncRemoteEvents$,
     appendOptimisticEvent$: events.appendOptimisticEvent$,
     dataSource,
@@ -4697,9 +4804,8 @@ export function createChatThreadSignals(
     ...computerUseHostSelection,
     ...messageActions,
     composerSendButtonStatus$: composerSendButton.composerSendButtonStatus$,
-    ...scrollSignals,
+    ...scroll,
     ...container,
-    awayFromBottom$,
     draft,
     ...composer,
     composerFileInput$,
