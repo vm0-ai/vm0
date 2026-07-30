@@ -239,13 +239,12 @@ async fn rollback_drain_transition(
         None => failures.push("prior boot enablement is unavailable".to_string()),
     }
 
-    if let Err(error) = ops
-        .daemon_reload(
-            unit,
-            SystemdReloadRequirement::dirty().with_drain_override(false),
-        )
-        .await
-    {
+    let reload_requirement = if restart_override_written {
+        SystemdReloadRequirement::dirty().with_drain_override(false)
+    } else {
+        SystemdReloadRequirement::dirty()
+    };
+    if let Err(error) = ops.daemon_reload(unit, reload_requirement).await {
         failures.push(format!("reload restored systemd state: {error}"));
     }
 
@@ -282,13 +281,12 @@ async fn rollback_resume_transition(
         None => failures.push("prior boot enablement is unavailable".to_string()),
     }
 
-    if let Err(error) = ops
-        .daemon_reload(
-            unit,
-            SystemdReloadRequirement::dirty().with_drain_override(true),
-        )
-        .await
-    {
+    let reload_requirement = if drain_override_removed {
+        SystemdReloadRequirement::dirty().with_drain_override(true)
+    } else {
+        SystemdReloadRequirement::dirty()
+    };
+    if let Err(error) = ops.daemon_reload(unit, reload_requirement).await {
         failures.push(format!("reload restored systemd state: {error}"));
     }
 
@@ -427,13 +425,12 @@ async fn drain_with_ops(
         info!(unit = %unit.unit_name(), "disabled (won't restart on reboot)");
     }
 
-    if let Err(error) = ops
-        .daemon_reload(
-            unit,
-            SystemdReloadRequirement::dirty().with_drain_override(true),
-        )
-        .await
-    {
+    let reload_requirement = if restart_override_written {
+        SystemdReloadRequirement::dirty().with_drain_override(true)
+    } else {
+        SystemdReloadRequirement::dirty()
+    };
+    if let Err(error) = ops.daemon_reload(unit, reload_requirement).await {
         return Err(drain_error_after_rollback(
             unit,
             restart_override_written,
@@ -655,6 +652,7 @@ mod tests {
         write_error: bool,
         remove_error: bool,
         reload_errors: VecDeque<bool>,
+        reload_requirements: Vec<SystemdReloadRequirement>,
         restart_policy_error: bool,
         restart_policy: String,
         signal_error: bool,
@@ -670,6 +668,7 @@ mod tests {
         remove_error: bool,
         removed_restart_override: bool,
         reload_errors: VecDeque<bool>,
+        reload_requirements: Vec<SystemdReloadRequirement>,
         signal_error: bool,
         signal_outcome: ServiceSignalOutcome,
         enable_error: bool,
@@ -685,6 +684,7 @@ mod tests {
                 write_error: false,
                 remove_error: false,
                 reload_errors: VecDeque::new(),
+                reload_requirements: Vec::new(),
                 restart_policy_error: false,
                 restart_policy: "no".to_string(),
                 signal_error: false,
@@ -704,6 +704,7 @@ mod tests {
                 remove_error: false,
                 removed_restart_override: true,
                 reload_errors: VecDeque::new(),
+                reload_requirements: Vec::new(),
                 signal_error: false,
                 signal_outcome: ServiceSignalOutcome::Sent,
                 enable_error: false,
@@ -757,9 +758,10 @@ mod tests {
         fn daemon_reload<'a>(
             &'a mut self,
             _unit: &'a RunnerServiceUnit,
-            _requirement: SystemdReloadRequirement,
+            requirement: SystemdReloadRequirement,
         ) -> ServiceFuture<'a, ()> {
             self.events.push("daemon_reload");
+            self.reload_requirements.push(requirement);
             let reload_error = self.reload_errors.pop_front().unwrap_or(false);
             Box::pin(std::future::ready(if reload_error {
                 Err(fake_error("reload failed"))
@@ -853,9 +855,10 @@ mod tests {
         fn daemon_reload<'a>(
             &'a mut self,
             _unit: &'a RunnerServiceUnit,
-            _requirement: SystemdReloadRequirement,
+            requirement: SystemdReloadRequirement,
         ) -> ServiceFuture<'a, ()> {
             self.events.push("daemon_reload");
+            self.reload_requirements.push(requirement);
             let reload_error = self.reload_errors.pop_front().unwrap_or(false);
             Box::pin(std::future::ready(if reload_error {
                 Err(fake_error("reload failed"))
@@ -922,6 +925,10 @@ mod tests {
                 "signal_drain",
             ]
         );
+        assert_eq!(
+            ops.reload_requirements,
+            [SystemdReloadRequirement::dirty().with_drain_override(true),]
+        );
     }
 
     #[tokio::test]
@@ -962,6 +969,7 @@ mod tests {
             ops.events,
             ["is_active", "is_enabled", "disable", "daemon_reload"]
         );
+        assert_eq!(ops.reload_requirements, [SystemdReloadRequirement::dirty()]);
     }
 
     #[tokio::test]
@@ -1003,6 +1011,13 @@ mod tests {
                 "remove_restart_override",
                 "restore_enabled",
                 "daemon_reload",
+            ]
+        );
+        assert_eq!(
+            ops.reload_requirements,
+            [
+                SystemdReloadRequirement::dirty().with_drain_override(true),
+                SystemdReloadRequirement::dirty().with_drain_override(false),
             ]
         );
     }
@@ -1364,6 +1379,13 @@ mod tests {
                 "signal_resume",
                 "restore_not_enabled",
                 "daemon_reload",
+            ]
+        );
+        assert_eq!(
+            ops.reload_requirements,
+            [
+                SystemdReloadRequirement::dirty().with_drain_override(false),
+                SystemdReloadRequirement::dirty(),
             ]
         );
     }
