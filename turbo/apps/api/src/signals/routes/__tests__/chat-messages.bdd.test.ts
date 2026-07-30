@@ -2556,9 +2556,11 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(
       (await readThreadProjection(actor, fast.threadId)).serviceTier,
     ).toBeNull();
-    const updatedFastThreadEvents = await chat.requestThreadEvents(actor, {}, [
-      200,
-    ]);
+    const updatedFastThreadEvents = await chat.requestThreadEvents(
+      actor,
+      {},
+      [200],
+    );
     expect(updatedFastThreadEvents.status).toBe(200);
     if (updatedFastThreadEvents.status !== 200) {
       throw new Error("Expected chat thread events to load");
