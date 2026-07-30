@@ -19,6 +19,7 @@ import {
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import { clearMockNow, mockNow } from "../../../lib/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
 
@@ -903,6 +904,11 @@ describe("zero sidebar account menu", () => {
 
     let modelProviderRequests = 0;
     let forcedTokenRefreshes = 0;
+    // Gate on the replayed request itself instead of polling the counters:
+    // `detachedSetupPage` runs the page bootstrap concurrently, so a single
+    // `waitFor` would have to cover bootstrap *and* the recovery chain within
+    // one asyncUtilTimeout.
+    const recoveredRequest = createDeferredPromise<void>(context.signal);
     context.mocks.http.get("*/api/zero/me/model-providers", () => {
       modelProviderRequests += 1;
       if (modelProviderRequests === 1) {
@@ -918,6 +924,9 @@ describe("zero sidebar account menu", () => {
       }
       if (modelProviderRequests === 2) {
         return HttpResponse.error();
+      }
+      if (modelProviderRequests === 3) {
+        recoveredRequest.resolve();
       }
       return HttpResponse.json({ modelProviders: [provider] });
     });
@@ -950,10 +959,11 @@ describe("zero sidebar account menu", () => {
       featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
     });
 
-    await waitFor(() => {
-      expect(modelProviderRequests).toBe(3);
-      expect(forcedTokenRefreshes).toBe(3);
-    });
+    await recoveredRequest.promise;
+    // Both refresh failures are retried before the token that replays the
+    // request resolves, so the counts are settled once the replay arrives.
+    expect(modelProviderRequests).toBe(3);
+    expect(forcedTokenRefreshes).toBe(3);
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
 
     const menu = await openAccountMenu();
