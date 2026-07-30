@@ -9,9 +9,14 @@ import { now } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { user$ } from "../auth.ts";
 import { getStoredAdAttributionMetadata } from "./ad-attribution.ts";
+import {
+  sendGoogleAnalyticsEvent,
+  setGoogleAnalyticsUserId,
+} from "./google-analytics.ts";
 
 const SIGNUP_ATTRIBUTION_RECORDED_KEY = "vm0.signupAttributionRecorded";
 const SIGNUP_CONVERSION_RECORDED_KEY = "vm0.googleAdsSignupConversionRecorded";
+const SIGNUP_ANALYTICS_RECORDED_KEY = "vm0.googleAnalyticsSignupRecorded";
 const GOOGLE_ADS_SIGNUP_SEND_TO = "AW-18144854014/OlLBCNXGgqwcEP7_kcxD";
 const SIGNUP_CONVERSION_VALUE_USD = 1;
 const SIGNUP_CONVERSION_MAX_USER_AGE_MS = 30 * 60 * 1000;
@@ -60,6 +65,25 @@ function trackGoogleAdsSignupConversion(
     currency: "USD",
   });
   storage?.setItem(SIGNUP_CONVERSION_RECORDED_KEY, fingerprint);
+}
+
+function trackGoogleAnalyticsSignup(
+  storage: Storage | null,
+  fingerprint: string,
+  userId: string,
+): void {
+  if (storage?.getItem(SIGNUP_ANALYTICS_RECORDED_KEY) === fingerprint) {
+    return;
+  }
+
+  if (!setGoogleAnalyticsUserId(userId)) {
+    return;
+  }
+  if (!sendGoogleAnalyticsEvent("sign_up", { method: "clerk" })) {
+    return;
+  }
+
+  storage?.setItem(SIGNUP_ANALYTICS_RECORDED_KEY, fingerprint);
 }
 
 function timestampMs(value: unknown): number | null {
@@ -132,6 +156,7 @@ export const recordSignupAttribution$ = command(
     }
 
     if (recorded && recentlyCreatedUser) {
+      trackGoogleAnalyticsSignup(storage, user.id, user.id);
       trackGoogleAdsSignupConversion(storage, user.id);
     }
   },

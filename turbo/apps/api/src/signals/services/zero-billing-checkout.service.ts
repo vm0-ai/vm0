@@ -16,6 +16,7 @@ import {
 
 interface CreateCheckoutSessionArgs {
   readonly orgId: string;
+  readonly userId: string;
   readonly tier: SubscriptionCheckoutTier;
   readonly priceId: string;
   readonly trialDays?: 7;
@@ -166,6 +167,7 @@ export { activeConcurrencyPriceId };
 
 function checkoutSessionMetadata(args: {
   readonly orgId: string;
+  readonly userId: string;
   readonly tier: SubscriptionCheckoutTier;
   readonly priceId: string;
   readonly adAttribution:
@@ -174,6 +176,7 @@ function checkoutSessionMetadata(args: {
 }): Record<string, string> {
   const metadata: Record<string, string> = {
     orgId: args.orgId,
+    clerk_user_id: args.userId,
     tier: args.tier,
     priceId: args.priceId,
   };
@@ -212,6 +215,7 @@ export const createCheckoutSession$ = command(
   ): Promise<string> => {
     const metadata = checkoutSessionMetadata({
       orgId: args.orgId,
+      userId: args.userId,
       tier: args.tier,
       priceId: args.priceId,
       adAttribution: args.adAttribution,

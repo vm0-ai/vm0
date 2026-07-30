@@ -11,6 +11,7 @@ import { ROUTES } from "../route-paths.ts";
 import { setLoop } from "../utils.ts";
 import { billingStatusAsync$ } from "../zero-page/billing.ts";
 import { getStoredAdAttributionMetadata } from "../bootstrap/ad-attribution.ts";
+import { ensureGoogleAnalyticsClientId } from "../bootstrap/google-analytics.ts";
 import { reloadOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 import { resetOnboardingDraft$ } from "./onboarding-state.ts";
 
@@ -100,6 +101,8 @@ export const prepareOnboardingVideoRun$ = command(
     }
 
     const client = get(zeroClient$)(zeroBillingCheckoutContract);
+    await ensureGoogleAnalyticsClientId(signal);
+    signal.throwIfAborted();
     const adAttribution = getStoredAdAttributionMetadata();
     const result = await accept(
       client.create({

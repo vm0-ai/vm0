@@ -19,6 +19,7 @@ const context = testContext();
 const STORED_AD_ATTRIBUTION_KEY = "vm0.adAttribution";
 const SIGNUP_ATTRIBUTION_RECORDED_KEY = "vm0.signupAttributionRecorded";
 const SIGNUP_CONVERSION_RECORDED_KEY = "vm0.googleAdsSignupConversionRecorded";
+const SIGNUP_ANALYTICS_RECORDED_KEY = "vm0.googleAnalyticsSignupRecorded";
 const SIGNUP_SEND_TO = "AW-18144854014/OlLBCNXGgqwcEP7_kcxD";
 
 type WindowWithGtag = Window & {
@@ -50,7 +51,7 @@ function mockSignedInUser(options: { readonly createdAt?: Date } = {}): void {
 function installGtagMock() {
   const windowWithGtag = window as WindowWithGtag;
   const originalGtag = windowWithGtag.gtag;
-  const gtag = vi.fn();
+  const gtag = vi.fn<(...args: unknown[]) => void>();
 
   Object.defineProperty(windowWithGtag, "gtag", {
     configurable: true,
@@ -91,6 +92,7 @@ describe("signup attribution Google Ads conversion", () => {
     window.sessionStorage.removeItem(STORED_AD_ATTRIBUTION_KEY);
     window.sessionStorage.removeItem(SIGNUP_ATTRIBUTION_RECORDED_KEY);
     window.sessionStorage.removeItem(SIGNUP_CONVERSION_RECORDED_KEY);
+    window.sessionStorage.removeItem(SIGNUP_ANALYTICS_RECORDED_KEY);
   });
 
   it("fires the Signup conversion after first-time signup attribution is recorded", async () => {
@@ -109,10 +111,20 @@ describe("signup attribution Google Ads conversion", () => {
         currency: "USD",
       }),
     );
+    expect(gtag).toHaveBeenCalledWith(
+      "config",
+      "G-758ZHVCJHK",
+      expect.objectContaining({ user_id: "test-user-123" }),
+    );
+    expect(gtag).toHaveBeenCalledWith(
+      "event",
+      "sign_up",
+      expect.objectContaining({ method: "clerk" }),
+    );
 
     await context.store.set(recordSignupAttribution$, context.signal);
 
-    expect(gtag).toHaveBeenCalledTimes(1);
+    expect(gtag).toHaveBeenCalledTimes(3);
   });
 
   it("fires the Signup conversion for a recent signup without stored ad attribution", async () => {

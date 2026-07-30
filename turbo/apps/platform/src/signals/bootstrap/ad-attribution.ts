@@ -4,6 +4,7 @@ import {
   type AdAttributionMetadata,
   type SourceType,
 } from "@vm0/api-contracts/contracts/zero-attribution";
+import { getStoredGoogleAnalyticsClientId } from "./google-analytics.ts";
 
 const AD_ATTRIBUTION_SOURCE_PARAM = "vm0_source";
 
@@ -41,6 +42,7 @@ const STRIPE_METADATA_PARAMS = [
   "vm0_experiment",
   "vm0_variant",
   "lp_variant",
+  "ga_client_id",
 ] as const;
 
 const STRIPE_CLICK_ID_PRESENT_PARAMS = [
@@ -71,7 +73,7 @@ function collectAttributionParams(
   return attributionParams;
 }
 
-function isSourceType(value: string | null): value is SourceType {
+function isSourceType(value: string | null | undefined): value is SourceType {
   return SOURCE_TYPES.some((candidate) => {
     return candidate === value;
   });
@@ -170,32 +172,39 @@ export function getStoredAdAttributionMetadata(
     return undefined;
   }
 
-  const stored = storage.getItem(STORED_AD_ATTRIBUTION_KEY);
-  if (!stored) {
-    return undefined;
-  }
-
-  const attributionParams = new URLSearchParams(stored);
   const metadata: AdAttributionMetadata = {};
 
-  const sourceType = attributionParams.get("source_type");
+  const stored = storage.getItem(STORED_AD_ATTRIBUTION_KEY);
+  const attributionParams = stored ? new URLSearchParams(stored) : null;
+
+  const sourceType = attributionParams?.get("source_type");
   if (isSourceType(sourceType)) {
     metadata.source_type = sourceType;
   }
 
-  for (const param of STRIPE_METADATA_PARAMS) {
-    const value = attributionParams.get(param);
-    if (value) {
-      metadata[param] = value;
+  if (attributionParams) {
+    for (const param of STRIPE_METADATA_PARAMS) {
+      const value = attributionParams.get(param);
+      if (value) {
+        metadata[param] = value;
+      }
+    }
+
+    for (const [
+      clickIdParam,
+      metadataParam,
+    ] of STRIPE_CLICK_ID_PRESENT_PARAMS) {
+      const value = attributionParams.get(clickIdParam);
+      if (value) {
+        metadata[clickIdParam] = value;
+        metadata[metadataParam] = "true";
+      }
     }
   }
 
-  for (const [clickIdParam, metadataParam] of STRIPE_CLICK_ID_PRESENT_PARAMS) {
-    const value = attributionParams.get(clickIdParam);
-    if (value) {
-      metadata[clickIdParam] = value;
-      metadata[metadataParam] = "true";
-    }
+  const gaClientId = getStoredGoogleAnalyticsClientId(storage);
+  if (gaClientId) {
+    metadata.ga_client_id = gaClientId;
   }
 
   return Object.keys(metadata).length > 0 ? metadata : undefined;

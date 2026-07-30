@@ -22,6 +22,7 @@ import {
   applyStoredAdAttribution,
   getStoredAdAttributionMetadata,
 } from "../bootstrap/ad-attribution.ts";
+import { ensureGoogleAnalyticsClientId } from "../bootstrap/google-analytics.ts";
 import { currentLocale, i18n } from "../../i18n/index.ts";
 
 // ---------------------------------------------------------------------------
@@ -337,6 +338,8 @@ export const startCheckout$ = command(
     const cancelUrl = new URL(currentUrl);
     cancelUrl.searchParams.set("billing", "canceled");
     applyStoredAdAttribution(cancelUrl);
+    await ensureGoogleAnalyticsClientId(signal);
+    signal.throwIfAborted();
     const adAttribution = getStoredAdAttributionMetadata();
 
     const createClient = get(zeroClient$);

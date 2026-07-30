@@ -485,12 +485,14 @@ describe("POST /api/zero/billing/checkout", () => {
       cancel_url: `${APP_ORIGIN}/billing?billing=canceled`,
       metadata: {
         orgId: fixture.orgId,
+        clerk_user_id: fixture.userId,
         tier: "pro",
         priceId: TEST_PRICE_PRO,
       },
       subscription_data: {
         metadata: {
           orgId: fixture.orgId,
+          clerk_user_id: fixture.userId,
           tier: "pro",
           priceId: TEST_PRICE_PRO,
         },
@@ -541,6 +543,7 @@ describe("POST /api/zero/billing/checkout", () => {
       expect.objectContaining({
         metadata: {
           orgId: fixture.orgId,
+          clerk_user_id: fixture.userId,
           tier: "pro",
           priceId: TEST_PRICE_PRO,
           ...expectedPreviewMetadata,
@@ -548,6 +551,7 @@ describe("POST /api/zero/billing/checkout", () => {
         subscription_data: expect.objectContaining({
           metadata: {
             orgId: fixture.orgId,
+            clerk_user_id: fixture.userId,
             tier: "pro",
             priceId: TEST_PRICE_PRO,
             ...expectedPreviewMetadata,
@@ -705,6 +709,7 @@ describe("POST /api/zero/billing/checkout", () => {
     };
     const expectedMetadata = {
       orgId: fixture.orgId,
+      clerk_user_id: fixture.userId,
       tier: "pro",
       priceId: TEST_PRICE_PRO,
       ...expectedAttribution,
@@ -762,12 +767,14 @@ describe("POST /api/zero/billing/checkout", () => {
       cancel_url: `${APP_ORIGIN}/onboarding?billing=canceled`,
       metadata: {
         orgId: fixture.orgId,
+        clerk_user_id: fixture.userId,
         tier: "pro",
         priceId: TEST_PRICE_PRO,
       },
       subscription_data: {
         metadata: {
           orgId: fixture.orgId,
+          clerk_user_id: fixture.userId,
           tier: "pro",
           priceId: TEST_PRICE_PRO,
         },

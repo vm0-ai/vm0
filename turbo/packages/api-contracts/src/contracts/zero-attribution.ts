@@ -38,6 +38,7 @@ export const adAttributionMetadataSchema = z
     vm0_experiment: z.string().min(1).max(100).optional(),
     vm0_variant: z.string().min(1).max(100).optional(),
     lp_variant: z.string().min(1).max(100).optional(),
+    ga_client_id: z.string().min(1).max(100).optional(),
     gclid: z.string().min(1).max(200).optional(),
     gbraid: z.string().min(1).max(200).optional(),
     wbraid: z.string().min(1).max(200).optional(),
