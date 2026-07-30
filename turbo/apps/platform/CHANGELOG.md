@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.659.0](https://github.com/vm0-ai/vm0/compare/app-v0.658.0...app-v0.659.0) (2026-07-30)
+
+
+### Features
+
+* **platform:** localize chat and conversation surfaces ([#23791](https://github.com/vm0-ai/vm0/issues/23791)) ([d54b42c](https://github.com/vm0-ai/vm0/commit/d54b42cc9391e98b3e0b23e273cb059535dbe862))
+
+
+### Bug Fixes
+
+* **platform:** stabilize auth recovery retry test ([#23872](https://github.com/vm0-ai/vm0/issues/23872)) ([1397917](https://github.com/vm0-ai/vm0/commit/139791710e6f1d3199c95ae79356d7a774b08ed9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.248.1
+    * @vm0/core bumped to 8.486.3
+
 ## [0.658.0](https://github.com/vm0-ai/vm0/compare/app-v0.657.1...app-v0.658.0) (2026-07-30)
 
 
