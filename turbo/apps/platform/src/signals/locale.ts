@@ -28,12 +28,11 @@ export const locale$ = computed((get) => {
   return get(internalLocale$);
 });
 
-export const localePreferenceSupported$ = computed(async (get) => {
+export const availableLocalePreferences$ = computed(async (get) => {
   const preferences = await get(userPreferences$);
-  return (
-    preferences.locale !== undefined &&
-    preferences.supportedLocales?.includes("pt-BR") === true
-  );
+  return preferences.locale === undefined
+    ? []
+    : (preferences.supportedLocales ?? []);
 });
 
 export const initLocale$ = command(async ({ set }, signal: AbortSignal) => {
@@ -79,14 +78,22 @@ export const syncLocalePreference$ = command(
 
     const preferences = await get(userPreferences$);
     signal.throwIfAborted();
+    const supportedLocales = preferences.supportedLocales;
     if (
       preferences.locale === undefined ||
-      preferences.supportedLocales?.includes("pt-BR") !== true
+      supportedLocales === undefined ||
+      (!supportedLocales.includes("pt-BR") &&
+        !supportedLocales.includes("ja-JP"))
     ) {
       return;
     }
 
-    const locale = preferences.locale ?? resolveDocumentLocale();
+    const documentLocale = resolveDocumentLocale();
+    const locale =
+      preferences.locale ??
+      (supportedLocales.includes(documentLocale)
+        ? documentLocale
+        : DEFAULT_LOCALE);
     await set(applyLocalePreference$, clerk.organization.id, locale, signal);
 
     if (preferences.locale === null) {
