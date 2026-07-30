@@ -8598,23 +8598,40 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(failedRefresh.body.error.code).toBe(
       NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
     );
+  });
 
-    const nonTerminalRun = await api.createRun(actor, {
-      agentId,
-      prompt: "do not classify as terminal before claim",
-      modelProvider: "anthropic-api-key",
-    });
-    expect(["queued", "pending"]).toContain(
-      (await api.readRun(actor, nonTerminalRun.runId)).status,
-    );
-    const nonTerminalRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
-      `Bearer ${actorRunnerKey.token}`,
-      nonTerminalRun.runId,
-      body,
-      [404],
-    );
-    expect(nonTerminalRefresh.body.error.code).toBe("NOT_FOUND");
-    await api.requestCancelRun(actor, nonTerminalRun.runId, [200]);
+  it("does not classify queued or pending runs as terminal", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const runnerKey = await api.createCliToken(actor);
+    const createNonTerminalRun = async (prompt: string) => {
+      return await api.createRun(actor, {
+        agentId,
+        prompt,
+        modelProvider: "anthropic-api-key",
+      });
+    };
+
+    const firstPending = await createNonTerminalRun("pending refresh one");
+    const secondPending = await createNonTerminalRun("pending refresh two");
+    const queued = await createNonTerminalRun("queued refresh");
+    expect(firstPending.status).toBe("pending");
+    expect(secondPending.status).toBe("pending");
+    expect(queued.status).toBe("queued");
+
+    for (const run of [firstPending, secondPending, queued]) {
+      const refresh = await api.requestRefreshRunnerNetworkPolicyAs(
+        `Bearer ${runnerKey.token}`,
+        run.runId,
+        { connectorSlugs: ["slack"] },
+        [404],
+      );
+      expect(refresh.body.error.code).toBe("NOT_FOUND");
+    }
+
+    await api.requestCancelRun(actor, queued.runId, [200]);
+    await api.requestCancelRun(actor, secondPending.runId, [200]);
+    await api.requestCancelRun(actor, firstPending.runId, [200]);
   });
 
   it("records co-occurring resume and policy response timing", async () => {
