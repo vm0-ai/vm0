@@ -43,6 +43,17 @@ interface LocaleRollout {
   readonly supportedLocales: readonly UserLocale[];
 }
 
+function addSupportedLocale(
+  supportedLocales: UserLocale[],
+  locale: UserLocale,
+  clientSupportsLocale: boolean,
+  rolloutEnabled: boolean,
+): void {
+  if (clientSupportsLocale && rolloutEnabled) {
+    supportedLocales.push(locale);
+  }
+}
+
 const localeRollout$ = computed((get): LocaleRollout => {
   const clientVersion = get(request$).raw.headers.get(CLIENT_VERSION_HEADER);
   const clientSupportsBrazilianPortuguese = clientVersionSupportsCapability(
@@ -74,30 +85,48 @@ const localeRollout$ = computed((get): LocaleRollout => {
     CLIENT_CAPABILITY_IT_IT_LOCALE,
   );
   const supportedLocales: UserLocale[] = ["en-US"];
-  if (
-    clientSupportsBrazilianPortuguese &&
-    isBrazilianPortugueseLocaleRolloutEnabled()
-  ) {
-    supportedLocales.push("pt-BR");
-  }
-  if (clientSupportsJapanese && isJapaneseLocaleRolloutEnabled()) {
-    supportedLocales.push("ja-JP");
-  }
-  if (clientSupportsKorean && isKoreanLocaleRolloutEnabled()) {
-    supportedLocales.push("ko-KR");
-  }
-  if (clientSupportsIndonesian && isIndonesianLocaleRolloutEnabled()) {
-    supportedLocales.push("id-ID");
-  }
-  if (clientSupportsGerman && isGermanLocaleRolloutEnabled()) {
-    supportedLocales.push("de-DE");
-  }
-  if (clientSupportsSpanish && isSpanishLocaleRolloutEnabled()) {
-    supportedLocales.push("es-ES");
-  }
-  if (clientSupportsItalian && isItalianLocaleRolloutEnabled()) {
-    supportedLocales.push("it-IT");
-  }
+  addSupportedLocale(
+    supportedLocales,
+    "pt-BR",
+    clientSupportsBrazilianPortuguese,
+    isBrazilianPortugueseLocaleRolloutEnabled(),
+  );
+  addSupportedLocale(
+    supportedLocales,
+    "ja-JP",
+    clientSupportsJapanese,
+    isJapaneseLocaleRolloutEnabled(),
+  );
+  addSupportedLocale(
+    supportedLocales,
+    "ko-KR",
+    clientSupportsKorean,
+    isKoreanLocaleRolloutEnabled(),
+  );
+  addSupportedLocale(
+    supportedLocales,
+    "id-ID",
+    clientSupportsIndonesian,
+    isIndonesianLocaleRolloutEnabled(),
+  );
+  addSupportedLocale(
+    supportedLocales,
+    "de-DE",
+    clientSupportsGerman,
+    isGermanLocaleRolloutEnabled(),
+  );
+  addSupportedLocale(
+    supportedLocales,
+    "es-ES",
+    clientSupportsSpanish,
+    isSpanishLocaleRolloutEnabled(),
+  );
+  addSupportedLocale(
+    supportedLocales,
+    "it-IT",
+    clientSupportsItalian,
+    isItalianLocaleRolloutEnabled(),
+  );
 
   return {
     clientSupportsLocaleNegotiation:

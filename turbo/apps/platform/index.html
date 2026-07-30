@@ -166,13 +166,13 @@
               ? "id-ID"
               : /^de(?:-|$)/i.test(navigator.language)
                 ? "de-DE"
-              : /^es(?:-|$)/i.test(navigator.language)
-                ? "es-ES"
-                : /^it(?:-|$)/i.test(navigator.language)
-                  ? "it-IT"
-                  : /^pt(?:-|$)/i.test(navigator.language)
-                    ? "pt-BR"
-                    : "en-US";
+                : /^es(?:-|$)/i.test(navigator.language)
+                  ? "es-ES"
+                  : /^it(?:-|$)/i.test(navigator.language)
+                    ? "it-IT"
+                    : /^pt(?:-|$)/i.test(navigator.language)
+                      ? "pt-BR"
+                      : "en-US";
         var locale =
           cached === "en-US" ||
           cached === "pt-BR" ||

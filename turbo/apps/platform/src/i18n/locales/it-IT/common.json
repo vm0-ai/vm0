@@ -353,6 +353,7 @@
       "slack": "Slack",
       "teams": "Microsoft Teams",
       "telegram": "Telegram",
+      "test": "Test",
       "web": "Rete",
       "webhook": "Webhook",
       "workflowEvent": "Evento del flusso di lavoro",
@@ -1313,6 +1314,18 @@
       "providerDeletedSuffix": "per continuare.",
       "providerIncompatibleAction": "Inizia una nuova sessione",
       "providerIncompatiblePrefix": "Questa sessione è stata avviata con un provider di modelli diverso e non può continuare con quello attuale.",
+      "recovery": {
+        "capacityDescription": "Questo modello è temporaneamente al limite della capacità. Riprova tra qualche minuto oppure cambia modello ora.",
+        "capacityTitle": "Il modello {{framework}} è occupato",
+        "claudeCode": "Claude Code",
+        "codex": "Codex",
+        "resetAndTryAgain": "Reimposta e riprova",
+        "resetsAt": "Ripristino alle {{time}}",
+        "selectModel": "Cambia modello",
+        "tryAgain": "Riprova",
+        "usageDescription": "Puoi continuare quando il limite di utilizzo viene reimpostato oppure cambiare modello ora.",
+        "usageTitle": "Limite di {{framework}} raggiunto"
+      },
       "runCancelled": "In pausa a metà pensiero: riprendilo ogni volta."
     },
     "feedback": {
@@ -2253,6 +2266,12 @@
         "manageDialogTitle": "Gestisci Feishu bot",
         "moreOptions": "Altre opzioni per {{bot}}",
         "pageDescription": "Gestisci il routing dei bot per questa area di lavoro",
+        "permissions": {
+          "description": "Apri Autorizzazioni e ambiti nella console per sviluppatori di Feishu e aggiungi tutti gli ambiti elencati di seguito per l'identità utente. Questi ambiti di collaborazione consentono al connettore di utilizzare messaggi, file, documenti, fogli di calcolo, Base, Wiki, Presentazioni, lavagne, ricerca, calendari, attività e contatti di base.",
+          "hint": "Dopo aver modificato le autorizzazioni, crea e pubblica una nuova versione dell'app affinché la schermata di consenso OAuth possa concederle.",
+          "label": "Ambiti OAuth",
+          "title": "Abilita le autorizzazioni del connettore"
+        },
         "publish": {
           "allMembersAlt": "Impostazioni di disponibilità Feishu con Tutti i membri selezionati",
           "allMembersLabel": "Rendi l'app disponibile a tutti i membri",
@@ -2285,6 +2304,7 @@
           "done": "Fatto",
           "events": "Eventi",
           "next": "Avanti",
+          "permissions": "Autorizzazioni",
           "publish": "Pubblica",
           "redirect": "Reindirizzamento",
           "tokens": "Gettoni",
@@ -4199,6 +4219,41 @@
           "signIn": "Accedi con ChatGPT"
         }
       },
+      "gateways": {
+        "actions": "Azioni gateway",
+        "add": "Aggiungi provider",
+        "addTitle": "Aggiungi provider di modelli",
+        "apiBaseUrl": "URL di base API",
+        "apiBaseUrlPlaceholder": "https://gateway.example.com",
+        "apiKey": "Chiave API",
+        "deleteConfirm": "Eliminare questa connessione al provider di modelli? Le route dei modelli che la utilizzano non saranno più disponibili.",
+        "description": "Collega un gateway gestito dall'amministratore tramite Anthropic Messages, OpenAI Responses o entrambi.",
+        "dialogDescription": "Configura ogni protocollo con l'URL di base API utilizzato da Claude Code o Codex.",
+        "editTitle": "Modifica provider di modelli",
+        "empty": "Nessun provider di modelli personalizzato configurato.",
+        "errors": {
+          "invalidMappings": "Le mappature dei modelli devono essere un oggetto JSON i cui valori sono i nomi dei modelli upstream.",
+          "missingProtocol": "Abilita almeno un protocollo.",
+          "missingSecret": "Inserisci una chiave API."
+        },
+        "headerName": "Intestazione di autenticazione",
+        "headerValue": "Modello del valore dell'intestazione",
+        "keepKey": "Lascia vuoto per mantenere la chiave attuale",
+        "modelMappings": "Mappature dei modelli (JSON)",
+        "name": "Nome",
+        "presets": {
+          "custom": "Personalizzato",
+          "fireworks": "Fireworks AI",
+          "openrouter": "OpenRouter",
+          "vercel": "Vercel AI Gateway"
+        },
+        "protocols": {
+          "anthropicMessages": "Anthropic Messages",
+          "openaiResponses": "OpenAI Responses"
+        },
+        "requestPreview": "Richieste",
+        "title": "Connessioni provider"
+      },
       "personal": {
         "actionForProvider": "{{action}} {{provider}}",
         "claudeDescription": "Accedi con Claude Code per utilizzare i modelli basati su Claude.",
@@ -4258,16 +4313,21 @@
         "defaultModel": "Modello predefinito",
         "defaultModelDescription": "Utilizzato quando un'attività non sceglie il proprio modello.",
         "dialogDescription": "Decidi come i membri accedono a questo modello.",
+        "gateway": "Gateway personalizzato",
+        "gatewayDescription": "Instrada tramite una connessione al provider definita dall'amministratore.",
+        "gatewayProvider": "Connessione al provider",
         "getKey": "Prendi una chiave",
         "invalidRoute": "Itinerario non valido",
         "missingProvider": "Provider mancante",
         "model": "Modello",
         "noAvailableModels": "Nessun modello disponibile",
+        "noMappedGateway": "Nessuna connessione al provider mappa questo modello.",
         "providedBy": "Fornito da",
         "provider": "Provider",
         "providerApiKey": "Chiave API {{provider}}",
         "secretStored": "Archiviati nei segreti dell'area di lavoro.",
         "selectDefaultModel": "Seleziona un modello predefinito",
+        "selectGateway": "Seleziona una connessione al provider",
         "selectModel": "Seleziona un modello",
         "selectProvider": "Seleziona un provider",
         "workspaceDescription": "Disponibile per tutti in quest'area di lavoro.",
@@ -4346,9 +4406,13 @@
         "label": "Lingua",
         "options": {
           "english": "English",
+          "german": "Deutsch",
+          "indonesian": "Bahasa Indonesia",
           "italian": "Italiano",
           "japanese": "日本語",
-          "portugueseBrazil": "Português (Brasil)"
+          "korean": "한국어",
+          "portugueseBrazil": "Português (Brasil)",
+          "spanish": "Español"
         },
         "title": "Lingua"
       },
@@ -4417,6 +4481,7 @@
       "delete": "Elimina",
       "discard": "Scartare",
       "disconnect": "Disconnetti",
+      "edit": "Modifica",
       "loading": "Caricamento in corso",
       "moreOptions": "Più opzioni",
       "reconnect": "Riconnettiti",
