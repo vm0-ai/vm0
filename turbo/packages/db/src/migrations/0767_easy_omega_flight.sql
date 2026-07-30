@@ -46,6 +46,12 @@ ALTER TABLE "browser_sessions" DROP COLUMN "max_credits";--> statement-breakpoin
 ALTER TABLE "browser_sessions" DROP COLUMN "gross_credits";--> statement-breakpoint
 ALTER TABLE "browser_sessions" DROP COLUMN "credits_charged";--> statement-breakpoint
 ALTER TABLE "browser_thread_profiles" DROP COLUMN "id";--> statement-breakpoint
+DROP TRIGGER "bridge_chat_event_revokes_event_id_0755" ON "chat_events";--> statement-breakpoint
+DROP FUNCTION "bridge_chat_event_revokes_event_id_0755"();--> statement-breakpoint
+DROP TRIGGER "bridge_chat_thread_last_chat_event_seq_id_0756" ON "chat_threads";--> statement-breakpoint
+DROP FUNCTION "bridge_chat_thread_last_chat_event_seq_id_0756"();--> statement-breakpoint
+DROP TRIGGER "bridge_zero_run_first_assistant_event_ack_0757" ON "zero_runs";--> statement-breakpoint
+DROP FUNCTION "bridge_zero_run_first_assistant_event_ack_0757"();--> statement-breakpoint
 ALTER TABLE "chat_events" DROP COLUMN "revokes_message_id";--> statement-breakpoint
 ALTER TABLE "chat_threads" DROP COLUMN "last_chat_message_seq_id";--> statement-breakpoint
 ALTER TABLE "zero_runs" DROP COLUMN "first_assistant_message_acknowledged_at";--> statement-breakpoint

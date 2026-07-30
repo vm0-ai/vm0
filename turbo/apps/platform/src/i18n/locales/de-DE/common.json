@@ -1016,10 +1016,9 @@
     "openNewPage": "Öffnen Sie diesen Browser auf einer neuen Seite",
     "panel": {
       "notLive": "Browser nicht live",
-      "resume": "Browser fortsetzen",
-      "resumeDescription": "Durch die Fortsetzung werden das gespeicherte Anmeldeprofil und der gespeicherte Speicher wiederhergestellt. Die vorherigen Seiten und Registerkarten kommen nicht zurück.",
-      "resuming": "Fortsetzung...",
-      "suspended": "Browser angehalten"
+      "start": "Browser starten",
+      "startDescription": "Beim Start werden das gespeicherte Anmeldeprofil und der Speicher wiederhergestellt, sofern verfügbar, und gespeicherte Tabs nach Möglichkeit erneut geöffnet.",
+      "starting": "Wird gestartet…"
     },
     "reclaimHint_one": "Zero behält diesen Browser, während dieses Panel geöffnet ist, und beansprucht ihn nach {{formattedCount}} Minute Inaktivität zurück.",
     "reclaimHint_other": "Zero behält diesen Browser, während dieses Panel geöffnet ist, und beansprucht ihn nach {{formattedCount}} Minuten Inaktivität zurück.",
@@ -1028,6 +1027,7 @@
       "starting": "Beginnt",
       "stopped": "Angehalten"
     },
+    "stop": "Browser stoppen",
     "title": "Live-Browser",
     "unavailable": {
       "description": "Dieser Browser gehört nicht zu diesem Chat oder wurde entfernt.",
