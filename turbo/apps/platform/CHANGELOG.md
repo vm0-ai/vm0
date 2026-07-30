@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.658.0](https://github.com/vm0-ai/vm0/compare/app-v0.657.1...app-v0.658.0) (2026-07-30)
+
+
+### Features
+
+* **api:** add slug-named connector client contracts ([#23842](https://github.com/vm0-ai/vm0/issues/23842)) ([f81813a](https://github.com/vm0-ai/vm0/commit/f81813a6d3833f65dce8df63cd0e26f1249e8815))
+* **platform:** add public agent mentions to chat composer ([#23852](https://github.com/vm0-ai/vm0/issues/23852)) ([0cc4a7a](https://github.com/vm0-ai/vm0/commit/0cc4a7aaf6c9ddba993925eacc08f3021a1782ef))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.248.0
+    * @vm0/core bumped to 8.486.2
+
 ## [0.657.1](https://github.com/vm0-ai/vm0/compare/app-v0.657.0...app-v0.657.1) (2026-07-30)
 
 

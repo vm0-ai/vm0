@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.267.0](https://github.com/vm0-ai/vm0/compare/cli-v9.266.0...cli-v9.267.0) (2026-07-30)
+
+
+### Features
+
+* **api:** add slug-named connector client contracts ([#23842](https://github.com/vm0-ai/vm0/issues/23842)) ([f81813a](https://github.com/vm0-ai/vm0/commit/f81813a6d3833f65dce8df63cd0e26f1249e8815))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.248.0
+    * @vm0/core bumped to 8.486.2
+
 ## [9.266.0](https://github.com/vm0-ai/vm0/compare/cli-v9.265.0...cli-v9.266.0) (2026-07-29)
 
 
