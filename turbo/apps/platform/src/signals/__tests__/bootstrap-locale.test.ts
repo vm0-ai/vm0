@@ -150,18 +150,18 @@ describe("bootstrap locale", () => {
   });
 
   it("uses a supported browser language before a workspace is active", async () => {
-    context.mocks.browser.language("pt-BR");
+    context.mocks.browser.language("id-ID");
     executeLocaleEntrypoint();
 
-    expect(document.documentElement.lang).toBe("pt-BR");
+    expect(document.documentElement.lang).toBe("id-ID");
     expect(context.store.get(testLocaleStorage.get$)).toBeNull();
     expect(window.__vm0PreBundleCopy).toMatchObject({
       loading: {
-        ariaLabel: "Carregando seu espaço de trabalho",
-        messages: expect.arrayContaining(["Aquecendo os neurônios..."]),
+        ariaLabel: "Memuat ruang kerja Anda",
+        messages: expect.arrayContaining(["Sedang memanaskan neuron..."]),
       },
       metadata: {
-        title: "Zero — Seu colega de IA da vm0",
+        title: "Zero — Rekan kerja AI Anda dari vm0",
       },
     });
 
@@ -172,13 +172,44 @@ describe("bootstrap locale", () => {
       withoutRender: true,
     });
 
-    expect(context.store.get(locale$)).toBe("pt-BR");
-    expect(i18n.language).toBe("pt-BR");
-    expect(document.documentElement.lang).toBe("pt-BR");
+    expect(context.store.get(locale$)).toBe("id-ID");
+    expect(i18n.language).toBe("id-ID");
+    expect(document.documentElement.lang).toBe("id-ID");
     expect(i18n.hasResourceBundle("en-US", "common")).toBeTruthy();
     expect(i18n.hasResourceBundle("pt-BR", "common")).toBeTruthy();
     expect(i18n.hasResourceBundle("ja-JP", "common")).toBeTruthy();
     expect(i18n.hasResourceBundle("ko-KR", "common")).toBeTruthy();
+    expect(i18n.hasResourceBundle("id-ID", "common")).toBeTruthy();
+    expect(new Intl.NumberFormat(i18n.language).format(1234.5)).toBe("1.234,5");
+    expect(
+      new Intl.DateTimeFormat(i18n.language, {
+        month: "long",
+        timeZone: "UTC",
+      }).format(new Date("2026-07-30T00:00:00Z")),
+    ).toBe("Juli");
+    expect(
+      i18n.t(
+        ($) => {
+          return $.workflows.automations.duration.hour;
+        },
+        { count: 2 },
+      ),
+    ).toBe("2 jam");
+
+    const indonesianAgents = resources["id-ID"].agents;
+    i18n.removeResourceBundle("id-ID", "agents");
+    try {
+      expect(
+        i18n.t(
+          ($) => {
+            return $.fallbackName;
+          },
+          { ns: "agents" },
+        ),
+      ).toBe("Agent");
+    } finally {
+      i18n.addResourceBundle("id-ID", "agents", indonesianAgents, true, true);
+    }
 
     const metadata = document.createElement("meta");
     metadata.name = "description";
@@ -221,7 +252,7 @@ describe("bootstrap locale", () => {
   it("uses the cached locale across pre-bundle UI and i18next", async () => {
     context.mocks.browser.language("en-US");
     sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
-    context.store.set(testLocaleStorage.set$, "ja-JP");
+    context.store.set(testLocaleStorage.set$, "id-ID");
     executeLocaleEntrypoint();
     executeBrowserCompatibilityEntrypoint(
       "Mozilla/5.0 Chrome/100.0.0.0 Safari/537.36",
@@ -246,33 +277,31 @@ describe("bootstrap locale", () => {
       withoutRender: true,
     });
 
-    expect(context.store.get(locale$)).toBe("ja-JP");
-    expect(i18n.language).toBe("ja-JP");
+    expect(context.store.get(locale$)).toBe("id-ID");
+    expect(i18n.language).toBe("id-ID");
     expect(window.__vm0BrowserSupported).toBeFalsy();
     expect(window.__vm0BrowserUpgrade).toMatchObject({
-      actionLabel: "Chromeを更新",
+      actionLabel: "Perbarui Chrome",
       actionUrl: "https://www.google.com/chrome/",
-      title: "続行するにはChromeを更新してください",
+      title: "Perbarui Chrome untuk melanjutkan",
     });
     expect(metadata).toHaveAttribute(
       "content",
-      expect.stringContaining("Zeroはvm0のAIコワーカーです"),
+      expect.stringContaining("Zero adalah rekan kerja AI Anda dari vm0"),
     );
     expect(window.__vm0PreBundleCopy).toMatchObject({
       browserUpgrade: {
         safari: {
-          actionLabel: "Safariを更新",
-          title: "続行するにはSafariを更新してください",
+          actionLabel: "Perbarui Safari",
+          title: "Perbarui Safari untuk melanjutkan",
         },
       },
       loading: {
-        ariaLabel: "ワークスペースを読み込み中",
-        messages: expect.arrayContaining([
-          "ニューラルネットワークを準備しています...",
-        ]),
+        ariaLabel: "Memuat ruang kerja Anda",
+        messages: expect.arrayContaining(["Sedang memanaskan neuron..."]),
       },
       metadata: {
-        title: "Zero — vm0のAIコワーカー",
+        title: "Zero — Rekan kerja AI Anda dari vm0",
       },
     });
 

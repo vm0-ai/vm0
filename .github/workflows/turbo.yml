@@ -746,6 +746,7 @@ jobs:
         working-directory: turbo
         env:
           BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED: "true"
+          INDONESIAN_LOCALE_ROLLOUT_ENABLED: "true"
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
           FAL_KEY: ${{ secrets.FAL_KEY }}
           BYTEPLUS_API_KEY: ${{ secrets.BYTEPLUS_API_KEY }}
