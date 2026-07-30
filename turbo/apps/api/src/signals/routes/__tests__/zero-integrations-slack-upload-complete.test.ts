@@ -453,7 +453,6 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
     const { orgId, userId, runId, threadId, runnerGroup, agentId } =
       await seedRunScoped();
     await updateFeatureSwitchesForUser(context, actorFor({ orgId, userId }), {
-      [FeatureSwitchKey.Artifacts]: true,
       [FeatureSwitchKey.ArtifactKeyV2]: true,
     });
     const objectStore = chatCallbacks.acceptChatObjectStorage();

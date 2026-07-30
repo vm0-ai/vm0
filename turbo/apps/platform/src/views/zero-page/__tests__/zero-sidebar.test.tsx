@@ -2396,7 +2396,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.Artifacts]: true },
     });
 
     const nav = await waitFor(() => {
@@ -2482,7 +2481,6 @@ describe("zero sidebar", () => {
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
       featureSwitches: {
-        [FeatureSwitchKey.Artifacts]: true,
         [FeatureSwitchKey.LanguagePreference]: true,
         [FeatureSwitchKey.ThreeColumnNav]: true,
         [FeatureSwitchKey.ZeroDebug]: true,
@@ -2543,7 +2541,6 @@ describe("zero sidebar", () => {
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
       featureSwitches: {
-        [FeatureSwitchKey.Artifacts]: true,
         [FeatureSwitchKey.LanguagePreference]: true,
         [FeatureSwitchKey.ThreeColumnNav]: true,
         [FeatureSwitchKey.ZeroDebug]: true,
