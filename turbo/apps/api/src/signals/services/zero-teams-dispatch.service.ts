@@ -1617,7 +1617,7 @@ async function persistTeamsChatMessage(args: {
   | {
       readonly inserted: true;
       readonly chatThreadId: string;
-      readonly chatMessageId: string;
+      readonly chatEventId: string;
     }
   | { readonly inserted: false }
 > {
@@ -1672,12 +1672,12 @@ async function persistTeamsChatMessage(args: {
   );
   args.signal.throwIfAborted();
 
-  const chatMessageId = teamsChatMessageId(args.activity, args.connection.id);
+  const chatEventId = teamsChatMessageId(args.activity, args.connection.id);
   const inserted = await args.db.transaction(async (tx) => {
     const event = await insertChatEvent(
       tx,
       {
-        id: chatMessageId,
+        id: chatEventId,
         chatThreadId: route.chatThreadId,
         eventType: "input.prompt",
         userMessage: createUserMessageDocument({
@@ -1705,13 +1705,13 @@ async function persistTeamsChatMessage(args: {
       tx,
       route.chatThreadId,
       currentTime,
-      chatMessageId,
+      chatEventId,
     );
     return true;
   });
   args.signal.throwIfAborted();
   return inserted
-    ? { inserted: true, chatThreadId: route.chatThreadId, chatMessageId }
+    ? { inserted: true, chatThreadId: route.chatThreadId, chatEventId }
     : { inserted: false };
 }
 
@@ -1719,7 +1719,7 @@ async function teamsMessageDispatchState(
   db: Db,
   args: {
     readonly chatThreadId: string;
-    readonly chatMessageId: string;
+    readonly chatEventId: string;
   },
 ): Promise<TeamsMessageDispatchResult> {
   const [[run], [queued]] = await Promise.all([
@@ -1731,8 +1731,8 @@ async function teamsMessageDispatchState(
         and(
           eq(chatEvents.chatThreadId, args.chatThreadId),
           or(
-            eq(chatEvents.id, args.chatMessageId),
-            eq(chatEvents.revokesEventId, args.chatMessageId),
+            eq(chatEvents.id, args.chatEventId),
+            eq(chatEvents.revokesEventId, args.chatEventId),
           ),
         ),
       )
@@ -1742,7 +1742,7 @@ async function teamsMessageDispatchState(
       .from(chatEvents)
       .where(
         and(
-          eq(chatEvents.id, args.chatMessageId),
+          eq(chatEvents.id, args.chatEventId),
           eq(chatEvents.chatThreadId, args.chatThreadId),
           chatEventTypeIn(["input.prompt"]),
           isNull(chatEvents.runId),
