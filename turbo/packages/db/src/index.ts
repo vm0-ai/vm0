@@ -38,7 +38,6 @@ import * as telegramInstallationSchema from "./schema/telegram-installation";
 import * as telegramOfficialUserLinkSchema from "./schema/telegram-official-user-link";
 import * as telegramUserLinkSchema from "./schema/telegram-user-link";
 import * as telegramUserAgentPreferenceSchema from "./schema/telegram-user-agent-preference";
-import * as telegramThreadSessionSchema from "./schema/telegram-thread-session";
 import * as telegramChatThreadRouteSchema from "./schema/telegram-chat-thread-route";
 import * as telegramMessageSchema from "./schema/telegram-message";
 import * as agentphoneUserLinkSchema from "./schema/agentphone-user-link";
@@ -174,7 +173,6 @@ export const schema = {
   ...telegramOfficialUserLinkSchema,
   ...telegramUserLinkSchema,
   ...telegramUserAgentPreferenceSchema,
-  ...telegramThreadSessionSchema,
   ...telegramChatThreadRouteSchema,
   ...telegramMessageSchema,
   ...agentphoneUserLinkSchema,
