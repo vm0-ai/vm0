@@ -1,4 +1,5 @@
 import type { AgentEvent } from "../zero-page/log-types.ts";
+import { i18n } from "../../i18n/index.ts";
 
 interface NormalizeCodexEventsOptions {
   framework?: string | null;
@@ -737,17 +738,35 @@ function formatCodexFileChanges(
 ): string | undefined {
   const lines: string[] = [];
   if (status && isFailedStatus(status)) {
-    lines.push(`Status: ${status}`);
+    lines.push(
+      i18n.t(
+        ($) => {
+          return $.activity.codex.status;
+        },
+        { status },
+      ),
+    );
   }
   if (errorMessage) {
-    lines.push(`Error: ${errorMessage}`);
+    lines.push(
+      i18n.t(
+        ($) => {
+          return $.activity.codex.error;
+        },
+        { error: errorMessage },
+      ),
+    );
   }
   if (changes.length === 0 && lines.length === 0) {
     return undefined;
   }
 
   for (const change of changes) {
-    const kind = change.kind ?? "change";
+    const kind =
+      change.kind ??
+      i18n.t(($) => {
+        return $.activity.codex.fileChangeKind;
+      });
     const description = change.path ? `${kind} ${change.path}` : kind;
     lines.push(`- ${description}`);
     if (change.diff) {
@@ -759,23 +778,46 @@ function formatCodexFileChanges(
     originalChangeCount - MAX_FORMATTED_FILE_CHANGES,
   );
   if (remaining > 0) {
-    lines.push(`- ... +${remaining} more changes`);
+    lines.push(
+      i18n.t(
+        ($) => {
+          return $.activity.codex.moreChanges;
+        },
+        { count: remaining },
+      ),
+    );
   }
 
-  return ["[files] Files changed:", ...lines].join("\n");
+  return [
+    i18n.t(($) => {
+      return $.activity.codex.filesChanged;
+    }),
+    ...lines,
+  ].join("\n");
 }
 
 function formatPlanStatus(status: string | undefined): string {
   if (status === "completed") {
-    return "completed";
+    return i18n.t(($) => {
+      return $.activity.codex.planStatus.completed;
+    });
   }
   if (status === "in_progress") {
-    return "in progress";
+    return i18n.t(($) => {
+      return $.activity.codex.planStatus.inProgress;
+    });
   }
   if (status === "pending") {
-    return "pending";
+    return i18n.t(($) => {
+      return $.activity.codex.planStatus.pending;
+    });
   }
-  return status ?? "step";
+  return (
+    status ??
+    i18n.t(($) => {
+      return $.activity.codex.planStatus.step;
+    })
+  );
 }
 
 function formatPlanLines(plan: unknown): string[] {
@@ -800,7 +842,14 @@ function formatPlanLines(plan: unknown): string[] {
   }
   const remaining = totalLineCount - MAX_FORMATTED_PLAN_STEPS;
   if (remaining > 0) {
-    lines.push(`- ... +${remaining} more steps`);
+    lines.push(
+      i18n.t(
+        ($) => {
+          return $.activity.codex.moreSteps;
+        },
+        { count: remaining },
+      ),
+    );
   }
   return lines;
 }
@@ -810,18 +859,41 @@ function formatGenericCodexItem(
   item: Record<string, unknown> | null,
 ): string {
   if (!item) {
-    return `Codex ${eventType}`;
+    return i18n.t(
+      ($) => {
+        return $.activity.codex.genericEvent;
+      },
+      { eventType },
+    );
   }
 
-  const label = getItemType(item) ?? "item";
+  const label =
+    getItemType(item) ??
+    i18n.t(($) => {
+      return $.activity.codex.item;
+    });
   const details: string[] = [];
   const status = getItemStatus(item);
   const id = getItemId(item);
   if (status) {
-    details.push(`status: ${status}`);
+    details.push(
+      i18n.t(
+        ($) => {
+          return $.activity.codex.statusDetail;
+        },
+        { status },
+      ),
+    );
   }
   if (id) {
-    details.push(`id: ${id}`);
+    details.push(
+      i18n.t(
+        ($) => {
+          return $.activity.codex.idDetail;
+        },
+        { id },
+      ),
+    );
   }
 
   const rawReadable =
@@ -886,7 +958,76 @@ function formatGenericCodexItem(
   details.push(...extraFields);
 
   const suffix = readable ? `\n${readable}` : "";
-  return `Codex ${label} (${eventType}${details.length > 0 ? `, ${details.join(", ")}` : ""})${suffix}`;
+  const formattedDetails = [eventType, ...details].join(", ");
+  return i18n.t(
+    ($) => {
+      return $.activity.codex.genericItem;
+    },
+    { label, details: formattedDetails, suffix },
+  );
+}
+
+function codexTurnFailureMessage(
+  eventData: Record<string, unknown>,
+  status?: string,
+): string {
+  const errorMessage = getTurnErrorMessage(eventData);
+  if (errorMessage) {
+    return errorMessage;
+  }
+  if (status && !isSuccessfulTurnCompletionStatus(status)) {
+    return i18n.t(
+      ($) => {
+        return $.activity.codex.turnStatus;
+      },
+      { status },
+    );
+  }
+  return i18n.t(($) => {
+    return $.activity.codex.turnFailed;
+  });
+}
+
+function codexErrorMessage(eventData: Record<string, unknown>): string {
+  return (
+    getTurnErrorMessage(eventData) ??
+    i18n.t(($) => {
+      return $.activity.codex.codexError;
+    })
+  );
+}
+
+function formatCodexWarning(eventData: Record<string, unknown>): string {
+  const message =
+    extractEventErrorMessage(eventData) ??
+    i18n.t(($) => {
+      return $.activity.codex.warningFallback;
+    });
+  return i18n.t(
+    ($) => {
+      return $.activity.codex.warning;
+    },
+    { message },
+  );
+}
+
+function formatCodexPlan(eventData: Record<string, unknown>): string | null {
+  const lines = formatPlanLines(eventData.plan);
+  const explanation = trimmedStringValue(eventData.explanation);
+  const contentLines = [explanation, ...lines].filter(
+    (line): line is string => {
+      return line !== undefined && line.length > 0;
+    },
+  );
+  if (contentLines.length === 0) {
+    return null;
+  }
+  return [
+    i18n.t(($) => {
+      return $.activity.codex.planPrefix;
+    }),
+    ...contentLines,
+  ].join("\n");
 }
 
 function normalizeCodexRunEvent(
@@ -914,12 +1055,7 @@ function normalizeCodexRunEvent(
         getTurnSuccess(eventData) === false ||
         isUnsuccessfulTurnCompletionStatus(status) ||
         hasTurnCompletionError(eventData);
-      const result = failed
-        ? (getTurnErrorMessage(eventData) ??
-          (status && !isSuccessfulTurnCompletionStatus(status)
-            ? `Turn ${status}`
-            : "Turn failed"))
-        : "";
+      const result = failed ? codexTurnFailureMessage(eventData, status) : "";
       return {
         event: makeCodexResultEvent({
           event,
@@ -940,7 +1076,7 @@ function normalizeCodexRunEvent(
         event: makeCodexResultEvent({
           event,
           success: false,
-          result: getTurnErrorMessage(eventData) ?? "Turn failed",
+          result: codexTurnFailureMessage(eventData),
           usage,
           durationMs,
           turnId,
@@ -956,7 +1092,7 @@ function normalizeCodexRunEvent(
         event: makeCodexResultEvent({
           event,
           success: false,
-          result: getTurnErrorMessage(eventData) ?? "Codex error",
+          result: codexErrorMessage(eventData),
           usage,
           durationMs,
           turnId,
@@ -970,28 +1106,16 @@ function normalizeCodexRunEvent(
       return {
         event: makeCodexAssistantTextEvent(
           event,
-          `[warning] ${extractEventErrorMessage(eventData) ?? "Codex warning"}`,
+          formatCodexWarning(eventData),
         ),
         codexType,
         turnId,
       };
     }
     case "turn.plan.updated": {
-      const lines = formatPlanLines(eventData.plan);
-      const explanation = trimmedStringValue(eventData.explanation);
-      const contentLines = [explanation, ...lines].filter(
-        (line): line is string => {
-          return line !== undefined && line.length > 0;
-        },
-      );
+      const content = formatCodexPlan(eventData);
       return {
-        event:
-          contentLines.length > 0
-            ? makeCodexAssistantTextEvent(
-                event,
-                ["[plan]", ...contentLines].join("\n"),
-              )
-            : null,
+        event: content ? makeCodexAssistantTextEvent(event, content) : null,
         codexType,
         turnId,
       };
@@ -1039,7 +1163,14 @@ function normalizeCodexCommandEvent(
       itemId,
       content:
         combineContentWithError(output, errorMessage) ??
-        (isFailedStatus(status) ? `Command ${status}` : ""),
+        (isFailedStatus(status)
+          ? i18n.t(
+              ($) => {
+                return $.activity.codex.commandStatus;
+              },
+              { status },
+            )
+          : ""),
       isError,
       durationMs: getFirstNumber(item, ["duration_ms", "durationMs"]),
     });
@@ -1082,8 +1213,15 @@ function normalizeCodexFileMutationEvent(
           errorMessage,
         ) ??
         (isFailedStatus(status)
-          ? `File operation ${status}`
-          : "File operation completed"),
+          ? i18n.t(
+              ($) => {
+                return $.activity.codex.fileOperationStatus;
+              },
+              { status },
+            )
+          : i18n.t(($) => {
+              return $.activity.codex.fileOperationCompleted;
+            })),
       isError: isFailedStatus(status) || errorMessage !== undefined,
       durationMs: getFirstNumber(item, ["duration_ms", "durationMs"]),
     });
@@ -1124,8 +1262,15 @@ function normalizeCodexFileReadEvent(
           errorMessage,
         ) ??
         (isFailedStatus(status)
-          ? `File read ${status}`
-          : "File read completed"),
+          ? i18n.t(
+              ($) => {
+                return $.activity.codex.fileReadStatus;
+              },
+              { status },
+            )
+          : i18n.t(($) => {
+              return $.activity.codex.fileReadCompleted;
+            })),
       isError: isFailedStatus(status) || errorMessage !== undefined,
       durationMs: getFirstNumber(item, ["duration_ms", "durationMs"]),
     });

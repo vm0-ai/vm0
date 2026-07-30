@@ -6717,7 +6717,11 @@ function SlackUserMessageOrigin({
       className="mb-1.5 inline-flex h-7 max-w-[85%] items-center gap-1.5 self-end rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
     >
       <IconBrandSlack size={15} stroke={1.8} className="shrink-0" />
-      <span className="shrink-0">Slack</span>
+      <span className="shrink-0">
+        {t(($) => {
+          return $.chat.origins.slack;
+        })}
+      </span>
       <span className="shrink-0">·</span>
       <span className="min-w-0 truncate">
         {t(($) => {
@@ -6755,7 +6759,11 @@ function FeishuUserMessageOrigin({
         alt=""
         className="size-[15px] shrink-0 object-contain"
       />
-      <span className="shrink-0">Feishu</span>
+      <span className="shrink-0">
+        {t(($) => {
+          return $.chat.origins.feishu;
+        })}
+      </span>
       <span className="shrink-0">·</span>
       <span className="min-w-0 truncate">
         {t(($) => {

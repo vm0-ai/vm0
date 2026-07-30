@@ -1964,9 +1964,7 @@ function prewarmIllustrationPreviewImagesNearScroll({
 
 interface PresentationTemplateThemeOption {
   readonly id: string;
-  readonly name: string;
   readonly group: "multi-accent" | "single-accent";
-  readonly paletteName: string;
   readonly colors: readonly [
     bg: string,
     surface: string,
@@ -1980,332 +1978,400 @@ interface PresentationTemplateThemeOption {
   ];
 }
 
-const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOption[] =
-  [
-    {
-      id: "prism",
-      name: "Candy party",
-      group: "multi-accent",
-      paletteName: "Candy party",
-      colors: [
-        "#FFFFFF",
-        "#F7F7FA",
-        "#1A1726",
-        "#5C5870",
-        "#7257E6",
-        "#FF6B4A",
-        "#AEE63E",
-        "#3FA9F5",
-        "#ECECF2",
-      ],
-    },
-    {
-      id: "carnival",
-      name: "Funfair",
-      group: "multi-accent",
-      paletteName: "Funfair",
-      colors: [
-        "#FFFDF7",
-        "#FFFFFF",
-        "#221C14",
-        "#5E564A",
-        "#FF7A1A",
-        "#E5388E",
-        "#F5B73E",
-        "#1FB6A6",
-        "#EFEADF",
-      ],
-    },
-    {
-      id: "pop-art",
-      name: "Neon arcade",
-      group: "multi-accent",
-      paletteName: "Neon arcade",
-      colors: [
-        "#111016",
-        "#1B1A22",
-        "#F4F2FA",
-        "#A09CB0",
-        "#3D7BFF",
-        "#FF3D9A",
-        "#C6FF4A",
-        "#FF7A1A",
-        "#26242E",
-      ],
-    },
-    {
-      id: "warm-sand",
-      name: "Morning paper",
-      group: "single-accent",
-      paletteName: "Morning paper",
-      colors: [
-        "#FFFDF8",
-        "#FFFFFF",
-        "#262626",
-        "#5A5A5A",
-        "#F19B3A",
-        "#8DACE5",
-        "#DDB8D9",
-        "#516049",
-        "#ECECEC",
-      ],
-    },
-    {
-      id: "bauhaus-primary",
-      name: "Toy bricks",
-      group: "single-accent",
-      paletteName: "Toy bricks",
-      colors: [
-        "#F5F1E6",
-        "#FFFFFF",
-        "#1A1A1A",
-        "#4A4A4A",
-        "#E63327",
-        "#2C5BD6",
-        "#F2B705",
-        "#1A1A1A",
-        "#E2DDD0",
-      ],
-    },
-    {
-      id: "nordic-frost",
-      name: "Ice lake",
-      group: "single-accent",
-      paletteName: "Ice lake",
-      colors: [
-        "#FBFCFD",
-        "#FFFFFF",
-        "#1F2933",
-        "#5B6B7B",
-        "#3E8EDE",
-        "#7BC6C9",
-        "#B8C4D0",
-        "#1F2933",
-        "#E8EDF1",
-      ],
-    },
-    {
-      id: "forest-editorial",
-      name: "Moss library",
-      group: "single-accent",
-      paletteName: "Moss library",
-      colors: [
-        "#F7F6F1",
-        "#FFFFFF",
-        "#1E2B22",
-        "#4F5C52",
-        "#5B7553",
-        "#C97B4A",
-        "#E4DFD0",
-        "#1E2B22",
-        "#E6E8E1",
-      ],
-    },
-    {
-      id: "coral-studio",
-      name: "Peach studio",
-      group: "single-accent",
-      paletteName: "Peach studio",
-      colors: [
-        "#FFF9F6",
-        "#FFFFFF",
-        "#3A2A26",
-        "#6E5B55",
-        "#FF6F5E",
-        "#FFB199",
-        "#2BB3A3",
-        "#3A2A26",
-        "#F0E7E2",
-      ],
-    },
-    {
-      id: "slate-corporate",
-      name: "Boardroom blue",
-      group: "single-accent",
-      paletteName: "Boardroom blue",
-      colors: [
-        "#FFFFFF",
-        "#F6F8FB",
-        "#16243B",
-        "#5A6678",
-        "#2F5BD0",
-        "#6E8BB8",
-        "#F0A03A",
-        "#16243B",
-        "#E9EDF3",
-      ],
-    },
-    {
-      id: "terracotta-clay",
-      name: "Clay pot",
-      group: "single-accent",
-      paletteName: "Clay pot",
-      colors: [
-        "#FBF4EC",
-        "#FFFFFF",
-        "#3B2A20",
-        "#6B5546",
-        "#C36A3F",
-        "#D9A441",
-        "#7A7A52",
-        "#EAD9C6",
-        "#ECE0D2",
-      ],
-    },
-    {
-      id: "berry-pop",
-      name: "Raspberry soda",
-      group: "single-accent",
-      paletteName: "Raspberry soda",
-      colors: [
-        "#FFFAFC",
-        "#FFFFFF",
-        "#2E1A2C",
-        "#6A5566",
-        "#D63A8E",
-        "#8E5BD0",
-        "#F4B8D4",
-        "#2E1A2C",
-        "#F0E6EC",
-      ],
-    },
-    {
-      id: "citrus-fresh",
-      name: "Orange juice",
-      group: "single-accent",
-      paletteName: "Orange juice",
-      colors: [
-        "#FFFFFB",
-        "#FFFFFF",
-        "#232318",
-        "#5C5C4E",
-        "#FF8A1E",
-        "#FFD23E",
-        "#8FB339",
-        "#4FA3A3",
-        "#EDEDE3",
-      ],
-    },
-    {
-      id: "mauve-dusk",
-      name: "Lavender dusk",
-      group: "single-accent",
-      paletteName: "Lavender dusk",
-      colors: [
-        "#FAF7FB",
-        "#FFFFFF",
-        "#2B2533",
-        "#635B70",
-        "#9C7BB8",
-        "#8AA0C9",
-        "#E0B6C9",
-        "#2B2533",
-        "#ECE7F0",
-      ],
-    },
-    {
-      id: "mono-ink",
-      name: "Newsprint red",
-      group: "single-accent",
-      paletteName: "Newsprint red",
-      colors: [
-        "#FFFFFF",
-        "#FAFAFA",
-        "#0A0A0A",
-        "#6B6B6B",
-        "#E5392E",
-        "#0A0A0A",
-        "#BFBFBF",
-        "#0A0A0A",
-        "#EEEEEE",
-      ],
-    },
-    {
-      id: "sunset-maroon",
-      name: "Sunset glow",
-      group: "single-accent",
-      paletteName: "Sunset glow",
-      colors: [
-        "#FFF7F2",
-        "#FFFFFF",
-        "#3A1F22",
-        "#6E4A4C",
-        "#F26B3A",
-        "#E0457B",
-        "#F2A93B",
-        "#3A1F22",
-        "#F0E2DA",
-      ],
-    },
-    {
-      id: "mint-tech",
-      name: "Mint lab",
-      group: "single-accent",
-      paletteName: "Mint lab",
-      colors: [
-        "#FBFFFD",
-        "#FFFFFF",
-        "#1B2A26",
-        "#56655F",
-        "#16B981",
-        "#4FA3E0",
-        "#9AE6C8",
-        "#3A4A45",
-        "#E6F0EB",
-      ],
-    },
-    {
-      id: "midnight-mono",
-      name: "Night run",
-      group: "single-accent",
-      paletteName: "Night run",
-      colors: [
-        "#121316",
-        "#1C1E22",
-        "#F2F2F0",
-        "#A0A3A8",
-        "#C6FF4A",
-        "#6B7280",
-        "#3A3D44",
-        "#C6FF4A",
-        "#2A2C31",
-      ],
-    },
-    {
-      id: "ocean-deep",
-      name: "Deep dive",
-      group: "single-accent",
-      paletteName: "Deep dive",
-      colors: [
-        "#0E2A33",
-        "#143840",
-        "#EAF6F4",
-        "#9DB8B8",
-        "#38C7B4",
-        "#5A93A8",
-        "#1F4A52",
-        "#38C7B4",
-        "#1B454E",
-      ],
-    },
-    {
-      id: "gold-luxe",
-      name: "Award night",
-      group: "single-accent",
-      paletteName: "Award night",
-      colors: [
-        "#16140F",
-        "#211E16",
-        "#F3EEE2",
-        "#ADA48E",
-        "#C9A24B",
-        "#8A6E3A",
-        "#3A352A",
-        "#C9A24B",
-        "#2A271E",
-      ],
-    },
-  ];
+const PRESENTATION_TEMPLATE_THEME_OPTIONS = [
+  {
+    id: "prism",
+    group: "multi-accent",
+    colors: [
+      "#FFFFFF",
+      "#F7F7FA",
+      "#1A1726",
+      "#5C5870",
+      "#7257E6",
+      "#FF6B4A",
+      "#AEE63E",
+      "#3FA9F5",
+      "#ECECF2",
+    ],
+  },
+  {
+    id: "carnival",
+    group: "multi-accent",
+    colors: [
+      "#FFFDF7",
+      "#FFFFFF",
+      "#221C14",
+      "#5E564A",
+      "#FF7A1A",
+      "#E5388E",
+      "#F5B73E",
+      "#1FB6A6",
+      "#EFEADF",
+    ],
+  },
+  {
+    id: "pop-art",
+    group: "multi-accent",
+    colors: [
+      "#111016",
+      "#1B1A22",
+      "#F4F2FA",
+      "#A09CB0",
+      "#3D7BFF",
+      "#FF3D9A",
+      "#C6FF4A",
+      "#FF7A1A",
+      "#26242E",
+    ],
+  },
+  {
+    id: "warm-sand",
+    group: "single-accent",
+    colors: [
+      "#FFFDF8",
+      "#FFFFFF",
+      "#262626",
+      "#5A5A5A",
+      "#F19B3A",
+      "#8DACE5",
+      "#DDB8D9",
+      "#516049",
+      "#ECECEC",
+    ],
+  },
+  {
+    id: "bauhaus-primary",
+    group: "single-accent",
+    colors: [
+      "#F5F1E6",
+      "#FFFFFF",
+      "#1A1A1A",
+      "#4A4A4A",
+      "#E63327",
+      "#2C5BD6",
+      "#F2B705",
+      "#1A1A1A",
+      "#E2DDD0",
+    ],
+  },
+  {
+    id: "nordic-frost",
+    group: "single-accent",
+    colors: [
+      "#FBFCFD",
+      "#FFFFFF",
+      "#1F2933",
+      "#5B6B7B",
+      "#3E8EDE",
+      "#7BC6C9",
+      "#B8C4D0",
+      "#1F2933",
+      "#E8EDF1",
+    ],
+  },
+  {
+    id: "forest-editorial",
+    group: "single-accent",
+    colors: [
+      "#F7F6F1",
+      "#FFFFFF",
+      "#1E2B22",
+      "#4F5C52",
+      "#5B7553",
+      "#C97B4A",
+      "#E4DFD0",
+      "#1E2B22",
+      "#E6E8E1",
+    ],
+  },
+  {
+    id: "coral-studio",
+    group: "single-accent",
+    colors: [
+      "#FFF9F6",
+      "#FFFFFF",
+      "#3A2A26",
+      "#6E5B55",
+      "#FF6F5E",
+      "#FFB199",
+      "#2BB3A3",
+      "#3A2A26",
+      "#F0E7E2",
+    ],
+  },
+  {
+    id: "slate-corporate",
+    group: "single-accent",
+    colors: [
+      "#FFFFFF",
+      "#F6F8FB",
+      "#16243B",
+      "#5A6678",
+      "#2F5BD0",
+      "#6E8BB8",
+      "#F0A03A",
+      "#16243B",
+      "#E9EDF3",
+    ],
+  },
+  {
+    id: "terracotta-clay",
+    group: "single-accent",
+    colors: [
+      "#FBF4EC",
+      "#FFFFFF",
+      "#3B2A20",
+      "#6B5546",
+      "#C36A3F",
+      "#D9A441",
+      "#7A7A52",
+      "#EAD9C6",
+      "#ECE0D2",
+    ],
+  },
+  {
+    id: "berry-pop",
+    group: "single-accent",
+    colors: [
+      "#FFFAFC",
+      "#FFFFFF",
+      "#2E1A2C",
+      "#6A5566",
+      "#D63A8E",
+      "#8E5BD0",
+      "#F4B8D4",
+      "#2E1A2C",
+      "#F0E6EC",
+    ],
+  },
+  {
+    id: "citrus-fresh",
+    group: "single-accent",
+    colors: [
+      "#FFFFFB",
+      "#FFFFFF",
+      "#232318",
+      "#5C5C4E",
+      "#FF8A1E",
+      "#FFD23E",
+      "#8FB339",
+      "#4FA3A3",
+      "#EDEDE3",
+    ],
+  },
+  {
+    id: "mauve-dusk",
+    group: "single-accent",
+    colors: [
+      "#FAF7FB",
+      "#FFFFFF",
+      "#2B2533",
+      "#635B70",
+      "#9C7BB8",
+      "#8AA0C9",
+      "#E0B6C9",
+      "#2B2533",
+      "#ECE7F0",
+    ],
+  },
+  {
+    id: "mono-ink",
+    group: "single-accent",
+    colors: [
+      "#FFFFFF",
+      "#FAFAFA",
+      "#0A0A0A",
+      "#6B6B6B",
+      "#E5392E",
+      "#0A0A0A",
+      "#BFBFBF",
+      "#0A0A0A",
+      "#EEEEEE",
+    ],
+  },
+  {
+    id: "sunset-maroon",
+    group: "single-accent",
+    colors: [
+      "#FFF7F2",
+      "#FFFFFF",
+      "#3A1F22",
+      "#6E4A4C",
+      "#F26B3A",
+      "#E0457B",
+      "#F2A93B",
+      "#3A1F22",
+      "#F0E2DA",
+    ],
+  },
+  {
+    id: "mint-tech",
+    group: "single-accent",
+    colors: [
+      "#FBFFFD",
+      "#FFFFFF",
+      "#1B2A26",
+      "#56655F",
+      "#16B981",
+      "#4FA3E0",
+      "#9AE6C8",
+      "#3A4A45",
+      "#E6F0EB",
+    ],
+  },
+  {
+    id: "midnight-mono",
+    group: "single-accent",
+    colors: [
+      "#121316",
+      "#1C1E22",
+      "#F2F2F0",
+      "#A0A3A8",
+      "#C6FF4A",
+      "#6B7280",
+      "#3A3D44",
+      "#C6FF4A",
+      "#2A2C31",
+    ],
+  },
+  {
+    id: "ocean-deep",
+    group: "single-accent",
+    colors: [
+      "#0E2A33",
+      "#143840",
+      "#EAF6F4",
+      "#9DB8B8",
+      "#38C7B4",
+      "#5A93A8",
+      "#1F4A52",
+      "#38C7B4",
+      "#1B454E",
+    ],
+  },
+  {
+    id: "gold-luxe",
+    group: "single-accent",
+    colors: [
+      "#16140F",
+      "#211E16",
+      "#F3EEE2",
+      "#ADA48E",
+      "#C9A24B",
+      "#8A6E3A",
+      "#3A352A",
+      "#C9A24B",
+      "#2A271E",
+    ],
+  },
+] as const satisfies readonly PresentationTemplateThemeOption[];
+
+type PresentationTemplateTheme =
+  (typeof PRESENTATION_TEMPLATE_THEME_OPTIONS)[number];
+
+const PRESENTATION_TEMPLATE_THEME_NAMES = {
+  "bauhaus-primary": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.bauhausPrimary;
+    });
+  },
+  "berry-pop": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.berryPop;
+    });
+  },
+  carnival: () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.carnival;
+    });
+  },
+  "citrus-fresh": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.citrusFresh;
+    });
+  },
+  "coral-studio": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.coralStudio;
+    });
+  },
+  "forest-editorial": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.forestEditorial;
+    });
+  },
+  "gold-luxe": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.goldLuxe;
+    });
+  },
+  "mauve-dusk": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.mauveDusk;
+    });
+  },
+  "midnight-mono": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.midnightMono;
+    });
+  },
+  "mint-tech": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.mintTech;
+    });
+  },
+  "mono-ink": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.monoInk;
+    });
+  },
+  "nordic-frost": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.nordicFrost;
+    });
+  },
+  "ocean-deep": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.oceanDeep;
+    });
+  },
+  "pop-art": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.popArt;
+    });
+  },
+  prism: () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.prism;
+    });
+  },
+  "slate-corporate": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.slateCorporate;
+    });
+  },
+  "sunset-maroon": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.sunsetMaroon;
+    });
+  },
+  "terracotta-clay": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.terracottaClay;
+    });
+  },
+  "warm-sand": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.warmSand;
+    });
+  },
+} satisfies Record<PresentationTemplateTheme["id"], () => string>;
+
+function presentationTemplateThemeName(
+  theme: PresentationTemplateTheme,
+): string {
+  return PRESENTATION_TEMPLATE_THEME_NAMES[theme.id]();
+}
 
 function defaultPresentationTemplateThemeId(
   item: PresentationTemplateItem,
@@ -2319,7 +2385,7 @@ function presentationTemplateColorSystemId(themeId: string): string {
 
 function findPresentationTemplateTheme(
   themeId: string,
-): PresentationTemplateThemeOption {
+): PresentationTemplateTheme {
   return (
     PRESENTATION_TEMPLATE_THEME_OPTIONS.find((theme) => {
       return theme.id === themeId;
@@ -3724,7 +3790,7 @@ function TemplatePreviewPage({
                           ($) => {
                             return $.artifacts.templates.selectStyle;
                           },
-                          { style: theme.name },
+                          { style: presentationTemplateThemeName(theme) },
                         )}
                         aria-pressed={active}
                         onClick={() => {
@@ -3776,7 +3842,7 @@ function TemplatePreviewPage({
                           ($) => {
                             return $.artifacts.templates.selectStyle;
                           },
-                          { style: theme.name },
+                          { style: presentationTemplateThemeName(theme) },
                         )}
                         aria-pressed={active}
                         onClick={() => {
@@ -5823,10 +5889,16 @@ function CustomConnectorCatalogCard({
   connector: CustomConnectorResponse;
   onConnect: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <button
       type="button"
-      aria-label={`Connect ${connector.displayName}`}
+      aria-label={t(
+        ($) => {
+          return $.connectors.card.connectAria;
+        },
+        { connector: connector.displayName },
+      )}
       className="zero-card cursor-pointer overflow-hidden text-left"
       onClick={onConnect}
     >
@@ -6945,7 +7017,9 @@ function ComposerUploadMenu({
             <Input
               className="mt-2 h-9 text-sm"
               name="uploadLink"
-              placeholder="https://example.com/image.png"
+              placeholder={t(($) => {
+                return $.chat.attachments.linkPlaceholder;
+              })}
               type="url"
               data-testid="composer-upload-link-input"
             />

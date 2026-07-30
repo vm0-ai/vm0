@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
+import { i18n } from "../../i18n/index.ts";
 import { ZeroDirectedConnectPage } from "../../views/zero-page/zero-directed-connect-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
@@ -18,7 +19,15 @@ export const setupDirectedConnectPage$ = command(
       typeof params?.connectorSlug === "string" ? params.connectorSlug : "";
 
     set(updatePage$, createElement(ZeroDirectedConnectPage), "minimal");
-    set(updateDocumentTitle$, `Connect ${connectorSlug}`);
+    set(
+      updateDocumentTitle$,
+      i18n.t(
+        ($) => {
+          return $.connectors.directed.connectDocumentTitle;
+        },
+        { connector: connectorSlug },
+      ),
+    );
     await set(hideAppSkeleton$, signal);
   },
 );

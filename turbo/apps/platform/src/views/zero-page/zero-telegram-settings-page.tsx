@@ -500,7 +500,9 @@ function AddTelegramBotTokenField({
           value={botToken}
           disabled={disabled}
           autoComplete="off"
-          placeholder="123456:ABC-DEF"
+          placeholder={t(($) => {
+            return $.connectors.providerSettings.telegram.botTokenPlaceholder;
+          })}
           className="pl-9"
           onChange={(event) => {
             onBotTokenChange(event.target.value);
@@ -1900,7 +1902,10 @@ function TelegramReinstallDialog({ bot }: { bot: TelegramBot | null }) {
                 value={token}
                 disabled={reinstalling}
                 autoComplete="off"
-                placeholder="123456:ABC-DEF"
+                placeholder={t(($) => {
+                  return $.connectors.providerSettings.telegram
+                    .botTokenPlaceholder;
+                })}
                 className="pl-9"
                 onChange={(event) => {
                   setToken(event.target.value);
@@ -2202,7 +2207,10 @@ export function ZeroTelegramSettingsPage() {
               <div className="min-w-0">
                 <div className="flex min-w-0 items-center gap-2">
                   <h1 className="truncate text-lg font-semibold tracking-tight text-foreground">
-                    Telegram
+                    {t(($) => {
+                      return $.connectors.providerSettings.telegram
+                        .documentTitle;
+                    })}
                   </h1>
                 </div>
                 <p className="mt-0.5 text-sm text-muted-foreground">

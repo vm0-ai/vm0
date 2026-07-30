@@ -945,49 +945,88 @@ async function queryChatOutputEvents(args: {
   args.signal.throwIfAborted();
 
   const dataset = getDatasetName(AGENT_RUN_EVENTS_DATASET);
-  const sequenceCap =
-    args.lastEventSequence === null
-      ? ""
-      : `\n| where sequenceNumber <= ${args.lastEventSequence}`;
-  const apl = `['${dataset}']
+  const pageSize = 200;
+  let lastScannedSequence = -1;
+  const assistantBySequence = new Map<number, string>();
+  let resultFallback: ResultEventItem | null = null;
+
+  while (true) {
+    const sequenceCap =
+      args.lastEventSequence === null
+        ? ""
+        : `\n| where sequenceNumber <= ${args.lastEventSequence}`;
+    const apl = `['${dataset}']
 | where runId == "${escapeAplString(args.runId)}"
 | where eventType == "assistant" or eventType == "result" or eventType == "item.completed"
+| where sequenceNumber > ${lastScannedSequence}
 ${sequenceCap}
 | order by sequenceNumber asc
-| limit 200`;
+| limit ${pageSize}`;
 
-  const events = await queryAxiomDirect<AxiomChatOutputEvent>(apl, {
-    noCache: true,
-  });
-  args.signal.throwIfAborted();
-
-  const assistantItems: AssistantEventItem[] = [];
-  let resultFallback: ResultEventItem | null = null;
-  for (const event of events) {
-    const sequenceNumber =
-      event.sequenceNumber ?? event.eventData?.sequenceNumber;
-    if (typeof sequenceNumber !== "number") {
-      continue;
+    const events = await queryAxiomDirect<AxiomChatOutputEvent>(apl, {
+      noCache: true,
+    });
+    args.signal.throwIfAborted();
+    if (events.length === 0) {
+      break;
     }
+
+    let pageMaxSequence = lastScannedSequence;
+    for (const event of events) {
+      const sequenceNumber =
+        event.sequenceNumber ?? event.eventData?.sequenceNumber;
+      if (
+        typeof sequenceNumber !== "number" ||
+        sequenceNumber <= lastScannedSequence
+      ) {
+        continue;
+      }
+      if (
+        args.lastEventSequence !== null &&
+        sequenceNumber > args.lastEventSequence
+      ) {
+        continue;
+      }
+      pageMaxSequence = Math.max(pageMaxSequence, sequenceNumber);
+
+      const assistant = extractAssistantContent(event);
+      if (assistant !== null) {
+        if (!assistantBySequence.has(sequenceNumber)) {
+          assistantBySequence.set(sequenceNumber, assistant);
+        }
+        continue;
+      }
+
+      const fallback = extractResultFallback(sequenceNumber, event);
+      if (
+        fallback !== null &&
+        (resultFallback === null ||
+          fallback.sequenceNumber > resultFallback.sequenceNumber)
+      ) {
+        resultFallback = fallback;
+      }
+    }
+
+    if (pageMaxSequence <= lastScannedSequence) {
+      break;
+    }
+    lastScannedSequence = pageMaxSequence;
     if (
-      args.lastEventSequence !== null &&
-      sequenceNumber > args.lastEventSequence
+      events.length < pageSize ||
+      (args.lastEventSequence !== null &&
+        lastScannedSequence >= args.lastEventSequence)
     ) {
-      continue;
-    }
-
-    const assistant = extractAssistantContent(event);
-    if (assistant !== null) {
-      assistantItems.push({ sequenceNumber, content: assistant });
-      continue;
-    }
-
-    const fallback = extractResultFallback(sequenceNumber, event);
-    if (fallback !== null) {
-      resultFallback = fallback;
+      break;
     }
   }
 
+  const assistantItems = [...assistantBySequence.entries()]
+    .sort(([left], [right]) => {
+      return left - right;
+    })
+    .map(([sequenceNumber, content]) => {
+      return { sequenceNumber, content };
+    });
   return { assistantItems, resultFallback };
 }
 

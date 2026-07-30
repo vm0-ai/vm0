@@ -50,8 +50,20 @@ async function recordFirstAssistantEventAcknowledgement(args: {
     return;
   }
 
+  recordFirstAssistantEventAcknowledgementMetric({
+    runId: args.runId,
+    apiStartedAt: claimed.apiStartedAt.getTime(),
+    acknowledgedAt: args.acknowledgedAt,
+  });
+}
+
+export function recordFirstAssistantEventAcknowledgementMetric(args: {
+  readonly runId: string;
+  readonly apiStartedAt: number;
+  readonly acknowledgedAt: number;
+}): void {
   const durationMs = elapsedSinceApiStartMs(
-    claimed.apiStartedAt.getTime(),
+    args.apiStartedAt,
     args.acknowledgedAt,
   );
   if (durationMs === undefined) {
@@ -66,6 +78,26 @@ async function recordFirstAssistantEventAcknowledgement(args: {
     runId: args.runId,
     timestamp: new Date(args.acknowledgedAt).toISOString(),
   });
+}
+
+export async function publishFirstAssistantEventCreatedSignalSafely(args: {
+  readonly threadId: string;
+  readonly userId: string;
+  readonly runId: string;
+}): Promise<void> {
+  await tapError(
+    publishUserSignal(
+      [args.userId],
+      `chatThreadMessageCreated:${args.threadId}`,
+    ),
+    (error) => {
+      L.warn("Failed to publish first assistant message created signal", {
+        runId: args.runId,
+        threadId: args.threadId,
+        error,
+      });
+    },
+  );
 }
 
 async function publishFirstAssistantEventCreated(args: {

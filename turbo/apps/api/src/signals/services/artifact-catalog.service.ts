@@ -350,6 +350,7 @@ async function syncHostedArtifact(args: {
       .select({
         id: hostedSites.id,
         slug: hostedSites.slug,
+        requestedSlug: hostedSites.requestedSlug,
         createdAt: hostedSites.createdAt,
       })
       .from(hostedSites)
@@ -401,7 +402,7 @@ async function syncHostedArtifact(args: {
       projectionCreatedAt: args.row.createdAt,
       orgId: args.orgId,
       authorUserId: args.authorUserId,
-      title: site.slug,
+      title: site.requestedSlug ?? site.slug,
       thumbnail: args.row.previewImageUrl
         ? { url: args.row.previewImageUrl }
         : null,
@@ -866,6 +867,7 @@ async function hostedSiteDetail(
     .select({
       id: hostedSites.id,
       slug: hostedSites.slug,
+      requestedSlug: hostedSites.requestedSlug,
       publicSlug: hostedSites.publicSlug,
       deploymentVersion: hostedSites.activeDeploymentVersion,
       url: hostedDeployments.url,
@@ -880,7 +882,18 @@ async function hostedSiteDetail(
     .where(eq(hostedSites.id, hostedSiteId))
     .limit(1);
   signal.throwIfAborted();
-  return row ?? null;
+  if (!row) {
+    return null;
+  }
+  return {
+    id: row.id,
+    slug: row.requestedSlug ?? row.slug,
+    publicSlug: row.publicSlug,
+    url: row.url,
+    deploymentVersion: row.deploymentVersion,
+    entrypoint: row.entrypoint,
+    spaFallback: row.spaFallback,
+  };
 }
 
 /**

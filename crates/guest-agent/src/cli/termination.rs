@@ -7,8 +7,8 @@
 
 use super::process_group::ChildProcessGroup;
 use crate::error::AgentError;
-use guest_common::log_warn;
 use guest_common::telemetry::record_sandbox_op;
+use guest_common::{log_info, log_warn};
 use guest_contracts::diagnostics::{
     CliTerminationDiagnostic, CliTerminationReason as DiagnosticTerminationReason,
     CliTerminationSignal,
@@ -408,6 +408,10 @@ impl CliTerminationRuntime {
                 reason: TerminationReason::PostResult
             }
         ) {
+            log_info!(
+                LOG_TAG,
+                "Agent execution deadline reached during post-result SIGKILL grace; preserving accepted terminal result"
+            );
             return true;
         }
         if !matches!(

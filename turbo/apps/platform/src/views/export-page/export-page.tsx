@@ -449,12 +449,16 @@ export function ExportPage() {
             </Link>
             <img
               src={platformVm0LogoDarkImg}
-              alt="VM0"
+              alt={t(($) => {
+                return $.appShell.logoAlt;
+              })}
               className="h-4 w-auto dark:hidden"
             />
             <img
               src={platformVm0LogoImg}
-              alt="VM0"
+              alt={t(($) => {
+                return $.appShell.logoAlt;
+              })}
               className="hidden h-4 w-auto dark:block"
             />
           </div>
