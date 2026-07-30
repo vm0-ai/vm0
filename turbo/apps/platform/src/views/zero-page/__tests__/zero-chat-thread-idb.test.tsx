@@ -275,7 +275,6 @@ describe("zero chat thread IndexedDB fallback", () => {
             createdAt: "2026-03-10T00:00:02Z",
           },
         ],
-        hasHistoryBefore: false,
       });
     });
 
