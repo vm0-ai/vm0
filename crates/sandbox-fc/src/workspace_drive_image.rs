@@ -63,6 +63,7 @@ pub(crate) async fn prepare_workspace_drive_image(
                 path,
                 source_image,
                 workspace_drive_size_bytes(config.size_mb),
+                observer,
             )
             .await;
         }
@@ -117,7 +118,15 @@ async fn copy_workspace_drive_seed_image(
     observer: Option<&mut dyn WorkspaceDriveImagePrepareObserver>,
 ) -> sandbox::Result<()> {
     validate_workspace_seed_source(source, expected_size_bytes).await?;
+    copy_validated_workspace_drive_seed_image(target, source, expected_size_bytes, observer).await
+}
 
+async fn copy_validated_workspace_drive_seed_image(
+    target: &Path,
+    source: &Path,
+    expected_size_bytes: u64,
+    observer: Option<&mut dyn WorkspaceDriveImagePrepareObserver>,
+) -> sandbox::Result<()> {
     let source_str = source
         .to_str()
         .ok_or_else(|| SandboxError::Initialization {
@@ -159,19 +168,36 @@ async fn move_workspace_drive_seed_image(
     target: &Path,
     source: &Path,
     expected_size_bytes: u64,
+    observer: Option<&mut dyn WorkspaceDriveImagePrepareObserver>,
 ) -> sandbox::Result<()> {
     validate_workspace_seed_source(source, expected_size_bytes).await?;
-    if let Err(e) = std::fs::rename(source, target) {
-        return Err(SandboxError::Initialization {
+    match std::fs::rename(source, target) {
+        Ok(()) => validate_workspace_seed_target(target, expected_size_bytes, "moved").await,
+        Err(e) if e.kind() == std::io::ErrorKind::CrossesDevices => {
+            copy_validated_workspace_drive_seed_image(
+                target,
+                source,
+                expected_size_bytes,
+                observer,
+            )
+            .await?;
+            std::fs::remove_file(source).map_err(|e| SandboxError::Initialization {
+                phase: SandboxInitializationPhase::SandboxAllocation,
+                message: format!(
+                    "remove copied workspace seed image {}: {e}",
+                    source.display()
+                ),
+            })
+        }
+        Err(e) => Err(SandboxError::Initialization {
             phase: SandboxInitializationPhase::SandboxAllocation,
             message: format!(
                 "move workspace seed image {} to {}: {e}",
                 source.display(),
                 target.display()
             ),
-        });
+        }),
     }
-    validate_workspace_seed_target(target, expected_size_bytes, "moved").await
 }
 
 async fn validate_workspace_seed_source(
@@ -264,6 +290,7 @@ fn record_stage_result(
 mod tests {
     use super::*;
     use std::io::SeekFrom;
+    use std::os::unix::fs::MetadataExt;
     use std::process::Command;
     use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
@@ -473,6 +500,8 @@ mod tests {
         source_file.write_all(marker).await.unwrap();
         source_file.flush().await.unwrap();
         drop(source_file);
+        let source_metadata = tokio::fs::metadata(&source).await.unwrap();
+        let source_identity = (source_metadata.dev(), source_metadata.ino());
 
         prepare_workspace_drive_image(
             &target,
@@ -488,6 +517,7 @@ mod tests {
         assert!(!source.exists());
         let metadata = tokio::fs::metadata(&target).await.unwrap();
         assert_eq!(metadata.len(), workspace_drive_size_bytes(1));
+        assert_eq!((metadata.dev(), metadata.ino()), source_identity);
         assert!(observer.workspace_drive_present);
         assert!(observer.workspace_seed_image_used);
         assert!(observer.stages.is_empty());
@@ -500,6 +530,111 @@ mod tests {
         let mut moved_marker = [0; 3];
         target_file.read_exact(&mut moved_marker).await.unwrap();
         assert_eq!(&moved_marker, marker);
+    }
+
+    #[tokio::test]
+    async fn prepare_workspace_drive_image_moves_seed_image_across_filesystems() {
+        let source_root = tempfile::tempdir_in("/dev/shm").unwrap();
+        let target_root = tempfile::tempdir_in("/tmp").unwrap();
+        let source = source_root.path().join("seed.ext4");
+        let target = target_root.path().join("nested").join("workspace.ext4");
+        let source_device = tokio::fs::metadata(source_root.path()).await.unwrap().dev();
+        let target_device = tokio::fs::metadata(target_root.path()).await.unwrap().dev();
+        assert_ne!(
+            source_device, target_device,
+            "cross-filesystem move test requires /dev/shm and /tmp on distinct devices"
+        );
+        let marker_offset = 4096;
+        let marker = b"vm0";
+        let mut observer = RecordingObserver::default();
+
+        let mut source_file = tokio::fs::File::create(&source).await.unwrap();
+        source_file
+            .set_len(workspace_drive_size_bytes(1))
+            .await
+            .unwrap();
+        source_file
+            .seek(SeekFrom::Start(marker_offset))
+            .await
+            .unwrap();
+        source_file.write_all(marker).await.unwrap();
+        source_file.flush().await.unwrap();
+        drop(source_file);
+
+        prepare_workspace_drive_image(
+            &target,
+            &sandbox::WorkspaceDriveConfig {
+                size_mb: 1,
+                seed_image: Some(WorkspaceDriveSeedImage::Move(source.clone())),
+            },
+            Some(&mut observer),
+        )
+        .await
+        .unwrap();
+
+        assert!(!source.exists());
+        let metadata = tokio::fs::metadata(&target).await.unwrap();
+        assert_eq!(metadata.dev(), target_device);
+        assert_eq!(metadata.len(), workspace_drive_size_bytes(1));
+        assert!(
+            metadata.blocks().saturating_mul(512) < metadata.len(),
+            "cross-filesystem move fallback must preserve sparse allocation"
+        );
+        assert!(observer.workspace_drive_present);
+        assert!(observer.workspace_seed_image_used);
+        assert_eq!(
+            observer.stages,
+            vec![WorkspaceDriveImagePrepareStage::SeedSparseCopy]
+        );
+
+        let mut target_file = tokio::fs::File::open(&target).await.unwrap();
+        target_file
+            .seek(SeekFrom::Start(marker_offset))
+            .await
+            .unwrap();
+        let mut copied_marker = [0; 3];
+        target_file.read_exact(&mut copied_marker).await.unwrap();
+        assert_eq!(&copied_marker, marker);
+    }
+
+    #[tokio::test]
+    async fn prepare_workspace_drive_image_does_not_copy_after_other_move_error() {
+        let tmp = tempfile::tempdir().unwrap();
+        let source = tmp.path().join("seed.ext4");
+        let target = tmp.path().join("workspace.ext4");
+        let mut observer = RecordingObserver::default();
+
+        let source_file = tokio::fs::File::create(&source).await.unwrap();
+        source_file
+            .set_len(workspace_drive_size_bytes(1))
+            .await
+            .unwrap();
+        drop(source_file);
+        tokio::fs::create_dir(&target).await.unwrap();
+
+        let err = prepare_workspace_drive_image(
+            &target,
+            &sandbox::WorkspaceDriveConfig {
+                size_mb: 1,
+                seed_image: Some(WorkspaceDriveSeedImage::Move(source.clone())),
+            },
+            Some(&mut observer),
+        )
+        .await
+        .unwrap_err();
+
+        match err {
+            SandboxError::Initialization { phase, message } => {
+                assert_eq!(phase, SandboxInitializationPhase::SandboxAllocation);
+                assert!(message.contains("move workspace seed image"));
+            }
+            other => panic!("expected workspace seed initialization error, got {other:?}"),
+        }
+        assert!(source.exists());
+        assert!(target.is_dir());
+        assert!(observer.workspace_drive_present);
+        assert!(observer.workspace_seed_image_used);
+        assert!(observer.stages.is_empty());
     }
 
     #[tokio::test]
