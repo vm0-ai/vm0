@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.61.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.60.2...guest-agent-v0.61.0) (2026-07-30)
+
+
+### Features
+
+* add admin-defined model gateway connections ([#23807](https://github.com/vm0-ai/vm0/issues/23807)) ([0632cb4](https://github.com/vm0-ai/vm0/commit/0632cb4e4dfda2c844a2531d6c13a3dd74b86e29))
+
 ## [0.60.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.60.1...guest-agent-v0.60.2) (2026-07-30)
 
 ## [0.60.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.60.0...guest-agent-v0.60.1) (2026-07-30)

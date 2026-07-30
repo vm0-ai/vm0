@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.664.0](https://github.com/vm0-ai/vm0/compare/app-v0.663.0...app-v0.664.0) (2026-07-30)
+
+
+### Features
+
+* add admin-defined model gateway connections ([#23807](https://github.com/vm0-ai/vm0/issues/23807)) ([0632cb4](https://github.com/vm0-ai/vm0/commit/0632cb4e4dfda2c844a2531d6c13a3dd74b86e29))
+* **platform:** support indonesian locale ([#24046](https://github.com/vm0-ai/vm0/issues/24046)) ([3b13623](https://github.com/vm0-ai/vm0/commit/3b13623006743c44d874e51ed0b482084ccbe704))
+* **platform:** support korean locale ([#24054](https://github.com/vm0-ai/vm0/issues/24054)) ([244943c](https://github.com/vm0-ai/vm0/commit/244943cd45119c7a4975234e657ff9a7fbe5d963))
+
+
+### Bug Fixes
+
+* **platform:** keep pwa chat composer pinned above the keyboard ([#23986](https://github.com/vm0-ai/vm0/issues/23986)) ([28259bd](https://github.com/vm0-ai/vm0/commit/28259bd1e653e6bac02aa27d6eda17576a09fa67))
+* **platform:** stabilize chat artifact image cards ([#24084](https://github.com/vm0-ai/vm0/issues/24084)) ([72696c7](https://github.com/vm0-ai/vm0/commit/72696c733cdb1b66192df8a1c4e1589d26a4ffab))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.253.0
+    * @vm0/core bumped to 8.493.0
+
 ## [0.663.0](https://github.com/vm0-ai/vm0/compare/app-v0.662.2...app-v0.663.0) (2026-07-30)
 
 
