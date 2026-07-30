@@ -16,10 +16,47 @@ export type AgentCustomConnectorEnabledIds = z.infer<
   typeof agentCustomConnectorEnabledIdsSchema
 >;
 
-export const agentCustomConnectorUpdateSchema =
+export const agentCustomConnectorGrantSchema = z.object({
+  customConnectorId: z.string().uuid(),
+  permissionNames: z.array(z.string().min(1).max(128)).max(500),
+});
+export type AgentCustomConnectorGrant = z.infer<
+  typeof agentCustomConnectorGrantSchema
+>;
+
+export const agentCustomConnectorGrantsSchema = z.object({
+  grants: z.array(agentCustomConnectorGrantSchema),
+});
+export type AgentCustomConnectorGrants = z.infer<
+  typeof agentCustomConnectorGrantsSchema
+>;
+
+export const agentCustomConnectorResponseSchema =
   agentCustomConnectorEnabledIdsSchema.extend({
-    operation: z.enum(["replace", "add", "remove"]).optional(),
+    grants: z.array(agentCustomConnectorGrantSchema).optional(),
   });
+export type AgentCustomConnectorResponse = z.infer<
+  typeof agentCustomConnectorResponseSchema
+>;
+
+const legacyAgentCustomConnectorUpdateSchema =
+  agentCustomConnectorEnabledIdsSchema
+    .extend({
+      operation: z.enum(["replace", "add", "remove"]).optional(),
+    })
+    .strict();
+
+const permissionedAgentCustomConnectorUpdateSchema =
+  agentCustomConnectorGrantsSchema
+    .extend({
+      operation: z.enum(["replace", "add", "remove"]).optional(),
+    })
+    .strict();
+
+export const agentCustomConnectorUpdateSchema = z.union([
+  legacyAgentCustomConnectorUpdateSchema,
+  permissionedAgentCustomConnectorUpdateSchema,
+]);
 export type AgentCustomConnectorUpdate = z.infer<
   typeof agentCustomConnectorUpdateSchema
 >;
@@ -39,7 +76,7 @@ export const zeroAgentCustomConnectorsContract = c.router({
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     responses: {
-      200: agentCustomConnectorEnabledIdsSchema,
+      200: agentCustomConnectorResponseSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
@@ -53,7 +90,7 @@ export const zeroAgentCustomConnectorsContract = c.router({
     pathParams: z.object({ id: z.string().uuid() }),
     body: agentCustomConnectorUpdateSchema,
     responses: {
-      200: agentCustomConnectorEnabledIdsSchema,
+      200: agentCustomConnectorResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,

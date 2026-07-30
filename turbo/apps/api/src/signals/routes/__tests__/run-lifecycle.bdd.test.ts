@@ -14,7 +14,10 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import type { Job as RunnerJob } from "@vm0/api-contracts/contracts/runners";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { getCustomSkillStorageName } from "@vm0/core/storage-names";
+import {
+  getCustomConnectorSkillStorageName,
+  getCustomSkillStorageName,
+} from "@vm0/core/storage-names";
 import {
   UNKNOWN_PERMISSION_GRANT,
   type ExecutionFirewallEntry,
@@ -7257,6 +7260,78 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("enforces custom connector permission grants and mounts its generated skill", async () => {
+    const api = createRunsApi(context);
+    createBddApi(context).acceptAgentStorageWrites();
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.CustomConnectorPermissionsAndSkills]: true,
+    });
+    const slug = `_bdd-permission-skill-${randomUUID().slice(0, 8)}`;
+    const custom = await connectors.createCustomConnector(actor, {
+      slug,
+      displayName: "BDD Permissioned API",
+      prefixes: ["https://permissioned.example.test/api/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+      permissionBundleRef: "builtin:slack@1",
+      skillMarkdown: "Use the selected Slack-compatible operations only.",
+    });
+    await connectors.setCustomConnectorSecret(
+      actor,
+      custom.id,
+      "permissioned-custom-secret",
+    );
+    const grant = {
+      customConnectorId: custom.id,
+      permissionNames: ["chat:write"],
+    };
+    const grantResponse =
+      await connectors.requestUpdateAgentCustomConnectorGrants(
+        actor,
+        agentId,
+        [grant],
+        [200],
+      );
+    if (grantResponse.status !== 200) {
+      throw new Error("Expected custom connector permission grant to succeed");
+    }
+    expect(grantResponse.body.grants).toStrictEqual([grant]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use only the authorized custom connector operation",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const internalName = `custom_connector_${custom.id.replaceAll("-", "")}`;
+    const customApis = inlineFirewallApis(claim.firewalls, internalName);
+    expect(customApis[0]?.permissions).toStrictEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "chat:write" })]),
+    );
+    expect(claim.networkPolicies?.[internalName]?.allow).toContain(
+      "chat:write",
+    );
+    expect(claim.networkPolicies?.[internalName]?.deny.length).toBeGreaterThan(
+      0,
+    );
+    expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("deny");
+
+    const skillMount = expectCanonicalStorageManifest(
+      claim.storageManifest,
+    )?.storageMounts.find((storage) => {
+      return storage.name === getCustomConnectorSkillStorageName(custom.id);
+    });
+    expect(skillMount?.mountPath).toBe(
+      `/home/user/.claude/skills/custom-${slug.slice(1, 49)}-${custom.id.replaceAll("-", "").slice(0, 8)}`,
+    );
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    expect((await api.readRun(actor, run.runId)).status).toBe("cancelled");
   });
 
   it("serializes and injects custom connector OAuth 2.0 refreshes", async () => {

@@ -13,7 +13,10 @@ import {
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
-import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+import {
+  zeroAgentCustomConnectorsContract,
+  type AgentCustomConnectorUpdate,
+} from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
@@ -81,20 +84,23 @@ function applyUserConnectorUpdate(
 
 function applyCustomConnectorUpdate(
   current: readonly string[],
-  body: {
-    readonly enabledIds: readonly string[];
-    readonly operation?: "replace" | "add" | "remove";
-  },
+  body: AgentCustomConnectorUpdate,
 ): string[] {
+  const enabledIds =
+    "enabledIds" in body
+      ? body.enabledIds
+      : body.grants.map((grant) => {
+          return grant.customConnectorId;
+        });
   if (body.operation === "add") {
-    return Array.from(new Set([...current, ...body.enabledIds]));
+    return Array.from(new Set([...current, ...enabledIds]));
   }
   if (body.operation === "remove") {
     return current.filter((id) => {
-      return !body.enabledIds.includes(id);
+      return !enabledIds.includes(id);
     });
   }
-  return [...body.enabledIds];
+  return [...enabledIds];
 }
 
 function createAgent(id: string, displayName: string): TeamComposeItem {

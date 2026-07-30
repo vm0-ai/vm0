@@ -11,6 +11,8 @@ import {
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -33,7 +35,7 @@ import {
   defaultAgentResponse,
   zeroAgentDetail,
   zeroAgentEnabledConnectorSlugs,
-  zeroAgentEnabledCustomConnectorIds,
+  zeroAgentCustomConnectorGrants,
   zeroAgentExists,
   zeroAgentList,
   visibleJoinedZeroAgentCondition,
@@ -43,6 +45,7 @@ import {
   updateUserConnectors,
   updateUserCustomConnectors,
 } from "../services/user-connectors.service";
+import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import type { RouteEntry } from "../route-entry";
 
 const PUBLIC_AGENT_LIMIT = 7;
@@ -520,14 +523,22 @@ const getAgentCustomConnectorsInner$ = computed(async (get) => {
     return agentNotFound(params.id);
   }
 
-  const enabledIds = await get(
-    zeroAgentEnabledCustomConnectorIds({
+  const grants = await get(
+    zeroAgentCustomConnectorGrants({
       orgId: auth.orgId,
       userId: auth.userId,
       agentId: params.id,
     }),
   );
-  return { status: 200 as const, body: { enabledIds: [...enabledIds] } };
+  return {
+    status: 200 as const,
+    body: {
+      enabledIds: grants.map((grant) => {
+        return grant.customConnectorId;
+      }),
+      grants: [...grants],
+    },
+  };
 });
 
 const updateAgentCustomConnectorsBody$ = bodyResultOf(
@@ -743,8 +754,31 @@ const updateAgentCustomConnectorsInner$ = command(
       return agentNotFound(params.id);
     }
 
+    if ("grants" in body.data) {
+      const featureContext = await get(
+        userFeatureSwitchContext(auth.orgId, auth.userId),
+      );
+      signal.throwIfAborted();
+      if (
+        !isFeatureEnabled(
+          FeatureSwitchKey.CustomConnectorPermissionsAndSkills,
+          featureContext,
+        )
+      ) {
+        return forbidden(
+          "Custom connector permissions and skills are not enabled",
+        );
+      }
+    }
+
     const writeDb = set(writeDb$);
-    const enabledIds = Array.from(new Set(body.data.enabledIds));
+    const grants = "grants" in body.data ? body.data.grants : undefined;
+    const enabledIds =
+      "enabledIds" in body.data
+        ? Array.from(new Set(body.data.enabledIds))
+        : body.data.grants.map((grant) => {
+            return grant.customConnectorId;
+          });
     const operation = body.data.operation ?? "replace";
 
     const updated = await updateUserCustomConnectors(writeDb, {
@@ -752,6 +786,7 @@ const updateAgentCustomConnectorsInner$ = command(
       userId: auth.userId,
       agentId: params.id,
       enabledIds,
+      ...(grants !== undefined ? { grants } : {}),
       operation,
     });
     signal.throwIfAborted();
@@ -774,10 +809,21 @@ const updateAgentCustomConnectorsInner$ = command(
         `Custom connector ids are not configured for this user: ${updated.unconfiguredIds.join(", ")}`,
       );
     }
+    if (updated.status === "customConnectorPermissionSelectionRequired") {
+      return validationError(
+        `Permission selection is required for custom connector ids: ${updated.connectorIds.join(", ")}`,
+      );
+    }
+    if (updated.status === "invalidCustomConnectorPermissions") {
+      return validationError(updated.message);
+    }
 
     return {
       status: 200 as const,
-      body: { enabledIds: [...updated.enabledIds] },
+      body: {
+        enabledIds: [...updated.enabledIds],
+        grants: [...updated.grants],
+      },
     };
   },
 );

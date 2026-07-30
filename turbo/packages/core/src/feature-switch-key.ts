@@ -81,4 +81,5 @@ export enum FeatureSwitchKey {
   ThreeColumnNav = "threeColumnNav",
   ChatThreadSidebarAutoOpen = "chatThreadSidebarAutoOpen",
   CustomConnectorOAuth2 = "customConnectorOAuth2",
+  CustomConnectorPermissionsAndSkills = "customConnectorPermissionsAndSkills",
 }

@@ -72,6 +72,21 @@ export type CustomConnectorOAuthConfigInput = z.infer<
   typeof customConnectorOAuthConfigInputSchema
 >;
 
+export const customConnectorPermissionBundleRefSchema = z
+  .string()
+  .max(128)
+  .regex(/^builtin:[a-z0-9][a-z0-9-]*@1$/u);
+export type CustomConnectorPermissionBundleRef = z.infer<
+  typeof customConnectorPermissionBundleRefSchema
+>;
+
+export const customConnectorSkillMarkdownSchema = z.string().refine(
+  (value) => {
+    return new TextEncoder().encode(value).byteLength <= 65_536;
+  },
+  { message: "Custom connector skill markdown must not exceed 64 KiB" },
+);
+
 /**
  * Custom connector response — safe to return to any org member.
  * Never includes any secret material.
@@ -89,6 +104,10 @@ export const customConnectorResponseSchema = z.object({
   queryInjections: z.array(customConnectorQueryInjectionSchema),
   authMode: customConnectorAuthModeSchema.optional(),
   oauthConfig: customConnectorOAuthConfigSchema.optional(),
+  permissionBundleRef: customConnectorPermissionBundleRefSchema
+    .nullable()
+    .optional(),
+  skillMarkdown: customConnectorSkillMarkdownSchema.nullable().optional(),
   revision: z.number().int().positive().optional(),
   connected: z.boolean(),
   missingRequiredFields: z.array(z.string()),
@@ -116,6 +135,10 @@ export const createCustomConnectorBodySchema = z.object({
   queryInjections: z.array(customConnectorQueryInjectionSchema).optional(),
   authMode: customConnectorAuthModeSchema.optional(),
   oauthConfig: customConnectorOAuthConfigInputSchema.optional(),
+  permissionBundleRef: customConnectorPermissionBundleRefSchema
+    .nullable()
+    .optional(),
+  skillMarkdown: customConnectorSkillMarkdownSchema.nullable().optional(),
   slug: z.string().optional(),
 });
 export type CreateCustomConnectorBody = z.infer<
@@ -130,6 +153,10 @@ export const updateCustomConnectorBodySchema = z.object({
   queryInjections: z.array(customConnectorQueryInjectionSchema),
   authMode: customConnectorAuthModeSchema.optional(),
   oauthConfig: customConnectorOAuthConfigInputSchema.optional(),
+  permissionBundleRef: customConnectorPermissionBundleRefSchema
+    .nullable()
+    .optional(),
+  skillMarkdown: customConnectorSkillMarkdownSchema.nullable().optional(),
 });
 export type UpdateCustomConnectorBody = z.infer<
   typeof updateCustomConnectorBodySchema
