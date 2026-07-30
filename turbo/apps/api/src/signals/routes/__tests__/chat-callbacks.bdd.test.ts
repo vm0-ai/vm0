@@ -18,10 +18,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { accept, setupApp } from "../../../__tests__/test-helpers";
-import {
-  appendAutomationPauseFixture,
-  readGoalQueueStateFixture,
-} from "../../../test-fixtures/goal-queue";
+import { readGoalQueueStateFixture } from "../../../test-fixtures/goal-queue";
 import { testContext } from "../../../__tests__/test-context";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -195,6 +192,7 @@ async function startChatRun(
   body: {
     readonly agentId: string;
     readonly prompt: string;
+    readonly clientEventId?: string;
     readonly threadId?: string;
     readonly selectedModel?: string;
     readonly attachFiles?: readonly AttachFile[];
@@ -210,7 +208,7 @@ async function startChatRun(
   readonly threadId: string;
   readonly messageId: string;
 }> {
-  const messageId = randomUUID();
+  const messageId = body.clientEventId ?? randomUUID();
   const requestBody = {
     agentId: body.agentId,
     prompt: body.prompt,
@@ -1483,7 +1481,7 @@ describe("CHAT-02: completed chat callback", () => {
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
 
-  it("continues an active goal through automation pause with the full objective in the run prompt and the brief in the user message snapshot", async () => {
+  it("continues an active goal with the full objective in the run prompt and the brief in the user message snapshot", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await enableGoalWorkflows(actor);
     mockOptionalEnv("OPENROUTER_API_KEY", undefined);
@@ -1501,10 +1499,6 @@ ${noisySeparator}
 
 Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-42](https://acme.example.com/treasury) before marking done.`;
     await createGoalForRun(actor, first.runId, goalObjective);
-    await appendAutomationPauseFixture({
-      threadId: first.threadId,
-      reason: "automation pause must not gate goal continuation",
-    });
 
     chatCallbacks.mockChatOutputEvents([
       assistantEvent(0, "completed before goal continuation"),
@@ -1794,11 +1788,10 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       context.signal,
     );
     const releaseGoalRunPreparation = deferredGate();
-    const kms = useSecretKmsProbe((command, callNumber) => {
-      if (callNumber !== 1) {
-        return undefined;
+    useSecretKmsProbe((command) => {
+      if (!goalRunPreparationStarted.settled()) {
+        goalRunPreparationStarted.resolve(undefined);
       }
-      goalRunPreparationStarted.resolve(undefined);
       return releaseGoalRunPreparation.wait().then(() => {
         return generateDataKeyOutput(command);
       });
@@ -1809,21 +1802,33 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       lastEventSequence: 0,
     });
     await goalRunPreparationStarted.promise;
-    expect(kms.generateDataKeyCalls).toBe(1);
 
-    const userRun = await startChatRun(
-      actor,
-      {
-        agentId,
-        threadId: first.threadId,
-        prompt: "user message admitted during goal run preparation",
-      },
-      {
-        onMessageAccepted: () => {
-          releaseGoalRunPreparation.release();
+    const userMessageId = randomUUID();
+    const [userRun] = await Promise.all([
+      startChatRun(
+        actor,
+        {
+          agentId,
+          threadId: first.threadId,
+          prompt: "user message admitted during goal run preparation",
+          clientEventId: userMessageId,
         },
-      },
-    );
+        {
+          onMessageAccepted: () => {
+            releaseGoalRunPreparation.release();
+          },
+        },
+      ),
+      waitForThreadMessages(actor, first.threadId, (events) => {
+        return events.some((event) => {
+          return (
+            event.id === userMessageId && event.eventType === "input.prompt"
+          );
+        });
+      }).finally(() => {
+        releaseGoalRunPreparation.release();
+      }),
+    ]);
 
     let goalEventId: string | undefined;
     await expect

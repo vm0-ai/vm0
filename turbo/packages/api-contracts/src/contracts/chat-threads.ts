@@ -575,7 +575,11 @@ const runCancelledEventSchema = chatEventBaseSchema
   })
   .strict();
 
-const queueAutomationPausedEventSchema = chatEventBaseSchema
+// Read-only rollout compatibility for browser bundles that may reach the
+// previous API while historical queue pause markers still exist. These leaves
+// deliberately stay outside CHAT_EVENT_TYPES and chatEventSchema so no current
+// writer or fold can recreate the retired pause/resume behavior.
+const legacyQueueAutomationPausedEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("queue.automation_paused"),
     content: z.null(),
@@ -583,7 +587,7 @@ const queueAutomationPausedEventSchema = chatEventBaseSchema
   })
   .strict();
 
-const queueAutomationResumedEventSchema = chatEventBaseSchema
+const legacyQueueAutomationResumedEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("queue.automation_resumed"),
     content: z.null(),
@@ -637,8 +641,6 @@ const chatEventSchema = z.discriminatedUnion("eventType", [
   runCompletedEventSchema,
   runFailedEventSchema,
   runCancelledEventSchema,
-  queueAutomationPausedEventSchema,
-  queueAutomationResumedEventSchema,
   controlInterruptEventSchema,
   controlRevokeEventSchema,
   goalChangedEventSchema,
@@ -646,10 +648,15 @@ const chatEventSchema = z.discriminatedUnion("eventType", [
 ]);
 
 /**
- * Redacted public projection of the canonical thread stream. Every registered
- * ChatEvent leaf is represented; server-only payload fields are not accepted.
+ * Redacted public projection of the canonical thread stream, plus read-only
+ * compatibility for retired pause markers from older API deployments.
+ * Server-only payload fields are not accepted.
  */
-const chatEventResponseSchema = chatEventSchema;
+const chatEventResponseSchema = z.discriminatedUnion("eventType", [
+  ...chatEventSchema.options,
+  legacyQueueAutomationPausedEventSchema,
+  legacyQueueAutomationResumedEventSchema,
+]);
 
 if (CHAT_EVENT_TYPES.length !== chatEventSchema.options.length) {
   throw new Error(
@@ -1601,6 +1608,15 @@ export type ChatThreadDraft = z.infer<typeof chatThreadDraftSchema>;
 export type ChatEvent = z.infer<typeof chatEventSchema>;
 export type ChatEventResponse = z.infer<typeof chatEventResponseSchema>;
 export type ChatEventSendBody = z.infer<typeof chatEventsContract.send.body>;
+
+export function isCanonicalChatEventResponse(
+  event: ChatEventResponse,
+): event is ChatEvent {
+  return (
+    event.eventType !== "queue.automation_paused" &&
+    event.eventType !== "queue.automation_resumed"
+  );
+}
 
 export function chatEventResponse(event: ChatEvent): ChatEventResponse {
   return chatEventResponseSchema.parse(event);

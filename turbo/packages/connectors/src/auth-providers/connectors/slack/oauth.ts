@@ -15,7 +15,7 @@ interface SlackTokenResult {
 
 interface SlackUserInfo {
   id: string;
-  username: string;
+  username: string | null;
   email: string | null;
 }
 
@@ -140,7 +140,7 @@ export async function fetchSlackUserInfo(
 
   return {
     id: data.user?.id ?? userId,
-    username: data.user?.real_name ?? data.user?.name ?? "",
+    username: data.user?.real_name ?? data.user?.name ?? null,
     email: data.user?.profile?.email ?? null,
   };
 }

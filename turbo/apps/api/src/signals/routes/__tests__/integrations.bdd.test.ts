@@ -3511,6 +3511,22 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
 
     integrations.mockSlackRunResultOutput("SLACK_BDD_OUTPUT");
+    let failedMessagePublishCount = 0;
+    let failedThreadListPublishCount = 0;
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (
+        typeof topic === "string" &&
+        topic.startsWith("chatThreadMessageCreated:")
+      ) {
+        failedMessagePublishCount++;
+        return Promise.reject(new Error("message realtime publish failed"));
+      }
+      if (topic === "threadListChanged") {
+        failedThreadListPublishCount++;
+        return Promise.reject(new Error("thread list publish failed"));
+      }
+      return Promise.resolve(undefined);
+    });
     await completeSlackTriggeredRun({
       runId: run1Id,
       sandboxToken: claim1.sandboxToken,
@@ -3525,6 +3541,9 @@ describe("INT-01: Slack app deep webhook flows", () => {
         }),
       );
     });
+    expect(failedMessagePublishCount).toBeGreaterThan(0);
+    expect(failedThreadListPublishCount).toBeGreaterThan(0);
+    context.mocks.ably.publish.mockResolvedValue(undefined);
     const auditedBlocks = slackPostMessageCallsJson();
     expect(auditedBlocks).toContain("Audit");
     expect(auditedBlocks).toContain(

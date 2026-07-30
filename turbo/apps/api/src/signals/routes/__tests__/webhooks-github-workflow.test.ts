@@ -4,7 +4,6 @@ import {
   zeroWorkflowAutomationsContract,
   type ZeroWorkflowAutomationCreateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
-import { zeroWorkflowQueueContract } from "@vm0/api-contracts/contracts/zero-workflow-queue";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
@@ -34,10 +33,6 @@ function automationsClient() {
   return setupApp({ context })(zeroWorkflowAutomationsContract);
 }
 
-function queueClient() {
-  return setupApp({ context })(zeroWorkflowQueueContract);
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -55,6 +50,22 @@ function sandboxOperationEventsForRun(
       return isRecord(event) && event.run_id === runId;
     });
   });
+}
+
+async function pendingWorkflowEventCount(threadId: string): Promise<number> {
+  const events = await wf.readThreadEvents(threadId);
+  const revokedIds = new Set(
+    events.flatMap((event) => {
+      return event.revokesEventId ? [event.revokesEventId] : [];
+    }),
+  );
+  return events.filter((event) => {
+    return (
+      event.eventType === "input.automation" &&
+      event.runId === undefined &&
+      !revokedIds.has(event.id)
+    );
+  }).length;
 }
 
 interface WorkflowsFixture {
@@ -550,14 +561,9 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     if (!created.body.chatThreadId) {
       throw new Error("Expected the automation to have a chat thread");
     }
-    const queue = await accept(
-      queueClient().get({
-        headers: authHeaders(),
-        params: { threadId: created.body.chatThreadId },
-      }),
-      [200],
-    );
-    expect(queue.body.pending).toHaveLength(3);
+    await expect(
+      pendingWorkflowEventCount(created.body.chatThreadId),
+    ).resolves.toBe(3);
 
     for (const runId of [admittedRunId]) {
       const timingEvents = sandboxOperationEventsForRun(runId);

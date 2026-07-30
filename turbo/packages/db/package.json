@@ -1,6 +1,6 @@
 {
   "name": "@vm0/db",
-  "version": "1.152.1",
+  "version": "1.153.1",
   "private": true,
   "type": "module",
   "exports": {
@@ -11,6 +11,10 @@
     "./schema/*": {
       "import": "./src/schema/*.ts",
       "types": "./src/schema/*.ts"
+    },
+    "./compat/*": {
+      "import": "./src/compat/*.ts",
+      "types": "./src/compat/*.ts"
     },
     "./jsonb-contracts/*": {
       "import": "./src/jsonb-contracts/*.ts",

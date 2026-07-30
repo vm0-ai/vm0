@@ -5,7 +5,30 @@ import { and, eq, gt, isNotNull, isNull } from "drizzle-orm";
 import { nowDate } from "../../lib/time";
 import type { Db, ReadonlyDb } from "../external/db";
 
-export type StoredOAuthState = typeof connectorOauthStates.$inferSelect;
+const storedOAuthStateSelection = Object.freeze({
+  id: connectorOauthStates.id,
+  state: connectorOauthStates.state,
+  type: connectorOauthStates.type,
+  customConnectorId: connectorOauthStates.customConnectorId,
+  connectorRevision: connectorOauthStates.connectorRevision,
+  authMethod: connectorOauthStates.authMethod,
+  userId: connectorOauthStates.userId,
+  orgId: connectorOauthStates.orgId,
+  agentId: connectorOauthStates.agentId,
+  authorizeAgent: connectorOauthStates.authorizeAgent,
+  redirectUri: connectorOauthStates.redirectUri,
+  authorizationUrl: connectorOauthStates.authorizationUrl,
+  codeVerifier: connectorOauthStates.codeVerifier,
+  oauthContext: connectorOauthStates.oauthContext,
+  createdAt: connectorOauthStates.createdAt,
+  expiresAt: connectorOauthStates.expiresAt,
+  consumedAt: connectorOauthStates.consumedAt,
+});
+
+export type StoredOAuthState = Omit<
+  typeof connectorOauthStates.$inferSelect,
+  "connectorSlug"
+>;
 
 type ConnectorOAuthStateClaimResult =
   | { readonly kind: "missing" }
@@ -114,7 +137,7 @@ export async function claimConnectorOAuthState(
         gt(connectorOauthStates.expiresAt, claimedAt),
       ),
     )
-    .returning();
+    .returning(storedOAuthStateSelection);
   signal.throwIfAborted();
 
   if (claimedState) {
@@ -151,7 +174,7 @@ export async function claimCustomConnectorOAuthState(
         gt(connectorOauthStates.expiresAt, claimedAt),
       ),
     )
-    .returning();
+    .returning(storedOAuthStateSelection);
   signal.throwIfAborted();
 
   if (claimedState) {

@@ -1,22 +1,7 @@
-import {
-  foldChatAutomationIntakePause,
-  foldPendingChatQueueEvents,
-  type ChatEventType,
-} from "@vm0/api-contracts/contracts/chat-events";
+import { foldPendingChatQueueEvents } from "@vm0/api-contracts/contracts/chat-events";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import {
-  and,
-  asc,
-  desc,
-  eq,
-  gt,
-  inArray,
-  isNull,
-  lt,
-  notExists,
-  or,
-} from "drizzle-orm";
+import { and, asc, eq, isNull, lt, notExists } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import type { Db } from "../external/db";
@@ -26,22 +11,12 @@ type ChatQueueReadDb = Pick<Db, "select">;
 type ChatQueueDistinctReadDb = Pick<Db, "select" | "selectDistinct">;
 
 const queueEventRevoker = alias(chatMessages, "queue_event_revoker");
-const automationPauseEvent = alias(chatMessages, "automation_pause_event");
-const laterAutomationPauseEvent = alias(
-  chatMessages,
-  "later_automation_pause_event",
-);
 
 interface PendingChatQueueEvent {
   readonly id: string;
   readonly chatThreadId: string;
   readonly eventType: "input.prompt" | "input.automation" | "input.goal";
   readonly createdAt: Date;
-}
-
-interface ChatAutomationIntakePause {
-  readonly pausedAt: Date;
-  readonly pauseReason: string | null;
 }
 
 function unrevokedQueueEventCondition(db: ChatQueueReadDb) {
@@ -166,46 +141,6 @@ export async function hasPendingUserChatQueueEvent(
   return event !== undefined;
 }
 
-/** Latest pause/resume leaf is the automation-intake circuit-breaker state. */
-export async function loadChatAutomationIntakePause(
-  db: ChatQueueReadDb,
-  chatThreadId: string,
-): Promise<ChatAutomationIntakePause | null> {
-  const rows = await db
-    .select({
-      eventType: chatMessages.eventType,
-      createdAt: chatMessages.createdAt,
-      pauseReason: chatMessages.error,
-    })
-    .from(chatMessages)
-    .where(
-      and(
-        eq(chatMessages.chatThreadId, chatThreadId),
-        chatEventTypeIn([
-          "queue.automation_paused",
-          "queue.automation_resumed",
-        ]),
-      ),
-    )
-    .orderBy(desc(chatMessages.seqId))
-    .limit(1);
-  const state = foldChatAutomationIntakePause(
-    rows.map((row) => {
-      return {
-        eventType: row.eventType,
-        createdAt: row.createdAt.toISOString(),
-        pauseReason: row.pauseReason,
-      };
-    }),
-  );
-  return state
-    ? {
-        pausedAt: new Date(state.pausedAt),
-        pauseReason: state.pauseReason,
-      }
-    : null;
-}
-
 /** Shared row lock for every authoritative queue claim or revocation. */
 export async function lockChatQueueThread(
   db: ChatQueueReadDb,
@@ -217,44 +152,6 @@ export async function lockChatQueueThread(
     .where(eq(chatThreads.id, chatThreadId))
     .for("update");
   return thread !== undefined;
-}
-
-function noCurrentAutomationPauseCondition(db: ChatQueueReadDb) {
-  return notExists(
-    db
-      .select({ id: automationPauseEvent.id })
-      .from(automationPauseEvent)
-      .where(
-        and(
-          eq(automationPauseEvent.chatThreadId, chatMessages.chatThreadId),
-          eq(
-            automationPauseEvent.eventType,
-            "queue.automation_paused" satisfies ChatEventType,
-          ),
-          notExists(
-            db
-              .select({ id: laterAutomationPauseEvent.id })
-              .from(laterAutomationPauseEvent)
-              .where(
-                and(
-                  eq(
-                    laterAutomationPauseEvent.chatThreadId,
-                    automationPauseEvent.chatThreadId,
-                  ),
-                  inArray(laterAutomationPauseEvent.eventType, [
-                    "queue.automation_paused" satisfies ChatEventType,
-                    "queue.automation_resumed" satisfies ChatEventType,
-                  ]),
-                  gt(
-                    laterAutomationPauseEvent.seqId,
-                    automationPauseEvent.seqId,
-                  ),
-                ),
-              ),
-          ),
-        ),
-      ),
-  );
 }
 
 /** Threads with stale runnable event-backed queue work for the safety sweep. */
@@ -274,17 +171,6 @@ export async function staleChatEventQueueThreadIds(
         isNull(chatMessages.runId),
         lt(chatMessages.createdAt, args.staleBefore),
         unrevokedQueueEventCondition(db),
-        or(
-          eq(chatMessages.eventType, "input.prompt" satisfies ChatEventType),
-          eq(chatMessages.eventType, "input.goal" satisfies ChatEventType),
-          and(
-            eq(
-              chatMessages.eventType,
-              "input.automation" satisfies ChatEventType,
-            ),
-            noCurrentAutomationPauseCondition(db),
-          ),
-        ),
       ),
     )
     .limit(args.limit);

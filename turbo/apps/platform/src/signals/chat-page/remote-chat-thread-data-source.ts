@@ -347,10 +347,6 @@ function createSubscribeRealtime() {
           topic: `chatThreadWorkflowsChanged:${threadId}`,
           loopCommand$: handlers.onWorkflowsChanged$,
         },
-        {
-          topic: `chatThreadWorkflowQueueChanged:${threadId}`,
-          loopCommand$: handlers.onWorkflowQueueChanged$,
-        },
       ];
 
       let pendingSubscriptions = subscriptions.length;
