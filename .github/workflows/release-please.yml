@@ -1,11 +1,15 @@
 name: release-please
 
+# Releases run straight off the push to main. Waiting for the Turbo run on main
+# bought nothing: the merge queue is fast-forwarded, so the merge-group Turbo run
+# already validated this exact commit SHA and already built and uploaded the
+# canonical app artifact that promote-app-production consumes. On a release
+# commit the Turbo run on main skips 27 of its 30 jobs, and the app build and
+# upload steps skip too because the artifact is already present. Its only unique
+# effect is repointing the staging-app Pages alias.
 on:
-  workflow_run:
-    workflows: ["Turbo"]
+  push:
     branches: ["main"]
-    types:
-      - completed
 
 permissions:
   actions: read
@@ -16,8 +20,42 @@ permissions:
   checks: write
 
 jobs:
+  # A push to main can carry several merge-queue entries at once, so look at every
+  # commit subject in the push rather than only the head commit. Without this the
+  # release path would run on every main push and each no-op run would still take
+  # a turn in the production deploy queue.
+  detect-release-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      release: ${{ steps.detect.outputs.release }}
+    steps:
+      - name: Detect a release commit in this push
+        id: detect
+        env:
+          COMMIT_MESSAGES: ${{ toJSON(github.event.commits.*.message) }}
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          set -euo pipefail
+
+          subjects=$(jq -r 'if length == 0 then empty else .[] | split("\n")[0] end' <<<"$COMMIT_MESSAGES")
+          if [ -z "$subjects" ]; then
+            subjects=$(printf '%s\n' "$HEAD_COMMIT_MESSAGE" | head -1)
+          fi
+
+          release=false
+          while IFS= read -r subject; do
+            case "$subject" in
+            'chore: release'*) release=true ;;
+            esac
+          done <<<"$subjects"
+
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "release commit in this push: $release"
+
   queue-production-deploy:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    needs: detect-release-commit
+    if: ${{ needs.detect-release-commit.outputs.release == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 360
     permissions:
@@ -33,9 +71,9 @@ jobs:
         run: bash .github/scripts/wait-production-deploy-queue.sh
 
   release-please:
-    needs: queue-production-deploy
+    needs: [detect-release-commit, queue-production-deploy]
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ needs.detect-release-commit.outputs.release == 'true' }}
     outputs:
       releases_created: ${{ steps.release.outputs.releases_created }}
       release_target: ${{ steps.release-target.outputs.sha }}
@@ -1797,7 +1835,7 @@ jobs:
         with:
           workspaces: crates -> target
           shared-key: ${{ steps.target-metadata.outputs.cache_suffix }}-release
-          save-if: ${{ github.event.workflow_run.head_branch == 'main' }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Notify Slack - Starting
         id: slack-start
