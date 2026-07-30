@@ -5279,6 +5279,13 @@
       "when": 1785400947601,
       "tag": "0753_backfill_chat_scoped_hosted_sites",
       "breakpoints": true
+    },
+    {
+      "idx": 754,
+      "version": "7",
+      "when": 1785402433504,
+      "tag": "0754_expand_insights_connector_slug",
+      "breakpoints": true
     }
   ]
 }

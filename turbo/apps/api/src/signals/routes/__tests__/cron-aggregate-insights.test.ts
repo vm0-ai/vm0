@@ -824,6 +824,7 @@ describe("GET /api/cron/aggregate-insights", () => {
       return permission.label === "github" && permission.denied > 0;
     });
     expect(githubDeny).toMatchObject({
+      connectorSlug: "github",
       connectorType: "github",
       denied: 2,
     });
@@ -831,6 +832,7 @@ describe("GET /api/cron/aggregate-insights", () => {
       return permission.label.includes("repo-read");
     });
     expect(repoRead).toMatchObject({
+      connectorSlug: "github",
       connectorType: "github",
       allowed: 1,
     });
@@ -891,6 +893,7 @@ describe("GET /api/cron/aggregate-insights", () => {
       return permission.label.includes("repo-read");
     });
     expect(repoRead).toMatchObject({
+      connectorSlug: "github",
       connectorType: "github",
       allowed: 1,
       denied: 0,
@@ -981,6 +984,7 @@ describe("GET /api/cron/aggregate-insights", () => {
       return permission.label === "github";
     });
     expect(githubDeny).toMatchObject({
+      connectorSlug: "github",
       connectorType: "github",
       allowed: 0,
       denied: 3,
@@ -989,6 +993,7 @@ describe("GET /api/cron/aggregate-insights", () => {
       return permission.label.includes("repo-read");
     });
     expect(repoRead).toMatchObject({
+      connectorSlug: "github",
       connectorType: "github",
       allowed: 1,
       denied: 0,
