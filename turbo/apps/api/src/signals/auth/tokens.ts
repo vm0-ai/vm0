@@ -35,7 +35,6 @@ const CONDITIONAL_CAPABILITIES = [
 ] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [
-  "agent-run:write",
   "agent:delete",
 ] as const satisfies readonly ZeroCapability[];
 

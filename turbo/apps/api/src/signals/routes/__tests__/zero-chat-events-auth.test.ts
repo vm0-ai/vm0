@@ -21,7 +21,7 @@ describe("POST /api/zero/chat/events authorization", () => {
       userId: `user_${randomUUID()}`,
       orgId: `org_${randomUUID()}`,
       runId: `run_${randomUUID()}`,
-      capabilities: ["agent-run:write"],
+      capabilities: [],
       iat: seconds,
       exp: seconds + 60,
     });

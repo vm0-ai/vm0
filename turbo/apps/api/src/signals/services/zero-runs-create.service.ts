@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 
 import { PLAN_UPGRADE_CLI_HINT } from "@vm0/api-contracts/contracts/errors";
 import { CANONICAL_WORKING_DIR } from "@vm0/api-contracts/contracts/runners";
-import { zeroRunsMainContract } from "@vm0/api-contracts/contracts/zero-runs";
+import { zeroRunCreateBodySchema } from "@vm0/api-contracts/contracts/zero-runs";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
@@ -68,7 +68,7 @@ import { expandConnectorServerFirewallPolicies } from "./connector-server-firewa
 import type { QueueFirstRunAssociation } from "./zero-chat-queued-event.service";
 import { buildZeroChatMessagingToolPrompt } from "./zero-chat-messaging-tool-prompt";
 
-type ZeroRunCreateBody = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
+type ZeroRunCreateBody = z.infer<typeof zeroRunCreateBodySchema>;
 type ZeroRunOrigin =
   | "zero_run"
   | "workflow_automation"

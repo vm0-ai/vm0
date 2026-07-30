@@ -41,10 +41,10 @@ import {
 } from "@vm0/api-contracts/contracts/runners";
 import {
   zeroRunsCancelContract,
+  zeroRunCreateBodySchema,
   zeroRunContextContract,
   zeroRunRunnerContract,
   zeroRunsByIdContract,
-  zeroRunsMainContract,
   zeroRunsQueueContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
@@ -78,12 +78,16 @@ import { zeroModelProvidersRoutes } from "../../zero-model-providers";
 import { zeroRunDetailRoutes } from "../../zero-run-detail";
 import { zeroRunsCancelRoutes } from "../../zero-runs-cancel";
 import { zeroRunsRoutes } from "../../zero-runs";
+import {
+  zeroRunFixtureContract,
+  zeroRunFixtureRoutes,
+} from "../../test-zero-run-fixture";
 import { zeroUserPermissionGrantsRoutes } from "../../zero-user-permission-grants";
 import { createBddApi, type ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 type AuthHeaders = { readonly authorization?: string };
-type ZeroRunRequest = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
+type ZeroRunRequest = z.infer<typeof zeroRunCreateBodySchema>;
 type DirectRunRequest = z.infer<(typeof runsMainContract.create)["body"]>;
 type RunsListQuery = z.input<(typeof runsMainContract.list)["query"]>;
 type RunnerJobClaimRequest = z.infer<
@@ -159,6 +163,7 @@ const runRoutes = [
   ...zeroModelPoliciesRoutes,
   ...zeroModelProvidersRoutes,
   ...zeroRunDetailRoutes,
+  ...zeroRunFixtureRoutes,
   ...zeroRunsRoutes,
   ...zeroRunsCancelRoutes,
   ...zeroAgentsRoutes,
@@ -285,6 +290,23 @@ export function createRunsApi(context: TestContext) {
   };
 
   return {
+    async requestRemovedZeroRunCreation(actor: ApiTestUser): Promise<number> {
+      const { authorization } = authenticate(context, actor);
+      const app = createAppWithRoutes({
+        signal: context.signal,
+        routes: runRoutes,
+      });
+      const response = await app.request("/api/zero/runs", {
+        method: "POST",
+        headers: {
+          ...(authorization === undefined ? {} : { authorization }),
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ agentId: randomUUID(), prompt: "removed" }),
+      });
+      return response.status;
+    },
+
     configureRunnerGroup(): string {
       const group = `vm0/bdd-${randomUUID().slice(0, 8)}`;
       mockOptionalEnv("RUNNER_DEFAULT_GROUP", group);
@@ -424,7 +446,7 @@ export function createRunsApi(context: TestContext) {
 
     async createRun(actor: ApiTestUser, body: ZeroRunRequest) {
       const response = await accept(
-        runApp(context)(zeroRunsMainContract).create({
+        runApp(context)(zeroRunFixtureContract).create({
           headers: authenticate(context, actor),
           body,
         }),
@@ -850,7 +872,7 @@ export function createRunsApi(context: TestContext) {
       extraHeaders?: Readonly<Record<string, string>>,
     ) {
       return await accept(
-        runApp(context)(zeroRunsMainContract).create({
+        runApp(context)(zeroRunFixtureContract).create({
           headers: {
             ...authenticate(context, actor),
             ...extraHeaders,
@@ -867,27 +889,9 @@ export function createRunsApi(context: TestContext) {
       statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
     ) {
       return await accept(
-        runApp(context)(zeroRunsMainContract).create({
+        runApp(context)(zeroRunFixtureContract).create({
           headers: authenticate(context, actor),
           body: body as ZeroRunRequest,
-        }),
-        statuses,
-      );
-    },
-
-    /**
-     * Creates a zero run with a raw bearer credential (run-scoped zero token
-     * or sandbox token taken from a runner claim) instead of a Clerk session.
-     */
-    async requestCreateRunAs(
-      authorization: string,
-      body: ZeroRunRequest,
-      statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
-    ) {
-      return await accept(
-        runApp(context)(zeroRunsMainContract).create({
-          headers: { authorization },
-          body,
         }),
         statuses,
       );
@@ -975,6 +979,20 @@ export function createRunsApi(context: TestContext) {
       return await accept(
         runApp(context)(zeroRunsCancelContract).cancel({
           headers: authenticate(context, actor),
+          params: { id: runId },
+        }),
+        statuses,
+      );
+    },
+
+    async requestCancelRunAs(
+      authorization: string,
+      runId: string,
+      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
+    ) {
+      return await accept(
+        runApp(context)(zeroRunsCancelContract).cancel({
+          headers: { authorization },
           params: { id: runId },
         }),
         statuses,
