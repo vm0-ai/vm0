@@ -13,7 +13,6 @@ import {
   findGitHubInstallationIdFixture,
   findGitHubRunStateFixture,
   listGitHubChatRoutesFixture,
-  readGitHubLegacySessionFixture,
   retryGitHubChatDeliveryFixture,
   signGitHubConnectParamsFixture,
   type GitHubRunStateFixture,
@@ -337,16 +336,6 @@ describe("GitHub canonical chat threads", () => {
     expect(bRun.sessionId).not.toBe(firstRun?.sessionId);
     await claimAndFinish({ fixture, run: bRun });
 
-    const legacyAfterB = await readGitHubLegacySessionFixture({
-      installationId: fixture.installationId,
-      repo: REPO,
-      subjectNumber,
-    });
-    expect(legacyAfterB).toMatchObject({
-      userId: fixture.actorB.userId,
-      sessionId: bRun.sessionId,
-    });
-
     await sendGitHubComment({
       fixture,
       githubUserId: fixture.githubUserA,
@@ -363,16 +352,6 @@ describe("GitHub canonical chat threads", () => {
       run: aReturn,
       expectedResumeSessionId: previousCliSession,
     });
-    const legacyAfterAReturns = await readGitHubLegacySessionFixture({
-      installationId: fixture.installationId,
-      repo: REPO,
-      subjectNumber,
-    });
-    expect(legacyAfterAReturns).toMatchObject({
-      userId: fixture.actorA.userId,
-      sessionId: aReturn.sessionId,
-    });
-
     const routes = await routeRows({
       installationId: fixture.installationId,
       subjectNumber,
@@ -438,16 +417,24 @@ describe("GitHub canonical chat threads", () => {
       expectedResumeSessionId: aReturnCliSession,
       exitCode: 1,
     });
-    const legacyAfterFailure = await readGitHubLegacySessionFixture({
+    const routesAfterFailure = await routeRows({
       installationId: fixture.installationId,
-      repo: REPO,
       subjectNumber,
     });
-    expect(legacyAfterFailure).toMatchObject({
-      userId: fixture.actorA.userId,
-      sessionId: aReturn.sessionId,
-      lastCommentId: legacyAfterAReturns?.lastCommentId,
-    });
+    expect(routesAfterFailure).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          userId: fixture.actorA.userId,
+          chatThreadId: firstRun?.chatThreadId,
+          lastCommentId: "10005",
+        }),
+        expect.objectContaining({
+          userId: fixture.actorB.userId,
+          chatThreadId: bRun.chatThreadId,
+          lastCommentId: "20001",
+        }),
+      ]),
+    );
     expect(fixture.postedComments).toHaveLength(6);
   }, 30_000);
 
