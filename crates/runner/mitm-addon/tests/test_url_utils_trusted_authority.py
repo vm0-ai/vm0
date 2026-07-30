@@ -331,7 +331,7 @@ class TestTrustedAuthoritySuccess:
                 "xn--4xa.example",
                 "xn--4xa.example",
                 "https://xn--4xa.example/repos",
-                id="math-bold-small-beta",
+                id="math-bold-small-final-sigma",
             ),
             pytest.param(
                 "a\u0754.example",

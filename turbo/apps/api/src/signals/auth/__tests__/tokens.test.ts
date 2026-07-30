@@ -205,6 +205,23 @@ describe("auth tokens", () => {
     );
   });
 
+  it("gates custom connector writes behind the CLI create feature switch", () => {
+    const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
+    const enabledToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_zero",
+      { [FeatureSwitchKey.CustomConnectorCliCreate]: true },
+    );
+
+    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
+      "connector:write",
+    );
+    expect(verifyZeroToken(enabledToken)?.capabilities).toContain(
+      "connector:write",
+    );
+  });
+
   it("grants scrape capability by default", () => {
     const token = generateZeroToken("user_zero", "run_zero", "org_zero");
 

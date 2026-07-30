@@ -1,5 +1,33 @@
 # Changelog
 
+## [8.490.0](https://github.com/vm0-ai/vm0/compare/core-v8.489.0...core-v8.490.0) (2026-07-30)
+
+
+### Features
+
+* **connectors:** add agent-driven custom connector creation ([#24020](https://github.com/vm0-ai/vm0/issues/24020)) ([49a30be](https://github.com/vm0-ai/vm0/commit/49a30bed8aa3295f875ea56ad81edcd473a49fce))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.251.0
+
+## [8.489.0](https://github.com/vm0-ai/vm0/compare/core-v8.488.3...core-v8.489.0) (2026-07-30)
+
+
+### Features
+
+* **platform:** enable locale rollout and browser detection ([#23983](https://github.com/vm0-ai/vm0/issues/23983)) ([9b689ad](https://github.com/vm0-ai/vm0/commit/9b689ad900016b7a04f930a57ae20f9702fdff69))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.250.2
+
 ## [8.488.3](https://github.com/vm0-ai/vm0/compare/core-v8.488.2...core-v8.488.3) (2026-07-30)
 
 

@@ -6,6 +6,8 @@ import enUSCommon from "./locales/en-US/common.json";
 import enUSAgents from "./locales/en-US/agents.json";
 import ptBRCommon from "./locales/pt-BR/common.json";
 import ptBRAgents from "./locales/pt-BR/agents.json";
+import jaJPCommon from "./locales/ja-JP/common.json";
+import jaJPAgents from "./locales/ja-JP/agents.json";
 import koKRCommon from "./locales/ko-KR/common.json";
 import koKRAgents from "./locales/ko-KR/agents.json";
 
@@ -23,6 +25,10 @@ export const resources = {
   "pt-BR": {
     agents: ptBRAgents,
     common: ptBRCommon,
+  },
+  "ja-JP": {
+    agents: jaJPAgents,
+    common: jaJPCommon,
   },
   "ko-KR": {
     agents: koKRAgents,

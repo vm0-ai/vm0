@@ -29,7 +29,8 @@ export interface ServiceUsage {
 
 export interface PermissionEntry {
   label: string;
-  // TODO(#23619): Rename with the zero-insights response field.
+  connectorSlug?: string;
+  // TODO(#23840): Remove after legacy Insights API responses have drained.
   connectorType?: string;
   allowed: number;
   denied: number;

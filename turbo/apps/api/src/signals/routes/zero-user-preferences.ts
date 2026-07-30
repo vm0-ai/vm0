@@ -1,12 +1,12 @@
 import { command, computed } from "ccstate";
 import {
   clientVersionSupportsCapability,
+  CLIENT_CAPABILITY_JA_JP_LOCALE,
   CLIENT_CAPABILITY_KO_KR_LOCALE,
   CLIENT_CAPABILITY_PT_BR_LOCALE,
   CLIENT_VERSION_HEADER,
 } from "@vm0/api-contracts/contracts/client-headers";
 import {
-  SUPPORTED_USER_LOCALES,
   type UserLocale,
   type UserPreferencesResponse,
   zeroUserPreferencesContract,
@@ -14,6 +14,7 @@ import {
 
 import { isBrazilianPortugueseLocaleRolloutEnabled } from "../../lib/brazilian-portuguese-locale-rollout";
 import { badRequestMessage } from "../../lib/error";
+import { isJapaneseLocaleRolloutEnabled } from "../../lib/japanese-locale-rollout";
 import { isKoreanLocaleRolloutEnabled } from "../../lib/korean-locale-rollout";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -31,8 +32,10 @@ const updateUserPreferencesBody$ = bodyResultOf(
 
 interface LocaleRollout {
   readonly clientSupportsBrazilianPortuguese: boolean;
+  readonly clientSupportsJapanese: boolean;
   readonly clientSupportsKorean: boolean;
   readonly brazilianPortugueseEnabled: boolean;
+  readonly japaneseEnabled: boolean;
   readonly koreanEnabled: boolean;
 }
 
@@ -42,6 +45,10 @@ const localeRollout$ = computed((get): LocaleRollout => {
     clientVersion,
     CLIENT_CAPABILITY_PT_BR_LOCALE,
   );
+  const clientSupportsJapanese = clientVersionSupportsCapability(
+    clientVersion,
+    CLIENT_CAPABILITY_JA_JP_LOCALE,
+  );
   const clientSupportsKorean = clientVersionSupportsCapability(
     clientVersion,
     CLIENT_CAPABILITY_KO_KR_LOCALE,
@@ -49,54 +56,50 @@ const localeRollout$ = computed((get): LocaleRollout => {
 
   return {
     clientSupportsBrazilianPortuguese,
+    clientSupportsJapanese,
     clientSupportsKorean,
     brazilianPortugueseEnabled:
       clientSupportsBrazilianPortuguese &&
       isBrazilianPortugueseLocaleRolloutEnabled(),
+    japaneseEnabled: clientSupportsJapanese && isJapaneseLocaleRolloutEnabled(),
     koreanEnabled: clientSupportsKorean && isKoreanLocaleRolloutEnabled(),
   };
 });
 
-function localeEnabled(locale: UserLocale, rollout: LocaleRollout): boolean {
-  switch (locale) {
-    case "en-US": {
-      return true;
-    }
-    case "pt-BR": {
-      return rollout.brazilianPortugueseEnabled;
-    }
-    case "ko-KR": {
-      return rollout.koreanEnabled;
-    }
-  }
-}
-
 function supportedLocalesForRollout(rollout: LocaleRollout): UserLocale[] {
-  return SUPPORTED_USER_LOCALES.filter((locale) => {
-    return localeEnabled(locale, rollout);
-  });
+  const supportedLocales: UserLocale[] = ["en-US"];
+  if (rollout.brazilianPortugueseEnabled) {
+    supportedLocales.push("pt-BR");
+  }
+  if (rollout.japaneseEnabled) {
+    supportedLocales.push("ja-JP");
+  }
+  if (rollout.koreanEnabled) {
+    supportedLocales.push("ko-KR");
+  }
+  return supportedLocales;
 }
 
 function projectUserPreferences(
   preferences: UserPreferencesResponse,
   rollout: LocaleRollout,
 ): UserPreferencesResponse {
-  // Project stored locales that this client cannot safely render to English.
-  // TODO(#23508): remove the pt-BR projection after legacy clients expire.
+  // TODO(#23508): remove projection after legacy browser clients expire.
+  const supportedLocales = supportedLocalesForRollout(rollout);
   const locale =
-    preferences.locale === null ||
     preferences.locale === undefined ||
-    localeEnabled(preferences.locale, rollout)
+    preferences.locale === null ||
+    supportedLocales.includes(preferences.locale)
       ? preferences.locale
       : "en-US";
-  const clientSupportsLocalePreferences =
-    rollout.clientSupportsBrazilianPortuguese || rollout.clientSupportsKorean;
 
   return {
     ...preferences,
     locale,
-    ...(clientSupportsLocalePreferences && {
-      supportedLocales: supportedLocalesForRollout(rollout),
+    ...((rollout.clientSupportsBrazilianPortuguese ||
+      rollout.clientSupportsJapanese ||
+      rollout.clientSupportsKorean) && {
+      supportedLocales,
     }),
   };
 }
@@ -130,7 +133,9 @@ const updateUserPreferencesInner$ = command(
         orgId: auth.orgId,
         userId: auth.userId,
         preferences: body.data,
-        writableLocales: supportedLocalesForRollout(rollout),
+        allowBrazilianPortuguese: rollout.brazilianPortugueseEnabled,
+        allowJapanese: rollout.japaneseEnabled,
+        allowKorean: rollout.koreanEnabled,
       },
       signal,
     );

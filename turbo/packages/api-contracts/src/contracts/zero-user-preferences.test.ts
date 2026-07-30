@@ -20,7 +20,41 @@ describe("user preferences contract", () => {
     expect(preferences.locale).toBe("en-US");
   });
 
-  it("accepts the Korean application locale", () => {
+  it("accepts the canonical Japanese locale", () => {
+    expect(userLocaleSchema.parse("ja-JP")).toBe("ja-JP");
+    expect(
+      userPreferencesResponseSchema.parse({
+        timezone: null,
+        locale: "ja-JP",
+        supportedLocales: ["en-US", "pt-BR", "ja-JP"],
+        pinnedAgentIds: [],
+        sendMode: "enter",
+        morningBriefEnabled: false,
+        morningBriefNextRunAt: null,
+        captureNetworkBodiesRemaining: 0,
+      }),
+    ).toMatchObject({
+      locale: "ja-JP",
+      supportedLocales: ["en-US", "pt-BR", "ja-JP"],
+    });
+  });
+
+  it("accepts the canonical Korean locale", () => {
     expect(userLocaleSchema.parse("ko-KR")).toBe("ko-KR");
+    expect(
+      userPreferencesResponseSchema.parse({
+        timezone: null,
+        locale: "ko-KR",
+        supportedLocales: ["en-US", "pt-BR", "ja-JP", "ko-KR"],
+        pinnedAgentIds: [],
+        sendMode: "enter",
+        morningBriefEnabled: false,
+        morningBriefNextRunAt: null,
+        captureNetworkBodiesRemaining: 0,
+      }),
+    ).toMatchObject({
+      locale: "ko-KR",
+      supportedLocales: ["en-US", "pt-BR", "ja-JP", "ko-KR"],
+    });
   });
 });

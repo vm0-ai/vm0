@@ -64,6 +64,7 @@ function parseUserLocale(value: unknown): UserLocale | null {
     value === null ||
     value === "en-US" ||
     value === "pt-BR" ||
+    value === "ja-JP" ||
     value === "ko-KR"
   ) {
     return value;
@@ -183,21 +184,24 @@ export function userModelPreference({
 
 interface UpdateUserPreferencesArgs extends UserScopedQuery {
   readonly preferences: UpdateUserPreferencesRequest;
-  readonly writableLocales?: readonly UserLocale[];
+  readonly allowBrazilianPortuguese?: boolean;
+  readonly allowJapanese?: boolean;
+  readonly allowKorean?: boolean;
 }
 
 type UpdateUserPreferencesResult =
   | { readonly ok: true; readonly data: UserPreferencesResponse }
   | { readonly ok: false; readonly message: string };
 
-function canWriteLocale(
-  locale: UserLocale | undefined,
-  writableLocales: readonly UserLocale[] | undefined,
+function isUserPreferencesUpdateAllowed(
+  args: UpdateUserPreferencesArgs,
 ): boolean {
+  const { locale, timezone } = args.preferences;
   return (
-    locale === undefined ||
-    locale === "en-US" ||
-    writableLocales?.includes(locale) === true
+    (locale !== "pt-BR" || args.allowBrazilianPortuguese === true) &&
+    (locale !== "ja-JP" || args.allowJapanese === true) &&
+    (locale !== "ko-KR" || args.allowKorean === true) &&
+    (timezone === undefined || isValidTimeZone(timezone))
   );
 }
 
@@ -208,16 +212,7 @@ export const updateUserPreferences$ = command(
     signal: AbortSignal,
   ): Promise<UpdateUserPreferencesResult> => {
     const preferences = args.preferences;
-    if (!canWriteLocale(preferences.locale, args.writableLocales)) {
-      return {
-        ok: false,
-        message: "Invalid request",
-      };
-    }
-    if (
-      preferences.timezone !== undefined &&
-      !isValidTimeZone(preferences.timezone)
-    ) {
+    if (!isUserPreferencesUpdateAllowed(args)) {
       return {
         ok: false,
         message: "Invalid request",

@@ -618,7 +618,7 @@ describe("GET /api/zero/connector-catalog", () => {
     await authDevice.requestTestConnector(
       { email: actor.email },
       {
-        connectorName: "github",
+        connectorSlug: "github",
         authMethod: "oauth",
         accessToken: "github-access-token",
         expiresIn: 3600,
@@ -657,7 +657,7 @@ describe("GET /api/zero/connector-catalog", () => {
     await authDevice.requestTestConnector(
       { email: actor.email },
       {
-        connectorName: "github",
+        connectorSlug: "github",
         authMethod: "oauth",
         accessToken: "expired-github-access-token",
         expiresIn: -60,

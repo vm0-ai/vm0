@@ -27,9 +27,27 @@ function usePortugueseLocale(): void {
   );
 }
 
+function useJapaneseLocale(): void {
+  document.documentElement.lang = "ja-JP";
+  context.mocks.data.userPreferences({
+    locale: "ja-JP",
+    supportedLocales: ["en-US", "ja-JP"],
+  });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      document.documentElement.lang = "en-US";
+    },
+    { once: true },
+  );
+}
+
 function useKoreanLocale(): void {
   document.documentElement.lang = "ko-KR";
-  context.mocks.data.userPreferences({ locale: "ko-KR" });
+  context.mocks.data.userPreferences({
+    locale: "ko-KR",
+    supportedLocales: ["en-US", "ko-KR"],
+  });
   context.signal.addEventListener(
     "abort",
     () => {
@@ -57,6 +75,30 @@ describe("app auth pages", () => {
     expect(localization.signIn?.start?.actionLink).toBe("Registre-se");
     expect(localization.unstable__errors?.not_allowed_access).toBe(
       "Acesso não permitido.",
+    );
+
+    act(() => {
+      authComponent.mount();
+    });
+  });
+
+  it("localizes the app auth shell and Clerk resources in Japanese", async () => {
+    useJapaneseLocale();
+    setBrowserUrl("https://app.vm0.ai/sign-up");
+
+    const authComponent = context.mocks.clerk.deferAuthComponentMount();
+    detachedSetupPage({ context, path: "/sign-up" });
+
+    await expect(
+      screen.findByText("認証を読み込み中"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("テーマの切り替え")).toBeInTheDocument();
+    expect(document.title).toBe("サインアップ | VM0");
+
+    const localization = getClerkLocalization("VM0", "ja-JP", i18n.t);
+    expect(localization.signIn?.start?.actionLink).toBe("サインアップ");
+    expect(localization.unstable__errors?.not_allowed_access).toBe(
+      "アクセスは許可されていません。",
     );
 
     act(() => {

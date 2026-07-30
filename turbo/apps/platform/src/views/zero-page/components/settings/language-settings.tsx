@@ -13,17 +13,15 @@ import {
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { brandName$ } from "../../../../signals/branding.ts";
 import {
+  availableLocalePreferences$,
   locale$,
-  localePreferenceSupportedLocales$,
   updateLocalePreference$,
 } from "../../../../signals/locale.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 
 export function LanguageSettings() {
   const { t } = useTranslation();
-  const supportedLocalesLoadable = useLoadable(
-    localePreferenceSupportedLocales$,
-  );
+  const availableLocalesLoadable = useLoadable(availableLocalePreferences$);
   const brandName = useGet(brandName$);
   const locale = useGet(locale$);
   const pageSignal = useGet(pageSignal$);
@@ -32,18 +30,22 @@ export function LanguageSettings() {
   );
 
   if (
-    supportedLocalesLoadable.state !== "hasData" ||
-    supportedLocalesLoadable.data === null ||
-    supportedLocalesLoadable.data.length <= 1
+    availableLocalesLoadable.state !== "hasData" ||
+    availableLocalesLoadable.data.length <= 1
   ) {
     return null;
   }
 
-  const supportedLocales = supportedLocalesLoadable.data;
+  const availableLocales = availableLocalesLoadable.data;
   const saving = updateLoadable.state === "loading";
 
   const handleChange = (value: string) => {
-    if (value !== "en-US" && value !== "pt-BR" && value !== "ko-KR") {
+    if (
+      value !== "en-US" &&
+      value !== "pt-BR" &&
+      value !== "ja-JP" &&
+      value !== "ko-KR"
+    ) {
       throw new Error(`Unsupported locale: ${value}`);
     }
     detach(updateLocale(value, pageSignal), Reason.DomCallback);
@@ -87,14 +89,12 @@ export function LanguageSettings() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {supportedLocales.includes("en-US") && (
-                <SelectItem value="en-US">
-                  {t(($) => {
-                    return $.settings.preferences.language.options.english;
-                  })}
-                </SelectItem>
-              )}
-              {supportedLocales.includes("pt-BR") && (
+              <SelectItem value="en-US">
+                {t(($) => {
+                  return $.settings.preferences.language.options.english;
+                })}
+              </SelectItem>
+              {availableLocales.includes("pt-BR") && (
                 <SelectItem value="pt-BR">
                   {t(($) => {
                     return $.settings.preferences.language.options
@@ -102,7 +102,14 @@ export function LanguageSettings() {
                   })}
                 </SelectItem>
               )}
-              {supportedLocales.includes("ko-KR") && (
+              {availableLocales.includes("ja-JP") && (
+                <SelectItem value="ja-JP">
+                  {t(($) => {
+                    return $.settings.preferences.language.options.japanese;
+                  })}
+                </SelectItem>
+              )}
+              {availableLocales.includes("ko-KR") && (
                 <SelectItem value="ko-KR">
                   {t(($) => {
                     return $.settings.preferences.language.options.korean;

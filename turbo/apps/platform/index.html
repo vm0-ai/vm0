@@ -158,13 +158,18 @@
         var cached = cacheKey ? localStorage.getItem(cacheKey) : null;
         // Prefer the workspace cache. Signed-out and first-time visitors use a
         // supported browser language, with English as the fallback.
-        var browserLocale = /^pt(?:-|$)/i.test(navigator.language)
-          ? "pt-BR"
+        var browserLocale = /^ja(?:-|$)/i.test(navigator.language)
+          ? "ja-JP"
           : /^ko(?:-|$)/i.test(navigator.language)
             ? "ko-KR"
-            : "en-US";
+            : /^pt(?:-|$)/i.test(navigator.language)
+              ? "pt-BR"
+              : "en-US";
         var locale =
-          cached === "en-US" || cached === "pt-BR" || cached === "ko-KR"
+          cached === "en-US" ||
+          cached === "pt-BR" ||
+          cached === "ja-JP" ||
+          cached === "ko-KR"
             ? cached
             : browserLocale;
         var copyByLocale = {
@@ -270,6 +275,58 @@
               description:
                 "Zero é seu colega de IA da vm0. Envie uma mensagem para o Zero ou converse pela web — pesquise, envie e-mails, crie documentos e use Slack, GitHub, Notion e mais de 100 ferramentas.",
               title: "Zero — Seu colega de IA da vm0",
+            },
+          },
+          "ja-JP": {
+            browserUpgrade: {
+              browser: {
+                actionLabel: "ブラウザを更新",
+                description:
+                  "現在のブラウザのバージョンはZeroでサポートされていません。続行するにはブラウザを更新してください。",
+                title: "続行するにはブラウザを更新してください",
+              },
+              chrome: {
+                actionLabel: "Chromeを更新",
+                description:
+                  "現在のブラウザのバージョンはZeroでサポートされていません。続行するにはChromeを更新してください。",
+                title: "続行するにはChromeを更新してください",
+              },
+              chromium: {
+                actionLabel: "Chromiumを更新",
+                description:
+                  "現在のブラウザのバージョンはZeroでサポートされていません。続行するにはChromiumを更新してください。",
+                title: "続行するにはChromiumを更新してください",
+              },
+              ios: {
+                actionLabel: "iOSを更新",
+                description:
+                  "現在のブラウザのバージョンはZeroでサポートされていません。続行するにはiOSを更新してください。",
+                title: "続行するにはiOSを更新してください",
+              },
+              safari: {
+                actionLabel: "Safariを更新",
+                description:
+                  "現在のブラウザのバージョンはZeroでサポートされていません。続行するにはSafariを更新してください。",
+                title: "続行するにはSafariを更新してください",
+              },
+            },
+            loading: {
+              ariaLabel: "ワークスペースを読み込み中",
+              messages: [
+                "ニューラルネットワークを準備しています...",
+                "アイデアを練っています...",
+                "準備しています...",
+                "もうすぐです...",
+                "ワークスペースを読み込んでいます...",
+                "楽器を調整しています...",
+                "点と点をつないでいます...",
+                "チームを立ち上げています...",
+              ],
+            },
+            metadata: {
+              description:
+                "Zeroはvm0のAIコワーカーです。Zeroにメッセージを送るか、Webでチャットできます。リサーチ、メール、ドキュメント、Slack、GitHub、Notionなど、100以上のツールを利用できます。",
+              title: "Zero — vm0のAIコワーカー",
             },
           },
           "ko-KR": {

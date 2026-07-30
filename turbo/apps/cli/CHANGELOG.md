@@ -1,5 +1,30 @@
 # Changelog
 
+## [9.270.0](https://github.com/vm0-ai/vm0/compare/cli-v9.269.5...cli-v9.270.0) (2026-07-30)
+
+
+### Features
+
+* **connectors:** add agent-driven custom connector creation ([#24020](https://github.com/vm0-ai/vm0/issues/24020)) ([49a30be](https://github.com/vm0-ai/vm0/commit/49a30bed8aa3295f875ea56ad81edcd473a49fce))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.251.0
+    * @vm0/core bumped to 8.490.0
+
+## [9.269.5](https://github.com/vm0-ai/vm0/compare/cli-v9.269.4...cli-v9.269.5) (2026-07-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.250.2
+    * @vm0/core bumped to 8.489.0
+
 ## [9.269.4](https://github.com/vm0-ai/vm0/compare/cli-v9.269.3...cli-v9.269.4) (2026-07-30)
 
 

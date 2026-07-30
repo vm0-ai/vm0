@@ -1,5 +1,6 @@
 import {
   addClientCapabilityToVersion,
+  CLIENT_CAPABILITY_JA_JP_LOCALE,
   CLIENT_CAPABILITY_KO_KR_LOCALE,
   CLIENT_CAPABILITY_PT_BR_LOCALE,
   CLIENT_REQUEST_ID_HEADER,
@@ -28,8 +29,11 @@ function createClientHeaders(): Record<string, string> {
   return {
     [CLIENT_VERSION_HEADER]: addClientCapabilityToVersion(
       addClientCapabilityToVersion(
-        clientVersion,
-        CLIENT_CAPABILITY_PT_BR_LOCALE,
+        addClientCapabilityToVersion(
+          clientVersion,
+          CLIENT_CAPABILITY_PT_BR_LOCALE,
+        ),
+        CLIENT_CAPABILITY_JA_JP_LOCALE,
       ),
       CLIENT_CAPABILITY_KO_KR_LOCALE,
     ),
