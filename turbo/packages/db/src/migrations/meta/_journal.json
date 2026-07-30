@@ -5339,8 +5339,8 @@
     {
       "idx": 762,
       "version": "7",
-      "when": 1785411577029,
-      "tag": "0762_thread_browser_identity",
+      "when": 1785410977112,
+      "tag": "0762_remove_legacy_connector_identity_columns",
       "breakpoints": true
     }
   ]

@@ -3,7 +3,6 @@ import {
   testConnectorCredentialStorageStateContract,
   type TestConnectorCredentialStorageStateActionBody,
 } from "@vm0/api-contracts/contracts/test-connector-credential-storage-state";
-import { connectorSlugCanonicalInsertConnectors } from "@vm0/db/compat/connector-slug-canonical-insert";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
@@ -134,7 +133,7 @@ async function seedOwnedSecret(
 ) {
   const connectorId = await db.transaction(async (tx) => {
     const [connector] = await tx
-      .insert(connectorSlugCanonicalInsertConnectors)
+      .insert(connectors)
       .values({
         orgId: body.org_id,
         userId: body.user_id,
@@ -142,7 +141,7 @@ async function seedOwnedSecret(
         authMethod: body.auth_method,
         storageVersion: body.storage_version,
       })
-      .returning({ id: connectorSlugCanonicalInsertConnectors.id });
+      .returning({ id: connectors.id });
     if (!connector) {
       throw new Error("Expected connector storage test fixture");
     }
@@ -167,7 +166,7 @@ async function seedConnector(
   signal: AbortSignal,
 ) {
   const [connector] = await db
-    .insert(connectorSlugCanonicalInsertConnectors)
+    .insert(connectors)
     .values({
       orgId: body.org_id,
       userId: body.user_id,
@@ -175,7 +174,7 @@ async function seedConnector(
       authMethod: body.auth_method,
       storageVersion: body.storage_version,
     })
-    .returning({ id: connectorSlugCanonicalInsertConnectors.id });
+    .returning({ id: connectors.id });
   signal.throwIfAborted();
   if (!connector) {
     throw new Error("Expected connector storage test fixture");

@@ -1,5 +1,5 @@
 {
-  "id": "cf15f052-87d9-43b8-869a-a6c36d381ed5",
+  "id": "7755d723-3162-4cc6-9e0a-47e0b52e076e",
   "prevId": "712867e2-f120-44df-9cc6-afb7eea0ce6e",
   "version": "7",
   "dialect": "postgresql",
@@ -3096,6 +3096,95 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.browser_profiles": {
+      "name": "browser_profiles",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider_profile_id": {
+          "name": "provider_profile_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "uq_browser_profiles_owner": {
+          "name": "uq_browser_profiles_owner",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "uq_browser_profiles_provider_profile": {
+          "name": "uq_browser_profiles_provider_profile",
+          "columns": [
+            {
+              "expression": "provider_profile_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.browser_session_instances": {
       "name": "browser_session_instances",
       "schema": "",
@@ -3104,6 +3193,12 @@
           "name": "provider_session_id",
           "type": "uuid",
           "primaryKey": true,
+          "notNull": true
+        },
+        "browser_session_id": {
+          "name": "browser_session_id",
+          "type": "uuid",
+          "primaryKey": false,
           "notNull": true
         },
         "chat_thread_id": {
@@ -3118,11 +3213,71 @@
           "primaryKey": false,
           "notNull": true
         },
+        "billing_run_id": {
+          "name": "billing_run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "status": {
           "name": "status",
           "type": "varchar(20)",
           "primaryKey": false,
           "notNull": true
+        },
+        "browser_cost_microusd": {
+          "name": "browser_cost_microusd",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "proxy_cost_microusd": {
+          "name": "proxy_cost_microusd",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "proxy_used_mb": {
+          "name": "proxy_used_mb",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "pricing_unit_price": {
+          "name": "pricing_unit_price",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "pricing_unit_size": {
+          "name": "pricing_unit_size",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "gross_credits": {
+          "name": "gross_credits",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "credits_charged": {
+          "name": "credits_charged",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "usage_event_id": {
+          "name": "usage_event_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         },
         "timeout_at": {
           "name": "timeout_at",
@@ -3162,6 +3317,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "settled_at": {
+          "name": "settled_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -3178,11 +3339,11 @@
         }
       },
       "indexes": {
-        "idx_browser_session_instances_thread": {
-          "name": "idx_browser_session_instances_thread",
+        "idx_browser_session_instances_session": {
+          "name": "idx_browser_session_instances_session",
           "columns": [
             {
-              "expression": "chat_thread_id",
+              "expression": "browser_session_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -3258,7 +3419,34 @@
           "with": {}
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "browser_session_instances_browser_session_id_browser_sessions_id_fk": {
+          "name": "browser_session_instances_browser_session_id_browser_sessions_id_fk",
+          "tableFrom": "browser_session_instances",
+          "tableTo": "browser_sessions",
+          "columnsFrom": [
+            "browser_session_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "browser_session_instances_usage_event_id_usage_event_id_fk": {
+          "name": "browser_session_instances_usage_event_id_usage_event_id_fk",
+          "tableFrom": "browser_session_instances",
+          "tableTo": "usage_event",
+          "columnsFrom": [
+            "usage_event_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -3324,67 +3512,21 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.browser_session_tab_snapshots": {
-      "name": "browser_session_tab_snapshots",
-      "schema": "",
-      "columns": {
-        "chat_thread_id": {
-          "name": "chat_thread_id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "encrypted_tab_urls": {
-          "name": "encrypted_tab_urls",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "browser_session_tab_snapshots_chat_thread_id_chat_threads_id_fk": {
-          "name": "browser_session_tab_snapshots_chat_thread_id_chat_threads_id_fk",
-          "tableFrom": "browser_session_tab_snapshots",
-          "tableTo": "chat_threads",
-          "columnsFrom": [
-            "chat_thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.browser_sessions": {
       "name": "browser_sessions",
       "schema": "",
       "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
         "chat_thread_id": {
           "name": "chat_thread_id",
           "type": "uuid",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true
         },
         "run_id": {
@@ -3411,6 +3553,18 @@
           "primaryKey": false,
           "notNull": true
         },
+        "browser_profile_id": {
+          "name": "browser_profile_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "browser_thread_profile_id": {
+          "name": "browser_thread_profile_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "status": {
           "name": "status",
           "type": "varchar(20)",
@@ -3428,6 +3582,27 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true
+        },
+        "max_credits": {
+          "name": "max_credits",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "gross_credits": {
+          "name": "gross_credits",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "credits_charged": {
+          "name": "credits_charged",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         },
         "suspended_at": {
           "name": "suspended_at",
@@ -3525,6 +3700,22 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "uq_browser_sessions_thread_owned": {
+          "name": "uq_browser_sessions_thread_owned",
+          "columns": [
+            {
+              "expression": "chat_thread_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"browser_sessions\".\"status\" IN ('creating', 'active', 'resuming', 'stopping')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -3540,6 +3731,32 @@
           ],
           "onDelete": "set null",
           "onUpdate": "no action"
+        },
+        "browser_sessions_browser_profile_id_browser_profiles_id_fk": {
+          "name": "browser_sessions_browser_profile_id_browser_profiles_id_fk",
+          "tableFrom": "browser_sessions",
+          "tableTo": "browser_profiles",
+          "columnsFrom": [
+            "browser_profile_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "browser_sessions_browser_thread_profile_id_browser_thread_profiles_id_fk": {
+          "name": "browser_sessions_browser_thread_profile_id_browser_thread_profiles_id_fk",
+          "tableFrom": "browser_sessions",
+          "tableTo": "browser_thread_profiles",
+          "columnsFrom": [
+            "browser_thread_profile_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3552,10 +3769,17 @@
       "name": "browser_thread_profiles",
       "schema": "",
       "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
         "chat_thread_id": {
           "name": "chat_thread_id",
           "type": "uuid",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true
         },
         "org_id": {
@@ -3592,6 +3816,21 @@
         }
       },
       "indexes": {
+        "uq_browser_thread_profiles_thread": {
+          "name": "uq_browser_thread_profiles_thread",
+          "columns": [
+            {
+              "expression": "chat_thread_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "uq_browser_thread_profiles_provider_profile": {
           "name": "uq_browser_thread_profiles_provider_profile",
           "columns": [
@@ -3890,6 +4129,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "revokes_event_id": {
+          "name": "revokes_event_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "interrupts_run_id": {
           "name": "interrupts_run_id",
           "type": "uuid",
@@ -4034,12 +4279,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "revokes_event_id": {
-          "name": "revokes_event_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -4122,6 +4361,21 @@
           "columns": [
             {
               "expression": "revokes_message_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "chat_events_revokes_event_id_unique": {
+          "name": "chat_events_revokes_event_id_unique",
+          "columns": [
+            {
+              "expression": "revokes_event_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4302,21 +4556,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "chat_events_revokes_event_id_unique": {
-          "name": "chat_events_revokes_event_id_unique",
-          "columns": [
-            {
-              "expression": "revokes_event_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -4366,7 +4605,7 @@
       "checkConstraints": {
         "chat_events_event_type_check": {
           "name": "chat_events_event_type_check",
-          "value": "\"chat_events\".\"event_type\" IN (\n          'input.prompt',\n          'input.automation',\n          'input.goal',\n          'input.rejected',\n          'output.message',\n          'output.error',\n          'output.thinking',\n          'output.followups',\n          'run.queued',\n          'run.dequeued',\n          'run.completed',\n          'run.failed',\n          'run.cancelled',\n          'queue.automation_paused',\n          'queue.automation_resumed',\n          'control.interrupt',\n          'control.revoke',\n          'browser.started',\n          'browser.stopped',\n          'goal.changed',\n          'usage.recorded'\n        )"
+          "value": "\"chat_events\".\"event_type\" IN (\n          'input.prompt',\n          'input.automation',\n          'input.goal',\n          'input.rejected',\n          'output.message',\n          'output.error',\n          'output.thinking',\n          'output.followups',\n          'run.queued',\n          'run.dequeued',\n          'run.completed',\n          'run.failed',\n          'run.cancelled',\n          'queue.automation_paused',\n          'queue.automation_resumed',\n          'control.interrupt',\n          'control.revoke',\n          'goal.changed',\n          'usage.recorded'\n        )"
         },
         "chat_events_input_user_message_check": {
           "name": "chat_events_input_user_message_check",
@@ -4874,6 +5113,13 @@
           "notNull": true,
           "default": 0
         },
+        "last_chat_event_seq_id": {
+          "name": "last_chat_event_seq_id",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -4887,13 +5133,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "last_chat_event_seq_id": {
-          "name": "last_chat_event_seq_id",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
         }
       },
       "indexes": {
@@ -6500,12 +6739,6 @@
           "notNull": true,
           "default": false
         },
-        "connector_type": {
-          "name": "connector_type",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true
-        },
         "connector_slug": {
           "name": "connector_slug",
           "type": "varchar(64)",
@@ -6599,45 +6832,6 @@
           "method": "btree",
           "with": {}
         },
-        "idx_connector_external_code_sessions_owner_status": {
-          "name": "idx_connector_external_code_sessions_owner_status",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "connector_type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "auth_method",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "idx_connector_external_code_sessions_owner_slug_status": {
           "name": "idx_connector_external_code_sessions_owner_slug_status",
           "columns": [
@@ -6703,12 +6897,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "chk_connector_external_code_sessions_slug_matches_type": {
-          "name": "chk_connector_external_code_sessions_slug_matches_type",
-          "value": "\"connector_external_code_sessions\".\"connector_slug\" IS NOT NULL\n          AND \"connector_external_code_sessions\".\"connector_slug\" = \"connector_external_code_sessions\".\"connector_type\""
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.connector_oauth_device_authorization_sessions": {
@@ -6746,12 +6935,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
-        },
-        "connector_type": {
-          "name": "connector_type",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true
         },
         "connector_slug": {
           "name": "connector_slug",
@@ -6864,45 +7047,6 @@
           "method": "btree",
           "with": {}
         },
-        "idx_connector_oauth_device_authorization_sessions_owner_status": {
-          "name": "idx_connector_oauth_device_authorization_sessions_owner_status",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "connector_type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "auth_method",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "idx_connector_oauth_device_sessions_owner_slug_status": {
           "name": "idx_connector_oauth_device_sessions_owner_slug_status",
           "columns": [
@@ -6968,12 +7112,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "chk_connector_oauth_device_sessions_slug_matches_type": {
-          "name": "chk_connector_oauth_device_sessions_slug_matches_type",
-          "value": "\"connector_oauth_device_authorization_sessions\".\"connector_slug\" IS NOT NULL\n          AND \"connector_oauth_device_authorization_sessions\".\"connector_slug\" = \"connector_oauth_device_authorization_sessions\".\"connector_type\""
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.connector_oauth_states": {
@@ -6992,12 +7131,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "type": {
-          "name": "type",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": false
         },
         "connector_slug": {
           "name": "connector_slug",
@@ -7168,15 +7301,11 @@
       "checkConstraints": {
         "chk_connector_oauth_states_identity": {
           "name": "chk_connector_oauth_states_identity",
-          "value": "num_nonnulls(\"connector_oauth_states\".\"type\", \"connector_oauth_states\".\"custom_connector_id\") = 1"
+          "value": "num_nonnulls(\"connector_oauth_states\".\"connector_slug\", \"connector_oauth_states\".\"custom_connector_id\") = 1"
         },
         "chk_connector_oauth_states_custom_revision": {
           "name": "chk_connector_oauth_states_custom_revision",
           "value": "(\n          \"connector_oauth_states\".\"custom_connector_id\" IS NULL\n          AND \"connector_oauth_states\".\"connector_revision\" IS NULL\n        ) OR (\n          \"connector_oauth_states\".\"custom_connector_id\" IS NOT NULL\n          AND \"connector_oauth_states\".\"connector_revision\" IS NOT NULL\n        )"
-        },
-        "chk_connector_oauth_states_slug_matches_type": {
-          "name": "chk_connector_oauth_states_slug_matches_type",
-          "value": "\"connector_oauth_states\".\"connector_slug\" IS NOT DISTINCT FROM \"connector_oauth_states\".\"type\""
         }
       },
       "isRLSEnabled": false
@@ -7191,12 +7320,6 @@
           "primaryKey": true,
           "notNull": true,
           "default": "gen_random_uuid()"
-        },
-        "type": {
-          "name": "type",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": false
         },
         "connector_slug": {
           "name": "connector_slug",
@@ -7308,34 +7431,6 @@
           "method": "btree",
           "with": {}
         },
-        "idx_connectors_org_user_type": {
-          "name": "idx_connectors_org_user_type",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"connectors\".\"type\" IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "idx_connectors_org_user_custom_connector": {
           "name": "idx_connectors_org_user_custom_connector",
           "columns": [
@@ -7426,15 +7521,11 @@
       "checkConstraints": {
         "chk_connectors_identity": {
           "name": "chk_connectors_identity",
-          "value": "num_nonnulls(\"connectors\".\"type\", \"connectors\".\"custom_connector_id\") = 1"
+          "value": "num_nonnulls(\"connectors\".\"connector_slug\", \"connectors\".\"custom_connector_id\") = 1"
         },
         "chk_connectors_storage_version_positive": {
           "name": "chk_connectors_storage_version_positive",
           "value": "\"connectors\".\"storage_version\" > 0"
-        },
-        "chk_connectors_connector_slug_matches_type": {
-          "name": "chk_connectors_connector_slug_matches_type",
-          "value": "\"connectors\".\"connector_slug\" IS NOT DISTINCT FROM \"connectors\".\"type\""
         }
       },
       "isRLSEnabled": false
@@ -20644,12 +20735,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "connector_type": {
-          "name": "connector_type",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true
-        },
         "connector_slug": {
           "name": "connector_slug",
           "type": "varchar(64)",
@@ -20665,39 +20750,6 @@
         }
       },
       "indexes": {
-        "idx_user_connectors_unique": {
-          "name": "idx_user_connectors_unique",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "agent_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "connector_type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "idx_user_connectors_unique_slug": {
           "name": "idx_user_connectors_unique_slug",
           "columns": [
@@ -20771,12 +20823,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "chk_user_connectors_slug_matches_type": {
-          "name": "chk_user_connectors_slug_matches_type",
-          "value": "\"user_connectors\".\"connector_slug\" IS NOT NULL\n          AND \"user_connectors\".\"connector_slug\" = \"user_connectors\".\"connector_type\""
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.user_custom_connectors": {
@@ -21023,12 +21070,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "connector_ref": {
-          "name": "connector_ref",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true
-        },
         "connector_slug": {
           "name": "connector_slug",
           "type": "varchar(64)",
@@ -21069,45 +21110,6 @@
         }
       },
       "indexes": {
-        "uq_user_permission_grants_grant": {
-          "name": "uq_user_permission_grants_grant",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "agent_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "connector_ref",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "permission",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "uq_user_permission_grants_slug_permission": {
           "name": "uq_user_permission_grants_slug_permission",
           "columns": [
@@ -21227,10 +21229,6 @@
         "chk_user_permission_grants_action": {
           "name": "chk_user_permission_grants_action",
           "value": "\"user_permission_grants\".\"action\" IN ('allow', 'deny')"
-        },
-        "chk_user_permission_grants_slug_matches_ref": {
-          "name": "chk_user_permission_grants_slug_matches_ref",
-          "value": "\"user_permission_grants\".\"connector_slug\" IS NOT NULL\n          AND \"user_permission_grants\".\"connector_slug\" = \"user_permission_grants\".\"connector_ref\""
         }
       },
       "isRLSEnabled": false
@@ -21861,6 +21859,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "first_assistant_event_acknowledged_at": {
+          "name": "first_assistant_event_acknowledged_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
         "summary": {
           "name": "summary",
           "type": "text",
@@ -21870,12 +21874,6 @@
         "trigger_brief": {
           "name": "trigger_brief",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "first_assistant_event_acknowledged_at": {
-          "name": "first_assistant_event_acknowledged_at",
-          "type": "timestamp",
           "primaryKey": false,
           "notNull": false
         }

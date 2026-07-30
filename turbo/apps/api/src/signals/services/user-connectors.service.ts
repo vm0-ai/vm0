@@ -1,7 +1,6 @@
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
-import { connectorSlugCanonicalInsertUserConnectors } from "@vm0/db/compat/connector-slug-canonical-insert";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import {
   orgCustomConnectors,
@@ -618,7 +617,7 @@ export async function updateUserConnectors(
 
     if (operation !== "remove" && enabledConnectorSlugs.length > 0) {
       await tx
-        .insert(connectorSlugCanonicalInsertUserConnectors)
+        .insert(userConnectors)
         .values(
           enabledConnectorSlugs.map((connectorSlug) => {
             return {

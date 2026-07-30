@@ -24,7 +24,6 @@ import type {
   OAuthDeviceAuthCompleteResultBase,
   OAuthDeviceAuthPollResultBase,
 } from "@vm0/connectors/auth-providers/provider-flow-types";
-import { connectorSlugCanonicalInsertOauthDeviceSessions } from "@vm0/db/compat/connector-slug-canonical-insert";
 import { connectorOauthDeviceAuthorizationSessions } from "@vm0/db/schema/connector-oauth-device-authorization-session";
 import { command } from "ccstate";
 import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
@@ -94,7 +93,7 @@ const deviceAuthSessionSelection = Object.freeze({
 
 type DeviceAuthSessionRow = Omit<
   typeof connectorOauthDeviceAuthorizationSessions.$inferSelect,
-  "connectorSlug" | "legacyConnectorType"
+  "connectorSlug"
 > & {
   readonly connectorType: typeof connectorOauthDeviceAuthorizationSessions.$inferSelect.connectorSlug;
 };
@@ -1010,7 +1009,7 @@ export const startConnectorOauthDeviceAuthSession$ = command(
         now,
       });
       return await tx
-        .insert(connectorSlugCanonicalInsertOauthDeviceSessions)
+        .insert(connectorOauthDeviceAuthorizationSessions)
         .values({
           orgId: args.orgId,
           userId: args.userId,
@@ -1030,7 +1029,7 @@ export const startConnectorOauthDeviceAuthSession$ = command(
           expiresAt,
         })
         .returning({
-          id: connectorSlugCanonicalInsertOauthDeviceSessions.id,
+          id: connectorOauthDeviceAuthorizationSessions.id,
         });
     });
     signal.throwIfAborted();

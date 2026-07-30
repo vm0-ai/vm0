@@ -7,7 +7,7 @@
  * that consume an already-connected X account.
  */
 import { createStore } from "ccstate";
-import { connectorSlugCanonicalInsertConnectors } from "@vm0/db/compat/connector-slug-canonical-insert";
+import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 
 import { now } from "../lib/time";
@@ -36,7 +36,7 @@ export async function seedConnectedXConnector(values: {
 }): Promise<void> {
   const db = createStore().set(writeDb$);
   const [connector] = await db
-    .insert(connectorSlugCanonicalInsertConnectors)
+    .insert(connectors)
     .values({
       connectorSlug: "x",
       authMethod: "oauth",
@@ -48,7 +48,7 @@ export async function seedConnectedXConnector(values: {
       oauthScopes: JSON.stringify(["tweet.write", "media.write"]),
       tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
     })
-    .returning({ id: connectorSlugCanonicalInsertConnectors.id });
+    .returning({ id: connectors.id });
   if (!connector) {
     throw new Error("Failed to seed X connector");
   }
