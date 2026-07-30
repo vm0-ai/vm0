@@ -12,7 +12,6 @@ import {
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.Artifacts, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.ImageStyleR2, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.VideoArtifactPosters, {})).toBe(
       true,
@@ -147,7 +146,6 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.SlackDmSessionRouting]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.Artifacts]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ImageStyleR2]).toBe(true);
@@ -185,7 +183,6 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(otherOrgStates[FeatureSwitchKey.SlackDmSessionRouting]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.Artifacts]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ImageStyleR2]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);

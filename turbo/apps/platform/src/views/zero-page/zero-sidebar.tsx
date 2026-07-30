@@ -105,7 +105,6 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     activeKeys: ["artifacts"],
     pathname: "/artifacts",
     icon: IconPackage as NavIcon,
-    featureGate: FeatureSwitchKey.Artifacts,
   },
   {
     id: "activities",

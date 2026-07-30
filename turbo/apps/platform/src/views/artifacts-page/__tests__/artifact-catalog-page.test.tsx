@@ -3,7 +3,6 @@ import {
   artifactCatalogContract,
   type ArtifactSummary,
 } from "@vm0/api-contracts/contracts/artifact-catalog";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -14,12 +13,10 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { i18n, initializeI18n } from "../../../i18n/index.ts";
 import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
-import { pathname } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
-const CATALOG_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const CATALOG_USER_ID = "test-user-artifact-catalog";
 const CATALOG_ORG_ID = "org_artifact_catalog";
 
@@ -35,7 +32,7 @@ function artifact(overrides: Partial<ArtifactSummary> = {}): ArtifactSummary {
   };
 }
 
-function setupArtifactCatalogPage(enabled = true): void {
+function setupArtifactCatalogPage(): void {
   detachedSetupPage({
     context,
     path: "/artifacts",
@@ -43,9 +40,6 @@ function setupArtifactCatalogPage(enabled = true): void {
     org: {
       activeOrg: { id: CATALOG_ORG_ID, name: "Test Org" },
       memberships: [{ id: CATALOG_ORG_ID }],
-    },
-    featureSwitches: {
-      [FeatureSwitchKey.Artifacts]: enabled,
     },
   });
 }
@@ -587,26 +581,6 @@ describe("artifact catalog page", () => {
       expect(detailRequests).toHaveLength(2);
       expect(browser.downloads).toHaveLength(2);
     });
-  });
-
-  it("hides the entry, redirects, and skips the list when disabled", async () => {
-    let requested = false;
-    context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
-      requested = true;
-      return respond(200, { artifacts: [], nextCursor: null });
-    });
-
-    setupArtifactCatalogPage(false);
-
-    await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${CATALOG_AGENT_ID}/chat`);
-    });
-    expect(requested).toBeFalsy();
-    expect(
-      queryAllByRoleFast("link").some((link) => {
-        return link.textContent === "Artifacts";
-      }),
-    ).toBeFalsy();
   });
 
   it("shows the empty state when the catalog has no artifacts", async () => {
