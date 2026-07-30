@@ -139,7 +139,7 @@ function runWhenGoogleDriveReady(params: {
   pageSignal: AbortSignal;
   run: GoogleDriveReadyRun;
   waitForGoogleDriveAuthorization: WaitForGoogleDriveAuthorizationFn;
-  description: string;
+  operation: string;
 }): void {
   if (!params.agentId) {
     toast.error(
@@ -159,7 +159,7 @@ function runWhenGoogleDriveReady(params: {
       await params.run();
     })(),
     Reason.DomCallback,
-    params.description,
+    params.operation,
   );
 }
 
@@ -171,7 +171,7 @@ function startGoogleDriveConnectAndRun(params: {
   pageSignal: AbortSignal;
   run: GoogleDriveReadyRun;
   waitForGoogleDriveAuthorization: WaitForGoogleDriveAuthorizationFn;
-  description: string;
+  operation: string;
 }): void {
   if (!params.agentId) {
     toast.error(
@@ -246,7 +246,7 @@ function startGoogleDriveConnectAndRun(params: {
     pageSignal: params.pageSignal,
     run: params.run,
     waitForGoogleDriveAuthorization: params.waitForGoogleDriveAuthorization,
-    description: params.description,
+    operation: params.operation,
   });
 }
 
@@ -255,7 +255,7 @@ function authorizeGoogleDriveAndRun(params: {
   pageSignal: AbortSignal;
   run: GoogleDriveReadyRun;
   waitForGoogleDriveAuthorization: WaitForGoogleDriveAuthorizationFn;
-  description: string;
+  operation: string;
 }): void {
   runWhenGoogleDriveReady({ ...params, authorizeConnected: true });
 }
@@ -406,19 +406,19 @@ function useGoogleDriveAvailability(
 }
 
 function GoogleDriveDisabledMenuItem({
-  label,
+  kind,
   muted = false,
 }: {
-  label: "connect" | "synced" | "upload";
+  kind: "connect" | "synced" | "upload";
   muted?: boolean;
 }) {
   const { t } = useTranslation();
   const text =
-    label === "connect"
+    kind === "connect"
       ? t(($) => {
           return $.artifacts.googleDrive.connect;
         })
-      : label === "synced"
+      : kind === "synced"
         ? t(($) => {
             return $.artifacts.googleDrive.synced;
           })
@@ -458,17 +458,17 @@ function GoogleDriveMenuItem({
   );
 
   if (!syncTarget) {
-    return <GoogleDriveDisabledMenuItem label="upload" />;
+    return <GoogleDriveDisabledMenuItem kind="upload" />;
   }
 
   if (syncTarget.synced) {
-    return <GoogleDriveDisabledMenuItem label="synced" />;
+    return <GoogleDriveDisabledMenuItem kind="synced" />;
   }
 
   if (!connectorListLoaded) {
     return (
       <GoogleDriveDisabledMenuItem
-        label={syncTarget.disconnected ? "connect" : "upload"}
+        kind={syncTarget.disconnected ? "connect" : "upload"}
         muted={syncTarget.disconnected}
       />
     );
@@ -499,7 +499,7 @@ function GoogleDriveMenuItem({
         pageSignal,
         run,
         waitForGoogleDriveAuthorization,
-        description: "artifact google drive authorize sync",
+        operation: "artifact google drive authorize sync",
       });
       return;
     }
@@ -514,7 +514,7 @@ function GoogleDriveMenuItem({
       pageSignal,
       run,
       waitForGoogleDriveAuthorization,
-      description: "artifact google drive connect sync",
+      operation: "artifact google drive connect sync",
     });
   };
 
@@ -621,7 +621,7 @@ function setArtifactDownloadMenuOpen(params: {
 
 function startArtifactDownloadWithCleanup(params: {
   readonly closeMenu: () => void;
-  readonly description: string;
+  readonly operation: string;
   readonly download: Promise<void>;
   readonly downloadKey: string;
   readonly finish: (key: string) => void;
@@ -634,7 +634,7 @@ function startArtifactDownloadWithCleanup(params: {
       params.finish(params.downloadKey);
     }),
     Reason.DomCallback,
-    params.description,
+    params.operation,
   );
 }
 
@@ -719,7 +719,7 @@ export function ArtifactDownloadMenu({
           onClick={() => {
             startArtifactDownloadWithCleanup({
               closeMenu,
-              description: "artifact download",
+              operation: "artifact download",
               download: downloadAttachmentUrl(url, pageSignal, downloadName),
               downloadKey: artifactDownloadKey,
               finish: finishArtifactDownload,

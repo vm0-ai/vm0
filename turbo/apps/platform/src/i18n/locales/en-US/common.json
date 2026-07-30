@@ -1,5 +1,37 @@
 {
   "activity": {
+    "codex": {
+      "codexError": "Codex error",
+      "commandStatus": "Command {{status}}",
+      "error": "Error: {{error}}",
+      "fileChangeKind": "change",
+      "fileOperationCompleted": "File operation completed",
+      "fileOperationStatus": "File operation {{status}}",
+      "fileReadCompleted": "File read completed",
+      "fileReadStatus": "File read {{status}}",
+      "filesChanged": "[files] Files changed:",
+      "genericEvent": "Codex {{eventType}}",
+      "genericItem": "Codex {{label}} ({{details}}){{suffix}}",
+      "idDetail": "id: {{id}}",
+      "item": "item",
+      "moreChanges_one": "- ... +{{count}} more change",
+      "moreChanges_other": "- ... +{{count}} more changes",
+      "moreSteps_one": "- ... +{{count}} more step",
+      "moreSteps_other": "- ... +{{count}} more steps",
+      "planPrefix": "[plan]",
+      "planStatus": {
+        "completed": "completed",
+        "inProgress": "in progress",
+        "pending": "pending",
+        "step": "step"
+      },
+      "status": "Status: {{status}}",
+      "statusDetail": "status: {{status}}",
+      "turnFailed": "Turn failed",
+      "turnStatus": "Turn {{status}}",
+      "warning": "[warning] {{message}}",
+      "warningFallback": "Codex warning"
+    },
     "context": {
       "artifact": "Artifact",
       "environmentMapping": "Environment Mapping",
@@ -127,6 +159,8 @@
       "inputTokens": "in: {{formattedCount}}",
       "models_one": "{{formattedCount}} model",
       "models_other": "{{formattedCount}} models",
+      "moreItems_one": "... {{count}} more item",
+      "moreItems_other": "... {{count}} more items",
       "nameLabel": "name:",
       "outputTokens": "out: {{formattedCount}}",
       "remainingLines_one": "+{{formattedCount}} line",
@@ -142,8 +176,10 @@
       "toolFailed": "{{toolName}} failed",
       "tools_one": "tool",
       "tools_other": "tools",
+      "truncated": "truncated",
       "turns_one": "{{formattedCount}} turn",
-      "turns_other": "{{formattedCount}} turns"
+      "turns_other": "{{formattedCount}} turns",
+      "unknownTool": "Unknown"
     },
     "inspect": {
       "contextUnavailable": {
@@ -185,6 +221,9 @@
       "title": "Activity"
     },
     "network": {
+      "actions": {
+        "block": "BLOCK"
+      },
       "browser": "browser",
       "capture": {
         "binaryData": "[Binary data, {{size}} base64-encoded]",
@@ -384,6 +423,7 @@
         "warmingNeurons": "Warming up the neurons..."
       }
     },
+    "logoAlt": "VM0",
     "metadata": {
       "description": "Zero is your AI coworker from vm0. Text Zero or chat on the web — research, email, docs, Slack, GitHub, Notion, and 100+ tools.",
       "title": "Zero — Your AI coworker from vm0"
@@ -512,6 +552,12 @@
       "kindIcon": "{{kind}} artifact",
       "loading": "Loading artifacts"
     },
+    "fileBadges": {
+      "artwork": "ART",
+      "audio": "AUD",
+      "file": "FILE",
+      "video": "VID"
+    },
     "googleDrive": {
       "agentLoading": "Agent is still loading",
       "connect": "Connect Google Drive",
@@ -567,6 +613,7 @@
         "video": "video"
       },
       "siteLabel": "Site preview for {{title}}",
+      "slideTitle": "Slide {{number}}",
       "unavailable": "{{kind}} preview unavailable.",
       "videoLabel": "Video preview for {{filename}}"
     },
@@ -608,6 +655,27 @@
       "slideThumbnail": "{{title}} slide {{slideNumber}} preview",
       "template": "Template",
       "theme": "Theme",
+      "themeNames": {
+        "bauhausPrimary": "Toy bricks",
+        "berryPop": "Raspberry soda",
+        "carnival": "Funfair",
+        "citrusFresh": "Orange juice",
+        "coralStudio": "Peach studio",
+        "forestEditorial": "Moss library",
+        "goldLuxe": "Award night",
+        "mauveDusk": "Lavender dusk",
+        "midnightMono": "Night run",
+        "mintTech": "Mint lab",
+        "monoInk": "Newsprint red",
+        "nordicFrost": "Ice lake",
+        "oceanDeep": "Deep dive",
+        "popArt": "Neon arcade",
+        "prism": "Candy party",
+        "slateCorporate": "Boardroom blue",
+        "sunsetMaroon": "Sunset glow",
+        "terracottaClay": "Clay pot",
+        "warmSand": "Morning paper"
+      },
       "tryDifferentSearch": "Try a different search.",
       "use": "Use",
       "useThisTemplate": "Use this template",
@@ -1025,6 +1093,7 @@
       "imageUnavailable": "[Image unavailable: {{filename}}]",
       "importing": "Importing attachment",
       "invalidLink": "Enter a valid link",
+      "linkPlaceholder": "https://example.com/image.png",
       "loadingFile": "Loading {{filename}}",
       "previewFile": "Preview {{filename}}",
       "supportedTypes": "Images, docs, audio, video, and archives",
@@ -1234,6 +1303,8 @@
       "sourcePartsHeading_other": "Feedback on {{count}} parts of {{description}}:"
     },
     "mail": {
+      "bcc": "bcc",
+      "cc": "cc",
       "closeDetails": "Close email details",
       "deleted": "This draft was deleted.",
       "deletedEmail": "Deleted email: {{subject}}",
@@ -1273,12 +1344,20 @@
       "toRecipients": "To: {{recipients}}",
       "unavailable": "This email is no longer available."
     },
+    "messageDocument": {
+      "agent": "[Agent: {{name}}]",
+      "chatThread": "[Chat thread: {{title}}]",
+      "file": "[File: {{filename}}]",
+      "template": "[Template: {{title}}]"
+    },
     "newChat": "New chat",
     "origins": {
+      "feishu": "Feishu",
       "openChat": "Open chat",
       "openFeishuChat": "Open original chat in Feishu",
       "openMessage": "Open message",
-      "openSlackMessage": "Open original message in Slack"
+      "openSlackMessage": "Open original message in Slack",
+      "slack": "Slack"
     },
     "permissions": {
       "actionDescription": "{{action}} {{permissionName}}",
@@ -1301,6 +1380,7 @@
       "updated": "Permissions updated",
       "updateFailed": "Couldn't update permissions"
     },
+    "promptDocumentTitle": "Prompt",
     "queue": {
       "aboutAutomationEvent": "About this automation event",
       "aboutGoal": "About this goal",
@@ -1537,6 +1617,7 @@
       "failedTitle": "Couldn’t connect {{connector}}",
       "finishing": "Finishing the secure connection",
       "genericLabel": "Connector",
+      "githubLabel": "GitHub",
       "invalidUrl": "Invalid connector callback URL.",
       "success": "Connected"
     },
@@ -1773,7 +1854,8 @@
         "created": "Created \"{{connector}}\"",
         "deleted": "Custom connector deleted",
         "disconnected": "Disconnected",
-        "renamed": "Renamed to \"{{connector}}\""
+        "renamed": "Renamed to \"{{connector}}\"",
+        "updated": "Updated \"{{connector}}\""
       },
       "updateConfirm": {
         "action": "Save and disconnect",
@@ -1785,6 +1867,7 @@
       "configure": "Configure {{connector}}",
       "descriptionAgent": "Saving will connect your values and authorize {{agent}}.",
       "descriptionUser": "Saving will connect this custom connector for your account.",
+      "documentTitle": "Configure custom connector",
       "invalid": "This custom connector proposal link is invalid or expired.",
       "requestScope": "Request scope",
       "returnToChat": "Return to the chat and reply ACK so the agent can verify the connector.",
@@ -1796,6 +1879,8 @@
     "directed": {
       "authorizeAgent": "Authorize {{agent}}",
       "authorized": "{{connector}} authorized",
+      "authorizeDocumentTitle": "Authorize {{connector}}",
+      "connectDocumentTitle": "Connect {{connector}}",
       "connected": "{{connector}} connected",
       "needsConnector": "{{agent}} needs {{connector}} to proceed",
       "reconnecting": "Reconnecting..."
@@ -1853,6 +1938,7 @@
         "back": "Back to {{brandName}}",
         "connectDescription": "Link this phone number to your {{brandName}} account so you can interact with Zero from text messages.",
         "connectTitle": "Connect phone number",
+        "documentTitle": "Connect Messages",
         "errorFallback": "We couldn't connect this phone number. Try again from your text messages.",
         "incompleteDescription": "Open a fresh /connect link from your text messages.",
         "incompleteTitle": "Connect link is incomplete",
@@ -1928,6 +2014,7 @@
         "connectTitle": "Connect Microsoft Teams",
         "invalidDescription": "This page is meant to be opened from a Microsoft Teams connect link.",
         "open": "Open Teams",
+        "providerName": "Microsoft Teams",
         "successDescription": "You are connected to {{team}}. Mention @Zero in Teams to start chatting.",
         "successTitle": "Connected to Microsoft Teams"
       },
@@ -1937,6 +2024,7 @@
         "alreadyTitle": "Already connected to Telegram",
         "back": "Back to Telegram settings",
         "botFallback": "this bot",
+        "botFatherHandle": "@BotFather",
         "checkingConnectionDescription": "Please wait while we check your Telegram connection.",
         "checkingConnectionTitle": "Checking connection...",
         "checkingDomain": "Checking domain status...",
@@ -1961,6 +2049,7 @@
         "open": "Open Telegram",
         "openBotFather": "Open BotFather",
         "refresh": "Refresh this page and try again.",
+        "setDomainCommand": "/setdomain",
         "signInButton": "Sign in to {{brandName}}",
         "signInCheckFailed": "Couldn't check sign-in",
         "signInDescription": "Use your {{brandName}} account before connecting this Telegram user.",
@@ -2090,6 +2179,7 @@
         "defaultAgentAria": "Default agent for {{appId}}",
         "developerConsole": "Feishu developer console",
         "dialogAdminRequired": "An organization admin must configure the app. You can connect your own account from the Feishu bot list after setup is complete.",
+        "documentTitle": "Feishu",
         "emptyAdmin": "Add a custom app to route Feishu messages to an agent.",
         "emptyMember": "Ask an organization admin to add a Feishu bot.",
         "emptyTitle": "No Feishu bots yet",
@@ -2220,6 +2310,7 @@
         "botFallback": "Telegram bot",
         "bots": "Telegram bots",
         "botToken": "Bot token",
+        "botTokenPlaceholder": "123456:ABC-DEF",
         "checking": "Checking...",
         "copied": "copied!",
         "copyAria": "Copy {{value}}",
@@ -2231,6 +2322,7 @@
         },
         "defaultAgent": "Default agent",
         "disconnectAria": "Disconnect {{bot}}",
+        "documentTitle": "Telegram",
         "domain": {
           "detected": "Domain detected",
           "instructionAfter": ", choose this bot, and set the domain to ",
@@ -2331,6 +2423,7 @@
   },
   "global": {
     "errors": {
+      "httpStatus": "HTTP {{status}}",
       "requestFailed": "Request failed"
     },
     "realtime": {
@@ -3854,10 +3947,18 @@
       "settings": "Settings",
       "signOut": "Sign out",
       "subscriptions": {
+        "providers": {
+          "claudeCode": "Claude Code",
+          "codex": "Codex"
+        },
         "reset": "Reset",
         "resetTimeUnavailable": "Reset time unavailable",
         "usage": "{{provider}} usage",
-        "usageRemaining": "{{provider}} {{window}} remaining"
+        "usageRemaining": "{{provider}} {{window}} remaining",
+        "windows": {
+          "fiveHour": "5h",
+          "week": "week"
+        }
       },
       "switchAccount": "Switch account",
       "userFallback": "User"
@@ -4042,6 +4143,7 @@
         "status": {
           "connected": "Connected",
           "connectedWithDetail": "Connected ({{detail}})",
+          "fiveHour": "5h",
           "left": "{{percent}} left",
           "stale": "Attention",
           "week": "Week"
@@ -4066,6 +4168,11 @@
         },
         "prioritizeSpeed": "Prioritize speed",
         "pro": "Pro",
+        "providerLabels": {
+          "azureFoundryPortal": "Azure foundry portal",
+          "claudeCodeOauth": "Claude Code (OAuth token)",
+          "deepseek": "Deepseek"
+        },
         "runSpeed": "Run speed",
         "standard": "Standard"
       },
@@ -4168,6 +4275,10 @@
       "language": {
         "description": "Choose your preferred language for the {{brandName}} interface",
         "label": "Language",
+        "options": {
+          "english": "English",
+          "portugueseBrazil": "Português (Brasil)"
+        },
         "title": "Language"
       },
       "morningBrief": {
@@ -4398,6 +4509,16 @@
       "title": "Chats",
       "untitled": "(untitled)"
     },
+    "displayNames": {
+      "auto": "Auto",
+      "finance": "Finance",
+      "maps": "Maps",
+      "peopleSearch": "People Search",
+      "usage": "Usage",
+      "weather": "Weather",
+      "webFetch": "Web Fetch",
+      "webSearch": "Web Search"
+    },
     "kinds": {
       "connector": "Connectors",
       "image": "Images",
@@ -4466,6 +4587,7 @@
         "addDescriptionUpdated": "Run this workflow when a Google Calendar event is updated.",
         "addTitle": "Add Google Calendar automation",
         "calendarId": "Calendar ID",
+        "calendarIdPlaceholder": "primary",
         "cancelledDescription": "Run when a calendar event is cancelled.",
         "cancelledRule": "When calendar {{calendar}} event is cancelled",
         "cancelledTitle": "Google Calendar event cancelled",
@@ -4486,6 +4608,7 @@
         "anyStatus": "Any finish status",
         "patternHint": "Optional * wildcard matched against the run's final reply. Leave empty to match any output.",
         "patternLabel": "Output pattern",
+        "patternPlaceholder": "*deploy failed*",
         "runFinishedDescription": "Run when a run in one of your chat threads finishes.",
         "runFinishedTitle": "Chat run finished",
         "statusCancelled": "Cancelled",
@@ -4534,6 +4657,7 @@
         "actorAnyone": "Anyone",
         "actorMe": "Me",
         "actors": "Actors",
+        "actorsPlaceholder": "octocat, dependabot[bot]",
         "addLabelAction": "Add label automation",
         "addLabelAria": "Add GitHub label automation",
         "addLabelDescription": "Run this workflow when a GitHub label is applied.",
@@ -4559,14 +4683,19 @@
         "anyReviewState": "Any review state",
         "anyWorkflow": "Any workflow",
         "apps": "GitHub Apps",
+        "appsPlaceholder": "vercel, 12345",
+        "authorsPlaceholder": "octocat, e7h4n",
         "authorsSummary": "Authors {{values}}",
         "aWorkflow": "a GitHub workflow",
         "baseBranches": "Base branches",
         "branches": "Branches",
+        "branchesPlaceholder": "main, release",
         "commentPrefixes": "Comment prefixes",
+        "commentPrefixesPlaceholder": "/zero, /verify, /deploy",
         "conclusions": "Conclusions",
         "conclusionsSummary": "Conclusions {{values}}",
         "creators": "Creators",
+        "creatorsPlaceholder": "octocat, 12345",
         "deploymentStates": "Deployment states",
         "deploymentStatesSummary": "Deployment states {{values}}",
         "deploymentStatusDescription": "Run when a matching deployment status is created.",
@@ -4576,10 +4705,13 @@
         "editWebhookFilters": "Edit {{title}} filters",
         "editWorkflowFilters": "Edit GitHub workflow filters",
         "environments": "Environments",
+        "environmentsPlaceholder": "Preview, Production",
         "environmentsSummary": "Environments {{values}}",
         "events": "Triggering events",
+        "eventsPlaceholder": "push, pull_request, workflow_dispatch",
         "filterHelp": "Leave a filter empty to match any value. Separate multiple values with commas.",
         "headBranches": "Head branches",
+        "headBranchesPlaceholder": "feature/, dependabot/",
         "installAdminRequired": "Ask an organization admin to install it.",
         "installApp": "Install GitHub App",
         "installedRequired": "GitHub is not installed for this workspace.",
@@ -4589,12 +4721,14 @@
         "issuesAndPullRequests": "Issues and pull requests",
         "issuesOnly": "Issues only",
         "jobs": "Jobs",
+        "jobsPlaceholder": "test, build",
         "jobsSummary": "Jobs {{values}}",
         "labelAppliedDescription": "Run when an issue or pull request gets a label.",
         "labelAppliedRule": "When GitHub label {{label}} is applied",
         "labelAppliedTitle": "GitHub label applied",
         "labelName": "Label name",
         "labelOnlySummary": "Label {{label}}",
+        "labelPlaceholder": "triage",
         "labelSummary": "Label {{label}} · {{subject}} · Actor {{actor}}",
         "loadError": "GitHub settings could not be loaded.",
         "nonProductionOnly": "Non-production only",
@@ -4622,14 +4756,18 @@
         "productionOnly": "Production only",
         "pullRequestsOnly": "Pull requests only",
         "refs": "Refs",
+        "refsPlaceholder": "main, v1.0.0",
         "repositories": "Repositories",
+        "repositoriesPlaceholder": "vm0-ai/vm0, owner/another-repo",
         "repositoriesSummary": "Repositories {{values}}",
         "reviewDescription": "Run when a matching review is submitted.",
         "reviewRule": "When a matching GitHub pull request review is submitted",
         "reviewStates": "Review states",
         "reviewTitle": "GitHub pull request review submitted",
         "runnerGroups": "Runner groups",
+        "runnerGroupsPlaceholder": "Default, production",
         "runnerLabels": "Runner labels",
+        "runnerLabelsPlaceholder": "self-hosted, linux",
         "saveFilters": "Save filters",
         "selectNoneAny": "Select none to match any value.",
         "selectNoneConclusion": "Select none to match any completed conclusion.",
@@ -4647,6 +4785,8 @@
         "workflowRunRule": "When {{workflows}} completes{{conclusions}}",
         "workflowRunTitle": "GitHub workflow completed",
         "workflows": "GitHub workflows",
+        "workflowsPlaceholder": "Turbo, .github/workflows/release.yml",
+        "workflowsShortPlaceholder": "Turbo, release",
         "workflowsSummary": "Workflows {{values}}"
       },
       "gmail": {
@@ -4677,6 +4817,7 @@
         "labelAppliedRule": "When Gmail label {{label}} is applied",
         "labelAppliedTitle": "Gmail label applied",
         "labelName": "Label name",
+        "labelPlaceholder": "Support",
         "labelSummary": "Label {{label}}",
         "messageMatchesRule": "When Gmail message matches {{summary}}",
         "newMessageDescription": "Run this workflow from matching email.",
@@ -4737,11 +4878,13 @@
         "databaseUpdatedRule": "When Notion database {{title}} item content is updated",
         "databaseUpdatedRuleGeneric": "When Notion database item content is updated",
         "databaseUrl": "Database URL",
+        "databaseUrlPlaceholder": "https://www.notion.so/...",
         "page": "Page",
         "pageSummary": "Page {{title}}",
         "pageUpdatedRule": "When Notion page {{title}} content is updated",
         "pageUpdatedRuleGeneric": "When a Notion page content is updated",
         "pageUrl": "Page URL",
+        "pageUrlPlaceholder": "https://www.notion.so/workspace/Page-title-...",
         "parentPageSummary": "Parent page {{title}}",
         "parentPageUrl": "Parent page URL",
         "scope": "Scope"
@@ -4814,14 +4957,26 @@
         "connectFirst": "Connect a Strapi instance before creating this automation.",
         "contentType": "Content type UID (optional)",
         "contentTypeAny": "Any content type",
+        "contentTypePlaceholder": "api::article.article",
         "entryPublishedDescription": "Run after a matching Strapi entry is published.",
         "entryPublishedTitle": "Strapi entry published",
         "instance": "Strapi instance",
         "locale": "Locale (optional)",
         "localeAny": "Any locale",
         "localeHint": "Leave locale blank to combine all localized publish events for the same document into one workflow run.",
+        "localePlaceholder": "en",
         "localeSummary": "Locale {{locale}}",
         "rule": "When a matching Strapi entry is published"
+      },
+      "types": {
+        "chat": "Chat",
+        "github": "GitHub",
+        "gmail": "Gmail",
+        "googleCalendar": "Google Calendar",
+        "googleMeet": "Google Meet",
+        "notion": "Notion",
+        "strapi": "Strapi",
+        "webhook": "Webhook"
       },
       "webhook": {
         "addDescription": "Create a signed endpoint for this workflow.",
@@ -4950,6 +5105,7 @@
         "instructionPlaceholder": "Write workflow instructions...",
         "instructions": "instructions",
         "noContent": "No content available for this file.",
+        "sizeBytes": "{{size}} B",
         "upload": "Upload text files",
         "uploadAria": "Upload workflow files"
       },
@@ -4969,6 +5125,7 @@
         "saved": "Workflow saved",
         "slug": "Slug",
         "slugHelp": "Lowercase letters, numbers, and - only. Use {{command}} in chat to use this workflow.",
+        "slugPlaceholder": "workflow-slug",
         "slugTitle": "Use lowercase letters, numbers, and hyphens only",
         "visibility": "Visibility",
         "visibilityHelp": "Choose how this workflow is shared inside your workspace."
@@ -5068,11 +5225,13 @@
       "description": "Team communication and collaboration",
       "install": "Install to Slack",
       "permissionsUpdated": "Slack permissions have been updated",
+      "title": "Slack",
       "uninstallDescription": "This will remove the Slack integration for your entire workspace. All connected users will be disconnected and {{displayName}} will no longer respond to messages or mentions in Slack. This action cannot be undone.",
       "uninstallTitle": "Uninstall Slack integration?"
     },
     "strapi": {
-      "description": "Automate work when entries are published"
+      "description": "Automate work when entries are published",
+      "title": "Strapi"
     },
     "teams": {
       "adminInstall": "Ask your admin to install the Microsoft Teams integration",
@@ -5083,13 +5242,15 @@
       "install": "Install in Teams",
       "moreOptions": "More Microsoft Teams options",
       "permissionsUpdated": "Microsoft Teams permissions have been updated",
+      "title": "Microsoft Teams",
       "uninstall": "Uninstall Microsoft Teams",
       "uninstallDescription": "This removes the Microsoft Teams integration from {{brandName}} for your workspace. All connected users will be disconnected and {{displayName}} will no longer respond to Teams messages for this workspace until an admin reconnects it.",
       "uninstallTitle": "Uninstall Microsoft Teams integration?"
     },
     "telegram": {
       "description": "Route Telegram messages to agents",
-      "openSettings": "Open Telegram settings"
+      "openSettings": "Open Telegram settings",
+      "title": "Telegram"
     }
   }
 }

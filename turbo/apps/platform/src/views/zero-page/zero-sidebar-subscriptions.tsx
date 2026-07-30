@@ -54,6 +54,7 @@ export function AccountMenuSubscriptionsPanel({
   readonly onResetCodexUsage?: (resetCredits: number | null) => void;
   readonly resetPending?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <div data-testid="account-menu-subscriptions" className="px-3 py-2.5">
       {loading && rows.length === 0 ? (
@@ -62,12 +63,22 @@ export function AccountMenuSubscriptionsPanel({
         <TooltipProvider delayDuration={100}>
           <div className="flex flex-col gap-2.5">
             {rows.map((row, index) => {
+              const label =
+                row.type === "codex-oauth-token"
+                  ? t(($) => {
+                      return $.settings.accountMenu.subscriptions.providers
+                        .codex;
+                    })
+                  : t(($) => {
+                      return $.settings.accountMenu.subscriptions.providers
+                        .claudeCode;
+                    });
               return (
                 <AccountMenuSubscriptionProviderSection
                   key={row.type}
                   divided={index > 0}
                   type={row.type}
-                  label={row.label}
+                  label={label}
                   usage={row.usage}
                   resetCredits={row.resetCredits}
                   resetPending={resetPending}
@@ -90,10 +101,10 @@ function AccountMenuSubscriptionsSkeleton() {
           <div key={provider.type} className="flex flex-col gap-1.5">
             {index > 0 && <div className="-mx-3 h-px bg-border" />}
             <div className="h-3 w-20 animate-pulse rounded bg-muted/60" />
-            {["5h", "week"].map((label) => {
+            {["fiveHour", "week"].map((kind) => {
               return (
                 <div
-                  key={label}
+                  key={kind}
                   className="grid grid-cols-[34px_minmax(0,1fr)_34px] items-center gap-1.5"
                 >
                   <div className="h-2.5 animate-pulse rounded bg-muted/60" />
@@ -150,10 +161,18 @@ function AccountMenuSubscriptionProviderSection({
         {label}
       </h3>
       <div className="flex flex-col gap-1">
-        {windows.map(({ label: windowLabel, window }) => {
+        {windows.map(({ kind, window }) => {
+          const windowLabel =
+            kind === "fiveHour"
+              ? t(($) => {
+                  return $.settings.accountMenu.subscriptions.windows.fiveHour;
+                })
+              : t(($) => {
+                  return $.settings.accountMenu.subscriptions.windows.week;
+                });
           return (
             <AccountMenuSubscriptionUsageBar
-              key={windowLabel}
+              key={kind}
               providerLabel={label}
               windowLabel={windowLabel}
               window={window}

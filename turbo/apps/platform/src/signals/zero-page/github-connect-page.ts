@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
+import { i18n } from "../../i18n/index.ts";
 import { capturePlausibleEvent } from "../../lib/plausible.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
@@ -23,7 +24,12 @@ export const setupGithubConnectPage$ = command(
     });
 
     set(updatePage$, createElement(ZeroGithubConnectPage));
-    set(updateDocumentTitle$, "Connect GitHub");
+    set(
+      updateDocumentTitle$,
+      i18n.t(($) => {
+        return $.connectors.providerConnect.github.connectTitle;
+      }),
+    );
     await set(hideAppSkeleton$, signal);
   },
 );

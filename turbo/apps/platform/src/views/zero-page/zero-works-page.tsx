@@ -280,7 +280,11 @@ function SlackCard({ displayName }: { displayName: string }) {
             <img src={slackIconImg} alt="" className="h-7 w-7 scale-[2.2]" />
           </div>
           <div className="flex flex-1 flex-col gap-1 min-w-0">
-            <div className="text-sm font-medium text-foreground">Slack</div>
+            <div className="text-sm font-medium text-foreground">
+              {t(($) => {
+                return $.works.slack.title;
+              })}
+            </div>
             <div className="text-sm text-muted-foreground">
               {!isInstalled && !isAdmin
                 ? t(($) => {
@@ -622,7 +626,9 @@ function TeamsCard({ displayName }: { displayName: string }) {
           </div>
           <div className="flex flex-1 flex-col gap-1 min-w-0">
             <div className="text-sm font-medium text-foreground">
-              Microsoft Teams
+              {t(($) => {
+                return $.works.teams.title;
+              })}
             </div>
             <div className="text-sm text-muted-foreground">{description}</div>
           </div>
@@ -727,7 +733,9 @@ function TelegramCard() {
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="flex min-w-0 items-center gap-2">
             <div className="truncate text-sm font-medium text-foreground">
-              Telegram
+              {t(($) => {
+                return $.works.telegram.title;
+              })}
             </div>
           </div>
           <div className="truncate text-sm text-muted-foreground">
@@ -760,7 +768,9 @@ function StrapiCard() {
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="truncate text-sm font-medium text-foreground">
-            Strapi
+            {t(($) => {
+              return $.works.strapi.title;
+            })}
           </div>
           <div className="truncate text-sm text-muted-foreground">
             {t(($) => {

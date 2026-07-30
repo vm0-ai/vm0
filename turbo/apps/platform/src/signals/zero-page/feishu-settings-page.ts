@@ -2,6 +2,7 @@ import { command } from "ccstate";
 import { createElement } from "react";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
+import { i18n } from "../../i18n/index.ts";
 import { ZeroFeishuSettingsPage } from "../../views/zero-page/feishu-card.tsx";
 import { ZeroFeishuConnectPage } from "../../views/zero-page/zero-feishu-connect-page.tsx";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
@@ -36,7 +37,12 @@ export const setupFeishuSettingsPage$ = command(
 
     if (isAccountConnect) {
       set(updatePage$, createElement(ZeroFeishuConnectPage));
-      set(updateDocumentTitle$, "Connect Feishu");
+      set(
+        updateDocumentTitle$,
+        i18n.t(($) => {
+          return $.connectors.providerConnect.feishu.connectTitle;
+        }),
+      );
       await set(hideAppSkeleton$, signal);
       return;
     }
@@ -45,7 +51,12 @@ export const setupFeishuSettingsPage$ = command(
     set(reloadFeishuInstallations$);
     set(showFeishuSettingsResult$);
     set(updatePage$, createElement(ZeroFeishuSettingsPage), "sidebar");
-    set(updateDocumentTitle$, "Feishu");
+    set(
+      updateDocumentTitle$,
+      i18n.t(($) => {
+        return $.connectors.providerSettings.feishu.documentTitle;
+      }),
+    );
 
     await Promise.all([
       set(hideAppSkeleton$, signal),
