@@ -3597,7 +3597,9 @@ describe("CHAT-02: run-level model overrides", () => {
               apiBaseUrl: "https://gateway.example.com/anthropic",
               authHeaderName: "Authorization",
               authHeaderTemplate: "Bearer {{secret}}",
-              modelMappings: {},
+              modelMappings: {
+                "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
+              },
             },
           ],
         },
