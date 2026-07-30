@@ -206,7 +206,7 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
       [200],
     );
     expect(list.body.connectors).not.toContainEqual(
-      expect.objectContaining({ type: connectorSlug }),
+      expect.objectContaining({ slug: connectorSlug }),
     );
   });
 
@@ -246,7 +246,7 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
     );
 
     expect(response.body).toMatchObject({
-      type: "openai",
+      slug: "openai",
       authMethod: "api-token",
     });
     expect(typeof response.body.id).toBe("string");
@@ -254,7 +254,7 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
     expect(response.body.updatedAt).not.toBe("1970-01-01T00:00:00.000Z");
     const stored = await readConnector(fixture, "openai");
     expect(stored.body).toMatchObject({
-      type: "openai",
+      slug: "openai",
       authMethod: "api-token",
       connectionStatus: "connected",
     });
@@ -281,7 +281,7 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
     );
 
     expect(response.body).toMatchObject({
-      type: "zendesk",
+      slug: "zendesk",
       authMethod: "api-token",
       connectionStatus: "connected",
     });
@@ -441,7 +441,7 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
     );
 
     expect(response.body).toMatchObject({
-      type: "insforge",
+      slug: "insforge",
       authMethod: "api-token",
       connectionStatus: "connected",
     });
@@ -469,7 +469,7 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
     );
 
     expect(response.body).toMatchObject({
-      type: "lark",
+      slug: "lark",
       authMethod: "api-token",
       connectionStatus: "connected",
       reconnectReason: null,
@@ -595,7 +595,7 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
 
     const stored = await readConnector(fixture, "gitlab");
     expect(stored.body).toMatchObject({
-      type: "gitlab",
+      slug: "gitlab",
       authMethod: "api-token",
       connectionStatus: "connected",
     });
@@ -738,7 +738,7 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
     );
 
     expect(response.body).toMatchObject({
-      type: "bentoml",
+      slug: "bentoml",
       authMethod: "api-token",
       connectionStatus: "connected",
     });
@@ -780,7 +780,7 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
     expect(context.mocks.ably.publish).toHaveBeenCalledTimes(1);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "connector:changed",
-      { connectorRef: "openai", connectorSlug: "openai" },
+      { connectorSlug: "openai" },
     );
   });
 
@@ -807,7 +807,7 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
     );
 
     expect(response.body).toMatchObject({
-      type: "bentoml",
+      slug: "bentoml",
       authMethod: "api-token",
     });
   });

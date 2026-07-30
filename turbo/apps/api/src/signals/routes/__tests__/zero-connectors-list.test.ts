@@ -84,10 +84,7 @@ describe("GET /api/zero/connectors", () => {
     );
 
     expect(response.body.connectors).toStrictEqual([]);
-    expect(Array.isArray(response.body.configuredTypes)).toBeTruthy();
-    expect(response.body.configuredConnectorSlugs).toStrictEqual(
-      response.body.configuredTypes,
-    );
+    expect(Array.isArray(response.body.configuredConnectorSlugs)).toBeTruthy();
     expect(Array.isArray(response.body.connectorProvidedBindings)).toBeTruthy();
   });
 
@@ -101,15 +98,15 @@ describe("GET /api/zero/connectors", () => {
       client.list({ headers: authHeaders() }),
       [200],
     );
-    expect(nonStaff.body.configuredTypes).not.toContain("aws");
-    expect(nonStaff.body.configuredTypes).toContain("nintendo-store");
-    expect(nonStaff.body.configuredTypes).toContain(
+    expect(nonStaff.body.configuredConnectorSlugs).not.toContain("aws");
+    expect(nonStaff.body.configuredConnectorSlugs).toContain("nintendo-store");
+    expect(nonStaff.body.configuredConnectorSlugs).toContain(
       "nintendo-switch-parental-controls",
     );
 
     mocks.clerk.session(fixture.userId, STAFF_ORG_ID);
     const staff = await accept(client.list({ headers: authHeaders() }), [200]);
-    expect(staff.body.configuredTypes).toContain("aws");
+    expect(staff.body.configuredConnectorSlugs).toContain("aws");
   });
 
   it("returns connectors created through the connector API", async () => {
@@ -126,7 +123,6 @@ describe("GET /api/zero/connectors", () => {
 
     expect(response.body.connectors).toContainEqual(
       expect.objectContaining({
-        type: "gitlab",
         slug: "gitlab",
         authMethod: "api-token",
         connectionStatus: "connected",
@@ -134,7 +130,6 @@ describe("GET /api/zero/connectors", () => {
     );
     expect(response.body.connectorProvidedBindings).toContainEqual(
       expect.objectContaining({
-        connectorType: "gitlab",
         connectorSlug: "gitlab",
         namespace: "secrets",
         name: "GITLAB_TOKEN",

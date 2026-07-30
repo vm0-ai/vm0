@@ -58,9 +58,7 @@ const publicConnectorCatalogCategoryMetadataSchema = z.object({
 });
 
 const publicConnectorCatalogItemSchema = z.object({
-  // TODO(#23821): Remove this legacy API field after clients migrate.
-  connectorRef: connectorSlugSchema,
-  slug: connectorSlugSchema.optional(),
+  slug: connectorSlugSchema,
   label: z.string(),
   description: z.string(),
   icon: publicConnectorCatalogIconSchema,
@@ -163,9 +161,7 @@ const publicConnectorCatalogDefaultPolicySchema = z.object({
 });
 
 const publicConnectorCatalogPermissionDetailSchema = z.object({
-  // TODO(#23821): Remove this legacy API field after clients migrate.
-  connectorRef: connectorSlugSchema,
-  connectorSlug: connectorSlugSchema.optional(),
+  connectorSlug: connectorSlugSchema,
   label: z.string(),
   icon: publicConnectorCatalogIconSchema,
   permissionCount: z.number().int().nonnegative(),

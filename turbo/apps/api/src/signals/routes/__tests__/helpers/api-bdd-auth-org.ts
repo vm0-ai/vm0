@@ -1313,7 +1313,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         }),
         [200],
       );
-      return response.body.enabledTypes;
+      return response.body.enabledConnectorSlugs;
     },
 
     async createAgent(

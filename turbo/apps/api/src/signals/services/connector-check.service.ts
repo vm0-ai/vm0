@@ -1,7 +1,7 @@
 import type {
   ConnectorCheckDiagnosticResult,
   ConnectorCheckPolicy,
-  NormalizedConnectorCheckRequest,
+  ConnectorCheckRequest,
 } from "@vm0/api-contracts/contracts/zero-connector-check";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
@@ -51,8 +51,6 @@ import {
 type FeatureStates = ReturnType<typeof getAllFeatureStates>;
 
 interface ConnectorCheckIdentity {
-  // TODO(#23821): Remove this legacy response field after clients migrate.
-  readonly connectorRef: ConnectorSlug;
   readonly connectorSlug: ConnectorSlug;
   readonly label: string;
   readonly visibility: "available" | "unavailable";
@@ -89,7 +87,7 @@ type ConnectorCheckTimeline =
   | { readonly kind: "run"; readonly context: RunContextResponse };
 
 interface ResolveConnectorCheckArgs {
-  readonly request: NormalizedConnectorCheckRequest;
+  readonly request: ConnectorCheckRequest;
   readonly orgId: string;
   readonly userId: string;
   readonly stateSource:
@@ -156,7 +154,6 @@ function connectorIdentity(
     throw new Error(`Missing connector runtime metadata: ${connectorSlug}`);
   }
   return {
-    connectorRef: connectorSlug,
     connectorSlug,
     label: connector.catalogConnector.label,
     visibility: catalogContext.visibleConnectorSlugs.has(connectorSlug)
@@ -972,7 +969,6 @@ function ambiguousDiagnostic(
         throw new Error(`Missing connector runtime metadata: ${candidate}`);
       }
       return {
-        connectorRef: candidate,
         connectorSlug: candidate,
         label: connector.catalogConnector.label,
       };
@@ -1049,10 +1045,7 @@ function selectUrlEnvironmentNames(args: {
 }
 
 interface ResolvedUrlDiagnosticArgs {
-  readonly request: Extract<
-    NormalizedConnectorCheckRequest,
-    { readonly mode: "url" }
-  >;
+  readonly request: Extract<ConnectorCheckRequest, { readonly mode: "url" }>;
   readonly parsed: ParsedConnectorDiagnosticRequest;
   readonly decision: Exclude<
     FirewallRequestDecision,
@@ -1127,7 +1120,7 @@ function resolvedUrlDiagnostic(
 }
 
 async function resolveUrlMode(
-  request: Extract<NormalizedConnectorCheckRequest, { readonly mode: "url" }>,
+  request: Extract<ConnectorCheckRequest, { readonly mode: "url" }>,
   parsed: ParsedConnectorDiagnosticRequest,
   timeline: ConnectorCheckTimeline,
   catalogContext: ConnectorCheckCatalogContext,
@@ -1181,10 +1174,7 @@ async function resolveUrlMode(
 }
 
 async function resolveEnvironmentMode(
-  request: Extract<
-    NormalizedConnectorCheckRequest,
-    { readonly mode: "environment" }
-  >,
+  request: Extract<ConnectorCheckRequest, { readonly mode: "environment" }>,
   timeline: ConnectorCheckTimeline,
   catalogContext: ConnectorCheckCatalogContext,
 ): Promise<ConnectorCheckDiagnosticResult> {

@@ -500,7 +500,6 @@ const getAgentUserConnectorsInner$ = computed(async (get) => {
   return {
     status: 200 as const,
     body: {
-      enabledTypes: availableEnabledConnectorSlugs,
       enabledConnectorSlugs: availableEnabledConnectorSlugs,
     },
   };
@@ -903,7 +902,6 @@ const updateAgentUserConnectorsInner$ = command(
     return {
       status: 200 as const,
       body: {
-        enabledTypes: enabledConnectorSlugs,
         enabledConnectorSlugs,
       },
     };

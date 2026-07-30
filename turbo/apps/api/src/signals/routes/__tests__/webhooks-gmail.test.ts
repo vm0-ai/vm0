@@ -470,7 +470,7 @@ async function connectGmail(
   expect(connector).toMatchObject({
     authMethod: "oauth",
     externalEmail: gmailEmail,
-    type: "gmail",
+    slug: "gmail",
   });
 }
 

@@ -94,12 +94,11 @@ describe("GET /api/zero/connectors/search", () => {
     expect(response.body.connectors).toBeInstanceOf(Array);
     expect(response.body.connectors.length).toBeGreaterThan(0);
     for (const connector of response.body.connectors) {
-      expect(connector).toHaveProperty("id");
-      expect(connector.slug).toBe(connector.id);
+      expect(connector).toHaveProperty("slug");
       expect(connector).toHaveProperty("label");
       expect(connector).toHaveProperty("description");
       expect(connector).toHaveProperty("authMethods");
-      expect(typeof connector.id).toBe("string");
+      expect(typeof connector.slug).toBe("string");
       expect(typeof connector.label).toBe("string");
       expect(typeof connector.description).toBe("string");
       expect(connector.authMethods).toBeInstanceOf(Array);
@@ -142,7 +141,7 @@ describe("GET /api/zero/connectors/search", () => {
 
     expect(
       response.body.connectors.map((connector) => {
-        return connector.id;
+        return connector.slug;
       }),
     ).toStrictEqual(["slack"]);
   });
@@ -161,7 +160,7 @@ describe("GET /api/zero/connectors/search", () => {
 
     expect(
       response.body.connectors.map((connector) => {
-        return connector.id;
+        return connector.slug;
       }),
     ).toStrictEqual(["openai"]);
   });
@@ -217,7 +216,7 @@ describe("GET /api/zero/connectors/search", () => {
     );
 
     const connector = response.body.connectors.find((c) => {
-      return c.id === "test-oauth-device";
+      return c.slug === "test-oauth-device";
     });
     expect(connector).toBeUndefined();
   });
@@ -241,7 +240,7 @@ describe("GET /api/zero/connectors/search", () => {
     );
 
     const connector = response.body.connectors.find((c) => {
-      return c.id === "test-oauth-device";
+      return c.slug === "test-oauth-device";
     });
     expect(connector).toBeDefined();
     expect(connector?.authMethods).toStrictEqual(["oauth", "api"]);
@@ -263,7 +262,7 @@ describe("GET /api/zero/connectors/search", () => {
       [200],
     );
     const cloudflare = response.body.connectors.find((connector) => {
-      return connector.id === "cloudflare";
+      return connector.slug === "cloudflare";
     });
     expect(cloudflare?.authMethods).toStrictEqual(["oauth"]);
   });
@@ -281,7 +280,7 @@ describe("GET /api/zero/connectors/search", () => {
     );
 
     const neon = response.body.connectors.find((c) => {
-      return c.id === "neon";
+      return c.slug === "neon";
     });
     expect(neon).toBeDefined();
     expect(neon?.authMethods).toContain("api-token");
@@ -301,7 +300,7 @@ describe("GET /api/zero/connectors/search", () => {
     );
 
     const openai = response.body.connectors.find((c) => {
-      return c.id === "openai";
+      return c.slug === "openai";
     });
     expect(openai).toBeDefined();
     expect(openai?.authMethods).toStrictEqual(["api-token"]);

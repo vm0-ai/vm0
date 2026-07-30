@@ -140,7 +140,6 @@ function oauthConnector(args: {
 }
 
 const axiomPermissions = {
-  connectorRef: "axiom",
   connectorSlug: "axiom",
   label: "Axiom",
   icon: icon("axiom"),
@@ -161,7 +160,6 @@ const axiomPermissions = {
 } satisfies PublicConnectorCatalogPermissionDetail;
 
 const slackPermissions = {
-  connectorRef: "slack",
   connectorSlug: "slack",
   label: "Slack",
   icon: icon("slack"),
@@ -223,7 +221,6 @@ const cloudflarePermissionNames = [
 ];
 
 const cloudflarePermissions = {
-  connectorRef: "cloudflare",
   connectorSlug: "cloudflare",
   label: "Cloudflare",
   icon: icon("cloudflare"),
@@ -239,7 +236,6 @@ const cloudflarePermissions = {
 } satisfies PublicConnectorCatalogPermissionDetail;
 
 const gmailPermissions = {
-  connectorRef: "gmail",
   connectorSlug: "gmail",
   label: "Gmail",
   icon: icon("gmail"),
@@ -258,7 +254,6 @@ const gmailPermissions = {
 } satisfies PublicConnectorCatalogPermissionDetail;
 
 const youtubePermissions = {
-  connectorRef: "youtube",
   connectorSlug: "youtube",
   label: "YouTube",
   icon: icon("youtube"),

@@ -108,7 +108,7 @@ authorize_slack_for_agent() {
     local agent_id="$1"
     e2e_api_curl "/api/zero/agents/${agent_id}/user-connectors" \
         -X PUT \
-        -d '{"enabledTypes":["slack"]}' \
+        -d '{"enabledConnectorSlugs":["slack"]}' \
         >/dev/null
 }
 
@@ -121,12 +121,12 @@ apply_slack_chat_write_permission() {
         allow)
             payload=$(jq -nc \
                 --arg agentId "$agent_id" \
-                '{agentId: $agentId, connectorRef: "slack", mode: "patch", grants: [{permission: "chat:write", action: "allow", expiresIn: "1h"}]}')
+                '{agentId: $agentId, connectorSlug: "slack", mode: "patch", grants: [{permission: "chat:write", action: "allow", expiresIn: "1h"}]}')
             ;;
         deny)
             payload=$(jq -nc \
                 --arg agentId "$agent_id" \
-                '{agentId: $agentId, connectorRef: "slack", mode: "patch", grants: [{permission: "chat:write", action: "deny"}]}')
+                '{agentId: $agentId, connectorSlug: "slack", mode: "patch", grants: [{permission: "chat:write", action: "deny"}]}')
             ;;
         *)
             echo "Unsupported Slack chat:write grant action: $action" >&2

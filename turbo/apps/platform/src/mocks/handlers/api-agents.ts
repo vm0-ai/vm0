@@ -108,7 +108,6 @@ export const apiAgentsHandlers = [
     const enabledConnectorSlugs =
       mockEnabledConnectorSlugsByAgent.get(params.id) ?? [];
     return respond(200, {
-      enabledTypes: enabledConnectorSlugs,
       enabledConnectorSlugs,
     });
   }),
@@ -129,7 +128,6 @@ export const apiAgentsHandlers = [
     );
     mockEnabledConnectorSlugsByAgent.set(params.id, enabledConnectorSlugs);
     return respond(200, {
-      enabledTypes: enabledConnectorSlugs,
       enabledConnectorSlugs,
     });
   }),
