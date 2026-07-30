@@ -41,10 +41,6 @@ interface HtmlArtifactAuthoringPacket {
       readonly skills: "string[]";
       readonly template: "string";
       readonly designSystem: "string | null";
-      readonly imageStyle: "string | null";
-      readonly audioStyle: "string | null";
-      readonly videoTemplate: "string | null";
-      readonly bundleTemplate: "string | null";
       readonly rationale: "string";
     };
   };
@@ -115,10 +111,6 @@ export function createHtmlArtifactAuthoringPacket(
     skills: "string[]",
     template: "string",
     designSystem: "string | null",
-    imageStyle: "string | null",
-    audioStyle: "string | null",
-    videoTemplate: "string | null",
-    bundleTemplate: "string | null",
     rationale: "string",
   } as const;
   const artifact = {

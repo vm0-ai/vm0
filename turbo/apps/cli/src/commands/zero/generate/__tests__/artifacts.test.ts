@@ -155,6 +155,15 @@ describe("zero generate source-backed artifact commands", () => {
     );
   });
 
+  it("omits unnecessary candidate groups", () => {
+    const selection = selectResourceCandidates();
+
+    expect(selection.candidates).not.toHaveProperty("imageStyles");
+    expect(selection.candidates).not.toHaveProperty("audioStyles");
+    expect(selection.candidates).not.toHaveProperty("videoTemplates");
+    expect(selection.candidates).not.toHaveProperty("bundleTemplates");
+  });
+
   it("filters template candidates by target when requested", () => {
     const websiteSelection = selectResourceCandidates("website");
     const presentationSelection = selectResourceCandidates("presentation");
