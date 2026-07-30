@@ -1,5 +1,6 @@
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
+import { chatInputQueueParams } from "@vm0/db/schema/chat-input-queue-params";
 import {
   chatEvents,
   type ChatEventAttachFileMetadata,
@@ -35,6 +36,7 @@ import {
 } from "./crypto.utils";
 import { goalQueueEventMatchesActiveGoal } from "./chat-goal-queue.service";
 import { feishuOrgCallbackFileSchema } from "./feishu-org-callback-payload";
+import { agentphoneDeliveryTargetSchema } from "./agentphone-chat-callback-payload";
 import { teamsDeliveryTargetSchema } from "./teams-chat-callback-payload";
 import { telegramDeliveryTargetSchema } from "./telegram-chat-callback-payload";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
@@ -48,6 +50,7 @@ const queuedUserMessageTriggerSourceSchema = z.enum([
   "feishu",
   "teams",
   "telegram",
+  "agentphone",
   "workflow-schedule",
 ]);
 
@@ -77,6 +80,7 @@ const queuedUserMessageRunParamsSchema = z.object({
     .optional(),
   teamsDelivery: teamsDeliveryTargetSchema.optional(),
   telegramDelivery: telegramDeliveryTargetSchema.optional(),
+  agentphoneDelivery: agentphoneDeliveryTargetSchema.optional(),
   morningBriefDelivery: z
     .object({
       deliveryId: z.string(),
@@ -99,6 +103,7 @@ const queuedUserMessageRunParamsSchema = z.object({
       telegramUsername: z.string().optional(),
       telegramUserId: z.string().optional(),
       telegramLanguage: z.string().optional(),
+      agentphoneHandle: z.string().optional(),
     })
     .optional(),
 });
@@ -109,6 +114,14 @@ type QueuedUserMessageRunParams = z.infer<
 
 const queuedChatEvent = alias(chatEvents, "queued_chat_message");
 const queuedChatEventRevoker = alias(chatEvents, "queued_chat_message_revoker");
+const queuedEncryptedParams = sql`COALESCE(
+  ${chatInputQueueParams.encryptedParams},
+  ${chatEvents.encryptedParams}
+)`.mapWith(chatEvents.encryptedParams);
+const queuedAttachFileMetadata = sql`COALESCE(
+  ${chatInputQueueParams.attachFileMetadata},
+  ${chatEvents.attachFileMetadata}
+)`.mapWith(chatEvents.attachFileMetadata);
 
 export interface QueuedUserMessage {
   readonly id: string;
@@ -126,6 +139,7 @@ export interface QueuedUserMessage {
     | "feishu"
     | "teams"
     | "telegram"
+    | "agentphone"
     | "workflow-schedule";
   readonly encryptedParams: string | null;
 }
@@ -246,17 +260,21 @@ export async function loadNextUnclaimedQueuedUserMessage(
       id: chatEvents.id,
       userMessage: chatEvents.userMessage,
       attachFiles: chatEvents.attachFiles,
-      attachFileMetadata: chatEvents.attachFileMetadata,
+      attachFileMetadata: queuedAttachFileMetadata,
       generationTemplate: chatEvents.generationTemplate,
       modelProviderId: sql`NULL`.mapWith(pgNullDecoder),
       modelProviderType: sql`NULL`.mapWith(pgNullDecoder),
       modelProviderCredentialScope: sql`NULL`.mapWith(pgNullDecoder),
       selectedModel: chatThreads.selectedModel,
       triggerSource: chatEvents.triggerSource,
-      encryptedParams: chatEvents.encryptedParams,
+      encryptedParams: queuedEncryptedParams,
     })
     .from(chatEvents)
     .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
+    .leftJoin(
+      chatInputQueueParams,
+      eq(chatInputQueueParams.eventId, chatEvents.id),
+    )
     .where(
       and(
         eq(chatEvents.id, head.id),
@@ -330,11 +348,15 @@ async function appendClaimedUserMessage(
     .select({
       userMessage: chatEvents.userMessage,
       attachFiles: chatEvents.attachFiles,
-      attachFileMetadata: chatEvents.attachFileMetadata,
+      attachFileMetadata: queuedAttachFileMetadata,
       generationTemplate: chatEvents.generationTemplate,
       triggerSource: chatEvents.triggerSource,
     })
     .from(chatEvents)
+    .leftJoin(
+      chatInputQueueParams,
+      eq(chatInputQueueParams.eventId, chatEvents.id),
+    )
     .where(
       and(
         eq(chatEvents.id, args.eventId),
@@ -343,7 +365,7 @@ async function appendClaimedUserMessage(
         isNull(chatEvents.runId),
       ),
     )
-    .for("update")
+    .for("update", { of: chatEvents })
     .limit(1);
   if (!queued) {
     return null;
@@ -692,10 +714,14 @@ export async function failQueuedUserMessage(
       .select({
         userMessage: chatEvents.userMessage,
         attachFiles: chatEvents.attachFiles,
-        attachFileMetadata: chatEvents.attachFileMetadata,
+        attachFileMetadata: queuedAttachFileMetadata,
         generationTemplate: chatEvents.generationTemplate,
       })
       .from(chatEvents)
+      .leftJoin(
+        chatInputQueueParams,
+        eq(chatInputQueueParams.eventId, chatEvents.id),
+      )
       .where(
         and(
           eq(chatEvents.id, args.eventId),
@@ -704,7 +730,7 @@ export async function failQueuedUserMessage(
           isNull(chatEvents.runId),
         ),
       )
-      .for("update")
+      .for("update", { of: chatEvents })
       .limit(1);
     if (!queued) {
       return null;

@@ -11,6 +11,10 @@ import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
+import {
+  findPendingChatInputQueueParamsByPromptFixture,
+  readChatInputQueueParamsFixture,
+} from "../../../test-fixtures/chat-events";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
@@ -1631,6 +1635,17 @@ describe("INT-01: Slack app deep webhook flows", () => {
         }),
       ]),
     );
+    const queuedSlackParams =
+      await findPendingChatInputQueueParamsByPromptFixture(
+        "stay canonical on the same route",
+      );
+    expect(queuedSlackParams).toMatchObject({
+      eventId: expect.any(String),
+      encryptedParams: expect.any(String),
+    });
+    if (!queuedSlackParams) {
+      throw new Error("Expected queued canonical Slack transport params");
+    }
     context.mocks.slack.chat.postMessage.mockClear();
     await completeSlackTriggeredRun({
       runId: run1Id,
@@ -1729,6 +1744,9 @@ describe("INT-01: Slack app deep webhook flows", () => {
       run2Id,
       claim2,
     }));
+    await expect(
+      readChatInputQueueParamsFixture(queuedSlackParams.eventId),
+    ).resolves.toBeNull();
     expect(claim2.resumeSession?.sessionId).toBe(`bdd-slack-cli-${webRunId}`);
     state = await integrations.readSlackTestState(teamId);
     expect(state.recent_runs).toContainEqual(

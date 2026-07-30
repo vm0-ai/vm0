@@ -67,6 +67,7 @@ use termination::{
 use tokio::io::AsyncWriteExt;
 use tokio::sync::oneshot;
 use tokio::time::Sleep;
+use tokio_util::sync::CancellationToken;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 const OPENAI_BASE_URL_ENV_KEY: &str = "OPENAI_BASE_URL";
@@ -646,8 +647,59 @@ pub async fn execute_cli_with_active_input_for_config_started_at(
     paths: &paths::GuestPaths,
     execution_started_at: Instant,
 ) -> Result<CliExecutionResult, AgentError> {
+    execute_cli_with_controls_for_config_started_at(
+        masker,
+        heartbeat_monitor,
+        http,
+        CliExecutionControls::new(active_input, CancellationToken::new()),
+        config,
+        paths,
+        execution_started_at,
+    )
+    .await
+}
+
+/// Run-scoped controls observed while the inner CLI is executing.
+pub struct CliExecutionControls {
+    active_input: ActiveInputWriter,
+    user_cancellation: CancellationToken,
+}
+
+impl CliExecutionControls {
+    /// Create controls for active input and explicit user cancellation.
+    #[must_use]
+    pub fn new(active_input: ActiveInputWriter, user_cancellation: CancellationToken) -> Self {
+        Self {
+            active_input,
+            user_cancellation,
+        }
+    }
+}
+
+/// Execute the CLI while observing run-scoped controls.
+pub async fn execute_cli_with_controls_for_config_started_at(
+    masker: &SecretMasker,
+    heartbeat_monitor: HeartbeatMonitor,
+    http: HttpClient,
+    controls: CliExecutionControls,
+    config: &env::GuestConfig,
+    paths: &paths::GuestPaths,
+    execution_started_at: Instant,
+) -> Result<CliExecutionResult, AgentError> {
+    let CliExecutionControls {
+        active_input,
+        user_cancellation,
+    } = controls;
     let runtime = CliRuntimeConfig::from_config(config, paths, execution_started_at)?;
-    execute_cli_inner(masker, heartbeat_monitor, http, active_input, &runtime).await
+    execute_cli_inner(
+        masker,
+        heartbeat_monitor,
+        http,
+        active_input,
+        user_cancellation,
+        &runtime,
+    )
+    .await
 }
 
 async fn execute_cli_inner(
@@ -655,6 +707,7 @@ async fn execute_cli_inner(
     mut heartbeat_monitor: HeartbeatMonitor,
     http: HttpClient,
     active_input: ActiveInputWriter,
+    user_cancellation: CancellationToken,
     runtime: &CliRuntimeConfig<'_>,
 ) -> Result<CliExecutionResult, AgentError> {
     if matches!(runtime.framework, env::Framework::Codex) && runtime.use_codex_app_server_backend {
@@ -663,6 +716,7 @@ async fn execute_cli_inner(
             heartbeat_monitor,
             http,
             active_input,
+            user_cancellation,
             runtime,
         )
         .await;
@@ -883,12 +937,39 @@ async fn execute_cli_inner(
     )?;
 
     let mut heartbeat_done = false;
+    let mut user_cancellation_handled = false;
     let mut cli_exit_at: Option<Instant> = None;
     let mut claude_result = None;
     let mut post_result_cleanup_result = None;
     let mut event_ingestor = CliEventIngestor::new(runtime);
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
+            () = user_cancellation.cancelled(), if !user_cancellation_handled && cli_status.is_none() => {
+                match try_observe_cli_exit(
+                    &mut child,
+                    &mut cli_status,
+                    &mut cli_exit_at,
+                    &active_input_controller,
+                    &mut termination_runtime,
+                    stdout_closed,
+                    drain_deadline.as_mut(),
+                )? {
+                    CliExitObservation::NoNewExit => {}
+                    CliExitObservation::ExitedDrainingStdout => {
+                        user_cancellation_handled = true;
+                        continue;
+                    }
+                    CliExitObservation::ExitedAndStdoutClosed => break Ok(()),
+                }
+                user_cancellation_handled = true;
+                active_input_controller.close_terminal();
+                termination_runtime.begin_control_failure(
+                    TerminationReason::UserCancellation,
+                    AgentError::Execution("Run cancelled by user".to_string()),
+                    ControlTerminationLog::UserCancellation,
+                    termination_deadline.as_mut(),
+                );
+            }
             () = &mut agent_execution_deadline, if agent_execution_deadline_armed && cli_status.is_none() => {
                 match try_observe_cli_exit(
                     &mut child,

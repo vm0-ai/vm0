@@ -2,9 +2,8 @@
 //!
 //! The runner also posts `/complete` after it observes the VM exit, but by
 //! then the run has incurred `final_telemetry`, VM teardown, stop/destroy,
-//! and host observation delays. Firing the webhook from the guest the
-//! instant `POST /checkpoints` returns closes that gap: the host transitions
-//! the run to `completed` as soon as the checkpoint row is visible, and the
+//! and host observation delays. The guest calls it after a successful
+//! checkpoint, or after a cancelled run's recovery attempt has returned. The
 //! runner's subsequent call is absorbed by the route's idempotency check.
 //!
 //! Fire-and-forget semantics: a failure is logged and swallowed because the
@@ -55,10 +54,50 @@ fn as_optional(value: &str) -> Option<&str> {
 ///
 /// Fire-and-forget. Returns `()` and never propagates errors — the runner's
 /// fallback call covers any failure here.
-/// Report a successful run using an explicitly supplied run id.
 pub async fn report_success_for_run(
     http: &HttpClient,
     run_id: &str,
+    sandbox_id: &str,
+    sandbox_reuse_result: &str,
+    last_event_sequence: Option<u32>,
+) {
+    report_for_run(
+        http,
+        run_id,
+        0,
+        sandbox_id,
+        sandbox_reuse_result,
+        last_event_sequence,
+    )
+    .await;
+}
+
+/// Report an explicit user cancellation after its recovery-checkpoint attempt.
+///
+/// Fire-and-forget. A failed request is logged and swallowed so runner
+/// completion remains the fallback.
+pub async fn report_user_cancellation_for_run(
+    http: &HttpClient,
+    run_id: &str,
+    sandbox_id: &str,
+    sandbox_reuse_result: &str,
+    last_event_sequence: Option<u32>,
+) {
+    report_for_run(
+        http,
+        run_id,
+        1,
+        sandbox_id,
+        sandbox_reuse_result,
+        last_event_sequence,
+    )
+    .await;
+}
+
+async fn report_for_run(
+    http: &HttpClient,
+    run_id: &str,
+    exit_code: i32,
     sandbox_id: &str,
     sandbox_reuse_result: &str,
     last_event_sequence: Option<u32>,
@@ -69,7 +108,7 @@ pub async fn report_success_for_run(
 
     let payload = CompletePayload {
         run_id,
-        exit_code: 0,
+        exit_code,
         last_event_sequence,
         sandbox_id: as_optional(sandbox_id),
         sandbox_reuse_result: as_optional(sandbox_reuse_result),

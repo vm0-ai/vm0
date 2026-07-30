@@ -21,6 +21,7 @@ import {
   createActiveGoalQueueEventFixture,
   readGoalQueueStateFixture,
 } from "../../../test-fixtures/goal-queue";
+import { admitPreviousDeploymentWorkflowEventFixture } from "../../../test-fixtures/workflow-queue";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
 import type { ApiTestUser } from "./helpers/api-bdd";
@@ -38,6 +39,7 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
   completeRunWithoutCallbacksFixture,
   holdOrgAdmissionLockFixture,
+  readChatInputQueueParamsFixture,
   setQueuedUserMessageCreatedAtFixture,
   setWorkflowQueueEventCreatedAtFixture,
 } from "../../../test-fixtures/chat-events";
@@ -225,7 +227,7 @@ async function workflowRunIds(threadId: string): Promise<readonly string[]> {
   return messages.flatMap((message) => {
     if (
       message.eventType !== "input.prompt" ||
-      chatEventDisplayText(message) !== `/${WORKFLOW_NAME}` ||
+      !chatEventDisplayText(message)?.startsWith(`/${WORKFLOW_NAME}`) ||
       !message.runId
     ) {
       return [];
@@ -562,6 +564,25 @@ describe("workflow queue", () => {
     mockNow(secondApiStartTime + 1000);
     expectAcceptedWithoutRun(await postWorkflowWebhook(automation, "third"));
     expect(kms.generateDataKeyCalls).toBe(4);
+    const pendingEvents = await pendingWorkflowEvents(automation.threadId);
+    expect(pendingEvents).toHaveLength(2);
+    const secondEvent = pendingEvents[0];
+    const thirdEvent = pendingEvents[1];
+    if (!secondEvent || !thirdEvent) {
+      throw new Error("Expected two pending workflow queue events");
+    }
+    await expect(
+      readChatInputQueueParamsFixture(secondEvent.id),
+    ).resolves.toMatchObject({
+      eventId: secondEvent.id,
+      encryptedParams: expect.any(String),
+    });
+    await expect(
+      readChatInputQueueParamsFixture(thirdEvent.id),
+    ).resolves.toMatchObject({
+      eventId: thirdEvent.id,
+      encryptedParams: expect.any(String),
+    });
     await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
       firstRunId,
     ]);
@@ -572,11 +593,103 @@ describe("workflow queue", () => {
     await completeRunThroughSandbox(scenario, firstRunId);
     const afterFirst = await workflowRunIds(automation.threadId);
     expect(afterFirst).toHaveLength(2);
+    await expect(
+      readChatInputQueueParamsFixture(secondEvent.id),
+    ).resolves.toBeNull();
     const secondClaim = await completeRunThroughSandbox(
       scenario,
       afterFirst[1]!,
     );
     expect(secondClaim.apiStartTime).toBe(dequeuedAt);
+    await expect(
+      readChatInputQueueParamsFixture(thirdEvent.id),
+    ).resolves.toBeNull();
+  });
+
+  it("labels a queued schedule tick with the time it fired, not the time it drained", async () => {
+    // Keep this global cron scan before schedules created by parallel test files.
+    mockNow(Date.UTC(2020, 0, 2));
+    const scenario = await setup();
+    const webhookAutomation = await createWebhookAutomation(scenario);
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId: scenario.workflowId },
+        body: {
+          schedule: {
+            type: "cron",
+            cronExpression: "0 9 * * *",
+            timezone: "UTC",
+          },
+        },
+      }),
+      [201],
+    );
+    if (!created.body.nextRunAt) {
+      throw new Error("Expected a scheduled next run");
+    }
+
+    // Occupy the thread so the tick has to wait in the queue.
+    const busyRunId = await expectAcceptedRunId(
+      await postWorkflowWebhook(webhookAutomation, "busy"),
+      webhookAutomation.threadId,
+    );
+
+    const firedAt = Date.parse(created.body.nextRunAt) + 60_000;
+    mockNow(firedAt);
+    await executeDueWorkflowAutomations();
+
+    // A later, unrelated drain pass launches the tick. Its trigger line must
+    // still report the fire time, not this drain time.
+    const drainedAt = firedAt + 600_000;
+    mockNow(drainedAt);
+    await completeRunThroughSandbox(scenario, busyRunId);
+    const runIds = await workflowRunIds(webhookAutomation.threadId);
+    expect(runIds).toHaveLength(2);
+
+    await runsApi.heartbeatRunner(scenario.runnerGroup);
+    const claim = await runsApi.claimRunnerJob(runIds[1]!);
+    expect(claim.prompt).toBe(
+      `/${WORKFLOW_NAME}\nTrigger: schedule fired at ${new Date(
+        firedAt,
+      ).toISOString()} (cron "0 9 * * *" in UTC).`,
+    );
+    expect(claim.prompt).not.toContain(new Date(drainedAt).toISOString());
+    expect(claim.appendSystemPrompt).toContain(
+      `"firedAt": "${new Date(firedAt).toISOString()}"`,
+    );
+  });
+
+  it("drains an event row enqueued without a prompt by a previous deployment", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    const busyRunId = await expectAcceptedRunId(
+      await postWorkflowWebhook(automation, "busy"),
+      automation.threadId,
+    );
+
+    const legacyAppendSystemPrompt = [
+      "# Current context",
+      "You are running because a signed workflow webhook automation received an HTTP POST.",
+    ].join("\n");
+    await admitPreviousDeploymentWorkflowEventFixture({
+      automationId: automation.automationId,
+      chatThreadId: automation.threadId,
+      agentId: scenario.agentId,
+      appendSystemPrompt: legacyAppendSystemPrompt,
+    });
+
+    await completeRunThroughSandbox(scenario, busyRunId);
+    const runIds = await workflowRunIds(automation.threadId);
+    expect(runIds).toHaveLength(2);
+
+    await runsApi.heartbeatRunner(scenario.runnerGroup);
+    const claim = await runsApi.claimRunnerJob(runIds[1]!);
+    // The row carries no prompt, so it renders the way its writer intended
+    // rather than picking up a schedule trigger line.
+    expect(claim.prompt).toBe(`/${WORKFLOW_NAME}`);
+    expect(claim.appendSystemPrompt).toContain(legacyAppendSystemPrompt);
+    expect(claim.appendSystemPrompt).not.toContain("Trigger: ");
   });
 
   it("coalesces schedule ticks: at most one pending tick per automation", async () => {
@@ -636,7 +749,20 @@ describe("workflow queue", () => {
     mockNow(Date.parse(updated.body.nextRunAt) + 60_000);
     await executeDueWorkflowAutomations();
     expect(coalescedKms.generateDataKeyCalls).toBe(0);
-
+    const coalescedEvents = await pendingWorkflowEvents(
+      webhookAutomation.threadId,
+    );
+    expect(coalescedEvents).toHaveLength(1);
+    const coalescedEvent = coalescedEvents[0];
+    if (!coalescedEvent) {
+      throw new Error("Expected one coalesced schedule queue event");
+    }
+    await expect(
+      readChatInputQueueParamsFixture(coalescedEvent.id),
+    ).resolves.toMatchObject({
+      eventId: coalescedEvent.id,
+      encryptedParams: expect.any(String),
+    });
     await completeRunThroughSandbox(scenario, busyRunId);
     const afterBusy = await workflowRunIds(webhookAutomation.threadId);
     expect(afterBusy).toHaveLength(2);
@@ -834,6 +960,12 @@ describe("workflow queue", () => {
         },
       }),
     );
+    if (!rejectedEvent?.revokesEventId) {
+      throw new Error("Expected the rejected event to revoke its queue input");
+    }
+    await expect(
+      readChatInputQueueParamsFixture(rejectedEvent.revokesEventId),
+    ).resolves.toBeNull();
 
     await runsApi.ensureOrgModelProvider(scenario.actor);
     const runId = await expectAcceptedRunId(

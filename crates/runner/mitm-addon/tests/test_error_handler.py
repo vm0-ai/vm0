@@ -136,6 +136,7 @@ class TestErrorHandler:
         assert entry["status"] == 0
         assert entry["error"] == "connection reset by peer"
         assert entry["firewall_error"] == "connector_not_configured_for_run"
+        assert entry["connector_diagnostic_slug"] == "fal"
         assert entry["connector_diagnostic_type"] == "fal"
         assert entry["connector_diagnostic_env_names"] == ["FAL_TOKEN"]
         assert entry["connector_diagnostic_base"] == "https://fal.run"
@@ -175,6 +176,7 @@ class TestErrorHandler:
         assert entry["request_size"] == len(request_chunk)
         assert entry["error"] == "connection reset by peer"
         assert entry["firewall_error"] == "connector_not_configured_for_run"
+        assert entry["connector_diagnostic_slug"] == "fal"
         assert entry["connector_diagnostic_type"] == "fal"
         assert entry["connector_diagnostic_env_names"] == ["FAL_TOKEN"]
         assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
@@ -217,6 +219,7 @@ class TestErrorHandler:
         assert entry["status"] == 0
         assert entry["error"] == "connection reset by peer"
         assert entry["firewall_error"] == "connector_not_configured_for_run"
+        assert entry["connector_diagnostic_slug"] == "fal"
         assert entry["connector_diagnostic_type"] == "fal"
 
         [proxy_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")

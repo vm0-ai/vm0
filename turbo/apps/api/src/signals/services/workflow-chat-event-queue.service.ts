@@ -1,5 +1,6 @@
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { chatInputQueueParams } from "@vm0/db/schema/chat-input-queue-params";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -311,11 +312,18 @@ export async function loadNextWorkflowQueueEvent(
         chatThreadId: chatEvents.chatThreadId,
         triggerSource: chatEvents.triggerSource,
         triggerBrief: chatEvents.triggerBrief,
-        encryptedParams: chatEvents.encryptedParams,
+        encryptedParams: sql`COALESCE(
+          ${chatInputQueueParams.encryptedParams},
+          ${chatEvents.encryptedParams}
+        )`.mapWith(chatEvents.encryptedParams),
         createdAt: chatEvents.createdAt,
       })
       .from(chatEvents)
       .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
+      .leftJoin(
+        chatInputQueueParams,
+        eq(chatInputQueueParams.eventId, chatEvents.id),
+      )
       .where(eq(chatEvents.id, head.id))
       .limit(1);
     if (!event) {

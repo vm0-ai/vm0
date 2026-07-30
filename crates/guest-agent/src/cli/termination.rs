@@ -65,6 +65,7 @@ enum TerminationState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum TerminationReason {
     ExecutionTimeout,
+    UserCancellation,
     PostResult,
     InitialPromptStdin,
     StuckTool,
@@ -79,6 +80,7 @@ impl TerminationReason {
     fn label(self) -> &'static str {
         match self {
             TerminationReason::ExecutionTimeout => "agent execution timeout",
+            TerminationReason::UserCancellation => "user cancellation",
             TerminationReason::PostResult => "post-result reap",
             TerminationReason::InitialPromptStdin => "initial-prompt stdin",
             TerminationReason::StuckTool => "stuck-tool watchdog",
@@ -225,6 +227,7 @@ impl PostResultCleanupState {
 
 pub(super) enum ControlTerminationLog {
     ExecutionTimeout { timeout_secs: u64 },
+    UserCancellation,
     ClaudeStdinWriterFailed { error: String },
     ClaudeStdinWriterTaskFailed { error: String },
     StuckTool { name: String, elapsed: u64 },
@@ -244,6 +247,9 @@ impl ControlTerminationLog {
                     LOG_TAG,
                     "Agent execution timed out after {timeout_secs}s, SIGTERM pgid={pgid}"
                 );
+            }
+            Self::UserCancellation => {
+                log_warn!(LOG_TAG, "User cancelled run, SIGTERM pgid={pgid}");
             }
             Self::ClaudeStdinWriterFailed { error } => {
                 log_warn!(
@@ -660,6 +666,7 @@ fn record_cli_termination_signal(
 fn diagnostic_termination_reason(reason: TerminationReason) -> DiagnosticTerminationReason {
     match reason {
         TerminationReason::ExecutionTimeout => DiagnosticTerminationReason::ExecutionTimeout,
+        TerminationReason::UserCancellation => DiagnosticTerminationReason::UserCancellation,
         TerminationReason::PostResult => DiagnosticTerminationReason::PostResultReap,
         TerminationReason::InitialPromptStdin => DiagnosticTerminationReason::InitialPromptStdin,
         TerminationReason::StuckTool => DiagnosticTerminationReason::StuckToolWatchdog,

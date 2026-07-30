@@ -52,11 +52,7 @@ export function createComposerChatThreadSuggestions(
       const visibleAgents = await get(agents$);
       for (const agent of visibleAgents) {
         const name = agent.displayName ?? agent.id;
-        if (
-          agent.id === agentId ||
-          agent.visibility !== "public" ||
-          !name.toLowerCase().includes(query)
-        ) {
+        if (agent.id === agentId || !name.toLowerCase().includes(query)) {
           continue;
         }
         agentSuggestions.push({
