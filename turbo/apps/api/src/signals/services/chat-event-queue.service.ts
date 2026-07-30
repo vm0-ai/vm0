@@ -111,9 +111,7 @@ export async function loadPendingChatQueueEvent(
       and(
         eq(chatEvents.id, args.eventId),
         eq(chatEvents.chatThreadId, args.chatThreadId),
-        chatEventTypeIn(["input.prompt", "input.automation", "input.goal"]),
-        isNull(chatEvents.runId),
-        unrevokedQueueEventCondition(db),
+        pendingChatQueueEventCondition(db),
       ),
     )
     .limit(1);
