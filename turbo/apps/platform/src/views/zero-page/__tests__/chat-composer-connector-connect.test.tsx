@@ -5,6 +5,7 @@ import {
   type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
+  zeroCustomConnectorSecretContract,
   zeroCustomConnectorsContract,
   type CustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
@@ -15,7 +16,10 @@ import {
   zeroConnectorOauthStartContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import { beforeEach, describe, expect, it } from "vitest";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import {
   AGENT_ID,
@@ -190,14 +194,48 @@ describe("chat composer connector connection", () => {
     });
   });
 
-  it("shows unconnected custom connectors in the add dialog", async () => {
+  it("connects a custom connector for only the active agent", async () => {
     const user = userEvent.setup({ delay: null });
     const connector = customConnector();
+    mockAgent({ includeOtherAgent: true });
     mockCatalog([]);
+    let connected = false;
     context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
-      return respond(200, { connectors: [connector] });
+      return respond(200, {
+        connectors: [
+          connected
+            ? {
+                ...connector,
+                connected: true,
+                missingRequiredFields: [],
+                configuredFieldKeys: ["secret"],
+                hasSecret: true,
+              }
+            : connector,
+        ],
+      });
     });
-
+    context.mocks.api(
+      zeroCustomConnectorSecretContract.set,
+      ({ body, params, respond }) => {
+        expect(params.id).toBe(connector.id);
+        expect(body).toStrictEqual({ value: "acme-secret" });
+        connected = true;
+        return respond(204);
+      },
+    );
+    const updatedAgentIds: string[] = [];
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ body, params, respond }) => {
+        expect(body).toStrictEqual({
+          enabledIds: [connector.id],
+          operation: "add",
+        });
+        updatedAgentIds.push(params.id);
+        return respond(200, { enabledIds: [connector.id] });
+      },
+    );
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
     const dialog = await openAddConnectorsDialog(user);
@@ -205,12 +243,28 @@ describe("chat composer connector connection", () => {
       within(dialog).getByLabelText(`Connect ${connector.displayName}`),
     );
 
-    await expect(
-      screen.findByRole("dialog", {
-        name: `Connect ${connector.displayName}`,
-      }),
-    ).resolves.toBeInTheDocument();
+    const connectDialog = await screen.findByRole("dialog", {
+      name: `Connect ${connector.displayName}`,
+    });
     expect(dialog).not.toBeInTheDocument();
+    await user.type(
+      within(connectDialog).getByLabelText("Secret"),
+      "acme-secret",
+    );
+    const saveButton = queryAllByRoleFast("button", connectDialog).find(
+      (button) => {
+        return button.textContent === "Save";
+      },
+    );
+    if (!saveButton) {
+      throw new Error("Save button not found");
+    }
+    await user.click(saveButton);
+
+    await waitFor(() => {
+      expect(updatedAgentIds).toStrictEqual([AGENT_ID]);
+      expect(connectDialog).not.toBeInTheDocument();
+    });
   });
 
   it("starts a single OAuth connector without an intermediate modal", async () => {

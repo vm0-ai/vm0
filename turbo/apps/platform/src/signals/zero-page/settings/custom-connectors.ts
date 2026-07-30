@@ -119,25 +119,37 @@ const bumpReload$ = command(({ set }) => {
   });
 });
 
-const authorizeCustomConnectorForVisibleAgents$ = command(
+type CustomConnectorAuthorizationTarget =
+  | { readonly kind: "visible-agents" }
+  | { readonly kind: "agent"; readonly agentId: string };
+
+const authorizeCustomConnectorForTarget$ = command(
   async (
     { get, set },
-    connectorId: string,
+    args: {
+      readonly connectorId: string;
+      readonly target: CustomConnectorAuthorizationTarget;
+    },
     signal: AbortSignal,
   ): Promise<void> => {
-    const visibleAgents = await get(agents$);
+    const agentIds =
+      args.target.kind === "agent"
+        ? [args.target.agentId]
+        : (await get(agents$)).map((agent) => {
+            return agent.id;
+          });
     signal.throwIfAborted();
     const client = get(zeroClient$)(zeroAgentCustomConnectorsContract);
     await withCleanup(
       Promise.all(
-        visibleAgents.map(async (agent) => {
+        agentIds.map(async (agentId) => {
           await accept(
             client.update({
-              params: { id: agent.id },
-              body: { enabledIds: [connectorId], operation: "add" },
+              params: { id: agentId },
+              body: { enabledIds: [args.connectorId], operation: "add" },
               fetchOptions: { signal },
             }),
-            [200, 404],
+            args.target.kind === "agent" ? [200] : [200, 404],
           );
         }),
       ),
@@ -253,10 +265,14 @@ export const renameCustomConnector$ = command(
   },
 );
 
-export const setCustomConnectorSecret$ = command(
+const setCustomConnectorSecretForTarget$ = command(
   async (
     { get, set },
-    args: { id: string; value: string },
+    args: {
+      readonly id: string;
+      readonly value: string;
+      readonly authorizationTarget: CustomConnectorAuthorizationTarget;
+    },
     signal: AbortSignal,
   ): Promise<void> => {
     const createClient = get(zeroClient$);
@@ -271,11 +287,57 @@ export const setCustomConnectorSecret$ = command(
     );
     signal.throwIfAborted();
     set(bumpReload$);
-    await set(authorizeCustomConnectorForVisibleAgents$, args.id, signal);
+    await set(
+      authorizeCustomConnectorForTarget$,
+      {
+        connectorId: args.id,
+        target: args.authorizationTarget,
+      },
+      signal,
+    );
     toast.success(
       i18n.t(($) => {
         return $.connectors.custom.toasts.connected;
       }),
+    );
+  },
+);
+
+export const setCustomConnectorSecret$ = command(
+  async (
+    { set },
+    args: { readonly id: string; readonly value: string },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await set(
+      setCustomConnectorSecretForTarget$,
+      {
+        ...args,
+        authorizationTarget: { kind: "visible-agents" },
+      },
+      signal,
+    );
+  },
+);
+
+export const setCustomConnectorSecretForAgent$ = command(
+  async (
+    { set },
+    args: {
+      readonly id: string;
+      readonly value: string;
+      readonly agentId: string;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await set(
+      setCustomConnectorSecretForTarget$,
+      {
+        id: args.id,
+        value: args.value,
+        authorizationTarget: { kind: "agent", agentId: args.agentId },
+      },
+      signal,
     );
   },
 );
@@ -300,8 +362,15 @@ export const clearCustomConnectorSecret$ = command(
   },
 );
 
-export const connectCustomConnectorOAuth2$ = command(
-  async ({ get, set }, id: string, signal: AbortSignal): Promise<void> => {
+const connectCustomConnectorOAuth2ForTarget$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly id: string;
+      readonly authorizationTarget: CustomConnectorAuthorizationTarget;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
     const authWindow = window.open(
       "about:blank",
       "_blank",
@@ -320,7 +389,7 @@ export const connectCustomConnectorOAuth2$ = command(
         });
         const result = await accept(
           client.start({
-            params: { id },
+            params: { id: args.id },
             body: {},
             fetchOptions: { signal },
           }),
@@ -350,11 +419,48 @@ export const connectCustomConnectorOAuth2$ = command(
     signal.throwIfAborted();
     if (
       connectors.some((connector) => {
-        return connector.id === id && connector.connected;
+        return connector.id === args.id && connector.connected;
       })
     ) {
-      await set(authorizeCustomConnectorForVisibleAgents$, id, signal);
+      await set(
+        authorizeCustomConnectorForTarget$,
+        {
+          connectorId: args.id,
+          target: args.authorizationTarget,
+        },
+        signal,
+      );
     }
+  },
+);
+
+export const connectCustomConnectorOAuth2$ = command(
+  async ({ set }, id: string, signal: AbortSignal): Promise<void> => {
+    await set(
+      connectCustomConnectorOAuth2ForTarget$,
+      {
+        id,
+        authorizationTarget: { kind: "visible-agents" },
+      },
+      signal,
+    );
+  },
+);
+
+export const connectCustomConnectorOAuth2ForAgent$ = command(
+  async (
+    { set },
+    args: { readonly id: string; readonly agentId: string },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await set(
+      connectCustomConnectorOAuth2ForTarget$,
+      {
+        id: args.id,
+        authorizationTarget: { kind: "agent", agentId: args.agentId },
+      },
+      signal,
+    );
   },
 );
 

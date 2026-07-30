@@ -8250,9 +8250,10 @@ export function useZeroChatComposer(
           }}
         />
       )}
-      {selectedCustomConnector && (
+      {selectedCustomConnector && agentRecordId && (
         <CustomConnectorConnectDialog
           connector={selectedCustomConnector}
+          agentId={agentRecordId}
           onClose={() => {
             setSelectedCustomConnectorId(null);
           }}
