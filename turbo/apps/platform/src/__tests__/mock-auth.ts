@@ -63,6 +63,11 @@ let internalMockedInvitations: MockedInvitation[] = [];
 let internalMockedMemberships: MockedMembership[] = [{ id: "org_default" }];
 let internalMockedClientSessions: MockedClientSession[] = [];
 let internalMockedClerkLoadOptions: MockedClerkLoadOptions = {};
+let internalMockedClerkLoaded = true;
+
+export function mockClerkLoaded(loaded: boolean): void {
+  internalMockedClerkLoaded = loaded;
+}
 
 export function mockUser(
   user: {
@@ -154,6 +159,7 @@ export function clearMockedAuth() {
   internalMockedMemberships = [{ id: "org_default" }];
   internalMockedClientSessions = [];
   internalMockedClerkLoadOptions = {};
+  internalMockedClerkLoaded = true;
   clerkListeners.length = 0;
   mockedClerk.on = defaultClerkStatusOn;
   mockedClerk.signOut.mockReset();
@@ -222,6 +228,10 @@ interface MockedSignInRedirectOptions {
 const defaultBuildSignInUrlImpl = (
   options?: MockedSignInRedirectOptions,
 ): string => {
+  if (!internalMockedClerkLoaded) {
+    return "";
+  }
+
   const signInUrl = new URL(
     internalMockedClerkLoadOptions.signInUrl ?? "/sign-in",
     window.location.origin,
@@ -284,6 +294,9 @@ interface MockedUserProfileOptions {
 
 export const mockedClerk = {
   initialize,
+  get loaded() {
+    return internalMockedClerkLoaded;
+  },
   get user() {
     return internalMockedUser;
   },
