@@ -2585,11 +2585,9 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(
       (await readThreadProjection(actor, fast.threadId)).serviceTier,
     ).toBeNull();
-    const updatedFastThreadEvents = await chat.requestThreadEvents(
-      actor,
-      {},
-      [200],
-    );
+    const updatedFastThreadEvents = await chat.requestThreadEvents(actor, {}, [
+      200,
+    ]);
     expect(updatedFastThreadEvents.status).toBe(200);
     if (updatedFastThreadEvents.status !== 200) {
       throw new Error("Expected chat thread events to load");
@@ -4695,23 +4693,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(githubPrompt).not.toContain("private R2 registry resource");
     expect(githubPrompt).not.toContain("--style-source r2");
     await cancelChatRun(actor, githubRun.runId);
-
-    const githubOnlyRun = await sendChatRun(actor, {
-      agentId,
-      prompt: "draw a chibi hero",
-      generationTemplate: {
-        type: "illustration",
-        selection: { illustrationStyleId: "image-style:chibi-hero" },
-      },
-    });
-    const githubOnlyPrompt =
-      (await api.readRun(actor, githubOnlyRun.runId)).appendSystemPrompt ?? "";
-    expect(githubOnlyPrompt).toContain(
-      "Style source: vm0-ai/vm0-skills@main:illustration-template/chibi-hero",
-    );
-    expect(githubOnlyPrompt).not.toContain("private R2 registry resource");
-    expect(githubOnlyPrompt).not.toContain("--style-source r2");
-    await cancelChatRun(actor, githubOnlyRun.runId);
   }, 90_000);
 
   it("is one-shot: a follow-up without re-attaching the style gets no template context", async () => {

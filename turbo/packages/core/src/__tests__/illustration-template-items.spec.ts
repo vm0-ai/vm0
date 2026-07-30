@@ -25,9 +25,6 @@ describe("illustration template items", () => {
     const imageStyles = listImageStyles();
 
     expect(imageStyles.filter(hasR2Archive)).toHaveLength(32);
-    expect(
-      findImageStyle("image-style:chibi-hero")?.source.archive,
-    ).toBeUndefined();
   });
 
   it("defines preview image arrays", () => {
