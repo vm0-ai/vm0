@@ -3,6 +3,7 @@ import { initSentry, Sentry } from "./lib/sentry.ts";
 import { initPostHog } from "./lib/posthog.ts";
 import { initPlausible } from "./lib/plausible.ts";
 import { setupVisualViewportKeyboardState } from "./lib/visual-viewport-keyboard.ts";
+import { setupKeyboardDismissGesture } from "./lib/keyboard-dismiss-gesture.ts";
 import "./polyfill.ts";
 import { createRoot } from "react-dom/client";
 import { createStore } from "ccstate";
@@ -18,6 +19,7 @@ initSentry();
 initPostHog();
 initPlausible();
 setupVisualViewportKeyboardState();
+setupKeyboardDismissGesture();
 
 setLogErrorHandler((loggerName, args) => {
   const error = args.find((a): a is Error => {

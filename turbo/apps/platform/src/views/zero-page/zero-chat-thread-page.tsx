@@ -3484,7 +3484,7 @@ function ChatThreadEventsPane({ thread }: { thread: ChatThreadSignals }) {
         data-scroll-container
         tabIndex={-1}
         onScroll={handleScroll}
-        className="absolute inset-0 overflow-y-auto focus:outline-none [overflow-anchor:none] [scrollbar-gutter:stable]"
+        className="absolute inset-0 overflow-y-auto overscroll-contain focus:outline-none [overflow-anchor:none] [scrollbar-gutter:stable]"
       >
         <ChatThreadEventsMain
           key={`messages:${thread.threadId}`}
@@ -4301,7 +4301,7 @@ function ChatThreadComposer({
       className="relative shrink-0 bg-[hsl(var(--background))] pb-2"
     >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-[21px] bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
-      <div className="overflow-y-auto [scrollbar-gutter:stable] pb-2 pl-4 pr-4 pt-3 sm:pl-6 sm:pr-6">
+      <div className="overflow-y-auto overscroll-contain [scrollbar-gutter:stable] pb-2 pl-4 pr-4 pt-3 sm:pl-6 sm:pr-6">
         <div className="mx-auto max-w-[900px]">
           {composer}
           <ReplaceComposerDraftDialog
