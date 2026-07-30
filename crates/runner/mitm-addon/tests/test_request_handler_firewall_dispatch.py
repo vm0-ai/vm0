@@ -509,7 +509,7 @@ async def test_local_response_preserves_shared_binding_for_concurrent_auth(
             )
 
             release_auth_resolution.set()
-            await allowed_task
+            _ = await allowed_task
         finally:
             release_auth_resolution.set()
             await cancel_pending_task(allowed_task)
