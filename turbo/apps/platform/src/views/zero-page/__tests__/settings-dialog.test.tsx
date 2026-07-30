@@ -212,6 +212,62 @@ describe("settings dialog", () => {
     });
   });
 
+  it("keeps the language control mounted while preferences reload", async () => {
+    const preferenceReloadStarted = context.mocks.deferred<void>();
+    const preferenceReloadCompleted = context.mocks.deferred<void>();
+    const releasePreferenceReload = context.mocks.deferred<void>();
+    let holdPreferenceReload = false;
+    let serverLocale: UserLocale | null = "en-US";
+    const supportedLocales: UserLocale[] = ["en-US", "de-DE"];
+    context.mocks.api(
+      zeroUserPreferencesContract.get,
+      async ({ respond, withSignal }) => {
+        if (holdPreferenceReload) {
+          preferenceReloadStarted.resolve();
+          await withSignal(releasePreferenceReload.promise);
+          preferenceReloadCompleted.resolve();
+        }
+        return respond(200, createPreferences(serverLocale, supportedLocales));
+      },
+    );
+    context.mocks.api(
+      zeroUserPreferencesContract.update,
+      ({ body, respond }) => {
+        if (body.locale !== undefined) {
+          serverLocale = body.locale;
+        }
+        return respond(200, createPreferences(serverLocale, supportedLocales));
+      },
+    );
+
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: true,
+    });
+
+    holdPreferenceReload = true;
+    click(await screen.findByRole("combobox", { name: "Language" }));
+    click(screen.getByRole("option", { name: "Deutsch" }));
+    await preferenceReloadStarted.promise;
+
+    expect(screen.getByRole("combobox", { name: "Sprache" })).toHaveTextContent(
+      "Deutsch",
+    );
+
+    releasePreferenceReload.resolve();
+    await preferenceReloadCompleted.promise;
+    holdPreferenceReload = false;
+    await waitFor(() => {
+      expect(screen.getByRole("combobox", { name: "Sprache" })).toBeEnabled();
+    });
+
+    click(screen.getByRole("combobox", { name: "Sprache" }));
+    click(screen.getByRole("option", { name: "English" }));
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe("en-US");
+      expect(serverLocale).toBe("en-US");
+    });
+  });
+
   it("overrides a cached language with the workspace server preference", async () => {
     document.documentElement.lang = "en-US";
     context.store.set(setCachedLocale$, "en-US");

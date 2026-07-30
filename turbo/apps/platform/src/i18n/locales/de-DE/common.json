@@ -339,6 +339,7 @@
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
+      "test": "Test",
       "web": "Web",
       "webhook": "Webhook",
       "workflowEvent": "Workflow-Ereignis",
@@ -1286,6 +1287,18 @@
       "providerDeletedSuffix": "weitermachen.",
       "providerIncompatibleAction": "Starten Sie eine neue Sitzung",
       "providerIncompatiblePrefix": "Diese Sitzung wurde bei einem anderen Modellanbieter gestartet und kann nicht mit dem aktuellen fortgesetzt werden.",
+      "recovery": {
+        "capacityDescription": "Dieses Modell ist vorübergehend ausgelastet. Versuchen Sie es in einigen Minuten erneut oder wechseln Sie jetzt das Modell.",
+        "capacityTitle": "{{framework}}-Modell ist ausgelastet",
+        "claudeCode": "Claude Code",
+        "codex": "Codex",
+        "resetAndTryAgain": "Zurücksetzen und erneut versuchen",
+        "resetsAt": "Wird um {{time}} zurückgesetzt",
+        "selectModel": "Modell wechseln",
+        "tryAgain": "Erneut versuchen",
+        "usageDescription": "Sie können fortfahren, wenn Ihr Nutzungslimit zurückgesetzt wird, oder jetzt das Modell wechseln.",
+        "usageTitle": "{{framework}}-Limit erreicht"
+      },
       "runCancelled": "Mitten im Gedanken pausiert – machen Sie jederzeit weiter."
     },
     "feedback": {
@@ -2210,6 +2223,12 @@
         "manageDialogTitle": "Verwalten Sie den Feishu-Bot",
         "moreOptions": "Weitere Optionen für {{bot}}",
         "pageDescription": "Verwalten Sie das Bot-Routing für diesen Arbeitsbereich",
+        "permissions": {
+          "description": "Öffnen Sie „Berechtigungen & Bereiche“ in der Feishu-Entwicklerkonsole und fügen Sie für die Benutzeridentität alle unten aufgeführten Bereiche hinzu. Diese Bereiche für die Zusammenarbeit ermöglichen dem Connector den Zugriff auf Nachrichten, Dateien, Dokumente, Tabellen, Base, Wiki, Folien, Whiteboards, Suche, Kalender, Aufgaben und grundlegende Kontakte.",
+          "hint": "Erstellen und veröffentlichen Sie nach einer Änderung der Berechtigungen eine neue App-Version, damit sie über den OAuth-Zustimmungsbildschirm gewährt werden können.",
+          "label": "OAuth-Bereiche",
+          "title": "Connector-Berechtigungen aktivieren"
+        },
         "publish": {
           "allMembersAlt": "Feishu-Verfügbarkeitseinstellungen mit ausgewählter Option „Alle Mitglieder“.",
           "allMembersLabel": "Stellen Sie die App allen Mitgliedern zur Verfügung",
@@ -2242,6 +2261,7 @@
           "done": "Erledigt",
           "events": "Veranstaltungen",
           "next": "Nächste",
+          "permissions": "Berechtigungen",
           "publish": "Veröffentlichen",
           "redirect": "Umleiten",
           "tokens": "Tokens",
@@ -4132,6 +4152,41 @@
           "signIn": "Melden Sie sich mit ChatGPT an"
         }
       },
+      "gateways": {
+        "actions": "Gateway-Aktionen",
+        "add": "Anbieter hinzufügen",
+        "addTitle": "Modellanbieter hinzufügen",
+        "apiBaseUrl": "API-Basis-URL",
+        "apiBaseUrlPlaceholder": "https://gateway.example.com/",
+        "apiKey": "API-Schlüssel",
+        "deleteConfirm": "Diese Modellanbieter-Verbindung löschen? Modellrouten, die sie verwenden, sind danach nicht mehr verfügbar.",
+        "description": "Verbinden Sie ein von Administratoren verwaltetes Gateway über Anthropic Messages, OpenAI Responses oder beide Protokolle.",
+        "dialogDescription": "Konfigurieren Sie jedes Protokoll mit der API-Basis-URL, die von Claude Code oder Codex verwendet wird.",
+        "editTitle": "Modellanbieter bearbeiten",
+        "empty": "Keine benutzerdefinierten Modellanbieter konfiguriert.",
+        "errors": {
+          "invalidMappings": "Modellzuordnungen müssen ein JSON-Objekt sein, dessen Werte die Namen der Upstream-Modelle sind.",
+          "missingProtocol": "Aktivieren Sie mindestens ein Protokoll.",
+          "missingSecret": "Geben Sie einen API-Schlüssel ein."
+        },
+        "headerName": "Authentifizierungs-Header",
+        "headerValue": "Vorlage für den Header-Wert",
+        "keepKey": "Leer lassen, um den aktuellen Schlüssel beizubehalten",
+        "modelMappings": "Modellzuordnungen (JSON)",
+        "name": "Name",
+        "presets": {
+          "custom": "Benutzerdefiniert",
+          "fireworks": "Fireworks AI-Gateway",
+          "openrouter": "OpenRouter-Gateway",
+          "vercel": "Vercel AI-Gateway"
+        },
+        "protocols": {
+          "anthropicMessages": "Anthropic-Messages-Protokoll",
+          "openaiResponses": "OpenAI-Responses-Protokoll"
+        },
+        "requestPreview": "Anfragen",
+        "title": "Anbieterverbindungen"
+      },
       "personal": {
         "actionForProvider": "{{action}} {{provider}}",
         "claudeDescription": "Verbinden Sie sich mit dem Claude Code-Login für von Claude unterstützte Modellrouten.",
@@ -4191,16 +4246,21 @@
         "defaultModel": "Standardmodell",
         "defaultModelDescription": "Wird verwendet, wenn eine Aufgabe kein eigenes Modell auswählt.",
         "dialogDescription": "Entscheiden Sie, wie Mitglieder auf dieses Modell zugreifen.",
+        "gateway": "Benutzerdefiniertes Gateway",
+        "gatewayDescription": "Über eine vom Administrator definierte Anbieterverbindung weiterleiten.",
+        "gatewayProvider": "Anbieterverbindung",
         "getKey": "Holen Sie sich einen Schlüssel",
         "invalidRoute": "Ungültige Route",
         "missingProvider": "Fehlender Anbieter",
         "model": "Modell",
         "noAvailableModels": "Keine verfügbaren Modelle",
+        "noMappedGateway": "Diesem Modell ist keine Anbieterverbindung zugeordnet.",
         "providedBy": "Bereitgestellt von",
         "provider": "Anbieter",
         "providerApiKey": "{{provider}} API-Schlüssel",
         "secretStored": "In den Workspace-Secrets gespeichert.",
         "selectDefaultModel": "Wählen Sie ein Standardmodell aus",
+        "selectGateway": "Anbieterverbindung auswählen",
         "selectModel": "Wählen Sie ein Modell aus",
         "selectProvider": "Wählen Sie einen Anbieter aus",
         "workspaceDescription": "Verfügbar für alle in diesem Arbeitsbereich.",
@@ -4278,7 +4338,9 @@
         "options": {
           "english": "English",
           "german": "Deutsch",
+          "indonesian": "Bahasa Indonesia",
           "japanese": "日本語",
+          "korean": "한국어",
           "portugueseBrazil": "Português (Brasil)"
         },
         "title": "Sprache"
@@ -4348,6 +4410,7 @@
       "delete": "Löschen",
       "discard": "Verwerfen",
       "disconnect": "Trennen",
+      "edit": "Bearbeiten",
       "loading": "Laden",
       "moreOptions": "Weitere Optionen",
       "reconnect": "Wieder verbinden",
