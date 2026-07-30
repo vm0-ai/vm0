@@ -1345,6 +1345,7 @@ function createRenderedChatGroups(
     async (get): Promise<EventImageGroupProjection[]> => {
       return (await get(allRenderedChatGroups$)).map((group) => {
         return {
+          role: group.role,
           events: group.events.map((event) => {
             return {
               attachFiles: chatEventAttachFiles(event),

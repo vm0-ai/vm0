@@ -58,6 +58,7 @@ export type ThinkingIndicatorMode =
 export type ComposerSendButtonStatus = "idle" | "sending";
 
 export interface EventImageGroupProjection {
+  readonly role: ChatEventGroup["role"];
   readonly events: readonly {
     readonly attachFiles?: ChatPromptEvent["attachFiles"];
     readonly blocks: readonly BodyRenderBlock[];
