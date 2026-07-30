@@ -680,6 +680,7 @@ describe("chat thread event sourcing local-first list", () => {
       threadDraftRequests += 1;
       expect(params.id).toBe(OPTIMISTIC_THREAD_ID);
       return respond(200, {
+        draftContent: null,
         draftUserMessage: null,
         draftAttachments: null,
       });
@@ -712,6 +713,7 @@ describe("chat thread event sourcing local-first list", () => {
     await expect(
       context.store.get(dataSource.threadDraft$),
     ).resolves.toStrictEqual({
+      draftContent: null,
       draftUserMessage: null,
       draftAttachments: null,
     });

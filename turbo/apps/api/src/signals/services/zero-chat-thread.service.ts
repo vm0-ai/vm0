@@ -582,6 +582,7 @@ export function zeroChatThreadDraft(args: {
     }
 
     return {
+      draftContent: null,
       draftUserMessage: thread.draftUserMessage,
       draftAttachments: thread.draftAttachments
         ? [...thread.draftAttachments]

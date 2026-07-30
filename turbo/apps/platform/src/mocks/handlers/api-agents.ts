@@ -170,6 +170,7 @@ export const apiAgentsHandlers = [
   // GET /api/zero/agents/:id/draft
   mockApi(zeroAgentDraftContract.get, ({ respond }) => {
     return respond(200, {
+      draftContent: null,
       draftUserMessage: null,
       draftAttachments: null,
     });
@@ -241,6 +242,7 @@ export const apiAgentsHandlers = [
   // GET /api/zero/chat-threads/:id/draft
   mockApi(chatThreadDraftContract.get, ({ respond }) => {
     return respond(200, {
+      draftContent: null,
       draftUserMessage: null,
       draftAttachments: null,
     });

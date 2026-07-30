@@ -661,6 +661,7 @@ describe("chat composer models", () => {
     ]);
     context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
       return respond(200, {
+        draftContent: null,
         draftUserMessage: {
           version: 1,
           parts: [{ type: "text", text: mention }],

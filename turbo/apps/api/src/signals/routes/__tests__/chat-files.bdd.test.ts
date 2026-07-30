@@ -47,6 +47,7 @@ describe("CHAT-01 chat thread lifecycle", () => {
     });
     await expect(api.readThreadDraft(actor, created.id)).resolves.toStrictEqual(
       {
+        draftContent: null,
         draftUserMessage: null,
         draftAttachments: null,
       },
@@ -328,6 +329,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
 
     const threadId = sent.body.threadId;
     await expect(api.readThreadDraft(actor, threadId)).resolves.toStrictEqual({
+      draftContent: null,
       draftUserMessage: null,
       draftAttachments: null,
     });
