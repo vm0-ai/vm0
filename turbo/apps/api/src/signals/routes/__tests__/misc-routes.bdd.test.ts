@@ -10,6 +10,7 @@ import {
   ALL_LOCALES_CLIENT_VERSION,
   BRAZILIAN_PORTUGUESE_CLIENT_VERSION,
   createMiscRoutesApi,
+  FRENCH_CLIENT_VERSION,
   GERMAN_CLIENT_VERSION,
   JAPANESE_CLIENT_VERSION,
   KOREAN_CLIENT_VERSION,
@@ -402,6 +403,107 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
       ALL_LOCALES_CLIENT_VERSION,
     );
     expectApiError(rollbackWrite.body);
+  });
+
+  it("negotiates French across rollout and legacy clients", async () => {
+    const { api, admin } = testActors();
+    mockOptionalEnv("BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED", undefined);
+    mockOptionalEnv("FRENCH_LOCALE_ROLLOUT_ENABLED", undefined);
+
+    const guarded = await api.readPreferences(admin, FRENCH_CLIENT_VERSION);
+    expect(guarded.body).toMatchObject({
+      locale: null,
+      supportedLocales: ["en-US"],
+    });
+
+    const rejected = await api.updatePreferences(
+      admin,
+      { locale: "fr-FR" },
+      [400],
+      FRENCH_CLIENT_VERSION,
+    );
+    expectApiError(rejected.body);
+
+    const orgId = admin.orgId;
+    if (orgId === null) {
+      throw new Error("Expected an organization-scoped test actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      {
+        userId: admin.userId,
+        orgId,
+        ...(admin.orgRole && { orgRole: admin.orgRole }),
+      },
+      {
+        [FeatureSwitchKey.FrenchLocale]: true,
+      },
+    );
+
+    const publicOverrideRejected = await api.updatePreferences(
+      admin,
+      { locale: "fr-FR" },
+      [400],
+      FRENCH_CLIENT_VERSION,
+    );
+    expectApiError(publicOverrideRejected.body);
+
+    mockOptionalEnv("FRENCH_LOCALE_ROLLOUT_ENABLED", "true");
+
+    const legacyClientRejected = await api.updatePreferences(
+      admin,
+      { locale: "fr-FR" },
+      [400],
+    );
+    expectApiError(legacyClientRejected.body);
+
+    const portugueseClientRejected = await api.updatePreferences(
+      admin,
+      { locale: "fr-FR" },
+      [400],
+      BRAZILIAN_PORTUGUESE_CLIENT_VERSION,
+    );
+    expectApiError(portugueseClientRejected.body);
+
+    const french = await api.updatePreferences(
+      admin,
+      { locale: "fr-FR" },
+      [200],
+      FRENCH_CLIENT_VERSION,
+    );
+    expect(french.body).toMatchObject({
+      locale: "fr-FR",
+      supportedLocales: ["en-US", "fr-FR"],
+    });
+
+    const legacyRead = await api.readPreferences(admin);
+    expect(legacyRead.body.locale).toBe("en-US");
+    expect(legacyRead.body.supportedLocales).toBeUndefined();
+
+    const portugueseClientRead = await api.readPreferences(
+      admin,
+      BRAZILIAN_PORTUGUESE_CLIENT_VERSION,
+    );
+    expect(portugueseClientRead.body).toMatchObject({
+      locale: "en-US",
+      supportedLocales: ["en-US"],
+    });
+
+    const allLocalesRead = await api.readPreferences(
+      admin,
+      ALL_LOCALES_CLIENT_VERSION,
+    );
+    expect(allLocalesRead.body).toMatchObject({
+      locale: "fr-FR",
+      supportedLocales: ["en-US", "fr-FR"],
+    });
+
+    await api.updatePreferences(admin, { timezone: "UTC" }, [200]);
+    const capableReread = await api.readPreferences(
+      admin,
+      FRENCH_CLIENT_VERSION,
+    );
+    expect(capableReread.body.locale).toBe("fr-FR");
   });
 
   it("negotiates Japanese across rollout and legacy clients", async () => {

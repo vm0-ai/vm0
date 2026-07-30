@@ -2,6 +2,7 @@ import {
   deDE,
   enUS,
   esES,
+  frFR,
   idID,
   itIT,
   jaJP,
@@ -32,7 +33,9 @@ export function getClerkLocalization(
                 ? esES
                 : locale === "it-IT"
                   ? itIT
-                  : enUS;
+                  : locale === "fr-FR"
+                    ? frFR
+                    : enUS;
   return {
     ...localization,
     unstable__errors: {

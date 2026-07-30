@@ -2,6 +2,7 @@ import { command, computed } from "ccstate";
 import {
   clientVersionSupportsCapability,
   CLIENT_CAPABILITY_ES_ES_LOCALE,
+  CLIENT_CAPABILITY_FR_FR_LOCALE,
   CLIENT_CAPABILITY_IT_IT_LOCALE,
   CLIENT_CAPABILITY_JA_JP_LOCALE,
   CLIENT_CAPABILITY_KO_KR_LOCALE,
@@ -17,6 +18,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-user-preferences";
 
 import { isBrazilianPortugueseLocaleRolloutEnabled } from "../../lib/brazilian-portuguese-locale-rollout";
+import { isFrenchLocaleRolloutEnabled } from "../../lib/french-locale-rollout";
 import { isGermanLocaleRolloutEnabled } from "../../lib/german-locale-rollout";
 import { isIndonesianLocaleRolloutEnabled } from "../../lib/indonesian-locale-rollout";
 import { badRequestMessage } from "../../lib/error";
@@ -84,6 +86,10 @@ const localeRollout$ = computed((get): LocaleRollout => {
     clientVersion,
     CLIENT_CAPABILITY_IT_IT_LOCALE,
   );
+  const clientSupportsFrench = clientVersionSupportsCapability(
+    clientVersion,
+    CLIENT_CAPABILITY_FR_FR_LOCALE,
+  );
   const supportedLocales: UserLocale[] = ["en-US"];
   addSupportedLocale(
     supportedLocales,
@@ -127,6 +133,12 @@ const localeRollout$ = computed((get): LocaleRollout => {
     clientSupportsItalian,
     isItalianLocaleRolloutEnabled(),
   );
+  addSupportedLocale(
+    supportedLocales,
+    "fr-FR",
+    clientSupportsFrench,
+    isFrenchLocaleRolloutEnabled(),
+  );
 
   return {
     clientSupportsLocaleNegotiation:
@@ -136,10 +148,22 @@ const localeRollout$ = computed((get): LocaleRollout => {
       clientSupportsIndonesian ||
       clientSupportsGerman ||
       clientSupportsSpanish ||
-      clientSupportsItalian,
+      clientSupportsItalian ||
+      clientSupportsFrench,
     supportedLocales,
   };
 });
+
+function supportedLocales(rollout: LocaleRollout): UserLocale[] {
+  const locales: UserLocale[] = ["en-US"];
+  if (rollout.brazilianPortugueseEnabled) {
+    locales.push("pt-BR");
+  }
+  if (rollout.frenchEnabled) {
+    locales.push("fr-FR");
+  }
+  return locales;
+}
 
 function projectUserPreferences(
   preferences: UserPreferencesResponse,

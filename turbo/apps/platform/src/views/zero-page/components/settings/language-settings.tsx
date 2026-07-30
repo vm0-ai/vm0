@@ -149,6 +149,13 @@ export function LanguageSettings() {
                   })}
                 </SelectItem>
               )}
+              {supports("fr-FR") && (
+                <SelectItem value="fr-FR">
+                  {t(($) => {
+                    return $.settings.preferences.language.options.french;
+                  })}
+                </SelectItem>
+              )}
             </SelectContent>
           </Select>
         </div>

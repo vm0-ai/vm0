@@ -10,6 +10,7 @@ export default defineConfig({
     "de-DE",
     "es-ES",
     "it-IT",
+    "fr-FR",
   ],
   extract: {
     input: ["src/**/*.{ts,tsx}"],
