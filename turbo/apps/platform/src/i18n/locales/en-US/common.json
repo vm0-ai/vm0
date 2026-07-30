@@ -4337,9 +4337,9 @@
         "label": "Language",
         "options": {
           "english": "English",
+          "indonesian": "Bahasa Indonesia",
           "japanese": "日本語",
           "korean": "한국어",
-          "indonesian": "Bahasa Indonesia",
           "portugueseBrazil": "Português (Brasil)"
         },
         "title": "Language"

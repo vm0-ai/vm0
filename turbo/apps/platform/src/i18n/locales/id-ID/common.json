@@ -2210,6 +2210,12 @@
         "manageDialogTitle": "Kelola bot Feishu",
         "moreOptions": "Opsi lainnya untuk {{bot}}",
         "pageDescription": "Kelola perutean bot untuk ruang kerja ini",
+        "permissions": {
+          "description": "Buka Permissions & Scopes di konsol developer Feishu dan tambahkan semua scope di bawah untuk User identity. Scope kolaborasi ini memungkinkan konektor bekerja dengan pesan, file, dokumen, spreadsheet, Base, Wiki, Slides, papan tulis, pencarian, kalender, tugas, dan kontak dasar.",
+          "hint": "Setelah mengubah izin, buat dan publikasikan versi aplikasi baru agar layar persetujuan OAuth dapat memberikannya.",
+          "label": "Scope OAuth",
+          "title": "Aktifkan izin konektor"
+        },
         "publish": {
           "allMembersAlt": "Pengaturan ketersediaan Feishu dengan All members dipilih",
           "allMembersLabel": "Buat aplikasi tersedia untuk semua anggota",
@@ -2242,6 +2248,7 @@
           "done": "Selesai",
           "events": "Event",
           "next": "Berikutnya",
+          "permissions": "Izin",
           "publish": "Publikasikan",
           "redirect": "Alihkan",
           "tokens": "Token",
@@ -4278,6 +4285,7 @@
         "options": {
           "english": "English",
           "indonesian": "Bahasa Indonesia",
+          "japanese": "日本語",
           "portugueseBrazil": "Português (Brasil)"
         },
         "title": "Bahasa"

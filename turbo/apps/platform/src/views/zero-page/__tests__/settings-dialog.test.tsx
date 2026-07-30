@@ -61,7 +61,13 @@ async function openDialog(
 
 function createPreferences(
   locale: UserLocale | null,
-  supportedLocales: UserLocale[] = ["en-US", "pt-BR", "ja-JP", "ko-KR"],
+  supportedLocales: UserLocale[] = [
+    "en-US",
+    "pt-BR",
+    "ja-JP",
+    "ko-KR",
+    "id-ID",
+  ],
 ): UserPreferencesResponse {
   return {
     timezone: null,

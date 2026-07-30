@@ -305,8 +305,8 @@ describe("bootstrap locale", () => {
       },
     });
 
-    const japaneseAgentResources = resources["ja-JP"].agents;
-    i18n.removeResourceBundle("ja-JP", "agents");
+    const indonesianAgentResources = resources["id-ID"].agents;
+    i18n.removeResourceBundle("id-ID", "agents");
     expect(
       i18n.t(
         ($) => {
@@ -316,9 +316,9 @@ describe("bootstrap locale", () => {
       ),
     ).toBe("Save");
     i18n.addResourceBundle(
-      "ja-JP",
+      "id-ID",
       "agents",
-      japaneseAgentResources,
+      indonesianAgentResources,
       true,
       true,
     );
