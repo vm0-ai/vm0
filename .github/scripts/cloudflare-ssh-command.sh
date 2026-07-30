@@ -27,6 +27,7 @@ ORIGINAL_ARGS=("$@")
 BYPASS=false
 DESTINATION=""
 TARGET_USER=""
+TARGET_USER_EXPLICIT=false
 TARGET_HOST=""
 REMOTE_OPERAND_COUNT=0
 OPERANDS=()
@@ -43,7 +44,7 @@ strip_wrapping_quotes() {
 
 parse_supported_ssh_option() {
   local option=$1
-  local key value
+  local key value normalized_value
   if [[ "$option" != *=* ]]; then
     BYPASS=true
     return
@@ -54,8 +55,21 @@ parse_supported_ssh_option() {
   case "${key,,}" in
     user)
       TARGET_USER=$(strip_wrapping_quotes "$value")
+      TARGET_USER_EXPLICIT=true
       ;;
-    batchmode|challengeresponseauthentication|connecttimeout|controlmaster|controlpath|controlpersist|hostkeyalias|kbdinteractiveauthentication|loglevel|passwordauthentication|preferredauthentications|serveralivecountmax|serveraliveinterval|stricthostkeychecking|tcpkeepalive|userknownhostsfile)
+    controlmaster)
+      normalized_value=$(strip_wrapping_quotes "$value")
+      if [ "${normalized_value,,}" != "auto" ]; then
+        BYPASS=true
+      fi
+      ;;
+    controlpath)
+      normalized_value=$(strip_wrapping_quotes "$value")
+      if [ "${normalized_value,,}" = "none" ]; then
+        BYPASS=true
+      fi
+      ;;
+    batchmode|challengeresponseauthentication|connecttimeout|controlpersist|hostkeyalias|kbdinteractiveauthentication|loglevel|passwordauthentication|preferredauthentications|serveralivecountmax|serveraliveinterval|stricthostkeychecking|tcpkeepalive|userknownhostsfile)
       ;;
     *)
       BYPASS=true
@@ -84,9 +98,11 @@ parse_ssh_arguments() {
           return
         fi
         TARGET_USER=$(strip_wrapping_quotes "${ORIGINAL_ARGS[$index]}")
+        TARGET_USER_EXPLICIT=true
         ;;
       -l?*)
         TARGET_USER=$(strip_wrapping_quotes "${argument#-l}")
+        TARGET_USER_EXPLICIT=true
         ;;
       -o)
         index=$((index + 1))
@@ -271,6 +287,7 @@ record_remote_authority() {
   TARGET_HOST="$parsed_host"
   if [ -n "$parsed_user" ]; then
     TARGET_USER="$parsed_user"
+    TARGET_USER_EXPLICIT=true
   fi
 }
 
@@ -471,13 +488,17 @@ selected_control_path="$current_control_path"
 if [ "$probe_status" -ne 0 ]; then
   if ! is_transient_probe_status "$probe_status" \
     || cloudflare_ssh_is_permanent_failure "$first_probe_stderr"; then
-    emit_probe_failure 1 "$probe_status" "$first_probe_stderr" error
+    emit_probe_failure \
+      1 "$probe_status" "$first_probe_stderr" error \
+      "${current_control_path:+${current_control_path}.stderr}"
     rm -rf "$probe_dir"
     release_transport_lock
     exit "$probe_status"
   fi
 
-  emit_probe_failure 1 "$probe_status" "$first_probe_stderr" warning
+  emit_probe_failure \
+    1 "$probe_status" "$first_probe_stderr" warning \
+    "${current_control_path:+${current_control_path}.stderr}"
   recovery_dir=$(mktemp -d "${STATE_DIR}/${target_key}.recovery.XXXXXX")
   recovery_control_path="${recovery_dir}/master.sock"
   recovery_status=0
@@ -523,9 +544,13 @@ trap - EXIT
 
 # From this point the caller operation is single-shot. Preserve its streams and
 # status through exec; never infer replay safety from the real client's result.
-if [ -n "$selected_control_path" ]; then
-  exec "$REAL_BINARY" \
-    -o "ControlPath=${selected_control_path}" \
-    "${ORIGINAL_ARGS[@]}"
+connection_args=()
+if [ "$TARGET_USER_EXPLICIT" = "false" ]; then
+  connection_args=(-o "User=${TARGET_USER}")
 fi
-exec "$REAL_BINARY" "${ORIGINAL_ARGS[@]}"
+if [ -n "$selected_control_path" ]; then
+  connection_args+=(
+    -o "ControlPath=${selected_control_path}"
+  )
+fi
+exec "$REAL_BINARY" "${connection_args[@]}" "${ORIGINAL_ARGS[@]}"

@@ -289,6 +289,16 @@ if find "$healthy/state" -name '*.control-path' -print -quit | grep -q .; then
   fail "healthy transport must not create recovery state"
 fi
 
+default_user="${tmp}/default-user"
+run_wrapper "$default_user" stale-success ssh \
+  dev-1.aws.vm3.ai touch /tmp/default-user
+default_user_control_path=$(< "$(find "$default_user/state" -name '*.control-path' -print -quit)")
+assert_contains "$default_user/status" "0"
+assert_line_count "$default_user/ssh.log" 1 \
+  "-n -T metal@dev-1.aws.vm3.ai true"
+assert_line_count "$default_user/actual-ssh.log" 1 \
+  "-o User=metal -o ControlPath=${default_user_control_path} dev-1.aws.vm3.ai touch /tmp/default-user"
+
 actual_failure="${tmp}/actual-failure"
 run_wrapper "$actual_failure" actual-failure ssh \
   metal@dev-1.aws.vm3.ai run-once
@@ -396,6 +406,8 @@ assert_contains "$stdin_case/ssh.log" \
   "-n -T metal@dev-2.aws.vm3.ai true"
 
 old_control_path="$selected_control_path"
+printf 'master channel failed TUNNEL_SERVICE_TOKEN_SECRET=master-secret\n' \
+  > "${old_control_path}.stderr"
 export FAKE_STALE_CONTROL_PATH="$old_control_path"
 run_wrapper "$recovery" selected-stale-success ssh \
   metal@dev-11.gcp.vm3.ai touch /tmp/second-recovery
@@ -409,6 +421,9 @@ assert_line_count "$recovery/actual-ssh.log" 1 \
   "-o ControlPath=${new_control_path} metal@dev-11.gcp.vm3.ai touch /tmp/second-recovery"
 assert_not_contains "$recovery/ssh.log" \
   "-S ${old_control_path} -n -O exit metal@dev-11.gcp.vm3.ai"
+assert_contains "$recovery/stderr" \
+  "TUNNEL_SERVICE_TOKEN_SECRET=[redacted]"
+assert_not_contains "$recovery/stderr" "master-secret"
 
 exhaustion="${tmp}/exhaustion"
 run_wrapper "$exhaustion" stale-exhaustion scp \
@@ -455,6 +470,15 @@ assert_contains "$explicit/status" "0"
 assert_line_count "$explicit/ssh.log" 1 \
   "-S /tmp/caller-owned.sock metal@dev-5.aws.vm3.ai touch /tmp/explicit"
 assert_not_contains "$explicit/ssh.log" " true"
+
+disabled_master="${tmp}/disabled-master"
+run_wrapper "$disabled_master" stale-exhaustion ssh \
+  -o ControlMaster=no \
+  metal@dev-5.aws.vm3.ai touch /tmp/disabled-master
+assert_contains "$disabled_master/status" "0"
+assert_line_count "$disabled_master/ssh.log" 1 \
+  "-o ControlMaster=no metal@dev-5.aws.vm3.ai touch /tmp/disabled-master"
+assert_not_contains "$disabled_master/ssh.log" " true"
 
 control="${tmp}/control"
 run_wrapper "$control" stale-exhaustion ssh \
