@@ -1012,8 +1012,11 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     ).toContain(deletedAgentThread.id);
 
     mockNow(incrementalSnapshotAt + DAY_MS + 1);
-    await compactChatThreadSnapshots();
+    const staleCompact = await compactChatThreadSnapshots();
+    expect(staleCompact.removedDeletedAgentThreads).toBeGreaterThanOrEqual(1);
     const compactedSnapshot = await chat.getThreadSnapshot(actor);
+    expect(compactedSnapshot.latestEventId).not.toBeNull();
+    expect(compactedSnapshot.latestSeqId).not.toBeNull();
     expect(compactedSnapshot.chatThreads).toStrictEqual([
       expect.objectContaining({
         id: liveThread.id,
@@ -1036,7 +1039,8 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(retainedBoundaryCursor.status).toBe(200);
 
     mockNow(retentionBoundary + 1);
-    await compactChatThreadSnapshots();
+    const retentionCompact = await compactChatThreadSnapshots();
+    expect(retentionCompact.eventsPruned).toBeGreaterThanOrEqual(1);
     const prunedCursor = await chat.requestThreadEvents(
       actor,
       { sinceSeqId: liveCreateEvent.seqId },
