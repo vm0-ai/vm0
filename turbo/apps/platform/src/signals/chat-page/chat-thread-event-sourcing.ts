@@ -20,6 +20,7 @@ import { reloadChatActiveRunIdsCounter$ } from "../chat-thread-list-reload.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { pathParams$ } from "../route.ts";
 import { bestEffort } from "../utils.ts";
+import { i18n } from "../../i18n/index.ts";
 import {
   chatThreadEventHasSeqId,
   type ChatThreadEventView,
@@ -492,7 +493,13 @@ const syncCurrentChatThreadDocumentTitle$ = command(
     const meta = get(threadMeta(threadId));
     signal.throwIfAborted();
     if (meta) {
-      set(updateDocumentTitle$, meta.title ?? "New chat");
+      set(
+        updateDocumentTitle$,
+        meta.title ??
+          i18n.t(($) => {
+            return $.chat.newChat;
+          }),
+      );
     }
   },
 );

@@ -7,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 
 export function ReplaceComposerDraftDialog({
   open,
@@ -17,14 +18,20 @@ export function ReplaceComposerDraftDialog({
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="zero-app sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Replace composer draft?</DialogTitle>
+          <DialogTitle>
+            {t(($) => {
+              return $.chat.replaceDraft.title;
+            })}
+          </DialogTitle>
           <DialogDescription>
-            Continuing will clear your current composer draft and start a
-            workflow prompt.
+            {t(($) => {
+              return $.chat.replaceDraft.description;
+            })}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
@@ -35,10 +42,14 @@ export function ReplaceComposerDraftDialog({
               onOpenChange(false);
             }}
           >
-            Cancel
+            {t(($) => {
+              return $.chat.actions.cancel;
+            })}
           </Button>
           <Button type="button" onClick={onConfirm}>
-            Continue
+            {t(($) => {
+              return $.chat.actions.continue;
+            })}
           </Button>
         </DialogFooter>
       </DialogContent>

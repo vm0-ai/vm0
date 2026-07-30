@@ -46,6 +46,7 @@ import { chatPageModelSelection$ } from "../zero-page/zero-chat-page.ts";
 import { selectedModelAvailable$ } from "../zero-page/model-first-personal-oauth.ts";
 import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import { i18n } from "../../i18n/index.ts";
 import {
   textToMessageDocument,
   type EditorDocumentSnapshot,
@@ -251,7 +252,11 @@ const resolveCurrentNewThreadModelSelection$ = command(
     ) {
       return resolved;
     }
-    toast.error("The selected model is not available");
+    toast.error(
+      i18n.t(($) => {
+        return $.chat.composer.selectedModelUnavailableToast;
+      }),
+    );
     return null;
   },
 );
