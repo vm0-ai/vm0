@@ -9,6 +9,7 @@ export const CLIENT_CAPABILITY_ID_ID_LOCALE = "id-id-locale-v1";
 export const CLIENT_CAPABILITY_DE_DE_LOCALE = "de-de-locale-v1";
 export const CLIENT_CAPABILITY_ES_ES_LOCALE = "es-es-locale-v1";
 export const CLIENT_CAPABILITY_IT_IT_LOCALE = "it-it-locale-v1";
+export const CLIENT_CAPABILITY_FR_FR_LOCALE = "fr-fr-locale-v1";
 export const CLIENT_CAPABILITY_CONNECTOR_SLUG_IDENTITIES =
   "connector-slug-identities-v1";
 export const ZERO_MAIL_CLIENT_VERSION_HEADER = "X-Zero-Mail-Client-Version";

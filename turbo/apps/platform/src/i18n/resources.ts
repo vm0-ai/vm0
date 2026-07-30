@@ -4,6 +4,8 @@ import {
 } from "@vm0/api-contracts/contracts/zero-user-preferences";
 import enUSCommon from "./locales/en-US/common.json";
 import enUSAgents from "./locales/en-US/agents.json";
+import frFRCommon from "./locales/fr-FR/common.json";
+import frFRAgents from "./locales/fr-FR/agents.json";
 import ptBRCommon from "./locales/pt-BR/common.json";
 import ptBRAgents from "./locales/pt-BR/agents.json";
 import jaJPCommon from "./locales/ja-JP/common.json";
@@ -63,5 +65,9 @@ export const resources = {
   "it-IT": {
     agents: itITAgents,
     common: itITCommon,
+  },
+  "fr-FR": {
+    agents: frFRAgents,
+    common: frFRCommon,
   },
 } as const;

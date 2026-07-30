@@ -4,6 +4,7 @@ import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { isBrazilianPortugueseLocaleRolloutEnabled } from "../../lib/brazilian-portuguese-locale-rollout";
+import { isFrenchLocaleRolloutEnabled } from "../../lib/french-locale-rollout";
 import { isGermanLocaleRolloutEnabled } from "../../lib/german-locale-rollout";
 import { isIndonesianLocaleRolloutEnabled } from "../../lib/indonesian-locale-rollout";
 import { isJapaneseLocaleRolloutEnabled } from "../../lib/japanese-locale-rollout";
@@ -57,6 +58,8 @@ function featureSwitchResponseBody(params: {
     isSpanishLocaleRolloutEnabled();
   effectiveSwitches[FeatureSwitchKey.ItalianLocale] =
     isItalianLocaleRolloutEnabled();
+  effectiveSwitches[FeatureSwitchKey.FrenchLocale] =
+    isFrenchLocaleRolloutEnabled();
 
   return {
     switches: params.switches,

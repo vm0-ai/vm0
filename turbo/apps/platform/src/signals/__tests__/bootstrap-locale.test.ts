@@ -3,6 +3,7 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import indexHtml from "../../../index.html?raw";
 import { setupPage } from "../../__tests__/page-helper.ts";
+import { formatAppNumber } from "../../i18n/format.ts";
 import { DEFAULT_LOCALE, resources } from "../../i18n/resources.ts";
 import { i18n } from "../../i18n/index.ts";
 import { localStorageSignals } from "../external/local-storage.ts";
@@ -193,6 +194,7 @@ describe("bootstrap locale", () => {
     expect(i18n.language).toBe("id-ID");
     expect(document.documentElement.lang).toBe("id-ID");
     expect(i18n.hasResourceBundle("en-US", "common")).toBeTruthy();
+    expect(i18n.hasResourceBundle("fr-FR", "common")).toBeTruthy();
     expect(i18n.hasResourceBundle("pt-BR", "common")).toBeTruthy();
     expect(i18n.hasResourceBundle("ja-JP", "common")).toBeTruthy();
     expect(i18n.hasResourceBundle("ko-KR", "common")).toBeTruthy();
@@ -285,6 +287,66 @@ describe("bootstrap locale", () => {
     } finally {
       document.documentElement.lang = DEFAULT_LOCALE;
     }
+  });
+
+  it("loads French bundles with localized formatting, plurals, and English fallback", async () => {
+    context.mocks.browser.language("fr-CA");
+    executeLocaleEntrypoint();
+
+    expect(document.documentElement.lang).toBe("fr-FR");
+    expect(window.__vm0PreBundleCopy).toMatchObject({
+      loading: {
+        ariaLabel: "Chargement de votre espace de travail",
+      },
+      metadata: {
+        title: "Zero — Votre coéquipier IA créé par vm0",
+      },
+    });
+
+    await setupPage({
+      context,
+      path: "/error",
+      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: false },
+      withoutRender: true,
+    });
+
+    expect(context.store.get(locale$)).toBe("fr-FR");
+    expect(i18n.language).toBe("fr-FR");
+    expect(i18n.hasResourceBundle("fr-FR", "common")).toBeTruthy();
+    expect(i18n.hasResourceBundle("fr-FR", "agents")).toBeTruthy();
+    expect(formatAppNumber(1234.5)).toBe(
+      new Intl.NumberFormat("fr-FR").format(1234.5),
+    );
+    expect(
+      i18n.t(
+        ($) => {
+          return $.activity.events.files;
+        },
+        { count: 2, formattedCount: formatAppNumber(2) },
+      ),
+    ).toBe("2 fichiers");
+    expect(
+      i18n.t(
+        ($) => {
+          return $.activity.events.files;
+        },
+        {
+          count: 1_000_000,
+          formattedCount: formatAppNumber(1_000_000),
+        },
+      ),
+    ).toBe(`${formatAppNumber(1_000_000)} fichiers`);
+
+    const fallbackI18n = i18n.cloneInstance({ forkResourceStore: true });
+    fallbackI18n.removeResourceBundle("fr-FR", "common");
+    await fallbackI18n.changeLanguage("fr-FR");
+    expect(
+      fallbackI18n.t(($) => {
+        return $.settings.preferences.language.title;
+      }),
+    ).toBe("Language");
+
+    await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
   });
 
   it("uses the cached locale across pre-bundle UI and i18next", async () => {
@@ -585,8 +647,41 @@ describe("bootstrap locale", () => {
     await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
   });
 
+  it("restores cached French before the application bundle renders", async () => {
+    context.mocks.browser.language("en-US");
+    sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
+    context.store.set(testLocaleStorage.set$, "fr-FR");
+
+    executeLocaleEntrypoint();
+
+    expect(document.documentElement.lang).toBe("fr-FR");
+    expect(window.__vm0PreBundleCopy).toMatchObject({
+      browserUpgrade: {
+        safari: {
+          actionLabel: "Mettre à jour Safari",
+        },
+      },
+      loading: {
+        ariaLabel: "Chargement de votre espace de travail",
+      },
+    });
+
+    await setupPage({
+      context,
+      path: "/error",
+      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: false },
+      withoutRender: true,
+    });
+
+    expect(context.store.get(locale$)).toBe("fr-FR");
+    expect(i18n.language).toBe("fr-FR");
+    expect(document.documentElement.lang).toBe("fr-FR");
+
+    await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
+  });
+
   it("falls back to English for unsupported browser and legacy cached locales", () => {
-    context.mocks.browser.language("fr-FR");
+    context.mocks.browser.language("nl-NL");
     sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
     context.store.set(testLocaleStorage.set$, "zh-CN");
 

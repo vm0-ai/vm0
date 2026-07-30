@@ -67,6 +67,7 @@ function createPreferences(
     "ja-JP",
     "ko-KR",
     "id-ID",
+    "fr-FR",
   ],
 ): UserPreferencesResponse {
   return {
@@ -314,6 +315,41 @@ describe("settings dialog", () => {
       expect(document.documentElement.lang).toBe("it-IT");
       expect(cachedLocale()).toBe("it-IT");
       expect(screen.getByText("Aspetto")).toBeInTheDocument();
+    });
+  });
+
+  it("selects and persists French when the API advertises it", async () => {
+    const submittedLocales: UserLocale[] = [];
+    let serverLocale: UserLocale | null = "en-US";
+    const supportedLocales: UserLocale[] = ["en-US", "pt-BR", "fr-FR"];
+    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+      return respond(200, createPreferences(serverLocale, supportedLocales));
+    });
+    context.mocks.api(
+      zeroUserPreferencesContract.update,
+      ({ body, respond }) => {
+        if (body.locale !== undefined) {
+          serverLocale = body.locale;
+          submittedLocales.push(body.locale);
+        }
+        return respond(200, createPreferences(serverLocale, supportedLocales));
+      },
+    );
+
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: true,
+    });
+
+    click(await screen.findByRole("combobox", { name: "Language" }));
+    click(screen.getByRole("option", { name: "Français" }));
+
+    await waitFor(() => {
+      expect(submittedLocales).toContain("fr-FR");
+      expect(
+        screen.getByRole("combobox", { name: "Langue" }),
+      ).toHaveTextContent("Français");
+      expect(document.documentElement.lang).toBe("fr-FR");
+      expect(cachedLocale()).toBe("fr-FR");
     });
   });
 
@@ -767,6 +803,69 @@ describe("settings dialog", () => {
     expect(
       screen.queryByRole("option", { name: "Bahasa Indonesia" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("does not expose French to a client paired with the previous API rollout", async () => {
+    context.mocks.data.userPreferences(
+      createPreferences("en-US", ["en-US", "pt-BR"]),
+    );
+
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: true,
+    });
+
+    const languageSelect = await screen.findByRole("combobox", {
+      name: "Language",
+    });
+    click(languageSelect);
+    expect(
+      screen.getByRole("option", { name: "Português (Brasil)" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "Français" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not submit cached French to an API that does not advertise it", async () => {
+    const submittedLocales: UserLocale[] = [];
+    document.documentElement.lang = "fr-FR";
+    context.store.set(setCachedLocale$, "fr-FR");
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        document.documentElement.lang = "en-US";
+      },
+      { once: true },
+    );
+    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+      return respond(200, createPreferences(null, ["en-US", "pt-BR"]));
+    });
+    context.mocks.api(
+      zeroUserPreferencesContract.update,
+      ({ body, respond }) => {
+        if (body.locale !== undefined) {
+          submittedLocales.push(body.locale);
+        }
+        return respond(
+          200,
+          createPreferences(body.locale ?? null, ["en-US", "pt-BR"]),
+        );
+      },
+    );
+
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: true,
+    });
+
+    await waitFor(() => {
+      expect(submittedLocales).toContain("en-US");
+      expect(submittedLocales).not.toContain("fr-FR");
+      expect(document.documentElement.lang).toBe("en-US");
+      expect(cachedLocale()).toBe("en-US");
+      expect(
+        screen.getByRole("combobox", { name: "Language" }),
+      ).toHaveTextContent("English");
+    });
   });
 
   it("lets admins navigate workspace settings without closing the dialog", async () => {

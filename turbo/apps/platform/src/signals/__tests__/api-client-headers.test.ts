@@ -3,6 +3,7 @@ import { HttpResponse } from "msw";
 import {
   addClientCapabilityToVersion,
   CLIENT_CAPABILITY_ES_ES_LOCALE,
+  CLIENT_CAPABILITY_FR_FR_LOCALE,
   CLIENT_CAPABILITY_IT_IT_LOCALE,
   CLIENT_CAPABILITY_JA_JP_LOCALE,
   CLIENT_CAPABILITY_KO_KR_LOCALE,
@@ -32,7 +33,7 @@ const context = testContext();
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
-const EXPECTED_CLIENT_VERSION = addClientCapabilityToVersion(
+const EXPECTED_CLIENT_VERSION_WITHOUT_FRENCH = addClientCapabilityToVersion(
   addClientCapabilityToVersion(
     addClientCapabilityToVersion(
       addClientCapabilityToVersion(
@@ -53,6 +54,10 @@ const EXPECTED_CLIENT_VERSION = addClientCapabilityToVersion(
     CLIENT_CAPABILITY_ES_ES_LOCALE,
   ),
   CLIENT_CAPABILITY_IT_IT_LOCALE,
+);
+const EXPECTED_CLIENT_VERSION = addClientCapabilityToVersion(
+  EXPECTED_CLIENT_VERSION_WITHOUT_FRENCH,
+  CLIENT_CAPABILITY_FR_FR_LOCALE,
 );
 
 interface ObservedClientHeaders {
