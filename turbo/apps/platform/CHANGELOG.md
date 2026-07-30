@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.666.1](https://github.com/vm0-ai/vm0/compare/app-v0.666.0...app-v0.666.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* **platform:** keep current model in capacity recovery picker ([#24129](https://github.com/vm0-ai/vm0/issues/24129)) ([3762abe](https://github.com/vm0-ai/vm0/commit/3762abebcdbb020fc59a766a1b4ad4c712b7b4fb))
+* **platform:** make chat scroll restoration deterministic ([#23982](https://github.com/vm0-ai/vm0/issues/23982)) ([da18931](https://github.com/vm0-ai/vm0/commit/da1893169f04ea0da57da7c5cb4697379d29394b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.255.1
+    * @vm0/core bumped to 8.495.1
+
 ## [0.666.0](https://github.com/vm0-ai/vm0/compare/app-v0.665.0...app-v0.666.0) (2026-07-30)
 
 
