@@ -22,6 +22,8 @@ import {
   expandHostWildcardsInBaseUrl,
 } from "@vm0/connectors/firewall-types";
 import { connectors } from "@vm0/db/schema/connector";
+import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
+import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
 import {
   orgCustomConnectorOauthConfigs,
   type OrgCustomConnectorOAuthPkceMethod,
@@ -2076,6 +2078,28 @@ export const disconnectCustomConnector$ = command(
     }
     const writeDb = set(writeDb$);
     await writeDb.transaction(async (tx) => {
+      if (connector.oauthConfig?.providerAdapter === "feishu") {
+        const [installation] = await tx
+          .select({ id: feishuOrgInstallations.id })
+          .from(feishuOrgInstallations)
+          .where(
+            and(
+              eq(feishuOrgInstallations.orgId, args.orgId),
+              eq(feishuOrgInstallations.appId, connector.oauthConfig.clientId),
+            ),
+          )
+          .limit(1);
+        if (installation) {
+          await tx
+            .delete(feishuOrgConnections)
+            .where(
+              and(
+                eq(feishuOrgConnections.installationId, installation.id),
+                eq(feishuOrgConnections.vm0UserId, args.userId),
+              ),
+            );
+        }
+      }
       await tx
         .delete(orgCustomConnectorValues)
         .where(

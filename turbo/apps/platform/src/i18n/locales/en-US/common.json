@@ -339,6 +339,7 @@
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
+      "test": "Test",
       "web": "Web",
       "webhook": "Webhook",
       "workflowEvent": "Workflow event",
@@ -1286,6 +1287,18 @@
       "providerDeletedSuffix": "to continue.",
       "providerIncompatibleAction": "Start a new session",
       "providerIncompatiblePrefix": "This session was started with a different model provider and can't be continued with the current one.",
+      "recovery": {
+        "capacityDescription": "This model is temporarily at capacity. Try again in a few minutes, or switch models now.",
+        "capacityTitle": "{{framework}} model is busy",
+        "claudeCode": "Claude Code",
+        "codex": "Codex",
+        "resetAndTryAgain": "Reset and try again",
+        "resetsAt": "Resets {{time}}",
+        "selectModel": "Switch model",
+        "tryAgain": "Try again",
+        "usageDescription": "You can continue when your usage limit resets, or switch models now.",
+        "usageTitle": "{{framework}} limit reached"
+      },
       "runCancelled": "Paused mid-thought — pick it back up whenever."
     },
     "feedback": {
@@ -2210,6 +2223,12 @@
         "manageDialogTitle": "Manage Feishu bot",
         "moreOptions": "More options for {{bot}}",
         "pageDescription": "Manage bot routing for this workspace",
+        "permissions": {
+          "description": "Open Permissions & Scopes in the Feishu developer console and add every scope below for User identity. These collaboration scopes let the connector work with messages, files, documents, spreadsheets, Base, Wiki, Slides, whiteboards, search, calendars, tasks, and basic contacts.",
+          "hint": "After changing permissions, create and publish a new app version so the OAuth consent screen can grant them.",
+          "label": "OAuth scopes",
+          "title": "Enable connector permissions"
+        },
         "publish": {
           "allMembersAlt": "Feishu availability settings with All members selected",
           "allMembersLabel": "Make the app available to all members",
@@ -2242,6 +2261,7 @@
           "done": "Done",
           "events": "Events",
           "next": "Next",
+          "permissions": "Permissions",
           "publish": "Publish",
           "redirect": "Redirect",
           "tokens": "Tokens",

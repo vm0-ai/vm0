@@ -75,7 +75,7 @@ async function catalogActor(
   await updateFeatureSwitchesForUser(
     context,
     { userId: actor.userId, orgId: actor.orgId },
-    { [FeatureSwitchKey.Artifacts]: true, ...switches },
+    switches,
   );
   const agent = await bdd.createAgent(actor, {
     displayName,
@@ -955,26 +955,6 @@ describe("GET /api/zero/artifacts/catalog", () => {
       throw new Error("Expected a foreign artifact request to 404");
     }
     expect(denied.body.error.code).toBe("NOT_FOUND");
-  }, 180_000);
-
-  it("serves the catalog regardless of the Artifacts feature switch", async () => {
-    const owner = await catalogActor(
-      "Artifact catalog switch-off owner",
-      bdd.user(),
-      { [FeatureSwitchKey.Artifacts]: false },
-    );
-    await uploadFile({
-      owner,
-      prompt: "upload despite the switch",
-      filename: "ungated.txt",
-      contentType: "text/plain",
-    });
-
-    const catalog = await chat.listArtifactCatalog(owner.actor);
-
-    expect(catalog.artifacts).toStrictEqual([
-      expect.objectContaining({ kind: "file", title: "ungated.txt" }),
-    ]);
   }, 180_000);
 
   it("scopes the catalog to one chat thread when chatThreadId is set", async () => {

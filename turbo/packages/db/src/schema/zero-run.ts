@@ -73,7 +73,7 @@ export const zeroRuns = pgTable(
     // until promotion supplies the same start used by runner telemetry.
     apiStartedAt: timestamp("api_started_at"),
     firstAssistantEventAcknowledgedAt: timestamp(
-      "first_assistant_message_acknowledged_at",
+      "first_assistant_event_acknowledged_at",
     ),
     // Brief AI-generated summary of what the run did (≤50 words)
     summary: text("summary"),

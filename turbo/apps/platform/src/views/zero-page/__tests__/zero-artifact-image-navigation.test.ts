@@ -82,8 +82,9 @@ describe("currentEventImageArtifactNavigation", () => {
         ],
       },
     ];
-    const groups = [
+    const groups: Parameters<typeof currentEventImageArtifactNavigation>[1] = [
       {
+        role: "assistant",
         events: [
           assistantEvent({ content: "Generated images:" }),
           assistantEvent({

@@ -3398,6 +3398,92 @@ describe("connectors page", () => {
     );
   });
 
+  it("connects a managed Feishu connector with the Feishu feature switch", async () => {
+    const defaultAgentId = "c0000000-0000-4000-a000-000000000044";
+    let oauthStartCount = 0;
+    let connector = customConnector({
+      slug: "_feishu-00000000-0000-4000-8000-000000000044",
+      displayName: "Feishu",
+      prefixes: ["https://open.feishu.cn/open-apis/"],
+      prefixTemplates: ["https://open.feishu.cn/open-apis/"],
+      fields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      authMode: "oauth",
+      oauthConfig: {
+        providerAdapter: "feishu",
+        clientId: "cli_feishu",
+        authorizationUrl:
+          "https://accounts.feishu.cn/open-apis/authen/v1/authorize",
+        tokenUrl: "https://open.feishu.cn/open-apis/authen/v2/oauth/token",
+        tokenEndpointAuthMethod: "client_secret_post",
+        pkceMethod: "none",
+        scopes: ["offline_access", "im:message"],
+        authorizationParams: {},
+      },
+      missingRequiredFields: ["oauth"],
+    });
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.data.team([teamAgent(defaultAgentId, "Zero")]);
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+      return respond(200, {
+        enabledIds: connector.connected ? [connector.id] : [],
+      });
+    });
+    const authWindow = createMockAuthWindow();
+    context.mocks.browser.open(authWindow);
+    context.mocks.api(
+      zeroCustomConnectorOAuth2Contract.start,
+      ({ params, respond }) => {
+        expect(params.id).toBe(connector.id);
+        oauthStartCount += 1;
+        connector = {
+          ...connector,
+          connected: true,
+          hasSecret: true,
+          missingRequiredFields: [],
+        };
+        authWindow.close();
+        return respond(200, {
+          authorizationUrl:
+            "https://accounts.feishu.cn/open-apis/authen/v1/authorize?state=feishu-ui-test",
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors?tab=custom",
+      featureSwitches: {
+        [FeatureSwitchKey.FeishuIntegration]: true,
+      },
+    });
+
+    const connectorButton = await waitFor(() => {
+      return buttonByAriaLabel("Connect Feishu");
+    });
+    click(connectorButton);
+    expect(document.querySelector('[role="dialog"]')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://accounts.feishu.cn/open-apis/authen/v1/authorize?state=feishu-ui-test",
+      );
+      expect(oauthStartCount).toBe(1);
+    });
+  });
+
   it("configures OAuth app credentials at creation and authorizes on connect", async () => {
     const defaultAgentId = "c0000000-0000-4000-a000-000000000001";
     const researchAgentId = "c0000000-0000-4000-a000-000000000041";

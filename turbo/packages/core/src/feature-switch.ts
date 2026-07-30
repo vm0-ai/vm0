@@ -382,6 +382,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatErrorRecovery]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Replace supported Codex and Claude Code limit errors with recovery actions in chat.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ChatThreadSidebarAutoOpen]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -437,12 +444,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
     userOverridable: false,
-  },
-  [FeatureSwitchKey.Artifacts]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Show the Artifacts manage page for generated artifacts in the current organization.",
-    enabled: true,
   },
   [FeatureSwitchKey.ArtifactKeyV2]: {
     maintainer: "yuma@vm0.ai",

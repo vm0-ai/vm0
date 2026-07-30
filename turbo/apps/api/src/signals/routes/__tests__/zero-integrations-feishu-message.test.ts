@@ -214,6 +214,8 @@ describe("POST /api/zero/integrations/feishu/message", () => {
           return HttpResponse.json({
             code: 0,
             access_token: "feishu-cli-user-access-token",
+            refresh_token: "feishu-cli-user-refresh-token",
+            expires_in: 7200,
           });
         },
       ),

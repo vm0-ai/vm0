@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   chatEventResponse,
@@ -11,6 +11,10 @@ import { click } from "../../../__tests__/page-helper.ts";
 import { initializeI18n } from "../../../i18n/index.ts";
 import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { mockChatLifecycle, mockSubagentThread } from "./chat-test-helpers.ts";
+import {
+  buildModelPolicy,
+  buildProvider,
+} from "./chat-composer-test-helpers.ts";
 import {
   context,
   detachedSetupPage,
@@ -1553,5 +1557,331 @@ describe("chat lifecycle", () => {
       burstMessages[49]!.seqId,
       burstMessages[99]!.seqId,
     ]);
+  });
+
+  it.each([
+    {
+      name: "Codex usage limit",
+      error:
+        "You've hit your usage limit. Try again at 5:00 PM (Asia/Shanghai).",
+      title: "Codex limit reached",
+    },
+    {
+      name: "Claude Code session limit",
+      error: "You've hit your session limit · resets 5:00 PM (Asia/Shanghai)",
+      title: "Claude Code limit reached",
+    },
+    {
+      name: "Claude usage limit",
+      error:
+        "Claude usage limit reached. Visit https://claude.ai/settings/usage or try again at 6:17 AM.",
+      title: "Claude Code limit reached",
+    },
+    {
+      name: "Codex model capacity",
+      error: "Selected model is at capacity. Please try a different model.",
+      title: "Codex model is busy",
+    },
+    {
+      name: "Claude Code model capacity",
+      error:
+        "Claude Sonnet 4.6 is overloaded. Please wait a few minutes and try again, or switch to another model.",
+      title: "Claude Code model is busy",
+    },
+  ])("recognizes the latest $name error", async ({ name, error, title }) => {
+    const threadId = `thread-recovery-${name.replaceAll(" ", "-")}`;
+    mockChatLifecycle(context, {
+      threadId,
+      chatEvents: [
+        {
+          id: `${threadId}-user`,
+          role: "user",
+          content: "Continue",
+          runId: `${threadId}-run`,
+          createdAt: "2026-07-30T09:00:00Z",
+        },
+        {
+          id: `${threadId}-failure`,
+          role: "assistant",
+          content: null,
+          error,
+          runId: `${threadId}-run`,
+          runLifecycleEvent: "failed",
+          createdAt: "2026-07-30T09:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ChatErrorRecovery]: true },
+      path: `/chats/${threadId}`,
+    });
+
+    const recoveryTitle = await screen.findByText(title);
+    expect(recoveryTitle).toBeInTheDocument();
+    expect(screen.getByTestId("assistant-error-recovery")).toBeInTheDocument();
+  });
+
+  it.each([
+    {
+      name: "Codex",
+      threadId: "b0000000-0000-4000-a000-000000000790",
+      selectedModel: "gpt-5.6-sol",
+      error:
+        "You've hit your usage limit. Try again at 5:00 PM (Asia/Shanghai).",
+      allowedOption: /Claude Sonnet 4\.6/u,
+      hiddenOption: /GPT 5\.6 Sol/u,
+    },
+    {
+      name: "Claude Code",
+      threadId: "b0000000-0000-4000-a000-000000000793",
+      selectedModel: "claude-sonnet-4-6",
+      error: "You've hit your session limit · resets 5:00 PM",
+      allowedOption: /GPT 5\.6 Sol/u,
+      hiddenOption: /Claude Sonnet 4\.6/u,
+    },
+  ])(
+    "offers only the opposite framework for a $name framework limit",
+    async ({ threadId, selectedModel, error, allowedOption, hiddenOption }) => {
+      context.mocks.data.orgModelPolicies([
+        buildModelPolicy({
+          id: "00000000-0000-4000-a000-000000000971",
+          model: "gpt-5.6-sol",
+          modelLabel: "GPT 5.6 Sol",
+          isDefault: selectedModel === "gpt-5.6-sol",
+          defaultProviderType: "codex-oauth-token",
+          credentialScope: "member",
+        }),
+        buildModelPolicy({
+          id: "00000000-0000-4000-a000-000000000972",
+          model: "claude-sonnet-4-6",
+          modelLabel: "Claude Sonnet 4.6",
+          isDefault: selectedModel === "claude-sonnet-4-6",
+          defaultProviderType: "claude-code-oauth-token",
+          credentialScope: "member",
+        }),
+      ]);
+      mockChatLifecycle(context, {
+        threadId,
+        selectedModel,
+        chatEvents: [
+          {
+            id: "codex-limit-user",
+            role: "user",
+            content: "Continue",
+            runId: "codex-limit-run",
+            createdAt: "2026-07-30T09:00:00Z",
+          },
+          {
+            id: "codex-limit-failure",
+            role: "assistant",
+            content: null,
+            error,
+            runId: "codex-limit-run",
+            runLifecycleEvent: "failed",
+            createdAt: "2026-07-30T09:00:01Z",
+          },
+        ],
+      });
+
+      detachedSetupPage({
+        context,
+        featureSwitches: { [FeatureSwitchKey.ChatErrorRecovery]: true },
+        path: `/chats/${threadId}`,
+      });
+
+      const card = await screen.findByTestId("assistant-error-recovery");
+      click(within(card).getByRole("combobox", { name: "Switch model" }));
+
+      const claudeOption = await screen.findByRole("option", {
+        name: allowedOption,
+      });
+      expect(claudeOption).toBeInTheDocument();
+      expect(
+        screen.queryByRole("option", { name: hiddenOption }),
+      ).not.toBeInTheDocument();
+    },
+  );
+
+  it("resets a personal Codex subscription before trying again", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000791";
+    let retriedPrompt: string | undefined;
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000974",
+        model: "gpt-5.6-sol",
+        modelLabel: "GPT 5.6 Sol",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+    ]);
+    context.mocks.data.personalModelProviders([
+      buildProvider({
+        id: "00000000-0000-4000-a000-000000000975",
+        type: "codex-oauth-token",
+        framework: "codex",
+        secretName: null,
+        authMethod: "auth_json",
+        secretNames: ["CODEX_AUTH_JSON"],
+        planType: "plus",
+        subscriptionResetCredits: 1,
+      }),
+    ]);
+    mockChatLifecycle(context, {
+      threadId,
+      selectedModel: "gpt-5.6-sol",
+      chatEvents: [
+        {
+          id: "codex-reset-user",
+          role: "user",
+          content: "Continue",
+          runId: "codex-reset-run",
+          createdAt: "2026-07-30T09:00:00Z",
+        },
+        {
+          id: "codex-reset-failure",
+          role: "assistant",
+          content: null,
+          error: "You've hit your usage limit. Try again at 5:00 PM.",
+          runId: "codex-reset-run",
+          runLifecycleEvent: "failed",
+          createdAt: "2026-07-30T09:00:01Z",
+        },
+      ],
+      onRunCreate: (body) => {
+        retriedPrompt = body.prompt;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ChatErrorRecovery]: true },
+      path: `/chats/${threadId}`,
+    });
+
+    click(
+      await waitFor(() => {
+        return buttonByText("Reset and try again");
+      }),
+    );
+    await waitFor(() => {
+      expect(retriedPrompt).toBe("try again");
+    });
+  });
+
+  it("keeps same-framework alternatives for model capacity and retries", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000792";
+    let retriedPrompt: string | undefined;
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000976",
+        model: "claude-sonnet-4-6",
+        modelLabel: "Claude Sonnet 4.6",
+        isDefault: true,
+      }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000977",
+        model: "claude-opus-4-7",
+        modelLabel: "Claude Opus 4.7",
+      }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000978",
+        model: "gpt-5.6-sol",
+        modelLabel: "GPT 5.6 Sol",
+        defaultProviderType: "codex-oauth-token",
+      }),
+    ]);
+    mockChatLifecycle(context, {
+      threadId,
+      selectedModel: "claude-sonnet-4-6",
+      chatEvents: [
+        {
+          id: "claude-capacity-user",
+          role: "user",
+          content: "Continue",
+          runId: "claude-capacity-run",
+          createdAt: "2026-07-30T09:00:00Z",
+        },
+        {
+          id: "claude-capacity-failure",
+          role: "assistant",
+          content: null,
+          error:
+            "Claude Sonnet 4.6 is overloaded. Please wait a few minutes and try again, or switch to another model.",
+          runId: "claude-capacity-run",
+          runLifecycleEvent: "failed",
+          createdAt: "2026-07-30T09:00:01Z",
+        },
+      ],
+      onRunCreate: (body) => {
+        retriedPrompt = body.prompt;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ChatErrorRecovery]: true },
+      path: `/chats/${threadId}`,
+    });
+
+    const card = await screen.findByTestId("assistant-error-recovery");
+    click(within(card).getByRole("combobox", { name: "Switch model" }));
+    const claudeOption = await screen.findByRole("option", {
+      name: /Claude Opus 4\.7/u,
+    });
+    expect(claudeOption).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: /GPT 5\.6 Sol/u }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: /Claude Sonnet 4\.6/u }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    click(buttonByText("Try again", card));
+    await waitFor(() => {
+      expect(retriedPrompt).toBe("try again");
+    });
+  });
+
+  it("keeps the provider error unchanged when recovery is disabled", async () => {
+    const threadId = "thread-recovery-disabled";
+    const error =
+      "You've hit your usage limit. Try again at 5:00 PM (Asia/Shanghai).";
+    mockChatLifecycle(context, {
+      threadId,
+      chatEvents: [
+        {
+          id: "recovery-disabled-user",
+          role: "user",
+          content: "Continue",
+          runId: "recovery-disabled-run",
+          createdAt: "2026-07-30T09:00:00Z",
+        },
+        {
+          id: "recovery-disabled-failure",
+          role: "assistant",
+          content: null,
+          error,
+          runId: "recovery-disabled-run",
+          runLifecycleEvent: "failed",
+          createdAt: "2026-07-30T09:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: { [FeatureSwitchKey.ChatErrorRecovery]: false },
+      path: `/chats/${threadId}`,
+    });
+
+    const providerError = await screen.findByText(error);
+    expect(providerError).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("assistant-error-recovery"),
+    ).not.toBeInTheDocument();
   });
 });

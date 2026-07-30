@@ -100,7 +100,6 @@ function mockThreadDetails(): void {
   });
   context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
     return respond(200, {
-      draftContent: null,
       draftUserMessage: null,
       draftAttachments: null,
     });
@@ -196,7 +195,6 @@ describe("chat drafts", () => {
     mockAgentChatPage(agentId);
     context.mocks.api(zeroAgentDraftContract.get, ({ params, respond }) => {
       return respond(200, {
-        draftContent: null,
         draftUserMessage: {
           version: 1,
           parts: [
@@ -259,7 +257,6 @@ describe("chat drafts", () => {
     mockAgentChatPage(agentId);
     context.mocks.http.get("*/api/zero/agents/:id/draft", () => {
       return HttpResponse.json({
-        draftContent: "stale legacy agent draft",
         draftUserMessage: {
           version: 1,
           parts: [
@@ -332,7 +329,6 @@ describe("chat drafts", () => {
     mockAgentChatPage(agentId);
     context.mocks.api(zeroAgentDraftContract.get, ({ respond }) => {
       return respond(200, {
-        draftContent: null,
         draftUserMessage: null,
         draftAttachments: null,
       });
@@ -466,13 +462,11 @@ describe("chat drafts", () => {
     context.mocks.api(chatThreadDraftContract.get, ({ params, respond }) => {
       if (params.id !== THREAD_ONE_ID) {
         return respond(200, {
-          draftContent: null,
           draftUserMessage: null,
           draftAttachments: null,
         });
       }
       return respond(200, {
-        draftContent: null,
         draftUserMessage: {
           version: 1,
           parts: [
@@ -527,7 +521,6 @@ describe("chat drafts", () => {
     });
     context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
       return respond(200, {
-        draftContent: null,
         draftUserMessage: {
           version: 1,
           parts: [
@@ -591,7 +584,6 @@ describe("chat drafts", () => {
     mockChatLifecycle(context, { threadId });
     context.mocks.http.get("*/api/zero/chat-threads/:id/draft", () => {
       return HttpResponse.json({
-        draftContent: "stale legacy draft",
         draftUserMessage: {
           version: 1,
           parts: [
@@ -741,7 +733,6 @@ describe("chat drafts", () => {
     });
     context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
       return respond(200, {
-        draftContent: null,
         draftUserMessage: {
           version: 1,
           parts: [

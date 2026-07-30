@@ -26,6 +26,7 @@ import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
 import { feishuChatOpenUrl } from "./feishu-config";
 import { ensureFeishuChatThreadRoute } from "./feishu-chat-ingress.service";
+import { hasFeishuCustomConnectorOAuthConnection } from "./feishu-custom-connector.service";
 import {
   resolveIntegrationModelRouteForUser$,
   type IntegrationModelRoutePin,
@@ -173,6 +174,7 @@ function parseMatchingMessage(
 
 async function loadConnection(
   db: Db,
+  orgId: string,
   message: FeishuInboundMessage,
 ): Promise<FeishuDispatchConnection | undefined> {
   const [connection] = await db
@@ -189,7 +191,15 @@ async function loadConnection(
       ),
     )
     .limit(1);
-  return connection;
+  if (!connection) {
+    return undefined;
+  }
+  const hasOAuthConnection = await hasFeishuCustomConnectorOAuthConnection(db, {
+    orgId,
+    userId: connection.vm0UserId,
+    installationId: message.installationId,
+  });
+  return hasOAuthConnection ? connection : undefined;
 }
 
 async function markIngressProcessed(db: Db, ingressId: string): Promise<void> {
@@ -444,7 +454,7 @@ async function processClaimedIngress(args: {
     message,
     signal: args.signal,
   });
-  const connection = await loadConnection(args.db, message);
+  const connection = await loadConnection(args.db, ingress.orgId, message);
   args.signal.throwIfAborted();
   if (!connection) {
     await replyToUnconnectedFeishuMessage({
