@@ -110,12 +110,14 @@ function authenticateTestAgentRun(
   };
 }
 
-export function createRunReadsApi(context: TestContext) {
-  const directRunApp = setupAppWithRoutes({
+function directRunApp(context: TestContext) {
+  return setupAppWithRoutes({
     context,
     routes: testAgentRunsRoutes,
   });
+}
 
+export function createRunReadsApi(context: TestContext) {
   return {
     async requestCreateDirectRun<
       TStatus extends 201 | 400 | 401 | 403 | 404 | 429,
@@ -125,7 +127,7 @@ export function createRunReadsApi(context: TestContext) {
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        directRunApp(testAgentRunsContract).create({
+        directRunApp(context)(testAgentRunsContract).create({
           headers: authenticateTestAgentRun(context, actor),
           body,
         }),
