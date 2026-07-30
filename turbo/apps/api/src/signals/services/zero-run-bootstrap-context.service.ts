@@ -1,9 +1,5 @@
 import { userPermissionGrantActionSchema } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import {
-  isFeatureEnabled,
-  type FeatureSwitchContext,
-} from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import type {
   FirewallPermissionGrant,
   FirewallPermissionGrantAction,
@@ -106,7 +102,6 @@ export interface UserInfo {
 export interface ZeroRunBootstrapContext extends AgentConnectorScope {
   readonly userInfo: UserInfo;
   readonly featureSwitchContext: FeatureSwitchContext;
-  readonly zeroFinanceEnabled: boolean;
   readonly workflows: readonly RunWorkflowRef[];
   readonly permissionGrants: readonly FirewallPermissionGrant[];
   readonly triggerAgentId: string | undefined;
@@ -440,10 +435,6 @@ export function materializeZeroRunBootstrapContext(
   return {
     userInfo,
     featureSwitchContext,
-    zeroFinanceEnabled: isFeatureEnabled(
-      FeatureSwitchKey.ZeroFinance,
-      featureSwitchContext,
-    ),
     ...connectorScope,
     workflows: workflowsForRunFromRows(rows.workflowRows, args.userId),
     permissionGrants,

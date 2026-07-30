@@ -8202,6 +8202,47 @@ async function validateTeamsThreadSessionContraction(): Promise<void> {
   }
 }
 
+async function validateTelegramThreadSessionContraction(): Promise<void> {
+  console.log("=== Validate legacy Telegram thread session contraction ===\n");
+  const testDb = "migration_telegram_thread_session_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 740);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      const beforeDrop = await client.query<{
+        legacy_session_table: string | null;
+      }>(`
+        SELECT to_regclass(
+          'public.telegram_thread_sessions'
+        )::text AS "legacy_session_table"
+      `);
+      assert.deepEqual(beforeDrop.rows, [
+        { legacy_session_table: "telegram_thread_sessions" },
+      ]);
+
+      await applyMigrationsUpTo(client, 741);
+
+      const afterDrop = await client.query<{
+        legacy_session_table: string | null;
+      }>(`
+        SELECT to_regclass(
+          'public.telegram_thread_sessions'
+        )::text AS "legacy_session_table"
+      `);
+      assert.deepEqual(afterDrop.rows, [{ legacy_session_table: null }]);
+      console.log("   ✅ Legacy Telegram thread session table is removed\n");
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateOrgPlanEntitlementBackfill(): Promise<void> {
   console.log(
     "=== Phase 1.8: Validate existing org plan entitlement backfill ===\n",
@@ -8881,6 +8922,7 @@ async function main(): Promise<void> {
     await validateSlackChatThreadRouteBackfill();
     await validateSlackLegacySchemaContraction();
     await validateTeamsThreadSessionContraction();
+    await validateTelegramThreadSessionContraction();
     await validateOrgPlanEntitlementBackfill();
     await validateModelObservationContractCleanup();
     await validateChatEventTypeBackfillAndContract();

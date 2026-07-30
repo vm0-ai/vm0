@@ -64,7 +64,7 @@ import {
   type WorkflowRow,
 } from "../services/zero-workflow-data.service";
 import type { RouteEntry } from "../route-entry";
-import { sendNormalMessage$ } from "./zero-chat-events";
+import { sendNormalEvent$ } from "./zero-chat-events";
 
 const log = logger("api:zero:workflow-connector-readiness");
 
@@ -1099,7 +1099,7 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   // Invoking a workflow is exactly typing its slash command in chat.
   const prompt = workflowSlashPrompt(workflow);
   const result = await set(
-    sendNormalMessage$,
+    sendNormalEvent$,
     {
       auth,
       body: {

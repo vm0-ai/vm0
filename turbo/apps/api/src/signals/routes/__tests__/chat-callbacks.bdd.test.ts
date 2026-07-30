@@ -128,11 +128,11 @@ type OutputMessage = Extract<
   { eventType: "output.message" }
 >;
 type LifecycleEvent = "completed" | "failed" | "cancelled";
-type LifecycleMessage<Event extends LifecycleEvent> = Extract<
+type LifecycleChatEvent<Event extends LifecycleEvent> = Extract<
   ChatEventResponse,
   { eventType: `run.${Event}` }
 >;
-type FollowupsMessage = Extract<
+type FollowupsEvent = Extract<
   ChatEventResponse,
   { eventType: "output.followups" }
 >;
@@ -269,7 +269,7 @@ async function startChatRun(
   };
 }
 
-async function queueChatMessage(
+async function queueChatEvent(
   actor: ApiTestUser,
   body: {
     readonly agentId: string;
@@ -577,17 +577,17 @@ function lifecycleMarkers<Event extends LifecycleEvent>(
   messages: readonly ChatEventResponse[],
   runId: string,
   event: Event,
-): LifecycleMessage<Event>[] {
-  return messages.filter((message): message is LifecycleMessage<Event> => {
+): LifecycleChatEvent<Event>[] {
+  return messages.filter((message): message is LifecycleChatEvent<Event> => {
     return message.runId === runId && message.eventType === `run.${event}`;
   });
 }
 
-function recommendedFollowupMessages(
+function recommendedFollowupEvents(
   messages: readonly ChatEventResponse[],
   runId: string,
-): FollowupsMessage[] {
-  return messages.filter((message): message is FollowupsMessage => {
+): FollowupsEvent[] {
+  return messages.filter((message): message is FollowupsEvent => {
     return (
       message.eventType === "output.followups" &&
       message.runId === runId &&
@@ -661,7 +661,7 @@ function sandboxOperationEventsForRun(
   });
 }
 
-function firstAssistantMessageEventsForRun(
+function firstAssistantEventsForRun(
   runId: string,
 ): readonly Record<string, unknown>[] {
   return sandboxOperationEventsForRun(runId).filter((event) => {
@@ -813,7 +813,7 @@ describe("CHAT-02: completed chat callback", () => {
         templateId: template.templateId,
       },
     };
-    await queueChatMessage(actor, {
+    await queueChatEvent(actor, {
       agentId,
       threadId: first.threadId,
       prompt: "queued next turn",
@@ -854,7 +854,7 @@ describe("CHAT-02: completed chat callback", () => {
       (messages) => {
         return (
           eventBackedContents(messages, first.runId).length === 1 &&
-          recommendedFollowupMessages(messages, first.runId).some((message) => {
+          recommendedFollowupEvents(messages, first.runId).some((message) => {
             return (message.recommendedFollowups?.length ?? 0) === 2;
           })
         );
@@ -876,10 +876,7 @@ describe("CHAT-02: completed chat callback", () => {
     expect(marker.content).toBeNull();
     expect(marker).not.toHaveProperty("status");
     expect(marker).not.toHaveProperty("recommendedFollowups");
-    const recommender = recommendedFollowupMessages(
-      after.events,
-      first.runId,
-    )[0];
+    const recommender = recommendedFollowupEvents(after.events, first.runId)[0];
     if (!recommender) {
       throw new Error("Expected a recommended follow-up message");
     }
@@ -1059,7 +1056,7 @@ describe("CHAT-02: completed chat callback", () => {
       clearMockNow();
     });
 
-    await queueChatMessage(actor, {
+    await queueChatEvent(actor, {
       agentId,
       threadId: first.threadId,
       prompt: queuedPrompt,
@@ -1123,7 +1120,7 @@ describe("CHAT-02: completed chat callback", () => {
     );
     await flushWaitUntilForTest();
 
-    expect(firstAssistantMessageEventsForRun(claimed.runId)).toStrictEqual([
+    expect(firstAssistantEventsForRun(claimed.runId)).toStrictEqual([
       expect.objectContaining({
         _time: new Date(acknowledgedAt).toISOString(),
         duration_ms: acknowledgedAt - dequeuedAt,
@@ -1306,7 +1303,7 @@ describe("CHAT-02: completed chat callback", () => {
       agentId,
       prompt: "finish the current turn",
     });
-    await queueChatMessage(actor, {
+    await queueChatEvent(actor, {
       agentId,
       threadId: first.threadId,
       prompt: "queued while side effects wait",
@@ -1400,7 +1397,7 @@ describe("CHAT-02: completed chat callback", () => {
       actor,
       first.threadId,
       (messages) => {
-        return recommendedFollowupMessages(messages, first.runId).some(
+        return recommendedFollowupEvents(messages, first.runId).some(
           (message) => {
             return (message.recommendedFollowups?.length ?? 0) === 1;
           },
@@ -1417,20 +1414,20 @@ describe("CHAT-02: completed chat callback", () => {
     )[0];
     expect(markerAfterRelease?.id).toBe(markerBeforeRelease.id);
     expect(markerAfterRelease).not.toHaveProperty("recommendedFollowups");
-    const followupMessage = recommendedFollowupMessages(
+    const followupEvent = recommendedFollowupEvents(
       afterFollowups.events,
       first.runId,
     )[0];
-    if (!followupMessage) {
+    if (!followupEvent) {
       throw new Error("Expected a recommended follow-up message");
     }
-    expect(followupMessage.recommendedFollowups).toStrictEqual([
+    expect(followupEvent.recommendedFollowups).toStrictEqual([
       { prompt: "Review the queued result", kind: "talk" },
     ]);
     await waitForChatThreadMessageCreatedPublish(first.threadId);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `chatThreadMessageCreated:${first.threadId}`,
-      { syncThroughSeqId: followupMessage.seqId },
+      { syncThroughSeqId: followupEvent.seqId },
     );
     expect(titlePrompts).toHaveLength(1);
     expect(titlePrompts[0]).toContain("finish the current turn");
@@ -1438,7 +1435,7 @@ describe("CHAT-02: completed chat callback", () => {
 
     await flushWaitUntilForTest();
 
-    await queueChatMessage(actor, {
+    await queueChatEvent(actor, {
       agentId,
       threadId: first.threadId,
       prompt: "queued after duplicate callback",
@@ -1916,7 +1913,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await waitForRunStatus(actor, first.runId, "pending");
     await waitForRunStatus(actor, blocker.runId, "pending");
 
-    await queueChatMessage(actor, {
+    await queueChatEvent(actor, {
       agentId,
       threadId: first.threadId,
       prompt: "queued while org cap is full",
@@ -1996,7 +1993,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       agentId,
       prompt: "stream before queued follow-up",
     });
-    await queueChatMessage(actor, {
+    await queueChatEvent(actor, {
       agentId,
       threadId: first.threadId,
       prompt: "queued after streamed output",
@@ -2198,7 +2195,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     expect(chatOutputAxiomQueryCalls()).toHaveLength(0);
     expect(eventBackedContents(messages.events, silent.runId)).toHaveLength(0);
     await flushWaitUntilForTest();
-    expect(firstAssistantMessageEventsForRun(silent.runId)).toStrictEqual([]);
+    expect(firstAssistantEventsForRun(silent.runId)).toStrictEqual([]);
 
     const resultOnly = await startChatRun(actor, {
       agentId,
@@ -2244,7 +2241,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       }),
     ).toStrictEqual(["Axiom result fallback answer"]);
     await flushWaitUntilForTest();
-    expect(firstAssistantMessageEventsForRun(resultOnly.runId)).toHaveLength(1);
+    expect(firstAssistantEventsForRun(resultOnly.runId)).toHaveLength(1);
   }, 90_000);
 
   it("extracts assistant output from Codex items and result fallbacks, skips non-events, and acknowledges progress without reading events", async () => {
@@ -2821,7 +2818,7 @@ describe("CHAT-02: auto-send after failures", () => {
       failedForQueue.runId,
     );
     const queuedPrompt = "queued incomplete context probe";
-    await queueChatMessage(actor, {
+    await queueChatEvent(actor, {
       agentId,
       threadId: anchor.threadId,
       prompt: queuedPrompt,
@@ -2927,10 +2924,10 @@ describe("CHAT-02: auto-send after failures", () => {
       actor,
       anchor.threadId,
       (messages) => {
-        return recommendedFollowupMessages(messages, anchor.runId).length > 0;
+        return recommendedFollowupEvents(messages, anchor.runId).length > 0;
       },
     );
-    const lateFollowup = recommendedFollowupMessages(
+    const lateFollowup = recommendedFollowupEvents(
       afterFollowup.events,
       anchor.runId,
     )[0];
@@ -3037,7 +3034,7 @@ describe("CHAT-02: auto-send after failures", () => {
       id: queuedUpload.id,
     });
     const queuedContent = "queued with files";
-    await queueChatMessage(actor, {
+    await queueChatEvent(actor, {
       agentId,
       threadId: first.threadId,
       prompt: "queued with files",
@@ -3148,7 +3145,7 @@ describe("CHAT-02: auto-send after failures", () => {
       })
       .toBe(1);
 
-    await queueChatMessage(actor, {
+    await queueChatEvent(actor, {
       agentId,
       threadId: first.threadId,
       prompt: "queued after duplicate failed callback",
@@ -3251,7 +3248,7 @@ describe("CHAT-02: auto-send after failures", () => {
 
     const normalHeaders = await claimChatRun(runnerGroup, normal.runId);
     const queuedPrompt = "queued callback frontier probe";
-    await queueChatMessage(actor, {
+    await queueChatEvent(actor, {
       agentId,
       threadId: anchor.threadId,
       prompt: queuedPrompt,
@@ -3366,7 +3363,7 @@ describe("CHAT-02: auto-send across a model switch", () => {
       prompt: "And stringify?",
     });
     const secondHeaders = await claimChatRun(runnerGroup, second.runId);
-    await queueChatMessage(actor, {
+    await queueChatEvent(actor, {
       agentId,
       threadId: first.threadId,
       prompt: "queued before policy removal",
@@ -3496,7 +3493,7 @@ describe("CHAT-02: auto-send across a model switch", () => {
       first.threadId,
       "claude-sonnet-4-6",
     );
-    await queueChatMessage(actor, {
+    await queueChatEvent(actor, {
       agentId,
       threadId: first.threadId,
       prompt: "queue a sonnet follow-up",

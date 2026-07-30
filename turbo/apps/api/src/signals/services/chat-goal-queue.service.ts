@@ -1,7 +1,7 @@
 import {
-  chatMessages,
-  type ChatMessageGoalSnapshot,
-} from "@vm0/db/schema/chat-message";
+  chatEvents,
+  type ChatEventGoalSnapshot,
+} from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -19,8 +19,8 @@ import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 
-const goalEventRevoker = alias(chatMessages, "goal_event_revoker");
-const laterGoalChange = alias(chatMessages, "later_goal_change");
+const goalEventRevoker = alias(chatEvents, "goal_event_revoker");
+const laterGoalChange = alias(chatEvents, "later_goal_change");
 
 export type GoalQueueAdmission =
   | { readonly kind: "inserted"; readonly eventId: string }
@@ -50,18 +50,18 @@ async function pendingGoalEventExists(
   chatThreadId: string,
 ): Promise<boolean> {
   const [event] = await db
-    .select({ id: chatMessages.id })
-    .from(chatMessages)
+    .select({ id: chatEvents.id })
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.chatThreadId, chatThreadId),
+        eq(chatEvents.chatThreadId, chatThreadId),
         chatEventTypeIn(["input.goal"]),
-        isNull(chatMessages.runId),
+        isNull(chatEvents.runId),
         notExists(
           db
             .select({ id: goalEventRevoker.id })
             .from(goalEventRevoker)
-            .where(eq(goalEventRevoker.revokesEventId, chatMessages.id)),
+            .where(eq(goalEventRevoker.revokesEventId, chatEvents.id)),
         ),
       ),
     )
@@ -78,7 +78,7 @@ export async function admitGoalQueueEvent(
     readonly objectiveBrief: string;
   },
 ): Promise<GoalQueueAdmission> {
-  const goalSnapshot: ChatMessageGoalSnapshot = {
+  const goalSnapshot: ChatEventGoalSnapshot = {
     objectiveBrief: args.objectiveBrief,
   };
   return await db.transaction(async (tx) => {
@@ -110,9 +110,9 @@ function noGoalChangeAfterQueueEvent(db: Pick<Db, "select">) {
       .from(laterGoalChange)
       .where(
         and(
-          eq(laterGoalChange.chatThreadId, chatMessages.chatThreadId),
+          eq(laterGoalChange.chatThreadId, chatEvents.chatThreadId),
           eq(laterGoalChange.eventType, "goal.changed"),
-          gt(laterGoalChange.seqId, chatMessages.seqId),
+          gt(laterGoalChange.seqId, chatEvents.seqId),
         ),
       ),
   );
@@ -143,17 +143,17 @@ export async function loadNextGoalQueueEvent(
 
     const [event] = await tx
       .select({
-        id: chatMessages.id,
-        chatThreadId: chatMessages.chatThreadId,
+        id: chatEvents.id,
+        chatThreadId: chatEvents.chatThreadId,
         userId: chatThreads.userId,
         orgId: zeroAgents.orgId,
-        goalId: chatMessages.runGroupId,
-        createdAt: chatMessages.createdAt,
+        goalId: chatEvents.runGroupId,
+        createdAt: chatEvents.createdAt,
       })
-      .from(chatMessages)
-      .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
+      .from(chatEvents)
+      .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
       .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
-      .where(eq(chatMessages.id, head.id))
+      .where(eq(chatEvents.id, head.id))
       .limit(1);
     if (!event) {
       return null;
@@ -182,10 +182,10 @@ export async function loadGoalQueueTarget(
     })
     .from(threadGoals)
     .innerJoin(
-      chatMessages,
+      chatEvents,
       and(
-        eq(chatMessages.id, event.id),
-        eq(chatMessages.chatThreadId, threadGoals.chatThreadId),
+        eq(chatEvents.id, event.id),
+        eq(chatEvents.chatThreadId, threadGoals.chatThreadId),
       ),
     )
     .where(
@@ -229,10 +229,10 @@ export async function goalQueueEventMatchesActiveGoal(
     })
     .from(threadGoals)
     .innerJoin(
-      chatMessages,
+      chatEvents,
       and(
-        eq(chatMessages.id, args.eventId),
-        eq(chatMessages.chatThreadId, threadGoals.chatThreadId),
+        eq(chatEvents.id, args.eventId),
+        eq(chatEvents.chatThreadId, threadGoals.chatThreadId),
       ),
     )
     .where(
@@ -276,22 +276,22 @@ export async function rejectGoalQueueEvent(
     }
     const [payload] = await tx
       .select({
-        goalSnapshot: chatMessages.goalSnapshot,
+        goalSnapshot: chatEvents.goalSnapshot,
         currentGoalObjectiveBrief: threadGoals.objectiveBrief,
       })
-      .from(chatMessages)
+      .from(chatEvents)
       .leftJoin(
         threadGoals,
         and(
-          eq(threadGoals.chatThreadId, chatMessages.chatThreadId),
+          eq(threadGoals.chatThreadId, chatEvents.chatThreadId),
           eq(threadGoals.orgId, args.orgId),
           eq(threadGoals.ownerUserId, args.userId),
         ),
       )
       .where(
         and(
-          eq(chatMessages.id, args.eventId),
-          eq(chatMessages.chatThreadId, args.chatThreadId),
+          eq(chatEvents.id, args.eventId),
+          eq(chatEvents.chatThreadId, args.chatThreadId),
         ),
       )
       .limit(1);

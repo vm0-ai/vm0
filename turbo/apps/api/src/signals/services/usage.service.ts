@@ -58,9 +58,10 @@ async function queryAgentRunsDaily(
     return [];
   }
 
+  const dateExpr = sql`DATE(${agentRuns.createdAt})`.mapWith(pgTextDecoder);
   const rows = await db
     .select({
-      date: sql`DATE(${agentRuns.createdAt})`.mapWith(pgTextDecoder).as("date"),
+      date: dateExpr.as("date"),
       run_count: count().as("run_count"),
       run_time_ms: sql`COALESCE(${sum(
         sql`EXTRACT(EPOCH FROM (${agentRuns.completedAt} - ${agentRuns.startedAt})) * 1000`,
@@ -78,7 +79,7 @@ async function queryAgentRunsDaily(
         isNotNull(agentRuns.completedAt),
       ),
     )
-    .groupBy(sql`DATE(${agentRuns.createdAt})`);
+    .groupBy(dateExpr);
 
   return rows;
 }

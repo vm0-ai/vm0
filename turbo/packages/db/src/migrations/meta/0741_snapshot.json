@@ -1,5 +1,5 @@
 {
-  "id": "7b05a24e-2580-4822-b852-66d41d00624d",
+  "id": "ee81455e-0e21-4975-bbbb-9e91d17eac01",
   "prevId": "387dcec5-7303-4c39-94bf-54dc1e371517",
   "version": "7",
   "dialect": "postgresql",
@@ -3358,27 +3358,6 @@
           "method": "btree",
           "with": {}
         },
-        "idx_browser_session_instances_thread": {
-          "name": "idx_browser_session_instances_thread",
-          "columns": [
-            {
-              "expression": "chat_thread_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "idx_browser_session_instances_run_status": {
           "name": "idx_browser_session_instances_run_status",
           "columns": [
@@ -3442,28 +3421,28 @@
         "browser_session_instances_browser_session_id_browser_sessions_id_fk": {
           "name": "browser_session_instances_browser_session_id_browser_sessions_id_fk",
           "tableFrom": "browser_session_instances",
+          "tableTo": "browser_sessions",
           "columnsFrom": [
             "browser_session_id"
           ],
-          "tableTo": "browser_sessions",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
         "browser_session_instances_usage_event_id_usage_event_id_fk": {
           "name": "browser_session_instances_usage_event_id_usage_event_id_fk",
           "tableFrom": "browser_session_instances",
+          "tableTo": "usage_event",
           "columnsFrom": [
             "usage_event_id"
           ],
-          "tableTo": "usage_event",
           "columnsTo": [
             "id"
           ],
-          "onUpdate": "no action",
-          "onDelete": "set null"
+          "onDelete": "set null",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3672,21 +3651,6 @@
           "method": "btree",
           "with": {}
         },
-        "uq_browser_sessions_thread": {
-          "name": "uq_browser_sessions_thread",
-          "columns": [
-            {
-              "expression": "chat_thread_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "idx_browser_sessions_owner_created": {
           "name": "idx_browser_sessions_owner_created",
           "columns": [
@@ -3731,6 +3695,22 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "uq_browser_sessions_thread_owned": {
+          "name": "uq_browser_sessions_thread_owned",
+          "columns": [
+            {
+              "expression": "chat_thread_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"browser_sessions\".\"status\" IN ('creating', 'active', 'resuming', 'stopping')",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -4537,7 +4517,7 @@
       "checkConstraints": {
         "chat_events_event_type_check": {
           "name": "chat_events_event_type_check",
-          "value": "\"chat_events\".\"event_type\" IN (\n          'input.prompt',\n          'input.automation',\n          'input.goal',\n          'input.rejected',\n          'output.message',\n          'output.error',\n          'output.thinking',\n          'output.followups',\n          'run.queued',\n          'run.dequeued',\n          'run.completed',\n          'run.failed',\n          'run.cancelled',\n          'queue.automation_paused',\n          'queue.automation_resumed',\n          'control.interrupt',\n          'control.revoke',\n          'browser.started',\n          'browser.stopped',\n          'goal.changed',\n          'usage.recorded'\n        )"
+          "value": "\"chat_events\".\"event_type\" IN (\n          'input.prompt',\n          'input.automation',\n          'input.goal',\n          'input.rejected',\n          'output.message',\n          'output.error',\n          'output.thinking',\n          'output.followups',\n          'run.queued',\n          'run.dequeued',\n          'run.completed',\n          'run.failed',\n          'run.cancelled',\n          'queue.automation_paused',\n          'queue.automation_resumed',\n          'control.interrupt',\n          'control.revoke',\n          'goal.changed',\n          'usage.recorded'\n        )"
         },
         "chat_events_input_user_message_check": {
           "name": "chat_events_input_user_message_check",
@@ -19572,210 +19552,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.telegram_thread_sessions": {
-      "name": "telegram_thread_sessions",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "telegram_user_link_id": {
-          "name": "telegram_user_link_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "telegram_official_user_link_id": {
-          "name": "telegram_official_user_link_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "chat_id": {
-          "name": "chat_id",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "root_message_id": {
-          "name": "root_message_id",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "agent_session_id": {
-          "name": "agent_session_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "last_processed_message_id": {
-          "name": "last_processed_message_id",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "idx_telegram_thread_sessions_chat_user_link": {
-          "name": "idx_telegram_thread_sessions_chat_user_link",
-          "columns": [
-            {
-              "expression": "telegram_user_link_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "chat_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "root_message_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "telegram_user_link_id IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_telegram_thread_sessions_chat_official_link": {
-          "name": "idx_telegram_thread_sessions_chat_official_link",
-          "columns": [
-            {
-              "expression": "telegram_official_user_link_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "chat_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "root_message_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "telegram_official_user_link_id IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_telegram_thread_sessions_user_link": {
-          "name": "idx_telegram_thread_sessions_user_link",
-          "columns": [
-            {
-              "expression": "telegram_user_link_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "telegram_user_link_id IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_telegram_thread_sessions_official_user_link": {
-          "name": "idx_telegram_thread_sessions_official_user_link",
-          "columns": [
-            {
-              "expression": "telegram_official_user_link_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "telegram_official_user_link_id IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "telegram_thread_sessions_telegram_user_link_id_telegram_user_links_id_fk": {
-          "name": "telegram_thread_sessions_telegram_user_link_id_telegram_user_links_id_fk",
-          "tableFrom": "telegram_thread_sessions",
-          "tableTo": "telegram_user_links",
-          "columnsFrom": [
-            "telegram_user_link_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "telegram_thread_sessions_telegram_official_user_link_id_telegram_official_user_links_id_fk": {
-          "name": "telegram_thread_sessions_telegram_official_user_link_id_telegram_official_user_links_id_fk",
-          "tableFrom": "telegram_thread_sessions",
-          "tableTo": "telegram_official_user_links",
-          "columnsFrom": [
-            "telegram_official_user_link_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "telegram_thread_sessions_agent_session_id_agent_sessions_id_fk": {
-          "name": "telegram_thread_sessions_agent_session_id_agent_sessions_id_fk",
-          "tableFrom": "telegram_thread_sessions",
-          "tableTo": "agent_sessions",
-          "columnsFrom": [
-            "agent_session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "chk_telegram_thread_sessions_one_owner": {
-          "name": "chk_telegram_thread_sessions_one_owner",
-          "value": "(telegram_user_link_id IS NOT NULL) <> (telegram_official_user_link_id IS NOT NULL)"
-        }
-      },
       "isRLSEnabled": false
     },
     "public.telegram_user_agent_preferences": {

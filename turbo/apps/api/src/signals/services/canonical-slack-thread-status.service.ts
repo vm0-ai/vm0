@@ -1,5 +1,5 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { slackChatIngress } from "@vm0/db/schema/slack-chat-ingress";
 import { slackChatThreadRoutes } from "@vm0/db/schema/slack-chat-thread-route";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
@@ -20,7 +20,7 @@ import { chatEventTypeIn } from "./zero-chat-event-type.service";
 
 const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
 const ACTIVE_INGRESS_STATUSES = ["pending", "processing"] as const;
-const slackQueueEventRevoker = alias(chatMessages, "slack_queue_event_revoker");
+const slackQueueEventRevoker = alias(chatEvents, "slack_queue_event_revoker");
 
 const slackStatusIngressPayloadSchema = z.object({
   event: z.object({
@@ -139,19 +139,19 @@ async function canonicalSlackThreadHasOutstandingWorkInSnapshot(
   }
   const queuedSlackMessages = await db
     .select({ payload: slackChatIngress.payload })
-    .from(chatMessages)
-    .innerJoin(slackChatIngress, eq(slackChatIngress.id, chatMessages.id))
+    .from(chatEvents)
+    .innerJoin(slackChatIngress, eq(slackChatIngress.id, chatEvents.id))
     .where(
       and(
-        inArray(chatMessages.chatThreadId, chatThreadIds),
+        inArray(chatEvents.chatThreadId, chatThreadIds),
         chatEventTypeIn(["input.prompt"]),
-        eq(chatMessages.triggerSource, "slack"),
-        isNull(chatMessages.runId),
+        eq(chatEvents.triggerSource, "slack"),
+        isNull(chatEvents.runId),
         notExists(
           db
             .select({ id: slackQueueEventRevoker.id })
             .from(slackQueueEventRevoker)
-            .where(eq(slackQueueEventRevoker.revokesEventId, chatMessages.id)),
+            .where(eq(slackQueueEventRevoker.revokesEventId, chatEvents.id)),
         ),
       ),
     );
@@ -172,15 +172,12 @@ async function canonicalSlackThreadHasOutstandingWorkInSnapshot(
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
     .innerJoin(
-      chatMessages,
-      and(
-        eq(chatMessages.runId, zeroRuns.id),
-        chatEventTypeIn(["input.prompt"]),
-      ),
+      chatEvents,
+      and(eq(chatEvents.runId, zeroRuns.id), chatEventTypeIn(["input.prompt"])),
     )
     .innerJoin(
       slackChatIngress,
-      eq(slackChatIngress.id, chatMessages.revokesEventId),
+      eq(slackChatIngress.id, chatEvents.revokesEventId),
     )
     .where(
       and(

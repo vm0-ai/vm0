@@ -19,6 +19,8 @@ import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import { i18n } from "../../../i18n/index.ts";
 
 const context = testContext();
+const PT_BR_PLACEHOLDER =
+  "Peça para automatizar workflows, gerenciar tarefas...";
 
 afterEach(async () => {
   await i18n.changeLanguage("en-US");
@@ -365,7 +367,7 @@ describe("zero ideation page", () => {
     click(screen.getByText("Caixa de entrada do AgentMail"));
 
     const composer = (await screen.findByPlaceholderText(
-      PLACEHOLDER,
+      PT_BR_PLACEHOLDER,
     )) as HTMLTextAreaElement;
     expect(composer).toHaveTextContent(
       "Create a new AgentMail inbox and set up email forwarding rules",
@@ -399,7 +401,7 @@ describe("zero ideation page", () => {
     click(screen.getByText("Capturas de tela do navegador"));
 
     const composer = (await screen.findByPlaceholderText(
-      PLACEHOLDER,
+      PT_BR_PLACEHOLDER,
     )) as HTMLTextAreaElement;
     expect(composer).toHaveTextContent(
       "Open this URL in the browser and take a screenshot: [paste URL]",

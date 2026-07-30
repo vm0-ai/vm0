@@ -4,14 +4,14 @@ import {
   isValidChatEventRevocation,
 } from "@vm0/api-contracts/contracts/chat-events";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { eq, isNotNull, sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { nowDate } from "../external/time";
 
-type ChatEventInsert = typeof chatMessages.$inferInsert;
+type ChatEventInsert = typeof chatEvents.$inferInsert;
 type ChatEventWriteTransaction = Parameters<
   Parameters<Db["transaction"]>[0]
 >[0];
@@ -241,10 +241,10 @@ async function reserveChatEventSeqIds(
   const [thread] = await tx
     .update(chatThreads)
     .set({
-      lastChatMessageSeqId: sql`${chatThreads.lastChatMessageSeqId} + ${count}`,
+      lastChatEventSeqId: sql`${chatThreads.lastChatEventSeqId} + ${count}`,
     })
     .where(eq(chatThreads.id, chatThreadId))
-    .returning({ lastSeqId: chatThreads.lastChatMessageSeqId });
+    .returning({ lastSeqId: chatThreads.lastChatEventSeqId });
   if (!thread) {
     throw new Error(`Chat thread ${chatThreadId} not found`);
   }
@@ -258,7 +258,7 @@ async function releaseChatEventSeqId(
   const [thread] = await tx
     .update(chatThreads)
     .set({
-      lastChatMessageSeqId: sql`${chatThreads.lastChatMessageSeqId} - 1`,
+      lastChatEventSeqId: sql`${chatThreads.lastChatEventSeqId} - 1`,
     })
     .where(eq(chatThreads.id, chatThreadId))
     .returning({ id: chatThreads.id });
@@ -309,37 +309,35 @@ export async function insertChatEvent(
     throw new Error("chat event seq_id was not assigned");
   }
 
-  const query = tx.insert(chatMessages).values(valueWithSeqId);
+  const query = tx.insert(chatEvents).values(valueWithSeqId);
   const rows =
     conflict === "any"
       ? await query.onConflictDoNothing().returning({
-          id: chatMessages.id,
-          createdAt: chatMessages.createdAt,
-          seqId: chatMessages.seqId,
+          id: chatEvents.id,
+          createdAt: chatEvents.createdAt,
+          seqId: chatEvents.seqId,
         })
       : conflict === "id"
-        ? await query
-            .onConflictDoNothing({ target: chatMessages.id })
-            .returning({
-              id: chatMessages.id,
-              createdAt: chatMessages.createdAt,
-              seqId: chatMessages.seqId,
-            })
+        ? await query.onConflictDoNothing({ target: chatEvents.id }).returning({
+            id: chatEvents.id,
+            createdAt: chatEvents.createdAt,
+            seqId: chatEvents.seqId,
+          })
         : conflict === "run-lifecycle"
           ? await query
               .onConflictDoNothing({
-                target: chatMessages.runId,
-                where: isNotNull(chatMessages.runLifecycleEvent),
+                target: chatEvents.runId,
+                where: isNotNull(chatEvents.runLifecycleEvent),
               })
               .returning({
-                id: chatMessages.id,
-                createdAt: chatMessages.createdAt,
-                seqId: chatMessages.seqId,
+                id: chatEvents.id,
+                createdAt: chatEvents.createdAt,
+                seqId: chatEvents.seqId,
               })
           : await query.returning({
-              id: chatMessages.id,
-              createdAt: chatMessages.createdAt,
-              seqId: chatMessages.seqId,
+              id: chatEvents.id,
+              createdAt: chatEvents.createdAt,
+              seqId: chatEvents.seqId,
             });
 
   if (rows.length === 0) {
@@ -363,24 +361,24 @@ export async function insertChatEvents(
     tx,
     values.map(persistedChatEventValues),
   );
-  const query = tx.insert(chatMessages).values([...valuesWithSeqIds]);
+  const query = tx.insert(chatEvents).values([...valuesWithSeqIds]);
   if (conflict === "any") {
     return await query.onConflictDoNothing().returning({
-      id: chatMessages.id,
-      createdAt: chatMessages.createdAt,
-      seqId: chatMessages.seqId,
-      sequenceNumber: chatMessages.sequenceNumber,
+      id: chatEvents.id,
+      createdAt: chatEvents.createdAt,
+      seqId: chatEvents.seqId,
+      sequenceNumber: chatEvents.sequenceNumber,
     });
   }
   return await query
     .onConflictDoNothing({
-      target: [chatMessages.runId, chatMessages.sequenceNumber],
+      target: [chatEvents.runId, chatEvents.sequenceNumber],
     })
     .returning({
-      id: chatMessages.id,
-      createdAt: chatMessages.createdAt,
-      seqId: chatMessages.seqId,
-      sequenceNumber: chatMessages.sequenceNumber,
+      id: chatEvents.id,
+      createdAt: chatEvents.createdAt,
+      seqId: chatEvents.seqId,
+      sequenceNumber: chatEvents.sequenceNumber,
     });
 }
 
@@ -392,12 +390,12 @@ export async function replaceChatEvent(
 ): Promise<ChatEventCommandResult | null> {
   const [target] = await tx
     .select({
-      chatThreadId: chatMessages.chatThreadId,
-      createdAt: chatMessages.createdAt,
-      eventType: chatMessages.eventType,
+      chatThreadId: chatEvents.chatThreadId,
+      createdAt: chatEvents.createdAt,
+      eventType: chatEvents.eventType,
     })
-    .from(chatMessages)
-    .where(eq(chatMessages.id, eventId))
+    .from(chatEvents)
+    .where(eq(chatEvents.id, eventId))
     .limit(1);
   if (!target) {
     throw new Error("Cannot revoke a missing chat event");
@@ -422,7 +420,7 @@ export async function replaceChatEvent(
 
   const seqId = await reserveChatEventSeqIds(tx, replacement.chatThreadId, 1);
   const rows = await tx
-    .insert(chatMessages)
+    .insert(chatEvents)
     .values({
       ...persistedChatEventValues({ ...replacement, createdAt }),
       seqId,
@@ -430,9 +428,9 @@ export async function replaceChatEvent(
     })
     .onConflictDoNothing()
     .returning({
-      id: chatMessages.id,
-      createdAt: chatMessages.createdAt,
-      seqId: chatMessages.seqId,
+      id: chatEvents.id,
+      createdAt: chatEvents.createdAt,
+      seqId: chatEvents.seqId,
     });
   return rows[0] ?? null;
 }

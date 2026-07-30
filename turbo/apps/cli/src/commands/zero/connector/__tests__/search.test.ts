@@ -17,6 +17,11 @@ import {
   catalogStatusItem,
   stubConnectorCatalogStatus,
 } from "../../__tests__/helpers/connector-catalog";
+import {
+  customConnector,
+  stubAgentCustomConnectors,
+  stubCustomConnectors,
+} from "../../__tests__/helpers/custom-connectors";
 
 const AGENT_UUID = "550e8400-e29b-41d4-a716-446655440000";
 const ALT_AGENT_UUID = "550e8400-e29b-41d4-a716-446655440099";
@@ -144,6 +149,7 @@ describe("zero connector search command", () => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("ZERO_TOKEN", "test-token");
+    server.use(stubCustomConnectors([]), stubAgentCustomConnectors([]));
   });
 
   afterEach(() => {
@@ -247,6 +253,36 @@ describe("zero connector search command", () => {
       expect(output).toContain("No matches found.");
       const dataRows = findDataRows(lines);
       expect(dataRows).toHaveLength(0);
+    });
+
+    it("finds a custom connector by display name", async () => {
+      const connector = customConnector({
+        connected: true,
+        missingRequiredFields: [],
+        configuredFieldKeys: ["secret:apiKey"],
+        hasSecret: true,
+      });
+      server.use(stubCustomConnectors([connector]));
+
+      await searchCommand.parseAsync(["node", "cli", "Acme Search"]);
+
+      const lines = mockConsoleLog.mock.calls.flat() as string[];
+      const customRow = findDataRows(lines).find((line) => {
+        return line.startsWith(connector.slug);
+      });
+      expect(customRow).toContain("connected");
+    });
+
+    it("finds org connectors with the custom keyword", async () => {
+      const connector = customConnector();
+      server.use(stubCustomConnectors([connector]));
+
+      await searchCommand.parseAsync(["node", "cli", "custom"]);
+
+      const lines = mockConsoleLog.mock.calls.flat() as string[];
+      expect(findDataRows(lines)).toContainEqual(
+        expect.stringMatching(new RegExp(`^${connector.slug}\\s`, "u")),
+      );
     });
 
     it("caps at --limit and prefixes with Too many results", async () => {
@@ -367,6 +403,31 @@ describe("zero connector search command", () => {
       const output = (mockConsoleLog.mock.calls.flat() as string[]).join("\n");
       expect(output).toContain("AUTHORIZED FOR from-flag");
       expect(output).not.toContain(ALT_AGENT_UUID);
+    });
+
+    it("renders custom connector authorization for the agent", async () => {
+      const connector = customConnector();
+      server.use(
+        stubCustomConnectors([connector]),
+        stubAgent(AGENT_UUID, "maya"),
+        stubUserConnectors(AGENT_UUID, []),
+        stubAgentCustomConnectors([connector.id]),
+      );
+
+      await searchCommand.parseAsync([
+        "node",
+        "cli",
+        connector.slug,
+        "--agent",
+        AGENT_UUID,
+      ]);
+
+      const customRow = findDataRows(
+        mockConsoleLog.mock.calls.flat() as string[],
+      ).find((line) => {
+        return line.startsWith(connector.slug);
+      });
+      expect(customRow).toMatch(/✓$/u);
     });
   });
 

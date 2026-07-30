@@ -9,7 +9,7 @@ import { pathParamsOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { notFound } from "../../lib/error";
-import { latestRunFinishMessageSubquery } from "../services/zero-chat-thread-read-state-query";
+import { latestRunFinishEventSubquery } from "../services/zero-chat-thread-read-state-query";
 import { zeroChatThreadUnreads } from "../services/zero-chat-thread.service";
 import type { RouteEntry } from "../route-entry";
 
@@ -47,7 +47,7 @@ const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 
   const lastReadAt = thread.lastReadAt?.toISOString() ?? null;
-  const latestRunFinish = latestRunFinishMessageSubquery(writeDb, params.id);
+  const latestRunFinish = latestRunFinishEventSubquery(writeDb, params.id);
   const [updated] = await writeDb
     .update(chatThreads)
     .set({ lastReadAt: latestRunFinish.createdAt })

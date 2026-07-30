@@ -202,8 +202,8 @@ import {
   recordQueueFirstFailedRun,
   type QueueFirstRunAssociation,
   type QueueFirstRunClaimResult,
-} from "./zero-chat-queued-message.service";
-import { recordFirstAssistantMessageEligibility } from "./zero-chat-first-assistant-message-metric.service";
+} from "./zero-chat-queued-event.service";
+import { recordFirstAssistantEventEligibility } from "./zero-chat-first-assistant-event-metric.service";
 import {
   activePaidConcurrencySlots,
   cappedBaseConcurrencyLimit,
@@ -717,6 +717,14 @@ export interface CreateAgentRunArgs {
   readonly zeroRunModelPin?: ZeroRunModelPin;
   readonly timing?: ApiDispatchTimingCollector;
   readonly timingDimensions?: ApiDispatchTimingDimensions;
+}
+
+function assertThreadBoundRunHasQueueAssociation(
+  args: CreateAgentRunArgs,
+): void {
+  if (args.chatThreadId !== undefined && !args.queueFirstAssociation) {
+    throw new Error("Thread-bound run requires a queue-first association");
+  }
 }
 
 interface ConnectorRuntimeContext {
@@ -5669,7 +5677,7 @@ async function commitFailedLaunch(args: {
   }
 
   if (args.createArgs.chatThreadId) {
-    recordFirstAssistantMessageEligibility({
+    recordFirstAssistantEventEligibility({
       runId: args.identity.runId,
       apiStartedAt: args.createArgs.apiStartTime,
     });
@@ -7112,7 +7120,7 @@ async function committedAtomicLaunchResponse(args: {
   }
 
   if (args.createArgs.chatThreadId) {
-    recordFirstAssistantMessageEligibility({
+    recordFirstAssistantEventEligibility({
       runId: args.committed.run.id,
       apiStartedAt: args.createArgs.apiStartTime,
     });
@@ -7416,6 +7424,7 @@ export const prepareAgentRun$ = command(
     input: PrepareAgentRunArgs,
     signal: AbortSignal,
   ): Promise<PreparedAgentRun | CreateRunErrorResult> => {
+    assertThreadBoundRunHasQueueAssociation(input.args);
     // A preview request that passed the protection guard gives its sandbox CLI
     // the same bypass through the existing user-environment channel.
     const previewAutomationBypass = get(previewAutomationBypass$);
@@ -7476,6 +7485,7 @@ export const completeAgentRun$ = command(
     input: CompleteAgentRunArgs,
     signal: AbortSignal,
   ): Promise<QueueFirstAgentRunResult> => {
+    assertThreadBoundRunHasQueueAssociation(input.prepared.args);
     const db = set(writeDb$);
     const { args, timing } = input.prepared;
     const context = finalizePreparedRunContext(

@@ -5192,8 +5192,15 @@
     {
       "idx": 741,
       "version": "7",
-      "when": 1785380048711,
-      "tag": "0741_thread_browser_lifecycle",
+      "when": 1785381995195,
+      "tag": "0741_drop_telegram_thread_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 742,
+      "version": "7",
+      "when": 1785383858792,
+      "tag": "0742_thread_browser_lifecycle",
       "breakpoints": true
     }
   ]

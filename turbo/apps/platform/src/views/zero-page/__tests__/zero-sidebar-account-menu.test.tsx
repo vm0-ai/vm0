@@ -903,6 +903,7 @@ describe("zero sidebar account menu", () => {
 
     let modelProviderRequests = 0;
     let forcedTokenRefreshes = 0;
+    const authRecoveryCompleted = context.mocks.deferred<void>();
     context.mocks.http.get("*/api/zero/me/model-providers", () => {
       modelProviderRequests += 1;
       if (modelProviderRequests === 1) {
@@ -918,6 +919,9 @@ describe("zero sidebar account menu", () => {
       }
       if (modelProviderRequests === 2) {
         return HttpResponse.error();
+      }
+      if (modelProviderRequests === 3) {
+        authRecoveryCompleted.resolve();
       }
       return HttpResponse.json({ modelProviders: [provider] });
     });
@@ -950,10 +954,9 @@ describe("zero sidebar account menu", () => {
       featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
     });
 
-    await waitFor(() => {
-      expect(modelProviderRequests).toBe(3);
-      expect(forcedTokenRefreshes).toBe(3);
-    });
+    await authRecoveryCompleted.promise;
+    expect(modelProviderRequests).toBe(3);
+    expect(forcedTokenRefreshes).toBe(3);
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
 
     const menu = await openAccountMenu();

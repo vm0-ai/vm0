@@ -1,6 +1,6 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatEventCompatibilityRole } from "@vm0/api-contracts/contracts/chat-events";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import {
   and,
   desc,
@@ -19,14 +19,14 @@ import type { Db } from "../external/db";
 import { generateText } from "../external/openrouter";
 import { publishUserSignal } from "../external/realtime";
 import { tapError } from "../utils";
-import { assistantMessageIdForRunEvent } from "./assistant-message-id";
+import { assistantEventIdForRunEvent } from "./assistant-event-id";
 import {
   runGroupIdForRun,
   visibleChatEventCondition,
-} from "./zero-chat-message-shared.service";
+} from "./zero-chat-event-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
-import { queuedUserMessageExists } from "./zero-chat-queued-message.service";
+import { queuedUserMessageExists } from "./zero-chat-queued-event.service";
 import {
   projectUserMessage,
   requiredUserMessageForEvent,
@@ -83,16 +83,16 @@ async function loadThinkingContextMessages(args: {
 }): Promise<ThinkingContextMessage[]> {
   const rows = await args.db
     .select({
-      eventType: chatMessages.eventType,
-      content: chatMessages.content,
-      userMessage: chatMessages.userMessage,
-      createdAt: chatMessages.createdAt,
-      sequenceNumber: chatMessages.sequenceNumber,
+      eventType: chatEvents.eventType,
+      content: chatEvents.content,
+      userMessage: chatEvents.userMessage,
+      createdAt: chatEvents.createdAt,
+      sequenceNumber: chatEvents.sequenceNumber,
     })
-    .from(chatMessages)
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.chatThreadId, args.threadId),
+        eq(chatEvents.chatThreadId, args.threadId),
         chatEventTypeIn([
           "input.prompt",
           "input.rejected",
@@ -102,22 +102,19 @@ async function loadThinkingContextMessages(args: {
         or(
           and(
             chatEventTypeIn(["input.prompt", "input.rejected"]),
-            isNotNull(chatMessages.userMessage),
+            isNotNull(chatEvents.userMessage),
           ),
           and(
             not(chatEventTypeIn(["input.prompt", "input.rejected"])),
-            isNotNull(chatMessages.content),
+            isNotNull(chatEvents.content),
           ),
         ),
         visibleChatEventCondition(args.db),
         not(queuedUserMessageExists(args.db)),
+        or(isNull(chatEvents.runId), ne(chatEvents.runId, args.runId)) as SQL,
         or(
-          isNull(chatMessages.runId),
-          ne(chatMessages.runId, args.runId),
-        ) as SQL,
-        or(
-          isNull(chatMessages.runEventId),
-          notInArray(chatMessages.runEventId, [
+          isNull(chatEvents.runEventId),
+          notInArray(chatEvents.runEventId, [
             "queue:queued",
             "queue:dequeued",
             INITIAL_THINKING_RUN_EVENT_ID,
@@ -125,7 +122,7 @@ async function loadThinkingContextMessages(args: {
         ) as SQL,
       ),
     )
-    .orderBy(desc(chatMessages.seqId))
+    .orderBy(desc(chatEvents.seqId))
     .limit(THINKING_CONTEXT_MESSAGE_CAP);
 
   return rows.reverse().flatMap((row) => {
@@ -165,11 +162,11 @@ async function runCanReceiveThinkingMessage(args: {
   }
 
   const [assistantText] = await args.db
-    .select({ id: chatMessages.id })
-    .from(chatMessages)
+    .select({ id: chatEvents.id })
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.runId, args.runId),
+        eq(chatEvents.runId, args.runId),
         chatEventTypeIn([
           "output.message",
           "output.error",
@@ -177,10 +174,7 @@ async function runCanReceiveThinkingMessage(args: {
           "run.failed",
           "run.cancelled",
         ]),
-        or(
-          isNotNull(chatMessages.content),
-          isNotNull(chatMessages.error),
-        ) as SQL,
+        or(isNotNull(chatEvents.content), isNotNull(chatEvents.error)) as SQL,
       ),
     )
     .limit(1);
@@ -272,7 +266,7 @@ export async function generateAndPersistInitialThinkingMessage(args: {
     return await insertChatEvent(
       tx,
       {
-        id: assistantMessageIdForRunEvent(
+        id: assistantEventIdForRunEvent(
           args.runId,
           INITIAL_THINKING_RUN_EVENT_ID,
         ),

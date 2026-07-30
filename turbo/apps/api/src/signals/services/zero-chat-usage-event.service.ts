@@ -2,11 +2,11 @@ import { command } from "ccstate";
 import { and, count, eq, exists, max, sql, sum } from "drizzle-orm";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
-  chatMessages,
-  type ChatMessageUsageKindBreakdown,
-  type ChatMessageUsagePayload,
-  type ChatMessageUsageProviderBreakdown,
-} from "@vm0/db/schema/chat-message";
+  chatEvents,
+  type ChatEventUsageKindBreakdown,
+  type ChatEventUsagePayload,
+  type ChatEventUsageProviderBreakdown,
+} from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -44,8 +44,8 @@ function buildUsageBreakdown(
     readonly provider: string;
     readonly credits: number;
   }[],
-): readonly ChatMessageUsageKindBreakdown[] {
-  const byKind = new Map<string, ChatMessageUsageProviderBreakdown[]>();
+): readonly ChatEventUsageKindBreakdown[] {
+  const byKind = new Map<string, ChatEventUsageProviderBreakdown[]>();
   for (const row of rows) {
     const providers = byKind.get(row.kind) ?? [];
     providers.push({
@@ -67,7 +67,7 @@ function usageCreditsExpression(usage: FinalizedUsageRelation) {
   return sql`${usage.creditsCharged} + ${usage.allowanceUnits}`;
 }
 
-async function loadUsageMessageContext(tx: WriteTx, runId: string) {
+async function loadUsageEventContext(tx: WriteTx, runId: string) {
   const usage = buildFinalizedUsageRelation();
   return await tx
     .select({
@@ -125,7 +125,7 @@ async function loadUsageBreakdownRows(tx: WriteTx, runId: string) {
     .orderBy(usage.kind, usage.provider);
 }
 
-export const maybeEmitRunUsageMessage$ = command(
+export const maybeEmitRunUsageEvent$ = command(
   async ({ set }, runId: string, signal: AbortSignal): Promise<boolean> => {
     const db = set(writeDb$);
     const emitted = await db.transaction(async (tx) => {
@@ -135,7 +135,7 @@ export const maybeEmitRunUsageMessage$ = command(
       );
       signal.throwIfAborted();
 
-      const [context] = await loadUsageMessageContext(tx, runId);
+      const [context] = await loadUsageEventContext(tx, runId);
       signal.throwIfAborted();
 
       if (!context) {
@@ -156,13 +156,10 @@ export const maybeEmitRunUsageMessage$ = command(
       }
 
       const [existingUsageEvent] = await tx
-        .select({ id: chatMessages.id })
-        .from(chatMessages)
+        .select({ id: chatEvents.id })
+        .from(chatEvents)
         .where(
-          and(
-            eq(chatMessages.runId, runId),
-            chatEventTypeIn(["usage.recorded"]),
-          ),
+          and(eq(chatEvents.runId, runId), chatEventTypeIn(["usage.recorded"])),
         )
         .limit(1);
       signal.throwIfAborted();
@@ -174,7 +171,7 @@ export const maybeEmitRunUsageMessage$ = command(
       const breakdownRows = await loadUsageBreakdownRows(tx, runId);
       signal.throwIfAborted();
 
-      const payload: ChatMessageUsagePayload = {
+      const payload: ChatEventUsagePayload = {
         version: 1,
         totalCredits: Math.max(0, context.totalCredits),
         settledAt: context.settledAt.toISOString(),

@@ -1,15 +1,15 @@
-import { cronMonitorChatMessageQueueContract } from "@vm0/api-contracts/contracts/cron";
+import { cronMonitorChatEventQueueContract } from "@vm0/api-contracts/contracts/cron";
 import type {
-  TestCronMonitorChatMessageQueueStateActionBody,
-  TestCronMonitorChatMessageQueueStateActionResponse,
-} from "@vm0/api-contracts/contracts/test-cron-monitor-chat-message-queue-state";
+  TestCronMonitorChatEventQueueStateActionBody,
+  TestCronMonitorChatEventQueueStateActionResponse,
+} from "@vm0/api-contracts/contracts/test-cron-monitor-chat-event-queue-state";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
-import { testCronMonitorChatMessageQueueStateRoutes } from "../test-cron-monitor-chat-message-queue-state";
+import { testCronMonitorChatEventQueueStateRoutes } from "../test-cron-monitor-chat-event-queue-state";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -21,7 +21,7 @@ interface MonitorFixture {
 }
 
 function apiClient() {
-  return setupApp({ context })(cronMonitorChatMessageQueueContract);
+  return setupApp({ context })(cronMonitorChatEventQueueContract);
 }
 
 function cronHeaders(secret = CRON_SECRET) {
@@ -39,11 +39,11 @@ async function rawCronRequest(
 }
 
 async function postState(
-  body: TestCronMonitorChatMessageQueueStateActionBody,
-): Promise<TestCronMonitorChatMessageQueueStateActionResponse> {
+  body: TestCronMonitorChatEventQueueStateActionBody,
+): Promise<TestCronMonitorChatEventQueueStateActionResponse> {
   const app = createAppWithRoutes({
     signal: context.signal,
-    routes: testCronMonitorChatMessageQueueStateRoutes,
+    routes: testCronMonitorChatEventQueueStateRoutes,
   });
   const response = await app.request(STATE_ROUTE, {
     method: "POST",
@@ -55,7 +55,7 @@ async function postState(
       `orphan monitor state action failed with ${response.status}`,
     );
   }
-  return (await response.json()) as TestCronMonitorChatMessageQueueStateActionResponse;
+  return (await response.json()) as TestCronMonitorChatEventQueueStateActionResponse;
 }
 
 function stringField(body: Record<string, unknown>, key: string): string {
@@ -68,7 +68,7 @@ function stringField(body: Record<string, unknown>, key: string): string {
 
 async function seedFixture(
   fixtureKind: Extract<
-    TestCronMonitorChatMessageQueueStateActionBody,
+    TestCronMonitorChatEventQueueStateActionBody,
     { readonly action: "seed-fixture" }
   >["fixture_kind"],
 ): Promise<MonitorFixture> {
@@ -88,7 +88,7 @@ async function cleanupFixture(fixture: MonitorFixture): Promise<void> {
 
 const trackFixture = createFixtureTracker(cleanupFixture);
 
-describe("cron monitor chat message queue", () => {
+describe("cron monitor chat event queue", () => {
   beforeEach(() => {
     mockEnv("CRON_SECRET", CRON_SECRET);
   });

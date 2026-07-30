@@ -246,22 +246,22 @@ const chatThreadEventResponseSchema = chatThreadEventSchema.extend({
   seqId: chatThreadEventSchema.shape.seqId.optional(),
 });
 
-const chatMessageUsageProviderBreakdownSchema = z.object({
+const chatEventUsageProviderBreakdownSchema = z.object({
   provider: z.string(),
   credits: z.number().int().nonnegative(),
 });
 
-const chatMessageUsageKindBreakdownSchema = z.object({
+const chatEventUsageKindBreakdownSchema = z.object({
   kind: z.string(),
   credits: z.number().int().nonnegative(),
-  providers: z.array(chatMessageUsageProviderBreakdownSchema),
+  providers: z.array(chatEventUsageProviderBreakdownSchema),
 });
 
-const chatMessageUsagePayloadSchema = z.object({
+const chatEventUsagePayloadSchema = z.object({
   version: z.literal(1),
   totalCredits: z.number().int().nonnegative(),
   settledAt: z.string(),
-  breakdown: z.array(chatMessageUsageKindBreakdownSchema),
+  breakdown: z.array(chatEventUsageKindBreakdownSchema),
 });
 
 const toolSummaryEntrySchema = z.object({
@@ -430,7 +430,7 @@ const chatEventBaseSchema = z.object({
   createdAt: z.string(),
 });
 
-const chatMessageRecommendedFollowupSchema = z.object({
+const chatEventRecommendedFollowupSchema = z.object({
   prompt: z.string(),
   kind: z.enum(["talk", "generate"]),
   generationType: z
@@ -438,15 +438,15 @@ const chatMessageRecommendedFollowupSchema = z.object({
     .optional(),
 });
 
-const chatMessageRecommendedFollowupsSchema = z.preprocess((value) => {
+const chatEventRecommendedFollowupsSchema = z.preprocess((value) => {
   if (!Array.isArray(value)) {
     return [];
   }
   return value.flatMap((item) => {
-    const parsed = chatMessageRecommendedFollowupSchema.safeParse(item);
+    const parsed = chatEventRecommendedFollowupSchema.safeParse(item);
     return parsed.success ? [parsed.data] : [];
   });
-}, z.array(chatMessageRecommendedFollowupSchema));
+}, z.array(chatEventRecommendedFollowupSchema));
 
 const inputPromptEventSchema = chatEventBaseSchema
   .extend({
@@ -527,7 +527,7 @@ const outputFollowupsEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("output.followups"),
     content: z.null(),
-    recommendedFollowups: chatMessageRecommendedFollowupsSchema,
+    recommendedFollowups: chatEventRecommendedFollowupsSchema,
   })
   .strict();
 
@@ -637,7 +637,7 @@ const usageRecordedEventSchema = chatEventBaseSchema
     eventType: z.literal("usage.recorded"),
     runId: z.string(),
     content: z.null(),
-    usage: chatMessageUsagePayloadSchema,
+    usage: chatEventUsagePayloadSchema,
   })
   .strict();
 
@@ -1554,7 +1554,7 @@ export {
   illustrationGenerationTemplateRequestSchema,
   websiteGenerationTemplateRequestSchema,
   chatEventSchema,
-  chatMessageUsagePayloadSchema,
+  chatEventUsagePayloadSchema,
   summaryEntrySchema,
   persistedAttachmentSchema,
   attachFileSchema,
@@ -1659,9 +1659,7 @@ export type ChatUsageEvent = Extract<
   ChatEvent,
   { eventType: "usage.recorded" }
 >;
-export type ChatMessageUsagePayload = z.infer<
-  typeof chatMessageUsagePayloadSchema
->;
+export type ChatEventUsagePayload = z.infer<typeof chatEventUsagePayloadSchema>;
 export type PersistedAttachment = z.infer<typeof persistedAttachmentSchema>;
 export type AttachFile = z.infer<typeof attachFileSchema>;
 export type AssetRef = z.infer<typeof assetRefSchema>;

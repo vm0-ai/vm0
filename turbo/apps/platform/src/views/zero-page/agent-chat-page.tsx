@@ -6,6 +6,8 @@ import {
   useLastLoadable,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import type { TFunction } from "i18next";
+import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { user$ } from "../../signals/auth.ts";
@@ -13,7 +15,6 @@ import { IconArrowUpRight, IconPin, IconUserPlus } from "@tabler/icons-react";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
 import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { useTranslation } from "react-i18next";
 import {
   Button,
   Tooltip,
@@ -93,41 +94,164 @@ import {
   type IdeationCatalogCopy,
 } from "./zero-ideation-localization.ts";
 
-function getTagline(
-  agentName: string,
+function localizedAnonymousTaglines(t: TFunction<"common">): string[] {
+  return [
+    t(($) => {
+      return $.chat.agentPage.taglines.anonymous.welcomeBack;
+    }),
+    t(($) => {
+      return $.chat.agentPage.taglines.anonymous.whatsTheMove;
+    }),
+    t(($) => {
+      return $.chat.agentPage.taglines.anonymous.goodToSeeYou;
+    }),
+    t(($) => {
+      return $.chat.agentPage.taglines.anonymous.whatsOnYourMind;
+    }),
+    t(($) => {
+      return $.chat.agentPage.taglines.anonymous.readyToRoll;
+    }),
+    t(($) => {
+      return $.chat.agentPage.taglines.anonymous.buildSomething;
+    }),
+    t(($) => {
+      return $.chat.agentPage.taglines.anonymous.whatAreWeWorkingOn;
+    }),
+  ];
+}
+
+function localizedUserTaglines(
+  t: TFunction<"common">,
+  agentName: string | null,
+  userName: string,
+): string[] {
+  return [
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.welcomeBack;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.whatsTheMove;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.goodToSeeYou;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.whatsOnYourMind;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.letsRoll;
+      },
+      {
+        agentName: agentName ?? "Zero",
+        userName,
+      },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.anotherWin;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.readyToBuild;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.enteredChat;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.goodToSeeYou;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.savedYourSeat;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.makeTodayCount;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.coffeeReady;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.knewYouWouldCome;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.whatsCooking;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.newIdeas;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.rightOnTime;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.whatAreWeWorkingOn;
+      },
+      { userName },
+    ),
+    t(
+      ($) => {
+        return $.chat.agentPage.taglines.theUsual;
+      },
+      { userName },
+    ),
+  ];
+}
+
+function useTagline(
+  agentName: string | null | undefined,
   userName: string | null,
   index: number,
 ): string {
+  const { t } = useTranslation();
+  if (agentName === undefined) {
+    return "";
+  }
   const taglines = userName
-    ? [
-        `Welcome back, ${userName}.`,
-        `${userName}, what's the move?`,
-        `Good to see you, ${userName}.`,
-        `What's on your mind, ${userName}?`,
-        `${userName} + ${agentName}. Let's roll.`,
-        `Another day, another win, ${userName}.`,
-        `Hey ${userName}, ready to build?`,
-        `${userName} has entered the chat.`,
-        `Good to see you, ${userName}.`,
-        `${userName}! I saved your seat.`,
-        `${userName}, let's make today count.`,
-        `Coffee's ready, ${userName}. Let's go.`,
-        `${userName}, I had a feeling you'd come.`,
-        `What's cooking, ${userName}?`,
-        `${userName}. New day, new ideas.`,
-        `Ah, ${userName}. Right on time.`,
-        `${userName}, what are we working on?`,
-        `The usual, ${userName}?`,
-      ]
-    : [
-        `Welcome back.`,
-        `What's the move?`,
-        `Good to see you.`,
-        `What's on your mind?`,
-        `Ready to roll.`,
-        `Let's build something.`,
-        `What are we working on?`,
-      ];
+    ? localizedUserTaglines(t, agentName, userName)
+    : localizedAnonymousTaglines(t);
   return taglines[index % taglines.length];
 }
 
@@ -163,6 +287,7 @@ function TypewriterText({
 }
 
 function InviteButton({ pageSignal }: { pageSignal: AbortSignal }) {
+  const { t } = useTranslation();
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
@@ -181,7 +306,9 @@ function InviteButton({ pageSignal }: { pageSignal: AbortSignal }) {
       data-testid="invite-button"
     >
       <IconUserPlus size={14} stroke={1.5} />
-      Invite people
+      {t(($) => {
+        return $.chat.agentPage.invitePeople;
+      })}
     </Button>
   );
 }
@@ -431,6 +558,7 @@ function SuggestedPromptsGrid({
 }
 
 function useAgentChatComposerModel(pageSignal: AbortSignal) {
+  const { t } = useTranslation();
   const modelSelectionLoadable = useLastLoadable(chatPageModelSelection$);
   const modelSelection =
     modelSelectionLoadable.state === "hasData"
@@ -469,9 +597,12 @@ function useAgentChatComposerModel(pageSignal: AbortSignal) {
   const submitBlockerProps =
     modelSelection && !selectedModelOauthAvailable
       ? {
-          message:
-            "The selected model is not available. Configure it before sending.",
-          actionLabel: "Model Configure",
+          message: t(($) => {
+            return $.chat.composer.selectedModelUnavailable;
+          }),
+          actionLabel: t(($) => {
+            return $.chat.composer.modelConfigureAction;
+          }),
           onAction: () => {
             detach(configureSelectedModel(pageSignal), Reason.DomCallback);
           },
@@ -688,14 +819,11 @@ export function AgentChatPage() {
     queueDraftSync: queueAgentDraftSync,
   });
   const taglineIndex = useGet(chatPageTaglineIndex$);
-  const tagline =
-    currentChatAgentDisplayName !== undefined
-      ? getTagline(
-          currentChatAgentDisplayName ?? "Zero",
-          userFirstName,
-          taglineIndex,
-        )
-      : "";
+  const tagline = useTagline(
+    currentChatAgentDisplayName,
+    userFirstName,
+    taglineIndex,
+  );
 
   const lightboxUrl = useGet(attachmentLightboxUrl$);
 

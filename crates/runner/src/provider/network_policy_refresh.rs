@@ -1734,7 +1734,7 @@ mod tests {
                 .header("content-type", "application/json")
                 .json_body(json!({
                     "refreshes": [{
-                        "connectorRef": "slack",
+                        "connectorSlug": "slack",
                         "networkPolicy": {
                             "allow": ["chat:write"],
                             "deny": ["files:write"],

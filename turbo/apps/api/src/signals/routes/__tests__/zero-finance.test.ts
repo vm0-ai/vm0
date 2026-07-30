@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroFinanceContract } from "@vm0/api-contracts/contracts/zero-finance";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
@@ -16,7 +15,6 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -54,42 +52,6 @@ function configureProvider(): void {
 }
 
 describe("zero finance routes", () => {
-  it("rejects requests when the feature switch is disabled", async () => {
-    const actor = createBddApi(context).user();
-    if (!actor.orgId) {
-      throw new Error("Zero Finance test actor must belong to an organization");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      {
-        userId: actor.userId,
-        orgId: actor.orgId,
-        ...(actor.orgRole ? { orgRole: actor.orgRole } : {}),
-      },
-      { [FeatureSwitchKey.ZeroFinance]: false },
-    );
-    let providerRequests = 0;
-    configureProvider();
-    server.use(
-      http.get(`${APIDOJO_BASE_URL}/auto-complete`, () => {
-        providerRequests += 1;
-        return HttpResponse.json({});
-      }),
-    );
-
-    const response = await accept(
-      client()(zeroFinanceContract).search({
-        headers: authenticate(actor),
-        body: { query: "Tencent" },
-      }),
-      [403],
-    );
-
-    expectApiError(response.body);
-    expect(response.body.error.message).toBe("Zero Finance is not enabled");
-    expect(providerRequests).toBe(0);
-  });
-
   it("rejects zero tokens without finance:read capability", async () => {
     const actor = createBddApi(context).user();
     if (!actor.orgId) {

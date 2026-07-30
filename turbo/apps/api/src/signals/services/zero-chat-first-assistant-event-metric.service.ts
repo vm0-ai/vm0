@@ -12,7 +12,7 @@ import { tapError } from "../utils";
 
 const L = logger("api:zero:chat-first-assistant-message-metric");
 
-export function recordFirstAssistantMessageEligibility(args: {
+export function recordFirstAssistantEventEligibility(args: {
   readonly runId: string;
   readonly apiStartedAt: number;
 }): void {
@@ -26,7 +26,7 @@ export function recordFirstAssistantMessageEligibility(args: {
   });
 }
 
-async function recordFirstAssistantMessageAcknowledgement(args: {
+async function recordFirstAssistantEventAcknowledgement(args: {
   readonly db: Db;
   readonly runId: string;
   readonly acknowledgedAt: number;
@@ -34,13 +34,13 @@ async function recordFirstAssistantMessageAcknowledgement(args: {
   const [claimed] = await args.db
     .update(zeroRuns)
     .set({
-      firstAssistantMessageAcknowledgedAt: new Date(args.acknowledgedAt),
+      firstAssistantEventAcknowledgedAt: new Date(args.acknowledgedAt),
     })
     .where(
       and(
         eq(zeroRuns.id, args.runId),
         isNotNull(zeroRuns.apiStartedAt),
-        isNull(zeroRuns.firstAssistantMessageAcknowledgedAt),
+        isNull(zeroRuns.firstAssistantEventAcknowledgedAt),
       ),
     )
     .returning({
@@ -68,7 +68,7 @@ async function recordFirstAssistantMessageAcknowledgement(args: {
   });
 }
 
-async function publishFirstAssistantMessageCreated(args: {
+async function publishFirstAssistantEventCreated(args: {
   readonly db: Db;
   readonly threadId: string;
   readonly userId: string;
@@ -81,7 +81,7 @@ async function publishFirstAssistantMessageCreated(args: {
   const acknowledgedAt = now();
   waitUntil(
     tapError(
-      recordFirstAssistantMessageAcknowledgement({
+      recordFirstAssistantEventAcknowledgement({
         db: args.db,
         runId: args.runId,
         acknowledgedAt,
@@ -96,13 +96,13 @@ async function publishFirstAssistantMessageCreated(args: {
   );
 }
 
-export async function publishFirstAssistantMessageCreatedSafely(args: {
+export async function publishFirstAssistantEventCreatedSafely(args: {
   readonly db: Db;
   readonly threadId: string;
   readonly userId: string;
   readonly runId: string;
 }): Promise<void> {
-  await tapError(publishFirstAssistantMessageCreated(args), (error) => {
+  await tapError(publishFirstAssistantEventCreated(args), (error) => {
     L.warn("Failed to publish first assistant message created signal", {
       runId: args.runId,
       threadId: args.threadId,
