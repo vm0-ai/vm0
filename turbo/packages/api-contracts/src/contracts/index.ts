@@ -549,7 +549,6 @@ export {
   MODEL_PROVIDER_TYPES,
   SUPPORTED_RUN_MODELS,
   VM0_MODEL_PRICE_TIER,
-  VM0_MODEL_PRICE_TIER_LABEL,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   LIMITED_FREE1_DEFAULT_RUN_MODEL,
@@ -572,7 +571,6 @@ export {
   isSupportedRunModel,
   normalizeRunModelId,
   getVm0ModelPriceTier,
-  getVm0ModelPriceTierLabel,
   // Selectable provider filtering
   getSelectableProviderTypes,
   // Multi-auth provider support
@@ -1132,7 +1130,6 @@ export {
   type ZeroComposesListContract,
 } from "./zero-composes";
 export {
-  zeroRunsMainContract,
   zeroRunsByIdContract,
   zeroRunsCancelContract,
   zeroRunsQueueContract,
@@ -1141,7 +1138,6 @@ export {
   zeroRunNetworkLogsContract,
   zeroRunRunnerContract,
   zeroLogsSearchContract,
-  type ZeroRunsMainContract,
   type ZeroRunsByIdContract,
   type ZeroRunsCancelContract,
   type ZeroRunsQueueContract,

@@ -32,6 +32,7 @@ import {
   type OrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
 import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
+import { useTranslation } from "react-i18next";
 import { orgModelPolicies$ } from "../../../signals/external/org-model-policies";
 import { userModelPreference$ } from "../../../signals/external/user-model-preference";
 import {
@@ -127,6 +128,7 @@ function PriceTierBadge({ tier }: { tier: Vm0ModelPriceTier }) {
 }
 
 function ByokBadge() {
+  const { t } = useTranslation();
   return (
     <TooltipProvider delayDuration={300}>
       <Tooltip>
@@ -136,7 +138,9 @@ function ByokBadge() {
           </span>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
-          Uses your configured provider
+          {t(($) => {
+            return $.settings.models.picker.byokHelp;
+          })}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -144,9 +148,12 @@ function ByokBadge() {
 }
 
 function ProBadge() {
+  const { t } = useTranslation();
   return (
     <span className="shrink-0 rounded bg-primary px-1.5 py-0.5 text-[11px] font-medium leading-none text-primary-foreground">
-      Pro
+      {t(($) => {
+        return $.settings.models.picker.pro;
+      })}
     </span>
   );
 }
@@ -327,6 +334,7 @@ function ModelFirstTriggerLabel({
   placeholder: string;
   mobileIcon: boolean;
 }) {
+  const { t } = useTranslation();
   if (!selectedModel) {
     return (
       <ResponsiveTriggerContent
@@ -349,7 +357,9 @@ function ModelFirstTriggerLabel({
           {codexServiceTier === "fast" && (
             <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded bg-amber-500/10 px-1.5 text-[11px] font-medium leading-none text-amber-700 dark:text-amber-300">
               <IconBolt size={12} stroke={1.8} />
-              Fast
+              {t(($) => {
+                return $.settings.models.picker.fast;
+              })}
             </span>
           )}
         </span>
@@ -484,6 +494,7 @@ function ModelFirstPolicyItems({
   modelCapabilities: ModelPlanCapabilities;
   showSeparator?: boolean;
 }) {
+  const { t } = useTranslation();
   const hasExplicitSelectedPolicy =
     explicitSelectedModel === null ||
     policies.some((policy) => {
@@ -506,12 +517,16 @@ function ModelFirstPolicyItems({
       )}
       {policies.length === 0 ? (
         <div className="px-2 py-2 text-sm text-muted-foreground">
-          No configured models
+          {t(($) => {
+            return $.settings.models.picker.noConfiguredModels;
+          })}
         </div>
       ) : (
         <SelectGroup>
           <SelectLabel className="pl-2 pr-8 py-1.5 text-xs font-medium text-muted-foreground">
-            Models
+            {t(($) => {
+              return $.settings.models.picker.models;
+            })}
           </SelectLabel>
           {policies.map((policy) => {
             return (
@@ -537,20 +552,27 @@ function CodexFastModeSplitPanel({
   selectedModel: string;
   onCheckedChange: (checked: boolean) => void;
 }) {
+  const { t } = useTranslation();
   const stopSelectDismiss = (event: SyntheticEvent) => {
     event.stopPropagation();
   };
   return (
     <div className="w-[132px] border-l border-border/70 p-2">
       <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
-        <span className="text-xs font-medium text-foreground">Run speed</span>
+        <span className="text-xs font-medium text-foreground">
+          {t(($) => {
+            return $.settings.models.picker.runSpeed;
+          })}
+        </span>
         <span className="truncate text-[11px] text-muted-foreground">
           {getCanonicalModelDisplayName(selectedModel)}
         </span>
       </div>
       <div
         role="group"
-        aria-label="Run speed"
+        aria-label={t(($) => {
+          return $.settings.models.picker.runSpeed;
+        })}
         className="grid gap-1.5"
         onClick={stopSelectDismiss}
         onPointerDown={stopSelectDismiss}
@@ -568,9 +590,15 @@ function CodexFastModeSplitPanel({
             onCheckedChange(false);
           }}
         >
-          <span className="text-xs font-medium">Standard</span>
+          <span className="text-xs font-medium">
+            {t(($) => {
+              return $.settings.models.picker.standard;
+            })}
+          </span>
           <span className="mt-0.5 text-[11px] leading-3 text-muted-foreground">
-            Balanced use
+            {t(($) => {
+              return $.settings.models.picker.balancedUse;
+            })}
           </span>
         </button>
         <button
@@ -588,15 +616,21 @@ function CodexFastModeSplitPanel({
         >
           <span className="inline-flex items-center gap-1 text-xs font-medium">
             <IconBolt size={12} stroke={1.8} />
-            Fast
+            {t(($) => {
+              return $.settings.models.picker.fast;
+            })}
           </span>
           <span className="mt-0.5 text-[11px] leading-3 text-muted-foreground">
-            Prioritize speed
+            {t(($) => {
+              return $.settings.models.picker.prioritizeSpeed;
+            })}
           </span>
         </button>
       </div>
       <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
-        Uses more Codex credits.
+        {t(($) => {
+          return $.settings.models.picker.moreCodexCredits;
+        })}
       </p>
     </div>
   );
@@ -952,6 +986,7 @@ function LoadingModelFirstModelPickerContent({
   value: ModelProviderSelection | null;
   placeholder: string;
 }) {
+  const { t } = useTranslation();
   const selectValue = value?.selectedModel ?? INHERIT_SENTINEL;
   return (
     <SelectContent className="min-w-[260px]">
@@ -966,7 +1001,9 @@ function LoadingModelFirstModelPickerContent({
           : placeholder}
       </SelectItem>
       <div className="px-2 py-2 text-sm text-muted-foreground">
-        Loading models...
+        {t(($) => {
+          return $.settings.models.picker.loading;
+        })}
       </div>
     </SelectContent>
   );
@@ -979,6 +1016,7 @@ function ErrorModelFirstModelPickerContent({
   value: ModelProviderSelection | null;
   placeholder: string;
 }) {
+  const { t } = useTranslation();
   const selectValue = value?.selectedModel ?? INHERIT_SENTINEL;
   return (
     <SelectContent className="min-w-[260px]">
@@ -993,7 +1031,9 @@ function ErrorModelFirstModelPickerContent({
           : placeholder}
       </SelectItem>
       <div className="px-2 py-2 text-sm text-muted-foreground">
-        Unable to load models.
+        {t(($) => {
+          return $.settings.models.picker.loadError;
+        })}
       </div>
     </SelectContent>
   );
@@ -1162,7 +1202,7 @@ function ModelFirstModelPickerWithDefaultSelection(
 export function ModelProviderPicker({
   value,
   onChange,
-  placeholder = "Inherit from org default",
+  placeholder,
   triggerClassName,
   compactTrigger = false,
   mobileIconTrigger = false,
@@ -1172,10 +1212,16 @@ export function ModelProviderPicker({
   disabled = false,
   resolveDefaultSelection = true,
 }: ModelProviderPickerProps) {
+  const { t } = useTranslation();
+  const resolvedPlaceholder =
+    placeholder ??
+    t(($) => {
+      return $.settings.models.picker.inheritDefault;
+    });
   const props = {
     value,
     onChange,
-    placeholder,
+    placeholder: resolvedPlaceholder,
     triggerClassName,
     compactTrigger,
     mobileIconTrigger,

@@ -1,5 +1,57 @@
 # Changelog
 
+## [1.348.0](https://github.com/vm0-ai/vm0/compare/api-v1.347.0...api-v1.348.0) (2026-07-30)
+
+
+### Features
+
+* **agentphone:** route conversations through canonical chat threads ([#23912](https://github.com/vm0-ai/vm0/issues/23912)) ([30acfce](https://github.com/vm0-ai/vm0/commit/30acfce2c5aaadb99a1526c27112e892bbd5590d))
+* enable codex session pruning globally ([#23937](https://github.com/vm0-ai/vm0/issues/23937)) ([e186ffe](https://github.com/vm0-ai/vm0/commit/e186ffe85a92fe9a5b960e5e3174893d54526557))
+* put each workflow automation firing's trigger identity in its user turn ([#23898](https://github.com/vm0-ai/vm0/issues/23898)) ([f397b2b](https://github.com/vm0-ai/vm0/commit/f397b2b71c2520ffc1012324521d388f0490a9a1))
+
+
+### Refactoring
+
+* **api:** rename chat SQL aliases to event vocabulary ([#23938](https://github.com/vm0-ai/vm0/issues/23938)) ([213638e](https://github.com/vm0-ai/vm0/commit/213638e6104a4962d482bdfadd2fbb0a1789f5c9))
+* move chat input transport params into queue table ([#23909](https://github.com/vm0-ai/vm0/issues/23909)) ([182afc4](https://github.com/vm0-ai/vm0/commit/182afc46600bf4c4ed2fd19df3d000d17301a906))
+* **observability:** migrate connector diagnostics to slug ([#23907](https://github.com/vm0-ai/vm0/issues/23907)) ([ce77eaa](https://github.com/vm0-ai/vm0/commit/ce77eaa374b8c2f6975c3550e8c76c15ccb224ce))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.249.1
+    * @vm0/core bumped to 8.488.0
+    * @vm0/db bumped to 1.155.0
+
+## [1.347.0](https://github.com/vm0-ai/vm0/compare/api-v1.346.1...api-v1.347.0) (2026-07-30)
+
+
+### Features
+
+* add chat-run-finished workflow automation event trigger ([#23861](https://github.com/vm0-ai/vm0/issues/23861)) ([402ce7e](https://github.com/vm0-ai/vm0/commit/402ce7e1484a34a172624ea0047ccd1ffcc1441b))
+
+
+### Bug Fixes
+
+* remove legacy network policy connector fields ([#23866](https://github.com/vm0-ai/vm0/issues/23866)) ([8c5bd04](https://github.com/vm0-ai/vm0/commit/8c5bd0436863535ad36baa9c22b1f849657fb8ac))
+
+
+### Refactoring
+
+* **api:** unify server chat naming with chat events ([#23896](https://github.com/vm0-ai/vm0/issues/23896)) ([90ea01f](https://github.com/vm0-ai/vm0/commit/90ea01f6748bc3ccfcc289437aa48a621ab254ff))
+* remove the fully rolled out zero-finance feature switch ([#23889](https://github.com/vm0-ai/vm0/issues/23889)) ([aa55c8f](https://github.com/vm0-ai/vm0/commit/aa55c8f6a90c5a1b3c6fa043b8852c71f1dbc009))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.249.0
+    * @vm0/core bumped to 8.487.0
+    * @vm0/db bumped to 1.154.0
+
 ## [1.346.1](https://github.com/vm0-ai/vm0/compare/api-v1.346.0...api-v1.346.1) (2026-07-30)
 
 

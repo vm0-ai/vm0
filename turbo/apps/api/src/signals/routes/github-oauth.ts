@@ -29,7 +29,7 @@ import {
   type ResolvedConnectorActionMethod,
 } from "../services/connector-action-resolver.service";
 import {
-  buildGithubOauthState,
+  buildGithubAppInstallUrl,
   buildGithubUserConnectAuthorizationUrl,
   createOrActivateGithubInstallation,
   findGithubInstallationByInstallationId,
@@ -58,7 +58,6 @@ import {
 
 const REDIRECT_STATUS = 307;
 const GITHUB_CONNECTOR_SLUG = "github";
-const GITHUB_APP_SETUP_CALLBACK_PATH = "/api/github/app/setup/callback";
 const L = logger("GithubOAuthRoute");
 
 function redirectResponse(url: string): Response {
@@ -84,10 +83,6 @@ function jsonErrorResponse(error: string, status: number): Response {
 
 function appUrl(path: string): string {
   return `${env("APP_URL").replace(/\/$/u, "")}${path}`;
-}
-
-function githubAppSetupCallbackRedirectUri(origin: string): string {
-  return `${origin}${GITHUB_APP_SETUP_CALLBACK_PATH}`;
 }
 
 function githubUserOauthClient(
@@ -608,26 +603,17 @@ const installGithubOauth$ = command(
       }
     }
 
-    const state = await buildGithubOauthState({
+    const installUrl = await buildGithubAppInstallUrl({
+      appSlug,
       vm0UserId: query.vm0UserId,
       orgId: query.orgId,
       composeId: query.composeId,
+      origin,
       secretsEncryptionKey: env("SECRETS_ENCRYPTION_KEY"),
     });
     signal.throwIfAborted();
 
-    const installUrl = new URL(
-      `https://github.com/apps/${appSlug}/installations/new`,
-    );
-    if (state) {
-      installUrl.searchParams.set("state", state);
-    }
-    installUrl.searchParams.set(
-      "redirect_uri",
-      githubAppSetupCallbackRedirectUri(origin),
-    );
-
-    return noStoreRedirect(installUrl.toString());
+    return noStoreRedirect(installUrl);
   },
 );
 

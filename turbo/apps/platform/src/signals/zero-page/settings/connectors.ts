@@ -1245,13 +1245,19 @@ function getOAuthDeviceAuthTerminalMessage(
   }
   switch (result.status) {
     case "denied": {
-      return "Connection was denied. Start again to retry.";
+      return i18n.t(($) => {
+        return $.connectors.connectDialog.errors.denied;
+      });
     }
     case "expired": {
-      return "Connection session expired. Start again to retry.";
+      return i18n.t(($) => {
+        return $.connectors.connectDialog.errors.expired;
+      });
     }
     case "error": {
-      return "Connection failed. Start again to retry.";
+      return i18n.t(($) => {
+        return $.connectors.connectDialog.errors.failed;
+      });
     }
   }
 }
@@ -1301,7 +1307,9 @@ export const openConnectorOAuthDeviceAuthVerificationPage$ = command(
     if (!verificationWindow) {
       set(internalConnectorOAuthDeviceAuthState$, {
         ...current,
-        errorMessage: "Could not open the verification page. Try again.",
+        errorMessage: i18n.t(($) => {
+          return $.connectors.connectDialog.errors.verificationOpen;
+        }),
       });
       return false;
     }
@@ -1507,7 +1515,9 @@ const pollConnectorOAuthDeviceAuth$ = command(
         status: "expired",
         connectorSlug,
         authMethod,
-        message: "Connection session expired. Start again to retry.",
+        message: i18n.t(($) => {
+          return $.connectors.connectDialog.errors.expired;
+        }),
       });
     }
     return completed;
@@ -1574,7 +1584,9 @@ const connectConnectorOAuthDeviceAuth$ = command(
             status: "error",
             connectorSlug,
             authMethod,
-            message: "Connection failed. Start again to retry.",
+            message: i18n.t(($) => {
+              return $.connectors.connectDialog.errors.failed;
+            }),
           });
         }
         flowSignal.throwIfAborted();
@@ -1829,7 +1841,9 @@ export const connectConnectorExternalCode$ = command(
             status: "error",
             connectorSlug,
             authMethod,
-            message: "Connection failed. Start again to retry.",
+            message: i18n.t(($) => {
+              return $.connectors.connectDialog.errors.failed;
+            }),
           });
         }
         flowSignal.throwIfAborted();
@@ -1893,7 +1907,9 @@ const completeConnectorExternalCode$ = command(
         status: "expired",
         connectorSlug,
         authMethod,
-        message: "Connection session expired. Start again to retry.",
+        message: i18n.t(($) => {
+          return $.connectors.connectDialog.errors.expired;
+        }),
       });
       return false;
     }
@@ -1902,7 +1918,12 @@ const completeConnectorExternalCode$ = command(
     if (!code) {
       set(internalConnectorExternalCodeState$, {
         ...current,
-        errorMessage: `Enter the code from ${options.connectorLabel ?? connectorSlug}.`,
+        errorMessage: i18n.t(
+          ($) => {
+            return $.connectors.connectDialog.errors.codeRequired;
+          },
+          { connector: options.connectorLabel ?? connectorSlug },
+        ),
       });
       return false;
     }
@@ -2148,7 +2169,11 @@ const openConnectorOAuthAuthCodeWindow$ = command(
     const authWindow = window.open(redirectingPath, "_blank", popupFeatures);
 
     if (!authWindow && !standalone) {
-      throw new Error("Failed to open authorization window");
+      throw new Error(
+        i18n.t(($) => {
+          return $.connectors.connectDialog.errors.authorizationWindow;
+        }),
+      );
     }
     if (authWindow) {
       authWindow.opener = null;

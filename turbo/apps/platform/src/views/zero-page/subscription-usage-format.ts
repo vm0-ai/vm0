@@ -1,5 +1,6 @@
 import { now } from "../../lib/time.ts";
 import { i18n } from "../../i18n/index.ts";
+import { formatLocalizedNumber, resolvedAppLocale } from "../../i18n/format.ts";
 
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -23,7 +24,6 @@ type SubscriptionUsageResetDisplay =
 
 export function formatSubscriptionUsageReset(
   resetAt: string | null,
-  localized = false,
 ): SubscriptionUsageResetDisplay | null {
   const text = resetAt?.trim();
   if (!text) {
@@ -33,39 +33,32 @@ export function formatSubscriptionUsageReset(
   const date = new Date(text);
   if (Number.isNaN(date.getTime())) {
     return {
-      fallbackText: localized
-        ? i18n.t(
-            ($) => {
-              return $.settings.models.usage.resetsRaw;
-            },
-            { value: text },
-          )
-        : `resets ${text}`,
+      fallbackText: i18n.t(
+        ($) => {
+          return $.settings.models.usage.resetsRaw;
+        },
+        { value: text },
+      ),
     };
   }
 
-  const absoluteText = formatAbsoluteResetDate(date, localized);
-  const relativeText = formatRelativeResetTime(
-    date.getTime() - now(),
-    localized,
-  );
+  const absoluteText = formatAbsoluteResetDate(date);
+  const relativeText = formatRelativeResetTime(date.getTime() - now());
 
   return {
-    absoluteResetText: localized
-      ? i18n.t(
-          ($) => {
-            return $.settings.models.usage.resetsAt;
-          },
-          { date: absoluteText },
-        )
-      : `resets ${absoluteText}`,
+    absoluteResetText: i18n.t(
+      ($) => {
+        return $.settings.models.usage.resetsAt;
+      },
+      { date: absoluteText },
+    ),
     absoluteText,
     relativeText,
-    tooltipTitle: formatResetTooltipTitle(relativeText, localized),
+    tooltipTitle: formatResetTooltipTitle(relativeText),
   };
 }
 
-function formatAbsoluteResetDate(date: Date, localized: boolean): string {
+function formatAbsoluteResetDate(date: Date): string {
   const options: Intl.DateTimeFormatOptions = {
     month: "short",
     day: "numeric",
@@ -78,30 +71,17 @@ function formatAbsoluteResetDate(date: Date, localized: boolean): string {
   if (browserTimeZone) {
     options.timeZone = browserTimeZone;
   }
-  return date.toLocaleDateString(
-    localized ? (i18n.resolvedLanguage ?? i18n.language) : "en-US",
-    options,
-  );
+  return date.toLocaleDateString(resolvedAppLocale(), options);
 }
 
-function resetTimePassed(localized: boolean): string {
-  return localized
-    ? i18n.t(($) => {
-        return $.settings.models.usage.resetTimePassed;
-      })
-    : "reset time passed";
+function resetTimePassed(): string {
+  return i18n.t(($) => {
+    return $.settings.models.usage.resetTimePassed;
+  });
 }
 
-function formatResetTooltipTitle(
-  relativeText: string,
-  localized: boolean,
-): string {
-  if (!localized) {
-    return relativeText === "reset time passed"
-      ? "Reset time passed"
-      : `Resets ${relativeText}`;
-  }
-  if (relativeText === resetTimePassed(true)) {
+function formatResetTooltipTitle(relativeText: string): string {
+  if (relativeText === resetTimePassed()) {
     return i18n.t(($) => {
       return $.settings.models.usage.resetTimePassedTitle;
     });
@@ -114,77 +94,68 @@ function formatResetTooltipTitle(
   );
 }
 
-function formatRelativeResetTime(
-  remainingMs: number,
-  localized: boolean,
-): string {
+function formatRelativeResetTime(remainingMs: number): string {
   if (remainingMs <= 0) {
-    return resetTimePassed(localized);
+    return resetTimePassed();
   }
   if (remainingMs < MINUTE_MS) {
-    return localized
-      ? i18n.t(($) => {
-          return $.settings.models.usage.inLessThanMinute;
-        })
-      : "in <1m";
+    return i18n.t(($) => {
+      return $.settings.models.usage.inLessThanMinute;
+    });
   }
 
   const totalMinutes = Math.floor(remainingMs / MINUTE_MS);
   if (remainingMs < HOUR_MS) {
-    return localized
-      ? i18n.t(
-          ($) => {
-            return $.settings.models.usage.inMinutes;
-          },
-          { minutes: totalMinutes },
-        )
-      : `in ${totalMinutes}m`;
+    return i18n.t(
+      ($) => {
+        return $.settings.models.usage.inMinutes;
+      },
+      { minutes: formatLocalizedNumber(totalMinutes) },
+    );
   }
 
   const totalHours = Math.floor(remainingMs / HOUR_MS);
   if (remainingMs < DAY_MS) {
     const minutes = Math.floor((remainingMs % HOUR_MS) / MINUTE_MS);
     if (minutes > 0) {
-      return localized
-        ? i18n.t(
-            ($) => {
-              return $.settings.models.usage.inHoursMinutes;
-            },
-            { hours: totalHours, minutes },
-          )
-        : `in ${totalHours}h ${minutes}m`;
+      return i18n.t(
+        ($) => {
+          return $.settings.models.usage.inHoursMinutes;
+        },
+        {
+          hours: formatLocalizedNumber(totalHours),
+          minutes: formatLocalizedNumber(minutes),
+        },
+      );
     }
-    return localized
-      ? i18n.t(
-          ($) => {
-            return $.settings.models.usage.inHours;
-          },
-          { hours: totalHours },
-        )
-      : `in ${totalHours}h`;
+    return i18n.t(
+      ($) => {
+        return $.settings.models.usage.inHours;
+      },
+      { hours: formatLocalizedNumber(totalHours) },
+    );
   }
 
   const totalDays = Math.floor(remainingMs / DAY_MS);
   if (remainingMs < WEEK_MS) {
     const hours = Math.floor((remainingMs % DAY_MS) / HOUR_MS);
     if (hours > 0) {
-      return localized
-        ? i18n.t(
-            ($) => {
-              return $.settings.models.usage.inDaysHours;
-            },
-            { days: totalDays, hours },
-          )
-        : `in ${totalDays}d ${hours}h`;
+      return i18n.t(
+        ($) => {
+          return $.settings.models.usage.inDaysHours;
+        },
+        {
+          days: formatLocalizedNumber(totalDays),
+          hours: formatLocalizedNumber(hours),
+        },
+      );
     }
   }
 
-  return localized
-    ? i18n.t(
-        ($) => {
-          return $.settings.models.usage.inDays;
-        },
-        { days: totalDays },
-      )
-    : `in ${totalDays}d`;
+  return i18n.t(
+    ($) => {
+      return $.settings.models.usage.inDays;
+    },
+    { days: formatLocalizedNumber(totalDays) },
+  );
 }

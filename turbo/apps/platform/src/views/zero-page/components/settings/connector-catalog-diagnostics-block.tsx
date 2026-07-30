@@ -1,22 +1,173 @@
-import type { ConnectorCatalogDiagnostics } from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
+import type {
+  ConnectorCatalogCompatibilityReason,
+  ConnectorCatalogDiagnostics,
+  ConnectorCatalogSyncFailureCode,
+} from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
 import { IconDatabase } from "@tabler/icons-react";
 import { useLoadable } from "ccstate-react";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
+import {
+  formatLocalizedNumber,
+  resolvedAppLocale,
+} from "../../../../i18n/format.ts";
+import { i18n } from "../../../../i18n/index.ts";
 import { connectorCatalogDiagnostics$ } from "../../../../signals/zero-page/settings/connector-catalog-diagnostics.ts";
 
-const EMPTY_VALUE = "None";
+type DiagnosticEnumValue =
+  | ConnectorCatalogDiagnostics["state"]
+  | NonNullable<ConnectorCatalogDiagnostics["lastAttempt"]>["outcome"]
+  | ConnectorCatalogSyncFailureCode
+  | ConnectorCatalogCompatibilityReason;
 
-function formatEnumValue(value: string): string {
-  const words = value.replaceAll("-", " ");
-  return `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+function emptyValue(): string {
+  return i18n.t(($) => {
+    return $.connectors.providerSettings.catalogDiagnostics.none;
+  });
+}
+
+const DIAGNOSTIC_ENUM_VALUE_TRANSLATIONS: Readonly<
+  Record<DiagnosticEnumValue, () => string>
+> = {
+  accepted: () => {
+    return i18n.t(($) => {
+      return $.connectors.providerSettings.catalogDiagnostics.values.accepted;
+    });
+  },
+  current: () => {
+    return i18n.t(($) => {
+      return $.connectors.providerSettings.catalogDiagnostics.values.current;
+    });
+  },
+  "digest-mismatch": () => {
+    return i18n.t(($) => {
+      return $.connectors.providerSettings.catalogDiagnostics.values
+        .digestMismatch;
+    });
+  },
+  "invalid-artifact": () => {
+    return i18n.t(($) => {
+      return $.connectors.providerSettings.catalogDiagnostics.values
+        .invalidArtifact;
+    });
+  },
+  "invalid-compression": () => {
+    return i18n.t(($) => {
+      return $.connectors.providerSettings.catalogDiagnostics.values
+        .invalidCompression;
+    });
+  },
+  "invalid-json": () => {
+    return i18n.t(($) => {
+      return $.connectors.providerSettings.catalogDiagnostics.values
+        .invalidJson;
+    });
+  },
+  "invalid-pointer": () => {
+    return i18n.t(($) => {
+      return $.connectors.providerSettings.catalogDiagnostics.values
+        .invalidPointer;
+    });
+  },
+  "invalid-reference": () => {
+    return i18n.t(($) => {
+      return $.connectors.providerSettings.catalogDiagnostics.values
+        .invalidReference;
+    });
+  },
+  "missing-access-provider": () => {
+    return i18n.t(($) => {
+      return $.connectors.providerSettings.catalogDiagnostics.values
+        .missingAccessProvider;
+    });
+  },
+  "missing-grant-provider": () => {
+    return i18n.t(($) => {
+      return $.connectors.providerSettings.catalogDiagnostics.values
+        .missingGrantProvider;
+    });
+  },
+  "missing-platform-configuration": () => {
+    return i18n.t(($) => {
+      return $.connectors.providerSettings.catalogDiagnostics.values
+        .missingPlatformConfiguration;
+    });
+  },
+  "missing-revoke-provider": () => {
+    return i18n.t(($) => {
+      return $.connectors.providerSettings.catalogDiagnostics.values
+        .missingRevokeProvider;
+    });
+  },
+  "never-synced": () => {
+    return i18n.t(($) => {
+      return $.connectors.providerSettings.catalogDiagnostics.values
+        .neverSynced;
+    });
+  },
+  "object-too-large": () => {
+    return i18n.t(($) => {
+      return $.connectors.providerSettings.catalogDiagnostics.values
+        .objectTooLarge;
+    });
+  },
+  "provider-contract-mismatch": () => {
+    return i18n.t(($) => {
+      return $.connectors.providerSettings.catalogDiagnostics.values
+        .providerContractMismatch;
+    });
+  },
+  "public-leakage": () => {
+    return i18n.t(($) => {
+      return $.connectors.providerSettings.catalogDiagnostics.values
+        .publicLeakage;
+    });
+  },
+  rejected: () => {
+    return i18n.t(($) => {
+      return $.connectors.providerSettings.catalogDiagnostics.values.rejected;
+    });
+  },
+  "relationship-mismatch": () => {
+    return i18n.t(($) => {
+      return $.connectors.providerSettings.catalogDiagnostics.values
+        .relationshipMismatch;
+    });
+  },
+  "source-unavailable": () => {
+    return i18n.t(($) => {
+      return $.connectors.providerSettings.catalogDiagnostics.values
+        .sourceUnavailable;
+    });
+  },
+  stale: () => {
+    return i18n.t(($) => {
+      return $.connectors.providerSettings.catalogDiagnostics.values.stale;
+    });
+  },
+  unchanged: () => {
+    return i18n.t(($) => {
+      return $.connectors.providerSettings.catalogDiagnostics.values.unchanged;
+    });
+  },
+  "unsupported-schema": () => {
+    return i18n.t(($) => {
+      return $.connectors.providerSettings.catalogDiagnostics.values
+        .unsupportedSchema;
+    });
+  },
+};
+
+function formatEnumValue(value: DiagnosticEnumValue): string {
+  return DIAGNOSTIC_ENUM_VALUE_TRANSLATIONS[value]();
 }
 
 function formatTimestamp(value: string | null): string {
   if (!value) {
-    return EMPTY_VALUE;
+    return emptyValue();
   }
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(resolvedAppLocale(), {
     dateStyle: "medium",
     timeStyle: "medium",
   }).format(new Date(value));
@@ -26,9 +177,15 @@ function formatRejectedAttemptCacheUse(
   lastAttempt: ConnectorCatalogDiagnostics["lastAttempt"],
 ): string {
   if (!lastAttempt || lastAttempt.outcome !== "rejected") {
-    return EMPTY_VALUE;
+    return emptyValue();
   }
-  return lastAttempt.reusedCachedRejection ? "Reused" : "Not reused";
+  return lastAttempt.reusedCachedRejection
+    ? i18n.t(($) => {
+        return $.connectors.providerSettings.catalogDiagnostics.reused;
+      })
+    : i18n.t(($) => {
+        return $.connectors.providerSettings.catalogDiagnostics.notReused;
+      });
 }
 
 function DiagnosticField({
@@ -67,28 +224,43 @@ function RejectedCandidateDiagnostics({
   return (
     <div className="border-t border-border/60 pt-4">
       <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        Rejected candidate
+        {i18n.t(($) => {
+          return $.connectors.providerSettings.catalogDiagnostics.sections
+            .rejectedCandidate;
+        })}
       </div>
       <div className="grid min-w-0 gap-4 sm:grid-cols-2">
         <DiagnosticField
-          label="Rejected version"
-          value={candidate.catalogVersion ?? EMPTY_VALUE}
+          label={i18n.t(($) => {
+            return $.connectors.providerSettings.catalogDiagnostics.fields
+              .rejectedVersion;
+          })}
+          value={candidate.catalogVersion ?? emptyValue()}
           code={candidate.catalogVersion !== null}
         />
         <DiagnosticField
-          label="Rejecting backend"
+          label={i18n.t(($) => {
+            return $.connectors.providerSettings.catalogDiagnostics.fields
+              .rejectingBackend;
+          })}
           value={candidate.backendVersion}
           code
         />
         <DiagnosticField
-          label="Rejection failure"
+          label={i18n.t(($) => {
+            return $.connectors.providerSettings.catalogDiagnostics.fields
+              .rejectionFailure;
+          })}
           value={formatEnumValue(candidate.failureCode)}
         />
       </div>
       <div className="mt-4">
         <DiagnosticField
-          label="Rejected catalog digest"
-          value={candidate.catalogDigest ?? EMPTY_VALUE}
+          label={i18n.t(($) => {
+            return $.connectors.providerSettings.catalogDiagnostics.fields
+              .rejectedCatalogDigest;
+          })}
+          value={candidate.catalogDigest ?? emptyValue()}
           code={candidate.catalogDigest !== null}
         />
       </div>
@@ -107,49 +279,76 @@ function CatalogSyncDiagnostics({
     <>
       <div className="grid min-w-0 gap-4 sm:grid-cols-2">
         <DiagnosticField
-          label="Sync state"
+          label={i18n.t(($) => {
+            return $.connectors.providerSettings.catalogDiagnostics.fields
+              .syncState;
+          })}
           value={formatEnumValue(diagnostics.state)}
         />
         <DiagnosticField
-          label="Last attempt"
+          label={i18n.t(($) => {
+            return $.connectors.providerSettings.catalogDiagnostics.fields
+              .lastAttempt;
+          })}
           value={
-            lastAttempt ? formatEnumValue(lastAttempt.outcome) : EMPTY_VALUE
+            lastAttempt ? formatEnumValue(lastAttempt.outcome) : emptyValue()
           }
         />
         <DiagnosticField
-          label="Active version"
-          value={active?.catalogVersion ?? EMPTY_VALUE}
+          label={i18n.t(($) => {
+            return $.connectors.providerSettings.catalogDiagnostics.fields
+              .activeVersion;
+          })}
+          value={active?.catalogVersion ?? emptyValue()}
           code={active !== null}
         />
         <DiagnosticField
-          label="Activated"
+          label={i18n.t(($) => {
+            return $.connectors.providerSettings.catalogDiagnostics.fields
+              .activated;
+          })}
           value={formatTimestamp(active?.activatedAt ?? null)}
         />
         <DiagnosticField
-          label="Last attempt at"
+          label={i18n.t(($) => {
+            return $.connectors.providerSettings.catalogDiagnostics.fields
+              .lastAttemptAt;
+          })}
           value={formatTimestamp(lastAttempt?.at ?? null)}
         />
         <DiagnosticField
-          label="Last success"
+          label={i18n.t(($) => {
+            return $.connectors.providerSettings.catalogDiagnostics.fields
+              .lastSuccess;
+          })}
           value={formatTimestamp(diagnostics.lastSuccessAt)}
         />
         <DiagnosticField
-          label="Failure code"
+          label={i18n.t(($) => {
+            return $.connectors.providerSettings.catalogDiagnostics.fields
+              .failureCode;
+          })}
           value={
             lastAttempt?.failureCode
               ? formatEnumValue(lastAttempt.failureCode)
-              : EMPTY_VALUE
+              : emptyValue()
           }
         />
         <DiagnosticField
-          label="Rejection cache"
+          label={i18n.t(($) => {
+            return $.connectors.providerSettings.catalogDiagnostics.fields
+              .rejectionCache;
+          })}
           value={formatRejectedAttemptCacheUse(lastAttempt)}
         />
       </div>
 
       <DiagnosticField
-        label="Active catalog digest"
-        value={active?.catalogDigest ?? EMPTY_VALUE}
+        label={i18n.t(($) => {
+          return $.connectors.providerSettings.catalogDiagnostics.fields
+            .activeCatalogDigest;
+        })}
+        value={active?.catalogDigest ?? emptyValue()}
         code={active !== null}
       />
 
@@ -175,32 +374,49 @@ function DiagnosticsContent({
 
       <div className="border-t border-border/60 pt-4">
         <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Compatibility
+          {i18n.t(($) => {
+            return $.connectors.providerSettings.catalogDiagnostics.sections
+              .compatibility;
+          })}
         </div>
         <div className="grid min-w-0 gap-4 sm:grid-cols-2">
           <DiagnosticField
-            label="Evaluation"
-            value={diagnostics.filtering.stale ? "Stale" : "Current"}
+            label={i18n.t(($) => {
+              return $.connectors.providerSettings.catalogDiagnostics.fields
+                .evaluation;
+            })}
+            value={formatEnumValue(
+              diagnostics.filtering.stale ? "stale" : "current",
+            )}
           />
           <DiagnosticField
-            label="Evaluated"
+            label={i18n.t(($) => {
+              return $.connectors.providerSettings.catalogDiagnostics.fields
+                .evaluated;
+            })}
             value={formatTimestamp(diagnostics.filtering.evaluatedAt)}
           />
         </div>
         <div className="mt-4">
           <DiagnosticField
-            label="Executable capability digest"
+            label={i18n.t(($) => {
+              return $.connectors.providerSettings.catalogDiagnostics.fields
+                .executableCapabilityDigest;
+            })}
             value={diagnostics.filtering.capabilityDigest}
             code
           />
         </div>
         <div className="mt-4 flex min-w-0 flex-col gap-2">
           <div className="text-xs text-muted-foreground">
-            Filtered auth methods
+            {i18n.t(($) => {
+              return $.connectors.providerSettings.catalogDiagnostics.fields
+                .filteredAuthMethods;
+            })}
           </div>
           {filteredAuthMethods.length === 0 ? (
             <div className="text-sm font-medium text-foreground">
-              {EMPTY_VALUE}
+              {emptyValue()}
             </div>
           ) : (
             <div className="flex min-w-0 flex-col gap-2">
@@ -226,24 +442,47 @@ function DiagnosticsContent({
 
       <div className="border-t border-border/60 pt-4">
         <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Credential storage
+          {i18n.t(($) => {
+            return $.connectors.providerSettings.catalogDiagnostics.sections
+              .credentialStorage;
+          })}
         </div>
         <div className="grid grid-cols-2 gap-4">
           <DiagnosticField
-            label="Missing versions"
-            value={diagnostics.credentialStorage.missingConnectorVersions}
+            label={i18n.t(($) => {
+              return $.connectors.providerSettings.catalogDiagnostics.fields
+                .missingVersions;
+            })}
+            value={formatLocalizedNumber(
+              diagnostics.credentialStorage.missingConnectorVersions,
+            )}
           />
           <DiagnosticField
-            label="Unowned secrets"
-            value={diagnostics.credentialStorage.unownedConnectorSecrets}
+            label={i18n.t(($) => {
+              return $.connectors.providerSettings.catalogDiagnostics.fields
+                .unownedSecrets;
+            })}
+            value={formatLocalizedNumber(
+              diagnostics.credentialStorage.unownedConnectorSecrets,
+            )}
           />
           <DiagnosticField
-            label="Unowned variables"
-            value={diagnostics.credentialStorage.unownedConnectorVariables}
+            label={i18n.t(($) => {
+              return $.connectors.providerSettings.catalogDiagnostics.fields
+                .unownedVariables;
+            })}
+            value={formatLocalizedNumber(
+              diagnostics.credentialStorage.unownedConnectorVariables,
+            )}
           />
           <DiagnosticField
-            label="Unresolved bridge credentials"
-            value={diagnostics.credentialStorage.unresolvedBridgeCredentials}
+            label={i18n.t(($) => {
+              return $.connectors.providerSettings.catalogDiagnostics.fields
+                .unresolvedBridgeCredentials;
+            })}
+            value={formatLocalizedNumber(
+              diagnostics.credentialStorage.unresolvedBridgeCredentials,
+            )}
           />
         </div>
       </div>
@@ -252,6 +491,7 @@ function DiagnosticsContent({
 }
 
 export function ConnectorCatalogDiagnosticsBlock() {
+  const { t } = useTranslation();
   const diagnosticsLoadable = useLoadable(connectorCatalogDiagnostics$);
   const loading = diagnosticsLoadable.state === "loading";
   const diagnostics =
@@ -276,13 +516,23 @@ export function ConnectorCatalogDiagnosticsBlock() {
           id="connector-catalog-diagnostics-title"
           className="text-sm font-medium text-foreground"
         >
-          Connector catalog
+          {t(($) => {
+            return $.connectors.providerSettings.catalogDiagnostics.title;
+          })}
         </div>
         {diagnostics ? (
           <DiagnosticsContent diagnostics={diagnostics} />
         ) : (
           <div className="text-sm text-muted-foreground">
-            {loading ? "Loading" : "Unavailable"}
+            {loading
+              ? t(($) => {
+                  return $.connectors.providerSettings.catalogDiagnostics
+                    .loading;
+                })
+              : t(($) => {
+                  return $.connectors.providerSettings.catalogDiagnostics
+                    .unavailable;
+                })}
           </div>
         )}
       </div>

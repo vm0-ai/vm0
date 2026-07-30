@@ -16,6 +16,7 @@ import {
   type ZeroWorkflowAutomationSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
+import { integrationsGithubContract } from "@vm0/api-contracts/contracts/integrations-github";
 import { zeroStrapiIntegrationsContract } from "@vm0/api-contracts/contracts/zero-strapi-integrations";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -996,7 +997,8 @@ function mockCreateWorkflowAutomation(
       }
       if (
         body.eventConfig.provider === "github" ||
-        body.eventConfig.provider === "strapi"
+        body.eventConfig.provider === "strapi" ||
+        body.eventConfig.provider === "chat"
       ) {
         return respond(201, {
           ...gmailWorkflowAutomation(),
@@ -2531,6 +2533,69 @@ describe("workflow detail page", () => {
         },
       });
     });
+  });
+
+  it("offers a GitHub App install link when GitHub is not installed", async () => {
+    mockWorkflowApis([salesResearch()]);
+    setMockGithubIntegration(null);
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
+
+    await waitFor(() => {
+      expect(buttonByText("Add automation")).toBeInTheDocument();
+    });
+    click(buttonByText("Add automation"));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    pickAutomation("Integrations", /^GitHub workflow completed/);
+
+    const form = await screen.findByRole("form", {
+      name: "Add GitHub workflow automation",
+    });
+    await waitFor(() => {
+      expect(linkByText("Install GitHub App", form)).toHaveAttribute(
+        "href",
+        "https://github.com/apps/vm0-test/installations/new?state=abc",
+      );
+    });
+  });
+
+  it("asks for an org admin when the API omits the install URL", async () => {
+    mockWorkflowApis([salesResearch()]);
+    setMockGithubIntegration(null);
+    context.mocks.api(
+      integrationsGithubContract.getInstallation,
+      ({ respond }) => {
+        return respond(404, {
+          error: {
+            message: "GitHub installation not found",
+            code: "NOT_FOUND",
+          },
+        });
+      },
+    );
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
+
+    await waitFor(() => {
+      expect(buttonByText("Add automation")).toBeInTheDocument();
+    });
+    click(buttonByText("Add automation"));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    pickAutomation("Integrations", /^GitHub workflow completed/);
+
+    const form = await screen.findByRole("form", {
+      name: "Add GitHub workflow automation",
+    });
+    await waitFor(() => {
+      expect(
+        within(form).getByText("Ask an organization admin to install it."),
+      ).toBeInTheDocument();
+    });
+    expect(queryAllByRoleFast("link", form)).toHaveLength(0);
   });
 
   it("hides new GitHub webhook creation entries when the feature is disabled", async () => {

@@ -53,6 +53,11 @@ import {
   type RunWorkflowAutomationResult,
   type AutomationRow,
 } from "./zero-workflow-automation-run.service";
+import {
+  workflowAutomationAppendSystemPrompt,
+  workflowAutomationPrompt,
+  type WorkflowAutomationContext,
+} from "./workflow-automation-context.service";
 
 const log = logger("api:notion-workflow-event");
 
@@ -1790,94 +1795,84 @@ async function markPendingEventProcessed(args: {
   args.signal.throwIfAborted();
 }
 
-function buildNotionChildPageWorkflowEventSystemPrompt(args: {
+const NOTION_PAGE_BODY_NOTE =
+  "Not included below: the Notion page body and child blocks. Connected Notion tools and the Notion API return them for the page id below.";
+
+function notionChildPageTriggerContext(args: {
+  readonly workflowName: string;
   readonly automationId: string;
   readonly config: NotionChildPageCreatedEventConfig;
   readonly page: NotionPageResponse;
   readonly parent: NotionPageReference;
   readonly firstEventAt: Date;
   readonly latestEventAt: Date;
-}): string {
+}): WorkflowAutomationContext {
   const pageTitle = notionTitleFromProperties(args.page.properties);
-  return [
-    "# Current context",
-    'You are running because a Notion "New Notion child page" workflow event automation matched a new direct child page under the configured parent page.',
-    "The workflow's procedure is available as a skill - execute it now.",
-    "This run is linked to a web chat thread; everything you output is shown to the user there.",
-    "The Notion page body is not included in this automation context. If the workflow needs the page content or child blocks, use the connected Notion tools/API with the page ID below.",
-    "",
-    "# Notion event",
-    JSON.stringify(
-      {
-        automationId: args.automationId,
-        event: args.config.event,
-        connectorId: args.config.connectorId,
-        page: {
-          id: args.page.id,
-          title: pageTitle,
-          url: args.page.url ?? null,
-          createdTime: args.page.created_time ?? null,
-          lastEditedTime: args.page.last_edited_time ?? null,
-        },
-        parent: {
-          id: args.parent.id,
-          title: args.parent.title,
-          url: args.parent.url,
-        },
-        firstEventAt: args.firstEventAt.toISOString(),
-        latestEventAt: args.latestEventAt.toISOString(),
+  return {
+    workflowName: args.workflowName,
+    trigger: `Notion child page ${args.page.id} was created under the configured parent page (latest change ${args.latestEventAt.toISOString()}).`,
+    notes: [NOTION_PAGE_BODY_NOTE],
+    event: {
+      automationId: args.automationId,
+      event: args.config.event,
+      connectorId: args.config.connectorId,
+      page: {
+        id: args.page.id,
+        title: pageTitle,
+        url: args.page.url ?? null,
+        createdTime: args.page.created_time ?? null,
+        lastEditedTime: args.page.last_edited_time ?? null,
       },
-      null,
-      2,
-    ),
-  ].join("\n");
+      parent: {
+        id: args.parent.id,
+        title: args.parent.title,
+        url: args.parent.url,
+      },
+      firstEventAt: args.firstEventAt.toISOString(),
+      latestEventAt: args.latestEventAt.toISOString(),
+    },
+  };
 }
 
-function buildNotionDatabaseItemWorkflowEventSystemPrompt(args: {
+function notionDatabaseItemTriggerContext(args: {
+  readonly workflowName: string;
   readonly automationId: string;
   readonly config: NotionDatabaseItemCreatedEventConfig;
   readonly page: NotionPageResponse;
   readonly dataSource: NotionDataSourceReference;
   readonly firstEventAt: Date;
   readonly latestEventAt: Date;
-}): string {
+}): WorkflowAutomationContext {
   const pageTitle = notionTitleFromProperties(args.page.properties);
-  return [
-    "# Current context",
-    'You are running because a Notion "New Notion database item" workflow event automation matched a new page inside the configured Notion database.',
-    "The workflow's procedure is available as a skill - execute it now.",
-    "This run is linked to a web chat thread; everything you output is shown to the user there.",
-    "The Notion page body is not included in this automation context. If the workflow needs the page content or child blocks, use the connected Notion tools/API with the page ID below.",
-    "",
-    "# Notion event",
-    JSON.stringify(
-      {
-        automationId: args.automationId,
-        event: args.config.event,
-        connectorId: args.config.connectorId,
-        page: {
-          id: args.page.id,
-          title: pageTitle,
-          url: args.page.url ?? null,
-          createdTime: args.page.created_time ?? null,
-          lastEditedTime: args.page.last_edited_time ?? null,
-          properties: args.page.properties ?? {},
-        },
-        dataSource: {
-          id: args.dataSource.id,
-          title: args.dataSource.title,
-          url: args.dataSource.url,
-        },
-        firstEventAt: args.firstEventAt.toISOString(),
-        latestEventAt: args.latestEventAt.toISOString(),
+  return {
+    workflowName: args.workflowName,
+    trigger: `Notion database item ${args.page.id} was created in the configured database (latest change ${args.latestEventAt.toISOString()}).`,
+    notes: [NOTION_PAGE_BODY_NOTE],
+    event: {
+      automationId: args.automationId,
+      event: args.config.event,
+      connectorId: args.config.connectorId,
+      page: {
+        id: args.page.id,
+        title: pageTitle,
+        url: args.page.url ?? null,
+        createdTime: args.page.created_time ?? null,
+        lastEditedTime: args.page.last_edited_time ?? null,
+        properties: args.page.properties ?? {},
       },
-      null,
-      2,
-    ),
-  ].join("\n");
+      dataSource: {
+        id: args.dataSource.id,
+        title: args.dataSource.title,
+        url: args.dataSource.url,
+      },
+      firstEventAt: args.firstEventAt.toISOString(),
+      latestEventAt: args.latestEventAt.toISOString(),
+    },
+  };
 }
 
-function buildNotionPageContentUpdatedWorkflowEventSystemPrompt(args: {
+function notionPageContentUpdatedTriggerContext(args: {
+  readonly workflowName: string;
   readonly automationId: string;
   readonly config: NotionPageContentUpdatedEventConfig;
   readonly page: NotionPageResponse;
@@ -1885,7 +1880,7 @@ function buildNotionPageContentUpdatedWorkflowEventSystemPrompt(args: {
   readonly firstEventAt: Date;
   readonly latestEventAt: Date;
   readonly latestEventContext: NotionWorkflowPendingEventContext | null;
-}): string {
+}): WorkflowAutomationContext {
   const pageTitle = notionTitleFromProperties(args.page.properties);
   const scope =
     args.scope.type === "page"
@@ -1905,36 +1900,28 @@ function buildNotionPageContentUpdatedWorkflowEventSystemPrompt(args: {
             url: args.scope.dataSource.url,
           },
         };
-  return [
-    "# Current context",
-    'You are running because a Notion "Page content updated" workflow event automation matched a content update on a configured Notion page or database item.',
-    "The workflow's procedure is available as a skill - execute it now.",
-    "This run is linked to a web chat thread; everything you output is shown to the user there.",
-    "The Notion page body is not included in this automation context. If the workflow needs the page content or child blocks, use the connected Notion tools/API with the page ID below.",
-    "",
-    "# Notion event",
-    JSON.stringify(
-      {
-        automationId: args.automationId,
-        event: args.config.event,
-        connectorId: args.config.connectorId,
-        page: {
-          id: args.page.id,
-          title: pageTitle,
-          url: args.page.url ?? null,
-          createdTime: args.page.created_time ?? null,
-          lastEditedTime: args.page.last_edited_time ?? null,
-          properties: args.page.properties ?? {},
-        },
-        scope,
-        firstEventAt: args.firstEventAt.toISOString(),
-        latestEventAt: args.latestEventAt.toISOString(),
-        latestEventContext: args.latestEventContext,
+  return {
+    workflowName: args.workflowName,
+    trigger: `Notion page ${args.page.id} content was updated (latest change ${args.latestEventAt.toISOString()}).`,
+    notes: [NOTION_PAGE_BODY_NOTE],
+    event: {
+      automationId: args.automationId,
+      event: args.config.event,
+      connectorId: args.config.connectorId,
+      page: {
+        id: args.page.id,
+        title: pageTitle,
+        url: args.page.url ?? null,
+        createdTime: args.page.created_time ?? null,
+        lastEditedTime: args.page.last_edited_time ?? null,
+        properties: args.page.properties ?? {},
       },
-      null,
-      2,
-    ),
-  ].join("\n");
+      scope,
+      firstEventAt: args.firstEventAt.toISOString(),
+      latestEventAt: args.latestEventAt.toISOString(),
+      latestEventContext: args.latestEventContext,
+    },
+  };
 }
 
 function buildNotionChildPageWorkflowAutomationBrief(args: {
@@ -2050,7 +2037,7 @@ function pageContentUpdatedScopeStillMatches(args: {
 async function startNotionWorkflowRun(args: {
   readonly row: DueNotionAutomationRow;
   readonly chatThreadId: string;
-  readonly appendSystemPrompt: string;
+  readonly context: WorkflowAutomationContext;
   readonly triggerBrief: string;
   readonly signal: AbortSignal;
   readonly startRun: NotionRunStarter;
@@ -2065,7 +2052,8 @@ async function startNotionWorkflowRun(args: {
       },
       apiStartTime: now(),
       triggerSource: "workflow-event",
-      appendSystemPrompt: args.appendSystemPrompt,
+      prompt: workflowAutomationPrompt(args.context),
+      appendSystemPrompt: workflowAutomationAppendSystemPrompt(args.context),
       triggerBrief: args.triggerBrief,
       callbacks: buildChatOnlyWorkflowAutomationCallbacks(
         args.chatThreadId,
@@ -2169,7 +2157,8 @@ async function processClaimedNotionChildPagePendingEvent(
   const result = await startNotionWorkflowRun({
     row: args.row,
     chatThreadId: args.row.chatThreadId,
-    appendSystemPrompt: buildNotionChildPageWorkflowEventSystemPrompt({
+    context: notionChildPageTriggerContext({
+      workflowName: args.row.workflowName,
       automationId: args.row.automation.id,
       config: config.data,
       page: childPage,
@@ -2285,7 +2274,8 @@ async function processClaimedNotionDatabaseItemPendingEvent(
   const result = await startNotionWorkflowRun({
     row: args.row,
     chatThreadId: args.row.chatThreadId,
-    appendSystemPrompt: buildNotionDatabaseItemWorkflowEventSystemPrompt({
+    context: notionDatabaseItemTriggerContext({
+      workflowName: args.row.workflowName,
       automationId: args.row.automation.id,
       config: config.data,
       page,
@@ -2439,7 +2429,8 @@ async function processClaimedNotionPageContentUpdatedPendingEvent(
   const result = await startNotionWorkflowRun({
     row: args.row,
     chatThreadId: args.row.chatThreadId,
-    appendSystemPrompt: buildNotionPageContentUpdatedWorkflowEventSystemPrompt({
+    context: notionPageContentUpdatedTriggerContext({
+      workflowName: args.row.workflowName,
       automationId: args.row.automation.id,
       config: config.data,
       page,

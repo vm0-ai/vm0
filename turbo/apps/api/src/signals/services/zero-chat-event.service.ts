@@ -4,6 +4,7 @@ import {
   isValidChatEventRevocation,
 } from "@vm0/api-contracts/contracts/chat-events";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import { chatInputQueueParams } from "@vm0/db/schema/chat-input-queue-params";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { eq, isNotNull, sql } from "drizzle-orm";
@@ -205,6 +206,53 @@ type InsertChatEventsConflict = "any" | "run-sequence";
 
 type PersistedChatEvent = Omit<ChatEventInsert, "role" | "seqId">;
 
+function isPendingInputEvent(values: NewChatEvent): boolean {
+  return (
+    values.runId === null &&
+    (values.eventType === "input.prompt" ||
+      values.eventType === "input.automation" ||
+      values.eventType === "input.goal")
+  );
+}
+
+function inputQueueParams(values: NewChatEvent):
+  | {
+      readonly encryptedParams: string;
+      readonly attachFileMetadata:
+        | ChatEventInsert["attachFileMetadata"]
+        | undefined;
+    }
+  | undefined {
+  if (
+    !isPendingInputEvent(values) ||
+    !("encryptedParams" in values) ||
+    !values.encryptedParams
+  ) {
+    return undefined;
+  }
+  return {
+    encryptedParams: values.encryptedParams,
+    attachFileMetadata:
+      "attachFileMetadata" in values ? values.attachFileMetadata : undefined,
+  };
+}
+
+async function insertInputQueueParams(
+  tx: ChatEventWriteTransaction,
+  eventId: string,
+  values: NewChatEvent,
+): Promise<void> {
+  const params = inputQueueParams(values);
+  if (!params) {
+    return;
+  }
+  await tx.insert(chatInputQueueParams).values({
+    eventId,
+    encryptedParams: params.encryptedParams,
+    attachFileMetadata: params.attachFileMetadata,
+  });
+}
+
 function persistedChatEventValues(values: NewChatEvent): PersistedChatEvent {
   const runLifecycleEvent = chatEventRunLifecycle(values.eventType);
   return {
@@ -335,6 +383,12 @@ export async function insertChatEvent(
     // A rejected idempotent write is not part of the canonical stream, so it
     // must not consume the thread's next cursor.
     await releaseChatEventSeqId(tx, values.chatThreadId);
+  } else {
+    const inserted = rows[0];
+    if (!inserted) {
+      throw new Error("Inserted chat event result is missing");
+    }
+    await insertInputQueueParams(tx, inserted.id, values);
   }
   return rows[0] ?? null;
 }
@@ -384,8 +438,20 @@ export async function replaceChatEvent(
       chatThreadId: chatEvents.chatThreadId,
       createdAt: chatEvents.createdAt,
       eventType: chatEvents.eventType,
+      encryptedParams: sql`COALESCE(
+        ${chatInputQueueParams.encryptedParams},
+        ${chatEvents.encryptedParams}
+      )`.mapWith(chatEvents.encryptedParams),
+      attachFileMetadata: sql`COALESCE(
+        ${chatInputQueueParams.attachFileMetadata},
+        ${chatEvents.attachFileMetadata}
+      )`.mapWith(chatEvents.attachFileMetadata),
     })
     .from(chatEvents)
+    .leftJoin(
+      chatInputQueueParams,
+      eq(chatInputQueueParams.eventId, chatEvents.id),
+    )
     .where(eq(chatEvents.id, eventId))
     .limit(1);
   if (!target) {
@@ -409,11 +475,25 @@ export async function replaceChatEvent(
     );
   }
 
+  const replacementWithParams =
+    isPendingInputEvent(replacement) && target.encryptedParams
+      ? {
+          ...replacement,
+          encryptedParams:
+            "encryptedParams" in replacement && replacement.encryptedParams
+              ? replacement.encryptedParams
+              : target.encryptedParams,
+          attachFileMetadata:
+            "attachFileMetadata" in replacement
+              ? replacement.attachFileMetadata
+              : target.attachFileMetadata,
+        }
+      : replacement;
   const seqId = await reserveChatEventSeqIds(tx, replacement.chatThreadId, 1);
   const rows = await tx
     .insert(chatEvents)
     .values({
-      ...persistedChatEventValues({ ...replacement, createdAt }),
+      ...persistedChatEventValues({ ...replacementWithParams, createdAt }),
       seqId,
       revokesEventId: eventId,
     })
@@ -423,7 +503,16 @@ export async function replaceChatEvent(
       createdAt: chatEvents.createdAt,
       seqId: chatEvents.seqId,
     });
-  return rows[0] ?? null;
+  const inserted = rows[0];
+  if (!inserted) {
+    return null;
+  }
+
+  await insertInputQueueParams(tx, inserted.id, replacementWithParams);
+  await tx
+    .delete(chatInputQueueParams)
+    .where(eq(chatInputQueueParams.eventId, eventId));
+  return inserted;
 }
 
 /** Append a payload-free revocation event for an existing chat event. */

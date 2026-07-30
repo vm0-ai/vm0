@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use serde_json::{Map, Value, json};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::oneshot;
+use tokio_util::sync::CancellationToken;
 
 use crate::env::Framework;
 use crate::error::AgentError;
@@ -102,11 +103,13 @@ enum CodexRunEvent {
 enum AppServerRunOutcome {
     Completed(Box<Result<CliExecutionResult, AgentError>>),
     ExecutionTimedOut { timeout_secs: u64 },
+    UserCancelled,
 }
 
 async fn run_with_execution_deadline(
     run: impl Future<Output = Result<CliExecutionResult, AgentError>>,
     deadline: Option<AgentExecutionDeadline>,
+    user_cancellation: &CancellationToken,
 ) -> AppServerRunOutcome {
     tokio::pin!(run);
 
@@ -118,12 +121,19 @@ async fn run_with_execution_deadline(
             tokio::select! {
                 biased;
                 result = &mut run => AppServerRunOutcome::Completed(Box::new(result)),
+                () = user_cancellation.cancelled() => AppServerRunOutcome::UserCancelled,
                 () = &mut deadline_sleep => AppServerRunOutcome::ExecutionTimedOut {
                     timeout_secs: deadline.timeout_secs,
                 },
             }
         }
-        None => AppServerRunOutcome::Completed(Box::new(run.await)),
+        None => {
+            tokio::select! {
+                biased;
+                result = &mut run => AppServerRunOutcome::Completed(Box::new(result)),
+                () = user_cancellation.cancelled() => AppServerRunOutcome::UserCancelled,
+            }
+        }
     }
 }
 
@@ -132,6 +142,7 @@ pub(super) async fn execute_codex_app_server_for_runtime(
     mut heartbeat_monitor: HeartbeatMonitor,
     http: HttpClient,
     active_input: ActiveInputWriter,
+    user_cancellation: CancellationToken,
     runtime: &CliRuntimeConfig<'_>,
 ) -> Result<CliExecutionResult, AgentError> {
     log_info!(LOG_TAG, "Starting codex app-server execution...");
@@ -149,6 +160,7 @@ pub(super) async fn execute_codex_app_server_for_runtime(
         should_send_events,
         event_delivery.sender(),
         active_input,
+        user_cancellation,
         runtime,
     )
     .await;
@@ -175,6 +187,7 @@ async fn run_codex_app_server(
     should_send_events: bool,
     event_tx: &EventDeliverySender,
     mut active_input: ActiveInputWriter,
+    user_cancellation: CancellationToken,
     runtime: &CliRuntimeConfig<'_>,
 ) -> Result<CliExecutionResult, AgentError> {
     let log_file = guest_contracts::runtime_paths::create_private(runtime.agent_log_file.as_ref())?;
@@ -359,14 +372,16 @@ async fn run_codex_app_server(
             cli_termination: None,
         })
     };
-    let run_outcome = run_with_execution_deadline(run, runtime.agent_execution_deadline).await;
+    let run_outcome =
+        run_with_execution_deadline(run, runtime.agent_execution_deadline, &user_cancellation)
+            .await;
     active_input.close_terminal();
 
     let shutdown_result = match &run_outcome {
         AppServerRunOutcome::Completed(result) if result.is_ok() => client.shutdown().await,
-        AppServerRunOutcome::Completed(_) | AppServerRunOutcome::ExecutionTimedOut { .. } => {
-            client.terminate().await
-        }
+        AppServerRunOutcome::Completed(_)
+        | AppServerRunOutcome::ExecutionTimedOut { .. }
+        | AppServerRunOutcome::UserCancelled => client.terminate().await,
     };
     let stderr_lines = masker.mask_diagnostic_lines(client.stderr_tail().to_vec());
     // Complete the final event-log write after the child is stopped and
@@ -414,6 +429,28 @@ async fn run_codex_app_server(
                 ))),
                 cli_termination: Some(CliTerminationDiagnostic::new(
                     CliTerminationReason::ExecutionTimeout,
+                )),
+            })
+        }
+        AppServerRunOutcome::UserCancelled => {
+            if let Err(shutdown_error) = shutdown_result {
+                let shutdown_error = masker.mask_string(&shutdown_error.to_string());
+                log_warn!(
+                    LOG_TAG,
+                    "codex app-server termination failed after user cancellation: {shutdown_error}"
+                );
+            }
+            Ok(CliExecutionResult {
+                exit_code: 1,
+                cli_observed_exit: None,
+                stderr_lines,
+                last_event_sequence: None,
+                claude_result: None,
+                post_result_cleanup_result: None,
+                failure_diagnostic: ingestor.failure_diagnostic(),
+                control_error: Some(AgentError::Execution("Run cancelled by user".to_string())),
+                cli_termination: Some(CliTerminationDiagnostic::new(
+                    CliTerminationReason::UserCancellation,
                 )),
             })
         }

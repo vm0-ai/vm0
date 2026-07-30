@@ -185,7 +185,7 @@ def later_with_item_failure_is_suppressible(flow, outer_manager):
     metadata = flow.metadata
     with outer_manager, manager_factory():
         metadata = {}
-    return metadata["connector_diagnostic_type"]
+    return metadata["connector_diagnostic_slug"]
 
 
 def truth_test_failure_under_with(flow, manager, condition):
@@ -465,7 +465,7 @@ def local_annotation_is_deferred(flow, manager):
     with manager:
         value: operation() = None
         metadata = {}
-    return metadata["connector_diagnostic_type"]
+    return metadata["connector_diagnostic_slug"]
 
 
 def nested_definition_annotation_is_deferred(flow, manager):

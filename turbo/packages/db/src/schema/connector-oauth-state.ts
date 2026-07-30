@@ -20,8 +20,8 @@ export const connectorOauthStates = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     state: text("state").notNull(),
-    // Legacy built-in rollout bridge. Switch in #23793 and remove in #23794.
-    type: varchar("type", { length: 64 }),
+    // Compatibility bridge for pre-#23793 releases. Remove in #23794.
+    legacyType: varchar("type", { length: 64 }),
     connectorSlug: varchar("connector_slug", { length: 64 }),
     customConnectorId: uuid("custom_connector_id"),
     connectorRevision: integer("connector_revision"),
@@ -53,7 +53,7 @@ export const connectorOauthStates = pgTable(
       }).onDelete("cascade"),
       check(
         "chk_connector_oauth_states_identity",
-        sql`num_nonnulls(${table.type}, ${table.customConnectorId}) = 1`,
+        sql`num_nonnulls(${table.legacyType}, ${table.customConnectorId}) = 1`,
       ),
       check(
         "chk_connector_oauth_states_custom_revision",
@@ -67,7 +67,7 @@ export const connectorOauthStates = pgTable(
       ),
       check(
         "chk_connector_oauth_states_slug_matches_type",
-        sql`${table.connectorSlug} IS NOT DISTINCT FROM ${table.type}`,
+        sql`${table.connectorSlug} IS NOT DISTINCT FROM ${table.legacyType}`,
       ),
     ];
   },

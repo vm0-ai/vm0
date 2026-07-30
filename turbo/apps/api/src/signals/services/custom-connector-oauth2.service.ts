@@ -12,9 +12,9 @@ import {
   OAuthProviderHttpError,
 } from "@vm0/connectors/auth-providers/oauth/error";
 import {
-  connectorSlugLegacyInsertConnectors,
-  connectorSlugLegacyInsertOauthStates,
-} from "@vm0/db/compat/connector-slug-legacy-insert";
+  connectorSlugCanonicalInsertConnectors,
+  connectorSlugCanonicalInsertOauthStates,
+} from "@vm0/db/compat/connector-slug-canonical-insert";
 import { connectors } from "@vm0/db/schema/connector";
 import { orgCustomConnectorOauthConfigs } from "@vm0/db/schema/org-custom-connector-oauth-config";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
@@ -408,10 +408,9 @@ export const startCustomConnectorOAuth2$ = command(
       connectorRevision: connector.revision,
     };
     await set(writeDb$)
-      .insert(connectorSlugLegacyInsertOauthStates)
+      .insert(connectorSlugCanonicalInsertOauthStates)
       .values({
         state,
-        type: null,
         customConnectorId: connector.id,
         connectorRevision: connector.revision,
         authMethod: CUSTOM_CONNECTOR_OAUTH_METHOD_ID,
@@ -577,9 +576,8 @@ export async function storeCustomConnectorOAuth2Connection(args: {
   const encrypted = await encryptTokenValues(args);
   await args.db.transaction(async (tx) => {
     const [connection] = await tx
-      .insert(connectorSlugLegacyInsertConnectors)
+      .insert(connectorSlugCanonicalInsertConnectors)
       .values({
-        type: null,
         customConnectorId: args.connectorId,
         authMethod: "oauth",
         storageVersion: 1,
@@ -589,12 +587,12 @@ export async function storeCustomConnectorOAuth2Connection(args: {
       })
       .onConflictDoUpdate({
         target: [
-          connectorSlugLegacyInsertConnectors.orgId,
-          connectorSlugLegacyInsertConnectors.userId,
-          connectorSlugLegacyInsertConnectors.customConnectorId,
+          connectorSlugCanonicalInsertConnectors.orgId,
+          connectorSlugCanonicalInsertConnectors.userId,
+          connectorSlugCanonicalInsertConnectors.customConnectorId,
         ],
         targetWhere: isNotNull(
-          connectorSlugLegacyInsertConnectors.customConnectorId,
+          connectorSlugCanonicalInsertConnectors.customConnectorId,
         ),
         set: {
           tokenExpiresAt: args.token.expiresAt,
@@ -603,7 +601,7 @@ export async function storeCustomConnectorOAuth2Connection(args: {
           updatedAt: nowDate(),
         },
       })
-      .returning({ id: connectorSlugLegacyInsertConnectors.id });
+      .returning({ id: connectorSlugCanonicalInsertConnectors.id });
     if (!connection) {
       throw new Error("Expected custom connector OAuth connection");
     }

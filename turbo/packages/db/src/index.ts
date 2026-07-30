@@ -15,6 +15,7 @@ import * as sandboxTelemetrySchema from "./schema/sandbox-telemetry";
 import * as runnerSchema from "./schema/runner-job-queue";
 import * as runnerStateSchema from "./schema/runner-state";
 import * as agentRunQueueSchema from "./schema/agent-run-queue";
+import * as chatInputQueueParamsSchema from "./schema/chat-input-queue-params";
 import * as secretSchema from "./schema/secret";
 import * as modelProviderSchema from "./schema/model-provider";
 import * as modelProviderGatewaySchema from "./schema/model-provider-gateway";
@@ -44,6 +45,7 @@ import * as telegramMessageSchema from "./schema/telegram-message";
 import * as agentphoneUserLinkSchema from "./schema/agentphone-user-link";
 import * as agentphoneUserAgentPreferenceSchema from "./schema/agentphone-user-agent-preference";
 import * as agentphoneThreadSessionSchema from "./schema/agentphone-thread-session";
+import * as agentphoneChatThreadRouteSchema from "./schema/agentphone-chat-thread-route";
 import * as agentphoneMessageSchema from "./schema/agentphone-message";
 import * as agentphoneVerificationSendCooldownSchema from "./schema/agentphone-verification-send-cooldown";
 import * as slackOrgInstallationSchema from "./schema/slack-org-installation";
@@ -133,6 +135,7 @@ export const schema = {
   ...runnerSchema,
   ...runnerStateSchema,
   ...agentRunQueueSchema,
+  ...chatInputQueueParamsSchema,
   ...secretSchema,
   ...modelProviderSchema,
   ...modelProviderGatewaySchema,
@@ -180,6 +183,7 @@ export const schema = {
   ...agentphoneUserLinkSchema,
   ...agentphoneUserAgentPreferenceSchema,
   ...agentphoneThreadSessionSchema,
+  ...agentphoneChatThreadRouteSchema,
   ...agentphoneMessageSchema,
   ...agentphoneVerificationSendCooldownSchema,
   ...orgSchema,

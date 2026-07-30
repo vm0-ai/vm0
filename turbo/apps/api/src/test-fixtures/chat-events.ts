@@ -1,6 +1,7 @@
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { chatInputQueueParams } from "@vm0/db/schema/chat-input-queue-params";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { and, count, eq, isNull, like, or, sql } from "drizzle-orm";
@@ -9,7 +10,10 @@ import { z } from "zod";
 import { db } from "../lib/db";
 import { executeRawRows } from "../lib/db-raw-rows";
 import { nowDate } from "../lib/time";
-import { insertChatEvent } from "../signals/services/zero-chat-event.service";
+import {
+  insertChatEvent,
+  replaceChatEvent,
+} from "../signals/services/zero-chat-event.service";
 import { createDeferredPromise, onRejection } from "../signals/utils";
 
 /**
@@ -24,6 +28,101 @@ const VM0_BDD_API_KEY_PREFIXES = [
 const databasePidRowSchema = z.object({ pid: z.int() });
 const waiterCountRowSchema = z.object({ waiterCount: z.int() });
 const blockedByPidRowSchema = z.object({ blocked: z.boolean() });
+
+interface ChatInputQueueParamsFixture {
+  readonly eventId: string;
+  readonly encryptedParams: string;
+  readonly attachFileMetadata: typeof chatInputQueueParams.$inferSelect.attachFileMetadata;
+}
+
+export async function readChatInputQueueParamsFixture(
+  eventId: string,
+): Promise<ChatInputQueueParamsFixture | null> {
+  const [row] = await db()
+    .select({
+      eventId: chatInputQueueParams.eventId,
+      encryptedParams: chatInputQueueParams.encryptedParams,
+      attachFileMetadata: chatInputQueueParams.attachFileMetadata,
+    })
+    .from(chatInputQueueParams)
+    .where(eq(chatInputQueueParams.eventId, eventId))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function findPendingChatInputQueueParamsByPromptFixture(
+  prompt: string,
+): Promise<ChatInputQueueParamsFixture | null> {
+  const rows = await db()
+    .select({
+      eventId: chatInputQueueParams.eventId,
+      encryptedParams: chatInputQueueParams.encryptedParams,
+      attachFileMetadata: chatInputQueueParams.attachFileMetadata,
+      userMessage: chatEvents.userMessage,
+    })
+    .from(chatInputQueueParams)
+    .innerJoin(chatEvents, eq(chatEvents.id, chatInputQueueParams.eventId))
+    .where(isNull(chatEvents.runId));
+  const row = rows.find((candidate) => {
+    return candidate.userMessage?.parts.some((part) => {
+      return part.type === "text" && part.text === prompt;
+    });
+  });
+  return row ?? null;
+}
+
+export async function deleteChatInputQueueParamsFixture(
+  eventId: string,
+): Promise<void> {
+  const deleted = await db()
+    .delete(chatInputQueueParams)
+    .where(eq(chatInputQueueParams.eventId, eventId))
+    .returning({ eventId: chatInputQueueParams.eventId });
+  if (deleted.length !== 1) {
+    throw new Error("Expected one chat input queue params row");
+  }
+}
+
+export async function replayPendingChatInputQueueEventFixture(args: {
+  readonly eventId: string;
+  readonly replacementId: string;
+}): Promise<void> {
+  await db().transaction(async (tx) => {
+    const [event] = await tx
+      .select({
+        chatThreadId: chatEvents.chatThreadId,
+        userMessage: chatEvents.userMessage,
+        attachFiles: chatEvents.attachFiles,
+        generationTemplate: chatEvents.generationTemplate,
+        triggerSource: chatEvents.triggerSource,
+      })
+      .from(chatEvents)
+      .where(
+        and(
+          eq(chatEvents.id, args.eventId),
+          eq(chatEvents.eventType, "input.prompt"),
+          isNull(chatEvents.runId),
+        ),
+      )
+      .limit(1);
+    if (!event?.userMessage) {
+      throw new Error("Expected one pending chat input queue event");
+    }
+    const replacement = await replaceChatEvent(tx, args.eventId, {
+      id: args.replacementId,
+      chatThreadId: event.chatThreadId,
+      eventType: "input.prompt",
+      userMessage: event.userMessage,
+      runId: null,
+      attachFiles: event.attachFiles ? [...event.attachFiles] : null,
+      generationTemplate: event.generationTemplate,
+      ...(event.triggerSource ? { triggerSource: event.triggerSource } : {}),
+    });
+    if (!replacement) {
+      throw new Error("Expected the pending queue event replay to insert");
+    }
+  });
+}
 
 /**
  * Move one exact workflow event into historical state without waiting for real
@@ -300,6 +399,58 @@ export async function holdOrgAdmissionLockFixture(args: {
         waiterCountRowSchema,
       );
       return rows[0]?.waiterCount ?? 0;
+    },
+  };
+}
+
+/**
+ * Holds the canonical workflow queue admission key so tests can observe the
+ * Release 1 lock chain: the first request holds the legacy key while waiting
+ * here, and a concurrent request for the same thread waits behind it.
+ */
+export async function holdChatEventQueueAdmissionLockFixture(args: {
+  readonly threadId: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly directWaiterCount: () => Promise<number>;
+  readonly transitiveWaiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const lockKey = `chat_event_queue:${args.threadId}`;
+    const rows = await executeRawRows(
+      tx,
+      sql`
+        SELECT
+          pg_backend_pid() AS "pid",
+          pg_advisory_xact_lock(hashtext(${lockKey}))
+      `,
+      databasePidRowSchema,
+    );
+    const holderPid = rows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the queue admission lock holder pid");
+    }
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    directWaiterCount: async () => {
+      return await directBlockedWaiterCount(holderPid);
+    },
+    transitiveWaiterCount: async () => {
+      return await transitiveBlockedWaiterCount(holderPid);
     },
   };
 }

@@ -19,7 +19,6 @@ import {
   getVm0ConcreteProviderType,
   getVm0Vendor,
   getVm0ModelPriceTier,
-  getVm0ModelPriceTierLabel,
   isModelSupportedByProvider,
   isCodexFastModeModel,
   isSupportedRunModel,
@@ -670,16 +669,6 @@ describe("model-first canonical catalog", () => {
     expect(getVm0ModelPriceTier("gpt-5.4")).toBeUndefined();
     expect(getVm0ModelPriceTier("gpt-5.4-mini")).toBeUndefined();
     expect(getVm0ModelPriceTier("custom/model")).toBeUndefined();
-    expect(getVm0ModelPriceTierLabel("$")).toBe(
-      "Economy tier for everyday simple tasks",
-    );
-    expect(getVm0ModelPriceTierLabel("$$")).toBe(
-      "Balanced cost and performance",
-    );
-    expect(getVm0ModelPriceTierLabel("$$$")).toBe("Frontier flagship model");
-    expect(getVm0ModelPriceTierLabel("$$$$")).toBe(
-      "Premium frontier model for the hardest tasks",
-    );
   });
 });
 

@@ -11,6 +11,10 @@ import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
+import {
+  findPendingChatInputQueueParamsByPromptFixture,
+  readChatInputQueueParamsFixture,
+} from "../../../test-fixtures/chat-events";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
@@ -1631,6 +1635,17 @@ describe("INT-01: Slack app deep webhook flows", () => {
         }),
       ]),
     );
+    const queuedSlackParams =
+      await findPendingChatInputQueueParamsByPromptFixture(
+        "stay canonical on the same route",
+      );
+    expect(queuedSlackParams).toMatchObject({
+      eventId: expect.any(String),
+      encryptedParams: expect.any(String),
+    });
+    if (!queuedSlackParams) {
+      throw new Error("Expected queued canonical Slack transport params");
+    }
     context.mocks.slack.chat.postMessage.mockClear();
     await completeSlackTriggeredRun({
       runId: run1Id,
@@ -1686,7 +1701,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       payload: {
         channelId,
         threadTs,
-        chatMessageId: expect.any(String),
+        chatEventId: expect.any(String),
       },
     });
     const run1 = await runs.readRun(actor, run1Id);
@@ -1729,6 +1744,9 @@ describe("INT-01: Slack app deep webhook flows", () => {
       run2Id,
       claim2,
     }));
+    await expect(
+      readChatInputQueueParamsFixture(queuedSlackParams.eventId),
+    ).resolves.toBeNull();
     expect(claim2.resumeSession?.sessionId).toBe(`bdd-slack-cli-${webRunId}`);
     state = await integrations.readSlackTestState(teamId);
     expect(state.recent_runs).toContainEqual(
@@ -4774,6 +4792,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
   });
 
   it("keeps GitHub no-install read and upload-init surfaces visible through APIs", async () => {
+    integrations.configureGithubAppInstallProvider();
     const actor = integrations.user();
 
     const installation = await integrations.readGithubInstallation(actor);
@@ -4784,6 +4803,33 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
         code: "NOT_FOUND",
       },
     });
+    const adminInstallUrl =
+      "installUrl" in installation.body ? installation.body.installUrl : null;
+    if (!adminInstallUrl) {
+      throw new Error("Expected an install URL for organization admins");
+    }
+    expect(adminInstallUrl).toContain(
+      "https://github.com/apps/bdd-github-app/installations/new",
+    );
+    expect(
+      new URL(adminInstallUrl).searchParams
+        .get("redirect_uri")
+        ?.endsWith("/api/github/app/setup/callback"),
+    ).toBeTruthy();
+
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected GitHub admin test user to have an org");
+    }
+    const member = integrations.user({ orgId, orgRole: "org:member" });
+    const memberInstallation =
+      await integrations.readGithubInstallation(member);
+    expect(memberInstallation.status).toBe(404);
+    expect(
+      "installUrl" in memberInstallation.body
+        ? memberInstallation.body.installUrl
+        : "unset",
+    ).toBeNull();
 
     const upload = await integrations.requestGithubUploadInit(
       actor,

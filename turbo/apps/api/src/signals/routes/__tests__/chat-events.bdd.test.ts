@@ -72,6 +72,7 @@ import {
 import {
   deleteAgentRunFixture,
   deleteBddVm0ApiKeys,
+  deleteChatInputQueueParamsFixture,
   hasVm0ApiKeyLabel,
   holdChatEventFixture,
   holdChatEventQueueItemFixture,
@@ -80,6 +81,8 @@ import {
   holdThreadSessionConversationChangesFixture,
   holdThreadSessionConversationClearFixture,
   insertRetiredQueuePauseEventsFixture,
+  readChatInputQueueParamsFixture,
+  replayPendingChatInputQueueEventFixture,
   replaceBddVm0ApiKeys,
   replaceThreadSessionBindingFixture,
 } from "../../../test-fixtures/chat-events";
@@ -91,7 +94,8 @@ import {
  * org model provider/policy routes, runner heartbeat/claim, sandbox report
  * webhooks, feature-switch and computer-use host routes) and every Then is a
  * response body, messages page, thread/run read, queue read, claim payload,
- * or captured chat-callback delivery — no database fixtures or row asserts.
+ * or captured chat-callback delivery. Storage migration cases also assert the
+ * queue-only transport row lifecycle directly.
  */
 
 const context = testContext();
@@ -5140,6 +5144,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
         threadId: anchor.threadId,
         prompt: "queued with attachment",
         clientEventId: queuedId,
+        realAgentInPreview: true,
         attachFiles: [
           {
             id: fileId,
@@ -5152,7 +5157,19 @@ describe("CHAT-02: queued attachments on auto-send", () => {
       [201],
     );
     expect(queued.body).toMatchObject({ runId: null });
-
+    await expect(
+      readChatInputQueueParamsFixture(queuedId),
+    ).resolves.toMatchObject({
+      eventId: queuedId,
+      encryptedParams: expect.any(String),
+      attachFileMetadata: [
+        expect.objectContaining({
+          id: fileId,
+          filename: "notes.txt",
+          contentType: "text/plain",
+        }),
+      ],
+    });
     // Completing the anchor run promotes the queued message into a fresh
     // run whose prompt carries the resolved attachment references.
     chatCallbacks.mockChatOutputEvents([]);
@@ -5179,6 +5196,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     if (!promoted?.runId) {
       throw new Error("Expected the queued message to auto-send into a run");
     }
+    await expect(readChatInputQueueParamsFixture(queuedId)).resolves.toBeNull();
     expect(promoted.content).toBeNull();
     expect(chatEventDisplayText(promoted)).toBe("queued with attachment");
     expect(promoted.attachFiles?.[0]).toMatchObject({
@@ -5595,7 +5613,30 @@ describe("CHAT-02: shared user message queue", () => {
       [201],
     );
     expect(previewQueued.body).toMatchObject({ runId: null });
+    const previewParams =
+      await readChatInputQueueParamsFixture(previewMessageId);
+    expect(previewParams).toMatchObject({
+      eventId: previewMessageId,
+      encryptedParams: expect.any(String),
+    });
+    if (!previewParams) {
+      throw new Error("Expected the original preview queue params");
+    }
 
+    const replayedPreviewMessageId = randomUUID();
+    await replayPendingChatInputQueueEventFixture({
+      eventId: previewMessageId,
+      replacementId: replayedPreviewMessageId,
+    });
+    await expect(
+      readChatInputQueueParamsFixture(previewMessageId),
+    ).resolves.toBeNull();
+    await expect(
+      readChatInputQueueParamsFixture(replayedPreviewMessageId),
+    ).resolves.toStrictEqual({
+      ...previewParams,
+      eventId: replayedPreviewMessageId,
+    });
     const mockMessageId = randomUUID();
     const mockQueued = await chat.requestSendEvent(
       actor,
@@ -5608,6 +5649,24 @@ describe("CHAT-02: shared user message queue", () => {
       [201],
     );
     expect(mockQueued.body).toMatchObject({ runId: null });
+    await expect(
+      readChatInputQueueParamsFixture(mockMessageId),
+    ).resolves.toBeNull();
+
+    const legacyPreviewMessageId = randomUUID();
+    const legacyPreview = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt: "queued legacy preview run",
+        clientEventId: legacyPreviewMessageId,
+        realAgentInPreview: true,
+      },
+      [201],
+    );
+    expect(legacyPreview.body).toMatchObject({ runId: null });
+    await deleteChatInputQueueParamsFixture(legacyPreviewMessageId);
 
     // Terminal callbacks and the cleanup safety sweep use the same queued
     // auto-send builder; finishing the anchor guarantees that builder owns both.
@@ -5619,7 +5678,7 @@ describe("CHAT-02: shared user message queue", () => {
       (items) => {
         return userMessages(items).some((message) => {
           return (
-            message.revokesEventId === previewMessageId &&
+            message.revokesEventId === replayedPreviewMessageId &&
             typeof message.runId === "string"
           );
         });
@@ -5627,7 +5686,7 @@ describe("CHAT-02: shared user message queue", () => {
     );
     const previewRunId = userMessages(previewMessages.events).find(
       (message) => {
-        return message.revokesEventId === previewMessageId;
+        return message.revokesEventId === replayedPreviewMessageId;
       },
     )?.runId;
     if (!previewRunId) {
@@ -5637,6 +5696,9 @@ describe("CHAT-02: shared user message queue", () => {
     const previewClaim = await claimChatRun(runnerGroup, previewRunId);
     expect(previewClaim.claim.prompt).toBe("queued real-agent preview run");
     expect(previewClaim.claim.realAgentInPreview).toBeTruthy();
+    await expect(
+      readChatInputQueueParamsFixture(replayedPreviewMessageId),
+    ).resolves.toBeNull();
     await cancelChatRun(actor, previewRunId);
 
     const mockMessages = await waitForThreadMessages(
@@ -5662,6 +5724,29 @@ describe("CHAT-02: shared user message queue", () => {
     expect(mockClaim.claim.prompt).toBe("queued preview mock run");
     expect(mockClaim.claim.realAgentInPreview).toBeUndefined();
     await cancelChatRun(actor, mockRunId);
+
+    const legacyMessages = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesEventId === legacyPreviewMessageId &&
+            typeof message.runId === "string"
+          );
+        });
+      },
+    );
+    const legacyRunId = userMessages(legacyMessages.events).find((message) => {
+      return message.revokesEventId === legacyPreviewMessageId;
+    })?.runId;
+    if (!legacyRunId) {
+      throw new Error("Expected the legacy preview message to auto-send");
+    }
+    const legacyClaim = await claimChatRun(runnerGroup, legacyRunId);
+    expect(legacyClaim.claim.prompt).toBe("queued legacy preview run");
+    expect(legacyClaim.claim.realAgentInPreview).toBeTruthy();
+    await cancelChatRun(actor, legacyRunId);
   }, 90_000);
 
   it("appends a claimed queued message after messages that are still queued", async () => {

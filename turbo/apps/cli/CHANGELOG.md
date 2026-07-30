@@ -1,5 +1,35 @@
 # Changelog
 
+## [9.269.1](https://github.com/vm0-ai/vm0/compare/cli-v9.269.0...cli-v9.269.1) (2026-07-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.249.1
+    * @vm0/core bumped to 8.488.0
+
+## [9.269.0](https://github.com/vm0-ai/vm0/compare/cli-v9.268.0...cli-v9.269.0) (2026-07-30)
+
+
+### Features
+
+* add chat-run-finished workflow automation event trigger ([#23861](https://github.com/vm0-ai/vm0/issues/23861)) ([402ce7e](https://github.com/vm0-ai/vm0/commit/402ce7e1484a34a172624ea0047ccd1ffcc1441b))
+
+
+### Refactoring
+
+* **cli:** consume connector slug contracts ([#23895](https://github.com/vm0-ai/vm0/issues/23895)) ([94bb99d](https://github.com/vm0-ai/vm0/commit/94bb99d2f3c56614afe2997134f845cd1699efda))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.249.0
+    * @vm0/core bumped to 8.487.0
+
 ## [9.268.0](https://github.com/vm0-ai/vm0/compare/cli-v9.267.0...cli-v9.268.0) (2026-07-30)
 
 

@@ -16,6 +16,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { chatInputQueueParams } from "@vm0/db/schema/chat-input-queue-params";
 import {
   chatEvents,
   type ChatEventAttachFileMetadata,
@@ -373,7 +374,7 @@ const sendEventBody$ = bodyResultOf(chatEventsContract.send);
 const RECENT_CHAT_RUN_LIMIT = 10;
 const WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP = 4000;
 const INSUFFICIENT_CREDITS_MARKER = "insufficient_credits";
-const replacementChatEvent = alias(chatEvents, "replacement_chat_message");
+const replacementChatEvent = alias(chatEvents, "replacement_chat_event");
 const replacementAgentRun = alias(agentRuns, "replacement_agent_run");
 
 function forbidden(message: string) {
@@ -2732,11 +2733,18 @@ async function appendQueueFirstInsufficientCreditsEvents(params: {
       .select({
         userMessage: chatEvents.userMessage,
         attachFiles: chatEvents.attachFiles,
-        attachFileMetadata: chatEvents.attachFileMetadata,
+        attachFileMetadata: sql`COALESCE(
+          ${chatInputQueueParams.attachFileMetadata},
+          ${chatEvents.attachFileMetadata}
+        )`.mapWith(chatEvents.attachFileMetadata),
         generationTemplate: chatEvents.generationTemplate,
         createdAt: chatEvents.createdAt,
       })
       .from(chatEvents)
+      .leftJoin(
+        chatInputQueueParams,
+        eq(chatInputQueueParams.eventId, chatEvents.id),
+      )
       .where(
         and(
           eq(chatEvents.id, params.eventId),
@@ -2745,7 +2753,7 @@ async function appendQueueFirstInsufficientCreditsEvents(params: {
           isNull(chatEvents.runId),
         ),
       )
-      .for("update")
+      .for("update", { of: chatEvents })
       .limit(1);
     if (!queuedMessage) {
       throw new Error("Queue-first message is no longer available");
@@ -3432,7 +3440,7 @@ export const zeroChatEventsRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "chat-message:write",
+        requiredCapability: "chat-event:write",
       },
       sendChatEventInner$,
     ),

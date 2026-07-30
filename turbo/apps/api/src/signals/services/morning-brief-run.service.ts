@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { chatInputQueueParams } from "@vm0/db/schema/chat-input-queue-params";
 import {
   morningBriefDeliveries,
   morningBriefSchedules,
@@ -9,7 +10,17 @@ import {
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { command } from "ccstate";
-import { and, asc, eq, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  or,
+  sql,
+} from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -614,8 +625,17 @@ async function hasPendingMorningBriefQueueEvent(
     return false;
   }
   const messages = await db
-    .select({ encryptedParams: chatEvents.encryptedParams })
+    .select({
+      encryptedParams: sql`COALESCE(
+        ${chatInputQueueParams.encryptedParams},
+        ${chatEvents.encryptedParams}
+      )`.mapWith(chatEvents.encryptedParams),
+    })
     .from(chatEvents)
+    .leftJoin(
+      chatInputQueueParams,
+      eq(chatInputQueueParams.eventId, chatEvents.id),
+    )
     .where(
       and(
         inArray(chatEvents.id, pendingMessageIds),

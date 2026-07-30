@@ -1,6 +1,7 @@
+import { chatInputQueueParams } from "@vm0/db/schema/chat-input-queue-params";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { command } from "ccstate";
-import { and, count, inArray, isNull, or } from "drizzle-orm";
+import { and, count, eq, inArray, isNull, or } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
 import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
@@ -13,7 +14,7 @@ class OrphanedQueuedChatEventsError extends Error {
 
   constructor(readonly orphanedMessages: number) {
     super("Orphaned queued chat messages detected");
-    this.name = "OrphanedQueuedChatMessagesError";
+    this.name = "OrphanedQueuedChatEventsError";
   }
 }
 
@@ -23,6 +24,10 @@ export const monitorChatEventQueue$ = command(
     const [result] = await db
       .select({ orphanedMessages: count() })
       .from(chatEvents)
+      .leftJoin(
+        chatInputQueueParams,
+        eq(chatInputQueueParams.eventId, chatEvents.id),
+      )
       .where(
         and(
           isNull(chatEvents.runId),
@@ -33,7 +38,10 @@ export const monitorChatEventQueue$ = command(
               or(
                 isNull(chatEvents.automationId),
                 isNull(chatEvents.triggerSource),
-                isNull(chatEvents.encryptedParams),
+                and(
+                  isNull(chatInputQueueParams.encryptedParams),
+                  isNull(chatEvents.encryptedParams),
+                ),
               ),
             ),
             and(
@@ -44,7 +52,10 @@ export const monitorChatEventQueue$ = command(
                 "teams",
                 "telegram",
               ]),
-              isNull(chatEvents.encryptedParams),
+              and(
+                isNull(chatInputQueueParams.encryptedParams),
+                isNull(chatEvents.encryptedParams),
+              ),
             ),
           ),
         ),

@@ -193,6 +193,7 @@ export { listZeroLogs, searchZeroLogs } from "./domains/zero-logs";
 
 // Domain modules - Zero Chat
 export {
+  createZeroChatThread,
   getZeroChatThreadAgentId,
   getZeroChatThreadSnapshot,
   getZeroChatThread,

@@ -458,6 +458,11 @@ export function humanReadableAutomationRuleLabel(
       return $.workflows.automations.meet.rule;
     });
   }
+  if (automation.eventType === "chat-run-finished") {
+    return i18n.t(($) => {
+      return $.workflows.automations.chat.runFinishedTitle;
+    });
+  }
   const notionLabel = notionReadableAutomationRuleLabel(automation);
   if (notionLabel) {
     return notionLabel;
@@ -521,6 +526,9 @@ export function automationTypeLabel(
   }
   if (automation.eventType === "strapi-entry-published") {
     return "Strapi";
+  }
+  if (automation.eventType === "chat-run-finished") {
+    return "Chat";
   }
   return i18n.t(($) => {
     return $.workflows.automations.common.automation;
@@ -605,6 +613,9 @@ export function AutomationListIcon({
     }
     if (automation.eventType === "gmail-label-applied") {
       return IconTag;
+    }
+    if (automation.eventType === "chat-run-finished") {
+      return IconMessageCircle;
     }
     return IconMail;
   })();

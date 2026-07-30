@@ -7,6 +7,7 @@ use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
 use tokio::time::{Instant, timeout_at};
 use tracing::{info, warn};
 
+use crate::error::ApiRequestContext;
 use crate::http::HttpClient;
 use crate::ids::RunId;
 
@@ -91,6 +92,40 @@ enum BatchUploadOutcome {
     Continue,
     BatchLimit,
     Failed,
+}
+
+#[derive(Clone, Copy)]
+enum BatchRequestState {
+    InFlight,
+    ConfirmedSuccess,
+    ConfirmedRejection,
+    TransportFailure,
+    OutcomeUnknown,
+}
+
+impl BatchRequestState {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::InFlight => "in_flight",
+            Self::ConfirmedSuccess => "confirmed_success",
+            Self::ConfirmedRejection => "confirmed_rejection",
+            Self::TransportFailure => "transport_failure",
+            Self::OutcomeUnknown => "outcome_unknown",
+        }
+    }
+
+    fn at_deadline(self) -> Self {
+        match self {
+            Self::InFlight => Self::OutcomeUnknown,
+            state => state,
+        }
+    }
+}
+
+struct ActiveBatchRequest {
+    batch_index: usize,
+    context: ApiRequestContext,
+    state: BatchRequestState,
 }
 
 #[derive(Default)]
@@ -296,6 +331,7 @@ struct NetworkLogBatchUploader<'a> {
     batch: Vec<NetworkLog>,
     batch_bytes: usize,
     progress: NetworkLogUploadProgress,
+    active_request: Option<ActiveBatchRequest>,
 }
 
 impl<'a> NetworkLogBatchUploader<'a> {
@@ -307,6 +343,7 @@ impl<'a> NetworkLogBatchUploader<'a> {
             batch: Vec::with_capacity(NETWORK_LOG_UPLOAD_INITIAL_BATCH_CAPACITY),
             batch_bytes: empty_batch_estimated_bytes(&run_id),
             progress: NetworkLogUploadProgress::default(),
+            active_request: None,
         }
     }
 
@@ -416,10 +453,23 @@ impl<'a> NetworkLogBatchUploader<'a> {
         let source_file_bytes = self.progress.source_file_bytes.unwrap_or_default();
         let remaining_source_bytes =
             source_file_bytes.saturating_sub(self.progress.source_bytes_examined);
+        let active_request = self.active_request.as_ref();
+        let batch_index = active_request.map(|request| request.batch_index);
+        let client_request_id =
+            active_request.map(|request| request.context.client_request_id.as_str());
+        let client_session_id =
+            active_request.map(|request| request.context.client_session_id.as_str());
+        let client_version = active_request.map(|request| request.context.client_version.as_str());
+        let request_state = active_request.map(|request| request.state.at_deadline().as_str());
 
         warn!(
             run_id = %self.run_id,
             reason = reason.as_str(),
+            batch_index,
+            client_request_id,
+            client_session_id,
+            client_version,
+            request_state,
             source_file_bytes,
             source_file_bytes_known,
             source_bytes_examined = self.progress.source_bytes_examined,
@@ -469,22 +519,50 @@ impl<'a> NetworkLogBatchUploader<'a> {
         self.progress.unconfirmed_entries = count;
         self.progress.unconfirmed_estimated_bytes = batch_bytes;
 
-        info!(run_id = %self.run_id, batch_index, count, "uploading network log batch");
-
         let payload = NetworkLogPayload {
             run_id: self.run_id.to_string(),
             network_logs: logs,
         };
 
-        let result = self
+        let request = match self
             .http
             .request_route(routes::webhooks::agent::telemetry::SEND, self.sandbox_token)
             .json(&payload)
-            .send("network_logs")
-            .await;
+            .prepare("network_logs")
+        {
+            Ok(request) => request,
+            Err(e) => {
+                warn!(
+                    run_id = %self.run_id,
+                    batch_index,
+                    error = %e,
+                    "network logs upload failed"
+                );
+                return BatchUploadOutcome::Failed;
+            }
+        };
+        let request_context = request.context().clone();
+        self.active_request = Some(ActiveBatchRequest {
+            batch_index,
+            context: request_context.clone(),
+            state: BatchRequestState::InFlight,
+        });
+        info!(
+            run_id = %self.run_id,
+            batch_index,
+            count,
+            client_request_id = request_context.client_request_id.as_str(),
+            client_session_id = request_context.client_session_id.as_str(),
+            client_version = request_context.client_version.as_str(),
+            request_state = BatchRequestState::InFlight.as_str(),
+            "uploading network log batch"
+        );
+
+        let result = request.send().await;
 
         match result {
             Ok(resp) if resp.status().is_success() => {
+                let status = resp.status();
                 // File is kept locally for debugging; gc_job_logs deletes after 7 days.
                 self.progress.successful_batches =
                     self.progress.successful_batches.saturating_add(1);
@@ -496,32 +574,59 @@ impl<'a> NetworkLogBatchUploader<'a> {
                     .saturating_add(batch_bytes);
                 self.progress.unconfirmed_entries = 0;
                 self.progress.unconfirmed_estimated_bytes = 0;
+                info!(
+                    run_id = %self.run_id,
+                    batch_index,
+                    count,
+                    status = %status,
+                    client_request_id = request_context.client_request_id.as_str(),
+                    client_session_id = request_context.client_session_id.as_str(),
+                    client_version = request_context.client_version.as_str(),
+                    request_state = BatchRequestState::ConfirmedSuccess.as_str(),
+                    "network log batch uploaded"
+                );
+                self.active_request = None;
                 BatchUploadOutcome::Continue
             }
             Ok(resp) => {
                 let status = resp.status();
                 self.progress.unconfirmed_entries = 0;
                 self.progress.unconfirmed_estimated_bytes = 0;
+                self.active_request = Some(ActiveBatchRequest {
+                    batch_index,
+                    context: request_context.clone(),
+                    state: BatchRequestState::ConfirmedRejection,
+                });
                 let rejection = upload_rejection_details(resp).await;
                 warn!(
                     run_id = %self.run_id,
                     batch_index,
                     status = %status,
+                    client_request_id = request_context.client_request_id.as_str(),
+                    client_session_id = request_context.client_session_id.as_str(),
+                    client_version = request_context.client_version.as_str(),
+                    request_state = BatchRequestState::ConfirmedRejection.as_str(),
                     response_error_code = rejection.error_code.as_deref().unwrap_or(""),
                     response_error_message = rejection.error_message.as_deref().unwrap_or(""),
                     response_body_truncated = rejection.body_truncated,
                     response_body_read_error = rejection.body_read_error.as_deref().unwrap_or(""),
                     "network logs upload rejected"
                 );
+                self.active_request = None;
                 BatchUploadOutcome::Failed
             }
             Err(e) => {
                 warn!(
                     run_id = %self.run_id,
                     batch_index,
+                    client_request_id = request_context.client_request_id.as_str(),
+                    client_session_id = request_context.client_session_id.as_str(),
+                    client_version = request_context.client_version.as_str(),
+                    request_state = BatchRequestState::TransportFailure.as_str(),
                     error = %e,
                     "network logs upload failed"
                 );
+                self.active_request = None;
                 BatchUploadOutcome::Failed
             }
         }
@@ -601,6 +706,7 @@ mod tests {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
+    use api_contracts::generated::constants::client::headers::CLIENT_REQUEST_ID_HEADER;
     use httpmock::prelude::*;
     use serde_json::json;
     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
@@ -681,12 +787,62 @@ mod tests {
             .unwrap_or_else(|| panic!("missing event {message}; events={events:#?}"))
     }
 
-    fn assert_event_field(event: &CapturedEvent, field: &str, expected: &str) {
-        let actual = event
+    fn captured_batch_event<'a>(
+        events: &'a [CapturedEvent],
+        message: &str,
+        batch_index: usize,
+    ) -> &'a CapturedEvent {
+        let batch_index = batch_index.to_string();
+        events
+            .iter()
+            .find(|event| {
+                event
+                    .fields
+                    .get("message")
+                    .is_some_and(|actual| actual == message)
+                    && event
+                        .fields
+                        .get("batch_index")
+                        .is_some_and(|actual| actual == &batch_index)
+            })
+            .unwrap_or_else(|| {
+                panic!("missing event {message} for batch {batch_index}; events={events:#?}")
+            })
+    }
+
+    fn event_field<'a>(event: &'a CapturedEvent, field: &str) -> &'a str {
+        event
             .fields
             .get(field)
-            .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"));
+            .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"))
+    }
+
+    fn assert_event_field(event: &CapturedEvent, field: &str, expected: &str) {
+        let actual = event_field(event, field);
         assert_eq!(actual, expected, "field {field} mismatch; event={event:#?}");
+    }
+
+    fn assert_batch_request_event(event: &CapturedEvent, batch_index: usize, request_state: &str) {
+        assert_event_field(event, "batch_index", &batch_index.to_string());
+        assert_event_field(event, "client_session_id", "runner-session-test");
+        assert_event_field(event, "client_version", env!("CARGO_PKG_VERSION"));
+        assert_event_field(event, "request_state", request_state);
+        uuid::Uuid::parse_str(event_field(event, "client_request_id")).unwrap();
+    }
+
+    fn assert_same_request_correlation(first: &CapturedEvent, second: &CapturedEvent) {
+        for field in [
+            "batch_index",
+            "client_request_id",
+            "client_session_id",
+            "client_version",
+        ] {
+            assert_eq!(
+                event_field(first, field),
+                event_field(second, field),
+                "field {field} mismatch; first={first:#?}; second={second:#?}"
+            );
+        }
     }
 
     fn has_captured_event(events: &[CapturedEvent], message: &str) -> bool {
@@ -698,7 +854,30 @@ mod tests {
         })
     }
 
-    async fn read_http_request_body(stream: &mut tokio::net::TcpStream) -> Vec<u8> {
+    struct TestHttpRequest {
+        headers: String,
+        body: Vec<u8>,
+    }
+
+    impl TestHttpRequest {
+        fn header(&self, expected_name: &str) -> &str {
+            self.headers
+                .lines()
+                .find_map(|line| {
+                    let (name, value) = line.split_once(':')?;
+                    name.eq_ignore_ascii_case(expected_name)
+                        .then_some(value.trim())
+                })
+                .unwrap_or_else(|| {
+                    panic!(
+                        "missing request header {expected_name}; headers={}",
+                        self.headers
+                    )
+                })
+        }
+    }
+
+    async fn read_http_request(stream: &mut tokio::net::TcpStream) -> TestHttpRequest {
         let mut request = Vec::new();
         let mut chunk = [0_u8; 8192];
 
@@ -711,7 +890,9 @@ mod tests {
             else {
                 continue;
             };
-            let headers = std::str::from_utf8(&request[..header_end]).unwrap();
+            let headers = std::str::from_utf8(&request[..header_end])
+                .unwrap()
+                .to_string();
             let content_length = headers
                 .lines()
                 .find_map(|line| {
@@ -725,9 +906,16 @@ mod tests {
                 .expect("request must include content-length");
             let body_start = header_end + 4;
             if request.len() >= body_start + content_length {
-                return request[body_start..body_start + content_length].to_vec();
+                return TestHttpRequest {
+                    headers,
+                    body: request[body_start..body_start + content_length].to_vec(),
+                };
             }
         }
+    }
+
+    async fn read_http_request_body(stream: &mut tokio::net::TcpStream) -> Vec<u8> {
+        read_http_request(stream).await.body
     }
 
     #[test]
@@ -841,9 +1029,15 @@ mod tests {
             .await;
 
         let http = http_for_server(&server);
-        upload_network_logs(&http, run_id, SANDBOX_TOKEN, &path).await;
+        let (_, events) =
+            capture_async_log_events(upload_network_logs(&http, run_id, SANDBOX_TOKEN, &path))
+                .await;
 
         upload.assert_calls_async(1).await;
+        let started = captured_batch_event(&events, "uploading network log batch", 1);
+        let uploaded = captured_batch_event(&events, "network log batch uploaded", 1);
+        assert_batch_request_event(uploaded, 1, "confirmed_success");
+        assert_same_request_correlation(started, uploaded);
         assert_eq!(tokio::fs::read_to_string(&path).await.unwrap(), content);
     }
 
@@ -1043,6 +1237,18 @@ mod tests {
             .await;
         let event = captured_event(&events, "network log upload truncated");
         assert_event_field(event, "reason", "batch_count");
+        for field in [
+            "batch_index",
+            "client_request_id",
+            "client_session_id",
+            "client_version",
+            "request_state",
+        ] {
+            assert!(
+                !event.fields.contains_key(field),
+                "inactive request field {field} should be omitted; event={event:#?}"
+            );
+        }
         assert_event_field(event, "source_file_bytes", &content.len().to_string());
         assert_event_field(
             event,
@@ -1421,7 +1627,10 @@ mod tests {
         .await;
 
         upload.assert_calls_async(1).await;
-        let event = captured_event(&events, "network logs upload rejected");
+        let started = captured_batch_event(&events, "uploading network log batch", 1);
+        let event = captured_batch_event(&events, "network logs upload rejected", 1);
+        assert_batch_request_event(event, 1, "confirmed_rejection");
+        assert_same_request_correlation(started, event);
         assert_event_field(event, "status", "400 Bad Request");
         assert_event_field(event, "response_error_code", "BAD_REQUEST");
         assert_event_field(
@@ -1447,6 +1656,8 @@ mod tests {
         let first_received = Arc::new(tokio::sync::Notify::new());
         let release_first = Arc::new(tokio::sync::Notify::new());
         let second_received = Arc::new(tokio::sync::Notify::new());
+        let (second_request_id_sender, second_request_id_receiver) =
+            tokio::sync::oneshot::channel();
         let server_task = {
             let first_received = first_received.clone();
             let release_first = release_first.clone();
@@ -1465,7 +1676,10 @@ mod tests {
                 drop(first);
 
                 let (mut second, _) = listener.accept().await.unwrap();
-                let _ = read_http_request_body(&mut second).await;
+                let second_request = read_http_request(&mut second).await;
+                second_request_id_sender
+                    .send(second_request.header(CLIENT_REQUEST_ID_HEADER).to_string())
+                    .unwrap();
                 second_received.notify_one();
                 let hold_second = tokio::sync::Notify::new();
                 hold_second.notified().await;
@@ -1502,6 +1716,7 @@ mod tests {
             () = second_received.notified() => {}
             result = &mut upload => panic!("upload ended before second request: {result:#?}"),
         }
+        let second_request_id = second_request_id_receiver.await.unwrap();
         clock_guard.abort();
         let _ = clock_guard.await;
         tokio::time::advance(Duration::from_secs(4)).await;
@@ -1511,6 +1726,13 @@ mod tests {
         let _ = server_task.await;
 
         let truncation = captured_event(&events, "network log upload truncated");
+        let started = captured_batch_event(&events, "uploading network log batch", 2);
+        assert_batch_request_event(truncation, 2, "outcome_unknown");
+        assert_same_request_correlation(started, truncation);
+        assert_eq!(
+            event_field(truncation, "client_request_id"),
+            second_request_id
+        );
         assert_event_field(truncation, "reason", "deadline");
         assert_event_field(truncation, "attempted_batches", "2");
         assert_event_field(truncation, "successful_batches", "1");
@@ -1557,11 +1779,21 @@ mod tests {
             client_session_id: "runner-session-test".to_string(),
         })
         .unwrap();
-        upload_network_logs(&http, RunId::nil(), SANDBOX_TOKEN, &path).await;
+        let (_, events) = capture_async_log_events(upload_network_logs(
+            &http,
+            RunId::nil(),
+            SANDBOX_TOKEN,
+            &path,
+        ))
+        .await;
 
         stop_accepting.notify_one();
         accept_once.await.unwrap();
         assert_eq!(attempts.load(Ordering::SeqCst), 1);
+        let started = captured_batch_event(&events, "uploading network log batch", 1);
+        let failed = captured_batch_event(&events, "network logs upload failed", 1);
+        assert_batch_request_event(failed, 1, "transport_failure");
+        assert_same_request_correlation(started, failed);
         assert!(path.exists());
     }
 }

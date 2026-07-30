@@ -125,7 +125,7 @@ async function loadSlackChatDeliveryContext(args: {
     .from(chatEvents)
     .where(
       and(
-        eq(chatEvents.id, payload.chatMessageId),
+        eq(chatEvents.id, payload.chatEventId),
         eq(chatEvents.runId, args.callback.runId),
         eq(chatEvents.chatThreadId, run.chatThreadId),
         chatEventTypeIn([
@@ -324,7 +324,7 @@ export async function deliverSlackChatAdmissionFailure(args: {
   readonly channelId: string;
   readonly threadTs: string;
   readonly routeThreadTs?: string;
-  readonly chatMessageId: string;
+  readonly chatEventId: string;
   readonly signal: AbortSignal;
 }): Promise<void> {
   const [eventRows, bindingRows] = await Promise.all([
@@ -333,7 +333,7 @@ export async function deliverSlackChatAdmissionFailure(args: {
       .from(chatEvents)
       .where(
         and(
-          eq(chatEvents.id, args.chatMessageId),
+          eq(chatEvents.id, args.chatEventId),
           eq(chatEvents.chatThreadId, args.chatThreadId),
           chatEventTypeIn(["output.error"]),
           isNotNull(chatEvents.content),

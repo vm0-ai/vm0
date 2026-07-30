@@ -4,6 +4,7 @@ import {
   zeroWorkflowsDetailContract,
   zeroWorkflowAutomationsContract,
   zeroWorkflowVisibilityContract,
+  type ChatRunFinishedEventConfig,
   type GmailLabelAppliedEventConfig,
   type GmailNewMessageEventConfig,
   type GoogleCalendarEventCancelledEventConfig,
@@ -89,6 +90,7 @@ function defaultWorkflowCopyForm(): WorkflowCopyFormState {
   };
 }
 export type WorkflowAutomationCreateDialog =
+  | "chat-run-finished"
   | "interval"
   | "scheduled"
   | "once"
@@ -1163,6 +1165,33 @@ export const createWorkflowGoogleCalendarEventAutomation$ = command(
       client.create({
         params: { workflowId: input.workflowId },
         body,
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
+export const createWorkflowChatRunFinishedAutomation$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly workflowId: string;
+      readonly eventConfig: ChatRunFinishedEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    await accept(
+      client.create({
+        params: { workflowId: input.workflowId },
+        body: {
+          kind: "event",
+          eventType: "chat-run-finished",
+          eventConfig: input.eventConfig,
+        },
         fetchOptions: { signal },
       }),
       [201],

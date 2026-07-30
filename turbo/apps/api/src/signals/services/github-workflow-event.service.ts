@@ -28,6 +28,11 @@ import {
   runWorkflowAutomationNow$,
   type AutomationRow,
 } from "./zero-workflow-automation-run.service";
+import {
+  workflowAutomationAppendSystemPrompt,
+  workflowAutomationPrompt,
+  type WorkflowAutomationContext,
+} from "./workflow-automation-context.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 
@@ -385,55 +390,48 @@ function githubSubjectUrl(args: {
   return `https://github.com/${args.repo}/${pathSegment}/${args.subjectNumber}`;
 }
 
-function buildGithubWorkflowEventSystemPrompt(args: {
+function githubLabelTriggerContext(args: {
   readonly automation: GithubLabelEventAutomationRow;
   readonly deliveryId: string;
   readonly payload: GithubLabelWorkflowEventPayload;
   readonly subjectKind: GithubWorkflowSubjectKind;
   readonly matchedLabelName: string;
-}): string {
+}): WorkflowAutomationContext {
   const subjectLabel =
     args.subjectKind === "pull_request" ? "pull request" : "issue";
-  return [
-    "# Current context",
-    `You are running because the GitHub label "${args.matchedLabelName}" was applied to a ${subjectLabel}.`,
-    "The workflow's procedure is available as a skill - execute it now.",
-    "This run is linked to a web chat thread; everything you output is shown to the user there.",
-    "This context intentionally includes only event metadata. It does not include the issue or pull request body, comments, files, or diffs.",
-    "Use connected GitHub tools or the GitHub API to inspect the issue or pull request if the workflow needs more detail.",
-    "",
-    "# GitHub event",
-    JSON.stringify(
-      {
-        automationId: args.automation.automation.id,
-        deliveryId: args.deliveryId,
-        event: "label_applied",
-        action: args.payload.action,
-        repository: args.payload.repository.full_name,
-        labelName: args.matchedLabelName,
-        subject: {
-          type: args.subjectKind,
-          number: args.payload.issue.number,
-          title: args.payload.issue.title,
-          url: githubSubjectUrl({
-            repo: args.payload.repository.full_name,
-            subjectKind: args.subjectKind,
-            subjectNumber: args.payload.issue.number,
-          }),
-        },
-        actor: {
-          id: String(args.payload.sender.id),
-          login: args.payload.sender.login,
-          type: args.payload.sender.type,
-        },
-        currentLabels: args.payload.issue.labels.map((label) => {
-          return label.name;
+  return {
+    workflowName: args.automation.workflowName,
+    trigger: `GitHub label "${args.matchedLabelName}" was applied to ${subjectLabel} #${args.payload.issue.number} (GitHub webhook delivery ${args.deliveryId}).`,
+    notes: [
+      "Not included below: the issue or pull request body, comments, files, and diffs. Connected GitHub tools and the GitHub API return them.",
+    ],
+    event: {
+      automationId: args.automation.automation.id,
+      deliveryId: args.deliveryId,
+      event: "label_applied",
+      action: args.payload.action,
+      repository: args.payload.repository.full_name,
+      labelName: args.matchedLabelName,
+      subject: {
+        type: args.subjectKind,
+        number: args.payload.issue.number,
+        title: args.payload.issue.title,
+        url: githubSubjectUrl({
+          repo: args.payload.repository.full_name,
+          subjectKind: args.subjectKind,
+          subjectNumber: args.payload.issue.number,
         }),
       },
-      null,
-      2,
-    ),
-  ].join("\n");
+      actor: {
+        id: String(args.payload.sender.id),
+        login: args.payload.sender.login,
+        type: args.payload.sender.type,
+      },
+      currentLabels: args.payload.issue.labels.map((label) => {
+        return label.name;
+      }),
+    },
+  };
 }
 
 async function dispatchGithubAutomationEvent(args: {
@@ -478,8 +476,10 @@ const startGithubWorkflowRun$ = command(
     const runInput = await args.timing.measure(
       "api_dispatch_pre_create_zero_workflow_event_build_run_input",
       () => {
+        const context = githubLabelTriggerContext(args);
         return {
-          appendSystemPrompt: buildGithubWorkflowEventSystemPrompt(args),
+          prompt: workflowAutomationPrompt(context),
+          appendSystemPrompt: workflowAutomationAppendSystemPrompt(context),
           callbacks: buildChatOnlyWorkflowAutomationCallbacks(
             args.automation.chatThreadId,
             args.automation.agentId,
@@ -499,6 +499,7 @@ const startGithubWorkflowRun$ = command(
         },
         apiStartTime: args.apiStartTime,
         triggerSource: "workflow-event",
+        prompt: runInput.prompt,
         appendSystemPrompt: runInput.appendSystemPrompt,
         callbacks: runInput.callbacks,
         activePreviousRunPolicy: "allow",

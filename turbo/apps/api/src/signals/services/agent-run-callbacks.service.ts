@@ -8,6 +8,7 @@ import { computeHmacSignature } from "../../lib/event-consumer/hmac";
 import { env } from "../../lib/env";
 import { now } from "../../lib/time";
 import { db$ } from "../external/db";
+import { refreshAgentPhoneTypingForRun$ } from "./agent-event-consumer-agentphone-typing.service";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { handleAgentPhoneInternalCallback$ } from "./internal-agentphone-run-callback.service";
@@ -19,6 +20,12 @@ function resolveCallbackUrl(url: string): string {
   return env("ENV") === "development" && url.startsWith("https://tunnel-")
     ? url.replace(/^https:\/\/tunnel-[^/]+/, "http://localhost:3000")
     : url;
+}
+
+function isCanonicalChatCallback(callback: {
+  readonly internalKind: string | null;
+}): boolean {
+  return internalRunCallbackKindForRecord(callback) === "chat";
 }
 
 export const dispatchProgressCallbacks$ = command(
@@ -75,6 +82,11 @@ export const dispatchProgressCallbacks$ = command(
       return;
     }
 
+    if (callbacks.some(isCanonicalChatCallback)) {
+      await set(refreshAgentPhoneTypingForRun$, runId, signal);
+      signal.throwIfAborted();
+    }
+
     await Promise.allSettled(
       callbacks.map(async (callback) => {
         const internalKind = internalRunCallbackKindForRecord(callback);
@@ -93,6 +105,7 @@ export const dispatchProgressCallbacks$ = command(
           return;
         }
         if (
+          internalKind === "agentphone:chat" ||
           internalKind === "slack:chat" ||
           internalKind === "feishu:chat" ||
           internalKind === "teams:chat" ||
