@@ -285,7 +285,9 @@ describe("chat lifecycle", () => {
     expect(screen.queryByLabelText("Credit usage 12")).not.toBeInTheDocument();
   });
 
-  it("keeps managed API usage visible when completed work is folded", async () => {
+  it("localizes managed API usage when completed work is folded", async () => {
+    document.documentElement.lang = "pt-BR";
+    await initializeI18n("pt-BR");
     mockChatLifecycle(context, {
       threadId: "thread-usage-chip-folded-managed-api",
       chatEvents: [
@@ -377,16 +379,18 @@ describe("chat lifecycle", () => {
       screen.queryByText("Inspecting managed API results."),
     ).not.toBeInTheDocument();
 
-    const managedApiCredit = await screen.findByLabelText("Credit usage 216");
+    const managedApiCredit = await screen.findByLabelText(
+      "Uso de créditos 216",
+    );
     click(managedApiCredit);
 
     await waitFor(() => {
-      expect(screen.getByText("Web Fetch")).toBeInTheDocument();
-      expect(screen.getByText("Maps")).toBeInTheDocument();
-      expect(screen.getByText("Web Search")).toBeInTheDocument();
-      expect(screen.getByText("People Search")).toBeInTheDocument();
-      expect(screen.getByText("Finance")).toBeInTheDocument();
-      expect(screen.getByText("Weather")).toBeInTheDocument();
+      expect(screen.getByText("Coleta da web")).toBeInTheDocument();
+      expect(screen.getByText("Mapas")).toBeInTheDocument();
+      expect(screen.getByText("Pesquisa na web")).toBeInTheDocument();
+      expect(screen.getByText("Pesquisa de pessoas")).toBeInTheDocument();
+      expect(screen.getByText("Finanças")).toBeInTheDocument();
+      expect(screen.getByText("Clima")).toBeInTheDocument();
       expect(screen.getAllByText("36")).toHaveLength(6);
       expect(screen.queryByText("Firecrawl")).not.toBeInTheDocument();
       expect(screen.queryByText("Google Maps")).not.toBeInTheDocument();

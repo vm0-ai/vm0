@@ -492,7 +492,9 @@ export function automationTypeLabel(
     automation.eventType === "gmail-new-message" ||
     automation.eventType === "gmail-label-applied"
   ) {
-    return "Gmail";
+    return i18n.t(($) => {
+      return $.workflows.automations.types.gmail;
+    });
   }
   if (
     automation.eventType === "github-label-applied" ||
@@ -502,33 +504,47 @@ export function automationTypeLabel(
     automation.eventType === "github-workflow-job-completed" ||
     automation.eventType === "github-workflow-run-completed"
   ) {
-    return "GitHub";
+    return i18n.t(($) => {
+      return $.workflows.automations.types.github;
+    });
   }
   if (
     automation.eventType === "google-calendar-event-created" ||
     automation.eventType === "google-calendar-event-updated" ||
     automation.eventType === "google-calendar-event-cancelled"
   ) {
-    return "Google Calendar";
+    return i18n.t(($) => {
+      return $.workflows.automations.types.googleCalendar;
+    });
   }
   if (automation.eventType === "google-meet-transcript-generated") {
-    return "Google Meet";
+    return i18n.t(($) => {
+      return $.workflows.automations.types.googleMeet;
+    });
   }
   if (
     automation.eventType === "notion-child-page-created" ||
     automation.eventType === "notion-database-item-created" ||
     automation.eventType === "notion-page-content-updated"
   ) {
-    return "Notion";
+    return i18n.t(($) => {
+      return $.workflows.automations.types.notion;
+    });
   }
   if (automation.eventType === "webhook-received") {
-    return "Webhook";
+    return i18n.t(($) => {
+      return $.workflows.automations.types.webhook;
+    });
   }
   if (automation.eventType === "strapi-entry-published") {
-    return "Strapi";
+    return i18n.t(($) => {
+      return $.workflows.automations.types.strapi;
+    });
   }
   if (automation.eventType === "chat-run-finished") {
-    return "Chat";
+    return i18n.t(($) => {
+      return $.workflows.automations.types.chat;
+    });
   }
   return i18n.t(($) => {
     return $.workflows.automations.common.automation;

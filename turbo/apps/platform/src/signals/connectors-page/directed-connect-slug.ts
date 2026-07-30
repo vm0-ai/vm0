@@ -7,11 +7,11 @@ import { pathParams$, searchParams$ } from "../route.ts";
 import { agents$ } from "../agent.ts";
 
 /**
- * Connector slug extracted from `/connectors/:type/connect` route params.
+ * Connector slug extracted from `/connectors/:connectorSlug/connect` route params.
  */
 export const directedConnectSlug$ = computed((get): ConnectorSlug | null => {
   const params = get(pathParams$);
-  const connectorSlug = params?.type;
+  const connectorSlug = params?.connectorSlug;
   const parsed = connectorSlugSchema.safeParse(
     typeof connectorSlug === "string" ? connectorSlug.toLowerCase() : null,
   );

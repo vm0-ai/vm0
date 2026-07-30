@@ -50,7 +50,7 @@ type ChatRealtimeSubscription = {
 const patchDraft$ = command(
   async (
     { get, set },
-    { threadId, content, userMessage, attachments }: PatchDraftArgs,
+    { threadId, userMessage, attachments }: PatchDraftArgs,
     signal: AbortSignal,
   ) => {
     const client = get(zeroClient$)(chatThreadByIdContract);
@@ -58,7 +58,6 @@ const patchDraft$ = command(
       client.patch({
         params: { id: threadId },
         body: {
-          draftContent: content,
           draftUserMessage: userMessage,
           draftAttachments: attachments,
         },

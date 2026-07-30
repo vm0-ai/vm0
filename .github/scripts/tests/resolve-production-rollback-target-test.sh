@@ -112,7 +112,8 @@ case "$3" in
     cp "${MOCK_APP_ARTIFACT_DIR}/$(basename "$3")" "$4"
     ;;
   *)
-    cp -a "${MOCK_APP_ARTIFACT_DIR}/." "$4/"
+    echo "unexpected App artifact object: $3" >&2
+    exit 2
     ;;
 esac
 SH
@@ -264,10 +265,12 @@ ruby -e '
   require "yaml"
   rollback_config = YAML.safe_load(File.read(ARGV[0]), aliases: true)
   release_config = YAML.safe_load(File.read(ARGV[1]), aliases: true)
+  turbo_config = YAML.safe_load(File.read(ARGV[2]), aliases: true)
   raise "rollback must not use lossy GitHub concurrency" if rollback_config.key?("concurrency")
   raise "release must not use lossy GitHub concurrency" if release_config.key?("concurrency")
   rollback = rollback_config.fetch("jobs")
   release = release_config.fetch("jobs")
+  turbo = turbo_config.fetch("jobs")
   raise "rollback resolver must wait for queue" unless rollback.fetch("resolve-target").fetch("needs") == "queue-production-deploy"
   raise "App must wait for resolver" unless rollback.fetch("rollback-app").fetch("needs") == "resolve-target"
   raise "Runner must wait for resolver" unless rollback.fetch("rollback-runner").fetch("needs") == "resolve-target"
@@ -315,9 +318,17 @@ ruby -e '
   release_app_step = release.fetch("promote-app-production").fetch("steps").find { |step| step["id"] == "pages-production" }
   release_app_run = release_app_step.fetch("run")
   raise "release App deployment must use the shared artifact fetcher" unless release_app_run.include?(artifact_fetch_helper)
-  raise "release App deployment must support targets predating the fetcher" unless release_app_run.include?("if [[ -f .github/scripts/#{artifact_fetch_helper} ]]")
+  raise "release App deployment must not fall back to per-file artifacts" if release_app_run.include?("--recursive")
   rollback_app_step = rollback.fetch("rollback-app").fetch("steps").find { |step| step["id"] == "app" }
   raise "rollback App deployment must use the shared artifact fetcher" unless rollback_app_step.fetch("run").include?(artifact_fetch_helper)
-' "${repo_root}/.github/workflows/rollback-production.yml" "${repo_root}/.github/workflows/release-please.yml"
+
+  artifact_upload_step = turbo.fetch("deploy-app").fetch("steps").find { |step| step["name"] == "Upload canonical app artifact" }
+  artifact_upload_run = artifact_upload_step.fetch("run")
+  raise "deploy-app must upload the archived App artifact" unless artifact_upload_run.include?("/dist.tar.gz")
+  raise "deploy-app must not upload per-file App artifacts" if artifact_upload_run.include?("aws s3 cp turbo/apps/platform/dist")
+' \
+  "${repo_root}/.github/workflows/rollback-production.yml" \
+  "${repo_root}/.github/workflows/release-please.yml" \
+  "${repo_root}/.github/workflows/turbo.yml"
 
 echo "resolve-production-rollback-target tests passed"

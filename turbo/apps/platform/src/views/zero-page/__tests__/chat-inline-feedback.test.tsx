@@ -604,10 +604,6 @@ describe("chat inline feedback", () => {
     expect(composer).not.toHaveTextContent(`> ${assistantReply}`);
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
-        draftContent:
-          "Feedback on this part of your reply:\n\n" +
-          `> ${assistantReply}\n\n` +
-          "Name the owner and explain the complete result.",
         draftUserMessage: queuedEvents[0]?.userMessage,
         draftAttachments: null,
       });

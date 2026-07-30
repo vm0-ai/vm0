@@ -1667,7 +1667,8 @@ describe("workflow detail page", () => {
               status: "scope-mismatch",
             },
             {
-              connectorRef: "gmail",
+              connectorRef: "slack",
+              connectorSlug: "gmail",
               label: "Gmail",
               reason: "The workflow reads outreach replies.",
               status: "reconnect-required",

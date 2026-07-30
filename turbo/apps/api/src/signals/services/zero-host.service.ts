@@ -13,7 +13,8 @@ import {
   type HostedSiteManifest,
   type HostedSiteManifestFile,
 } from "@vm0/db/schema/hosted-site";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { and, desc, eq, isNull, or } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { type Db, writeDb$ } from "../external/db";
@@ -49,8 +50,13 @@ interface PrepareDeploymentArgs {
   readonly body: HostedSitePrepareRequest;
 }
 
+interface ScopedPrepareDeploymentArgs extends PrepareDeploymentArgs {
+  readonly chatThreadId: string | null;
+}
+
 interface CompleteDeploymentArgs {
   readonly orgId: string;
+  readonly runId?: string;
   readonly deploymentId: string;
 }
 
@@ -62,6 +68,7 @@ interface GetHostedSiteFilesArgs {
 
 interface GetHostedSiteDeploymentsArgs {
   readonly orgId: string;
+  readonly runId?: string;
   readonly site: string;
 }
 
@@ -270,10 +277,11 @@ function publicSlugForSite(
 function shortPublicSlugHash(
   orgId: string,
   site: string,
+  scopeKey: string,
   attempt: number,
 ): string {
   const value = createHash("sha256")
-    .update(`${orgId}\0${site}\0${attempt}`)
+    .update(`${orgId}\0${site}\0${scopeKey}\0${attempt}`)
     .digest()
     .readUInt32BE(0);
   return (value % PUBLIC_SLUG_HASH_SPACE)
@@ -288,6 +296,7 @@ function isImmutableDeploymentHostLabel(value: string): boolean {
 function versionedPublicSlugCandidate(
   site: string,
   orgId: string,
+  scopeKey: string,
   attempt: number,
 ): string {
   if (attempt === 0 && !isImmutableDeploymentHostLabel(site)) {
@@ -300,7 +309,140 @@ function versionedPublicSlugCandidate(
     0,
     MAX_DNS_LABEL_LENGTH - PUBLIC_SLUG_HASH_LENGTH - 1,
   );
-  return `${base}-${shortPublicSlugHash(orgId, site, hashAttempt)}`;
+  return `${base}-${shortPublicSlugHash(orgId, site, scopeKey, hashAttempt)}`;
+}
+
+function hostedSiteScopeKey(args: ScopedPrepareDeploymentArgs): string {
+  return args.chatThreadId ?? "organization";
+}
+
+function hostedSiteRequestedSlug(site: HostedSiteRow): string {
+  return site.requestedSlug ?? site.slug;
+}
+
+async function resolveChatThreadId(
+  db: Db,
+  runId: string | undefined,
+): Promise<string | null> {
+  if (runId === undefined) {
+    return null;
+  }
+  const [run] = await db
+    .select({ chatThreadId: zeroRuns.chatThreadId })
+    .from(zeroRuns)
+    .where(eq(zeroRuns.id, runId))
+    .limit(1);
+  return run?.chatThreadId ?? null;
+}
+
+async function hostedDeploymentScopeError(
+  db: Db,
+  runId: string | undefined,
+  owningChatThreadId: string | null,
+): Promise<Extract<CompleteDeploymentResult, { status: "conflict" }> | null> {
+  const chatThreadId = await resolveChatThreadId(db, runId);
+  return owningChatThreadId === chatThreadId
+    ? null
+    : {
+        status: "conflict",
+        message: "Hosted deployment belongs to a different chat",
+      };
+}
+
+type CompleteDeploymentLookupResult =
+  | { readonly status: "ok"; readonly deployment: HostedDeploymentRow }
+  | Extract<CompleteDeploymentResult, { status: "not_found" | "conflict" }>;
+
+async function resolveHostedDeploymentForCompletion(
+  db: Db,
+  args: CompleteDeploymentArgs,
+): Promise<CompleteDeploymentLookupResult> {
+  const [ownedDeployment] = await db
+    .select({
+      deployment: hostedDeployments,
+      chatThreadId: hostedSites.chatThreadId,
+    })
+    .from(hostedDeployments)
+    .innerJoin(hostedSites, eq(hostedSites.id, hostedDeployments.siteId))
+    .where(
+      and(
+        eq(hostedDeployments.id, args.deploymentId),
+        eq(hostedDeployments.orgId, args.orgId),
+      ),
+    )
+    .limit(1);
+  if (!ownedDeployment) {
+    return { status: "not_found", message: "Hosted deployment not found" };
+  }
+  const scopeError = await hostedDeploymentScopeError(
+    db,
+    args.runId,
+    ownedDeployment.chatThreadId,
+  );
+  return (
+    scopeError ?? {
+      status: "ok",
+      deployment: ownedDeployment.deployment,
+    }
+  );
+}
+
+async function findScopedHostedSite(
+  db: Db,
+  args: ScopedPrepareDeploymentArgs,
+  lock: boolean,
+): Promise<HostedSiteRow | undefined> {
+  const scopeCondition =
+    args.chatThreadId === null
+      ? isNull(hostedSites.chatThreadId)
+      : eq(hostedSites.chatThreadId, args.chatThreadId);
+  const query = db
+    .select()
+    .from(hostedSites)
+    .where(
+      and(
+        eq(hostedSites.orgId, args.orgId),
+        eq(hostedSites.requestedSlug, args.body.site),
+        scopeCondition,
+        isNull(hostedSites.deletedAt),
+      ),
+    );
+  const [site] = lock
+    ? await query.for("update").limit(1)
+    : await query.limit(1);
+  return site;
+}
+
+async function hasUnscopedHostedSiteConflict(
+  db: Db,
+  args: ScopedPrepareDeploymentArgs,
+): Promise<boolean> {
+  if (args.chatThreadId === null) {
+    return false;
+  }
+  const scopedSite = await findScopedHostedSite(db, args, false);
+  if (scopedSite) {
+    return false;
+  }
+  const [unscopedSite] = await db
+    .select({ id: hostedSites.id })
+    .from(hostedSites)
+    .where(
+      and(
+        eq(hostedSites.orgId, args.orgId),
+        isNull(hostedSites.chatThreadId),
+        or(
+          eq(hostedSites.requestedSlug, args.body.site),
+          and(
+            isNull(hostedSites.requestedSlug),
+            eq(hostedSites.slug, args.body.site),
+          ),
+        ),
+        isNull(hostedSites.deletedAt),
+      ),
+    )
+    .limit(1);
+  return unscopedSite !== undefined;
 }
 
 function deploymentVersionResponseFields(deployment: HostedDeploymentRow): {
@@ -329,22 +471,12 @@ function hostedSiteUsesVersionedArtifacts(site: HostedSiteRow): boolean {
 
 async function shouldUseVersionedArtifacts(
   db: Db,
-  args: PrepareDeploymentArgs,
+  args: ScopedPrepareDeploymentArgs,
 ): Promise<boolean> {
   if (args.versionedArtifactsEnabled) {
     return true;
   }
-  const [site] = await db
-    .select()
-    .from(hostedSites)
-    .where(
-      and(
-        eq(hostedSites.orgId, args.orgId),
-        eq(hostedSites.slug, args.body.site),
-        isNull(hostedSites.deletedAt),
-      ),
-    )
-    .limit(1);
+  const site = await findScopedHostedSite(db, args, false);
   return site !== undefined && hostedSiteUsesVersionedArtifacts(site);
 }
 
@@ -493,9 +625,10 @@ function hostedSiteArtifactArgs(deployment: HostedDeploymentRow) {
 
 async function allocateLegacyHostedSite(
   db: Db,
-  args: PrepareDeploymentArgs,
+  args: ScopedPrepareDeploymentArgs,
   context: LegacyHostedSiteDeploymentContext,
 ): Promise<HostedSiteRow | null> {
+  const existingSite = await findScopedHostedSite(db, args, true);
   const [existingPublicSite] = await db
     .select()
     .from(hostedSites)
@@ -509,58 +642,29 @@ async function allocateLegacyHostedSite(
   if (
     existingPublicSite &&
     (!context.allowExistingPublicSlug ||
-      existingPublicSite.orgId !== args.orgId ||
-      existingPublicSite.slug !== args.body.site)
+      existingPublicSite.id !== existingSite?.id)
   ) {
     return null;
   }
 
-  const [site] = await db
-    .insert(hostedSites)
-    .values({
-      orgId: args.orgId,
-      userId: args.userId,
-      slug: args.body.site,
-      publicSlug: context.publicSlug,
-      createdFromRunId: args.runId,
-      updatedAt: context.now,
-    })
-    .onConflictDoUpdate({
-      target: [hostedSites.orgId, hostedSites.slug],
-      set: { publicSlug: context.publicSlug, updatedAt: context.now },
-    })
-    .returning();
-  if (!site) {
-    throw new Error("Failed to create hosted site");
-  }
-  return site;
-}
-
-async function findOrCreateVersionedHostedSite(
-  db: Db,
-  args: PrepareDeploymentArgs,
-  now: Date,
-): Promise<HostedSiteRow | null> {
-  const [existingSite] = await db
-    .select()
-    .from(hostedSites)
-    .where(
-      and(
-        eq(hostedSites.orgId, args.orgId),
-        eq(hostedSites.slug, args.body.site),
-        isNull(hostedSites.deletedAt),
-      ),
-    )
-    .for("update")
-    .limit(1);
   if (existingSite) {
-    return existingSite;
+    const [updatedSite] = await db
+      .update(hostedSites)
+      .set({ publicSlug: context.publicSlug, updatedAt: context.now })
+      .where(eq(hostedSites.id, existingSite.id))
+      .returning();
+    if (!updatedSite) {
+      throw new Error("Failed to update hosted site");
+    }
+    return updatedSite;
   }
 
+  const scopeKey = hostedSiteScopeKey(args);
   for (let attempt = 0; attempt < MAX_PUBLIC_SLUG_ATTEMPTS; attempt += 1) {
-    const publicSlug = versionedPublicSlugCandidate(
+    const compatibilitySlug = versionedPublicSlugCandidate(
       args.body.site,
       args.orgId,
+      scopeKey,
       attempt,
     );
     const [createdSite] = await db
@@ -568,7 +672,78 @@ async function findOrCreateVersionedHostedSite(
       .values({
         orgId: args.orgId,
         userId: args.userId,
-        slug: args.body.site,
+        slug: compatibilitySlug,
+        requestedSlug: args.body.site,
+        chatThreadId: args.chatThreadId,
+        publicSlug: context.publicSlug,
+        createdFromRunId: args.runId,
+        updatedAt: context.now,
+      })
+      .onConflictDoNothing()
+      .returning();
+    if (createdSite) {
+      return createdSite;
+    }
+
+    const concurrentSite = await findScopedHostedSite(db, args, true);
+    if (concurrentSite) {
+      const [publicSlugOwner] = await db
+        .select({ id: hostedSites.id })
+        .from(hostedSites)
+        .where(
+          and(
+            eq(hostedSites.publicSlug, context.publicSlug),
+            isNull(hostedSites.deletedAt),
+          ),
+        )
+        .limit(1);
+      if (
+        publicSlugOwner &&
+        (!context.allowExistingPublicSlug ||
+          publicSlugOwner.id !== concurrentSite.id)
+      ) {
+        return null;
+      }
+      const [updatedSite] = await db
+        .update(hostedSites)
+        .set({ publicSlug: context.publicSlug, updatedAt: context.now })
+        .where(eq(hostedSites.id, concurrentSite.id))
+        .returning();
+      if (!updatedSite) {
+        throw new Error("Failed to update hosted site");
+      }
+      return updatedSite;
+    }
+  }
+  return null;
+}
+
+async function findOrCreateVersionedHostedSite(
+  db: Db,
+  args: ScopedPrepareDeploymentArgs,
+  now: Date,
+): Promise<HostedSiteRow | null> {
+  const existingSite = await findScopedHostedSite(db, args, true);
+  if (existingSite) {
+    return existingSite;
+  }
+
+  const scopeKey = hostedSiteScopeKey(args);
+  for (let attempt = 0; attempt < MAX_PUBLIC_SLUG_ATTEMPTS; attempt += 1) {
+    const publicSlug = versionedPublicSlugCandidate(
+      args.body.site,
+      args.orgId,
+      scopeKey,
+      attempt,
+    );
+    const [createdSite] = await db
+      .insert(hostedSites)
+      .values({
+        orgId: args.orgId,
+        userId: args.userId,
+        slug: publicSlug,
+        requestedSlug: args.body.site,
+        chatThreadId: args.chatThreadId,
         publicSlug,
         createdFromRunId: args.runId,
         updatedAt: now,
@@ -579,18 +754,7 @@ async function findOrCreateVersionedHostedSite(
       return createdSite;
     }
 
-    const [concurrentSite] = await db
-      .select()
-      .from(hostedSites)
-      .where(
-        and(
-          eq(hostedSites.orgId, args.orgId),
-          eq(hostedSites.slug, args.body.site),
-          isNull(hostedSites.deletedAt),
-        ),
-      )
-      .for("update")
-      .limit(1);
+    const concurrentSite = await findScopedHostedSite(db, args, true);
     if (concurrentSite) {
       return concurrentSite;
     }
@@ -600,7 +764,7 @@ async function findOrCreateVersionedHostedSite(
 
 async function allocateVersionedHostedSite(
   db: Db,
-  args: PrepareDeploymentArgs,
+  args: ScopedPrepareDeploymentArgs,
   now: Date,
 ): Promise<HostedSiteAllocation | null> {
   const site = await findOrCreateVersionedHostedSite(db, args, now);
@@ -624,7 +788,7 @@ async function allocateVersionedHostedSite(
 
 async function allocateHostedSite(
   db: Db,
-  args: PrepareDeploymentArgs,
+  args: ScopedPrepareDeploymentArgs,
   context: CreateHostedSiteDeploymentContext,
 ): Promise<HostedSiteAllocation | null> {
   if (context.kind === "versioned") {
@@ -636,7 +800,7 @@ async function allocateHostedSite(
 
 async function insertHostedDeployment(
   db: Db,
-  args: PrepareDeploymentArgs,
+  args: ScopedPrepareDeploymentArgs,
   context: CreateHostedSiteDeploymentContext,
   allocation: HostedSiteAllocation,
 ): Promise<HostedDeploymentRow> {
@@ -649,11 +813,7 @@ async function insertHostedDeployment(
   const prefix =
     deploymentVersion === null
       ? legacyDeploymentPrefix(site.publicSlug, deploymentId)
-      : versionedDeploymentPrefix(
-          args.orgId,
-          args.body.site,
-          deploymentVersion,
-        );
+      : versionedDeploymentPrefix(args.orgId, site.slug, deploymentVersion);
   const manifest = buildManifest({
     deploymentId,
     siteId: site.id,
@@ -699,7 +859,7 @@ async function insertHostedDeployment(
 
 function createHostedSiteDeployment(
   writeDb: Db,
-  args: PrepareDeploymentArgs,
+  args: ScopedPrepareDeploymentArgs,
   context: CreateHostedSiteDeploymentContext,
 ): Promise<SiteDeploymentCreationResult> {
   return writeDb.transaction(async (tx) => {
@@ -734,10 +894,23 @@ export const prepareHostedSiteDeployment$ = command(
     }
 
     const writeDb = set(writeDb$);
+    const chatThreadId = await resolveChatThreadId(writeDb, args.runId);
+    signal.throwIfAborted();
+    const scopedArgs: ScopedPrepareDeploymentArgs = {
+      ...args,
+      chatThreadId,
+    };
+    if (await hasUnscopedHostedSiteConflict(writeDb, scopedArgs)) {
+      return {
+        status: "conflict",
+        message: `Hosted site slug "${args.body.site}" is owned outside this chat. Choose a different --site value and rerun the same zero host command.`,
+      };
+    }
+    signal.throwIfAborted();
     const now = nowDate();
     const useVersionedArtifacts = await shouldUseVersionedArtifacts(
       writeDb,
-      args,
+      scopedArgs,
     );
     signal.throwIfAborted();
     let siteAndDeployment: CreatedSiteDeployment | null = null;
@@ -745,7 +918,7 @@ export const prepareHostedSiteDeployment$ = command(
     let url = "";
 
     if (useVersionedArtifacts) {
-      const result = await createHostedSiteDeployment(writeDb, args, {
+      const result = await createHostedSiteDeployment(writeDb, scopedArgs, {
         kind: "versioned",
         now,
       });
@@ -762,7 +935,7 @@ export const prepareHostedSiteDeployment$ = command(
         args.body.slugSuffix,
       );
       url = publicUrl(publicSlug);
-      const result = await createHostedSiteDeployment(writeDb, args, {
+      const result = await createHostedSiteDeployment(writeDb, scopedArgs, {
         kind: "legacy",
         now,
         publicSlug,
@@ -785,7 +958,7 @@ export const prepareHostedSiteDeployment$ = command(
           randomSlugSuffix(),
         );
         url = publicUrl(publicSlug);
-        const result = await createHostedSiteDeployment(writeDb, args, {
+        const result = await createHostedSiteDeployment(writeDb, scopedArgs, {
           kind: "legacy",
           now,
           publicSlug,
@@ -977,21 +1150,15 @@ export const completeHostedSiteDeployment$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const [deployment] = await writeDb
-      .select()
-      .from(hostedDeployments)
-      .where(
-        and(
-          eq(hostedDeployments.id, args.deploymentId),
-          eq(hostedDeployments.orgId, args.orgId),
-        ),
-      )
-      .limit(1);
+    const deploymentResult = await resolveHostedDeploymentForCompletion(
+      writeDb,
+      args,
+    );
     signal.throwIfAborted();
-
-    if (!deployment) {
-      return { status: "not_found", message: "Hosted deployment not found" };
+    if (deploymentResult.status !== "ok") {
+      return deploymentResult;
     }
+    const { deployment } = deploymentResult;
     if (deployment.status !== "uploading" && deployment.status !== "ready") {
       return {
         status: "conflict",
@@ -1293,13 +1460,20 @@ export const getHostedSiteDeployments$ = command(
     signal: AbortSignal,
   ): Promise<GetHostedSiteDeploymentsResult> => {
     const writeDb = set(writeDb$);
+    const chatThreadId = await resolveChatThreadId(writeDb, args.runId);
+    signal.throwIfAborted();
+    const scopeCondition =
+      chatThreadId === null
+        ? isNull(hostedSites.chatThreadId)
+        : eq(hostedSites.chatThreadId, chatThreadId);
     const [site] = await writeDb
       .select()
       .from(hostedSites)
       .where(
         and(
           eq(hostedSites.orgId, args.orgId),
-          eq(hostedSites.slug, args.site),
+          eq(hostedSites.requestedSlug, args.site),
+          scopeCondition,
           isNull(hostedSites.deletedAt),
         ),
       )
@@ -1326,7 +1500,7 @@ export const getHostedSiteDeployments$ = command(
       status: "ok",
       body: {
         siteId: site.id,
-        site: site.slug,
+        site: hostedSiteRequestedSlug(site),
         publicSlug: site.publicSlug,
         aliasUrl: publicUrl(site.publicSlug),
         activeDeploymentId: site.activeDeploymentId,

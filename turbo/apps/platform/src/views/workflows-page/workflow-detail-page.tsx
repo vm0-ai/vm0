@@ -23,13 +23,13 @@ import type {
   NotionPageContentUpdatedEventCreateConfig,
   WorkflowFileEntry,
   WorkflowFileMetadata,
-  ZeroWorkflowConnectorReadinessEntry,
   ZeroWorkflowDetailResponse,
   ZeroWorkflowSchedule,
   ZeroWorkflowScheduleType,
   ZeroWorkflowAutomationSummary,
   ZeroWorkflowUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
+import type { PlatformWorkflowConnectorReadinessEntry } from "../../signals/connector-domain.ts";
 import {
   IconAlertTriangle,
   IconBrandGithub,
@@ -1436,7 +1436,7 @@ function hasUnsavedConnectorReadinessInputs(
 }
 
 const CONNECTOR_READINESS_STATUS_GROUP: Readonly<
-  Record<ZeroWorkflowConnectorReadinessEntry["status"], number>
+  Record<PlatformWorkflowConnectorReadinessEntry["status"], number>
 > = Object.freeze({
   "reconnect-required": 0,
   "scope-mismatch": 0,
@@ -1447,8 +1447,8 @@ const CONNECTOR_READINESS_STATUS_GROUP: Readonly<
 });
 
 function sortConnectorReadinessEntries(
-  entries: readonly ZeroWorkflowConnectorReadinessEntry[],
-): ZeroWorkflowConnectorReadinessEntry[] {
+  entries: readonly PlatformWorkflowConnectorReadinessEntry[],
+): PlatformWorkflowConnectorReadinessEntry[] {
   return [...entries].sort((left, right) => {
     const groupOrder =
       CONNECTOR_READINESS_STATUS_GROUP[left.status] -
@@ -1461,7 +1461,7 @@ function sortConnectorReadinessEntries(
 }
 
 function connectorReadinessStatus(
-  status: ZeroWorkflowConnectorReadinessEntry["status"],
+  status: PlatformWorkflowConnectorReadinessEntry["status"],
 ): {
   readonly label: string;
   readonly dotClassName: string;
@@ -1526,7 +1526,7 @@ function connectorReadinessStatus(
 }
 
 function connectorReadinessAction(
-  entry: ZeroWorkflowConnectorReadinessEntry,
+  entry: PlatformWorkflowConnectorReadinessEntry,
   agentId: string,
 ): { readonly label: string; readonly href: string } | null {
   const query = new URLSearchParams({ agentId }).toString();
@@ -1537,7 +1537,7 @@ function connectorReadinessAction(
           return $.workflows.detail.connectors.action.reconnect;
         }),
         href: `${generateRouterPath(ROUTES.directedConnect, {
-          type: entry.connectorRef,
+          connectorSlug: entry.connectorSlug,
         })}?${query}`,
       };
     }
@@ -1547,7 +1547,7 @@ function connectorReadinessAction(
           return $.workflows.detail.connectors.action.reviewPermissions;
         }),
         href: `${generateRouterPath(ROUTES.directedConnect, {
-          type: entry.connectorRef,
+          connectorSlug: entry.connectorSlug,
         })}?${query}`,
       };
     }
@@ -1557,7 +1557,7 @@ function connectorReadinessAction(
           return $.workflows.detail.connectors.action.connect;
         }),
         href: `${generateRouterPath(ROUTES.directedConnect, {
-          type: entry.connectorRef,
+          connectorSlug: entry.connectorSlug,
         })}?${query}`,
       };
     }
@@ -1567,7 +1567,7 @@ function connectorReadinessAction(
           return $.workflows.detail.connectors.action.enable;
         }),
         href: `${generateRouterPath(ROUTES.directedAuthorize, {
-          type: entry.connectorRef,
+          connectorSlug: entry.connectorSlug,
         })}?${query}`,
       };
     }
@@ -1690,7 +1690,7 @@ function WorkflowConnectorReadiness({
             {entries.map((entry) => {
               return (
                 <WorkflowConnectorReadinessRow
-                  key={entry.connectorRef}
+                  key={entry.connectorSlug}
                   entry={entry}
                   agentId={detail.agentId}
                 />
@@ -1719,7 +1719,7 @@ function WorkflowConnectorReadinessRow({
   entry,
   agentId,
 }: {
-  readonly entry: ZeroWorkflowConnectorReadinessEntry;
+  readonly entry: PlatformWorkflowConnectorReadinessEntry;
   readonly agentId: string;
 }) {
   const status = connectorReadinessStatus(entry.status);
@@ -1865,7 +1865,9 @@ function WorkflowMetadataFields({
             onPatch({ name: event.currentTarget.value });
           }}
           disabled={disabled}
-          placeholder="workflow-slug"
+          placeholder={i18n.t(($) => {
+            return $.workflows.detail.metadata.slugPlaceholder;
+          })}
           maxLength={64}
           required
           minLength={2}
@@ -2711,7 +2713,12 @@ function WorkflowFileNavigationItems({
           >
             <span className="min-w-0 truncate">{file.path}</span>
             <span className="ml-auto shrink-0 text-xs text-muted-foreground">
-              {file.size} B
+              {i18n.t(
+                ($) => {
+                  return $.workflows.detail.files.sizeBytes;
+                },
+                { size: file.size },
+              )}
             </span>
           </DropdownMenuItem>
         );
@@ -5082,7 +5089,9 @@ function ChatRunFinishedAutomationFields({
         <Input
           name="outputPattern"
           disabled={creating}
-          placeholder="*deploy failed*"
+          placeholder={i18n.t(($) => {
+            return $.workflows.automations.chat.patternPlaceholder;
+          })}
         />
       </label>
       <p className="text-xs text-muted-foreground">
@@ -5439,14 +5448,22 @@ function StrapiAutomationForm({
         <Input
           name="contentTypeUid"
           disabled={creating}
-          placeholder="api::article.article"
+          placeholder={i18n.t(($) => {
+            return $.workflows.automations.strapi.contentTypePlaceholder;
+          })}
         />
       </label>
       <label className="flex flex-col gap-1 text-xs text-muted-foreground">
         {i18n.t(($) => {
           return $.workflows.automations.strapi.locale;
         })}
-        <Input name="locale" disabled={creating} placeholder="en" />
+        <Input
+          name="locale"
+          disabled={creating}
+          placeholder={i18n.t(($) => {
+            return $.workflows.automations.strapi.localePlaceholder;
+          })}
+        />
       </label>
       <p className="text-xs text-muted-foreground">
         {i18n.t(($) => {
@@ -5753,7 +5770,9 @@ function CreateNotionDatabaseItemAutomationDialog({
               })}
               required
               disabled={creating}
-              placeholder="https://www.notion.so/..."
+              placeholder={i18n.t(($) => {
+                return $.workflows.automations.notion.databaseUrlPlaceholder;
+              })}
             />
           </label>
           <DialogFooter>
@@ -5865,7 +5884,9 @@ function NotionPageContentUpdatedScopeFields({
             })}
             required
             disabled={creating}
-            placeholder="https://www.notion.so/workspace/Page-title-..."
+            placeholder={i18n.t(($) => {
+              return $.workflows.automations.notion.pageUrlPlaceholder;
+            })}
           />
         </label>
       ) : (
@@ -5880,7 +5901,9 @@ function NotionPageContentUpdatedScopeFields({
             })}
             required
             disabled={creating}
-            placeholder="https://www.notion.so/..."
+            placeholder={i18n.t(($) => {
+              return $.workflows.automations.notion.databaseUrlPlaceholder;
+            })}
           />
         </label>
       )}
@@ -6058,7 +6081,9 @@ function CreateNotionChildPageAutomationDialog({
               })}
               required
               disabled={creating}
-              placeholder="https://www.notion.so/workspace/Page-title-..."
+              placeholder={i18n.t(($) => {
+                return $.workflows.automations.notion.pageUrlPlaceholder;
+              })}
             />
           </label>
           <DialogFooter>
@@ -7225,7 +7250,9 @@ function CreateGmailLabelAppliedAutomationDialog({
               })}
               required
               disabled={creating}
-              placeholder="Support"
+              placeholder={i18n.t(($) => {
+                return $.workflows.automations.gmail.labelPlaceholder;
+              })}
             />
           </label>
           <DialogFooter>
@@ -7281,7 +7308,9 @@ function GithubLabelAutomationFields({
           required
           disabled={disabled}
           defaultValue={defaultConfig?.labelName ?? ""}
-          placeholder="triage"
+          placeholder={i18n.t(($) => {
+            return $.workflows.automations.github.labelPlaceholder;
+          })}
         />
       </label>
       <label className="flex flex-col gap-1 text-xs text-muted-foreground">
@@ -7356,49 +7385,59 @@ function GithubWorkflowRunAutomationFields({
 }) {
   const filters = defaultConfig?.filters;
   const fields: readonly {
-    readonly name: string;
+    readonly fieldName: string;
     readonly label: string;
     readonly placeholder: string;
     readonly defaultValues: readonly string[] | undefined;
   }[] = [
     {
-      name: "repositories",
+      fieldName: "repositories",
       label: i18n.t(($) => {
         return $.workflows.automations.github.repositories;
       }),
-      placeholder: "vm0-ai/vm0, owner/another-repo",
+      placeholder: i18n.t(($) => {
+        return $.workflows.automations.github.repositoriesPlaceholder;
+      }),
       defaultValues: filters?.repositories,
     },
     {
-      name: "workflows",
+      fieldName: "workflows",
       label: i18n.t(($) => {
         return $.workflows.automations.github.workflows;
       }),
-      placeholder: "Turbo, .github/workflows/release.yml",
+      placeholder: i18n.t(($) => {
+        return $.workflows.automations.github.workflowsPlaceholder;
+      }),
       defaultValues: filters?.workflows,
     },
     {
-      name: "branches",
+      fieldName: "branches",
       label: i18n.t(($) => {
         return $.workflows.automations.github.branches;
       }),
-      placeholder: "main, release",
+      placeholder: i18n.t(($) => {
+        return $.workflows.automations.github.branchesPlaceholder;
+      }),
       defaultValues: filters?.branches,
     },
     {
-      name: "events",
+      fieldName: "events",
       label: i18n.t(($) => {
         return $.workflows.automations.github.events;
       }),
-      placeholder: "push, pull_request, workflow_dispatch",
+      placeholder: i18n.t(($) => {
+        return $.workflows.automations.github.eventsPlaceholder;
+      }),
       defaultValues: filters?.events,
     },
     {
-      name: "actors",
+      fieldName: "actors",
       label: i18n.t(($) => {
         return $.workflows.automations.github.actors;
       }),
-      placeholder: "octocat, dependabot[bot]",
+      placeholder: i18n.t(($) => {
+        return $.workflows.automations.github.actorsPlaceholder;
+      }),
       defaultValues: filters?.actors,
     },
   ];
@@ -7412,12 +7451,12 @@ function GithubWorkflowRunAutomationFields({
       {fields.map((field) => {
         return (
           <label
-            key={field.name}
+            key={field.fieldName}
             className="flex flex-col gap-1 text-xs text-muted-foreground"
           >
             {field.label}
             <Input
-              name={field.name}
+              name={field.fieldName}
               aria-label={field.label}
               disabled={disabled}
               defaultValue={field.defaultValues?.join(", ") ?? ""}
@@ -7548,7 +7587,9 @@ function GithubWorkflowJobAutomationFields({
         label={i18n.t(($) => {
           return $.workflows.automations.github.workflows;
         })}
-        placeholder="Turbo, release"
+        placeholder={i18n.t(($) => {
+          return $.workflows.automations.github.workflowsShortPlaceholder;
+        })}
         defaultValues={config?.filters.workflows}
         disabled={disabled}
       />
@@ -7557,7 +7598,9 @@ function GithubWorkflowJobAutomationFields({
         label={i18n.t(($) => {
           return $.workflows.automations.github.jobs;
         })}
-        placeholder="test, build"
+        placeholder={i18n.t(($) => {
+          return $.workflows.automations.github.jobsPlaceholder;
+        })}
         defaultValues={config?.filters.jobs}
         disabled={disabled}
       />
@@ -7566,7 +7609,9 @@ function GithubWorkflowJobAutomationFields({
         label={i18n.t(($) => {
           return $.workflows.automations.github.branches;
         })}
-        placeholder="main, release"
+        placeholder={i18n.t(($) => {
+          return $.workflows.automations.github.branchesPlaceholder;
+        })}
         defaultValues={config?.filters.branches}
         disabled={disabled}
       />
@@ -7575,7 +7620,9 @@ function GithubWorkflowJobAutomationFields({
         label={i18n.t(($) => {
           return $.workflows.automations.github.runnerLabels;
         })}
-        placeholder="self-hosted, linux"
+        placeholder={i18n.t(($) => {
+          return $.workflows.automations.github.runnerLabelsPlaceholder;
+        })}
         defaultValues={config?.filters.runnerLabels}
         disabled={disabled}
       />
@@ -7584,7 +7631,9 @@ function GithubWorkflowJobAutomationFields({
         label={i18n.t(($) => {
           return $.workflows.automations.github.runnerGroups;
         })}
-        placeholder="Default, production"
+        placeholder={i18n.t(($) => {
+          return $.workflows.automations.github.runnerGroupsPlaceholder;
+        })}
         defaultValues={config?.filters.runnerGroups}
         disabled={disabled}
       />
@@ -7615,7 +7664,9 @@ function GithubReviewAutomationFields({
         label={i18n.t(($) => {
           return $.workflows.automations.github.baseBranches;
         })}
-        placeholder="main, release"
+        placeholder={i18n.t(($) => {
+          return $.workflows.automations.github.branchesPlaceholder;
+        })}
         defaultValues={config?.filters.baseBranches}
         disabled={disabled}
       />
@@ -7624,7 +7675,9 @@ function GithubReviewAutomationFields({
         label={i18n.t(($) => {
           return $.workflows.automations.github.headBranches;
         })}
-        placeholder="feature/, dependabot/"
+        placeholder={i18n.t(($) => {
+          return $.workflows.automations.github.headBranchesPlaceholder;
+        })}
         defaultValues={config?.filters.headBranches}
         disabled={disabled}
       />
@@ -7633,7 +7686,9 @@ function GithubReviewAutomationFields({
         label={i18n.t(($) => {
           return $.workflows.automations.github.trustedAuthors;
         })}
-        placeholder="octocat, e7h4n"
+        placeholder={i18n.t(($) => {
+          return $.workflows.automations.github.authorsPlaceholder;
+        })}
         defaultValues={config?.filters.trustedAuthors}
         disabled={disabled}
       />
@@ -7665,7 +7720,9 @@ function GithubDeploymentAutomationFields({
         label={i18n.t(($) => {
           return $.workflows.automations.github.environments;
         })}
-        placeholder="Preview, Production"
+        placeholder={i18n.t(($) => {
+          return $.workflows.automations.github.environmentsPlaceholder;
+        })}
         defaultValues={config?.filters.environments}
         disabled={disabled}
       />
@@ -7674,7 +7731,9 @@ function GithubDeploymentAutomationFields({
         label={i18n.t(($) => {
           return $.workflows.automations.github.refs;
         })}
-        placeholder="main, v1.0.0"
+        placeholder={i18n.t(($) => {
+          return $.workflows.automations.github.refsPlaceholder;
+        })}
         defaultValues={config?.filters.refs}
         disabled={disabled}
       />
@@ -7723,7 +7782,9 @@ function GithubDeploymentAutomationFields({
         label={i18n.t(($) => {
           return $.workflows.automations.github.creators;
         })}
-        placeholder="octocat, 12345"
+        placeholder={i18n.t(($) => {
+          return $.workflows.automations.github.creatorsPlaceholder;
+        })}
         defaultValues={config?.filters.creators}
         disabled={disabled}
       />
@@ -7732,7 +7793,9 @@ function GithubDeploymentAutomationFields({
         label={i18n.t(($) => {
           return $.workflows.automations.github.apps;
         })}
-        placeholder="vercel, 12345"
+        placeholder={i18n.t(($) => {
+          return $.workflows.automations.github.appsPlaceholder;
+        })}
         defaultValues={config?.filters.apps}
         disabled={disabled}
       />
@@ -7791,7 +7854,9 @@ function GithubCommentAutomationFields({
         label={i18n.t(($) => {
           return $.workflows.automations.github.trustedAuthors;
         })}
-        placeholder="octocat, e7h4n"
+        placeholder={i18n.t(($) => {
+          return $.workflows.automations.github.authorsPlaceholder;
+        })}
         defaultValues={config?.filters.trustedAuthors}
         disabled={disabled}
       />
@@ -7800,7 +7865,9 @@ function GithubCommentAutomationFields({
         label={i18n.t(($) => {
           return $.workflows.automations.github.commentPrefixes;
         })}
-        placeholder="/zero, /verify, /deploy"
+        placeholder={i18n.t(($) => {
+          return $.workflows.automations.github.commentPrefixesPlaceholder;
+        })}
         defaultValues={config?.filters.commentPrefixes}
         disabled={disabled}
       />
@@ -7877,7 +7944,9 @@ function GithubWebhookAutomationFields({
         label={i18n.t(($) => {
           return $.workflows.automations.github.repositories;
         })}
-        placeholder="vm0-ai/vm0, owner/another-repo"
+        placeholder={i18n.t(($) => {
+          return $.workflows.automations.github.repositoriesPlaceholder;
+        })}
         defaultValues={defaultConfig?.filters.repositories}
         disabled={disabled}
       />
@@ -8512,7 +8581,9 @@ function CreateGoogleCalendarEventAutomationDialog({
               aria-label={copy.calendarId}
               disabled={creating}
               defaultValue="primary"
-              placeholder="primary"
+              placeholder={i18n.t(($) => {
+                return $.workflows.automations.calendar.calendarIdPlaceholder;
+              })}
             />
           </label>
           <DialogFooter>
@@ -9765,7 +9836,9 @@ function UpdateGmailLabelAppliedAutomationForm({
           required
           defaultValue={automation.eventConfig.labelName}
           disabled={saving}
-          placeholder="Support"
+          placeholder={i18n.t(($) => {
+            return $.workflows.automations.gmail.labelPlaceholder;
+          })}
           className={AUTOMATION_FIELD_CLASS}
         />
       </label>

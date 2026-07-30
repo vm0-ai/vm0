@@ -29,16 +29,11 @@ import type {
   InitClientArgs,
   InitClientReturn,
 } from "@vm0/api-contracts/contracts/trpc-contract";
-import type {
-  ConnectorOauthDeviceAuthSessionPollResponse,
-  ConnectorListResponse,
-  ConnectorResponse,
-} from "@vm0/api-contracts/contracts/connector-schemas";
+import type { ConnectorOauthDeviceAuthSessionPollResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogConnectionStatus,
   PublicConnectorCatalogIcon,
-  PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
   connectorCatalogStatus$,
@@ -69,12 +64,23 @@ import { IN_VITEST } from "../../../env.ts";
 import { connectorRedirectingPath } from "../../connectors-page/connector-redirecting.ts";
 import { isConnectorChangedPayloadFor } from "../../connector-change.ts";
 import { i18n } from "../../../i18n/index.ts";
+import {
+  normalizeConnectorListResponse,
+  normalizeEnabledConnectorSlugs,
+  type PlatformConnector,
+  type PlatformConnectorCatalogStatusItem,
+} from "../../connector-domain.ts";
 
-// TODO(#23619): Rename only with the persisted browser storage key.
-const HIDDEN_CONNECTIONS_STORAGE_KEY = "vm0.connections.hiddenTypes";
+const HIDDEN_CONNECTOR_SLUGS_STORAGE_KEY =
+  "vm0.connections.hiddenConnectorSlugs";
+const LEGACY_HIDDEN_CONNECTOR_SLUGS_STORAGE_KEY = "vm0.connections.hiddenTypes";
 
-const { get$: hiddenConnectorSlugsRaw$, set$: setHiddenConnectorSlugs$ } =
-  localStorageSignals(HIDDEN_CONNECTIONS_STORAGE_KEY);
+const { get$: hiddenConnectorSlugsRaw$, set$: setHiddenConnectorSlugsRaw$ } =
+  localStorageSignals(HIDDEN_CONNECTOR_SLUGS_STORAGE_KEY);
+const {
+  get$: legacyHiddenConnectorSlugsRaw$,
+  clear$: clearLegacyHiddenConnectorSlugs$,
+} = localStorageSignals(LEGACY_HIDDEN_CONNECTOR_SLUGS_STORAGE_KEY);
 const { set$: setConnectorAppOauthCallbackMetadata$ } = localStorageSignals(
   CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY,
 );
@@ -164,7 +170,7 @@ function isNoAuthGrantKind(grantKind: ConnectorStatusGrantKind): boolean {
 }
 
 export function getConnectorStatusAuthMethod(
-  connector: PublicConnectorCatalogStatusItem,
+  connector: PlatformConnectorCatalogStatusItem,
   authMethod: ConnectorAuthMethodId,
 ): PublicConnectorCatalogAuthMethodDetail | null {
   return (
@@ -175,7 +181,7 @@ export function getConnectorStatusAuthMethod(
 }
 
 function getConnectorStatusAuthMethodsByGrantKind(
-  connector: PublicConnectorCatalogStatusItem,
+  connector: PlatformConnectorCatalogStatusItem,
   grantKind: ConnectorStatusGrantKind,
 ): PublicConnectorCatalogAuthMethodDetail[] {
   return connector.authMethods.filter((method) => {
@@ -184,14 +190,14 @@ function getConnectorStatusAuthMethodsByGrantKind(
 }
 
 export function getOnlyManualConnectorStatusAuthMethod(
-  connector: PublicConnectorCatalogStatusItem,
+  connector: PlatformConnectorCatalogStatusItem,
 ): PublicConnectorCatalogAuthMethodDetail | null {
   const methods = getConnectorStatusAuthMethodsByGrantKind(connector, "manual");
   return methods.length === 1 ? (methods[0] ?? null) : null;
 }
 
 export function hasConnectorStatusProviderDrivenConnectMethod(
-  connector: PublicConnectorCatalogStatusItem,
+  connector: PlatformConnectorCatalogStatusItem,
 ): boolean {
   return connector.authMethods.some((method) => {
     return (
@@ -204,7 +210,7 @@ export function hasConnectorStatusProviderDrivenConnectMethod(
   });
 }
 export function hasConnectorStatusBrowserAuthGrant(
-  connector: PublicConnectorCatalogStatusItem,
+  connector: PlatformConnectorCatalogStatusItem,
 ): boolean {
   return connector.authMethods.some((method) => {
     return isBrowserAuthGrantKind(method.grantKind);
@@ -212,13 +218,13 @@ export function hasConnectorStatusBrowserAuthGrant(
 }
 
 export function getConnectorStatusConnectLaunchMode(
-  connector: PublicConnectorCatalogStatusItem,
+  connector: PlatformConnectorCatalogStatusItem,
 ): ConnectorConnectLaunchMode {
   return getConnectorStatusDirectConnectMethod(connector)?.kind ?? "modal";
 }
 
 export function getAvailableStatusAuthCodeAuthMethod(
-  connector: PublicConnectorCatalogStatusItem,
+  connector: PlatformConnectorCatalogStatusItem,
   authMethod: string,
 ): ConnectorAuthMethodId | null {
   const parsed = connectorAuthMethodIdSchema.safeParse(authMethod);
@@ -233,7 +239,7 @@ export function getAvailableStatusAuthCodeAuthMethod(
 }
 
 function getOnlyAvailableStatusAuthCodeAuthMethod(
-  connector: PublicConnectorCatalogStatusItem,
+  connector: PlatformConnectorCatalogStatusItem,
 ): ConnectorAuthMethodId | null {
   const authMethod = connector.singleAuthCodeAuthMethodId;
   const [method] = connector.authMethods;
@@ -247,7 +253,7 @@ function getOnlyAvailableStatusAuthCodeAuthMethod(
   return getAvailableStatusAuthCodeAuthMethod(connector, authMethod);
 }
 function getOnlyAvailableStatusBrowserAuthMethod(
-  connector: PublicConnectorCatalogStatusItem,
+  connector: PlatformConnectorCatalogStatusItem,
 ): ConnectorAuthMethodId | null {
   const [method] = connector.authMethods;
   if (connector.authMethods.length !== 1 || !method) {
@@ -260,7 +266,7 @@ function getOnlyAvailableStatusBrowserAuthMethod(
 }
 
 export function getOnlyAvailableStatusBrowserAuthMethodDetail(
-  connector: PublicConnectorCatalogStatusItem,
+  connector: PlatformConnectorCatalogStatusItem,
 ): PublicConnectorCatalogAuthMethodDetail | null {
   const authMethod = getOnlyAvailableStatusBrowserAuthMethod(connector);
   return authMethod
@@ -269,7 +275,7 @@ export function getOnlyAvailableStatusBrowserAuthMethodDetail(
 }
 
 function getAvailableStatusNoAuthMethod(
-  connector: PublicConnectorCatalogStatusItem,
+  connector: PlatformConnectorCatalogStatusItem,
   authMethod: string,
 ): ConnectorAuthMethodId | null {
   const parsed = connectorAuthMethodIdSchema.safeParse(authMethod);
@@ -284,7 +290,7 @@ function getAvailableStatusNoAuthMethod(
 }
 
 export function getOnlyAvailableStatusNoAuthMethod(
-  connector: PublicConnectorCatalogStatusItem,
+  connector: PlatformConnectorCatalogStatusItem,
 ): ConnectorAuthMethodId | null {
   const [method] = connector.authMethods;
   if (connector.authMethods.length !== 1 || !method) {
@@ -294,7 +300,7 @@ export function getOnlyAvailableStatusNoAuthMethod(
 }
 
 export function getConnectorStatusDirectConnectMethod(
-  connector: PublicConnectorCatalogStatusItem,
+  connector: PlatformConnectorCatalogStatusItem,
 ): ConnectorStatusDirectConnectMethod | null {
   const browserAuthMethod =
     getOnlyAvailableStatusBrowserAuthMethodDetail(connector);
@@ -306,7 +312,7 @@ export function getConnectorStatusDirectConnectMethod(
 }
 
 function connectorTokenExpiresAtMs(
-  connector: PublicConnectorCatalogStatusItem,
+  connector: PlatformConnectorCatalogStatusItem,
 ): number | null {
   if (!connector.tokenExpiresAt) {
     return null;
@@ -316,7 +322,7 @@ function connectorTokenExpiresAtMs(
 }
 
 export function connectorCurrentConnectionStatus(
-  connector: PublicConnectorCatalogStatusItem,
+  connector: PlatformConnectorCatalogStatusItem,
   nowMs = now(),
 ): PublicConnectorCatalogConnectionStatus {
   if (connector.connectionStatus === "not-connected") {
@@ -332,7 +338,7 @@ export function connectorCurrentConnectionStatus(
 }
 
 export function connectorExpiryCountdownText(
-  connector: PublicConnectorCatalogStatusItem,
+  connector: PlatformConnectorCatalogStatusItem,
   nowMs = now(),
 ): string | null {
   if (
@@ -374,8 +380,8 @@ export function connectorExpiryCountdownText(
 export function matchesConnectorSearch(
   search: string,
   connector: Pick<
-    PublicConnectorCatalogStatusItem,
-    "connectorRef" | "description" | "label" | "tags"
+    PlatformConnectorCatalogStatusItem,
+    "slug" | "description" | "label" | "tags"
   >,
 ): boolean {
   const needle = search.trim().toLowerCase();
@@ -385,7 +391,7 @@ export function matchesConnectorSearch(
   if (connector.label.toLowerCase().includes(needle)) {
     return true;
   }
-  if (connector.connectorRef.toLowerCase().includes(needle)) {
+  if (connector.slug.toLowerCase().includes(needle)) {
     return true;
   }
   if (connector.description.toLowerCase().includes(needle)) {
@@ -420,13 +426,33 @@ export const allConnectorCatalogItems$ = computed(async (get) => {
 // Hidden connector slugs (removed from list by user; persisted in localStorage)
 // ---------------------------------------------------------------------------
 
+export const migrateHiddenConnectorSlugsStorage$ = command(({ get, set }) => {
+  const legacy = get(legacyHiddenConnectorSlugsRaw$);
+  if (legacy === null) {
+    return;
+  }
+  if (get(hiddenConnectorSlugsRaw$) === null) {
+    set(setHiddenConnectorSlugsRaw$, legacy);
+  }
+  set(clearLegacyHiddenConnectorSlugs$);
+});
+
 const hiddenConnectorSlugs$ = computed((get): Set<ConnectorSlug> => {
-  const raw = get(hiddenConnectorSlugsRaw$);
+  // TODO(#23823): Remove the legacy hidden-connector storage fallback.
+  const raw =
+    get(hiddenConnectorSlugsRaw$) ?? get(legacyHiddenConnectorSlugsRaw$);
   if (!raw) {
     return new Set();
   }
   return new Set(jsonParseOr<ConnectorSlug[]>(raw, []));
 });
+
+const setHiddenConnectorSlugs$ = command(
+  ({ set }, connectorSlugs: readonly ConnectorSlug[]) => {
+    set(setHiddenConnectorSlugsRaw$, JSON.stringify(connectorSlugs));
+    set(clearLegacyHiddenConnectorSlugs$);
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Search filter
@@ -492,7 +518,7 @@ export const filteredConnectorCatalogItems$ = computed(async (get) => {
       return !connector.connected;
     }
     if (effectiveFilter.kind === "agent") {
-      return agentEnabledSlugs?.has(connector.connectorRef) ?? false;
+      return agentEnabledSlugs?.has(connector.slug) ?? false;
     }
     return true;
   });
@@ -836,7 +862,10 @@ const authorizeConnectorForVisibleAgents$ = command(
           await accept(
             client.update({
               params: { id: agent.id },
-              body: { enabledTypes: [connectorSlug], operation: "add" },
+              body: {
+                enabledConnectorSlugs: [connectorSlug],
+                operation: "add",
+              },
               fetchOptions: { signal },
             }),
             [200, 404],
@@ -873,7 +902,7 @@ const finishConnectorConnection$ = command(
 
     const hidden = new Set(get(hiddenConnectorSlugs$));
     hidden.delete(connectorSlug);
-    set(setHiddenConnectorSlugs$, JSON.stringify([...hidden]));
+    set(setHiddenConnectorSlugs$, [...hidden]);
 
     if (options.toastMessage !== null) {
       toast.success(
@@ -2074,12 +2103,12 @@ const resetOAuthAuthCodeWaitSignal$ = resetSignal();
 // ---------------------------------------------------------------------------
 
 function connectorMatchesAuthMethod(
-  connector: ConnectorResponse,
+  connector: PlatformConnector,
   connectorSlug: ConnectorSlug,
   authMethod: ConnectorAuthMethodId,
 ): boolean {
   return (
-    connector.type === connectorSlug && connector.authMethod === authMethod
+    connector.slug === connectorSlug && connector.authMethod === authMethod
   );
 }
 
@@ -2100,7 +2129,7 @@ function createConnectorOAuthAuthCodeChangedCommand(
       client.list({ fetchOptions: { signal: sig } }),
       [200],
     );
-    const polled = (result.body as ConnectorListResponse).connectors;
+    const polled = normalizeConnectorListResponse(result.body).connectors;
     const current = polled.find((c) => {
       return connectorMatchesAuthMethod(c, connectorSlug, authMethod);
     });
@@ -2126,7 +2155,9 @@ function createConnectorOAuthAuthCodeChangedCommand(
       );
       return (
         authorization.status === 200 &&
-        authorization.body.enabledTypes.includes(connectorSlug)
+        normalizeEnabledConnectorSlugs(authorization.body).includes(
+          connectorSlug,
+        )
       );
     }
     return false;
@@ -2151,8 +2182,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
       set(
         setConnectorAppOauthCallbackMetadata$,
         JSON.stringify({
-          // TODO(#23619): Rename with the persisted app OAuth callback metadata.
-          connectorRef: args.connectorSlug,
+          connectorSlug: args.connectorSlug,
           icon: args.connectorIcon,
         }),
       );

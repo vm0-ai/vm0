@@ -291,13 +291,17 @@ function DomainSetupState({
             rel="noreferrer"
             className="font-medium text-foreground underline-offset-4 hover:underline"
           >
-            @BotFather
+            {t(($) => {
+              return $.connectors.providerConnect.telegram.botFatherHandle;
+            })}
           </a>
           {t(($) => {
             return $.connectors.providerConnect.telegram.domainSend;
           })}
           <code className="rounded border border-amber-500/30 bg-background/80 px-1 py-0.5 font-mono text-xs">
-            /setdomain
+            {t(($) => {
+              return $.connectors.providerConnect.telegram.setDomainCommand;
+            })}
           </code>
           {t(($) => {
             return $.connectors.providerConnect.telegram

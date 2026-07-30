@@ -4,10 +4,8 @@ import {
   type ConnectorAuthMethodId,
   type ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
-import type {
-  PublicConnectorCatalogAuthMethodDetail,
-  PublicConnectorCatalogStatusItem,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { PublicConnectorCatalogAuthMethodDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import { Input } from "@vm0/ui/components/ui/input";
 import {
   Dialog,
@@ -69,7 +67,7 @@ import {
 } from "../../signals/chat-page/action-callback.ts";
 
 function runDirectedConnect(params: {
-  item: PublicConnectorCatalogStatusItem;
+  item: PlatformConnectorCatalogStatusItem;
   connectorSlug: ConnectorSlug;
   agentId: string | null;
   signal: AbortSignal;
@@ -78,7 +76,7 @@ function runDirectedConnect(params: {
     method: PublicConnectorCatalogAuthMethodDetail,
     options: {
       readonly connectorLabel?: string;
-      readonly connectorIcon: PublicConnectorCatalogStatusItem["icon"];
+      readonly connectorIcon: PlatformConnectorCatalogStatusItem["icon"];
       readonly agentId?: string;
     },
     signal: AbortSignal,
@@ -297,7 +295,7 @@ function ManualGrantDialog({
 }: {
   connectorSlug: ConnectorSlug;
   agentId: string | null;
-  icon: PublicConnectorCatalogStatusItem["icon"] | undefined;
+  icon: PlatformConnectorCatalogStatusItem["icon"] | undefined;
   connectorLabel: string;
   manualGrantMethod: PublicConnectorCatalogAuthMethodDetail | null;
   open: boolean;
@@ -428,7 +426,7 @@ function DirectedConnectDialogs({
   onSuccess,
 }: {
   readonly connectorSlug: ConnectorSlug;
-  readonly icon: PublicConnectorCatalogStatusItem["icon"] | undefined;
+  readonly icon: PlatformConnectorCatalogStatusItem["icon"] | undefined;
   readonly connectorLabel: string;
   readonly manualGrantMethod: PublicConnectorCatalogAuthMethodDetail | null;
   readonly manualGrantDialogOpen: boolean;
@@ -473,7 +471,7 @@ function useDirectedConnectConnectorSlug(): ConnectorSlug | null {
 }
 
 function useDirectedConnectCatalogState(connectorSlug: ConnectorSlug | null): {
-  readonly item: PublicConnectorCatalogStatusItem | undefined;
+  readonly item: PlatformConnectorCatalogStatusItem | undefined;
   readonly isConnected: boolean;
   readonly isLoading: boolean;
   readonly unavailable: boolean;
@@ -484,7 +482,7 @@ function useDirectedConnectCatalogState(connectorSlug: ConnectorSlug | null): {
   const allData = catalogLoaded ? allLoadable.data : [];
   const item = connectorSlug
     ? allData.find((connector) => {
-        return connector.connectorRef === connectorSlug;
+        return connector.slug === connectorSlug;
       })
     : undefined;
   const optimisticallyConnected =
@@ -546,7 +544,7 @@ function DirectedConnectCardContent({
   canConnect,
   onConnect,
 }: {
-  readonly icon: PublicConnectorCatalogStatusItem["icon"] | undefined;
+  readonly icon: PlatformConnectorCatalogStatusItem["icon"] | undefined;
   readonly connectorLabel: string;
   readonly connectorDescription: string;
   readonly agentName: string;

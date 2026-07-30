@@ -429,6 +429,7 @@ export const webhookEventsContract = c.router({
       401: apiErrorSchema,
       404: apiErrorSchema,
       500: apiErrorSchema,
+      503: apiErrorSchema,
     },
     summary: "Receive agent events from sandbox",
   },

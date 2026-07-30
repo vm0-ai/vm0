@@ -34,7 +34,15 @@ function extractError(
         : "UNKNOWN";
     return { message: body.error.message, code };
   }
-  return { message: `HTTP ${status}`, code: "UNKNOWN" };
+  return {
+    message: i18n.t(
+      ($) => {
+        return $.global.errors.httpStatus;
+      },
+      { status },
+    ),
+    code: "UNKNOWN",
+  };
 }
 
 function requestErrorMessage(error: unknown): string {

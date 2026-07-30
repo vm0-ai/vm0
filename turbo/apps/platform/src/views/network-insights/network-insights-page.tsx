@@ -49,7 +49,7 @@ import {
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { user$ } from "../../signals/auth.ts";
-import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import { connectorCatalogStatusBySlug$ } from "../../signals/external/connectors.ts";
 import { getCardPalette } from "../../lib/card-palette.ts";
 import { currentLocale, i18n } from "../../i18n/index.ts";
@@ -60,7 +60,7 @@ import {
 
 type ConnectorCatalogStatusBySlug = ReadonlyMap<
   string,
-  PublicConnectorCatalogStatusItem
+  PlatformConnectorCatalogStatusItem
 >;
 
 // ---------------------------------------------------------------------------

@@ -210,7 +210,14 @@ export const updateCustomConnector$ = command(
     );
     signal.throwIfAborted();
     set(bumpReload$);
-    toast.success(`Updated "${result.body.displayName}"`);
+    toast.success(
+      i18n.t(
+        ($) => {
+          return $.connectors.custom.toasts.updated;
+        },
+        { connector: result.body.displayName },
+      ),
+    );
     return result.body;
   },
 );

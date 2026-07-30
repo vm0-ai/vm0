@@ -96,6 +96,7 @@ type RunnerJobClaimRequest = z.infer<
 type RunnerNetworkPolicyRefreshRequest = z.input<
   (typeof runnersNetworkPolicyRefreshContract.refresh)["body"]
 >;
+type RunnerNetworkPolicyRefreshStatus = 200 | 400 | 401 | 403 | 404 | 409 | 500;
 type ComposeContent = z.infer<
   (typeof composesMainContract.create)["body"]
 >["content"];
@@ -487,11 +488,30 @@ export function createRunsApi(context: TestContext) {
       return refresh;
     },
 
-    async requestRefreshRunnerNetworkPolicyAs(
+    async requestRefreshRunnerNetworkPolicy<
+      TStatus extends RunnerNetworkPolicyRefreshStatus,
+    >(
+      runId: string,
+      body: RunnerNetworkPolicyRefreshRequest,
+      statuses: readonly TStatus[],
+    ) {
+      return await accept(
+        runApp(context)(runnersNetworkPolicyRefreshContract).refresh({
+          headers: runnerHeaders(true),
+          params: { runId },
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestRefreshRunnerNetworkPolicyAs<
+      TStatus extends RunnerNetworkPolicyRefreshStatus,
+    >(
       authorization: string | undefined,
       runId: string,
       body: RunnerNetworkPolicyRefreshRequest,
-      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+      statuses: readonly TStatus[],
     ) {
       return await accept(
         runApp(context)(runnersNetworkPolicyRefreshContract).refresh({

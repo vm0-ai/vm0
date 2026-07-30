@@ -115,11 +115,12 @@ async fn event_delivery_aborts_after_the_global_drain_deadline()
     assert_eq!(drain.carried_events, 0);
     assert_eq!(drain.carried_bytes, 0);
     assert_eq!(
-        usize::try_from(drain.queued_events)?
+        usize::try_from(failed_batch.event_count)?
+            + usize::try_from(drain.queued_events)?
             + usize::try_from(drain.carried_events)?
             + usize::try_from(active_batch.event_count)?,
-        EVENT_COUNT - 1,
-        "the drain snapshot must account for every event after the exhausted first batch"
+        EVENT_COUNT,
+        "the exhausted batch and drain snapshot must account for every event"
     );
     assert_eq!(drain.queued_events > 0, drain.queued_bytes > 0);
     assert_eq!(drain.carried_events > 0, drain.carried_bytes > 0);
