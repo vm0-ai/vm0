@@ -42,7 +42,7 @@ export const cliAuthTestConnectorContract = c.router({
     path: "/api/cli/auth/test-connector",
     query: testEmailQuerySchema,
     body: z.object({
-      connectorName: z.string(),
+      connectorSlug: connectorSlugSchema,
       authMethod: connectorAuthMethodIdSchema,
       accessToken: z.string(),
       refreshToken: z.string().min(1).optional(),
@@ -51,8 +51,7 @@ export const cliAuthTestConnectorContract = c.router({
     responses: {
       200: z.object({
         ok: z.literal(true),
-        // TODO(#23619): Rename this test API wire field with its CLI caller.
-        connectorType: connectorSlugSchema,
+        connectorSlug: connectorSlugSchema,
         orgId: z.string(),
       }),
       400: stringErrorResponseSchema,
@@ -69,15 +68,13 @@ export const cliAuthTestEnableConnectorContract = c.router({
     query: testEmailQuerySchema,
     body: z.object({
       composeId: z.string().uuid(),
-      // TODO(#23619): Rename these test API wire fields with their CLI caller.
-      connectorTypes: z.array(z.string()).min(1),
+      connectorSlugs: z.array(z.string()).min(1),
     }),
     responses: {
       200: z.object({
         ok: z.literal(true),
         composeId: z.string(),
-        // TODO(#23619): Rename with the corresponding request field.
-        connectorTypes: z.array(z.string()),
+        connectorSlugs: z.array(z.string()),
       }),
       400: stringErrorResponseSchema,
       404: notFoundTextSchema.or(stringErrorResponseSchema),
