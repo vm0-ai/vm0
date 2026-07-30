@@ -888,10 +888,11 @@ describe("runner poll request contract", () => {
 describe("runner network policy refresh contract", () => {
   const bodySchema = runnersNetworkPolicyRefreshContract.refresh.body;
 
-  it("de-duplicates canonical connector slugs", () => {
+  it("normalizes canonical connector slugs and ignores additional fields", () => {
     expect(
       bodySchema.parse({
         connectorSlugs: ["slack", "github", "slack"],
+        additionalField: true,
       }),
     ).toEqual({ connectorSlugs: ["slack", "github"] });
   });

@@ -1724,7 +1724,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn successful_network_policy_refresh_emits_canonical_slug_fields() {
+    async fn successful_network_policy_refresh_ignores_additional_response_fields() {
         let server = MockServer::start();
         let run_id = RunId::nil();
         let refresh_mock = server.mock(|when, then| {
@@ -1742,6 +1742,7 @@ mod tests {
                             "unknownPolicy": "allow",
                         },
                         "nextRefreshAt": null,
+                        "additionalField": true,
                     }],
                 }));
         });
