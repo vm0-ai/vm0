@@ -1,4 +1,4 @@
-import { useGet, useLoadable } from "ccstate-react";
+import { useGet, useLastLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { IconWorld } from "@tabler/icons-react";
 import { useTranslation } from "react-i18next";
@@ -22,7 +22,7 @@ import { detach, Reason } from "../../../../signals/utils.ts";
 
 export function LanguageSettings() {
   const { t } = useTranslation();
-  const availableLocalesLoadable = useLoadable(availableLocalePreferences$);
+  const availableLocalesLoadable = useLastLoadable(availableLocalePreferences$);
   const brandName = useGet(brandName$);
   const locale = useGet(locale$);
   const pageSignal = useGet(pageSignal$);
@@ -118,6 +118,13 @@ export function LanguageSettings() {
                 <SelectItem value="id-ID">
                   {t(($) => {
                     return $.settings.preferences.language.options.indonesian;
+                  })}
+                </SelectItem>
+              )}
+              {availableLocales.includes("de-DE") && (
+                <SelectItem value="de-DE">
+                  {t(($) => {
+                    return $.settings.preferences.language.options.german;
                   })}
                 </SelectItem>
               )}

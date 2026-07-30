@@ -4,6 +4,7 @@ import {
   CLIENT_CAPABILITY_JA_JP_LOCALE,
   CLIENT_CAPABILITY_KO_KR_LOCALE,
   CLIENT_CAPABILITY_ID_ID_LOCALE,
+  CLIENT_CAPABILITY_DE_DE_LOCALE,
   CLIENT_CAPABILITY_PT_BR_LOCALE,
   CLIENT_VERSION_HEADER,
 } from "@vm0/api-contracts/contracts/client-headers";
@@ -14,6 +15,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-user-preferences";
 
 import { isBrazilianPortugueseLocaleRolloutEnabled } from "../../lib/brazilian-portuguese-locale-rollout";
+import { isGermanLocaleRolloutEnabled } from "../../lib/german-locale-rollout";
 import { isIndonesianLocaleRolloutEnabled } from "../../lib/indonesian-locale-rollout";
 import { badRequestMessage } from "../../lib/error";
 import { isJapaneseLocaleRolloutEnabled } from "../../lib/japanese-locale-rollout";
@@ -37,10 +39,12 @@ interface LocaleRollout {
   readonly clientSupportsJapanese: boolean;
   readonly clientSupportsKorean: boolean;
   readonly clientSupportsIndonesian: boolean;
+  readonly clientSupportsGerman: boolean;
   readonly brazilianPortugueseEnabled: boolean;
   readonly japaneseEnabled: boolean;
   readonly koreanEnabled: boolean;
   readonly indonesianEnabled: boolean;
+  readonly germanEnabled: boolean;
 }
 
 const localeRollout$ = computed((get): LocaleRollout => {
@@ -61,12 +65,17 @@ const localeRollout$ = computed((get): LocaleRollout => {
     clientVersion,
     CLIENT_CAPABILITY_ID_ID_LOCALE,
   );
+  const clientSupportsGerman = clientVersionSupportsCapability(
+    clientVersion,
+    CLIENT_CAPABILITY_DE_DE_LOCALE,
+  );
 
   return {
     clientSupportsBrazilianPortuguese,
     clientSupportsJapanese,
     clientSupportsKorean,
     clientSupportsIndonesian,
+    clientSupportsGerman,
     brazilianPortugueseEnabled:
       clientSupportsBrazilianPortuguese &&
       isBrazilianPortugueseLocaleRolloutEnabled(),
@@ -74,6 +83,7 @@ const localeRollout$ = computed((get): LocaleRollout => {
     koreanEnabled: clientSupportsKorean && isKoreanLocaleRolloutEnabled(),
     indonesianEnabled:
       clientSupportsIndonesian && isIndonesianLocaleRolloutEnabled(),
+    germanEnabled: clientSupportsGerman && isGermanLocaleRolloutEnabled(),
   };
 });
 
@@ -91,6 +101,9 @@ function supportedLocalesForRollout(rollout: LocaleRollout): UserLocale[] {
   if (rollout.indonesianEnabled) {
     supportedLocales.push("id-ID");
   }
+  if (rollout.germanEnabled) {
+    supportedLocales.push("de-DE");
+  }
   return supportedLocales;
 }
 
@@ -98,8 +111,9 @@ function projectUserPreferences(
   preferences: UserPreferencesResponse,
   rollout: LocaleRollout,
 ): UserPreferencesResponse {
-  // TODO(#23508): remove projection after legacy browser clients expire.
   const supportedLocales = supportedLocalesForRollout(rollout);
+  // Remove this projection after stale browser clients and rollback candidates
+  // that reject optional locales have expired.
   const locale =
     preferences.locale === undefined ||
     preferences.locale === null ||
@@ -113,7 +127,8 @@ function projectUserPreferences(
     ...((rollout.clientSupportsBrazilianPortuguese ||
       rollout.clientSupportsJapanese ||
       rollout.clientSupportsKorean ||
-      rollout.clientSupportsIndonesian) && {
+      rollout.clientSupportsIndonesian ||
+      rollout.clientSupportsGerman) && {
       supportedLocales,
     }),
   };
@@ -152,6 +167,7 @@ const updateUserPreferencesInner$ = command(
         allowJapanese: rollout.japaneseEnabled,
         allowKorean: rollout.koreanEnabled,
         allowIndonesian: rollout.indonesianEnabled,
+        allowGerman: rollout.germanEnabled,
       },
       signal,
     );

@@ -190,6 +190,7 @@ runs:
           # remain enabled for end-to-end rollout coverage.
           if [[ "$INPUT_ENVIRONMENT" == "preview" ]]; then
             add_env INDONESIAN_LOCALE_ROLLOUT_ENABLED "true"
+            add_env GERMAN_LOCALE_ROLLOUT_ENABLED "true"
           fi
           if [[ "$INPUT_ENVIRONMENT" == "production" ]]; then
             add_secret CLOUDFLARE_BROWSER_RENDERING_API_TOKEN CLOUDFLARE_BROWSER_RENDERING_API_TOKEN
