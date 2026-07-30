@@ -4152,6 +4152,41 @@
           "signIn": "ChatGPT でサインインする"
         }
       },
+      "gateways": {
+        "actions": "ゲートウェイの操作",
+        "add": "プロバイダーを追加",
+        "addTitle": "モデルプロバイダーを追加",
+        "apiBaseUrl": "API ベース URL",
+        "apiBaseUrlPlaceholder": "https://gateway.example.com",
+        "apiKey": "API キー",
+        "deleteConfirm": "このモデルプロバイダー接続を削除しますか？これを使用しているモデルルートは利用できなくなります。",
+        "description": "Anthropic Messages、OpenAI Responses、またはその両方を介して、管理者が管理するゲートウェイに接続します。",
+        "dialogDescription": "Claude Code または Codex で使用する API ベース URL をプロトコルごとに設定します。",
+        "editTitle": "モデルプロバイダーを編集",
+        "empty": "カスタムモデルプロバイダーは設定されていません。",
+        "errors": {
+          "invalidMappings": "モデルマッピングは、値がアップストリームのモデル名である JSON オブジェクトである必要があります。",
+          "missingProtocol": "少なくとも 1 つのプロトコルを有効にしてください。",
+          "missingSecret": "API キーを入力してください。"
+        },
+        "headerName": "認証ヘッダー",
+        "headerValue": "ヘッダー値テンプレート",
+        "keepKey": "現在のキーを保持する場合は空欄にしてください",
+        "modelMappings": "モデルマッピング（JSON）",
+        "name": "名前",
+        "presets": {
+          "custom": "カスタム",
+          "fireworks": "Fireworks AI",
+          "openrouter": "OpenRouter",
+          "vercel": "Vercel AI Gateway"
+        },
+        "protocols": {
+          "anthropicMessages": "Anthropic Messages",
+          "openaiResponses": "OpenAI Responses"
+        },
+        "requestPreview": "リクエスト",
+        "title": "プロバイダー接続"
+      },
       "personal": {
         "actionForProvider": "{{action}} {{provider}}",
         "claudeDescription": "Claudeベースのモデルルートで使用するClaude Codeログインを接続します。",
@@ -4211,16 +4246,21 @@
         "defaultModel": "デフォルトモデル",
         "defaultModelDescription": "タスクが独自のモデルを選択しない場合に使用されます。",
         "dialogDescription": "メンバーがこのモデルにアクセスする方法を決定します。",
+        "gateway": "カスタムゲートウェイ",
+        "gatewayDescription": "管理者が定義したプロバイダー接続を経由してルーティングします。",
+        "gatewayProvider": "プロバイダー接続",
         "getKey": "鍵を入手する",
         "invalidRoute": "無効なルート",
         "missingProvider": "プロバイダーがありません",
         "model": "モデル",
         "noAvailableModels": "利用可能なモデルはありません",
+        "noMappedGateway": "このモデルにマッピングされたプロバイダー接続はありません。",
         "providedBy": "提供元",
         "provider": "プロバイダー",
         "providerApiKey": "{{provider}} API キー",
         "secretStored": "ワークスペースのシークレットに保存されます。",
         "selectDefaultModel": "デフォルトのモデルを選択してください",
+        "selectGateway": "プロバイダー接続を選択してください",
         "selectModel": "モデルを選択してください",
         "selectProvider": "プロバイダーを選択してください",
         "workspaceDescription": "このワークスペース内の全員が利用できます。",
@@ -4368,6 +4408,7 @@
       "delete": "削除",
       "discard": "破棄",
       "disconnect": "切断する",
+      "edit": "編集",
       "loading": "読み込み中",
       "moreOptions": "その他のオプション",
       "reconnect": "再接続",

@@ -10628,6 +10628,125 @@ async function validateBrowserResizeStateRolloutCompatibility(): Promise<void> {
   );
 }
 
+const CUSTOM_MODEL_GATEWAY_PREVIOUS_MIGRATION = 763;
+const CUSTOM_MODEL_GATEWAY_MIGRATION = 764;
+
+async function customModelGatewaySchemaAvailable(
+  client: Client,
+): Promise<boolean> {
+  const result = await client.query<{ available: boolean }>(
+    `SELECT
+       to_regclass('public.model_provider_connections') IS NOT NULL
+       AND to_regclass('public.model_provider_surfaces') IS NOT NULL
+       AND EXISTS (
+         SELECT 1
+         FROM information_schema.columns
+         WHERE table_schema = 'public'
+           AND table_name = 'org_model_policies'
+           AND column_name = 'model_provider_surface_id'
+       ) AS "available"`,
+  );
+  return result.rows[0]?.available ?? false;
+}
+
+async function selectModelPoliciesWithCurrentApiShape(
+  client: Client,
+  gatewaySchemaAvailable: boolean,
+): Promise<{ model: string; modelProviderSurfaceId: string | null }[]> {
+  const surfaceColumn = gatewaySchemaAvailable
+    ? `"model_provider_surface_id"`
+    : `NULL::uuid`;
+  const result = await client.query<{
+    model: string;
+    modelProviderSurfaceId: string | null;
+  }>(
+    `SELECT
+       "model",
+       ${surfaceColumn} AS "modelProviderSurfaceId"
+     FROM "org_model_policies"
+     WHERE "org_id" = $1
+     ORDER BY "model"`,
+    ["custom-model-gateway-rollout-org"],
+  );
+  return result.rows;
+}
+
+async function insertModelPolicyWithPreviousApiShape(
+  client: Client,
+  model: string,
+  isDefault: boolean,
+): Promise<void> {
+  await client.query(
+    `INSERT INTO "org_model_policies" (
+       "org_id", "model", "is_default", "default_provider_type",
+       "credential_scope", "model_provider_id", "created_by_user_id",
+       "updated_by_user_id"
+     )
+     VALUES ($1, $2, $3, 'vm0', 'org', NULL, 'rollout-user', 'rollout-user')`,
+    ["custom-model-gateway-rollout-org", model, isDefault],
+  );
+}
+
+async function validateCustomModelGatewayRolloutCompatibility(): Promise<void> {
+  console.log("=== Validate custom model gateway rollout compatibility ===\n");
+  const testDb = "migration_custom_model_gateway_rollout_test";
+  const testDbUrl = createTestDbUrl(testDb);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, CUSTOM_MODEL_GATEWAY_PREVIOUS_MIGRATION);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await insertModelPolicyWithPreviousApiShape(
+        client,
+        "rollout-model-before",
+        true,
+      );
+      assert.equal(await customModelGatewaySchemaAvailable(client), false);
+      assert.deepEqual(
+        await selectModelPoliciesWithCurrentApiShape(client, false),
+        [
+          {
+            model: "rollout-model-before",
+            modelProviderSurfaceId: null,
+          },
+        ],
+      );
+      await applyMigrationsUpToInTransaction(
+        client,
+        CUSTOM_MODEL_GATEWAY_MIGRATION,
+      );
+      assert.equal(await customModelGatewaySchemaAvailable(client), true);
+      await insertModelPolicyWithPreviousApiShape(
+        client,
+        "rollout-model-after",
+        false,
+      );
+      assert.deepEqual(
+        await selectModelPoliciesWithCurrentApiShape(client, true),
+        [
+          {
+            model: "rollout-model-after",
+            modelProviderSurfaceId: null,
+          },
+          {
+            model: "rollout-model-before",
+            modelProviderSurfaceId: null,
+          },
+        ],
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+  console.log(
+    "   ✅ Current API reads the pre-0764 policy shape and previous API writes remain valid after 0764\n",
+  );
+}
+
 type HostedSiteScopeMigrationWrite = {
   readonly chatThreadId: string | null;
   readonly requestedSlug: string | null;
@@ -11195,6 +11314,7 @@ async function main(): Promise<void> {
     await validateChatEventAssetRefTableRename();
     await validateChatEventPropertyColumnRollout();
     await validateBrowserResizeStateRolloutCompatibility();
+    await validateCustomModelGatewayRolloutCompatibility();
     await validateHostedSiteChatScopeRollout();
     await validateCurrentBrowserApiBeforeBillingMigration();
 

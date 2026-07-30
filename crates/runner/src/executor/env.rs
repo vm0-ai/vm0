@@ -193,6 +193,10 @@ fn validate_codex_runtime_config_field(config: &CodexRuntimeConfig) -> Result<()
     ] {
         validate_run_payload_field(guest_contracts::env::CODEX_RUNTIME_CONFIG_ENV, value)?;
     }
+    for (name, value) in config.http_headers.iter().flatten() {
+        validate_run_payload_field(guest_contracts::env::CODEX_RUNTIME_CONFIG_ENV, name)?;
+        validate_run_payload_field(guest_contracts::env::CODEX_RUNTIME_CONFIG_ENV, value)?;
+    }
     if let Some(model_catalog) = &config.model_catalog
         && json_value_contains_nul_string(model_catalog)
     {
