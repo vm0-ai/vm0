@@ -1,5 +1,6 @@
 import type { RouteEntry } from "./route-entry";
 import { cliAuthTestRoutes } from "./routes/cli-auth-test";
+import { testAgentRunsRoutes } from "./routes/test-agent-runs";
 import { testOAuthProviderAuthorizeRoutes } from "./routes/test-oauth-provider-authorize";
 import { testOAuthProviderDeviceAuthRoutes } from "./routes/test-oauth-provider-device-auth";
 import { testOAuthProviderEchoRoutes } from "./routes/test-oauth-provider-echo";
@@ -24,6 +25,8 @@ import { testZeroAgentStateRoutes } from "./routes/test-zero-agent-state";
  *
  * - `cli-auth-test`: E2E account/token/connector provisioning used by the
  *   deploy workflow (`Generate E2E test tokens`) and `e2e/` suites.
+ * - `test-agent-runs`: direct run creation used by the runner E2E suite after
+ *   the public agent run creation endpoint was retired.
  * - `test-oauth-provider-*`: the synthetic OAuth provider backing the
  *   `test-oauth`/`test-oauth-device` connectors in `packages/connectors`.
  * - `test-slack-mock` / `test-telegram-mock` / `test-teams-mock`: provider
@@ -43,6 +46,7 @@ import { testZeroAgentStateRoutes } from "./routes/test-zero-agent-state";
  */
 export const E2E_ROUTES: readonly RouteEntry[] = [
   ...cliAuthTestRoutes,
+  ...testAgentRunsRoutes,
   ...testOAuthProviderAuthorizeRoutes,
   ...testOAuthProviderDeviceAuthRoutes,
   ...testOAuthProviderEchoRoutes,

@@ -7,6 +7,7 @@ import {
   runsMainContract,
   runSystemLogContract,
 } from "@vm0/api-contracts/contracts/runs";
+import { testAgentRunsContract } from "@vm0/api-contracts/contracts/test-agent-runs";
 import { sessionsByIdContract } from "@vm0/api-contracts/contracts/sessions";
 import {
   logsByIdContract,
@@ -19,16 +20,25 @@ import {
 } from "@vm0/api-contracts/contracts/zero-runs";
 
 import { createApp } from "../../../../app-factory";
+import { createAppWithRoutes } from "../../../../app-factory-core";
 import {
   accept,
   setupApp,
   type TestContext,
 } from "../../../../__tests__/test-helpers";
+import { setupAppWithRoutes } from "../../../../__tests__/test-app";
+import { mockOptionalEnv } from "../../../../lib/env";
+import { testAgentRunsRoutes } from "../../test-agent-runs";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
-type AuthHeaders = { readonly authorization?: string };
-type DirectRunRequest = z.input<(typeof runsMainContract.create)["body"]>;
+const TEST_ENDPOINT_BYPASS_SECRET = "bdd-test-endpoint-bypass";
+
+type AuthHeaders = {
+  readonly authorization?: string;
+  readonly "x-vm0-test-endpoint-bypass"?: string;
+};
+type DirectRunRequest = z.input<(typeof testAgentRunsContract.create)["body"]>;
 type RunsListQuery = z.input<(typeof runsMainContract.list)["query"]>;
 type RunEventsQuery = z.input<(typeof runEventsContract.getEvents)["query"]>;
 type PagedTelemetryQuery = z.input<
@@ -86,6 +96,27 @@ function authenticate(
   return { authorization: "Bearer clerk-session" };
 }
 
+function authenticateTestAgentRun(
+  context: TestContext,
+  actor: ApiTestUser | null,
+): AuthHeaders {
+  mockOptionalEnv(
+    "VERCEL_AUTOMATION_BYPASS_SECRET",
+    TEST_ENDPOINT_BYPASS_SECRET,
+  );
+  return {
+    ...authenticate(context, actor),
+    "x-vm0-test-endpoint-bypass": TEST_ENDPOINT_BYPASS_SECRET,
+  };
+}
+
+function directRunApp(context: TestContext) {
+  return setupAppWithRoutes({
+    context,
+    routes: testAgentRunsRoutes,
+  });
+}
+
 export function createRunReadsApi(context: TestContext) {
   return {
     async requestCreateDirectRun<
@@ -96,8 +127,8 @@ export function createRunReadsApi(context: TestContext) {
       statuses: readonly TStatus[],
     ) {
       return await accept(
-        setupApp({ context })(runsMainContract).create({
-          headers: authenticate(context, actor),
+        directRunApp(context)(testAgentRunsContract).create({
+          headers: authenticateTestAgentRun(context, actor),
           body,
         }),
         statuses,
@@ -399,8 +430,11 @@ export function createRunReadsApi(context: TestContext) {
       body: unknown,
     ): Promise<{ readonly status: number; readonly body: unknown }> {
       const { authorization } = authenticate(context, actor);
-      const app = createApp({ signal: context.signal });
-      const response = await app.request("/api/agent/runs", {
+      const app = createAppWithRoutes({
+        signal: context.signal,
+        routes: testAgentRunsRoutes,
+      });
+      const response = await app.request("/api/test/agent-runs", {
         method: "POST",
         headers: {
           "content-type": "application/json",
