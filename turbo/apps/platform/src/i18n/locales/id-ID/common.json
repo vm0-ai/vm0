@@ -4152,6 +4152,41 @@
           "signIn": "Masuk dengan ChatGPT"
         }
       },
+      "gateways": {
+        "actions": "Tindakan gateway",
+        "add": "Tambahkan penyedia",
+        "addTitle": "Tambahkan penyedia model",
+        "apiBaseUrl": "URL dasar API",
+        "apiBaseUrlPlaceholder": "https://gateway.example.com",
+        "apiKey": "Kunci API",
+        "deleteConfirm": "Hapus koneksi penyedia model ini? Rute model yang menggunakannya tidak akan tersedia.",
+        "description": "Hubungkan gateway yang dikelola admin melalui Anthropic Messages, OpenAI Responses, atau keduanya.",
+        "dialogDescription": "Konfigurasikan setiap protokol dengan URL dasar API yang digunakan oleh Claude Code atau Codex.",
+        "editTitle": "Edit penyedia model",
+        "empty": "Belum ada penyedia model kustom yang dikonfigurasi.",
+        "errors": {
+          "invalidMappings": "Pemetaan model harus berupa objek JSON dengan nilai berupa nama model upstream.",
+          "missingProtocol": "Aktifkan setidaknya satu protokol.",
+          "missingSecret": "Masukkan kunci API."
+        },
+        "headerName": "Header autentikasi",
+        "headerValue": "Templat nilai header",
+        "keepKey": "Biarkan kosong untuk mempertahankan kunci saat ini",
+        "modelMappings": "Pemetaan model (JSON)",
+        "name": "Nama",
+        "presets": {
+          "custom": "Kustom",
+          "fireworks": "Fireworks AI",
+          "openrouter": "OpenRouter",
+          "vercel": "Vercel AI Gateway"
+        },
+        "protocols": {
+          "anthropicMessages": "Anthropic Messages",
+          "openaiResponses": "OpenAI Responses"
+        },
+        "requestPreview": "Permintaan",
+        "title": "Koneksi penyedia"
+      },
       "personal": {
         "actionForProvider": "{{action}} {{provider}}",
         "claudeDescription": "Hubungkan dengan login Claude Code untuk rute model berbasis Claude.",
@@ -4211,16 +4246,21 @@
         "defaultModel": "Model default",
         "defaultModelDescription": "Digunakan saat tugas tidak memilih modelnya sendiri.",
         "dialogDescription": "Tentukan bagaimana anggota mengakses model ini.",
+        "gateway": "Gateway kustom",
+        "gatewayDescription": "Rutekan melalui koneksi penyedia yang ditentukan admin.",
+        "gatewayProvider": "Koneksi penyedia",
         "getKey": "Dapatkan kunci",
         "invalidRoute": "Rute tidak valid",
         "missingProvider": "Provider tidak ada",
         "model": "Model",
         "noAvailableModels": "Tidak ada model yang tersedia",
+        "noMappedGateway": "Tidak ada koneksi penyedia yang memetakan model ini.",
         "providedBy": "Disediakan oleh",
         "provider": "Provider",
         "providerApiKey": "Kunci API {{provider}}",
         "secretStored": "Disimpan di rahasia ruang kerja.",
         "selectDefaultModel": "Pilih model default",
+        "selectGateway": "Pilih koneksi penyedia",
         "selectModel": "Pilih model",
         "selectProvider": "Pilih provider",
         "workspaceDescription": "Tersedia untuk semua orang di ruang kerja ini.",
@@ -4369,6 +4409,7 @@
       "delete": "Hapus",
       "discard": "Buang",
       "disconnect": "Putuskan sambungan",
+      "edit": "Edit",
       "loading": "Memuat",
       "moreOptions": "Opsi lainnya",
       "reconnect": "Hubungkan kembali",
