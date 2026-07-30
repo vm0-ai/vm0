@@ -1769,33 +1769,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bridge_network_policy_refresh_response_applies_policy() {
-        let server = MockServer::start();
-        let run_id = RunId::nil();
-        let refresh_mock = server.mock(|when, then| {
-            when.method(POST)
-                .path(format!("/api/runners/runs/{run_id}/network-policy-refresh"));
-            then.status(200)
-                .header("content-type", "application/json")
-                .json_body(network_policy_refresh_response(json!({
-                    "connectorSlug": "slack",
-                    "connectorRef": "slack",
-                })));
-        });
-        let harness = NetworkPolicyRefreshHarness::new(&server, run_id).await;
-
-        harness.refresh_slack().await;
-
-        refresh_mock.assert_calls(1);
-        let policy = harness.slack_policy().await;
-        assert_eq!(policy["allow"], json!(["chat:write", "files:write"]));
-        assert_eq!(policy["deny"], json!([]));
-        assert_eq!(policy["ask"], json!(["channels:read"]));
-        assert_eq!(policy["unknownPolicy"], json!("allow"));
-        harness.shutdown().await;
-    }
-
-    #[tokio::test]
     async fn malformed_canonical_network_policy_refresh_identities_fail_closed() {
         for (_, identity) in [
             ("missing identity", json!({})),

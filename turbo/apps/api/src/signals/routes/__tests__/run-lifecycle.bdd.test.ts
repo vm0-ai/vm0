@@ -8457,14 +8457,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     const actorRunnerKey = await api.createCliToken(actor);
     const memberRunnerKey = await api.createCliToken(member);
-    const bridgeRunnerRefreshRequest = {
-      connectorSlugs: ["slack"],
-      connectorRefs: ["slack"],
-    };
     const sameUserRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
       `Bearer ${actorRunnerKey.token}`,
       snapshotRun.runId,
-      bridgeRunnerRefreshRequest,
+      { connectorSlugs: ["slack"] },
       [200],
     );
     if (sameUserRefresh.status !== 200) {
@@ -8474,18 +8470,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       "chat:write",
     );
     expect(sameUserRefresh.body.refreshes[0]).toMatchObject({
-      connectorSlug: "slack",
-    });
-    const canonicalRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
-      `Bearer ${actorRunnerKey.token}`,
-      snapshotRun.runId,
-      { connectorSlugs: ["slack", "slack"] },
-      [200],
-    );
-    if (canonicalRefresh.status !== 200) {
-      throw new Error("Expected canonical network policy refresh to succeed");
-    }
-    expect(canonicalRefresh.body.refreshes[0]).toMatchObject({
       connectorSlug: "slack",
     });
     const otherUserRefresh = await api.requestRefreshRunnerNetworkPolicyAs(

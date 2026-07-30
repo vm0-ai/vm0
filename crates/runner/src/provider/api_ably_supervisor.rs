@@ -2111,13 +2111,12 @@ mod tests {
     }
 
     #[test]
-    fn parse_network_policy_refresh_notification_accepts_bridge_message() {
+    fn parse_network_policy_refresh_notification_valid() {
         let msg = make_message(
             Some("network-policy-refresh"),
             serde_json::json!({
                 "runId": "00000000-0000-0000-0000-000000000003",
-                "connectorSlug": "github",
-                "connectorRef": "github"
+                "connectorSlug": "github"
             }),
         );
 
