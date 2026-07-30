@@ -247,8 +247,11 @@ function MediaImage({ src, alt }: { src: string; alt: string }) {
   return (
     <button
       type="button"
-      onClick={() => {
-        openImageLightbox(src);
+      onClick={(event) => {
+        const threadId = event.currentTarget.closest<HTMLElement>(
+          "[data-chat-thread-container-id]",
+        )?.dataset.chatThreadContainerId;
+        openImageLightbox(threadId ? { threadId, url: src } : src);
       }}
       className="relative my-1 inline-flex aspect-[10/9] w-[200px] max-w-full cursor-pointer items-center justify-center overflow-hidden rounded-lg border border-foreground/10 bg-muted/30"
     >

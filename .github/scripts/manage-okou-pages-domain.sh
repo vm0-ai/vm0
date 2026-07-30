@@ -2,7 +2,7 @@
 set -euo pipefail
 
 if (( $# < 5 )); then
-  echo "usage: $0 <ensure|delete> <account-id> <zone-id> <project-name> <domain> [branch]" >&2
+  echo "usage: $0 <begin|finish|ensure|delete> <account-id> <zone-id> <project-name> <domain> [branch]" >&2
   exit 1
 fi
 
@@ -76,7 +76,6 @@ upsert_cname() {
       --arg target "$target" \
       '.type == "CNAME" and .content == $target and .proxied == true and .ttl == 1' \
       <<< "$record" >/dev/null; then
-      echo "Cloudflare DNS record already configured: ${domain} -> ${target}"
       return
     fi
 
@@ -92,46 +91,84 @@ upsert_cname() {
   fi
 }
 
-case "$action" in
-  ensure)
-    : "${branch:?branch is required for ensure}"
+domain_is_active() {
+  local domain_state="$1"
 
-    domain_state="$(pages_domain_state)"
-    if pages_domain_missing <<< "$domain_state"; then
-      cloudflare_request \
-        --request POST \
-        "$pages_domains_url" \
-        --data "$(jq -n --arg name "$domain" '{name: $name}')" >/dev/null
-      domain_state="$(cloudflare_request "${pages_domains_url}/${domain}")"
-    else
-      require_cloudflare_success <<< "$domain_state"
-    fi
+  [[ "$(jq -r '.result.status' <<< "$domain_state")" == "active" ||
+    "$(jq -r '.result.verification_data.status' <<< "$domain_state")" == "active" ]]
+}
 
-    domain_status="$(jq -r '.result.status' <<< "$domain_state")"
+begin_domain_validation() {
+  local domain_state
+
+  domain_state="$(pages_domain_state)"
+  if pages_domain_missing <<< "$domain_state"; then
+    cloudflare_request \
+      --request POST \
+      "$pages_domains_url" \
+      --data "$(jq -n --arg name "$domain" '{name: $name}')" >/dev/null
+    domain_state="$(cloudflare_request "${pages_domains_url}/${domain}")"
+  else
+    require_cloudflare_success <<< "$domain_state"
+  fi
+
+  if domain_is_active "$domain_state"; then
+    upsert_cname "${branch}.${project_name}.pages.dev"
+    printf 'active\n'
+    return
+  fi
+
+  upsert_cname "${project_name}.pages.dev"
+  printf 'pending\n'
+}
+
+finish_domain_validation() {
+  local domain_state
+  local verification_status
+
+  domain_state="$(cloudflare_request "${pages_domains_url}/${domain}")"
+  if ! domain_is_active "$domain_state"; then
+    upsert_cname "${project_name}.pages.dev"
     verification_status="$(jq -r '.result.verification_data.status' <<< "$domain_state")"
 
-    if [[ "$domain_status" != "active" && "$verification_status" != "active" ]]; then
-      upsert_cname "${project_name}.pages.dev"
-
-      # A newly-created Pages custom domain can take longer than a minute to
-      # publish ownership verification even after its CNAME is visible.
-      for _ in {1..90}; do
-        domain_state="$(cloudflare_request "${pages_domains_url}/${domain}")"
-        verification_status="$(jq -r '.result.verification_data.status' <<< "$domain_state")"
-        if [[ "$verification_status" == "active" ]]; then
-          break
-        fi
-        sleep 2
-      done
-
-      if [[ "$verification_status" != "active" ]]; then
-        echo "Cloudflare Pages did not verify ${domain}" >&2
-        exit 1
+    # A newly-created Pages custom domain can take longer than a minute to
+    # publish ownership verification even after its CNAME is visible.
+    for _ in {1..90}; do
+      domain_state="$(cloudflare_request "${pages_domains_url}/${domain}")"
+      verification_status="$(jq -r '.result.verification_data.status' <<< "$domain_state")"
+      if [[ "$verification_status" == "active" ]]; then
+        break
       fi
-    fi
+      sleep 2
+    done
 
-    upsert_cname "${branch}.${project_name}.pages.dev"
-    echo "Cloudflare Pages custom branch domain configured: https://${domain}"
+    if [[ "$verification_status" != "active" ]]; then
+      echo "Cloudflare Pages did not verify ${domain}" >&2
+      exit 1
+    fi
+  fi
+
+  upsert_cname "${branch}.${project_name}.pages.dev"
+  echo "Cloudflare Pages custom branch domain configured: https://${domain}"
+}
+
+case "$action" in
+  begin)
+    : "${branch:?branch is required for begin}"
+    begin_domain_validation
+    ;;
+  finish)
+    : "${branch:?branch is required for finish}"
+    finish_domain_validation
+    ;;
+  ensure)
+    : "${branch:?branch is required for ensure}"
+    validation_status="$(begin_domain_validation)"
+    if [[ "$validation_status" == "active" ]]; then
+      echo "Cloudflare Pages custom branch domain configured: https://${domain}"
+    else
+      finish_domain_validation
+    fi
     ;;
   delete)
     domain_state="$(pages_domain_state)"

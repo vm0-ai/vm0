@@ -132,6 +132,7 @@ describe("zero phone commands", () => {
           filename: "report.pdf",
           contentType: "application/pdf",
           length: 17,
+          supportsUploadHeaders: true,
         });
         return HttpResponse.json({
           uploadId: "00000000-0000-4000-8000-000000000001",
@@ -141,9 +142,15 @@ describe("zero phone commands", () => {
           filename: "report.pdf",
           contentType: "application/pdf",
           size: 17,
+          uploadHeaders: {
+            "x-amz-meta-artifact-id": "00000000-0000-4000-8000-000000000001",
+          },
         });
       }),
       http.put(R2_UPLOAD_URL, async ({ request }) => {
+        expect(request.headers.get("x-amz-meta-artifact-id")).toBe(
+          "00000000-0000-4000-8000-000000000001",
+        );
         const bytes = Buffer.from(await request.arrayBuffer());
         expect(bytes.toString()).toBe("phone pdf content");
         return new HttpResponse(null, { status: 200 });

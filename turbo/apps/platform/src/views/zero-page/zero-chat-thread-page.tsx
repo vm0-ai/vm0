@@ -7596,7 +7596,9 @@ function PagedUserMessage({
   const bodyBlocks = event.blocks;
   const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
-  const openLightbox = openImageLightbox;
+  const openLightbox = (url: string) => {
+    openImageLightbox({ threadId: thread.threadId, url });
+  };
   const copiedId = useGet(thread.copiedEventId$);
   const copied = copiedId === event.id;
   const copyEvent = useSet(thread.copyEvent$);
@@ -7789,7 +7791,7 @@ function PagedAssistantEventItem({
 }) {
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const openLightbox = (url: string) => {
-    openImageLightbox(url);
+    openImageLightbox({ threadId: thread.threadId, url });
   };
   const attachments = resolveAttachments(
     event,

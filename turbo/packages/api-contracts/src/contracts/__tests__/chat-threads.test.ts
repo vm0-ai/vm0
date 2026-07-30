@@ -1,4 +1,3 @@
-import { z } from "zod";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -17,7 +16,6 @@ import {
   chatEventSchema,
   generationTemplateRequestSchema,
   MODEL_FIRST_SELECTION_PROVIDER_ID,
-  persistedAttachmentSchema,
   userMessageDocumentSchema,
 } from "../chat-threads";
 
@@ -30,12 +28,6 @@ const legacyProviderPinnedModelSelection = {
   modelProviderId: "11111111-1111-4111-8111-111111111111",
   selectedModel: "claude-sonnet-4-6",
 };
-
-const previousChatThreadDraftResponseSchema = z.object({
-  draftContent: z.string().nullable(),
-  draftUserMessage: userMessageDocumentSchema.nullable(),
-  draftAttachments: z.array(persistedAttachmentSchema).nullable(),
-});
 
 describe("chat message response contract", () => {
   const automationId = "11111111-1111-4111-8111-111111111111";
@@ -138,29 +130,13 @@ describe("chat message response contract", () => {
 
     expect(
       chatThreadDraftSchema.safeParse({
-        draftContent: null,
         draftStructuredPrompt: userMessage,
         draftAttachments: null,
       }).success,
     ).toBe(false);
   });
 
-  it("keeps thread draft responses readable by the previous App schema", () => {
-    const response = chatThreadDraftSchema.parse({
-      draftContent: null,
-      draftUserMessage: {
-        version: 1,
-        parts: [{ type: "text", text: "Resume the draft" }],
-      },
-      draftAttachments: null,
-    });
-
-    expect(previousChatThreadDraftResponseSchema.parse(response)).toStrictEqual(
-      response,
-    );
-  });
-
-  it("accepts thread draft responses without the legacy content projection", () => {
+  it("accepts canonical thread draft responses", () => {
     const response = {
       draftUserMessage: {
         version: 1 as const,

@@ -1,5 +1,6 @@
 import {
   chatThreadArtifactsContract,
+  chatThreadEventsContract,
   type ChatThreadArtifactFile,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -1326,7 +1327,7 @@ describe("zero attachment chips", () => {
     });
   });
 
-  it("navigates modal images generated in an assistant message body", async () => {
+  it("shows assistant message image navigation before artifacts load", async () => {
     const user = userEvent.setup({ delay: null });
     const firstImageUrl =
       "https://cdn.vm7.io/artifacts/test/body-image-navigation/first.png";
@@ -1336,7 +1337,11 @@ describe("zero attachment chips", () => {
     // in the message body. It must be excluded from message-scoped navigation.
     const unreferencedImageUrl =
       "https://cdn.vm7.io/artifacts/test/body-image-navigation/unreferenced.png";
-    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+    const artifactsRequested = context.mocks.deferred<void>();
+    const artifactsReady = context.mocks.deferred<void>();
+    context.mocks.api(chatThreadArtifactsContract.list, async ({ respond }) => {
+      artifactsRequested.resolve();
+      await artifactsReady.promise;
       return respond(200, {
         runs: [
           {
@@ -1397,8 +1402,12 @@ describe("zero attachment chips", () => {
         "first.png",
       );
     });
+    await artifactsRequested.promise;
     expect(screen.queryByLabelText("Previous image artifact")).toBeNull();
-    expect(screen.getByLabelText("Next image artifact")).toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Next image artifact"),
+    ).resolves.toBeInTheDocument();
+    artifactsReady.resolve();
 
     await user.click(screen.getByLabelText("Next image artifact"));
     await waitFor(() => {
@@ -1418,6 +1427,110 @@ describe("zero attachment chips", () => {
         "first.png",
       );
     });
+  });
+
+  it("scopes assistant image navigation to its split-view thread before artifacts load", async () => {
+    const user = userEvent.setup({ delay: null });
+    const leftThreadId = "b0000000-0000-4000-a000-000000000051";
+    const rightThreadId = "b0000000-0000-4000-a000-000000000052";
+    const firstImageUrl =
+      "https://cdn.vm7.io/artifacts/test/split-image-navigation/first.png";
+    const leftSecondImageUrl =
+      "https://cdn.vm7.io/artifacts/test/split-image-navigation/left-second.png";
+    const rightSecondImageUrl =
+      "https://cdn.vm7.io/artifacts/test/split-image-navigation/right-second.png";
+    const rightArtifactsRequested = context.mocks.deferred<void>();
+    const artifactsReady = context.mocks.deferred<void>();
+    context.mocks.api(
+      chatThreadArtifactsContract.list,
+      async ({ params, respond }) => {
+        if (params.threadId === rightThreadId) {
+          rightArtifactsRequested.resolve();
+        }
+        await artifactsReady.promise;
+        return respond(200, { runs: [] });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId: leftThreadId,
+      threadTitle: "Left image thread",
+    });
+    context.mocks.api(
+      chatThreadEventsContract.list,
+      ({ params, query, respond }) => {
+        if (query.beforeSeqId !== undefined) {
+          return respond(200, { events: [] });
+        }
+        if (query.sinceSeqId !== undefined) {
+          return respond(200, { events: [] });
+        }
+        const secondImageUrl =
+          params.threadId === leftThreadId
+            ? leftSecondImageUrl
+            : params.threadId === rightThreadId
+              ? rightSecondImageUrl
+              : undefined;
+        if (!secondImageUrl) {
+          return respond(200, { events: [] });
+        }
+        return respond(200, {
+          events: [
+            {
+              id: `msg-${params.threadId}`,
+              threadId: params.threadId,
+              eventType: "output.message",
+              content: `Generated images:\n\n${firstImageUrl}\n${secondImageUrl}`,
+              runId: `run-${params.threadId}`,
+              seqId: 1,
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+          ],
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${leftThreadId}?sidebar=${rightThreadId}`,
+    });
+
+    const threadRegions = await screen.findAllByLabelText("Chat thread");
+    expect(threadRegions).toHaveLength(2);
+    const leftThread = threadRegions[0];
+    const rightThread = threadRegions[1];
+    if (!leftThread || !rightThread) {
+      throw new Error("Split chat threads not found");
+    }
+    await expect(
+      within(leftThread).findByAltText("first.png"),
+    ).resolves.toBeInTheDocument();
+    const rightImage = await within(rightThread).findByAltText("first.png");
+    const rightPreviewButton = rightImage.closest("button");
+    if (!rightPreviewButton) {
+      throw new Error("Right thread image preview button not found");
+    }
+    fireEvent.load(rightImage);
+    click(rightPreviewButton);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+    await rightArtifactsRequested.promise;
+    await expect(
+      screen.findByLabelText("Next image artifact"),
+    ).resolves.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Next image artifact"));
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "right-second.png",
+      );
+    });
+    artifactsReady.resolve();
   });
 
   it("navigates markdown images generated in an ordered assistant list", async () => {
@@ -1574,7 +1687,7 @@ describe("zero attachment chips", () => {
     });
   });
 
-  it("navigates human-uploaded images that are not run artifacts", async () => {
+  it("waits for artifacts before showing user message image navigation", async () => {
     const user = userEvent.setup({ delay: null });
     const firstImageUrl =
       "https://cdn.vm7.io/artifacts/test/user-image-navigation/first.png";
@@ -1582,7 +1695,11 @@ describe("zero attachment chips", () => {
       "https://cdn.vm7.io/artifacts/test/user-image-navigation/second.png";
     // The images the user attached are NOT part of the thread's run artifacts;
     // they resolve from the user artifacts bucket. Navigation must still work.
-    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+    const artifactsRequested = context.mocks.deferred<void>();
+    const artifactsReady = context.mocks.deferred<void>();
+    context.mocks.api(chatThreadArtifactsContract.list, async ({ respond }) => {
+      artifactsRequested.resolve();
+      await artifactsReady.promise;
       return respond(200, { runs: [] });
     });
     mockChatLifecycle(context, {
@@ -1619,15 +1736,24 @@ describe("zero attachment chips", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    click(await screen.findByLabelText("Preview first.png"));
+    await expect(
+      screen.findByLabelText("Preview second.png"),
+    ).resolves.toBeInTheDocument();
+    click(screen.getByLabelText("Preview first.png"));
     await waitFor(() => {
       expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
         "alt",
         "first.png",
       );
     });
+    await artifactsRequested.promise;
     expect(screen.queryByLabelText("Previous image artifact")).toBeNull();
-    expect(screen.getByLabelText("Next image artifact")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Next image artifact")).toBeNull();
+
+    artifactsReady.resolve();
+    await expect(
+      screen.findByLabelText("Next image artifact"),
+    ).resolves.toBeInTheDocument();
 
     await user.click(screen.getByLabelText("Next image artifact"));
     await waitFor(() => {

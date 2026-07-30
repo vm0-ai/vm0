@@ -99,12 +99,16 @@ Notes:
           filename,
           contentType,
           length: fileSize,
+          supportsUploadHeaders: true,
         });
 
         const fileContent = readFileSync(options.file);
         const uploadResponse = await fetch(prepared.uploadUrl, {
           method: "PUT",
-          headers: { "Content-Type": prepared.contentType },
+          headers: {
+            "Content-Type": prepared.contentType,
+            ...prepared.uploadHeaders,
+          },
           body: new Uint8Array(fileContent),
         });
 

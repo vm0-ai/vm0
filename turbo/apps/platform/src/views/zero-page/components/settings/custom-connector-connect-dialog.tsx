@@ -274,7 +274,9 @@ export function CustomConnectorConnectDialog({
   const form = useGet(customConnectorConnectForm$);
   const featureSwitches = useGet(featureSwitch$);
   const oauth2Enabled =
-    featureSwitches[FeatureSwitchKey.CustomConnectorOAuth2] ?? false;
+    (featureSwitches[FeatureSwitchKey.CustomConnectorOAuth2] ?? false) ||
+    ((featureSwitches[FeatureSwitchKey.FeishuIntegration] ?? false) &&
+      connector.oauthConfig?.providerAdapter === "feishu");
   const methods: readonly CustomConnectorAuthMethod[] =
     connector.authMode === "oauth" && oauth2Enabled
       ? [{ type: "oauth2" }]

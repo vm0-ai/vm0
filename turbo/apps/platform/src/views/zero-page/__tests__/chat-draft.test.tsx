@@ -100,7 +100,6 @@ function mockThreadDetails(): void {
   });
   context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
     return respond(200, {
-      draftContent: null,
       draftUserMessage: null,
       draftAttachments: null,
     });
@@ -196,7 +195,6 @@ describe("chat drafts", () => {
     mockAgentChatPage(agentId);
     context.mocks.api(zeroAgentDraftContract.get, ({ params, respond }) => {
       return respond(200, {
-        draftContent: null,
         draftUserMessage: {
           version: 1,
           parts: [
@@ -259,7 +257,6 @@ describe("chat drafts", () => {
     mockAgentChatPage(agentId);
     context.mocks.http.get("*/api/zero/agents/:id/draft", () => {
       return HttpResponse.json({
-        draftContent: "stale legacy agent draft",
         draftUserMessage: {
           version: 1,
           parts: [
@@ -332,7 +329,6 @@ describe("chat drafts", () => {
     mockAgentChatPage(agentId);
     context.mocks.api(zeroAgentDraftContract.get, ({ respond }) => {
       return respond(200, {
-        draftContent: null,
         draftUserMessage: null,
         draftAttachments: null,
       });
@@ -466,13 +462,11 @@ describe("chat drafts", () => {
     context.mocks.api(chatThreadDraftContract.get, ({ params, respond }) => {
       if (params.id !== THREAD_ONE_ID) {
         return respond(200, {
-          draftContent: null,
           draftUserMessage: null,
           draftAttachments: null,
         });
       }
       return respond(200, {
-        draftContent: null,
         draftUserMessage: {
           version: 1,
           parts: [
@@ -527,7 +521,6 @@ describe("chat drafts", () => {
     });
     context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
       return respond(200, {
-        draftContent: null,
         draftUserMessage: {
           version: 1,
           parts: [
@@ -591,7 +584,6 @@ describe("chat drafts", () => {
     mockChatLifecycle(context, { threadId });
     context.mocks.http.get("*/api/zero/chat-threads/:id/draft", () => {
       return HttpResponse.json({
-        draftContent: "stale legacy draft",
         draftUserMessage: {
           version: 1,
           parts: [
@@ -741,7 +733,6 @@ describe("chat drafts", () => {
     });
     context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
       return respond(200, {
-        draftContent: null,
         draftUserMessage: {
           version: 1,
           parts: [
@@ -863,26 +854,39 @@ describe("chat drafts", () => {
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
-    context.mocks.http.post("*/api/zero/uploads/prepare", () => {
-      return HttpResponse.json({
-        id: "upload-photo",
-        filename: "photo.png",
-        contentType: "image/png",
-        size: 1024,
-        uploadUrl: "https://mock-upload.example.com/photo.png",
-        url: "https://example.com/photo.png",
-      });
-    });
+    context.mocks.http.post(
+      "*/api/zero/uploads/prepare",
+      async ({ request }) => {
+        await expect(request.json()).resolves.toMatchObject({
+          filename: "photo.png",
+          supportsUploadHeaders: true,
+        });
+        return HttpResponse.json({
+          id: "upload-photo",
+          filename: "photo.png",
+          contentType: "image/png",
+          size: 1024,
+          uploadUrl: "https://mock-upload.example.com/photo.png",
+          uploadHeaders: {
+            "x-amz-meta-artifact-id": "upload-photo",
+          },
+          url: "https://example.com/photo.png",
+        });
+      },
+    );
     context.mocks.http.put(
       "https://mock-upload.example.com/photo.png",
-      ({ deferred }) => {
+      ({ deferred, request }) => {
+        expect(request.headers.get("x-amz-meta-artifact-id")).toBe(
+          "upload-photo",
+        );
         uploadStarted.resolve();
-        const request = deferred<Response>();
+        const pendingResponse = deferred<Response>();
         uploadRequest = {
-          promise: request.promise,
-          resolve: request.resolve,
+          promise: pendingResponse.promise,
+          resolve: pendingResponse.resolve,
         };
-        return request.promise;
+        return pendingResponse.promise;
       },
     );
 
@@ -1072,6 +1076,7 @@ describe("chat drafts", () => {
           contentType: "video/mp4",
           size: 5 * 1024 * 1024 + 1,
           multipart: true,
+          supportsUploadHeaders: true,
         },
       ]);
       expect(firstPartAttempts).toBe(2);

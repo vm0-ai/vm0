@@ -3,7 +3,6 @@ import { createHash, randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import { eq, sql } from "drizzle-orm";
 import { HttpResponse, delay, http, passthrough } from "msw";
-import { connectorSlugCanonicalInsertConnectors } from "@vm0/db/compat/connector-slug-canonical-insert";
 import {
   agentComposes,
   agentComposeVersions,
@@ -16,6 +15,7 @@ import {
   connectorCatalogActiveSnapshot,
   connectorCatalogSyncState,
 } from "@vm0/db/schema/connector-catalog";
+import { connectors } from "@vm0/db/schema/connector";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -712,7 +712,7 @@ async function seedSideEffectFreeGetData(
     sendMode: "cmd-enter",
     captureNetworkBodiesRemaining: 3,
   });
-  await db.insert(connectorSlugCanonicalInsertConnectors).values([
+  await db.insert(connectors).values([
     {
       orgId: fixture.orgId,
       userId: fixture.userId,

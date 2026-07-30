@@ -261,11 +261,12 @@ export default [
     },
   },
   {
-    // Keep the finite SemVer/build-identity policy matrix as a narrow
-    // state-machine exception. Route tests cover the constructible sync
-    // behavior, while arbitrary build versions are not a production API input.
+    // Keep finite persisted/state-machine contract matrices as narrow
+    // exceptions. Route tests cover constructible behavior, while these exact
+    // transition inputs are not available through production APIs.
     files: [
       "src/signals/services/__tests__/connector-catalog-rejection-authority.test.ts",
+      "src/signals/services/__tests__/connector-authorization-provider-state.test.ts",
     ],
     rules: {
       "no-restricted-syntax": ["error", ...restrictedSyntax],

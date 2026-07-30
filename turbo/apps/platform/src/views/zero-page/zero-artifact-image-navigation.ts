@@ -26,6 +26,7 @@ export type ImageArtifactNavigationItem = {
 type ImageArtifactNavigation = {
   readonly next?: ImageArtifactNavigationItem;
   readonly previous?: ImageArtifactNavigationItem;
+  readonly role?: EventImageGroup["role"];
 };
 
 /**
@@ -44,6 +45,7 @@ type EventImageSource = {
 };
 
 type EventImageGroup = {
+  readonly role: "user" | "assistant";
   readonly events: readonly EventImageSource[];
 };
 
@@ -174,10 +176,15 @@ function scopedEventImages(events: readonly EventImageSource[]): EventImage[] {
   return images;
 }
 
-function imageScopes(groups: readonly EventImageGroup[]): EventImage[][] {
+type EventImageScope = {
+  readonly images: readonly EventImage[];
+  readonly role: EventImageGroup["role"];
+};
+
+function imageScopes(groups: readonly EventImageGroup[]): EventImageScope[] {
   return groups.flatMap((group) => {
     const images = scopedEventImages(group.events);
-    return images.length > 0 ? [images] : [];
+    return images.length > 0 ? [{ images, role: group.role }] : [];
   });
 }
 
@@ -196,9 +203,10 @@ export function equalEventImageGroups(
       const nextScope = nextScopes[scopeIndex];
       return (
         nextScope !== undefined &&
-        scope.length === nextScope.length &&
-        scope.every((image, imageIndex) => {
-          const nextImage = nextScope[imageIndex];
+        scope.role === nextScope.role &&
+        scope.images.length === nextScope.images.length &&
+        scope.images.every((image, imageIndex) => {
+          const nextImage = nextScope.images[imageIndex];
           return (
             nextImage !== undefined &&
             image.url === nextImage.url &&
@@ -274,6 +282,7 @@ export function currentEventImageArtifactNavigation(
     previous: currentIndex > 0 ? images[currentIndex - 1] : undefined,
     next:
       currentIndex < images.length - 1 ? images[currentIndex + 1] : undefined,
+    role: group.role,
   };
 }
 

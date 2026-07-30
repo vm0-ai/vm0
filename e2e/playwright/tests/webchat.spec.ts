@@ -263,7 +263,7 @@ test("send a chat message, preserve media layout, cap long drafts, and preserve 
   ).toEqual(markdownBefore);
 
   // The completed run leaves us on a chat-thread composer, whose responsive
-  // minimum height is compact on mobile and three lines on desktop.
+  // minimum height is two lines on mobile and three lines on desktop.
   await expect.poll(() => elementHeight(composer)).toBe(96);
 
   const longDraft = Array.from(
@@ -303,8 +303,8 @@ test("send a chat message, preserve media layout, cap long drafts, and preserve 
   await expect.poll(() => elementHeight(composer)).toBe(134);
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect.poll(() => elementHeight(composer)).toBe(82);
+  await expect.poll(() => elementHeight(composer)).toBe(106);
 
   await page.getByRole("button", { name: /^Remove template / }).click();
-  await expect.poll(() => elementHeight(composer)).toBe(44);
+  await expect.poll(() => elementHeight(composer)).toBe(68);
 });
