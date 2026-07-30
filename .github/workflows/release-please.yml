@@ -1477,9 +1477,19 @@ jobs:
             sleep 10
           done
 
-          aws s3 cp "$artifact_uri/" "$canonical_dist/" \
-            --endpoint-url "$r2_endpoint" \
-            --recursive
+          if [[ -f .github/scripts/fetch-okou-app-artifact.sh ]]; then
+            bash .github/scripts/fetch-okou-app-artifact.sh \
+              "$r2_endpoint" \
+              "$artifact_uri" \
+              "$canonical_dist"
+          else
+            # A workflow_run can resolve a release target whose checkout
+            # predates the archive fetcher. Its artifact uses the legacy
+            # per-file layout.
+            aws s3 cp "$artifact_uri/" "$canonical_dist/" \
+              --endpoint-url "$r2_endpoint" \
+              --recursive
+          fi
           bash .github/scripts/verify-okou-app-artifact.sh \
             "$canonical_dist" \
             "$ARTIFACT_SHA"

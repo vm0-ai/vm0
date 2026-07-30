@@ -100,7 +100,21 @@ cat >"${fake_bin}/aws" <<'SH'
 set -euo pipefail
 printf 'aws %s\n' "$*" >>"$MOCK_BOUNDARY_LOG"
 [ "${1:-}" = "s3" ] && [ "${2:-}" = "cp" ] || exit 2
-cp -a "${MOCK_APP_ARTIFACT_DIR}/." "$4/"
+case "$3" in
+  */dist.tar.gz)
+    tar -czf "$4" \
+      -C "$MOCK_APP_ARTIFACT_DIR" \
+      --exclude=./manifest.json \
+      --exclude=./ready.json \
+      .
+    ;;
+  */manifest.json | */ready.json)
+    cp "${MOCK_APP_ARTIFACT_DIR}/$(basename "$3")" "$4"
+    ;;
+  *)
+    cp -a "${MOCK_APP_ARTIFACT_DIR}/." "$4/"
+    ;;
+esac
 SH
 
 cat >"${fake_bin}/ssh" <<'SH'
@@ -158,7 +172,10 @@ grep -qx "api_deployment_url=https://api-0.vercel.app" "$output_file" || fail "m
 grep -qx "runner_version=1.2.3" "$output_file" || fail "missing Runner version output"
 runner_matrix=$(sed -n 's/^runner_matrix=//p' "$output_file")
 jq -e 'length == 2 and .[0].id == "arm64" and .[1].id == "x86_64"' >/dev/null <<<"$runner_matrix" || fail "unexpected Runner matrix"
-grep -q "aws s3 cp s3://test-bucket/okou-app/${target_commit}/" "${tmp_dir}/boundaries.log" || fail "full App artifact was not downloaded"
+grep -q "aws s3 cp s3://test-bucket/okou-app/${target_commit}/dist.tar.gz" "${tmp_dir}/boundaries.log" || fail "full App artifact was not downloaded"
+if grep -q -- '--recursive' "${tmp_dir}/boundaries.log"; then
+  fail "archived App artifacts must not be downloaded per file"
+fi
 
 : >"${tmp_dir}/boundaries.log"
 assert_failure "found 0" run_resolver "${tmp_dir}/zero.output" MOCK_VERCEL_MATCH_COUNT=0
@@ -288,6 +305,14 @@ ruby -e '
   raise "Runtime API Schema must use the resolved release target" unless schema_step.fetch("env").fetch("RELEASE_SHA") == expected_target
   dashboard_step = release.fetch("update-rollback-dashboard").fetch("steps").find { |step| step["name"] == "Update rollback dashboard issue" }
   raise "rollback dashboard must use the resolved release target" unless dashboard_step.fetch("env").fetch("RELEASE_TARGET") == expected_target
+
+  artifact_fetch_helper = "fetch-okou-app-artifact.sh"
+  release_app_step = release.fetch("promote-app-production").fetch("steps").find { |step| step["id"] == "pages-production" }
+  release_app_run = release_app_step.fetch("run")
+  raise "release App deployment must use the shared artifact fetcher" unless release_app_run.include?(artifact_fetch_helper)
+  raise "release App deployment must support targets predating the fetcher" unless release_app_run.include?("if [[ -f .github/scripts/#{artifact_fetch_helper} ]]")
+  rollback_app_step = rollback.fetch("rollback-app").fetch("steps").find { |step| step["id"] == "app" }
+  raise "rollback App deployment must use the shared artifact fetcher" unless rollback_app_step.fetch("run").include?(artifact_fetch_helper)
 ' "${repo_root}/.github/workflows/rollback-production.yml" "${repo_root}/.github/workflows/release-please.yml"
 
 echo "resolve-production-rollback-target tests passed"
