@@ -12,8 +12,6 @@ ALTER TABLE "browser_session_instances" DROP CONSTRAINT "browser_session_instanc
 --> statement-breakpoint
 ALTER TABLE "browser_session_instances" DROP CONSTRAINT "browser_session_instances_usage_event_id_usage_event_id_fk";
 --> statement-breakpoint
-ALTER TABLE "browser_sessions" DROP CONSTRAINT "browser_sessions_browser_profile_id_browser_profiles_id_fk";
---> statement-breakpoint
 ALTER TABLE "browser_sessions" DROP CONSTRAINT "browser_sessions_browser_thread_profile_id_browser_thread_profiles_id_fk";
 --> statement-breakpoint
 DROP INDEX "idx_browser_session_instances_session";--> statement-breakpoint
