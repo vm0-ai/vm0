@@ -107,6 +107,7 @@ ruleTester.run("no-unsafe-sql-interpolation", noUnsafeSqlInterpolation, {
         sql\`\${and(eq(users.id, 1), optionalCondition)}\`;
         sql\`\${or(eq(users.id, 1), ...optionalConditions)}\`;
         sql\`\${drizzle.and(drizzle.eq(users.id, 1), undefined)}\`;
+        sql\`\${and(or(eq(users.id, 1), optionalCondition), optionalCondition)}\`;
         sql\`\${and(...fixedConditions)}\`;
         sql\`\${or(...fixedUnion)}\`;
         sql\`\${and(...fixedHead)}\`;
@@ -186,7 +187,7 @@ ruleTester.run("no-unsafe-sql-interpolation", noUnsafeSqlInterpolation, {
     },
     {
       code: `${drizzlePreamble}
-        import { and, sql, type SQL } from "drizzle-orm";
+        import { and, or, sql, type SQL } from "drizzle-orm";
         declare const optionalCondition: SQL | undefined;
         declare const optionalConditions: readonly (SQL | undefined)[];
         declare const optionalTuple:
@@ -203,11 +204,13 @@ ruleTester.run("no-unsafe-sql-interpolation", noUnsafeSqlInterpolation, {
         sql\`\${and(...optionalTuple)}\`;
         sql\`\${and(...maybeEmptyTuple)}\`;
         sql\`\${and(...restOnlyTuple)}\`;
+        sql\`\${and(or(optionalCondition), optionalCondition)}\`;
         sql\`\${and(sql\`true\`, unsafeCondition)}\`;
         sql\`\${and(sql\`true\`, ...unsafeConditions)}\`;
         sql\`\${localAnd(sql\`true\`)}\`;
       `,
       errors: [
+        { messageId: "undefinedInterpolation" },
         { messageId: "undefinedInterpolation" },
         { messageId: "undefinedInterpolation" },
         { messageId: "undefinedInterpolation" },
