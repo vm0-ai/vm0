@@ -1,11 +1,38 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
+
+const SOFTWARE_KEYBOARD_HEIGHT_PX = 336;
+
+// A software keyboard shrinks the visual viewport while the layout viewport
+// keeps its height.
+function occludeVisualViewport(): void {
+  const original = Object.getOwnPropertyDescriptor(window, "visualViewport");
+  Object.defineProperty(window, "visualViewport", {
+    configurable: true,
+    value: Object.assign(new EventTarget(), {
+      height: window.innerHeight - SOFTWARE_KEYBOARD_HEIGHT_PX,
+      offsetLeft: 0,
+      offsetTop: 0,
+      pageLeft: 0,
+      pageTop: 0,
+      scale: 1,
+      width: window.innerWidth,
+    }),
+  });
+  onTestFinished(() => {
+    if (original) {
+      Object.defineProperty(window, "visualViewport", original);
+      return;
+    }
+    Reflect.deleteProperty(window, "visualViewport");
+  });
+}
 
 async function openComposer(sendMode: "enter" | "cmd-enter") {
   context.mocks.data.userPreferences({ sendMode });
@@ -125,6 +152,31 @@ describe("zero send key", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Send from Magic Keyboard")).toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+  });
+
+  it("keeps plain Enter as a newline while the software keyboard is open", async () => {
+    const user = userEvent.setup({ delay: null });
+    // WebKit reports a fine pointer on iPhones, including standalone PWAs.
+    context.mocks.browser.matchMedia((query) => {
+      return query === "(pointer: coarse)" || query === "(any-pointer: fine)";
+    });
+    occludeVisualViewport();
+    const softwareKeyboardTextarea = await openComposer("enter");
+
+    await fill(softwareKeyboardTextarea, "Software keyboard draft");
+    await user.keyboard("{Enter}");
+
+    expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
+    expect(softwareKeyboardTextarea.textContent ?? "").toContain(
+      "Software keyboard draft",
+    );
+
+    await user.keyboard("{Control>}{Enter}{/Control}");
+
+    await waitFor(() => {
+      expect(screen.getByText("Software keyboard draft")).toBeInTheDocument();
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
     });
   });

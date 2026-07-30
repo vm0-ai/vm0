@@ -22,6 +22,7 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { i18n } from "../../i18n/index.ts";
 import { equalArrays } from "../../lib/equality.ts";
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
+import { softwareKeyboardOccludesViewport } from "../../lib/visual-viewport-keyboard.ts";
 import {
   IconAdjustmentsHorizontal,
   IconAlertTriangle,
@@ -8028,8 +8029,14 @@ export function useZeroChatComposer(
 
   const handleKeyDown = (e: KeyboardEventLike) => {
     const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
+    // A fine pointer stands in for a hardware keyboard on tablets, but WebKit
+    // also reports one on iPhones, where every keystroke comes from the
+    // on-screen keyboard. An occluded visual viewport overrides that claim so
+    // plain Enter stays a newline there.
     const isTouchOnlyDevice =
-      isTouchDevice && !window.matchMedia("(any-pointer: fine)").matches;
+      isTouchDevice &&
+      (!window.matchMedia("(any-pointer: fine)").matches ||
+        softwareKeyboardOccludesViewport());
     const send = () => {
       handleSend();
     };
