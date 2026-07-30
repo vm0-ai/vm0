@@ -139,7 +139,7 @@ function modelStatModelExpression() {
       return sql`WHEN ${eq(modelColumn, alias)} THEN ${model}`;
     }),
     sql` `,
-  )} ELSE ${sql`${modelColumn}`} END`.mapWith(pgTextDecoder);
+  )} ELSE ${modelColumn} END`.mapWith(pgTextDecoder);
 }
 
 function modelStatWindowSum(

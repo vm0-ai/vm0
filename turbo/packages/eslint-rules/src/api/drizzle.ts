@@ -4,6 +4,8 @@ import {
   type TSESTree,
 } from "@typescript-eslint/utils";
 import {
+  ElementFlags,
+  IndexKind,
   isAsExpression,
   isCallExpression,
   isIdentifier,
@@ -25,6 +27,7 @@ import {
   type Symbol as TypeScriptSymbol,
   type Type,
   type TypeChecker,
+  type TupleTypeReference,
 } from "typescript";
 
 function drizzleDeclarationSourcePath(node: Declaration): string {
@@ -270,6 +273,150 @@ export function isDrizzleWrapperType(
       return isDrizzleWrapperType(checker, member);
     })
   );
+}
+
+function collectConstrainedTypeMembers(
+  checker: TypeChecker,
+  type: Type,
+  visited: Set<Type>,
+): Type[] | null {
+  if ((type.flags & TypeFlags.TypeParameter) !== 0) {
+    if (visited.has(type)) {
+      return null;
+    }
+    visited.add(type);
+    const constraint = checker.getBaseConstraintOfType(type);
+    const members =
+      constraint === undefined
+        ? null
+        : collectConstrainedTypeMembers(checker, constraint, visited);
+    visited.delete(type);
+    return members;
+  }
+  if (!type.isUnion()) {
+    return [type];
+  }
+  const members: Type[] = [];
+  for (const member of type.types) {
+    const constrainedMembers = collectConstrainedTypeMembers(
+      checker,
+      member,
+      visited,
+    );
+    if (constrainedMembers === null) {
+      return null;
+    }
+    members.push(...constrainedMembers);
+  }
+  return members;
+}
+
+export function constrainedTypeMembers(
+  checker: TypeChecker,
+  type: Type,
+): Type[] | null {
+  return collectConstrainedTypeMembers(checker, type, new Set<Type>());
+}
+
+function isOptionalDrizzleWrapperType(
+  checker: TypeChecker,
+  type: Type,
+): boolean {
+  const members = constrainedTypeMembers(checker, type);
+  return (
+    members !== null &&
+    members.every((member) => {
+      return (
+        (member.flags & (TypeFlags.Undefined | TypeFlags.Void)) !== 0 ||
+        isDrizzleWrapperType(checker, member)
+      );
+    })
+  );
+}
+
+function isTupleTypeReference(
+  checker: TypeChecker,
+  type: Type,
+): type is TupleTypeReference {
+  return checker.isTupleType(type);
+}
+
+function definitelyPresentSpreadCondition(
+  checker: TypeChecker,
+  type: Type,
+): boolean | null {
+  const members = constrainedTypeMembers(checker, type);
+  if (members === null) {
+    return null;
+  }
+  let everyMemberIsPresent = true;
+  for (const member of members) {
+    const elementType = checker.getIndexTypeOfType(member, IndexKind.Number);
+    if (
+      elementType === undefined ||
+      !isOptionalDrizzleWrapperType(checker, elementType)
+    ) {
+      return null;
+    }
+    everyMemberIsPresent &&=
+      isTupleTypeReference(checker, member) &&
+      checker.getTypeArguments(member).some((element, index) => {
+        return (
+          ((member.target.elementFlags[index] ?? 0) & ElementFlags.Required) !==
+            0 && isDrizzleWrapperType(checker, element)
+        );
+      });
+  }
+  return everyMemberIsPresent;
+}
+
+export function isDefinitelyPresentDrizzleBooleanHelper(
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+  expression: TSESTree.Expression,
+): boolean {
+  if (expression.type !== AST_NODE_TYPES.CallExpression) {
+    return false;
+  }
+  const tsExpression = services.esTreeNodeToTSNodeMap.get(expression);
+  if (!isCallExpression(tsExpression)) {
+    return false;
+  }
+  const signature = checker.getResolvedSignature(tsExpression);
+  if (
+    signature === undefined ||
+    (!isNamedDrizzleSignature(signature, "and") &&
+      !isNamedDrizzleSignature(signature, "or"))
+  ) {
+    return false;
+  }
+  let hasPresentCondition = false;
+  for (const argument of expression.arguments) {
+    if (argument.type === AST_NODE_TYPES.SpreadElement) {
+      const tsArgument = services.esTreeNodeToTSNodeMap.get(argument.argument);
+      const spreadPresence = definitelyPresentSpreadCondition(
+        checker,
+        checker.getTypeAtLocation(tsArgument),
+      );
+      if (spreadPresence === null) {
+        return false;
+      }
+      hasPresentCondition ||= spreadPresence;
+      continue;
+    }
+    const tsArgument = services.esTreeNodeToTSNodeMap.get(argument);
+    const type = checker.getTypeAtLocation(tsArgument);
+    if (!isOptionalDrizzleWrapperType(checker, type)) {
+      return false;
+    }
+    if (
+      isDrizzleWrapperType(checker, type) ||
+      isDefinitelyPresentDrizzleBooleanHelper(checker, services, argument)
+    ) {
+      hasPresentCondition = true;
+    }
+  }
+  return hasPresentCondition;
 }
 
 function propertyType(
