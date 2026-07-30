@@ -5321,6 +5321,13 @@
       "when": 1785406871736,
       "tag": "0759_drop_feishu_org_thread_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 760,
+      "version": "7",
+      "when": 1785408754076,
+      "tag": "0760_rename_chat_event_input_params",
+      "breakpoints": true
     }
   ]
 }
