@@ -202,6 +202,7 @@ describe("OPS-01: feature switches and report-error routes", () => {
         headers: headersFor(owner),
         body: {
           switches: {
+            [FeatureSwitchKey.ChatErrorRecovery]: true,
             [FeatureSwitchKey.ChatThreadUnifiedSearch]: true,
             [FeatureSwitchKey.ArtifactKeyV2]: true,
             [FeatureSwitchKey.Dummy]: false,
@@ -211,6 +212,9 @@ describe("OPS-01: feature switches and report-error routes", () => {
       [200],
     );
     expect(
+      ownerUpdate.body.switches[FeatureSwitchKey.ChatErrorRecovery],
+    ).toBeTruthy();
+    expect(
       ownerUpdate.body.switches[FeatureSwitchKey.ChatThreadUnifiedSearch],
     ).toBeTruthy();
     expect(ownerUpdate.body.switches[FeatureSwitchKey.Dummy]).toBeFalsy();
@@ -219,6 +223,9 @@ describe("OPS-01: feature switches and report-error routes", () => {
       featureSwitchesClient().get({ headers: headersFor(peer) }),
       [200],
     );
+    expect(
+      peerRead.body.switches[FeatureSwitchKey.ChatErrorRecovery],
+    ).toBeTruthy();
     expect(
       peerRead.body.switches[FeatureSwitchKey.ChatThreadUnifiedSearch],
     ).toBeTruthy();
@@ -230,6 +237,9 @@ describe("OPS-01: feature switches and report-error routes", () => {
       [200],
     );
     expect(
+      outsiderRead.body.switches[FeatureSwitchKey.ChatErrorRecovery],
+    ).toBeUndefined();
+    expect(
       outsiderRead.body.switches[FeatureSwitchKey.ChatThreadUnifiedSearch],
     ).toBeUndefined();
 
@@ -238,12 +248,16 @@ describe("OPS-01: feature switches and report-error routes", () => {
         headers: headersFor(peer),
         body: {
           switches: {
+            [FeatureSwitchKey.ChatErrorRecovery]: false,
             [FeatureSwitchKey.ChatThreadUnifiedSearch]: false,
           },
         },
       }),
       [200],
     );
+    expect(
+      peerUpdate.body.switches[FeatureSwitchKey.ChatErrorRecovery],
+    ).toBeFalsy();
     expect(
       peerUpdate.body.switches[FeatureSwitchKey.ChatThreadUnifiedSearch],
     ).toBeFalsy();
@@ -253,6 +267,11 @@ describe("OPS-01: feature switches and report-error routes", () => {
       featureSwitchesClient().get({ headers: headersFor(owner) }),
       [200],
     );
+    expect(
+      ownerReadAfterPeerUpdate.body.switches[
+        FeatureSwitchKey.ChatErrorRecovery
+      ],
+    ).toBeFalsy();
     expect(
       ownerReadAfterPeerUpdate.body.switches[
         FeatureSwitchKey.ChatThreadUnifiedSearch
@@ -275,6 +294,9 @@ describe("OPS-01: feature switches and report-error routes", () => {
       featureSwitchesClient().get({ headers: headersFor(peer) }),
       [200],
     );
+    expect(
+      peerReadAfterDelete.body.switches[FeatureSwitchKey.ChatErrorRecovery],
+    ).toBeUndefined();
     expect(
       peerReadAfterDelete.body.switches[
         FeatureSwitchKey.ChatThreadUnifiedSearch

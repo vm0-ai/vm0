@@ -1314,6 +1314,18 @@
       "providerDeletedSuffix": "para continuar.",
       "providerIncompatibleAction": "Iniciar uma nova sessão",
       "providerIncompatiblePrefix": "Esta sessão foi iniciada com um provedor de modelo diferente e não pode continuar com o atual.",
+      "recovery": {
+        "capacityDescription": "Este modelo está temporariamente sem capacidade. Tente novamente em alguns minutos ou troque de modelo agora.",
+        "capacityTitle": "O modelo {{framework}} está ocupado",
+        "claudeCode": "Claude Code",
+        "codex": "Codex",
+        "resetAndTryAgain": "Redefinir e tentar novamente",
+        "resetsAt": "Redefine {{time}}",
+        "selectModel": "Trocar modelo",
+        "tryAgain": "Tentar novamente",
+        "usageDescription": "Você pode continuar quando o limite de uso for redefinido ou trocar de modelo agora.",
+        "usageTitle": "Limite do {{framework}} atingido"
+      },
       "runCancelled": "Pausado no meio do raciocínio — retome quando quiser."
     },
     "feedback": {

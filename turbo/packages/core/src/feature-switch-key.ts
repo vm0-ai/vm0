@@ -68,6 +68,7 @@ export enum FeatureSwitchKey {
   ZapierConnector = "zapierConnector",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
   ChatThreadUnifiedSearch = "chatThreadUnifiedSearch",
+  ChatErrorRecovery = "chatErrorRecovery",
   ComposerSkillSubstringSearch = "composerSkillSubstringSearch",
   SidebarSubscriptionUsage = "sidebarSubscriptionUsage",
   SlackDmSessionRouting = "slackDmSessionRouting",

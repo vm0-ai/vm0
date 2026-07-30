@@ -1287,6 +1287,18 @@
       "providerDeletedSuffix": "to continue.",
       "providerIncompatibleAction": "Start a new session",
       "providerIncompatiblePrefix": "This session was started with a different model provider and can't be continued with the current one.",
+      "recovery": {
+        "capacityDescription": "This model is temporarily at capacity. Try again in a few minutes, or switch models now.",
+        "capacityTitle": "{{framework}} model is busy",
+        "claudeCode": "Claude Code",
+        "codex": "Codex",
+        "resetAndTryAgain": "Reset and try again",
+        "resetsAt": "Resets {{time}}",
+        "selectModel": "Switch model",
+        "tryAgain": "Try again",
+        "usageDescription": "You can continue when your usage limit resets, or switch models now.",
+        "usageTitle": "{{framework}} limit reached"
+      },
       "runCancelled": "Paused mid-thought — pick it back up whenever."
     },
     "feedback": {
