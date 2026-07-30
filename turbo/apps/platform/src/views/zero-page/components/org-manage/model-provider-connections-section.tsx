@@ -53,26 +53,23 @@ const ZERO_BORDER = {
   border: "0.7px solid hsl(var(--gray-400))",
 } as const;
 
-function templateLabel(template: ModelProviderConnectionTemplate): string {
-  switch (template) {
-    case "vercel": {
-      return "Vercel AI Gateway";
-    }
-    case "openrouter": {
-      return "OpenRouter";
-    }
-    case "fireworks": {
-      return "Fireworks AI";
-    }
-    case "custom": {
-      return "Custom";
-    }
-  }
-}
-
 function AddConnectionMenu() {
   const { t } = useTranslation();
   const openCreate = useSet(openCreateModelProviderConnection$);
+  const templateLabels: Record<ModelProviderConnectionTemplate, string> = {
+    custom: t(($) => {
+      return $.settings.models.gateways.presets.custom;
+    }),
+    fireworks: t(($) => {
+      return $.settings.models.gateways.presets.fireworks;
+    }),
+    openrouter: t(($) => {
+      return $.settings.models.gateways.presets.openrouter;
+    }),
+    vercel: t(($) => {
+      return $.settings.models.gateways.presets.vercel;
+    }),
+  };
   const templates: ModelProviderConnectionTemplate[] = [
     "custom",
     "vercel",
@@ -103,7 +100,7 @@ function AddConnectionMenu() {
                 openCreate(template);
               }}
             >
-              {templateLabel(template)}
+              {templateLabels[template]}
             </DropdownMenuItem>
           );
         })}
@@ -133,8 +130,13 @@ function ConnectionCard({
           {connection.surfaces
             .map((surface) => {
               return surface.protocol === "anthropic-messages"
-                ? "Anthropic Messages"
-                : "OpenAI Responses";
+                ? t(($) => {
+                    return $.settings.models.gateways.protocols
+                      .anthropicMessages;
+                  })
+                : t(($) => {
+                    return $.settings.models.gateways.protocols.openaiResponses;
+                  });
             })
             .join(" · ")}
         </p>
@@ -268,8 +270,12 @@ function SurfaceEditor({
     protocol === "anthropic-messages" ? draft.messages : draft.responses;
   const label =
     protocol === "anthropic-messages"
-      ? "Anthropic Messages"
-      : "OpenAI Responses";
+      ? t(($) => {
+          return $.settings.models.gateways.protocols.anthropicMessages;
+        })
+      : t(($) => {
+          return $.settings.models.gateways.protocols.openaiResponses;
+        });
   return (
     <div className="rounded-xl bg-muted/20 p-4" style={ZERO_BORDER}>
       <label className="flex items-center gap-2">
@@ -289,7 +295,9 @@ function SurfaceEditor({
             })}
             <Input
               value={surface.apiBaseUrl}
-              placeholder="https://gateway.example.com"
+              placeholder={t(($) => {
+                return $.settings.models.gateways.apiBaseUrlPlaceholder;
+              })}
               onChange={(event) => {
                 update({
                   protocol,

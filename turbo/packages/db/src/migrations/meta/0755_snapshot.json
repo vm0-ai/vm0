@@ -1,5 +1,5 @@
 {
-  "id": "94cfa649-65e2-438c-b799-b3a7d0909e60",
+  "id": "5536bb70-f496-4e46-9651-4ea7e852d82c",
   "prevId": "3100206c-0ffd-455f-aef5-c6d4f9ab7573",
   "version": "7",
   "dialect": "postgresql",
@@ -3341,11 +3341,71 @@
           "primaryKey": false,
           "notNull": true
         },
+        "billing_run_id": {
+          "name": "billing_run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "status": {
           "name": "status",
           "type": "varchar(20)",
           "primaryKey": false,
           "notNull": true
+        },
+        "browser_cost_microusd": {
+          "name": "browser_cost_microusd",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "proxy_cost_microusd": {
+          "name": "proxy_cost_microusd",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "proxy_used_mb": {
+          "name": "proxy_used_mb",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "pricing_unit_price": {
+          "name": "pricing_unit_price",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "pricing_unit_size": {
+          "name": "pricing_unit_size",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "gross_credits": {
+          "name": "gross_credits",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "credits_charged": {
+          "name": "credits_charged",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "usage_event_id": {
+          "name": "usage_event_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         },
         "timeout_at": {
           "name": "timeout_at",
@@ -3385,6 +3445,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "settled_at": {
+          "name": "settled_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",
@@ -3418,9 +3484,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "idx_browser_session_instances_run_status": {
           "name": "idx_browser_session_instances_run_status",
@@ -3439,9 +3505,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "idx_browser_session_instances_reconcile": {
           "name": "idx_browser_session_instances_reconcile",
@@ -3460,9 +3526,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "uq_browser_session_instances_thread_owned": {
           "name": "uq_browser_session_instances_thread_owned",
@@ -3475,25 +3541,38 @@
             }
           ],
           "isUnique": true,
-          "where": "\"browser_session_instances\".\"status\" IN ('active', 'stopping')",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"browser_session_instances\".\"status\" IN ('active', 'stopping')",
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "browser_session_instances_browser_session_id_browser_sessions_id_fk": {
           "name": "browser_session_instances_browser_session_id_browser_sessions_id_fk",
           "tableFrom": "browser_session_instances",
-          "tableTo": "browser_sessions",
           "columnsFrom": [
             "browser_session_id"
           ],
+          "tableTo": "browser_sessions",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
+        },
+        "browser_session_instances_usage_event_id_usage_event_id_fk": {
+          "name": "browser_session_instances_usage_event_id_usage_event_id_fk",
+          "tableFrom": "browser_session_instances",
+          "columnsFrom": [
+            "usage_event_id"
+          ],
+          "tableTo": "usage_event",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "set null"
         }
       },
       "compositePrimaryKeys": {},
@@ -3632,6 +3711,27 @@
           "primaryKey": false,
           "notNull": true
         },
+        "max_credits": {
+          "name": "max_credits",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "gross_credits": {
+          "name": "gross_credits",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "credits_charged": {
+          "name": "credits_charged",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
         "suspended_at": {
           "name": "suspended_at",
           "type": "timestamp",
@@ -3677,9 +3777,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "idx_browser_sessions_owner_created": {
           "name": "idx_browser_sessions_owner_created",
@@ -3704,9 +3804,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "idx_browser_sessions_reconcile": {
           "name": "idx_browser_sessions_reconcile",
@@ -3725,9 +3825,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "uq_browser_sessions_thread_owned": {
           "name": "uq_browser_sessions_thread_owned",
@@ -3740,51 +3840,51 @@
             }
           ],
           "isUnique": true,
-          "where": "\"browser_sessions\".\"status\" IN ('creating', 'active', 'resuming', 'stopping')",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"browser_sessions\".\"status\" IN ('creating', 'active', 'resuming', 'stopping')",
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "browser_sessions_run_id_agent_runs_id_fk": {
           "name": "browser_sessions_run_id_agent_runs_id_fk",
           "tableFrom": "browser_sessions",
-          "tableTo": "agent_runs",
           "columnsFrom": [
             "run_id"
           ],
+          "tableTo": "agent_runs",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         },
         "browser_sessions_browser_profile_id_browser_profiles_id_fk": {
           "name": "browser_sessions_browser_profile_id_browser_profiles_id_fk",
           "tableFrom": "browser_sessions",
-          "tableTo": "browser_profiles",
           "columnsFrom": [
             "browser_profile_id"
           ],
+          "tableTo": "browser_profiles",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "browser_sessions_browser_thread_profile_id_browser_thread_profiles_id_fk": {
           "name": "browser_sessions_browser_thread_profile_id_browser_thread_profiles_id_fk",
           "tableFrom": "browser_sessions",
-          "tableTo": "browser_thread_profiles",
           "columnsFrom": [
             "browser_thread_profile_id"
           ],
+          "tableTo": "browser_thread_profiles",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},

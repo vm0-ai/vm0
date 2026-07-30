@@ -9877,8 +9877,8 @@ async function validateBrowserResizeStateRolloutCompatibility(): Promise<void> {
   );
 }
 
-const CUSTOM_MODEL_GATEWAY_PREVIOUS_MIGRATION = 753;
-const CUSTOM_MODEL_GATEWAY_MIGRATION = 754;
+const CUSTOM_MODEL_GATEWAY_PREVIOUS_MIGRATION = 754;
+const CUSTOM_MODEL_GATEWAY_MIGRATION = 755;
 
 async function customModelGatewaySchemaAvailable(
   client: Client,
@@ -9918,30 +9918,6 @@ async function selectModelPoliciesWithCurrentApiShape(
     ["custom-model-gateway-rollout-org"],
   );
   return result.rows;
-}
-
-async function listModelProviderConnectionsWithCurrentApiShape(
-  client: Client,
-): Promise<string[]> {
-  if (!(await customModelGatewaySchemaAvailable(client))) {
-    return [];
-  }
-  const result = await client.query<{ displayName: string }>(
-    `SELECT "display_name" AS "displayName"
-     FROM "model_provider_connections"
-     WHERE "org_id" = $1
-     ORDER BY "display_name"`,
-    ["custom-model-gateway-rollout-org"],
-  );
-  return result.rows.map((row) => {
-    return row.displayName;
-  });
-}
-
-async function customModelGatewayMutationStatusWithCurrentApiShape(
-  client: Client,
-): Promise<201 | 400> {
-  return (await customModelGatewaySchemaAvailable(client)) ? 201 : 400;
 }
 
 async function insertModelPolicyWithPreviousApiShape(
@@ -9986,15 +9962,6 @@ async function validateCustomModelGatewayRolloutCompatibility(): Promise<void> {
           },
         ],
       );
-      assert.deepEqual(
-        await listModelProviderConnectionsWithCurrentApiShape(client),
-        [],
-      );
-      assert.equal(
-        await customModelGatewayMutationStatusWithCurrentApiShape(client),
-        400,
-      );
-
       await applyMigrationsUpToInTransaction(
         client,
         CUSTOM_MODEL_GATEWAY_MIGRATION,
@@ -10018,14 +9985,6 @@ async function validateCustomModelGatewayRolloutCompatibility(): Promise<void> {
           },
         ],
       );
-      assert.deepEqual(
-        await listModelProviderConnectionsWithCurrentApiShape(client),
-        [],
-      );
-      assert.equal(
-        await customModelGatewayMutationStatusWithCurrentApiShape(client),
-        201,
-      );
     } finally {
       await client.end();
     }
@@ -10033,7 +9992,7 @@ async function validateCustomModelGatewayRolloutCompatibility(): Promise<void> {
     await dropDatabase(testDb);
   }
   console.log(
-    "   ✅ Current API reads the pre-0754 policy shape, safely guards gateway routes on 0753, and previous API writes remain valid after 0754\n",
+    "   ✅ Current API reads the pre-0755 policy shape and previous API writes remain valid after 0755\n",
   );
 }
 

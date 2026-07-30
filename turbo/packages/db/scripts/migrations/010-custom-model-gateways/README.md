@@ -20,7 +20,7 @@ removed only when no legacy provider or custom connection still references it.
 ## Prerequisites
 
 - `pnpm install` completed in the `turbo` directory
-- Database migration `0754_new_veda` applied
+- Database migration `0755_red_harry_osborn` applied
 - The API/runtime changes that resolve `model_provider_surface_id` deployed
 - `DATABASE_URL` points to the target PostgreSQL database
 

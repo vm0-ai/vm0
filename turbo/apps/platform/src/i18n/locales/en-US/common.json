@@ -4137,6 +4137,7 @@
         "add": "Add provider",
         "addTitle": "Add model provider",
         "apiBaseUrl": "API base URL",
+        "apiBaseUrlPlaceholder": "https://gateway.example.com",
         "apiKey": "API key",
         "deleteConfirm": "Delete this model provider connection? Model routes using it will become unavailable.",
         "description": "Connect an admin-managed gateway through Anthropic Messages, OpenAI Responses, or both.",
@@ -4153,6 +4154,16 @@
         "keepKey": "Leave blank to keep the current key",
         "modelMappings": "Model mappings (JSON)",
         "name": "Name",
+        "presets": {
+          "custom": "Custom",
+          "fireworks": "Fireworks AI",
+          "openrouter": "OpenRouter",
+          "vercel": "Vercel AI Gateway"
+        },
+        "protocols": {
+          "anthropicMessages": "Anthropic Messages",
+          "openaiResponses": "OpenAI Responses"
+        },
         "requestPreview": "Requests",
         "title": "Provider connections"
       },

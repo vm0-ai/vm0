@@ -4204,6 +4204,7 @@
         "add": "Adicionar provedor",
         "addTitle": "Adicionar provedor de modelo",
         "apiBaseUrl": "URL base da API",
+        "apiBaseUrlPlaceholder": "https://gateway.example.com",
         "apiKey": "Chave de API",
         "deleteConfirm": "Excluir esta conexão de provedor de modelo? As rotas de modelo que a utilizam ficarão indisponíveis.",
         "description": "Conecte um gateway gerenciado pelo administrador via Anthropic Messages, OpenAI Responses ou ambos.",
@@ -4220,6 +4221,16 @@
         "keepKey": "Deixe em branco para manter a chave atual",
         "modelMappings": "Mapeamentos de modelo (JSON)",
         "name": "Nome",
+        "presets": {
+          "custom": "Personalizado",
+          "fireworks": "Fireworks AI",
+          "openrouter": "OpenRouter",
+          "vercel": "Vercel AI Gateway"
+        },
+        "protocols": {
+          "anthropicMessages": "Anthropic Messages",
+          "openaiResponses": "OpenAI Responses"
+        },
         "requestPreview": "Requisições",
         "title": "Conexões de provedor"
       },
