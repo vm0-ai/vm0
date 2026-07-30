@@ -1,5 +1,4 @@
 import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
-import { connectorSlugCanonicalInsertOauthStates } from "@vm0/db/compat/connector-slug-canonical-insert";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { telegramMessages } from "@vm0/db/schema/telegram-message";
 import { command } from "ccstate";
@@ -121,11 +120,11 @@ async function seedConnectorStates(
     offset += FIXTURE_INSERT_BATCH_SIZE
   ) {
     await db
-      .insert(connectorSlugCanonicalInsertOauthStates)
+      .insert(connectorOauthStates)
       .values(expiredStates.slice(offset, offset + FIXTURE_INSERT_BATCH_SIZE));
     signal.throwIfAborted();
   }
-  await db.insert(connectorSlugCanonicalInsertOauthStates).values([
+  await db.insert(connectorOauthStates).values([
     {
       state: connectorState(body.marker, "equal"),
       connectorSlug: "github",

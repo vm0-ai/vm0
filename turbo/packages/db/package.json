@@ -12,10 +12,6 @@
       "import": "./src/schema/*.ts",
       "types": "./src/schema/*.ts"
     },
-    "./compat/*": {
-      "import": "./src/compat/*.ts",
-      "types": "./src/compat/*.ts"
-    },
     "./jsonb-contracts/*": {
       "import": "./src/jsonb-contracts/*.ts",
       "types": "./src/jsonb-contracts/*.ts"

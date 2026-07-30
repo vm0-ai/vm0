@@ -26,7 +26,6 @@ import {
   getAllFeatureStates,
   type FeatureSwitchContext,
 } from "@vm0/core/feature-switch";
-import { connectorSlugCanonicalInsertConnectors as connectorSlugInsertConnectors } from "@vm0/db/compat/connector-slug-canonical-insert";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
@@ -817,7 +816,7 @@ async function upsertLocalConnectorRow(
   },
 ): Promise<StoredConnectorRow> {
   const [row] = await db
-    .insert(connectorSlugInsertConnectors)
+    .insert(connectors)
     .values({
       orgId: args.orgId,
       userId: args.userId,
@@ -833,12 +832,8 @@ async function upsertLocalConnectorRow(
       reconnectReason: null,
     })
     .onConflictDoUpdate({
-      target: [
-        connectorSlugInsertConnectors.orgId,
-        connectorSlugInsertConnectors.userId,
-        connectorSlugInsertConnectors.connectorSlug,
-      ],
-      targetWhere: isNotNull(connectorSlugInsertConnectors.connectorSlug),
+      target: [connectors.orgId, connectors.userId, connectors.connectorSlug],
+      targetWhere: isNotNull(connectors.connectorSlug),
       set: {
         authMethod: args.authMethod,
         storageVersion: args.storageVersion,
@@ -853,18 +848,18 @@ async function upsertLocalConnectorRow(
       },
     })
     .returning({
-      id: connectorSlugInsertConnectors.id,
-      authMethod: connectorSlugInsertConnectors.authMethod,
-      externalId: connectorSlugInsertConnectors.externalId,
-      externalUsername: connectorSlugInsertConnectors.externalUsername,
-      externalEmail: connectorSlugInsertConnectors.externalEmail,
-      oauthScopes: connectorSlugInsertConnectors.oauthScopes,
-      needsReconnect: connectorSlugInsertConnectors.needsReconnect,
-      reconnectReason: connectorSlugInsertConnectors.reconnectReason,
-      storageVersion: connectorSlugInsertConnectors.storageVersion,
-      tokenExpiresAt: connectorSlugInsertConnectors.tokenExpiresAt,
-      createdAt: connectorSlugInsertConnectors.createdAt,
-      updatedAt: connectorSlugInsertConnectors.updatedAt,
+      id: connectors.id,
+      authMethod: connectors.authMethod,
+      externalId: connectors.externalId,
+      externalUsername: connectors.externalUsername,
+      externalEmail: connectors.externalEmail,
+      oauthScopes: connectors.oauthScopes,
+      needsReconnect: connectors.needsReconnect,
+      reconnectReason: connectors.reconnectReason,
+      storageVersion: connectors.storageVersion,
+      tokenExpiresAt: connectors.tokenExpiresAt,
+      createdAt: connectors.createdAt,
+      updatedAt: connectors.updatedAt,
     });
 
   if (!row) {
@@ -1654,7 +1649,7 @@ async function upsertConnectorTokenConnectionRow(
   },
 ): Promise<StoredConnectorRow> {
   const [connectorRow] = await db
-    .insert(connectorSlugInsertConnectors)
+    .insert(connectors)
     .values({
       userId: args.userId,
       connectorSlug: args.connectorSlug,
@@ -1670,12 +1665,8 @@ async function upsertConnectorTokenConnectionRow(
       orgId: args.orgId,
     })
     .onConflictDoUpdate({
-      target: [
-        connectorSlugInsertConnectors.orgId,
-        connectorSlugInsertConnectors.userId,
-        connectorSlugInsertConnectors.connectorSlug,
-      ],
-      targetWhere: isNotNull(connectorSlugInsertConnectors.connectorSlug),
+      target: [connectors.orgId, connectors.userId, connectors.connectorSlug],
+      targetWhere: isNotNull(connectors.connectorSlug),
       set: {
         authMethod: args.authMethod,
         storageVersion: args.storageVersion,
@@ -1690,18 +1681,18 @@ async function upsertConnectorTokenConnectionRow(
       },
     })
     .returning({
-      id: connectorSlugInsertConnectors.id,
-      authMethod: connectorSlugInsertConnectors.authMethod,
-      externalId: connectorSlugInsertConnectors.externalId,
-      externalUsername: connectorSlugInsertConnectors.externalUsername,
-      externalEmail: connectorSlugInsertConnectors.externalEmail,
-      oauthScopes: connectorSlugInsertConnectors.oauthScopes,
-      needsReconnect: connectorSlugInsertConnectors.needsReconnect,
-      reconnectReason: connectorSlugInsertConnectors.reconnectReason,
-      storageVersion: connectorSlugInsertConnectors.storageVersion,
-      tokenExpiresAt: connectorSlugInsertConnectors.tokenExpiresAt,
-      createdAt: connectorSlugInsertConnectors.createdAt,
-      updatedAt: connectorSlugInsertConnectors.updatedAt,
+      id: connectors.id,
+      authMethod: connectors.authMethod,
+      externalId: connectors.externalId,
+      externalUsername: connectors.externalUsername,
+      externalEmail: connectors.externalEmail,
+      oauthScopes: connectors.oauthScopes,
+      needsReconnect: connectors.needsReconnect,
+      reconnectReason: connectors.reconnectReason,
+      storageVersion: connectors.storageVersion,
+      tokenExpiresAt: connectors.tokenExpiresAt,
+      createdAt: connectors.createdAt,
+      updatedAt: connectors.updatedAt,
     });
   args.signal.throwIfAborted();
 
