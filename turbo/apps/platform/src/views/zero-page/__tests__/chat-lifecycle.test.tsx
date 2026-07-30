@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { eventDrivenChatThread } from "../../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
@@ -18,9 +19,105 @@ import {
   mockPushBrowserSupport,
   expectTextBefore,
   linkByText,
+  chatScrollContainer,
   chatComposerTextarea,
 } from "./chat-lifecycle-test-helpers.ts";
 import { normalizeMockChatEvents } from "./chat-event-test-helpers.ts";
+
+interface TouchPoint {
+  readonly x: number;
+  readonly y: number;
+}
+
+function dispatchTouch(
+  target: Element,
+  type: "touchstart" | "touchmove",
+  point: TouchPoint,
+): Event {
+  const event = new Event(type, {
+    bubbles: true,
+    cancelable: type === "touchmove",
+  });
+  Object.defineProperty(event, "touches", {
+    configurable: true,
+    value: [{ clientX: point.x, clientY: point.y }],
+  });
+  target.dispatchEvent(event);
+  return event;
+}
+
+function openSoftwareKeyboard(): void {
+  document.documentElement.dataset.keyboardOpen = "true";
+  onTestFinished(() => {
+    delete document.documentElement.dataset.keyboardOpen;
+  });
+}
+
+function makeVerticallyScrollable(
+  element: HTMLElement,
+  {
+    clientHeight,
+    scrollHeight,
+    scrollTop,
+  }: {
+    readonly clientHeight: number;
+    readonly scrollHeight: number;
+    readonly scrollTop: number;
+  },
+): void {
+  element.style.overflowY = "auto";
+  Object.defineProperties(element, {
+    clientHeight: { configurable: true, value: clientHeight },
+    scrollHeight: { configurable: true, value: scrollHeight },
+    scrollTop: { configurable: true, value: scrollTop, writable: true },
+  });
+}
+
+async function setupKeyboardGestureChat({
+  featureEnabled,
+  standalone,
+  threadId,
+}: {
+  readonly featureEnabled: boolean;
+  readonly standalone: boolean;
+  readonly threadId: string;
+}): Promise<{
+  readonly composerEditor: HTMLElement;
+  readonly composerScrollSurface: HTMLElement;
+  readonly history: HTMLElement;
+}> {
+  context.mocks.browser.standaloneDisplayMode(standalone);
+  mockChatLifecycle(context, {
+    threadId,
+    chatEvents: [
+      {
+        id: `message-${threadId}`,
+        role: "assistant",
+        runId: `run-${threadId}`,
+        content: "Existing thread",
+        createdAt: "2026-07-30T00:00:00Z",
+      },
+    ],
+  });
+  detachedSetupPage({
+    context,
+    path: `/chats/${threadId}`,
+    featureSwitches: {
+      [FeatureSwitchKey.PwaChatKeyboardGestures]: featureEnabled,
+    },
+  });
+
+  return await waitFor(() => {
+    const composerEditor = chatComposerTextarea();
+    const history = chatScrollContainer();
+    const composer = composerEditor.closest("[data-chat-composer]");
+    const composerScrollSurface = composer?.children.item(1);
+    if (!(composerScrollSurface instanceof HTMLElement)) {
+      throw new Error("Chat composer scroll surface not found");
+    }
+    return { composerEditor, composerScrollSurface, history };
+  });
+}
 
 describe("chat lifecycle", () => {
   it("links Slack-origin user messages back to the original message", async () => {
@@ -163,6 +260,101 @@ describe("chat lifecycle", () => {
         workingComposerCard?.closest("[data-chat-composer]"),
       ).not.toBeNull();
     });
+  });
+
+  it("contains keyboard gestures on the rendered standalone-PWA chat page", async () => {
+    const { composerEditor, composerScrollSurface, history } =
+      await setupKeyboardGestureChat({
+        featureEnabled: true,
+        standalone: true,
+        threadId: "b0000000-0000-4000-a000-000000000991",
+      });
+
+    expect(history).toHaveClass("overscroll-contain");
+    expect(composerScrollSurface).toHaveClass("overscroll-contain");
+    openSoftwareKeyboard();
+
+    composerEditor.focus();
+    dispatchTouch(composerEditor, "touchstart", { x: 100, y: 500 });
+    const upwardMove = dispatchTouch(composerEditor, "touchmove", {
+      x: 100,
+      y: 460,
+    });
+    expect(upwardMove.defaultPrevented).toBeTruthy();
+    expect(composerEditor).toHaveFocus();
+
+    dispatchTouch(composerEditor, "touchstart", { x: 100, y: 500 });
+    const composerDismissMove = dispatchTouch(composerEditor, "touchmove", {
+      x: 100,
+      y: 540,
+    });
+    expect(composerDismissMove.defaultPrevented).toBeTruthy();
+    expect(composerEditor).not.toHaveFocus();
+
+    composerEditor.focus();
+    dispatchTouch(history, "touchstart", { x: 100, y: 200 });
+    const historyMove = dispatchTouch(history, "touchmove", {
+      x: 102,
+      y: 240,
+    });
+    expect(historyMove.defaultPrevented).toBeFalsy();
+    expect(composerEditor).not.toHaveFocus();
+
+    makeVerticallyScrollable(composerEditor, {
+      clientHeight: 80,
+      scrollHeight: 300,
+      scrollTop: 100,
+    });
+    composerEditor.focus();
+    dispatchTouch(composerEditor, "touchstart", { x: 100, y: 500 });
+    const draftScrollMove = dispatchTouch(composerEditor, "touchmove", {
+      x: 100,
+      y: 540,
+    });
+    expect(draftScrollMove.defaultPrevented).toBeFalsy();
+    expect(composerEditor).toHaveFocus();
+  });
+
+  it("leaves mobile-browser chat gestures unchanged outside standalone mode", async () => {
+    const { composerEditor, composerScrollSurface, history } =
+      await setupKeyboardGestureChat({
+        featureEnabled: true,
+        standalone: false,
+        threadId: "b0000000-0000-4000-a000-000000000992",
+      });
+
+    expect(history).not.toHaveClass("overscroll-contain");
+    expect(composerScrollSurface).not.toHaveClass("overscroll-contain");
+    openSoftwareKeyboard();
+    composerEditor.focus();
+    dispatchTouch(composerEditor, "touchstart", { x: 100, y: 500 });
+    const move = dispatchTouch(composerEditor, "touchmove", {
+      x: 100,
+      y: 460,
+    });
+    expect(move.defaultPrevented).toBeFalsy();
+    expect(composerEditor).toHaveFocus();
+  });
+
+  it("leaves standalone-PWA chat gestures unchanged while the switch is disabled", async () => {
+    const { composerEditor, composerScrollSurface, history } =
+      await setupKeyboardGestureChat({
+        featureEnabled: false,
+        standalone: true,
+        threadId: "b0000000-0000-4000-a000-000000000993",
+      });
+
+    expect(history).not.toHaveClass("overscroll-contain");
+    expect(composerScrollSurface).not.toHaveClass("overscroll-contain");
+    openSoftwareKeyboard();
+    composerEditor.focus();
+    dispatchTouch(composerEditor, "touchstart", { x: 100, y: 500 });
+    const move = dispatchTouch(composerEditor, "touchmove", {
+      x: 100,
+      y: 460,
+    });
+    expect(move.defaultPrevented).toBeFalsy();
+    expect(composerEditor).toHaveFocus();
   });
 
   it("subscribes the browser for push notifications after a visible chat send", async () => {

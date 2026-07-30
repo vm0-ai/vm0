@@ -230,6 +230,9 @@ describe("user-overridable switches", () => {
       FeatureSwitchKey.WorkflowConnectorReadiness,
     );
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.PwaChatKeyboardGestures,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.ZeroMailReplyFollowUp,
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
@@ -261,6 +264,7 @@ describe("user-overridable switches", () => {
       filterUserOverridableFeatureSwitchOverrides({
         [FeatureSwitchKey.ComposerUploadPopover]: true,
         [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
+        [FeatureSwitchKey.PwaChatKeyboardGestures]: true,
         [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
         [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
         [FeatureSwitchKey.BrazilianPortugueseLocale]: true,

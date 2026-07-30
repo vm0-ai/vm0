@@ -2,6 +2,7 @@ const DISMISS_SWIPE_THRESHOLD_PX = 24;
 const GESTURE_INTENT_SLOP_PX = 4;
 const COMPOSER_CONTAINER_SELECTOR = "[data-chat-composer]";
 const CHAT_HISTORY_CONTAINER_SELECTOR = "[data-scroll-container]";
+const STANDALONE_DISPLAY_MODE_QUERY = "(display-mode: standalone)";
 
 // "locked" gestures suppress native panning so the composer cannot be dragged
 // away from the keyboard; "pass-through" gestures keep native scrolling (chat
@@ -19,6 +20,10 @@ interface DismissGesture {
 
 function isKeyboardOpen(): boolean {
   return document.documentElement.dataset.keyboardOpen === "true";
+}
+
+export function isStandalonePwa(): boolean {
+  return window.matchMedia(STANDALONE_DISPLAY_MODE_QUERY).matches;
 }
 
 function blurKeyboardTarget(): void {
@@ -87,16 +92,17 @@ function resolveGestureIntent(
   if (Math.abs(deltaX) > Math.abs(deltaY)) {
     return "pass-through";
   }
-  if (
-    deltaY < 0 &&
-    hasVerticalScrollConsumer(gesture.target, gesture.composerEl, deltaY)
-  ) {
+  if (hasVerticalScrollConsumer(gesture.target, gesture.composerEl, deltaY)) {
     return "pass-through";
   }
   return "locked";
 }
 
 export function setupKeyboardDismissGesture(): () => void {
+  if (!isStandalonePwa()) {
+    return () => {};
+  }
+
   let gesture: DismissGesture | null = null;
 
   const clearGesture = () => {
@@ -153,6 +159,7 @@ export function setupKeyboardDismissGesture(): () => void {
     }
     if (
       !gesture.dismissed &&
+      (!gesture.composerEl || gesture.intent === "locked") &&
       deltaY >= DISMISS_SWIPE_THRESHOLD_PX &&
       deltaY > Math.abs(deltaX) &&
       isKeyboardOpen()
