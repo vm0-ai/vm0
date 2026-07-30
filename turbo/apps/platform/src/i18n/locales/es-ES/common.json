@@ -525,7 +525,7 @@
       "download": "Descargar",
       "downloadArtifact": "Descargar artefacto",
       "downloadOptions": "Opciones de descarga",
-      "enterFullscreen": "Paso a pantalla completa",
+      "enterFullscreen": "Entrar en pantalla completa",
       "exitFullscreen": "Salir de pantalla completa",
       "more": "Más acciones de artefacto",
       "nextImage": "Siguiente artefacto de imagen",
@@ -535,8 +535,8 @@
       "resetZoom": "Reiniciar el zoom",
       "share": "Compartir",
       "shareArtifact": "Compartir artefacto",
-      "zoomIn": "Zoom en",
-      "zoomOut": "Zoom fuera"
+      "zoomIn": "Acercar",
+      "zoomOut": "Alejar"
     },
     "attachments": {
       "cancelUpload": "Cancelar la subida {{filename}}",
@@ -557,11 +557,11 @@
         "imageAria": "Mostrar artefactos de imagen",
         "label": "Filtros de tipo de artefacto",
         "presentation": "Presentaciones",
-        "presentationAria": "Artefactos de presentación del espectáculo",
+        "presentationAria": "Mostrar artefactos de presentación",
         "video": "Vídeos",
         "videoAria": "Mostrar artefactos de vídeo",
         "website": "Sitios web",
-        "websiteAria": "Artefactos de la web de la exposición"
+        "websiteAria": "Mostrar artefactos de sitios web"
       },
       "kindIcon": "{{kind}} artefacto",
       "loading": "Cargando artefactos"
@@ -603,18 +603,18 @@
       "hostedSite": "Sitio alojado",
       "image": "Imagen",
       "json": "JSON",
-      "markdown": "Descuento",
+      "markdown": "Markdown",
       "presentation": "Presentación",
       "text": "Texto",
       "video": "Vídeo"
     },
     "metadata": {
-      "generated": "Generados {{date}}"
+      "generated": "Generado el {{date}}"
     },
     "preview": {
       "audioLabel": "Vista previa de audio para {{filename}}",
-      "badge": "Avance",
-      "dialogLabel": "{{filename}} vista previa",
+      "badge": "Vista previa",
+      "dialogLabel": "Vista previa de {{filename}}",
       "emptyCsv": "CSV vacío.",
       "genericUnavailable": "Vista previa no disponible.",
       "noInline": "No hay una vista previa en línea disponible para este archivo.",
@@ -624,15 +624,15 @@
         "csv": "CSV",
         "html": "HTML",
         "json": "JSON",
-        "markdown": "Descuento",
-        "pdf": "pdf",
+        "markdown": "Markdown",
+        "pdf": "PDF",
         "text": "Texto",
         "video": "Vídeo"
       },
       "siteLabel": "Vista previa del sitio para {{title}}",
       "slideTitle": "Diapositiva {{number}}",
-      "unavailable": "{{kind}} vista previa no disponible.",
-      "videoLabel": "Vista previa en vídeo para {{filename}}"
+      "unavailable": "Vista previa de {{kind}} no disponible.",
+      "videoLabel": "Vista previa de vídeo para {{filename}}"
     },
     "sidebar": {
       "panelTitle": "Artefactos",
@@ -640,23 +640,23 @@
       "unavailable": "Este artefacto ya no está disponible."
     },
     "templates": {
-      "activeHtmlPreview": "{{title}} vista previa activa de HTML",
+      "activeHtmlPreview": "Vista previa HTML activa de {{title}}",
       "all": "Todos",
       "categories": "Categorías de plantilla",
       "category": "Categoría de plantilla",
-      "fullPreview": "{{title}} vista previa completa de la web",
-      "htmlPreview": "{{title}} Vista previa HTML",
+      "fullPreview": "Vista previa completa del sitio web {{title}}",
+      "htmlPreview": "Vista previa HTML de {{title}}",
       "illustration": "Ilustración",
-      "illustrationPreview": "{{title}} vista previa de ilustraciones",
+      "illustrationPreview": "Vista previa de la ilustración {{title}}",
       "multiAccent": "Multiacentos",
-      "nextSlide": "Avance siguiente diapositiva",
-      "noMatches": "Sin partidos",
-      "placeholder": "{{title}} previsualización del sitio web",
+      "nextSlide": "Vista previa de la diapositiva siguiente",
+      "noMatches": "Sin coincidencias",
+      "placeholder": "Vista previa del sitio web {{title}}",
       "playVideo": "Reproduce la vista previa de la plantilla de vídeo {{title}}",
-      "previewCurrentSlide": "{{title}} de vista previa en la diapositiva actual",
-      "previewSlide": "Vista previa {{slideNumber}}",
-      "previewWebsite": "Plantilla de página web de vista previa {{title}}",
-      "previousHtmlPreview": "{{title}} vista previa de HTML",
+      "previewCurrentSlide": "Vista previa de {{title}} en la diapositiva actual",
+      "previewSlide": "Vista previa de la diapositiva {{slideNumber}}",
+      "previewWebsite": "Vista previa de la plantilla de sitio web {{title}}",
+      "previousHtmlPreview": "Vista previa HTML anterior de {{title}}",
       "previousSlide": "Vista previa de la diapositiva anterior",
       "searchConnector": "Buscar conector...",
       "searchConnectors": "Buscar conectores",
@@ -666,10 +666,10 @@
       "selectVideo": "Seleccionar plantilla de vídeo {{title}}",
       "selectWebsite": "Seleccionar plantilla web {{title}}",
       "selectWorkflow": "Seleccionar plantilla de flujo de trabajo {{title}}",
-      "showVariant": "Variante de mostrar {{variantNumber}}",
+      "showVariant": "Mostrar variante {{variantNumber}}",
       "singleAccent": "Acento único",
-      "slidePreview": "{{title}} vista previa de diapositivas",
-      "slideThumbnail": "{{title}} diapositiva {{slideNumber}} vista previa",
+      "slidePreview": "Vista previa de las diapositivas de {{title}}",
+      "slideThumbnail": "Vista previa de la diapositiva {{slideNumber}} de {{title}}",
       "template": "Plantilla",
       "theme": "Tema",
       "themeNames": {
@@ -694,10 +694,10 @@
         "warmSand": "Periódico matutino"
       },
       "tryDifferentSearch": "Prueba con otra búsqueda.",
-      "use": "Uso",
+      "use": "Usar",
       "useThisTemplate": "Usa esta plantilla",
       "website": "Sitio web",
-      "websitePreview": "{{title}} vista previa de plantilla de sitio web",
+      "websitePreview": "Vista previa de la plantilla de sitio web {{title}}",
       "workflow": "Flujo de trabajo"
     },
     "title": "Artefactos",
@@ -710,7 +710,7 @@
   "auth": {
     "clerk": {
       "accessNotAllowed": "Acceso no permitido.",
-      "userBanned": "El acceso a la cuenta se suspendió porque la actividad en esta cuenta violó los {{brandName}} Términos de Uso. Si tienes preguntas, contacta con support@vm0.ai."
+      "userBanned": "El acceso a la cuenta se suspendió porque su actividad infringió los Términos de uso de {{brandName}}. Si tienes alguna pregunta, escribe a support@vm0.ai."
     },
     "documentTitles": {
       "signIn": "Iniciar sesión",
@@ -733,7 +733,7 @@
       "authorize": "Autorizar",
       "authorized": "Autorizado",
       "checkingCompatibility": "Comprobación de compatibilidad",
-      "description": "Elige un ordenador online para que Zero lo uses en {{source}}.",
+      "description": "Elige un ordenador en línea para que Zero lo use en {{source}}.",
       "downloadMac": "Descargar para macOS",
       "lastSeen": "Última vez que se vio {{date}}",
       "linkExpires": "El enlace caduca {{date}}.",
@@ -742,8 +742,8 @@
       "noHostsTitle": "No hay ordenadores en línea",
       "sources": {
         "chat": "Este hilo de chat",
-        "slack": "Este Slack hilo",
-        "teams": "Este Teams hilo"
+        "slack": "Este hilo de Slack",
+        "teams": "Este hilo de Teams"
       },
       "title": "Autorizar el uso de ordenadores",
       "unavailableDescription": "Este enlace de autorización para el uso del ordenador es inválido, caducado o no está disponible para este espacio de trabajo.",
@@ -796,7 +796,7 @@
         "updatedTitle": "Permisos actualizados"
       },
       "saving": "Guardando...",
-      "unknownEndpoints": "Puntos finales desconocidos",
+      "unknownEndpoints": "Endpoints desconocidos",
       "userFallback": "Ahí",
       "wouldLike": "Me gustaría"
     }
@@ -820,7 +820,7 @@
       "credits": "Créditos",
       "manage": "Gestionar",
       "redirecting": "Redirigiendo...",
-      "restore": "Restauración",
+      "restore": "Restaurar",
       "retry": "Reintentar",
       "unavailable": "No disponible",
       "updating": "Actualizando..."
@@ -853,7 +853,7 @@
     },
     "credits": {
       "amount": "Cantidad",
-      "amountRangeError": "Entra entre {{minimum}} y {{maximum}}",
+      "amountRangeError": "Introduce un valor entre {{minimum}} y {{maximum}}",
       "anyAmount": "Cualquier cantidad",
       "custom": "Personalizado",
       "customAmountAria": "Cantidad personalizada en dólares",
@@ -864,13 +864,13 @@
     },
     "downgrade": {
       "cancelSubscription": "Cancelar suscripción",
-      "chooseTarget": "Elige a qué plan hacer downgrade.",
+      "chooseTarget": "Elige a qué plan inferior quieres cambiar.",
       "confirmProCancellation": "¿Estás seguro de que quieres cancelar tu plan Pro?",
-      "confirmTarget": "¿Degradar a {{plan}}?",
-      "inProgress": "Degradando...",
+      "confirmTarget": "¿Cambiar al plan {{plan}}?",
+      "inProgress": "Cambiando de plan...",
       "proWarning": "Tu acceso Pro permanece activo hasta que termine el periodo de facturación actual. Después de eso, este espacio de trabajo pasa a Sin plan y los agentes no pueden funcionar hasta que actualices.",
       "teamWarning": "El acceso de tu equipo permanece activo hasta que termine el periodo de facturación actual. Después de eso, este espacio de trabajo se traslada a {{plan}}.",
-      "title": "Plan de degradación"
+      "title": "Cambiar a un plan inferior"
     },
     "invoices": {
       "amount": "Cantidad",
@@ -905,10 +905,10 @@
       "customAccess": "Acceso personalizado con ejecuciones concurrentes {{value}}",
       "customCancellationNotice": "Tu plan personalizado terminará en {{date}}.",
       "customCheckoutUnavailable": "Los espacios de trabajo con un plan personalizado no pueden cambiar a Pro ni Team.",
-      "downgrade": "Degradación",
-      "downgradeNotice": "Tu plan de {{currentPlan}} se rebajará a {{targetPlan}} en {{date}}.",
-      "downgradesOn": "Degradaciones a {{plan}} en {{date}}",
-      "downgradeTo": "Retroceso a {{plan}}",
+      "downgrade": "Cambiar a un plan inferior",
+      "downgradeNotice": "Tu plan cambiará de {{currentPlan}} a {{targetPlan}} el {{date}}.",
+      "downgradesOn": "Cambio a {{plan}} el {{date}}",
+      "downgradeTo": "Cambiar a {{plan}}",
       "endsOn": "Termina en {{date}}",
       "features": {
         "byok": "Lleva tus propias llaves de LLM",
@@ -917,10 +917,10 @@
         "existingCredits": "Solo créditos gratuitos existentes",
         "monthlyCredits": "{{value}} créditos / mes",
         "oneConcurrentRun": "1 ejecución simultánea",
-        "payAsYouGo": "Paga según la compra después",
+        "payAsYouGo": "Créditos de pago por uso",
         "prioritySupport": "Soporte prioritario",
         "tenConcurrentRuns": "10 ejecuciones simultáneas",
-        "twoConcurrentRuns": "2 recorridos simultáneos",
+        "twoConcurrentRuns": "2 ejecuciones simultáneas",
         "unlimitedAgents": "Agentes totales ilimitados",
         "voiceInput": "Entrada de voz",
         "voiceInputLifetime": "Entrada de voz (10 usos de por vida por miembro)"
@@ -941,14 +941,14 @@
         "name": "Sin plan"
       },
       "perMonth": "/mes",
-      "popular": "Populares",
+      "popular": "Popular",
       "pricePerMonth": "{{price}}/mes",
       "pro": {
         "description": "Más potencia y colaboración fluida para tu equipo.",
         "name": "Pro"
       },
       "renews": "Renueva {{date}}",
-      "restorePlan": "Plan de restauración",
+      "restorePlan": "Restaurar plan",
       "sectionTitle": "Plan",
       "selectedPlan": "El plan seleccionado",
       "team": {
@@ -961,9 +961,9 @@
     "restore": {
       "cancellationDescription": "Esto anulará la cancelación programada de tu plan {{plan}}.",
       "cancellationDescriptionDate": "Esto anulará la cancelación programada de tu plan {{plan}}. Se renovará el {{date}}.",
-      "downgradeDescription": "Esto cancelará la degradación programada a {{target}}. Tu plan {{plan}} seguirá renovándose.",
+      "downgradeDescription": "Esto cancelará el cambio programado a {{target}}. Tu plan {{plan}} seguirá renovándose.",
       "inProgress": "Restaurando...",
-      "title": "¿Restaurar {{plan}} plan?"
+      "title": "¿Restaurar el plan {{plan}}?"
     },
     "sidebar": {
       "description": "Más créditos y ejecuciones simultáneas",
@@ -973,14 +973,14 @@
       "autoRechargeUpdated": "Recarga automática actualizada",
       "cancellationScheduledDate": "Cancelación programada. Tu plan actual permanece activo hasta {{date}}.",
       "cancellationScheduledPeriod": "Cancelación programada. Tu plan actual permanece activo hasta que termine el periodo de facturación.",
-      "checkoutCompleted": "{{plan}} finalizada la compra. Se añadirán créditos después de pagar la factura.",
+      "checkoutCompleted": "Compra de {{plan}} completada. Los créditos se añadirán después de pagar la factura.",
       "concurrencyAdded": "Se añadió la concurrencia. Tus nuevos cupos estarán disponibles cuando Stripe confirme la suscripción.",
       "concurrencyCanceled": "Suscripción de concurrencia cancelada.",
       "concurrencyCanceledDate": "Se canceló la suscripción de concurrencia. Los cupos seguirán activos hasta {{date}}.",
       "concurrencyRestored": "Se ha restaurado la suscripción de concurrencia.",
       "creditsAdded": "Créditos añadidos. Puedes seguir chateando con Zero.",
-      "downgradeScheduledDate": "Degradación programada. Tu plan actual permanece activo hasta {{date}}.",
-      "downgradeScheduledPeriod": "Degradación programada. Tu plan actual permanece activo hasta que termine el periodo de facturación.",
+      "downgradeScheduledDate": "Cambio de plan programado. Tu plan actual permanecerá activo hasta {{date}}.",
+      "downgradeScheduledPeriod": "Cambio de plan programado. Tu plan actual permanecerá activo hasta que termine el periodo de facturación.",
       "planRestored": "Plan restaurado. Tu suscripción se renovará normalmente.",
       "preparingReceiptDownload": "Preparando la descarga del recibo...",
       "receiptDownloadFailed": "No se han conseguido descargar los recibos",
@@ -994,16 +994,16 @@
         "minute": "{{value}}m",
         "remaining": "{{remaining}} / {{total}} créditos",
         "remainingAria": "Límite de uso {{label}} restante",
-        "resets": "Reinicios {{date}}",
-        "resetsRaw": "Reinicios {{value}}",
+        "resets": "Se restablece el {{date}}",
+        "resetsRaw": "Se restablece {{value}}",
         "title": "Asignación de uso",
-        "week": "{{value}}w"
+        "week": "{{value}} sem"
       },
       "breakdown": {
-        "currentPlanDescription": "Los créditos mensuales del plan reinician cada ciclo de facturación",
-        "freeDescription": "Créditos iniciales, úsalo hasta agotarse",
+        "currentPlanDescription": "Los créditos mensuales del plan se restablecen en cada ciclo de facturación",
+        "freeDescription": "Créditos iniciales disponibles hasta que se agoten",
         "freePlan": "Plan gratuito",
-        "payAsYouGo": "Paga según la acción",
+        "payAsYouGo": "Pago por uso",
         "payAsYouGoDescription": "Créditos de recarga automática, nunca caducan",
         "previousPlanDescription": "Créditos sobrantes del plan anterior",
         "promotional": "Promoción",
@@ -1011,7 +1011,7 @@
         "proPlan": "Plan Pro",
         "teamPlan": "Plan del equipo"
       },
-      "creditAdditions": "Adiciones de créditos",
+      "creditAdditions": "Créditos añadidos",
       "creditsRemaining_one": "{{value}} crédito restante",
       "creditsRemaining_many": "{{value}} créditos restantes",
       "creditsRemaining_other": "{{value}} créditos restantes",
@@ -1037,9 +1037,9 @@
     "openNewPage": "Abre este navegador en una página nueva",
     "panel": {
       "notLive": "El navegador no está activo",
-      "resume": "Navegador de currículums",
+      "resume": "Reanudar navegador",
       "resumeDescription": "Reanudar restaura el perfil de inicio de sesión y el almacenamiento guardados. Las páginas y pestañas anteriores no regresan.",
-      "resuming": "Reanuda...",
+      "resuming": "Reanudando...",
       "suspended": "Navegador suspendido"
     },
     "reclaimHint_one": "Zero mantiene este navegador mientras este panel está abierto y lo recupera tras {{formattedCount}} minuto de reposo.",
@@ -1047,7 +1047,7 @@
     "reclaimHint_other": "Zero mantiene este navegador mientras este panel está abierto y lo recupera tras {{formattedCount}} minutos de reposo.",
     "status": {
       "live": "En directo",
-      "starting": "Inicio",
+      "starting": "Iniciando",
       "stopped": "Detenido"
     },
     "title": "Navegador en vivo",
@@ -1072,12 +1072,12 @@
       "remove": "Eliminar",
       "rename": "Renombrar",
       "saving": "Guardando...",
-      "send": "Envía",
+      "send": "Enviar",
       "stop": "Detener",
       "view": "Ver"
     },
     "agentPage": {
-      "invitePeople": "Invita a la gente",
+      "invitePeople": "Invitar a personas",
       "taglines": {
         "anonymous": {
           "buildSomething": "¿Listo para construir algo?",
@@ -1099,7 +1099,7 @@
         "readyToBuild": "¿Listo para construir, {{userName}}?",
         "rightOnTime": "Justo a tiempo, {{userName}}.",
         "savedYourSeat": "Te guardé un sitio, {{userName}}.",
-        "theUsual": "Lo de siempre, {{userName}}?",
+        "theUsual": "¿Lo de siempre, {{userName}}?",
         "welcomeBack": "Qué bueno verte de nuevo, {{userName}}.",
         "whatAreWeWorkingOn": "¿En qué estamos trabajando, {{userName}}?",
         "whatsCooking": "¿Qué se está cocinando, {{userName}}?",
@@ -1136,7 +1136,7 @@
       "cronExpression": "Expresión cron",
       "cronWithTimezone": "{{expression}} ({{timezone}})",
       "dailyAt": "Cada día a {{time}}",
-      "disabled": "Deshabilitado",
+      "disabled": "Desactivado",
       "displaysIn": "Se muestra en {{timezone}}",
       "edit": "Editar automatización",
       "editDescription": "Actualiza esta automatización del flujo de trabajo.",
@@ -1174,7 +1174,7 @@
         "body": "Cuerpo",
         "cc": "CC",
         "contains": "{{field}} contiene",
-        "containsAny": "{{field}} contiene alguna",
+        "containsAny": "{{field}} contiene alguno de",
         "doesNotContain": "{{field}} no contiene",
         "from": "De",
         "is": "Es",
@@ -1218,7 +1218,7 @@
       "open": "Abrir automatizaciones",
       "runAt": "Ejecutar a las",
       "runNow": "Ejecutar ahora",
-      "runsIn": "Ejecuciones en {{timezone}}",
+      "runsIn": "Se ejecuta en {{timezone}}",
       "save": "Guardar automatización",
       "schedule": "Programación",
       "starting": "Iniciando...",
@@ -1232,7 +1232,7 @@
       "addCreditsToContinue": "Añade créditos para seguir charlando con Zero.",
       "askAdminCredits": "Pide a un administrador de espacio de trabajo que añada créditos para que puedas seguir hablando con Zero.",
       "askAdminUpgrade": "Pide a un administrador de espacio de trabajo que actualice a Pro para poder seguir hablando con Zero.",
-      "buy": "Compra",
+      "buy": "Comprar",
       "checkingPermissions": "Comprobando permisos de facturación...",
       "comparePlans": "Comparar planes",
       "comparePlansDescription": "Compara planes para desbloquear funciones de espacio de trabajo de pago y créditos adicionales.",
@@ -1245,8 +1245,8 @@
       "redirecting": "Redirigiendo...",
       "upgradeToContinue": "Actualiza a Pro para seguir charlando con Zero.",
       "upgradeToPro": "Actualizar a Pro",
-      "upgradeToRun": "Mejorar a Pro para ejecutar Zero",
-      "upgradeWorkspace": "Mejora tu espacio de trabajo"
+      "upgradeToRun": "Actualizar a Pro para ejecutar Zero",
+      "upgradeWorkspace": "Actualizar el espacio de trabajo"
     },
     "composer": {
       "agentSuggestions": "Agentes",
@@ -1299,7 +1299,7 @@
       "customAuthorizeDescription": "Revisa, conecta y autoriza este conector personalizado para el agente.",
       "customConnectDescription": "Revisa y conecta este conector personalizado.",
       "find": "Buscar conectores...",
-      "remove": "Elimina {{connectorName}}",
+      "remove": "Eliminar {{connectorName}}",
       "title": "Conectores"
     },
     "documentTitle": "Chat",
@@ -1316,7 +1316,7 @@
       "runCancelled": "Se detuvo a mitad de la respuesta; puedes retomarla cuando quieras."
     },
     "feedback": {
-      "emailDraftDescription": "un borrador por correo electrónico (ID del borrador por correo: {{id}})",
+      "emailDraftDescription": "un borrador de correo electrónico (ID del borrador: {{id}})",
       "partHeading": "Comentarios sobre esta parte de tu respuesta:",
       "partsHeading_one": "Comentarios sobre {{count}} parte de tu respuesta:",
       "partsHeading_many": "Comentarios sobre {{count}} partes de tu respuesta:",
@@ -1352,7 +1352,7 @@
         "tracking": "Seguimiento de respuestas"
       },
       "loadingDetails": "Cargando detalles del correo electrónico",
-      "needReconnect": "Necesito reconectar",
+      "needReconnect": "Debes volver a conectar",
       "noMessage": "(Sin mensaje)",
       "noRecipient": "Sin destinatario",
       "noSubject": "(Sin asunto)",
@@ -1499,13 +1499,13 @@
         "sketching": "Esbozando los detalles...",
         "spinningUp": "Arrancando...",
         "tuningIn": "Sintonizando...",
-        "wiring": "Conectándolos juntos..."
+        "wiring": "Conectándolo todo..."
       },
       "viewActivityLogs": "Ver registros de actividad",
       "viewLogs": "Ver registros de ejecución",
       "waitingIn": "Esperando",
-      "worked": "Trabajó",
-      "workedFor": "Trabajó durante {{duration}}"
+      "worked": "Trabajo realizado",
+      "workedFor": "Trabajo realizado durante {{duration}}"
     },
     "shortcuts": {
       "number": "Número"
@@ -1542,9 +1542,9 @@
       },
       "messageTemplate": "Plantilla de mensaje {{title}}",
       "previewTemplate": "Plantilla de vista previa {{title}}",
-      "previewVideo": "Plantilla de vídeo de vista previa {{title}}",
-      "previewWebsite": "Plantilla de página web de vista previa {{title}}",
-      "previewWorkflow": "Plantilla de flujo de trabajo de vista previa {{title}}",
+      "previewVideo": "Vista previa de la plantilla de vídeo {{title}}",
+      "previewWebsite": "Vista previa de la plantilla de sitio web {{title}}",
+      "previewWorkflow": "Vista previa de la plantilla de flujo de trabajo {{title}}",
       "removeTemplate": "Eliminar la plantilla {{title}}",
       "removeVideo": "Eliminar la plantilla de vídeo {{title}}",
       "removeWebsite": "Eliminar la plantilla de sitio web {{title}}",
@@ -1923,7 +1923,7 @@
       "connectDocumentTitle": "Conectar {{connector}}",
       "connected": "{{connector}} conectado",
       "needsConnector": "{{agent}} necesita {{connector}} para seguir adelante",
-      "reconnecting": "Reconectar..."
+      "reconnecting": "Reconectando..."
     },
     "expiration": {
       "inDays_one": "Caduca en {{count}} día",
@@ -1942,13 +1942,13 @@
       },
       "allowDuration": {
         "always": "Permitir siempre",
-        "oneHour": "Permite 1 hora",
-        "sevenDays": "Permitir 7d",
-        "twentyFourHours": "Permite 24 horas"
+        "oneHour": "Permitir durante 1 hora",
+        "sevenDays": "Permitir durante 7 días",
+        "twentyFourHours": "Permitir durante 24 horas"
       },
       "allowOptions": "{{permission}} opciones de permiso",
       "always": "Siempre",
-      "clearSearch": "Búsqueda de permisos clara",
+      "clearSearch": "Borrar búsqueda de permisos",
       "descriptionAgent": "Configura qué acciones puede realizar este agente a través de este conector.",
       "descriptionWorkflow": "Configura qué acciones puede realizar este flujo de trabajo a través de este conector.",
       "find": "Buscar permisos",
@@ -1958,10 +1958,10 @@
       "loading": "Cargando permisos...",
       "metadataMissing": "No se han encontrado metadatos de permisos para {{connector}}",
       "noResults": "No hay resultados para \"{{search}}\"",
-      "otherEndpoints": "Otros puntos finales",
+      "otherEndpoints": "Otros endpoints",
       "otherEndpointsDescription": "Los endpoints de la API no coinciden con ningún permiso anterior",
       "permissions": "Permisos",
-      "restore": "Restauración",
+      "restore": "Restaurar",
       "scopeReview": {
         "added": "Nuevos permisos",
         "description": "Los permisos requeridos para este conector han cambiado. Por favor, revisa y vuelve a conectar para aplicar la actualización.",
@@ -1974,13 +1974,13 @@
       "showMore_one": "Mostrar más ({{count}})",
       "showMore_many": "Mostrar más ({{count}})",
       "showMore_other": "Mostrar más ({{count}})",
-      "title": "{{connector}} permisos"
+      "title": "Permisos de {{connector}}"
     },
     "providerConnect": {
       "agentphone": {
         "back": "Volviendo a {{brandName}}",
         "connectDescription": "Vincula este número de teléfono a tu cuenta de {{brandName}} para poder interactuar con Zero a través de mensajes de texto.",
-        "connectTitle": "Número de teléfono de conexión",
+        "connectTitle": "Conectar número de teléfono",
         "documentTitle": "Conectar mensajes",
         "errorFallback": "No pudimos conectar este número de teléfono. Inténtalo de nuevo desde tus mensajes de texto.",
         "incompleteDescription": "Abre un enlace nuevo /connect desde tus mensajes de texto.",
@@ -1994,7 +1994,7 @@
       },
       "common": {
         "backToSettings": "Volver a los ajustes",
-        "checkingTitle": "Estado de la cuenta corriente...",
+        "checkingTitle": "Comprobando el estado de la cuenta...",
         "connectionFailed": "Fallo de conexión",
         "invalidLink": "Enlace inválido",
         "verifying": "Espera mientras verificamos tu conexión."
@@ -2003,7 +2003,7 @@
         "back": "Volver a los ajustes de Feishu",
         "checkingTitle": "Comprobando el estado de la cuenta...",
         "connectDescription": "Vincula tu cuenta de {{brandName}} a este bot de Feishu para que puedas trabajar directamente con tu agente desde Feishu.",
-        "connectTitle": "Conéctate con Feishu",
+        "connectTitle": "Conectar con Feishu",
         "errorFallback": "No pudimos conectar Feishu. Abre un enlace de conexión nuevo e inténtalo de nuevo.",
         "invalidDescription": "Abre un enlace de conexión nuevo desde Feishu e inténtalo de nuevo.",
         "open": "Abrir Feishu",
@@ -2020,7 +2020,7 @@
         "checkingConnectionTitle": "Comprobando conexión...",
         "checkingSession": "Espera mientras verificamos tu sesión de {{brandName}}.",
         "connectDescription": "Vincula tu cuenta de {{brandName}} con {{account}} para ejecutar tus agentes desde menciones en incidencias y pull requests de GitHub.",
-        "connectTitle": "Conéctate con GitHub",
+        "connectTitle": "Conectar con GitHub",
         "errorFallback": "No pudimos conectar GitHub. Inténtalo de nuevo desde GitHub.",
         "invalidInstallation": "La instalación de GitHub de este enlace no es válida.",
         "invalidSignature": "La firma en este enlace no es válida.",
@@ -2044,7 +2044,7 @@
       },
       "slack": {
         "connectDescription": "Vincula tu cuenta a este espacio de trabajo de Slack para interactuar directamente con tu agente desde Slack.",
-        "connectTitle": "Conéctate con Slack",
+        "connectTitle": "Conectar con Slack",
         "invalidDescription": "Esta página debe abrirse desde un enlace de conexión de Slack.",
         "open": "Abrir Slack",
         "successDescription": "Menciona a @Zero en cualquier canal o envía un mensaje directo para empezar a chatear.",
@@ -2054,7 +2054,7 @@
       "teams": {
         "connectDescription": "Vincula tu cuenta de Teams para interactuar directamente con tu agente desde Microsoft Teams.",
         "connectDescriptionNamed": "{{displayName}}, vincula tu cuenta de Teams para interactuar directamente con tu agente desde Microsoft Teams.",
-        "connectTitle": "Conecta Microsoft Teams",
+        "connectTitle": "Conectar Microsoft Teams",
         "invalidDescription": "Esta página debe abrirse desde un enlace de conexión de Microsoft Teams.",
         "open": "Abrir Teams",
         "providerName": "Microsoft Teams",
@@ -2073,11 +2073,11 @@
         "checkingDomain": "Comprobando el estado del dominio...",
         "checkingSession": "Espera mientras verificamos tu sesión de {{brandName}}.",
         "connectDescription": "Vincula tu cuenta a este bot de Telegram para que puedas interactuar directamente con tu agente desde Telegram.",
-        "connectTitle": "Conéctate con Telegram",
-        "continue": "Continúa con Telegram",
+        "connectTitle": "Conectar con Telegram",
+        "continue": "Continuar con Telegram",
         "domainDescription": "El inicio de sesión web de Telegram no está habilitado para {{bot}}.",
         "domainIn": "En",
-        "domainInstructionsAfter": ", elige el bot, luego establece el dominio a:",
+        "domainInstructionsAfter": ", elige el bot y establece el dominio en:",
         "domainKeepOpen": "Mantén esta página abierta después de guardar el dominio. También puedes conectarte desde Telegram con /connect.",
         "domainSend": ", enviar",
         "domainTitle": "Configurar el dominio de inicio de sesión de Telegram",
@@ -2104,15 +2104,15 @@
     "providerSettings": {
       "agentphone": {
         "authorizedSender": "Remitente autorizado",
-        "connectAria": "Conecta teléfono",
+        "connectAria": "Conectar teléfono",
         "connectDescription": "Introduce tu número de teléfono. Enviaremos un enlace de verificación por mensaje que conecte este espacio de trabajo.",
-        "connectTitle": "Conecta teléfono",
+        "connectTitle": "Conectar teléfono",
         "copyAria": "Copiar {{phone}}",
         "copyError": "No se pudo copiar el número de teléfono",
         "copySuccess": "Número de teléfono copiado",
         "description": "Acceso por mensajes de texto a Zero",
         "destination": "iMessage o SMS a",
-        "normalized": "Enviaremos mensajes {{phone}}.",
+        "normalized": "Enviaremos un mensaje a {{phone}}.",
         "options": "Opciones de teléfono",
         "phoneLabel": "Teléfono",
         "phoneNumber": "Número de teléfono",
@@ -2134,7 +2134,7 @@
           "lastAttempt": "Último intento",
           "lastAttemptAt": "Último intento",
           "lastSuccess": "Último éxito",
-          "missingVersions": "Versiones perdidas",
+          "missingVersions": "Versiones ausentes",
           "rejectedCatalogDigest": "Resumen de catálogo rechazado",
           "rejectedVersion": "Versión rechazada",
           "rejectingBackend": "Rechazando el backend",
@@ -2142,7 +2142,7 @@
           "rejectionFailure": "Fallo de rechazo",
           "syncState": "Estado de sincronización",
           "unownedSecrets": "Secretos sin dueño",
-          "unownedVariables": "Variables no propiedad",
+          "unownedVariables": "Variables sin propietario",
           "unresolvedBridgeCredentials": "Credenciales de puente sin resolver"
         },
         "loading": "Cargando",
@@ -2585,7 +2585,7 @@
       "body": "Ya no recibirás notificaciones de correo electrónico iniciadas por el sistema desde {{brandName}}.",
       "confirmTitle": "¿Cancelar las notificaciones por correo electrónico?",
       "documentTitle": "Cancelar suscripción",
-      "doneTitle": "No suscrito",
+      "doneTitle": "Suscripción cancelada",
       "errorBody": "Este enlace de baja es inválido o caducado. Puedes gestionar las notificaciones por correo electrónico en Configuración.",
       "errorTitle": "Algo salió mal"
     },
@@ -2603,7 +2603,7 @@
       "description": "Añade Zero en tu pantalla de inicio para acceder rápidamente.",
       "dismiss": "Cancelar banner de instalación",
       "gotIt": "Entendido",
-      "install": "Instalación",
+      "install": "Instalar",
       "installApp": "Instalar la aplicación",
       "stepOne": "En Safari, pulsa el botón de compartir.",
       "stepThree": "Confirma que el nombre es Zero y pulsa Añadir.",
@@ -2612,7 +2612,7 @@
     },
     "redeemCampaign": {
       "actions": {
-        "back": "Volviendo a {{brandName}}",
+        "back": "Volver a {{brandName}}",
         "redeem": "Canjear créditos"
       },
       "documentTitle": "Reclama tus créditos",
@@ -2631,7 +2631,7 @@
           "title": "La facturación está temporalmente indisponible"
         },
         "broken": {
-          "body": "No pudimos completar tu redención. Por favor, inténtalo de nuevo o contacta con el soporte.",
+          "body": "No pudimos completar el canje. Inténtalo de nuevo o contacta con el servicio de asistencia.",
           "title": "Algo salió mal"
         },
         "campaignUnavailable": {
@@ -2664,7 +2664,7 @@
         "title": "Datos"
       },
       "engineering": {
-        "description": "Enviar, depurar, automatizar código",
+        "description": "Publicar, depurar y automatizar código",
         "title": "Ingeniero"
       },
       "everyone": {
@@ -2688,18 +2688,18 @@
         "title": "Ventas"
       },
       "support": {
-        "description": "Entradas y ayuda al cliente",
+        "description": "Tickets y atención al cliente",
         "title": "Soporte"
       }
     },
     "common": {
       "back": "Volver",
       "continue": "Continuar",
-      "dialogPreview": "{{title}} vista previa",
+      "dialogPreview": "Vista previa de {{title}}",
       "gotIt": "Entendido",
       "next": "Siguiente",
       "noConnectorRequired": "No se requiere conector",
-      "previewWorkflowDetails": "Detalles del flujo de trabajo de vista previa",
+      "previewWorkflowDetails": "Vista previa de los detalles del flujo de trabajo",
       "selectTemplate": "Selecciona esta plantilla",
       "selectThisTemplate": "Selecciona esta plantilla",
       "stepProgress": "Paso {{current}} de {{total}}"
@@ -2709,7 +2709,7 @@
       "choosePresentation": "Elige una plantilla de presentación",
       "chooseVideo": "Elige un estilo de vídeo",
       "chooseWorkflow": "Elige un flujo de trabajo",
-      "make": "Bienvenidos a {{brandName}}",
+      "make": "Te damos la bienvenida a {{brandName}}",
       "runImage": "Crea tu primera imagen",
       "runPresentation": "Crea tu primera presentación",
       "runVideo": "Crea tu primer vídeo",
@@ -2727,7 +2727,7 @@
           "title": "Generar imágenes"
         },
         "presentation": {
-          "description": "Generar diapositivas y altavoz",
+          "description": "Genera diapositivas y contenido para presentarlas",
           "title": "Generar una presentación"
         },
         "video": {
@@ -2740,21 +2740,21 @@
         }
       },
       "projectTypeLabel": "Primer tipo de proyecto",
-      "promptDescription": "Ajusta la herramienta abajo o ejecuta tal cual. Zero se encarga a partir de aquí. Tus herramientas permanecen en el sandbox y nada sale de tu espacio de trabajo.",
+      "promptDescription": "Ajústalo a continuación o ejecútalo tal cual. Zero se encarga del resto. Tus herramientas permanecen aisladas y nada sale de tu espacio de trabajo.",
       "promptLabel": "Prompt de incorporación",
       "promptTitle": "Prueba este prompt",
-      "title": "¿Qué quieres preparar primero?"
+      "title": "¿Qué quieres crear primero?"
     },
     "runAction": {
-      "checkingPlan": "Plan de control",
+      "checkingPlan": "Comprobando el plan",
       "runNow": "Ejecutar ahora",
-      "upgradePro": "Actualizar Pro para que funcione"
+      "upgradePro": "Actualizar a Pro para ejecutar"
     },
     "templatePicker": {
       "image": {
         "description": "Úsalo como referencia para la imagen que quieres crear.",
         "selectTemplate": "Seleccionar la plantilla de ilustración {{title}}",
-        "showVariant": "Mostrar {{title}} variante {{variant}}",
+        "showVariant": "Mostrar la variante {{variant}} de {{title}}",
         "title": "Elige una plantilla de ilustración desde la cual empezar"
       },
       "presentation": {
@@ -2762,10 +2762,10 @@
         "nextSlide": "Mostrar la siguiente diapositiva",
         "previousSlide": "Mostrar diapositiva anterior",
         "selectTemplate": "Seleccionar la plantilla de presentación {{title}}",
-        "showSlide": "Mostrar la {{slide}} diapositivas",
-        "slideAlt": "{{title}} diapositiva {{slide}}",
+        "showSlide": "Mostrar la diapositiva {{slide}}",
+        "slideAlt": "Diapositiva {{slide}} de {{title}}",
         "title": "Elige una plantilla de presentación desde la cual empezar",
-        "viewTemplate": "Ver {{title}} presentación"
+        "viewTemplate": "Ver la presentación {{title}}"
       },
       "video": {
         "description": "Úsalo como referencia para el vídeo que quieres crear.",
@@ -2781,10 +2781,10 @@
         "title": "Selecciona una automatización que quieras probar"
       },
       "presentation": {
-        "noteLabel": "Contenido de la presentación e instrucción",
+        "noteLabel": "Contenido e instrucciones de la presentación",
         "notePlaceholder": "Añade el contenido y las instrucciones de tu presentación",
         "previewLabel": "Vista previa de la plantilla de presentación",
-        "title": "Cumple tu presentación"
+        "title": "Completa tu presentación"
       },
       "video": {
         "noteLabel": "Prompt de vídeo personalizado",
@@ -2862,10 +2862,10 @@
     },
     "workflowPicker": {
       "categoryDescription": "Configuraciones listas para usar que puedes adaptar a tus herramientas y objetivos.",
-      "categoryTitle": "{{category}} flujos de trabajo",
+      "categoryTitle": "Flujos de trabajo de {{category}}",
       "customDescription": "Describe lo que quieres y Zero lo construye contigo.",
-      "customTitle": "Habla con Zero y haz la mía propia",
-      "description": "Elige un puesto para ver los flujos de trabajo que encajan. Puedes cambiar en cualquier momento.",
+      "customTitle": "Habla con Zero y crea el tuyo",
+      "description": "Elige un rol para ver los flujos de trabajo que mejor encajan. Puedes cambiarlo en cualquier momento.",
       "title": "¿En qué trabajas?",
       "workflowCardLabel": "{{title}} {{description}}"
     },
@@ -2874,7 +2874,7 @@
       "whatItDoes": "Qué hace"
     },
     "workflowRun": {
-      "continueWithZero": "Continúa con Zero",
+      "continueWithZero": "Continuar con Zero",
       "createDraft": "Crear borrador",
       "customNoteLabel": "Describe tu flujo de trabajo",
       "customNotePlaceholder": "Describe lo que quieres que Zero cree",
@@ -3220,7 +3220,7 @@
             "title": "Guardado en Notion"
           },
           "two": {
-            "description": "Zero redacta un claro tutorial a partir de la resolución.",
+            "description": "Zero redacta un tutorial claro a partir de la resolución.",
             "title": "Corrección redactada"
           }
         },
@@ -3923,7 +3923,7 @@
       "addOn": "Complemento",
       "addsToLimit": "Añade a tu límite actual",
       "appliedAfterCheckout": "Se aplica al finalizar el pago",
-      "buy": "Compra {{price}} al mes",
+      "buy": "Comprar por {{price}} al mes",
       "decreaseQuantity": "Reducir la cantidad de concurrencia",
       "description": "Añade ejecuciones simultáneas dedicadas a este espacio de trabajo, facturadas mensualmente.",
       "increaseQuantity": "Aumentar la cantidad de concurrencia",
@@ -3960,7 +3960,7 @@
         "creditsPerMonth": "{{credits}} créditos / mes",
         "emailSupport": "Soporte por correo electrónico",
         "ownKeys": "Lleva tus propias llaves de LLM",
-        "payAsYouGo": "Paga según la compra después",
+        "payAsYouGo": "Créditos de pago por uso",
         "prioritySupport": "Soporte prioritario",
         "unlimitedAgents": "Agentes totales ilimitados"
       },
@@ -3980,7 +3980,7 @@
       "runContext": "Contexto de ejecución y entorno",
       "title": "¿Qué se enviará?"
     },
-    "documentTitle": "Error de reporte",
+    "documentTitle": "Informar de un error",
     "error": {
       "loadFailed": "No se han cargado los detalles de la ejecución",
       "notFailed": "Esta ejecución no falló y no se puede informar de ella",
@@ -3994,14 +3994,14 @@
       "titlePlaceholder": "Breve resumen del asunto"
     },
     "loading": "Cargando los detalles de la ejecución",
-    "send": "Enviar Informe",
+    "send": "Enviar informe",
     "sending": "Enviando...",
     "success": {
       "description": "Tu informe de error ha sido enviado al equipo de desarrolladores. Ellos investigarán y harán seguimiento.",
       "reference": "Referencia: {{reference}}",
       "title": "Informe enviado"
     },
-    "title": "Reportar error al desarrollador"
+    "title": "Informar del error al equipo de desarrollo"
   },
   "settings": {
     "accountMenu": {
@@ -4093,7 +4093,7 @@
       },
       "backToZero": "Volver a Zero",
       "description": "Descarga los archivos y registros de texto que creaste en Zero.",
-      "documentTitle": "Datos de exportación",
+      "documentTitle": "Exportar datos",
       "duration": {
         "soon": "Pronto"
       },
@@ -4111,7 +4111,7 @@
       },
       "status": {
         "checkingDescription": "Tu último estado de exportación aparecerá aquí.",
-        "checkingTitle": "Comprobación del estado de exportación",
+        "checkingTitle": "Comprobando el estado de la exportación",
         "downloadExpires": "El enlace de descarga expira en {{duration}}.",
         "downloadNoExpiry": "Descárgalo antes de que el enlace expire.",
         "downloadTitle": "Tu exportación está lista",
@@ -4121,18 +4121,18 @@
         "failedTitle": "La exportación no terminó",
         "preparingDescription": "Esto puede tardar unos minutos. Puedes dejar esta página abierta.",
         "preparingTitle": "Preparando tu exportación",
-        "rateLimitedFallback": "Puedes empezar otra exportación cuando termine el tiempo de reutilización.",
+        "rateLimitedFallback": "Puedes iniciar otra exportación cuando termine el periodo de espera.",
         "rateLimitedTitle": "Exportación solicitada recientemente",
         "rateLimitedUntil": "Puedes empezar otra exportación en {{duration}}.",
-        "readyDescription": "Crea un archivo ZIP con los datos de tu espacio de trabajo.",
+        "readyDescription": "La exportación contiene un archivo ZIP con los datos de tu espacio de trabajo.",
         "readyTitle": "Listo para exportar"
       },
       "title": "Datos de exportación"
     },
     "lab": {
       "actions": {
-        "resetAll": "Reiniciar todo",
-        "resetting": "Reiniciando..."
+        "resetAll": "Restablecer todo",
+        "resetting": "Restableciendo..."
       },
       "description": "Activa o desactiva funciones experimentales.",
       "documentTitle": "Laboratorio",
@@ -4156,8 +4156,8 @@
         "deleteModel": "Eliminar modelo",
         "editModel": "Editar modelo",
         "resetUsage": "Restablecer uso",
-        "upgradePro": "Mejorar a Pro para usarlo",
-        "upgradeToPro": "Mejorar a Pro"
+        "upgradePro": "Actualizar a Pro para usarlo",
+        "upgradeToPro": "Actualizar a Pro"
       },
       "deviceAuth": {
         "claude": {
@@ -4182,7 +4182,7 @@
           "codeCopied": "Código del dispositivo copiado. Esperando aprobación...",
           "codeCopiedRetry": "Código del dispositivo copiado. Intenta abrir la página de aprobación de nuevo.",
           "connectedToast": "ChatGPT conectado",
-          "connectTitle": "Conecta Codex",
+          "connectTitle": "Conectar Codex",
           "copyAndOpen": "Copiar código y abrir la página de aprobación",
           "copyAndOpenError": "No se pudo copiar el código del dispositivo ni abrir la página de aprobación. Copia el código manualmente e inténtalo de nuevo.",
           "copyError": "Se abrió la página de aprobación, pero el código del dispositivo no se copió. Cópialo manualmente antes de aprobar.",
@@ -4196,7 +4196,7 @@
           "preparing": "Preparando...",
           "reconnectAction": "Volver a conectar ChatGPT",
           "reconnectTitle": "Volver a conectar Codex",
-          "signIn": "Inicia sesión con ChatGPT"
+          "signIn": "Iniciar sesión con ChatGPT"
         }
       },
       "personal": {
@@ -4268,14 +4268,14 @@
         "providerApiKey": "Clave API de {{provider}}",
         "secretStored": "Almacenado en secretos del espacio de trabajo.",
         "selectDefaultModel": "Seleccionar un modelo por defecto",
-        "selectModel": "Selecciona un modelo",
-        "selectProvider": "Selecciona un proveedor",
+        "selectModel": "Seleccionar un modelo",
+        "selectProvider": "Seleccionar un proveedor",
         "workspaceDescription": "Disponible para todos en este espacio de trabajo.",
         "workspaceTitle": "Espacio de trabajo"
       },
       "reset": {
         "confirmDescription": "Usa un restablecimiento de Codex para reiniciar tus periodos de consumo actuales. Te quedan {{remaining}}.",
-        "progress": "Reiniciando...",
+        "progress": "Restableciendo...",
         "remaining_one": "Queda {{value}} restablecimiento",
         "remaining_many": "Quedan {{value}} restablecimientos",
         "remaining_other": "Quedan {{value}} restablecimientos",
@@ -4287,7 +4287,7 @@
         "claudeFailed": "No se pudo actualizar Claude Code. Vuelve a conectarlo para reintentarlo.",
         "claudeTitle": "La sesión de Claude Code debe volver a conectarse",
         "codexExpired": "Tu sesión de ChatGPT ha expirado. Reconecta para continuar.",
-        "codexFailed": "Falló el refresco de ChatGPT. Reconecta para intentarlo de nuevo.",
+        "codexFailed": "No se pudo actualizar la sesión de ChatGPT. Vuelve a conectarla para intentarlo de nuevo.",
         "codexInvalidated": "Tu sesión de ChatGPT ha sido revocada. Reconecta.",
         "codexReused": "Tu sesión de ChatGPT se usó en otro sitio. Reconéctate.",
         "codexTitle": "La sesión de ChatGPT necesita reconexión"
@@ -4319,7 +4319,7 @@
         "sectionTitle": "Cuenta y seguridad"
       },
       "appearance": {
-        "description": "Elige cómo queda la interfaz.",
+        "description": "Elige el aspecto de la interfaz.",
         "sectionTitle": "Apariencia",
         "theme": {
           "dark": "Oscuro",
@@ -4332,7 +4332,7 @@
       "debug": {
         "capture": {
           "description": "Captura los nombres de cabeceras HTTP, los valores de cabecera seguros seleccionados y los cuerpos en los registros de red para la depuración.",
-          "disabled": "Deshabilitado",
+          "disabled": "Desactivado",
           "enabled_one": "Activado para la próxima {{count}} ejecución",
           "enabled_many": "Activado para las próximas {{count}} ejecuciones",
           "enabled_other": "Activado para las próximas {{count}} ejecuciones",
@@ -4379,7 +4379,7 @@
         "timezone": "Zona horaria"
       },
       "timezone": {
-        "description": "Tiempos que se te muestran y se usan para las ejecuciones de automatización.",
+        "description": "Las horas que se muestran y se usan en las ejecuciones de automatización.",
         "rowDescription": "Tus agentes usarán esta zona horaria durante las ejecuciones",
         "rowTitle": "Zona horaria",
         "sectionTitle": "Zona horaria",
@@ -4439,7 +4439,7 @@
         "leave": {
           "confirmDescription": "Ya no tendrás acceso a este espacio de trabajo. Solo podrás volver a unirte si un administrador te invita de nuevo.",
           "description": "Perderás el acceso a este espacio de trabajo y a sus recursos.",
-          "progress": "Irse...",
+          "progress": "Saliendo...",
           "title": "Salir del espacio de trabajo",
           "titleQuestion": "¿Salir del espacio de trabajo?"
         },
@@ -4452,7 +4452,7 @@
         "empty": "Sin miembros",
         "emptySearch": "No se encuentran miembros",
         "invite": {
-          "description": "Envía una invitación para unirte a este espacio de trabajo.",
+          "description": "Envía una invitación para que alguien se una a este espacio de trabajo.",
           "emailPlaceholder": "email@example.com",
           "invalidEmail": "Introduce una dirección de correo electrónico válida",
           "progress": "Enviando...",
@@ -4473,7 +4473,7 @@
           "action": "Quitar del espacio de trabajo",
           "confirmDescription": "{{email}} será eliminado de este espacio de trabajo y perderá el acceso a todos los recursos.",
           "progress": "Eliminando...",
-          "title": "¿Eliminar a un miembro?"
+          "title": "¿Eliminar al miembro?"
         },
         "revoke": {
           "action": "Revocar invitación",
@@ -4590,7 +4590,7 @@
       "maps": "Mapas",
       "peopleSearch": "Búsqueda de personas",
       "usage": "Uso",
-      "weather": "Clima",
+      "weather": "Tiempo",
       "webFetch": "Búsqueda web",
       "webSearch": "Búsqueda web"
     },
@@ -4625,7 +4625,7 @@
       "myUsage": "Mi uso",
       "noActiveBillingPeriod": "No hay periodo de facturación activo.",
       "teamLoadError": "No se pudo cargar el uso del equipo.",
-      "teamUsage": "Uso en equipo",
+      "teamUsage": "Uso del equipo",
       "untitled": "(sin título)"
     },
     "sources": {
@@ -4706,8 +4706,8 @@
         "cancel": "Cancelar",
         "chooseAutomation": "Elige una automatización para iniciar este flujo de trabajo.",
         "deleteAutomation": "Eliminar automatización",
-        "disable": "Desactiva {{title}}",
-        "disabledPaidPlan": "Deshabilitado — se requiere un plan de pago",
+        "disable": "Desactivar {{title}}",
+        "disabledPaidPlan": "Desactivado — se requiere un plan de pago",
         "done": "Completado",
         "editAutomation": "Editar automatización",
         "enable": "Habilitar {{title}}",
@@ -4733,7 +4733,7 @@
         "second_other": "{{count}} segundos"
       },
       "github": {
-        "accountConnect": "Conecta GitHub",
+        "accountConnect": "Conectar GitHub",
         "accountRequired": "Conecta tu cuenta de GitHub para usar la opción «Yo».",
         "actorAnyone": "Cualquiera",
         "actorMe": "Yo",
@@ -4820,9 +4820,9 @@
           "changesRequested": "Cambios solicitados",
           "commented": "Comentado",
           "error": "Error",
-          "failure": "Fracaso",
+          "failure": "Fallido",
           "inactive": "Inactivo",
-          "inProgress": "En progreso",
+          "inProgress": "En curso",
           "neutral": "Neutro",
           "pending": "Pendiente",
           "queued": "En cola",
@@ -4830,7 +4830,7 @@
           "stale": "Obsoleto",
           "startupFailure": "Fallo de arranque",
           "success": "Éxito",
-          "timedOut": "Tiempo agotado",
+          "timedOut": "Tiempo de espera agotado",
           "waiting": "Esperando"
         },
         "productionEnvironment": "Entorno de producción",
@@ -4852,7 +4852,7 @@
         "saveFilters": "Guardar filtros",
         "selectNoneAny": "No selecciones ninguno para que coincida con cualquier valor.",
         "selectNoneConclusion": "No selecciones ninguno para que coincida con cualquier conclusión completada.",
-        "startedBy": "Empezado por",
+        "startedBy": "Iniciado por",
         "subject": "Asunto",
         "trustedAuthors": "Autores de confianza",
         "updateLabelAria": "Actualizar automatización de etiquetas de GitHub",
@@ -4863,7 +4863,7 @@
         "workflowJobRule": "Cuando {{jobs}} termine",
         "workflowJobTitle": "Tarea de flujo de trabajo de GitHub completada",
         "workflowRunDescription": "Ejecutar cuando termine una ejecución coincidente de GitHub Actions.",
-        "workflowRunRule": "Cuando {{workflows}} completa{{conclusions}}",
+        "workflowRunRule": "Cuando finalice {{workflows}}{{conclusions}}",
         "workflowRunTitle": "Flujo de trabajo de GitHub completado",
         "workflows": "Flujos de trabajo de GitHub",
         "workflowsPlaceholder": "Turbo, .github/workflows/release.yml",
@@ -4905,7 +4905,7 @@
         "newMessageTitle": "Nuevo mensaje de Gmail",
         "operator": {
           "contains": "Contiene",
-          "containsAny": "Contiene cualquiera",
+          "containsAny": "Contiene alguno de",
           "doesNotContain": "No contiene",
           "is": "Es"
         },
@@ -4925,7 +4925,7 @@
       "meet": {
         "addAction": "Añadir automatización de Meet",
         "addAria": "Añadir automatización de transcripciones de Google Meet",
-        "addDescription": "Ejecuta este flujo de trabajo cuando Google Meet termine de generar una transcripción para una reunión organizada por la cuenta conectada Google Meet.",
+        "addDescription": "Ejecuta este flujo de trabajo cuando Google Meet termine de generar la transcripción de una reunión organizada por la cuenta de Google Meet conectada.",
         "addTitle": "Añadir automatización de Google Meet",
         "rule": "Cuando Google Meet termine de generar una transcripción",
         "summary": "Reuniones que organizas",
@@ -4975,7 +4975,7 @@
         "email": "Correo electrónico",
         "integrations": "Integraciones",
         "notion": "Notion",
-        "schedule": "Calendario"
+        "schedule": "Programación"
       },
       "rules": {
         "inboundWebhook": "Cuando se recibe un webhook entrante"
@@ -4990,9 +4990,9 @@
         "addOnceDescription": "Elige la fecha y hora para que este flujo de trabajo se ejecute una vez.",
         "addOnceTitle": "Añadir automatización única",
         "addScheduleAction": "Añadir horario",
-        "addScheduleAria": "Añadir automatización de calendarios",
+        "addScheduleAria": "Añadir automatización programada",
         "addScheduleDescription": "Elige cuándo debe ejecutarse este flujo de trabajo.",
-        "addScheduleTitle": "Añadir automatización de calendarios",
+        "addScheduleTitle": "Añadir automatización programada",
         "cronExpression": "Expresión cron",
         "customCron": "Cron personalizado",
         "dayOfMonth": "Día del mes",
@@ -5003,12 +5003,12 @@
         "everyDay": "Cada día",
         "everyDayAt": "Cada día a {{time}}",
         "everyMonth": "Cada mes",
-        "everyMonthAt": "Cada mes en el día {{day}} a las {{time}}",
+        "everyMonthAt": "Cada mes, el día {{day}} a las {{time}}",
         "everyWeek": "Cada semana",
         "everyWeekAt": "Cada semana a {{time}}",
         "everyWeekday": "Todos los días laborables",
         "everyWeekdayAt": "Todos los días laborables a {{time}}",
-        "everyWeekOn": "Cada semana en {{days}} a {{time}}",
+        "everyWeekOn": "Cada semana, los {{days}} a las {{time}}",
         "frequencyIntervalDescription": "Ejecuta este flujo de trabajo en un intervalo fijo.",
         "frequencyIntervalTitle": "Intervalo",
         "frequencyOnceDescription": "Ejecuta este flujo de trabajo una vez en una fecha y hora.",
@@ -5021,7 +5021,7 @@
         "next": "Siguiente",
         "noRunsYet": "Aún no hay ejecuciones",
         "noUpcomingRun": "No hay próximas ejecuciones",
-        "onceOn": "Una vez en {{date}} a {{time}}",
+        "onceOn": "Una vez, el {{date}} a las {{time}}",
         "repeatEvery": "Cada {{interval}}",
         "repeats": "Repeticiones",
         "runAt": "Ejecutar a las",
@@ -5060,28 +5060,28 @@
         "webhook": "Webhook"
       },
       "webhook": {
-        "addDescription": "Crea un punto final firmado para este flujo de trabajo.",
+        "addDescription": "Crea un endpoint firmado para este flujo de trabajo.",
         "addTitle": "Añadir automatización de webhooks",
         "copy": "Copiar",
         "create": "Crear webhook",
         "createDescription": "Ejecuta este flujo de trabajo desde un POST firmado.",
         "createTitle": "Webhook",
-        "hidden": "URL de Webhook oculta",
+        "hidden": "URL del webhook oculta",
         "paidBadge": "Equipo",
         "reveal": "Mostrar secreto",
-        "revealDescription": "Revela el punto final con signos y el final secreto en {{suffix}}",
+        "revealDescription": "Muestra el endpoint firmado y el secreto que termina en {{suffix}}",
         "revealTitle": "Ver secreto del webhook",
         "secret": "Secreto de firma",
         "secretHiddenHint": "Los valores secretos están ocultos en la lista de automatización. Revélalos solo cuando necesites configurar o probar este webhook.",
         "secretOneTimeHint": "El secreto de firma solo se muestra después de la creación.",
-        "signedCurl": "Rotación con signo",
+        "signedCurl": "cURL firmado",
         "upgrade": {
           "adminHint": "Pide a un administrador de espacio de trabajo que actualice.",
           "benefitDescription": "Crea endpoints firmados que inicien flujos de trabajo desde sistemas externos.",
           "benefitTitle": "Automatización segura de flujos de trabajo entrantes",
           "description": "Las automatizaciones de Webhook requieren un espacio de trabajo en equipo o personalizado.",
-          "title": "Actualización para automatizaciones de webhooks",
-          "upgradeAction": "Ascenso a equipo"
+          "title": "Actualizar para usar automatizaciones de webhooks",
+          "upgradeAction": "Actualizar a Team"
         },
         "url": "URL del webhook"
       }
@@ -5130,8 +5130,8 @@
           "reviewPermissions": "Revisar permisos"
         },
         "aria": "Preparación de los conectores",
-        "check": "Revisa los conectores",
-        "checkAgain": "Revisa de nuevo",
+        "check": "Revisar conectores",
+        "checkAgain": "Revisar de nuevo",
         "checking": "Comprobando...",
         "description": "Consulta qué conectores integrados puede necesitar este flujo de trabajo y si están listos.",
         "empty": "No se detectaron conectores necesarios",
@@ -5165,7 +5165,7 @@
         "removalWithAutomations_one": "{{count}} automatización se pausa en {{agent}} y este flujo de trabajo se elimina.",
         "removalWithAutomations_many": "{{count}} automatizaciones se pausan en {{agent}} y este flujo de trabajo se elimina.",
         "removalWithAutomations_other": "{{count}} automatizaciones se pausan en {{agent}} y este flujo de trabajo se elimina.",
-        "removeOriginal": "Elimina el original de {{agent}} después de copiar",
+        "removeOriginal": "Eliminar el original de {{agent}} después de copiar",
         "selectAgent": "Elige un agente",
         "title": "Copiar flujo de trabajo",
         "to": "Copiar a"
@@ -5179,7 +5179,7 @@
       },
       "files": {
         "aria": "Archivos de flujo de trabajo",
-        "deleteAria": "Elimina {{path}}",
+        "deleteAria": "Eliminar {{path}}",
         "deleteSelected": "Eliminar archivo seleccionado",
         "fileContent": "Contenido de archivos de flujo de trabajo",
         "filePlaceholder": "Edita este archivo markdown...",
@@ -5219,13 +5219,13 @@
         "resolvesTo": "actualmente se resuelve como"
       },
       "visibility": {
-        "adminRequired": "Publicar un flujo de trabajo bajo un agente que no eres propietario requiere permisos de administrador de la organización.",
+        "adminRequired": "Publicar un flujo de trabajo para un agente que no es de tu propiedad requiere permisos de administrador de la organización.",
         "automationWarning": "Las automatizaciones se detendrán",
         "confirmDescription": "Esta es una operación peligrosa. Aunque este flujo de trabajo es privado, las automatizaciones que otros miembros construyeron sobre él dejan de funcionar.",
         "confirmTitle": "¿Hacer privado este flujo de trabajo?",
         "makePrivate": "Hacer privado",
         "publishAria": "Hacer público el flujo de trabajo",
-        "workflowHidden": "{{title}} quedarán ocultos para otros miembros y sus automatizaciones cesarán."
+        "workflowHidden": "{{title}} quedará oculto para otros miembros y sus automatizaciones se detendrán."
       }
     },
     "editor": {
@@ -5312,7 +5312,7 @@
       "uninstallTitle": "¿Desinstalar la integración de Slack?"
     },
     "strapi": {
-      "description": "Automatizar el trabajo cuando se publican las entradas",
+      "description": "Automatiza el trabajo cuando se publican entradas",
       "title": "Strapi"
     },
     "teams": {
@@ -5321,8 +5321,8 @@
       "connectThenInstall": "Conecta tu cuenta de Microsoft y luego instala la app Teams",
       "description": "Comunicación y colaboración en equipo",
       "disconnect": "Desconectar Microsoft Teams",
-      "install": "Instala en Teams",
-      "moreOptions": "Más opciones Microsoft Teams",
+      "install": "Instalar en Teams",
+      "moreOptions": "Más opciones de Microsoft Teams",
       "permissionsUpdated": "Los permisos de Microsoft Teams se han actualizado",
       "title": "Microsoft Teams",
       "uninstall": "Desinstalar Microsoft Teams",
