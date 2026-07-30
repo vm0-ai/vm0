@@ -50,6 +50,7 @@ export enum FeatureSwitchKey {
   SpanishLocale = "spanishLocale",
   ItalianLocale = "italianLocale",
   FrenchLocale = "frenchLocale",
+  HindiLocale = "hindiLocale",
   ZeroBrowser = "zeroBrowser",
   ZeroChatMessaging = "zeroChatMessaging",
   ZeroMailReplyFollowUp = "zeroMailReplyFollowUp",

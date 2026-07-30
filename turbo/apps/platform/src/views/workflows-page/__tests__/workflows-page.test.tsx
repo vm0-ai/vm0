@@ -1495,6 +1495,23 @@ describe("workflow localization", () => {
       last: "Dernière",
       next: "Prochaine",
     },
+    {
+      locale: "hi-IN",
+      listTitle: "वर्कफ़्लो",
+      detailTitle: "वर्कफ़्लो",
+      openWorkflow: "Sales Research खोलें",
+      automationsTab: "ऑटोमेशन",
+      scheduleTitle: `हर कार्यदिवस ${new Intl.DateTimeFormat("hi-IN", {
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone: "UTC",
+      }).format(new Date(Date.UTC(2024, 0, 1, 6)))} बजे`,
+      eventTitle: "Gmail नया संदेश",
+      eventSummary:
+        'प्रेषक में "@acme.com" शामिल है; विषय में "newsletter" शामिल नहीं है',
+      last: "अंतिम",
+      next: "अगला",
+    },
   ] as const;
 
   it.each(localeCases)(

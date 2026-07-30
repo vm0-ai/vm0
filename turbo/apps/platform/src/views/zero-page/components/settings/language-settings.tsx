@@ -107,6 +107,13 @@ function LanguageSelectContent({
           })}
         </SelectItem>
       )}
+      {supports("hi-IN") && (
+        <SelectItem value="hi-IN">
+          {t(($) => {
+            return $.settings.preferences.language.options.hindi;
+          })}
+        </SelectItem>
+      )}
     </SelectContent>
   );
 }

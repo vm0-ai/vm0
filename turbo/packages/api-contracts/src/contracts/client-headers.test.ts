@@ -4,6 +4,7 @@ import {
   clientVersionSupportsCapability,
   CLIENT_CAPABILITY_ES_ES_LOCALE,
   CLIENT_CAPABILITY_FR_FR_LOCALE,
+  CLIENT_CAPABILITY_HI_IN_LOCALE,
   CLIENT_CAPABILITY_IT_IT_LOCALE,
   CLIENT_CAPABILITY_JA_JP_LOCALE,
   CLIENT_CAPABILITY_KO_KR_LOCALE,
@@ -75,25 +76,28 @@ describe("client header contract", () => {
               addClientCapabilityToVersion(
                 addClientCapabilityToVersion(
                   addClientCapabilityToVersion(
-                    "0.636.1",
-                    CLIENT_CAPABILITY_PT_BR_LOCALE,
+                    addClientCapabilityToVersion(
+                      "0.636.1",
+                      CLIENT_CAPABILITY_PT_BR_LOCALE,
+                    ),
+                    CLIENT_CAPABILITY_JA_JP_LOCALE,
                   ),
-                  CLIENT_CAPABILITY_JA_JP_LOCALE,
+                  CLIENT_CAPABILITY_KO_KR_LOCALE,
                 ),
-                CLIENT_CAPABILITY_KO_KR_LOCALE,
+                CLIENT_CAPABILITY_ID_ID_LOCALE,
               ),
-              CLIENT_CAPABILITY_ID_ID_LOCALE,
+              CLIENT_CAPABILITY_DE_DE_LOCALE,
             ),
-            CLIENT_CAPABILITY_DE_DE_LOCALE,
+            CLIENT_CAPABILITY_ES_ES_LOCALE,
           ),
-          CLIENT_CAPABILITY_ES_ES_LOCALE,
+          CLIENT_CAPABILITY_IT_IT_LOCALE,
         ),
-        CLIENT_CAPABILITY_IT_IT_LOCALE,
+        CLIENT_CAPABILITY_FR_FR_LOCALE,
       ),
-      CLIENT_CAPABILITY_FR_FR_LOCALE,
+      CLIENT_CAPABILITY_HI_IN_LOCALE,
     );
     expect(version).toBe(
-      "0.636.1+pt-br-locale-v1.ja-jp-locale-v1.ko-kr-locale-v1.id-id-locale-v1.de-de-locale-v1.es-es-locale-v1.it-it-locale-v1.fr-fr-locale-v1",
+      "0.636.1+pt-br-locale-v1.ja-jp-locale-v1.ko-kr-locale-v1.id-id-locale-v1.de-de-locale-v1.es-es-locale-v1.it-it-locale-v1.fr-fr-locale-v1.hi-in-locale-v1",
     );
     expect(
       clientVersionSupportsCapability(version, CLIENT_CAPABILITY_PT_BR_LOCALE),
@@ -118,6 +122,9 @@ describe("client header contract", () => {
     ).toBe(true);
     expect(
       clientVersionSupportsCapability(version, CLIENT_CAPABILITY_FR_FR_LOCALE),
+    ).toBe(true);
+    expect(
+      clientVersionSupportsCapability(version, CLIENT_CAPABILITY_HI_IN_LOCALE),
     ).toBe(true);
     expect(
       clientVersionSupportsCapability(
