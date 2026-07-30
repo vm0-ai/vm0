@@ -14,6 +14,7 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
   NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+  RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
   type Job as RunnerJob,
 } from "@vm0/api-contracts/contracts/runners";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -9574,6 +9575,46 @@ describe("RUN-03: cancellation of dispatched and terminal runs", () => {
 
     const repeated = await api.requestCancelRun(actor, run.runId, [200]);
     expect(repeated.status).toBe(200);
+  });
+
+  it("does not redeliver ordinary callbacks when cancellation recovery is redriven", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const callbackUrl = "https://callback.example/cancellation-recovery";
+    let callbackRequests = 0;
+    server.use(
+      http.post(callbackUrl, () => {
+        callbackRequests += 1;
+        return HttpResponse.text("retry later", { status: 503 });
+      }),
+    );
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "cancel without redelivering ordinary callbacks",
+      modelProvider: "anthropic-api-key",
+    });
+    await callbackStore.set(
+      seedAgentRunCallback$,
+      {
+        runId: run.runId,
+        url: callbackUrl,
+        payload: {},
+      },
+      context.signal,
+    );
+    await api.heartbeatRunner(runnerGroup);
+    await api.claimRunnerJob(run.runId, {
+      capabilities: [RUNNER_CANCELLATION_RECOVERY_CAPABILITY],
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await flushWaitUntilForTest();
+    expect(callbackRequests).toBe(1);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await flushWaitUntilForTest();
+    expect(callbackRequests).toBe(1);
   });
 
   it("serializes concurrent claim and cancellation without deadlock", async () => {

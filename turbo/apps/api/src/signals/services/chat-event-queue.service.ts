@@ -28,6 +28,14 @@ function unrevokedQueueEventCondition(db: ChatQueueReadDb) {
   );
 }
 
+export function pendingChatQueueEventCondition(db: ChatQueueReadDb) {
+  return and(
+    chatEventTypeIn(["input.prompt", "input.automation", "input.goal"]),
+    isNull(chatEvents.runId),
+    unrevokedQueueEventCondition(db),
+  );
+}
+
 /**
  * Fold one thread's immutable input events into its pending queue. User input
  * keeps absolute priority over automation input, automation stays ahead of
@@ -51,10 +59,8 @@ export async function listPendingChatQueueEvents(
     .where(
       and(
         eq(chatEvents.chatThreadId, chatThreadId),
-        chatEventTypeIn(["input.prompt", "input.automation", "input.goal"]),
-        isNull(chatEvents.runId),
+        pendingChatQueueEventCondition(db),
         createdBefore ? lt(chatEvents.createdAt, createdBefore) : undefined,
-        unrevokedQueueEventCondition(db),
       ),
     )
     .orderBy(asc(chatEvents.createdAt), asc(chatEvents.id));
@@ -105,9 +111,7 @@ export async function loadPendingChatQueueEvent(
       and(
         eq(chatEvents.id, args.eventId),
         eq(chatEvents.chatThreadId, args.chatThreadId),
-        chatEventTypeIn(["input.prompt", "input.automation", "input.goal"]),
-        isNull(chatEvents.runId),
-        unrevokedQueueEventCondition(db),
+        pendingChatQueueEventCondition(db),
       ),
     )
     .limit(1);
@@ -132,9 +136,8 @@ export async function hasPendingUserChatQueueEvent(
     .where(
       and(
         eq(chatEvents.chatThreadId, chatThreadId),
+        pendingChatQueueEventCondition(db),
         chatEventTypeIn(["input.prompt"]),
-        isNull(chatEvents.runId),
-        unrevokedQueueEventCondition(db),
       ),
     )
     .limit(1);
@@ -167,10 +170,8 @@ export async function staleChatEventQueueThreadIds(
     .from(chatEvents)
     .where(
       and(
-        chatEventTypeIn(["input.prompt", "input.automation", "input.goal"]),
-        isNull(chatEvents.runId),
+        pendingChatQueueEventCondition(db),
         lt(chatEvents.createdAt, args.staleBefore),
-        unrevokedQueueEventCondition(db),
       ),
     )
     .limit(args.limit);
