@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ZodError } from "zod";
 
 import {
   parseConnectorExternalCodeProviderState,
@@ -18,6 +19,7 @@ describe("connector OAuth device provider state", () => {
         connectorType: connectorSlug,
         deviceCode: "device-code",
         pollState: "poll-state",
+        unrelatedProperty: "ignored",
       }),
     },
     {
@@ -26,6 +28,7 @@ describe("connector OAuth device provider state", () => {
         connectorSlug,
         deviceCode: "device-code",
         pollState: "poll-state",
+        unrelatedProperty: "ignored",
       }),
     },
   ])(
@@ -79,7 +82,7 @@ describe("connector OAuth device provider state", () => {
         serializedState,
         connectorSlug,
       });
-    }).toThrow("Invalid input");
+    }).toThrow(ZodError);
   });
 
   it("rejects a connector mismatch", () => {
@@ -126,6 +129,7 @@ describe("connector external-code provider state", () => {
         connectorType: connectorSlug,
         authMethod,
         providerState: "provider-state",
+        unrelatedProperty: "ignored",
       }),
     },
     {
@@ -134,6 +138,7 @@ describe("connector external-code provider state", () => {
         connectorSlug,
         authMethod,
         providerState: "provider-state",
+        unrelatedProperty: "ignored",
       }),
     },
   ])(
@@ -177,7 +182,7 @@ describe("connector external-code provider state", () => {
         connectorSlug,
         authMethod,
       });
-    }).toThrow("Invalid input");
+    }).toThrow(ZodError);
   });
 
   it.each([
