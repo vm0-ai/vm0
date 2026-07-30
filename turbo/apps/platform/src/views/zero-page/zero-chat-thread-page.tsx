@@ -48,6 +48,7 @@ import {
   IconMessageCircle,
   IconMoodPlus,
   IconPackage,
+  IconRobot,
   IconRoute,
   IconSearch,
   IconTarget,
@@ -6977,6 +6978,33 @@ function UserMessageChatThreadReference({
   );
 }
 
+function UserMessageAgentReference({
+  agentId,
+  name,
+}: {
+  agentId: string;
+  name: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Link
+      pathname={ROUTES.agentChat}
+      options={{ pathParams: { agentId } }}
+      aria-label={t(
+        ($) => {
+          return $.chat.thread.openNamedAgent;
+        },
+        { name },
+      )}
+      className={STRUCTURED_INLINE_REFERENCE_CLASS}
+      title={name}
+    >
+      <IconRobot size={13} stroke={1.7} className="shrink-0" />
+      <span className="min-w-0 truncate">{name}</span>
+    </Link>
+  );
+}
+
 function UserMessageFeedbackNote({
   note,
 }: {
@@ -6996,6 +7024,15 @@ function UserMessageFeedbackNote({
               key={key}
               threadId={part.threadId}
               title={part.titleSnapshot}
+            />
+          );
+        }
+        if (part.type === "agent") {
+          return (
+            <UserMessageAgentReference
+              key={key}
+              agentId={part.agentId}
+              name={part.nameSnapshot}
             />
           );
         }
@@ -7144,6 +7181,14 @@ function UserMessagePartView({
       <UserMessageChatThreadReference
         threadId={part.threadId}
         title={part.titleSnapshot}
+      />
+    );
+  }
+  if (part.type === "agent") {
+    return (
+      <UserMessageAgentReference
+        agentId={part.agentId}
+        name={part.nameSnapshot}
       />
     );
   }

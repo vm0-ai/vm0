@@ -1409,7 +1409,6 @@ describe("chat lifecycle", () => {
         if (!query.sinceSeqId) {
           return respond(200, {
             events: baselineMessages.map(chatEventResponse),
-            hasHistoryBefore: false,
           });
         }
         sinceSeqIds.push(query.sinceSeqId);

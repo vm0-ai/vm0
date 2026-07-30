@@ -884,10 +884,7 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly beforeId?: string;
         readonly limit?: number;
       } = {},
-    ): Promise<{
-      readonly events: readonly ChatEventResponse[];
-      readonly hasHistoryBefore?: boolean;
-    }> {
+    ): Promise<{ readonly events: readonly ChatEventResponse[] }> {
       const response = await accept(
         threadEventsClient().list({
           headers: authenticate(context, actor),

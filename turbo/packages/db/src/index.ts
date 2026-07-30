@@ -35,6 +35,7 @@ import * as usageDailySchema from "./schema/usage-daily";
 import * as githubInstallationSchema from "./schema/github-installation";
 import * as githubUserLinkSchema from "./schema/github-user-link";
 import * as githubIssueSessionSchema from "./schema/github-issue-session";
+import * as githubChatThreadRouteSchema from "./schema/github-chat-thread-route";
 import * as telegramInstallationSchema from "./schema/telegram-installation";
 import * as telegramOfficialUserLinkSchema from "./schema/telegram-official-user-link";
 import * as telegramUserLinkSchema from "./schema/telegram-user-link";
@@ -172,6 +173,7 @@ export const schema = {
   ...githubInstallationSchema,
   ...githubUserLinkSchema,
   ...githubIssueSessionSchema,
+  ...githubChatThreadRouteSchema,
   ...telegramInstallationSchema,
   ...telegramOfficialUserLinkSchema,
   ...telegramUserLinkSchema,

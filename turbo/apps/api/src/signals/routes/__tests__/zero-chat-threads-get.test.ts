@@ -155,7 +155,6 @@ describe("GET /api/zero/chat-threads/:threadId/events", () => {
 
     expect(response.body).toStrictEqual({
       events: [],
-      hasHistoryBefore: false,
     });
   });
 
@@ -181,10 +180,7 @@ describe("GET /api/zero/chat-threads/:threadId/events", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({
-      events: [],
-      hasHistoryBefore: false,
-    });
+    expect(response.body).toStrictEqual({ events: [] });
   });
 
   it("rejects ZERO_TOKEN without chat-event:read capability", async () => {

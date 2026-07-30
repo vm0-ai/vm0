@@ -70,6 +70,11 @@ function serializeChatThreadMention(threadId: string, title: string): string {
   return `[${escapedTitle}](/chats/${threadId})`;
 }
 
+function serializeAgentMention(agentId: string, name: string): string {
+  const escapedName = name.replace(/[\\[\]]/g, String.raw`\$&`);
+  return `[${escapedName}](/agents/${agentId}/chat)`;
+}
+
 function serializeFeedbackNote(
   parts: readonly FeedbackNotePart[],
   serializeTemplate: (
@@ -83,6 +88,9 @@ function serializeFeedbackNote(
       }
       if (part.type === "chat_thread") {
         return serializeChatThreadMention(part.threadId, part.titleSnapshot);
+      }
+      if (part.type === "agent") {
+        return serializeAgentMention(part.agentId, part.nameSnapshot);
       }
       return serializeTemplate(part);
     })
@@ -244,6 +252,12 @@ export function projectUserMessage(
       );
       inlinePrompt += serialized;
       inlineDisplayText += `[Chat thread: ${part.titleSnapshot}]`;
+      hasTextContent = true;
+      continue;
+    }
+    if (part.type === "agent") {
+      inlinePrompt += serializeAgentMention(part.agentId, part.nameSnapshot);
+      inlineDisplayText += `[Agent: ${part.nameSnapshot}]`;
       hasTextContent = true;
       continue;
     }

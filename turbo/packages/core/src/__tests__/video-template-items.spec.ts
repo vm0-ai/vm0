@@ -3,10 +3,7 @@ import {
   VIDEO_TEMPLATE_ITEMS,
   findVideoTemplateItem,
 } from "../video-template-items";
-import {
-  findVideoTemplate,
-  selectResourceCandidates,
-} from "../resource-registry";
+import { findVideoTemplate } from "../resource-registry";
 
 describe("video template items", () => {
   const expectedOrder = [
@@ -53,25 +50,6 @@ describe("video template items", () => {
       expect(template).not.toHaveProperty("previewImage");
       expect(template).not.toHaveProperty("previewVideo");
     }
-  });
-
-  it("exposes video templates through the candidate slice", () => {
-    const { videoTemplates } = selectResourceCandidates().candidates;
-
-    expect(
-      videoTemplates.map((template) => {
-        return template.id;
-      }),
-    ).toEqual(expectedOrder);
-    expect(videoTemplates).toContainEqual(
-      expect.objectContaining({
-        id: "video-template:epic-grandeur",
-        kind: "video-template",
-        source: expect.objectContaining({
-          path: "video-template/epic-grandeur",
-        }),
-      }),
-    );
   });
 
   it("resolves historical video template ids", () => {

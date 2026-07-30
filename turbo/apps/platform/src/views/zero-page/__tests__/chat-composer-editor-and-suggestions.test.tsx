@@ -637,7 +637,16 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(draftPatches).toContainEqual(
         expect.objectContaining({
-          draftUserMessage: expect.objectContaining({ version: 1 }),
+          draftUserMessage: expect.objectContaining({
+            version: 1,
+            parts: expect.arrayContaining([
+              {
+                type: "agent",
+                agentId: zetaAgentId,
+                nameSnapshot: "Zeta Agent",
+              },
+            ]),
+          }),
         }),
       );
     });

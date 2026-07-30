@@ -1,0 +1,82 @@
+name: "Production Migration Smoke"
+description: "Run migrations on an expiring Neon branch cloned from production"
+
+inputs:
+  neon-api-key:
+    description: "Neon API key for branch lifecycle operations"
+    required: true
+  neon-project-id:
+    description: "Neon production project ID"
+    required: true
+  branch-name:
+    description: "Unique temporary branch name"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install neonctl
+      shell: bash
+      run: npm install -g neonctl@2.15.0
+
+    - name: Create Production Migration Smoke Branch
+      id: create-migration-smoke-branch
+      shell: bash
+      env:
+        BRANCH_NAME: ${{ inputs.branch-name }}
+        NEON_API_KEY: ${{ inputs.neon-api-key }}
+        NEON_PROJECT_ID: ${{ inputs.neon-project-id }}
+      run: |
+        EXPIRES_AT=$(date -u -d "+6 hours" +"%Y-%m-%dT%H:%M:%SZ")
+
+        echo "Creating smoke branch $BRANCH_NAME from production"
+        CREATE_OUTPUT=$(
+          neonctl branches create \
+            --name "$BRANCH_NAME" \
+            --parent production \
+            --expires-at "$EXPIRES_AT" \
+            --project-id "$NEON_PROJECT_ID" \
+            --output json
+        )
+        BRANCH_ID=$(jq -er '.branch.id' <<< "$CREATE_OUTPUT")
+        echo "branch-id=$BRANCH_ID" >> "$GITHUB_OUTPUT"
+
+        echo "Waiting for smoke branch $BRANCH_NAME ($BRANCH_ID) to become ready"
+        CURRENT_STATE=""
+        for attempt in {1..30}; do
+          CURRENT_STATE=$(neonctl branches get "$BRANCH_ID" --project-id "$NEON_PROJECT_ID" --output json | jq -r '.current_state')
+          if [ "$CURRENT_STATE" = "ready" ]; then
+            echo "Smoke branch ready"
+            break
+          fi
+          echo "Smoke branch state: ${CURRENT_STATE:-missing} (attempt $attempt/30)"
+          sleep 2
+        done
+
+        if [ "$CURRENT_STATE" != "ready" ]; then
+          echo "::error::Smoke branch $BRANCH_NAME not ready after 60 seconds (state: ${CURRENT_STATE:-missing})"
+          exit 1
+        fi
+
+        DATABASE_URL=$(neonctl connection-string "$BRANCH_ID" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --pooled)
+        echo "::add-mask::$DATABASE_URL"
+        echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
+
+    - name: Run Production Migration Smoke Test
+      shell: bash
+      working-directory: turbo
+      env:
+        DATABASE_URL: ${{ steps.create-migration-smoke-branch.outputs.database-url }}
+      run: pnpm -F @vm0/db db:migrate
+
+    - name: Delete Production Migration Smoke Branch
+      if: ${{ always() && steps.create-migration-smoke-branch.outputs.branch-id != '' }}
+      shell: bash
+      env:
+        BRANCH_ID: ${{ steps.create-migration-smoke-branch.outputs.branch-id }}
+        NEON_API_KEY: ${{ inputs.neon-api-key }}
+        NEON_PROJECT_ID: ${{ inputs.neon-project-id }}
+      run: |
+        echo "Cleaning up smoke branch $BRANCH_ID"
+        neonctl branches delete "$BRANCH_ID" --project-id "$NEON_PROJECT_ID"
+        echo "Smoke branch $BRANCH_ID deleted"

@@ -352,4 +352,73 @@ describe("user messages", () => {
     expect(screen.getByText("Before feedback.")).toBeInTheDocument();
     expect(screen.getByText("After feedback.")).toBeInTheDocument();
   });
+
+  it("renders agent mentions as chips in messages and feedback notes", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000749";
+    const mentionedAgentId = "a1000000-0000-4000-a000-000000000009";
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Agent mention rendering",
+      chatEvents: [
+        {
+          id: "00000000-0000-4000-8000-000000000749",
+          role: "user",
+          content: `Ask [Ada](/agents/${mentionedAgentId}/chat) about it.`,
+          runId: "d0000000-0000-4000-a000-000000000749",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Ask " },
+              {
+                type: "agent",
+                agentId: mentionedAgentId,
+                nameSnapshot: "Ada",
+              },
+              { type: "text", text: " about it." },
+              {
+                type: "feedback",
+                quote: "The rollout needs a reviewer",
+                note: [
+                  { type: "text", text: "Loop in " },
+                  {
+                    type: "agent",
+                    agentId: mentionedAgentId,
+                    nameSnapshot: "Ada",
+                  },
+                  { type: "text", text: "." },
+                ],
+              },
+            ],
+          },
+          createdAt: "2026-07-30T10:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    const userMessageElement = await waitFor(() => {
+      const element = document.querySelector("[data-structured-user-message]");
+      expect(element).toBeInstanceOf(HTMLElement);
+      return element as HTMLElement;
+    });
+    const agentLinks = userMessageElement.querySelectorAll(
+      'a[aria-label="Open agent Ada"]',
+    );
+    expect(agentLinks).toHaveLength(2);
+    expect(agentLinks[0]).toHaveAttribute(
+      "href",
+      `/agents/${mentionedAgentId}/chat`,
+    );
+    expect(agentLinks[0]).toHaveTextContent("Ada");
+    expect(userMessageElement).not.toHaveTextContent(
+      `/agents/${mentionedAgentId}/chat`,
+    );
+    expect(
+      userMessageElement.querySelector("[data-structured-feedback-group]"),
+    ).toBeInstanceOf(HTMLElement);
+  });
 });

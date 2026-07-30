@@ -697,7 +697,6 @@ describe("CHAT-02 chat messages and visible validation", () => {
     });
     expect(ownerMessages).toStrictEqual({
       events: [],
-      hasHistoryBefore: false,
     });
 
     const peerMessages = await api.requestListThreadEvents(

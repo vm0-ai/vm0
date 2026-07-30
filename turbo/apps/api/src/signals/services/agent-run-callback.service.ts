@@ -169,6 +169,12 @@ const dispatchInternalCallback$ = command(
           signal,
         );
       }
+      case "github:chat": {
+        return {
+          success: false,
+          error: "GitHub chat delivery callbacks are inline-only",
+        };
+      }
       case "morning-brief:email": {
         return await set(
           handleMorningBriefEmailInternalCallback$,
@@ -339,6 +345,7 @@ async function dispatchRunCallbacks(
             "feishu:chat",
             "teams:chat",
             "telegram:chat",
+            "github:chat",
             "slack:org",
           ]),
         ),
@@ -417,6 +424,7 @@ export const dispatchRunCallbacks$ = command(
               "feishu:chat",
               "teams:chat",
               "telegram:chat",
+              "github:chat",
               "slack:org",
             ]),
           ),
@@ -565,6 +573,12 @@ async function dispatchInternalCallbackWithoutCcstate(
         input.db,
         callbackEnvelope(input),
       );
+    }
+    case "github:chat": {
+      return {
+        success: false,
+        error: "GitHub chat delivery callbacks are inline-only",
+      };
     }
     case "morning-brief:email": {
       return await handleMorningBriefEmailInternalCallback(

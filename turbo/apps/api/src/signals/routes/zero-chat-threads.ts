@@ -142,7 +142,7 @@ const listChatEventsInner$ = computed(async (get) => {
   const params = get(pathParamsOf(chatThreadEventsContract.list));
   const query = get(queryOf(chatThreadEventsContract.list));
 
-  const page = await get(
+  const events = await get(
     zeroChatThreadEventsPage({
       threadId: params.threadId,
       userId: auth.userId,
@@ -153,16 +153,13 @@ const listChatEventsInner$ = computed(async (get) => {
       limit: query.limit,
     }),
   );
-  if (!page) {
+  if (!events) {
     return chatThreadNotFound();
   }
 
   return {
     status: 200 as const,
-    body: {
-      events: [...page.events],
-      hasHistoryBefore: page.hasHistoryBefore,
-    },
+    body: { events: [...events] },
   };
 });
 

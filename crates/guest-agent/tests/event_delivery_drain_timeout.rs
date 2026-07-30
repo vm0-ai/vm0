@@ -4,10 +4,14 @@
 mod common;
 
 use guest_agent::masker::SecretMasker;
+use guest_contracts::diagnostics::{
+    EventDeliveryAcceptanceOutcome, EventDeliveryAttemptFailureKind,
+};
 use serde_json::json;
+use std::io;
 use std::time::Duration;
 
-const EVENT_COUNT: usize = 40;
+const EVENT_COUNT: usize = 33;
 
 #[tokio::test]
 async fn event_delivery_aborts_after_the_global_drain_deadline()
@@ -50,7 +54,7 @@ async fn event_delivery_aborts_after_the_global_drain_deadline()
         )
         .await
     });
-    let _stalled_request = server.next_request(Duration::from_secs(5)).await?;
+    let stalled_request = server.next_request(Duration::from_secs(5)).await?;
     common::wait_for_file_contains(
         std::path::Path::new(&agent_log_file),
         "drain-timeout-sentinel",
@@ -76,15 +80,59 @@ async fn event_delivery_aborts_after_the_global_drain_deadline()
         execution.is_finished(),
         "event delivery should stop at the unchanged 120-second global deadline"
     );
-    let error = execution
-        .await?
-        .expect_err("the drain deadline should fail the CLI run");
-    assert!(
-        error
-            .to_string()
-            .contains("CLI event delivery did not drain within 120 seconds"),
-        "unexpected drain error: {error}"
+    let result = execution.await??;
+    assert_eq!(result.exit_code, common::CLEAN_EXIT);
+    let delivery = result
+        .event_delivery
+        .ok_or_else(|| io::Error::other("drain timeout omitted structured diagnostic"))?;
+    assert_eq!(
+        result.last_event_sequence,
+        delivery.last_acknowledged_sequence
     );
+    let failed_batch = delivery
+        .first_failed_batch
+        .as_ref()
+        .ok_or_else(|| io::Error::other("drain scenario omitted first exhausted batch"))?;
+    assert_eq!(failed_batch.attempts.len(), 3);
+    assert_eq!(
+        failed_batch.outcome,
+        EventDeliveryAcceptanceOutcome::OutcomeUnknown
+    );
+    assert!(failed_batch.attempts.iter().all(|attempt| {
+        attempt.failure_kind == EventDeliveryAttemptFailureKind::Timeout
+            && attempt.http_status.is_none()
+    }));
+    let drain = delivery
+        .drain_timeout
+        .as_ref()
+        .ok_or_else(|| io::Error::other("drain scenario omitted deadline snapshot"))?;
+    let active_batch = drain
+        .active_batch
+        .as_ref()
+        .ok_or_else(|| io::Error::other("drain scenario omitted active batch"))?;
+    assert_eq!(drain.queued_events, 0);
+    assert_eq!(drain.queued_bytes, 0);
+    assert_eq!(drain.carried_events, 0);
+    assert_eq!(drain.carried_bytes, 0);
+    assert_eq!(
+        usize::try_from(drain.queued_events)?
+            + usize::try_from(drain.carried_events)?
+            + usize::try_from(active_batch.event_count)?,
+        EVENT_COUNT - 1,
+        "the drain snapshot must account for every event after the exhausted first batch"
+    );
+    assert_eq!(drain.queued_events > 0, drain.queued_bytes > 0);
+    assert_eq!(drain.carried_events > 0, drain.carried_bytes > 0);
+    assert!(active_batch.conservative_bytes > 0);
+    assert_eq!(
+        active_batch.outcome,
+        EventDeliveryAcceptanceOutcome::OutcomeUnknown
+    );
+    let active_attempt = active_batch
+        .active_attempt
+        .as_ref()
+        .ok_or_else(|| io::Error::other("drain scenario omitted active attempt"))?;
+    assert!(active_attempt.elapsed_ms > 0);
 
     tokio::task::yield_now().await;
     let requests_after_abort = server.request_count();
@@ -99,6 +147,42 @@ async fn event_delivery_aborts_after_the_global_drain_deadline()
         requests_after_abort,
         "aborting the delivery worker should prevent later requests"
     );
+    let recorded_requests = server.requests()?;
+    let recorded_active = recorded_requests
+        .last()
+        .ok_or_else(|| io::Error::other("controlled server recorded no requests"))?;
+    assert_eq!(
+        recorded_active.client_request_id.as_deref(),
+        Some(active_attempt.client_request_id.as_str())
+    );
+    assert_eq!(
+        common::event_request_sequences(recorded_active)?,
+        (active_batch.first_sequence..=active_batch.last_sequence).collect::<Vec<_>>()
+    );
+
+    tokio::time::resume();
+    let mut pending_requests = Vec::new();
+    for _ in 1..requests_after_abort {
+        pending_requests.push(server.next_request(Duration::from_secs(1)).await?);
+    }
+    let active_request = pending_requests
+        .pop()
+        .ok_or_else(|| io::Error::other("active controlled request was not retained"))?;
+    assert_eq!(
+        active_request.request.client_request_id.as_deref(),
+        Some(active_attempt.client_request_id.as_str())
+    );
+    let completed_before = server.completed_response_count();
+    active_request.respond(200)?;
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while server.completed_response_count() == completed_before {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("server should finish the response after the guest abandons it");
+    drop(pending_requests);
+    drop(stalled_request);
 
     Ok(())
 }

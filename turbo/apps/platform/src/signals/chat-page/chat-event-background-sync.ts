@@ -89,24 +89,24 @@ const syncChatThreadEventsToIndexedDb$ = command(
 
     async function syncEventsAfter(): Promise<void> {
       const requestedSinceSeqId = sinceSeqId;
-      const result = await set(
+      const events = await set(
         listEventsAfter$,
         { threadId, sinceSeqId: requestedSinceSeqId },
         signal,
       );
       signal.throwIfAborted();
 
-      if (result.events.length === 0) {
+      if (events.length === 0) {
         return;
       }
 
-      await set(writeIndexedDbChatEvents$, threadId, result.events, signal);
+      await set(writeIndexedDbChatEvents$, threadId, events, signal);
       signal.throwIfAborted();
-      syncedEvents.push(...result.events);
-      sinceSeqId = result.events[result.events.length - 1]!.seqId;
+      syncedEvents.push(...events);
+      sinceSeqId = events[events.length - 1]!.seqId;
       if (
         requestedSinceSeqId !== undefined &&
-        result.events.length < CHAT_EVENTS_PAGE_LIMIT
+        events.length < CHAT_EVENTS_PAGE_LIMIT
       ) {
         return;
       }

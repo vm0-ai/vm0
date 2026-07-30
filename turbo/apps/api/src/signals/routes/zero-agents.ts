@@ -33,7 +33,7 @@ import {
   defaultAgentResponse,
   zeroAgentDetail,
   zeroAgentEnabledConnectorSlugs,
-  zeroAgentEnabledCustomConnectorIds,
+  zeroAgentCustomConnectorGrants,
   zeroAgentExists,
   zeroAgentList,
   visibleJoinedZeroAgentCondition,
@@ -520,14 +520,22 @@ const getAgentCustomConnectorsInner$ = computed(async (get) => {
     return agentNotFound(params.id);
   }
 
-  const enabledIds = await get(
-    zeroAgentEnabledCustomConnectorIds({
+  const grants = await get(
+    zeroAgentCustomConnectorGrants({
       orgId: auth.orgId,
       userId: auth.userId,
       agentId: params.id,
     }),
   );
-  return { status: 200 as const, body: { enabledIds: [...enabledIds] } };
+  return {
+    status: 200 as const,
+    body: {
+      enabledIds: grants.map((grant) => {
+        return grant.customConnectorId;
+      }),
+      grants: [...grants],
+    },
+  };
 });
 
 const updateAgentCustomConnectorsBody$ = bodyResultOf(
@@ -744,7 +752,13 @@ const updateAgentCustomConnectorsInner$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const enabledIds = Array.from(new Set(body.data.enabledIds));
+    const grants = "grants" in body.data ? body.data.grants : undefined;
+    const enabledIds =
+      "enabledIds" in body.data
+        ? Array.from(new Set(body.data.enabledIds))
+        : body.data.grants.map((grant) => {
+            return grant.customConnectorId;
+          });
     const operation = body.data.operation ?? "replace";
 
     const updated = await updateUserCustomConnectors(writeDb, {
@@ -752,6 +766,7 @@ const updateAgentCustomConnectorsInner$ = command(
       userId: auth.userId,
       agentId: params.id,
       enabledIds,
+      ...(grants !== undefined ? { grants } : {}),
       operation,
     });
     signal.throwIfAborted();
@@ -774,10 +789,21 @@ const updateAgentCustomConnectorsInner$ = command(
         `Custom connector ids are not configured for this user: ${updated.unconfiguredIds.join(", ")}`,
       );
     }
+    if (updated.status === "customConnectorPermissionSelectionRequired") {
+      return validationError(
+        `Permission selection is required for custom connector ids: ${updated.connectorIds.join(", ")}`,
+      );
+    }
+    if (updated.status === "invalidCustomConnectorPermissions") {
+      return validationError(updated.message);
+    }
 
     return {
       status: 200 as const,
-      body: { enabledIds: [...updated.enabledIds] },
+      body: {
+        enabledIds: [...updated.enabledIds],
+        grants: [...updated.grants],
+      },
     };
   },
 );

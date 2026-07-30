@@ -28,6 +28,19 @@ function isCanonicalChatCallback(callback: {
   return internalRunCallbackKindForRecord(callback) === "chat";
 }
 
+function isInlineOnlyCanonicalDeliveryCallback(
+  internalKind: string | null,
+): boolean {
+  return (
+    internalKind === "agentphone:chat" ||
+    internalKind === "slack:chat" ||
+    internalKind === "feishu:chat" ||
+    internalKind === "teams:chat" ||
+    internalKind === "telegram:chat" ||
+    internalKind === "github:chat"
+  );
+}
+
 export const dispatchProgressCallbacks$ = command(
   async ({ get, set }, runId: string, signal: AbortSignal): Promise<void> => {
     const db = get(db$);
@@ -71,6 +84,7 @@ export const dispatchProgressCallbacks$ = command(
               "feishu:chat",
               "teams:chat",
               "telegram:chat",
+              "github:chat",
               "slack:org",
             ]),
           ),
@@ -104,13 +118,7 @@ export const dispatchProgressCallbacks$ = command(
           );
           return;
         }
-        if (
-          internalKind === "agentphone:chat" ||
-          internalKind === "slack:chat" ||
-          internalKind === "feishu:chat" ||
-          internalKind === "teams:chat" ||
-          internalKind === "telegram:chat"
-        ) {
+        if (isInlineOnlyCanonicalDeliveryCallback(internalKind)) {
           return;
         }
         if (internalKind === "agentphone") {
