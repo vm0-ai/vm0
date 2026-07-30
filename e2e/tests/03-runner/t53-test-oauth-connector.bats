@@ -105,7 +105,7 @@ enable_test_oauth_for_compose() {
 
     local body
     body=$(cat <<EOF
-{"composeId":"${compose_id}","connectorTypes":["test-oauth"]}
+{"composeId":"${compose_id}","connectorSlugs":["test-oauth"]}
 EOF
 )
 
@@ -188,7 +188,7 @@ seed_test_oauth_connector() {
         --arg refreshToken "$refresh_token" \
         --argjson expiresIn "$expires_in" \
         '{
-            connectorName: "test-oauth",
+            connectorSlug: "test-oauth",
             authMethod: "oauth",
             accessToken: $accessToken,
             refreshToken: $refreshToken,

@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import math
 import urllib.error
 from dataclasses import dataclass, field
 from typing import Protocol
@@ -113,7 +114,7 @@ class FirewallAuthSuccess:
     """Validated /firewall/auth success response consumed by the auth cache."""
 
     payload: FirewallAuthPayload
-    expires_at: object = None
+    expires_at: int | float | None = None
     refreshed_connectors: list[str] = field(default_factory=list)
     refreshed_secrets: list[str] = field(default_factory=list)
 
@@ -196,15 +197,30 @@ def _parse_optional_string(decoded: dict[object, object], field_name: str) -> st
     return value
 
 
-def _parse_optional_string_list(decoded: dict[object, object], field_name: str) -> list[str]:
-    value = decoded.get(field_name)
-    if value is None:
-        return []
+def _parse_required_string_list(decoded: dict[object, object], field_name: str) -> list[str]:
+    if field_name not in decoded:
+        raise _malformed_firewall_auth_success(f"{field_name} is required")
+    value = decoded[field_name]
     if not isinstance(value, list):
         raise _malformed_firewall_auth_success(f"{field_name} must be an array")
     if not all(isinstance(item, str) for item in value):
         raise _malformed_firewall_auth_success(f"{field_name} values must be strings")
     return list(value)
+
+
+def _parse_expires_at(decoded: dict[object, object]) -> int | float | None:
+    if "expiresAt" not in decoded:
+        raise _malformed_firewall_auth_success("expiresAt is required")
+    value = decoded["expiresAt"]
+    if value is None:
+        return None
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int | float)
+        or (isinstance(value, float) and not math.isfinite(value))
+    ):
+        raise _malformed_firewall_auth_success("expiresAt must be a finite number or null")
+    return value
 
 
 def _parse_optional_aws_sigv4_credentials(
@@ -242,9 +258,10 @@ def _parse_firewall_auth_success(
         raise _malformed_firewall_auth_success("headers is required")
 
     headers = _parse_string_map(decoded_map["headers"], "headers")
-    resolved_secrets = _parse_optional_string_list(decoded_map, "resolvedSecrets")
-    refreshed_connectors = _parse_optional_string_list(decoded_map, "refreshedConnectors")
-    refreshed_secrets = _parse_optional_string_list(decoded_map, "refreshedSecrets")
+    expires_at = _parse_expires_at(decoded_map)
+    resolved_secrets = _parse_required_string_list(decoded_map, "resolvedSecrets")
+    refreshed_connectors = _parse_required_string_list(decoded_map, "refreshedConnectors")
+    refreshed_secrets = _parse_required_string_list(decoded_map, "refreshedSecrets")
     base = _parse_optional_string(decoded_map, "base")
     query = _parse_optional_string_map(decoded_map, "query")
     aws_sigv4 = _parse_optional_aws_sigv4_credentials(decoded_map)
@@ -280,7 +297,7 @@ def _parse_firewall_auth_success(
     )
     return FirewallAuthSuccess(
         payload=payload,
-        expires_at=decoded_map.get("expiresAt"),
+        expires_at=expires_at,
         refreshed_connectors=refreshed_connectors,
         refreshed_secrets=refreshed_secrets,
     )

@@ -68,7 +68,7 @@ create_artifact() {
 
 # Helper to set up a test connector with a known token via API
 setup_test_connector() {
-    local connector_name="$1"
+    local connector_slug="$1"
     local access_token="$2"
     local auth_method="${3:-oauth}"
 
@@ -86,7 +86,7 @@ setup_test_connector() {
     if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
         curl_args+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
     fi
-    curl_args+=(-d "{\"connectorName\":\"${connector_name}\",\"authMethod\":\"${auth_method}\",\"accessToken\":\"${access_token}\"}")
+    curl_args+=(-d "{\"connectorSlug\":\"${connector_slug}\",\"authMethod\":\"${auth_method}\",\"accessToken\":\"${access_token}\"}")
 
     local response
     response=$(curl "${curl_args[@]}" \
