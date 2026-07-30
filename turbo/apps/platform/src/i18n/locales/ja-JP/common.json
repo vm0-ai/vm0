@@ -1286,6 +1286,18 @@
       "providerDeletedSuffix": "続けます。",
       "providerIncompatibleAction": "新しいセッションを開始する",
       "providerIncompatiblePrefix": "このセッションは別のモデル プロバイダーで開始されたため、現在のモデル プロバイダーでは続行できません。",
+      "recovery": {
+        "capacityDescription": "このモデルは一時的に混雑しています。数分後にもう一度試すか、今すぐ別のモデルに切り替えてください。",
+        "capacityTitle": "{{framework}} モデルは混雑しています",
+        "claudeCode": "Claude Code",
+        "codex": "Codex",
+        "resetAndTryAgain": "リセットして再試行",
+        "resetsAt": "{{time}} にリセット",
+        "selectModel": "モデルを切り替える",
+        "tryAgain": "もう一度試す",
+        "usageDescription": "使用制限がリセットされた後に続行するか、今すぐ別のモデルに切り替えられます。",
+        "usageTitle": "{{framework}} の使用制限に達しました"
+      },
       "runCancelled": "考えの途中で一時停止しました。いつでも元に戻してください。"
     },
     "feedback": {

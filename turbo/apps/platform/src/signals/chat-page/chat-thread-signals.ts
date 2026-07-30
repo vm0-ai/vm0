@@ -24,6 +24,7 @@ import type { EditorDocumentSnapshot } from "../zero-page/user-message-document-
 import type { AgentReferenceSignals } from "./agent-reference-signals.ts";
 import type { ArtifactSignals } from "./artifact-card-signals.ts";
 import type { ThreadSidebarAutoOpenCandidate } from "./thread-sidebar-auto-open.ts";
+import type { AssistantErrorRecovery } from "./assistant-error-recovery.ts";
 
 type RecommendedFollowup = NonNullable<
   ChatFollowupsEvent["recommendedFollowups"]
@@ -110,6 +111,9 @@ export interface ChatThreadSignals {
     Promise<boolean>,
     [string, SendMessageOptions | undefined, AbortSignal]
   >;
+  assistantErrorRecovery$: Computed<Promise<AssistantErrorRecovery | null>>;
+  retryAssistantError$: Command<Promise<boolean>, [AbortSignal]>;
+  resetCodexSubscriptionAndRetry$: Command<Promise<boolean>, [AbortSignal]>;
   composerSendButtonStatus$: Computed<Promise<ComposerSendButtonStatus>>;
   queueMessage$: Command<
     Promise<boolean>,
