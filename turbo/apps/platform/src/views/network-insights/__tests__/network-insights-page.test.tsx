@@ -145,6 +145,7 @@ function insightsResponse(): InsightsResponse & NetworkInsightsData {
         permissions: [
           {
             label: "admin.analytics:read",
+            connectorSlug: "slack",
             connectorType: "slack",
             allowed: 7,
             denied: 0,
@@ -152,6 +153,7 @@ function insightsResponse(): InsightsResponse & NetworkInsightsData {
           },
           {
             label: "channels:read",
+            connectorSlug: "slack",
             connectorType: "slack",
             allowed: 5,
             denied: 0,
@@ -159,6 +161,7 @@ function insightsResponse(): InsightsResponse & NetworkInsightsData {
           },
           {
             label: "chat:write",
+            connectorSlug: "slack",
             connectorType: "slack",
             allowed: 4,
             denied: 0,
@@ -166,6 +169,7 @@ function insightsResponse(): InsightsResponse & NetworkInsightsData {
           },
           {
             label: "repo-read",
+            connectorSlug: "github",
             connectorType: "github",
             allowed: 3,
             denied: 0,
@@ -173,6 +177,7 @@ function insightsResponse(): InsightsResponse & NetworkInsightsData {
           },
           {
             label: "issues:read",
+            connectorSlug: "github",
             connectorType: "github",
             allowed: 2,
             denied: 0,
@@ -180,6 +185,7 @@ function insightsResponse(): InsightsResponse & NetworkInsightsData {
           },
           {
             label: "pull-requests:read",
+            connectorSlug: "github",
             connectorType: "github",
             allowed: 1,
             denied: 0,
@@ -187,6 +193,7 @@ function insightsResponse(): InsightsResponse & NetworkInsightsData {
           },
           {
             label: "admin.apps:write",
+            connectorSlug: "slack",
             connectorType: "slack",
             allowed: 0,
             denied: 3,
@@ -295,6 +302,7 @@ function insightsResponse(): InsightsResponse & NetworkInsightsData {
         permissions: [
           {
             label: "events:read",
+            connectorSlug: "google-calendar",
             connectorType: "google-calendar",
             allowed: 2,
             denied: 0,
@@ -548,7 +556,45 @@ describe("network insights page", () => {
     });
   });
 
-  it("uses fallback connector labels when catalog metadata omits a ref", async () => {
+  it("renders canonical-only permissions from a new API response", async () => {
+    const data = insightsResponse();
+    const day = data.days[0]!;
+    mockConnectorCatalogStatus([
+      publicConnectorStatusItem({
+        connectorRef: "github",
+        label: "Catalog GitHub",
+      }),
+    ]);
+    context.mocks.api(zeroInsightsContract.get, ({ respond }) => {
+      return respond(200, {
+        ...data,
+        days: [
+          {
+            ...day,
+            services: [],
+            permissions: [
+              {
+                label: "repo-read",
+                connectorSlug: "github",
+                allowed: 1,
+                denied: 0,
+                agentNames: ["Research Bot"],
+              },
+            ],
+          },
+        ],
+      });
+    });
+
+    detachedSetupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Catalog GitHub")).toBeInTheDocument();
+      expect(screen.getByText("repo-read")).toBeInTheDocument();
+    });
+  });
+
+  it("renders legacy-only permissions from an old API response", async () => {
     const data = insightsResponse();
     const day = data.days[0]!;
     mockConnectorCatalogStatus([]);
@@ -558,13 +604,7 @@ describe("network insights page", () => {
         days: [
           {
             ...day,
-            services: [
-              {
-                domain: "github",
-                calls: 2,
-                agentNames: ["Research Bot"],
-              },
-            ],
+            services: [],
             permissions: [
               {
                 label: "repo-read",

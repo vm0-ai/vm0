@@ -45,6 +45,7 @@ import {
   type DayAutomation,
   type DayChat,
   type NetworkInsightsData,
+  type PermissionEntry,
 } from "../../signals/network-insights/network-insights-signals.ts";
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
@@ -969,14 +970,21 @@ function connectorLabel(
   );
 }
 
+function permissionConnectorSlug(
+  permission: PermissionEntry,
+): string | undefined {
+  return permission.connectorSlug ?? permission.connectorType;
+}
+
 function permissionLabel(
-  p: { label: string; connectorType?: string },
+  label: string,
+  connectorSlug: string | undefined,
   statusBySlug: ConnectorCatalogStatusBySlug | null,
 ): string {
-  if (!p.connectorType || p.label === p.connectorType) {
-    return connectorLabel(p.label, statusBySlug);
+  if (!connectorSlug || label === connectorSlug) {
+    return connectorLabel(label, statusBySlug);
   }
-  return `${connectorLabel(p.connectorType, statusBySlug)}(${p.label})`;
+  return `${connectorLabel(connectorSlug, statusBySlug)}(${label})`;
 }
 
 function ServicesCard({
@@ -1124,15 +1132,17 @@ function PermissionsAllowedCard({
         {visible.map((p) => {
           const isActive =
             hoveredAgent === null || p.agentNames.includes(hoveredAgent);
-          const hasDescription = p.connectorType && p.label !== p.connectorType;
+          const connectorSlug = permissionConnectorSlug(p);
+          const hasDescription =
+            connectorSlug !== undefined && p.label !== connectorSlug;
           return (
             <div
-              key={`${p.connectorType ?? ""}:${p.label}`}
+              key={`${connectorSlug ?? ""}:${p.label}`}
               className={`transition-opacity duration-150 ${isActive ? "opacity-100" : "opacity-30"}`}
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-medium">
-                  {connectorLabel(p.connectorType ?? p.label, statusBySlug)}
+                  {connectorLabel(connectorSlug ?? p.label, statusBySlug)}
                 </span>
                 <span className="text-xs opacity-60 tabular-nums shrink-0">
                   {formatCalls(p.allowed)}
@@ -1222,13 +1232,14 @@ function PermissionsBlockedCard({
           const isActive =
             hoveredAgent === null || p.agentNames.includes(hoveredAgent);
           const fullyBlocked = p.allowed === 0;
+          const connectorSlug = permissionConnectorSlug(p);
           return (
             <div
-              key={`${p.connectorType ?? ""}:${p.label}`}
+              key={`${connectorSlug ?? ""}:${p.label}`}
               className={`flex items-center justify-between gap-2 transition-opacity duration-150 ${isActive ? "opacity-100" : "opacity-30"}`}
             >
               <span className="text-sm font-medium">
-                {permissionLabel(p, statusBySlug)}
+                {permissionLabel(p.label, connectorSlug, statusBySlug)}
               </span>
               <span className="text-xs tabular-nums shrink-0 opacity-70">
                 {fullyBlocked
