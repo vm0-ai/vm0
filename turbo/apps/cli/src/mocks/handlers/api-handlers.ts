@@ -60,7 +60,6 @@ function defaultPublicCatalogStatusItem(args: {
   readonly authMethods?: readonly PublicConnectorCatalogAuthMethodDetail[];
 }): PublicConnectorCatalogStatusItem {
   return {
-    connectorRef: args.connectorSlug,
     slug: args.connectorSlug,
     label: args.label,
     description: args.description,
@@ -172,7 +171,6 @@ const defaultPublicCatalogStatus = [
 function defaultPublicCatalog(): PublicConnectorCatalogItem[] {
   return defaultPublicCatalogStatus.map((item) => {
     return {
-      connectorRef: item.connectorRef,
       slug: item.slug,
       label: item.label,
       description: item.description,
@@ -235,7 +233,6 @@ export const apiHandlers = [
     return HttpResponse.json(
       {
         connectors: [],
-        configuredTypes: [],
         configuredConnectorSlugs: [],
         connectorProvidedBindings: [],
       },
@@ -246,7 +243,6 @@ export const apiHandlers = [
     return HttpResponse.json(
       {
         connectors: [],
-        configuredTypes: [],
         configuredConnectorSlugs: [],
         connectorProvidedBindings: [],
       },

@@ -13,6 +13,7 @@ import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { createApp } from "../../../app-factory";
+import { stubTestTimezone } from "../../../__tests__/env-stub";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -91,6 +92,7 @@ const connectorsApi = createConnectorBddApi(context);
 const authOrg = createAuthOrgAgentsBddApi(context);
 const store = createStore();
 const CHAT_THREAD_SNAPSHOT_CRON_SECRET = "chat-thread-snapshot-cron-secret";
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 type UserMessage = Extract<
   ChatEventResponse,
@@ -938,7 +940,12 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(sortTouches).toHaveLength(2);
   }, 90_000);
 
-  it("compacts chat thread snapshots from event markers and prunes deleted agent threads", async () => {
+  it("preserves UTC snapshot and event cutoff boundaries outside UTC", async () => {
+    stubTestTimezone("Asia/Shanghai");
+    onTestFinished(() => {
+      clearMockNow();
+      stubTestTimezone("UTC");
+    });
     mockEnv("CRON_SECRET", CHAT_THREAD_SNAPSHOT_CRON_SECRET);
     const actor = bdd.user();
     await api.ensureOrgModelProvider(actor);
@@ -962,15 +969,24 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       eventId: deletedCreateEventId,
     });
 
-    const initialCompact = await compactChatThreadSnapshots();
-    expect(initialCompact.eventsApplied).toBeGreaterThanOrEqual(2);
-
-    const liveCreateEvent = (await allThreadEvents(actor)).find((event) => {
+    const initialEvents = await allThreadEvents(actor);
+    const liveCreateEvent = initialEvents.find((event) => {
       return event.id === liveCreateEventId;
     });
-    if (!liveCreateEvent) {
-      throw new Error("Expected live thread creation event");
+    const deletedCreateEvent = initialEvents.find((event) => {
+      return event.id === deletedCreateEventId;
+    });
+    if (!liveCreateEvent || !deletedCreateEvent) {
+      throw new Error("Expected both thread creation events");
     }
+    const initialSnapshotAt =
+      Math.max(
+        Date.parse(liveCreateEvent.createdAt),
+        Date.parse(deletedCreateEvent.createdAt),
+      ) + 1000;
+    mockNow(initialSnapshotAt);
+    const initialCompact = await compactChatThreadSnapshots();
+    expect(initialCompact.eventsApplied).toBeGreaterThanOrEqual(2);
 
     const baselineSnapshot = await chat.getThreadSnapshot(actor);
     expect(baselineSnapshot.latestEventId).not.toBeNull();
@@ -997,20 +1013,27 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       "claude-sonnet-4-6",
       { eventId: modelSelectionEventId },
     );
+
+    const incrementalSnapshotAt = initialSnapshotAt + 1000;
+    mockNow(incrementalSnapshotAt);
+    const incrementalCompact = await compactChatThreadSnapshots();
+    expect(incrementalCompact.eventsApplied).toBeGreaterThanOrEqual(1);
+
     chat.mockObjectStorageObjectsExist();
     await authOrg.deleteAgent(actor, deletedAgent.agentId);
 
-    onTestFinished(() => {
-      clearMockNow();
-    });
-    mockNow(now() + 8 * 24 * 60 * 60 * 1000);
-    const incrementalCompact = await compactChatThreadSnapshots();
-    expect(incrementalCompact.eventsApplied).toBeGreaterThanOrEqual(1);
+    mockNow(incrementalSnapshotAt + DAY_MS);
+    await compactChatThreadSnapshots();
+    const boundarySnapshot = await chat.getThreadSnapshot(actor);
     expect(
-      incrementalCompact.removedDeletedAgentThreads,
-    ).toBeGreaterThanOrEqual(1);
-    expect(incrementalCompact.eventsPruned).toBeGreaterThanOrEqual(1);
+      boundarySnapshot.chatThreads.map((thread) => {
+        return thread.id;
+      }),
+    ).toContain(deletedAgentThread.id);
 
+    mockNow(incrementalSnapshotAt + DAY_MS + 1);
+    const staleCompact = await compactChatThreadSnapshots();
+    expect(staleCompact.removedDeletedAgentThreads).toBeGreaterThanOrEqual(1);
     const compactedSnapshot = await chat.getThreadSnapshot(actor);
     expect(compactedSnapshot.latestEventId).not.toBeNull();
     expect(compactedSnapshot.latestSeqId).not.toBeNull();
@@ -1024,6 +1047,20 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       }),
     ]);
 
+    const retentionBoundary =
+      Date.parse(liveCreateEvent.createdAt) + 7 * DAY_MS;
+    mockNow(retentionBoundary);
+    await compactChatThreadSnapshots();
+    const retainedBoundaryCursor = await chat.requestThreadEvents(
+      actor,
+      { sinceSeqId: liveCreateEvent.seqId },
+      [200],
+    );
+    expect(retainedBoundaryCursor.status).toBe(200);
+
+    mockNow(retentionBoundary + 1);
+    const retentionCompact = await compactChatThreadSnapshots();
+    expect(retentionCompact.eventsPruned).toBeGreaterThanOrEqual(1);
     const prunedCursor = await chat.requestThreadEvents(
       actor,
       { sinceSeqId: liveCreateEvent.seqId },

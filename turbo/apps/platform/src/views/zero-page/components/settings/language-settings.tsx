@@ -128,6 +128,13 @@ export function LanguageSettings() {
                   })}
                 </SelectItem>
               )}
+              {availableLocales.includes("es-ES") && (
+                <SelectItem value="es-ES">
+                  {t(($) => {
+                    return $.settings.preferences.language.options.spanish;
+                  })}
+                </SelectItem>
+              )}
             </SelectContent>
           </Select>
         </div>

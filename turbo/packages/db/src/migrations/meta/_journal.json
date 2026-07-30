@@ -5374,8 +5374,15 @@
     {
       "idx": 767,
       "version": "7",
-      "when": 1785420096295,
-      "tag": "0767_soft_the_twelve",
+      "when": 1785420940243,
+      "tag": "0767_add_chat_automation_context",
+      "breakpoints": true
+    },
+    {
+      "idx": 768,
+      "version": "7",
+      "when": 1785424690362,
+      "tag": "0768_black_thor",
       "breakpoints": true
     }
   ]

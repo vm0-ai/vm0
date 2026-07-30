@@ -260,7 +260,7 @@ export function createUserConfigBddApi(context: TestContext) {
     async readUserConnectors(
       credential: Credential,
       agentId: string,
-    ): Promise<{ readonly enabledTypes: string[] }> {
+    ): Promise<{ readonly enabledConnectorSlugs: string[] }> {
       const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
         zeroUserConnectorsContract,
       );
@@ -296,14 +296,14 @@ export function createUserConfigBddApi(context: TestContext) {
       agentId: string,
       enabledConnectorSlugs: readonly string[],
       operation?: "replace" | "add" | "remove",
-    ): Promise<{ readonly enabledTypes: string[] }> {
+    ): Promise<{ readonly enabledConnectorSlugs: string[] }> {
       const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
         zeroUserConnectorsContract,
       );
       const body =
         operation === undefined
-          ? { enabledTypes: [...enabledConnectorSlugs] }
-          : { enabledTypes: [...enabledConnectorSlugs], operation };
+          ? { enabledConnectorSlugs: [...enabledConnectorSlugs] }
+          : { enabledConnectorSlugs: [...enabledConnectorSlugs], operation };
       const response = await accept(
         client.update({
           headers: authenticate(credential),
@@ -327,8 +327,8 @@ export function createUserConfigBddApi(context: TestContext) {
       );
       const body =
         operation === undefined
-          ? { enabledTypes: [...enabledConnectorSlugs] }
-          : { enabledTypes: [...enabledConnectorSlugs], operation };
+          ? { enabledConnectorSlugs: [...enabledConnectorSlugs] }
+          : { enabledConnectorSlugs: [...enabledConnectorSlugs], operation };
       return await accept(
         client.update({
           headers: authenticate(credential),

@@ -50,6 +50,7 @@ export async function createUnassociatedThreadBoundAgentRunFixture(
       orgId: ORG_ID,
       body: {
         prompt: "must be rejected before agent run preparation",
+        triggerSource: "test",
       },
       apiStartTime: now(),
       chatThreadId,

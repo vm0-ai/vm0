@@ -17,6 +17,7 @@ export const SUPPORTED_USER_LOCALES = [
   "ko-KR",
   "id-ID",
   "de-DE",
+  "es-ES",
 ] as const;
 export const userLocaleSchema = z.enum(SUPPORTED_USER_LOCALES);
 export type UserLocale = z.infer<typeof userLocaleSchema>;

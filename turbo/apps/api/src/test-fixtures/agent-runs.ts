@@ -7,6 +7,7 @@
  * product behavior through the remaining production routes.
  */
 import { createStore } from "ccstate";
+import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 
 import { now } from "../lib/time";
 import {
@@ -17,7 +18,12 @@ import { agentRunList } from "../signals/services/zero-runs.service";
 
 const store = createStore();
 
-export type DirectRunFixtureRequest = CreateAgentRunArgs["body"];
+export type DirectRunFixtureRequest = Omit<
+  CreateAgentRunArgs["body"],
+  "triggerSource"
+> & {
+  readonly triggerSource?: TriggerSource;
+};
 
 export async function createDirectRunFixture(args: {
   readonly userId: string;
@@ -32,7 +38,10 @@ export async function createDirectRunFixture(args: {
       orgId: args.orgId,
       apiStartTime: now(),
       modelProviderType: args.body.modelProviderType,
-      body: args.body,
+      body: {
+        ...args.body,
+        triggerSource: args.body.triggerSource ?? "test",
+      },
     },
     args.signal,
   );

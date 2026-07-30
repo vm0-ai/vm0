@@ -110,7 +110,7 @@ function candidateScopesCte(staleCutoff: Date, batchSize: number): SQL {
       WHERE ${or(
         isNull(snapshot.userId),
         sql`${snapshot.latestEventSeqId} IS DISTINCT FROM latest_event.seq_id`,
-        lt(snapshot.updatedAt, sql`${staleCutoff}`),
+        lt(snapshot.updatedAt, staleCutoff),
       )}
       ORDER BY
         ${asc(snapshot.updatedAt)} NULLS FIRST,
@@ -229,8 +229,8 @@ function upsertedCte(updatedAt: Date): SQL {
         rebuilt.latest_event_id,
         rebuilt.latest_event_seq_id,
         rebuilt.chat_threads,
-        ${updatedAt},
-        ${updatedAt}
+        ${sql.param(updatedAt, chatThreadSnapshots.createdAt)},
+        ${sql.param(updatedAt, chatThreadSnapshots.updatedAt)}
       FROM rebuilt
       ON CONFLICT (user_id, org_id)
       DO UPDATE SET
@@ -317,7 +317,7 @@ async function compactChatThreadSnapshotsForAllScopes(
         WHERE ${and(
           eq(event.userId, snapshot.userId),
           eq(event.orgId, snapshot.orgId),
-          lt(event.createdAt, sql`${cutoff}`),
+          lt(event.createdAt, cutoff),
           lt(event.seqId, marker.seqId),
         )}
         RETURNING 1

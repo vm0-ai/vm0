@@ -15,6 +15,7 @@ import * as sandboxTelemetrySchema from "./schema/sandbox-telemetry";
 import * as runnerSchema from "./schema/runner-job-queue";
 import * as runnerStateSchema from "./schema/runner-state";
 import * as agentRunQueueSchema from "./schema/agent-run-queue";
+import * as chatAutomationContextSchema from "./schema/chat-automation-context";
 import * as chatEventInputParamsSchema from "./schema/chat-event-input-params";
 import * as chatFeishuContextSchema from "./schema/chat-feishu-context";
 import * as chatSlackContextSchema from "./schema/chat-slack-context";
@@ -135,6 +136,7 @@ export const schema = {
   ...runnerSchema,
   ...runnerStateSchema,
   ...agentRunQueueSchema,
+  ...chatAutomationContextSchema,
   ...chatEventInputParamsSchema,
   ...chatFeishuContextSchema,
   ...chatSlackContextSchema,

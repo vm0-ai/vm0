@@ -409,7 +409,7 @@ async function seedRun(
   }
   await db.insert(zeroRuns).values({
     id: run.id,
-    triggerSource: args.triggerSource ?? "cli",
+    triggerSource: args.triggerSource ?? "test",
     chatThreadId: args.chatThreadId ?? null,
     selectedModel: args.selectedModel ?? null,
   });

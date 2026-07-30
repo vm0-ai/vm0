@@ -3,7 +3,6 @@ import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-ident
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
-import { normalizeEnabledConnectorSlugs } from "../connector-domain.ts";
 import { withCleanup } from "../utils.ts";
 
 export interface AgentConnectorAuthorizations {
@@ -78,7 +77,7 @@ function createAgentConnectorAuthorizationRequestBroker(): AgentConnectorAuthori
         }
         return {
           agentId: params.agentId,
-          enabledConnectorSlugs: normalizeEnabledConnectorSlugs(result.body),
+          enabledConnectorSlugs: result.body.enabledConnectorSlugs,
         };
       };
 

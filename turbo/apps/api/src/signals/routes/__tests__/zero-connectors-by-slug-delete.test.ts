@@ -197,7 +197,7 @@ describe("DELETE /api/zero/connectors/:connectorSlug", () => {
     expect(deleted.body.error.code).toBe("NOT_FOUND");
     const preserved = await readExistingConnector(fixture, "gitlab");
     expect(preserved.body).toMatchObject({
-      type: "gitlab",
+      slug: "gitlab",
       authMethod: "api-token",
       connectionStatus: "connected",
     });

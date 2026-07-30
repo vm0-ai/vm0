@@ -182,11 +182,11 @@ describe("AUTH-03 agent user connectors", () => {
       "github",
       "slack",
     ]);
-    expect(new Set(set.enabledTypes)).toStrictEqual(
+    expect(new Set(set.enabledConnectorSlugs)).toStrictEqual(
       new Set(["github", "slack"]),
     );
     const readBack = await cfg.readUserConnectors(admin, agent.agentId);
-    expect(new Set(readBack.enabledTypes)).toStrictEqual(
+    expect(new Set(readBack.enabledConnectorSlugs)).toStrictEqual(
       new Set(["github", "slack"]),
     );
 
@@ -195,8 +195,8 @@ describe("AUTH-03 agent user connectors", () => {
       "github",
       "slack",
     ]);
-    expect(deduped.enabledTypes).toHaveLength(2);
-    expect(new Set(deduped.enabledTypes)).toStrictEqual(
+    expect(deduped.enabledConnectorSlugs).toHaveLength(2);
+    expect(new Set(deduped.enabledConnectorSlugs)).toStrictEqual(
       new Set(["github", "slack"]),
     );
 
@@ -206,25 +206,25 @@ describe("AUTH-03 agent user connectors", () => {
       ["linear"],
       "add",
     );
-    expect(new Set(added.enabledTypes)).toStrictEqual(
+    expect(new Set(added.enabledConnectorSlugs)).toStrictEqual(
       new Set(["github", "slack", "linear"]),
     );
     const readAfterAdd = await cfg.readUserConnectors(admin, agent.agentId);
-    expect(new Set(readAfterAdd.enabledTypes)).toStrictEqual(
+    expect(new Set(readAfterAdd.enabledConnectorSlugs)).toStrictEqual(
       new Set(["github", "slack", "linear"]),
     );
 
     const replaced = await cfg.updateUserConnectors(admin, agent.agentId, [
       "linear",
     ]);
-    expect(replaced.enabledTypes).toStrictEqual(["linear"]);
+    expect(replaced.enabledConnectorSlugs).toStrictEqual(["linear"]);
     const readReplaced = await cfg.readUserConnectors(admin, agent.agentId);
-    expect(readReplaced.enabledTypes).toStrictEqual(["linear"]);
+    expect(readReplaced.enabledConnectorSlugs).toStrictEqual(["linear"]);
 
     const cleared = await cfg.updateUserConnectors(admin, agent.agentId, []);
-    expect(cleared.enabledTypes).toStrictEqual([]);
+    expect(cleared.enabledConnectorSlugs).toStrictEqual([]);
     const readCleared = await cfg.readUserConnectors(admin, agent.agentId);
-    expect(readCleared.enabledTypes).toStrictEqual([]);
+    expect(readCleared.enabledConnectorSlugs).toStrictEqual([]);
 
     const invalid = await cfg.requestUpdateUserConnectors(
       admin,
@@ -243,9 +243,9 @@ describe("AUTH-03 agent user connectors", () => {
       agent.agentId,
       ["bentoml"],
     );
-    expect(discoveryHidden.enabledTypes).toStrictEqual(["bentoml"]);
+    expect(discoveryHidden.enabledConnectorSlugs).toStrictEqual(["bentoml"]);
     const readAfterHidden = await cfg.readUserConnectors(admin, agent.agentId);
-    expect(readAfterHidden.enabledTypes).toStrictEqual(["bentoml"]);
+    expect(readAfterHidden.enabledConnectorSlugs).toStrictEqual(["bentoml"]);
 
     const missingAgentId = randomUUID();
     const missingRead = await cfg.requestReadUserConnectors(
@@ -287,9 +287,9 @@ describe("AUTH-03 agent user connectors", () => {
       agent.agentId,
       ["github"],
     );
-    expect(patSet.enabledTypes).toStrictEqual(["github"]);
+    expect(patSet.enabledConnectorSlugs).toStrictEqual(["github"]);
     const readAfterPat = await cfg.readUserConnectors(admin, agent.agentId);
-    expect(readAfterPat.enabledTypes).toStrictEqual(["github"]);
+    expect(readAfterPat.enabledConnectorSlugs).toStrictEqual(["github"]);
   });
 
   it("serializes concurrent user-connector replaces for the same agent", async () => {
@@ -305,7 +305,7 @@ describe("AUTH-03 agent user connectors", () => {
       cfg.updateUserConnectors(admin, agent.agentId, ["github", "slack"]),
     ]);
     for (const update of sameSetUpdates) {
-      expect(new Set(update.enabledTypes)).toStrictEqual(
+      expect(new Set(update.enabledConnectorSlugs)).toStrictEqual(
         new Set(["github", "slack"]),
       );
     }
@@ -315,8 +315,8 @@ describe("AUTH-03 agent user connectors", () => {
       cfg.updateUserConnectors(admin, agent.agentId, ["slack"]),
     ]);
     const readBack = await cfg.readUserConnectors(admin, agent.agentId);
-    expect(readBack.enabledTypes).toHaveLength(1);
-    const enabledType = readBack.enabledTypes[0];
+    expect(readBack.enabledConnectorSlugs).toHaveLength(1);
+    const enabledType = readBack.enabledConnectorSlugs[0];
     expect(["github", "slack"]).toContain(enabledType);
 
     await cfg.updateUserConnectors(admin, agent.agentId, [], "replace");
@@ -325,7 +325,7 @@ describe("AUTH-03 agent user connectors", () => {
       cfg.updateUserConnectors(admin, agent.agentId, ["slack"], "add"),
     ]);
     const readAfterAdds = await cfg.readUserConnectors(admin, agent.agentId);
-    expect(new Set(readAfterAdds.enabledTypes)).toStrictEqual(
+    expect(new Set(readAfterAdds.enabledConnectorSlugs)).toStrictEqual(
       new Set(["github", "slack"]),
     );
 
@@ -337,7 +337,7 @@ describe("AUTH-03 agent user connectors", () => {
       admin,
       agent.agentId,
     );
-    expect(readAfterRemoveAdd.enabledTypes).toStrictEqual(["slack"]);
+    expect(readAfterRemoveAdd.enabledConnectorSlugs).toStrictEqual(["slack"]);
   });
 
   it("recomposes a stale compose-target on user-connector updates through public APIs", async () => {
@@ -357,7 +357,7 @@ describe("AUTH-03 agent user connectors", () => {
       created.composeId,
       [],
     );
-    expect(updated.enabledTypes).toStrictEqual([]);
+    expect(updated.enabledConnectorSlugs).toStrictEqual([]);
 
     const compose = await api.readComposeById(admin, created.composeId);
     expect(compose.headVersionId).not.toBe(created.versionId);
@@ -757,9 +757,9 @@ describe("AUTH-01 sandbox and zero bearers", () => {
       agent.agentId,
       ["github"],
     );
-    expect(updated.enabledTypes).toStrictEqual(["github"]);
+    expect(updated.enabledConnectorSlugs).toStrictEqual(["github"]);
     const readBack = await cfg.readUserConnectors(admin, agent.agentId);
-    expect(readBack.enabledTypes).toStrictEqual(["github"]);
+    expect(readBack.enabledConnectorSlugs).toStrictEqual(["github"]);
 
     const fileCap = cfg.zeroBearer(admin, ["file:read"]);
     const forbidden = await cfg.requestUpdateUserConnectors(

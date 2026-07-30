@@ -844,7 +844,7 @@ function mockConnectedAutomationConnectors(): void {
   context.mocks.data.connectors([
     {
       id: "10000000-0000-4000-a000-000000000001",
-      type: "slack",
+      slug: "slack",
       authMethod: "oauth",
       externalId: "slack-workspace",
       externalUsername: "workspace",
@@ -858,7 +858,7 @@ function mockConnectedAutomationConnectors(): void {
     },
     {
       id: "10000000-0000-4000-a000-000000000002",
-      type: "gmail",
+      slug: "gmail",
       authMethod: "oauth",
       externalId: "gmail-user",
       externalUsername: "user@example.com",
@@ -1639,35 +1639,34 @@ describe("workflow detail page", () => {
         return respond(200, {
           connectors: [
             {
-              connectorRef: "google-drive",
+              connectorSlug: "google-drive",
               label: "Google Drive",
               icon: connectorIcon("google-drive"),
               reason: "The workflow reads account documents.",
               status: "connected",
             },
             {
-              connectorRef: "github",
+              connectorSlug: "github",
               label: "GitHub",
               icon: connectorIcon("github"),
               reason: "A GitHub automation requires this connector.",
               status: "unavailable",
             },
             {
-              connectorRef: "slack",
+              connectorSlug: "slack",
               label: "Slack",
               icon: connectorIcon("slack"),
               reason: "The workflow posts a summary to Slack.",
               status: "not-enabled-for-agent",
             },
             {
-              connectorRef: "notion",
+              connectorSlug: "notion",
               label: "Notion",
               icon: connectorIcon("notion"),
               reason: "The workflow updates a Notion page.",
               status: "scope-mismatch",
             },
             {
-              connectorRef: "slack",
               connectorSlug: "gmail",
               label: "Gmail",
               reason: "The workflow reads outreach replies.",
@@ -1679,7 +1678,7 @@ describe("workflow detail page", () => {
               },
             },
             {
-              connectorRef: "linear",
+              connectorSlug: "linear",
               label: "Linear",
               icon: connectorIcon("linear"),
               reason: "The workflow creates follow-up issues.",
@@ -1835,7 +1834,7 @@ describe("workflow detail page", () => {
         return respond(200, {
           connectors: [
             {
-              connectorRef: "gmail",
+              connectorSlug: "gmail",
               label: "Gmail",
               icon: connectorIcon("gmail"),
               reason: "The workflow reads outreach replies.",

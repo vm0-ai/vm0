@@ -1,5 +1,6 @@
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
+import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import {
   chatEvents,
@@ -481,10 +482,23 @@ export async function claimQueueFirstRunAssociation(
         const head = pending[0];
         const [automationEvent] = await db
           .select({
-            automationId: chatEvents.automationId,
+            automationId: sql`CASE
+              WHEN ${isNull(chatEvents.contextId)}
+                THEN ${chatEvents.automationId}
+              ELSE ${chatAutomationContext.automationId}
+            END`
+              .mapWith(chatEvents.automationId)
+              .as("automation_id"),
             triggerSource: chatEvents.triggerSource,
           })
           .from(chatEvents)
+          .leftJoin(
+            chatAutomationContext,
+            and(
+              eq(chatEvents.contextType, "automation"),
+              eq(chatAutomationContext.id, chatEvents.contextId),
+            ),
+          )
           .where(eq(chatEvents.id, args.eventId))
           .limit(1);
         if (

@@ -11,6 +11,7 @@ interface PreviousDeploymentWorkflowEventArgs {
   readonly chatThreadId: string;
   readonly agentId: string;
   readonly appendSystemPrompt: string;
+  readonly triggerBrief?: string;
 }
 
 /**
@@ -39,7 +40,7 @@ export async function admitPreviousDeploymentWorkflowEventFixture(
     automation,
     chatThreadId: args.chatThreadId,
     triggerSource: "workflow-event",
-    triggerBrief: undefined,
+    triggerBrief: args.triggerBrief,
     coalescePendingScheduleRun: false,
     params: {
       version: 1,

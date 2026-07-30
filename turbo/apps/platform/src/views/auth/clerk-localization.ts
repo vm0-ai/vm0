@@ -1,4 +1,4 @@
-import { deDE, enUS, idID, jaJP, koKR, ptBR } from "@clerk/localizations";
+import { deDE, enUS, esES, idID, jaJP, koKR, ptBR } from "@clerk/localizations";
 import type { TFunction } from "i18next";
 import type { SupportedLocale } from "../../i18n/resources.ts";
 import type { BrandName } from "../../signals/branding.ts";
@@ -19,7 +19,9 @@ export function getClerkLocalization(
             ? idID
             : locale === "de-DE"
               ? deDE
-              : enUS;
+              : locale === "es-ES"
+                ? esES
+                : enUS;
   return {
     ...localization,
     unstable__errors: {

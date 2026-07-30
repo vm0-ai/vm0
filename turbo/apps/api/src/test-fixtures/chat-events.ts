@@ -1,6 +1,7 @@
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
 import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
@@ -42,6 +43,8 @@ interface ChatEventContextFixture {
   readonly revokesEventId: string | null;
   readonly contextType: string | null;
   readonly contextId: string | null;
+  readonly automationId: string | null;
+  readonly triggerBrief: string | null;
   readonly slackMessagePermalink: string | null;
   readonly feishuChatOpenUrl: string | null;
 }
@@ -64,23 +67,61 @@ export async function readChatEventContextFixture(
   }
 
   const contextId = event.contextId ?? event.id;
-  const [[slackContext], [feishuContext]] = await Promise.all([
-    db()
-      .select({ messagePermalink: chatSlackContext.messagePermalink })
-      .from(chatSlackContext)
-      .where(eq(chatSlackContext.id, contextId))
-      .limit(1),
-    db()
-      .select({ chatOpenUrl: chatFeishuContext.chatOpenUrl })
-      .from(chatFeishuContext)
-      .where(eq(chatFeishuContext.id, contextId))
-      .limit(1),
-  ]);
+  const [[automationContext], [slackContext], [feishuContext]] =
+    await Promise.all([
+      db()
+        .select({
+          automationId: chatAutomationContext.automationId,
+          triggerBrief: chatAutomationContext.triggerBrief,
+        })
+        .from(chatAutomationContext)
+        .where(eq(chatAutomationContext.id, contextId))
+        .limit(1),
+      db()
+        .select({ messagePermalink: chatSlackContext.messagePermalink })
+        .from(chatSlackContext)
+        .where(eq(chatSlackContext.id, contextId))
+        .limit(1),
+      db()
+        .select({ chatOpenUrl: chatFeishuContext.chatOpenUrl })
+        .from(chatFeishuContext)
+        .where(eq(chatFeishuContext.id, contextId))
+        .limit(1),
+    ]);
   return {
     ...event,
+    automationId: automationContext?.automationId ?? null,
+    triggerBrief: automationContext?.triggerBrief ?? null,
     slackMessagePermalink: slackContext?.messagePermalink ?? null,
     feishuChatOpenUrl: feishuContext?.chatOpenUrl ?? null,
   };
+}
+
+export async function convertAutomationEventToLegacyContextFixture(
+  eventId: string,
+): Promise<void> {
+  await db().transaction(async (tx) => {
+    const [event] = await tx
+      .select({
+        contextId: chatEvents.contextId,
+        contextType: chatEvents.contextType,
+      })
+      .from(chatEvents)
+      .where(eq(chatEvents.id, eventId))
+      .limit(1);
+    if (event?.contextType !== "automation" || !event.contextId) {
+      throw new Error("Expected an automation context pointer");
+    }
+
+    await tx.execute(sql`SET LOCAL session_replication_role = replica`);
+    await tx
+      .update(chatEvents)
+      .set({ contextType: null, contextId: null })
+      .where(eq(chatEvents.id, eventId));
+    await tx
+      .delete(chatAutomationContext)
+      .where(eq(chatAutomationContext.id, event.contextId));
+  });
 }
 
 export async function readChatEventInputParamsFixture(

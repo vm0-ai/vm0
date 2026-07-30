@@ -5,6 +5,7 @@ import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-co
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { createApp } from "../../../app-factory";
 import {
   deleteFeatureSwitchesForUser,
   updateFeatureSwitchesForUser,
@@ -39,7 +40,7 @@ describe("GET /api/zero/agents/:id/user-connectors", () => {
     await accept(
       client.update({
         params: { id: agentId },
-        body: { enabledTypes: ["test-oauth", "github"] },
+        body: { enabledConnectorSlugs: ["test-oauth", "github"] },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -58,16 +59,13 @@ describe("GET /api/zero/agents/:id/user-connectors", () => {
       [200],
     );
 
-    expect(new Set(response.body.enabledTypes)).toStrictEqual(
+    expect(new Set(response.body.enabledConnectorSlugs)).toStrictEqual(
       new Set(["github", "test-oauth"]),
-    );
-    expect(response.body.enabledConnectorSlugs).toStrictEqual(
-      response.body.enabledTypes,
     );
     await deleteFeatureSwitchesForUser(context, actor);
   });
 
-  it("accepts transitional update fields and rejects conflicting aliases", async () => {
+  it("updates canonical connector slugs and rejects legacy aliases", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
@@ -84,18 +82,6 @@ describe("GET /api/zero/agents/:id/user-connectors", () => {
     const client = setupApp({ context })(zeroUserConnectorsContract);
     const params = { id: created.body.agentId };
 
-    const legacy = await accept(
-      client.update({
-        params,
-        body: { enabledTypes: ["github"] },
-        headers,
-      }),
-      [200],
-    );
-    expect(legacy.body.enabledConnectorSlugs).toStrictEqual(
-      legacy.body.enabledTypes,
-    );
-
     const canonical = await accept(
       client.update({
         params,
@@ -104,16 +90,14 @@ describe("GET /api/zero/agents/:id/user-connectors", () => {
       }),
       [200],
     );
-    expect(canonical.body).toMatchObject({
-      enabledTypes: ["slack"],
+    expect(canonical.body).toStrictEqual({
       enabledConnectorSlugs: ["slack"],
     });
 
-    const dual = await accept(
+    const added = await accept(
       client.update({
         params,
         body: {
-          enabledTypes: ["github"],
           enabledConnectorSlugs: ["github"],
           operation: "add",
         },
@@ -121,27 +105,21 @@ describe("GET /api/zero/agents/:id/user-connectors", () => {
       }),
       [200],
     );
-    expect(dual.body.enabledConnectorSlugs).toStrictEqual(
-      dual.body.enabledTypes,
+    expect(new Set(added.body.enabledConnectorSlugs)).toStrictEqual(
+      new Set(["github", "slack"]),
     );
 
-    const conflicting = await accept(
-      client.update({
-        params,
-        body: {
-          enabledTypes: ["github"],
-          enabledConnectorSlugs: ["slack"],
+    const legacy = await createApp({ signal: context.signal }).request(
+      `/api/zero/agents/${created.body.agentId}/user-connectors`,
+      {
+        method: "PUT",
+        headers: {
+          authorization: "Bearer clerk-session",
+          "content-type": "application/json",
         },
-        headers,
-      }),
-      [400],
+        body: JSON.stringify({ enabledTypes: ["github"] }),
+      },
     );
-    expect(conflicting.body.error.code).toBe("BAD_REQUEST");
-
-    const missing = await accept(
-      client.update({ params, body: {}, headers }),
-      [400],
-    );
-    expect(missing.body.error.code).toBe("BAD_REQUEST");
+    expect(legacy.status).toBe(400);
   });
 });

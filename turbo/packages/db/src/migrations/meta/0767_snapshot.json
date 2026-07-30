@@ -1,5 +1,5 @@
 {
-  "id": "853e9c12-b847-4d83-b034-6226fe5b219d",
+  "id": "d95aa15c-754a-49f0-95c4-75f639beabc3",
   "prevId": "579dee19-3859-4d09-a547-cbceb62db281",
   "version": "7",
   "dialect": "postgresql",
@@ -4544,6 +4544,22 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "chat_events_input_automation_context_idx": {
+          "name": "chat_events_input_automation_context_idx",
+          "columns": [
+            {
+              "expression": "context_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"chat_events\".\"event_type\" = 'input.automation'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -4684,34 +4700,9 @@
           "notNull": true,
           "default": -1
         },
-        "pending_sequence_numbers": {
-          "name": "pending_sequence_numbers",
-          "type": "integer[]",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::integer[]"
-        },
         "latest_result_sequence": {
           "name": "latest_result_sequence",
           "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "latest_result_text": {
-          "name": "latest_result_text",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "latest_output_sequence": {
-          "name": "latest_output_sequence",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "latest_output_text": {
-          "name": "latest_output_text",
-          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -23327,6 +23318,81 @@
           "tableTo": "zero_agents",
           "columnsFrom": [
             "agent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.chat_automation_context": {
+      "name": "chat_automation_context",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "chat_thread_id": {
+          "name": "chat_thread_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "automation_id": {
+          "name": "automation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trigger_brief": {
+          "name": "trigger_brief",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "chat_automation_context_automation_id_idx": {
+          "name": "chat_automation_context_automation_id_idx",
+          "columns": [
+            {
+              "expression": "automation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "chat_automation_context_chat_thread_id_chat_threads_id_fk": {
+          "name": "chat_automation_context_chat_thread_id_chat_threads_id_fk",
+          "tableFrom": "chat_automation_context",
+          "tableTo": "chat_threads",
+          "columnsFrom": [
+            "chat_thread_id"
           ],
           "columnsTo": [
             "id"

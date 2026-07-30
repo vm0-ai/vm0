@@ -7,11 +7,13 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { generateSandboxToken } from "../../auth/tokens";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
 const bdd = createBddApi(context);
+const reads = createRunReadsApi(context);
 const runs = createRunsApi(context);
 const mocks = createZeroRouteMocks(context);
 
@@ -100,6 +102,14 @@ describe("POST /api/test/agent-runs", () => {
       runId: response.body.runId,
       prompt: "create a runner E2E fixture",
     });
+
+    const logs = await reads.requestListLogs(actor, {}, [200]);
+    expect(logs.body.data).toContainEqual(
+      expect.objectContaining({
+        id: response.body.runId,
+        triggerSource: "test",
+      }),
+    );
 
     await runs.requestCancelRun(actor, response.body.runId, [200]);
   });
