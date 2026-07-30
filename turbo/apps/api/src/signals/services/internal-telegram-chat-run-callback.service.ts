@@ -40,10 +40,7 @@ import {
   type TelegramOwnerLink,
 } from "./telegram-chat-ingress.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
-import {
-  saveCanonicalTelegramThreadSession,
-  storeTelegramBotMessage,
-} from "./zero-telegram-callback-persistence.service";
+import { storeTelegramBotMessage } from "./zero-telegram-callback-persistence.service";
 import { resolveTelegramAgentReplyFooterText } from "./zero-telegram-footer.service";
 
 const L = logger("InternalCallbacksTelegramChat");
@@ -57,7 +54,6 @@ interface ClaimedTelegramChatDelivery {
 interface TelegramChatRunContext {
   readonly userId: string;
   readonly orgId: string;
-  readonly sessionId: string;
   readonly chatThreadId: string;
   readonly agentId: string;
 }
@@ -237,7 +233,6 @@ async function loadTelegramChatDeliveryContext(args: {
     .select({
       userId: agentRuns.userId,
       orgId: agentRuns.orgId,
-      sessionId: agentRuns.sessionId,
       chatThreadId: zeroRuns.chatThreadId,
       agentId: chatThreads.agentComposeId,
     })
@@ -258,7 +253,6 @@ async function loadTelegramChatDeliveryContext(args: {
   const runContext: TelegramChatRunContext = {
     userId: run.userId,
     orgId: run.orgId,
-    sessionId: run.sessionId,
     chatThreadId: run.chatThreadId,
     agentId: run.agentId,
   };
@@ -494,18 +488,6 @@ async function persistTelegramChatDelivery(args: {
     chatThreadId: args.run.chatThreadId,
     runStatus: args.status,
     currentTime: nowDate(),
-  });
-  await saveCanonicalTelegramThreadSession({
-    db: args.db,
-    userLinkId: args.target.userLinkId,
-    userLinkKind: args.target.userLinkKind,
-    chatId: args.target.chatId,
-    previousRootMessageId: args.target.rootMessageId,
-    botReplyMessageId: String(args.botReplyMessageId),
-    agentSessionId: args.run.sessionId,
-    messageId: args.target.messageId,
-    runStatus: args.status,
-    isDM: args.target.isDM,
   });
 }
 

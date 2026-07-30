@@ -24,7 +24,6 @@ import {
 import { telegramChatThreadRoutes } from "@vm0/db/schema/telegram-chat-thread-route";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
-import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
 import { telegramUserAgentPreferences } from "@vm0/db/schema/telegram-user-agent-preference";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -1725,36 +1724,20 @@ async function resetTelegramDmConversation(
   ownerLink: TelegramOwnerLink,
   chatId: string,
 ): Promise<void> {
-  await db.transaction(async (tx) => {
-    await tx
-      .delete(telegramChatThreadRoutes)
-      .where(
-        and(
-          ownerLink.kind === "custom"
-            ? eq(telegramChatThreadRoutes.telegramUserLinkId, ownerLink.id)
-            : eq(
-                telegramChatThreadRoutes.telegramOfficialUserLinkId,
-                ownerLink.id,
-              ),
-          eq(telegramChatThreadRoutes.chatId, chatId),
-          eq(telegramChatThreadRoutes.rootMessageId, "dm"),
-        ),
-      );
-    await tx
-      .delete(telegramThreadSessions)
-      .where(
-        and(
-          ownerLink.kind === "custom"
-            ? eq(telegramThreadSessions.telegramUserLinkId, ownerLink.id)
-            : eq(
-                telegramThreadSessions.telegramOfficialUserLinkId,
-                ownerLink.id,
-              ),
-          eq(telegramThreadSessions.chatId, chatId),
-          eq(telegramThreadSessions.rootMessageId, "dm"),
-        ),
-      );
-  });
+  await db
+    .delete(telegramChatThreadRoutes)
+    .where(
+      and(
+        ownerLink.kind === "custom"
+          ? eq(telegramChatThreadRoutes.telegramUserLinkId, ownerLink.id)
+          : eq(
+              telegramChatThreadRoutes.telegramOfficialUserLinkId,
+              ownerLink.id,
+            ),
+        eq(telegramChatThreadRoutes.chatId, chatId),
+        eq(telegramChatThreadRoutes.rootMessageId, "dm"),
+      ),
+    );
 }
 
 function telegramDeliveryTarget(args: {
