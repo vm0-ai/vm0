@@ -1,0 +1,526 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+WRAPPER="${REPO_ROOT}/.github/scripts/cloudflare-ssh-command.sh"
+SSH_ACTION="${REPO_ROOT}/.github/actions/setup-ssh-tunnel/action.yml"
+SECURITY_WORKFLOW="${REPO_ROOT}/.github/workflows/security.yml"
+
+fail() {
+  echo "$1" >&2
+  exit 1
+}
+
+assert_contains() {
+  local file=$1
+  local expected=$2
+  if ! grep -Fq -- "$expected" "$file"; then
+    echo "expected ${file} to contain: ${expected}" >&2
+    cat "$file" >&2
+    exit 1
+  fi
+}
+
+assert_not_contains() {
+  local file=$1
+  local unexpected=$2
+  if grep -Fq -- "$unexpected" "$file"; then
+    echo "expected ${file} not to contain: ${unexpected}" >&2
+    cat "$file" >&2
+    exit 1
+  fi
+}
+
+assert_line_count() {
+  local file=$1
+  local expected=$2
+  local pattern=$3
+  local actual
+  actual=$(grep -Fxc -- "$pattern" "$file" || true)
+  if [ "$actual" -ne "$expected" ]; then
+    echo "expected ${file} to contain ${expected} exact line(s): ${pattern}; got ${actual}" >&2
+    cat "$file" >&2
+    exit 1
+  fi
+}
+
+assert_match_count() {
+  local file=$1
+  local expected=$2
+  local pattern=$3
+  local actual
+  actual=$(grep -Fc -- "$pattern" "$file" || true)
+  if [ "$actual" -ne "$expected" ]; then
+    echo "expected ${file} to contain ${expected} matching line(s): ${pattern}; got ${actual}" >&2
+    cat "$file" >&2
+    exit 1
+  fi
+}
+
+tmp=$(mktemp -d)
+cleanup() {
+  rm -rf "$tmp"
+}
+trap cleanup EXIT
+
+fake_bin="${tmp}/fake-bin"
+wrapper_bin="${tmp}/wrapper-bin"
+mkdir -p "$fake_bin" "$wrapper_bin"
+
+fake_ssh="${fake_bin}/real-ssh"
+cat > "$fake_ssh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+printf '%s\n' "$*" >> "$FAKE_SSH_INVOCATIONS"
+
+arguments=("$@")
+argument_count=${#arguments[@]}
+control_path=""
+has_detached_stdin=false
+for ((index = 0; index < argument_count; index++)); do
+  argument="${arguments[$index]}"
+  case "$argument" in
+    -n)
+      has_detached_stdin=true
+      ;;
+    -S)
+      index=$((index + 1))
+      control_path="${arguments[$index]}"
+      ;;
+    -o)
+      index=$((index + 1))
+      option="${arguments[$index]}"
+      if [[ "$option" == ControlPath=* ]]; then
+        control_path="${option#ControlPath=}"
+      fi
+      ;;
+    -oControlPath=*)
+      control_path="${argument#-oControlPath=}"
+      ;;
+  esac
+done
+
+if [[ " $* " == *" -O check "* ]]; then
+  echo "Master running"
+  exit 0
+fi
+if [[ " $* " == *" -O exit "* ]]; then
+  exit 0
+fi
+if [[ " $* " == *" -M "* ]] \
+  && [[ " $* " == *" -N "* ]] \
+  && [[ " $* " == *" -f "* ]]; then
+  exit 0
+fi
+
+is_probe=false
+if [ "$argument_count" -ge 2 ] \
+  && [ "${arguments[$((argument_count - 1))]}" = "true" ] \
+  && [[ "${arguments[$((argument_count - 2))]}" == *@*.vm3.ai ]]; then
+  is_probe=true
+fi
+
+if [ "$is_probe" = "true" ]; then
+  if [ "$has_detached_stdin" = "false" ]; then
+    cat > "$FAKE_PROBE_STDIN_FILE"
+  fi
+
+  case "$FAKE_SSH_SCENARIO" in
+    healthy|actual-failure)
+      exit 0
+      ;;
+    stale-success)
+      if [ -z "$control_path" ]; then
+        echo "websocket: bad handshake --secret super-secret" >&2
+        echo "TUNNEL_SERVICE_TOKEN_ID=client-id" >&2
+        exit 124
+      fi
+      exit 0
+      ;;
+    selected-stale-success)
+      if [ "$control_path" = "$FAKE_STALE_CONTROL_PATH" ]; then
+        echo "Connection closed --secret super-secret" >&2
+        exit 255
+      fi
+      exit 0
+      ;;
+    stale-exhaustion)
+      echo "connection closed --secret super-secret --id client-id" >&2
+      exit 255
+      ;;
+    permanent)
+      echo "Permission denied (publickey). --secret super-secret" >&2
+      exit 255
+      ;;
+    *)
+      echo "unexpected fake SSH scenario: ${FAKE_SSH_SCENARIO}" >&2
+      exit 2
+      ;;
+  esac
+fi
+
+printf '%s\n' "$*" >> "$FAKE_ACTUAL_SSH_INVOCATIONS"
+if [[ " $* " == *" capture-stdin "* ]]; then
+  cat > "$FAKE_ACTUAL_SSH_STDIN"
+fi
+if [ "$FAKE_SSH_SCENARIO" = "actual-failure" ]; then
+  echo "actual stdout"
+  echo "actual stderr" >&2
+  exit 42
+fi
+EOF
+
+fake_scp="${fake_bin}/real-scp"
+cat > "$fake_scp" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "$FAKE_SCP_INVOCATIONS"
+EOF
+
+fake_sftp="${fake_bin}/real-sftp"
+cat > "$fake_sftp" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "$FAKE_SFTP_INVOCATIONS"
+if [[ " $* " == *" -b - "* ]]; then
+  cat > "$FAKE_ACTUAL_SFTP_STDIN"
+fi
+EOF
+
+fake_timeout="${fake_bin}/timeout"
+cat > "$fake_timeout" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "$FAKE_TIMEOUT_INVOCATIONS"
+if [[ "${1:-}" == --kill-after=* ]]; then
+  shift
+fi
+shift
+exec "$@"
+EOF
+
+fake_sleep="${fake_bin}/sleep"
+cat > "$fake_sleep" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "$FAKE_SLEEP_INVOCATIONS"
+EOF
+
+chmod +x \
+  "$fake_ssh" \
+  "$fake_scp" \
+  "$fake_sftp" \
+  "$fake_timeout" \
+  "$fake_sleep"
+ln -s "$WRAPPER" "${wrapper_bin}/ssh"
+ln -s "$WRAPPER" "${wrapper_bin}/scp"
+ln -s "$WRAPPER" "${wrapper_bin}/sftp"
+
+setup_case() {
+  local case_dir=$1
+  mkdir -p "$case_dir/state" "$case_dir/runner-temp"
+  : > "$case_dir/ssh.log"
+  : > "$case_dir/actual-ssh.log"
+  : > "$case_dir/scp.log"
+  : > "$case_dir/sftp.log"
+  : > "$case_dir/timeout.log"
+  : > "$case_dir/sleep.log"
+  : > "$case_dir/probe-stdin"
+  : > "$case_dir/ssh-stdin"
+  : > "$case_dir/sftp-stdin"
+}
+
+invoke_wrapper() {
+  local case_dir=$1
+  local scenario=$2
+  local tool=$3
+  shift 3
+
+  PATH="$fake_bin:$PATH" \
+  FAKE_SSH_INVOCATIONS="$case_dir/ssh.log" \
+  FAKE_ACTUAL_SSH_INVOCATIONS="$case_dir/actual-ssh.log" \
+  FAKE_SCP_INVOCATIONS="$case_dir/scp.log" \
+  FAKE_SFTP_INVOCATIONS="$case_dir/sftp.log" \
+  FAKE_TIMEOUT_INVOCATIONS="$case_dir/timeout.log" \
+  FAKE_SLEEP_INVOCATIONS="$case_dir/sleep.log" \
+  FAKE_PROBE_STDIN_FILE="$case_dir/probe-stdin" \
+  FAKE_ACTUAL_SSH_STDIN="$case_dir/ssh-stdin" \
+  FAKE_ACTUAL_SFTP_STDIN="$case_dir/sftp-stdin" \
+  FAKE_SSH_SCENARIO="$scenario" \
+  FAKE_STALE_CONTROL_PATH="${FAKE_STALE_CONTROL_PATH:-}" \
+  GITHUB_STEP_SUMMARY="$case_dir/summary" \
+  RUNNER_TEMP="$case_dir/runner-temp" \
+  VM0_CLOUDFLARE_SSH_REAL_SSH="$fake_ssh" \
+  VM0_CLOUDFLARE_SSH_REAL_SCP="$fake_scp" \
+  VM0_CLOUDFLARE_SSH_REAL_SFTP="$fake_sftp" \
+  VM0_CLOUDFLARE_SSH_SCRIPTS_DIR="${REPO_ROOT}/.github/scripts" \
+  VM0_CLOUDFLARE_SSH_STATE_DIR="$case_dir/state" \
+  VM0_CLOUDFLARE_SSH_USER=metal \
+    "${wrapper_bin}/${tool}" "$@"
+}
+
+run_wrapper() {
+  local case_dir=$1
+  local scenario=$2
+  local tool=$3
+  shift 3
+
+  if [ ! -d "$case_dir" ]; then
+    setup_case "$case_dir"
+  fi
+  local status=0
+  invoke_wrapper "$case_dir" "$scenario" "$tool" "$@" \
+    > "$case_dir/stdout" 2> "$case_dir/stderr" || status=$?
+  printf '%s\n' "$status" > "$case_dir/status"
+}
+
+healthy="${tmp}/healthy"
+run_wrapper "$healthy" healthy ssh \
+  metal@dev-1.aws.vm3.ai touch /tmp/healthy-operation
+assert_contains "$healthy/status" "0"
+assert_line_count "$healthy/ssh.log" 1 \
+  "-n -T metal@dev-1.aws.vm3.ai true"
+assert_line_count "$healthy/actual-ssh.log" 1 \
+  "metal@dev-1.aws.vm3.ai touch /tmp/healthy-operation"
+assert_not_contains "$healthy/ssh.log" "-M -N -f"
+if find "$healthy/state" -name '*.control-path' -print -quit | grep -q .; then
+  fail "healthy transport must not create recovery state"
+fi
+
+actual_failure="${tmp}/actual-failure"
+run_wrapper "$actual_failure" actual-failure ssh \
+  metal@dev-1.aws.vm3.ai run-once
+assert_contains "$actual_failure/status" "42"
+assert_line_count "$actual_failure/ssh.log" 1 \
+  "-n -T metal@dev-1.aws.vm3.ai true"
+assert_line_count "$actual_failure/actual-ssh.log" 1 \
+  "metal@dev-1.aws.vm3.ai run-once"
+assert_line_count "$actual_failure/stdout" 1 "actual stdout"
+assert_line_count "$actual_failure/stderr" 1 "actual stderr"
+
+recovery="${tmp}/recovery"
+run_wrapper "$recovery" stale-success ssh \
+  metal@dev-11.gcp.vm3.ai touch /tmp/recovered-operation
+assert_contains "$recovery/status" "0"
+assert_contains "$recovery/stderr" \
+  "::warning title=Cloudflare SSH command-channel probe failed::"
+assert_contains "$recovery/stderr" "--secret [redacted]"
+assert_contains "$recovery/stderr" "TUNNEL_SERVICE_TOKEN_ID=[redacted]"
+assert_not_contains "$recovery/stderr" "super-secret"
+assert_not_contains "$recovery/stderr" "client-id"
+assert_line_count "$recovery/ssh.log" 1 \
+  "-n -T metal@dev-11.gcp.vm3.ai true"
+
+state_file=$(find "$recovery/state" -name '*.control-path' -print -quit)
+[ -n "$state_file" ] || fail "expected recovery control-path state"
+selected_control_path=$(< "$state_file")
+[ -n "$selected_control_path" ] || fail "expected selected recovery socket"
+assert_line_count "$recovery/ssh.log" 1 \
+  "-S ${selected_control_path} -n -M -N -f metal@dev-11.gcp.vm3.ai"
+assert_line_count "$recovery/ssh.log" 1 \
+  "-S ${selected_control_path} -n -O check metal@dev-11.gcp.vm3.ai"
+assert_line_count "$recovery/ssh.log" 1 \
+  "-S ${selected_control_path} -n -T metal@dev-11.gcp.vm3.ai true"
+assert_line_count "$recovery/actual-ssh.log" 1 \
+  "-o ControlPath=${selected_control_path} metal@dev-11.gcp.vm3.ai touch /tmp/recovered-operation"
+assert_not_contains "$recovery/ssh.log" "-n -O exit metal@dev-11.gcp.vm3.ai"
+
+run_wrapper "$recovery" stale-success scp \
+  /tmp/nbd-cow-test metal@dev-11.gcp.vm3.ai:/tmp/nbd-cow-test
+assert_contains "$recovery/status" "0"
+assert_line_count "$recovery/ssh.log" 2 \
+  "-S ${selected_control_path} -n -T metal@dev-11.gcp.vm3.ai true"
+assert_line_count "$recovery/scp.log" 1 \
+  "-o ControlPath=${selected_control_path} /tmp/nbd-cow-test metal@dev-11.gcp.vm3.ai:/tmp/nbd-cow-test"
+assert_match_count "$recovery/ssh.log" 1 "-M -N -f"
+
+ansible_ssh="${tmp}/ansible-ssh"
+run_wrapper "$ansible_ssh" stale-success ssh \
+  -C \
+  -o ControlMaster=auto \
+  -o ControlPersist=600s \
+  -o ControlPath=/tmp/default-control \
+  -o 'User="metal"' \
+  -o ConnectTimeout=10 \
+  dev-11.gcp.vm3.ai printf ansible-operation
+ansible_control_path=$(< "$(find "$ansible_ssh/state" -name '*.control-path' -print -quit)")
+assert_contains "$ansible_ssh/status" "0"
+assert_line_count "$ansible_ssh/actual-ssh.log" 1 \
+  "-o ControlPath=${ansible_control_path} -C -o ControlMaster=auto -o ControlPersist=600s -o ControlPath=/tmp/default-control -o User=\"metal\" -o ConnectTimeout=10 dev-11.gcp.vm3.ai printf ansible-operation"
+
+ansible_scp="${tmp}/ansible-scp"
+run_wrapper "$ansible_scp" stale-success scp \
+  -o ControlMaster=auto \
+  -o ControlPath=/tmp/default-control \
+  -o 'User="metal"' \
+  /tmp/source dev-11.gcp.vm3.ai:/tmp/target
+ansible_scp_control_path=$(< "$(find "$ansible_scp/state" -name '*.control-path' -print -quit)")
+assert_contains "$ansible_scp/status" "0"
+assert_line_count "$ansible_scp/scp.log" 1 \
+  "-o ControlPath=${ansible_scp_control_path} -o ControlMaster=auto -o ControlPath=/tmp/default-control -o User=\"metal\" /tmp/source dev-11.gcp.vm3.ai:/tmp/target"
+
+sftp_batch_expected="${tmp}/sftp-batch"
+printf 'put /tmp/source /tmp/target\nquit\n' > "$sftp_batch_expected"
+ansible_sftp="${tmp}/ansible-sftp"
+run_wrapper "$ansible_sftp" stale-success sftp \
+  -b - \
+  -o ControlMaster=auto \
+  -o ControlPath=/tmp/default-control \
+  -o 'User="metal"' \
+  dev-11.gcp.vm3.ai < "$sftp_batch_expected"
+ansible_sftp_control_path=$(< "$(find "$ansible_sftp/state" -name '*.control-path' -print -quit)")
+assert_contains "$ansible_sftp/status" "0"
+assert_line_count "$ansible_sftp/sftp.log" 1 \
+  "-o ControlPath=${ansible_sftp_control_path} -b - -o ControlMaster=auto -o ControlPath=/tmp/default-control -o User=\"metal\" dev-11.gcp.vm3.ai"
+cmp "$sftp_batch_expected" "$ansible_sftp/sftp-stdin"
+if [ -s "$ansible_sftp/probe-stdin" ]; then
+  fail "transport probe consumed SFTP batch stdin"
+fi
+
+ssh_stdin_expected="${tmp}/ssh-stdin"
+printf 'line one\nbinary\0payload\n' > "$ssh_stdin_expected"
+stdin_case="${tmp}/stdin"
+run_wrapper "$stdin_case" stale-success ssh \
+  metal@dev-2.aws.vm3.ai capture-stdin < "$ssh_stdin_expected"
+assert_contains "$stdin_case/status" "0"
+cmp "$ssh_stdin_expected" "$stdin_case/ssh-stdin"
+if [ -s "$stdin_case/probe-stdin" ]; then
+  fail "transport probe consumed SSH stdin"
+fi
+assert_contains "$stdin_case/ssh.log" \
+  "-n -T metal@dev-2.aws.vm3.ai true"
+
+old_control_path="$selected_control_path"
+export FAKE_STALE_CONTROL_PATH="$old_control_path"
+run_wrapper "$recovery" selected-stale-success ssh \
+  metal@dev-11.gcp.vm3.ai touch /tmp/second-recovery
+unset FAKE_STALE_CONTROL_PATH
+new_control_path=$(< "$state_file")
+if [ "$new_control_path" = "$old_control_path" ]; then
+  fail "stale selected transport must be replaced with a unique socket"
+fi
+assert_match_count "$recovery/ssh.log" 2 "-M -N -f"
+assert_line_count "$recovery/actual-ssh.log" 1 \
+  "-o ControlPath=${new_control_path} metal@dev-11.gcp.vm3.ai touch /tmp/second-recovery"
+assert_not_contains "$recovery/ssh.log" \
+  "-S ${old_control_path} -n -O exit metal@dev-11.gcp.vm3.ai"
+
+exhaustion="${tmp}/exhaustion"
+run_wrapper "$exhaustion" stale-exhaustion scp \
+  /tmp/source metal@dev-3.aws.vm3.ai:/tmp/target
+assert_contains "$exhaustion/status" "255"
+assert_contains "$exhaustion/stderr" \
+  "::error title=Cloudflare SSH command-channel probe failed::"
+assert_contains "$exhaustion/stderr" "--secret [redacted]"
+assert_contains "$exhaustion/stderr" "--id [redacted]"
+assert_not_contains "$exhaustion/stderr" "super-secret"
+assert_not_contains "$exhaustion/stderr" "client-id"
+if [ -s "$exhaustion/scp.log" ]; then
+  fail "probe exhaustion must not submit the SCP operation"
+fi
+assert_contains "$exhaustion/ssh.log" "-n -O exit metal@dev-3.aws.vm3.ai"
+
+permanent="${tmp}/permanent"
+run_wrapper "$permanent" permanent ssh \
+  metal@dev-4.aws.vm3.ai touch /tmp/must-not-run
+assert_contains "$permanent/status" "255"
+assert_contains "$permanent/stderr" \
+  "::error title=Cloudflare SSH command-channel probe failed::"
+assert_contains "$permanent/stderr" "Permission denied (publickey)."
+assert_not_contains "$permanent/stderr" "super-secret"
+assert_not_contains "$permanent/ssh.log" "-M -N -f"
+if [ -s "$permanent/actual-ssh.log" ]; then
+  fail "permanent probe failure must not submit the SSH operation"
+fi
+
+passthrough="${tmp}/passthrough"
+run_wrapper "$passthrough" stale-exhaustion ssh \
+  deploy@example.com touch /tmp/passthrough
+assert_contains "$passthrough/status" "0"
+assert_line_count "$passthrough/ssh.log" 1 \
+  "deploy@example.com touch /tmp/passthrough"
+assert_line_count "$passthrough/actual-ssh.log" 1 \
+  "deploy@example.com touch /tmp/passthrough"
+assert_not_contains "$passthrough/ssh.log" " true"
+
+explicit="${tmp}/explicit"
+run_wrapper "$explicit" stale-exhaustion ssh \
+  -S /tmp/caller-owned.sock metal@dev-5.aws.vm3.ai touch /tmp/explicit
+assert_contains "$explicit/status" "0"
+assert_line_count "$explicit/ssh.log" 1 \
+  "-S /tmp/caller-owned.sock metal@dev-5.aws.vm3.ai touch /tmp/explicit"
+assert_not_contains "$explicit/ssh.log" " true"
+
+control="${tmp}/control"
+run_wrapper "$control" stale-exhaustion ssh \
+  -O check metal@dev-5.aws.vm3.ai
+assert_contains "$control/status" "0"
+assert_line_count "$control/ssh.log" 1 \
+  "-O check metal@dev-5.aws.vm3.ai"
+assert_not_contains "$control/ssh.log" " true"
+
+unsupported="${tmp}/unsupported"
+run_wrapper "$unsupported" stale-exhaustion ssh \
+  -J jump.example.com metal@dev-6.aws.vm3.ai touch /tmp/unsupported
+assert_contains "$unsupported/status" "0"
+assert_line_count "$unsupported/ssh.log" 1 \
+  "-J jump.example.com metal@dev-6.aws.vm3.ai touch /tmp/unsupported"
+assert_not_contains "$unsupported/ssh.log" " true"
+
+remote_copy="${tmp}/remote-copy"
+run_wrapper "$remote_copy" stale-exhaustion scp \
+  metal@dev-6.aws.vm3.ai:/tmp/source \
+  metal@dev-7.aws.vm3.ai:/tmp/target
+assert_contains "$remote_copy/status" "0"
+assert_line_count "$remote_copy/scp.log" 1 \
+  "metal@dev-6.aws.vm3.ai:/tmp/source metal@dev-7.aws.vm3.ai:/tmp/target"
+if [ -s "$remote_copy/ssh.log" ]; then
+  fail "remote-to-remote SCP must bypass the transport guard"
+fi
+
+concurrent="${tmp}/concurrent"
+setup_case "$concurrent"
+invoke_wrapper "$concurrent" stale-success ssh \
+  metal@dev-8.aws.vm3.ai touch /tmp/concurrent-ssh \
+  > "$concurrent/stdout-1" 2> "$concurrent/stderr-1" &
+pid1=$!
+invoke_wrapper "$concurrent" stale-success scp \
+  /tmp/source metal@dev-8.aws.vm3.ai:/tmp/concurrent-scp \
+  > "$concurrent/stdout-2" 2> "$concurrent/stderr-2" &
+pid2=$!
+status1=0
+status2=0
+wait "$pid1" || status1=$?
+wait "$pid2" || status2=$?
+if [ "$status1" -ne 0 ] || [ "$status2" -ne 0 ]; then
+  fail "concurrent guarded operations failed: ssh=${status1}, scp=${status2}"
+fi
+assert_match_count "$concurrent/ssh.log" 1 "-M -N -f"
+assert_match_count "$concurrent/actual-ssh.log" 1 \
+  "metal@dev-8.aws.vm3.ai touch /tmp/concurrent-ssh"
+assert_match_count "$concurrent/scp.log" 1 "/tmp/source metal@dev-8.aws.vm3.ai:/tmp/concurrent-scp"
+if [ -s "$concurrent/probe-stdin" ]; then
+  fail "concurrent probes consumed caller stdin"
+fi
+
+assert_contains "$SSH_ACTION" "Guard subsequent SSH operations"
+assert_contains "$SSH_ACTION" "cloudflare-ssh-command.sh"
+assert_contains "$SSH_ACTION" \
+  "real_ssh=\"\${VM0_CLOUDFLARE_SSH_REAL_SSH:-\$(command -v ssh)}\""
+assert_contains "$SSH_ACTION" \
+  "real_scp=\"\${VM0_CLOUDFLARE_SSH_REAL_SCP:-\$(command -v scp)}\""
+assert_contains "$SSH_ACTION" \
+  "real_sftp=\"\${VM0_CLOUDFLARE_SSH_REAL_SFTP:-\$(command -v sftp)}\""
+assert_contains "$SSH_ACTION" \
+  "echo \"\$wrapper_bin\" >> \"\$GITHUB_PATH\""
+assert_contains "$SSH_ACTION" "VM0_CLOUDFLARE_SSH_STATE_DIR="
+assert_contains "$SECURITY_WORKFLOW" \
+  ".github/scripts/cloudflare-ssh-command.sh"
+assert_contains "$SECURITY_WORKFLOW" \
+  ".github/scripts/tests/cloudflare-ssh-command-test.sh"
+assert_not_contains "$SECURITY_WORKFLOW" \
+  ".github/scripts/cloudflare-ssh-transport.sh"
+
+echo "cloudflare-ssh-command-test: ok"

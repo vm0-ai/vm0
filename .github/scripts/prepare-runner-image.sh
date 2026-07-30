@@ -2,15 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=.github/scripts/runner-image-target.sh
 . "${SCRIPT_DIR}/runner-image-target.sh"
-# shellcheck source=.github/scripts/cloudflare-ssh-diagnostics.sh
-. "${SCRIPT_DIR}/cloudflare-ssh-diagnostics.sh"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-SSH_PROBE_TIMEOUT_SECONDS=20
-SSH_PROBE_KILL_AFTER_SECONDS=5
-SSH_CONTROL_TIMEOUT_SECONDS=5
-SSH_CONTROL_KILL_AFTER_SECONDS=2
 
 require_env() {
   local name=$1
@@ -85,130 +78,23 @@ EXPECTED_BINARY_INPUT_DIGEST="$EXPECTED_BINARY_INPUT_DIGEST" \
 runner_sha=$(jq -r '.runnerSha256' "$FRESH_METADATA_PATH")
 guest_sha_json=$(jq -c '.guestSha256' "$FRESH_METADATA_PATH")
 
-TEMP_ROOT="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
-LOG_DIR=$(mktemp -d "${TEMP_ROOT%/}/prepare-runner-image.XXXXXX")
-declare -A RECOVERY_CONTROL_PATHS=()
-
-cleanup() {
-  local status=$?
-  local host control_path
-  trap - EXIT
-  for host in "${!RECOVERY_CONTROL_PATHS[@]}"; do
-    control_path="${RECOVERY_CONTROL_PATHS[$host]}"
-    timeout \
-      --kill-after="${SSH_CONTROL_KILL_AFTER_SECONDS}s" \
-      "${SSH_CONTROL_TIMEOUT_SECONDS}s" \
-      ssh -S "$control_path" -n -O exit "${METAL_USER}@${host}" \
-      > /dev/null 2>&1 || true
-  done
-  rm -rf "$LOG_DIR"
-  exit "$status"
-}
-trap cleanup EXIT
-
-ssh_host() {
-  local host=$1
-  shift
-  local control_path="${RECOVERY_CONTROL_PATHS[$host]:-}"
-  local -a ssh_command=(ssh)
-  if [ -n "$control_path" ]; then
-    ssh_command+=(-S "$control_path")
-  fi
-  ssh_command+=("${METAL_USER}@${host}")
-  "${ssh_command[@]}" "$@"
-}
-
-emit_probe_failure() {
-  local host=$1
-  local attempt=$2
-  local status=$3
-  local diagnostics_file=$4
-  local master_diagnostics_file=${5:-}
-  local annotation="warning"
-  if [ "$attempt" -eq 2 ]; then
-    annotation="error"
-  fi
-
-  echo "::${annotation} title=Cloudflare SSH command-channel probe failed::Unable to query ${host} through its SSH transport on attempt ${attempt}/2 (exit ${status})" >&2
-  if [ -s "$diagnostics_file" ]; then
-    echo "----- SSH command-channel probe stderr (last 20 lines, redacted) -----" >&2
-    cloudflare_ssh_sanitize_diagnostics "$diagnostics_file" \
-      | tail -n 20 >&2
-  fi
-  if [ -n "$master_diagnostics_file" ] \
-    && [ -s "$master_diagnostics_file" ]; then
-    echo "----- recovery SSH master stderr (last 20 lines, redacted) -----" >&2
-    cloudflare_ssh_sanitize_diagnostics "$master_diagnostics_file" \
-      | tail -n 20 >&2
-  fi
-}
-
-probe_host_architecture() {
-  local host=$1
-  local host_index=$2
-  local remote="${METAL_USER}@${host}"
-  local control_path=""
-  local stdout_file stderr_file status remote_arch attempt
-  local -a control_args=()
-
-  # This read-only query is the only replay-safe SSH operation in this script.
-  # Keep every later remote mutation single-shot.
-  for attempt in 1 2; do
-    stdout_file="${LOG_DIR}/${host}.probe.${attempt}.stdout"
-    stderr_file="${LOG_DIR}/${host}.probe.${attempt}.stderr"
-    status=0
-    control_args=()
-    control_path="${RECOVERY_CONTROL_PATHS[$host]:-}"
-    if [ -n "$control_path" ]; then
-      control_args=(-S "$control_path")
-    fi
-
-    timeout \
-      --kill-after="${SSH_PROBE_KILL_AFTER_SECONDS}s" \
-      "${SSH_PROBE_TIMEOUT_SECONDS}s" \
-      ssh "${control_args[@]}" "$remote" uname -m \
-      > "$stdout_file" 2> "$stderr_file" || status=$?
-
-    if [ "$status" -eq 0 ]; then
-      remote_arch=$(tail -n1 "$stdout_file" | tr -d '\r')
-      if [ "$remote_arch" != "$EXPECTED_REMOTE_ARCH" ]; then
-        echo "runner target ${TARGET_TRIPLE} expects remote architecture ${EXPECTED_REMOTE_ARCH}, but ${host} reported ${remote_arch}" >&2
-        return 1
-      fi
-
-      if [ "$attempt" -eq 2 ]; then
-        timeout \
-          --kill-after="${SSH_CONTROL_KILL_AFTER_SECONDS}s" \
-          "${SSH_CONTROL_TIMEOUT_SECONDS}s" \
-          ssh -n -O exit "$remote" > /dev/null 2>&1 || true
-      fi
-      return 0
-    fi
-
-    emit_probe_failure \
-      "$host" "$attempt" "$status" "$stderr_file" \
-      "${control_path:+${control_path}.stderr}"
-    if [ "$attempt" -eq 2 ]; then
-      return "$status"
-    fi
-
-    # Isolate the replacement from a stalled default master so its delayed
-    # shutdown cannot unlink the recovery socket.
-    control_path="${LOG_DIR}/recovery-${host_index}.sock"
-    if ! "${SCRIPT_DIR}/cloudflare-ssh-preconnect.sh" \
-      --control-path "$control_path" "$METAL_USER" "$host"; then
-      return 1
-    fi
-    RECOVERY_CONTROL_PATHS["$host"]="$control_path"
-  done
-}
-
 prepare_host() {
   local host=$1
   local host_index=$2
+  local remote="${METAL_USER}@${host}"
   echo "=== Preparing ${host} (job: ${job_ref}) ==="
 
-  if ! ssh_host "$host" bash -s -- "${BIN_DIR}" "${RUNNER_DIR}" "${job_ref}" <<'REMOTE_SCRIPT'
+  local remote_arch
+  if ! remote_arch=$(ssh "$remote" uname -m); then
+    return 1
+  fi
+  remote_arch=$(printf '%s\n' "$remote_arch" | tail -n1 | tr -d '\r')
+  if [ "$remote_arch" != "$EXPECTED_REMOTE_ARCH" ]; then
+    echo "runner target ${TARGET_TRIPLE} expects remote architecture ${EXPECTED_REMOTE_ARCH}, but ${host} reported ${remote_arch}" >&2
+    return 1
+  fi
+
+  if ! ssh "$remote" bash -s -- "${BIN_DIR}" "${RUNNER_DIR}" "${job_ref}" <<'REMOTE_SCRIPT'
 set -euo pipefail
 BIN_DIR=$1
 RUNNER_DIR=$2
@@ -284,11 +170,11 @@ REMOTE_SCRIPT
   fi
 
   local tmp_runner="${BIN_DIR}/runner.${head_sha}.${host_index}.tmp"
-  if ! ssh_host "$host" sudo install -m 755 /dev/stdin "${tmp_runner}" < "$RUNNER_PATH"; then
+  if ! ssh "$remote" sudo install -m 755 /dev/stdin "${tmp_runner}" < "$RUNNER_PATH"; then
     return 1
   fi
 
-  if ! ssh_host "$host" bash -s -- "${tmp_runner}" "${BIN_DIR}/runner" "${runner_sha}" <<'REMOTE_SCRIPT'
+  if ! ssh "$remote" bash -s -- "${tmp_runner}" "${BIN_DIR}/runner" "${runner_sha}" <<'REMOTE_SCRIPT'
 set -euo pipefail
 TMP_RUNNER=$1
 FINAL_RUNNER=$2
@@ -313,11 +199,11 @@ REMOTE_SCRIPT
     return 1
   fi
 
-  if ! ssh_host "$host" sudo "${BIN_DIR}/runner" gc --keep-latest 6; then
+  if ! ssh "$remote" sudo "${BIN_DIR}/runner" gc --keep-latest 6; then
     return 1
   fi
 
-  if ! ssh_host "$host" sudo "${BIN_DIR}/runner" setup; then
+  if ! ssh "$remote" sudo "${BIN_DIR}/runner" setup; then
     return 1
   fi
   echo "=== Done preparing ${host} ==="
@@ -325,8 +211,9 @@ REMOTE_SCRIPT
 
 warm_rootfs_cache() {
   local host=$1
+  local remote="${METAL_USER}@${host}"
   echo "=== Warming shared template cache on ${host} ==="
-  if ! ssh_host "$host" sudo \
+  if ! ssh "$remote" sudo \
     R2_ACCOUNT_ID="${R2_ACCOUNT_ID:-}" \
     R2_ACCESS_KEY_ID="${R2_ACCESS_KEY_ID:-}" \
     R2_SECRET_ACCESS_KEY="${R2_SECRET_ACCESS_KEY:-}" \
@@ -339,8 +226,9 @@ warm_rootfs_cache() {
 
 build_snapshot_on_host() {
   local host=$1
+  local remote="${METAL_USER}@${host}"
   echo "=== Building rootfs/snapshot on ${host} ==="
-  if ! ssh_host "$host" sudo \
+  if ! ssh "$remote" sudo \
     R2_ACCOUNT_ID="${R2_ACCOUNT_ID:-}" \
     R2_ACCESS_KEY_ID="${R2_ACCESS_KEY_ID:-}" \
     R2_SECRET_ACCESS_KEY="${R2_SECRET_ACCESS_KEY:-}" \
@@ -351,9 +239,11 @@ build_snapshot_on_host() {
   echo "=== Done building rootfs/snapshot on ${host} ==="
 }
 
-for i in "${!HOSTS[@]}"; do
-  probe_host_architecture "${HOSTS[$i]}" "$((i + 1))"
-done
+LOG_DIR=$(mktemp -d)
+cleanup() {
+  rm -rf "$LOG_DIR"
+}
+trap cleanup EXIT
 
 PIDS=()
 for i in "${!HOSTS[@]}"; do

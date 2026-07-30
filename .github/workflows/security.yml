@@ -222,6 +222,7 @@ jobs:
             e2e/helpers/storage-fixtures.bash \
             .github/scripts/check-release-please-component-releases.sh \
             .github/scripts/check-workflow-shell-compatibility.sh \
+            .github/scripts/cloudflare-ssh-command.sh \
             .github/scripts/cloudflare-ssh-diagnostics.sh \
             .github/scripts/cloudflare-ssh-preconnect.sh \
             .github/scripts/pass-release-pr-ci-gates.sh \
@@ -230,6 +231,7 @@ jobs:
             .github/scripts/tests/ansible-ssh-control-path-test.sh \
             .github/scripts/tests/check-release-please-component-releases-test.sh \
             .github/scripts/tests/check-workflow-shell-compatibility-test.sh \
+            .github/scripts/tests/cloudflare-ssh-command-test.sh \
             .github/scripts/tests/cloudflare-ssh-preconnect-test.sh \
             .github/scripts/tests/cloudflare-ssh-proxy-test.sh \
             .github/scripts/tests/run-semgrep-test.sh \

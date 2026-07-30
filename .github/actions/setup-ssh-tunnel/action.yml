@@ -114,3 +114,32 @@ runs:
         SSH_HOSTS: ${{ inputs.ssh-hosts }}
         REQUIRE_ALL_HOSTS: ${{ inputs.require-all-hosts }}
       run: bash "$GITHUB_WORKSPACE/.github/scripts/cloudflare-ssh-preconnect.sh" "$SSH_USER" "$SSH_HOSTS" "$REQUIRE_ALL_HOSTS"
+
+    - name: Guard subsequent SSH operations
+      shell: bash
+      env:
+        SSH_USER: ${{ inputs.ssh-user }}
+      run: |
+        temp_root="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
+        wrapper_root=$(mktemp -d "${temp_root%/}/cf-ssh.XXXXXX")
+        wrapper_bin="${wrapper_root}/bin"
+        state_dir="${wrapper_root}/state"
+        mkdir -p "$wrapper_bin" "$state_dir"
+
+        real_ssh="${VM0_CLOUDFLARE_SSH_REAL_SSH:-$(command -v ssh)}"
+        real_scp="${VM0_CLOUDFLARE_SSH_REAL_SCP:-$(command -v scp)}"
+        real_sftp="${VM0_CLOUDFLARE_SSH_REAL_SFTP:-$(command -v sftp)}"
+        wrapper="$GITHUB_WORKSPACE/.github/scripts/cloudflare-ssh-command.sh"
+        ln -s "$wrapper" "${wrapper_bin}/ssh"
+        ln -s "$wrapper" "${wrapper_bin}/scp"
+        ln -s "$wrapper" "${wrapper_bin}/sftp"
+
+        {
+          echo "VM0_CLOUDFLARE_SSH_REAL_SSH=${real_ssh}"
+          echo "VM0_CLOUDFLARE_SSH_REAL_SCP=${real_scp}"
+          echo "VM0_CLOUDFLARE_SSH_REAL_SFTP=${real_sftp}"
+          echo "VM0_CLOUDFLARE_SSH_SCRIPTS_DIR=$GITHUB_WORKSPACE/.github/scripts"
+          echo "VM0_CLOUDFLARE_SSH_STATE_DIR=${state_dir}"
+          echo "VM0_CLOUDFLARE_SSH_USER=${SSH_USER}"
+        } >> "$GITHUB_ENV"
+        echo "$wrapper_bin" >> "$GITHUB_PATH"

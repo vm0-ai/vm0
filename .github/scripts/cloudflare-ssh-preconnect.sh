@@ -27,6 +27,7 @@ MASTER_START_TIMEOUT_SECONDS=40
 MASTER_START_KILL_AFTER_SECONDS=5
 CONTROL_TIMEOUT_SECONDS=5
 CONTROL_KILL_AFTER_SECONDS=2
+CLOUDFLARE_SSH_BIN="${CLOUDFLARE_SSH_BIN:-ssh}"
 
 if [ -z "$SSH_USER" ] || [ -z "$SSH_HOSTS" ]; then
   usage
@@ -70,7 +71,7 @@ bounded_control_command() {
   timeout \
     --kill-after="${CONTROL_KILL_AFTER_SECONDS}s" \
     "${CONTROL_TIMEOUT_SECONDS}s" \
-    ssh "${control_args[@]}" -n -O "$operation" "$target"
+    "$CLOUDFLARE_SSH_BIN" "${control_args[@]}" -n -O "$operation" "$target"
 }
 
 cleanup() {
@@ -151,7 +152,7 @@ preconnect_host() {
       timeout \
         --kill-after="${MASTER_START_KILL_AFTER_SECONDS}s" \
         "${MASTER_START_TIMEOUT_SECONDS}s" \
-        ssh "${control_args[@]}" -n -M -N -f "$target" \
+        "$CLOUDFLARE_SSH_BIN" "${control_args[@]}" -n -M -N -f "$target" \
         2> "$stderr_file" || status=$?
 
     if [ "$status" -eq 0 ]; then
