@@ -155,6 +155,28 @@ describe("zero generate source-backed artifact commands", () => {
     );
   });
 
+  it("omits unnecessary candidate groups from the generated packet", async () => {
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "report",
+      "--prompt",
+      "Q2 generation usage report",
+      "--site-slug",
+      "report-demo",
+    ]);
+
+    const stdout = output();
+    expect(stdout).not.toContain('"imageStyles"');
+    expect(stdout).not.toContain('"audioStyles"');
+    expect(stdout).not.toContain('"videoTemplates"');
+    expect(stdout).not.toContain('"bundleTemplates"');
+    expect(stdout).not.toContain('"imageStyle"');
+    expect(stdout).not.toContain('"audioStyle"');
+    expect(stdout).not.toContain('"videoTemplate"');
+    expect(stdout).not.toContain('"bundleTemplate"');
+  });
+
   it("filters template candidates by target when requested", () => {
     const websiteSelection = selectResourceCandidates("website");
     const presentationSelection = selectResourceCandidates("presentation");
@@ -182,19 +204,6 @@ describe("zero generate source-backed artifact commands", () => {
       ]),
     );
     expect(presentationSelection.candidates.templates).toHaveLength(0);
-  });
-
-  it("attributes every vm0 image style to the vm0-skills repo", () => {
-    const selection = selectResourceCandidates();
-    const vm0ImageStyles = selection.candidates.imageStyles.filter((entry) => {
-      return entry.id.startsWith("image-style:");
-    });
-
-    expect(vm0ImageStyles.length).toBeGreaterThan(0);
-    for (const entry of vm0ImageStyles) {
-      expect(entry.source.repo).toBe("vm0-ai/vm0-skills");
-      expect(entry.source.ref).toBe("main");
-    }
   });
 
   it("annotates every template entry with at least one target", () => {
