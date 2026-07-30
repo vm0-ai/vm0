@@ -206,6 +206,12 @@ describe("app auth pages", () => {
     });
   });
 
+  it("uses Italian Clerk resources", () => {
+    const localization = getClerkLocalization("VM0", "it-IT", i18n.t);
+
+    expect(localization.signIn?.start?.actionLink).toBe("Registrati");
+  });
+
   it("mounts the Clerk sign-up route before Clerk finishes loading", async () => {
     setBrowserUrl("https://app.vm0.ai/sign-up");
 

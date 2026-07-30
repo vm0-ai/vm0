@@ -8,9 +8,9 @@ reuse can fall back to earlier bindings from the same client.
 Direct server bindings take precedence over client-associated fallback
 bindings. Connected flows must be proven by authoritative endpoint evidence
 from the live connection; fresh DNS is not proof that a connected upstream is
-still the trusted destination. Callers must discard bindings when mitmproxy
-reports disconnects, connect errors, local responses, request errors, or
-header-phase termination.
+still the trusted destination. Bindings live for the server connection and are
+discarded when mitmproxy reports a server disconnect, connect error, or
+associated client disconnect.
 """
 
 import ipaddress

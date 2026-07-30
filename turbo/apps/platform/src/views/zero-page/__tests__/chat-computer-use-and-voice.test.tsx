@@ -957,6 +957,7 @@ describe("chat lifecycle", () => {
       },
     );
     context.mocks.http.post("*/api/zero/voice-io/stt", async ({ request }) => {
+      transcriptionRequested.resolve(undefined);
       const form = await request.formData();
       const file = form.get("file");
       if (!(file instanceof File)) {
@@ -964,7 +965,6 @@ describe("chat lifecycle", () => {
       }
       uploadedAudio.push(await file.text());
       transcriptionCalls += 1;
-      transcriptionRequested.resolve(undefined);
       return new Response(JSON.stringify({ text: "First sentence" }), {
         headers: { "Content-Type": "application/json" },
       });

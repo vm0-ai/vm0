@@ -4,6 +4,7 @@ import json
 import time
 import uuid
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from mitmproxy.flow import Error
@@ -36,7 +37,7 @@ from tests.upstream_connection_helpers import seed_server_binding
 
 
 class TestErrorHandler:
-    def test_error_clears_upstream_binding(self, real_flow, mitm_ctx):
+    def test_error_preserves_upstream_binding_until_server_disconnect(self, real_flow, mitm_ctx):
         flow = real_flow(
             with_response=False,
             client_ip="10.200.0.5",
@@ -55,6 +56,10 @@ class TestErrorHandler:
         with mitm_ctx():
             flow.error = Error("connection reset by peer")
             mitm_addon.error(flow)
+
+        assert flow.server_conn.id in upstream_destination_binding.binding_snapshot_for_tests()
+
+        mitm_addon.server_disconnected(SimpleNamespace(server=flow.server_conn))
 
         assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
