@@ -356,6 +356,27 @@ describe("user messages", () => {
   it("renders agent mentions as chips in messages and feedback notes", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000749";
     const mentionedAgentId = "a1000000-0000-4000-a000-000000000009";
+    const mentionedAgentAvatarUrl = "https://example.com/ada-agent-avatar.png";
+    context.mocks.data.team([
+      {
+        id: "c0000000-0000-4000-a000-000000000001",
+        displayName: null,
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        headVersionId: "version_1",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+      {
+        id: mentionedAgentId,
+        displayName: "Ada",
+        description: null,
+        sound: null,
+        avatarUrl: mentionedAgentAvatarUrl,
+        headVersionId: "version_2",
+        updatedAt: "2024-01-01T00:00:00Z",
+      },
+    ]);
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Agent mention rendering",
@@ -409,6 +430,14 @@ describe("user messages", () => {
       'a[aria-label="Open agent Ada"]',
     );
     expect(agentLinks).toHaveLength(2);
+    await waitFor(() => {
+      for (const agentLink of agentLinks) {
+        expect(agentLink.querySelector("img")).toHaveAttribute(
+          "src",
+          mentionedAgentAvatarUrl,
+        );
+      }
+    });
     expect(agentLinks[0]).toHaveAttribute(
       "href",
       `/agents/${mentionedAgentId}/chat`,
