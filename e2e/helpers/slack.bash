@@ -64,15 +64,16 @@ slack_sign_body() {
 }
 
 # POST a /vm0 slash command to the Slack commands endpoint.
-# Usage: slack_post_command <command> <text> <team_id> <user_id> [channel_id]
+# Usage: slack_post_command <command> <text> <team_id> <user_id> [channel_id] [trigger_id]
 # Output: HTTP status code on stderr, response body on stdout
 slack_post_command() {
     local command="$1" text="$2" team_id="$3" user_id="$4"
     local channel_id="${5:-$SLACK_FIXTURE_CHANNEL_ID}"
+    local trigger_id="${6:-trigger-e2e}"
     local body
     body=$(
-        printf 'token=xoxb-test&team_id=%s&team_domain=e2e&channel_id=%s&channel_name=e2e&user_id=%s&user_name=e2e-user&command=%s&text=%s&api_app_id=%s' \
-            "$team_id" "$channel_id" "$user_id" "$command" "$text" "$SLACK_FIXTURE_APP_ID"
+        printf 'token=xoxb-test&team_id=%s&team_domain=e2e&channel_id=%s&channel_name=e2e&user_id=%s&user_name=e2e-user&command=%s&text=%s&trigger_id=%s&api_app_id=%s' \
+            "$team_id" "$channel_id" "$user_id" "$command" "$text" "$trigger_id" "$SLACK_FIXTURE_APP_ID"
     )
     slack_sign_body "$body"
     local -a bypass=()
