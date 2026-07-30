@@ -133,14 +133,18 @@ is_transient_status() {
 preconnect_host() {
   local host="$1"
   local target="${SSH_USER}@${host}"
-  local attempt stderr_file move_error_file status
+  local attempt stderr_file status
   local -a control_args=()
   if [ -n "$CONTROL_PATH" ]; then
     control_args=(-S "$CONTROL_PATH")
   fi
 
   for ((attempt = 1; attempt <= MAX_ATTEMPTS; attempt++)); do
-    stderr_file="${TEMP_DIR}/${host}.${attempt}.stderr"
+    if [ -n "$CONTROL_PATH" ]; then
+      stderr_file="${CONTROL_PATH}.stderr"
+    else
+      stderr_file="${TEMP_DIR}/${host}.${attempt}.stderr"
+    fi
     status=0
 
     GITHUB_STEP_SUMMARY="" \
@@ -157,16 +161,6 @@ preconnect_host() {
       if [ "$status" -eq 0 ]; then
         connected_targets+=("$target")
         connected_control_paths+=("$CONTROL_PATH")
-        if [ -n "$CONTROL_PATH" ]; then
-          move_error_file="${stderr_file}.move"
-          if ! mv -f "$stderr_file" "${CONTROL_PATH}.stderr" \
-            2> "$move_error_file"; then
-            emit_failure \
-              "$host" "unable to retain recovery master diagnostics" \
-              "$move_error_file"
-            return 1
-          fi
-        fi
         echo "Established replay-safe SSH transport to ${host}"
         return 0
       fi
@@ -224,6 +218,9 @@ while IFS= read -r host; do
 
   preconnect_status=0
   preconnect_host "$host" || preconnect_status=$?
+  if [ "$preconnect_status" -ne 0 ] && [ -n "$CONTROL_PATH" ]; then
+    rm -f "${CONTROL_PATH}.stderr"
+  fi
   if [ "$preconnect_status" -ne 0 ] && [ "$REQUIRE_ALL_HOSTS" = "true" ]; then
     exit "$preconnect_status"
   fi
