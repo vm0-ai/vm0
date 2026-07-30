@@ -28,7 +28,7 @@ const ALT_AGENT_UUID = "550e8400-e29b-41d4-a716-446655440099";
 
 const connectedGithub = {
   id: "1",
-  type: "github",
+  slug: "github",
   authMethod: "oauth",
   externalId: "12345",
   externalUsername: "octocat",
@@ -41,7 +41,7 @@ const connectedGithub = {
 
 function statusItemFromConnector(connector: Record<string, unknown>) {
   return catalogStatusItem({
-    connectorSlug: connector.type as string,
+    connectorSlug: connector.slug as string,
     authMethods: [authCodeMethod(connector.authMethod as string)],
     connection: {
       authMethod: connector.authMethod as string,
@@ -59,7 +59,7 @@ function statusItemFromConnector(connector: Record<string, unknown>) {
 function stubConnectors(connectors: Array<Record<string, unknown>>) {
   const connectedBySlug = new Map(
     connectors.map((connector) => {
-      return [connector.type as string, statusItemFromConnector(connector)];
+      return [connector.slug as string, statusItemFromConnector(connector)];
     }),
   );
   const visibleConnectorSlugs = new Set([
@@ -97,7 +97,9 @@ function stubUserConnectors(id: string, enabledConnectorSlugs: string[]) {
   return http.get(
     `http://localhost:3000/api/zero/agents/${id}/user-connectors`,
     () => {
-      return HttpResponse.json({ enabledTypes: enabledConnectorSlugs });
+      return HttpResponse.json({
+        enabledConnectorSlugs: enabledConnectorSlugs,
+      });
     },
   );
 }
@@ -150,28 +152,6 @@ describe("zero connector list command", () => {
       expect(logCalls).not.toContain("AUTHORIZED FOR");
       expect(logCalls).toContain("github");
       expect(logCalls).toContain("@octocat");
-    });
-
-    it("prefers canonical catalog slugs and falls back to legacy-only responses", async () => {
-      server.use(
-        stubConnectorCatalogStatus([
-          {
-            ...catalogStatusItem({ connectorSlug: "legacy-canonical" }),
-            slug: "canonical",
-          },
-          {
-            ...catalogStatusItem({ connectorSlug: "legacy-only" }),
-            slug: undefined,
-          },
-        ]),
-      );
-
-      await listCommand.parseAsync(["node", "cli"]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("canonical");
-      expect(logCalls).toContain("legacy-only");
-      expect(logCalls).not.toContain("legacy-canonical");
     });
 
     it("renders (not connected) for slugs with no connector", async () => {
@@ -253,7 +233,6 @@ describe("zero connector list command", () => {
           `http://localhost:3000/api/zero/agents/${AGENT_UUID}/user-connectors`,
           () => {
             return HttpResponse.json({
-              enabledTypes: [],
               enabledConnectorSlugs: ["github"],
             });
           },

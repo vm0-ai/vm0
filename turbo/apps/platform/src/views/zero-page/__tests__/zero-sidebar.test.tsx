@@ -2582,6 +2582,68 @@ describe("zero sidebar", () => {
     ).toBeInTheDocument();
   });
 
+  it("localizes desktop and mobile shell navigation in Spanish", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Localized conversation"),
+    ]);
+    setMockWorkflowAutomations([
+      createMockWorkflowAutomation({
+        chatThreadId: EXISTING_THREAD_ID,
+      }),
+    ]);
+    context.mocks.data.userPreferences({
+      locale: "es-ES",
+      supportedLocales: ["en-US", "es-ES"],
+    });
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+        [FeatureSwitchKey.ThreeColumnNav]: true,
+        [FeatureSwitchKey.ZeroDebug]: true,
+      },
+    });
+
+    const rail = await screen.findByTestId("labeled-nav-rail");
+    expect(
+      within(rail).getByRole("navigation", { name: "Barra lateral" }),
+    ).toBeInTheDocument();
+    expect(within(rail).getByText("Agentes")).toBeInTheDocument();
+    expect(within(rail).getByText("Flujos de trabajo")).toBeInTheDocument();
+    expect(within(rail).getByText("Conectores")).toBeInTheDocument();
+    expect(within(rail).getByText("Artefactos")).toBeInTheDocument();
+    expect(within(rail).getByText("Actividad")).toBeInTheDocument();
+    expect(
+      within(rail).getByLabelText("Dónde trabaja Zero"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Abrir menú")).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Abrir artefactos en móvil"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Abrir automatizaciones en móvil"),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Contraer barra lateral")).toBeInTheDocument();
+
+    fireEvent.keyDown(document.body, { key: "?", shiftKey: true });
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Atajos de teclado",
+    });
+    expect(
+      within(dialog).getByText("Atajos disponibles en esta página"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText("Mostrar atajos de teclado"),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByLabelText("Cerrar atajos de teclado"),
+    ).toBeInTheDocument();
+  });
+
   it("keeps localized navigation accessible while collapsing and expanding", async () => {
     prepareDefaultAgent();
     context.mocks.data.userPreferences({

@@ -1054,6 +1054,67 @@ describe("chat lifecycle", () => {
     expect(document.documentElement.lang).toBe("ja-JP");
   });
 
+  it("formats completed-run timestamps with the selected Spanish locale", async () => {
+    const completedAt = "2026-06-09T10:00:21Z";
+    const completedAtLabel = new Date(completedAt).toLocaleString("es-ES", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    context.mocks.data.userPreferences({ locale: "es-ES" });
+    mockChatLifecycle(context, {
+      threadId: "thread-spanish-completed-run",
+      chatEvents: [
+        {
+          role: "user",
+          content: "Prepara el plan de lanzamiento",
+          runId: "run-spanish-completed-run",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "El plan de lanzamiento está listo.",
+          runId: "run-spanish-completed-run",
+          createdAt: "2026-06-09T10:00:20Z",
+        },
+        {
+          role: "assistant",
+          content: null,
+          runId: "run-spanish-completed-run",
+          runLifecycleEvent: "completed",
+          createdAt: completedAt,
+        },
+        {
+          role: "assistant",
+          content: null,
+          runId: "run-spanish-completed-run",
+          recommendedFollowups: [
+            {
+              prompt: "Convertir en una presentación",
+              kind: "generate",
+              generationType: "presentation",
+            },
+          ],
+          createdAt: "2026-06-09T10:00:30Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-spanish-completed-run",
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
+    });
+
+    await expect(
+      screen.findByText(`Sigue adelante · ${completedAtLabel}`),
+    ).resolves.toBeInTheDocument();
+    expect(document.documentElement.lang).toBe("es-ES");
+  });
+
   it("does not let an attached lifecycle marker hide the final answer", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-work-folding-completion-marker",

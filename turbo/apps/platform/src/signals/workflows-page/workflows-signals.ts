@@ -53,10 +53,7 @@ import {
   reloadWorkflowData$,
   workflowReloadVersion$,
 } from "./workflow-reload.ts";
-import {
-  normalizeWorkflowConnectorReadinessResponse,
-  type PlatformWorkflowConnectorReadinessResponse,
-} from "../connector-domain.ts";
+import type { PlatformWorkflowConnectorReadinessResponse } from "../connector-domain.ts";
 
 type WorkflowDetailActionDialog = "copy" | "delete" | null;
 export type WorkflowDetailTab = "automations" | "instructions" | "info";
@@ -829,7 +826,7 @@ export const checkWorkflowConnectorReadiness$ = command(
       workflowId,
       requestId,
       status: "success",
-      response: normalizeWorkflowConnectorReadinessResponse(result.body),
+      response: result.body,
     });
   },
 );

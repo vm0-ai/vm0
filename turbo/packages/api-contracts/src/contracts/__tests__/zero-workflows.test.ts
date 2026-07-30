@@ -227,21 +227,21 @@ describe("workflow update contract", () => {
 describe("workflow connector readiness contract", () => {
   it("accepts all readiness states without limiting the connector count", () => {
     const entries = [
-      { connectorRef: "github", status: "connected" },
-      { connectorRef: "gmail", status: "not-connected" },
-      { connectorRef: "notion", status: "scope-mismatch" },
-      { connectorRef: "slack", status: "reconnect-required" },
-      { connectorRef: "linear", status: "not-enabled-for-agent" },
-      { connectorRef: "google-drive", status: "unavailable" },
+      { connectorSlug: "github", status: "connected" },
+      { connectorSlug: "gmail", status: "not-connected" },
+      { connectorSlug: "notion", status: "scope-mismatch" },
+      { connectorSlug: "slack", status: "reconnect-required" },
+      { connectorSlug: "linear", status: "not-enabled-for-agent" },
+      { connectorSlug: "google-drive", status: "unavailable" },
     ] as const;
 
     const parsed = zeroWorkflowConnectorReadinessResponseSchema.parse({
       connectors: entries.map((entry, index) => {
         return {
-          connectorRef: entry.connectorRef,
+          connectorSlug: entry.connectorSlug,
           label: `Connector ${index}`,
           icon: {
-            url: `https://icons.example.test/${entry.connectorRef}.svg`,
+            url: `https://icons.example.test/${entry.connectorSlug}.svg`,
             invertInDarkMode: false,
           },
           reason: "The workflow uses this service.",
@@ -253,12 +253,12 @@ describe("workflow connector readiness contract", () => {
     expect(parsed.connectors).toHaveLength(entries.length);
   });
 
-  it("rejects unknown readiness states and extra fields", () => {
+  it("rejects unknown readiness states", () => {
     expect(
       zeroWorkflowConnectorReadinessResponseSchema.safeParse({
         connectors: [
           {
-            connectorRef: "github",
+            connectorSlug: "github",
             label: "GitHub",
             reason: "The workflow reads issues.",
             status: "unknown",

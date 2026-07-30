@@ -156,7 +156,7 @@ function createConnector(
 ): ConnectorResponse {
   return {
     id: crypto.randomUUID(),
-    type: connectorSlug,
+    slug: connectorSlug,
     authMethod: "oauth",
     externalId: `${connectorSlug}-external-id`,
     externalUsername,
@@ -174,7 +174,7 @@ function axiomCatalogStatusItem(
   permissionSummary: PublicConnectorCatalogPermissionSummary,
 ): PublicConnectorCatalogStatusItem {
   return {
-    connectorRef: "axiom",
+    slug: "axiom",
     label: "Axiom",
     description: "Observability and log analytics",
     icon: {
@@ -392,7 +392,7 @@ function mockTeamAPIs({
   const enabledCustomConnectorIdsByAgent = new Map<string, string[]>();
   context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
     return respond(200, {
-      enabledTypes: enabledConnectorSlugsByAgent.get(params.id) ?? [],
+      enabledConnectorSlugs: enabledConnectorSlugsByAgent.get(params.id) ?? [],
     });
   });
   context.mocks.api(
@@ -403,7 +403,7 @@ function mockTeamAPIs({
         body,
       );
       enabledConnectorSlugsByAgent.set(params.id, enabledConnectorSlugs);
-      return respond(200, { enabledTypes: enabledConnectorSlugs });
+      return respond(200, { enabledConnectorSlugs: enabledConnectorSlugs });
     },
   );
   context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
@@ -1223,7 +1223,7 @@ describe("team page navigation", () => {
       zeroConnectorCatalogContract.permissions,
       ({ respond }) => {
         const permissions = {
-          connectorRef: "cloudflare",
+          connectorSlug: "cloudflare",
           label: "Cloudflare",
           icon: {
             url: "https://icons.example.test/cloudflare.svg",
@@ -1253,7 +1253,6 @@ describe("team page navigation", () => {
           body.grants.map((grant) => {
             return {
               agentId: body.agentId,
-              connectorRef: body.connectorSlug,
               connectorSlug: body.connectorSlug,
               permission: grant.permission,
               action: grant.action,
@@ -1326,7 +1325,7 @@ describe("team page navigation", () => {
       return respond(200, [
         {
           agentId: researchAgentId,
-          connectorRef: "slack",
+          connectorSlug: "slack",
           permission: "channels:join",
           action: "allow",
           expiresAt: isoFromNowMs(-60 * 1000),
@@ -1394,7 +1393,7 @@ describe("team page navigation", () => {
     ): UserPermissionGrantResponse => {
       return {
         agentId: researchAgentId,
-        connectorRef: "slack",
+        connectorSlug: "slack",
         permission,
         action: "allow",
         expiresAt: expiration,
@@ -1462,7 +1461,6 @@ describe("team page navigation", () => {
     let grants: UserPermissionGrantResponse[] = [
       {
         agentId: researchAgentId,
-        connectorRef: "axiom",
         connectorSlug: "axiom",
         permission: "annotations|create",
         action: "allow",
@@ -1472,7 +1470,7 @@ describe("team page navigation", () => {
       },
       {
         agentId: researchAgentId,
-        connectorRef: "axiom",
+        connectorSlug: "axiom",
         permission: "dashboards|read",
         action: "allow",
         expiresAt: isoFromNowMs(2 * 60 * 60 * 1000),
@@ -1481,7 +1479,7 @@ describe("team page navigation", () => {
       },
       {
         agentId: researchAgentId,
-        connectorRef: "axiom",
+        connectorSlug: "axiom",
         permission: "datasets|read",
         action: "allow",
         expiresAt: isoFromNowMs(-60 * 1000),
@@ -1490,7 +1488,7 @@ describe("team page navigation", () => {
       },
       {
         agentId: researchAgentId,
-        connectorRef: "axiom",
+        connectorSlug: "axiom",
         permission: "legacy|removed",
         action: "deny",
         expiresAt: null,
@@ -1509,7 +1507,6 @@ describe("team page navigation", () => {
           (grant) => {
             return {
               agentId: body.agentId,
-              connectorRef: body.connectorSlug,
               connectorSlug: body.connectorSlug,
               permission: grant.permission,
               action: grant.action,
@@ -1524,7 +1521,7 @@ describe("team page navigation", () => {
         );
         const appliedGrantKeys = new Set(
           appliedGrants.map((grant) => {
-            return `${grant.agentId}\u0000${grant.connectorRef}\u0000${grant.permission}`;
+            return `${grant.agentId}\u0000${grant.connectorSlug}\u0000${grant.permission}`;
           }),
         );
         grants = [
@@ -1532,12 +1529,12 @@ describe("team page navigation", () => {
             if (
               body.mode === "replace" &&
               current.agentId === body.agentId &&
-              current.connectorRef === body.connectorSlug
+              current.connectorSlug === body.connectorSlug
             ) {
               return false;
             }
             return !appliedGrantKeys.has(
-              `${current.agentId}\u0000${current.connectorRef}\u0000${current.permission}`,
+              `${current.agentId}\u0000${current.connectorSlug}\u0000${current.permission}`,
             );
           }),
           ...appliedGrants,

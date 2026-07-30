@@ -160,6 +160,9 @@ export const chatEvents = pgTable(
       index("chat_events_input_automation_idx")
         .on(table.automationId)
         .where(sql`${table.eventType} = 'input.automation'`),
+      index("chat_events_input_automation_context_idx")
+        .on(table.contextId)
+        .where(sql`${table.eventType} = 'input.automation'`),
       index("chat_events_pending_queue_idx")
         .on(table.chatThreadId, table.createdAt, table.id)
         .where(

@@ -28,9 +28,11 @@ import {
 import { zeroOrgLogoContract } from "@vm0/api-contracts/contracts/zero-org-logo";
 import {
   addClientCapabilityToVersion,
+  CLIENT_CAPABILITY_ES_ES_LOCALE,
   CLIENT_CAPABILITY_JA_JP_LOCALE,
   CLIENT_CAPABILITY_KO_KR_LOCALE,
   CLIENT_CAPABILITY_ID_ID_LOCALE,
+  CLIENT_CAPABILITY_DE_DE_LOCALE,
   CLIENT_CAPABILITY_PT_BR_LOCALE,
   CLIENT_VERSION_HEADER,
 } from "@vm0/api-contracts/contracts/client-headers";
@@ -78,9 +80,25 @@ const ALL_LOCALES_WITH_KOREAN_CLIENT_VERSION = addClientCapabilityToVersion(
   JAPANESE_CLIENT_VERSION,
   CLIENT_CAPABILITY_KO_KR_LOCALE,
 );
-export const ALL_LOCALES_CLIENT_VERSION = addClientCapabilityToVersion(
+const ALL_LOCALES_WITH_INDONESIAN_CLIENT_VERSION = addClientCapabilityToVersion(
   ALL_LOCALES_WITH_KOREAN_CLIENT_VERSION,
   CLIENT_CAPABILITY_ID_ID_LOCALE,
+);
+export const GERMAN_CLIENT_VERSION = addClientCapabilityToVersion(
+  "0.648.0",
+  CLIENT_CAPABILITY_DE_DE_LOCALE,
+);
+const ALL_LOCALES_WITH_GERMAN_CLIENT_VERSION = addClientCapabilityToVersion(
+  ALL_LOCALES_WITH_INDONESIAN_CLIENT_VERSION,
+  CLIENT_CAPABILITY_DE_DE_LOCALE,
+);
+export const SPANISH_CLIENT_VERSION = addClientCapabilityToVersion(
+  "0.648.0",
+  CLIENT_CAPABILITY_ES_ES_LOCALE,
+);
+export const ALL_LOCALES_CLIENT_VERSION = addClientCapabilityToVersion(
+  ALL_LOCALES_WITH_GERMAN_CLIENT_VERSION,
+  CLIENT_CAPABILITY_ES_ES_LOCALE,
 );
 
 type ZeroLogsSearchQuery = z.input<

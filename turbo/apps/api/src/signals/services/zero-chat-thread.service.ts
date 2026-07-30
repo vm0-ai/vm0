@@ -44,6 +44,7 @@ import {
   type ChatEventGoalEvent,
   type ChatEventGoalSnapshot,
 } from "@vm0/db/schema/chat-event";
+import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
 import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -408,6 +409,20 @@ function selectChatEventsWithMetadata(db: Pick<Db, "select">) {
   return db
     .select({
       ...eventColumns,
+      automationId: sql`CASE
+        WHEN ${isNull(chatEvents.contextId)}
+          THEN ${chatEvents.automationId}
+        ELSE ${chatAutomationContext.automationId}
+      END`
+        .mapWith(chatEvents.automationId)
+        .as("automation_id"),
+      triggerBrief: sql`CASE
+        WHEN ${isNull(chatEvents.contextId)}
+          THEN ${chatEvents.triggerBrief}
+        ELSE ${chatAutomationContext.triggerBrief}
+      END`
+        .mapWith(chatEvents.triggerBrief)
+        .as("trigger_brief"),
       triggerSource: sql`COALESCE(
         ${chatEvents.triggerSource},
         ${metadata.runTriggerSource}
@@ -436,6 +451,13 @@ function selectChatEventsWithMetadata(db: Pick<Db, "select">) {
     })
     .from(chatEvents)
     .leftJoinLateral(metadata, sql`true`)
+    .leftJoin(
+      chatAutomationContext,
+      and(
+        eq(chatEvents.contextType, "automation"),
+        eq(chatAutomationContext.id, chatEvents.contextId),
+      ),
+    )
     .leftJoin(
       chatSlackContext,
       and(

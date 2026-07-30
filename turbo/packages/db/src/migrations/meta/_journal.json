@@ -5363,6 +5363,20 @@
       "when": 1785416430642,
       "tag": "0765_drop_chat_event_display_links",
       "breakpoints": true
+    },
+    {
+      "idx": 766,
+      "version": "7",
+      "when": 1785418902022,
+      "tag": "0766_charming_iron_lad",
+      "breakpoints": true
+    },
+    {
+      "idx": 767,
+      "version": "7",
+      "when": 1785420940243,
+      "tag": "0767_add_chat_automation_context",
+      "breakpoints": true
     }
   ]
 }

@@ -20,10 +20,9 @@ import { retryTransientLoad } from "../utils.ts";
 import { resolveActiveUserPermissionGrantPolicy } from "../user-permission-grants.ts";
 import { parseUserPermissionGrantExpiresIn } from "./permission-grant-expiration.ts";
 import { i18n } from "../../i18n/index.ts";
-import {
-  normalizeUserPermissionGrants,
-  type PlatformConnectorPermissionMetadata,
-  type PlatformUserPermissionGrant,
+import type {
+  PlatformConnectorPermissionMetadata,
+  PlatformUserPermissionGrant,
 } from "../connector-domain.ts";
 
 // ---------------------------------------------------------------------------
@@ -148,7 +147,7 @@ export function userPermissionGrantsByAgent(
     const result = await retryTransientLoad(() => {
       return accept(client.list({ query: params }), [200]);
     });
-    return normalizeUserPermissionGrants(result.body);
+    return result.body;
   });
 }
 
@@ -161,9 +160,7 @@ export function userPermissionGrantsByAgentIfExists(
     const result = await retryTransientLoad(() => {
       return accept(client.list({ query: params }), [200, 404]);
     });
-    return result.status === 404
-      ? null
-      : normalizeUserPermissionGrants(result.body);
+    return result.status === 404 ? null : result.body;
   });
 }
 
@@ -230,7 +227,7 @@ export const applyUserPermissionGrants$ = command(
       return prev + 1;
     });
     set(reloadAgentById$);
-    return normalizeUserPermissionGrants(result.body);
+    return result.body;
   },
 );
 

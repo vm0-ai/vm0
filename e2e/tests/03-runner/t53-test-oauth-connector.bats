@@ -283,7 +283,7 @@ connect_test_oauth_via_authorization_code() {
         cat "$callback_headers"
         return 1
     }
-    [[ "$success_url" == *"/connector/success"* && "$success_url" == *"type=test-oauth"* ]] || {
+    [[ "$success_url" == *"/connector/success"* && "$success_url" == *"connectorSlug=test-oauth"* ]] || {
         echo "# Callback did not redirect to test-oauth success URL"
         echo "$success_url"
         return 1

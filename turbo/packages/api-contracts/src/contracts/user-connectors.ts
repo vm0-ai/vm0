@@ -11,66 +11,19 @@ const c = initContract();
  * agent.
  */
 export const userConnectorEnabledSlugsSchema = z.object({
-  // TODO(#23821): Remove this legacy wire field after clients migrate.
-  enabledTypes: z.array(connectorSlugSchema),
-  enabledConnectorSlugs: z.array(connectorSlugSchema).optional(),
+  enabledConnectorSlugs: z.array(connectorSlugSchema),
 });
 export type UserConnectorEnabledSlugs = z.infer<
   typeof userConnectorEnabledSlugsSchema
 >;
 
-function sameConnectorSlugs(
-  left: readonly string[],
-  right: readonly string[],
-): boolean {
-  return (
-    left.length === right.length &&
-    left.every((value, index) => {
-      return value === right[index];
-    })
-  );
-}
-
 export const userConnectorUpdateSchema = z
   .object({
-    // TODO(#23821): Remove this legacy wire field after clients migrate.
-    enabledTypes: z.array(connectorSlugSchema).optional(),
-    enabledConnectorSlugs: z.array(connectorSlugSchema).optional(),
+    enabledConnectorSlugs: z.array(connectorSlugSchema),
     operation: z.enum(["replace", "add", "remove"]).optional(),
   })
-  .superRefine((request, ctx) => {
-    if (
-      request.enabledTypes === undefined &&
-      request.enabledConnectorSlugs === undefined
-    ) {
-      ctx.addIssue({
-        code: "custom",
-        message: "enabledTypes or enabledConnectorSlugs is required",
-        path: ["enabledConnectorSlugs"],
-      });
-    }
-    if (
-      request.enabledTypes !== undefined &&
-      request.enabledConnectorSlugs !== undefined &&
-      !sameConnectorSlugs(request.enabledTypes, request.enabledConnectorSlugs)
-    ) {
-      ctx.addIssue({
-        code: "custom",
-        message: "enabledTypes and enabledConnectorSlugs must match",
-        path: ["enabledConnectorSlugs"],
-      });
-    }
-  })
-  .transform(({ enabledTypes, enabledConnectorSlugs, ...request }) => {
-    const normalizedConnectorSlugs =
-      enabledConnectorSlugs ?? enabledTypes ?? [];
-    return {
-      ...request,
-      enabledTypes: normalizedConnectorSlugs,
-      enabledConnectorSlugs: normalizedConnectorSlugs,
-    };
-  });
-export type UserConnectorUpdate = z.input<typeof userConnectorUpdateSchema>;
+  .strict();
+export type UserConnectorUpdate = z.infer<typeof userConnectorUpdateSchema>;
 
 /**
  * Contract for GET/PUT /api/zero/agents/:id/user-connectors

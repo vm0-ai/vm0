@@ -311,7 +311,7 @@ describe("zero workflow automation scheduler", () => {
       setupApp({ context })(zeroUserConnectorsContract).update({
         headers: authHeaders(),
         params: { id: scenario.agentId },
-        body: { enabledTypes: ["gmail"] },
+        body: { enabledConnectorSlugs: ["gmail"] },
       }),
       [200],
     );

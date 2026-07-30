@@ -72,4 +72,23 @@ describe("user preferences contract", () => {
       supportedLocales: ["en-US", "pt-BR", "ja-JP", "ko-KR"],
     });
   });
+
+  it("accepts the canonical Spanish locale", () => {
+    expect(userLocaleSchema.parse("es-ES")).toBe("es-ES");
+    expect(
+      userPreferencesResponseSchema.parse({
+        timezone: null,
+        locale: "es-ES",
+        supportedLocales: ["en-US", "pt-BR", "ja-JP", "es-ES"],
+        pinnedAgentIds: [],
+        sendMode: "enter",
+        morningBriefEnabled: false,
+        morningBriefNextRunAt: null,
+        captureNetworkBodiesRemaining: 0,
+      }),
+    ).toMatchObject({
+      locale: "es-ES",
+      supportedLocales: ["en-US", "pt-BR", "ja-JP", "es-ES"],
+    });
+  });
 });

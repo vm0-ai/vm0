@@ -66,7 +66,9 @@ function parseUserLocale(value: unknown): UserLocale | null {
     value === "pt-BR" ||
     value === "ja-JP" ||
     value === "ko-KR" ||
-    value === "id-ID"
+    value === "id-ID" ||
+    value === "de-DE" ||
+    value === "es-ES"
   ) {
     return value;
   }
@@ -189,6 +191,8 @@ interface UpdateUserPreferencesArgs extends UserScopedQuery {
   readonly allowJapanese?: boolean;
   readonly allowKorean?: boolean;
   readonly allowIndonesian?: boolean;
+  readonly allowGerman?: boolean;
+  readonly allowSpanish?: boolean;
 }
 
 type UpdateUserPreferencesResult =
@@ -204,6 +208,8 @@ function isUserPreferencesUpdateAllowed(
     (locale !== "ja-JP" || args.allowJapanese === true) &&
     (locale !== "ko-KR" || args.allowKorean === true) &&
     (locale !== "id-ID" || args.allowIndonesian === true) &&
+    (locale !== "de-DE" || args.allowGerman === true) &&
+    (locale !== "es-ES" || args.allowSpanish === true) &&
     (timezone === undefined || isValidTimeZone(timezone))
   );
 }

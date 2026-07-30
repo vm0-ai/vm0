@@ -145,6 +145,10 @@ KOREAN_LOCALE_ROLLOUT_ENABLED=false
 # the rollout path.
 INDONESIAN_LOCALE_ROLLOUT_ENABLED=true
 
+# German has not shipped yet. Enable it in development so the capable Platform
+# client can exercise the rollout path.
+GERMAN_LOCALE_ROLLOUT_ENABLED=true
+
 # Optional: Google Ads API (developer token + login customer ID for MCC)
 GOOGLE_ADS_DEVELOPER_TOKEN=op://Development/google/GOOGLE_ADS_DEVELOPER_TOKEN
 GOOGLE_ADS_LOGIN_CUSTOMER_ID=op://Development/google/GOOGLE_ADS_LOGIN_CUSTOMER_ID

@@ -39,7 +39,7 @@ const createRunInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       return {
         userId: auth.userId,
         orgId: auth.orgId,
-        body: body.data,
+        body: { ...body.data, triggerSource: "test" as const },
         apiStartTime,
         modelProviderType: body.data.modelProviderType,
         timing,

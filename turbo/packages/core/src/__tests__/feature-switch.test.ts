@@ -58,6 +58,8 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.JapaneseLocale, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.KoreanLocale, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.IndonesianLocale, {})).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.GermanLocale, {})).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.SpanishLocale, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.ZeroChatMessaging, {})).toBe(
       false,
     );
@@ -141,6 +143,8 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.JapaneseLocale]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.KoreanLocale]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.IndonesianLocale]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.GermanLocale]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.SpanishLocale]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
@@ -180,6 +184,8 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.JapaneseLocale]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.KoreanLocale]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.IndonesianLocale]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.GermanLocale]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.SpanishLocale]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
@@ -268,6 +274,12 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.IndonesianLocale,
     );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.GermanLocale,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.SpanishLocale,
+    );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ZeroBrowser,
     );
@@ -298,6 +310,8 @@ describe("user-overridable switches", () => {
         [FeatureSwitchKey.JapaneseLocale]: true,
         [FeatureSwitchKey.KoreanLocale]: true,
         [FeatureSwitchKey.IndonesianLocale]: true,
+        [FeatureSwitchKey.GermanLocale]: true,
+        [FeatureSwitchKey.SpanishLocale]: true,
         [FeatureSwitchKey.ZeroBrowser]: true,
         [FeatureSwitchKey.ComposerConnectorPermissions]: true,
         [FeatureSwitchKey.Dummy]: false,

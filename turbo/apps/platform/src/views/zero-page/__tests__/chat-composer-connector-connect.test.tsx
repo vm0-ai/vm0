@@ -32,18 +32,18 @@ import {
 } from "./chat-composer-test-helpers.ts";
 
 function connectorStatus({
-  connectorRef: connectorSlug,
+  slug: connectorSlug,
   label,
   authMethods,
   singleAuthCodeAuthMethodId = null,
 }: {
-  readonly connectorRef: PublicConnectorCatalogStatusItem["connectorRef"];
+  readonly slug: PublicConnectorCatalogStatusItem["slug"];
   readonly label: string;
   readonly authMethods: PublicConnectorCatalogStatusItem["authMethods"];
   readonly singleAuthCodeAuthMethodId?: string | null;
 }): PublicConnectorCatalogStatusItem {
   return {
-    connectorRef: connectorSlug,
+    slug: connectorSlug,
     label,
     description: `Connect ${label}`,
     icon: {
@@ -271,7 +271,7 @@ describe("chat composer connector connection", () => {
     const user = userEvent.setup({ delay: null });
     mockCatalog([
       connectorStatus({
-        connectorRef: "google-analytics",
+        slug: "google-analytics",
         label: "Google Analytics",
         authMethods: [
           {
@@ -321,7 +321,7 @@ describe("chat composer connector connection", () => {
     const user = userEvent.setup({ delay: null });
     mockCatalog([
       connectorStatus({
-        connectorRef: "stripe",
+        slug: "stripe",
         label: "Public Stripe",
         authMethods: [
           {
@@ -348,7 +348,7 @@ describe("chat composer connector connection", () => {
         });
         return respond(200, {
           id: crypto.randomUUID(),
-          type: params.connectorSlug,
+          slug: params.connectorSlug,
           authMethod: body.authMethod,
           externalId: null,
           externalUsername: null,
@@ -373,7 +373,6 @@ describe("chat composer connector connection", () => {
           operation: "add",
         });
         return respond(200, {
-          enabledTypes: ["stripe"],
           enabledConnectorSlugs: ["stripe"],
         });
       },
@@ -402,7 +401,7 @@ describe("chat composer connector connection", () => {
     const user = userEvent.setup({ delay: null });
     mockCatalog([
       connectorStatus({
-        connectorRef: "axiom",
+        slug: "axiom",
         label: "Axiom",
         authMethods: [
           {

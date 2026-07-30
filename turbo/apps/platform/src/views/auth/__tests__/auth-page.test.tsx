@@ -57,6 +57,36 @@ function useKoreanLocale(): void {
   );
 }
 
+function useGermanLocale(): void {
+  document.documentElement.lang = "de-DE";
+  context.mocks.data.userPreferences({
+    locale: "de-DE",
+    supportedLocales: ["en-US", "de-DE"],
+  });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      document.documentElement.lang = "en-US";
+    },
+    { once: true },
+  );
+}
+
+function useSpanishLocale(): void {
+  document.documentElement.lang = "es-ES";
+  context.mocks.data.userPreferences({
+    locale: "es-ES",
+    supportedLocales: ["en-US", "es-ES"],
+  });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      document.documentElement.lang = "en-US";
+    },
+    { once: true },
+  );
+}
+
 describe("app auth pages", () => {
   it("localizes the app auth shell and Clerk resources in Brazilian Portuguese", async () => {
     usePortugueseLocale();
@@ -121,6 +151,54 @@ describe("app auth pages", () => {
     expect(localization.signIn?.start?.actionLink).toBe("회원가입");
     expect(localization.unstable__errors?.not_allowed_access).toBe(
       "접근이 허용되지 않습니다.",
+    );
+
+    act(() => {
+      authComponent.mount();
+    });
+  });
+
+  it("localizes the app auth shell and Clerk resources in German", async () => {
+    useGermanLocale();
+    setBrowserUrl("https://app.vm0.ai/sign-up");
+
+    const authComponent = context.mocks.clerk.deferAuthComponentMount();
+    detachedSetupPage({ context, path: "/sign-up" });
+
+    await expect(
+      screen.findByText("Authentifizierung wird geladen"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("Design wechseln")).toBeInTheDocument();
+    expect(document.title).toBe("Registrieren | VM0");
+
+    const localization = getClerkLocalization("VM0", "de-DE", i18n.t);
+    expect(localization.signIn?.start?.actionLink).toBe("Registrieren");
+    expect(localization.unstable__errors?.not_allowed_access).toBe(
+      "Zugriff nicht gestattet.",
+    );
+
+    act(() => {
+      authComponent.mount();
+    });
+  });
+
+  it("localizes the app auth shell and Clerk resources in Spanish", async () => {
+    useSpanishLocale();
+    setBrowserUrl("https://app.vm0.ai/sign-up");
+
+    const authComponent = context.mocks.clerk.deferAuthComponentMount();
+    detachedSetupPage({ context, path: "/sign-up" });
+
+    await expect(
+      screen.findByText("Cargando autenticación"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("Cambiar tema")).toBeInTheDocument();
+    expect(document.title).toBe("Crear una cuenta | VM0");
+
+    const localization = getClerkLocalization("VM0", "es-ES", i18n.t);
+    expect(localization.signIn?.start?.actionLink).toBe("Regístrese");
+    expect(localization.unstable__errors?.not_allowed_access).toBe(
+      "Acceso no permitido.",
     );
 
     act(() => {

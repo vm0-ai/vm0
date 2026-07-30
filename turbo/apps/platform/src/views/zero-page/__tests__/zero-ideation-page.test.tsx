@@ -33,7 +33,7 @@ function publicConnectorStatusItem(
   connectorSlug: string,
 ): PublicConnectorCatalogStatusItem {
   return {
-    connectorRef: connectorSlug,
+    slug: connectorSlug,
     label: connectorSlug,
     description: `${connectorSlug} public description`,
     category: "data-automation-infrastructure",

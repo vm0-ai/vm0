@@ -9,6 +9,7 @@ import {
   type StoredConnectorPermissionBaseline,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
+import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import type {
@@ -285,7 +286,12 @@ const COUNT_BUCKET_DIMENSIONS = [
   "17_plus",
 ] as const;
 
-type CreateRunBody = z.infer<typeof unifiedRunRequestSchema>;
+type CreateRunBody = Omit<
+  z.infer<typeof unifiedRunRequestSchema>,
+  "triggerSource"
+> & {
+  readonly triggerSource: TriggerSource;
+};
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 const CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT =
@@ -5015,7 +5021,7 @@ async function insertZeroRunRecord(
   const metadata: ZeroRunMetadata = args.zeroRunMetadata ?? {};
   await tx.insert(zeroRuns).values({
     id: args.runId,
-    triggerSource: args.body.triggerSource ?? "cli",
+    triggerSource: args.body.triggerSource,
     workflowAutomationId: metadata.workflowAutomationId ?? null,
     triggerBrief: metadata.triggerBrief ?? null,
     runGroupId: metadata.runGroupId ?? null,

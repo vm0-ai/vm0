@@ -267,6 +267,20 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     userOverridable: false,
   },
+  [FeatureSwitchKey.GermanLocale]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Allow de-DE preference writes after incompatible API readers and rollback candidates have drained.",
+    enabled: false,
+    userOverridable: false,
+  },
+  [FeatureSwitchKey.SpanishLocale]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Allow es-ES preference writes after incompatible API readers and rollback candidates have drained.",
+    enabled: false,
+    userOverridable: false,
+  },
   [FeatureSwitchKey.Banking]: {
     maintainer: "linghan@vm0.ai",
     description:

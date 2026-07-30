@@ -46,6 +46,8 @@ export enum FeatureSwitchKey {
   JapaneseLocale = "japaneseLocale",
   KoreanLocale = "koreanLocale",
   IndonesianLocale = "indonesianLocale",
+  GermanLocale = "germanLocale",
+  SpanishLocale = "spanishLocale",
   ZeroBrowser = "zeroBrowser",
   ZeroChatMessaging = "zeroChatMessaging",
   ZeroMailReplyFollowUp = "zeroMailReplyFollowUp",
