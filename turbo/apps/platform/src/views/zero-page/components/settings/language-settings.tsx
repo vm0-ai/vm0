@@ -13,15 +13,15 @@ import {
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { brandName$ } from "../../../../signals/branding.ts";
 import {
+  availableLocalePreferences$,
   locale$,
-  localePreferenceSupported$,
   updateLocalePreference$,
 } from "../../../../signals/locale.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 
 export function LanguageSettings() {
   const { t } = useTranslation();
-  const supportLoadable = useLoadable(localePreferenceSupported$);
+  const availableLocalesLoadable = useLoadable(availableLocalePreferences$);
   const brandName = useGet(brandName$);
   const locale = useGet(locale$);
   const pageSignal = useGet(pageSignal$);
@@ -29,14 +29,19 @@ export function LanguageSettings() {
     updateLocalePreference$,
   );
 
-  if (supportLoadable.state !== "hasData" || supportLoadable.data !== true) {
+  if (
+    availableLocalesLoadable.state !== "hasData" ||
+    (!availableLocalesLoadable.data.includes("pt-BR") &&
+      !availableLocalesLoadable.data.includes("ja-JP"))
+  ) {
     return null;
   }
 
+  const availableLocales = availableLocalesLoadable.data;
   const saving = updateLoadable.state === "loading";
 
   const handleChange = (value: string) => {
-    if (value !== "en-US" && value !== "pt-BR") {
+    if (value !== "en-US" && value !== "pt-BR" && value !== "ja-JP") {
       throw new Error(`Unsupported locale: ${value}`);
     }
     detach(updateLocale(value, pageSignal), Reason.DomCallback);
@@ -85,12 +90,21 @@ export function LanguageSettings() {
                   return $.settings.preferences.language.options.english;
                 })}
               </SelectItem>
-              <SelectItem value="pt-BR">
-                {t(($) => {
-                  return $.settings.preferences.language.options
-                    .portugueseBrazil;
-                })}
-              </SelectItem>
+              {availableLocales.includes("pt-BR") && (
+                <SelectItem value="pt-BR">
+                  {t(($) => {
+                    return $.settings.preferences.language.options
+                      .portugueseBrazil;
+                  })}
+                </SelectItem>
+              )}
+              {availableLocales.includes("ja-JP") && (
+                <SelectItem value="ja-JP">
+                  {t(($) => {
+                    return $.settings.preferences.language.options.japanese;
+                  })}
+                </SelectItem>
+              )}
             </SelectContent>
           </Select>
         </div>

@@ -9,7 +9,9 @@ export function localeStorageKey(orgId: string): string {
 function parseSupportedLocale(
   value: string | null | undefined,
 ): SupportedLocale | null {
-  return value === "en-US" || value === "pt-BR" ? value : null;
+  return value === "en-US" || value === "pt-BR" || value === "ja-JP"
+    ? value
+    : null;
 }
 
 export function resolveDocumentLocale(): SupportedLocale {
