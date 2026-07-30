@@ -20,6 +20,8 @@ const BROWSER_USE_CDP_REQUEST_TIMEOUT_MS = 15_000;
 const MAX_BROWSER_USE_RESPONSE_BYTES = 512 * 1024;
 const MAX_BROWSER_USE_CDP_RESPONSE_BYTES = 64 * 1024;
 const MAX_BROWSER_USE_ERROR_MESSAGE_CHARS = 2048;
+const MAX_BROWSER_USE_TAB_URLS = 50;
+const MAX_BROWSER_USE_TAB_URL_CHARS = 8192;
 const browserUseLiveUrlSchema = z.url().refine((value) => {
   return new URL(value).origin === "https://live.browser-use.com";
 });
@@ -55,6 +57,7 @@ const browserUseCdpTargetsSchema = z.object({
     z.object({
       targetId: z.string().min(1),
       type: z.string(),
+      url: z.string(),
     }),
   ),
 });
@@ -230,50 +233,17 @@ async function sendBrowserUseCdpCommand(
   }
 }
 
-async function resizeBrowserUseCdp(
+async function withBrowserUseCdpSocket<T>(
   cdpUrl: string,
-  width: number,
-  height: number,
   signal: AbortSignal,
-): Promise<void> {
+  operation: (socket: WebSocket) => Promise<T>,
+): Promise<T> {
   const websocketUrl = await browserUseCdpWebSocketUrl(cdpUrl, signal);
   const socket = new WebSocket(websocketUrl);
-  const resized = await settle(
+  const result = await settle(
     (async () => {
       await waitForBrowserUseCdpSocket(socket, signal);
-      const targets = browserUseCdpTargetsSchema.parse(
-        await sendBrowserUseCdpCommand(
-          socket,
-          1,
-          "Target.getTargets",
-          {},
-          signal,
-        ),
-        { reportInput: true },
-      );
-      const target = targets.targetInfos.find((candidate) => {
-        return candidate.type === "page";
-      });
-      if (!target) {
-        throw new Error("Browser Use CDP returned no page target");
-      }
-      const window = browserUseCdpWindowSchema.parse(
-        await sendBrowserUseCdpCommand(
-          socket,
-          2,
-          "Browser.getWindowForTarget",
-          { targetId: target.targetId },
-          signal,
-        ),
-        { reportInput: true },
-      );
-      await sendBrowserUseCdpCommand(
-        socket,
-        3,
-        "Browser.setContentsSize",
-        { windowId: window.windowId, width, height },
-        signal,
-      );
+      return await operation(socket);
     })(),
   );
   if (
@@ -284,9 +254,165 @@ async function resizeBrowserUseCdp(
       socket.close(1000);
     });
   }
-  if (!resized.ok) {
-    throw resized.error;
+  if (!result.ok) {
+    throw result.error;
   }
+  return result.value;
+}
+
+async function resizeBrowserUseCdp(
+  cdpUrl: string,
+  width: number,
+  height: number,
+  signal: AbortSignal,
+): Promise<void> {
+  await withBrowserUseCdpSocket(cdpUrl, signal, async (socket) => {
+    const targets = browserUseCdpTargetsSchema.parse(
+      await sendBrowserUseCdpCommand(
+        socket,
+        1,
+        "Target.getTargets",
+        {},
+        signal,
+      ),
+      { reportInput: true },
+    );
+    const target = targets.targetInfos.find((candidate) => {
+      return candidate.type === "page";
+    });
+    if (!target) {
+      throw new Error("Browser Use CDP returned no page target");
+    }
+    const window = browserUseCdpWindowSchema.parse(
+      await sendBrowserUseCdpCommand(
+        socket,
+        2,
+        "Browser.getWindowForTarget",
+        { targetId: target.targetId },
+        signal,
+      ),
+      { reportInput: true },
+    );
+    await sendBrowserUseCdpCommand(
+      socket,
+      3,
+      "Browser.setContentsSize",
+      { windowId: window.windowId, width, height },
+      signal,
+    );
+  });
+}
+
+function restorableBrowserUseTabUrl(url: string): boolean {
+  if (url.length > MAX_BROWSER_USE_TAB_URL_CHARS || !URL.canParse(url)) {
+    return false;
+  }
+  const protocol = new URL(url).protocol;
+  return protocol === "http:" || protocol === "https:";
+}
+
+function browserUseCdpSignal(signal: AbortSignal): AbortSignal {
+  return AbortSignal.any([
+    signal,
+    AbortSignal.timeout(BROWSER_USE_CDP_REQUEST_TIMEOUT_MS),
+  ]);
+}
+
+export async function listBrowserUseTabUrls(
+  cdpUrl: string,
+  signal: AbortSignal,
+): Promise<readonly string[]> {
+  const cdpSignal = browserUseCdpSignal(signal);
+  return await withBrowserUseCdpSocket(cdpUrl, cdpSignal, async (socket) => {
+    const targets = browserUseCdpTargetsSchema.parse(
+      await sendBrowserUseCdpCommand(
+        socket,
+        1,
+        "Target.getTargets",
+        {},
+        cdpSignal,
+      ),
+      { reportInput: true },
+    );
+    return targets.targetInfos
+      .filter((target) => {
+        return target.type === "page" && restorableBrowserUseTabUrl(target.url);
+      })
+      .slice(0, MAX_BROWSER_USE_TAB_URLS)
+      .map((target) => {
+        return target.url;
+      });
+  });
+}
+
+function disposableBrowserUseTabUrl(url: string): boolean {
+  return url === "about:blank" || url === "chrome://newtab/";
+}
+
+export async function restoreBrowserUseTabUrls(
+  cdpUrl: string,
+  urls: readonly string[],
+  signal: AbortSignal,
+): Promise<void> {
+  if (urls.length === 0) {
+    return;
+  }
+  const boundedUrls = urls
+    .filter(restorableBrowserUseTabUrl)
+    .slice(0, MAX_BROWSER_USE_TAB_URLS);
+  if (boundedUrls.length === 0) {
+    return;
+  }
+  const cdpSignal = browserUseCdpSignal(signal);
+  await withBrowserUseCdpSocket(cdpUrl, cdpSignal, async (socket) => {
+    const targets = browserUseCdpTargetsSchema.parse(
+      await sendBrowserUseCdpCommand(
+        socket,
+        1,
+        "Target.getTargets",
+        {},
+        cdpSignal,
+      ),
+      { reportInput: true },
+    );
+    let commandId = 2;
+    let restored = 0;
+    for (const url of boundedUrls) {
+      const result = await settle(
+        sendBrowserUseCdpCommand(
+          socket,
+          commandId,
+          "Target.createTarget",
+          { url },
+          cdpSignal,
+        ),
+      );
+      commandId += 1;
+      signal.throwIfAborted();
+      if (result.ok) {
+        restored += 1;
+      }
+    }
+    if (restored === 0) {
+      throw new Error("Browser Use CDP did not restore any tab");
+    }
+    for (const target of targets.targetInfos) {
+      if (target.type !== "page" || !disposableBrowserUseTabUrl(target.url)) {
+        continue;
+      }
+      await settle(
+        sendBrowserUseCdpCommand(
+          socket,
+          commandId,
+          "Target.closeTarget",
+          { targetId: target.targetId },
+          cdpSignal,
+        ),
+      );
+      commandId += 1;
+      signal.throwIfAborted();
+    }
+  });
 }
 
 export async function resizeBrowserUseSession(
@@ -296,15 +422,7 @@ export async function resizeBrowserUseSession(
   signal: AbortSignal,
 ): Promise<void> {
   const result = await settle(
-    resizeBrowserUseCdp(
-      cdpUrl,
-      width,
-      height,
-      AbortSignal.any([
-        signal,
-        AbortSignal.timeout(BROWSER_USE_CDP_REQUEST_TIMEOUT_MS),
-      ]),
-    ),
+    resizeBrowserUseCdp(cdpUrl, width, height, browserUseCdpSignal(signal)),
   );
   signal.throwIfAborted();
   if (!result.ok) {

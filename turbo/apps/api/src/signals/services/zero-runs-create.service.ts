@@ -355,7 +355,7 @@ function buildAgentToolsPrompt(args: {
     ...(args.zeroBrowserAvailable && args.cloudBrowserEnabled === true
       ? [
           "- Zero Browser and Zero Computer Use are separate surfaces. `zero browser use` creates, reuses, or resumes a remote browser owned by the current chat thread, attaches it to `agent-browser`, and gives the user an authenticated `/browsers/:id` live view they can take over. `zero computer-use` drives apps on a desktop host the user connected separately. Running `agent-browser` on its own drives a local browser inside this sandbox: it creates no Zero Browser session and no user-viewable link.",
-          "- Zero Browser lifetime: `zero browser use` and `zero browser lease` each extend the session's idle lease by a fixed 10 minutes and report when Zero will reclaim it. The session survives the end of this run, so a later run in the same thread attaches to the same live window and the user can keep working in it. Call `zero browser lease` while a long task keeps the browser idle; the reclaimed session can still be resumed from the saved login profile.",
+          "- Zero Browser lifetime: `zero browser use` and `zero browser lease` each extend the session's idle lease by a fixed 10 minutes and report when Zero will reclaim it. The session survives the end of this run, so a later run in the same thread attaches to the same live window and the user can keep working in it. Call `zero browser lease` while a long task keeps the browser idle; a reclaimed session can still resume its saved login profile and reopen its last captured HTTP(S) tab URLs on a best-effort basis.",
         ]
       : []),
     ...(args.zeroBrowserAvailable && args.cloudBrowserEnabled === false

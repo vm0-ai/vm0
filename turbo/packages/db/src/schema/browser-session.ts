@@ -238,3 +238,28 @@ export const browserSessionResizeStates = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
 );
+
+/**
+ * The last restorable page URLs captured before a logical browser is
+ * reclaimed. URL snapshots are encrypted because query strings and fragments
+ * may contain credentials or other sensitive state.
+ *
+ * Keeping this state in a companion table preserves the statement shape of
+ * browser_sessions while the API and migration may deploy in either order.
+ */
+export const browserSessionTabSnapshots = pgTable(
+  "browser_session_tab_snapshots",
+  {
+    browserSessionId: uuid("browser_session_id")
+      .primaryKey()
+      .references(
+        () => {
+          return browserSessions.id;
+        },
+        { onDelete: "cascade" },
+      ),
+    encryptedTabUrls: text("encrypted_tab_urls").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+);

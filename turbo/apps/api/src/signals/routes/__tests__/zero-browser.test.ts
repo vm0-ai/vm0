@@ -913,6 +913,65 @@ describe("zero browser route", () => {
     );
 
     const providerIds = [randomUUID(), randomUUID()] as const;
+    const savedTabUrls = [
+      "https://example.com/research?q=one",
+      "http://example.org/draft#section",
+    ] as const;
+    const cdpWebSocketUrls = [
+      `wss://${providerIds[0]}.cdp.browser-use.com/devtools/browser/test`,
+      `wss://${providerIds[1]}.cdp.browser-use.com/devtools/browser/test`,
+    ] as const;
+    let currentCdpWebSocketUrl: string | null = null;
+    context.mocks.browserUseCdp.connect.mockImplementation((url) => {
+      currentCdpWebSocketUrl = url;
+    });
+    context.mocks.browserUseCdp.command.mockImplementation((command) => {
+      if (command.method === "Target.getTargets") {
+        if (currentCdpWebSocketUrl === cdpWebSocketUrls[0]) {
+          return {
+            targetInfos: [
+              {
+                targetId: "first-tab",
+                type: "page",
+                url: savedTabUrls[0],
+              },
+              {
+                targetId: "second-tab",
+                type: "page",
+                url: savedTabUrls[1],
+              },
+              {
+                targetId: "internal-tab",
+                type: "page",
+                url: "chrome://settings/",
+              },
+              {
+                targetId: "embedded-page",
+                type: "iframe",
+                url: "https://example.net/embedded",
+              },
+            ],
+          };
+        }
+        return {
+          targetInfos: [
+            {
+              targetId: "default-tab",
+              type: "page",
+              url: "about:blank",
+            },
+          ],
+        };
+      }
+      if (
+        currentCdpWebSocketUrl === cdpWebSocketUrls[1] &&
+        command.method === "Target.createTarget" &&
+        command.params.url === savedTabUrls[0]
+      ) {
+        return new Error("test tab restoration failure");
+      }
+      return undefined;
+    });
     let providerCreates = 0;
     let providerStops = 0;
     let firstStopFailures = 0;
@@ -939,6 +998,24 @@ describe("zero browser route", () => {
       http.get(`${BROWSER_USE_API_URL}/browsers/:id`, ({ params }) => {
         return HttpResponse.json(providerBrowser(String(params.id)));
       }),
+      http.get(
+        `https://${providerIds[0]}.cdp.browser-use.com/json/version`,
+        () => {
+          return HttpResponse.json({
+            webSocketDebuggerUrl: cdpWebSocketUrls[0],
+          });
+        },
+      ),
+      http.get(
+        `https://${providerIds[1]}.cdp.browser-use.com/json/version`,
+        () => {
+          return HttpResponse.json({
+            webSocketDebuggerUrl: cdpWebSocketUrls[1],
+          });
+        },
+      ),
+      browserUseCdpHandler(cdpWebSocketUrls[0]),
+      browserUseCdpHandler(cdpWebSocketUrls[1]),
       http.patch(
         `${BROWSER_USE_API_URL}/browsers/:id`,
         async ({ params, request }) => {
@@ -1126,6 +1203,33 @@ describe("zero browser route", () => {
       "browserSessionChanged",
       { browserId },
     );
+    expect(context.mocks.browserUseCdp.connect.mock.calls).toStrictEqual([
+      [cdpWebSocketUrls[0]],
+      [cdpWebSocketUrls[1]],
+    ]);
+    expect(
+      context.mocks.browserUseCdp.command.mock.calls.map(([command]) => {
+        return command;
+      }),
+    ).toStrictEqual([
+      { id: 1, method: "Target.getTargets", params: {} },
+      { id: 1, method: "Target.getTargets", params: {} },
+      {
+        id: 2,
+        method: "Target.createTarget",
+        params: { url: savedTabUrls[0] },
+      },
+      {
+        id: 3,
+        method: "Target.createTarget",
+        params: { url: savedTabUrls[1] },
+      },
+      {
+        id: 4,
+        method: "Target.closeTarget",
+        params: { targetId: "default-tab" },
+      },
+    ]);
 
     mockNow(STARTED_AT_MS + 20 * MINUTE_MS);
     const viewerLease = await accept(

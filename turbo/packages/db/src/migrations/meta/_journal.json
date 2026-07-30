@@ -5181,6 +5181,13 @@
       "when": 1785367511267,
       "tag": "0739_retire_legacy_user_message_storage",
       "breakpoints": true
+    },
+    {
+      "idx": 740,
+      "version": "7",
+      "when": 1785369920084,
+      "tag": "0740_browser_session_tab_snapshots",
+      "breakpoints": true
     }
   ]
 }

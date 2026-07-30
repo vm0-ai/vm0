@@ -249,7 +249,7 @@ Examples:
 Notes:
   - The browser outlives this run; the user can keep working in it from the viewer link
   - Zero reclaims it after ${ZERO_BROWSER_IDLE_LEASE_MINUTES} idle minutes
-  - \`zero browser use\` restores a reclaimed browser's login profile, not its old tabs
+  - \`zero browser use\` restores a reclaimed browser's login profile and reopens saved tab URLs when possible
   - Browser Use credentials and connection URLs are never printed
   - Threads for the same user and organization share one login profile
   - Threads can use the shared profile in parallel`,
