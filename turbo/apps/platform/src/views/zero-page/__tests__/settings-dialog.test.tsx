@@ -176,8 +176,9 @@ describe("settings dialog", () => {
   it("selects and persists German through the advertised locale handshake", async () => {
     const submittedLocales: UserLocale[] = [];
     let serverLocale: UserLocale | null = null;
+    const supportedLocales: UserLocale[] = ["en-US", "pt-BR", "de-DE"];
     context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
-      return respond(200, createPreferences(serverLocale));
+      return respond(200, createPreferences(serverLocale, supportedLocales));
     });
     context.mocks.api(
       zeroUserPreferencesContract.update,
@@ -186,7 +187,7 @@ describe("settings dialog", () => {
           serverLocale = body.locale;
           submittedLocales.push(body.locale);
         }
-        return respond(200, createPreferences(serverLocale));
+        return respond(200, createPreferences(serverLocale, supportedLocales));
       },
     );
 
