@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.60.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.60.0...guest-agent-v0.60.1) (2026-07-30)
+
+## [0.60.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.59.0...guest-agent-v0.60.0) (2026-07-30)
+
+
+### Features
+
+* **events:** report structured guest event delivery failures ([#23974](https://github.com/vm0-ai/vm0/issues/23974)) ([ebdf828](https://github.com/vm0-ai/vm0/commit/ebdf8280b7b961ebf8404790a15696a7338ecd6e))
+
 ## [0.59.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.58.11...guest-agent-v0.59.0) (2026-07-30)
 
 

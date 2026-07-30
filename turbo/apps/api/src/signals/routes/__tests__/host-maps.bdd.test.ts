@@ -377,7 +377,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
         return put.key;
       }),
     ).toContain(
-      `sites/orgs/${actor.orgId}/${occupied.publicSlug}/versions/1/manifest.json`,
+      `sites/orgs/${actor.orgId}/${versioned.publicSlug}/versions/1/manifest.json`,
     );
 
     const disabledHistory = await api.requestHostedSiteDeployments(

@@ -184,10 +184,7 @@ runs:
           add_env FEISHU_CALLBACK_BASE_URL "$api_backend_url"
           add_env VM0_WEB_URL "$web_url"
           add_env ENV "$deploy_env"
-          # pt-BR has not shipped; enable it only in preview for validation.
-          if [[ "$INPUT_ENVIRONMENT" == "preview" ]]; then
-            add_env BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED "true"
-          fi
+          add_env BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED "true"
           if [[ "$INPUT_ENVIRONMENT" == "production" ]]; then
             add_secret CLOUDFLARE_BROWSER_RENDERING_API_TOKEN CLOUDFLARE_BROWSER_RENDERING_API_TOKEN
             add_secret ARTIFACT_PREVIEW_WAF_SECRET ARTIFACT_PREVIEW_WAF_SECRET

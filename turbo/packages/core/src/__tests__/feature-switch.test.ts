@@ -16,6 +16,9 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.VideoArtifactPosters, {})).toBe(
       true,
     );
+    expect(isFeatureEnabled(FeatureSwitchKey.LanguagePreference, {})).toBe(
+      true,
+    );
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -41,15 +44,13 @@ describe("isFeatureEnabled", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.StructuredPromptInlineTemplates, {}),
     ).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.LanguagePreference, {})).toBe(
-      false,
-    );
     expect(
       isFeatureEnabled(FeatureSwitchKey.ChatThreadSidebarAutoOpen, {}),
     ).toBe(false);
     expect(
       isFeatureEnabled(FeatureSwitchKey.BrazilianPortugueseLocale, {}),
     ).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.JapaneseLocale, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.ZeroChatMessaging, {})).toBe(
       false,
     );
@@ -126,10 +127,11 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroChatMessaging]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.LanguagePreference]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.LanguagePreference]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.BrazilianPortugueseLocale]).toBe(
       false,
     );
+    expect(staffOrgStates[FeatureSwitchKey.JapaneseLocale]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
@@ -159,10 +161,11 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroChatMessaging]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.LanguagePreference]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.LanguagePreference]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.BrazilianPortugueseLocale]).toBe(
       false,
     );
+    expect(otherOrgStates[FeatureSwitchKey.JapaneseLocale]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
       false,
@@ -234,6 +237,9 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.BrazilianPortugueseLocale,
     );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.JapaneseLocale,
+    );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ZeroBrowser,
     );
@@ -260,6 +266,7 @@ describe("user-overridable switches", () => {
         [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
         [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
         [FeatureSwitchKey.BrazilianPortugueseLocale]: true,
+        [FeatureSwitchKey.JapaneseLocale]: true,
         [FeatureSwitchKey.ZeroBrowser]: true,
         [FeatureSwitchKey.ComposerConnectorPermissions]: true,
         [FeatureSwitchKey.Dummy]: false,

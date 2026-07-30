@@ -1,3 +1,5 @@
+import { i18n } from "../../i18n/index.ts";
+
 export interface TelegramConnectParams {
   telegramBotId: string;
   connectSignature: {
@@ -9,13 +11,15 @@ export interface TelegramConnectParams {
   } | null;
 }
 
+type TelegramConnectParamErrorCode =
+  | "incomplete"
+  | "invalid_signature"
+  | "invalid_timestamp"
+  | "invalid_user"
+  | "invalid_username";
+
 interface TelegramConnectParamError {
-  code:
-    | "incomplete"
-    | "invalid_signature"
-    | "invalid_timestamp"
-    | "invalid_user"
-    | "invalid_username";
+  code: TelegramConnectParamErrorCode;
   title: string;
   message: string;
 }
@@ -88,6 +92,53 @@ function buildConnectSignature(params: {
   };
 }
 
+function telegramConnectParamError(
+  code: TelegramConnectParamErrorCode,
+): ParsedTelegramConnectParams {
+  const title =
+    code === "incomplete"
+      ? i18n.t(($) => {
+          return $.connectors.providerConnect.telegram.linkIncompleteTitle;
+        })
+      : i18n.t(($) => {
+          return $.connectors.providerConnect.telegram.invalidTitle;
+        });
+  const message = (() => {
+    switch (code) {
+      case "incomplete": {
+        return i18n.t(($) => {
+          return $.connectors.providerConnect.telegram.linkIncomplete;
+        });
+      }
+      case "invalid_signature": {
+        return i18n.t(($) => {
+          return $.connectors.providerConnect.telegram.invalidSignature;
+        });
+      }
+      case "invalid_timestamp": {
+        return i18n.t(($) => {
+          return $.connectors.providerConnect.telegram.invalidTimestamp;
+        });
+      }
+      case "invalid_user": {
+        return i18n.t(($) => {
+          return $.connectors.providerConnect.telegram.invalidUser;
+        });
+      }
+      case "invalid_username": {
+        return i18n.t(($) => {
+          return $.connectors.providerConnect.telegram.invalidUsername;
+        });
+      }
+    }
+  })();
+  return {
+    ok: false,
+    returnPath: "/telegram/connect",
+    error: { code, title, message },
+  };
+}
+
 export function parseTelegramConnectParams(
   searchParams: SearchParams,
 ): ParsedTelegramConnectParams {
@@ -103,15 +154,7 @@ export function parseTelegramConnectParams(
   const sig = firstParam(searchParams, "sig")?.trim();
 
   if (!bot) {
-    return {
-      ok: false,
-      returnPath: "/telegram/connect",
-      error: {
-        code: "incomplete",
-        title: "Connect link is incomplete",
-        message: "Open a fresh /connect link from Telegram and try again.",
-      },
-    };
+    return telegramConnectParamError("incomplete");
   }
 
   if (!tgUser && !tsRaw && !sig) {
@@ -124,76 +167,28 @@ export function parseTelegramConnectParams(
   }
 
   if (!tgUser || !tsRaw || !sig) {
-    return {
-      ok: false,
-      returnPath: "/telegram/connect",
-      error: {
-        code: "incomplete",
-        title: "Connect link is incomplete",
-        message: "Open a fresh /connect link from Telegram and try again.",
-      },
-    };
+    return telegramConnectParamError("incomplete");
   }
 
   if (!/^\d+$/.test(tgUser)) {
-    return {
-      ok: false,
-      returnPath: "/telegram/connect",
-      error: {
-        code: "invalid_user",
-        title: "Connect link is invalid",
-        message: "The Telegram user on this link is not valid.",
-      },
-    };
+    return telegramConnectParamError("invalid_user");
   }
 
   if (!/^\d+$/.test(tsRaw)) {
-    return {
-      ok: false,
-      returnPath: "/telegram/connect",
-      error: {
-        code: "invalid_timestamp",
-        title: "Connect link is invalid",
-        message: "The timestamp on this link is not valid.",
-      },
-    };
+    return telegramConnectParamError("invalid_timestamp");
   }
 
   const timestamp = Number(tsRaw);
   if (!Number.isSafeInteger(timestamp) || timestamp <= 0) {
-    return {
-      ok: false,
-      returnPath: "/telegram/connect",
-      error: {
-        code: "invalid_timestamp",
-        title: "Connect link is invalid",
-        message: "The timestamp on this link is not valid.",
-      },
-    };
+    return telegramConnectParamError("invalid_timestamp");
   }
 
   if (!/^[0-9a-f]{64}$/i.test(sig)) {
-    return {
-      ok: false,
-      returnPath: "/telegram/connect",
-      error: {
-        code: "invalid_signature",
-        title: "Connect link is invalid",
-        message: "The signature on this link is not valid.",
-      },
-    };
+    return telegramConnectParamError("invalid_signature");
   }
 
   if (telegramUsername && telegramUsername.length > 255) {
-    return {
-      ok: false,
-      returnPath: "/telegram/connect",
-      error: {
-        code: "invalid_username",
-        title: "Connect link is invalid",
-        message: "The Telegram username on this link is not valid.",
-      },
-    };
+    return telegramConnectParamError("invalid_username");
   }
 
   const params = {

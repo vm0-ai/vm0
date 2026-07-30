@@ -266,7 +266,7 @@ const runsListResponseSchema = z.object({
 
 /**
  * Runs main route contract (/api/agent/runs)
- * Handles GET list and POST create
+ * Handles GET list
  */
 export const runsMainContract = c.router({
   /**
@@ -291,28 +291,6 @@ export const runsMainContract = c.router({
       403: apiErrorSchema,
     },
     summary: "List agent runs",
-  },
-  /**
-   * POST /api/agent/runs
-   * Create and execute a new agent run
-   */
-  create: {
-    method: "POST",
-    path: "/api/agent/runs",
-    headers: authHeadersSchema,
-    body: unifiedRunRequestSchema,
-    responses: {
-      201: createRunResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      402: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      429: apiErrorSchema,
-      422: apiErrorSchema,
-      503: apiErrorSchema,
-    },
-    summary: "Create and execute agent run",
   },
 });
 

@@ -141,6 +141,7 @@ function oauthConnector(args: {
 
 const axiomPermissions = {
   connectorRef: "axiom",
+  connectorSlug: "axiom",
   label: "Axiom",
   icon: icon("axiom"),
   permissionCount: 3,
@@ -161,6 +162,7 @@ const axiomPermissions = {
 
 const slackPermissions = {
   connectorRef: "slack",
+  connectorSlug: "slack",
   label: "Slack",
   icon: icon("slack"),
   permissionCount: 6,
@@ -222,6 +224,7 @@ const cloudflarePermissionNames = [
 
 const cloudflarePermissions = {
   connectorRef: "cloudflare",
+  connectorSlug: "cloudflare",
   label: "Cloudflare",
   icon: icon("cloudflare"),
   permissionCount: cloudflarePermissionNames.length,
@@ -237,6 +240,7 @@ const cloudflarePermissions = {
 
 const gmailPermissions = {
   connectorRef: "gmail",
+  connectorSlug: "gmail",
   label: "Gmail",
   icon: icon("gmail"),
   permissionCount: 1,
@@ -255,6 +259,7 @@ const gmailPermissions = {
 
 const youtubePermissions = {
   connectorRef: "youtube",
+  connectorSlug: "youtube",
   label: "YouTube",
   icon: icon("youtube"),
   permissionCount: 1,

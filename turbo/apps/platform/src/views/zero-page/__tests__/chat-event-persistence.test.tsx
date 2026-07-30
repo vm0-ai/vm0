@@ -135,7 +135,6 @@ describe("chat event persistence", () => {
                 seqId: 3,
               },
             ],
-            hasHistoryBefore: false,
           });
         }
         if (query.sinceSeqId || query.sinceId) {
@@ -152,7 +151,6 @@ describe("chat event persistence", () => {
               seqId: 1,
             },
           ],
-          hasHistoryBefore: false,
         });
       },
     );
@@ -297,7 +295,6 @@ describe("chat event persistence", () => {
             seqId: 1,
           },
         ],
-        hasHistoryBefore: false,
       });
     });
 

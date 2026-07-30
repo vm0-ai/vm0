@@ -92,7 +92,8 @@ export const apiUserPermissionGrantsHandlers = [
         ? []
         : mockUserPermissionGrants.filter((grant) => {
             return (
-              sameScope(grant, body) && grant.connectorRef === body.connectorRef
+              sameScope(grant, body) &&
+              grant.connectorRef === body.connectorSlug
             );
           });
     const existingGrantsByPermission = new Map(
@@ -111,7 +112,8 @@ export const apiUserPermissionGrantsHandlers = [
       });
       return {
         agentId: body.agentId,
-        connectorRef: body.connectorRef,
+        connectorRef: body.connectorSlug,
+        connectorSlug: body.connectorSlug,
         permission: appliedGrant.permission,
         action: appliedGrant.action,
         expiresAt,
@@ -130,7 +132,7 @@ export const apiUserPermissionGrantsHandlers = [
         if (
           body.mode === "replace" &&
           sameScope(grant, body) &&
-          grant.connectorRef === body.connectorRef
+          grant.connectorRef === body.connectorSlug
         ) {
           return false;
         }

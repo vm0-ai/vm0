@@ -30,12 +30,26 @@ jobs:
         with:
           ref: main
 
-      - uses: vm0-ai/release-please-action@3971df459631cdcf704dcbf86231cb26b790a7c8 # vm0
+      # Refreshing the release pull request is best effort. release-please force
+      # updates the release branch, and GitHub rejects that update while the
+      # release pull request is held by the merge queue. release-please also
+      # recomputes the pull request from scratch on every run, so a rejected
+      # refresh self-heals on the next push to main or on the release-please.yml
+      # refresh that follows the merge. Failing the job would only produce red
+      # runs that nobody acts on.
+      - id: release-please
+        continue-on-error: true
+        uses: vm0-ai/release-please-action@3971df459631cdcf704dcbf86231cb26b790a7c8 # vm0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
           skip-github-release: true
+
+      - name: Report a refresh that did not land
+        if: ${{ steps.release-please.outcome == 'failure' }}
+        run: |
+          echo "::warning::release-please could not refresh the release pull request; the next push to main rebuilds it from scratch."
 
       - name: Pass ci-gate checks for release PR
         env:

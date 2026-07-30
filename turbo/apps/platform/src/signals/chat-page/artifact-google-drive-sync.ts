@@ -201,7 +201,10 @@ async function authorizeGoogleDriveForAgent(params: {
   await accept(
     client.update({
       params: { id: params.agentId },
-      body: { enabledTypes: ["google-drive"], operation: "add" },
+      body: {
+        enabledConnectorSlugs: ["google-drive"],
+        operation: "add",
+      },
       fetchOptions: { signal: params.signal },
     }),
     [200],
@@ -242,7 +245,7 @@ export const waitForGoogleDriveAuthorization$ = command(
         sig.throwIfAborted();
         const connected = connectors.some((connector) => {
           return (
-            connector.type === "google-drive" &&
+            connector.slug === "google-drive" &&
             connector.connectionStatus === "connected"
           );
         });

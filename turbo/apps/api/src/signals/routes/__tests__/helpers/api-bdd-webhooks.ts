@@ -504,7 +504,7 @@ export function createWebhookCallbackApi(context: TestContext) {
     async requestAgentEvents(
       body: AgentEventsBody,
       headers: SandboxWebhookHeaders,
-      statuses: readonly (200 | 400 | 401 | 404 | 500)[],
+      statuses: readonly (200 | 400 | 401 | 404 | 500 | 503)[],
     ) {
       return await accept(
         setupApp({ context })(webhookEventsContract).send({
@@ -518,7 +518,7 @@ export function createWebhookCallbackApi(context: TestContext) {
     async requestAgentEventsUnchecked(
       body: unknown,
       headers: SandboxWebhookHeaders,
-      statuses: readonly (400 | 401 | 404 | 500)[],
+      statuses: readonly (400 | 401 | 404 | 500 | 503)[],
     ) {
       return await accept(
         setupApp({ context })(webhookEventsContract).send({

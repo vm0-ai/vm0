@@ -3,7 +3,7 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import indexHtml from "../../../index.html?raw";
 import { setupPage } from "../../__tests__/page-helper.ts";
-import { DEFAULT_LOCALE } from "../../i18n/resources.ts";
+import { DEFAULT_LOCALE, resources } from "../../i18n/resources.ts";
 import { i18n } from "../../i18n/index.ts";
 import { localStorageSignals } from "../external/local-storage.ts";
 import { locale$, setLocale$ } from "../locale.ts";
@@ -95,21 +95,36 @@ afterEach(() => {
 });
 
 describe("bootstrap locale", () => {
-  it("ignores the browser language and supports changing to a bundled locale", async () => {
-    context.mocks.browser.language("pt-BR");
-    sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
-    context.store.set(testLocaleStorage.clear$);
+  it("normalizes a Japanese browser language before bundle render", () => {
+    context.mocks.browser.language("ja");
+
     executeLocaleEntrypoint();
 
-    expect(document.documentElement.lang).toBe(DEFAULT_LOCALE);
-    expect(context.store.get(testLocaleStorage.get$)).toBe(DEFAULT_LOCALE);
+    expect(document.documentElement.lang).toBe("ja-JP");
+    expect(context.store.get(testLocaleStorage.get$)).toBeNull();
     expect(window.__vm0PreBundleCopy).toMatchObject({
       loading: {
-        ariaLabel: "Loading your workspace",
-        messages: expect.arrayContaining(["Warming up the neurons..."]),
+        ariaLabel: "ワークスペースを読み込み中",
       },
       metadata: {
-        title: "Zero — Your AI coworker from vm0",
+        title: "Zero — vm0のAIコワーカー",
+      },
+    });
+  });
+
+  it("uses a supported browser language before a workspace is active", async () => {
+    context.mocks.browser.language("pt-BR");
+    executeLocaleEntrypoint();
+
+    expect(document.documentElement.lang).toBe("pt-BR");
+    expect(context.store.get(testLocaleStorage.get$)).toBeNull();
+    expect(window.__vm0PreBundleCopy).toMatchObject({
+      loading: {
+        ariaLabel: "Carregando seu espaço de trabalho",
+        messages: expect.arrayContaining(["Aquecendo os neurônios..."]),
+      },
+      metadata: {
+        title: "Zero — Seu colega de IA da vm0",
       },
     });
 
@@ -120,11 +135,12 @@ describe("bootstrap locale", () => {
       withoutRender: true,
     });
 
-    expect(context.store.get(locale$)).toBe(DEFAULT_LOCALE);
-    expect(i18n.language).toBe(DEFAULT_LOCALE);
-    expect(document.documentElement.lang).toBe(DEFAULT_LOCALE);
+    expect(context.store.get(locale$)).toBe("pt-BR");
+    expect(i18n.language).toBe("pt-BR");
+    expect(document.documentElement.lang).toBe("pt-BR");
     expect(i18n.hasResourceBundle("en-US", "common")).toBeTruthy();
     expect(i18n.hasResourceBundle("pt-BR", "common")).toBeTruthy();
+    expect(i18n.hasResourceBundle("ja-JP", "common")).toBeTruthy();
 
     const metadata = document.createElement("meta");
     metadata.name = "description";
@@ -148,27 +164,26 @@ describe("bootstrap locale", () => {
       { once: true },
     );
 
-    await context.store.set(setLocale$, "pt-BR", context.signal);
+    await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
 
-    expect(context.store.get(locale$)).toBe("pt-BR");
-    expect(i18n.language).toBe("pt-BR");
-    expect(document.documentElement.lang).toBe("pt-BR");
+    expect(context.store.get(locale$)).toBe(DEFAULT_LOCALE);
+    expect(i18n.language).toBe(DEFAULT_LOCALE);
+    expect(document.documentElement.lang).toBe(DEFAULT_LOCALE);
     expect(metadata).toHaveAttribute(
       "content",
-      expect.stringContaining("Zero é seu colega de IA da vm0"),
+      expect.stringContaining("Zero is your AI coworker from vm0"),
     );
-    expect(upgradeTitle).toHaveTextContent("Atualize o Chrome para continuar");
+    expect(upgradeTitle).toHaveTextContent("Update Chrome to continue");
     expect(upgradeDescription).toHaveTextContent(
-      "O Zero não oferece suporte à versão atual do seu navegador.",
+      "Zero does not support your current browser version.",
     );
-    expect(upgradeAction).toHaveTextContent("Atualizar Chrome");
-
-    await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
+    expect(upgradeAction).toHaveTextContent("Update Chrome");
   });
 
   it("uses the cached locale across pre-bundle UI and i18next", async () => {
+    context.mocks.browser.language("en-US");
     sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
-    context.store.set(testLocaleStorage.set$, "pt-BR");
+    context.store.set(testLocaleStorage.set$, "ja-JP");
     executeLocaleEntrypoint();
     executeBrowserCompatibilityEntrypoint(
       "Mozilla/5.0 Chrome/100.0.0.0 Safari/537.36",
@@ -193,38 +208,59 @@ describe("bootstrap locale", () => {
       withoutRender: true,
     });
 
-    expect(context.store.get(locale$)).toBe("pt-BR");
-    expect(i18n.language).toBe("pt-BR");
+    expect(context.store.get(locale$)).toBe("ja-JP");
+    expect(i18n.language).toBe("ja-JP");
     expect(window.__vm0BrowserSupported).toBeFalsy();
     expect(window.__vm0BrowserUpgrade).toMatchObject({
-      actionLabel: "Atualizar Chrome",
+      actionLabel: "Chromeを更新",
       actionUrl: "https://www.google.com/chrome/",
-      title: "Atualize o Chrome para continuar",
+      title: "続行するにはChromeを更新してください",
     });
     expect(metadata).toHaveAttribute(
       "content",
-      expect.stringContaining("Zero é seu colega de IA da vm0"),
+      expect.stringContaining("Zeroはvm0のAIコワーカーです"),
     );
     expect(window.__vm0PreBundleCopy).toMatchObject({
       browserUpgrade: {
         safari: {
-          actionLabel: "Atualizar Safari",
-          title: "Atualize o Safari para continuar",
+          actionLabel: "Safariを更新",
+          title: "続行するにはSafariを更新してください",
         },
       },
       loading: {
-        ariaLabel: "Carregando seu espaço de trabalho",
-        messages: expect.arrayContaining(["Aquecendo os neurônios..."]),
+        ariaLabel: "ワークスペースを読み込み中",
+        messages: expect.arrayContaining([
+          "ニューラルネットワークを準備しています...",
+        ]),
       },
       metadata: {
-        title: "Zero — Seu colega de IA da vm0",
+        title: "Zero — vm0のAIコワーカー",
       },
     });
+
+    const japaneseAgentResources = resources["ja-JP"].agents;
+    i18n.removeResourceBundle("ja-JP", "agents");
+    expect(
+      i18n.t(
+        ($) => {
+          return $.actions.save;
+        },
+        { ns: "agents" },
+      ),
+    ).toBe("Save");
+    i18n.addResourceBundle(
+      "ja-JP",
+      "agents",
+      japaneseAgentResources,
+      true,
+      true,
+    );
 
     await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
   });
 
-  it("normalizes a legacy cached locale to English before bundle render", () => {
+  it("falls back to English for unsupported browser and legacy cached locales", () => {
+    context.mocks.browser.language("fr-FR");
     sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
     context.store.set(testLocaleStorage.set$, "zh-CN");
 

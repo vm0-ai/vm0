@@ -99,23 +99,23 @@
     "catalog": {
       "creative": {
         "cases": {
-          "Cloudinary media optimizer": {
+          "cloudinary-media-optimizer": {
             "description": "Optimize and transform images in bulk",
             "title": "Cloudinary media optimizer"
           },
-          "ElevenLabs audio content": {
+          "elevenlabs-audio-content": {
             "description": "Voice narration from Notion articles saved to Drive",
             "title": "ElevenLabs audio content"
           },
-          "Fal AI image generation": {
+          "fal-ai-image-generation": {
             "description": "Generate product images from descriptions in Notion",
             "title": "Fal AI image generation"
           },
-          "HeyGen video from script": {
+          "heygen-video-from-script": {
             "description": "Notion script becomes a HeyGen video with a team ping",
             "title": "HeyGen video from script"
           },
-          "Runway video from brief": {
+          "runway-video-from-brief": {
             "description": "Generate short videos from a creative brief",
             "title": "Runway video from brief"
           }
@@ -124,63 +124,63 @@
       },
       "engineering": {
         "cases": {
-          "Batch-create issues": {
+          "batch-create-issues": {
             "description": "Paste a list and Zero opens the issues for you",
             "title": "Batch-create issues"
           },
-          "Browserbase web testing": {
+          "browserbase-web-testing": {
             "description": "Automated browser tests for your web app",
             "title": "Browserbase web testing"
           },
-          "Cloudflare traffic & security report": {
+          "cloudflare-traffic-security-report": {
             "description": "Weekly Slack recap of traffic and security events",
             "title": "Cloudflare traffic & security report"
           },
-          "Codebase investigation": {
+          "codebase-investigation": {
             "description": "Give a URL and Zero traces the bug through the repo",
             "title": "Codebase investigation"
           },
-          "Daily standup report": {
+          "daily-standup-report": {
             "description": "Morning metrics become a slide deck posted to Slack",
             "title": "Daily standup report"
           },
-          "Deep-research code analysis": {
+          "deep-research-code-analysis": {
             "description": "Explains how a subsystem works in your codebase",
             "title": "Deep-research code analysis"
           },
-          "GitHub PR summarizer": {
+          "github-pr-summarizer": {
             "description": "Merged pull request summaries in Notion with optional Slack posts",
             "title": "GitHub PR summarizer"
           },
-          "GitHub progress weekly": {
+          "github-progress-weekly": {
             "description": "Weekly repo activity summarized by feature",
             "title": "GitHub progress weekly"
           },
-          "GitLab to GitHub migration helper": {
+          "gitlab-to-github-migration-helper": {
             "description": "Mirrors GitLab issues and merge requests into GitHub",
             "title": "GitLab to GitHub migration helper"
           },
-          "Jira ↔ GitHub issue sync": {
+          "jira-github-issue-sync": {
             "description": "Keeps Jira tickets and GitHub issues in sync",
             "title": "Jira ↔ GitHub issue sync"
           },
-          "Make scenario builder": {
+          "make-scenario-builder": {
             "description": "Design multi-step Make scenarios from a description",
             "title": "Make scenario builder"
           },
-          "Security & dependency alert digest": {
+          "security-dependency-alert-digest": {
             "description": "Weekly security and dependency alerts from GitHub",
             "title": "Security & dependency alert digest"
           },
-          "Sentry issue digest": {
+          "sentry-issue-digest": {
             "description": "Morning digest of issues grouped by severity",
             "title": "Sentry issue digest"
           },
-          "Vercel deploy digest": {
+          "vercel-deploy-digest": {
             "description": "It links each deployment to its commit and alerts Slack when a deploy fails",
             "title": "Vercel deploy digest"
           },
-          "Zapier → VM0 migration": {
+          "zapier-vm0-migration": {
             "description": "Recreate your Zapier workflows as VM0 agents",
             "title": "Zapier → VM0 migration"
           }
@@ -189,67 +189,67 @@
       },
       "everyone": {
         "cases": {
-          "Browser screenshots": {
+          "browser-screenshots": {
             "description": "Opens a page in the browser and returns a screenshot",
             "title": "Browser screenshots"
           },
-          "Calendar optimizer": {
+          "calendar-optimizer": {
             "description": "Helps with conflicts, overload, and focus time",
             "title": "Calendar optimizer"
           },
-          "Calendly booking sync": {
+          "calendly-booking-sync": {
             "description": "New bookings on your calendar with a Slack ping",
             "title": "Calendly booking sync"
           },
-          "Email assistant": {
+          "email-assistant": {
             "description": "Morning inbox summary with suggested next steps",
             "title": "Email assistant"
           },
-          "Granola notes to Notion": {
+          "granola-notes-to-notion": {
             "description": "Granola meeting notes synced to a Notion database",
             "title": "Granola notes to Notion"
           },
-          "Lark ↔ Slack message relay": {
+          "lark-slack-message-relay": {
             "description": "Forwards messages between Lark and Slack both ways",
             "title": "Lark ↔ Slack message relay"
           },
-          "LINE message relay": {
+          "line-message-relay": {
             "description": "Forward LINE messages to Slack and vice versa",
             "title": "LINE message relay"
           },
-          "Meeting notes pipeline": {
+          "meeting-notes-pipeline": {
             "description": "Fireflies notes to Notion with follow ups in Slack",
             "title": "Meeting notes pipeline"
           },
-          "Morning brief": {
+          "morning-brief": {
             "description": "Email, calendar, and notes turned into a short daily plan",
             "title": "Morning brief"
           },
-          "Perplexity deep research": {
+          "perplexity-deep-research": {
             "description": "AI-powered research summaries saved to Notion",
             "title": "Perplexity deep research"
           },
-          "Personal weekly digest": {
+          "personal-weekly-digest": {
             "description": "Pull requests, email, and calendar in one Slack update",
             "title": "Personal weekly digest"
           },
-          "Self-update instructions": {
+          "self-update-instructions": {
             "description": "Update the agent instructions right in chat",
             "title": "Self-update instructions"
           },
-          "Send messages on your behalf": {
+          "send-messages-on-your-behalf": {
             "description": "Posts team announcements to Slack for you",
             "title": "Send messages on your behalf"
           },
-          "Strava team fitness digest": {
+          "strava-team-fitness-digest": {
             "description": "Weekly team activity summary posted to Slack",
             "title": "Strava team fitness digest"
           },
-          "Tavily web research pipeline": {
+          "tavily-web-research-pipeline": {
             "description": "Search the web and compile findings in Notion",
             "title": "Tavily web research pipeline"
           },
-          "tl;dv meeting recap": {
+          "tl-dv-meeting-recap": {
             "description": "Meeting recordings summarized in Notion with action items",
             "title": "tl;dv meeting recap"
           }
@@ -258,71 +258,71 @@
       },
       "marketing": {
         "cases": {
-          "Apify web scraper to Sheets": {
+          "apify-web-scraper-to-sheets": {
             "description": "Apify scrapes sites into structured Google Sheets rows",
             "title": "Apify web scraper to Sheets"
           },
-          "Brevo email nurture sequence": {
+          "brevo-email-nurture-sequence": {
             "description": "Automated email sequences from CRM events",
             "title": "Brevo email nurture sequence"
           },
-          "Competitive intel scraper": {
+          "competitive-intel-scraper": {
             "description": "Firecrawl watches competitor sites and logs changes in Notion",
             "title": "Competitive intel scraper"
           },
-          "Competitor research to Notion": {
+          "competitor-research-to-notion": {
             "description": "Research on X saved as structured notes in Notion",
             "title": "Competitor research to Notion"
           },
-          "Content planner": {
+          "content-planner": {
             "description": "Brainstorm topics and outline an editorial calendar",
             "title": "Content planner"
           },
-          "Dev.to auto-publisher": {
+          "dev-to-auto-publisher": {
             "description": "Publishes Notion posts to Dev.to and links them on X",
             "title": "Dev.to auto-publisher"
           },
-          "Discord community insights": {
+          "discord-community-insights": {
             "description": "Discord feedback in Notion with a weekly Slack digest",
             "title": "Discord community insights"
           },
-          "Instagram engagement tracker": {
+          "instagram-engagement-tracker": {
             "description": "Engagement in Sheets with weekly Slack summaries",
             "title": "Instagram engagement tracker"
           },
-          "Loops email campaign": {
+          "loops-email-campaign": {
             "description": "Draft and send transactional emails via Loops",
             "title": "Loops email campaign"
           },
-          "Marketing automation system": {
+          "marketing-automation-system": {
             "description": "Three agents for research, weekly monitoring, and ad hoc work",
             "title": "Marketing automation system"
           },
-          "Marketing content planning": {
+          "marketing-content-planning": {
             "description": "Plans launch stories from Slack, interviews, and competitors",
             "title": "Marketing content planning"
           },
-          "Onboarding email use cases": {
+          "onboarding-email-use-cases": {
             "description": "Finds onboarding angles from Slack and interviews",
             "title": "Onboarding email use cases"
           },
-          "SerpAPI keyword tracker": {
+          "serpapi-keyword-tracker": {
             "description": "Track keyword rankings weekly and log to Sheets",
             "title": "SerpAPI keyword tracker"
           },
-          "SimilarWeb traffic comparison": {
+          "similarweb-traffic-comparison": {
             "description": "Traffic benchmarks versus competitors saved in Notion",
             "title": "SimilarWeb traffic comparison"
           },
-          "Social media content calendar": {
+          "social-media-content-calendar": {
             "description": "Turns a Sheets calendar into posts for each network",
             "title": "Social media content calendar"
           },
-          "X brand monitor": {
+          "x-brand-monitor": {
             "description": "Brand mentions on X saved in Notion with team alerts",
             "title": "X brand monitor"
           },
-          "YouTube to X thread repurposer": {
+          "youtube-to-x-thread-repurposer": {
             "description": "When a new YouTube video is published, generate a Notion summary and an X thread to promote it",
             "title": "YouTube to X thread repurposer"
           }
@@ -331,47 +331,47 @@
       },
       "ops": {
         "cases": {
-          "AgentMail inbox": {
+          "agentmail-inbox": {
             "description": "Create and manage inboxes with the AgentMail API",
             "title": "AgentMail inbox"
           },
-          "ClickUp → Slack standups": {
+          "clickup-slack-standups": {
             "description": "Daily ClickUp tasks posted as a standup in Slack",
             "title": "ClickUp → Slack standups"
           },
-          "Google Docs → Notion migrator": {
+          "google-docs-notion-migrator": {
             "description": "Google Docs batches into Notion with layout preserved",
             "title": "Google Docs → Notion migrator"
           },
-          "Google Drive file organizer": {
+          "google-drive-file-organizer": {
             "description": "New files sorted into folders automatically",
             "title": "Google Drive file organizer"
           },
-          "Jotform intake to Notion": {
+          "jotform-intake-to-notion": {
             "description": "Form answers land in Notion with Slack notifications",
             "title": "Jotform intake to Notion"
           },
-          "Monday.com weekly digest": {
+          "monday-com-weekly-digest": {
             "description": "Weekly board progress from Monday.com in Slack",
             "title": "Monday.com weekly digest"
           },
-          "PDF contract processor": {
+          "pdf-contract-processor": {
             "description": "Contract fields in Notion with reminders before expiry",
             "title": "PDF contract processor"
           },
-          "RevenueCat subscription digest": {
+          "revenuecat-subscription-digest": {
             "description": "Subscription metrics in Sheets with churn alerts in Slack",
             "title": "RevenueCat subscription digest"
           },
-          "Todoist → Notion task sync": {
+          "todoist-notion-task-sync": {
             "description": "Todoist tasks mirrored in Notion for the team",
             "title": "Todoist → Notion task sync"
           },
-          "Wrike project reporter": {
+          "wrike-project-reporter": {
             "description": "Weekly Wrike progress summaries in Slack",
             "title": "Wrike project reporter"
           },
-          "Xero financial summary": {
+          "xero-financial-summary": {
             "description": "Weekly profit and cash flow from Xero in Slack",
             "title": "Xero financial summary"
           }
@@ -380,27 +380,27 @@
       },
       "product": {
         "cases": {
-          "Asana → Notion project sync": {
+          "asana-notion-project-sync": {
             "description": "Asana milestones and tasks mirrored in Notion",
             "title": "Asana → Notion project sync"
           },
-          "Feedback router": {
+          "feedback-router": {
             "description": "Slack feedback routed by your rules to the right place",
             "title": "Feedback router"
           },
-          "Linear PRD implementer": {
+          "linear-prd-implementer": {
             "description": "Notion specs become Linear projects and issues",
             "title": "Linear PRD implementer"
           },
-          "Metabase dashboard digest": {
+          "metabase-dashboard-digest": {
             "description": "Dashboard snapshots posted to Slack automatically",
             "title": "Metabase dashboard digest"
           },
-          "Pricing analysis": {
+          "pricing-analysis": {
             "description": "Analyze competitor pricing strategies and compare with similar products",
             "title": "Pricing analysis"
           },
-          "Product copy & naming": {
+          "product-copy-naming": {
             "description": "Friendlier names for technical terms in the product",
             "title": "Product copy & naming"
           }
@@ -409,31 +409,31 @@
       },
       "sales": {
         "cases": {
-          "Airtable deal tracker": {
+          "airtable-deal-tracker": {
             "description": "Deals sync to Sheets and Slack when they close",
             "title": "Airtable deal tracker"
           },
-          "Bitrix24 lead nurture": {
+          "bitrix24-lead-nurture": {
             "description": "New Bitrix leads get follow-up tasks and Slack pings",
             "title": "Bitrix24 lead nurture"
           },
-          "HubSpot sales reporter": {
+          "hubspot-sales-reporter": {
             "description": "Weekly HubSpot summaries saved as structured reports",
             "title": "HubSpot sales reporter"
           },
-          "Lead follow-up pipeline": {
+          "lead-follow-up-pipeline": {
             "description": "New leads become HubSpot tasks with Slack alerts",
             "title": "Lead follow-up pipeline"
           },
-          "Salesforce pipeline digest": {
+          "salesforce-pipeline-digest": {
             "description": "Weekly Salesforce opportunity updates in Slack",
             "title": "Salesforce pipeline digest"
           },
-          "Streak pipeline report": {
+          "streak-pipeline-report": {
             "description": "Weekly CRM pipeline stats from Gmail in Slack",
             "title": "Streak pipeline report"
           },
-          "Win/loss reporter": {
+          "win-loss-reporter": {
             "description": "Win and loss trends from the pipeline in Slack",
             "title": "Win/loss reporter"
           }
@@ -442,23 +442,23 @@
       },
       "support": {
         "cases": {
-          "Chatwoot → Notion support log": {
+          "chatwoot-notion-support-log": {
             "description": "Customer conversations logged and categorized in Notion",
             "title": "Chatwoot → Notion support log"
           },
-          "Customer support bot": {
+          "customer-support-bot": {
             "description": "Answers from the knowledge base and tasks for gaps",
             "title": "Customer support bot"
           },
-          "Intercom conversation triager": {
+          "intercom-conversation-triager": {
             "description": "Intercom chats become prioritized Notion tasks",
             "title": "Intercom conversation triager"
           },
-          "Support ticket router": {
+          "support-ticket-router": {
             "description": "Tickets go to Notion and urgent ones ping Slack",
             "title": "Support ticket router"
           },
-          "Zendesk → Notion knowledge base": {
+          "zendesk-notion-knowledge-base": {
             "description": "Extract frequently asked Zendesk questions and auto-add them to a Notion FAQ",
             "title": "Zendesk → Notion knowledge base"
           }

@@ -112,11 +112,11 @@ import {
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   r2ImageTransformUrl,
 } from "@vm0/core";
+import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type {
-  UserPermissionGrantExpiresIn,
-  UserPermissionGrantResponse,
-} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+  PlatformConnectorPermissionMetadata,
+  PlatformUserPermissionGrant,
+} from "../../signals/connector-domain.ts";
 import { emptyChatImg } from "./platform-assets.ts";
 import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -244,6 +244,7 @@ import type {
   ChatInputEvent,
   ChatEvent,
 } from "../../signals/chat-page/chat-event-types.ts";
+import type { AgentReferenceSignals } from "../../signals/chat-page/agent-reference-signals.ts";
 import type {
   ChatThreadSignals,
   QueuedChatEventItem,
@@ -286,7 +287,7 @@ import {
   ZERO_DESKTOP_DOWNLOAD_URL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
 import type { ModelProviderSelection } from "./components/model-provider-picker.tsx";
-import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
+import { AgentAvatarImg, AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import { setBillingSubPage$ } from "../../signals/zero-page/settings/workspace-settings-state.ts";
 import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings-dialog.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
@@ -5072,7 +5073,7 @@ function PlanUpgradeCard({ signals }: { signals: PlanUpgradeSignals }) {
 
 type PermissionAction = "allow" | "deny";
 
-type PermissionActionUserGrant = UserPermissionGrantResponse;
+type PermissionActionUserGrant = PlatformUserPermissionGrant;
 
 type PermissionActionCardStatus =
   | { kind: "loading" }
@@ -5100,7 +5101,7 @@ type ApplyUserPermissionGrantFn = (
     expiresIn?: UserPermissionGrantExpiresIn;
   },
   signal: AbortSignal,
-) => Promise<UserPermissionGrantResponse>;
+) => Promise<PlatformUserPermissionGrant>;
 
 function loadableData<T>(loadable: LoadableLike<T>): T | undefined {
   return loadable.state === "hasData" ? loadable.data : undefined;
@@ -5344,7 +5345,7 @@ function isPermissionActionAlreadyApplied(params: {
 
 function findPermissionActionPermission(
   block: PermissionSignals,
-  metadata: PublicConnectorCatalogPermissionDetail | undefined,
+  metadata: PlatformConnectorPermissionMetadata | undefined,
 ) {
   return metadata
     ? (findPermissionInMetadata(metadata, block.permission) ?? undefined)
@@ -5354,7 +5355,7 @@ function findPermissionActionPermission(
 function permissionActionUserGrantPolicy(
   loadable: LoadableLike<readonly PermissionActionUserGrant[]>,
   block: PermissionSignals,
-  metadata: PublicConnectorCatalogPermissionDetail | undefined,
+  metadata: PlatformConnectorPermissionMetadata | undefined,
 ): FirewallPolicyValue | undefined {
   const grants = loadableData(loadable);
   if (!grants || !metadata) {
@@ -5373,7 +5374,7 @@ function permissionActionUserGrant(
   }
   return grants.find((grant) => {
     return (
-      grant.connectorRef === block.connectorSlug &&
+      grant.connectorSlug === block.connectorSlug &&
       grant.permission === block.permission &&
       grant.action === block.action
     );
@@ -5446,7 +5447,7 @@ function createPermissionActionCardViewState(params: {
   block: PermissionSignals;
   hasAgent: boolean;
   agentLoadableState: string;
-  permissionMetadataLoadable: LoadableLike<PublicConnectorCatalogPermissionDetail | null>;
+  permissionMetadataLoadable: LoadableLike<PlatformConnectorPermissionMetadata | null>;
   userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
   grantLoadableState: string;
   savedGrantActive: boolean;
@@ -5585,7 +5586,7 @@ function PermissionActionCardContent({
   onClick,
 }: {
   signals: PermissionSignals;
-  icon: PublicConnectorCatalogPermissionDetail["icon"] | undefined;
+  icon: PlatformConnectorPermissionMetadata["icon"] | undefined;
   connectorLabel: string;
   actionLabel: string;
   permissionName: string;
@@ -6737,7 +6738,11 @@ function SlackUserMessageOrigin({
       className="mb-1.5 inline-flex h-7 max-w-[85%] items-center gap-1.5 self-end rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
     >
       <IconBrandSlack size={15} stroke={1.8} className="shrink-0" />
-      <span className="shrink-0">Slack</span>
+      <span className="shrink-0">
+        {t(($) => {
+          return $.chat.origins.slack;
+        })}
+      </span>
       <span className="shrink-0">·</span>
       <span className="min-w-0 truncate">
         {t(($) => {
@@ -6775,7 +6780,11 @@ function FeishuUserMessageOrigin({
         alt=""
         className="size-[15px] shrink-0 object-contain"
       />
-      <span className="shrink-0">Feishu</span>
+      <span className="shrink-0">
+        {t(($) => {
+          return $.chat.origins.feishu;
+        })}
+      </span>
       <span className="shrink-0">·</span>
       <span className="min-w-0 truncate">
         {t(($) => {
@@ -6998,10 +7007,47 @@ function UserMessageChatThreadReference({
   );
 }
 
+function UserMessageAgentReference({
+  agentId,
+  name,
+  signals,
+}: {
+  agentId: string;
+  name: string;
+  signals: AgentReferenceSignals;
+}) {
+  const { t } = useTranslation();
+  const agent = useLastResolved(signals.agent$);
+  return (
+    <Link
+      pathname={ROUTES.agentChat}
+      options={{ pathParams: { agentId } }}
+      aria-label={t(
+        ($) => {
+          return $.chat.thread.openNamedAgent;
+        },
+        { name },
+      )}
+      className={STRUCTURED_INLINE_REFERENCE_CLASS}
+      title={name}
+    >
+      <AvatarFromUrl
+        avatarUrl={agent?.avatarUrl}
+        alt=""
+        className="size-4 shrink-0 overflow-hidden rounded-full bg-muted object-cover object-top"
+        size={16}
+      />
+      <span className="min-w-0 truncate">{name}</span>
+    </Link>
+  );
+}
+
 function UserMessageFeedbackNote({
   note,
+  agentReferenceSignalsForId,
 }: {
   note: readonly FeedbackNotePart[];
+  agentReferenceSignalsForId: ChatThreadSignals["agentReferenceSignalsForId"];
 }) {
   const partOccurrences = new Map<string, number>();
   return (
@@ -7017,6 +7063,16 @@ function UserMessageFeedbackNote({
               key={key}
               threadId={part.threadId}
               title={part.titleSnapshot}
+            />
+          );
+        }
+        if (part.type === "agent") {
+          return (
+            <UserMessageAgentReference
+              key={key}
+              agentId={part.agentId}
+              name={part.nameSnapshot}
+              signals={agentReferenceSignalsForId(part.agentId)}
             />
           );
         }
@@ -7112,8 +7168,10 @@ function userMessageFeedbackHeading(
 
 function UserMessageFeedbackGroup({
   parts,
+  agentReferenceSignalsForId,
 }: {
   parts: readonly UserMessageFeedbackPart[];
+  agentReferenceSignalsForId: ChatThreadSignals["agentReferenceSignalsForId"];
 }) {
   const partOccurrences = new Map<string, number>();
   let firstPart = true;
@@ -7140,7 +7198,10 @@ function UserMessageFeedbackGroup({
             >
               {part.quote}
             </blockquote>
-            <UserMessageFeedbackNote note={part.note} />
+            <UserMessageFeedbackNote
+              note={part.note}
+              agentReferenceSignalsForId={agentReferenceSignalsForId}
+            />
           </div>
         );
       })}
@@ -7153,9 +7214,11 @@ type UserMessageStandalonePart = Exclude<UserMessagePart, { type: "feedback" }>;
 function UserMessagePartView({
   part,
   attachments,
+  agentReferenceSignalsForId,
 }: {
   part: UserMessageStandalonePart;
   attachments: readonly ResolvedAttachFile[];
+  agentReferenceSignalsForId: ChatThreadSignals["agentReferenceSignalsForId"];
 }): ReactNode {
   if (part.type === "text") {
     return <span>{part.text}</span>;
@@ -7165,6 +7228,15 @@ function UserMessagePartView({
       <UserMessageChatThreadReference
         threadId={part.threadId}
         title={part.titleSnapshot}
+      />
+    );
+  }
+  if (part.type === "agent") {
+    return (
+      <UserMessageAgentReference
+        agentId={part.agentId}
+        name={part.nameSnapshot}
+        signals={agentReferenceSignalsForId(part.agentId)}
       />
     );
   }
@@ -7186,11 +7258,13 @@ function UserMessageView({
   attachments,
   elevatedFileIds,
   inlineTemplatesEnabled,
+  agentReferenceSignalsForId,
 }: {
   document: UserMessageDocument;
   attachments: readonly ResolvedAttachFile[];
   elevatedFileIds: ReadonlySet<string>;
   inlineTemplatesEnabled: boolean;
+  agentReferenceSignalsForId: ChatThreadSignals["agentReferenceSignalsForId"];
 }) {
   const partOccurrences = new Map<string, number>();
   const bodyParts = document.parts.filter((part) => {
@@ -7228,6 +7302,7 @@ function UserMessageView({
         <UserMessageFeedbackGroup
           key={`feedback:${String(index)}`}
           parts={feedbackParts}
+          agentReferenceSignalsForId={agentReferenceSignalsForId}
         />,
       );
       index = nextIndex;
@@ -7241,6 +7316,7 @@ function UserMessageView({
         key={`${identity}:${String(occurrence)}`}
         part={part}
         attachments={attachments}
+        agentReferenceSignalsForId={agentReferenceSignalsForId}
       />,
     );
     index += 1;
@@ -7269,12 +7345,14 @@ function UserMessageContent({
   referenceAttachments,
   onImageClick,
   inlineTemplatesEnabled,
+  agentReferenceSignalsForId,
 }: {
   document: UserMessageDocument;
   attachments: ReturnType<typeof resolveAttachments>;
   referenceAttachments: readonly ResolvedAttachFile[];
   onImageClick: (url: string) => void;
   inlineTemplatesEnabled: boolean;
+  agentReferenceSignalsForId: ChatThreadSignals["agentReferenceSignalsForId"];
 }) {
   const imageAttachments = attachments.filter((attachment) => {
     return attachment.id !== null && attachment.isImage;
@@ -7323,6 +7401,7 @@ function UserMessageContent({
               attachments={referenceAttachments}
               elevatedFileIds={imageAttachmentIds}
               inlineTemplatesEnabled={inlineTemplatesEnabled}
+              agentReferenceSignalsForId={agentReferenceSignalsForId}
             />
           </div>
         </div>
@@ -7592,6 +7671,7 @@ function PagedUserMessage({
               referenceAttachments={attachFiles ?? []}
               onImageClick={openLightbox}
               inlineTemplatesEnabled={inlineTemplates}
+              agentReferenceSignalsForId={thread.agentReferenceSignalsForId}
             />
           ) : (
             <>

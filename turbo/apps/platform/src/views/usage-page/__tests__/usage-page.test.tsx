@@ -236,4 +236,41 @@ describe("/usage page", () => {
       screen.getByRole("option", { name: "Últimos 7 dias" }),
     ).toBeInTheDocument();
   });
+
+  it("localizes usage copy, counts, and numeric totals in Japanese", async () => {
+    context.mocks.data.userPreferences({ locale: "ja-JP" });
+    context.mocks.api(zeroUsageInsightContract.get, ({ respond }) => {
+      return respond(200, usageInsightTodayFixture);
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/usage",
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe("ja-JP");
+      expect(
+        screen.getByRole("heading", { level: 1, name: "使用量" }),
+      ).toBeInTheDocument();
+      expect(
+        within(
+          screen.getByRole("region", { name: "クレジットの合計" }),
+        ).getByText("1300"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("1件のオートメーションで300クレジットを使用"),
+      ).toBeVisible();
+      expect(screen.getByText("1件の会話で200クレジットを使用")).toBeVisible();
+      expect(screen.getAllByText("チャット")).not.toHaveLength(0);
+    });
+
+    click(screen.getByLabelText("日付範囲"));
+    expect(
+      screen.getByRole("option", { name: "過去7日間" }),
+    ).toBeInTheDocument();
+  });
 });

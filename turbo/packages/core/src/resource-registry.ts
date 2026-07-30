@@ -97,10 +97,6 @@ export interface ResourceCandidateSlice {
     readonly skills: readonly RegistryEntry[];
     readonly templates: readonly RegistryEntry[];
     readonly designSystems: readonly RegistryEntry[];
-    readonly imageStyles: readonly RegistryEntry[];
-    readonly audioStyles: readonly RegistryEntry[];
-    readonly videoTemplates: readonly VideoTemplateRegistryEntry[];
-    readonly bundleTemplates: readonly RegistryEntry[];
   };
 }
 
@@ -113,7 +109,7 @@ const VIDEO_TEMPLATE_REGISTRY_SOURCE = {
   ref: VM0_SKILLS_REF,
 } as const;
 
-const RESOURCE_REGISTRY_VERSION = "v1";
+export const RESOURCE_REGISTRY_VERSION = "v1";
 
 function privateR2ArchiveSource(
   path: string,
@@ -3985,10 +3981,6 @@ export function selectResourceCandidates(
       skills: listSkills(),
       templates: listTemplates(target),
       designSystems: filterByKind("design-system"),
-      imageStyles: filterByKind("image-style"),
-      audioStyles: filterByKind("audio-style"),
-      videoTemplates: listVideoTemplates(),
-      bundleTemplates: filterByKind("bundle-template"),
     },
   };
 }

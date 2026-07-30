@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { requireUserMessageForNonEmptyDraft } from "./draft-user-message";
+import { requireUserMessageForDraftAttachments } from "./draft-user-message";
 import {
   persistedAttachmentSchema,
   userMessageDocumentSchema,
@@ -67,19 +67,22 @@ export const zeroAgentInstructionsRequestSchema = z.object({
 
 export const zeroAgentDraftResponseSchema = z
   .object({
+    /**
+     * Response-only compatibility projection for previously loaded App
+     * bundles. Current clients restore the draft body from draftUserMessage.
+     */
     draftContent: z.string().nullable(),
     draftUserMessage: userMessageDocumentSchema.nullable(),
     draftAttachments: z.array(persistedAttachmentSchema).nullable(),
   })
-  .superRefine(requireUserMessageForNonEmptyDraft);
+  .superRefine(requireUserMessageForDraftAttachments);
 
 export const zeroAgentDraftRequestSchema = z
   .object({
-    draftContent: z.string().nullable().optional(),
     draftUserMessage: userMessageDocumentSchema.nullable(),
     draftAttachments: z.array(persistedAttachmentSchema).nullable().optional(),
   })
-  .superRefine(requireUserMessageForNonEmptyDraft);
+  .superRefine(requireUserMessageForDraftAttachments);
 
 /**
  * Contract for GET/POST /api/zero/agents (list/create agents)

@@ -59,6 +59,7 @@ export const ZERO_CAPABILITIES = [
   "chat-thread:read",
   "chat-thread:write",
   "connector:read",
+  "connector:write",
   "billing:read",
   "billing:write",
   "banking:read",
@@ -156,6 +157,10 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
       label: "Update chat thread metadata",
     },
     "connector:read": { group: "Connectors", label: "View connected services" },
+    "connector:write": {
+      group: "Connectors",
+      label: "Create and configure custom connectors",
+    },
     "billing:read": { group: "Billing", label: "View billing and credits" },
     "billing:write": {
       group: "Billing",

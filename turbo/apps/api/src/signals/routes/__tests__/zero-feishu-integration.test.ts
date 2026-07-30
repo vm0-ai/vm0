@@ -34,6 +34,7 @@ import { zeroFeishuOauthRoutes } from "../zero-feishu-oauth";
 import { zeroIntegrationsFeishuFileRoutes } from "../zero-integrations-feishu-files";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import type { ApiTestUser } from "./helpers/api-bdd";
+import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -43,6 +44,7 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const authOrgApi = createAuthOrgAgentsBddApi(context);
+const chatCallbacks = createChatCallbacksApi(context);
 const runsApi = createRunsApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
 const APP_ORIGIN = "https://app.vm0.test";
@@ -679,20 +681,23 @@ describe("Feishu integration", () => {
       headers,
       [200],
     );
-    await webhooksApi.requestAgentEvents(
-      {
-        runId: args.runId,
-        events: [
-          {
-            type: "assistant",
-            sequenceNumber: 0,
-            message: {
-              id: `msg_bdd_feishu_${args.runId}`,
-              content: [{ type: "text", text: args.assistantText }],
-            },
-          },
-        ],
+    const assistantEvent = {
+      type: "assistant" as const,
+      sequenceNumber: 0,
+      message: {
+        id: `msg_bdd_feishu_${args.runId}`,
+        content: [{ type: "text" as const, text: args.assistantText }],
       },
+    };
+    chatCallbacks.mockChatOutputEvents([
+      {
+        eventType: assistantEvent.type,
+        sequenceNumber: assistantEvent.sequenceNumber,
+        eventData: { message: assistantEvent.message },
+      },
+    ]);
+    await webhooksApi.requestAgentEvents(
+      { runId: args.runId, events: [assistantEvent] },
       headers,
       [200],
     );
@@ -702,6 +707,7 @@ describe("Feishu integration", () => {
       [200],
     );
     await flushWaitUntilForTest();
+    chatCallbacks.mockChatOutputEvents([]);
   }
 
   async function findRun(

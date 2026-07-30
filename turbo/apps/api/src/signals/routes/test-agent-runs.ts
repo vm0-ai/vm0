@@ -1,15 +1,20 @@
 import { command } from "ccstate";
-import { runsMainContract } from "@vm0/api-contracts/contracts/runs";
+import { testAgentRunsContract } from "@vm0/api-contracts/contracts/test-agent-runs";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { now } from "../external/time";
 import { createAgentRun$ } from "../services/agent-run-create.service";
 import { ApiDispatchTimingCollector } from "../services/api-dispatch-timing.service";
 import type { RouteEntry } from "../route-entry";
+import {
+  isTestEndpointAllowed,
+  testEndpointNotFoundResponse,
+} from "./test-oauth-provider-helpers";
 
-const createRunBody$ = bodyResultOf(runsMainContract.create);
+const createRunBody$ = bodyResultOf(testAgentRunsContract.create);
 
 const createRunInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const apiStartTime = now();
@@ -45,16 +50,17 @@ const createRunInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return await set(createAgentRun$, args, signal);
 });
 
-export const agentRunsCreateRoutes: readonly RouteEntry[] = [
+const createRun$ = command(async ({ get, set }, signal: AbortSignal) => {
+  if (!isTestEndpointAllowed(get(request$))) {
+    return testEndpointNotFoundResponse();
+  }
+
+  return await set(createRunInner$, signal);
+});
+
+export const testAgentRunsRoutes: readonly RouteEntry[] = [
   {
-    route: runsMainContract.create,
-    handler: authRoute(
-      {
-        acceptAnySandboxCapability: true,
-        requireOrganization: true,
-        missingOrganizationStatus: 401,
-      },
-      createRunInner$,
-    ),
+    route: testAgentRunsContract.create,
+    handler: authRoute({ requireOrganization: true }, createRun$),
   },
 ];

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.4.7...guest-contracts-v0.5.0) (2026-07-30)
+
+
+### Features
+
+* **events:** report structured guest event delivery failures ([#23974](https://github.com/vm0-ai/vm0/issues/23974)) ([ebdf828](https://github.com/vm0-ai/vm0/commit/ebdf8280b7b961ebf8404790a15696a7338ecd6e))
+
 ## [0.4.7](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.4.6...guest-contracts-v0.4.7) (2026-07-30)
 
 

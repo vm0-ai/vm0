@@ -15,7 +15,6 @@ export type AccountMenuSubscriptionUsageWindow = NonNullable<
 
 export interface AccountMenuSubscriptionUsageRow {
   readonly type: ModelProviderType;
-  readonly label: string;
   readonly usage: AccountMenuSubscriptionUsage;
   readonly resetCredits?: number | null;
 }
@@ -23,11 +22,10 @@ export interface AccountMenuSubscriptionUsageRow {
 export type AccountMenuSubscriptionUsageRowsCacheKey = string | null;
 
 export const ACCOUNT_MENU_SUBSCRIPTION_PROVIDERS = [
-  { type: "codex-oauth-token", label: "Codex" },
-  { type: "claude-code-oauth-token", label: "Claude Code" },
+  { type: "codex-oauth-token" },
+  { type: "claude-code-oauth-token" },
 ] as const satisfies readonly {
   readonly type: ModelProviderType;
-  readonly label: string;
 }[];
 
 interface AccountMenuSubscriptionUsageRowsCache {
@@ -100,7 +98,7 @@ function accountMenuSubscriptionUsageRows(
     }
     return [
       {
-        ...definition,
+        type: definition.type,
         usage,
         resetCredits:
           provider.type === "codex-oauth-token"
@@ -114,17 +112,17 @@ function accountMenuSubscriptionUsageRows(
 export function accountMenuSubscriptionUsageWindows(
   usage: AccountMenuSubscriptionUsage | null | undefined,
 ): readonly {
-  readonly label: string;
+  readonly kind: "fiveHour" | "week";
   readonly window: AccountMenuSubscriptionUsageWindow;
 }[] {
   return [
-    { label: "5h", window: usage?.fiveHour ?? null },
-    { label: "week", window: usage?.weekly ?? null },
+    { kind: "fiveHour" as const, window: usage?.fiveHour ?? null },
+    { kind: "week" as const, window: usage?.weekly ?? null },
   ].filter(
     (
       item,
     ): item is {
-      label: string;
+      kind: "fiveHour" | "week";
       window: AccountMenuSubscriptionUsageWindow;
     } => {
       return hasUsageWindow(item.window);

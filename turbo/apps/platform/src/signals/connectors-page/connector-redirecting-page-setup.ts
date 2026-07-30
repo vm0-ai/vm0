@@ -8,6 +8,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { command } from "ccstate";
 import { createElement } from "react";
+import { i18n } from "../../i18n/index.ts";
 import { ZeroConnectorRedirectingPage } from "../../views/zero-page/zero-connector-redirecting-page.tsx";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
@@ -47,7 +48,9 @@ export const setupConnectorRedirectingPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const params = get(pathParams$);
     const connectorSlug = connectorSlugFromPath(
-      typeof params?.type === "string" ? params.type : undefined,
+      typeof params?.connectorSlug === "string"
+        ? params.connectorSlug
+        : undefined,
     );
     const searchParams = get(searchParams$);
     const connectorLabel =
@@ -65,7 +68,15 @@ export const setupConnectorRedirectingPage$ = command(
         status,
       }),
     );
-    set(updateDocumentTitle$, `Connect ${connectorLabel}`);
+    set(
+      updateDocumentTitle$,
+      i18n.t(
+        ($) => {
+          return $.connectors.callback.documentTitle;
+        },
+        { connector: connectorLabel },
+      ),
+    );
     await set(hideAppSkeleton$, signal);
     if (status === "redirecting") {
       await set(showConnectorRedirectingMobileWarningAfterDelay$, signal);

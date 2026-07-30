@@ -2,7 +2,7 @@ import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { CHAT_EVENT_TYPES } from "./chat-events";
 import { apiErrorSchema } from "./errors";
-import { requireUserMessageForNonEmptyDraft } from "./draft-user-message";
+import { requireUserMessageForDraftAttachments } from "./draft-user-message";
 import { hostedArtifactKindSchema } from "./zero-host";
 import { runStatusSchema } from "./runs";
 import { zeroGoalEventSchema } from "./zero-goals";
@@ -345,6 +345,14 @@ const userMessageChatThreadPartSchema = z
   })
   .strict();
 
+const userMessageAgentPartSchema = z
+  .object({
+    type: z.literal("agent"),
+    agentId: z.string().uuid(),
+    nameSnapshot: z.string().min(1),
+  })
+  .strict();
+
 const userMessageTemplatePartSchema = z
   .object({
     type: z.literal("template"),
@@ -356,12 +364,14 @@ const userMessageTemplatePartSchema = z
 const feedbackNotePartSchema = z.discriminatedUnion("type", [
   userMessageTextPartSchema,
   userMessageChatThreadPartSchema,
+  userMessageAgentPartSchema,
   userMessageTemplatePartSchema,
 ]);
 
 const userMessagePartSchema = z.discriminatedUnion("type", [
   userMessageTextPartSchema,
   userMessageChatThreadPartSchema,
+  userMessageAgentPartSchema,
   userMessageTemplatePartSchema,
   z
     .object({
@@ -683,11 +693,15 @@ const chatThreadMetadataSchema = z.object({
 
 const chatThreadDraftSchema = z
   .object({
+    /**
+     * Response-only compatibility projection for previously loaded App
+     * bundles. Current clients restore the draft body from draftUserMessage.
+     */
     draftContent: z.string().nullable(),
     draftUserMessage: userMessageDocumentSchema.nullable(),
     draftAttachments: z.array(persistedAttachmentSchema).nullable(),
   })
-  .superRefine(requireUserMessageForNonEmptyDraft);
+  .superRefine(requireUserMessageForDraftAttachments);
 
 const selectedModelRequestSchema = requestedRunModelSchema;
 
@@ -902,8 +916,7 @@ export const chatThreadsContract = c.router({
       200: z.object({
         /**
          * Thread ids owned by the caller that currently hold an unsent draft
-         * (non-empty `draftContent`, a user message, or one+
-         * `draftAttachments`).
+         * (a user message with optional `draftAttachments`).
          */
         draftThreadIds: z.array(z.string()),
       }),
@@ -973,21 +986,20 @@ export const chatThreadByIdContract = c.router({
     pathParams: chatThreadIdPathParamsSchema,
     body: z
       .object({
-        draftContent: z.string().nullable().optional(),
         draftUserMessage: userMessageDocumentSchema.nullable(),
         draftAttachments: z
           .array(persistedAttachmentSchema)
           .nullable()
           .optional(),
       })
-      .superRefine(requireUserMessageForNonEmptyDraft),
+      .superRefine(requireUserMessageForDraftAttachments),
     responses: {
       204: c.noBody(),
       400: apiErrorSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Update chat thread draft content and attachments",
+    summary: "Update chat thread draft message and attachments",
   },
   delete: {
     method: "DELETE",
@@ -1382,7 +1394,6 @@ export const chatThreadEventsContract = c.router({
     responses: {
       200: z.object({
         events: z.array(chatEventResponseSchema),
-        hasHistoryBefore: z.boolean().optional(),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,

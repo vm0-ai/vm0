@@ -369,10 +369,13 @@ describe("chat composer connector connection", () => {
         authorizationUpdateCount += 1;
         expect(params.id).toBe(AGENT_ID);
         expect(body).toStrictEqual({
-          enabledTypes: ["stripe"],
+          enabledConnectorSlugs: ["stripe"],
           operation: "add",
         });
-        return respond(200, { enabledTypes: ["stripe"] });
+        return respond(200, {
+          enabledTypes: ["stripe"],
+          enabledConnectorSlugs: ["stripe"],
+        });
       },
     );
 

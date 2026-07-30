@@ -166,7 +166,11 @@ export const setCustomConnectorSecretBodySchema = z.object({
   value: z.string().min(1),
 });
 
-export const startCustomConnectorOAuth2BodySchema = z.object({}).strict();
+export const startCustomConnectorOAuth2BodySchema = z
+  .object({
+    agentId: z.string().uuid().optional(),
+  })
+  .strict();
 
 export const startCustomConnectorOAuth2ResponseSchema = z.object({
   authorizationUrl: z.string().url(),
@@ -179,6 +183,13 @@ export const customConnectorValueInputSchema = z.object({
 });
 export type CustomConnectorValueInput = z.infer<
   typeof customConnectorValueInputSchema
+>;
+
+export const setCustomConnectorValuesBodySchema = z.object({
+  values: z.array(customConnectorValueInputSchema),
+});
+export type SetCustomConnectorValuesBody = z.infer<
+  typeof setCustomConnectorValuesBodySchema
 >;
 
 export const patchCustomConnectorBodySchema = z.object({
@@ -361,6 +372,27 @@ export const zeroCustomConnectorSecretContract = c.router({
 });
 export type ZeroCustomConnectorSecretContract =
   typeof zeroCustomConnectorSecretContract;
+
+export const zeroCustomConnectorValuesContract = c.router({
+  set: {
+    method: "PUT",
+    path: "/api/zero/custom-connectors/:id/values",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.string().uuid() }),
+    body: setCustomConnectorValuesBodySchema,
+    responses: {
+      200: customConnectorResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Set the calling user's values for a custom connector",
+  },
+});
+export type ZeroCustomConnectorValuesContract =
+  typeof zeroCustomConnectorValuesContract;
 
 export const zeroCustomConnectorOAuth2Contract = c.router({
   start: {

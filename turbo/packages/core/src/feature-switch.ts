@@ -232,12 +232,19 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description:
       "Enable workspace language bootstrap, persistence, and the Settings preference entry.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.BrazilianPortugueseLocale]: {
     maintainer: "yuma@vm0.ai",
     description:
       "Allow pt-BR preference writes after incompatible API readers and rollback candidates have drained.",
+    enabled: false,
+    userOverridable: false,
+  },
+  [FeatureSwitchKey.JapaneseLocale]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Allow ja-JP preference writes after incompatible API readers and rollback candidates have drained.",
     enabled: false,
     userOverridable: false,
   },
@@ -486,6 +493,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the configure-permissions entry in the chat composer connector popover, opening the agent×connector firewall dialog inline.",
     enabled: false,
     userOverridable: true,
+  },
+  [FeatureSwitchKey.CustomConnectorCliCreate]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Allow Zero CLI agents to create and configure custom connectors directly.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.CustomConnectorOAuth2]: {
     maintainer: "liangyou@vm0.ai",

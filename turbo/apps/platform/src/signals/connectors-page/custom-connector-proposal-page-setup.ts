@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
+import { i18n } from "../../i18n/index.ts";
 import { ZeroCustomConnectorProposalPage } from "../../views/zero-page/zero-custom-connector-proposal-page.tsx";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { resetCustomConnectorProposalForm$ } from "./custom-connector-proposal.ts";
@@ -15,7 +16,12 @@ export const setupCustomConnectorProposalPage$ = command(
 
     set(resetCustomConnectorProposalForm$);
     set(updatePage$, createElement(ZeroCustomConnectorProposalPage), "minimal");
-    set(updateDocumentTitle$, "Configure custom connector");
+    set(
+      updateDocumentTitle$,
+      i18n.t(($) => {
+        return $.connectors.customProposal.documentTitle;
+      }),
+    );
     await set(hideAppSkeleton$, signal);
   },
 );

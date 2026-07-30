@@ -15,11 +15,11 @@ import {
 } from "../zero-page/agent-connector-authorizations.ts";
 
 /**
- * Connector slug extracted from `/connectors/:type/authorize` route params.
+ * Connector slug extracted from `/connectors/:connectorSlug/authorize` route params.
  */
 export const directedAuthorizeSlug$ = computed((get): ConnectorSlug | null => {
   const params = get(pathParams$);
-  const connectorSlug = params?.type;
+  const connectorSlug = params?.connectorSlug;
   const parsed = connectorSlugSchema.safeParse(
     typeof connectorSlug === "string" ? connectorSlug.toLowerCase() : null,
   );
@@ -107,7 +107,10 @@ export const authorizeConnector$ = command(
       accept(
         client.update({
           params: { id: agentId },
-          body: { enabledTypes: [connectorSlug], operation: "add" },
+          body: {
+            enabledConnectorSlugs: [connectorSlug],
+            operation: "add",
+          },
           fetchOptions: { signal },
         }),
         [200],

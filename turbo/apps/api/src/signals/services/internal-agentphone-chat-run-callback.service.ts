@@ -22,7 +22,6 @@ import {
   markdownToImessagePlain,
   resolveAgentPhoneAuditLogsUrl,
   resolveAgentPhoneReplyFooterText,
-  saveCanonicalAgentPhoneThreadSession,
   storeOutboundAgentPhoneMessage,
 } from "./agentphone-shared.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
@@ -39,7 +38,6 @@ interface ClaimedAgentPhoneChatDelivery {
 interface AgentPhoneChatRunContext {
   readonly userId: string;
   readonly orgId: string;
-  readonly sessionId: string;
   readonly chatThreadId: string;
   readonly agentId: string;
 }
@@ -145,7 +143,6 @@ async function loadAgentPhoneChatDeliveryContext(args: {
     .select({
       userId: agentRuns.userId,
       orgId: agentRuns.orgId,
-      sessionId: agentRuns.sessionId,
       chatThreadId: zeroRuns.chatThreadId,
       agentId: chatThreads.agentComposeId,
     })
@@ -166,7 +163,6 @@ async function loadAgentPhoneChatDeliveryContext(args: {
   const runContext: AgentPhoneChatRunContext = {
     userId: run.userId,
     orgId: run.orgId,
-    sessionId: run.sessionId,
     chatThreadId: run.chatThreadId,
     agentId: run.agentId,
   };
@@ -284,10 +280,8 @@ async function resolveAgentPhonePresentation(args: {
 async function recordAgentPhoneChatDelivery(args: {
   readonly db: Db;
   readonly target: AgentPhoneDeliveryTarget;
-  readonly run: AgentPhoneChatRunContext;
   readonly sent: AgentPhoneSendResult;
   readonly body: string;
-  readonly status: "completed" | "failed";
 }): Promise<void> {
   await storeOutboundAgentPhoneMessage(args.db, {
     agentphoneMessageId: args.sent.id,
@@ -300,14 +294,6 @@ async function recordAgentPhoneChatDelivery(args: {
     body: args.body,
     channel: args.sent.channel,
     userChannel: args.target.channel,
-  });
-  await saveCanonicalAgentPhoneThreadSession(args.db, {
-    userLinkId: args.target.userLinkId,
-    conversationId: args.target.conversationId,
-    rootMessageId: args.target.rootMessageId,
-    agentSessionId: args.run.sessionId,
-    messageId: args.target.messageId,
-    runStatus: args.status,
   });
 }
 
@@ -342,10 +328,8 @@ async function deliverClaimedAgentPhoneChatCallback(args: {
   await recordAgentPhoneChatDelivery({
     db: args.db,
     target: payload,
-    run,
     sent,
     body,
-    status: args.status,
   });
   return "delivered";
 }
@@ -437,7 +421,6 @@ export async function deliverAgentPhoneChatAdmissionFailure(
     run: {
       userId: args.userId,
       orgId: args.orgId,
-      sessionId: "",
       chatThreadId: args.chatThreadId,
       agentId: args.agentId,
     },
