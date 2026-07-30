@@ -166,16 +166,19 @@
               ? "id-ID"
               : /^de(?:-|$)/i.test(navigator.language)
                 ? "de-DE"
-                : /^pt(?:-|$)/i.test(navigator.language)
-                  ? "pt-BR"
-                  : "en-US";
+                : /^es(?:-|$)/i.test(navigator.language)
+                  ? "es-ES"
+                  : /^pt(?:-|$)/i.test(navigator.language)
+                    ? "pt-BR"
+                    : "en-US";
         var locale =
           cached === "en-US" ||
           cached === "pt-BR" ||
           cached === "ja-JP" ||
           cached === "ko-KR" ||
           cached === "id-ID" ||
-          cached === "de-DE"
+          cached === "de-DE" ||
+          cached === "es-ES"
             ? cached
             : browserLocale;
         var copyByLocale = {
@@ -489,6 +492,58 @@
               description:
                 "Zero ist Ihr KI-Kollege von vm0. Schreiben Sie Zero oder chatten Sie im Web — für Recherche, E-Mails, Dokumente, Slack, GitHub, Notion und über 100 weitere Tools.",
               title: "Zero — Ihr KI-Kollege von vm0",
+            },
+          },
+          "es-ES": {
+            browserUpgrade: {
+              browser: {
+                actionLabel: "Actualizar navegador",
+                description:
+                  "Zero no es compatible con la versión actual de tu navegador. Actualiza el navegador para continuar.",
+                title: "Actualiza tu navegador para continuar",
+              },
+              chrome: {
+                actionLabel: "Actualizar Chrome",
+                description:
+                  "Zero no es compatible con la versión actual de tu navegador. Actualiza Chrome para continuar.",
+                title: "Actualiza Chrome para continuar",
+              },
+              chromium: {
+                actionLabel: "Actualizar Chromium",
+                description:
+                  "Zero no es compatible con la versión actual de tu navegador. Actualiza Chromium para continuar.",
+                title: "Actualiza Chromium para continuar",
+              },
+              ios: {
+                actionLabel: "Actualizar iOS",
+                description:
+                  "Zero no es compatible con la versión actual de tu navegador. Actualiza iOS para continuar.",
+                title: "Actualiza iOS para continuar",
+              },
+              safari: {
+                actionLabel: "Actualizar Safari",
+                description:
+                  "Zero no es compatible con la versión actual de tu navegador. Actualiza Safari para continuar.",
+                title: "Actualiza Safari para continuar",
+              },
+            },
+            loading: {
+              ariaLabel: "Cargando tu espacio de trabajo",
+              messages: [
+                "Activando las neuronas...",
+                "Preparando algunas ideas...",
+                "Dejándolo todo listo...",
+                "Ya casi está...",
+                "Cargando tu espacio de trabajo...",
+                "Afinando los instrumentos...",
+                "Conectando los puntos...",
+                "Reuniendo al equipo...",
+              ],
+            },
+            metadata: {
+              description:
+                "Zero es tu compañero de IA de vm0. Escríbele a Zero o chatea en la web: investiga, envía correos, crea documentos y usa Slack, GitHub, Notion y más de 100 herramientas.",
+              title: "Zero — Tu compañero de IA de vm0",
             },
           },
         };

@@ -324,4 +324,41 @@ describe("/usage page", () => {
       expect(screen.getByText("+1 weiterer Chat")).toBeVisible();
     });
   });
+
+  it("localizes usage copy, plurals, and numeric totals in Spanish", async () => {
+    context.mocks.data.userPreferences({ locale: "es-ES" });
+    context.mocks.api(zeroUsageInsightContract.get, ({ respond }) => {
+      return respond(200, usageInsightTodayFixture);
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/usage",
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe("es-ES");
+      expect(
+        screen.getByRole("heading", { level: 1, name: "Uso" }),
+      ).toBeInTheDocument();
+      expect(
+        within(
+          screen.getByRole("region", { name: "Total de créditos" }),
+        ).getByText(/1,3\s+mil/u),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("1 automatización usó 300 créditos"),
+      ).toBeVisible();
+      expect(screen.getByText("1 conversación usó 200 créditos")).toBeVisible();
+      expect(screen.getAllByText("Chat")).not.toHaveLength(0);
+    });
+
+    click(screen.getByLabelText("Rango de fechas"));
+    expect(
+      screen.getByRole("option", { name: "Últimos 7 días" }),
+    ).toBeInTheDocument();
+  });
 });
