@@ -1452,6 +1452,7 @@
       "noEmojiFound": "No emoji found",
       "openArtifacts": "Open artifacts",
       "openBrowser": "Open browser",
+      "openNamedAgent": "Open agent {{name}}",
       "openNamedChat": "Open chat {{title}}",
       "scrollToBottom": "Scroll to bottom",
       "searchEmoji": "Search emoji"

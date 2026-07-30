@@ -77,13 +77,19 @@ function chatThreadPart(
   };
 }
 
-function agentMentionText(node: ProseMirrorNode): string | null {
+function agentPart(
+  node: ProseMirrorNode,
+): Extract<UserMessagePart, { type: "agent" }> | null {
   const agentId: unknown = node.attrs.agentId;
   const name: unknown = node.attrs.name;
   if (typeof agentId !== "string" || typeof name !== "string") {
     return null;
   }
-  return serializeAgentMention(agentId, name);
+  return {
+    type: "agent",
+    agentId,
+    nameSnapshot: name,
+  };
 }
 
 function legacyTemplatePart(
@@ -141,11 +147,11 @@ function appendParagraphParts(
       continue;
     }
     if (node.type.name === AGENT_MENTION_NODE_NAME) {
-      const text = agentMentionText(node);
-      if (!text) {
+      const part = agentPart(node);
+      if (!part) {
         return false;
       }
-      appendTextPart(parts, text);
+      parts.push(part);
       continue;
     }
     if (node.type.name === CHAT_THREAD_MENTION_NODE_NAME) {
@@ -238,6 +244,7 @@ function feedbackPart(node: ProseMirrorNode): UserMessagePart | null {
       return (
         part.type === "text" ||
         part.type === "chat_thread" ||
+        part.type === "agent" ||
         part.type === "template"
       );
     })
@@ -435,6 +442,17 @@ function legacyTemplateNode(
   } satisfies JSONContent;
 }
 
+function agentMentionNode(part: Extract<UserMessagePart, { type: "agent" }>) {
+  return {
+    type: AGENT_MENTION_NODE_NAME,
+    attrs: {
+      agentId: part.agentId,
+      name: part.nameSnapshot,
+      avatarUrl: null,
+    },
+  } satisfies JSONContent;
+}
+
 function agentMentionInlineContent(line: string): JSONContent[] {
   return splitAgentMentionSegments(line).map((segment): JSONContent => {
     return segment.type === "text"
@@ -458,6 +476,9 @@ function feedbackNoteToPrompt(note: readonly FeedbackNotePart[]): string {
       }
       if (part.type === "chat_thread") {
         return serializeChatThreadMention(part.threadId, part.titleSnapshot);
+      }
+      if (part.type === "agent") {
+        return serializeAgentMention(part.agentId, part.nameSnapshot);
       }
       return `Select ${part.titleSnapshot} ${part.template.type} template`;
     })
@@ -492,6 +513,11 @@ function feedbackNoteContent(note: readonly FeedbackNotePart[]): JSONContent[] {
           title: part.titleSnapshot,
         },
       });
+      trailingParagraph = false;
+      continue;
+    }
+    if (part.type === "agent") {
+      paragraphContent.push(agentMentionNode(part));
       trailingParagraph = false;
       continue;
     }
@@ -599,6 +625,11 @@ export function messageDocumentToEditorDoc(
       state.trailingParagraph = false;
       continue;
     }
+    if (part.type === "agent") {
+      state.paragraphContent.push(agentMentionNode(part));
+      state.trailingParagraph = false;
+      continue;
+    }
     if (part.type === "feedback") {
       if (state.paragraphContent.length > 0 || state.trailingParagraph) {
         flushRestoredParagraph(state);
@@ -690,6 +721,8 @@ export function messageDocumentToPrompt(
         part.threadId,
         part.titleSnapshot,
       );
+    } else if (part.type === "agent") {
+      inlineText += serializeAgentMention(part.agentId, part.nameSnapshot);
     } else if (part.type === "template" && options.inlineTemplates === true) {
       inlineText += `Select ${part.titleSnapshot} ${part.template.type} template`;
     }
@@ -738,6 +771,10 @@ export function messageDocumentToDisplayText(
     }
     if (part.type === "chat_thread") {
       inlineText += `[Chat thread: ${part.titleSnapshot}]`;
+      continue;
+    }
+    if (part.type === "agent") {
+      inlineText += `[Agent: ${part.nameSnapshot}]`;
       continue;
     }
     if (part.type === "template") {

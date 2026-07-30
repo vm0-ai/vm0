@@ -345,6 +345,14 @@ const userMessageChatThreadPartSchema = z
   })
   .strict();
 
+const userMessageAgentPartSchema = z
+  .object({
+    type: z.literal("agent"),
+    agentId: z.string().uuid(),
+    nameSnapshot: z.string().min(1),
+  })
+  .strict();
+
 const userMessageTemplatePartSchema = z
   .object({
     type: z.literal("template"),
@@ -356,12 +364,14 @@ const userMessageTemplatePartSchema = z
 const feedbackNotePartSchema = z.discriminatedUnion("type", [
   userMessageTextPartSchema,
   userMessageChatThreadPartSchema,
+  userMessageAgentPartSchema,
   userMessageTemplatePartSchema,
 ]);
 
 const userMessagePartSchema = z.discriminatedUnion("type", [
   userMessageTextPartSchema,
   userMessageChatThreadPartSchema,
+  userMessageAgentPartSchema,
   userMessageTemplatePartSchema,
   z
     .object({
