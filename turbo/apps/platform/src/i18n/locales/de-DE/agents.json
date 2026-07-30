@@ -109,7 +109,7 @@
           },
           "fal-ai-image-generation": {
             "description": "Generieren Sie Produktbilder aus Beschreibungen in Notion",
-            "title": "Falsche KI-Bilderzeugung"
+            "title": "Fal AI-Bilderstellung"
           },
           "heygen-video-from-script": {
             "description": "Das Notion-Skript wird mit einem Team-Ping zu einem HeyGen-Video",
@@ -130,7 +130,7 @@
           },
           "browserbase-web-testing": {
             "description": "Automatisierte Browsertests für Ihre Web-App",
-            "title": "Browserbasierte Webtests"
+            "title": "Browserbase-Webtests"
           },
           "cloudflare-traffic-security-report": {
             "description": "Wöchentliche Slack-Zusammenfassung der Verkehrs- und Sicherheitsereignisse",
@@ -165,8 +165,8 @@
             "title": "Jira ↔ GitHub Issuesynchronisierung"
           },
           "make-scenario-builder": {
-            "description": "Entwerfen Sie mehrstufige Szenarien aus einer Beschreibung",
-            "title": "Erstellen Sie einen Szenario-Builder"
+            "description": "Entwerfen Sie mehrstufige Make-Szenarien aus einer Beschreibung",
+            "title": "Make-Szenario-Builder"
           },
           "security-dependency-alert-digest": {
             "description": "Wöchentliche Sicherheits- und Abhängigkeitswarnungen von GitHub",
@@ -199,7 +199,7 @@
           },
           "calendly-booking-sync": {
             "description": "Neue Buchungen in Ihrem Kalender mit einem Slack-Ping",
-            "title": "Kalendersynchronisierung"
+            "title": "Calendly-Buchungssynchronisierung"
           },
           "email-assistant": {
             "description": "Zusammenfassung des morgendlichen Posteingangs mit vorgeschlagenen nächsten Schritten",
@@ -227,10 +227,10 @@
           },
           "perplexity-deep-research": {
             "description": "KI-gestützte Forschungszusammenfassungen werden in Notion gespeichert",
-            "title": "Ratlosigkeit, tiefe Recherche"
+            "title": "Perplexity-Tiefenrecherche"
           },
           "personal-weekly-digest": {
-            "description": "Pull-Anfragen, E-Mail und Kalender in einem Slack-Update",
+            "description": "Pull-Requests, E-Mail und Kalender in einem Slack-Update",
             "title": "Persönlicher wöchentlicher Überblick"
           },
           "self-update-instructions": {
@@ -260,7 +260,7 @@
         "cases": {
           "apify-web-scraper-to-sheets": {
             "description": "Apify zerlegt Websites in strukturierte Google Sheets-Zeilen",
-            "title": "Web Scraper auf Sheets übertragen"
+            "title": "Apify-Web-Scraper für Sheets"
           },
           "brevo-email-nurture-sequence": {
             "description": "Automatisierte E-Mail-Sequenzen aus CRM-Ereignissen",
@@ -312,7 +312,7 @@
           },
           "similarweb-traffic-comparison": {
             "description": "In Notion gespeicherte Traffic-Benchmarks im Vergleich zu Mitbewerbern",
-            "title": "Vergleich des ähnlichen Web-Verkehrs"
+            "title": "SimilarWeb-Trafficvergleich"
           },
           "social-media-content-calendar": {
             "description": "Wandelt einen Sheets-Kalender in Beiträge für jedes Netzwerk um",
@@ -349,7 +349,7 @@
           },
           "jotform-intake-to-notion": {
             "description": "Formularantworten landen mit Slack-Benachrichtigungen in Notion",
-            "title": "Aufnahme in Notion notieren"
+            "title": "Jotform-Aufnahme in Notion"
           },
           "monday-com-weekly-digest": {
             "description": "Wöchentlicher Board-Fortschritt von Monday.com in Slack",
@@ -389,8 +389,8 @@
             "title": "Feedback-Router"
           },
           "linear-prd-implementer": {
-            "description": "Vorstellungsspezifikationen werden zu linearen Projekten und Problemen",
-            "title": "Linearer PRD-Implementierer"
+            "description": "Notion-Spezifikationen werden zu Linear-Projekten und -Issues",
+            "title": "Linear-PRD-Implementierung"
           },
           "metabase-dashboard-digest": {
             "description": "Dashboard-Snapshots werden automatisch in Slack gepostet",

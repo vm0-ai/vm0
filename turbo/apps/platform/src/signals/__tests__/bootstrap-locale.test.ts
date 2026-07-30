@@ -376,6 +376,31 @@ describe("bootstrap locale", () => {
     expect(i18n.hasResourceBundle("de-DE", "common")).toBeTruthy();
     expect(i18n.hasResourceBundle("de-DE", "agents")).toBeTruthy();
     expect(document.documentElement.lang).toBe("de-DE");
+    expect(
+      i18n.t(
+        ($) => {
+          return $.insights.units.run;
+        },
+        { count: 2, value: "2" },
+      ),
+    ).toBe("2 Ausführungen");
+    expect(
+      i18n.t(
+        ($) => {
+          return $.insights.cards.agentsRan;
+        },
+        {
+          agents: "2 Agenten",
+          count: 2,
+          runs: "12 Ausführungen",
+        },
+      ),
+    ).toBe("2 Agenten haben 12 Ausführungen abgeschlossen");
+    expect(
+      i18n.t(($) => {
+        return $.onboarding.workflows["auto-merge-github-prs"].steps.two.title;
+      }),
+    ).toBe("Zero überprüft und wartet auf CI");
 
     await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
   });

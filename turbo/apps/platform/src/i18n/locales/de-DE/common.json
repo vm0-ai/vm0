@@ -1020,8 +1020,8 @@
       "resuming": "Fortsetzung...",
       "suspended": "Browser angehalten"
     },
-    "reclaimHint_one": "Zero behält diesen Browser, während dieses Panel geöffnet ist, und beansprucht ihn nach {{formattedCount}} Inaktivitätsminute zurück.",
-    "reclaimHint_other": "Zero behält diesen Browser, während dieses Panel geöffnet ist, und beansprucht ihn nach {{formattedCount}} Leerlaufzeitminuten zurück.",
+    "reclaimHint_one": "Zero behält diesen Browser, während dieses Panel geöffnet ist, und beansprucht ihn nach {{formattedCount}} Minute Inaktivität zurück.",
+    "reclaimHint_other": "Zero behält diesen Browser, während dieses Panel geöffnet ist, und beansprucht ihn nach {{formattedCount}} Minuten Inaktivität zurück.",
     "status": {
       "live": "Live",
       "starting": "Beginnt",
@@ -1128,9 +1128,9 @@
         "githubWorkflowJobCompleted": "GitHub-Workflow-Job abgeschlossen",
         "gmailLabelApplied": "Gmail-Label angewendet",
         "gmailNewMessage": "Neue Gmail-Nachricht",
-        "googleCalendarCancelled": "Google-Kalender-Ereignis abgesagt",
-        "googleCalendarCreated": "Google-Kalender-Ereignis erstellt",
-        "googleCalendarUpdated": "Google-Kalender-Ereignis aktualisiert",
+        "googleCalendarCancelled": "Google Calendar-Ereignis abgesagt",
+        "googleCalendarCreated": "Google Calendar-Ereignis erstellt",
+        "googleCalendarUpdated": "Google Calendar-Ereignis aktualisiert",
         "googleMeetTranscript": "Google Meet-Transkript bereit",
         "notionChildPage": "Neue untergeordnete Notion-Seite",
         "notionDatabaseItem": "Neues Notion-Datenbankelement",
@@ -2337,7 +2337,7 @@
         "moreOptions": "Weitere Optionen für {{bot}}",
         "newBotToken": "Neuer Bot-Token",
         "notConnected": "Nicht verbunden",
-        "officialBot": "Kein offizieller Bot",
+        "officialBot": "Offizieller Zero-Bot",
         "officialDescription": "Offizieller Bot bereitgestellt von {{brandName}}.",
         "officialMissing": "Die offizielle Bot-Konfiguration fehlt.",
         "pageDescription": "Verwalten Sie das Bot-Routing für diesen Arbeitsbereich",
@@ -2437,34 +2437,34 @@
     },
     "cards": {
       "agents": "Agenten",
-      "agentsRan_one": "{{agents}} hat {{runs}} ausgeführt",
-      "agentsRan_other": "{{agents}} hat {{runs}} ausgeführt",
+      "agentsRan_one": "{{agents}} hat {{runs}} abgeschlossen",
+      "agentsRan_other": "{{agents}} haben {{runs}} abgeschlossen",
       "allowed": "Erlaubt",
-      "allowedSummary_one": "{{calls}} innerhalb von {{permissions}} mit erteilter Berechtigung erstellt",
-      "allowedSummary_other": "{{calls}} wurde innerhalb von {{permissions}} mit erteilten Berechtigungen erstellt",
+      "allowedSummary_one": "{{calls}} mit {{permissions}} erteilter Berechtigung",
+      "allowedSummary_other": "{{calls}} mit {{permissions}} erteilten Berechtigungen",
       "automations": "Automatisierungen",
-      "automationsUsed_one": "{{automations}} verwendet {{credits}}",
-      "automationsUsed_other": "{{automations}} verwendet {{credits}}",
-      "balance": "Gleichgewicht",
+      "automationsUsed_one": "{{automations}} hat {{credits}} verwendet",
+      "automationsUsed_other": "{{automations}} haben {{credits}} verwendet",
+      "balance": "Guthaben",
       "byAgent": "von {{agent}}",
       "chats": "Chats",
-      "chatsUsed_one": "{{chats}} verwendet {{credits}}",
-      "chatsUsed_other": "{{chats}} verwendet {{credits}}",
+      "chatsUsed_one": "{{chats}} hat {{credits}} verwendet",
+      "chatsUsed_other": "{{chats}} haben {{credits}} verwendet",
       "clickToOpen": "Klicken Sie zum Öffnen",
       "consumedToday": "heute verbraucht",
-      "moreAutomations_one": "+{{value}} mehr Automatisierung",
+      "moreAutomations_one": "+{{value}} weitere Automatisierung",
       "moreAutomations_other": "+{{value}} weitere Automatisierungen",
-      "moreChats_one": "+{{value}} mehr Chat",
+      "moreChats_one": "+{{value}} weiterer Chat",
       "moreChats_other": "+{{value}} weitere Chats",
       "protected": "Geschützt",
-      "protectedSummary_one": "{{calls}} ist über die Berechtigung {{permissions}} geschützt",
-      "protectedSummary_other": "{{calls}} über {{permissions}}-Berechtigungen geschützt",
+      "protectedSummary_one": "{{calls}} durch {{permissions}} Berechtigung geschützt",
+      "protectedSummary_other": "{{calls}} durch {{permissions}} Berechtigungen geschützt",
       "rejected_one": "{{value}} abgelehnt",
       "rejected_other": "{{value}} abgelehnt",
       "rejectedOf": "{{denied}} von {{total}} abgelehnt",
-      "services": "Dienstleistungen",
+      "services": "Dienste",
       "servicesReceived_one": "{{services}} hat {{calls}} erhalten",
-      "servicesReceived_other": "{{services}} hat {{calls}} erhalten",
+      "servicesReceived_other": "{{services}} haben {{calls}} erhalten",
       "team": "Team",
       "teamCreditUsage": "Team-Credit-Nutzung",
       "untitled": "(ohne Titel)",
@@ -2493,28 +2493,28 @@
     },
     "summary": {
       "activityCaption": "{{first}} · {{second}}",
-      "blocked_one": "Die Anfrage „{{blocked}}“ wurde durch Ihre Berechtigungsregeln blockiert. Überprüfen Sie es, um sicherzustellen, dass nichts Wichtiges zurückgehalten wird.",
-      "blocked_other": "{{blocked}}-Anfragen wurden durch Ihre Berechtigungsregeln blockiert. Überprüfen Sie sie, um sicherzustellen, dass nichts Wichtiges zurückgehalten wird.",
+      "blocked_one": "{{blocked}} Anfrage wurde durch Ihre Berechtigungsregeln blockiert. Prüfen Sie sie, damit nichts Wichtiges zurückgehalten wird.",
+      "blocked_other": "{{blocked}} Anfragen wurden durch Ihre Berechtigungsregeln blockiert. Prüfen Sie sie, damit nichts Wichtiges zurückgehalten wird.",
       "blockedCaption": "{{calls}} · {{blocked}} blockiert",
-      "busy_one": "Ein arbeitsreicher Tag – {{agentCount}} Agenten haben {{runs}} abgeschlossen. Ihr Netzwerk arbeitet hart.",
+      "busy_one": "Ein arbeitsreicher Tag – {{agentCount}} Agent hat {{runs}} abgeschlossen. Ihr Netzwerk arbeitet hart.",
       "busy_other": "Ein arbeitsreicher Tag – {{agentCount}} Agenten haben {{runs}} abgeschlossen. Ihr Netzwerk arbeitet hart.",
       "distributed_one": "{{agents}} aktiv, insgesamt {{credits}}. Eine gut verteilte Arbeitsbelastung.",
       "distributed_other": "{{agents}} aktiv, insgesamt {{credits}}. Eine gut verteilte Arbeitsbelastung.",
-      "highTraffic_one": "{{callCount}} Serviceaufrufe über {{services}}. Tag mit hohem Verkehrsaufkommen.",
+      "highTraffic_one": "{{callCount}} Serviceaufruf über {{services}}. Tag mit hohem Verkehrsaufkommen.",
       "highTraffic_other": "{{callCount}} Serviceaufrufe über {{services}}. Tag mit hohem Verkehrsaufkommen.",
       "light_one": "Leichte Aktivität – nur {{runs}} und {{calls}}. Ein ruhiger Tag.",
       "light_other": "Leichte Aktivität – nur {{runs}} und {{calls}}. Ein ruhiger Tag.",
       "quietCaption": "{{runs}} · ein ruhiger Tag",
-      "smooth": "{{runs}} und {{callCount}} Serviceanrufe heute. Alles läuft reibungslos."
+      "smooth": "{{runs}} und {{callCount}} Serviceaufrufe heute. Alles läuft reibungslos."
     },
     "units": {
-      "agent_one": "{{value}}-Agent",
+      "agent_one": "{{value}} Agent",
       "agent_other": "{{value}} Agenten",
       "call_one": "{{value}} Aufruf",
       "call_other": "{{value}} Aufrufe",
-      "run_one": "{{value}} ausführen",
-      "run_other": "{{value}} läuft",
-      "service_one": "{{value}}-Dienst",
+      "run_one": "{{value}} Ausführung",
+      "run_other": "{{value}} Ausführungen",
+      "service_one": "{{value}} Dienst",
       "service_other": "{{value}} Dienste"
     }
   },
@@ -2754,7 +2754,7 @@
         "loose-contour": "Lockere Kontur",
         "mellow-pop": "Sanfter Pop",
         "mosaic-still-life": "Mosaik-Stillleben",
-        "notion-illustration": "Begriffsillustration",
+        "notion-illustration": "Notion-Illustration",
         "op-ed-cover": "Op-Ed-Cover",
         "painterly-botanical": "Malerisch botanisch",
         "papernook": "Papiernook",
@@ -2856,7 +2856,7 @@
           },
           "two": {
             "description": "Zero liest den Diff und hält ihn, bis alle erforderlichen Prüfungen erfolgreich sind.",
-            "title": "Keine Bewertungen und Wartezeiten auf CI"
+            "title": "Zero überprüft und wartet auf CI"
           }
         },
         "title": "GitHub-PRs automatisch zusammenführen"
@@ -2871,7 +2871,7 @@
           },
           "three": {
             "description": "Zero plant die Varianten zur Überprüfung.",
-            "title": "In der Warteschlange im Puffer"
+            "title": "In Buffer eingereiht"
           },
           "two": {
             "description": "Zero entwirft für jeden Artikel mehrere X-Beiträge.",
@@ -2885,7 +2885,7 @@
         "scenario": "Das wöchentliche Kennzahlendeck besteht aus den gleichen Folien mit jedes Mal neuen Zahlen. Zero ruft die Daten ab, erstellt das Deck in Gamma und veröffentlicht es auf Slack, damit die Überprüfung vor dem Meeting fertig ist.",
         "steps": {
           "one": {
-            "description": "Zero liest Metriken aus Tabellen und Analysen.",
+            "description": "Zero liest Metriken aus Google Sheets und Analysen.",
             "title": "Zero sammelt die Zahlen"
           },
           "three": {
@@ -2935,7 +2935,7 @@
             "title": "Auf Konflikte überprüft"
           }
         },
-        "title": "Erkennen Sie Google Kalender-Konflikte"
+        "title": "Google Calendar-Konflikte erkennen"
       },
       "catch-leads-gmail": {
         "description": "Erkennen Sie Kaufsignale in neuen E-Mails und protokollieren Sie die qualifizierten Leads.",
@@ -3056,11 +3056,11 @@
         "scenario": "Das Schreiben von Versionshinweisen bedeutet, den PR-Verlauf durchzublättern und Commits in einfache Sprache zu übersetzen. Zero erledigt dies, wenn Sie eine versandte PR kennzeichnen: Es sammelt alles, was seit dem letzten Tag zusammengeführt wurde, und erstellt lesbare Notizen in Notion.",
         "steps": {
           "one": {
-            "description": "Keine Trigger auf Ihrem Veröffentlichungsetikett.",
+            "description": "Zero reagiert auf Ihr Release-Label.",
             "title": "Eine PR wird als versandt gekennzeichnet"
           },
           "three": {
-            "description": "Keine Entwürfe, saubere, gruppierte Versionshinweise auf einer Notion-Seite.",
+            "description": "Zero entwirft übersichtliche, gruppierte Versionshinweise auf einer Notion-Seite.",
             "title": "Versionshinweise in Notion gespeichert"
           },
           "two": {
@@ -3113,7 +3113,7 @@
         "scenario": "Rechnungen stapeln sich im Posteingang und der Abgleich ist ein Rätsel. Zero legt jede beschriftete Rechnung im richtigen Drive-Ordner ab und protokolliert den Betrag und das Fälligkeitsdatum in Ihrer Spesenabrechnung, sobald sie eintrifft.",
         "steps": {
           "one": {
-            "description": "Keine Trigger auf Ihrem Rechnungsetikett in Gmail.",
+            "description": "Zero reagiert auf Ihr Rechnungs-Label in Gmail.",
             "title": "Eine Rechnung ist beschriftet"
           },
           "three": {
@@ -3166,8 +3166,8 @@
         "title": "Wandeln Sie Korrekturen in Notion-Hilfedokumente um"
       },
       "flag-figma-designs-no-task": {
-        "description": "Markieren Sie Figma-Designs, mit denen noch keine lineare Aufgabe verknüpft ist.",
-        "scenario": "Entwürfe werden stillschweigend fertiggestellt, ohne jemals zu Build-Tickets zu werden. Zero durchsucht Figma täglich nach Frames, die als bereit markiert sind und keine verknüpfte lineare Aufgabe haben, und markiert die Lücken in Slack, bevor sie verschwinden.",
+        "description": "Markieren Sie Figma-Designs, mit denen noch keine Linear-Aufgabe verknüpft ist.",
+        "scenario": "Entwürfe werden stillschweigend fertiggestellt, ohne jemals zu Build-Tickets zu werden. Zero durchsucht Figma täglich nach Frames, die als bereit markiert sind und keine verknüpfte Linear-Aufgabe haben, und markiert die Lücken in Slack, bevor sie verschwinden.",
         "steps": {
           "one": {
             "description": "Zero liest Frames und die damit verbundenen Aufgaben.",
@@ -3189,7 +3189,7 @@
         "scenario": "Durch das Markieren einer E-Mail wird die Entscheidung nur später verschoben. Zero nimmt die Flagge auf, recherchiert das Thema und den vorherigen Thread und legt eine Todoist-Aufgabe mit bereits angehängtem Kontext ab.",
         "steps": {
           "one": {
-            "description": "Keine Auslöser für Ihr To-Do-Label in Gmail.",
+            "description": "Zero reagiert auf Ihr To-do-Label in Gmail.",
             "title": "Sie markieren eine E-Mail"
           },
           "three": {
@@ -3273,7 +3273,7 @@
             "title": "Auf Slack gepostet"
           },
           "two": {
-            "description": "Keine Filter für die wenigen, die Ihre Aufmerksamkeit erfordern.",
+            "description": "Zero filtert die wenigen Nachrichten heraus, die Ihre Aufmerksamkeit erfordern.",
             "title": "Prioritäten identifiziert"
           }
         },
@@ -3326,7 +3326,7 @@
             "title": "Zero liest das Transkript"
           },
           "three": {
-            "description": "Keine Dateien mit zugewiesenen Aufgaben und Fälligkeitsterminen.",
+            "description": "Zero erstellt zugewiesene Aufgaben mit Fälligkeitsterminen.",
             "title": "In Asana erstellte Aufgaben"
           },
           "two": {
@@ -3455,7 +3455,7 @@
         "scenario": "Das Änderungsprotokoll, das Benutzer sehen, unterscheidet sich vom Festschreibungsprotokoll. Zero löst auf dem Veröffentlichungsetikett aus, erstellt eine benutzerfreundliche Zusammenfassung der versendeten Inhalte und veröffentlicht sie auf Slack und Notion.",
         "steps": {
           "one": {
-            "description": "Keine Trigger auf dem Veröffentlichungsetikett.",
+            "description": "Zero reagiert auf das Release-Label.",
             "title": "Eine PR wird als Veröffentlichung bezeichnet"
           },
           "three": {
@@ -3486,7 +3486,7 @@
             "title": "Teilnehmer recherchierte"
           }
         },
-        "title": "Bereiten Sie sich auf Google Kalender-Besprechungen vor"
+        "title": "Auf Google Calendar-Meetings vorbereiten"
       },
       "publish-scheduled-posts-buffer": {
         "description": "Jeden Tag veröffentlicht Zero die für heute geplanten Inhalte aus dem Notion-Kalender an Strapi und stellt die sozialen Beiträge in Buffer in die Warteschlange.",
@@ -3531,7 +3531,7 @@
         "scenario": "Wenn Sie vorbereitet erscheinen, bedeutet dies, dass Sie nur selten Zeit für eine Recherche haben. Zero bemerkt neue Meetings, sucht nach Teilnehmern und deren Unternehmen und sendet Ihnen vor Beginn ein einseitiges Dossier.",
         "steps": {
           "one": {
-            "description": "Keine Auslöser für neue Kalenderereignisse.",
+            "description": "Zero reagiert auf neue Kalenderereignisse.",
             "title": "Eine Besprechung wird hinzugefügt"
           },
           "three": {
@@ -3588,7 +3588,7 @@
         "scenario": "Ein Fehlerbericht ist für Ingenieure nur dann nützlich, wenn er vollständig ist. Zero nimmt das Bug-Label auf, stellt Repro-Schritte und Kundenauswirkungen zusammen, archiviert es sauber und veröffentlicht es im Engineering-Kanal.",
         "steps": {
           "one": {
-            "description": "Keine Auslöser auf dem Fehleretikett.",
+            "description": "Zero reagiert auf das Label „bug“.",
             "title": "Ein Issue erhält das Label „bug“"
           },
           "three": {
@@ -3653,7 +3653,7 @@
             "title": "Wiederherstellungs-E-Mail erstellt"
           },
           "two": {
-            "description": "Es tauchen keine Konten auf, die Abwanderungssignale zeigen.",
+            "description": "Zero hebt Konten mit Abwanderungssignalen hervor.",
             "title": "Gefährdete Konten markiert"
           }
         },
@@ -3736,12 +3736,12 @@
         "title": "Synchronisieren Sie Asana-Projekte mit Notion"
       },
       "sync-linear-roadmap-notion": {
-        "description": "Halten Sie eine Notion-Roadmap mit Ihrem linearen Problemstatus synchron.",
+        "description": "Halten Sie eine Notion-Roadmap mit dem Status Ihrer Linear-Issues synchron.",
         "scenario": "Roadmaps veralten, sobald Tickets verschoben werden. Zero synchronisiert den Linear-Status täglich mit einem Jetzt/Als Nächstes/Später-Board in Notion, damit die Roadmap für alle Beteiligten stets der Realität entspricht.",
         "steps": {
           "one": {
             "description": "Zero ruft aktuelle Ticketstatus und Meilensteine ​​ab.",
-            "title": "Zero liest den linearen Status"
+            "title": "Zero liest den Linear-Status"
           },
           "three": {
             "description": "Zero aktualisiert das Notion-Roadmap-Board.",
@@ -3752,7 +3752,7 @@
             "title": "Zugeordnet zu „Jetzt/Weiter/Später“."
           }
         },
-        "title": "Synchronisieren Sie die lineare Roadmap mit Notion"
+        "title": "Linear-Roadmap mit Notion synchronisieren"
       },
       "track-feature-usage-posthog": {
         "description": "Entdecken Sie die größten wöchentlichen Veränderungen bei der Funktionsnutzung von PostHog.",
@@ -3817,7 +3817,7 @@
         "steps": {
           "one": {
             "description": "Zero scannt das Web, Reddit und X mit Exa.",
-            "title": "Keine Suche nach Erwähnungen"
+            "title": "Zero sucht nach Erwähnungen"
           },
           "three": {
             "description": "Zero Beiträge, jede Erwähnung mit Link und Kontext.",
@@ -3872,8 +3872,8 @@
     },
     "redirecting": "Weiterleitung...",
     "status": {
-      "atLimit_one": "Sie können jeweils nur die Aufgabe {{limit}} ausführen. Neue Läufe warten in einer Warteschlange, bis einer beendet ist.",
-      "atLimit_other": "Sie können jeweils nur {{limit}}-Aufgaben ausführen. Neue Läufe warten in einer Warteschlange, bis einer beendet ist.",
+      "atLimit_one": "Sie können jeweils nur {{limit}} Aufgabe gleichzeitig ausführen. Neue Läufe warten in einer Warteschlange, bis einer beendet ist.",
+      "atLimit_other": "Sie können jeweils nur {{limit}} Aufgaben gleichzeitig ausführen. Neue Läufe warten in einer Warteschlange, bis einer beendet ist.",
       "available_one": "{{count}} Slot verfügbar",
       "available_other": "{{count}} Slots verfügbar",
       "inUse_one": "{{active}} von {{limit}} Slot belegt",
@@ -4284,7 +4284,7 @@
         "title": "Sprache"
       },
       "morningBrief": {
-        "description": "Eine tägliche E-Mail um 7:00 Uhr mit Ihrem Zeitplan, Aktionspunkten und Updates von verbundenem GitHub, Gmail und Google Kalender",
+        "description": "Eine tägliche E-Mail um 7:00 Uhr mit Ihrem Zeitplan, Aktionspunkten und Updates von verbundenem GitHub, Gmail und Google Calendar",
         "nextEmail": "Nächste E-Mail: {{date}}",
         "nextEmailInTimezone": "Nächste E-Mail: {{date}} ({{timezone}})",
         "notScheduled": "Nächste E-Mail: noch nicht geplant – schalten Sie den Schalter aus und wieder ein, um einen neuen Termin zu vereinbaren",
@@ -4485,7 +4485,7 @@
   "usage": {
     "automations": {
       "empty": "In diesem Zeitraum wurden keine Automatisierungen verwendet",
-      "more_one": "+{{value}} mehr Automatisierung",
+      "more_one": "+{{value}} weitere Automatisierung",
       "more_other": "+{{value}} weitere Automatisierungen",
       "summary_one": "{{automations}} hat {{credits}} verwendet",
       "summary_other": "{{automations}} haben {{credits}} verwendet",
@@ -4504,7 +4504,7 @@
     "chats": {
       "clickToOpen": "Klicken Sie zum Öffnen",
       "empty": "Keine Chats in diesem Zeitraum",
-      "more_one": "+{{value}} mehr Chat",
+      "more_one": "+{{value}} weiterer Chat",
       "more_other": "+{{value}} weitere Chats",
       "summary_one": "{{chats}} hat {{credits}} verwendet",
       "summary_other": "{{chats}} haben {{credits}} verwendet",
@@ -4583,23 +4583,23 @@
     "automations": {
       "calendar": {
         "addAction": "Kalenderautomatisierung hinzufügen",
-        "addAria": "Fügen Sie die Google Kalender-Automatisierung hinzu",
-        "addDescriptionCancelled": "Führen Sie diesen Workflow aus, wenn ein Google Kalender-Ereignis abgesagt wird.",
-        "addDescriptionCreated": "Führen Sie diesen Workflow aus, wenn ein neues Google Kalender-Ereignis erstellt wird.",
-        "addDescriptionUpdated": "Führen Sie diesen Workflow aus, wenn ein Google Kalender-Ereignis aktualisiert wird.",
-        "addTitle": "Fügen Sie die Google Kalender-Automatisierung hinzu",
+        "addAria": "Google Calendar-Automatisierung hinzufügen",
+        "addDescriptionCancelled": "Führen Sie diesen Workflow aus, wenn ein Ereignis in Google Calendar abgesagt wird.",
+        "addDescriptionCreated": "Führen Sie diesen Workflow aus, wenn ein neues Ereignis in Google Calendar erstellt wird.",
+        "addDescriptionUpdated": "Führen Sie diesen Workflow aus, wenn ein Ereignis in Google Calendar aktualisiert wird.",
+        "addTitle": "Google Calendar-Automatisierung hinzufügen",
         "calendarId": "Kalender-ID",
         "calendarIdPlaceholder": "primary",
         "cancelledDescription": "Wird ausgeführt, wenn ein Kalenderereignis abgesagt wird.",
         "cancelledRule": "Wenn das Kalenderereignis {{calendar}} abgesagt wird",
-        "cancelledTitle": "Google Kalender-Ereignis abgesagt",
+        "cancelledTitle": "Google Calendar-Ereignis abgesagt",
         "createdDescription": "Wird ausgeführt, wenn ein Kalenderereignis erstellt wird.",
         "createdRule": "Wenn Kalender {{calendar}} ein neues Ereignis erhält",
-        "createdTitle": "Google Kalender-Ereignis erstellt",
+        "createdTitle": "Google Calendar-Ereignis erstellt",
         "summary": "Kalender {{calendar}}",
         "updatedDescription": "Wird ausgeführt, wenn ein Kalenderereignis aktualisiert wird.",
         "updatedRule": "Wenn das Kalenderereignis {{calendar}} aktualisiert wird",
-        "updatedTitle": "Google Kalender-Ereignis aktualisiert"
+        "updatedTitle": "Google Calendar-Ereignis aktualisiert"
       },
       "chat": {
         "addAction": "Chat-Automatisierung hinzufügen",
@@ -4756,7 +4756,7 @@
         },
         "productionEnvironment": "Produktionsumgebung",
         "productionOnly": "Nur Produktion",
-        "pullRequestsOnly": "Nur Pull-Anfragen",
+        "pullRequestsOnly": "Nur Pull-Requests",
         "refs": "Refs",
         "refsPlaceholder": "main, v1.0.0",
         "repositories": "Repositories",
@@ -4766,9 +4766,9 @@
         "reviewRule": "Wenn eine passende GitHub-Pull-Request-Überprüfung eingereicht wird",
         "reviewStates": "Überprüfen Sie die Zustände",
         "reviewTitle": "GitHub-Pull-Request-Überprüfung eingereicht",
-        "runnerGroups": "Läufergruppen",
+        "runnerGroups": "Runner-Gruppen",
         "runnerGroupsPlaceholder": "Default, production",
-        "runnerLabels": "Läuferetiketten",
+        "runnerLabels": "Runner-Labels",
         "runnerLabelsPlaceholder": "self-hosted, linux",
         "saveFilters": "Filter speichern",
         "selectNoneAny": "Wählen Sie „Keine“ aus, um einen beliebigen Wert zu finden.",
@@ -4945,7 +4945,7 @@
         "onceOn": "Einmal am {{date}} um {{time}}",
         "repeatEvery": "Jeden {{interval}}",
         "repeats": "Wiederholt",
-        "runAt": "Lauf an",
+        "runAt": "Ausführen am",
         "saveSchedule": "Zeitplan speichern",
         "time": "Zeit ({{timezone}})",
         "updateScheduleAria": "Automatisierung des Aktualisierungsplans"

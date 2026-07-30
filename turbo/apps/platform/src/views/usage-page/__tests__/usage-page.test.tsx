@@ -276,8 +276,13 @@ describe("/usage page", () => {
 
   it("localizes usage copy, plurals, and numeric totals in German", async () => {
     context.mocks.data.userPreferences({ locale: "de-DE" });
-    context.mocks.api(zeroUsageInsightContract.get, ({ respond }) => {
-      return respond(200, usageInsightTodayFixture);
+    context.mocks.api(zeroUsageInsightContract.get, ({ query, respond }) => {
+      return respond(
+        200,
+        query.range === "7d"
+          ? usageInsightLast7DaysSourceFixture
+          : usageInsightTodayFixture,
+      );
     });
 
     detachedSetupPage({
@@ -308,8 +313,15 @@ describe("/usage page", () => {
     });
 
     click(screen.getByLabelText("Datumsbereich"));
-    expect(
-      screen.getByRole("option", { name: "Letzte 7 Tage" }),
-    ).toBeInTheDocument();
+    click(screen.getByRole("option", { name: "Letzte 7 Tage" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/^3 Automatisierungen haben /u),
+      ).toBeInTheDocument();
+      expect(screen.getByText("+1 weitere Automatisierung")).toBeVisible();
+      expect(screen.getByText(/^3 Chats haben /u)).toBeInTheDocument();
+      expect(screen.getByText("+1 weiterer Chat")).toBeVisible();
+    });
   });
 });
