@@ -70,7 +70,10 @@ seed_storage_fixture() (
         '{storageName: $storageName, storageOwner: $storageOwner, files: $files[0]}' > "$prepare_payload"
 
     local prepare_response version_id existing
-    prepare_response="$(e2e_api_curl "/api/test/storage-fixture/prepare" -X POST --data-binary "@$prepare_payload")"
+    if ! prepare_response="$(e2e_api_curl "/api/test/storage-fixture/prepare" -X POST --data-binary "@$prepare_payload")"; then
+        echo "# Storage fixture prepare request failed" >&2
+        return 1
+    fi
     version_id="$(jq -er '.versionId | select(length > 0)' <<< "$prepare_response")"
     existing="$(jq -r '.existing' <<< "$prepare_response")"
 
@@ -89,22 +92,32 @@ seed_storage_fixture() (
                 --file="$archive_path" \
                 --directory="$source_directory" \
                 --files-from="$file_list"
-            curl -fsS \
+            if ! curl -fsS \
+                --retry 2 \
+                --retry-delay 1 \
                 -X PUT \
                 -H "Content-Type: application/gzip" \
                 --upload-file "$archive_path" \
-                "$archive_url"
+                "$archive_url"; then
+                echo "# Storage fixture archive upload failed" >&2
+                return 1
+            fi
         fi
 
         jq -n \
             --arg createdAt "$created_at" \
             --slurpfile files "$files_json" \
             '{version: 1, files: $files[0], createdAt: $createdAt}' > "$manifest_payload"
-        curl -fsS \
+        if ! curl -fsS \
+            --retry 2 \
+            --retry-delay 1 \
             -X PUT \
             -H "Content-Type: application/json" \
             --data-binary "@$manifest_payload" \
-            "$manifest_url"
+            "$manifest_url"; then
+            echo "# Storage fixture manifest upload failed" >&2
+            return 1
+        fi
     fi
 
     jq -n \
@@ -115,7 +128,10 @@ seed_storage_fixture() (
         '{storageName: $storageName, storageOwner: $storageOwner, versionId: $versionId, files: $files[0]}' > "$commit_payload"
 
     local commit_response
-    commit_response="$(e2e_api_curl "/api/test/storage-fixture/commit" -X POST --data-binary "@$commit_payload")"
+    if ! commit_response="$(e2e_api_curl "/api/test/storage-fixture/commit" -X POST --data-binary "@$commit_payload")"; then
+        echo "# Storage fixture commit request failed" >&2
+        return 1
+    fi
     if ! jq -e --arg versionId "$version_id" '
         .success == true
         and .versionId == $versionId
