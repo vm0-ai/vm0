@@ -42,6 +42,21 @@ function useJapaneseLocale(): void {
   );
 }
 
+function useKoreanLocale(): void {
+  document.documentElement.lang = "ko-KR";
+  context.mocks.data.userPreferences({
+    locale: "ko-KR",
+    supportedLocales: ["en-US", "ko-KR"],
+  });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      document.documentElement.lang = "en-US";
+    },
+    { once: true },
+  );
+}
+
 describe("app auth pages", () => {
   it("localizes the app auth shell and Clerk resources in Brazilian Portuguese", async () => {
     usePortugueseLocale();
@@ -84,6 +99,28 @@ describe("app auth pages", () => {
     expect(localization.signIn?.start?.actionLink).toBe("サインアップ");
     expect(localization.unstable__errors?.not_allowed_access).toBe(
       "アクセスは許可されていません。",
+    );
+
+    act(() => {
+      authComponent.mount();
+    });
+  });
+
+  it("localizes the app auth shell and Clerk resources in Korean", async () => {
+    useKoreanLocale();
+    setBrowserUrl("https://app.vm0.ai/sign-up");
+
+    const authComponent = context.mocks.clerk.deferAuthComponentMount();
+    detachedSetupPage({ context, path: "/sign-up" });
+
+    await expect(screen.findByText("인증 중")).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("테마 전환")).toBeInTheDocument();
+    expect(document.title).toBe("회원가입 | VM0");
+
+    const localization = getClerkLocalization("VM0", "ko-KR", i18n.t);
+    expect(localization.signIn?.start?.actionLink).toBe("회원가입");
+    expect(localization.unstable__errors?.not_allowed_access).toBe(
+      "접근이 허용되지 않습니다.",
     );
 
     act(() => {

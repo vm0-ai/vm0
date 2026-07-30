@@ -1,4 +1,8 @@
-import { DEFAULT_LOCALE, type SupportedLocale } from "./resources.ts";
+import {
+  DEFAULT_LOCALE,
+  isSupportedLocale,
+  type SupportedLocale,
+} from "./resources.ts";
 
 const LOCALE_STORAGE_KEY_PREFIX = "vm0:locale:";
 
@@ -9,7 +13,7 @@ export function localeStorageKey(orgId: string): string {
 function parseSupportedLocale(
   value: string | null | undefined,
 ): SupportedLocale | null {
-  return value === "en-US" || value === "pt-BR" || value === "ja-JP"
+  return value !== null && value !== undefined && isSupportedLocale(value)
     ? value
     : null;
 }

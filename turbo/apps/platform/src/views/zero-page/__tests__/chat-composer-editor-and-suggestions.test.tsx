@@ -89,10 +89,10 @@ describe("chat composer models", () => {
 
     const editor = await findComposerEditor();
     expect(editor).toHaveClass("min-h-[96px]");
-    expect(editor).not.toHaveClass("min-h-[44px]");
+    expect(editor).not.toHaveClass("min-h-[68px]");
   });
 
-  it("uses the mobile single-line height in chat thread composers", async () => {
+  it("uses the mobile two-line height in chat thread composers", async () => {
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();
     mockThread();
@@ -103,7 +103,7 @@ describe("chat composer models", () => {
     });
 
     const editor = await findComposerEditor();
-    expect(editor).toHaveClass("min-h-[44px]", "md:min-h-[96px]");
+    expect(editor).toHaveClass("min-h-[68px]", "md:min-h-[96px]");
   });
 
   it("keeps the agent chat slash composer at three-line height", async () => {
@@ -120,10 +120,10 @@ describe("chat composer models", () => {
 
     const editor = await findComposerEditor();
     expect(editor).toHaveClass("min-h-[96px]");
-    expect(editor).not.toHaveClass("min-h-[44px]");
+    expect(editor).not.toHaveClass("min-h-[68px]");
   });
 
-  it("uses the mobile single-line height in chat thread slash composers", async () => {
+  it("uses the mobile two-line height in chat thread slash composers", async () => {
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();
     mockThread();
@@ -137,7 +137,7 @@ describe("chat composer models", () => {
     });
 
     const editor = await findComposerEditor();
-    expect(editor).toHaveClass("min-h-[44px]", "md:min-h-[96px]");
+    expect(editor).toHaveClass("min-h-[68px]", "md:min-h-[96px]");
   });
 
   it("positions the slash workflow menu from the caret inside the viewport safe area", async () => {
@@ -262,9 +262,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerSkillSubstringSearch]: true,
-      },
     });
 
     const editor = await findComposerEditor();
@@ -670,7 +667,6 @@ describe("chat composer models", () => {
     ]);
     context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
       return respond(200, {
-        draftContent: null,
         draftUserMessage: {
           version: 1,
           parts: [{ type: "text", text: mention }],

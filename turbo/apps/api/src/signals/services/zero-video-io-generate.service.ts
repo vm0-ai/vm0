@@ -1,17 +1,14 @@
 import { Buffer } from "node:buffer";
-import { randomUUID } from "node:crypto";
 
 import { command, computed, type Computed } from "ccstate";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { and, eq, inArray } from "drizzle-orm";
 
-import { buildArtifactKey, buildFileUrl } from "../../lib/file-url";
-import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { db$, writeDb$ } from "../external/db";
 import { checkBillableOperationCredits$ } from "./billable-operation-admission.service";
-import { putS3Object } from "../external/s3";
+import { storeGeneratedArtifactObject$ } from "./artifact-storage.service";
 import { safeJsonParse, safeSync, tapError } from "../utils";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
@@ -1642,7 +1639,7 @@ function estimateVideoCredits(
 
 export const recordGeneratedVideo$ = command(
   async (
-    { get, set },
+    { set },
     params: {
       readonly orgId: string;
       readonly userId: string;
@@ -1654,22 +1651,19 @@ export const recordGeneratedVideo$ = command(
     signal: AbortSignal,
   ): Promise<RecordedVideo> => {
     const writeDb = set(writeDb$);
-    const fileId = randomUUID();
-    const filename = `video-${fileId.slice(0, 8)}.${extensionForContentType(
-      params.generation.contentType,
-    )}`;
-    const s3Key = buildArtifactKey(params.userId, fileId, filename);
-    await get(
-      putS3Object(
-        env("R2_USER_ARTIFACTS_BUCKET_NAME"),
-        s3Key,
-        params.generation.videoBytes,
-        params.generation.contentType,
-      ),
+    const artifact = await set(
+      storeGeneratedArtifactObject$,
+      {
+        userId: params.userId,
+        orgId: params.orgId,
+        filenamePrefix: "video",
+        extension: extensionForContentType(params.generation.contentType),
+        body: params.generation.videoBytes,
+        contentType: params.generation.contentType,
+      },
+      signal,
     );
-    signal.throwIfAborted();
-
-    const url = buildFileUrl(params.userId, fileId, filename);
+    const { id: fileId, filename, key: s3Key, url } = artifact;
     await set(
       recordWebUploadedFile$,
       {

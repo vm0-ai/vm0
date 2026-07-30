@@ -115,23 +115,6 @@ describe("decodeZeroTokenPayload", () => {
     });
   });
 
-  it("should normalize legacy chat message capabilities", () => {
-    const token = buildZeroToken({
-      userId: "user-1",
-      runId: "run-1",
-      orgId: "org-1",
-      scope: "zero",
-      capabilities: ["chat-message:read", "chat-message:write"],
-      iat: 1000,
-      exp: 2000,
-    });
-
-    expect(decodeZeroTokenPayload(token)?.capabilities).toStrictEqual([
-      "chat-event:read",
-      "chat-event:write",
-    ]);
-  });
-
   it("should return undefined for token without vm0_sandbox_ prefix", () => {
     expect(decodeZeroTokenPayload("some-other-token")).toBeUndefined();
   });

@@ -70,6 +70,11 @@ export function getTriggerSourceLabel(
         return $.activity.sources.cli;
       });
     }
+    case "test": {
+      return i18n.t(($) => {
+        return $.activity.sources.test;
+      });
+    }
     case "agent": {
       return i18n.t(($) => {
         return $.activity.sources.agent;

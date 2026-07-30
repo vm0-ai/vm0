@@ -12,8 +12,9 @@ import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
 import {
-  findPendingChatInputQueueParamsByPromptFixture,
-  readChatInputQueueParamsFixture,
+  findPendingChatEventInputParamsByPromptFixture,
+  readChatEventContextFixture,
+  readChatEventInputParamsFixture,
 } from "../../../test-fixtures/chat-events";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -78,6 +79,53 @@ function requireCanonicalSlackInputAssetId(
     throw new Error("Expected a canonical Slack input asset");
   }
   return assetId;
+}
+
+async function expectClaimedSlackDisplayContext(
+  events: readonly ChatEventResponse[],
+  messagePermalink: string,
+): Promise<void> {
+  const claimedMessage = events.find((message) => {
+    return (
+      message.eventType === "input.prompt" &&
+      message.revokesEventId !== undefined &&
+      message.slackMessagePermalink === messagePermalink
+    );
+  });
+  if (!claimedMessage?.revokesEventId) {
+    throw new Error("Expected the claimed Slack message");
+  }
+  const claimedContext = await readChatEventContextFixture(claimedMessage.id);
+  const pendingContext = await readChatEventContextFixture(
+    claimedMessage.revokesEventId,
+  );
+  expect(claimedContext).toMatchObject({
+    contextType: "slack",
+    contextId: expect.any(String),
+    slackMessagePermalink: messagePermalink,
+  });
+  expect(pendingContext).toMatchObject({
+    contextType: "slack",
+    contextId: claimedContext?.contextId,
+    slackMessagePermalink: messagePermalink,
+  });
+}
+
+function slackInputMessageByText(
+  events: readonly ChatEventResponse[],
+  text: string,
+): ChatEventResponse | undefined {
+  return events.find((message) => {
+    if (
+      message.eventType !== "input.prompt" &&
+      message.eventType !== "input.rejected"
+    ) {
+      return false;
+    }
+    return message.userMessage.parts.some((part) => {
+      return part.type === "text" && part.text === text;
+    });
+  });
 }
 
 function sandboxOperationEventsForRun(
@@ -336,6 +384,22 @@ async function completeSlackTriggeredRun(args: {
           },
         ]
       : [];
+    chatCallbacks.mockChatOutputEvents([
+      ...assistantEvents.map((event) => {
+        return {
+          eventType: event.type,
+          sequenceNumber: event.sequenceNumber,
+          eventData: { message: event.message },
+        };
+      }),
+      ...resultEvents.map((event) => {
+        return {
+          eventType: event.type,
+          sequenceNumber: event.sequenceNumber,
+          eventData: { result: event.result },
+        };
+      }),
+    ]);
     await webhooks.requestAgentEvents(
       {
         runId: args.runId,
@@ -344,24 +408,6 @@ async function completeSlackTriggeredRun(args: {
       sandboxHeaders,
       [200],
     );
-    if (args.resultText) {
-      chatCallbacks.mockChatOutputEvents([
-        ...assistantEvents.map((event) => {
-          return {
-            eventType: event.type,
-            sequenceNumber: event.sequenceNumber,
-            eventData: { message: event.message },
-          };
-        }),
-        ...resultEvents.map((event) => {
-          return {
-            eventType: event.type,
-            sequenceNumber: event.sequenceNumber,
-            eventData: { result: event.result },
-          };
-        }),
-      ]);
-    }
   }
   const lastEventSequence =
     args.resultText !== undefined ? (args.assistantText ? 1 : 0) : 0;
@@ -1551,6 +1597,10 @@ describe("INT-01: Slack app deep webhook flows", () => {
           return message.content === null;
         }),
     ).toBeTruthy();
+    await expectClaimedSlackDisplayContext(
+      visibleMessages,
+      "https://vm0.slack.com/archives/C_BDD_CANONICAL_INGRESS/p2900000100",
+    );
     const canonicalInputRun = await runs.readRun(actor, run1Id);
     expect(canonicalInputRun.prompt).toContain(
       `[Web file] source-notes.txt (text/plain)`,
@@ -1583,6 +1633,10 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
 
     const stickyEventId = `EvBDD${randomUUID().replace(/-/g, "")}`;
+    context.mocks.slack.chat.getPermalink.mockResolvedValueOnce({
+      ok: false,
+      error: "permalink_unavailable",
+    });
     const stickyBody = JSON.stringify({
       type: "event_callback",
       team_id: teamId,
@@ -1636,7 +1690,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       ]),
     );
     const queuedSlackParams =
-      await findPendingChatInputQueueParamsByPromptFixture(
+      await findPendingChatEventInputParamsByPromptFixture(
         "stay canonical on the same route",
       );
     expect(queuedSlackParams).toMatchObject({
@@ -1646,6 +1700,19 @@ describe("INT-01: Slack app deep webhook flows", () => {
     if (!queuedSlackParams) {
       throw new Error("Expected queued canonical Slack transport params");
     }
+    await expect(
+      readChatEventContextFixture(queuedSlackParams.eventId),
+    ).resolves.toMatchObject({
+      contextType: null,
+      contextId: null,
+      slackMessagePermalink: null,
+      feishuChatOpenUrl: null,
+    });
+    const stickyVisibleMessage = slackInputMessageByText(
+      (await chat.listThreadEvents(actor, canonicalChatThreadId)).events,
+      "stay canonical on the same route",
+    );
+    expect(stickyVisibleMessage?.slackMessagePermalink).toBeUndefined();
     context.mocks.slack.chat.postMessage.mockClear();
     await completeSlackTriggeredRun({
       runId: run1Id,
@@ -1745,7 +1812,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       claim2,
     }));
     await expect(
-      readChatInputQueueParamsFixture(queuedSlackParams.eventId),
+      readChatEventInputParamsFixture(queuedSlackParams.eventId),
     ).resolves.toBeNull();
     expect(claim2.resumeSession?.sessionId).toBe(`bdd-slack-cli-${webRunId}`);
     state = await integrations.readSlackTestState(teamId);
@@ -1899,7 +1966,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
   it("forks Slack DM threads without replacing the main session", async () => {
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
-    await integrations.enableSlackDmSessionRoutingSwitch(actor);
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
     integrations.configureSlackAppMocks();

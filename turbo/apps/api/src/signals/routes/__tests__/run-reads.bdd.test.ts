@@ -35,11 +35,10 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
  * end in those reads (session continuation, memory root policies, volume
  * pinning, concurrency caps, and the production capture gate).
  *
- * All state is constructed through route boundaries: direct runs via compose
- * create plus the gated E2E test route, runner claims, and sandbox webhooks
- * (events/checkpoint/complete). Axiom reads are answered by an
- * APL-dispatching mock so the run-event visibility poll is never left
- * unanswered (an unanswered poll burns its 2s timeout per read).
+ * Direct runs are constructed through createAgentRun$; route boundaries cover
+ * runner claims and sandbox webhooks (events/checkpoint/complete). Axiom reads
+ * are answered by an APL-dispatching mock so the run-event visibility poll is
+ * never left unanswered (an unanswered poll burns its 2s timeout per read).
  */
 
 // The sanitizer accepts the literal IANA name; built by parts to satisfy
@@ -184,13 +183,11 @@ describe("RUN-03/RUN-04: run read surface auth matrix", () => {
     };
 
     const unauthenticated = [
-      (await reads.requestListAgentRuns(null, {}, [401])).body,
-      (await reads.requestReadAgentRun(null, missingId, [401])).body,
+      (await api.requestReadRun(null, missingId, [401])).body,
       (await api.requestReadRunQueue(null, [401])).body,
-      (await reads.requestCancelAgentRun(null, missingId, [401])).body,
+      (await api.requestCancelRun(null, missingId, [401])).body,
       (await reads.requestReadSession(null, missingId, [401])).body,
       (await reads.requestQueuePosition(null, missingId, [401])).body,
-      (await reads.requestRunEvents(null, missingId, {}, [401])).body,
       (await reads.requestRunSystemLog(null, missingId, {}, [401])).body,
       (await reads.requestRunMetrics(null, missingId, {}, [401])).body,
       (await reads.requestZeroRunAgentEvents(null, missingId, {}, [401])).body,
@@ -204,9 +201,8 @@ describe("RUN-03/RUN-04: run read surface auth matrix", () => {
 
     const orgless = bdd.user({ orgId: null });
     const orglessUnauthorized = [
-      (await reads.requestListAgentRuns(orgless, {}, [401])).body,
       (await api.requestReadRunQueue(orgless, [401])).body,
-      (await reads.requestCancelAgentRun(orgless, missingId, [401])).body,
+      (await api.requestCancelRun(orgless, missingId, [401])).body,
       (await reads.requestListLogs(orgless, {}, [401])).body,
       (await reads.requestZeroRunAgentEvents(orgless, missingId, {}, [401]))
         .body,
@@ -225,17 +221,6 @@ describe("RUN-03/RUN-04: run read surface auth matrix", () => {
     expect(orglessSession.body).toStrictEqual({
       error: { message: "Session not found", code: "NOT_FOUND" },
     });
-
-    // Telemetry routes require an organization without a custom missing-org
-    // status, so org-less sessions fail as 400s.
-    const orglessEvents = await reads.requestRunEvents(
-      orgless,
-      missingId,
-      {},
-      [400],
-    );
-    expectApiError(orglessEvents.body);
-    expect(orglessEvents.body.error.code).toBe("BAD_REQUEST");
   });
 });
 
@@ -267,11 +252,6 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
       modelProvider: "anthropic-api-key",
     });
     await api.requestCancelRun(actor, seedRun.runId, [200]);
-
-    const malformed = await reads.rawCreateDirectRun(actor, {
-      agentComposeId: target.composeId,
-    });
-    expect(malformed.status).toBe(400);
 
     const runA = await api.createDirectRun(actor, {
       agentComposeId: target.composeId,
@@ -325,7 +305,7 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
       "Invalid until timestamp format",
     );
 
-    const claimA = await api.claimRunnerJob(runA.runId);
+    await api.claimRunnerJob(runA.runId);
     const claimB = await api.claimRunnerJob(runB.runId);
     await completeRun(runB.runId, claimB.sandboxToken);
 
@@ -388,31 +368,21 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
       }),
     ).toContain(runB.runId);
 
-    const detail = await reads.requestReadAgentRun(actor, runB.runId, [200]);
+    const detail = await api.requestReadRun(actor, runB.runId, [200]);
     expect(detail.body).toMatchObject({
       runId: runB.runId,
       status: "completed",
       prompt: "other run b",
     });
+    mustOk(detail, "Zero run detail");
     expect(detail.body.startedAt).toBeDefined();
     expect(detail.body.completedAt).toBeDefined();
 
-    const sandboxDetail = await reads.requestReadAgentRunAs(
-      `Bearer ${claimA.sandboxToken}`,
-      runB.runId,
-      [200],
-    );
-    expect(sandboxDetail.body).toMatchObject({ runId: runB.runId });
-
-    const invalidId = await reads.requestReadAgentRun(
-      actor,
-      "not-a-run-id",
-      [400],
-    );
+    const invalidId = await api.requestReadRun(actor, "not-a-run-id", [400]);
     expectApiError(invalidId.body);
     expect(invalidId.body.error.code).toBe("BAD_REQUEST");
 
-    const missing = await reads.requestReadAgentRun(actor, randomUUID(), [404]);
+    const missing = await api.requestReadRun(actor, randomUUID(), [404]);
     expectApiError(missing.body);
     expect(missing.body.error.message).toBe("Agent run not found");
 
@@ -420,18 +390,10 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
       agentComposeId: memberCompose.composeId,
       prompt: "member run m",
     });
-    const hiddenFromActor = await reads.requestReadAgentRun(
-      actor,
-      runM.runId,
-      [404],
-    );
+    const hiddenFromActor = await api.requestReadRun(actor, runM.runId, [404]);
     expectApiError(hiddenFromActor.body);
     expect(hiddenFromActor.body.error.message).toBe("Agent run not found");
-    const memberDetail = await reads.requestReadAgentRun(
-      member,
-      runM.runId,
-      [200],
-    );
+    const memberDetail = await api.requestReadRun(member, runM.runId, [200]);
     expect(memberDetail.body).toMatchObject({ runId: runM.runId });
     await api.claimRunnerJob(runM.runId);
 
@@ -515,8 +477,8 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
   });
 });
 
-describe("RUN-03: cancel through the agent route", () => {
-  it("cancels runs through the agent cancel route across states and tokens", async () => {
+describe("RUN-03: cancel through the Zero route", () => {
+  it("cancels runs through the Zero cancel route across states", async () => {
     const actor = await entitledActor();
     const compose = await createClaudeCompose(actor, "bdd-cancel");
 
@@ -525,7 +487,7 @@ describe("RUN-03: cancel through the agent route", () => {
       prompt: "cancel a running run",
     });
     await api.claimRunnerJob(c1.runId);
-    const cancelled = await reads.requestCancelAgentRun(actor, c1.runId, [200]);
+    const cancelled = await api.requestCancelRun(actor, c1.runId, [200]);
     expect(cancelled.body).toStrictEqual({
       id: c1.runId,
       status: "cancelled",
@@ -534,7 +496,7 @@ describe("RUN-03: cancel through the agent route", () => {
     const c1Detail = await api.readRun(actor, c1.runId);
     expect(c1Detail.status).toBe("cancelled");
 
-    const repeated = await reads.requestCancelAgentRun(actor, c1.runId, [200]);
+    const repeated = await api.requestCancelRun(actor, c1.runId, [200]);
     expect(repeated.body).toMatchObject({ status: "cancelled" });
 
     const c2 = await api.createDirectRun(actor, {
@@ -543,53 +505,20 @@ describe("RUN-03: cancel through the agent route", () => {
     });
     const claim2 = await api.claimRunnerJob(c2.runId);
     await completeRun(c2.runId, claim2.sandboxToken);
-    const notCancellable = await reads.requestCancelAgentRun(
-      actor,
-      c2.runId,
-      [400],
-    );
+    const notCancellable = await api.requestCancelRun(actor, c2.runId, [400]);
     expectApiError(notCancellable.body);
     expect(notCancellable.body.error.code).toBe("RUN_NOT_CANCELLABLE");
 
-    const unknown = await reads.requestCancelAgentRun(
-      actor,
-      randomUUID(),
-      [404],
-    );
+    const unknown = await api.requestCancelRun(actor, randomUUID(), [404]);
     expectApiError(unknown.body);
     expect(unknown.body.error.code).toBe("NOT_FOUND");
 
     const outsider = bdd.user();
-    const crossOrg = await reads.requestCancelAgentRun(
-      outsider,
-      c2.runId,
-      [404],
-    );
+    const crossOrg = await api.requestCancelRun(outsider, c2.runId, [404]);
     expectApiError(crossOrg.body);
     expect(crossOrg.body.error.code).toBe("NOT_FOUND");
 
-    const c3 = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
-      prompt: "cancel via the sandbox token",
-    });
-    const claim3 = await api.claimRunnerJob(c3.runId);
-    const sandboxCancelled = await reads.requestCancelAgentRunAs(
-      `Bearer ${claim3.sandboxToken}`,
-      c3.runId,
-      [200],
-    );
-    expect(sandboxCancelled.body).toMatchObject({ status: "cancelled" });
-
-    const orphanToken = api.sandboxTokenForRun(actor, randomUUID());
-    const orphanCancel = await reads.requestCancelAgentRunAs(
-      `Bearer ${orphanToken}`,
-      c2.runId,
-      [404],
-    );
-    expectApiError(orphanCancel.body);
-    expect(orphanCancel.body.error.message).toBe("Agent run not found");
-
-    // A queued zero run cancelled through the agent route disappears from
+    // A queued Zero run cancelled through the Zero route disappears from
     // the visible queue.
     await api.ensureOrgModelProvider(actor);
     const agent = await bdd.createAgent(actor, {
@@ -611,11 +540,7 @@ describe("RUN-03: cancel through the agent route", () => {
       modelProvider: "anthropic-api-key",
     });
     expect(c4.status).toBe("queued");
-    const queuedCancelled = await reads.requestCancelAgentRun(
-      actor,
-      c4.runId,
-      [200],
-    );
+    const queuedCancelled = await api.requestCancelRun(actor, c4.runId, [200]);
     expect(queuedCancelled.body).toMatchObject({ status: "cancelled" });
     const queueAfter = await api.readRunQueue(actor);
     expect(queueAfter.body.queue).toStrictEqual([]);
@@ -2031,110 +1956,6 @@ describe("RUN-04: agent run telemetry families", () => {
       },
     });
 
-    // Watermark wait: gap-filtered consecutive events with noCache reads.
-    const eventsStart = axiomCallCount();
-    const events = await reads.requestRunEvents(
-      actor,
-      runId,
-      { since: -1, limit: 10 },
-      [200],
-    );
-    if (events.status !== 200) {
-      throw new Error("Expected the run events read to succeed");
-    }
-    expect(events.body.events).toStrictEqual([
-      {
-        sequenceNumber: 0,
-        eventType: "assistant",
-        eventData: { type: "assistant", text: "first" },
-        createdAt: "2026-06-10T10:30:00Z",
-      },
-      {
-        sequenceNumber: 1,
-        eventType: "assistant",
-        eventData: { type: "assistant", text: "second" },
-        createdAt: "2026-06-10T10:30:00Z",
-      },
-    ]);
-    expect(events.body.hasMore).toBeTruthy();
-    expect(events.body.nextSequence).toBe(1);
-    expect(events.body.framework).toBe("claude-code");
-    expect(events.body.run).toMatchObject({
-      status: "completed",
-      lastEventSequence: 2,
-    });
-    expect(axiomCallCount()).toBe(eventsStart + 3);
-    const visibilityCall = axiomCallSince(
-      eventsStart,
-      "| project sequenceNumber",
-    );
-    expect(visibilityCall[0]).toContain("| project sequenceNumber");
-    expect(visibilityCall[1]).toStrictEqual({ noCache: true });
-    const eventsCall = axiomCallSince(
-      eventsStart,
-      "| where sequenceNumber > -1",
-    );
-    expect(eventsCall[0]).toContain(`runId == "${runId}"`);
-    expect(eventsCall[1]).toStrictEqual({ noCache: true });
-    expectRunContextFrameworkQuery(eventsStart, runId);
-
-    // A cursor at or past the watermark skips the visibility wait.
-    const pastWatermarkStart = axiomCallCount();
-    const pastWatermark = await reads.requestRunEvents(
-      actor,
-      runId,
-      { since: 2, limit: 10 },
-      [200],
-    );
-    if (pastWatermark.status !== 200) {
-      throw new Error("Expected the past-watermark events read to succeed");
-    }
-    expect(
-      pastWatermark.body.events.map((event) => {
-        return event.sequenceNumber;
-      }),
-    ).toStrictEqual([3]);
-    expect(axiomCallCount()).toBe(pastWatermarkStart + 2);
-    expect(
-      axiomCallSince(pastWatermarkStart, "| where sequenceNumber > 2")[1],
-    ).toBeUndefined();
-    expectRunContextFrameworkQuery(pastWatermarkStart, runId);
-
-    // The page limit caps the watermark target below lastEventSequence.
-    const cappedStart = axiomCallCount();
-    await reads.requestRunEvents(actor, runId, { since: -1, limit: 2 }, [200]);
-    expect(axiomCallCount()).toBe(cappedStart + 3);
-    expectRunContextFrameworkQuery(cappedStart, runId);
-
-    // Pending runs without a watermark never poll visibility.
-    const pendingStart = axiomCallCount();
-    const pendingEvents = await reads.requestRunEvents(
-      actor,
-      pendingRun.runId,
-      {},
-      [200],
-    );
-    if (pendingEvents.status !== 200) {
-      throw new Error("Expected the pending run events read to succeed");
-    }
-    expect(pendingEvents.body.events).toStrictEqual([]);
-    expect(pendingEvents.body.nextSequence).toBe(-1);
-    expect(pendingEvents.body.run.status).toBe("pending");
-    expect(axiomCallCount()).toBe(pendingStart + 2);
-    expect(
-      axiomCallSince(pendingStart, "['agent-run-events']")[1],
-    ).toBeUndefined();
-    expectRunContextFrameworkQuery(pendingStart, pendingRun.runId);
-
-    // Sandbox tokens read the telemetry families without a Zero capability.
-    const sandboxEvents = await reads.requestRunEventsAs(
-      `Bearer ${claim.sandboxToken}`,
-      runId,
-      { since: -1, limit: 10 },
-      [200],
-    );
-    expect(sandboxEvents.body).toMatchObject({ hasMore: true });
-
     // System log pages.
     const sinceMs = Date.parse("2026-06-10T10:29:00Z");
     const systemAsc = await reads.requestRunSystemLog(
@@ -2202,7 +2023,7 @@ describe("RUN-04: agent run telemetry families", () => {
 
     const emptySystemSinceTime = await reads.rawApiRequest(
       actor,
-      `/api/agent/runs/${runId}/telemetry/system-log?sinceTime=`,
+      `/api/zero/runs/${runId}/telemetry/system-log?sinceTime=`,
     );
     expect(emptySystemSinceTime.status).toBe(400);
     expectApiError(emptySystemSinceTime.body);
@@ -2237,7 +2058,7 @@ describe("RUN-04: agent run telemetry families", () => {
 
     const invalidSystemQuery = await reads.rawApiRequest(
       actor,
-      `/api/agent/runs/${runId}/telemetry/system-log?limit=101`,
+      `/api/zero/runs/${runId}/telemetry/system-log?limit=101`,
     );
     expect(invalidSystemQuery.status).toBe(400);
 
@@ -2267,9 +2088,6 @@ describe("RUN-04: agent run telemetry families", () => {
     expect(metricsApl).toContain("| order by _time desc");
 
     // Telemetry families hide other users' runs without leaking existence.
-    const memberEvents = await reads.requestRunEvents(member, runId, {}, [404]);
-    expectApiError(memberEvents.body);
-    expect(memberEvents.body.error.message).toBe("Agent run not found");
     const memberSystem = await reads.requestRunSystemLog(
       member,
       runId,
@@ -2835,7 +2653,7 @@ describe("RUN-04: agent run telemetry families", () => {
     const telemetryCursor = timeLogCursor("asc", boundaryTime, "cursor-0000");
     const systemLog = await reads.rawApiRequest(
       actor,
-      timeLogQueryPath(`/api/agent/runs/${runId}/telemetry/system-log`, {
+      timeLogQueryPath(`/api/zero/runs/${runId}/telemetry/system-log`, {
         cursor: telemetryCursor,
         limit: 1,
         order: "asc",
@@ -2848,7 +2666,7 @@ describe("RUN-04: agent run telemetry families", () => {
 
     const metrics = await reads.rawApiRequest(
       actor,
-      timeLogQueryPath(`/api/agent/runs/${runId}/telemetry/metrics`, {
+      timeLogQueryPath(`/api/zero/runs/${runId}/telemetry/metrics`, {
         cursor: telemetryCursor,
         limit: 1,
         order: "asc",

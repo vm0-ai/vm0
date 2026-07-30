@@ -30,6 +30,18 @@ const localeCases = [
     attach: "Anexar",
     send: "Enviar",
   },
+  {
+    locale: "ko-KR",
+    placeholder: "워크플로 자동화, 작업 관리 등을 요청하세요...",
+    attach: "첨부",
+    send: "전송",
+  },
+  {
+    locale: "id-ID",
+    placeholder: "Minta saya mengotomatiskan alur kerja, mengelola tugas...",
+    attach: "Lampirkan",
+    send: "Kirim",
+  },
 ] as const;
 
 beforeEach(() => {
@@ -112,21 +124,21 @@ describe("chat localization", () => {
     const pathBeforeSwitch = pathname();
 
     await act(async () => {
-      await context.store.set(setLocale$, "pt-BR", context.signal);
+      await context.store.set(setLocale$, "id-ID", context.signal);
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Anexar")).toBeInTheDocument();
-      expect(screen.getByLabelText("Enviar")).toBeEnabled();
+      expect(screen.getByLabelText("Lampirkan")).toBeInTheDocument();
+      expect(screen.getByLabelText("Kirim")).toBeEnabled();
     });
     await expect(findComposerEditor()).resolves.toBe(editor);
-    expect(editor).toHaveAccessibleName("Mensagem");
+    expect(editor).toHaveAccessibleName("Pesan");
     expect(editor).toHaveTextContent(authoredDraft);
     expect(screen.getByTestId("chat-thread-header-title")).toHaveTextContent(
       "My thread",
     );
     expect(pathname()).toBe(pathBeforeSwitch);
-    expect(document.documentElement.lang).toBe("pt-BR");
+    expect(document.documentElement.lang).toBe("id-ID");
   });
 
   it("keeps cancellation state semantic while its presentation follows the locale", async () => {

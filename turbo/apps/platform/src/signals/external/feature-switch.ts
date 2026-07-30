@@ -72,6 +72,10 @@ export const composerUploadPopoverEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ComposerUploadPopover] ?? false;
 });
 
+export const pwaChatKeyboardGesturesEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.PwaChatKeyboardGestures] ?? false;
+});
+
 export const zeroBrowserEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ZeroBrowser] ?? false;
 });
@@ -112,6 +116,9 @@ export const reloadFeatureSwitch$ = command(
     }
     if (result.body.supportsCustomConnectorOAuth2 !== true) {
       combined[FeatureSwitchKey.CustomConnectorOAuth2] = false;
+    }
+    if (result.body.supportsCustomModelGateways !== true) {
+      combined[FeatureSwitchKey.CustomModelGateways] = false;
     }
 
     set(setFeatureSwitchLocalStorage$, JSON.stringify(combined));

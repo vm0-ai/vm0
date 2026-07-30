@@ -24,6 +24,7 @@ import type { AgentReferenceSignals } from "./agent-reference-signals.ts";
 import type { ArtifactSignals } from "./artifact-card-signals.ts";
 import type { ThreadSidebarAutoOpenCandidate } from "./thread-sidebar-auto-open.ts";
 import type { ThreadScrollPosition } from "./chat-thread-scroll.ts";
+import type { AssistantErrorRecovery } from "./assistant-error-recovery.ts";
 
 type RecommendedFollowup = NonNullable<
   ChatFollowupsEvent["recommendedFollowups"]
@@ -58,6 +59,7 @@ export type ThinkingIndicatorMode =
 export type ComposerSendButtonStatus = "idle" | "sending";
 
 export interface EventImageGroupProjection {
+  readonly role: ChatEventGroup["role"];
   readonly events: readonly {
     readonly attachFiles?: ChatPromptEvent["attachFiles"];
     readonly blocks: readonly BodyRenderBlock[];
@@ -110,6 +112,9 @@ export interface ChatThreadSignals {
     Promise<boolean>,
     [string, SendMessageOptions | undefined, AbortSignal]
   >;
+  assistantErrorRecovery$: Computed<Promise<AssistantErrorRecovery | null>>;
+  retryAssistantError$: Command<Promise<boolean>, [AbortSignal]>;
+  resetCodexSubscriptionAndRetry$: Command<Promise<boolean>, [AbortSignal]>;
   composerSendButtonStatus$: Computed<Promise<ComposerSendButtonStatus>>;
   queueMessage$: Command<
     Promise<boolean>,

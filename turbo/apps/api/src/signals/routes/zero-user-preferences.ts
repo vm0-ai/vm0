@@ -2,6 +2,8 @@ import { command, computed } from "ccstate";
 import {
   clientVersionSupportsCapability,
   CLIENT_CAPABILITY_JA_JP_LOCALE,
+  CLIENT_CAPABILITY_KO_KR_LOCALE,
+  CLIENT_CAPABILITY_ID_ID_LOCALE,
   CLIENT_CAPABILITY_PT_BR_LOCALE,
   CLIENT_VERSION_HEADER,
 } from "@vm0/api-contracts/contracts/client-headers";
@@ -12,8 +14,10 @@ import {
 } from "@vm0/api-contracts/contracts/zero-user-preferences";
 
 import { isBrazilianPortugueseLocaleRolloutEnabled } from "../../lib/brazilian-portuguese-locale-rollout";
+import { isIndonesianLocaleRolloutEnabled } from "../../lib/indonesian-locale-rollout";
 import { badRequestMessage } from "../../lib/error";
 import { isJapaneseLocaleRolloutEnabled } from "../../lib/japanese-locale-rollout";
+import { isKoreanLocaleRolloutEnabled } from "../../lib/korean-locale-rollout";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { request$ } from "../context/hono";
@@ -31,8 +35,12 @@ const updateUserPreferencesBody$ = bodyResultOf(
 interface LocaleRollout {
   readonly clientSupportsBrazilianPortuguese: boolean;
   readonly clientSupportsJapanese: boolean;
+  readonly clientSupportsKorean: boolean;
+  readonly clientSupportsIndonesian: boolean;
   readonly brazilianPortugueseEnabled: boolean;
   readonly japaneseEnabled: boolean;
+  readonly koreanEnabled: boolean;
+  readonly indonesianEnabled: boolean;
 }
 
 const localeRollout$ = computed((get): LocaleRollout => {
@@ -45,14 +53,27 @@ const localeRollout$ = computed((get): LocaleRollout => {
     clientVersion,
     CLIENT_CAPABILITY_JA_JP_LOCALE,
   );
+  const clientSupportsKorean = clientVersionSupportsCapability(
+    clientVersion,
+    CLIENT_CAPABILITY_KO_KR_LOCALE,
+  );
+  const clientSupportsIndonesian = clientVersionSupportsCapability(
+    clientVersion,
+    CLIENT_CAPABILITY_ID_ID_LOCALE,
+  );
 
   return {
     clientSupportsBrazilianPortuguese,
     clientSupportsJapanese,
+    clientSupportsKorean,
+    clientSupportsIndonesian,
     brazilianPortugueseEnabled:
       clientSupportsBrazilianPortuguese &&
       isBrazilianPortugueseLocaleRolloutEnabled(),
     japaneseEnabled: clientSupportsJapanese && isJapaneseLocaleRolloutEnabled(),
+    koreanEnabled: clientSupportsKorean && isKoreanLocaleRolloutEnabled(),
+    indonesianEnabled:
+      clientSupportsIndonesian && isIndonesianLocaleRolloutEnabled(),
   };
 });
 
@@ -63,6 +84,12 @@ function supportedLocalesForRollout(rollout: LocaleRollout): UserLocale[] {
   }
   if (rollout.japaneseEnabled) {
     supportedLocales.push("ja-JP");
+  }
+  if (rollout.koreanEnabled) {
+    supportedLocales.push("ko-KR");
+  }
+  if (rollout.indonesianEnabled) {
+    supportedLocales.push("id-ID");
   }
   return supportedLocales;
 }
@@ -84,7 +111,9 @@ function projectUserPreferences(
     ...preferences,
     locale,
     ...((rollout.clientSupportsBrazilianPortuguese ||
-      rollout.clientSupportsJapanese) && {
+      rollout.clientSupportsJapanese ||
+      rollout.clientSupportsKorean ||
+      rollout.clientSupportsIndonesian) && {
       supportedLocales,
     }),
   };
@@ -121,6 +150,8 @@ const updateUserPreferencesInner$ = command(
         preferences: body.data,
         allowBrazilianPortuguese: rollout.brazilianPortugueseEnabled,
         allowJapanese: rollout.japaneseEnabled,
+        allowKorean: rollout.koreanEnabled,
+        allowIndonesian: rollout.indonesianEnabled,
       },
       signal,
     );

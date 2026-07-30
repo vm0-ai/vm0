@@ -67,11 +67,6 @@ export const zeroAgentInstructionsRequestSchema = z.object({
 
 export const zeroAgentDraftResponseSchema = z
   .object({
-    /**
-     * Response-only compatibility projection for previously loaded App
-     * bundles. Current clients restore the draft body from draftUserMessage.
-     */
-    draftContent: z.string().nullable(),
     draftUserMessage: userMessageDocumentSchema.nullable(),
     draftAttachments: z.array(persistedAttachmentSchema).nullable(),
   })

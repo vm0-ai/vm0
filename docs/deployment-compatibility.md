@@ -37,12 +37,12 @@ active, or introduce a versioned/new endpoint and migrate the frontend first.
 ### Backend
 
 The backend is the compatibility boundary for both frontend and runner traffic.
-In the production release workflow, app promotion starts after any required
-production migration and does not wait for API promotion. A new frontend can
-therefore talk to the old backend during a normal production rollout or remain
-paired with it if API promotion fails. Runner promotion still waits for API
-promotion when the same release also changes the API. Old browser pages can
-also call the new backend, old runners keep draining against the new backend,
+In the production release workflow, app promotion starts after the API
+production lifecycle completes, including any required migration and API
+traffic promotion. Newly loaded frontend code therefore follows API promotion,
+while already-open browser pages can keep running the previous frontend against
+the new backend. Runner promotion still waits for API promotion when the same
+release also changes the API. Old runners keep draining against the new backend,
 and traffic promotion is not an atomic process visible to every client at the
 same instant.
 
@@ -56,9 +56,9 @@ This is a traffic-promotion guarantee, not a guarantee that no deployment
 preparation has happened yet. Staged Vercel builds, runner rootfs/snapshot
 builds, host provisioning, and other non-serving preparation jobs may complete
 before migrations run. API traffic promotion must wait until the required
-migrations have completed. App promotion waits for required migrations but is
-independent of API promotion. Runner promotion waits for API promotion when the
-same release changes the API.
+migrations have completed. App promotion waits for the API production lifecycle,
+including its migration and traffic promotion. Runner promotion waits for API
+promotion when the same release changes the API.
 
 Backend changes must be safe with:
 
@@ -147,6 +147,29 @@ recovery must restore compatibility first or roll forward.
 Compatibility code should be temporary and explicit. Include a short comment
 with the rollout reason and the condition for deletion, or track the cleanup in
 a follow-up issue when the deletion cannot happen in the same PR.
+
+### Korean locale rollout
+
+The `ko-KR` locale uses a receiver-first rollout because Platform and API
+promotion are independent and locale preferences are shared persisted state:
+
+1. Deploy the API and Platform receivers with
+   `KOREAN_LOCALE_ROLLOUT_ENABLED=false`. The API accepts stored `ko-KR`
+   preferences but projects them to `en-US` when the deploy gate or client
+   capability is absent. Locale-capable clients receive a `supportedLocales`
+   handshake, and `ko-KR` appears only for clients carrying the
+   `ko-kr-locale-v1` capability.
+2. Confirm that API readers and rollback candidates which cannot safely parse a
+   stored `ko-KR` preference have drained.
+3. Enable `KOREAN_LOCALE_ROLLOUT_ENABLED`. The corresponding `KoreanLocale`
+   switch is API-controlled and cannot be enabled through user feature-switch
+   overrides. Capable clients can then see `ko-KR` in `supportedLocales` and
+   persist it.
+4. To roll back, disable `KOREAN_LOCALE_ROLLOUT_ENABLED` before promoting an
+   older API. This stops new `ko-KR` writes and projects existing preferences
+   to English while rollback completes.
+5. Remove the projection, capability handshake, and deploy gate only after
+   stale browser clients and rollback windows have closed.
 
 ### Treat Deploy-before-migrate Windows as a First-class Risk
 

@@ -10,8 +10,9 @@ import {
   SelectValue,
 } from "@vm0/ui/components/ui/select";
 
-import { pageSignal$ } from "../../../../signals/page-signal.ts";
+import { isSupportedLocale } from "../../../../i18n/resources.ts";
 import { brandName$ } from "../../../../signals/branding.ts";
+import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   availableLocalePreferences$,
   locale$,
@@ -31,8 +32,7 @@ export function LanguageSettings() {
 
   if (
     availableLocalesLoadable.state !== "hasData" ||
-    (!availableLocalesLoadable.data.includes("pt-BR") &&
-      !availableLocalesLoadable.data.includes("ja-JP"))
+    availableLocalesLoadable.data.length <= 1
   ) {
     return null;
   }
@@ -41,7 +41,7 @@ export function LanguageSettings() {
   const saving = updateLoadable.state === "loading";
 
   const handleChange = (value: string) => {
-    if (value !== "en-US" && value !== "pt-BR" && value !== "ja-JP") {
+    if (!isSupportedLocale(value) || !availableLocales.includes(value)) {
       throw new Error(`Unsupported locale: ${value}`);
     }
     detach(updateLocale(value, pageSignal), Reason.DomCallback);
@@ -85,11 +85,13 @@ export function LanguageSettings() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="en-US">
-                {t(($) => {
-                  return $.settings.preferences.language.options.english;
-                })}
-              </SelectItem>
+              {availableLocales.includes("en-US") && (
+                <SelectItem value="en-US">
+                  {t(($) => {
+                    return $.settings.preferences.language.options.english;
+                  })}
+                </SelectItem>
+              )}
               {availableLocales.includes("pt-BR") && (
                 <SelectItem value="pt-BR">
                   {t(($) => {
@@ -102,6 +104,20 @@ export function LanguageSettings() {
                 <SelectItem value="ja-JP">
                   {t(($) => {
                     return $.settings.preferences.language.options.japanese;
+                  })}
+                </SelectItem>
+              )}
+              {availableLocales.includes("ko-KR") && (
+                <SelectItem value="ko-KR">
+                  {t(($) => {
+                    return $.settings.preferences.language.options.korean;
+                  })}
+                </SelectItem>
+              )}
+              {availableLocales.includes("id-ID") && (
+                <SelectItem value="id-ID">
+                  {t(($) => {
+                    return $.settings.preferences.language.options.indonesian;
                   })}
                 </SelectItem>
               )}

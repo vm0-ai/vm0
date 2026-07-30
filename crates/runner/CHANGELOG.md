@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.150.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.149.4...runner-rs-v0.150.0) (2026-07-30)
+
+
+### Features
+
+* add admin-defined model gateway connections ([#23807](https://github.com/vm0-ai/vm0/issues/23807)) ([0632cb4](https://github.com/vm0-ai/vm0/commit/0632cb4e4dfda2c844a2531d6c13a3dd74b86e29))
+
+## [0.149.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.149.3...runner-rs-v0.149.4) (2026-07-30)
+
+
+### Documentation
+
+* **mitm-addon:** document anthropic sse callbacks ([#24051](https://github.com/vm0-ai/vm0/issues/24051)) ([a32f31e](https://github.com/vm0-ai/vm0/commit/a32f31edf47e762dbb817c9e6a85ebdf74d12f04))
+* **python:** update auth.base fake socket contract ([#24069](https://github.com/vm0-ai/vm0/issues/24069)) ([2b44e44](https://github.com/vm0-ai/vm0/commit/2b44e44ebd66b83d6483a0b374f472a3b776710c))
+
+
+### Refactoring
+
+* **runner:** isolate terminal job logging ([#24055](https://github.com/vm0-ai/vm0/issues/24055)) ([ccf7fe2](https://github.com/vm0-ai/vm0/commit/ccf7fe23189feba1eb1d1f0a7ee9ebbb99d975d9))
+
 ## [0.149.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.149.2...runner-rs-v0.149.3) (2026-07-30)
 
 
