@@ -540,21 +540,6 @@ async function checkpointChatRun(
   runId: string,
   sandboxHeaders: { readonly authorization: string },
 ): Promise<void> {
-  const stagedOutputEvents = chatCallbacks.consumeMockChatOutputEvents();
-  const { lastEventSequence } = options;
-  const acknowledgedOutputEvents =
-    lastEventSequence === undefined
-      ? stagedOutputEvents
-      : stagedOutputEvents.filter((event) => {
-          return event.sequenceNumber <= lastEventSequence;
-        });
-  if (acknowledgedOutputEvents.length > 0) {
-    await webhooks.requestAgentEvents(
-      { runId, events: acknowledgedOutputEvents },
-      sandboxHeaders,
-      [200],
-    );
-  }
   const historyHash = createHash("sha256")
     .update(`bdd chat session history ${runId}`)
     .digest("hex");
@@ -580,6 +565,21 @@ async function completeChatRunOk(
   sandboxHeaders: { readonly authorization: string },
   options: { readonly lastEventSequence?: number } = {},
 ): Promise<void> {
+  const stagedOutputEvents = chatCallbacks.consumeMockChatOutputEvents();
+  const { lastEventSequence } = options;
+  const acknowledgedOutputEvents =
+    lastEventSequence === undefined
+      ? stagedOutputEvents
+      : stagedOutputEvents.filter((event) => {
+          return event.sequenceNumber <= lastEventSequence;
+        });
+  if (acknowledgedOutputEvents.length > 0) {
+    await webhooks.requestAgentEvents(
+      { runId, events: acknowledgedOutputEvents },
+      sandboxHeaders,
+      [200],
+    );
+  }
   await checkpointChatRun(runId, sandboxHeaders);
   await webhooks.requestAgentComplete(
     {
