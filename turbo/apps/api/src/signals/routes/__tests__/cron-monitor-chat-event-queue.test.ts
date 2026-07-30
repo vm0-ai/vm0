@@ -105,6 +105,7 @@ describe("cron monitor chat event queue", () => {
     await Promise.all([
       trackFixture(seedFixture("active-run")),
       trackFixture(seedFixture("failed-message")),
+      trackFixture(seedFixture("legacy-automation")),
       trackFixture(seedFixture("queued-integration")),
       trackFixture(seedFixture("queued-message")),
       trackFixture(seedFixture("revoked-message")),
@@ -149,6 +150,20 @@ describe("cron monitor chat event queue", () => {
         code: "ORPHANED_QUEUED_CHAT_MESSAGES",
         orphanedMessages: 1,
       },
+    });
+  });
+
+  it("detects an automation event missing its typed context", async () => {
+    await trackFixture(seedFixture("orphaned-automation"));
+
+    const response = await rawCronRequest(cronHeaders());
+
+    expect(response.status).toBe(500);
+    expect(
+      context.mocks.sentry.captureException.mock.calls.at(-1)?.[0],
+    ).toMatchObject({
+      code: "ORPHANED_QUEUED_CHAT_MESSAGES",
+      orphanedMessages: 1,
     });
   });
 });
