@@ -29,8 +29,9 @@ const FEISHU_SETUP_STEP_ORDER = [
   "create",
   "credentials",
   "tokens",
-  "events",
   "redirect",
+  "permissions",
+  "events",
   "publish",
 ] as const satisfies readonly FeishuSetupStep[];
 
@@ -137,6 +138,7 @@ export type FeishuSetupStep =
   | "credentials"
   | "tokens"
   | "redirect"
+  | "permissions"
   | "events"
   | "publish";
 

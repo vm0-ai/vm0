@@ -31,6 +31,7 @@ import type { Db } from "../external/db";
 import { nowDate } from "../external/time";
 import { safeJsonParse, tapError } from "../utils";
 import { buildFeishuConnectUrl } from "./feishu-connect-token";
+import { disconnectFeishuCustomConnectorOAuthConnection } from "./feishu-custom-connector.service";
 import { publishFeishuOrgChanged } from "./zero-feishu-realtime.service";
 import { listOrgModelPolicies$ } from "./zero-model-policy.service";
 import {
@@ -750,9 +751,16 @@ async function handleDisconnectCommand(
   args: ConnectedCommandArgs,
   signal: AbortSignal,
 ): Promise<void> {
-  await args.db
-    .delete(feishuOrgConnections)
-    .where(eq(feishuOrgConnections.id, args.connection.id));
+  await args.db.transaction(async (tx) => {
+    await tx
+      .delete(feishuOrgConnections)
+      .where(eq(feishuOrgConnections.id, args.connection.id));
+    await disconnectFeishuCustomConnectorOAuthConnection(tx, {
+      orgId: args.installation.orgId,
+      userId: args.connection.vm0UserId,
+      installationId: args.message.installationId,
+    });
+  });
   signal.throwIfAborted();
   await publishFeishuOrgChanged(
     args.db,

@@ -1,8 +1,9 @@
 import { command, computed } from "ccstate";
 import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
-import type {
-  FeishuConnectStatus,
-  FeishuInstallationStatus,
+import {
+  FEISHU_OAUTH_SCOPES,
+  type FeishuConnectStatus,
+  type FeishuInstallationStatus,
 } from "@vm0/api-contracts/contracts/zero-feishu-connect";
 import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
@@ -18,6 +19,12 @@ import {
 } from "../external/feishu-client";
 import { tapError } from "../utils";
 import { encryptPersistentSecretValue } from "./crypto.utils";
+import {
+  deleteFeishuCustomConnector$,
+  disconnectFeishuCustomConnectorOAuthConnection,
+  ensureFeishuCustomConnector$,
+  hasFeishuCustomConnectorOAuthConnection,
+} from "./feishu-custom-connector.service";
 import { feishuCallbackUrl, feishuOAuthAppCallbackUrl } from "./feishu-config";
 import { buildFeishuOAuthConnectUrl } from "./feishu-oauth-state";
 
@@ -55,6 +62,7 @@ type FeishuInstallationRow = Awaited<
 async function loadConnectedFeishuUsers(
   db: ReadonlyDb,
   installations: readonly FeishuInstallationRow[],
+  orgId: string,
   userId: string,
 ): Promise<Map<string, string | null>> {
   if (installations.length === 0) {
@@ -77,9 +85,21 @@ async function loadConnectedFeishuUsers(
         eq(feishuOrgConnections.vm0UserId, userId),
       ),
     );
+  const connectedRows = await Promise.all(
+    rows.map(async (connection) => {
+      const connected = await hasFeishuCustomConnectorOAuthConnection(db, {
+        orgId,
+        userId,
+        installationId: connection.installationId,
+      });
+      return connected ? connection : null;
+    }),
+  );
   return new Map(
-    rows.map((connection) => {
-      return [connection.installationId, connection.userName] as const;
+    connectedRows.flatMap((connection) => {
+      return connection
+        ? [[connection.installationId, connection.userName] as const]
+        : [];
     }),
   );
 }
@@ -102,6 +122,7 @@ function toFeishuInstallationStatus(
     botAvatarUrl: installation.botAvatarUrl,
     callbackUrl: feishuCallbackUrl(installation.id),
     oauthRedirectUrl: feishuOAuthAppCallbackUrl(),
+    oauthScopes: [...FEISHU_OAUTH_SCOPES],
     connectUrl: installation.setupCompletedAt
       ? buildFeishuOAuthConnectUrl({
           installationId: installation.id,
@@ -144,6 +165,7 @@ function feishuStatusResponse(
       botAvatarUrl: null,
       callbackUrl: null,
       oauthRedirectUrl: null,
+      oauthScopes: [...FEISHU_OAUTH_SCOPES],
       connectUrl: null,
       callbackVerified: false,
       messageReceived: false,
@@ -165,6 +187,7 @@ function feishuStatusResponse(
     botAvatarUrl: installation.botAvatarUrl,
     callbackUrl: installation.callbackUrl,
     oauthRedirectUrl: installation.oauthRedirectUrl ?? null,
+    oauthScopes: [...FEISHU_OAUTH_SCOPES],
     connectUrl: installation.connectUrl ?? null,
     callbackVerified: installation.callbackVerified,
     messageReceived: installation.messageReceived,
@@ -189,6 +212,7 @@ export const feishuConnectStatus = (args: {
     const connectedUsers = await loadConnectedFeishuUsers(
       db,
       rows,
+      args.orgId,
       args.userId,
     );
     const installations = rows.map((installation) => {
@@ -412,7 +436,7 @@ export const configureFeishuInstallation$ = command(
       return preflight;
     }
     const prepared = await prepareFeishuInstallation(args, signal);
-    return await db.transaction(async (tx) => {
+    const result = await db.transaction(async (tx) => {
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtext('feishu_installation:' || ${args.orgId}))`,
       );
@@ -429,6 +453,21 @@ export const configureFeishuInstallation$ = command(
         signal,
       });
     });
+    signal.throwIfAborted();
+    if (result.kind === "ok") {
+      await set(
+        ensureFeishuCustomConnector$,
+        {
+          orgId: args.orgId,
+          userId: args.userId,
+          installationId: result.installationId,
+          configurationChanged: true,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+    }
+    return result;
   },
 );
 
@@ -448,6 +487,17 @@ export const removeFeishuInstallation$ = command(
       )
       .returning({ id: feishuOrgInstallations.id });
     signal.throwIfAborted();
+    if (rows.length > 0) {
+      await set(
+        deleteFeishuCustomConnector$,
+        {
+          orgId: args.orgId,
+          installationId: args.installationId,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+    }
     return rows.length > 0;
   },
 );
@@ -476,20 +526,28 @@ export const disconnectFeishuConnection$ = command(
     if (installations.length === 0) {
       return false;
     }
-    const rows = await db
-      .delete(feishuOrgConnections)
-      .where(
-        and(
-          inArray(
-            feishuOrgConnections.installationId,
-            installations.map((installation) => {
-              return installation.id;
-            }),
+    const rows = await db.transaction(async (tx) => {
+      const deleted = await tx
+        .delete(feishuOrgConnections)
+        .where(
+          and(
+            inArray(
+              feishuOrgConnections.installationId,
+              installations.map((installation) => {
+                return installation.id;
+              }),
+            ),
+            eq(feishuOrgConnections.vm0UserId, args.userId),
           ),
-          eq(feishuOrgConnections.vm0UserId, args.userId),
-        ),
-      )
-      .returning({ id: feishuOrgConnections.id });
+        )
+        .returning({ id: feishuOrgConnections.id });
+      await disconnectFeishuCustomConnectorOAuthConnection(tx, {
+        orgId: args.orgId,
+        userId: args.userId,
+        installationId: args.installationId,
+      });
+      return deleted;
+    });
     signal.throwIfAborted();
     return rows.length > 0;
   },
