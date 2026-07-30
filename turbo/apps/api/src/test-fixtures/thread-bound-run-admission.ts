@@ -4,7 +4,7 @@ import { createStore } from "ccstate";
 
 import { now } from "../lib/time";
 import { createAgentRun$ } from "../signals/services/agent-run-create.service";
-import { createZeroRun$ } from "../signals/services/zero-runs-create.service";
+import { createTestFixtureZeroRun$ } from "../signals/services/zero-runs-create.service";
 
 const USER_ID = "thread-run-invariant-user";
 const ORG_ID = "thread-run-invariant-org";
@@ -17,7 +17,7 @@ export async function createUnassociatedThreadBoundZeroRunFixture(
   chatThreadId: string = randomUUID(),
 ): Promise<void> {
   await createStore().set(
-    createZeroRun$,
+    createTestFixtureZeroRun$,
     {
       auth: {
         tokenType: "session",

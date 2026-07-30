@@ -22,10 +22,6 @@ import {
 } from "../external/telegram-client";
 import { verifyTelegramBotAvatarUrlSignature } from "../external/telegram-avatar";
 import {
-  callbackPayload$,
-  callbackRoute,
-} from "../../lib/callback-route/callback-route";
-import {
   getOfficialTelegramBotConfig,
   isOfficialTelegramBotId,
 } from "../external/telegram-official";
@@ -41,7 +37,6 @@ import {
   setupTelegramStatus$,
   telegramWebhook$,
 } from "../services/zero-telegram-post.service";
-import { handleTelegramInternalCallback$ } from "../services/internal-telegram-run-callback.service";
 import { inferMimetype } from "../../lib/mimetype";
 import { tapError } from "../utils";
 import type { RouteEntry } from "../route-entry";
@@ -504,23 +499,6 @@ const getIntegrationTelegramAuthCallback$ = computed((): Response => {
   });
 });
 
-const handleTelegramInternalCallbackRoute$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const result = await set(
-      handleTelegramInternalCallback$,
-      get(callbackPayload$),
-      signal,
-    );
-    if (result.success) {
-      return { status: 200 as const, body: { success: true as const } };
-    }
-    return {
-      status: result.status,
-      body: { error: result.error },
-    };
-  },
-);
-
 export const zeroIntegrationsTelegramRoutes: readonly RouteEntry[] = [
   ...integrationsTelegramLinkRoutes,
   ...integrationsTelegramBotIdRoutes,
@@ -550,10 +528,6 @@ export const zeroIntegrationsTelegramRoutes: readonly RouteEntry[] = [
   {
     route: zeroIntegrationsTelegramContract.webhook,
     handler: telegramWebhook$,
-  },
-  {
-    route: zeroIntegrationsTelegramContract.internalCallback,
-    handler: callbackRoute(handleTelegramInternalCallbackRoute$),
   },
   {
     route: zeroIntegrationsTelegramContract.avatar,

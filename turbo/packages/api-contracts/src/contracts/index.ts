@@ -197,10 +197,6 @@ export {
   type PresentationImagesContract,
 } from "./presentation-images";
 export {
-  testTelegramDispatchProbeContract,
-  type TestTelegramDispatchProbeContract,
-} from "./test-telegram-dispatch-probe";
-export {
   testTeamsDispatchProbeBodySchema,
   testTeamsDispatchProbeContract,
   testTeamsDispatchProbeErrorSchema,
@@ -1758,14 +1754,6 @@ export {
   type ZeroBuiltInGenerationAcceptedResponse,
   type ZeroBuiltInGenerationResponse,
 } from "./zero-built-in-generation";
-export {
-  internalCallbackBodySchema,
-  internalCallbackErrorSchema,
-  internalCallbackHeadersSchema,
-  internalCallbackSuccessSchema,
-  internalCallbackSuccessWithSkippedSchema,
-  type InternalCallbackBody,
-} from "./internal-callbacks-shared";
 export {
   zeroVoiceIoQuotaContract,
   audioInputQuotaResponseSchema,

@@ -11,10 +11,8 @@ import { db$ } from "../external/db";
 import { refreshAgentPhoneTypingForRun$ } from "./agent-event-consumer-agentphone-typing.service";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
-import { handleAgentPhoneInternalCallback$ } from "./internal-agentphone-run-callback.service";
 import { handleChatInternalCallback$ } from "./internal-chat-run-callback.service";
 import { internalRunCallbackKindForRecord } from "./internal-run-callback";
-import { handleTelegramInternalCallback$ } from "./internal-telegram-run-callback.service";
 
 function resolveCallbackUrl(url: string): string {
   return env("ENV") === "development" && url.startsWith("https://tunnel-")
@@ -119,18 +117,6 @@ export const dispatchProgressCallbacks$ = command(
           return;
         }
         if (isInlineOnlyCanonicalDeliveryCallback(internalKind)) {
-          return;
-        }
-        if (internalKind === "agentphone") {
-          await set(
-            handleAgentPhoneInternalCallback$,
-            progressCallback,
-            signal,
-          );
-          return;
-        }
-        if (internalKind === "telegram") {
-          await set(handleTelegramInternalCallback$, progressCallback, signal);
           return;
         }
         if (internalKind === "agent") {
