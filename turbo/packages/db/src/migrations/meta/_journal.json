@@ -5328,6 +5328,13 @@
       "when": 1785408754076,
       "tag": "0760_rename_chat_event_input_params",
       "breakpoints": true
+    },
+    {
+      "idx": 761,
+      "version": "7",
+      "when": 1785410296634,
+      "tag": "0761_thread_browser_identity",
+      "breakpoints": true
     }
   ]
 }
