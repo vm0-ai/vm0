@@ -120,8 +120,6 @@ interface InsightData {
   readonly permissions: {
     readonly label: string;
     readonly connectorSlug: string;
-    // TODO(#23839): Stop writing after pre-expand API writers have drained.
-    readonly connectorType: string;
     readonly allowed: number;
     readonly denied: number;
     readonly agentNames: string[];
@@ -568,7 +566,6 @@ function buildUserInsight(args: BuildUserInsightArgs): InsightData {
           return {
             label: permission.label,
             connectorSlug: permission.connectorSlug,
-            connectorType: permission.connectorSlug,
             allowed: permission.allowed,
             denied: permission.denied,
             agentNames: [...permission.agentNames],
