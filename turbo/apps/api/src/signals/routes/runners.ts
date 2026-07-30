@@ -926,7 +926,6 @@ async function lockRunnerJob(
   return row;
 }
 
-// Materialized outputs make the row locks depend on run, then queue.
 async function transitionClaimedJobToRunning(
   db: Db,
   runId: string,
@@ -939,6 +938,7 @@ async function transitionClaimedJobToRunning(
       "claim_route_transition_execute",
       "nested",
       async () => {
+        // Materialized outputs make the row locks depend on run, then queue.
         return await executeRawRows(
           tx,
           sql`

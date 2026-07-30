@@ -528,15 +528,9 @@ async function goalRunIds(threadId: string): Promise<readonly string[]> {
   return (await readGoalQueueStateFixture(threadId)).runIds;
 }
 
-/**
- * Checkpoint + exitCode-0 complete. Completing without a checkpoint routes to
- * the missing-checkpoint handler and FAILS the run, so every successful chat
- * round checkpoints first.
- */
-async function completeChatRunOk(
+async function checkpointChatRun(
   runId: string,
   sandboxHeaders: { readonly authorization: string },
-  options: { readonly lastEventSequence?: number } = {},
 ): Promise<void> {
   const historyHash = createHash("sha256")
     .update(`bdd chat session history ${runId}`)
@@ -551,6 +545,19 @@ async function completeChatRunOk(
     sandboxHeaders,
     [200],
   );
+}
+
+/**
+ * Checkpoint + exitCode-0 complete. Completing without a checkpoint routes to
+ * the missing-checkpoint handler and FAILS the run, so every successful chat
+ * round checkpoints first.
+ */
+async function completeChatRunOk(
+  runId: string,
+  sandboxHeaders: { readonly authorization: string },
+  options: { readonly lastEventSequence?: number } = {},
+): Promise<void> {
+  await checkpointChatRun(runId, sandboxHeaders);
   await webhooks.requestAgentComplete(
     {
       runId,
@@ -2278,6 +2285,47 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
     expect(
       lifecycleMarkers(afterLifecycle.events, run.runId, "cancelled"),
     ).toHaveLength(1);
+
+    await api.requestCancelRun(actor, replacementRunId, [200]);
+    await waitForRunStatus(actor, replacementRunId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
+  it("records recovery when completion races the cancellation transition", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "race completion with cancellation",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId, [
+      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
+    ]);
+    await checkpointChatRun(run.runId, sandboxHeaders);
+    const queuedEventId = await queueChatEvent(actor, {
+      agentId,
+      threadId: run.threadId,
+      prompt: "continue after the concurrent completion",
+    });
+
+    const completionPromise = webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
+      sandboxHeaders,
+      [200],
+    );
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const completion = await completionPromise;
+    expect(completion.body).toStrictEqual({
+      success: true,
+      status: "failed",
+    });
+    await flushWaitUntilForTest();
+    await waitForRunStatus(actor, run.runId, "cancelled");
+    const replacementRunId = await waitForQueuedEventReplacement(
+      actor,
+      run.threadId,
+      queuedEventId,
+    );
 
     await api.requestCancelRun(actor, replacementRunId, [200]);
     await waitForRunStatus(actor, replacementRunId, "cancelled");

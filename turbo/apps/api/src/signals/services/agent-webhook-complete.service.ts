@@ -119,20 +119,6 @@ async function persistLastEventSequence(
     .where(and(eq(agentRuns.id, runId), eq(agentRuns.userId, userId)));
 }
 
-async function readCompletionResponseStatus(
-  db: Db,
-  runId: string,
-  userId: string,
-): Promise<TerminalStatus> {
-  const [currentRun] = await db
-    .select({ status: agentRuns.status })
-    .from(agentRuns)
-    .where(and(eq(agentRuns.id, runId), eq(agentRuns.userId, userId)))
-    .limit(1);
-
-  return currentRun?.status === "completed" ? "completed" : "failed";
-}
-
 async function transitionRunStatus(
   db: Db,
   runId: string,
@@ -181,19 +167,37 @@ function successResponse(
   };
 }
 
-async function currentStatusResponse(
+async function handleLostTerminalTransition(
   db: Db,
   input: CompleteAgentRunInput,
+  signal: AbortSignal,
 ): Promise<CompletionResponse> {
+  const [currentRun] = await db
+    .select({
+      orgId: agentRuns.orgId,
+      status: agentRuns.status,
+      userId: agentRuns.userId,
+      cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
+    })
+    .from(agentRuns)
+    .where(
+      and(
+        eq(agentRuns.id, input.body.runId),
+        eq(agentRuns.userId, input.auth.userId),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+
+  if (currentRun?.status === "cancelled") {
+    return await handleCancelledCompletion(db, input, currentRun, signal);
+  }
+
   return {
     status: 200,
     body: {
       success: true,
-      status: await readCompletionResponseStatus(
-        db,
-        input.body.runId,
-        input.auth.userId,
-      ),
+      status: currentRun?.status === "completed" ? "completed" : "failed",
     },
   };
 }
@@ -259,7 +263,7 @@ async function handleMissingCheckpoint(
   signal.throwIfAborted();
 
   if (!transitioned) {
-    return await currentStatusResponse(db, input);
+    return await handleLostTerminalTransition(db, input, signal);
   }
 
   await publishRunChangedForUserSafely(run.userId, input.body.runId, {
@@ -319,7 +323,7 @@ async function handleSuccessfulCompletion(
   signal.throwIfAborted();
 
   if (!transitioned) {
-    return await currentStatusResponse(db, input);
+    return await handleLostTerminalTransition(db, input, signal);
   }
 
   await publishRunChangedForUserSafely(run.userId, input.body.runId, {
@@ -354,7 +358,7 @@ async function handleFailedCompletion(
   signal.throwIfAborted();
 
   if (!transitioned) {
-    return await currentStatusResponse(db, input);
+    return await handleLostTerminalTransition(db, input, signal);
   }
 
   await publishRunChangedForUserSafely(run.userId, input.body.runId, {
