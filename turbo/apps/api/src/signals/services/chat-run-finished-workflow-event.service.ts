@@ -12,7 +12,7 @@ import {
 import { and, eq, sql } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
-import { nowDate } from "../../lib/time";
+import { now, nowDate } from "../../lib/time";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import {
   buildChatOnlyWorkflowAutomationCallbacks,
@@ -201,7 +201,7 @@ export const dispatchChatRunFinishedWorkflowEvents$ = command(
             workflowName: row.workflowName,
             chatThreadId,
           },
-          apiStartTime: performance.now(),
+          apiStartTime: now(),
           triggerSource: "workflow-event",
           prompt: workflowAutomationPrompt(context),
           appendSystemPrompt: workflowAutomationAppendSystemPrompt(context),

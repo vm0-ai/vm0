@@ -492,6 +492,31 @@ export const readUsageCompactionStorageCounts$ = command(
   },
 );
 
+export const readInsightsDailyPermissions$ = command(
+  async (
+    _,
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly date: string;
+    },
+    signal: AbortSignal,
+  ): Promise<readonly Record<string, unknown>[]> => {
+    const response = await postAction(signal, {
+      action: "read-insights-daily-permissions",
+      org_id: args.orgId,
+      user_id: args.userId,
+      date: args.date,
+    });
+    if (response.insights_daily_permissions === undefined) {
+      throw new Error(
+        "readInsightsDailyPermissions$: response missing permissions",
+      );
+    }
+    return response.insights_daily_permissions;
+  },
+);
+
 export const deleteUsageData$ = command(
   async (
     _,
