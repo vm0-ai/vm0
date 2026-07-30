@@ -7,6 +7,7 @@ import {
   useSet,
 } from "ccstate-react";
 import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
 import {
   IconArrowsDiagonal,
   IconArrowsDiagonalMinimize2,
@@ -274,8 +275,14 @@ function DialogIconButton({
 }
 
 function ArtifactDialogSplitViewButton({ onClick }: { onClick: () => void }) {
+  const { t } = useTranslation();
   return (
-    <DialogIconButton ariaLabel="Open in split view" onClick={onClick}>
+    <DialogIconButton
+      ariaLabel={t(($) => {
+        return $.artifacts.actions.openSplitView;
+      })}
+      onClick={onClick}
+    >
       <IconColumns2 size={18} stroke={1.8} />
     </DialogIconButton>
   );
@@ -288,9 +295,18 @@ function ArtifactDialogFullscreenButton({
   fullscreen: boolean;
   onClick: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <DialogIconButton
-      ariaLabel={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+      ariaLabel={
+        fullscreen
+          ? t(($) => {
+              return $.artifacts.actions.exitFullscreen;
+            })
+          : t(($) => {
+              return $.artifacts.actions.enterFullscreen;
+            })
+      }
       onClick={onClick}
     >
       {fullscreen ? (
@@ -402,9 +418,15 @@ function ArtifactDialogLoadingBody() {
 }
 
 function ArtifactDialogUnavailableBody({ label }: { label: string }) {
+  const { t } = useTranslation();
   return (
     <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
-      {label} preview unavailable.
+      {t(
+        ($) => {
+          return $.artifacts.preview.unavailable;
+        },
+        { kind: label },
+      )}
     </div>
   );
 }
@@ -468,6 +490,7 @@ function ArtifactDialogImageZoomControls({
 }: {
   controls: ZoomableImageControls;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className="absolute right-4 top-4 z-10 flex items-center gap-2 rounded-lg bg-background/95 px-2.5 py-1.5 text-muted-foreground shadow-sm backdrop-blur-sm"
@@ -478,8 +501,12 @@ function ArtifactDialogImageZoomControls({
         onClick={controls.zoomOut}
         disabled={!controls.canZoomOut}
         className="flex h-5 w-5 items-center justify-center rounded-md text-sm leading-none transition-colors hover:bg-muted/70 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
-        aria-label="Zoom out"
-        title="Zoom out"
+        aria-label={t(($) => {
+          return $.artifacts.actions.zoomOut;
+        })}
+        title={t(($) => {
+          return $.artifacts.actions.zoomOut;
+        })}
       >
         -
       </button>
@@ -491,8 +518,12 @@ function ArtifactDialogImageZoomControls({
         onClick={controls.zoomIn}
         disabled={!controls.canZoomIn}
         className="flex h-5 w-5 items-center justify-center rounded-md text-sm leading-none transition-colors hover:bg-muted/70 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
-        aria-label="Zoom in"
-        title="Zoom in"
+        aria-label={t(($) => {
+          return $.artifacts.actions.zoomIn;
+        })}
+        title={t(($) => {
+          return $.artifacts.actions.zoomIn;
+        })}
       >
         +
       </button>
@@ -500,8 +531,12 @@ function ArtifactDialogImageZoomControls({
         type="button"
         onClick={controls.resetZoom}
         className="flex h-5 w-5 items-center justify-center rounded-md transition-colors hover:bg-muted/70 hover:text-foreground"
-        aria-label="Reset zoom"
-        title="Reset zoom"
+        aria-label={t(($) => {
+          return $.artifacts.actions.resetZoom;
+        })}
+        title={t(($) => {
+          return $.artifacts.actions.resetZoom;
+        })}
       >
         <IconZoomReset size={15} stroke={1.8} />
       </button>
@@ -514,6 +549,7 @@ function ArtifactDialogImageNavigationControls({
 }: {
   navigation?: ArtifactImageNavigationActions;
 }) {
+  const { t } = useTranslation();
   if (!navigation?.onPrevious && !navigation?.onNext) {
     return null;
   }
@@ -524,8 +560,12 @@ function ArtifactDialogImageNavigationControls({
         <button
           type="button"
           onClick={navigation.onPrevious}
-          aria-label="Previous image artifact"
-          title="Previous image artifact"
+          aria-label={t(($) => {
+            return $.artifacts.actions.previousImage;
+          })}
+          title={t(($) => {
+            return $.artifacts.actions.previousImage;
+          })}
           data-testid="artifact-dialog-previous-image"
           className="absolute left-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-muted"
         >
@@ -536,8 +576,12 @@ function ArtifactDialogImageNavigationControls({
         <button
           type="button"
           onClick={navigation.onNext}
-          aria-label="Next image artifact"
-          title="Next image artifact"
+          aria-label={t(($) => {
+            return $.artifacts.actions.nextImage;
+          })}
+          title={t(($) => {
+            return $.artifacts.actions.nextImage;
+          })}
           data-testid="artifact-dialog-next-image"
           className="absolute right-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-muted"
         >
@@ -601,6 +645,23 @@ function ArtifactDialogTextBody({
   kind: "markdown" | "text" | "json" | "csv";
   text$: TextPreviewComputed;
 }) {
+  const { t } = useTranslation();
+  const kindLabel =
+    kind === "json"
+      ? t(($) => {
+          return $.artifacts.kinds.json;
+        })
+      : kind === "csv"
+        ? t(($) => {
+            return $.artifacts.kinds.csv;
+          })
+        : kind === "markdown"
+          ? t(($) => {
+              return $.artifacts.kinds.markdown;
+            })
+          : t(($) => {
+              return $.artifacts.kinds.text;
+            });
   return (
     <TextPreviewLoader text$={text$}>
       {({ status, text }) => {
@@ -618,17 +679,7 @@ function ArtifactDialogTextBody({
           return (
             <ArtifactDialogStage>
               <ArtifactDialogCard>
-                <ArtifactDialogUnavailableBody
-                  label={
-                    kind === "json"
-                      ? "JSON"
-                      : kind === "csv"
-                        ? "CSV"
-                        : kind === "markdown"
-                          ? "Markdown"
-                          : "Text"
-                  }
-                />
+                <ArtifactDialogUnavailableBody label={kindLabel} />
               </ArtifactDialogCard>
             </ArtifactDialogStage>
           );
@@ -656,7 +707,14 @@ function ArtifactDialogTextBody({
                     <CsvPreviewTable rows={rows} />
                   ) : (
                     <div className="text-sm text-muted-foreground">
-                      CSV preview unavailable.
+                      {t(
+                        ($) => {
+                          return $.artifacts.preview.unavailable;
+                        },
+                        {
+                          kind: kindLabel,
+                        },
+                      )}
                     </div>
                   )}
                 </div>
@@ -692,6 +750,7 @@ function ArtifactDialogBody({
   imageNavigation?: ArtifactImageNavigationActions;
   preview: AttachmentLightboxState;
 }) {
+  const { t } = useTranslation();
   const filename = artifactDialogFilename(preview);
   const fullscreen = useGet(lightboxDialogFullscreen$);
 
@@ -736,7 +795,12 @@ function ArtifactDialogBody({
             playsInline
             preload="metadata"
             className="block aspect-video w-full bg-black object-contain"
-            aria-label={`Video preview for ${filename}`}
+            aria-label={t(
+              ($) => {
+                return $.artifacts.preview.videoLabel;
+              },
+              { filename },
+            )}
           />
         </div>
       </ArtifactDialogStage>
@@ -759,7 +823,12 @@ function ArtifactDialogBody({
             autoPlay
             preload="metadata"
             className="w-full"
-            aria-label={`Audio preview for ${filename}`}
+            aria-label={t(
+              ($) => {
+                return $.artifacts.preview.audioLabel;
+              },
+              { filename },
+            )}
             data-testid="artifact-dialog-audio"
           />
         </div>
@@ -791,7 +860,12 @@ function ArtifactDialogBody({
       >
         <iframe
           src={src}
-          title={`${filename} preview`}
+          title={t(
+            ($) => {
+              return $.artifacts.preview.dialogLabel;
+            },
+            { filename },
+          )}
           scrolling="yes"
           className="block h-full min-h-0 w-full border-0 bg-background"
         />
@@ -807,6 +881,7 @@ function ArtifactDialogHtmlBody({
   filename: string;
   preview: AttachmentLightboxState;
 }) {
+  const { t } = useTranslation();
   const fullscreen = useGet(lightboxDialogFullscreen$);
   const src = publicAttachmentUrl(preview.url);
   const isPresentationHtml =
@@ -821,7 +896,12 @@ function ArtifactDialogHtmlBody({
         focusKey={`${preview.url}:${fullscreen ? "fullscreen" : "dialog"}`}
         focusOnMount={!isPresentationHtml}
         src={src}
-        title={`${filename} preview`}
+        title={t(
+          ($) => {
+            return $.artifacts.preview.dialogLabel;
+          },
+          { filename },
+        )}
         sandbox="allow-same-origin allow-scripts"
         tabIndex={isPresentationHtml ? -1 : undefined}
         scrolling="yes"
@@ -1039,6 +1119,7 @@ function ArtifactPreviewDialogActions({
   fullscreen: boolean;
   preview: AttachmentLightboxState;
 }) {
+  const { t } = useTranslation();
   const closeLightboxWithDialogExit = useSet(closeLightboxWithDialogExit$);
   const openArtifactSidebarPreview = useSet(openThreadArtifactSplitView$);
   const resetZoomableImageCanvasZoom = useSet(resetZoomableImageCanvasZoom$);
@@ -1069,13 +1150,17 @@ function ArtifactPreviewDialogActions({
     <div className="flex shrink-0 items-center gap-1">
       {showShare && (
         <ArtifactShareButton
-          ariaLabel="Share"
+          ariaLabel={t(($) => {
+            return $.artifacts.actions.share;
+          })}
           iconSize={18}
           url={preview.url}
         />
       )}
       <ArtifactDownloadMenu
-        ariaLabel="Download options"
+        ariaLabel={t(($) => {
+          return $.artifacts.actions.downloadOptions;
+        })}
         artifactKind={artifact?.artifactKind}
         filename={artifact?.filename ?? artifactDialogFilename(preview)}
         iconSize={18}
@@ -1095,7 +1180,9 @@ function ArtifactPreviewDialogActions({
         }}
       />
       <DialogIconButton
-        ariaLabel="Close"
+        ariaLabel={t(($) => {
+          return $.artifacts.actions.close;
+        })}
         onClick={() => {
           closeLightboxWithDialogExit();
         }}
@@ -1115,6 +1202,7 @@ function ArtifactPreviewDialogContent({
   imageNavigation?: ArtifactImageNavigationActions;
   preview: AttachmentLightboxState;
 }) {
+  const { t } = useTranslation();
   const dialogRef = useSet(lightboxDialogRef$);
   const closeLightboxWithDialogExit = useSet(closeLightboxWithDialogExit$);
   const filename = artifact?.filename ?? artifactDialogFilename(preview);
@@ -1144,7 +1232,12 @@ function ArtifactPreviewDialogContent({
       onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
-      aria-label={`${filename} preview`}
+      aria-label={t(
+        ($) => {
+          return $.artifacts.preview.dialogLabel;
+        },
+        { filename },
+      )}
       data-testid="attachment-lightbox"
     >
       <LightboxBodyScrollLock />
@@ -1238,6 +1331,7 @@ export function FileAttachmentChip({
   filename: string;
   url: string;
 }) {
+  const { t } = useTranslation();
   return (
     <button
       type="button"
@@ -1249,7 +1343,12 @@ export function FileAttachmentChip({
         );
       }}
       title={filename}
-      aria-label={`Download ${filename}`}
+      aria-label={t(
+        ($) => {
+          return $.artifacts.attachments.download;
+        },
+        { filename },
+      )}
       className={`${FILE_CHIP_CLASSES} hover:bg-foreground/10`}
     >
       <FileChipBody
@@ -1276,7 +1375,32 @@ export function PreviewableFileAttachmentChip({
   text$?: TextPreviewComputed;
   url: string;
 }) {
+  const { t } = useTranslation();
   const openDocumentLightbox = useSet(openDocumentLightbox$);
+  const kindLabel =
+    kind === "markdown"
+      ? t(($) => {
+          return $.artifacts.preview.openKinds.markdown;
+        })
+      : kind === "text"
+        ? t(($) => {
+            return $.artifacts.preview.openKinds.text;
+          })
+        : kind === "json"
+          ? t(($) => {
+              return $.artifacts.preview.openKinds.json;
+            })
+          : kind === "csv"
+            ? t(($) => {
+                return $.artifacts.preview.openKinds.csv;
+              })
+            : kind === "pdf"
+              ? t(($) => {
+                  return $.artifacts.preview.openKinds.pdf;
+                })
+              : t(($) => {
+                  return $.artifacts.preview.openKinds.html;
+                });
 
   return (
     <button
@@ -1292,7 +1416,15 @@ export function PreviewableFileAttachmentChip({
         });
       }}
       title={filename}
-      aria-label={`Open ${kind} preview for ${filename}`}
+      aria-label={t(
+        ($) => {
+          return $.artifacts.preview.openKind;
+        },
+        {
+          kind: kindLabel,
+          filename,
+        },
+      )}
       className={`${FILE_CHIP_CLASSES} hover:bg-foreground/10`}
     >
       <FileChipBody
@@ -1317,6 +1449,7 @@ export function PreviewableAudioAttachmentChip({
   splitViewAvailable?: boolean;
   url: string;
 }) {
+  const { t } = useTranslation();
   const openAudioLightbox = useSet(openAudioLightbox$);
 
   return (
@@ -1331,7 +1464,17 @@ export function PreviewableAudioAttachmentChip({
         });
       }}
       title={filename}
-      aria-label={`Open audio preview for ${filename}`}
+      aria-label={t(
+        ($) => {
+          return $.artifacts.preview.openKind;
+        },
+        {
+          kind: t(($) => {
+            return $.artifacts.preview.openKinds.audio;
+          }),
+          filename,
+        },
+      )}
       className={`${FILE_CHIP_CLASSES} hover:bg-foreground/10`}
     >
       <FileChipBody
@@ -1356,6 +1499,7 @@ function ComposerImagePreviewButton({
   openImageLightbox: (url: string) => void;
   url: string | undefined;
 }) {
+  const { t } = useTranslation();
   const imageLoadStatuses = useGet(imageLoadStatusByKey$);
   const imageLoadStatusRef = useSet(imageLoadStatusRef$);
   const setImageLoadStatus = useSet(setImageLoadStatus$);
@@ -1370,7 +1514,14 @@ function ComposerImagePreviewButton({
       <button
         type="button"
         disabled
-        aria-label={`Open image preview for ${filename}`}
+        aria-label={t(
+          ($) => {
+            return $.artifacts.attachments.openImagePreview;
+          },
+          {
+            filename,
+          },
+        )}
         title={filename}
         className="group/image-preview relative h-9 w-9 overflow-hidden rounded-lg border border-foreground/10 transition-colors hover:border-foreground/25"
       >
@@ -1389,7 +1540,14 @@ function ComposerImagePreviewButton({
       onClick={() => {
         openImageLightbox(url);
       }}
-      aria-label={`Open image preview for ${filename}`}
+      aria-label={t(
+        ($) => {
+          return $.artifacts.attachments.openImagePreview;
+        },
+        {
+          filename,
+        },
+      )}
       title={filename}
       className="group/image-preview relative h-9 w-9 overflow-hidden rounded-lg border border-foreground/10 transition-colors hover:border-foreground/25"
     >
@@ -1439,6 +1597,7 @@ function AttachmentChip({
   attachment: ZeroChatAttachment;
   onRemove: () => void;
 }) {
+  const { t } = useTranslation();
   const infoLoadable = useLoadable(attachment.fileInfo$);
   const uploading = infoLoadable.state === "loading";
   const url =
@@ -1479,8 +1638,22 @@ function AttachmentChip({
         className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-muted hover:bg-destructive hover:text-destructive-foreground transition-colors"
         aria-label={
           uploading
-            ? `Cancel upload ${attachment.filename}`
-            : `Remove ${attachment.filename}`
+            ? t(
+                ($) => {
+                  return $.artifacts.attachments.cancelUpload;
+                },
+                {
+                  filename: attachment.filename,
+                },
+              )
+            : t(
+                ($) => {
+                  return $.artifacts.attachments.remove;
+                },
+                {
+                  filename: attachment.filename,
+                },
+              )
         }
       >
         <IconX size={9} stroke={2.5} />

@@ -1,12 +1,13 @@
 //! Proxy registry schema and file persistence.
 //!
-//! TODO(#23619): Rename retained `connector_ref` tracing fields only with the
-//! operational log schema.
+//! TODO(#23837): Remove retained `connector_ref` tracing fields after the
+//! seven-day operational log compatibility window.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
+use tokio_util::sync::CancellationToken;
 use tracing::info;
 
 use crate::error::{RunnerError, RunnerResult};
@@ -240,6 +241,28 @@ impl ProxyRegistryHandle {
             .await
     }
 
+    /// Replace one network policy with deny-all unless cancellation wins
+    /// before the registry lock is acquired.
+    ///
+    /// Once the lock is acquired, the registry mutation runs to completion.
+    /// Returns `None` when lock acquisition is cancelled.
+    pub(crate) async fn fail_closed_network_policy_if_run_matches_until_cancelled(
+        &self,
+        source_ip: &str,
+        run_id: &str,
+        connector_slug: &str,
+        cancel: &CancellationToken,
+    ) -> RunnerResult<Option<bool>> {
+        let _guard = tokio::select! {
+            biased;
+            () = cancel.cancelled() => return Ok(None),
+            result = lock::acquire(self.lock_path.clone()) => result?,
+        };
+        self.fail_closed_network_policy_locked(source_ip, run_id, connector_slug)
+            .await
+            .map(Some)
+    }
+
     async fn fail_closed_network_policy_locked(
         &self,
         source_ip: &str,
@@ -270,6 +293,7 @@ impl ProxyRegistryHandle {
         info!(
             source_ip,
             run_id,
+            connector_slug = connector_slug,
             connector_ref = connector_slug,
             "failed closed connector network policy in proxy registry"
         );
@@ -301,6 +325,7 @@ impl ProxyRegistryHandle {
         info!(
             source_ip,
             run_id,
+            connector_slug = connector_slug,
             connector_ref = connector_slug,
             "patched connector network policy in proxy registry"
         );

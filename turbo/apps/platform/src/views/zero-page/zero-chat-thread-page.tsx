@@ -14,7 +14,11 @@ import {
   useLoadable,
 } from "ccstate-react";
 import { equalArrays } from "../../lib/equality.ts";
+import { now } from "../../lib/time.ts";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
+import { resolvedAppLocale } from "../../i18n/format.ts";
+import { i18n } from "../../i18n/index.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import {
@@ -82,7 +86,7 @@ import {
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import type {
-  ChatMessageUsagePayload,
+  ChatEventUsagePayload,
   FeedbackNotePart,
   ChatFollowupsEvent,
   GenerationTemplateRequest,
@@ -108,11 +112,11 @@ import {
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   r2ImageTransformUrl,
 } from "@vm0/core";
+import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type {
-  UserPermissionGrantExpiresIn,
-  UserPermissionGrantResponse,
-} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+  PlatformConnectorPermissionMetadata,
+  PlatformUserPermissionGrant,
+} from "../../signals/connector-domain.ts";
 import { emptyChatImg } from "./platform-assets.ts";
 import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -181,7 +185,6 @@ import {
 import {
   DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN,
   permissionGrantExpiresInByScope$,
-  permissionGrantExpiryText,
   setPermissionGrantExpiresIn$,
 } from "../../signals/permission-allow/permission-grant-expiration.ts";
 import { isActiveUserPermissionGrant } from "../../signals/user-permission-grants.ts";
@@ -224,8 +227,6 @@ import {
   GMAIL_TEXT_FIELDS,
   getWorkflowIntervalSecondOptions,
   gmailMatcherDefaultValue,
-  gmailAutomationSummary,
-  gmailAutomationTitle,
 } from "../workflows-page/workflow-shared.tsx";
 import {
   WorkflowAutomationCard,
@@ -243,6 +244,7 @@ import type {
   ChatInputEvent,
   ChatEvent,
 } from "../../signals/chat-page/chat-event-types.ts";
+import type { AgentReferenceSignals } from "../../signals/chat-page/agent-reference-signals.ts";
 import type {
   ChatThreadSignals,
   QueuedChatEventItem,
@@ -285,7 +287,7 @@ import {
   ZERO_DESKTOP_DOWNLOAD_URL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
 import type { ModelProviderSelection } from "./components/model-provider-picker.tsx";
-import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
+import { AgentAvatarImg, AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import { setBillingSubPage$ } from "../../signals/zero-page/settings/workspace-settings-state.ts";
 import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings-dialog.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
@@ -360,6 +362,7 @@ function ArtifactsButton({ thread }: { thread: ChatThreadSignals }) {
 }
 
 function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
+  const { t } = useTranslation();
   const sidebarTarget = useGet(thread.sidebar.target$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
   const openThreadArtifacts = useOpenThreadArtifacts(thread);
@@ -381,13 +384,19 @@ function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
                 ? "bg-primary/10 text-primary"
                 : "text-muted-foreground/70 hover:bg-accent hover:text-foreground",
             )}
-            aria-label="Open artifacts"
+            aria-label={t(($) => {
+              return $.chat.thread.openArtifacts;
+            })}
             aria-pressed={open}
           >
             <IconPackage size={17} stroke={1.5} />
           </button>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Open artifacts</TooltipContent>
+        <TooltipContent side="bottom">
+          {t(($) => {
+            return $.chat.thread.openArtifacts;
+          })}
+        </TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );
@@ -396,11 +405,12 @@ function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
 // automation.
 export function AutomationMenuButton({
   thread,
-  ariaLabel = "Automations",
+  ariaLabel,
 }: {
   thread: ChatThreadSignals;
   ariaLabel?: string;
 }) {
+  const { t } = useTranslation();
   const reloadAutomations = useSet(thread.headerAutomations.reload$);
   const openAutomationSidebar = useSet(openThreadAutomations$);
   const sidebarTarget = useGet(thread.sidebar.target$);
@@ -431,7 +441,12 @@ export function AutomationMenuButton({
                 ? "bg-primary/10 text-primary"
                 : "text-muted-foreground/70 hover:bg-accent hover:text-foreground",
             )}
-            aria-label={ariaLabel}
+            aria-label={
+              ariaLabel ??
+              t(($) => {
+                return $.chat.automations.title;
+              })
+            }
             aria-pressed={open}
             onClick={() => {
               reloadAutomations();
@@ -441,13 +456,18 @@ export function AutomationMenuButton({
             <IconClock size={18} />
           </button>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Open automations</TooltipContent>
+        <TooltipContent side="bottom">
+          {t(($) => {
+            return $.chat.automations.open;
+          })}
+        </TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );
 }
 
 function BrowserMenuButton({ thread }: { thread: ChatThreadSignals }) {
+  const { t } = useTranslation();
   const browserSession = useGet(thread.latestBrowserSessionSignals$);
   const sidebarTarget = useGet(thread.sidebar.target$);
   const openBrowserSidebar = useSet(openThreadBrowserSession$);
@@ -471,7 +491,9 @@ function BrowserMenuButton({ thread }: { thread: ChatThreadSignals }) {
                 ? "bg-primary/10 text-primary"
                 : "text-muted-foreground/70 hover:bg-accent hover:text-foreground",
             )}
-            aria-label="Open browser"
+            aria-label={t(($) => {
+              return $.chat.thread.openBrowser;
+            })}
             aria-pressed={open}
             onClick={() => {
               openBrowserSidebar(browserSession.browserId);
@@ -480,7 +502,11 @@ function BrowserMenuButton({ thread }: { thread: ChatThreadSignals }) {
             <IconWorld size={18} stroke={1.5} />
           </button>
         </TooltipTrigger>
-        <TooltipContent side="bottom">Open browser</TooltipContent>
+        <TooltipContent side="bottom">
+          {t(($) => {
+            return $.chat.thread.openBrowser;
+          })}
+        </TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );
@@ -609,6 +635,7 @@ function ChatThreadEmojiMenuButton({
   threadId: string;
   title: string | null | undefined;
 }) {
+  const { t } = useTranslation();
   const { open, openChatThreadEmojiMenu, closeMenu, selectEmoji, clearEmoji } =
     useChatThreadEmojiMenuActions({ threadId, title });
   const setEmojiQuery = useSet(setChatThreadEmojiQuery$);
@@ -631,7 +658,9 @@ function ChatThreadEmojiMenuButton({
             <PopoverTrigger asChild>
               <button
                 type="button"
-                aria-label="Change icon"
+                aria-label={t(($) => {
+                  return $.chat.thread.changeIcon;
+                })}
                 className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
                 {emoji ? (
@@ -647,7 +676,11 @@ function ChatThreadEmojiMenuButton({
               </button>
             </PopoverTrigger>
           </TooltipTrigger>
-          <TooltipContent side="bottom">Chat thread icon</TooltipContent>
+          <TooltipContent side="bottom">
+            {t(($) => {
+              return $.chat.thread.icon;
+            })}
+          </TooltipContent>
         </Tooltip>
         <PopoverContent
           align="start"
@@ -667,10 +700,41 @@ function ChatThreadEmojiMenuButton({
   );
 }
 
-const FREQUENTLY_USED_EMOJI: ChatThreadEmojiItem[] =
-  CHAT_THREAD_EMOJI_OPTIONS.map((option) => {
-    return { emoji: option.emoji, name: option.label };
+function useFrequentlyUsedEmoji(): ChatThreadEmojiItem[] {
+  const { t } = useTranslation();
+  const labels = [
+    t(($) => {
+      return $.chat.thread.emoji.done;
+    }),
+    t(($) => {
+      return $.chat.thread.emoji.urgent;
+    }),
+    t(($) => {
+      return $.chat.thread.emoji.no;
+    }),
+    t(($) => {
+      return $.chat.thread.emoji.risk;
+    }),
+    t(($) => {
+      return $.chat.thread.emoji.idea;
+    }),
+    t(($) => {
+      return $.chat.thread.emoji.question;
+    }),
+    t(($) => {
+      return $.chat.thread.emoji.waiting;
+    }),
+    t(($) => {
+      return $.chat.thread.emoji.watching;
+    }),
+    t(($) => {
+      return $.chat.thread.emoji.shipped;
+    }),
+  ];
+  return CHAT_THREAD_EMOJI_OPTIONS.map((option, index) => {
+    return { emoji: option.emoji, name: labels[index] ?? option.emoji };
   });
+}
 
 function ChatThreadEmojiPicker({
   hasEmoji,
@@ -681,9 +745,11 @@ function ChatThreadEmojiPicker({
   onSelect: (emoji: string) => void;
   onRemove: () => void;
 }) {
+  const { t } = useTranslation();
   const query = useGet(chatThreadEmojiQuery$);
   const setQuery = useSet(setChatThreadEmojiQuery$);
   const groups = useLastResolved(chatThreadEmojiGroups$) ?? null;
+  const frequentlyUsedEmoji = useFrequentlyUsedEmoji();
 
   const isSearching = query.trim().length > 0;
   const searchResults =
@@ -699,8 +765,12 @@ function ChatThreadEmojiPicker({
             aria-hidden="true"
           />
           <Input
-            aria-label="Search emoji"
-            placeholder="Search emoji"
+            aria-label={t(($) => {
+              return $.chat.thread.searchEmoji;
+            })}
+            placeholder={t(($) => {
+              return $.chat.thread.searchEmoji;
+            })}
             value={query}
             autoFocus
             onChange={(event) => {
@@ -715,7 +785,9 @@ function ChatThreadEmojiPicker({
             className="shrink-0 rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             onClick={onRemove}
           >
-            Remove
+            {t(($) => {
+              return $.chat.actions.remove;
+            })}
           </button>
         )}
       </div>
@@ -725,14 +797,18 @@ function ChatThreadEmojiPicker({
             <ChatThreadEmojiGrid items={searchResults} onSelect={onSelect} />
           ) : (
             <p className="px-1 py-6 text-center text-xs text-muted-foreground">
-              No emoji found
+              {t(($) => {
+                return $.chat.thread.noEmojiFound;
+              })}
             </p>
           )
         ) : (
           <>
             <ChatThreadEmojiSection
-              label="Frequently used"
-              items={FREQUENTLY_USED_EMOJI}
+              label={t(($) => {
+                return $.chat.thread.frequentlyUsed;
+              })}
+              items={frequentlyUsedEmoji}
               onSelect={onSelect}
               showShortcutDigits
             />
@@ -764,11 +840,14 @@ function ChatThreadEmojiSection({
   onSelect: (emoji: string) => void;
   showShortcutDigits?: boolean;
 }) {
+  const { t } = useTranslation();
   // Ctrl+Shift is a shared prefix for every digit shortcut, so surface it once
   // as a quiet hint next to the label rather than repeating it on each emoji.
   // getShortcutParts keeps the modifiers OS-aware (⌃⇧ on Mac, Ctrl+Shift else).
   const shortcutHint = showShortcutDigits
-    ? `${formatModifierPrefix(getShortcutParts("ctrl+shift"))} + number`
+    ? `${formatModifierPrefix(getShortcutParts("ctrl+shift"))} + ${t(($) => {
+        return $.chat.shortcuts.number;
+      })}`
     : null;
   return (
     <div>
@@ -851,7 +930,7 @@ function ChatThreadEmojiGrid({
 }
 
 function formatChatTimestamp(value: string): string {
-  return new Date(value).toLocaleString("en-US", {
+  return new Date(value).toLocaleString(resolvedAppLocale(), {
     month: "short",
     day: "numeric",
     hour: "numeric",
@@ -1053,13 +1132,17 @@ function ChatVideoPreviewButton({
 
 function formatHeaderWorkflowAutomationRun(value: string | null): string {
   if (!value) {
-    return "No runs yet";
+    return i18n.t(($) => {
+      return $.chat.automations.noRuns;
+    });
   }
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
-    return "No runs yet";
+    return i18n.t(($) => {
+      return $.chat.automations.noRuns;
+    });
   }
-  return date.toLocaleString("en-US", {
+  return date.toLocaleString(i18n.resolvedLanguage, {
     dateStyle: "medium",
     timeStyle: "short",
   });
@@ -1067,27 +1150,45 @@ function formatHeaderWorkflowAutomationRun(value: string | null): string {
 
 function formatHeaderWorkflowAutomationNextRun(value: string | null): string {
   if (!value) {
-    return "No upcoming run";
+    return i18n.t(($) => {
+      return $.chat.automations.noUpcomingRun;
+    });
   }
   return formatHeaderWorkflowAutomationRun(value);
 }
 
 function formatHeaderClockTime(hour: number, minute: number): string {
-  const ampm = hour >= 12 ? "PM" : "AM";
-  const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
-  return `${h12}:${String(minute).padStart(2, "0")} ${ampm}`;
+  return new Intl.DateTimeFormat(i18n.resolvedLanguage, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(2020, 0, 1, hour, minute));
 }
 
 function formatHeaderIntervalSeconds(seconds: number): string {
   if (seconds % 3600 === 0) {
     const hours = seconds / 3600;
-    return `Every ${hours} ${hours === 1 ? "hour" : "hours"}`;
+    return i18n.t(
+      ($) => {
+        return $.chat.automations.everyHour;
+      },
+      { count: hours },
+    );
   }
   if (seconds % 60 === 0) {
     const minutes = seconds / 60;
-    return `Every ${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+    return i18n.t(
+      ($) => {
+        return $.chat.automations.everyMinute;
+      },
+      { count: minutes },
+    );
   }
-  return `Every ${seconds} ${seconds === 1 ? "second" : "seconds"}`;
+  return i18n.t(
+    ($) => {
+      return $.chat.automations.everySecond;
+    },
+    { count: seconds },
+  );
 }
 
 function headerCronRuleLabel(
@@ -1100,7 +1201,15 @@ function headerCronRuleLabel(
   const minute = Number(minutePart);
   const hour = Number(hourPart);
   if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
-    return `${cronExpression} (${sourceTimezone})`;
+    return i18n.t(
+      ($) => {
+        return $.chat.automations.cronWithTimezone;
+      },
+      {
+        expression: cronExpression,
+        timezone: sourceTimezone,
+      },
+    );
   }
   const converted = cronWallTimeInTimezone(
     hour,
@@ -1110,31 +1219,57 @@ function headerCronRuleLabel(
   );
   const time = formatHeaderClockTime(converted.hour, converted.minute);
   if (dayOfMonth !== "*") {
-    return `Every month on day ${dayOfMonth} at ${time}`;
+    return i18n.t(
+      ($) => {
+        return $.chat.automations.monthlyAt;
+      },
+      {
+        day: dayOfMonth,
+        time,
+      },
+    );
   }
   if (dayOfWeek === "1-5") {
-    return `Every weekday at ${time}`;
+    return i18n.t(
+      ($) => {
+        return $.chat.automations.weekdayAt;
+      },
+      { time },
+    );
   }
   if (dayOfWeek !== "*") {
-    const dayNames: Readonly<Record<string, string>> = {
-      "0": "Sunday",
-      "1": "Monday",
-      "2": "Tuesday",
-      "3": "Wednesday",
-      "4": "Thursday",
-      "5": "Friday",
-      "6": "Saturday",
-    };
     const days = dayOfWeek
       .split(",")
       .map((day) => {
-        return dayNames[day];
+        const weekday = Number(day);
+        return Number.isInteger(weekday) && weekday >= 0 && weekday <= 6
+          ? new Intl.DateTimeFormat(i18n.resolvedLanguage, {
+              weekday: "long",
+            }).format(new Date(2020, 0, 5 + weekday))
+          : undefined;
       })
       .filter(Boolean)
       .join(", ");
-    return days ? `Every week on ${days} at ${time}` : `Every week at ${time}`;
+    return days
+      ? i18n.t(
+          ($) => {
+            return $.chat.automations.weeklyOnAt;
+          },
+          { days, time },
+        )
+      : i18n.t(
+          ($) => {
+            return $.chat.automations.weeklyAt;
+          },
+          { time },
+        );
   }
-  return `Every day at ${time}`;
+  return i18n.t(
+    ($) => {
+      return $.chat.automations.dailyAt;
+    },
+    { time },
+  );
 }
 
 function headerWorkflowAutomationRule(
@@ -1142,7 +1277,7 @@ function headerWorkflowAutomationRule(
 ): string {
   const source = automation.automation;
   if (source.kind !== "schedule") {
-    return gmailAutomationTitle(source);
+    return automation.summary;
   }
   const schedule = source.schedule;
   if (schedule.type === "loop") {
@@ -1153,7 +1288,15 @@ function headerWorkflowAutomationRule(
       schedule.atTime,
       automation.timezone,
     );
-    return `Once on ${date} at ${formatHeaderClockTime(hour, minute)}`;
+    return i18n.t(
+      ($) => {
+        return $.chat.automations.onceAt;
+      },
+      {
+        date,
+        time: formatHeaderClockTime(hour, minute),
+      },
+    );
   }
   return headerCronRuleLabel(
     schedule.cronExpression,
@@ -1162,35 +1305,349 @@ function headerWorkflowAutomationRule(
   );
 }
 
+type HeaderGmailNewMessageAutomation = Extract<
+  ChatThreadWorkflowAutomation,
+  { readonly eventType: "gmail-new-message" }
+>;
+type HeaderGmailTextField = keyof NonNullable<
+  HeaderGmailNewMessageAutomation["eventConfig"]["match"]
+>;
+type HeaderGmailTextMatcher = NonNullable<
+  NonNullable<
+    HeaderGmailNewMessageAutomation["eventConfig"]["match"]
+  >[HeaderGmailTextField]
+>;
+
+function quotedAutomationValue(value: string): string {
+  return `"${value}"`;
+}
+
+function headerGmailFieldLabel(field: HeaderGmailTextField): string {
+  switch (field) {
+    case "from": {
+      return i18n.t(($) => {
+        return $.chat.automations.gmail.from;
+      });
+    }
+    case "subject": {
+      return i18n.t(($) => {
+        return $.chat.automations.gmail.subject;
+      });
+    }
+    case "body": {
+      return i18n.t(($) => {
+        return $.chat.automations.gmail.body;
+      });
+    }
+    case "to": {
+      return i18n.t(($) => {
+        return $.chat.automations.gmail.to;
+      });
+    }
+    case "cc": {
+      return i18n.t(($) => {
+        return $.chat.automations.gmail.cc;
+      });
+    }
+  }
+}
+
+function headerGmailMatcherParts(
+  field: HeaderGmailTextField,
+  matcher: HeaderGmailTextMatcher,
+): string[] {
+  const fieldLabel = headerGmailFieldLabel(field);
+  const parts: string[] = [];
+  if (matcher.contains) {
+    parts.push(
+      i18n.t(
+        ($) => {
+          return $.chat.automations.matchSummary.contains;
+        },
+        {
+          field: fieldLabel,
+          value: quotedAutomationValue(matcher.contains),
+        },
+      ),
+    );
+  }
+  if (matcher.containsAny) {
+    parts.push(
+      i18n.t(
+        ($) => {
+          return $.chat.automations.matchSummary.containsAny;
+        },
+        {
+          field: fieldLabel,
+          values: matcher.containsAny.map(quotedAutomationValue).join(", "),
+        },
+      ),
+    );
+  }
+  if (matcher.doesNotContain) {
+    parts.push(
+      i18n.t(
+        ($) => {
+          return $.chat.automations.matchSummary.doesNotContain;
+        },
+        {
+          field: fieldLabel,
+          value: quotedAutomationValue(matcher.doesNotContain),
+        },
+      ),
+    );
+  }
+  if (matcher.doesNotContainAny) {
+    parts.push(
+      i18n.t(
+        ($) => {
+          return $.chat.automations.matchSummary.doesNotContainAny;
+        },
+        {
+          field: fieldLabel,
+          values: matcher.doesNotContainAny
+            .map(quotedAutomationValue)
+            .join(", "),
+        },
+      ),
+    );
+  }
+  return parts;
+}
+
+function headerGmailMatchSummary(
+  config: HeaderGmailNewMessageAutomation["eventConfig"],
+): string {
+  const parts: string[] = config.threadId
+    ? [
+        i18n.t(
+          ($) => {
+            return $.chat.automations.matchSummary.threadIdIs;
+          },
+          {
+            value: quotedAutomationValue(config.threadId),
+          },
+        ),
+      ]
+    : [];
+  if (config.match) {
+    for (const { field } of GMAIL_TEXT_FIELDS) {
+      const matcher = config.match[field];
+      if (matcher) {
+        parts.push(...headerGmailMatcherParts(field, matcher));
+      }
+    }
+  }
+  return parts.length > 0
+    ? parts.join("; ")
+    : i18n.t(($) => {
+        return $.chat.automations.matchSummary.allInboundMessages;
+      });
+}
+
+function headerAutomationFilterSummary(
+  values: readonly string[] | undefined,
+  fallback: string,
+): string {
+  return values?.join(", ") ?? fallback;
+}
+
+function headerNotionParentPageSummary(
+  title: string | null | undefined,
+): string {
+  return title
+    ? i18n.t(
+        ($) => {
+          return $.chat.automations.matchSummary.parentPage;
+        },
+        {
+          value: quotedAutomationValue(title),
+        },
+      )
+    : i18n.t(($) => {
+        return $.chat.automations.matchSummary.configuredParentPage;
+      });
+}
+
+function headerNotionDatabaseSummary(title: string | null | undefined): string {
+  return title
+    ? i18n.t(
+        ($) => {
+          return $.chat.automations.matchSummary.database;
+        },
+        {
+          value: quotedAutomationValue(title),
+        },
+      )
+    : i18n.t(($) => {
+        return $.chat.automations.matchSummary.configuredDatabase;
+      });
+}
+
+function headerNotionPageSummary(title: string | null | undefined): string {
+  return title
+    ? i18n.t(
+        ($) => {
+          return $.chat.automations.matchSummary.page;
+        },
+        {
+          value: quotedAutomationValue(title),
+        },
+      )
+    : i18n.t(($) => {
+        return $.chat.automations.matchSummary.configuredPage;
+      });
+}
+
+function headerWorkflowAutomationMatchSummary(
+  automation: ChatThreadWorkflowAutomation,
+): string | null {
+  if (automation.kind !== "event") {
+    return null;
+  }
+  switch (automation.eventType) {
+    case "gmail-label-applied":
+    case "github-label-applied": {
+      return i18n.t(
+        ($) => {
+          return $.chat.automations.matchSummary.label;
+        },
+        {
+          value: quotedAutomationValue(automation.eventConfig.labelName),
+        },
+      );
+    }
+    case "gmail-new-message": {
+      return headerGmailMatchSummary(automation.eventConfig);
+    }
+    case "github-workflow-run-completed":
+    case "github-workflow-job-completed": {
+      return headerAutomationFilterSummary(
+        automation.eventConfig.filters.conclusions,
+        i18n.t(($) => {
+          return $.chat.automations.matchSummary.anyResult;
+        }),
+      );
+    }
+    case "github-pull-request-review-submitted": {
+      return headerAutomationFilterSummary(
+        automation.eventConfig.filters.reviewStates,
+        i18n.t(($) => {
+          return $.chat.automations.matchSummary.anyReview;
+        }),
+      );
+    }
+    case "github-deployment-status-created": {
+      return headerAutomationFilterSummary(
+        automation.eventConfig.filters.states,
+        i18n.t(($) => {
+          return $.chat.automations.matchSummary.anyDeploymentState;
+        }),
+      );
+    }
+    case "github-issue-comment-created": {
+      return headerAutomationFilterSummary(
+        automation.eventConfig.filters.commentPrefixes,
+        i18n.t(($) => {
+          return $.chat.automations.matchSummary.anyComment;
+        }),
+      );
+    }
+    case "google-calendar-event-created":
+    case "google-calendar-event-updated":
+    case "google-calendar-event-cancelled": {
+      return i18n.t(
+        ($) => {
+          return $.chat.automations.matchSummary.calendar;
+        },
+        {
+          value: quotedAutomationValue(automation.eventConfig.calendarId),
+        },
+      );
+    }
+    case "google-meet-transcript-generated": {
+      return i18n.t(($) => {
+        return $.chat.automations.matchSummary.meetingsYouOrganize;
+      });
+    }
+    case "notion-child-page-created": {
+      return headerNotionParentPageSummary(
+        automation.eventConfig.parentPage.title,
+      );
+    }
+    case "notion-database-item-created": {
+      return headerNotionDatabaseSummary(
+        automation.eventConfig.dataSource.title,
+      );
+    }
+    case "notion-page-content-updated": {
+      if (automation.eventConfig.scope.type === "page") {
+        return headerNotionPageSummary(automation.eventConfig.scope.page.title);
+      }
+      return headerNotionDatabaseSummary(
+        automation.eventConfig.scope.dataSource.title,
+      );
+    }
+    default: {
+      return null;
+    }
+  }
+}
+
 function headerWorkflowAutomationRows(
   automation: HeaderWorkflowAutomationEntry,
 ): readonly WorkflowAutomationCardRow[] {
   const rows: WorkflowAutomationCardRow[] = [
     {
-      label: "Status",
-      value: automation.enabled ? "Active" : "Disabled",
+      label: i18n.t(($) => {
+        return $.chat.automations.status;
+      }),
+      value: automation.enabled
+        ? i18n.t(($) => {
+            return $.chat.automations.active;
+          })
+        : i18n.t(($) => {
+            return $.chat.automations.disabled;
+          }),
     },
     {
       label:
-        automation.automation.kind === "schedule" ? "Schedule" : "Automation",
+        automation.automation.kind === "schedule"
+          ? i18n.t(($) => {
+              return $.chat.automations.schedule;
+            })
+          : i18n.t(($) => {
+              return $.chat.automations.automation;
+            }),
       value: headerWorkflowAutomationRule(automation),
     },
     {
-      label: "Last run",
+      label: i18n.t(($) => {
+        return $.chat.automations.lastRun;
+      }),
       value: formatHeaderWorkflowAutomationRun(automation.automation.lastRunAt),
     },
   ];
   if (automation.automation.kind === "schedule") {
     rows.push({
-      label: "Next run",
+      label: i18n.t(($) => {
+        return $.chat.automations.nextRun;
+      }),
       value: formatHeaderWorkflowAutomationNextRun(
         automation.automation.nextRunAt,
       ),
     });
   }
-  const matchSummary = gmailAutomationSummary(automation.automation);
+  const matchSummary = headerWorkflowAutomationMatchSummary(
+    automation.automation,
+  );
   if (matchSummary) {
-    rows.splice(1, 0, { label: "Match", value: matchSummary });
+    rows.splice(1, 0, {
+      label: i18n.t(($) => {
+        return $.chat.automations.match;
+      }),
+      value: matchSummary,
+    });
   }
   return rows;
 }
@@ -1204,6 +1661,7 @@ function HeaderWorkflowAutomationCard({
   headerAutomations: HeaderAutomationSignals;
   threadSidebar: ThreadSidebarSignals;
 }) {
+  const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
   const editingAutomationId = useGet(threadSidebar.editingAutomationId$);
   const setEditingAutomationId = useSet(threadSidebar.setEditingAutomationId$);
@@ -1229,7 +1687,9 @@ function HeaderWorkflowAutomationCard({
           }}
           className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
         >
-          View
+          {t(($) => {
+            return $.chat.actions.view;
+          })}
           <IconArrowUpRight size={12} stroke={1.5} />
         </Link>
       </div>
@@ -1249,7 +1709,9 @@ function HeaderWorkflowAutomationCard({
                   setEditingAutomationId(automation.id);
                 }}
               >
-                Edit
+                {t(($) => {
+                  return $.chat.actions.edit;
+                })}
               </button>
             ) : null}
             <Button
@@ -1271,7 +1733,13 @@ function HeaderWorkflowAutomationCard({
               ) : (
                 <IconPlayerPlay size={13} stroke={1.5} />
               )}
-              {running ? "Starting..." : "Run now"}
+              {running
+                ? t(($) => {
+                    return $.chat.automations.starting;
+                  })
+                : t(($) => {
+                    return $.chat.automations.runNow;
+                  })}
             </Button>
           </>
         }
@@ -1302,6 +1770,7 @@ function HeaderWorkflowAutomationEditDialog({
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -1313,9 +1782,15 @@ function HeaderWorkflowAutomationEditDialog({
         }
       >
         <DialogHeader>
-          <DialogTitle>Edit automation</DialogTitle>
+          <DialogTitle>
+            {t(($) => {
+              return $.chat.automations.edit;
+            })}
+          </DialogTitle>
           <DialogDescription>
-            Update this workflow automation.
+            {t(($) => {
+              return $.chat.automations.editDescription;
+            })}
           </DialogDescription>
         </DialogHeader>
         {automation.kind === "schedule" ? (
@@ -1415,6 +1890,7 @@ function HeaderScheduleAutomationEditForm({
   readonly displayTimezone: string;
   readonly onDone: () => void;
 }) {
+  const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
   const [updateLoadable, updateAutomation] = useLoadableSet(
     headerAutomations.updateSchedule$,
@@ -1455,27 +1931,53 @@ function HeaderScheduleAutomationEditForm({
       ) : null}
       {schedule.type === "once" ? (
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          Run at
+          {t(($) => {
+            return $.chat.automations.runAt;
+          })}
           <Input
             name="atTime"
-            aria-label="Run at"
+            aria-label={t(($) => {
+              return $.chat.automations.runAt;
+            })}
             type="datetime-local"
             defaultValue={localDateTimeInputValue(schedule.atTime)}
             disabled={saving}
           />
-          <span>Displays in {displayTimezone}</span>
+          <span>
+            {t(
+              ($) => {
+                return $.chat.automations.displaysIn;
+              },
+              {
+                timezone: displayTimezone,
+              },
+            )}
+          </span>
         </label>
       ) : null}
       {schedule.type === "cron" ? (
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          Cron expression
+          {t(($) => {
+            return $.chat.automations.cronExpression;
+          })}
           <Input
             name="cronExpression"
-            aria-label="Cron expression"
+            aria-label={t(($) => {
+              return $.chat.automations.cronExpression;
+            })}
             defaultValue={schedule.cronExpression}
             disabled={saving}
           />
-          <span>Runs in {schedule.timezone}</span>
+          <span>
+            {t(
+              ($) => {
+                return $.chat.automations.runsIn;
+              },
+              {
+                timezone: schedule.timezone,
+              },
+            )}
+          </span>
         </label>
       ) : null}
       <DialogFooter>
@@ -1485,11 +1987,15 @@ function HeaderScheduleAutomationEditForm({
           disabled={saving}
           onClick={onDone}
         >
-          Cancel
+          {t(($) => {
+            return $.chat.actions.cancel;
+          })}
         </Button>
         <Button type="submit" disabled={saving}>
           {saving ? <IconLoader2 size={14} className="animate-spin" /> : null}
-          Save automation
+          {t(($) => {
+            return $.chat.automations.save;
+          })}
         </Button>
       </DialogFooter>
     </form>
@@ -1503,15 +2009,23 @@ function HeaderIntervalField({
   readonly disabled: boolean;
   readonly defaultIntervalSeconds: number;
 }) {
+  const { t } = useTranslation();
   return (
     <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-      Every
+      {t(($) => {
+        return $.chat.automations.every;
+      })}
       <Select
         name="intervalSeconds"
         defaultValue={String(defaultIntervalSeconds)}
         disabled={disabled}
       >
-        <SelectTrigger className="h-9 w-full" aria-label="Every">
+        <SelectTrigger
+          className="h-9 w-full"
+          aria-label={t(($) => {
+            return $.chat.automations.every;
+          })}
+        >
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -1530,6 +2044,136 @@ function HeaderIntervalField({
   );
 }
 
+function HeaderGmailThreadIdFields({
+  threadId,
+  disabled,
+}: {
+  readonly threadId: string | null | undefined;
+  readonly disabled: boolean;
+}) {
+  const { t } = useTranslation();
+  if (!threadId) {
+    return null;
+  }
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      <Input
+        aria-label={t(($) => {
+          return $.chat.automations.gmail.threadIdField;
+        })}
+        value={t(($) => {
+          return $.chat.automations.gmail.threadId;
+        })}
+        readOnly
+        disabled
+      />
+      <Input
+        aria-label={t(($) => {
+          return $.chat.automations.gmail.threadIdOperator;
+        })}
+        value={t(($) => {
+          return $.chat.automations.gmail.is;
+        })}
+        readOnly
+        disabled
+      />
+      <Input
+        name="threadId"
+        aria-label={t(($) => {
+          return $.chat.automations.gmail.threadIdValue;
+        })}
+        defaultValue={threadId}
+        disabled={disabled}
+        required
+      />
+    </div>
+  );
+}
+
+function HeaderGmailTextMatcherFields({
+  eventConfig,
+  disabled,
+}: {
+  readonly eventConfig: HeaderGmailNewMessageAutomation["eventConfig"];
+  readonly disabled: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {GMAIL_TEXT_FIELDS.map(({ field }) => {
+        const label = headerGmailFieldLabel(field);
+        return (
+          <div key={field} className="grid grid-cols-3 gap-2">
+            <Input
+              name={`${field}Contains`}
+              aria-label={t(
+                ($) => {
+                  return $.chat.automations.gmail.contains;
+                },
+                { field: label },
+              )}
+              defaultValue={gmailMatcherDefaultValue(
+                eventConfig,
+                field,
+                "contains",
+              )}
+              disabled={disabled}
+              placeholder={t(
+                ($) => {
+                  return $.chat.automations.gmail.contains;
+                },
+                { field: label },
+              )}
+            />
+            <Input
+              name={`${field}ContainsAny`}
+              aria-label={t(
+                ($) => {
+                  return $.chat.automations.gmail.containsAny;
+                },
+                { field: label },
+              )}
+              defaultValue={gmailMatcherDefaultValue(
+                eventConfig,
+                field,
+                "containsAny",
+              )}
+              disabled={disabled}
+              placeholder={t(
+                ($) => {
+                  return $.chat.automations.gmail.containsAny;
+                },
+                { field: label },
+              )}
+            />
+            <Input
+              name={`${field}DoesNotContain`}
+              aria-label={t(
+                ($) => {
+                  return $.chat.automations.gmail.doesNotContain;
+                },
+                { field: label },
+              )}
+              defaultValue={gmailMatcherDefaultValue(
+                eventConfig,
+                field,
+                "doesNotContain",
+              )}
+              disabled={disabled}
+              placeholder={t(
+                ($) => {
+                  return $.chat.automations.gmail.doesNotContain;
+                },
+                { field: label },
+              )}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function HeaderGmailNewMessageAutomationEditForm({
   automation,
   headerAutomations,
@@ -1542,6 +2186,7 @@ function HeaderGmailNewMessageAutomationEditForm({
   readonly headerAutomations: HeaderAutomationSignals;
   readonly onDone: () => void;
 }) {
+  const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
   const [updateLoadable, updateAutomation] = useLoadableSet(
     headerAutomations.updateGmailNewMessage$,
@@ -1573,65 +2218,14 @@ function HeaderGmailNewMessageAutomationEditForm({
         );
       }}
     >
-      {automation.eventConfig.threadId ? (
-        <div className="grid grid-cols-3 gap-2">
-          <Input
-            aria-label="Thread ID field"
-            value="Thread ID"
-            readOnly
-            disabled
-          />
-          <Input aria-label="Thread ID operator" value="Is" readOnly disabled />
-          <Input
-            name="threadId"
-            aria-label="Thread ID value"
-            defaultValue={automation.eventConfig.threadId}
-            disabled={saving}
-            required
-          />
-        </div>
-      ) : null}
-      <div className="grid gap-3 sm:grid-cols-2">
-        {GMAIL_TEXT_FIELDS.map(({ field, label }) => {
-          return (
-            <div key={field} className="grid grid-cols-3 gap-2">
-              <Input
-                name={`${field}Contains`}
-                aria-label={`${label} contains`}
-                defaultValue={gmailMatcherDefaultValue(
-                  automation.eventConfig,
-                  field,
-                  "contains",
-                )}
-                disabled={saving}
-                placeholder={`${label} contains`}
-              />
-              <Input
-                name={`${field}ContainsAny`}
-                aria-label={`${label} contains any`}
-                defaultValue={gmailMatcherDefaultValue(
-                  automation.eventConfig,
-                  field,
-                  "containsAny",
-                )}
-                disabled={saving}
-                placeholder={`${label} contains any`}
-              />
-              <Input
-                name={`${field}DoesNotContain`}
-                aria-label={`${label} does not contain`}
-                defaultValue={gmailMatcherDefaultValue(
-                  automation.eventConfig,
-                  field,
-                  "doesNotContain",
-                )}
-                disabled={saving}
-                placeholder={`${label} does not contain`}
-              />
-            </div>
-          );
-        })}
-      </div>
+      <HeaderGmailThreadIdFields
+        threadId={automation.eventConfig.threadId}
+        disabled={saving}
+      />
+      <HeaderGmailTextMatcherFields
+        eventConfig={automation.eventConfig}
+        disabled={saving}
+      />
       <DialogFooter>
         <Button
           type="button"
@@ -1639,11 +2233,15 @@ function HeaderGmailNewMessageAutomationEditForm({
           disabled={saving}
           onClick={onDone}
         >
-          Cancel
+          {t(($) => {
+            return $.chat.actions.cancel;
+          })}
         </Button>
         <Button type="submit" disabled={saving}>
           {saving ? <IconLoader2 size={14} className="animate-spin" /> : null}
-          Save automation
+          {t(($) => {
+            return $.chat.automations.save;
+          })}
         </Button>
       </DialogFooter>
     </form>
@@ -1662,6 +2260,7 @@ function HeaderGmailLabelAutomationEditForm({
   readonly headerAutomations: HeaderAutomationSignals;
   readonly onDone: () => void;
 }) {
+  const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
   const [updateLoadable, updateAutomation] = useLoadableSet(
     headerAutomations.updateGmailLabelApplied$,
@@ -1693,14 +2292,20 @@ function HeaderGmailLabelAutomationEditForm({
       }}
     >
       <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-        Label name
+        {t(($) => {
+          return $.chat.automations.gmail.labelName;
+        })}
         <Input
           name="labelName"
-          aria-label="Label name"
+          aria-label={t(($) => {
+            return $.chat.automations.gmail.labelName;
+          })}
           required
           defaultValue={automation.eventConfig.labelName}
           disabled={saving}
-          placeholder="Support"
+          placeholder={t(($) => {
+            return $.chat.automations.gmail.labelPlaceholder;
+          })}
         />
       </label>
       <DialogFooter>
@@ -1710,11 +2315,15 @@ function HeaderGmailLabelAutomationEditForm({
           disabled={saving}
           onClick={onDone}
         >
-          Cancel
+          {t(($) => {
+            return $.chat.actions.cancel;
+          })}
         </Button>
         <Button type="submit" disabled={saving}>
           {saving ? <IconLoader2 size={14} className="animate-spin" /> : null}
-          Save automation
+          {t(($) => {
+            return $.chat.automations.save;
+          })}
         </Button>
       </DialogFooter>
     </form>
@@ -1727,6 +2336,7 @@ function HeaderAutomationSidebar({
   thread: ChatThreadSignals;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const workflowAutomations$ = thread.headerAutomations.automations$;
   const workflowAutomationsLoadable = useLastLoadable(workflowAutomations$);
   const lastResolvedAutomations = useLastResolved(workflowAutomations$);
@@ -1739,20 +2349,26 @@ function HeaderAutomationSidebar({
 
   return (
     <aside
-      aria-label="Automations"
+      aria-label={t(($) => {
+        return $.chat.automations.title;
+      })}
       className="flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0"
       data-testid="automation-sidebar"
     >
       <div className="flex min-h-14 shrink-0 items-center gap-3 border-b border-border/60 px-4 py-2">
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium text-foreground">
-            Automations
+            {t(($) => {
+              return $.chat.automations.title;
+            })}
           </div>
         </div>
         <button
           type="button"
           onClick={onClose}
-          aria-label="Close automations"
+          aria-label={t(($) => {
+            return $.chat.automations.close;
+          })}
           className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
         >
           <IconX size={16} />
@@ -1767,7 +2383,9 @@ function HeaderAutomationSidebar({
           </div>
         ) : isEmpty ? (
           <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted-foreground">
-            No automations yet.
+            {t(($) => {
+              return $.chat.automations.empty;
+            })}
           </div>
         ) : (
           <div className="grid gap-3">
@@ -1799,13 +2417,16 @@ function ChatThread({
   isMain?: boolean;
   thread: ChatThreadSignals;
 }) {
+  const { t } = useTranslation();
   const setContainerRef = useSet(
     isMain ? thread.setMainContainerRef$ : thread.setContainerRef$,
   );
 
   return (
     <section
-      aria-label="Chat thread"
+      aria-label={t(($) => {
+        return $.chat.thread.ariaLabel;
+      })}
       className="flex min-w-0 basis-0 flex-1 flex-col min-h-0 bg-transparent focus:outline-none"
       data-chat-thread-container-id={thread.threadId}
       ref={setContainerRef}
@@ -1895,7 +2516,9 @@ function resolveSessionError(
   if (renderedGroupsReadyLoadable.state === "hasError") {
     return renderedGroupsReadyLoadable.error instanceof Error
       ? renderedGroupsReadyLoadable.error.message
-      : "Failed to load messages";
+      : i18n.t(($) => {
+          return $.chat.errors.loadMessages;
+        });
   }
   return null;
 }
@@ -1961,6 +2584,7 @@ function ChatThreadSessionError({ thread }: { thread: ChatThreadSignals }) {
 }
 
 function ChatThreadEmptyState({ thread }: { thread: ChatThreadSignals }) {
+  const { t } = useTranslation();
   const renderedGroupsReady =
     useLastResolved(thread.visibleRenderedChatGroupsReady$) ?? false;
   const threadSettledInServer = useGet(thread.threadSettledInServer$);
@@ -1984,7 +2608,9 @@ function ChatThreadEmptyState({ thread }: { thread: ChatThreadSignals }) {
         className="h-24 w-24 object-contain opacity-80"
       />
       <p className="text-sm text-muted-foreground">
-        Send a message to start the conversation
+        {t(($) => {
+          return $.chat.thread.empty;
+        })}
       </p>
     </div>
   );
@@ -2291,7 +2917,7 @@ function firstRunIdForEvents(
 
 function usageByRunIdFromGroups(
   groups: readonly ChatEventGroup[],
-): Map<string, ChatMessageUsagePayload> {
+): Map<string, ChatEventUsagePayload> {
   return foldLatestChatUsageByRunId(
     groups.flatMap((group) => {
       const runId = firstRunIdForEvents(group.events);
@@ -2312,7 +2938,7 @@ function usageByRunIdFromGroups(
 
 function attachUsageToCompletedWorkGroups(
   groups: readonly ChatEventGroup[],
-  usageByRunId: ReadonlyMap<string, ChatMessageUsagePayload>,
+  usageByRunId: ReadonlyMap<string, ChatEventUsagePayload>,
 ): ChatEventGroup[] {
   return groups.map((group) => {
     if (group.role !== "assistant") {
@@ -2475,14 +3101,33 @@ function parseEventTime(value: string): number | null {
 
 function formatCompactDuration(totalSeconds: number): string {
   if (totalSeconds < 60) {
-    return `${totalSeconds}s`;
+    return i18n.t(
+      ($) => {
+        return $.chat.run.duration.secondsShort;
+      },
+      {
+        count: totalSeconds,
+      },
+    );
   }
   const totalMinutes = Math.round(totalSeconds / 60);
   if (totalMinutes < 60) {
-    return `${totalMinutes}m`;
+    return i18n.t(
+      ($) => {
+        return $.chat.run.duration.minutesShort;
+      },
+      {
+        count: totalMinutes,
+      },
+    );
   }
   const totalHours = Math.round(totalMinutes / 60);
-  return `${totalHours}h`;
+  return i18n.t(
+    ($) => {
+      return $.chat.run.duration.hoursShort;
+    },
+    { count: totalHours },
+  );
 }
 
 function durationLabelForGroups(
@@ -2506,7 +3151,16 @@ function durationLabelForGroups(
 
 function completedWorkLabel(groups: readonly ChatEventGroup[]): string {
   const duration = durationLabelForGroups(groups);
-  return duration ? `Worked for ${duration}` : "Worked";
+  return duration
+    ? i18n.t(
+        ($) => {
+          return $.chat.run.workedFor;
+        },
+        { duration },
+      )
+    : i18n.t(($) => {
+        return $.chat.run.worked;
+      });
 }
 
 const RUN_SECTION_LABEL_CLASS =
@@ -2521,13 +3175,22 @@ function CompletedWorkFoldRow({
   expanded: boolean;
   onToggle: () => void;
 }) {
+  const { t } = useTranslation();
   const label = completedWorkLabel(groups);
   return (
     <div data-chat-completed-work-fold className="-mx-2 @[900px]:-mb-[15px]">
       <button
         type="button"
         aria-expanded={expanded}
-        aria-label={expanded ? "Collapse work history" : "Expand work history"}
+        aria-label={
+          expanded
+            ? t(($) => {
+                return $.chat.run.collapseWorkHistory;
+              })
+            : t(($) => {
+                return $.chat.run.expandWorkHistory;
+              })
+        }
         onClick={onToggle}
         className="mt-1.5 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-muted-foreground transition-colors hover:bg-muted/50"
       >
@@ -2575,7 +3238,9 @@ function runGroupFoldSourceLabel(fold: RunGroupFold): string {
       return normalizedInlineLabel(content);
     }
   }
-  return "Automated run";
+  return i18n.t(($) => {
+    return $.chat.run.automatedRun;
+  });
 }
 
 function runGroupFoldWorkflowLabel(fold: RunGroupFold): string | null {
@@ -2599,7 +3264,13 @@ function runGroupFoldWorkflowLabel(fold: RunGroupFold): string | null {
 function runGroupFoldGoalLabel(fold: RunGroupFold): string {
   const goalEvent = runGroupFoldEvents(fold).find(isGoalUserMessage);
   const content = goalEvent ? goalUserMessageBrief(goalEvent) : null;
-  return content ? normalizedInlineLabel(content) : "goal";
+  return content
+    ? normalizedInlineLabel(content)
+    : i18n
+        .t(($) => {
+          return $.chat.queue.goal;
+        })
+        .toLocaleLowerCase(i18n.resolvedLanguage);
 }
 
 function goalUserMessageBrief(event: EnrichedChatEvent): string | null {
@@ -2654,10 +3325,28 @@ function verboseDurationLabelForRunGroupFold(
   const minutes = elapsedMinutes % 60;
   const parts: string[] = [];
   if (hours > 0) {
-    parts.push(`${hours} ${hours === 1 ? "hour" : "hours"}`);
+    parts.push(
+      i18n.t(
+        ($) => {
+          return $.chat.run.duration.hour;
+        },
+        {
+          count: hours,
+        },
+      ),
+    );
   }
   if (minutes > 0 || parts.length === 0) {
-    parts.push(`${minutes} ${minutes === 1 ? "min" : "mins"}`);
+    parts.push(
+      i18n.t(
+        ($) => {
+          return $.chat.run.duration.minute;
+        },
+        {
+          count: minutes,
+        },
+      ),
+    );
   }
   return parts.join(" ");
 }
@@ -2666,11 +3355,30 @@ function runGroupFoldLabel(fold: RunGroupFold): string {
   if (isGoalRunGroupFold(fold)) {
     const duration = verboseDurationLabelForRunGroupFold(fold);
     const label = runGroupFoldGoalLabel(fold);
-    return duration ? `${duration} for ${label}` : `Goal for ${label}`;
+    return duration
+      ? i18n.t(
+          ($) => {
+            return $.chat.run.durationFor;
+          },
+          { duration, label },
+        )
+      : i18n.t(
+          ($) => {
+            return $.chat.run.goalFor;
+          },
+          { label },
+        );
   }
-  const runLabel = fold.hiddenRunCount === 1 ? "run" : "runs";
   const sourceLabel = runGroupFoldSourceLabel(fold);
-  return `${fold.hiddenRunCount} ${runLabel} for ${sourceLabel}`;
+  return i18n.t(
+    ($) => {
+      return $.chat.run.groupedRunsFor;
+    },
+    {
+      count: fold.hiddenRunCount,
+      source: sourceLabel,
+    },
+  );
 }
 
 function RunGroupFoldRow({
@@ -2680,6 +3388,7 @@ function RunGroupFoldRow({
   control: RunGroupFoldControl;
   embedded?: boolean;
 }) {
+  const { t } = useTranslation();
   const { fold, expanded, onToggle } = control;
   const label = runGroupFoldLabel(fold);
   const isGoal = isGoalRunGroupFold(fold);
@@ -2694,8 +3403,12 @@ function RunGroupFoldRow({
         aria-expanded={expanded}
         aria-label={
           expanded
-            ? "Collapse grouped run history"
-            : "Expand grouped run history"
+            ? t(($) => {
+                return $.chat.run.collapseGroupedHistory;
+              })
+            : t(($) => {
+                return $.chat.run.expandGroupedHistory;
+              })
         }
         onClick={onToggle}
         className={cn(
@@ -2796,6 +3509,7 @@ function ChatHistoryBackfillSkeleton({
 }: {
   thread: ChatThreadSignals;
 }) {
+  const { t } = useTranslation();
   const progress = useLastResolved(thread.historyBackfillProgress$);
   if (progress === null || progress === undefined) {
     return null;
@@ -2804,7 +3518,9 @@ function ChatHistoryBackfillSkeleton({
     <div
       data-history-backfill-skeleton
       role="status"
-      aria-label="Loading earlier messages"
+      aria-label={t(($) => {
+        return $.chat.thread.loadingEarlier;
+      })}
       className="flex flex-col gap-6"
     >
       <ChatEventSkeletonPair />
@@ -2839,6 +3555,7 @@ function ChatThreadContent({ thread }: { thread: ChatThreadSignals }) {
 }
 
 function ScrollToBottomButton({ thread }: { thread: ChatThreadSignals }) {
+  const { t } = useTranslation();
   const awayFromBottom = useGet(thread.awayFromBottom$);
   const scrollToBottom = useSet(thread.scrollToBottom$);
   const renderedGroupsReadyLoadable = useLastLoadable(
@@ -2855,7 +3572,9 @@ function ScrollToBottomButton({ thread }: { thread: ChatThreadSignals }) {
     <button
       type="button"
       data-scroll-to-bottom
-      aria-label="Scroll to bottom"
+      aria-label={t(($) => {
+        return $.chat.thread.scrollToBottom;
+      })}
       onClick={() => {
         scrollToBottom();
       }}
@@ -3073,8 +3792,8 @@ function useChatComposerQueue(
   const pageSignal = useGet(pageSignal$);
 
   const queuedEventsById = new Map(
-    queuedEvents.map((event) => {
-      return [event.id, event] as const;
+    queuedEvents.flatMap((event) => {
+      return event.kind === "message" ? [[event.id, event] as const] : [];
     }),
   );
   const queuedItems: QueuedComposerItem[] = Array.from(
@@ -3102,18 +3821,19 @@ function useChatComposerQueue(
   return { queuedItems, onRemoveQueuedItem };
 }
 
-function useChatComposerWorkflowEvents(thread: ChatThreadSignals) {
-  const queue = useLastResolved(thread.workflowQueue.queue$);
+function useChatComposerWorkflowEvents(
+  thread: ChatThreadSignals,
+  queuedEvents: readonly QueuedChatEventItem[],
+) {
+  const { t } = useTranslation();
   const workflowAutomations =
     useLastResolved(thread.headerAutomations.automations$) ?? [];
-  const skipEvent = useSet(thread.workflowQueue.skipEvent$);
-  const clearEvents = useSet(thread.workflowQueue.clear$);
-  const setEventsPaused = useSet(thread.workflowQueue.setPaused$);
+  const skipEvent = useSet(thread.skipAutomationEvent$);
   const pageSignal = useGet(pageSignal$);
   const pendingEventIds = new Set(
-    queue?.pending.map((event) => {
-      return event.id;
-    }) ?? [],
+    queuedEvents.flatMap((event) => {
+      return event.kind === "automation" ? [event.id] : [];
+    }),
   );
   const workflowLabelsByAutomationId = new Map(
     workflowAutomations.map((automation) => {
@@ -3123,16 +3843,22 @@ function useChatComposerWorkflowEvents(thread: ChatThreadSignals) {
       ] as const;
     }),
   );
-  const workflowEventItems: WorkflowEventComposerItem[] =
-    queue?.pending.map((event) => {
+  const workflowEventItems: WorkflowEventComposerItem[] = queuedEvents.flatMap(
+    (event) => {
+      if (event.kind !== "automation") {
+        return [];
+      }
       return {
         id: event.id,
         text:
           event.triggerBrief?.trim() ||
           workflowLabelsByAutomationId.get(event.automationId) ||
-          "Automation event",
+          t(($) => {
+            return $.chat.queue.automationEvent;
+          }),
       };
-    }) ?? [];
+    },
+  );
 
   const onRemoveWorkflowEvent = (id: string) => {
     if (!pendingEventIds.has(id)) {
@@ -3144,14 +3870,6 @@ function useChatComposerWorkflowEvents(thread: ChatThreadSignals) {
   return {
     workflowEventItems,
     onRemoveWorkflowEvent,
-    workflowEventsPaused: queue ? queue.pausedAt !== null : false,
-    workflowEventsPauseReason: queue?.pauseReason,
-    onSetWorkflowEventsPaused: (paused: boolean) => {
-      detach(setEventsPaused(paused, pageSignal), Reason.DomCallback);
-    },
-    onClearWorkflowEvents: () => {
-      detach(clearEvents(pageSignal), Reason.DomCallback);
-    },
   };
 }
 
@@ -3183,6 +3901,7 @@ function useChatComposerModel(
   thread: ChatThreadSignals,
   pageSignal: AbortSignal,
 ) {
+  const { t } = useTranslation();
   // Per-thread composer selection comes from the event projection. Read with
   // useGet because event-backed thread metadata is a synchronous projection.
   const selectedModelResolved = useGet(thread.selectedModel$);
@@ -3220,9 +3939,12 @@ function useChatComposerModel(
   const submitBlockerProps =
     modelSelection && !selectedModelOauthAvailable
       ? {
-          message:
-            "The selected model is not available. Configure it before sending.",
-          actionLabel: "Model Configure",
+          message: t(($) => {
+            return $.chat.composer.selectedModelUnavailable;
+          }),
+          actionLabel: t(($) => {
+            return $.chat.composer.configureModel;
+          }),
           onAction: () => {
             detach(configureSelectedModel(pageSignal), Reason.DomCallback);
           },
@@ -3454,7 +4176,15 @@ function equalQueuedEventItems(
   next: readonly QueuedChatEventItem[],
 ): boolean {
   return equalArrays(previous, next, (left, right) => {
-    return left.id === right.id && left.text === right.text;
+    if (left.kind !== right.kind || left.id !== right.id) {
+      return false;
+    }
+    return left.kind === "message" && right.kind === "message"
+      ? left.text === right.text
+      : left.kind === "automation" &&
+          right.kind === "automation" &&
+          left.automationId === right.automationId &&
+          left.triggerBrief === right.triggerBrief;
   });
 }
 
@@ -3497,7 +4227,10 @@ function ChatThreadComposer({
     thread,
     queuedEventItems,
   );
-  const workflowEvents = useChatComposerWorkflowEvents(thread);
+  const workflowEvents = useChatComposerWorkflowEvents(
+    thread,
+    queuedEventItems,
+  );
   const { activeGoal, onCancelActiveGoal } = useChatComposerActiveGoal(
     thread,
     pageSignal,
@@ -3594,7 +4327,7 @@ function ChatEventSkeletonPair({ compact = false }: { compact?: boolean }) {
     <>
       {/* User bubble skeleton */}
       <div
-        data-chat-message-skeleton="user"
+        data-chat-event-skeleton="user"
         aria-hidden
         className="flex justify-end"
       >
@@ -3604,7 +4337,7 @@ function ChatEventSkeletonPair({ compact = false }: { compact?: boolean }) {
       </div>
       {/* Assistant bubble skeleton */}
       <div
-        data-chat-message-skeleton="assistant"
+        data-chat-event-skeleton="assistant"
         aria-hidden
         className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start"
       >
@@ -3654,13 +4387,16 @@ function ThinkingLabel({
   thinkingLabel: string;
   serverThinkingLabel?: ServerThinkingLabel;
 }) {
+  const { t } = useTranslation();
   const openQueueDrawer = useSet(openQueueDrawer$);
   const pageSignal = useGet(pageSignal$);
 
   if (isQueued) {
     return (
       <p className="zero-shimmer-text h-5 min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[0.8125rem] leading-5">
-        Waiting in{" "}
+        {t(($) => {
+          return $.chat.run.waitingIn;
+        })}{" "}
         <button
           type="button"
           onClick={() => {
@@ -3668,7 +4404,9 @@ function ThinkingLabel({
           }}
           className="cursor-pointer underline underline-offset-2"
         >
-          queue...
+          {t(($) => {
+            return $.chat.run.queueEllipsis;
+          })}
         </button>
       </p>
     );
@@ -3728,13 +4466,27 @@ function FinishedRunRow({
   thread: ChatThreadSignals;
   source: RecommendedFollowupSource | null;
 }) {
-  const donePhrase = useLastResolved(thread.donePhrase$) ?? "Done";
+  const { t } = useTranslation();
+  const donePhrase =
+    useLastResolved(thread.donePhrase$) ??
+    t(($) => {
+      return $.chat.run.done.default;
+    });
   const runFinishedAt = useLastResolved(thread.latestRunFinishCreatedAt$);
   const label =
     source && runFinishedAt
-      ? `Keep going · ${formatChatTimestamp(runFinishedAt)}`
+      ? t(
+          ($) => {
+            return $.chat.run.keepGoingAt;
+          },
+          {
+            timestamp: formatChatTimestamp(runFinishedAt),
+          },
+        )
       : source
-        ? "Keep going"
+        ? t(($) => {
+            return $.chat.run.keepGoing;
+          })
         : donePhrase;
 
   return (
@@ -4070,6 +4822,7 @@ function ArtifactBodyRenderBlockView({
   openLightbox: (url: string) => void;
   openVideoLightbox: (value: { url: string; filename: string }) => void;
 }) {
+  const { t } = useTranslation();
   const previewImageLoadable = useLastLoadable(signals.previewImageUrl$);
   const previewImagePending = previewImageLoadable.state === "loading";
   const previewImageUrl =
@@ -4081,7 +4834,14 @@ function ArtifactBodyRenderBlockView({
     return (
       <ChatImagePreviewLink
         alt={signals.filename}
-        ariaLabel={`Preview ${signals.filename}`}
+        ariaLabel={t(
+          ($) => {
+            return $.chat.attachments.previewFile;
+          },
+          {
+            filename: signals.filename,
+          },
+        )}
         imageClassName="block h-full w-full object-contain"
         linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
         onPreview={() => {
@@ -4095,7 +4855,14 @@ function ArtifactBodyRenderBlockView({
   if (signals.kind === "video") {
     return (
       <ChatVideoPreviewButton
-        ariaLabel={`Preview ${signals.filename}`}
+        ariaLabel={t(
+          ($) => {
+            return $.chat.attachments.previewFile;
+          },
+          {
+            filename: signals.filename,
+          },
+        )}
         buttonClassName={CHAT_INLINE_VIDEO_BODY_PREVIEW_CLASS}
         filename={signals.filename}
         onPreview={() => {
@@ -4161,6 +4928,7 @@ function CustomConnectorActionCard({
 }: {
   signals: CustomConnectorSignals;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       data-testid="custom-connector-action-card"
@@ -4176,8 +4944,12 @@ function CustomConnectorActionCard({
           </div>
           <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
             {signals.agentId
-              ? "Review, connect, and authorize this custom connector for the agent."
-              : "Review and connect this custom connector."}
+              ? t(($) => {
+                  return $.chat.connectors.customAuthorizeDescription;
+                })
+              : t(($) => {
+                  return $.chat.connectors.customConnectDescription;
+                })}
           </div>
         </div>
       </div>
@@ -4187,7 +4959,9 @@ function CustomConnectorActionCard({
         rel="noreferrer"
         className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
       >
-        Configure
+        {t(($) => {
+          return $.chat.actions.configure;
+        })}
         <IconArrowUpRight size={15} />
       </a>
     </div>
@@ -4199,6 +4973,7 @@ function ComputerUseAuthorizationCard({
 }: {
   signals: ComputerUseAuthorizationSignals;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       data-testid="computer-use-authorization-card"
@@ -4210,10 +4985,14 @@ function ComputerUseAuthorizationCard({
         </div>
         <div className="min-w-0">
           <div className="truncate text-[0.9375rem] font-medium text-foreground">
-            Computer Use authorization
+            {t(($) => {
+              return $.chat.computerUse.authorization;
+            })}
           </div>
           <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
-            Select a Desktop host for future runs in this thread.
+            {t(($) => {
+              return $.chat.computerUse.authorizationDescription;
+            })}
           </div>
         </div>
       </div>
@@ -4223,7 +5002,9 @@ function ComputerUseAuthorizationCard({
         rel="noreferrer"
         className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
       >
-        Authorize
+        {t(($) => {
+          return $.chat.actions.authorize;
+        })}
         <IconArrowUpRight size={15} />
       </a>
     </div>
@@ -4231,6 +5012,7 @@ function ComputerUseAuthorizationCard({
 }
 
 function PlanUpgradeCard({ signals }: { signals: PlanUpgradeSignals }) {
+  const { t } = useTranslation();
   return (
     <div
       data-testid="plan-upgrade-card"
@@ -4242,11 +5024,14 @@ function PlanUpgradeCard({ signals }: { signals: PlanUpgradeSignals }) {
         </div>
         <div className="min-w-0">
           <div className="truncate text-[0.9375rem] font-medium text-foreground">
-            Upgrade your workspace
+            {t(($) => {
+              return $.chat.billing.upgradeWorkspace;
+            })}
           </div>
           <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
-            Compare plans to unlock paid workspace features and additional
-            credits.
+            {t(($) => {
+              return $.chat.billing.comparePlansDescription;
+            })}
           </div>
         </div>
       </div>
@@ -4256,7 +5041,9 @@ function PlanUpgradeCard({ signals }: { signals: PlanUpgradeSignals }) {
         rel="noreferrer"
         className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
       >
-        Compare plans
+        {t(($) => {
+          return $.chat.billing.comparePlans;
+        })}
         <IconArrowUpRight size={15} />
       </a>
     </div>
@@ -4265,7 +5052,7 @@ function PlanUpgradeCard({ signals }: { signals: PlanUpgradeSignals }) {
 
 type PermissionAction = "allow" | "deny";
 
-type PermissionActionUserGrant = UserPermissionGrantResponse;
+type PermissionActionUserGrant = PlatformUserPermissionGrant;
 
 type PermissionActionCardStatus =
   | { kind: "loading" }
@@ -4293,14 +5080,20 @@ type ApplyUserPermissionGrantFn = (
     expiresIn?: UserPermissionGrantExpiresIn;
   },
   signal: AbortSignal,
-) => Promise<UserPermissionGrantResponse>;
+) => Promise<PlatformUserPermissionGrant>;
 
 function loadableData<T>(loadable: LoadableLike<T>): T | undefined {
   return loadable.state === "hasData" ? loadable.data : undefined;
 }
 
 function permissionActionVerb(action: PermissionAction): string {
-  return action === "allow" ? "Allow" : "Deny";
+  return action === "allow"
+    ? i18n.t(($) => {
+        return $.chat.permissions.allow;
+      })
+    : i18n.t(($) => {
+        return $.chat.permissions.deny;
+      });
 }
 
 function permissionActionStatusText(
@@ -4309,13 +5102,33 @@ function permissionActionStatusText(
 ): { label: string; className: string } | null {
   if (status.kind === "saved") {
     return action === "allow"
-      ? { label: "Permissions updated", className: "text-green-600" }
-      : { label: "Permission denied", className: "text-destructive" };
+      ? {
+          label: i18n.t(($) => {
+            return $.chat.permissions.updated;
+          }),
+          className: "text-green-600",
+        }
+      : {
+          label: i18n.t(($) => {
+            return $.chat.permissions.denied;
+          }),
+          className: "text-destructive",
+        };
   }
   if (status.kind === "already-applied") {
     return action === "allow"
-      ? { label: "Already allowed", className: "text-green-600" }
-      : { label: "Already denied", className: "text-destructive" };
+      ? {
+          label: i18n.t(($) => {
+            return $.chat.permissions.alreadyAllowed;
+          }),
+          className: "text-green-600",
+        }
+      : {
+          label: i18n.t(($) => {
+            return $.chat.permissions.alreadyDenied;
+          }),
+          className: "text-destructive",
+        };
   }
   return null;
 }
@@ -4327,6 +5140,7 @@ function PermissionActionButton({
   status: PermissionActionCardStatus;
   onClick: () => void;
 }) {
+  const { t } = useTranslation();
   if (
     status.kind !== "ready" &&
     status.kind !== "saving" &&
@@ -4344,7 +5158,13 @@ function PermissionActionButton({
       className="inline-flex h-9 w-full min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto sm:flex-none"
     >
       {saving && <IconLoader2 size={15} className="animate-spin" />}
-      {saving ? "Saving..." : "Confirm"}
+      {saving
+        ? t(($) => {
+            return $.chat.actions.saving;
+          })
+        : t(($) => {
+            return $.chat.actions.confirm;
+          })}
     </button>
   );
 }
@@ -4372,12 +5192,17 @@ function PermissionActionInlineStatus({
 }: {
   status: PermissionActionCardStatus;
 }) {
+  const { t } = useTranslation();
   switch (status.kind) {
     case "loading": {
       return (
         <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
           <IconLoader2 size={13} className="animate-spin" />
-          <span>Checking permission status...</span>
+          <span>
+            {t(($) => {
+              return $.chat.permissions.checking;
+            })}
+          </span>
         </div>
       );
     }
@@ -4385,7 +5210,11 @@ function PermissionActionInlineStatus({
       return (
         <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-destructive">
           <IconAlertCircle size={13} />
-          <span>Couldn&apos;t load permission status</span>
+          <span>
+            {t(($) => {
+              return $.chat.permissions.loadFailed;
+            })}
+          </span>
         </div>
       );
     }
@@ -4393,7 +5222,11 @@ function PermissionActionInlineStatus({
       return (
         <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-destructive">
           <IconAlertCircle size={13} />
-          <span>Couldn&apos;t update permissions</span>
+          <span>
+            {t(($) => {
+              return $.chat.permissions.updateFailed;
+            })}
+          </span>
         </div>
       );
     }
@@ -4401,7 +5234,11 @@ function PermissionActionInlineStatus({
       return (
         <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-destructive">
           <IconAlertCircle size={13} />
-          <span>Agent not found</span>
+          <span>
+            {t(($) => {
+              return $.chat.permissions.agentNotFound;
+            })}
+          </span>
         </div>
       );
     }
@@ -4409,7 +5246,11 @@ function PermissionActionInlineStatus({
       return (
         <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-destructive">
           <IconAlertCircle size={13} />
-          <span>Unknown permission</span>
+          <span>
+            {t(($) => {
+              return $.chat.permissions.unknown;
+            })}
+          </span>
         </div>
       );
     }
@@ -4483,7 +5324,7 @@ function isPermissionActionAlreadyApplied(params: {
 
 function findPermissionActionPermission(
   block: PermissionSignals,
-  metadata: PublicConnectorCatalogPermissionDetail | undefined,
+  metadata: PlatformConnectorPermissionMetadata | undefined,
 ) {
   return metadata
     ? (findPermissionInMetadata(metadata, block.permission) ?? undefined)
@@ -4493,7 +5334,7 @@ function findPermissionActionPermission(
 function permissionActionUserGrantPolicy(
   loadable: LoadableLike<readonly PermissionActionUserGrant[]>,
   block: PermissionSignals,
-  metadata: PublicConnectorCatalogPermissionDetail | undefined,
+  metadata: PlatformConnectorPermissionMetadata | undefined,
 ): FirewallPolicyValue | undefined {
   const grants = loadableData(loadable);
   if (!grants || !metadata) {
@@ -4512,7 +5353,7 @@ function permissionActionUserGrant(
   }
   return grants.find((grant) => {
     return (
-      grant.connectorRef === block.connectorSlug &&
+      grant.connectorSlug === block.connectorSlug &&
       grant.permission === block.permission &&
       grant.action === block.action
     );
@@ -4585,7 +5426,7 @@ function createPermissionActionCardViewState(params: {
   block: PermissionSignals;
   hasAgent: boolean;
   agentLoadableState: string;
-  permissionMetadataLoadable: LoadableLike<PublicConnectorCatalogPermissionDetail | null>;
+  permissionMetadataLoadable: LoadableLike<PlatformConnectorPermissionMetadata | null>;
   userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
   grantLoadableState: string;
   savedGrantActive: boolean;
@@ -4724,7 +5565,7 @@ function PermissionActionCardContent({
   onClick,
 }: {
   signals: PermissionSignals;
-  icon: PublicConnectorCatalogPermissionDetail["icon"] | undefined;
+  icon: PlatformConnectorPermissionMetadata["icon"] | undefined;
   connectorLabel: string;
   actionLabel: string;
   permissionName: string;
@@ -4735,14 +5576,35 @@ function PermissionActionCardContent({
   expiresAt: string | null;
   onClick: () => void;
 }) {
-  const rawExpiryText = expirationAvailable
-    ? permissionGrantExpiryText(expiresAt)
-    : null;
+  const { t } = useTranslation();
+  const expiresAtMs = expiresAt ? Date.parse(expiresAt) : Number.NaN;
+  const remainingMs = expiresAtMs - now();
+  const hourCount = Math.ceil(remainingMs / (60 * 60 * 1000));
+  const dayCount = Math.ceil(remainingMs / (24 * 60 * 60 * 1000));
   const expiryText =
-    rawExpiryText === "Expires in less than 1 hour" ||
-    rawExpiryText === "Expires in 1 hour"
+    !expirationAvailable || !Number.isFinite(expiresAtMs)
       ? null
-      : rawExpiryText;
+      : remainingMs <= 0
+        ? t(($) => {
+            return $.chat.permissions.expired;
+          })
+        : remainingMs >= 24 * 60 * 60 * 1000
+          ? t(
+              ($) => {
+                return $.chat.permissions.expiresInDays;
+              },
+              { count: dayCount },
+            )
+          : remainingMs < 59 * 60 * 1000 || hourCount === 1
+            ? null
+            : t(
+                ($) => {
+                  return $.chat.permissions.expiresInHours;
+                },
+                {
+                  count: hourCount,
+                },
+              );
   const showDurationSelect =
     expirationAvailable &&
     (status.kind === "ready" ||
@@ -4759,10 +5621,25 @@ function PermissionActionCardContent({
         </div>
         <div className="min-w-0">
           <div className="truncate text-[0.9375rem] font-medium text-foreground">
-            {connectorLabel} permissions
+            {t(
+              ($) => {
+                return $.chat.permissions.connectorTitle;
+              },
+              {
+                connectorName: connectorLabel,
+              },
+            )}
           </div>
           <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
-            {actionLabel} {permissionName}
+            {t(
+              ($) => {
+                return $.chat.permissions.actionDescription;
+              },
+              {
+                action: actionLabel,
+                permissionName,
+              },
+            )}
           </div>
           {status.kind !== "loading" && (
             <PermissionActionInlineStatus status={status} />
@@ -4787,7 +5664,9 @@ function PermissionActionCardContent({
               value={expiresIn}
               onValueChange={onExpiresInChange}
               disabled={status.kind === "saving"}
-              ariaLabel="Permission duration"
+              ariaLabel={t(($) => {
+                return $.chat.permissions.duration;
+              })}
             />
           )}
           <PermissionActionTerminalStatus
@@ -4937,7 +5816,7 @@ const CREDIT_TOP_UP_OPTIONS = [100_000, 200_000, 300_000] as const;
 
 function formatCreditsUsd(credits: number): string {
   const dollars = credits / CREDITS_PER_DOLLAR;
-  return dollars.toLocaleString("en-US", {
+  return dollars.toLocaleString(i18n.resolvedLanguage, {
     style: "currency",
     currency: "USD",
     maximumFractionDigits: Number.isInteger(dollars) ? 0 : 2,
@@ -4959,13 +5838,18 @@ function customCreditsFromForm(form: HTMLFormElement | null): number | null {
 }
 
 function CreditsAvailableMessage() {
+  const { t } = useTranslation();
   return (
     <div className="max-w-md">
       <p className="text-[0.9375rem] font-medium text-emerald-700 dark:text-emerald-300">
-        Credits available
+        {t(($) => {
+          return $.chat.billing.creditsAvailable;
+        })}
       </p>
       <p className="mt-1 text-sm text-muted-foreground">
-        Your credits have been added. You can continue chatting with Zero.
+        {t(($) => {
+          return $.chat.billing.creditsAdded;
+        })}
       </p>
     </div>
   );
@@ -4977,24 +5861,41 @@ function insufficientCreditsCopy(params: {
   readonly canManageBilling: boolean;
 }): { readonly headline: string; readonly helper: string } {
   const headline = params.canBuyCredits
-    ? "You're out of credits"
-    : "Upgrade to Pro to run Zero";
+    ? i18n.t(($) => {
+        return $.chat.billing.outOfCredits;
+      })
+    : i18n.t(($) => {
+        return $.chat.billing.upgradeToRun;
+      });
   if (!params.roleResolved) {
-    return { headline, helper: "Checking billing permissions..." };
+    return {
+      headline,
+      helper: i18n.t(($) => {
+        return $.chat.billing.checkingPermissions;
+      }),
+    };
   }
   if (!params.canManageBilling) {
     return {
       headline,
       helper: !params.canBuyCredits
-        ? "Ask a workspace admin to upgrade to Pro so you can keep chatting with Zero."
-        : "Ask a workspace admin to add credits so you can keep chatting with Zero.",
+        ? i18n.t(($) => {
+            return $.chat.billing.askAdminUpgrade;
+          })
+        : i18n.t(($) => {
+            return $.chat.billing.askAdminCredits;
+          }),
     };
   }
   return {
     headline,
     helper: !params.canBuyCredits
-      ? "Upgrade to Pro to keep chatting with Zero."
-      : "Add credits to keep chatting with Zero.",
+      ? i18n.t(($) => {
+          return $.chat.billing.upgradeToContinue;
+        })
+      : i18n.t(($) => {
+          return $.chat.billing.addCreditsToContinue;
+        }),
   };
 }
 
@@ -5008,12 +5909,17 @@ function PaidCreditCheckoutActions({
     event: ReactMouseEvent<HTMLButtonElement>,
   ) => void;
 }) {
+  const { t } = useTranslation();
   const handleCustomCreditClick = (
     event: ReactMouseEvent<HTMLButtonElement>,
   ) => {
     const credits = customCreditsFromForm(event.currentTarget.form);
     if (credits === null) {
-      toast.error("Enter between $1 and $10,000");
+      toast.error(
+        t(($) => {
+          return $.chat.billing.customAmountError;
+        }),
+      );
       return;
     }
     handleCreditClick({ credits, customAmount: true }, event);
@@ -5042,7 +5948,9 @@ function PaidCreditCheckoutActions({
             role="button"
             className="inline-flex h-8 cursor-pointer list-none items-center rounded-md border border-border bg-background px-3 text-sm font-medium text-foreground transition-colors hover:bg-accent marker:hidden disabled:opacity-60 [&::-webkit-details-marker]:hidden"
           >
-            Custom
+            {t(($) => {
+              return $.chat.billing.custom;
+            })}
           </summary>
           <form className="mt-2 flex flex-wrap items-center gap-2">
             <span className="text-sm text-muted-foreground">$</span>
@@ -5057,7 +5965,9 @@ function PaidCreditCheckoutActions({
                   "",
                 );
               }}
-              aria-label="Custom dollar amount"
+              aria-label={t(($) => {
+                return $.chat.billing.customDollarAmount;
+              })}
               className="h-8 w-24 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none transition-colors focus:border-ring"
             />
             <button
@@ -5066,7 +5976,13 @@ function PaidCreditCheckoutActions({
               disabled={redirecting}
               className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
             >
-              {redirecting ? "Redirecting..." : "Buy"}
+              {redirecting
+                ? t(($) => {
+                    return $.chat.billing.redirecting;
+                  })
+                : t(($) => {
+                    return $.chat.billing.buy;
+                  })}
             </button>
           </form>
         </details>
@@ -5076,6 +5992,7 @@ function PaidCreditCheckoutActions({
 }
 
 function InsufficientCreditsCard() {
+  const { t } = useTranslation();
   const billingLoadable = useLoadable(billingStatusAsync$);
   const [checkoutLoadable, checkout] = useLoadableSet(startCheckout$);
   const [creditCheckoutLoadable, creditCheckout] =
@@ -5145,7 +6062,13 @@ function InsufficientCreditsCard() {
           disabled={redirecting}
           className="mt-3 inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
         >
-          {redirecting ? "Redirecting..." : "Upgrade to Pro"}
+          {redirecting
+            ? t(($) => {
+                return $.chat.billing.redirecting;
+              })
+            : t(($) => {
+                return $.chat.billing.upgradeToPro;
+              })}
         </button>
       ) : (
         <PaidCreditCheckoutActions
@@ -5163,6 +6086,7 @@ function isBillingRecoveryError(error: string): boolean {
 }
 
 function AssistantErrorContent({ error }: { error: string }) {
+  const { t } = useTranslation();
   const openSettings = useSet(openSettingsDialogAt$);
   const pageSignal = useGet(pageSignal$);
 
@@ -5180,7 +6104,11 @@ function AssistantErrorContent({ error }: { error: string }) {
         }}
       >
         <IconHandStop size={14} stroke={1.75} className="shrink-0" />
-        <span>Paused mid-thought — pick it back up whenever.</span>
+        <span>
+          {t(($) => {
+            return $.chat.errors.runCancelled;
+          })}
+        </span>
       </div>
     );
   }
@@ -5198,7 +6126,9 @@ function AssistantErrorContent({ error }: { error: string }) {
           className="shrink-0 mt-[3px] text-amber-500"
         />
         <span>
-          No model provider configured yet.{" "}
+          {t(($) => {
+            return $.chat.errors.noModelProviderPrefix;
+          })}{" "}
           <button
             type="button"
             className="inline-flex items-center gap-1 text-amber-500 underline underline-offset-2 hover:text-amber-400"
@@ -5206,9 +6136,13 @@ function AssistantErrorContent({ error }: { error: string }) {
               detach(openSettings("model", pageSignal), Reason.DomCallback);
             }}
           >
-            Set one up in Workspace Settings
+            {t(($) => {
+              return $.chat.errors.noModelProviderAction;
+            })}
           </button>{" "}
-          to get started.
+          {t(($) => {
+            return $.chat.errors.noModelProviderSuffix;
+          })}
         </span>
       </div>
     );
@@ -5229,13 +6163,16 @@ function AssistantErrorContent({ error }: { error: string }) {
           className="shrink-0 mt-[3px] text-amber-500"
         />
         <span>
-          This session was started with a different model provider and
-          can&apos;t be continued with the current one.{" "}
+          {t(($) => {
+            return $.chat.errors.providerIncompatiblePrefix;
+          })}{" "}
           <Link
             pathname="/"
             className="inline-flex items-center gap-1 text-amber-500 underline underline-offset-2 hover:text-amber-400"
           >
-            Start a new session
+            {t(($) => {
+              return $.chat.errors.providerIncompatibleAction;
+            })}
           </Link>
         </span>
       </div>
@@ -5256,14 +6193,20 @@ function AssistantErrorContent({ error }: { error: string }) {
           className="shrink-0 mt-[3px] text-amber-500"
         />
         <span>
-          The model provider used by this thread has been deleted.{" "}
+          {t(($) => {
+            return $.chat.errors.providerDeletedPrefix;
+          })}{" "}
           <Link
             pathname="/"
             className="inline-flex items-center gap-1 text-amber-500 underline underline-offset-2 hover:text-amber-400"
           >
-            Start a new chat thread
+            {t(($) => {
+              return $.chat.errors.providerDeletedAction;
+            })}
           </Link>{" "}
-          to continue.
+          {t(($) => {
+            return $.chat.errors.providerDeletedSuffix;
+          })}
         </span>
       </div>
     );
@@ -5281,13 +6224,16 @@ function AssistantErrorContent({ error }: { error: string }) {
 }
 
 function AssistantBubbleAvatar({ thread }: { thread: ChatThreadSignals }) {
+  const { t } = useTranslation();
   const agentId = useGet(thread.agentId$) ?? "";
   return (
     <Link
       pathname="/agents/:agentId"
       options={{ pathParams: { agentId } }}
       className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-      aria-label="View agent profile"
+      aria-label={t(($) => {
+        return $.chat.agentPage.viewAgentProfile;
+      })}
     >
       <AgentAvatarImg
         name={agentId}
@@ -5377,7 +6323,9 @@ function workflowSnapshotTitle(
   return (
     workflowSnapshot.displayName?.trim() ||
     workflowSnapshot.name.trim() ||
-    "Workflow"
+    i18n.t(($) => {
+      return $.chat.templates.categories.workflow;
+    })
   );
 }
 
@@ -5397,7 +6345,10 @@ function workflowMessageBody(
   const workflowSnapshot = event.workflowSnapshot;
   if (!workflowSnapshot) {
     return (
-      messageDocumentToDisplayText(event.userMessage)?.trim() || "Workflow"
+      messageDocumentToDisplayText(event.userMessage)?.trim() ||
+      i18n.t(($) => {
+        return $.chat.templates.categories.workflow;
+      })
     );
   }
   return (
@@ -5517,6 +6468,7 @@ function AttachmentMaterializationState({
     readonly assetRef?: NonNullable<ResolvedAttachFile["assetRef"]>;
   };
 }) {
+  const { t } = useTranslation();
   const materialization = attachment.assetRef?.materialization;
   if (!materialization || materialization.status === "ready") {
     return null;
@@ -5546,7 +6498,13 @@ function AttachmentMaterializationState({
           {attachment.filename}
         </span>
         <span className="block text-xs text-muted-foreground">
-          {pending ? "Importing attachment" : "Attachment unavailable"}
+          {pending
+            ? t(($) => {
+                return $.chat.attachments.importing;
+              })
+            : t(($) => {
+                return $.chat.attachments.unavailable;
+              })}
         </span>
       </span>
     </div>
@@ -5562,6 +6520,7 @@ function UserMessageAttachments({
   onImageClick: (url: string) => void;
   align?: "start" | "end";
 }) {
+  const { t } = useTranslation();
   const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
 
   if (attachments.length === 0) {
@@ -5589,7 +6548,14 @@ function UserMessageAttachments({
             <ChatImagePreviewLink
               key={a.url}
               alt={a.filename}
-              ariaLabel={`Preview ${a.filename}`}
+              ariaLabel={t(
+                ($) => {
+                  return $.chat.attachments.previewFile;
+                },
+                {
+                  filename: a.filename,
+                },
+              )}
               imageClassName="block h-full w-full object-contain"
               linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
               onPreview={() => {
@@ -5604,7 +6570,14 @@ function UserMessageAttachments({
           return (
             <ChatVideoPreviewButton
               key={a.url}
-              ariaLabel={`Preview ${a.filename}`}
+              ariaLabel={t(
+                ($) => {
+                  return $.chat.attachments.previewFile;
+                },
+                {
+                  filename: a.filename,
+                },
+              )}
               buttonClassName={CHAT_INLINE_VIDEO_ATTACHMENT_PREVIEW_CLASS}
               filename={a.filename}
               onPreview={() => {
@@ -5669,6 +6642,7 @@ function UserMessageActions({
   copied: boolean;
   onCopy: () => void;
 }) {
+  const { t } = useTranslation();
   if (!canCopy) {
     return null;
   }
@@ -5678,7 +6652,9 @@ function UserMessageActions({
         type="button"
         onClick={onCopy}
         className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
-        aria-label="Copy message"
+        aria-label={t(($) => {
+          return $.chat.actions.copyMessage;
+        })}
       >
         {copied ? (
           <IconCheck size={18} stroke={1.5} />
@@ -5697,18 +6673,28 @@ function generationTemplateTypeLabel(
     return null;
   }
   if (value.type === "video") {
-    return "Video";
+    return i18n.t(($) => {
+      return $.chat.templates.categories.video;
+    });
   }
   if (value.type === "illustration") {
-    return "Illustration";
+    return i18n.t(($) => {
+      return $.chat.templates.categories.illustration;
+    });
   }
   if (value.type === "workflow") {
-    return "Workflow";
+    return i18n.t(($) => {
+      return $.chat.templates.categories.workflow;
+    });
   }
   if (value.type === "website") {
-    return "Website";
+    return i18n.t(($) => {
+      return $.chat.templates.categories.website;
+    });
   }
-  return "Presentation";
+  return i18n.t(($) => {
+    return $.chat.templates.categories.presentation;
+  });
 }
 
 function SlackUserMessageOrigin({
@@ -5716,6 +6702,7 @@ function SlackUserMessageOrigin({
 }: {
   permalink: string | undefined;
 }) {
+  const { t } = useTranslation();
   if (!permalink) {
     return null;
   }
@@ -5724,13 +6711,23 @@ function SlackUserMessageOrigin({
       href={permalink}
       target="_blank"
       rel="noreferrer"
-      aria-label="Open original message in Slack"
+      aria-label={t(($) => {
+        return $.chat.origins.openSlackMessage;
+      })}
       className="mb-1.5 inline-flex h-7 max-w-[85%] items-center gap-1.5 self-end rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
     >
       <IconBrandSlack size={15} stroke={1.8} className="shrink-0" />
-      <span className="shrink-0">Slack</span>
+      <span className="shrink-0">
+        {t(($) => {
+          return $.chat.origins.slack;
+        })}
+      </span>
       <span className="shrink-0">·</span>
-      <span className="min-w-0 truncate">Open message</span>
+      <span className="min-w-0 truncate">
+        {t(($) => {
+          return $.chat.origins.openMessage;
+        })}
+      </span>
       <IconArrowUpRight size={12} stroke={1.5} className="shrink-0" />
     </a>
   );
@@ -5743,6 +6740,7 @@ function FeishuUserMessageOrigin({
 }: {
   chatOpenUrl: string | undefined;
 }) {
+  const { t } = useTranslation();
   if (!chatOpenUrl) {
     return null;
   }
@@ -5751,7 +6749,9 @@ function FeishuUserMessageOrigin({
       href={chatOpenUrl}
       target="_blank"
       rel="noreferrer"
-      aria-label="Open original chat in Feishu"
+      aria-label={t(($) => {
+        return $.chat.origins.openFeishuChat;
+      })}
       className="mb-1.5 inline-flex h-7 max-w-[85%] items-center gap-1.5 self-end rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
     >
       <img
@@ -5759,9 +6759,17 @@ function FeishuUserMessageOrigin({
         alt=""
         className="size-[15px] shrink-0 object-contain"
       />
-      <span className="shrink-0">Feishu</span>
+      <span className="shrink-0">
+        {t(($) => {
+          return $.chat.origins.feishu;
+        })}
+      </span>
       <span className="shrink-0">·</span>
-      <span className="min-w-0 truncate">Open chat</span>
+      <span className="min-w-0 truncate">
+        {t(($) => {
+          return $.chat.origins.openChat;
+        })}
+      </span>
       <IconArrowUpRight size={12} stroke={1.5} className="shrink-0" />
     </a>
   );
@@ -5803,6 +6811,7 @@ function UserMessageTemplateReference({
 }: {
   part: Extract<UserMessagePart, { type: "template" }>;
 }) {
+  const { t } = useTranslation();
   const typeLabel = generationTemplateTypeLabel(part.template);
   const setTemplatePickerCategory = useSet(setTemplatePickerCategory$);
   const setTemplatePickerOpen = useSet(setTemplatePickerOpen$);
@@ -5815,7 +6824,14 @@ function UserMessageTemplateReference({
     <button
       type="button"
       data-structured-template-reference=""
-      aria-label={`Message template ${part.titleSnapshot}`}
+      aria-label={t(
+        ($) => {
+          return $.chat.templates.messageTemplate;
+        },
+        {
+          title: part.titleSnapshot,
+        },
+      )}
       aria-haspopup="dialog"
       className={STRUCTURED_INLINE_REFERENCE_CLASS}
       title={`${typeLabel ?? part.template.type} · ${part.titleSnapshot}`}
@@ -5844,6 +6860,7 @@ function UserMessageFileReference({
   part: Extract<UserMessagePart, { type: "file" }>;
   attachment: ResolvedAttachFile | undefined;
 }) {
+  const { t } = useTranslation();
   const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
 
   if (
@@ -5862,7 +6879,14 @@ function UserMessageFileReference({
     if (kind === "video") {
       reference = (
         <ChatVideoPreviewButton
-          ariaLabel={`Preview ${part.filenameSnapshot}`}
+          ariaLabel={t(
+            ($) => {
+              return $.chat.attachments.previewFile;
+            },
+            {
+              filename: part.filenameSnapshot,
+            },
+          )}
           buttonClassName={CHAT_INLINE_VIDEO_ATTACHMENT_PREVIEW_CLASS}
           filename={part.filenameSnapshot}
           onPreview={() => {
@@ -5912,7 +6936,14 @@ function UserMessageFileReference({
   }
   return (
     <span
-      aria-label={`File ${part.filenameSnapshot}`}
+      aria-label={t(
+        ($) => {
+          return $.chat.attachments.file;
+        },
+        {
+          filename: part.filenameSnapshot,
+        },
+      )}
       className={`${STRUCTURED_REFERENCE_CHIP_CLASS} h-7`}
       title={part.filenameSnapshot}
     >
@@ -5935,11 +6966,17 @@ function UserMessageChatThreadReference({
   threadId: string;
   title: string;
 }) {
+  const { t } = useTranslation();
   return (
     <Link
       pathname={ROUTES.chat}
       options={{ pathParams: { threadId } }}
-      aria-label={`Open chat ${title}`}
+      aria-label={t(
+        ($) => {
+          return $.chat.thread.openNamedChat;
+        },
+        { title },
+      )}
       className={STRUCTURED_INLINE_REFERENCE_CLASS}
       title={title}
     >
@@ -5949,10 +6986,47 @@ function UserMessageChatThreadReference({
   );
 }
 
+function UserMessageAgentReference({
+  agentId,
+  name,
+  signals,
+}: {
+  agentId: string;
+  name: string;
+  signals: AgentReferenceSignals;
+}) {
+  const { t } = useTranslation();
+  const agent = useLastResolved(signals.agent$);
+  return (
+    <Link
+      pathname={ROUTES.agentChat}
+      options={{ pathParams: { agentId } }}
+      aria-label={t(
+        ($) => {
+          return $.chat.thread.openNamedAgent;
+        },
+        { name },
+      )}
+      className={STRUCTURED_INLINE_REFERENCE_CLASS}
+      title={name}
+    >
+      <AvatarFromUrl
+        avatarUrl={agent?.avatarUrl}
+        alt=""
+        className="size-4 shrink-0 overflow-hidden rounded-full bg-muted object-cover object-top"
+        size={16}
+      />
+      <span className="min-w-0 truncate">{name}</span>
+    </Link>
+  );
+}
+
 function UserMessageFeedbackNote({
   note,
+  agentReferenceSignalsForId,
 }: {
   note: readonly FeedbackNotePart[];
+  agentReferenceSignalsForId: ChatThreadSignals["agentReferenceSignalsForId"];
 }) {
   const partOccurrences = new Map<string, number>();
   return (
@@ -5968,6 +7042,16 @@ function UserMessageFeedbackNote({
               key={key}
               threadId={part.threadId}
               title={part.titleSnapshot}
+            />
+          );
+        }
+        if (part.type === "agent") {
+          return (
+            <UserMessageAgentReference
+              key={key}
+              agentId={part.agentId}
+              name={part.nameSnapshot}
+              signals={agentReferenceSignalsForId(part.agentId)}
             />
           );
         }
@@ -6003,22 +7087,70 @@ function userMessageFeedbackHeading(
   const source = parts[0]?.source;
   if (!source) {
     return parts.length === 1
-      ? "Feedback on this part of your reply:"
-      : `Feedback on ${parts.length} parts of your reply:`;
+      ? i18n.t(($) => {
+          return $.chat.feedback.partHeading;
+        })
+      : i18n.t(
+          ($) => {
+            return $.chat.feedback.partsHeading;
+          },
+          {
+            count: parts.length,
+          },
+        );
   }
   const description =
     source.status === "draft"
-      ? `an email draft (mail draft ID: ${source.id})`
-      : `a sent email (mail ID: ${source.id}${source.sentId ? `, sent ID: ${source.sentId}` : ""})`;
+      ? i18n.t(
+          ($) => {
+            return $.chat.feedback.emailDraftDescription;
+          },
+          {
+            id: source.id,
+          },
+        )
+      : i18n.t(
+          ($) => {
+            return $.chat.feedback.sentEmailDescription;
+          },
+          {
+            id: source.id,
+            sentIdSuffix: source.sentId
+              ? i18n.t(
+                  ($) => {
+                    return $.chat.feedback.sentIdSuffix;
+                  },
+                  {
+                    sentId: source.sentId,
+                  },
+                )
+              : "",
+          },
+        );
   return parts.length === 1
-    ? `Feedback on this part of ${description}:`
-    : `Feedback on ${parts.length} parts of ${description}:`;
+    ? i18n.t(
+        ($) => {
+          return $.chat.feedback.sourcePartHeading;
+        },
+        { description },
+      )
+    : i18n.t(
+        ($) => {
+          return $.chat.feedback.sourcePartsHeading;
+        },
+        {
+          count: parts.length,
+          description,
+        },
+      );
 }
 
 function UserMessageFeedbackGroup({
   parts,
+  agentReferenceSignalsForId,
 }: {
   parts: readonly UserMessageFeedbackPart[];
+  agentReferenceSignalsForId: ChatThreadSignals["agentReferenceSignalsForId"];
 }) {
   const partOccurrences = new Map<string, number>();
   let firstPart = true;
@@ -6045,7 +7177,10 @@ function UserMessageFeedbackGroup({
             >
               {part.quote}
             </blockquote>
-            <UserMessageFeedbackNote note={part.note} />
+            <UserMessageFeedbackNote
+              note={part.note}
+              agentReferenceSignalsForId={agentReferenceSignalsForId}
+            />
           </div>
         );
       })}
@@ -6058,9 +7193,11 @@ type UserMessageStandalonePart = Exclude<UserMessagePart, { type: "feedback" }>;
 function UserMessagePartView({
   part,
   attachments,
+  agentReferenceSignalsForId,
 }: {
   part: UserMessageStandalonePart;
   attachments: readonly ResolvedAttachFile[];
+  agentReferenceSignalsForId: ChatThreadSignals["agentReferenceSignalsForId"];
 }): ReactNode {
   if (part.type === "text") {
     return <span>{part.text}</span>;
@@ -6070,6 +7207,15 @@ function UserMessagePartView({
       <UserMessageChatThreadReference
         threadId={part.threadId}
         title={part.titleSnapshot}
+      />
+    );
+  }
+  if (part.type === "agent") {
+    return (
+      <UserMessageAgentReference
+        agentId={part.agentId}
+        name={part.nameSnapshot}
+        signals={agentReferenceSignalsForId(part.agentId)}
       />
     );
   }
@@ -6091,11 +7237,13 @@ function UserMessageView({
   attachments,
   elevatedFileIds,
   inlineTemplatesEnabled,
+  agentReferenceSignalsForId,
 }: {
   document: UserMessageDocument;
   attachments: readonly ResolvedAttachFile[];
   elevatedFileIds: ReadonlySet<string>;
   inlineTemplatesEnabled: boolean;
+  agentReferenceSignalsForId: ChatThreadSignals["agentReferenceSignalsForId"];
 }) {
   const partOccurrences = new Map<string, number>();
   const bodyParts = document.parts.filter((part) => {
@@ -6133,6 +7281,7 @@ function UserMessageView({
         <UserMessageFeedbackGroup
           key={`feedback:${String(index)}`}
           parts={feedbackParts}
+          agentReferenceSignalsForId={agentReferenceSignalsForId}
         />,
       );
       index = nextIndex;
@@ -6146,6 +7295,7 @@ function UserMessageView({
         key={`${identity}:${String(occurrence)}`}
         part={part}
         attachments={attachments}
+        agentReferenceSignalsForId={agentReferenceSignalsForId}
       />,
     );
     index += 1;
@@ -6174,12 +7324,14 @@ function UserMessageContent({
   referenceAttachments,
   onImageClick,
   inlineTemplatesEnabled,
+  agentReferenceSignalsForId,
 }: {
   document: UserMessageDocument;
   attachments: ReturnType<typeof resolveAttachments>;
   referenceAttachments: readonly ResolvedAttachFile[];
   onImageClick: (url: string) => void;
   inlineTemplatesEnabled: boolean;
+  agentReferenceSignalsForId: ChatThreadSignals["agentReferenceSignalsForId"];
 }) {
   const imageAttachments = attachments.filter((attachment) => {
     return attachment.id !== null && attachment.isImage;
@@ -6228,6 +7380,7 @@ function UserMessageContent({
               attachments={referenceAttachments}
               elevatedFileIds={imageAttachmentIds}
               inlineTemplatesEnabled={inlineTemplatesEnabled}
+              agentReferenceSignalsForId={agentReferenceSignalsForId}
             />
           </div>
         </div>
@@ -6241,6 +7394,7 @@ function WorkflowUserMessage({
 }: {
   event: EnrichedChatEvent & ChatInputEvent;
 }) {
+  const { t } = useTranslation();
   const workflowSnapshot = event.workflowSnapshot;
   if (!workflowSnapshot) {
     return null;
@@ -6263,7 +7417,14 @@ function WorkflowUserMessage({
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex w-full flex-col items-end">
           <div
-            aria-label={`Workflow ${workflowTitle}`}
+            aria-label={t(
+              ($) => {
+                return $.chat.workflows.named;
+              },
+              {
+                title: workflowTitle,
+              },
+            )}
             className="mb-1.5 flex max-w-[85%] items-center gap-1.5 self-end text-xs font-medium text-muted-foreground"
             title={workflowTitle}
           >
@@ -6279,9 +7440,14 @@ function WorkflowUserMessage({
                 },
               }}
               className="contents"
-              aria-label={`Open workflow ${workflowSnapshotTitle(
-                workflowSnapshot,
-              )}`}
+              aria-label={t(
+                ($) => {
+                  return $.chat.workflows.open;
+                },
+                {
+                  title: workflowSnapshotTitle(workflowSnapshot),
+                },
+              )}
             >
               {body}
             </Link>
@@ -6303,6 +7469,7 @@ function GoalUserMessage({
   bodyBlocks: BodyRenderBlock[];
   openLightbox: (url: string) => void;
 }) {
+  const { t } = useTranslation();
   const objectiveBrief = event.goalSnapshot?.objectiveBrief?.trim();
   return (
     <div data-role="user" className="group">
@@ -6310,11 +7477,17 @@ function GoalUserMessage({
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex w-full flex-col items-end">
           <div
-            aria-label="Goal"
+            aria-label={t(($) => {
+              return $.chat.queue.goal;
+            })}
             className="mb-1.5 flex max-w-[85%] items-center gap-1.5 self-end text-xs font-medium text-muted-foreground"
           >
             <IconTarget size={15} stroke={1.8} className="shrink-0" />
-            <span>Goal</span>
+            <span>
+              {t(($) => {
+                return $.chat.queue.goal;
+              })}
+            </span>
           </div>
           {objectiveBrief ? (
             <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden ring-1 ring-emerald-900/10">
@@ -6479,6 +7652,7 @@ function PagedUserMessage({
               referenceAttachments={attachFiles ?? []}
               onImageClick={openLightbox}
               inlineTemplatesEnabled={inlineTemplates}
+              agentReferenceSignalsForId={thread.agentReferenceSignalsForId}
             />
           ) : (
             <>
@@ -6537,7 +7711,7 @@ function PagedAssistantGroup({
     return null;
   }
 
-  const groupElementId = `chat-message-group-${group.beginEventId}`;
+  const groupElementId = `chat-event-group-${group.beginEventId}`;
   const fullContent = group.events
     .map((m) => {
       return m.content;
@@ -6665,7 +7839,7 @@ function PagedAssistantEventItem({
 }
 
 function formatCredits(value: number): string {
-  return value.toLocaleString("en-US");
+  return value.toLocaleString(i18n.resolvedLanguage);
 }
 
 interface RunUsageDisplayRow {
@@ -6704,7 +7878,7 @@ function parseUsageKind(kind: string): {
 }
 
 function buildRunUsageDisplayRows(
-  usage: ChatMessageUsagePayload,
+  usage: ChatEventUsagePayload,
 ): readonly RunUsageDisplayRow[] {
   const rows = new Map<string, RunUsageDisplayRow>();
 
@@ -6735,7 +7909,7 @@ function UsageChip({
   open,
   setOpen,
 }: {
-  usage: ChatMessageUsagePayload;
+  usage: ChatEventUsagePayload;
   title: string;
   ariaLabel: string;
   contentAlign?: "start" | "center" | "end";
@@ -6789,16 +7963,21 @@ function RunUsageChip({
   usage,
 }: {
   runId: string;
-  usage: ChatMessageUsagePayload;
+  usage: ChatEventUsagePayload;
 }) {
+  const { t } = useTranslation();
   const openRunId = useGet(runUsagePopoverOpenRunId$);
   const setOpenRunId = useSet(setRunUsagePopoverOpenRunId$);
 
   return (
     <UsageChip
       usage={usage}
-      title="Credit usage"
-      ariaLabel="Credit usage"
+      title={t(($) => {
+        return $.chat.run.creditUsage;
+      })}
+      ariaLabel={t(($) => {
+        return $.chat.run.creditUsage;
+      })}
       open={openRunId === runId}
       setOpen={(open) => {
         setOpenRunId(open ? runId : null);
@@ -6816,12 +7995,13 @@ function PagedGroupPrimaryActions({
 }: {
   firstRunId: string | undefined;
   hasContent: boolean;
-  usage: ChatMessageUsagePayload | undefined;
+  usage: ChatEventUsagePayload | undefined;
   copied: boolean;
   onCopy: () => void;
 }) {
+  const { t } = useTranslation();
   return (
-    <div className="flex items-center gap-1" data-testid="chat-message-actions">
+    <div className="flex items-center gap-1" data-testid="chat-event-actions">
       {firstRunId && (
         <TooltipProvider delayDuration={300}>
           <Tooltip>
@@ -6832,12 +8012,18 @@ function PagedGroupPrimaryActions({
                   pathParams: { activityRunId: firstRunId },
                 }}
                 className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
-                aria-label="View run logs"
+                aria-label={t(($) => {
+                  return $.chat.run.viewLogs;
+                })}
               >
                 <IconChartLine size={18} stroke={1.5} />
               </Link>
             </TooltipTrigger>
-            <TooltipContent side="bottom">View activity logs</TooltipContent>
+            <TooltipContent side="bottom">
+              {t(($) => {
+                return $.chat.run.viewActivityLogs;
+              })}
+            </TooltipContent>
           </Tooltip>
         </TooltipProvider>
       )}
@@ -6849,7 +8035,9 @@ function PagedGroupPrimaryActions({
                 type="button"
                 onClick={onCopy}
                 className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
-                aria-label="Copy message"
+                aria-label={t(($) => {
+                  return $.chat.actions.copyMessage;
+                })}
               >
                 {copied ? (
                   <IconCheck size={18} stroke={1.5} />
@@ -6859,7 +8047,13 @@ function PagedGroupPrimaryActions({
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              {copied ? "Copied!" : "Copy message"}
+              {copied
+                ? t(($) => {
+                    return $.chat.actions.copied;
+                  })
+                : t(($) => {
+                    return $.chat.actions.copyMessage;
+                  })}
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>

@@ -50,7 +50,7 @@ async function startSteamOpenId(actor: TestActor): Promise<URL> {
   mockSession(actor);
   const response = await accept(
     setupApp({ context })(zeroConnectorOpenIdStartContract).start({
-      params: { type: "steam" },
+      params: { connectorSlug: "steam" },
       headers: authHeaders(),
       body: { authMethod: "openid" },
     }),
@@ -132,6 +132,7 @@ function expectConnectorErrorRedirect(
   const url = redirectLocation(response);
   expect(url.pathname).toBe("/connector/error");
   expect(url.searchParams.get("type")).toBe(args.connectorSlug);
+  expect(url.searchParams.get("connectorSlug")).toBe(args.connectorSlug);
   expect(url.searchParams.get("message")).toBe(args.message);
 }
 
@@ -141,7 +142,7 @@ async function completeSteamOpenIdCallback(
   mockSteamOpenIdVerification();
   await accept(
     setupApp({ context })(connectorsSlugCallbackContract).callback({
-      params: { type: "steam" },
+      params: { connectorSlug: "steam" },
       query: steamCallbackQuery(authorizationUrl),
       headers: {},
     }),
@@ -309,7 +310,7 @@ describe("Steam OpenID connector", () => {
 
     const response = await accept(
       setupApp({ context })(zeroConnectorOauthContinueContract).continue({
-        params: { type: "steam" },
+        params: { connectorSlug: "steam" },
         query: { state: stateFromSteamAuthorizationUrl(authorizationUrl) },
       }),
       [404],
@@ -367,7 +368,7 @@ describe("Steam OpenID connector", () => {
     mockSession(actor);
     const connector = await accept(
       setupApp({ context })(zeroConnectorsBySlugContract).get({
-        params: { type: "steam" },
+        params: { connectorSlug: "steam" },
         headers: authHeaders(),
       }),
       [200],
@@ -389,7 +390,7 @@ describe("Steam OpenID connector", () => {
 
     const response = await accept(
       setupApp({ context })(connectorsSlugCallbackContract).callback({
-        params: { type: "steam" },
+        params: { connectorSlug: "steam" },
         query: steamCallbackQuery(authorizationUrl),
         headers: {},
       }),
@@ -404,7 +405,7 @@ describe("Steam OpenID connector", () => {
     mockSession(actor);
     const connector = await accept(
       setupApp({ context })(zeroConnectorsBySlugContract).get({
-        params: { type: "steam" },
+        params: { connectorSlug: "steam" },
         headers: authHeaders(),
       }),
       [404],
@@ -418,7 +419,7 @@ describe("Steam OpenID connector", () => {
 
     const response = await accept(
       setupApp({ context })(zeroConnectorOpenIdStartContract).start({
-        params: { type: "github" },
+        params: { connectorSlug: "github" },
         headers: authHeaders(),
         body: { authMethod: "oauth" },
       }),

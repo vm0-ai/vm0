@@ -1,7 +1,5 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { readFile } from "node:fs/promises";
-import { customConnectorProposalSchema } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
   getZeroAgent,
   getZeroAgentCustomConnectors,
@@ -9,7 +7,7 @@ import {
   listZeroCustomConnectors,
 } from "../../../../lib/api";
 import { withErrorHandler } from "../../../../lib/command";
-import { getPlatformOrigin } from "../../doctor/platform-url";
+import { createCustomConnectorCommand } from "./create";
 
 const LABEL_WIDTH = 18;
 
@@ -24,14 +22,6 @@ function renderConnected(connector: {
     return chalk.dim("not connected");
   }
   return chalk.yellow(`missing ${connector.missingRequiredFields.join(", ")}`);
-}
-
-function encodeBase64UrlJson(value: unknown): string {
-  return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");
-}
-
-function isJsonObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function resolveCustomAgentContext(agentId: string | undefined): Promise<{
@@ -162,49 +152,9 @@ const statusCommand = new Command()
     ),
   );
 
-const proposeCommand = new Command()
-  .name("propose")
-  .description("Create a browser save link for a custom connector proposal")
-  .requiredOption("--proposal-file <path>", "JSON proposal file")
-  .option("--connector-id <id>", "Override connector id for update proposals")
-  .option("--agent <id>", "Authorize this agent when the proposal is saved")
-  .action(
-    withErrorHandler(
-      async (options: {
-        proposalFile: string;
-        connectorId?: string;
-        agent?: string;
-      }) => {
-        const raw = await readFile(options.proposalFile, "utf8");
-        const proposalJson: unknown = JSON.parse(raw);
-        if (!isJsonObject(proposalJson)) {
-          throw new Error("Proposal file must contain a JSON object");
-        }
-        const parsed = customConnectorProposalSchema.parse({
-          ...proposalJson,
-          ...(options.connectorId ? { connectorId: options.connectorId } : {}),
-        });
-        const origin = await getPlatformOrigin();
-        const params = new URLSearchParams({
-          p: encodeBase64UrlJson(parsed),
-        });
-        const agentId = options.agent ?? process.env.ZERO_AGENT_ID;
-        if (agentId) {
-          params.set("agentId", agentId);
-        }
-        const url = `${origin}/connectors/custom/proposal?${params.toString()}`;
-        console.log(`[Configure ${parsed.displayName}](${url})`);
-        console.log();
-        console.log(
-          "Open this link to review, save values, and authorize the connector.",
-        );
-      },
-    ),
-  );
-
 export const customConnectorCommand = new Command()
   .name("custom")
-  .description("Inspect and propose org custom connectors")
+  .description("Create and inspect org custom connectors")
+  .addCommand(createCustomConnectorCommand)
   .addCommand(listCommand)
-  .addCommand(statusCommand)
-  .addCommand(proposeCommand);
+  .addCommand(statusCommand);

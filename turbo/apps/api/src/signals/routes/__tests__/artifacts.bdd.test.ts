@@ -238,6 +238,7 @@ async function createHostedArtifact(args: {
   readonly fileId: string;
   readonly url: string;
   readonly deploymentId: string;
+  readonly bearer: string;
 }> {
   const run = await sendChatRun(args.actor, {
     agentId: args.agentId,
@@ -262,6 +263,7 @@ async function createHostedArtifact(args: {
     fileId: prepared.url,
     url: prepared.url,
     deploymentId: prepared.deploymentId,
+    bearer,
   };
 }
 
@@ -309,6 +311,81 @@ async function createRunUploadedFile(args: {
   };
 }
 
+describe("artifact key compatibility", () => {
+  it("keeps a legacy attachment URL when an enabled org uses an older upload client", async () => {
+    const owner = await artifactActor(
+      "Artifacts API legacy upload compatibility agent",
+    );
+    if (!owner.actor.orgId) {
+      throw new Error("Expected legacy upload test actor to have an org");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...owner.actor, orgId: owner.actor.orgId },
+      { [FeatureSwitchKey.ArtifactKeyV2]: true },
+    );
+
+    const prepared = await chat.prepareUpload(owner.actor, {
+      filename: "legacy attachment.txt",
+      contentType: "text/plain",
+      size: 24,
+    });
+    const legacyKey = new URL(prepared.url).pathname.replace(/^\/+/u, "");
+    expect(legacyKey).toBe(
+      `artifacts/${owner.actor.userId}/${prepared.id}/legacy_attachment.txt`,
+    );
+    owner.objectStore.addObject({
+      bucket: "test-user-artifacts",
+      key: legacyKey,
+      contentType: prepared.contentType,
+      size: prepared.size,
+    });
+
+    const sent = await chat.requestSendEvent(
+      owner.actor,
+      {
+        agentId: owner.agentId,
+        prompt: "Use the legacy attachment",
+        attachFiles: [
+          {
+            id: prepared.id,
+            filename: prepared.filename,
+            contentType: prepared.contentType,
+            size: prepared.size,
+          },
+        ],
+      },
+      [201],
+    );
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected legacy attachment send to create a run");
+    }
+    await flushWaitUntilForTest();
+
+    const events = await chat.listThreadEvents(owner.actor, sent.body.threadId);
+    const input = events.events.find((event) => {
+      return event.eventType === "input.prompt";
+    });
+    expect(input).toMatchObject({
+      attachFiles: [
+        {
+          id: prepared.id,
+          filename: prepared.filename,
+          contentType: prepared.contentType,
+          size: prepared.size,
+          url: prepared.url,
+        },
+      ],
+    });
+
+    const { sandboxHeaders } = await claimChatRun(
+      owner.runnerGroup,
+      sent.body.runId,
+    );
+    await completeChatRunOk(sent.body.runId, sandboxHeaders);
+  }, 120_000);
+});
+
 describe("video Artifact previews", () => {
   it("leaves video preview empty when immediate posters are disabled", async () => {
     const owner = await artifactActor(
@@ -341,7 +418,20 @@ describe("video Artifact previews", () => {
 
   it("generates a poster immediately for an ordinary video upload", async () => {
     const owner = await artifactActor("Artifacts API video preview agent");
+    if (!owner.actor.orgId) {
+      throw new Error("Expected video preview test actor to have an org");
+    }
     await setVideoArtifactPosters(owner.actor, true);
+    await updateFeatureSwitchesForUser(
+      context,
+      {
+        ...owner.actor,
+        orgId: owner.actor.orgId,
+      },
+      {
+        [FeatureSwitchKey.ArtifactKeyV2]: true,
+      },
+    );
     const frameRequests = mockCloudflareVideoFrame(owner.actor.userId);
 
     const videoArtifact = await createRunUploadedFile({
@@ -357,7 +447,7 @@ describe("video Artifact previews", () => {
       `https://cdn.vm7.io/cdn-cgi/media/mode=frame,time=1s,width=640,format=jpg/${videoArtifact.url}`,
     );
     const posterPuts = owner.objectStore.puts.filter((put) => {
-      return put.key.endsWith("/poster-v2.jpg");
+      return /^artifacts\/[0-9a-z]{10}\.jpg$/u.test(put.key);
     });
     expect(posterPuts).toHaveLength(1);
     expect(posterPuts[0]).toMatchObject({
@@ -371,7 +461,9 @@ describe("video Artifact previews", () => {
     const previewedArtifact = response.artifacts.find((item) => {
       return item.fileId === videoArtifact.fileId;
     });
-    expect(previewedArtifact?.previewImageUrl).toMatch(/\/poster-v2\.jpg$/);
+    expect(previewedArtifact?.previewImageUrl).toMatch(
+      /\/artifacts\/[0-9a-z]{10}\.jpg$/u,
+    );
   }, 180_000);
 
   it("reuses an existing write-once poster after a concurrent upload", async () => {
@@ -646,6 +738,16 @@ describe("GET /api/zero/artifacts", () => {
     }
     mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
     mockEnv("ARTIFACT_PREVIEW_WAF_SECRET", ARTIFACT_PREVIEW_WAF_SECRET);
+    await updateFeatureSwitchesForUser(
+      context,
+      {
+        ...owner.actor,
+        orgId: owner.actor.orgId,
+      },
+      {
+        [FeatureSwitchKey.ArtifactKeyV2]: true,
+      },
+    );
     const snapshotRequests = mockCloudflareSnapshot();
 
     const artifact = await createHostedArtifact({
@@ -660,8 +762,8 @@ describe("GET /api/zero/artifacts", () => {
     const firstArtifact = firstResponse.artifacts.find((item) => {
       return item.fileId === artifact.fileId;
     });
-    expect(firstArtifact?.previewImageUrl).toContain(
-      `/preview-v3-${artifact.deploymentId}.webp`,
+    expect(firstArtifact?.previewImageUrl).toMatch(
+      /\/artifacts\/[0-9a-z]{10}\.webp$/u,
     );
     const threadArtifacts = await chat.listThreadArtifacts(
       owner.actor,
@@ -703,7 +805,7 @@ describe("GET /api/zero/artifacts", () => {
     });
     expect(
       owner.objectStore.puts.find((put) => {
-        return put.key.endsWith(`/preview-v3-${artifact.deploymentId}.webp`);
+        return /^artifacts\/[0-9a-z]{10}\.webp$/u.test(put.key);
       }),
     ).toMatchObject({
       bucket: "test-user-artifacts",
@@ -715,7 +817,10 @@ describe("GET /api/zero/artifacts", () => {
       throw new Error("Expected artifact sync timestamp");
     }
 
-    await chat.completeHostedSite(owner.actor, artifact.deploymentId);
+    await chat.completeHostedSiteWithBearer(
+      artifact.bearer,
+      artifact.deploymentId,
+    );
     await flushWaitUntilForTest();
 
     const retriedResponse = await chat.listArtifacts(owner.actor);

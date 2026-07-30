@@ -9,7 +9,6 @@ import {
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { ConnectorSearchItem } from "@vm0/api-contracts/contracts/zero-connectors";
-import type { ConnectorChangedPayload } from "@vm0/api-contracts/contracts/realtime";
 import {
   connectorAuthMethodGrantMetadata,
   connectorAuthMethodOwnedSecretNames,
@@ -30,13 +29,14 @@ import {
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { optionalEnv } from "../../lib/env";
+import { pgTextDecoder } from "../../lib/db-structured-result";
 import { nowDate } from "../../lib/time";
 import { db$, type Db, type ReadonlyDb, writeDb$ } from "../external/db";
-import { publishUserSignal } from "../external/realtime";
+import { publishConnectorChangedForUserSafely } from "../external/realtime";
 import { bestEffort } from "../utils";
 import {
   decryptStoredSecretValue,
@@ -205,6 +205,7 @@ function storedConnectorRowToResponse(
   return {
     id: row.id,
     type: runtimeMethod.connectorSlug,
+    slug: runtimeMethod.connectorSlug,
     authMethod: runtimeMethod.authMethodId,
     externalId: row.externalId,
     externalUsername: row.externalUsername,
@@ -288,9 +289,7 @@ async function finalizeConnectorStateChangeAfterCommit(args: {
     }
   }
 
-  await publishUserSignal([args.userId], "connector:changed", {
-    connectorRef: args.connectorSlug,
-  } satisfies ConnectorChangedPayload);
+  await publishConnectorChangedForUserSafely(args.userId, args.connectorSlug);
   if (args.signal.aborted) {
     postCommitAbort ??= args.signal.reason;
   }
@@ -406,7 +405,9 @@ export function zeroConnectorList(args: {
     const storedRowsPromise = db
       .select({
         id: connectors.id,
-        type: connectors.type,
+        type: sql`${connectors.connectorSlug}`
+          .mapWith(pgTextDecoder)
+          .as("type"),
         authMethod: connectors.authMethod,
         externalId: connectors.externalId,
         externalUsername: connectors.externalUsername,
@@ -424,6 +425,7 @@ export function zeroConnectorList(args: {
         and(
           eq(connectors.orgId, args.orgId),
           eq(connectors.userId, args.userId),
+          isNotNull(connectors.connectorSlug),
         ),
       );
     const featureStatesPromise = (async () => {
@@ -473,11 +475,13 @@ export function zeroConnectorList(args: {
     const connectorProvidedBindings =
       connectorProvidedBindingsForStoredConnectors(connectorList);
 
+    const configuredConnectorSlugs = [...visibleSlugs];
     return {
       connectors: connectorList.map((connector) => {
         return connector.response;
       }),
-      configuredTypes: [...visibleSlugs],
+      configuredTypes: configuredConnectorSlugs,
+      configuredConnectorSlugs,
       connectorProvidedBindings,
     };
   });
@@ -499,6 +503,7 @@ function connectorProvidedBindingsForStoredConnectors(
         case "connector-secret": {
           provided.push({
             connectorType: connector.response.type,
+            connectorSlug: connector.response.type,
             authMethod: connector.response.authMethod,
             namespace: "secrets",
             name: envName,
@@ -510,6 +515,7 @@ function connectorProvidedBindingsForStoredConnectors(
         case "connector-variable": {
           provided.push({
             connectorType: connector.response.type,
+            connectorSlug: connector.response.type,
             authMethod: connector.response.authMethod,
             namespace: "vars",
             name: envName,
@@ -538,7 +544,7 @@ function storedConnectorBySlug(args: {
     const oauthRows = await db
       .select({
         id: connectors.id,
-        type: connectors.type,
+        type: connectors.connectorSlug,
         authMethod: connectors.authMethod,
         externalId: connectors.externalId,
         externalUsername: connectors.externalUsername,
@@ -556,7 +562,7 @@ function storedConnectorBySlug(args: {
         and(
           eq(connectors.orgId, args.orgId),
           eq(connectors.userId, args.userId),
-          eq(connectors.type, args.connectorSlug),
+          eq(connectors.connectorSlug, args.connectorSlug),
         ),
       )
       .limit(1);
@@ -731,7 +737,7 @@ export const deleteZeroConnectorLocalState$ = command(
           and(
             eq(connectors.orgId, args.orgId),
             eq(connectors.userId, args.userId),
-            eq(connectors.type, args.connectorSlug),
+            eq(connectors.connectorSlug, args.connectorSlug),
           ),
         )
         .for("update")
@@ -814,7 +820,7 @@ async function upsertLocalConnectorRow(
     .values({
       orgId: args.orgId,
       userId: args.userId,
-      type: args.connectorSlug,
+      connectorSlug: args.connectorSlug,
       authMethod: args.authMethod,
       storageVersion: args.storageVersion,
       externalId: null,
@@ -826,7 +832,8 @@ async function upsertLocalConnectorRow(
       reconnectReason: null,
     })
     .onConflictDoUpdate({
-      target: [connectors.orgId, connectors.userId, connectors.type],
+      target: [connectors.orgId, connectors.userId, connectors.connectorSlug],
+      targetWhere: isNotNull(connectors.connectorSlug),
       set: {
         authMethod: args.authMethod,
         storageVersion: args.storageVersion,
@@ -945,7 +952,7 @@ async function cleanupExistingStoredConnectorForLocalConnect(
       and(
         eq(connectors.orgId, args.orgId),
         eq(connectors.userId, args.userId),
-        eq(connectors.type, args.connectorSlug),
+        eq(connectors.connectorSlug, args.connectorSlug),
       ),
     )
     .for("update")
@@ -1619,7 +1626,7 @@ async function loadExistingConnectorIdentity(
       and(
         eq(connectors.orgId, args.orgId),
         eq(connectors.userId, args.userId),
-        eq(connectors.type, args.connectorSlug),
+        eq(connectors.connectorSlug, args.connectorSlug),
       ),
     )
     .limit(1);
@@ -1645,7 +1652,7 @@ async function upsertConnectorTokenConnectionRow(
     .insert(connectors)
     .values({
       userId: args.userId,
-      type: args.connectorSlug,
+      connectorSlug: args.connectorSlug,
       authMethod: args.authMethod,
       storageVersion: args.storageVersion,
       externalId: args.userInfo.id,
@@ -1658,7 +1665,8 @@ async function upsertConnectorTokenConnectionRow(
       orgId: args.orgId,
     })
     .onConflictDoUpdate({
-      target: [connectors.orgId, connectors.userId, connectors.type],
+      target: [connectors.orgId, connectors.userId, connectors.connectorSlug],
+      targetWhere: isNotNull(connectors.connectorSlug),
       set: {
         authMethod: args.authMethod,
         storageVersion: args.storageVersion,

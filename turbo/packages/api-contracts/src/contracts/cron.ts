@@ -75,7 +75,6 @@ const cronCompactUsageEventsResponseSchema = z.object({
   seededRawRows: z.number().int().nonnegative(),
   selectedGrains: z.number().int().nonnegative(),
   probedRawRows: z.number().int().nonnegative(),
-  browserHeldRows: z.number().int().nonnegative(),
   billingErrorHeldRows: z.number().int().nonnegative(),
   rawRowsCompacted: z.number().int().nonnegative(),
   hourlyRowsDeleted: z.number().int().nonnegative(),
@@ -91,7 +90,7 @@ const cronCompactUsageEventsResponseSchema = z.object({
   durationMs: z.number().int().nonnegative(),
 });
 
-const cronMonitorChatMessageQueueResponseSchema = z.object({
+const cronMonitorChatEventQueueResponseSchema = z.object({
   success: z.literal(true),
   orphanedMessages: z.number().int().nonnegative(),
 });
@@ -116,7 +115,6 @@ const cronComputerUseScreenshotCleanupResponseSchema = z.object({
 const cronBrowserReconcileResponseSchema = z.object({
   checked: z.number().int().nonnegative(),
   stopped: z.number().int().nonnegative(),
-  settled: z.number().int().nonnegative(),
   errors: z.number().int().nonnegative(),
   healthy: z.number().int().nonnegative(),
 });
@@ -266,13 +264,13 @@ export const cronCompactUsageEventsContract = c.router({
   },
 });
 
-export const cronMonitorChatMessageQueueContract = c.router({
+export const cronMonitorChatEventQueueContract = c.router({
   monitor: {
     method: "GET",
-    path: "/api/cron/monitor-chat-message-queue",
+    path: "/api/cron/monitor-chat-event-queue",
     headers: authHeadersSchema,
     responses: {
-      200: cronMonitorChatMessageQueueResponseSchema,
+      200: cronMonitorChatEventQueueResponseSchema,
       401: apiErrorSchema,
       500: z.object({ error: z.string() }),
     },
@@ -341,7 +339,7 @@ export const cronBrowserReconcileContract = c.router({
       200: cronBrowserReconcileResponseSchema,
       401: apiErrorSchema,
     },
-    summary: "Reconcile terminal managed browsers and final billing",
+    summary: "Reconcile managed browser idle leases and provider state",
   },
 });
 
@@ -501,8 +499,8 @@ export type CronProcessUsageEventsContract =
   typeof cronProcessUsageEventsContract;
 export type CronCompactChatThreadSnapshotsContract =
   typeof cronCompactChatThreadSnapshotsContract;
-export type CronMonitorChatMessageQueueContract =
-  typeof cronMonitorChatMessageQueueContract;
+export type CronMonitorChatEventQueueContract =
+  typeof cronMonitorChatEventQueueContract;
 export type CronReconcileBillingEntitlementsContract =
   typeof cronReconcileBillingEntitlementsContract;
 export type CronAggregateInsightsContract =

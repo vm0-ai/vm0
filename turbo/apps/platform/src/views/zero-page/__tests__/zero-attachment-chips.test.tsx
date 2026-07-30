@@ -13,9 +13,11 @@ import {
 } from "@testing-library/react";
 import { StoreProvider } from "ccstate-react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { initializeI18n } from "../../../i18n/index.ts";
+import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { Markdown } from "../../components/markdown.tsx";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
@@ -118,6 +120,11 @@ beforeEach(() => {
     selectedModel: "claude-sonnet-4-6",
     updatedAt: "2026-03-10T00:00:00Z",
   });
+});
+
+afterEach(async () => {
+  document.documentElement.lang = DEFAULT_LOCALE;
+  await initializeI18n(DEFAULT_LOCALE);
 });
 
 async function uploadFile(file: File): Promise<void> {
@@ -1455,7 +1462,7 @@ describe("zero attachment chips", () => {
       chatThreadEventsContract.list,
       ({ params, query, respond }) => {
         if (query.beforeSeqId !== undefined) {
-          return respond(200, { events: [], hasHistoryBefore: false });
+          return respond(200, { events: [] });
         }
         if (query.sinceSeqId !== undefined) {
           return respond(200, { events: [] });
@@ -1467,7 +1474,7 @@ describe("zero attachment chips", () => {
               ? rightSecondImageUrl
               : undefined;
         if (!secondImageUrl) {
-          return respond(200, { events: [], hasHistoryBefore: false });
+          return respond(200, { events: [] });
         }
         return respond(200, {
           events: [
@@ -1481,7 +1488,6 @@ describe("zero attachment chips", () => {
               createdAt: "2026-03-10T00:00:00Z",
             },
           ],
-          hasHistoryBefore: false,
         });
       },
     );
@@ -1978,6 +1984,47 @@ describe("zero attachment chips", () => {
       expect(
         screen.getByTitle("Site preview for Thumbnail soft switch"),
       ).toHaveAttribute("src", htmlUrl);
+    });
+  });
+
+  it("localizes a hosted-site preview and its artifact actions", async () => {
+    document.documentElement.lang = "pt-BR";
+    context.mocks.browser.clipboardWriteText();
+    setupHostedSiteArtifactPreview({
+      filename: "localized-site.html",
+      htmlUrl: "https://localized-site.sites.vm7.io",
+      label: "Launch site",
+      runId: "run-localized-site",
+    });
+
+    click(
+      await screen.findByLabelText("Abrir visualização de HTML de Launch site"),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Compartilhar")).toBeInTheDocument();
+      expect(screen.getByLabelText("Opções de download")).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Abrir em visualização dividida"),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Entrar em tela cheia")).toBeInTheDocument();
+      expect(screen.getByLabelText("Fechar")).toBeInTheDocument();
+    });
+    expect(screen.getByText("localized-site.html")).toBeInTheDocument();
+    expect(
+      screen.getByText(/^Site hospedado · 1 kB · Gerado em /u),
+    ).toBeInTheDocument();
+
+    click(screen.getByLabelText("Compartilhar"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Link copiado")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Entrar em tela cheia"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Sair da tela cheia")).toBeInTheDocument();
     });
   });
 

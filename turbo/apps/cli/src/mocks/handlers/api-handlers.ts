@@ -61,6 +61,7 @@ function defaultPublicCatalogStatusItem(args: {
 }): PublicConnectorCatalogStatusItem {
   return {
     connectorRef: args.connectorSlug,
+    slug: args.connectorSlug,
     label: args.label,
     description: args.description,
     icon: {
@@ -172,6 +173,7 @@ function defaultPublicCatalog(): PublicConnectorCatalogItem[] {
   return defaultPublicCatalogStatus.map((item) => {
     return {
       connectorRef: item.connectorRef,
+      slug: item.slug,
       label: item.label,
       description: item.description,
       icon: item.icon,
@@ -205,6 +207,7 @@ function connectorManualGrantResponse(
   return {
     id: "00000000-0000-4000-8000-000000000001",
     type: connectorSlug,
+    slug: connectorSlug,
     authMethod,
     externalId: null,
     externalUsername: null,
@@ -230,13 +233,23 @@ export const apiHandlers = [
   // GET /api/zero/connectors - listZeroConnectors
   http.get("http://localhost:3000/api/zero/connectors", () => {
     return HttpResponse.json(
-      { connectors: [], configuredTypes: [], connectorProvidedBindings: [] },
+      {
+        connectors: [],
+        configuredTypes: [],
+        configuredConnectorSlugs: [],
+        connectorProvidedBindings: [],
+      },
       { status: 200 },
     );
   }),
   http.get("https://www.vm0.ai/api/zero/connectors", () => {
     return HttpResponse.json(
-      { connectors: [], configuredTypes: [], connectorProvidedBindings: [] },
+      {
+        connectors: [],
+        configuredTypes: [],
+        configuredConnectorSlugs: [],
+        connectorProvidedBindings: [],
+      },
       { status: 200 },
     );
   }),
@@ -281,36 +294,36 @@ export const apiHandlers = [
     );
   }),
   http.post(
-    "http://localhost:3000/api/zero/connectors/:type/manual-grant",
+    "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
     async ({ params, request }) => {
       const body: unknown = await request.json();
       return HttpResponse.json(
         connectorManualGrantResponse(
-          String(params.type),
+          String(params.connectorSlug),
           manualGrantAuthMethodFromBody(body),
         ),
       );
     },
   ),
   http.post(
-    "https://app.vm0.ai/api/zero/connectors/:type/manual-grant",
+    "https://app.vm0.ai/api/zero/connectors/:connectorSlug/manual-grant",
     async ({ params, request }) => {
       const body: unknown = await request.json();
       return HttpResponse.json(
         connectorManualGrantResponse(
-          String(params.type),
+          String(params.connectorSlug),
           manualGrantAuthMethodFromBody(body),
         ),
       );
     },
   ),
   http.post(
-    "https://www.vm0.ai/api/zero/connectors/:type/manual-grant",
+    "https://www.vm0.ai/api/zero/connectors/:connectorSlug/manual-grant",
     async ({ params, request }) => {
       const body: unknown = await request.json();
       return HttpResponse.json(
         connectorManualGrantResponse(
-          String(params.type),
+          String(params.connectorSlug),
           manualGrantAuthMethodFromBody(body),
         ),
       );

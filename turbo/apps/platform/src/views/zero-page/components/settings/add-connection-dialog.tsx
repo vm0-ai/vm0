@@ -1,5 +1,6 @@
 import { useLastResolved, useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import { Input } from "@vm0/ui/components/ui/input";
 import { Button } from "@vm0/ui/components/ui/button";
 import { CopyButton } from "@vm0/ui/components/ui/copy-button";
@@ -25,8 +26,8 @@ import type { FormEvent, ReactElement } from "react";
 import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogStartOption,
-  PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { PlatformConnectorCatalogStatusItem } from "../../../../signals/connector-domain.ts";
 import {
   allConnectorCatalogItems$,
   connectFlowConnectorSlug$,
@@ -63,18 +64,23 @@ import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { detach, onDomEventFn, Reason } from "../../../../signals/utils.ts";
 import { ConnectorHelpText } from "./connector-help-text.tsx";
+import { i18n } from "../../../../i18n/index.ts";
 
 // ---------------------------------------------------------------------------
 // Connected status text helper
 // ---------------------------------------------------------------------------
 
-function connectedStatusText(item: PublicConnectorCatalogStatusItem): string {
+function connectedStatusText(item: PlatformConnectorCatalogStatusItem): string {
   const connectionStatus = connectorCurrentConnectionStatus(item);
   if (connectionStatus === "reconnect-required") {
-    return "Connection expired";
+    return i18n.t(($) => {
+      return $.connectors.card.connectionExpired;
+    });
   }
   if (connectionStatus === "scope-mismatch") {
-    return "Update permissions";
+    return i18n.t(($) => {
+      return $.connectors.card.updatePermissions;
+    });
   }
   const expiryText = connectorExpiryCountdownText(item);
   if (expiryText) {
@@ -82,11 +88,23 @@ function connectedStatusText(item: PublicConnectorCatalogStatusItem): string {
   }
   if (item.connection?.externalUsername) {
     if (item.connection.externalUsername.startsWith("arn:")) {
-      return `Connected as ${item.connection.externalUsername}`;
+      return i18n.t(
+        ($) => {
+          return $.connectors.connectDialog.connectedAs;
+        },
+        { username: item.connection.externalUsername },
+      );
     }
-    return `Connected as @${item.connection.externalUsername}`;
+    return i18n.t(
+      ($) => {
+        return $.connectors.connectDialog.connectedAs;
+      },
+      { username: `@${item.connection.externalUsername}` },
+    );
   }
-  return "Connected";
+  return i18n.t(($) => {
+    return $.connectors.card.connected;
+  });
 }
 
 type PostConnectOptions = {
@@ -95,7 +113,7 @@ type PostConnectOptions = {
   readonly agentId?: string;
 };
 type BrowserAuthPostConnectOptions = PostConnectOptions & {
-  readonly connectorIcon: PublicConnectorCatalogStatusItem["icon"];
+  readonly connectorIcon: PlatformConnectorCatalogStatusItem["icon"];
 };
 
 type SubmitManualGrantFn = (
@@ -155,7 +173,7 @@ type ConnectNoAuthAndSettleFn = (
 ) => Promise<void>;
 
 type ConnectModalContentProps = {
-  item: PublicConnectorCatalogStatusItem;
+  item: PlatformConnectorCatalogStatusItem;
   agentId?: string;
   onSuccess: () => void | Promise<void>;
   authorizeVisibleAgentsOnConnect: boolean;
@@ -260,6 +278,7 @@ function ManualGrantForm({
   submit: SubmitManualGrantFn;
   submitting: boolean;
 }) {
+  const { t } = useTranslation();
   const setFormValue = useSet(setManualGrantFormValue$);
   const clearForm = useSet(clearManualGrantForm$);
   const pageSignal = useGet(pageSignal$);
@@ -324,21 +343,31 @@ function ManualGrantForm({
         disabled={!allFilled || submitting}
         className="w-full"
       >
-        {submitting ? "Saving..." : "Save"}
+        {submitting
+          ? t(($) => {
+              return $.connectors.actions.saving;
+            })
+          : t(($) => {
+              return $.connectors.actions.save;
+            })}
       </Button>
     </form>
   );
 }
 
 function UnavailableConnectMethodsContent() {
+  const { t } = useTranslation();
   return (
     <div className="rounded-md border border-dashed border-border bg-muted/30 p-3">
       <p className="text-sm font-medium text-foreground">
-        Connection methods unavailable
+        {t(($) => {
+          return $.connectors.connectDialog.unavailable.title;
+        })}
       </p>
       <p className="mt-1 text-sm text-muted-foreground">
-        This connector has available connection methods, but none of them can be
-        configured from this dialog yet.
+        {t(($) => {
+          return $.connectors.connectDialog.unavailable.description;
+        })}
       </p>
     </div>
   );
@@ -353,12 +382,22 @@ function getOAuthAuthCodeProgressContent({
 }) {
   // While browser authorization is in progress, only show connecting state.
   if (isPolling) {
-    return <p className="text-sm text-muted-foreground">Connecting...</p>;
+    return (
+      <p className="text-sm text-muted-foreground">
+        {i18n.t(($) => {
+          return $.connectors.connectDialog.progress.connecting;
+        })}
+      </p>
+    );
   }
 
   if (settling) {
     return (
-      <p className="text-sm text-muted-foreground">Saving permissions...</p>
+      <p className="text-sm text-muted-foreground">
+        {i18n.t(($) => {
+          return $.connectors.connectDialog.progress.savingPermissions;
+        })}
+      </p>
     );
   }
 
@@ -378,13 +417,14 @@ function OAuthAuthCodeConnectButton({
   connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn;
   signal: AbortSignal;
 }) {
+  const { t } = useTranslation();
   return (
     <Button
       variant="outline"
       onClick={() => {
         return detach(
           connectOAuthAuthCodeAndSettle(
-            item.connectorRef,
+            item.slug,
             method,
             onSuccess,
             {
@@ -400,7 +440,13 @@ function OAuthAuthCodeConnectButton({
       }}
       className="w-full"
     >
-      {item.connected ? "Authorize" : "Connect"}
+      {item.connected
+        ? t(($) => {
+            return $.connectors.actions.authorize;
+          })
+        : t(($) => {
+            return $.connectors.actions.connect;
+          })}
     </Button>
   );
 }
@@ -425,12 +471,18 @@ function getOAuthDeviceAuthStatusText(
   >,
 ): string {
   if (!state.approvalOpened) {
-    return "Copy this code, then open the verification page to approve access.";
+    return i18n.t(($) => {
+      return $.connectors.connectDialog.device.copyThenOpen;
+    });
   }
   if (state.status === "polling") {
-    return "Checking for approval...";
+    return i18n.t(($) => {
+      return $.connectors.connectDialog.device.checking;
+    });
   }
-  return "Waiting for approval. Keep this dialog open.";
+  return i18n.t(($) => {
+    return $.connectors.connectDialog.device.waiting;
+  });
 }
 
 function OAuthDeviceAuthCodePanel({
@@ -443,16 +495,22 @@ function OAuthDeviceAuthCodePanel({
   >;
   onOpenVerificationPage: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted-foreground">
-        Open the provider&apos;s verification page, then enter this verification
-        code to approve access.
+        {t(($) => {
+          return $.connectors.connectDialog.device.description;
+        })}
       </p>
       <div className="rounded-lg border border-border bg-muted/30 p-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xs text-muted-foreground">Verification code</p>
+            <p className="text-xs text-muted-foreground">
+              {t(($) => {
+                return $.connectors.connectDialog.device.verificationCode;
+              })}
+            </p>
             <p
               className="mt-1 break-all font-mono text-2xl font-semibold tracking-normal"
               data-testid="connector-oauth-device-code"
@@ -479,7 +537,9 @@ function OAuthDeviceAuthCodePanel({
         onClick={onOpenVerificationPage}
         data-testid="connector-oauth-device-open"
       >
-        Open verification page
+        {t(($) => {
+          return $.connectors.connectDialog.device.openPage;
+        })}
       </Button>
       <p className="text-xs text-muted-foreground" role="status">
         {getOAuthDeviceAuthStatusText(state)}
@@ -553,6 +613,7 @@ function OAuthDeviceAuthStartOptionsForm({
   values: Record<string, string>;
   setValue: (name: string, value: string) => void;
 }) {
+  const { t } = useTranslation();
   if (startOptions.length === 0) {
     return null;
   }
@@ -580,7 +641,14 @@ function OAuthDeviceAuthStartOptionsForm({
               }}
             >
               <SelectTrigger id={inputId} className="h-9">
-                <SelectValue placeholder={`Select ${option.label}`} />
+                <SelectValue
+                  placeholder={t(
+                    ($) => {
+                      return $.connectors.connectDialog.device.selectOption;
+                    },
+                    { option: option.label },
+                  )}
+                />
               </SelectTrigger>
               <SelectContent>
                 {option.options.map((choice) => {
@@ -599,7 +667,79 @@ function OAuthDeviceAuthStartOptionsForm({
   );
 }
 
+function OAuthDeviceAuthStartContent({
+  connectorSlug,
+  connectorLabel,
+  authMethod,
+  startOptions,
+  values,
+  message,
+  starting,
+  startOptionsFilled,
+  setValue,
+  onStart,
+}: {
+  connectorSlug: ConnectorSlug;
+  connectorLabel: string;
+  authMethod: ConnectorAuthMethodId;
+  startOptions: readonly PublicConnectorCatalogStartOption[];
+  values: Record<string, string>;
+  message?: string;
+  starting: boolean;
+  startOptionsFilled: boolean;
+  setValue: (name: string, value: string) => void;
+  onStart: (event: unknown) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex flex-col gap-3">
+      {message ? null : (
+        <p className="text-sm text-muted-foreground">
+          {t(($) => {
+            return $.connectors.connectDialog.device.intro;
+          })}
+        </p>
+      )}
+      <OAuthDeviceAuthStartOptionsForm
+        connectorSlug={connectorSlug}
+        authMethod={authMethod}
+        startOptions={startOptions}
+        values={values}
+        setValue={setValue}
+      />
+      {message ? (
+        <p className="text-sm text-destructive" role="alert">
+          {message}
+        </p>
+      ) : null}
+      <Button
+        type="button"
+        variant="outline"
+        onClick={onStart}
+        disabled={starting || !startOptionsFilled}
+        className="w-full"
+      >
+        {starting
+          ? t(($) => {
+              return $.connectors.connectDialog.device.starting;
+            })
+          : message
+            ? t(($) => {
+                return $.connectors.actions.tryAgain;
+              })
+            : t(
+                ($) => {
+                  return $.connectors.connectDialog.device.connect;
+                },
+                { connector: connectorLabel },
+              )}
+      </Button>
+    </div>
+  );
+}
+
 function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
+  const { t } = useTranslation();
   const state = useGet(connectorOAuthDeviceAuthState$);
   const openVerificationPage = useSet(
     openConnectorOAuthDeviceAuthVerificationPage$,
@@ -613,7 +753,7 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
     connectorOAuthDeviceAuthStartOptionValuesFor$,
   );
   const startOptionValues = connectorOAuthDeviceAuthStartOptionValuesFor(
-    props.item.connectorRef,
+    props.item.slug,
     props.authMethod,
   );
   const effectiveStartOptionValues = {
@@ -626,7 +766,7 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
   );
   const setStartOptionValue = (name: string, value: string) => {
     setStartOptionValueCommand({
-      connectorSlug: props.item.connectorRef,
+      connectorSlug: props.item.slug,
       authMethod: props.authMethod,
       name,
       value,
@@ -634,7 +774,7 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
   };
   const current = connectorOAuthDeviceAuthStateForMethod(
     state,
-    props.item.connectorRef,
+    props.item.slug,
     props.authMethod,
   );
   const starting = current?.status === "starting";
@@ -642,7 +782,7 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
   const start = onDomEventFn(async () => {
     await props.connectOAuthDeviceAuthAndSettle(
       {
-        connectorSlug: props.item.connectorRef,
+        connectorSlug: props.item.slug,
         authMethod: props.authMethod,
         onSuccess: props.onSuccess,
         options: {
@@ -661,7 +801,11 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
 
   if (current?.status === "starting") {
     return (
-      <p className="text-sm text-muted-foreground">Starting connection...</p>
+      <p className="text-sm text-muted-foreground">
+        {t(($) => {
+          return $.connectors.connectDialog.device.startingConnection;
+        })}
+      </p>
     );
   }
 
@@ -670,7 +814,7 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
       <OAuthDeviceAuthCodePanel
         state={current}
         onOpenVerificationPage={() => {
-          openVerificationPage(props.item.connectorRef, props.authMethod);
+          openVerificationPage(props.item.slug, props.authMethod);
         }}
       />
     );
@@ -682,53 +826,33 @@ function OAuthDeviceAuthConnectMethodContent(props: ConnectMethodContentProps) {
     current?.status === "error"
   ) {
     return (
-      <div className="flex flex-col gap-3">
-        <OAuthDeviceAuthStartOptionsForm
-          connectorSlug={props.item.connectorRef}
-          authMethod={props.authMethod}
-          startOptions={startOptions}
-          values={effectiveStartOptionValues}
-          setValue={setStartOptionValue}
-        />
-        <p className="text-sm text-destructive" role="alert">
-          {current.message}
-        </p>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={start}
-          disabled={starting || !startOptionsFilled}
-          className="w-full"
-        >
-          {starting ? "Starting..." : "Try again"}
-        </Button>
-      </div>
+      <OAuthDeviceAuthStartContent
+        connectorSlug={props.item.slug}
+        connectorLabel={props.item.label}
+        authMethod={props.authMethod}
+        startOptions={startOptions}
+        values={effectiveStartOptionValues}
+        message={current.message}
+        starting={starting}
+        startOptionsFilled={startOptionsFilled}
+        setValue={setStartOptionValue}
+        onStart={start}
+      />
     );
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <p className="text-sm text-muted-foreground">
-        Connect to get a verification code, then use it on the provider&apos;s
-        verification page to approve access.
-      </p>
-      <OAuthDeviceAuthStartOptionsForm
-        connectorSlug={props.item.connectorRef}
-        authMethod={props.authMethod}
-        startOptions={startOptions}
-        values={effectiveStartOptionValues}
-        setValue={setStartOptionValue}
-      />
-      <Button
-        type="button"
-        variant="outline"
-        onClick={start}
-        disabled={starting || !startOptionsFilled}
-        className="w-full"
-      >
-        {starting ? "Starting..." : `Connect ${props.item.label}`}
-      </Button>
-    </div>
+    <OAuthDeviceAuthStartContent
+      connectorSlug={props.item.slug}
+      connectorLabel={props.item.label}
+      authMethod={props.authMethod}
+      startOptions={startOptions}
+      values={effectiveStartOptionValues}
+      starting={starting}
+      startOptionsFilled={startOptionsFilled}
+      setValue={setStartOptionValue}
+      onStart={start}
+    />
   );
 }
 
@@ -752,6 +876,7 @@ function ExternalCodeStartContent({
   starting: boolean;
   onStart: ExternalCodeButtonHandler;
 }) {
+  const { t } = useTranslation();
   const terminalMessage =
     current?.status === "expired" || current?.status === "error"
       ? current.message
@@ -771,7 +896,16 @@ function ExternalCodeStartContent({
         disabled={starting}
         className="w-full"
       >
-        {starting ? "Starting..." : `Start ${connectorLabel} sign-in`}
+        {starting
+          ? t(($) => {
+              return $.connectors.connectDialog.device.starting;
+            })
+          : t(
+              ($) => {
+                return $.connectors.connectDialog.external.start;
+              },
+              { connector: connectorLabel },
+            )}
       </Button>
     </div>
   );
@@ -794,13 +928,18 @@ function ExternalCodePendingContent({
   onCodeChange: (code: string) => void;
   onComplete: ExternalCodeSubmitHandler;
 }) {
+  const { t } = useTranslation();
   return (
     <form className="flex flex-col gap-3" onSubmit={onComplete}>
       {method.description && <ConnectorHelpText text={method.description} />}
       {!method.description && (
         <p className="text-sm text-muted-foreground">
-          Open {connectorLabel} sign-in, then paste the code displayed by{" "}
-          {connectorLabel}.
+          {t(
+            ($) => {
+              return $.connectors.connectDialog.external.description;
+            },
+            { connector: connectorLabel },
+          )}
         </p>
       )}
       <div className="flex items-center gap-2">
@@ -810,7 +949,12 @@ function ExternalCodePendingContent({
           className="min-w-0 flex-1"
           onClick={onOpen}
         >
-          Open {connectorLabel} sign-in
+          {t(
+            ($) => {
+              return $.connectors.connectDialog.external.open;
+            },
+            { connector: connectorLabel },
+          )}
         </Button>
         <CopyButton
           type="button"
@@ -819,7 +963,9 @@ function ExternalCodePendingContent({
         />
       </div>
       <label className="sr-only" htmlFor="connector-external-code-input">
-        Code
+        {t(($) => {
+          return $.connectors.connectDialog.external.code;
+        })}
       </label>
       <Input
         id="connector-external-code-input"
@@ -827,7 +973,9 @@ function ExternalCodePendingContent({
         onChange={(event) => {
           onCodeChange(event.target.value);
         }}
-        placeholder="Code"
+        placeholder={t(($) => {
+          return $.connectors.connectDialog.external.code;
+        })}
         autoComplete="one-time-code"
         data-testid="connector-external-code-input"
       />
@@ -842,13 +990,20 @@ function ExternalCodePendingContent({
         className="w-full"
         data-testid="connector-external-code-complete"
       >
-        {completing ? "Connecting..." : "Complete connection"}
+        {completing
+          ? t(($) => {
+              return $.connectors.actions.connecting;
+            })
+          : t(($) => {
+              return $.connectors.connectDialog.external.complete;
+            })}
       </Button>
     </form>
   );
 }
 
 function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
+  const { t } = useTranslation();
   const state = useGet(connectorExternalCodeState$);
   const setCode = useSet(setConnectorExternalCodeAuthorizationCode$);
   const openAuthorizationPage = useSet(
@@ -856,7 +1011,7 @@ function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
   );
   const current = connectorExternalCodeStateForMethod(
     state,
-    props.item.connectorRef,
+    props.item.slug,
     props.authMethod,
   );
   const starting = current?.status === "starting";
@@ -864,7 +1019,7 @@ function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
   const start = onDomEventFn(async () => {
     await props.connectExternalCode(
       {
-        connectorSlug: props.item.connectorRef,
+        connectorSlug: props.item.slug,
         authMethod: props.authMethod,
         ...(props.agentId ? { agentId: props.agentId } : {}),
       },
@@ -876,7 +1031,7 @@ function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
     event.preventDefault();
     await props.completeExternalCodeAndSettle(
       {
-        connectorSlug: props.item.connectorRef,
+        connectorSlug: props.item.slug,
         authMethod: props.authMethod,
         onSuccess: props.onSuccess,
         options: {
@@ -891,7 +1046,11 @@ function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
 
   if (starting) {
     return (
-      <p className="text-sm text-muted-foreground">Starting connection...</p>
+      <p className="text-sm text-muted-foreground">
+        {t(($) => {
+          return $.connectors.connectDialog.device.startingConnection;
+        })}
+      </p>
     );
   }
 
@@ -903,11 +1062,11 @@ function ExternalCodeConnectMethodContent(props: ConnectMethodContentProps) {
         current={current}
         completing={props.externalCodeCompleting}
         onOpen={() => {
-          openAuthorizationPage(props.item.connectorRef, props.authMethod);
+          openAuthorizationPage(props.item.slug, props.authMethod);
         }}
         onCodeChange={(code) => {
           setCode({
-            connectorSlug: props.item.connectorRef,
+            connectorSlug: props.item.slug,
             authMethod: props.authMethod,
             code,
           });
@@ -934,7 +1093,7 @@ function ManualGrantConnectMethodContent(props: ConnectMethodContentProps) {
   }
   return (
     <ManualGrantForm
-      connectorSlug={props.item.connectorRef}
+      connectorSlug={props.item.slug}
       connectorLabel={props.item.label}
       authMethod={props.authMethod}
       method={props.method}
@@ -948,10 +1107,11 @@ function ManualGrantConnectMethodContent(props: ConnectMethodContentProps) {
 }
 
 function NoAuthConnectMethodContent(props: ConnectMethodContentProps) {
+  const { t } = useTranslation();
   const enable = onDomEventFn(async () => {
     await props.connectNoAuthAndSettle(
       {
-        connectorSlug: props.item.connectorRef,
+        connectorSlug: props.item.slug,
         authMethod: props.authMethod,
         onSuccess: props.onSuccess,
         options: {
@@ -976,7 +1136,16 @@ function NoAuthConnectMethodContent(props: ConnectMethodContentProps) {
         disabled={props.noAuthSubmitting}
         className="w-full"
       >
-        {props.noAuthSubmitting ? "Enabling..." : `Enable ${props.item.label}`}
+        {props.noAuthSubmitting
+          ? t(($) => {
+              return $.connectors.connectDialog.noAuth.enabling;
+            })
+          : t(
+              ($) => {
+                return $.connectors.connectDialog.noAuth.enable;
+              },
+              { connector: props.item.label },
+            )}
       </Button>
     </div>
   );
@@ -1011,7 +1180,7 @@ function getConnectMethodContentComponent(
 }
 
 function getConnectMethodContentEntries(
-  item: PublicConnectorCatalogStatusItem,
+  item: PlatformConnectorCatalogStatusItem,
 ): ConnectMethodContentEntry[] {
   return item.authMethods.flatMap((method) => {
     const authMethod = method.id;
@@ -1021,13 +1190,18 @@ function getConnectMethodContentEntries(
 }
 
 function AuthMethodDivider() {
+  const { t } = useTranslation();
   return (
     <div className="relative py-1">
       <div className="absolute inset-0 flex items-center">
         <span className="w-full zero-border-t" />
       </div>
       <div className="relative flex justify-center text-xs">
-        <span className="bg-background px-2 text-muted-foreground">or</span>
+        <span className="bg-background px-2 text-muted-foreground">
+          {t(($) => {
+            return $.connectors.connectDialog.or;
+          })}
+        </span>
       </div>
     </div>
   );
@@ -1058,10 +1232,13 @@ function ConnectMethodsContent({
   availableAuthMethodCount: number;
   props: ConnectMethodSharedContentProps;
 }) {
+  const { t } = useTranslation();
   if (availableAuthMethodCount === 0) {
     return (
       <p className="text-sm text-muted-foreground">
-        No connection method is available.
+        {t(($) => {
+          return $.connectors.connectDialog.noMethod;
+        })}
       </p>
     );
   }
@@ -1076,7 +1253,7 @@ function ConnectMethodsContent({
       {entries.map(({ authMethod, method, Content }, index) => {
         return (
           <div
-            key={`${props.item.connectorRef}:${authMethod}`}
+            key={`${props.item.slug}:${authMethod}`}
             className="flex flex-col gap-3"
           >
             {index > 0 && <AuthMethodDivider />}
@@ -1186,10 +1363,10 @@ function ConnectModalContent({
     completeExternalCodeLoadable.state === "loading";
   const manualGrantSubmitting = manualGrantLoadable.state === "loading";
   const noAuthSubmitting = noAuthLoadable.state === "loading";
-  const isPolling = pollingConnectorSlug === item.connectorRef;
+  const isPolling = pollingConnectorSlug === item.slug;
   const entries = getConnectMethodContentEntries(item);
   const onConnectSuccess = async () => {
-    await runConnectSuccess(item.connectorRef, onSuccess, pageSignal);
+    await runConnectSuccess(item.slug, onSuccess, pageSignal);
   };
   const connectOAuthAuthCodeAndSettle: ConnectOAuthAuthCodeAndSettleFn = async (
     connectorSlug,
@@ -1285,6 +1462,7 @@ export function ConnectModal({
   selectedConnectorSlug?: ConnectorSlug | null;
   agentId?: string;
 }) {
+  useTranslation();
   const globalSelectedConnectorSlug = useGet(selectedConnectorSlug$);
   const selectedConnectorSlug =
     selectedConnectorSlugOverride === undefined
@@ -1299,7 +1477,7 @@ export function ConnectModal({
   const connectorExternalCodeState = useGet(connectorExternalCodeState$);
 
   const item = connectorCatalogItems?.find((catalogItem) => {
-    return catalogItem.connectorRef === selectedConnectorSlug;
+    return catalogItem.slug === selectedConnectorSlug;
   });
 
   if (!selectedConnectorSlug || !item) {

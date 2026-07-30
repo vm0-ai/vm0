@@ -536,7 +536,7 @@ describe("chat inline feedback", () => {
         `Preview ${template.title} at current slide`,
       ),
     );
-    click(await screen.findByLabelText("Select style Gold Luxe"));
+    click(await screen.findByLabelText("Select style Award night"));
     click(await screen.findByLabelText(`Select template ${template.title}`));
     await waitFor(() => {
       expect(
@@ -604,10 +604,6 @@ describe("chat inline feedback", () => {
     expect(composer).not.toHaveTextContent(`> ${assistantReply}`);
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
-        draftContent:
-          "Feedback on this part of your reply:\n\n" +
-          `> ${assistantReply}\n\n` +
-          "Name the owner and explain the complete result.",
         draftUserMessage: queuedEvents[0]?.userMessage,
         draftAttachments: null,
       });
@@ -1423,7 +1419,7 @@ describe("chat inline feedback", () => {
         `Preview ${template.title} at current slide`,
       ),
     );
-    click(await screen.findByLabelText("Select style Gold Luxe"));
+    click(await screen.findByLabelText("Select style Award night"));
     click(await screen.findByLabelText(`Select template ${template.title}`));
     await waitFor(() => {
       expect(

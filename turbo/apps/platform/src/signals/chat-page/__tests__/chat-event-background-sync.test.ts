@@ -118,7 +118,6 @@ describe("chat event background sync", () => {
       if (query.sinceSeqId === lastCachedEvent.seqId) {
         return respond(200, {
           events: [chatEventResponse(newEvent)],
-          hasHistoryBefore: true,
         });
       }
       throw new Error(`Unexpected message cursor: ${JSON.stringify(query)}`);
@@ -182,7 +181,6 @@ describe("chat event background sync", () => {
       }
       return respond(200, {
         events: [],
-        hasHistoryBefore: false,
       });
     });
 
@@ -230,7 +228,7 @@ describe("chat event background sync", () => {
             id: inputEventId,
             threadId: THREAD_ID,
             eventType: "input.prompt",
-            content: "Canonical input",
+            content: null,
             userMessage,
             seqId: 1,
             createdAt: CREATED_AT,
@@ -244,23 +242,22 @@ describe("chat event background sync", () => {
             createdAt: CREATED_AT,
           },
         ],
-        hasHistoryBefore: false,
       });
     });
 
-    const result = await listChatEvents(
+    const events = await listChatEvents(
       context.store.get(zeroClient$),
       THREAD_ID,
       {},
       context.signal,
     );
 
-    expect(result.events).toStrictEqual([
+    expect(events).toStrictEqual([
       {
         id: inputEventId,
         threadId: THREAD_ID,
         eventType: "input.prompt",
-        content: "Canonical input",
+        content: null,
         userMessage,
         seqId: 1,
         createdAt: CREATED_AT,

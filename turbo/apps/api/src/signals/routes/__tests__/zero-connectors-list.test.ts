@@ -36,7 +36,7 @@ async function connectGitlab(fixture: AuthenticatedFixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
     setupApp({ context })(zeroConnectorManualGrantContract).connect({
-      params: { type: "gitlab" },
+      params: { connectorSlug: "gitlab" },
       body: {
         authMethod: "api-token",
         values: {
@@ -54,7 +54,7 @@ async function deleteGitlab(fixture: AuthenticatedFixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
     setupApp({ context })(zeroConnectorsBySlugContract).delete({
-      params: { type: "gitlab" },
+      params: { connectorSlug: "gitlab" },
       headers: authHeaders(),
     }),
     [204, 404],
@@ -85,6 +85,9 @@ describe("GET /api/zero/connectors", () => {
 
     expect(response.body.connectors).toStrictEqual([]);
     expect(Array.isArray(response.body.configuredTypes)).toBeTruthy();
+    expect(response.body.configuredConnectorSlugs).toStrictEqual(
+      response.body.configuredTypes,
+    );
     expect(Array.isArray(response.body.connectorProvidedBindings)).toBeTruthy();
   });
 
@@ -124,6 +127,7 @@ describe("GET /api/zero/connectors", () => {
     expect(response.body.connectors).toContainEqual(
       expect.objectContaining({
         type: "gitlab",
+        slug: "gitlab",
         authMethod: "api-token",
         connectionStatus: "connected",
       }),
@@ -131,6 +135,7 @@ describe("GET /api/zero/connectors", () => {
     expect(response.body.connectorProvidedBindings).toContainEqual(
       expect.objectContaining({
         connectorType: "gitlab",
+        connectorSlug: "gitlab",
         namespace: "secrets",
         name: "GITLAB_TOKEN",
       }),

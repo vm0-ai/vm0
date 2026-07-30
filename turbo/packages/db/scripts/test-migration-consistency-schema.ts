@@ -35,7 +35,15 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { eq, isNotNull } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/node-postgres";
 import { Client } from "pg";
+import { connectorExternalCodeSessions } from "../src/schema/connector-external-code-session";
+import { connectorOauthDeviceAuthorizationSessions } from "../src/schema/connector-oauth-device-authorization-session";
+import { connectorOauthStates } from "../src/schema/connector-oauth-state";
+import { connectors } from "../src/schema/connector";
+import { userConnectors } from "../src/schema/user-connector";
+import { userPermissionGrants } from "../src/schema/user-permission-grant";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_DIR = path.join(dirname, "..");
@@ -117,6 +125,396 @@ async function runMigrations(dbUrl: string): Promise<void> {
   });
 }
 
+async function resetDatabase(dbUrl: string): Promise<void> {
+  console.log(`♻️  Resetting database...`);
+  execCommand(`tsx ${path.join(dirname, "reset-db.ts")}`, {
+    env: { DATABASE_URL: dbUrl },
+    cwd: PACKAGE_DIR,
+  });
+}
+
+async function validateCurrentBrowserApiBeforeBillingMigration(): Promise<void> {
+  console.log(
+    "=== Phase 1.95: Validate current browser API before billing migration ===\n",
+  );
+  const testDb = "migration_current_browser_api_pre_billing_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const agentComposeId = "00000000-0000-4000-8000-000000073301";
+  const agentSessionId = "00000000-0000-4000-8000-000000073302";
+  const runId = "00000000-0000-4000-8000-000000073303";
+  const browserProfileId = "00000000-0000-4000-8000-000000073304";
+  const providerProfileId = "00000000-0000-4000-8000-000000073305";
+  const browserThreadProfileId = "00000000-0000-4000-8000-000000073306";
+  const threadProviderProfileId = "00000000-0000-4000-8000-000000073307";
+  const browserSessionId = "00000000-0000-4000-8000-000000073308";
+  const providerSessionId = "00000000-0000-4000-8000-000000073309";
+  const chatThreadId = "00000000-0000-4000-8000-000000073310";
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 733);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+
+    try {
+      const legacyDefaults = await client.query<{
+        columnDefault: string | null;
+        columnName: string;
+        tableName: string;
+      }>(
+        `
+          SELECT
+            "table_name" AS "tableName",
+            "column_name" AS "columnName",
+            "column_default" AS "columnDefault"
+          FROM "information_schema"."columns"
+          WHERE (
+            "table_name" = 'browser_sessions'
+            AND "column_name" = 'max_credits'
+          ) OR (
+            "table_name" = 'browser_session_instances'
+            AND "column_name" IN ('pricing_unit_price', 'pricing_unit_size')
+          )
+        `,
+      );
+      assert.equal(legacyDefaults.rows.length, 3);
+      for (const column of legacyDefaults.rows) {
+        assert.equal(
+          column.columnDefault,
+          null,
+          `${column.tableName}.${column.columnName} unexpectedly has a pre-0734 default`,
+        );
+      }
+
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES (
+            $1,
+            'browser-current-user',
+            'current-browser-api-pre-migration',
+            'browser-current-org'
+          )
+        `,
+        [agentComposeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "agent_sessions" (
+            "id",
+            "user_id",
+            "org_id",
+            "agent_compose_id"
+          )
+          VALUES (
+            $1,
+            'browser-current-user',
+            'browser-current-org',
+            $2
+          )
+        `,
+        [agentSessionId, agentComposeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "agent_runs" (
+            "id",
+            "user_id",
+            "session_id",
+            "status",
+            "prompt",
+            "org_id"
+          )
+          VALUES (
+            $1,
+            'browser-current-user',
+            $2,
+            'running',
+            'browser migration compatibility test',
+            'browser-current-org'
+          )
+        `,
+        [runId, agentSessionId],
+      );
+      await client.query(
+        `
+          INSERT INTO "browser_profiles" (
+            "id",
+            "org_id",
+            "user_id",
+            "provider_profile_id"
+          )
+          VALUES (
+            $1,
+            'browser-current-org',
+            'browser-current-user',
+            $2
+          )
+        `,
+        [browserProfileId, providerProfileId],
+      );
+      await client.query(
+        `
+          INSERT INTO "browser_thread_profiles" (
+            "id",
+            "chat_thread_id",
+            "org_id",
+            "user_id",
+            "provider_profile_id"
+          )
+          VALUES (
+            $1,
+            $2,
+            'browser-current-org',
+            'browser-current-user',
+            $3
+          )
+        `,
+        [browserThreadProfileId, chatThreadId, threadProviderProfileId],
+      );
+
+      // These are the current API's transitional statement shapes. The three
+      // legacy billing columns are explicit because migration 0734 has not run.
+      const browser = await client.query<{ maxCredits: number }>(
+        `
+          INSERT INTO "browser_sessions" (
+            "id",
+            "chat_thread_id",
+            "run_id",
+            "org_id",
+            "user_id",
+            "name",
+            "browser_profile_id",
+            "browser_thread_profile_id",
+            "status",
+            "proxy_country_code",
+            "timeout_minutes",
+            "max_credits"
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            'browser-current-org',
+            'browser-current-user',
+            'current-api-start',
+            $4,
+            $5,
+            'creating',
+            NULL,
+            240,
+            1
+          )
+          RETURNING "max_credits" AS "maxCredits"
+        `,
+        [
+          browserSessionId,
+          chatThreadId,
+          runId,
+          browserProfileId,
+          browserThreadProfileId,
+        ],
+      );
+      assert.deepEqual(browser.rows, [{ maxCredits: 1 }]);
+
+      const instance = await client.query<{
+        pricingUnitPrice: string;
+        pricingUnitSize: string;
+      }>(
+        `
+          INSERT INTO "browser_session_instances" (
+            "provider_session_id",
+            "browser_session_id",
+            "chat_thread_id",
+            "run_id",
+            "status",
+            "pricing_unit_price",
+            "pricing_unit_size",
+            "timeout_at",
+            "started_at",
+            "last_touched_at",
+            "idle_expires_at",
+            "stop_requested_at",
+            "finished_at"
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            $4,
+            'active',
+            0,
+            1,
+            now() + interval '240 minutes',
+            now(),
+            now(),
+            now() + interval '10 minutes',
+            NULL,
+            NULL
+          )
+          RETURNING
+            "pricing_unit_price"::text AS "pricingUnitPrice",
+            "pricing_unit_size"::text AS "pricingUnitSize"
+        `,
+        [providerSessionId, browserSessionId, chatThreadId, runId],
+      );
+      assert.deepEqual(instance.rows, [
+        { pricingUnitPrice: "0", pricingUnitSize: "1" },
+      ]);
+      console.log(
+        "   ✅ current API browser create/start writes work before migration 0734\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
+async function validatePreviousBrowserApiAfterBillingMigration(
+  dbUrl: string,
+): Promise<void> {
+  console.log(
+    "=== Phase 2.4: Validate previous browser API after billing migration ===\n",
+  );
+  const client = new Client({ connectionString: dbUrl });
+  await client.connect();
+
+  const browserProfileId = "00000000-0000-4000-8000-000000073501";
+  const providerProfileId = "00000000-0000-4000-8000-000000073502";
+  const browserSessionId = "00000000-0000-4000-8000-000000073503";
+  const providerSessionId = "00000000-0000-4000-8000-000000073504";
+  const chatThreadId = "00000000-0000-4000-8000-000000073505";
+  const runId = "00000000-0000-4000-8000-000000073506";
+
+  try {
+    // This is the lookup shape used by the previous API before every provider
+    // create or resume.
+    const pricing = await client.query<{
+      unitPrice: string;
+      unitSize: string;
+    }>(
+      `
+        SELECT
+          "unit_price"::text AS "unitPrice",
+          "unit_size"::text AS "unitSize"
+        FROM "usage_pricing"
+        WHERE "kind" = 'browser'
+          AND "provider" = 'browser-use'
+          AND "category" = 'provider_cost_usd_micros'
+        LIMIT 1
+      `,
+    );
+    assert.deepEqual(pricing.rows, [{ unitPrice: "0", unitSize: "1" }]);
+    const pricingRow = pricing.rows[0];
+    if (!pricingRow) {
+      throw new Error("Previous browser API pricing lookup returned no row");
+    }
+
+    await client.query(
+      `
+        INSERT INTO "browser_profiles" (
+          "id",
+          "org_id",
+          "user_id",
+          "provider_profile_id"
+        )
+        VALUES ($1, 'browser-drain-org', 'browser-drain-user', $2)
+      `,
+      [browserProfileId, providerProfileId],
+    );
+    await client.query(
+      `
+        INSERT INTO "browser_sessions" (
+          "id",
+          "chat_thread_id",
+          "run_id",
+          "org_id",
+          "user_id",
+          "name",
+          "browser_profile_id",
+          "status",
+          "proxy_country_code",
+          "timeout_minutes",
+          "max_credits"
+        )
+        VALUES (
+          $1,
+          $2,
+          NULL,
+          'browser-drain-org',
+          'browser-drain-user',
+          'previous-api-start',
+          $3,
+          'creating',
+          NULL,
+          240,
+          500
+        )
+      `,
+      [browserSessionId, chatThreadId, browserProfileId],
+    );
+    const started = await client.query<{
+      pricingUnitPrice: string;
+      pricingUnitSize: string;
+    }>(
+      `
+        INSERT INTO "browser_session_instances" (
+          "provider_session_id",
+          "browser_session_id",
+          "chat_thread_id",
+          "run_id",
+          "status",
+          "pricing_unit_price",
+          "pricing_unit_size",
+          "timeout_at",
+          "started_at",
+          "last_touched_at",
+          "idle_expires_at"
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          'active',
+          $5::bigint,
+          $6::bigint,
+          now() + interval '240 minutes',
+          now(),
+          now(),
+          now() + interval '10 minutes'
+        )
+        RETURNING
+          "pricing_unit_price"::text AS "pricingUnitPrice",
+          "pricing_unit_size"::text AS "pricingUnitSize"
+      `,
+      [
+        providerSessionId,
+        browserSessionId,
+        chatThreadId,
+        runId,
+        pricingRow.unitPrice,
+        pricingRow.unitSize,
+      ],
+    );
+    assert.deepEqual(started.rows, [
+      { pricingUnitPrice: "0", pricingUnitSize: "1" },
+    ]);
+    console.log("   ✅ previous API pricing lookup returns a zero-priced row");
+    console.log("   ✅ previous API provider-start write remains valid\n");
+  } finally {
+    await client.query(`DELETE FROM "browser_sessions" WHERE "id" = $1`, [
+      browserSessionId,
+    ]);
+    await client.query(`DELETE FROM "browser_profiles" WHERE "id" = $1`, [
+      browserProfileId,
+    ]);
+    await client.end();
+  }
+}
+
 function databaseErrorCode(error: unknown): string | undefined {
   if (typeof error !== "object" || error === null || !("code" in error)) {
     return undefined;
@@ -147,6 +545,103 @@ async function expectAppendOnlyUpdateRejected(
   }
 
   throw new Error(`${args.tableName} accepted an UPDATE`);
+}
+
+async function validateCanonicalChatMessageStorage(
+  client: Client,
+  threadId: string,
+): Promise<string> {
+  const userMessage = {
+    version: 1,
+    parts: [{ type: "text", text: "canonical API migration test" }],
+  };
+  const message = await client.query<{
+    content: string | null;
+    id: string;
+    seqId: string;
+    userMessage: unknown;
+  }>(
+    `
+      INSERT INTO "chat_events" (
+        "chat_thread_id",
+        "content",
+        "event_type",
+        "user_message"
+      )
+      VALUES (
+        $1,
+        NULL,
+        'input.prompt',
+        $2::jsonb
+      )
+      RETURNING
+        "id",
+        "seq_id" AS "seqId",
+        "content",
+        "user_message" AS "userMessage"
+    `,
+    [threadId, JSON.stringify(userMessage)],
+  );
+  const messageRow = message.rows[0];
+  if (!messageRow) {
+    throw new Error("Failed to create append-only chat message fixture");
+  }
+  assert.equal(messageRow.seqId, "1");
+  assert.equal(messageRow.content, null);
+  assert.deepEqual(messageRow.userMessage, userMessage);
+
+  const nextMessage = await client.query<{ seqId: string }>(
+    `
+      INSERT INTO "chat_events" (
+        "chat_thread_id",
+        "content",
+        "event_type"
+      )
+      VALUES (
+        $1,
+        'second typed API migration test',
+        'output.message'
+      )
+      RETURNING "seq_id" AS "seqId"
+    `,
+    [threadId],
+  );
+  assert.equal(nextMessage.rows[0]?.seqId, "2");
+
+  const sequenceState = await client.query<{ lastSeqId: string }>(
+    `
+      SELECT "last_chat_message_seq_id" AS "lastSeqId"
+      FROM "chat_threads"
+      WHERE "id" = $1
+    `,
+    [threadId],
+  );
+  assert.equal(sequenceState.rows[0]?.lastSeqId, "2");
+
+  return messageRow.id;
+}
+
+async function validateCanonicalDraftStorage(
+  client: Client,
+  threadId: string,
+): Promise<void> {
+  const draftUserMessage = {
+    version: 1,
+    parts: [{ type: "text", text: "canonical API draft" }],
+  };
+  const canonicalDraft = await client.query<{
+    draftUserMessage: unknown;
+  }>(
+    `
+      UPDATE "chat_threads"
+      SET "draft_user_message" = $2::jsonb
+      WHERE "id" = $1
+      RETURNING
+        "draft_user_message" AS "draftUserMessage"
+    `,
+    [threadId, JSON.stringify(draftUserMessage)],
+  );
+  assert.deepEqual(canonicalDraft.rows[0]?.draftUserMessage, draftUserMessage);
 }
 
 async function validateChatEventSourcesAreAppendOnly(
@@ -188,58 +683,10 @@ async function validateChatEventSourcesAreAppendOnly(
       throw new Error("Failed to create append-only chat thread fixture");
     }
 
-    // Simulate the current typed API serving during migration: it writes
-    // event_type but does not know about seq_id and relies on the temporary
+    // Insert through the canonical table without seq_id and rely on the
     // database allocator.
-    const message = await client.query<{ id: string; seqId: string }>(
-      `
-        INSERT INTO "chat_messages" (
-          "chat_thread_id",
-          "content",
-          "event_type",
-          "structured_prompt"
-        )
-        VALUES (
-          $1,
-          'append-only migration test',
-          'input.prompt',
-          '{"version":1,"parts":[{"type":"text","text":"append-only migration test"}]}'::jsonb
-        )
-        RETURNING "id", "seq_id" AS "seqId"
-      `,
-      [threadId],
-    );
-    messageId = message.rows[0]?.id;
-    if (!messageId) {
-      throw new Error("Failed to create append-only chat message fixture");
-    }
-    assert.equal(message.rows[0]?.seqId, "1");
-    const nextMessage = await client.query<{ seqId: string }>(
-      `
-        INSERT INTO "chat_messages" (
-          "chat_thread_id",
-          "content",
-          "event_type"
-        )
-        VALUES (
-          $1,
-          'second typed API migration test',
-          'output.message'
-        )
-        RETURNING "seq_id" AS "seqId"
-      `,
-      [threadId],
-    );
-    assert.equal(nextMessage.rows[0]?.seqId, "2");
-    const sequenceState = await client.query<{ lastSeqId: string }>(
-      `
-        SELECT "last_chat_message_seq_id" AS "lastSeqId"
-        FROM "chat_threads"
-        WHERE "id" = $1
-      `,
-      [threadId],
-    );
-    assert.equal(sequenceState.rows[0]?.lastSeqId, "2");
+    messageId = await validateCanonicalChatMessageStorage(client, threadId);
+    await validateCanonicalDraftStorage(client, threadId);
 
     const event = await client.query<{ id: string; seqId: string }>(
       `
@@ -336,7 +783,7 @@ async function validateChatEventSourcesAreAppendOnly(
 
     await expectAppendOnlyUpdateRejected(client, {
       tableName: "chat_events",
-      query: `UPDATE "chat_messages" SET "content" = 'mutated' WHERE "id" = $1`,
+      query: `UPDATE "chat_events" SET "content" = 'mutated' WHERE "id" = $1`,
       rowId: messageId,
     });
     await expectAppendOnlyUpdateRejected(client, {
@@ -345,11 +792,9 @@ async function validateChatEventSourcesAreAppendOnly(
       rowId: eventId,
     });
 
-    console.log("   ✅ chat_messages compatibility view rejects UPDATE");
+    console.log("   ✅ chat_events rejects UPDATE");
     console.log("   ✅ chat_thread_events rejects UPDATE\n");
-    console.log(
-      "   ✅ previous API writes receive database-allocated seq_ids\n",
-    );
+    console.log("   ✅ chat event writes receive database-allocated seq_ids\n");
   } finally {
     await client.query(
       `
@@ -370,6 +815,143 @@ async function validateChatEventSourcesAreAppendOnly(
         agentComposeId,
       ]);
     }
+    await client.end();
+  }
+}
+
+async function validateChatEventContextPointerConstraints(
+  dbUrl: string,
+): Promise<void> {
+  console.log("=== Phase 2.5: Validate chat event context pointer ===\n");
+  const client = new Client({ connectionString: dbUrl });
+  await client.connect();
+
+  const agentComposeId = "00000000-0000-4000-8000-000000074501";
+  const threadId = "00000000-0000-4000-8000-000000074502";
+
+  try {
+    await client.query(
+      `
+        INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+        VALUES ($1, 'context-pointer-test-user', 'context-pointer-test', 'context-pointer-test-org')
+      `,
+      [agentComposeId],
+    );
+    await client.query(
+      `
+        INSERT INTO "chat_threads" (
+          "id",
+          "user_id",
+          "agent_compose_id",
+          "title"
+        )
+        VALUES ($1, 'context-pointer-test-user', $2, 'context pointer test')
+      `,
+      [threadId, agentComposeId],
+    );
+
+    const accepted = await client.query<{
+      contextId: string | null;
+      contextType: string | null;
+    }>(
+      `
+        INSERT INTO "chat_events" (
+          "id",
+          "chat_thread_id",
+          "event_type",
+          "context_type",
+          "context_id"
+        )
+        VALUES
+          ('00000000-0000-4000-8000-000000074510', $1, 'output.message', NULL, NULL),
+          (
+            '00000000-0000-4000-8000-000000074511',
+            $1,
+            'output.message',
+            'slack',
+            '00000000-0000-4000-8000-000000074503'
+          )
+        RETURNING
+          "context_type" AS "contextType",
+          "context_id" AS "contextId"
+      `,
+      [threadId],
+    );
+    assert.deepEqual(accepted.rows, [
+      { contextId: null, contextType: null },
+      {
+        contextId: "00000000-0000-4000-8000-000000074503",
+        contextType: "slack",
+      },
+    ]);
+
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: "chat_events_context_pair_check",
+      query: `
+        INSERT INTO "chat_events" (
+          "id",
+          "chat_thread_id",
+          "event_type",
+          "context_type"
+        )
+        VALUES (
+          '00000000-0000-4000-8000-000000074512',
+          $1,
+          'output.message',
+          'slack'
+        )
+      `,
+      values: [threadId],
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: "chat_events_context_pair_check",
+      query: `
+        INSERT INTO "chat_events" (
+          "id",
+          "chat_thread_id",
+          "event_type",
+          "context_id"
+        )
+        VALUES (
+          '00000000-0000-4000-8000-000000074513',
+          $1,
+          'output.message',
+          '00000000-0000-4000-8000-000000074504'
+        )
+      `,
+      values: [threadId],
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: "chat_events_context_type_check",
+      query: `
+        INSERT INTO "chat_events" (
+          "id",
+          "chat_thread_id",
+          "event_type",
+          "context_type",
+          "context_id"
+        )
+        VALUES (
+          '00000000-0000-4000-8000-000000074514',
+          $1,
+          'output.message',
+          'telegram',
+          '00000000-0000-4000-8000-000000074505'
+        )
+      `,
+      values: [threadId],
+    });
+
+    console.log(
+      "   ✅ Chat event context pointers are paired and reject unknown types\n",
+    );
+  } finally {
+    await client.query(`DELETE FROM "agent_composes" WHERE "id" = $1`, [
+      agentComposeId,
+    ]);
     await client.end();
   }
 }
@@ -1226,6 +1808,192 @@ async function validateConnectorCatalogFinalConstraints(
 
   console.log(
     "   ✅ Final connector catalog constraints accept complete state and reject ambiguous state\n",
+  );
+}
+
+async function expectDeferredDatabaseError(
+  client: Client,
+  args: {
+    readonly code: string;
+    readonly messageIncludes?: string;
+    readonly statements: readonly {
+      readonly query: string;
+      readonly values?: readonly string[];
+    }[];
+  },
+): Promise<void> {
+  await client.query("BEGIN");
+  try {
+    for (const statement of args.statements) {
+      await client.query(
+        statement.query,
+        statement.values ? [...statement.values] : undefined,
+      );
+    }
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    assert.equal(databaseErrorCode(error), args.code);
+    if (args.messageIncludes !== undefined) {
+      assert.ok(error instanceof Error);
+      assert.ok(error.message.includes(args.messageIncludes));
+    }
+    return;
+  }
+  throw new Error(`Expected deferred database error ${args.code}`);
+}
+
+async function validateCustomConnectorOauthModeConstraints(
+  dbUrl: string,
+): Promise<void> {
+  console.log(
+    "=== Phase 2.7: Validate custom connector OAuth mode constraints ===\n",
+  );
+  const fixture = {
+    orgId: "migration-custom-connector-oauth-org",
+    createdBy: "migration-custom-connector-oauth-user",
+    manualConnectorId: "72000000-0000-4000-8000-000000000001",
+    oauthConnectorId: "72000000-0000-4000-8000-000000000002",
+    invalidOauthConnectorId: "72000000-0000-4000-8000-000000000003",
+  } as const;
+  const insertConnector = `
+    INSERT INTO "org_custom_connectors" (
+      "id",
+      "org_id",
+      "slug",
+      "display_name",
+      "prefixes",
+      "header_name",
+      "header_template",
+      "auth_mode",
+      "created_by"
+    )
+    VALUES ($1, $2, $3, $4, '[]'::jsonb, 'Authorization', 'Bearer {{secret}}', $5, $6)
+  `;
+  const insertOauthConfig = `
+    INSERT INTO "org_custom_connector_oauth_configs" (
+      "connector_id",
+      "org_id",
+      "provider_adapter",
+      "client_id",
+      "encrypted_client_secret",
+      "authorization_url",
+      "token_url",
+      "token_endpoint_auth_method",
+      "pkce_method"
+    )
+    VALUES (
+      $1,
+      $2,
+      'standard',
+      'migration-client',
+      'migration-encrypted-secret',
+      'https://oauth.example.test/authorize',
+      'https://oauth.example.test/token',
+      'client_secret_basic',
+      'none'
+    )
+  `;
+  const client = new Client({ connectionString: dbUrl });
+  await client.connect();
+
+  try {
+    await client.query(insertConnector, [
+      fixture.manualConnectorId,
+      fixture.orgId,
+      "_migration_manual",
+      "Migration Manual Connector",
+      "manual",
+      fixture.createdBy,
+    ]);
+
+    await client.query("BEGIN");
+    await client.query(insertConnector, [
+      fixture.oauthConnectorId,
+      fixture.orgId,
+      "_migration_oauth",
+      "Migration OAuth Connector",
+      "oauth",
+      fixture.createdBy,
+    ]);
+    await client.query(insertOauthConfig, [
+      fixture.oauthConnectorId,
+      fixture.orgId,
+    ]);
+    await client.query("COMMIT");
+
+    await expectDeferredDatabaseError(client, {
+      code: "23514",
+      messageIncludes:
+        "custom connector auth mode and OAuth config do not match",
+      statements: [
+        {
+          query: insertConnector,
+          values: [
+            fixture.invalidOauthConnectorId,
+            fixture.orgId,
+            "_migration_invalid_oauth",
+            "Migration Invalid OAuth Connector",
+            "oauth",
+            fixture.createdBy,
+          ],
+        },
+      ],
+    });
+    await expectDeferredDatabaseError(client, {
+      code: "23514",
+      messageIncludes:
+        "custom connector auth mode and OAuth config do not match",
+      statements: [
+        {
+          query: insertOauthConfig,
+          values: [fixture.manualConnectorId, fixture.orgId],
+        },
+      ],
+    });
+    await expectDeferredDatabaseError(client, {
+      code: "23514",
+      messageIncludes:
+        "custom connector auth mode and OAuth config do not match",
+      statements: [
+        {
+          query: `
+            UPDATE "org_custom_connectors"
+            SET "auth_mode" = 'manual'
+            WHERE "id" = $1
+          `,
+          values: [fixture.oauthConnectorId],
+        },
+      ],
+    });
+    await expectDeferredDatabaseError(client, {
+      code: "23514",
+      messageIncludes:
+        "custom connector auth mode and OAuth config do not match",
+      statements: [
+        {
+          query: `
+            DELETE FROM "org_custom_connector_oauth_configs"
+            WHERE "connector_id" = $1
+          `,
+          values: [fixture.oauthConnectorId],
+        },
+      ],
+    });
+
+    await client.query(
+      `
+        DELETE FROM "org_custom_connectors"
+        WHERE "id" IN ($1, $2)
+      `,
+      [fixture.manualConnectorId, fixture.oauthConnectorId],
+    );
+  } finally {
+    await client.end();
+  }
+
+  console.log(
+    "   ✅ Deferred constraints accept complete modes and reject mismatched OAuth configuration\n",
   );
 }
 
@@ -2201,6 +2969,591 @@ async function validateUserMessageBackfillAndContract(): Promise<void> {
   );
 }
 
+const CANONICAL_USER_MESSAGE_PREVIOUS_MIGRATION = 727;
+const CANONICAL_USER_MESSAGE_CONTRACT_MIGRATION = 730;
+const CANONICAL_USER_MESSAGE_CLEANUP_PREVIOUS_MIGRATION = 738;
+const CANONICAL_USER_MESSAGE_CLEANUP_MIGRATION = 739;
+const DRAFT_CONTENT_CLEANUP_PREVIOUS_MIGRATION = 748;
+const DRAFT_CONTENT_CONSTRAINT_ADD_MIGRATION = 749;
+const DRAFT_CONTENT_CONSTRAINT_VALIDATION_MIGRATION = 750;
+const DRAFT_CONTENT_CLEANUP_MIGRATION = 751;
+
+async function validateCanonicalUserMessageRolloutCompatibility(): Promise<void> {
+  console.log("=== Validate canonical userMessage rollout compatibility ===\n");
+
+  const testDb = "migration_canonical_user_message_rollout_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const fixture = {
+    agentIds: {
+      historical: "93000000-0000-4000-8000-000000000001",
+      upsert: "93000000-0000-4000-8000-000000000002",
+    },
+    orgId: "canonical-user-message-rollout-org",
+    userId: "canonical-user-message-rollout-user",
+  } as const;
+  const historicalDocument = {
+    version: 1,
+    parts: [{ type: "text", text: "historical agent draft" }],
+  };
+  const legacyInsertDocument = {
+    version: 1,
+    parts: [{ type: "text", text: "legacy API insert" }],
+  };
+  const legacyUpdateDocument = {
+    version: 1,
+    parts: [{ type: "text", text: "legacy API conflict update" }],
+  };
+  const canonicalUpdateDocument = {
+    version: 1,
+    parts: [{ type: "text", text: "canonical API conflict update" }],
+  };
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(
+      testDbUrl,
+      CANONICAL_USER_MESSAGE_PREVIOUS_MIGRATION,
+    );
+
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+         VALUES
+           ($1, $4, 'canonical-user-message-historical', $3),
+           ($2, $4, 'canonical-user-message-upsert', $3)`,
+        [
+          fixture.agentIds.historical,
+          fixture.agentIds.upsert,
+          fixture.orgId,
+          fixture.userId,
+        ],
+      );
+      await client.query(
+        `INSERT INTO "zero_agents" ("id", "org_id", "owner", "name")
+         VALUES
+           ($1, $3, $4, 'canonical-user-message-historical'),
+           ($2, $3, $4, 'canonical-user-message-upsert')`,
+        [
+          fixture.agentIds.historical,
+          fixture.agentIds.upsert,
+          fixture.orgId,
+          fixture.userId,
+        ],
+      );
+      await client.query(
+        `INSERT INTO "zero_agent_drafts" (
+           "user_id",
+           "org_id",
+           "agent_id",
+           "draft_content",
+           "draft_structured_prompt"
+         )
+         VALUES ($1, $2, $3, 'historical agent draft', $4::jsonb)`,
+        [
+          fixture.userId,
+          fixture.orgId,
+          fixture.agentIds.historical,
+          JSON.stringify(historicalDocument),
+        ],
+      );
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        CANONICAL_USER_MESSAGE_CONTRACT_MIGRATION,
+      );
+
+      const historicalDraft = await client.query<{
+        draftUserMessage: unknown;
+        legacyDraftUserMessage: unknown;
+      }>(
+        `SELECT
+           "draft_structured_prompt" AS "legacyDraftUserMessage",
+           "draft_user_message" AS "draftUserMessage"
+         FROM "zero_agent_drafts"
+         WHERE "user_id" = $1
+           AND "org_id" = $2
+           AND "agent_id" = $3`,
+        [fixture.userId, fixture.orgId, fixture.agentIds.historical],
+      );
+      assert.deepEqual(historicalDraft.rows, [
+        {
+          draftUserMessage: historicalDocument,
+          legacyDraftUserMessage: historicalDocument,
+        },
+      ]);
+
+      const legacyInsert = await client.query<{
+        draftUserMessage: unknown;
+        legacyDraftUserMessage: unknown;
+      }>(
+        `INSERT INTO "zero_agent_drafts" (
+           "user_id",
+           "org_id",
+           "agent_id",
+           "draft_content",
+           "draft_structured_prompt",
+           "updated_at"
+         )
+         VALUES ($1, $2, $3, 'legacy API insert', $4::jsonb, NOW())
+         ON CONFLICT ("user_id", "org_id", "agent_id") DO UPDATE
+         SET
+           "draft_content" = EXCLUDED."draft_content",
+           "draft_structured_prompt" = EXCLUDED."draft_structured_prompt",
+           "updated_at" = EXCLUDED."updated_at"
+         RETURNING
+           "draft_structured_prompt" AS "legacyDraftUserMessage",
+           "draft_user_message" AS "draftUserMessage"`,
+        [
+          fixture.userId,
+          fixture.orgId,
+          fixture.agentIds.upsert,
+          JSON.stringify(legacyInsertDocument),
+        ],
+      );
+      assert.deepEqual(legacyInsert.rows, [
+        {
+          draftUserMessage: legacyInsertDocument,
+          legacyDraftUserMessage: legacyInsertDocument,
+        },
+      ]);
+
+      const legacyUpdate = await client.query<{
+        draftUserMessage: unknown;
+        legacyDraftUserMessage: unknown;
+      }>(
+        `INSERT INTO "zero_agent_drafts" (
+           "user_id",
+           "org_id",
+           "agent_id",
+           "draft_content",
+           "draft_structured_prompt",
+           "updated_at"
+         )
+         VALUES ($1, $2, $3, 'legacy API conflict update', $4::jsonb, NOW())
+         ON CONFLICT ("user_id", "org_id", "agent_id") DO UPDATE
+         SET
+           "draft_content" = EXCLUDED."draft_content",
+           "draft_structured_prompt" = EXCLUDED."draft_structured_prompt",
+           "updated_at" = EXCLUDED."updated_at"
+         RETURNING
+           "draft_structured_prompt" AS "legacyDraftUserMessage",
+           "draft_user_message" AS "draftUserMessage"`,
+        [
+          fixture.userId,
+          fixture.orgId,
+          fixture.agentIds.upsert,
+          JSON.stringify(legacyUpdateDocument),
+        ],
+      );
+      assert.deepEqual(legacyUpdate.rows, [
+        {
+          draftUserMessage: legacyUpdateDocument,
+          legacyDraftUserMessage: legacyUpdateDocument,
+        },
+      ]);
+
+      const canonicalUpdate = await client.query<{
+        draftUserMessage: unknown;
+        legacyDraftUserMessage: unknown;
+      }>(
+        `INSERT INTO "zero_agent_drafts" (
+           "user_id",
+           "org_id",
+           "agent_id",
+           "draft_content",
+           "draft_user_message",
+           "updated_at"
+         )
+         VALUES ($1, $2, $3, 'canonical API conflict update', $4::jsonb, NOW())
+         ON CONFLICT ("user_id", "org_id", "agent_id") DO UPDATE
+         SET
+           "draft_content" = EXCLUDED."draft_content",
+           "draft_user_message" = EXCLUDED."draft_user_message",
+           "updated_at" = EXCLUDED."updated_at"
+         RETURNING
+           "draft_structured_prompt" AS "legacyDraftUserMessage",
+           "draft_user_message" AS "draftUserMessage"`,
+        [
+          fixture.userId,
+          fixture.orgId,
+          fixture.agentIds.upsert,
+          JSON.stringify(canonicalUpdateDocument),
+        ],
+      );
+      assert.deepEqual(canonicalUpdate.rows, [
+        {
+          draftUserMessage: canonicalUpdateDocument,
+          legacyDraftUserMessage: canonicalUpdateDocument,
+        },
+      ]);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+
+  console.log(
+    "   ✅ Historical agent drafts are backfilled and legacy/canonical upserts remain synchronized\n",
+  );
+}
+
+async function validateCanonicalUserMessageContraction(): Promise<void> {
+  console.log("=== Validate canonical userMessage contraction ===\n");
+
+  const testDb = "migration_canonical_user_message_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  await createDatabase(testDb);
+
+  const blocker = new Client({ connectionString: testDbUrl });
+  const migrationClient = new Client({ connectionString: testDbUrl });
+  let blockerOpen = false;
+
+  try {
+    await runMigrationsUpTo(
+      testDbUrl,
+      CANONICAL_USER_MESSAGE_CLEANUP_PREVIOUS_MIGRATION,
+    );
+    await blocker.connect();
+    await migrationClient.connect();
+
+    await blocker.query("BEGIN");
+    blockerOpen = true;
+    await blocker.query(`LOCK TABLE "chat_events" IN ACCESS SHARE MODE`);
+
+    try {
+      await applyMigrationsUpToInTransaction(
+        migrationClient,
+        CANONICAL_USER_MESSAGE_CLEANUP_MIGRATION,
+      );
+      assert.fail("Canonical userMessage cleanup waited for a table lock");
+    } catch (error) {
+      assert.equal(databaseErrorCode(error), "55P03");
+    }
+
+    await blocker.query("ROLLBACK");
+    blockerOpen = false;
+
+    await applyMigrationsUpToInTransaction(
+      migrationClient,
+      CANONICAL_USER_MESSAGE_CLEANUP_MIGRATION,
+    );
+
+    const legacyColumns = await migrationClient.query<{
+      column_name: string;
+      table_name: string;
+    }>(`
+      SELECT table_name, column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND (
+          (table_name = 'chat_events' AND column_name = 'structured_prompt')
+          OR (
+            table_name IN ('chat_threads', 'zero_agent_drafts')
+            AND column_name = 'draft_structured_prompt'
+          )
+        )
+    `);
+    assert.deepEqual(legacyColumns.rows, []);
+
+    const bridgeTriggers = await migrationClient.query<{ name: string }>(`
+      SELECT tgname AS name
+      FROM pg_trigger
+      WHERE tgname IN (
+        'bridge_chat_user_message_0727',
+        'bridge_chat_thread_draft_user_message_0727',
+        'bridge_agent_draft_user_message_0727'
+      )
+    `);
+    assert.deepEqual(bridgeTriggers.rows, []);
+
+    const bridgeFunctions = await migrationClient.query<{
+      chatBridge: string | null;
+      draftBridge: string | null;
+    }>(`
+      SELECT
+        to_regprocedure('bridge_chat_user_message_0727()')::text AS "chatBridge",
+        to_regprocedure('bridge_draft_user_message_0727()')::text AS "draftBridge"
+    `);
+    assert.deepEqual(bridgeFunctions.rows, [
+      { chatBridge: null, draftBridge: null },
+    ]);
+  } finally {
+    if (blockerOpen) {
+      await blocker.query("ROLLBACK");
+    }
+    await blocker.end();
+    await migrationClient.end();
+    await dropDatabase(testDb);
+  }
+
+  console.log(
+    "   ✅ Cleanup fails fast on lock contention and removes only legacy userMessage storage\n",
+  );
+}
+
+async function validateDraftContentContraction(): Promise<void> {
+  console.log("=== Validate draftContent contraction ===\n");
+
+  const testDb = "migration_draft_content_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const fixture = {
+    agentId: "96000000-0000-4000-8000-000000000001",
+    existingThreadId: "97000000-0000-4000-8000-000000000001",
+    insertedThreadId: "97000000-0000-4000-8000-000000000002",
+    orgId: "draft-content-contraction-org",
+    userId: "draft-content-contraction-user",
+    insertedDraftUserId: "draft-content-contraction-insert-user",
+  } as const;
+  const canonicalDocument = JSON.stringify({
+    version: 1,
+    parts: [{ type: "text", text: "canonical draft" }],
+  });
+  await createDatabase(testDb);
+
+  const blocker = new Client({ connectionString: testDbUrl });
+  const migrationClient = new Client({ connectionString: testDbUrl });
+  const trafficClient = new Client({ connectionString: testDbUrl });
+  let blockerOpen = false;
+  let validationOpen = false;
+
+  try {
+    await runMigrationsUpTo(
+      testDbUrl,
+      DRAFT_CONTENT_CLEANUP_PREVIOUS_MIGRATION,
+    );
+    await blocker.connect();
+    await migrationClient.connect();
+    await trafficClient.connect();
+
+    await migrationClient.query(
+      `INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+       VALUES ($1, $2, 'draft-content-contraction', $3)`,
+      [fixture.agentId, fixture.userId, fixture.orgId],
+    );
+    await migrationClient.query(
+      `INSERT INTO "zero_agents" ("id", "org_id", "owner", "name")
+       VALUES ($1, $2, $3, 'draft-content-contraction')`,
+      [fixture.agentId, fixture.orgId, fixture.userId],
+    );
+    await migrationClient.query(
+      `INSERT INTO "chat_threads" (
+         "id",
+         "user_id",
+         "agent_compose_id",
+         "title"
+       )
+       VALUES ($1, $2, $3, 'existing draft thread')`,
+      [fixture.existingThreadId, fixture.userId, fixture.agentId],
+    );
+    await migrationClient.query(
+      `INSERT INTO "zero_agent_drafts" ("user_id", "org_id", "agent_id")
+       VALUES ($1, $2, $3)`,
+      [fixture.userId, fixture.orgId, fixture.agentId],
+    );
+
+    await applyMigrationsUpToInTransaction(
+      migrationClient,
+      DRAFT_CONTENT_CONSTRAINT_ADD_MIGRATION,
+    );
+
+    const migrationPidResult = await migrationClient.query<{
+      pid: number;
+    }>(`SELECT pg_backend_pid() AS pid`);
+    const migrationPid = migrationPidResult.rows[0]?.pid;
+    assert.ok(migrationPid);
+
+    await migrationClient.query("BEGIN");
+    validationOpen = true;
+    await applyMigrationsUpTo(
+      migrationClient,
+      DRAFT_CONTENT_CONSTRAINT_VALIDATION_MIGRATION,
+    );
+
+    const validationLocks = await trafficClient.query<{
+      mode: string;
+      relation: string;
+    }>(
+      `
+        SELECT
+          relation::regclass::text AS relation,
+          mode
+        FROM pg_locks
+        WHERE pid = $1
+          AND granted
+          AND relation IN (
+            'chat_threads'::regclass,
+            'zero_agent_drafts'::regclass
+          )
+          AND mode IN (
+            'ShareUpdateExclusiveLock',
+            'AccessExclusiveLock'
+          )
+        ORDER BY relation, mode
+      `,
+      [migrationPid],
+    );
+    assert.deepEqual(validationLocks.rows, [
+      {
+        mode: "ShareUpdateExclusiveLock",
+        relation: "chat_threads",
+      },
+      {
+        mode: "ShareUpdateExclusiveLock",
+        relation: "zero_agent_drafts",
+      },
+    ]);
+
+    // VALIDATE has completed its scans, but its transaction still holds the
+    // exact table locks until commit. Ordinary traffic must remain compatible
+    // with those locks without relying on validation scan timing.
+    await trafficClient.query(`SET statement_timeout = '2s'`);
+    const selectedThread = await trafficClient.query<{ id: string }>(
+      `SELECT "id" FROM "chat_threads" WHERE "id" = $1`,
+      [fixture.existingThreadId],
+    );
+    assert.deepEqual(selectedThread.rows, [{ id: fixture.existingThreadId }]);
+
+    const insertedThread = await trafficClient.query<{ id: string }>(
+      `INSERT INTO "chat_threads" (
+         "id",
+         "user_id",
+         "agent_compose_id",
+         "title",
+         "draft_user_message"
+       )
+       VALUES ($1, $2, $3, 'inserted during validation', $4::jsonb)
+       RETURNING "id"`,
+      [
+        fixture.insertedThreadId,
+        fixture.userId,
+        fixture.agentId,
+        canonicalDocument,
+      ],
+    );
+    assert.deepEqual(insertedThread.rows, [{ id: fixture.insertedThreadId }]);
+
+    const insertedDraft = await trafficClient.query<{ userId: string }>(
+      `INSERT INTO "zero_agent_drafts" (
+         "user_id",
+         "org_id",
+         "agent_id",
+         "draft_user_message"
+       )
+       VALUES ($1, $2, $3, $4::jsonb)
+       RETURNING "user_id" AS "userId"`,
+      [
+        fixture.insertedDraftUserId,
+        fixture.orgId,
+        fixture.agentId,
+        canonicalDocument,
+      ],
+    );
+    assert.deepEqual(insertedDraft.rows, [
+      { userId: fixture.insertedDraftUserId },
+    ]);
+
+    const updatedThread = await trafficClient.query(
+      `UPDATE "chat_threads"
+       SET "draft_user_message" = $2::jsonb
+       WHERE "id" = $1`,
+      [fixture.existingThreadId, canonicalDocument],
+    );
+    assert.equal(updatedThread.rowCount, 1);
+    const updatedDraft = await trafficClient.query(
+      `UPDATE "zero_agent_drafts"
+       SET "draft_user_message" = $4::jsonb
+       WHERE "user_id" = $1
+         AND "org_id" = $2
+         AND "agent_id" = $3`,
+      [fixture.userId, fixture.orgId, fixture.agentId, canonicalDocument],
+    );
+    assert.equal(updatedDraft.rowCount, 1);
+
+    await migrationClient.query("COMMIT");
+    validationOpen = false;
+
+    await blocker.query("BEGIN");
+    blockerOpen = true;
+    await blocker.query(`LOCK TABLE "chat_threads" IN ACCESS SHARE MODE`);
+
+    try {
+      await applyMigrationsUpToInTransaction(
+        migrationClient,
+        DRAFT_CONTENT_CLEANUP_MIGRATION,
+      );
+      assert.fail("draftContent cleanup waited for a table lock");
+    } catch (error) {
+      assert.equal(databaseErrorCode(error), "55P03");
+    }
+
+    await blocker.query("ROLLBACK");
+    blockerOpen = false;
+
+    await applyMigrationsUpToInTransaction(
+      migrationClient,
+      DRAFT_CONTENT_CLEANUP_MIGRATION,
+    );
+
+    const legacyColumns = await migrationClient.query<{
+      column_name: string;
+      table_name: string;
+    }>(`
+      SELECT table_name, column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name IN ('chat_threads', 'zero_agent_drafts')
+        AND column_name = 'draft_content'
+    `);
+    assert.deepEqual(legacyColumns.rows, []);
+
+    const constraints = await migrationClient.query<{
+      definition: string;
+      name: string;
+      validated: boolean;
+    }>(`
+      SELECT
+        constraint_record.conname AS "name",
+        constraint_record.convalidated AS "validated",
+        pg_get_constraintdef(constraint_record.oid) AS "definition"
+      FROM pg_constraint AS constraint_record
+      WHERE constraint_record.conname IN (
+        'chat_threads_draft_user_message_check',
+        'zero_agent_drafts_draft_user_message_check'
+      )
+      ORDER BY constraint_record.conname
+    `);
+    assert.equal(constraints.rows.length, 2);
+    assert.ok(
+      constraints.rows.every((constraint) => {
+        return (
+          constraint.validated &&
+          constraint.definition.includes("draft_user_message") &&
+          constraint.definition.includes("draft_attachments") &&
+          !constraint.definition.includes("draft_content")
+        );
+      }),
+    );
+  } finally {
+    if (validationOpen) {
+      await migrationClient.query("ROLLBACK");
+    }
+    if (blockerOpen) {
+      await blocker.query("ROLLBACK");
+    }
+    await blocker.end();
+    await migrationClient.end();
+    await trafficClient.end();
+    await dropDatabase(testDb);
+  }
+
+  console.log(
+    "   ✅ Validation permits live reads and writes, cleanup fails fast on lock contention, and both draftContent columns are removed\n",
+  );
+}
+
 const CHAT_EVENT_TYPE_PREVIOUS_MIGRATION = 696;
 const CHAT_EVENT_TYPE_ADDITIVE_MIGRATION = 697;
 const CHAT_EVENT_TYPE_BACKFILL_MIGRATION = 698;
@@ -3124,6 +4477,7 @@ async function validateChatMessageRoleContraction(): Promise<void> {
 
 const CHAT_EVENT_TABLE_RENAME_PREVIOUS_MIGRATION = 722;
 const CHAT_EVENT_TABLE_RENAME_MIGRATION = 723;
+const CHAT_MESSAGES_VIEW_CONTRACTION_MIGRATION = 736;
 
 async function validateChatEventTableRename(): Promise<void> {
   console.log(
@@ -3134,6 +4488,7 @@ async function validateChatEventTableRename(): Promise<void> {
   const testDbUrl = createTestDbUrl(testDb);
   const composeId = "95000000-0000-4000-8000-000000000001";
   const threadId = "95000000-0000-4000-8000-000000000002";
+  const artifactFileId = "95000000-0000-4000-8000-000000000003";
 
   await createDatabase(testDb);
   try {
@@ -3421,6 +4776,100 @@ async function validateChatEventTableRename(): Promise<void> {
         query: `UPDATE "chat_events" SET "content" = 'mutated' WHERE "id" = $1`,
         rowId: historicalEventId,
       });
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        CHAT_MESSAGES_VIEW_CONTRACTION_MIGRATION,
+      );
+
+      const contractedRelations = await client.query<{
+        relationKind: string;
+        relationName: string;
+      }>(`
+        SELECT
+          "relname" AS "relationName",
+          "relkind"::text AS "relationKind"
+        FROM "pg_class"
+        INNER JOIN "pg_namespace"
+          ON "pg_namespace"."oid" = "pg_class"."relnamespace"
+        WHERE "pg_namespace"."nspname" = 'public'
+          AND "pg_class"."relname" IN ('chat_events', 'chat_messages')
+        ORDER BY "pg_class"."relname"
+      `);
+      assert.deepEqual(contractedRelations.rows, [
+        { relationKind: "r", relationName: "chat_events" },
+      ]);
+
+      const lingeringFunctionDependencies = await client.query<{
+        functionName: string;
+      }>(`
+        SELECT "pg_proc"."proname" AS "functionName"
+        FROM "pg_proc"
+        INNER JOIN "pg_namespace"
+          ON "pg_namespace"."oid" = "pg_proc"."pronamespace"
+        WHERE "pg_namespace"."nspname" = 'public'
+          AND "pg_proc"."prokind" IN ('f', 'p')
+          AND pg_get_functiondef("pg_proc"."oid") ILIKE '%chat_messages%'
+        ORDER BY "pg_proc"."proname"
+      `);
+      assert.deepEqual(lingeringFunctionDependencies.rows, []);
+
+      await client.query(
+        `
+          INSERT INTO "run_uploaded_files" (
+            "id",
+            "chat_thread_id",
+            "source",
+            "external_id",
+            "user_id",
+            "org_id",
+            "url"
+          )
+          VALUES (
+            $1,
+            $2,
+            'web',
+            'post-contract-artifact',
+            'chat-event-table-rename-user',
+            'chat-event-table-rename-org',
+            'https://example.com/post-contract-artifact'
+          )
+        `,
+        [artifactFileId, threadId],
+      );
+      const queuedArtifact = await client.query<{
+        authorUserId: string;
+      }>(
+        `
+          SELECT "author_user_id" AS "authorUserId"
+          FROM "artifact_catalog_pending_files"
+          WHERE "file_id" = $1
+        `,
+        [artifactFileId],
+      );
+      assert.deepEqual(queuedArtifact.rows, [
+        { authorUserId: "chat-event-table-rename-user" },
+      ]);
+
+      const contractedRows = await client.query<{
+        content: string;
+        seqId: string;
+      }>(
+        `
+          SELECT "content", "seq_id" AS "seqId"
+          FROM "chat_events"
+          WHERE "chat_thread_id" = $1
+          ORDER BY "seq_id"
+        `,
+        [threadId],
+      );
+      assert.deepEqual(contractedRows.rows, physicalRows.rows);
+
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_events",
+        query: `UPDATE "chat_events" SET "content" = 'mutated' WHERE "id" = $1`,
+        rowId: historicalEventId,
+      });
     } finally {
       await client.end();
     }
@@ -3429,7 +4878,7 @@ async function validateChatEventTableRename(): Promise<void> {
   }
 
   console.log(
-    "   ✅ Historical rows survive, previous-API SELECT/INSERT RETURNING remains compatible, physical objects are renamed, and append-only protection holds through the rename\n",
+    "   ✅ Historical rows survive the rename and compatibility-view contraction, previous-API access remains compatible through the expand step, and append-only protection stays active\n",
   );
 }
 
@@ -3539,6 +4988,7 @@ async function validateChatInputGoalEvent(): Promise<void> {
 
 const CHAT_EVENT_ASSET_REF_TABLE_RENAME_PREVIOUS_MIGRATION = 724;
 const CHAT_EVENT_ASSET_REF_TABLE_RENAME_MIGRATION = 725;
+const CHAT_EVENT_ASSET_REF_VIEW_CONTRACTION_MIGRATION = 740;
 
 async function validateChatEventAssetRefTableRename(): Promise<void> {
   console.log(
@@ -3921,6 +5371,59 @@ async function validateChatEventAssetRefTableRename(): Promise<void> {
         },
       ]);
       assert.deepEqual(physicalRows.rows, compatibilityRows.rows);
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        CHAT_EVENT_ASSET_REF_VIEW_CONTRACTION_MIGRATION,
+      );
+
+      const contractedRelations = await client.query<{
+        relationKind: string;
+        relationName: string;
+      }>(`
+        SELECT
+          "relname" AS "relationName",
+          "relkind"::text AS "relationKind"
+        FROM "pg_class"
+        INNER JOIN "pg_namespace"
+          ON "pg_namespace"."oid" = "pg_class"."relnamespace"
+        WHERE "pg_namespace"."nspname" = 'public'
+          AND "pg_class"."relname" IN (
+            'chat_event_asset_refs',
+            'chat_message_asset_refs'
+          )
+        ORDER BY "pg_class"."relname"
+      `);
+      assert.deepEqual(contractedRelations.rows, [
+        { relationKind: "r", relationName: "chat_event_asset_refs" },
+      ]);
+
+      const contractedPhysicalColumns = await client.query<{
+        columnName: string;
+      }>(`
+        SELECT "column_name" AS "columnName"
+        FROM "information_schema"."columns"
+        WHERE "table_schema" = 'public'
+          AND "table_name" = 'chat_event_asset_refs'
+        ORDER BY "column_name"
+      `);
+      assert.deepEqual(contractedPhysicalColumns.rows, physicalColumns.rows);
+
+      const contractedRows = await client.query<{
+        assetId: string;
+        chatMessageId: string;
+        position: number;
+      }>(
+        `
+          SELECT
+            "chat_event_id" AS "chatMessageId",
+            "asset_id" AS "assetId",
+            "position"
+          FROM "chat_event_asset_refs"
+          ORDER BY "position"
+        `,
+      );
+      assert.deepEqual(contractedRows.rows, physicalRows.rows);
     } finally {
       await client.end();
     }
@@ -3929,7 +5432,654 @@ async function validateChatEventAssetRefTableRename(): Promise<void> {
   }
 
   console.log(
-    "   ✅ Historical refs survive, the aliased compatibility view supports previous-API SELECT/INSERT RETURNING/DELETE without triggers, current-API writes succeed, and physical objects are renamed\n",
+    "   ✅ Historical refs survive the rename and compatibility-view contraction, previous-API access remains compatible through the expand step, and the physical table and aliased schema column stay intact\n",
+  );
+}
+
+const CHAT_EVENT_PROPERTY_COLUMNS_PREVIOUS_MIGRATION = 754;
+const REVOKES_EVENT_ID_EXPANSION_MIGRATION = 755;
+const LAST_CHAT_EVENT_SEQ_ID_EXPANSION_MIGRATION = 756;
+const FIRST_ASSISTANT_EVENT_ACK_EXPANSION_MIGRATION = 757;
+
+const chatEventPropertyColumnFixture = {
+  composeId: "99000000-0000-4000-8000-000000000001",
+  sessionId: "99000000-0000-4000-8000-000000000002",
+  historicalRunId: "99000000-0000-4000-8000-000000000003",
+  previousApiRunId: "99000000-0000-4000-8000-000000000004",
+  nextApiRunId: "99000000-0000-4000-8000-000000000005",
+  threadId: "99000000-0000-4000-8000-000000000006",
+  historicalTargetEventId: "99000000-0000-4000-8000-000000000007",
+  historicalRevokerEventId: "99000000-0000-4000-8000-000000000008",
+  previousApiTargetEventId: "99000000-0000-4000-8000-000000000009",
+  previousApiRevokerEventId: "99000000-0000-4000-8000-000000000010",
+  nextApiTargetEventId: "99000000-0000-4000-8000-000000000011",
+  nextApiRevokerEventId: "99000000-0000-4000-8000-000000000012",
+  postSequenceExpansionEventId: "99000000-0000-4000-8000-000000000013",
+  previousApiThreadId: "99000000-0000-4000-8000-000000000014",
+  nextApiThreadId: "99000000-0000-4000-8000-000000000015",
+} as const;
+
+async function assertChatEventsAppendOnlyProtection(
+  client: Client,
+  rowId: string,
+): Promise<void> {
+  const triggers = await client.query<{
+    enabled: string;
+    triggerName: string;
+  }>(`
+    SELECT
+      "tgname" AS "triggerName",
+      "tgenabled"::text AS "enabled"
+    FROM "pg_trigger"
+    WHERE "tgrelid" = 'public.chat_events'::regclass
+      AND "tgname" = 'chat_events_reject_update'
+      AND NOT "tgisinternal"
+  `);
+  assert.deepEqual(triggers.rows, [
+    { enabled: "O", triggerName: "chat_events_reject_update" },
+  ]);
+  await expectAppendOnlyUpdateRejected(client, {
+    tableName: "chat_events",
+    query: `UPDATE "chat_events" SET "content" = 'mutated' WHERE "id" = $1`,
+    rowId,
+  });
+}
+
+async function seedChatEventPropertyColumnFixture(
+  client: Client,
+): Promise<void> {
+  const fixture = chatEventPropertyColumnFixture;
+  await client.query(
+    `
+      INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+      VALUES (
+        $1,
+        'chat-event-property-column-user',
+        'chat-event-property-column-rollout',
+        'chat-event-property-column-org'
+      )
+    `,
+    [fixture.composeId],
+  );
+  await client.query(
+    `
+      INSERT INTO "agent_sessions" (
+        "id",
+        "user_id",
+        "org_id",
+        "agent_compose_id"
+      )
+      VALUES (
+        $1,
+        'chat-event-property-column-user',
+        'chat-event-property-column-org',
+        $2
+      )
+    `,
+    [fixture.sessionId, fixture.composeId],
+  );
+  await client.query(
+    `
+      INSERT INTO "agent_runs" (
+        "id",
+        "user_id",
+        "session_id",
+        "status",
+        "prompt",
+        "org_id"
+      )
+      VALUES
+        (
+          $1,
+          'chat-event-property-column-user',
+          $4,
+          'running',
+          'historical acknowledgement',
+          'chat-event-property-column-org'
+        ),
+        (
+          $2,
+          'chat-event-property-column-user',
+          $4,
+          'running',
+          'previous API acknowledgement',
+          'chat-event-property-column-org'
+        ),
+        (
+          $3,
+          'chat-event-property-column-user',
+          $4,
+          'running',
+          'next API acknowledgement',
+          'chat-event-property-column-org'
+        )
+    `,
+    [
+      fixture.historicalRunId,
+      fixture.previousApiRunId,
+      fixture.nextApiRunId,
+      fixture.sessionId,
+    ],
+  );
+  await client.query(
+    `
+      INSERT INTO "chat_threads" (
+        "id",
+        "user_id",
+        "agent_compose_id",
+        "title",
+        "last_chat_message_seq_id"
+      )
+      VALUES (
+        $1,
+        'chat-event-property-column-user',
+        $2,
+        'chat event property column rollout',
+        20
+      )
+    `,
+    [fixture.threadId, fixture.composeId],
+  );
+  await client.query(
+    `
+      INSERT INTO "zero_runs" (
+        "id",
+        "trigger_source",
+        "chat_thread_id",
+        "api_started_at",
+        "first_assistant_message_acknowledged_at"
+      )
+      VALUES
+        ($1, 'web', $4, '2026-07-30 01:00:00', '2026-07-30 01:00:01'),
+        ($2, 'web', $4, '2026-07-30 02:00:00', NULL),
+        ($3, 'web', $4, '2026-07-30 03:00:00', NULL)
+    `,
+    [
+      fixture.historicalRunId,
+      fixture.previousApiRunId,
+      fixture.nextApiRunId,
+      fixture.threadId,
+    ],
+  );
+  await client.query(
+    `
+      INSERT INTO "chat_events" (
+        "id",
+        "chat_thread_id",
+        "event_type",
+        "content"
+      )
+      VALUES ($1, $2, 'output.message', 'historical target')
+    `,
+    [fixture.historicalTargetEventId, fixture.threadId],
+  );
+  await client.query(
+    `
+      INSERT INTO "chat_events" (
+        "id",
+        "chat_thread_id",
+        "revokes_message_id",
+        "event_type"
+      )
+      VALUES ($1, $2, $3, 'control.revoke')
+    `,
+    [
+      fixture.historicalRevokerEventId,
+      fixture.threadId,
+      fixture.historicalTargetEventId,
+    ],
+  );
+}
+
+async function validateRevokesEventIdExpansion(client: Client): Promise<void> {
+  const fixture = chatEventPropertyColumnFixture;
+  await applyMigrationsUpToInTransaction(
+    client,
+    REVOKES_EVENT_ID_EXPANSION_MIGRATION,
+  );
+
+  const historical = await client.query<{
+    legacyRevokesEventId: string | null;
+    revokesEventId: string | null;
+  }>(
+    `
+      SELECT
+        "revokes_event_id" AS "revokesEventId",
+        "revokes_message_id" AS "legacyRevokesEventId"
+      FROM "chat_events"
+      WHERE "id" = $1
+    `,
+    [fixture.historicalRevokerEventId],
+  );
+  assert.deepEqual(historical.rows, [
+    {
+      legacyRevokesEventId: fixture.historicalTargetEventId,
+      revokesEventId: fixture.historicalTargetEventId,
+    },
+  ]);
+
+  const revokeIndexes = await client.query<{
+    indexDefinition: string;
+    indexName: string;
+  }>(`
+    SELECT
+      "indexname" AS "indexName",
+      "indexdef" AS "indexDefinition"
+    FROM "pg_indexes"
+    WHERE "schemaname" = 'public'
+      AND "indexname" IN (
+        'chat_events_revokes_event_id_unique',
+        'chat_events_revokes_message_id_unique'
+      )
+    ORDER BY "indexname"
+  `);
+  assert.deepEqual(
+    revokeIndexes.rows.map((row) => {
+      return row.indexName;
+    }),
+    [
+      "chat_events_revokes_event_id_unique",
+      "chat_events_revokes_message_id_unique",
+    ],
+  );
+  assert.match(
+    revokeIndexes.rows[0]?.indexDefinition ?? "",
+    /\("?revokes_event_id"?\)$/,
+  );
+  assert.match(
+    revokeIndexes.rows[1]?.indexDefinition ?? "",
+    /\("?revokes_message_id"?\)$/,
+  );
+
+  await client.query(
+    `
+      INSERT INTO "chat_events" (
+        "id",
+        "chat_thread_id",
+        "event_type",
+        "content"
+      )
+      VALUES ($1, $2, 'output.message', 'previous API target')
+      ON CONFLICT ("id") DO NOTHING
+      RETURNING "id", "created_at", "seq_id"
+    `,
+    [fixture.previousApiTargetEventId, fixture.threadId],
+  );
+  const previousApiInsert = await client.query<{
+    revokesMessageId: string | null;
+  }>(
+    `
+      INSERT INTO "chat_events" (
+        "id",
+        "chat_thread_id",
+        "revokes_message_id",
+        "event_type"
+      )
+      VALUES ($1, $2, $3, 'control.revoke')
+      ON CONFLICT ("revokes_message_id") DO NOTHING
+      RETURNING "revokes_message_id" AS "revokesMessageId"
+    `,
+    [
+      fixture.previousApiRevokerEventId,
+      fixture.threadId,
+      fixture.previousApiTargetEventId,
+    ],
+  );
+  assert.deepEqual(previousApiInsert.rows, [
+    { revokesMessageId: fixture.previousApiTargetEventId },
+  ]);
+
+  await client.query(
+    `
+      INSERT INTO "chat_events" (
+        "id",
+        "chat_thread_id",
+        "event_type",
+        "content"
+      )
+      VALUES ($1, $2, 'output.message', 'next API target')
+      ON CONFLICT ("id") DO NOTHING
+      RETURNING "id", "created_at", "seq_id"
+    `,
+    [fixture.nextApiTargetEventId, fixture.threadId],
+  );
+  const nextApiInsert = await client.query<{
+    revokesEventId: string | null;
+  }>(
+    `
+      INSERT INTO "chat_events" (
+        "id",
+        "chat_thread_id",
+        "revokes_event_id",
+        "event_type"
+      )
+      VALUES ($1, $2, $3, 'control.revoke')
+      ON CONFLICT ("revokes_event_id") DO NOTHING
+      RETURNING "revokes_event_id" AS "revokesEventId"
+    `,
+    [
+      fixture.nextApiRevokerEventId,
+      fixture.threadId,
+      fixture.nextApiTargetEventId,
+    ],
+  );
+  assert.deepEqual(nextApiInsert.rows, [
+    { revokesEventId: fixture.nextApiTargetEventId },
+  ]);
+
+  const crossVersionRows = await client.query<{
+    legacyRevokesEventId: string;
+    revokesEventId: string;
+  }>(`
+    SELECT
+      "revokes_event_id" AS "revokesEventId",
+      "revokes_message_id" AS "legacyRevokesEventId"
+    FROM "chat_events"
+    WHERE "id" IN (
+      '${fixture.previousApiRevokerEventId}',
+      '${fixture.nextApiRevokerEventId}'
+    )
+    ORDER BY "id"
+  `);
+  assert.deepEqual(crossVersionRows.rows, [
+    {
+      legacyRevokesEventId: fixture.previousApiTargetEventId,
+      revokesEventId: fixture.previousApiTargetEventId,
+    },
+    {
+      legacyRevokesEventId: fixture.nextApiTargetEventId,
+      revokesEventId: fixture.nextApiTargetEventId,
+    },
+  ]);
+  await assertChatEventsAppendOnlyProtection(
+    client,
+    fixture.historicalRevokerEventId,
+  );
+}
+
+async function validateLastChatEventSeqIdExpansion(
+  client: Client,
+): Promise<void> {
+  const fixture = chatEventPropertyColumnFixture;
+  await applyMigrationsUpToInTransaction(
+    client,
+    LAST_CHAT_EVENT_SEQ_ID_EXPANSION_MIGRATION,
+  );
+
+  const historical = await client.query<{
+    lastChatEventSeqId: string;
+    lastChatMessageSeqId: string;
+  }>(
+    `
+      SELECT
+        "last_chat_event_seq_id" AS "lastChatEventSeqId",
+        "last_chat_message_seq_id" AS "lastChatMessageSeqId"
+      FROM "chat_threads"
+      WHERE "id" = $1
+    `,
+    [fixture.threadId],
+  );
+  assert.deepEqual(historical.rows, [
+    { lastChatEventSeqId: "26", lastChatMessageSeqId: "26" },
+  ]);
+
+  const previousApiUpdate = await client.query<{ lastSeqId: string }>(
+    `
+      UPDATE "chat_threads"
+      SET "last_chat_message_seq_id" = "last_chat_message_seq_id" + 1
+      WHERE "id" = $1
+      RETURNING "last_chat_message_seq_id" AS "lastSeqId"
+    `,
+    [fixture.threadId],
+  );
+  assert.deepEqual(previousApiUpdate.rows, [{ lastSeqId: "27" }]);
+
+  const nextApiUpdate = await client.query<{ lastSeqId: string }>(
+    `
+      UPDATE "chat_threads"
+      SET "last_chat_event_seq_id" = "last_chat_event_seq_id" + 1
+      WHERE "id" = $1
+      RETURNING "last_chat_event_seq_id" AS "lastSeqId"
+    `,
+    [fixture.threadId],
+  );
+  assert.deepEqual(nextApiUpdate.rows, [{ lastSeqId: "28" }]);
+
+  const previousApiInsert = await client.query<{ lastSeqId: string }>(
+    `
+      INSERT INTO "chat_threads" (
+        "id",
+        "user_id",
+        "agent_compose_id",
+        "title",
+        "last_chat_message_seq_id"
+      )
+      VALUES (
+        $1,
+        'chat-event-property-column-user',
+        $2,
+        'previous API thread',
+        7
+      )
+      RETURNING "last_chat_message_seq_id" AS "lastSeqId"
+    `,
+    [fixture.previousApiThreadId, fixture.composeId],
+  );
+  assert.deepEqual(previousApiInsert.rows, [{ lastSeqId: "7" }]);
+
+  const nextApiInsert = await client.query<{ lastSeqId: string }>(
+    `
+      INSERT INTO "chat_threads" (
+        "id",
+        "user_id",
+        "agent_compose_id",
+        "title",
+        "last_chat_event_seq_id"
+      )
+      VALUES (
+        $1,
+        'chat-event-property-column-user',
+        $2,
+        'next API thread',
+        9
+      )
+      RETURNING "last_chat_event_seq_id" AS "lastSeqId"
+    `,
+    [fixture.nextApiThreadId, fixture.composeId],
+  );
+  assert.deepEqual(nextApiInsert.rows, [{ lastSeqId: "9" }]);
+
+  const insertedEvent = await client.query<{ seqId: string }>(
+    `
+      INSERT INTO "chat_events" (
+        "id",
+        "chat_thread_id",
+        "event_type",
+        "content"
+      )
+      VALUES ($1, $2, 'output.message', 'persisted allocator after expansion')
+      RETURNING "seq_id" AS "seqId"
+    `,
+    [fixture.postSequenceExpansionEventId, fixture.threadId],
+  );
+  assert.deepEqual(insertedEvent.rows, [{ seqId: "29" }]);
+
+  const mirroredThreads = await client.query<{
+    id: string;
+    lastChatEventSeqId: string;
+    lastChatMessageSeqId: string;
+  }>(`
+    SELECT
+      "id",
+      "last_chat_event_seq_id" AS "lastChatEventSeqId",
+      "last_chat_message_seq_id" AS "lastChatMessageSeqId"
+    FROM "chat_threads"
+    WHERE "id" IN (
+      '${fixture.threadId}',
+      '${fixture.previousApiThreadId}',
+      '${fixture.nextApiThreadId}'
+    )
+    ORDER BY "id"
+  `);
+  assert.deepEqual(mirroredThreads.rows, [
+    {
+      id: fixture.threadId,
+      lastChatEventSeqId: "29",
+      lastChatMessageSeqId: "29",
+    },
+    {
+      id: fixture.previousApiThreadId,
+      lastChatEventSeqId: "7",
+      lastChatMessageSeqId: "7",
+    },
+    {
+      id: fixture.nextApiThreadId,
+      lastChatEventSeqId: "9",
+      lastChatMessageSeqId: "9",
+    },
+  ]);
+  await assertChatEventsAppendOnlyProtection(
+    client,
+    fixture.historicalRevokerEventId,
+  );
+}
+
+async function validateFirstAssistantEventAckExpansion(
+  client: Client,
+): Promise<void> {
+  const fixture = chatEventPropertyColumnFixture;
+  await applyMigrationsUpToInTransaction(
+    client,
+    FIRST_ASSISTANT_EVENT_ACK_EXPANSION_MIGRATION,
+  );
+
+  const historical = await client.query<{
+    canonicalAcknowledgedAt: string | null;
+    legacyAcknowledgedAt: string | null;
+  }>(
+    `
+      SELECT
+        to_char(
+          "first_assistant_event_acknowledged_at",
+          'YYYY-MM-DD HH24:MI:SS'
+        ) AS "canonicalAcknowledgedAt",
+        to_char(
+          "first_assistant_message_acknowledged_at",
+          'YYYY-MM-DD HH24:MI:SS'
+        ) AS "legacyAcknowledgedAt"
+      FROM "zero_runs"
+      WHERE "id" = $1
+    `,
+    [fixture.historicalRunId],
+  );
+  assert.deepEqual(historical.rows, [
+    {
+      canonicalAcknowledgedAt: "2026-07-30 01:00:01",
+      legacyAcknowledgedAt: "2026-07-30 01:00:01",
+    },
+  ]);
+
+  const previousApiUpdate = await client.query<{ apiStartedAt: Date }>(
+    `
+      UPDATE "zero_runs"
+      SET "first_assistant_message_acknowledged_at" =
+        '2026-07-30 02:00:01'
+      WHERE "id" = $1
+        AND "api_started_at" IS NOT NULL
+        AND "first_assistant_message_acknowledged_at" IS NULL
+      RETURNING "api_started_at" AS "apiStartedAt"
+    `,
+    [fixture.previousApiRunId],
+  );
+  assert.equal(previousApiUpdate.rows.length, 1);
+
+  const nextApiUpdate = await client.query<{ apiStartedAt: Date }>(
+    `
+      UPDATE "zero_runs"
+      SET "first_assistant_event_acknowledged_at" =
+        '2026-07-30 03:00:01'
+      WHERE "id" = $1
+        AND "api_started_at" IS NOT NULL
+        AND "first_assistant_event_acknowledged_at" IS NULL
+      RETURNING "api_started_at" AS "apiStartedAt"
+    `,
+    [fixture.nextApiRunId],
+  );
+  assert.equal(nextApiUpdate.rows.length, 1);
+
+  const mirroredRuns = await client.query<{
+    canonicalAcknowledgedAt: string | null;
+    id: string;
+    legacyAcknowledgedAt: string | null;
+  }>(`
+    SELECT
+      "id",
+      to_char(
+        "first_assistant_event_acknowledged_at",
+        'YYYY-MM-DD HH24:MI:SS'
+      ) AS "canonicalAcknowledgedAt",
+      to_char(
+        "first_assistant_message_acknowledged_at",
+        'YYYY-MM-DD HH24:MI:SS'
+      ) AS "legacyAcknowledgedAt"
+    FROM "zero_runs"
+    WHERE "id" IN (
+      '${fixture.previousApiRunId}',
+      '${fixture.nextApiRunId}'
+    )
+    ORDER BY "id"
+  `);
+  assert.deepEqual(mirroredRuns.rows, [
+    {
+      canonicalAcknowledgedAt: "2026-07-30 02:00:01",
+      id: fixture.previousApiRunId,
+      legacyAcknowledgedAt: "2026-07-30 02:00:01",
+    },
+    {
+      canonicalAcknowledgedAt: "2026-07-30 03:00:01",
+      id: fixture.nextApiRunId,
+      legacyAcknowledgedAt: "2026-07-30 03:00:01",
+    },
+  ]);
+  await assertChatEventsAppendOnlyProtection(
+    client,
+    fixture.historicalRevokerEventId,
+  );
+}
+
+async function validateChatEventPropertyColumnRollout(): Promise<void> {
+  console.log(
+    "=== Validate populated ChatEvent property column expansion ===\n",
+  );
+  const testDb = "migration_chat_event_property_columns_test";
+  const testDbUrl = createTestDbUrl(testDb);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(
+      testDbUrl,
+      CHAT_EVENT_PROPERTY_COLUMNS_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await seedChatEventPropertyColumnFixture(client);
+      await assertChatEventsAppendOnlyProtection(
+        client,
+        chatEventPropertyColumnFixture.historicalRevokerEventId,
+      );
+      await validateRevokesEventIdExpansion(client);
+      await validateLastChatEventSeqIdExpansion(client);
+      await validateFirstAssistantEventAckExpansion(client);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+
+  console.log(
+    "   ✅ Previous and next API statements remain valid for all three columns, revoke conflict targets stay indexed, persisted sequence allocation mirrors both names, and append-only protection remains enabled after every migration\n",
   );
 }
 
@@ -5248,6 +7398,1551 @@ async function validateStorageLegacyTypeContraction(): Promise<void> {
   }
 }
 
+const CONNECTOR_SLUG_TEST_AGENT_ID = "71000000-0000-4000-8000-000000000099";
+const CONNECTOR_SLUG_TEST_CUSTOM_CONNECTOR_ID =
+  "71000000-0000-4000-8000-000000000098";
+const CONNECTOR_SLUG_CUTOVER_CUSTOM_CONNECTION_ID =
+  "71000000-0000-4000-8000-000000000093";
+const CONNECTOR_SLUG_CUTOVER_CUSTOM_OAUTH_STATE_ID =
+  "71000000-0000-4000-8000-000000000094";
+const CONNECTOR_SLUG_CONTRACTION_PREDECESSOR = 761;
+const CONNECTOR_SLUG_CONTRACTION_MIGRATION = 762;
+const connectorSlugCutoverInsertIds = {
+  connector_external_code_sessions: "71000000-0000-4000-8000-000000000091",
+  connector_oauth_device_authorization_sessions:
+    "71000000-0000-4000-8000-000000000090",
+  connector_oauth_states: "71000000-0000-4000-8000-000000000089",
+  connectors: "71000000-0000-4000-8000-000000000087",
+  user_connectors: "71000000-0000-4000-8000-000000000088",
+  user_permission_grants: "71000000-0000-4000-8000-000000000092",
+} as const;
+
+async function validateCutoverReleaseAgainstBridgeSchema(
+  client: Client,
+): Promise<void> {
+  const database = drizzle(client);
+
+  assert.deepEqual(
+    await database
+      .insert(connectors)
+      .values({
+        id: connectorSlugCutoverInsertIds.connectors,
+        connectorSlug: "cutover-google-drive",
+        authMethod: "oauth",
+        storageVersion: 1,
+        userId: "connector-slug-cutover-connector-user",
+        orgId: "connector-slug-org",
+      })
+      .returning({ id: connectors.id }),
+    [{ id: connectorSlugCutoverInsertIds.connectors }],
+  );
+  assert.deepEqual(
+    await database
+      .insert(userConnectors)
+      .values({
+        id: connectorSlugCutoverInsertIds.user_connectors,
+        orgId: "connector-slug-org",
+        userId: "connector-slug-cutover-user-connector-user",
+        agentId: CONNECTOR_SLUG_TEST_AGENT_ID,
+        connectorSlug: "cutover-google-calendar",
+      })
+      .returning({ id: userConnectors.id }),
+    [{ id: connectorSlugCutoverInsertIds.user_connectors }],
+  );
+  assert.deepEqual(
+    await database
+      .insert(connectorOauthStates)
+      .values({
+        id: connectorSlugCutoverInsertIds.connector_oauth_states,
+        state: "connector-slug-cutover-state",
+        connectorSlug: "cutover-gmail",
+        authMethod: "oauth",
+        userId: "connector-slug-cutover-oauth-state-user",
+        orgId: "connector-slug-org",
+        redirectUri: "https://example.com/cutover/callback",
+        expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+      })
+      .returning({ id: connectorOauthStates.id }),
+    [{ id: connectorSlugCutoverInsertIds.connector_oauth_states }],
+  );
+  assert.deepEqual(
+    await database
+      .insert(connectorOauthDeviceAuthorizationSessions)
+      .values({
+        id: connectorSlugCutoverInsertIds.connector_oauth_device_authorization_sessions,
+        orgId: "connector-slug-org",
+        userId: "connector-slug-cutover-device-user",
+        connectorSlug: "cutover-youtube",
+        authMethod: "oauth-device",
+        sessionTokenHash: "connector-slug-cutover-device-token",
+        encryptedProviderState: "connector-slug-cutover-device-state",
+        userCode: "CUTOVER",
+        verificationUri: "https://example.com/cutover/device",
+        intervalSeconds: 5,
+        expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+      })
+      .returning({
+        id: connectorOauthDeviceAuthorizationSessions.id,
+      }),
+    [
+      {
+        id: connectorSlugCutoverInsertIds.connector_oauth_device_authorization_sessions,
+      },
+    ],
+  );
+  assert.deepEqual(
+    await database
+      .insert(connectorExternalCodeSessions)
+      .values({
+        id: connectorSlugCutoverInsertIds.connector_external_code_sessions,
+        orgId: "connector-slug-org",
+        userId: "connector-slug-cutover-external-code-user",
+        connectorSlug: "cutover-x",
+        authMethod: "external-code",
+        sessionTokenHash: "connector-slug-cutover-external-code-token",
+        encryptedProviderState: "connector-slug-cutover-external-code-state",
+        authorizationUrl: "https://example.com/cutover/authorize",
+        expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+      })
+      .returning({
+        id: connectorExternalCodeSessions.id,
+      }),
+    [
+      {
+        id: connectorSlugCutoverInsertIds.connector_external_code_sessions,
+      },
+    ],
+  );
+  assert.deepEqual(
+    await database
+      .insert(userPermissionGrants)
+      .values({
+        id: connectorSlugCutoverInsertIds.user_permission_grants,
+        orgId: "connector-slug-org",
+        userId: "connector-slug-cutover-permission-user",
+        agentId: CONNECTOR_SLUG_TEST_AGENT_ID,
+        connectorSlug: "cutover-slack",
+        permission: "channels:history",
+        action: "allow",
+      })
+      .returning({
+        id: userPermissionGrants.id,
+      }),
+    [{ id: connectorSlugCutoverInsertIds.user_permission_grants }],
+  );
+
+  assert.deepEqual(
+    await database
+      .select({ connectorSlug: connectors.connectorSlug })
+      .from(connectors)
+      .where(eq(connectors.id, connectorSlugCutoverInsertIds.connectors)),
+    [{ connectorSlug: "cutover-google-drive" }],
+  );
+  assert.deepEqual(
+    await database
+      .select({ connectorSlug: userConnectors.connectorSlug })
+      .from(userConnectors)
+      .where(
+        eq(userConnectors.id, connectorSlugCutoverInsertIds.user_connectors),
+      ),
+    [{ connectorSlug: "cutover-google-calendar" }],
+  );
+  assert.deepEqual(
+    await database
+      .select({ connectorSlug: connectorOauthStates.connectorSlug })
+      .from(connectorOauthStates)
+      .where(
+        eq(
+          connectorOauthStates.id,
+          connectorSlugCutoverInsertIds.connector_oauth_states,
+        ),
+      ),
+    [{ connectorSlug: "cutover-gmail" }],
+  );
+  assert.deepEqual(
+    await database
+      .select({
+        connectorSlug: connectorOauthDeviceAuthorizationSessions.connectorSlug,
+      })
+      .from(connectorOauthDeviceAuthorizationSessions)
+      .where(
+        eq(
+          connectorOauthDeviceAuthorizationSessions.id,
+          connectorSlugCutoverInsertIds.connector_oauth_device_authorization_sessions,
+        ),
+      ),
+    [{ connectorSlug: "cutover-youtube" }],
+  );
+  assert.deepEqual(
+    await database
+      .select({ connectorSlug: connectorExternalCodeSessions.connectorSlug })
+      .from(connectorExternalCodeSessions)
+      .where(
+        eq(
+          connectorExternalCodeSessions.id,
+          connectorSlugCutoverInsertIds.connector_external_code_sessions,
+        ),
+      ),
+    [{ connectorSlug: "cutover-x" }],
+  );
+  assert.deepEqual(
+    await database
+      .select({ connectorSlug: userPermissionGrants.connectorSlug })
+      .from(userPermissionGrants)
+      .where(
+        eq(
+          userPermissionGrants.id,
+          connectorSlugCutoverInsertIds.user_permission_grants,
+        ),
+      ),
+    [{ connectorSlug: "cutover-slack" }],
+  );
+
+  assert.equal(
+    (
+      await database
+        .update(connectors)
+        .set({ connectorSlug: "cutover-google-drive" })
+        .where(eq(connectors.id, connectorSlugCutoverInsertIds.connectors))
+        .returning({ id: connectors.id })
+    ).length,
+    1,
+  );
+  assert.equal(
+    (
+      await database
+        .update(userConnectors)
+        .set({ connectorSlug: "cutover-google-calendar" })
+        .where(
+          eq(userConnectors.id, connectorSlugCutoverInsertIds.user_connectors),
+        )
+        .returning({ id: userConnectors.id })
+    ).length,
+    1,
+  );
+  assert.equal(
+    (
+      await database
+        .update(connectorOauthStates)
+        .set({ connectorSlug: "cutover-gmail" })
+        .where(
+          eq(
+            connectorOauthStates.id,
+            connectorSlugCutoverInsertIds.connector_oauth_states,
+          ),
+        )
+        .returning({ id: connectorOauthStates.id })
+    ).length,
+    1,
+  );
+  assert.equal(
+    (
+      await database
+        .update(connectorOauthDeviceAuthorizationSessions)
+        .set({ connectorSlug: "cutover-youtube" })
+        .where(
+          eq(
+            connectorOauthDeviceAuthorizationSessions.id,
+            connectorSlugCutoverInsertIds.connector_oauth_device_authorization_sessions,
+          ),
+        )
+        .returning({ id: connectorOauthDeviceAuthorizationSessions.id })
+    ).length,
+    1,
+  );
+  assert.equal(
+    (
+      await database
+        .update(connectorExternalCodeSessions)
+        .set({ connectorSlug: "cutover-x" })
+        .where(
+          eq(
+            connectorExternalCodeSessions.id,
+            connectorSlugCutoverInsertIds.connector_external_code_sessions,
+          ),
+        )
+        .returning({ id: connectorExternalCodeSessions.id })
+    ).length,
+    1,
+  );
+  assert.equal(
+    (
+      await database
+        .update(userPermissionGrants)
+        .set({ connectorSlug: "cutover-slack" })
+        .where(
+          eq(
+            userPermissionGrants.id,
+            connectorSlugCutoverInsertIds.user_permission_grants,
+          ),
+        )
+        .returning({ id: userPermissionGrants.id })
+    ).length,
+    1,
+  );
+
+  assert.deepEqual(
+    await database
+      .insert(connectors)
+      .values({
+        connectorSlug: "cutover-google-drive",
+        authMethod: "oauth",
+        storageVersion: 2,
+        userId: "connector-slug-cutover-connector-user",
+        orgId: "connector-slug-org",
+      })
+      .onConflictDoUpdate({
+        target: [connectors.orgId, connectors.userId, connectors.connectorSlug],
+        targetWhere: isNotNull(connectors.connectorSlug),
+        set: { storageVersion: 2 },
+      })
+      .returning({ id: connectors.id }),
+    [{ id: connectorSlugCutoverInsertIds.connectors }],
+  );
+  assert.deepEqual(
+    await database
+      .insert(userConnectors)
+      .values({
+        orgId: "connector-slug-org",
+        userId: "connector-slug-cutover-user-connector-user",
+        agentId: CONNECTOR_SLUG_TEST_AGENT_ID,
+        connectorSlug: "cutover-google-calendar",
+      })
+      .onConflictDoNothing({
+        target: [
+          userConnectors.orgId,
+          userConnectors.userId,
+          userConnectors.agentId,
+          userConnectors.connectorSlug,
+        ],
+      })
+      .returning({ id: userConnectors.id }),
+    [],
+  );
+  assert.deepEqual(
+    await database
+      .insert(userPermissionGrants)
+      .values({
+        orgId: "connector-slug-org",
+        userId: "connector-slug-cutover-permission-user",
+        agentId: CONNECTOR_SLUG_TEST_AGENT_ID,
+        connectorSlug: "cutover-slack",
+        permission: "channels:history",
+        action: "deny",
+      })
+      .onConflictDoNothing({
+        target: [
+          userPermissionGrants.orgId,
+          userPermissionGrants.userId,
+          userPermissionGrants.agentId,
+          userPermissionGrants.connectorSlug,
+          userPermissionGrants.permission,
+        ],
+      })
+      .returning({
+        id: userPermissionGrants.id,
+      }),
+    [],
+  );
+
+  const customConnectorId = CONNECTOR_SLUG_CUTOVER_CUSTOM_CONNECTION_ID;
+  const customOauthStateId = CONNECTOR_SLUG_CUTOVER_CUSTOM_OAUTH_STATE_ID;
+  await database.insert(connectors).values({
+    id: customConnectorId,
+    customConnectorId: CONNECTOR_SLUG_TEST_CUSTOM_CONNECTOR_ID,
+    authMethod: "oauth2",
+    storageVersion: 1,
+    userId: "connector-slug-cutover-custom-user",
+    orgId: "connector-slug-org",
+  });
+  await database.insert(connectorOauthStates).values({
+    id: customOauthStateId,
+    state: "connector-slug-cutover-custom-state",
+    customConnectorId: CONNECTOR_SLUG_TEST_CUSTOM_CONNECTOR_ID,
+    connectorRevision: 1,
+    authMethod: "oauth2",
+    userId: "connector-slug-cutover-custom-user",
+    orgId: "connector-slug-org",
+    redirectUri: "https://example.com/cutover/custom/callback",
+    expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+  });
+  const customConnection = await client.query<{
+    readonly connectorSlug: string | null;
+    readonly legacyType: string | null;
+  }>(
+    `
+      SELECT
+        "connector_slug" AS "connectorSlug",
+        "type" AS "legacyType"
+      FROM "connectors"
+      WHERE "id" = $1
+    `,
+    [customConnectorId],
+  );
+  assert.deepEqual(customConnection.rows, [
+    { connectorSlug: null, legacyType: null },
+  ]);
+  const customOauthState = await client.query<{
+    readonly connectorSlug: string | null;
+    readonly legacyType: string | null;
+  }>(
+    `
+      SELECT
+        "connector_slug" AS "connectorSlug",
+        "type" AS "legacyType"
+      FROM "connector_oauth_states"
+      WHERE "id" = $1
+    `,
+    [customOauthStateId],
+  );
+  assert.deepEqual(customOauthState.rows, [
+    { connectorSlug: null, legacyType: null },
+  ]);
+}
+
+async function validateFinalConnectorSlugWrites(client: Client): Promise<void> {
+  const database = drizzle(client);
+  const ids = {
+    connector: "71000000-0000-4000-8000-000000000071",
+    customConnector: "71000000-0000-4000-8000-000000000070",
+    customOauthState: "71000000-0000-4000-8000-000000000069",
+    externalCodeSession: "71000000-0000-4000-8000-000000000075",
+    oauthDeviceSession: "71000000-0000-4000-8000-000000000073",
+    oauthState: "71000000-0000-4000-8000-000000000072",
+    userConnector: "71000000-0000-4000-8000-000000000074",
+    userPermissionGrant: "71000000-0000-4000-8000-000000000076",
+  } as const;
+
+  assert.deepEqual(
+    await database
+      .insert(connectors)
+      .values({
+        id: ids.connector,
+        connectorSlug: "final-google-drive",
+        authMethod: "oauth",
+        storageVersion: 1,
+        userId: "connector-slug-final-connector-user",
+        orgId: "connector-slug-org",
+      })
+      .returning({ id: connectors.id }),
+    [{ id: ids.connector }],
+  );
+  assert.deepEqual(
+    await database
+      .insert(userConnectors)
+      .values({
+        id: ids.userConnector,
+        orgId: "connector-slug-org",
+        userId: "connector-slug-final-user-connector-user",
+        agentId: CONNECTOR_SLUG_TEST_AGENT_ID,
+        connectorSlug: "final-google-calendar",
+      })
+      .returning({ id: userConnectors.id }),
+    [{ id: ids.userConnector }],
+  );
+  assert.deepEqual(
+    await database
+      .insert(connectorOauthStates)
+      .values({
+        id: ids.oauthState,
+        state: "connector-slug-final-state",
+        connectorSlug: "final-gmail",
+        authMethod: "oauth",
+        userId: "connector-slug-final-oauth-state-user",
+        orgId: "connector-slug-org",
+        redirectUri: "https://example.com/final/callback",
+        expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+      })
+      .returning({ id: connectorOauthStates.id }),
+    [{ id: ids.oauthState }],
+  );
+  assert.deepEqual(
+    await database
+      .insert(connectorOauthDeviceAuthorizationSessions)
+      .values({
+        id: ids.oauthDeviceSession,
+        orgId: "connector-slug-org",
+        userId: "connector-slug-final-device-user",
+        connectorSlug: "final-youtube",
+        authMethod: "oauth-device",
+        sessionTokenHash: "connector-slug-final-device-token",
+        encryptedProviderState: "connector-slug-final-device-state",
+        userCode: "FINAL",
+        verificationUri: "https://example.com/final/device",
+        intervalSeconds: 5,
+        expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+      })
+      .returning({ id: connectorOauthDeviceAuthorizationSessions.id }),
+    [{ id: ids.oauthDeviceSession }],
+  );
+  assert.deepEqual(
+    await database
+      .insert(connectorExternalCodeSessions)
+      .values({
+        id: ids.externalCodeSession,
+        orgId: "connector-slug-org",
+        userId: "connector-slug-final-external-code-user",
+        connectorSlug: "final-x",
+        authMethod: "external-code",
+        sessionTokenHash: "connector-slug-final-external-code-token",
+        encryptedProviderState: "connector-slug-final-external-code-state",
+        authorizationUrl: "https://example.com/final/authorize",
+        expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+      })
+      .returning({ id: connectorExternalCodeSessions.id }),
+    [{ id: ids.externalCodeSession }],
+  );
+  assert.deepEqual(
+    await database
+      .insert(userPermissionGrants)
+      .values({
+        id: ids.userPermissionGrant,
+        orgId: "connector-slug-org",
+        userId: "connector-slug-final-permission-user",
+        agentId: CONNECTOR_SLUG_TEST_AGENT_ID,
+        connectorSlug: "final-slack",
+        permission: "channels:history",
+        action: "allow",
+      })
+      .returning({ id: userPermissionGrants.id }),
+    [{ id: ids.userPermissionGrant }],
+  );
+
+  assert.deepEqual(
+    await database
+      .insert(connectors)
+      .values({
+        connectorSlug: "final-google-drive",
+        authMethod: "oauth",
+        storageVersion: 2,
+        userId: "connector-slug-final-connector-user",
+        orgId: "connector-slug-org",
+      })
+      .onConflictDoUpdate({
+        target: [connectors.orgId, connectors.userId, connectors.connectorSlug],
+        targetWhere: isNotNull(connectors.connectorSlug),
+        set: { storageVersion: 2 },
+      })
+      .returning({
+        id: connectors.id,
+        storageVersion: connectors.storageVersion,
+      }),
+    [{ id: ids.connector, storageVersion: 2 }],
+  );
+  assert.deepEqual(
+    await database
+      .insert(userConnectors)
+      .values({
+        orgId: "connector-slug-org",
+        userId: "connector-slug-final-user-connector-user",
+        agentId: CONNECTOR_SLUG_TEST_AGENT_ID,
+        connectorSlug: "final-google-calendar",
+      })
+      .onConflictDoNothing({
+        target: [
+          userConnectors.orgId,
+          userConnectors.userId,
+          userConnectors.agentId,
+          userConnectors.connectorSlug,
+        ],
+      })
+      .returning({ id: userConnectors.id }),
+    [],
+  );
+  assert.deepEqual(
+    await database
+      .insert(userPermissionGrants)
+      .values({
+        orgId: "connector-slug-org",
+        userId: "connector-slug-final-permission-user",
+        agentId: CONNECTOR_SLUG_TEST_AGENT_ID,
+        connectorSlug: "final-slack",
+        permission: "channels:history",
+        action: "deny",
+      })
+      .onConflictDoNothing({
+        target: [
+          userPermissionGrants.orgId,
+          userPermissionGrants.userId,
+          userPermissionGrants.agentId,
+          userPermissionGrants.connectorSlug,
+          userPermissionGrants.permission,
+        ],
+      })
+      .returning({ id: userPermissionGrants.id }),
+    [],
+  );
+
+  assert.deepEqual(
+    await database
+      .insert(connectors)
+      .values({
+        id: ids.customConnector,
+        customConnectorId: CONNECTOR_SLUG_TEST_CUSTOM_CONNECTOR_ID,
+        authMethod: "oauth2",
+        storageVersion: 1,
+        userId: "connector-slug-final-custom-user",
+        orgId: "connector-slug-org",
+      })
+      .returning({
+        connectorSlug: connectors.connectorSlug,
+        customConnectorId: connectors.customConnectorId,
+      }),
+    [
+      {
+        connectorSlug: null,
+        customConnectorId: CONNECTOR_SLUG_TEST_CUSTOM_CONNECTOR_ID,
+      },
+    ],
+  );
+  assert.deepEqual(
+    await database
+      .insert(connectorOauthStates)
+      .values({
+        id: ids.customOauthState,
+        state: "connector-slug-final-custom-state",
+        customConnectorId: CONNECTOR_SLUG_TEST_CUSTOM_CONNECTOR_ID,
+        connectorRevision: 1,
+        authMethod: "oauth2",
+        userId: "connector-slug-final-custom-user",
+        orgId: "connector-slug-org",
+        redirectUri: "https://example.com/final/custom/callback",
+        expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+      })
+      .returning({
+        connectorSlug: connectorOauthStates.connectorSlug,
+        customConnectorId: connectorOauthStates.customConnectorId,
+      }),
+    [
+      {
+        connectorSlug: null,
+        customConnectorId: CONNECTOR_SLUG_TEST_CUSTOM_CONNECTOR_ID,
+      },
+    ],
+  );
+
+  await expectDatabaseError(client, {
+    code: "23514",
+    query: `
+      INSERT INTO "connectors" (
+        "auth_method",
+        "storage_version",
+        "user_id",
+        "org_id"
+      )
+      VALUES ('oauth', 1, 'connector-slug-final-no-identity', 'connector-slug-org')
+    `,
+  });
+  await expectDatabaseError(client, {
+    code: "23514",
+    query: `
+      INSERT INTO "connectors" (
+        "connector_slug",
+        "custom_connector_id",
+        "auth_method",
+        "storage_version",
+        "user_id",
+        "org_id"
+      )
+      VALUES (
+        'final-invalid',
+        $1,
+        'oauth',
+        1,
+        'connector-slug-final-dual-identity',
+        'connector-slug-org'
+      )
+    `,
+    values: [CONNECTOR_SLUG_TEST_CUSTOM_CONNECTOR_ID],
+  });
+  await expectDatabaseError(client, {
+    code: "23514",
+    query: `
+      INSERT INTO "connector_oauth_states" (
+        "state",
+        "auth_method",
+        "user_id",
+        "org_id",
+        "redirect_uri",
+        "expires_at"
+      )
+      VALUES (
+        'connector-slug-final-no-state-identity',
+        'oauth',
+        'connector-slug-final-no-state-identity',
+        'connector-slug-org',
+        'https://example.com/final/invalid',
+        '2030-01-01T00:00:00.000Z'
+      )
+    `,
+  });
+  await expectDatabaseError(client, {
+    code: "23514",
+    query: `
+      INSERT INTO "connector_oauth_states" (
+        "state",
+        "connector_slug",
+        "custom_connector_id",
+        "connector_revision",
+        "auth_method",
+        "user_id",
+        "org_id",
+        "redirect_uri",
+        "expires_at"
+      )
+      VALUES (
+        'connector-slug-final-dual-state-identity',
+        'final-invalid',
+        $1,
+        1,
+        'oauth2',
+        'connector-slug-final-dual-state-identity',
+        'connector-slug-org',
+        'https://example.com/final/invalid',
+        '2030-01-01T00:00:00.000Z'
+      )
+    `,
+    values: [CONNECTOR_SLUG_TEST_CUSTOM_CONNECTOR_ID],
+  });
+}
+
+async function validateConnectorSlugRollout(): Promise<void> {
+  console.log("=== Phase 1.6: Validate connector slug contraction ===\n");
+  const testDb = "migration_connector_slug_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, CONNECTOR_SLUG_CONTRACTION_PREDECESSOR);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES ($1, 'connector-slug-owner', 'connector-slug-agent', 'connector-slug-org')
+        `,
+        [CONNECTOR_SLUG_TEST_AGENT_ID],
+      );
+      await client.query(
+        `
+          INSERT INTO "zero_agents" ("id", "org_id", "owner", "name")
+          VALUES ($1, 'connector-slug-org', 'connector-slug-owner', 'connector-slug-agent')
+        `,
+        [CONNECTOR_SLUG_TEST_AGENT_ID],
+      );
+      await client.query("BEGIN");
+      await client.query(
+        `
+          INSERT INTO "org_custom_connectors" (
+            "id",
+            "org_id",
+            "slug",
+            "display_name",
+            "prefixes",
+            "header_name",
+            "header_template",
+            "auth_mode",
+            "created_by"
+          )
+          VALUES (
+            $1,
+            'connector-slug-org',
+            '_connector_slug_custom',
+            'Connector Slug Custom',
+            '[]'::jsonb,
+            'Authorization',
+            'Bearer {{secret}}',
+            'oauth',
+            'connector-slug-owner'
+          )
+        `,
+        [CONNECTOR_SLUG_TEST_CUSTOM_CONNECTOR_ID],
+      );
+      await client.query(
+        `
+          INSERT INTO "org_custom_connector_oauth_configs" (
+            "connector_id",
+            "org_id",
+            "provider_adapter",
+            "client_id",
+            "encrypted_client_secret",
+            "authorization_url",
+            "token_url",
+            "token_endpoint_auth_method",
+            "pkce_method"
+          )
+          VALUES (
+            $1,
+            'connector-slug-org',
+            'standard',
+            'connector-slug-client',
+            'connector-slug-encrypted-secret',
+            'https://example.com/custom/authorize',
+            'https://example.com/custom/token',
+            'client_secret_basic',
+            'none'
+          )
+        `,
+        [CONNECTOR_SLUG_TEST_CUSTOM_CONNECTOR_ID],
+      );
+      await client.query("COMMIT");
+
+      await validateCutoverReleaseAgainstBridgeSchema(client);
+
+      const canonicalNullability = await client.query<{
+        readonly isNullable: "NO" | "YES";
+        readonly tableName: string;
+      }>(
+        `
+          SELECT
+            "table_name" AS "tableName",
+            "is_nullable" AS "isNullable"
+          FROM "information_schema"."columns"
+          WHERE "table_schema" = current_schema()
+            AND "column_name" = 'connector_slug'
+            AND "table_name" = ANY(ARRAY[
+              'connector_external_code_sessions',
+              'connector_oauth_device_authorization_sessions',
+              'connector_oauth_states',
+              'connectors',
+              'user_connectors',
+              'user_permission_grants'
+            ])
+          ORDER BY "table_name"
+        `,
+      );
+      assert.deepEqual(canonicalNullability.rows, [
+        {
+          isNullable: "NO",
+          tableName: "connector_external_code_sessions",
+        },
+        {
+          isNullable: "NO",
+          tableName: "connector_oauth_device_authorization_sessions",
+        },
+        { isNullable: "YES", tableName: "connector_oauth_states" },
+        { isNullable: "YES", tableName: "connectors" },
+        { isNullable: "NO", tableName: "user_connectors" },
+        { isNullable: "NO", tableName: "user_permission_grants" },
+      ]);
+
+      const expectedFunctions = [
+        "sync_connector_slug_from_connector_ref",
+        "sync_connector_slug_from_connector_type",
+        "sync_connector_slug_from_type",
+      ];
+      const functions = await client.query<{ readonly name: string }>(`
+        SELECT "proname" AS "name"
+        FROM "pg_proc"
+        JOIN "pg_namespace" ON "pg_namespace"."oid" = "pg_proc"."pronamespace"
+        WHERE "pg_namespace"."nspname" = current_schema()
+          AND "proname" = ANY(ARRAY[
+            'sync_connector_slug_from_connector_ref',
+            'sync_connector_slug_from_connector_type',
+            'sync_connector_slug_from_type'
+          ])
+        ORDER BY "proname"
+      `);
+      assert.deepEqual(
+        functions.rows.map((row) => {
+          return row.name;
+        }),
+        expectedFunctions,
+      );
+
+      const expectedTriggers = [
+        "sync_connector_external_code_sessions_connector_slug",
+        "sync_connector_oauth_device_sessions_connector_slug",
+        "sync_connector_oauth_states_connector_slug",
+        "sync_connectors_connector_slug",
+        "sync_user_connectors_connector_slug",
+        "sync_user_permission_grants_connector_slug",
+      ];
+      const triggers = await client.query<{
+        readonly definition: string;
+        readonly name: string;
+      }>(`
+        SELECT
+          "tgname" AS "name",
+          pg_get_triggerdef("pg_trigger"."oid") AS "definition"
+        FROM "pg_trigger"
+        JOIN "pg_class" ON "pg_class"."oid" = "pg_trigger"."tgrelid"
+        JOIN "pg_namespace" ON "pg_namespace"."oid" = "pg_class"."relnamespace"
+        WHERE "pg_namespace"."nspname" = current_schema()
+          AND NOT "tgisinternal"
+          AND "tgname" LIKE 'sync_%_connector_slug'
+        ORDER BY "tgname"
+      `);
+      assert.deepEqual(
+        triggers.rows.map((row) => {
+          return row.name;
+        }),
+        expectedTriggers,
+      );
+      const expectedTriggerUpdateColumns = new Map([
+        [
+          "sync_connector_external_code_sessions_connector_slug",
+          "UPDATE OF connector_type, connector_slug",
+        ],
+        [
+          "sync_connector_oauth_device_sessions_connector_slug",
+          "UPDATE OF connector_type, connector_slug",
+        ],
+        [
+          "sync_connector_oauth_states_connector_slug",
+          "UPDATE OF type, connector_slug",
+        ],
+        ["sync_connectors_connector_slug", "UPDATE OF type, connector_slug"],
+        [
+          "sync_user_connectors_connector_slug",
+          "UPDATE OF connector_type, connector_slug",
+        ],
+        [
+          "sync_user_permission_grants_connector_slug",
+          "UPDATE OF connector_ref, connector_slug",
+        ],
+      ]);
+      assert.ok(
+        triggers.rows.every((row) => {
+          const expectedColumns = expectedTriggerUpdateColumns.get(row.name);
+          assert.ok(expectedColumns);
+          return row.definition.includes(
+            `BEFORE INSERT OR ${expectedColumns} ON`,
+          );
+        }),
+      );
+
+      const expectedChecks = [
+        "chk_connector_external_code_sessions_slug_matches_type",
+        "chk_connector_oauth_device_sessions_slug_matches_type",
+        "chk_connector_oauth_states_slug_matches_type",
+        "chk_connectors_connector_slug_matches_type",
+        "chk_user_connectors_slug_matches_type",
+        "chk_user_permission_grants_slug_matches_ref",
+      ];
+      const checks = await client.query<{
+        readonly name: string;
+        readonly validated: boolean;
+      }>(`
+        SELECT
+          "conname" AS "name",
+          "convalidated" AS "validated"
+        FROM "pg_constraint"
+        JOIN "pg_class" ON "pg_class"."oid" = "pg_constraint"."conrelid"
+        JOIN "pg_namespace" ON "pg_namespace"."oid" = "pg_class"."relnamespace"
+        WHERE "pg_namespace"."nspname" = current_schema()
+          AND "contype" = 'c'
+          AND "conname" = ANY(ARRAY[
+            'chk_connector_external_code_sessions_slug_matches_type',
+            'chk_connector_oauth_device_sessions_slug_matches_type',
+            'chk_connector_oauth_states_slug_matches_type',
+            'chk_connectors_connector_slug_matches_type',
+            'chk_user_connectors_slug_matches_type',
+            'chk_user_permission_grants_slug_matches_ref'
+          ])
+        ORDER BY "conname"
+      `);
+      assert.deepEqual(
+        checks.rows.map((row) => {
+          return row.name;
+        }),
+        expectedChecks,
+      );
+      assert.ok(
+        checks.rows.every((row) => {
+          return row.validated;
+        }),
+      );
+
+      const expectedIndexes = [
+        "idx_connector_external_code_sessions_owner_slug_status",
+        "idx_connector_oauth_device_sessions_owner_slug_status",
+        "idx_connectors_org_user_slug",
+        "idx_user_connectors_unique_slug",
+        "uq_user_permission_grants_slug_permission",
+      ];
+      const indexes = await client.query<{
+        readonly definition: string;
+        readonly name: string;
+      }>(`
+        SELECT
+          "indexname" AS "name",
+          "indexdef" AS "definition"
+        FROM "pg_indexes"
+        WHERE "schemaname" = current_schema()
+          AND "indexname" = ANY(ARRAY[
+            'idx_connector_external_code_sessions_owner_slug_status',
+            'idx_connector_oauth_device_sessions_owner_slug_status',
+            'idx_connectors_org_user_slug',
+            'idx_user_connectors_unique_slug',
+            'uq_user_permission_grants_slug_permission'
+          ])
+        ORDER BY "indexname"
+      `);
+      assert.deepEqual(
+        indexes.rows.map((row) => {
+          return row.name;
+        }),
+        expectedIndexes,
+      );
+      assert.ok(
+        indexes.rows.every((row) => {
+          return row.definition.includes("connector_slug");
+        }),
+      );
+
+      await client.query(
+        `CREATE INDEX "idx_connectors_unexpected_legacy_type_expression"
+          ON "connectors" (lower("type"))`,
+      );
+      let unexpectedDependencyRejected = false;
+      try {
+        await applyMigrationsUpTo(client, CONNECTOR_SLUG_CONTRACTION_MIGRATION);
+      } catch (error) {
+        assert.equal(databaseErrorCode(error), "P0001");
+        assert.ok(error instanceof Error);
+        assert.ok(
+          error.message.includes(
+            "unexpected legacy connector identity dependencies",
+          ),
+        );
+        unexpectedDependencyRejected = true;
+      }
+      assert.ok(unexpectedDependencyRejected);
+      await client.query(
+        `DROP INDEX "idx_connectors_unexpected_legacy_type_expression"`,
+      );
+
+      await applyMigrationsUpTo(client, CONNECTOR_SLUG_CONTRACTION_MIGRATION);
+
+      const removedColumns = await client.query<{
+        readonly columnName: string;
+        readonly tableName: string;
+      }>(`
+        SELECT
+          "table_name" AS "tableName",
+          "column_name" AS "columnName"
+        FROM "information_schema"."columns"
+        WHERE "table_schema" = current_schema()
+          AND (
+            ("table_name" = 'connectors' AND "column_name" = 'type')
+            OR (
+              "table_name" = 'user_connectors'
+              AND "column_name" = 'connector_type'
+            )
+            OR (
+              "table_name" = 'connector_oauth_states'
+              AND "column_name" = 'type'
+            )
+            OR (
+              "table_name" = 'connector_oauth_device_authorization_sessions'
+              AND "column_name" = 'connector_type'
+            )
+            OR (
+              "table_name" = 'connector_external_code_sessions'
+              AND "column_name" = 'connector_type'
+            )
+            OR (
+              "table_name" = 'user_permission_grants'
+              AND "column_name" = 'connector_ref'
+            )
+          )
+      `);
+      assert.deepEqual(removedColumns.rows, []);
+
+      const removedBridgeTriggers = await client.query<{
+        readonly name: string;
+      }>(`
+        SELECT "tgname" AS "name"
+        FROM "pg_trigger"
+        WHERE "tgname" = ANY(ARRAY[
+          'sync_connector_external_code_sessions_connector_slug',
+          'sync_connector_oauth_device_sessions_connector_slug',
+          'sync_connector_oauth_states_connector_slug',
+          'sync_connectors_connector_slug',
+          'sync_user_connectors_connector_slug',
+          'sync_user_permission_grants_connector_slug'
+        ])
+          AND NOT "tgisinternal"
+      `);
+      assert.deepEqual(removedBridgeTriggers.rows, []);
+
+      const removedBridgeFunctions = await client.query<{
+        readonly name: string;
+      }>(`
+        SELECT "proname" AS "name"
+        FROM "pg_proc"
+        JOIN "pg_namespace"
+          ON "pg_namespace"."oid" = "pg_proc"."pronamespace"
+        WHERE "pg_namespace"."nspname" = current_schema()
+          AND "proname" = ANY(ARRAY[
+            'sync_connector_slug_from_connector_ref',
+            'sync_connector_slug_from_connector_type',
+            'sync_connector_slug_from_type'
+          ])
+      `);
+      assert.deepEqual(removedBridgeFunctions.rows, []);
+
+      const removedBridgeChecks = await client.query<{
+        readonly name: string;
+      }>(`
+        SELECT "conname" AS "name"
+        FROM "pg_constraint"
+        WHERE "conname" = ANY(ARRAY[
+          'chk_connector_external_code_sessions_slug_matches_type',
+          'chk_connector_oauth_device_sessions_slug_matches_type',
+          'chk_connector_oauth_states_slug_matches_type',
+          'chk_connectors_connector_slug_matches_type',
+          'chk_user_connectors_slug_matches_type',
+          'chk_user_permission_grants_slug_matches_ref'
+        ])
+      `);
+      assert.deepEqual(removedBridgeChecks.rows, []);
+
+      const removedLegacyIndexes = await client.query<{
+        readonly name: string;
+      }>(`
+        SELECT "indexname" AS "name"
+        FROM "pg_indexes"
+        WHERE "schemaname" = current_schema()
+          AND "indexname" = ANY(ARRAY[
+            'idx_connector_external_code_sessions_owner_status',
+            'idx_connector_oauth_device_authorization_sessions_owner_status',
+            'idx_connectors_org_user_type',
+            'idx_user_connectors_unique',
+            'uq_user_permission_grants_grant'
+          ])
+      `);
+      assert.deepEqual(removedLegacyIndexes.rows, []);
+
+      const finalIdentityChecks = await client.query<{
+        readonly definition: string;
+        readonly name: string;
+      }>(`
+        SELECT
+          "conname" AS "name",
+          pg_get_constraintdef("pg_constraint"."oid") AS "definition"
+        FROM "pg_constraint"
+        JOIN "pg_class" ON "pg_class"."oid" = "pg_constraint"."conrelid"
+        JOIN "pg_namespace" ON "pg_namespace"."oid" = "pg_class"."relnamespace"
+        WHERE "pg_namespace"."nspname" = current_schema()
+          AND "conname" = ANY(ARRAY[
+            'chk_connector_oauth_states_identity',
+            'chk_connectors_identity'
+          ])
+        ORDER BY "conname"
+      `);
+      assert.deepEqual(
+        finalIdentityChecks.rows.map((row) => {
+          return row.name;
+        }),
+        ["chk_connector_oauth_states_identity", "chk_connectors_identity"],
+      );
+      assert.ok(
+        finalIdentityChecks.rows.every((row) => {
+          return (
+            row.definition.includes("connector_slug") &&
+            row.definition.includes("custom_connector_id") &&
+            !row.definition.includes('"type"')
+          );
+        }),
+      );
+
+      const finalCanonicalIndexes = await client.query<{
+        readonly definition: string;
+        readonly name: string;
+      }>(`
+        SELECT
+          "indexname" AS "name",
+          "indexdef" AS "definition"
+        FROM "pg_indexes"
+        WHERE "schemaname" = current_schema()
+          AND "indexname" = ANY(ARRAY[
+            'idx_connector_external_code_sessions_owner_slug_status',
+            'idx_connector_oauth_device_sessions_owner_slug_status',
+            'idx_connectors_org_user_slug',
+            'idx_user_connectors_unique_slug',
+            'uq_user_permission_grants_slug_permission'
+          ])
+        ORDER BY "indexname"
+      `);
+      assert.deepEqual(
+        finalCanonicalIndexes.rows.map((row) => {
+          return row.name;
+        }),
+        expectedIndexes,
+      );
+      assert.ok(
+        finalCanonicalIndexes.rows.every((row) => {
+          return row.definition.includes("connector_slug");
+        }),
+      );
+
+      const finalNullability = await client.query<{
+        readonly isNullable: "NO" | "YES";
+        readonly tableName: string;
+      }>(`
+        SELECT
+          "table_name" AS "tableName",
+          "is_nullable" AS "isNullable"
+        FROM "information_schema"."columns"
+        WHERE "table_schema" = current_schema()
+          AND "column_name" = 'connector_slug'
+          AND "table_name" = ANY(ARRAY[
+            'connector_external_code_sessions',
+            'connector_oauth_device_authorization_sessions',
+            'connector_oauth_states',
+            'connectors',
+            'user_connectors',
+            'user_permission_grants'
+          ])
+        ORDER BY "table_name"
+      `);
+      assert.deepEqual(finalNullability.rows, canonicalNullability.rows);
+
+      const preservedBuiltInRows = await client.query<{
+        readonly connectorSlug: string;
+        readonly tableName: string;
+      }>(
+        `
+          SELECT
+            'connectors' AS "tableName",
+            "connector_slug" AS "connectorSlug"
+          FROM "connectors"
+          WHERE "id" = $1
+          UNION ALL
+          SELECT
+            'user_connectors',
+            "connector_slug"
+          FROM "user_connectors"
+          WHERE "id" = $2
+          UNION ALL
+          SELECT
+            'connector_oauth_states',
+            "connector_slug"
+          FROM "connector_oauth_states"
+          WHERE "id" = $3
+          UNION ALL
+          SELECT
+            'connector_oauth_device_authorization_sessions',
+            "connector_slug"
+          FROM "connector_oauth_device_authorization_sessions"
+          WHERE "id" = $4
+          UNION ALL
+          SELECT
+            'connector_external_code_sessions',
+            "connector_slug"
+          FROM "connector_external_code_sessions"
+          WHERE "id" = $5
+          UNION ALL
+          SELECT
+            'user_permission_grants',
+            "connector_slug"
+          FROM "user_permission_grants"
+          WHERE "id" = $6
+          ORDER BY "tableName"
+        `,
+        [
+          connectorSlugCutoverInsertIds.connectors,
+          connectorSlugCutoverInsertIds.user_connectors,
+          connectorSlugCutoverInsertIds.connector_oauth_states,
+          connectorSlugCutoverInsertIds.connector_oauth_device_authorization_sessions,
+          connectorSlugCutoverInsertIds.connector_external_code_sessions,
+          connectorSlugCutoverInsertIds.user_permission_grants,
+        ],
+      );
+      assert.deepEqual(preservedBuiltInRows.rows, [
+        {
+          connectorSlug: "cutover-x",
+          tableName: "connector_external_code_sessions",
+        },
+        {
+          connectorSlug: "cutover-youtube",
+          tableName: "connector_oauth_device_authorization_sessions",
+        },
+        {
+          connectorSlug: "cutover-gmail",
+          tableName: "connector_oauth_states",
+        },
+        {
+          connectorSlug: "cutover-google-drive",
+          tableName: "connectors",
+        },
+        {
+          connectorSlug: "cutover-google-calendar",
+          tableName: "user_connectors",
+        },
+        {
+          connectorSlug: "cutover-slack",
+          tableName: "user_permission_grants",
+        },
+      ]);
+
+      const preservedCustomRows = await client.query<{
+        readonly connectorSlug: string | null;
+        readonly customConnectorId: string;
+      }>(
+        `
+          SELECT
+            "connector_slug" AS "connectorSlug",
+            "custom_connector_id" AS "customConnectorId"
+          FROM "connectors"
+          WHERE "id" = $1
+          UNION ALL
+          SELECT
+            "connector_slug",
+            "custom_connector_id"
+          FROM "connector_oauth_states"
+          WHERE "id" = $2
+        `,
+        [
+          CONNECTOR_SLUG_CUTOVER_CUSTOM_CONNECTION_ID,
+          CONNECTOR_SLUG_CUTOVER_CUSTOM_OAUTH_STATE_ID,
+        ],
+      );
+      assert.deepEqual(preservedCustomRows.rows, [
+        {
+          connectorSlug: null,
+          customConnectorId: CONNECTOR_SLUG_TEST_CUSTOM_CONNECTOR_ID,
+        },
+        {
+          connectorSlug: null,
+          customConnectorId: CONNECTOR_SLUG_TEST_CUSTOM_CONNECTOR_ID,
+        },
+      ]);
+
+      await validateFinalConnectorSlugWrites(client);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+
+  console.log(
+    "   ✅ Connector slug cutover statements contract legacy identity storage and keep canonical/custom identities valid\n",
+  );
+}
+
+async function validateInsightsConnectorSlugExpansion(): Promise<void> {
+  console.log(
+    "=== Phase 1.61: Validate insights connector slug expansion ===\n",
+  );
+  const previousMigration = 753;
+  const targetMigration = 754;
+  const targetMigrationTag = "0754_expand_insights_connector_slug";
+  const successDb = "migration_insights_connector_slug_expansion_test";
+  const rejectionDb =
+    "migration_insights_connector_slug_expansion_rejection_test";
+  const successDbUrl = createTestDbUrl(successDb);
+  const rejectionDbUrl = createTestDbUrl(rejectionDb);
+  const legacyData = {
+    permissions: [
+      {
+        label: "repo-read",
+        connectorType: "github",
+        allowed: 3,
+        denied: 0,
+        agentNames: ["Research agent"],
+        metadata: { retained: true },
+      },
+      {
+        label: "channels:read",
+        connectorSlug: "slack",
+        allowed: 2,
+        denied: 0,
+        agentNames: ["Support agent"],
+      },
+      {
+        label: "pages:read",
+        connectorSlug: "notion",
+        connectorType: "notion",
+        allowed: 1,
+        denied: 0,
+        agentNames: ["Knowledge agent"],
+      },
+      {
+        label: "unscoped",
+        allowed: 0,
+        denied: 1,
+        agentNames: [],
+      },
+    ],
+    unrelated: {
+      nested: ["preserve", 42],
+    },
+  };
+  const expandedData = {
+    ...legacyData,
+    permissions: [
+      {
+        ...legacyData.permissions[0],
+        connectorSlug: "github",
+      },
+      legacyData.permissions[1],
+      legacyData.permissions[2],
+      legacyData.permissions[3],
+    ],
+  };
+
+  await createDatabase(successDb);
+  try {
+    await runMigrationsUpTo(successDbUrl, previousMigration);
+    const client = new Client({ connectionString: successDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "insights_daily" (
+            "id",
+            "org_id",
+            "user_id",
+            "date",
+            "data",
+            "updated_at"
+          )
+          VALUES (
+            '00000000-0000-4000-8000-000000075301',
+            'insights-slug-org',
+            'insights-slug-user',
+            '2026-07-30',
+            $1::jsonb,
+            '2026-07-30T00:00:00.000Z'
+          )
+        `,
+        [JSON.stringify(legacyData)],
+      );
+
+      await applyMigrationsUpTo(client, targetMigration);
+
+      const result = await client.query<{ readonly data: unknown }>(
+        `
+          SELECT "data"
+          FROM "insights_daily"
+          WHERE "id" = '00000000-0000-4000-8000-000000075301'
+        `,
+      );
+      assert.deepEqual(result.rows[0]?.data, expandedData);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(successDb);
+  }
+
+  const compatibleData = {
+    permissions: [
+      {
+        label: "repo-read",
+        connectorType: "github",
+        allowed: 1,
+        denied: 0,
+        agentNames: ["Research agent"],
+      },
+    ],
+    marker: "must remain unchanged",
+  };
+  const conflictingData = {
+    permissions: [
+      {
+        label: "channels:read",
+        connectorSlug: "slack",
+        connectorType: "github",
+        allowed: 1,
+        denied: 0,
+        agentNames: ["Support agent"],
+      },
+    ],
+  };
+
+  await createDatabase(rejectionDb);
+  try {
+    await runMigrationsUpTo(rejectionDbUrl, previousMigration);
+    const client = new Client({ connectionString: rejectionDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "insights_daily" (
+            "id",
+            "org_id",
+            "user_id",
+            "date",
+            "data"
+          )
+          VALUES
+            (
+              '00000000-0000-4000-8000-000000075302',
+              'insights-slug-org',
+              'insights-slug-user',
+              '2026-07-29',
+              $1::jsonb
+            ),
+            (
+              '00000000-0000-4000-8000-000000075303',
+              'insights-slug-org',
+              'insights-slug-user',
+              '2026-07-30',
+              $2::jsonb
+            )
+        `,
+        [JSON.stringify(compatibleData), JSON.stringify(conflictingData)],
+      );
+
+      await assert.rejects(
+        applyMigrationsUpTo(client, targetMigration),
+        /conflicting connectorSlug and connectorType identities/,
+      );
+
+      const rows = await client.query<{
+        readonly data: unknown;
+        readonly id: string;
+      }>(
+        `
+          SELECT "id", "data"
+          FROM "insights_daily"
+          WHERE "id" IN (
+            '00000000-0000-4000-8000-000000075302',
+            '00000000-0000-4000-8000-000000075303'
+          )
+          ORDER BY "id"
+        `,
+      );
+      assert.deepEqual(rows.rows, [
+        {
+          id: "00000000-0000-4000-8000-000000075302",
+          data: compatibleData,
+        },
+        {
+          id: "00000000-0000-4000-8000-000000075303",
+          data: conflictingData,
+        },
+      ]);
+
+      const migrationRecord = await client.query<{
+        readonly count: number;
+      }>(
+        `
+          SELECT COUNT(*)::int AS "count"
+          FROM "__drizzle_migrations"
+          WHERE "hash" = $1
+        `,
+        [targetMigrationTag],
+      );
+      assert.equal(migrationRecord.rows[0]?.count, 0);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(rejectionDb);
+  }
+
+  console.log(
+    "   ✅ Insights connector slug expansion preserves JSONB and rejects conflicts atomically\n",
+  );
+}
+
 async function extractSchemaFromDb(dbUrl: string): Promise<{
   tables: Set<string>;
   columns: Map<string, Set<string>>;
@@ -5709,6 +9404,213 @@ async function validateSlackLegacySchemaContraction(): Promise<void> {
   }
 }
 
+async function validateTeamsThreadSessionContraction(): Promise<void> {
+  console.log("=== Validate legacy Teams thread session contraction ===\n");
+  const testDb = "migration_teams_thread_session_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 725);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      const beforeDrop = await client.query<{
+        legacy_session_table: string | null;
+      }>(`
+        SELECT to_regclass(
+          'public.teams_org_thread_sessions'
+        )::text AS "legacy_session_table"
+      `);
+      assert.deepEqual(beforeDrop.rows, [
+        { legacy_session_table: "teams_org_thread_sessions" },
+      ]);
+
+      await applyMigrationsUpTo(client, 726);
+
+      const afterDrop = await client.query<{
+        legacy_session_table: string | null;
+      }>(`
+        SELECT to_regclass(
+          'public.teams_org_thread_sessions'
+        )::text AS "legacy_session_table"
+      `);
+      assert.deepEqual(afterDrop.rows, [{ legacy_session_table: null }]);
+      console.log("   ✅ Legacy Teams thread session table is removed\n");
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
+async function validateTelegramThreadSessionContraction(): Promise<void> {
+  console.log("=== Validate legacy Telegram thread session contraction ===\n");
+  const testDb = "migration_telegram_thread_session_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 740);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      const beforeDrop = await client.query<{
+        legacy_session_table: string | null;
+      }>(`
+        SELECT to_regclass(
+          'public.telegram_thread_sessions'
+        )::text AS "legacy_session_table"
+      `);
+      assert.deepEqual(beforeDrop.rows, [
+        { legacy_session_table: "telegram_thread_sessions" },
+      ]);
+
+      await applyMigrationsUpTo(client, 741);
+
+      const afterDrop = await client.query<{
+        legacy_session_table: string | null;
+      }>(`
+        SELECT to_regclass(
+          'public.telegram_thread_sessions'
+        )::text AS "legacy_session_table"
+      `);
+      assert.deepEqual(afterDrop.rows, [{ legacy_session_table: null }]);
+      console.log("   ✅ Legacy Telegram thread session table is removed\n");
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
+async function validateAgentPhoneThreadSessionContraction(): Promise<void> {
+  console.log(
+    "=== Validate legacy AgentPhone thread session contraction ===\n",
+  );
+  const testDb = "migration_agentphone_thread_session_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 757);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      const beforeDrop = await client.query<{
+        legacy_session_table: string | null;
+      }>(`
+        SELECT to_regclass(
+          'public.agentphone_thread_sessions'
+        )::text AS "legacy_session_table"
+      `);
+      assert.deepEqual(beforeDrop.rows, [
+        { legacy_session_table: "agentphone_thread_sessions" },
+      ]);
+
+      await applyMigrationsUpTo(client, 758);
+
+      const afterDrop = await client.query<{
+        legacy_session_table: string | null;
+      }>(`
+        SELECT to_regclass(
+          'public.agentphone_thread_sessions'
+        )::text AS "legacy_session_table"
+      `);
+      assert.deepEqual(afterDrop.rows, [{ legacy_session_table: null }]);
+      console.log("   ✅ Legacy AgentPhone thread session table is removed\n");
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
+async function validateFeishuThreadSessionContraction(): Promise<void> {
+  console.log("=== Validate legacy Feishu thread session contraction ===\n");
+  const testDb = "migration_feishu_thread_session_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 758);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      const beforeDrop = await client.query<{
+        legacy_session_table: string | null;
+      }>(`
+        SELECT to_regclass(
+          'public.feishu_org_thread_sessions'
+        )::text AS "legacy_session_table"
+      `);
+      assert.deepEqual(beforeDrop.rows, [
+        { legacy_session_table: "feishu_org_thread_sessions" },
+      ]);
+
+      await applyMigrationsUpTo(client, 759);
+
+      const afterDrop = await client.query<{
+        legacy_session_table: string | null;
+      }>(`
+        SELECT to_regclass(
+          'public.feishu_org_thread_sessions'
+        )::text AS "legacy_session_table"
+      `);
+      assert.deepEqual(afterDrop.rows, [{ legacy_session_table: null }]);
+      console.log("   ✅ Legacy Feishu thread session table is removed\n");
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
+async function validateGithubIssueSessionContraction(): Promise<void> {
+  console.log("=== Validate legacy GitHub issue session contraction ===\n");
+  const testDb = "migration_github_issue_session_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 760);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      const beforeDrop = await client.query<{
+        legacy_session_table: string | null;
+      }>(`
+        SELECT to_regclass(
+          'public.github_issue_sessions'
+        )::text AS "legacy_session_table"
+      `);
+      assert.deepEqual(beforeDrop.rows, [
+        { legacy_session_table: "github_issue_sessions" },
+      ]);
+
+      await applyMigrationsUpTo(client, 761);
+
+      const afterDrop = await client.query<{
+        legacy_session_table: string | null;
+      }>(`
+        SELECT to_regclass(
+          'public.github_issue_sessions'
+        )::text AS "legacy_session_table"
+      `);
+      assert.deepEqual(afterDrop.rows, [{ legacy_session_table: null }]);
+      console.log("   ✅ Legacy GitHub issue session table is removed\n");
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateOrgPlanEntitlementBackfill(): Promise<void> {
   console.log(
     "=== Phase 1.8: Validate existing org plan entitlement backfill ===\n",
@@ -6027,6 +9929,553 @@ async function validateModelObservationContractCleanup(): Promise<void> {
   }
 }
 
+const BROWSER_RESIZE_STATE_PREVIOUS_MIGRATION = 736;
+const BROWSER_RESIZE_STATE_MIGRATION = 737;
+
+const browserResizeRolloutFixture = {
+  orgId: "browser-resize-rollout-org",
+  userId: "browser-resize-rollout-user",
+  profileId: "98000000-0000-4000-8000-000000000001",
+  providerProfileId: "98000000-0000-4000-8000-000000000002",
+  instances: [
+    {
+      browserSessionId: "98000000-0000-4000-8000-000000000011",
+      chatThreadId: "98000000-0000-4000-8000-000000000012",
+      runId: "98000000-0000-4000-8000-000000000013",
+      providerSessionId: "98000000-0000-4000-8000-000000000014",
+    },
+    {
+      browserSessionId: "98000000-0000-4000-8000-000000000021",
+      chatThreadId: "98000000-0000-4000-8000-000000000022",
+      runId: "98000000-0000-4000-8000-000000000023",
+      providerSessionId: "98000000-0000-4000-8000-000000000024",
+    },
+    {
+      browserSessionId: "98000000-0000-4000-8000-000000000031",
+      chatThreadId: "98000000-0000-4000-8000-000000000032",
+      runId: "98000000-0000-4000-8000-000000000033",
+      providerSessionId: "98000000-0000-4000-8000-000000000034",
+    },
+  ],
+} as const;
+
+async function seedBrowserResizeRolloutSessions(client: Client): Promise<void> {
+  const fixture = browserResizeRolloutFixture;
+  await client.query(
+    `INSERT INTO "browser_profiles" (
+       "id", "org_id", "user_id", "provider_profile_id"
+     )
+     VALUES ($1, $2, $3, $4)`,
+    [
+      fixture.profileId,
+      fixture.orgId,
+      fixture.userId,
+      fixture.providerProfileId,
+    ],
+  );
+  for (const instance of fixture.instances) {
+    await client.query(
+      `INSERT INTO "browser_sessions" (
+         "id", "chat_thread_id", "org_id", "user_id", "name",
+         "browser_profile_id", "status", "timeout_minutes", "max_credits"
+       )
+       VALUES ($1, $2, $3, $4, 'resize-rollout', $5, 'active', 240, 1)`,
+      [
+        instance.browserSessionId,
+        instance.chatThreadId,
+        fixture.orgId,
+        fixture.userId,
+        fixture.profileId,
+      ],
+    );
+  }
+}
+
+async function insertBrowserInstanceWithPreviousApiShape(
+  client: Client,
+  instance: (typeof browserResizeRolloutFixture.instances)[number],
+): Promise<void> {
+  const inserted = await client.query<{ providerSessionId: string }>(
+    `INSERT INTO "browser_session_instances" (
+       "provider_session_id", "browser_session_id", "chat_thread_id", "run_id",
+       "status", "pricing_unit_price", "pricing_unit_size", "timeout_at",
+       "started_at", "last_touched_at", "idle_expires_at", "stop_requested_at",
+       "finished_at"
+     )
+     VALUES (
+       $1, $2, $3, $4, 'active', 0, 1, NOW() + INTERVAL '4 hours', NOW(),
+       NOW(), NOW() + INTERVAL '10 minutes', NULL, NULL
+     )
+     RETURNING "provider_session_id" AS "providerSessionId"`,
+    [
+      instance.providerSessionId,
+      instance.browserSessionId,
+      instance.chatThreadId,
+      instance.runId,
+    ],
+  );
+  assert.deepEqual(inserted.rows, [
+    { providerSessionId: instance.providerSessionId },
+  ]);
+}
+
+async function browserResizeStateTableAvailable(
+  client: Client,
+): Promise<boolean> {
+  const result = await client.query<{ available: boolean }>(
+    `SELECT to_regclass('public.browser_session_resize_states') IS NOT NULL
+       AS "available"`,
+  );
+  return result.rows[0]?.available ?? false;
+}
+
+async function validateBrowserResizeStateRolloutCompatibility(): Promise<void> {
+  console.log("=== Validate browser resize state rollout compatibility ===\n");
+  const testDb = "migration_browser_resize_state_rollout_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const [beforeMigration, previousAfterMigration, currentAfterMigration] =
+    browserResizeRolloutFixture.instances;
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, BROWSER_RESIZE_STATE_PREVIOUS_MIGRATION);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await seedBrowserResizeRolloutSessions(client);
+      assert.equal(await browserResizeStateTableAvailable(client), false);
+      await insertBrowserInstanceWithPreviousApiShape(client, beforeMigration);
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        BROWSER_RESIZE_STATE_MIGRATION,
+      );
+      assert.equal(await browserResizeStateTableAvailable(client), true);
+      await insertBrowserInstanceWithPreviousApiShape(
+        client,
+        previousAfterMigration,
+      );
+      await insertBrowserInstanceWithPreviousApiShape(
+        client,
+        currentAfterMigration,
+      );
+      await client.query(
+        `INSERT INTO "browser_session_resize_states" (
+           "provider_session_id", "screen_width", "screen_height"
+         )
+         VALUES ($1, 1440, 900)`,
+        [currentAfterMigration.providerSessionId],
+      );
+
+      const states = await client.query<{
+        providerSessionId: string;
+        screenHeight: number | null;
+        screenWidth: number | null;
+      }>(
+        `SELECT
+           instances."provider_session_id" AS "providerSessionId",
+           resize_state."screen_width" AS "screenWidth",
+           resize_state."screen_height" AS "screenHeight"
+         FROM "browser_session_instances" AS instances
+         LEFT JOIN "browser_session_resize_states" AS resize_state
+           ON resize_state."provider_session_id" =
+             instances."provider_session_id"
+         ORDER BY instances."provider_session_id"`,
+      );
+      assert.deepEqual(states.rows, [
+        {
+          providerSessionId: beforeMigration.providerSessionId,
+          screenHeight: null,
+          screenWidth: null,
+        },
+        {
+          providerSessionId: previousAfterMigration.providerSessionId,
+          screenHeight: null,
+          screenWidth: null,
+        },
+        {
+          providerSessionId: currentAfterMigration.providerSessionId,
+          screenHeight: 900,
+          screenWidth: 1440,
+        },
+      ]);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+  console.log(
+    "   ✅ Current API tolerates pre-0737 schema, previous API inserts after 0737, and only current post-migration instances gain resize state\n",
+  );
+}
+
+type HostedSiteScopeMigrationWrite = {
+  readonly chatThreadId: string | null;
+  readonly requestedSlug: string | null;
+};
+
+type HostedSiteScopeMigrationWriteOutcome =
+  | { readonly kind: "success"; readonly row: HostedSiteScopeMigrationWrite }
+  | { readonly kind: "failure"; readonly error: unknown };
+
+async function applyHostedSiteScopeMigrationWithConcurrentWriter(args: {
+  readonly dbUrl: string;
+  readonly observer: Client;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly runId: string;
+}): Promise<HostedSiteScopeMigrationWrite> {
+  const migration = new Client({ connectionString: args.dbUrl });
+  const previousApi = new Client({ connectionString: args.dbUrl });
+  await migration.connect();
+  await previousApi.connect();
+
+  const migrationSql = await fs.readFile(
+    path.join(MIGRATIONS_DIR, "0753_backfill_chat_scoped_hosted_sites.sql"),
+    "utf-8",
+  );
+  const statements = migrationSql
+    .split("--> statement-breakpoint")
+    .map((statement) => {
+      return statement.trim();
+    })
+    .filter((statement) => {
+      return statement.length > 0;
+    });
+  const [lockStatement, ...remainingStatements] = statements;
+  if (!lockStatement) {
+    throw new Error("Hosted-site scope migration has no statements");
+  }
+  assert.match(lockStatement, /^LOCK TABLE "hosted_sites"/u);
+
+  let migrationOpen = false;
+  let writerTask: Promise<HostedSiteScopeMigrationWriteOutcome> | undefined;
+  try {
+    const migrationPidResult = await migration.query<{ pid: number }>(
+      `SELECT pg_backend_pid() AS "pid"`,
+    );
+    const previousApiPidResult = await previousApi.query<{ pid: number }>(
+      `SELECT pg_backend_pid() AS "pid"`,
+    );
+    const migrationPid = migrationPidResult.rows[0]?.pid;
+    const previousApiPid = previousApiPidResult.rows[0]?.pid;
+    assert.ok(migrationPid);
+    assert.ok(previousApiPid);
+
+    await migration.query("BEGIN");
+    migrationOpen = true;
+    await migration.query(lockStatement);
+
+    writerTask = previousApi
+      .query<HostedSiteScopeMigrationWrite>(
+        `INSERT INTO "hosted_sites" (
+           "org_id", "user_id", "slug", "public_slug", "created_from_run_id"
+         )
+         VALUES (
+           $1, $2, 'concurrent-previous-api-site',
+           'concurrent-previous-api-site', $3
+         )
+         RETURNING
+           "requested_slug" AS "requestedSlug",
+           "chat_thread_id" AS "chatThreadId"`,
+        [args.orgId, args.userId, args.runId],
+      )
+      .then(
+        (result) => {
+          const row = result.rows[0];
+          if (!row) {
+            throw new Error("Concurrent previous API insert returned no row");
+          }
+          return { kind: "success", row } as const;
+        },
+        (error: unknown) => {
+          return { kind: "failure", error } as const;
+        },
+      );
+
+    await waitForMigrationBlockedBy(args.observer, {
+      blockerPid: migrationPid,
+      migrationPid: previousApiPid,
+    });
+
+    for (const statement of remainingStatements) {
+      await migration.query(statement);
+    }
+    await migration.query("COMMIT");
+    migrationOpen = false;
+
+    const outcome = await writerTask;
+    if (outcome.kind === "failure") {
+      throw outcome.error;
+    }
+    return outcome.row;
+  } finally {
+    if (migrationOpen) {
+      await migration.query("ROLLBACK");
+    }
+    if (writerTask !== undefined) {
+      await writerTask;
+    }
+    await migration.end();
+    await previousApi.end();
+  }
+}
+
+async function validateHostedSiteChatScopeRollout(): Promise<void> {
+  console.log("=== Validate hosted-site chat scope rollout ===\n");
+  const testDb = "migration_hosted_site_chat_scope_rollout_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const fixture = {
+    composeId: "00000000-0000-4000-8000-000000074201",
+    sessionId: "00000000-0000-4000-8000-000000074202",
+    firstRunId: "00000000-0000-4000-8000-000000074203",
+    secondRunId: "00000000-0000-4000-8000-000000074204",
+    firstThreadId: "00000000-0000-4000-8000-000000074205",
+    secondThreadId: "00000000-0000-4000-8000-000000074206",
+    chatSiteId: "00000000-0000-4000-8000-000000074207",
+    legacySiteId: "00000000-0000-4000-8000-000000074208",
+    orgId: "hosted-site-chat-scope-org",
+    userId: "hosted-site-chat-scope-user",
+  } as const;
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 751);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+         VALUES ($1, $2, 'hosted-site-chat-scope', $3)`,
+        [fixture.composeId, fixture.userId, fixture.orgId],
+      );
+      await client.query(
+        `INSERT INTO "agent_sessions" (
+           "id", "user_id", "org_id", "agent_compose_id"
+         )
+         VALUES ($1, $2, $3, $4)`,
+        [fixture.sessionId, fixture.userId, fixture.orgId, fixture.composeId],
+      );
+      await client.query(
+        `INSERT INTO "agent_runs" (
+           "id", "user_id", "session_id", "status", "prompt", "org_id"
+         )
+         VALUES
+           ($1, $3, $4, 'running', 'first chat publish', $5),
+           ($2, $3, $4, 'running', 'second chat publish', $5)`,
+        [
+          fixture.firstRunId,
+          fixture.secondRunId,
+          fixture.userId,
+          fixture.sessionId,
+          fixture.orgId,
+        ],
+      );
+      await client.query(
+        `INSERT INTO "chat_threads" (
+           "id", "user_id", "agent_compose_id", "title"
+         )
+         VALUES
+           ($1, $3, $4, 'First hosted-site chat'),
+           ($2, $3, $4, 'Second hosted-site chat')`,
+        [
+          fixture.firstThreadId,
+          fixture.secondThreadId,
+          fixture.userId,
+          fixture.composeId,
+        ],
+      );
+      await client.query(
+        `INSERT INTO "zero_runs" ("id", "trigger_source", "chat_thread_id")
+         VALUES
+           ($1, 'chat', $3),
+           ($2, 'chat', $4)`,
+        [
+          fixture.firstRunId,
+          fixture.secondRunId,
+          fixture.firstThreadId,
+          fixture.secondThreadId,
+        ],
+      );
+      await client.query(
+        `INSERT INTO "hosted_sites" (
+           "id", "org_id", "user_id", "slug", "public_slug",
+           "created_from_run_id"
+         )
+         VALUES
+           ($1, $3, $4, 'shared-site', 'shared-site', $5),
+           ($2, $3, $4, 'legacy-site', 'legacy-site', NULL)`,
+        [
+          fixture.chatSiteId,
+          fixture.legacySiteId,
+          fixture.orgId,
+          fixture.userId,
+          fixture.firstRunId,
+        ],
+      );
+
+      await applyMigrationsUpToInTransaction(client, 752);
+      const concurrentPreviousApiInsert =
+        await applyHostedSiteScopeMigrationWithConcurrentWriter({
+          dbUrl: testDbUrl,
+          observer: client,
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          runId: fixture.firstRunId,
+        });
+      assert.deepEqual(concurrentPreviousApiInsert, {
+        requestedSlug: "concurrent-previous-api-site",
+        chatThreadId: fixture.firstThreadId,
+      });
+
+      const backfilled = await client.query<{
+        chatThreadId: string | null;
+        id: string;
+        requestedSlug: string | null;
+      }>(
+        `SELECT
+           "id",
+           "requested_slug" AS "requestedSlug",
+           "chat_thread_id" AS "chatThreadId"
+         FROM "hosted_sites"
+         WHERE "id" IN ($1, $2)
+         ORDER BY "id"`,
+        [fixture.chatSiteId, fixture.legacySiteId],
+      );
+      assert.deepEqual(backfilled.rows, [
+        {
+          id: fixture.chatSiteId,
+          requestedSlug: "shared-site",
+          chatThreadId: fixture.firstThreadId,
+        },
+        {
+          id: fixture.legacySiteId,
+          requestedSlug: "legacy-site",
+          chatThreadId: null,
+        },
+      ]);
+
+      const previousApiInsert = await client.query<{
+        chatThreadId: string | null;
+        requestedSlug: string | null;
+      }>(
+        `INSERT INTO "hosted_sites" (
+           "org_id", "user_id", "slug", "public_slug", "created_from_run_id"
+         )
+         VALUES ($1, $2, 'previous-api-site', 'previous-api-site', $3)
+         RETURNING
+           "requested_slug" AS "requestedSlug",
+           "chat_thread_id" AS "chatThreadId"`,
+        [fixture.orgId, fixture.userId, fixture.firstRunId],
+      );
+      assert.deepEqual(previousApiInsert.rows, [
+        {
+          requestedSlug: "previous-api-site",
+          chatThreadId: fixture.firstThreadId,
+        },
+      ]);
+
+      await client.query(
+        `INSERT INTO "hosted_sites" (
+           "org_id", "user_id", "slug", "requested_slug", "chat_thread_id",
+           "public_slug"
+         )
+         VALUES (
+           $1, $2, 'shared-site-second-chat', 'shared-site', $3,
+           'shared-site-second-chat'
+         )`,
+        [fixture.orgId, fixture.userId, fixture.secondThreadId],
+      );
+      await expectDatabaseError(client, {
+        code: "23505",
+        query: `INSERT INTO "hosted_sites" (
+          "org_id", "user_id", "slug", "requested_slug", "chat_thread_id",
+          "public_slug"
+        )
+        VALUES (
+          $1, $2, 'shared-site-first-chat-duplicate', 'shared-site', $3,
+          'shared-site-first-chat-duplicate'
+        )`,
+        values: [fixture.orgId, fixture.userId, fixture.firstThreadId],
+      });
+      await client.query(
+        `INSERT INTO "hosted_sites" (
+           "org_id", "user_id", "slug", "requested_slug", "public_slug"
+         )
+         VALUES (
+           $1, $2, 'shared-site-organization', 'shared-site',
+           'shared-site-organization'
+         )`,
+        [fixture.orgId, fixture.userId],
+      );
+
+      await expectDatabaseError(client, {
+        code: "23514",
+        messageIncludes: "Hosted site chat ownership is immutable",
+        query: `UPDATE "hosted_sites"
+                SET "chat_thread_id" = $1
+                WHERE "id" = $2`,
+        values: [fixture.secondThreadId, fixture.chatSiteId],
+      });
+
+      await client.query(
+        `INSERT INTO "hosted_deployments" (
+           "site_id", "org_id", "user_id", "run_id", "status", "r2_prefix",
+           "manifest", "manifest_hash", "content_hash", "file_count",
+           "size_bytes", "url"
+         )
+         VALUES (
+           $1, $2, $3, $4, 'uploading', 'matching-chat', '{}'::jsonb,
+           repeat('0', 64), repeat('0', 64), 0, 0,
+           'https://matching-chat.invalid'
+         )`,
+        [fixture.chatSiteId, fixture.orgId, fixture.userId, fixture.firstRunId],
+      );
+      await expectDatabaseError(client, {
+        code: "23514",
+        messageIncludes: "Hosted site belongs to a different chat",
+        query: `INSERT INTO "hosted_deployments" (
+          "site_id", "org_id", "user_id", "run_id", "status", "r2_prefix",
+          "manifest", "manifest_hash", "content_hash", "file_count",
+          "size_bytes", "url"
+        )
+        VALUES (
+          $1, $2, $3, $4, 'uploading', 'different-chat', '{}'::jsonb,
+          repeat('0', 64), repeat('0', 64), 0, 0,
+          'https://different-chat.invalid'
+        )`,
+        values: [
+          fixture.chatSiteId,
+          fixture.orgId,
+          fixture.userId,
+          fixture.secondRunId,
+        ],
+      });
+
+      await client.query(`DELETE FROM "chat_threads" WHERE "id" = $1`, [
+        fixture.firstThreadId,
+      ]);
+      const stableOwner = await client.query<{ chatThreadId: string | null }>(
+        `SELECT "chat_thread_id" AS "chatThreadId"
+         FROM "hosted_sites"
+         WHERE "id" = $1`,
+        [fixture.chatSiteId],
+      );
+      assert.deepEqual(stableOwner.rows, [
+        { chatThreadId: fixture.firstThreadId },
+      ]);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+  console.log(
+    "   ✅ Existing and previous-API sites gain stable chat ownership, scoped uniqueness allows cross-chat reuse, and deployment writes fail closed across chats\n",
+  );
+}
+
 async function validateTimestampOrdering(): Promise<void> {
   console.log("=== Phase 0.5: Validate Journal Timestamp Ordering ===\n");
 
@@ -6198,6 +10647,8 @@ async function main(): Promise<void> {
 
     await validateConnectorCredentialOwnershipBackfill();
     await validateConnectorCredentialOwnershipContraction();
+    await validateConnectorSlugRollout();
+    await validateInsightsConnectorSlugExpansion();
 
     await validateStorageArchiveSizeFinalization();
     await validateStorageLegacyTypeContraction();
@@ -6205,16 +10656,28 @@ async function main(): Promise<void> {
     await validateSessionStorageBackfill();
     await validateSlackChatThreadRouteBackfill();
     await validateSlackLegacySchemaContraction();
+    await validateTeamsThreadSessionContraction();
+    await validateTelegramThreadSessionContraction();
+    await validateAgentPhoneThreadSessionContraction();
+    await validateFeishuThreadSessionContraction();
+    await validateGithubIssueSessionContraction();
     await validateOrgPlanEntitlementBackfill();
     await validateModelObservationContractCleanup();
     await validateChatEventTypeBackfillAndContract();
     await validateStructuredPromptDraftBackfill();
     await validateUserMessageBackfillAndContract();
+    await validateCanonicalUserMessageRolloutCompatibility();
+    await validateCanonicalUserMessageContraction();
+    await validateDraftContentContraction();
     await validateChatEventQueueContraction();
     await validateChatMessageRoleContraction();
     await validateChatEventTableRename();
     await validateChatInputGoalEvent();
     await validateChatEventAssetRefTableRename();
+    await validateChatEventPropertyColumnRollout();
+    await validateBrowserResizeStateRolloutCompatibility();
+    await validateHostedSiteChatScopeRollout();
+    await validateCurrentBrowserApiBeforeBillingMigration();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
@@ -6226,8 +10689,17 @@ async function main(): Promise<void> {
     await runMigrations(dbUrl1);
     console.log("   ✅ Migrations applied successfully\n");
 
+    console.log("=== Phase 2.1: Validate database reset ===\n");
+    await resetDatabase(dbUrl1);
+    await resetDatabase(dbUrl1);
+    await runMigrations(dbUrl1);
+    console.log("   ✅ Consecutive database resets completed successfully\n");
+
+    await validatePreviousBrowserApiAfterBillingMigration(dbUrl1);
     await validateChatEventSourcesAreAppendOnly(dbUrl1);
+    await validateChatEventContextPointerConstraints(dbUrl1);
     await validateConnectorCatalogFinalConstraints(dbUrl1);
+    await validateCustomConnectorOauthModeConstraints(dbUrl1);
 
     // Step 2: Backup and regenerate migrations
     console.log("=== Phase 3: Test regenerated migrations ===\n");
@@ -6255,10 +10727,20 @@ async function main(): Promise<void> {
       console.log("   ✅ Snapshot chain is intact (id/prevId references)");
       console.log("   ✅ Journal timestamps are strictly increasing");
       console.log("   ✅ Latest snapshot accurately reflects final DB state");
+      console.log(
+        "   ✅ Previous browser API can start after billing migration",
+      );
+      console.log(
+        "   ✅ Current browser API can start before billing migration",
+      );
       console.log("   ✅ Chat event source tables reject UPDATE");
       console.log(
         "   ✅ Final connector catalog constraints reject invalid state",
       );
+      console.log(
+        "   ✅ Custom connector OAuth mode constraints reject mismatched configuration",
+      );
+      console.log("   ✅ Consecutive database resets replay all migrations");
       console.log("   ✅ Schemas are functionally equivalent");
       console.log("   ✅ All migrations match the schema definitions");
 

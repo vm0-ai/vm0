@@ -295,10 +295,13 @@ export const setupAuthPageWrapper = (
     const clerk = await get(clerk$);
     signal.throwIfAborted();
 
+    if (!clerk.loaded) {
+      return;
+    }
+
     if (!clerk.user) {
       const signInUrl = new URL(
-        resolveAppAuthUrl("/sign-in", { redirectUrl: location.href }),
-        location.origin,
+        clerk.buildSignInUrl({ redirectUrl: location.href }),
       );
       L.info("redirect unauthenticated user to app sign-in", {
         currentUrl: location.href,

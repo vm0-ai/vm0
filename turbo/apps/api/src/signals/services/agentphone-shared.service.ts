@@ -2,11 +2,10 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentphoneMessages } from "@vm0/db/schema/agentphone-message";
-import { agentphoneThreadSessions } from "@vm0/db/schema/agentphone-thread-session";
 import { agentphoneUserLinks } from "@vm0/db/schema/agentphone-user-link";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { nowDate } from "../external/time";
@@ -133,72 +132,6 @@ export async function storeOutboundAgentPhoneMessage(
       isBot: true,
     })
     .onConflictDoNothing();
-}
-
-export async function saveAgentPhoneThreadSession(
-  db: Db,
-  opts: {
-    readonly userLinkId: string;
-    readonly conversationId: string | null;
-    readonly rootMessageId: string;
-    readonly existingSessionId: string | undefined;
-    readonly newSessionId: string | undefined;
-    readonly messageId: string;
-    readonly runStatus: string;
-  },
-): Promise<void> {
-  if (!opts.existingSessionId && opts.newSessionId) {
-    const updated = await db
-      .update(agentphoneThreadSessions)
-      .set({
-        agentSessionId: opts.newSessionId,
-        conversationId: opts.conversationId,
-        lastProcessedMessageId: opts.messageId,
-        updatedAt: nowDate(),
-      })
-      .where(
-        and(
-          eq(agentphoneThreadSessions.agentphoneUserLinkId, opts.userLinkId),
-          eq(agentphoneThreadSessions.rootMessageId, opts.rootMessageId),
-        ),
-      )
-      .returning({ id: agentphoneThreadSessions.id });
-
-    if (updated.length > 0) {
-      return;
-    }
-
-    await db
-      .insert(agentphoneThreadSessions)
-      .values({
-        agentphoneUserLinkId: opts.userLinkId,
-        conversationId: opts.conversationId,
-        rootMessageId: opts.rootMessageId,
-        agentSessionId: opts.newSessionId,
-        lastProcessedMessageId: opts.messageId,
-      })
-      .onConflictDoNothing();
-    return;
-  }
-
-  if (
-    opts.existingSessionId &&
-    (opts.runStatus === "completed" || opts.runStatus === "timeout")
-  ) {
-    await db
-      .update(agentphoneThreadSessions)
-      .set({
-        conversationId: opts.conversationId,
-        lastProcessedMessageId: opts.messageId,
-        updatedAt: nowDate(),
-      })
-      .where(
-        and(
-          eq(agentphoneThreadSessions.agentphoneUserLinkId, opts.userLinkId),
-          eq(agentphoneThreadSessions.rootMessageId, opts.rootMessageId),
-        ),
-      );
-  }
 }
 
 export function formatAgentPhoneAuditLink(logsUrl: string): string {

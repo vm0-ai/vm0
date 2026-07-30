@@ -91,6 +91,16 @@ describe("zero generate source-backed artifact commands", () => {
       expect(stdout).toContain(
         "Check that shapes, charts, images, or decorative graphics do not cover readable text",
       );
+      expect(stdout).toContain('"id": "skill:article-magazine"');
+      expect(stdout).not.toContain('"id": "skill:design-brief"');
+      if (command === "poster") {
+        expect(stdout).toContain('"id": "skill:algorithmic-art"');
+      } else {
+        expect(stdout).not.toContain('"id": "skill:algorithmic-art"');
+      }
+      expect(stdout).not.toContain('"id": "skill:slides"');
+      expect(stdout).not.toContain('"id": "skill:video-hyperframes"');
+      expect(stdout).not.toContain('"id": "skill:8-bit-orbit-video-template"');
     },
   );
 
@@ -116,7 +126,7 @@ describe("zero generate source-backed artifact commands", () => {
     expect(helpOutput).not.toContain("--site <slug>");
   });
 
-  it("returns every registered skill grouped by kind", () => {
+  it("returns every registered skill when no target is requested", () => {
     const selection = selectResourceCandidates();
 
     expect(selection.candidates.skills).toEqual(
@@ -132,6 +142,61 @@ describe("zero generate source-backed artifact commands", () => {
         }),
       ]),
     );
+  });
+
+  it("filters skill candidates by target when requested", () => {
+    const websiteSkillIds = selectResourceCandidates(
+      "website",
+    ).candidates.skills.map((skill) => {
+      return skill.id;
+    });
+    const reportSkillIds = selectResourceCandidates(
+      "report",
+    ).candidates.skills.map((skill) => {
+      return skill.id;
+    });
+    const posterSkillIds = selectResourceCandidates(
+      "poster",
+    ).candidates.skills.map((skill) => {
+      return skill.id;
+    });
+    const presentationSkillIds = selectResourceCandidates(
+      "presentation",
+    ).candidates.skills.map((skill) => {
+      return skill.id;
+    });
+    const imageSkillIds = selectResourceCandidates(
+      "image",
+    ).candidates.skills.map((skill) => {
+      return skill.id;
+    });
+    const videoSkillIds = selectResourceCandidates(
+      "intro-video",
+    ).candidates.skills.map((skill) => {
+      return skill.id;
+    });
+
+    expect(websiteSkillIds).toHaveLength(23);
+    expect(reportSkillIds).toHaveLength(23);
+    expect(posterSkillIds).toHaveLength(28);
+    expect(presentationSkillIds).toHaveLength(6);
+    expect(imageSkillIds).toHaveLength(5);
+    expect(videoSkillIds).toHaveLength(18);
+
+    expect(websiteSkillIds).toContain("skill:article-magazine");
+    expect(reportSkillIds).toContain("skill:article-magazine");
+    expect(reportSkillIds).not.toContain("skill:design-brief");
+    expect(reportSkillIds).not.toContain("skill:algorithmic-art");
+    expect(reportSkillIds).not.toContain("skill:slides");
+    expect(reportSkillIds).not.toContain("skill:video-hyperframes");
+    expect(reportSkillIds).not.toContain("skill:8-bit-orbit-video-template");
+
+    expect(posterSkillIds).toContain("skill:article-magazine");
+    expect(posterSkillIds).toContain("skill:algorithmic-art");
+    expect(presentationSkillIds).toContain("skill:slides");
+    expect(imageSkillIds).toContain("skill:algorithmic-art");
+    expect(videoSkillIds).toContain("skill:video-hyperframes");
+    expect(videoSkillIds).toContain("skill:8-bit-orbit-video-template");
   });
 
   it("returns every registered template and design system", () => {
@@ -153,6 +218,28 @@ describe("zero generate source-backed artifact commands", () => {
         }),
       ]),
     );
+  });
+
+  it("omits unnecessary candidate groups from the generated packet", async () => {
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "report",
+      "--prompt",
+      "Q2 generation usage report",
+      "--site-slug",
+      "report-demo",
+    ]);
+
+    const stdout = output();
+    expect(stdout).not.toContain('"imageStyles"');
+    expect(stdout).not.toContain('"audioStyles"');
+    expect(stdout).not.toContain('"videoTemplates"');
+    expect(stdout).not.toContain('"bundleTemplates"');
+    expect(stdout).not.toContain('"imageStyle"');
+    expect(stdout).not.toContain('"audioStyle"');
+    expect(stdout).not.toContain('"videoTemplate"');
+    expect(stdout).not.toContain('"bundleTemplate"');
   });
 
   it("filters template candidates by target when requested", () => {
@@ -184,19 +271,6 @@ describe("zero generate source-backed artifact commands", () => {
     expect(presentationSelection.candidates.templates).toHaveLength(0);
   });
 
-  it("attributes every vm0 image style to the vm0-skills repo", () => {
-    const selection = selectResourceCandidates();
-    const vm0ImageStyles = selection.candidates.imageStyles.filter((entry) => {
-      return entry.id.startsWith("image-style:");
-    });
-
-    expect(vm0ImageStyles.length).toBeGreaterThan(0);
-    for (const entry of vm0ImageStyles) {
-      expect(entry.source.repo).toBe("vm0-ai/vm0-skills");
-      expect(entry.source.ref).toBe("main");
-    }
-  });
-
   it("annotates every template entry with at least one target", () => {
     const selection = selectResourceCandidates();
     for (const template of selection.candidates.templates) {
@@ -208,6 +282,16 @@ describe("zero generate source-backed artifact commands", () => {
         template.targets?.length,
         `${template.id} has an empty targets array`,
       ).toBeGreaterThan(0);
+    }
+  });
+
+  it("annotates every skill entry with targets", () => {
+    const selection = selectResourceCandidates();
+    for (const skill of selection.candidates.skills) {
+      expect(
+        skill.targets,
+        `${skill.id} is missing the targets field`,
+      ).toBeDefined();
     }
   });
 

@@ -16,11 +16,12 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import {
-  chatMessages,
-  type ChatMessageAttachFileMetadata,
-  type ChatMessageGenerationTemplate,
-} from "@vm0/db/schema/chat-message";
+  chatEvents,
+  type ChatEventAttachFileMetadata,
+  type ChatEventGenerationTemplate,
+} from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
@@ -58,12 +59,15 @@ import {
   notFound,
 } from "../../lib/error";
 import { env } from "../../lib/env";
-import { buildArtifactKey, sanitizeArtifactFilename } from "../../lib/file-url";
+import {
+  buildArtifactKey,
+  buildArtifactKeyV2,
+  sanitizeArtifactFilename,
+} from "../../lib/file-url";
 import { logger } from "../../lib/log";
 import type { AuthContext } from "../../types/auth";
 import {
   createQueueFirstZeroRun$,
-  createZeroRun$,
   type ZeroPreCreateSource,
 } from "../services/zero-runs-create.service";
 import {
@@ -82,10 +86,7 @@ import {
   dispatchCancelSideEffects$,
   type CancelRunResult,
 } from "../services/zero-run-cancel.service";
-import {
-  generateAndPersistChatThreadTitle,
-  isChatTitleGenerationConfigured,
-} from "../services/zero-chat-title.service";
+import { scheduleChatThreadTitleGeneration } from "../services/zero-chat-title.service";
 import { generateAndPersistInitialThinkingMessage } from "../services/zero-chat-initial-thinking.service";
 import {
   isCodexFastServiceTierSupported,
@@ -101,7 +102,7 @@ import {
 import {
   touchChatThreadLastMessageAt,
   visibleChatEventCondition,
-} from "../services/zero-chat-message-shared.service";
+} from "../services/zero-chat-event-shared.service";
 import {
   revokeChatEvent,
   insertChatEvent,
@@ -120,13 +121,15 @@ import {
   encryptQueuedUserMessageRunParams,
   loadNextUnclaimedQueuedUserMessageId,
   lockUserMessageQueueThread,
-} from "../services/zero-chat-queued-message.service";
+} from "../services/zero-chat-queued-event.service";
 import {
   appendChatThreadEvent,
   chatThreadServiceTierFromCodex,
 } from "../services/zero-chat-thread-event.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { resolveChatThreadSession } from "../services/chat-session-continuity.service";
+import { attachCanonicalWebInputAssetsToEvent } from "../services/canonical-asset.service";
+import { resolveArtifactObject$ } from "../services/artifact-storage.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import { chatEventTypeIn } from "../services/zero-chat-event-type.service";
 import { bestEffort, tapError } from "../utils";
@@ -198,20 +201,20 @@ interface ResolvedThread {
   readonly isClientThreadRetry: boolean;
 }
 
-interface WebChatPriorRunMessage {
+interface WebChatPriorRunEvent {
   readonly eventType: ChatEventType;
   readonly role: "user" | "assistant";
   readonly content: string | null;
   readonly userMessage: UserMessageDocument | null;
   readonly attachFiles: readonly string[] | null;
-  readonly generationTemplate: ChatMessageGenerationTemplate | null;
+  readonly generationTemplate: ChatEventGenerationTemplate | null;
 }
 
 interface WebChatPriorRun {
   readonly runId: string;
   readonly status: string;
   readonly prompt: string;
-  readonly messages: readonly WebChatPriorRunMessage[];
+  readonly events: readonly WebChatPriorRunEvent[];
 }
 
 type ModelFirstProviderAdmission = Awaited<
@@ -253,9 +256,10 @@ interface PreparedNormalSend {
   readonly computerUseHostGrant: ResolvedComputerUseHostGrant | null;
   readonly persistedExplicitSelection: boolean;
   readonly initialThinkingEnabled: boolean;
+  readonly attachFileMetadata: ChatEventAttachFileMetadata[] | null;
   readonly runConfiguration: ResolvedRunConfiguration;
-  readonly clientMessagePrechecked: boolean;
-  readonly preflightClientMessageConflict:
+  readonly clientEventPrechecked: boolean;
+  readonly preflightClientEventConflict:
     | ReturnType<typeof duplicateClientEventIdResponse>
     | undefined;
 }
@@ -272,6 +276,7 @@ function shouldTouchThreadSortFromNormalSend(
 }
 
 interface NormalSendFeatureSwitches {
+  readonly artifactKeyV2Enabled: boolean;
   readonly codexFastModeEnabled: boolean;
   readonly userMessageInlineTemplatesEnabled: boolean;
   readonly imageStyleR2Enabled: boolean;
@@ -297,7 +302,7 @@ type NormalSendFailure =
   | ReturnType<typeof insufficientCredits>
   | ReturnType<typeof badRequestMessage>;
 
-interface CreatedChatMessageResponse {
+interface CreatedChatEventResponse {
   readonly status: 201;
   readonly body: {
     readonly runId: string | null;
@@ -308,7 +313,7 @@ interface CreatedChatMessageResponse {
 }
 
 type ClientSendResolution =
-  | CreatedChatMessageResponse
+  | CreatedChatEventResponse
   | ReturnType<typeof conflict>;
 
 type CreateChatThreadResult =
@@ -318,7 +323,7 @@ type CreateChatThreadResult =
     }
   | ReturnType<typeof notFound>;
 
-type AppendMessageResult =
+type AppendEventResult =
   | {
       readonly ok: true;
       readonly createdAt: Date;
@@ -358,7 +363,7 @@ interface ExistingClientEventIdRow {
   readonly revokesEventId: string | null;
   readonly interruptsRunId: string | null;
   readonly error: string | null;
-  readonly messageCreatedAt: Date;
+  readonly eventCreatedAt: Date;
   readonly runStatus: string | null;
   readonly runCreatedAt: Date | null;
   readonly replacementEventId: string | null;
@@ -374,7 +379,7 @@ const sendEventBody$ = bodyResultOf(chatEventsContract.send);
 const RECENT_CHAT_RUN_LIMIT = 10;
 const WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP = 4000;
 const INSUFFICIENT_CREDITS_MARKER = "insufficient_credits";
-const replacementChatMessage = alias(chatMessages, "replacement_chat_message");
+const replacementChatEvent = alias(chatEvents, "replacement_chat_event");
 const replacementAgentRun = alias(agentRuns, "replacement_agent_run");
 
 function forbidden(message: string) {
@@ -420,7 +425,7 @@ function resolveExistingClientEventIdRow(
   ) {
     return {
       kind: "queued",
-      createdAt: row.messageCreatedAt,
+      createdAt: row.eventCreatedAt,
       inserted: false,
     };
   }
@@ -447,7 +452,7 @@ function resolveExistingClientEventIdRow(
   if (row.replacementError === INSUFFICIENT_CREDITS_MARKER) {
     return {
       kind: "queued",
-      createdAt: row.messageCreatedAt,
+      createdAt: row.eventCreatedAt,
       inserted: false,
     };
   }
@@ -462,46 +467,46 @@ async function resolveClientEventId(
     readonly userId: string;
   },
 ): Promise<ClientEventIdResolution> {
-  const [message] = await db
+  const [event] = await db
     .select({
-      chatThreadId: chatMessages.chatThreadId,
+      chatThreadId: chatEvents.chatThreadId,
       threadUserId: chatThreads.userId,
-      eventType: chatMessages.eventType,
-      content: chatMessages.content,
-      runId: chatMessages.runId,
-      revokesEventId: chatMessages.revokesEventId,
-      interruptsRunId: chatMessages.interruptsRunId,
-      error: chatMessages.error,
-      messageCreatedAt: chatMessages.createdAt,
+      eventType: chatEvents.eventType,
+      content: chatEvents.content,
+      runId: chatEvents.runId,
+      revokesEventId: chatEvents.revokesEventId,
+      interruptsRunId: chatEvents.interruptsRunId,
+      error: chatEvents.error,
+      eventCreatedAt: chatEvents.createdAt,
       runStatus: agentRuns.status,
       runCreatedAt: agentRuns.createdAt,
-      replacementEventId: replacementChatMessage.id,
-      replacementRunId: replacementChatMessage.runId,
-      replacementError: replacementChatMessage.error,
+      replacementEventId: replacementChatEvent.id,
+      replacementRunId: replacementChatEvent.runId,
+      replacementError: replacementChatEvent.error,
       replacementRunStatus: replacementAgentRun.status,
       replacementRunCreatedAt: replacementAgentRun.createdAt,
     })
-    .from(chatMessages)
-    .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
-    .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+    .from(chatEvents)
+    .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
+    .leftJoin(agentRuns, eq(agentRuns.id, chatEvents.runId))
     .leftJoin(
-      replacementChatMessage,
-      eq(replacementChatMessage.revokesEventId, chatMessages.id),
+      replacementChatEvent,
+      eq(replacementChatEvent.revokesEventId, chatEvents.id),
     )
     .leftJoin(
       replacementAgentRun,
-      eq(replacementAgentRun.id, replacementChatMessage.runId),
+      eq(replacementAgentRun.id, replacementChatEvent.runId),
     )
-    .where(eq(chatMessages.id, params.clientEventId))
+    .where(eq(chatEvents.id, params.clientEventId))
     .limit(1);
-  return resolveExistingClientEventIdRow(message, params);
+  return resolveExistingClientEventIdRow(event, params);
 }
 
 function clientEventIdResolutionResponse(
   resolution: ClientEventIdResolution,
   threadId: string,
 ):
-  | CreatedChatMessageResponse
+  | CreatedChatEventResponse
   | ReturnType<typeof duplicateClientEventIdResponse>
   | undefined {
   if (resolution.kind === "available") {
@@ -655,22 +660,45 @@ function attachFileIds(
   return ids && ids.length > 0 ? ids : null;
 }
 
-function attachFileMetadata(
-  userId: string,
-  attachFiles: readonly AttachFile[] | undefined,
-): ChatMessageAttachFileMetadata[] | null {
-  const metadata = attachFiles?.map((file) => {
-    const sanitized = sanitizeArtifactFilename(file.filename);
-    return {
-      id: file.id,
-      filename: file.filename,
-      contentType: file.contentType,
-      size: file.size,
-      objectKey: buildArtifactKey(userId, file.id, sanitized),
-    };
-  });
-  return metadata && metadata.length > 0 ? metadata : null;
-}
+const resolveAttachFileMetadata$ = command(
+  async (
+    { set },
+    args: {
+      readonly userId: string;
+      readonly attachFiles: readonly AttachFile[] | undefined;
+      readonly artifactKeyV2Enabled: boolean;
+    },
+    signal: AbortSignal,
+  ): Promise<ChatEventAttachFileMetadata[] | null> => {
+    if (!args.attachFiles || args.attachFiles.length === 0) {
+      return null;
+    }
+    const metadata: ChatEventAttachFileMetadata[] = [];
+    for (const file of args.attachFiles) {
+      const object = args.artifactKeyV2Enabled
+        ? await set(
+            resolveArtifactObject$,
+            { userId: args.userId, id: file.id },
+            signal,
+          )
+        : null;
+      signal.throwIfAborted();
+      const sanitized = sanitizeArtifactFilename(file.filename);
+      metadata.push({
+        id: file.id,
+        filename: file.filename,
+        contentType: file.contentType,
+        size: file.size,
+        objectKey:
+          object?.key ??
+          (args.artifactKeyV2Enabled
+            ? buildArtifactKeyV2(file.id, file.filename)
+            : buildArtifactKey(args.userId, file.id, sanitized)),
+      });
+    }
+    return metadata;
+  },
+);
 
 function truncatePrior(value: string): string {
   if (value.length <= WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP) {
@@ -692,14 +720,14 @@ function formatAttachFileIds(
     .join("\n");
 }
 
-function formatPriorRunMessage(
-  message: WebChatPriorRunMessage,
+function formatPriorRunEvent(
+  event: WebChatPriorRunEvent,
   inlineTemplatesEnabled: boolean,
 ): string {
-  const roleLabel = message.role === "user" ? "User" : "Assistant";
+  const roleLabel = event.role === "user" ? "User" : "Assistant";
   const userMessage = requiredUserMessageForEvent(
-    message.eventType,
-    message.userMessage,
+    event.eventType,
+    event.userMessage,
   );
   if (userMessage) {
     const prompt = projectUserMessage(userMessage, {
@@ -707,11 +735,11 @@ function formatPriorRunMessage(
     }).agentPrompt;
     return `${roleLabel}: ${truncatePrior(prompt) || "[empty message]"}`;
   }
-  const attach = formatAttachFileIds(message.attachFiles);
+  const attach = formatAttachFileIds(event.attachFiles);
   const body = `${roleLabel}: ${
-    message.content === null
+    event.content === null
       ? "[empty message]"
-      : truncatePrior(message.content) || "[empty message]"
+      : truncatePrior(event.content) || "[empty message]"
   }`;
   return attach ? `${body}\n${attach}` : body;
 }
@@ -726,22 +754,22 @@ function buildWebChatPriorRunsContext(
   const total = runs.length;
   const blocks = runs.map((run, index) => {
     const relativeIndex = index - total + 1;
-    const renderedMessages = run.messages.map((message) => {
-      return formatPriorRunMessage(message, inlineTemplatesEnabled);
+    const renderedEvents = run.events.map((event) => {
+      return formatPriorRunEvent(event, inlineTemplatesEnabled);
     });
-    const hasUserMessage = run.messages.some((message) => {
-      return message.role === "user";
+    const hasUserEvent = run.events.some((event) => {
+      return event.role === "user";
     });
-    const hasAssistantMessage = run.messages.some((message) => {
-      return message.role === "assistant";
+    const hasAssistantEvent = run.events.some((event) => {
+      return event.role === "assistant";
     });
-    if (!hasUserMessage) {
-      renderedMessages.unshift(
+    if (!hasUserEvent) {
+      renderedEvents.unshift(
         `User: ${truncatePrior(run.prompt) || "[empty message]"}`,
       );
     }
-    if (!hasAssistantMessage) {
-      renderedMessages.push("Assistant: [no stored assistant message]");
+    if (!hasAssistantEvent) {
+      renderedEvents.push("Assistant: [no stored assistant message]");
     }
     return [
       "---",
@@ -751,7 +779,7 @@ function buildWebChatPriorRunsContext(
       `- RUN_STATUS: ${run.status}`,
       `- LOG_COMMAND: zero logs ${run.runId} --all`,
       "",
-      ...renderedMessages,
+      ...renderedEvents,
     ].join("\n");
   });
   return [
@@ -820,44 +848,44 @@ async function getLatestRunsByThreadId(
     return [];
   }
 
-  const messageRows = await db
+  const eventRows = await db
     .select({
-      runId: chatMessages.runId,
-      eventType: chatMessages.eventType,
-      content: chatMessages.content,
-      userMessage: chatMessages.userMessage,
-      attachFiles: chatMessages.attachFiles,
-      createdAt: chatMessages.createdAt,
-      sequenceNumber: chatMessages.sequenceNumber,
-      generationTemplate: chatMessages.generationTemplate,
+      runId: chatEvents.runId,
+      eventType: chatEvents.eventType,
+      content: chatEvents.content,
+      userMessage: chatEvents.userMessage,
+      attachFiles: chatEvents.attachFiles,
+      createdAt: chatEvents.createdAt,
+      sequenceNumber: chatEvents.sequenceNumber,
+      generationTemplate: chatEvents.generationTemplate,
     })
-    .from(chatMessages)
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.chatThreadId, threadId),
+        eq(chatEvents.chatThreadId, threadId),
         or(
           and(
             chatEventTypeIn(["input.prompt", "input.rejected"]),
-            isNotNull(chatMessages.userMessage),
+            isNotNull(chatEvents.userMessage),
           ),
           and(
             not(chatEventTypeIn(["input.prompt", "input.rejected"])),
-            isNotNull(chatMessages.content),
+            isNotNull(chatEvents.content),
           ),
         ),
-        inArray(chatMessages.runId, runIds),
+        inArray(chatEvents.runId, runIds),
         chatEventTypeIn(CHAT_EVENT_TYPES),
         visibleChatEventCondition(db),
       ),
     )
-    .orderBy(asc(chatMessages.seqId));
+    .orderBy(asc(chatEvents.seqId));
 
-  const messagesByRunId = new Map<string, WebChatPriorRunMessage[]>();
-  for (const row of messageRows) {
+  const eventsByRunId = new Map<string, WebChatPriorRunEvent[]>();
+  for (const row of eventRows) {
     if (row.runId === null) {
       continue;
     }
-    const existing = messagesByRunId.get(row.runId) ?? [];
+    const existing = eventsByRunId.get(row.runId) ?? [];
     existing.push({
       eventType: row.eventType,
       role: chatEventCompatibilityRole(row.eventType),
@@ -866,7 +894,7 @@ async function getLatestRunsByThreadId(
       attachFiles: row.attachFiles,
       generationTemplate: row.generationTemplate,
     });
-    messagesByRunId.set(row.runId, existing);
+    eventsByRunId.set(row.runId, existing);
   }
 
   return orderedRuns.map((run) => {
@@ -874,12 +902,12 @@ async function getLatestRunsByThreadId(
       runId: run.runId,
       status: run.status,
       prompt: run.prompt,
-      messages: messagesByRunId.get(run.runId) ?? [],
+      events: eventsByRunId.get(run.runId) ?? [],
     };
   });
 }
 
-async function resolveClientMessageSend(params: {
+async function resolveClientEventSend(params: {
   readonly db: Db;
   readonly userId: string;
   readonly threadId: string;
@@ -899,7 +927,7 @@ async function resolveClientMessageSend(params: {
 async function resolveClientThreadRetryRun(
   db: Db,
   threadId: string,
-): Promise<CreatedChatMessageResponse | undefined> {
+): Promise<CreatedChatEventResponse | undefined> {
   const [run] = await db
     .select({
       runId: agentRuns.id,
@@ -1015,6 +1043,10 @@ async function resolveNormalSendFeatureSwitches(
 ): Promise<NormalSendFeatureSwitches> {
   const context = await loadUserFeatureSwitchContext(db, orgId, userId);
   return {
+    artifactKeyV2Enabled: isFeatureEnabled(
+      FeatureSwitchKey.ArtifactKeyV2,
+      context,
+    ),
     codexFastModeEnabled: isFeatureEnabled(
       FeatureSwitchKey.CodexFastMode,
       context,
@@ -1558,20 +1590,22 @@ function appendUnassociatedUserMessage(params: {
   readonly db: Db;
   readonly threadId: string;
   readonly userId: string;
+  readonly orgId: string;
   readonly prompt: string;
   readonly attachFiles: readonly AttachFile[] | undefined;
+  readonly attachFileMetadata: ChatEventAttachFileMetadata[] | null;
   readonly clientEventId: string | undefined;
   readonly chatThreadSortEventId: string | undefined;
   readonly touchThreadSort: boolean;
   readonly userMessage: UserMessageDocument;
   readonly generationTemplate: IncomingGenerationTemplate;
   readonly encryptedParams: string | undefined;
+  readonly revokesEventId: string | undefined;
 }): Promise<ClientEventIdResolution> {
   return params.db.transaction(async (tx) => {
     await tx
       .update(chatThreads)
       .set({
-        draftContent: null,
         draftUserMessage: null,
         draftAttachments: null,
       })
@@ -1584,25 +1618,32 @@ function appendUnassociatedUserMessage(params: {
 
     const explicitId = params.clientEventId ?? undefined;
     const fileIds = attachFileIds(params.attachFiles);
-    const fileMetadata = attachFileMetadata(params.userId, params.attachFiles);
-    const inserted = await insertChatEvent(
-      tx,
-      {
-        ...(explicitId ? { id: explicitId } : {}),
-        chatThreadId: params.threadId,
-        eventType: "input.prompt",
-        content: params.prompt,
-        userMessage: params.userMessage,
-        runId: null,
-        triggerSource: "web",
-        encryptedParams: params.encryptedParams,
-        attachFiles: fileIds,
-        attachFileMetadata: fileMetadata,
-        generationTemplate: params.generationTemplate,
-      },
-      "id",
-    );
+    const fileMetadata = params.attachFileMetadata;
+    const event: NewChatEvent = {
+      ...(explicitId ? { id: explicitId } : {}),
+      chatThreadId: params.threadId,
+      eventType: "input.prompt",
+      userMessage: params.userMessage,
+      runId: null,
+      triggerSource: "web",
+      encryptedParams: params.encryptedParams,
+      attachFiles: fileIds,
+      attachFileMetadata: fileMetadata,
+      generationTemplate: params.generationTemplate,
+    };
+    const inserted = params.revokesEventId
+      ? await replaceChatEvent(tx, params.revokesEventId, event, {
+          preserveAssetRefs: false,
+        })
+      : await insertChatEvent(tx, event, "id");
     if (inserted) {
+      await attachCanonicalWebInputAssetsToEvent(tx, {
+        eventId: inserted.id,
+        chatThreadId: params.threadId,
+        userId: params.userId,
+        orgId: params.orgId,
+        files: fileMetadata ?? [],
+      });
       if (params.touchThreadSort) {
         await touchChatThreadLastMessageAt(
           tx,
@@ -1623,35 +1664,35 @@ function appendUnassociatedUserMessage(params: {
     }
     const [existing] = await tx
       .select({
-        chatThreadId: chatMessages.chatThreadId,
+        chatThreadId: chatEvents.chatThreadId,
         threadUserId: chatThreads.userId,
-        eventType: chatMessages.eventType,
-        content: chatMessages.content,
-        runId: chatMessages.runId,
-        revokesEventId: chatMessages.revokesEventId,
-        interruptsRunId: chatMessages.interruptsRunId,
-        error: chatMessages.error,
-        messageCreatedAt: chatMessages.createdAt,
+        eventType: chatEvents.eventType,
+        content: chatEvents.content,
+        runId: chatEvents.runId,
+        revokesEventId: chatEvents.revokesEventId,
+        interruptsRunId: chatEvents.interruptsRunId,
+        error: chatEvents.error,
+        eventCreatedAt: chatEvents.createdAt,
         runStatus: agentRuns.status,
         runCreatedAt: agentRuns.createdAt,
-        replacementEventId: replacementChatMessage.id,
-        replacementRunId: replacementChatMessage.runId,
-        replacementError: replacementChatMessage.error,
+        replacementEventId: replacementChatEvent.id,
+        replacementRunId: replacementChatEvent.runId,
+        replacementError: replacementChatEvent.error,
         replacementRunStatus: replacementAgentRun.status,
         replacementRunCreatedAt: replacementAgentRun.createdAt,
       })
-      .from(chatMessages)
-      .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
-      .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+      .from(chatEvents)
+      .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
+      .leftJoin(agentRuns, eq(agentRuns.id, chatEvents.runId))
       .leftJoin(
-        replacementChatMessage,
-        eq(replacementChatMessage.revokesEventId, chatMessages.id),
+        replacementChatEvent,
+        eq(replacementChatEvent.revokesEventId, chatEvents.id),
       )
       .leftJoin(
         replacementAgentRun,
-        eq(replacementAgentRun.id, replacementChatMessage.runId),
+        eq(replacementAgentRun.id, replacementChatEvent.runId),
       )
-      .where(eq(chatMessages.id, explicitId))
+      .where(eq(chatEvents.id, explicitId))
       .limit(1);
     const resolution = resolveExistingClientEventIdRow(existing, {
       threadId: params.threadId,
@@ -1669,7 +1710,6 @@ async function clearThreadDraft(
   await tx
     .update(chatThreads)
     .set({
-      draftContent: null,
       draftUserMessage: null,
       draftAttachments: null,
     })
@@ -1680,9 +1720,11 @@ async function appendAssociatedUserMessage(params: {
   readonly db: Db;
   readonly threadId: string;
   readonly userId: string;
+  readonly orgId: string;
   readonly prompt: string;
   readonly runId: string;
   readonly attachFiles: readonly AttachFile[] | undefined;
+  readonly attachFileMetadata: ChatEventAttachFileMetadata[] | null;
   readonly clientEventId: string | undefined;
   readonly chatThreadSortEventId: string | undefined;
   readonly touchThreadSort: boolean;
@@ -1700,12 +1742,11 @@ async function appendAssociatedUserMessage(params: {
     }
     const explicitId = params.clientEventId ?? undefined;
     const fileIds = attachFileIds(params.attachFiles);
-    const fileMetadata = attachFileMetadata(params.userId, params.attachFiles);
-    const message: NewChatEvent = {
+    const fileMetadata = params.attachFileMetadata;
+    const event: NewChatEvent = {
       ...(explicitId ? { id: explicitId } : {}),
       chatThreadId: params.threadId,
       eventType: "input.prompt",
-      content: params.prompt,
       userMessage: params.userMessage,
       runId: params.runId,
       attachFiles: fileIds,
@@ -1713,8 +1754,19 @@ async function appendAssociatedUserMessage(params: {
       generationTemplate: params.generationTemplate,
     };
     const inserted = params.revokesEventId
-      ? await replaceChatEvent(tx, params.revokesEventId, message)
-      : await insertChatEvent(tx, message, "id");
+      ? await replaceChatEvent(tx, params.revokesEventId, event, {
+          preserveAssetRefs: false,
+        })
+      : await insertChatEvent(tx, event, "id");
+    if (inserted) {
+      await attachCanonicalWebInputAssetsToEvent(tx, {
+        eventId: inserted.id,
+        chatThreadId: params.threadId,
+        userId: params.userId,
+        orgId: params.orgId,
+        files: fileMetadata ?? [],
+      });
+    }
     if (inserted && params.touchThreadSort) {
       await touchChatThreadLastMessageAt(
         tx,
@@ -1734,31 +1786,33 @@ async function appendAssociatedUserMessage(params: {
   });
 }
 
-function appendRecallUserMessage(params: {
+function appendRecallChatEvent(params: {
   readonly db: Db;
   readonly threadId: string;
   readonly revokesEventId: string;
   readonly clientEventId: string | undefined;
-}): Promise<AppendMessageResult> {
+}): Promise<AppendEventResult> {
   return params.db.transaction(async (tx) => {
     await lockUserMessageQueueThread(tx, params.threadId);
     const pendingTarget = await loadPendingChatQueueEvent(tx, {
       chatThreadId: params.threadId,
       eventId: params.revokesEventId,
     });
-    const wasPending = pendingTarget?.eventType === "input.prompt";
+    const wasPending =
+      pendingTarget?.eventType === "input.prompt" ||
+      pendingTarget?.eventType === "input.automation";
 
     const [existingRevoker] = await tx
       .select({
-        eventType: chatMessages.eventType,
-        content: chatMessages.content,
-        createdAt: chatMessages.createdAt,
+        eventType: chatEvents.eventType,
+        content: chatEvents.content,
+        createdAt: chatEvents.createdAt,
       })
-      .from(chatMessages)
+      .from(chatEvents)
       .where(
         and(
-          eq(chatMessages.chatThreadId, params.threadId),
-          eq(chatMessages.revokesEventId, params.revokesEventId),
+          eq(chatEvents.chatThreadId, params.threadId),
+          eq(chatEvents.revokesEventId, params.revokesEventId),
         ),
       )
       .limit(1);
@@ -1777,15 +1831,19 @@ function appendRecallUserMessage(params: {
 
     const [target] = await tx
       .select({
-        error: chatMessages.error,
-        revokesEventId: chatMessages.revokesEventId,
+        error: chatEvents.error,
+        revokesEventId: chatEvents.revokesEventId,
       })
-      .from(chatMessages)
+      .from(chatEvents)
       .where(
         and(
-          eq(chatMessages.id, params.revokesEventId),
-          eq(chatMessages.chatThreadId, params.threadId),
-          chatEventTypeIn(["input.prompt", "input.rejected"]),
+          eq(chatEvents.id, params.revokesEventId),
+          eq(chatEvents.chatThreadId, params.threadId),
+          chatEventTypeIn([
+            "input.prompt",
+            "input.automation",
+            "input.rejected",
+          ]),
         ),
       )
       .limit(1);
@@ -1799,12 +1857,12 @@ function appendRecallUserMessage(params: {
         throw new Error("Queued message is not recallable");
       }
       const [exists] = await tx
-        .select({ id: chatMessages.id })
-        .from(chatMessages)
+        .select({ id: chatEvents.id })
+        .from(chatEvents)
         .where(
           and(
-            eq(chatMessages.id, params.revokesEventId),
-            eq(chatMessages.chatThreadId, params.threadId),
+            eq(chatEvents.id, params.revokesEventId),
+            eq(chatEvents.chatThreadId, params.threadId),
           ),
         )
         .limit(1);
@@ -1829,15 +1887,15 @@ function appendRecallUserMessage(params: {
       return { ok: true, createdAt: inserted.createdAt };
     }
     const [resolved] = await tx
-      .select({ createdAt: chatMessages.createdAt })
-      .from(chatMessages)
+      .select({ createdAt: chatEvents.createdAt })
+      .from(chatEvents)
       .where(
         and(
-          eq(chatMessages.chatThreadId, params.threadId),
-          eq(chatMessages.revokesEventId, params.revokesEventId),
+          eq(chatEvents.chatThreadId, params.threadId),
+          eq(chatEvents.revokesEventId, params.revokesEventId),
           chatEventTypeIn(["control.revoke"]),
-          isNull(chatMessages.content),
-          isNull(chatMessages.error),
+          isNull(chatEvents.content),
+          isNull(chatEvents.error),
         ),
       )
       .limit(1);
@@ -1861,14 +1919,14 @@ async function validateNormalRevocationTarget(params: {
   }
 
   const [target] = await params.db
-    .select({ id: chatMessages.id })
-    .from(chatMessages)
+    .select({ id: chatEvents.id })
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.id, params.revokesEventId),
-        eq(chatMessages.chatThreadId, params.threadId),
+        eq(chatEvents.id, params.revokesEventId),
+        eq(chatEvents.chatThreadId, params.threadId),
         chatEventTypeIn(["output.followups"]),
-        isNotNull(chatMessages.recommendedFollowups),
+        isNotNull(chatEvents.recommendedFollowups),
       ),
     )
     .limit(1);
@@ -1877,12 +1935,12 @@ async function validateNormalRevocationTarget(params: {
   }
 
   const [existingRevoker] = await params.db
-    .select({ id: chatMessages.id })
-    .from(chatMessages)
+    .select({ id: chatEvents.id })
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.chatThreadId, params.threadId),
-        eq(chatMessages.revokesEventId, params.revokesEventId),
+        eq(chatEvents.chatThreadId, params.threadId),
+        eq(chatEvents.revokesEventId, params.revokesEventId),
       ),
     )
     .limit(1);
@@ -1898,19 +1956,19 @@ function appendInterruptUserMessage(params: {
   readonly threadId: string;
   readonly interruptsRunId: string;
   readonly clientEventId: string | undefined;
-}): Promise<AppendMessageResult> {
+}): Promise<AppendEventResult> {
   return params.db.transaction(async (tx) => {
     const [existingInterrupter] = await tx
       .select({
-        eventType: chatMessages.eventType,
-        content: chatMessages.content,
-        createdAt: chatMessages.createdAt,
+        eventType: chatEvents.eventType,
+        content: chatEvents.content,
+        createdAt: chatEvents.createdAt,
       })
-      .from(chatMessages)
+      .from(chatEvents)
       .where(
         and(
-          eq(chatMessages.chatThreadId, params.threadId),
-          eq(chatMessages.interruptsRunId, params.interruptsRunId),
+          eq(chatEvents.chatThreadId, params.threadId),
+          eq(chatEvents.interruptsRunId, params.interruptsRunId),
         ),
       )
       .limit(1);
@@ -1963,14 +2021,14 @@ function appendInterruptUserMessage(params: {
       return { ok: true, createdAt: inserted.createdAt };
     }
     const [resolved] = await tx
-      .select({ createdAt: chatMessages.createdAt })
-      .from(chatMessages)
+      .select({ createdAt: chatEvents.createdAt })
+      .from(chatEvents)
       .where(
         and(
-          eq(chatMessages.chatThreadId, params.threadId),
-          eq(chatMessages.interruptsRunId, params.interruptsRunId),
+          eq(chatEvents.chatThreadId, params.threadId),
+          eq(chatEvents.interruptsRunId, params.interruptsRunId),
           chatEventTypeIn(["control.interrupt"]),
-          isNull(chatMessages.content),
+          isNull(chatEvents.content),
         ),
       )
       .limit(1);
@@ -1981,7 +2039,7 @@ function appendInterruptUserMessage(params: {
   });
 }
 
-async function publishChatMessageCreated(
+async function publishChatEventCreated(
   userId: string,
   threadId: string,
 ): Promise<void> {
@@ -2021,25 +2079,25 @@ const handleRecallSend$ = command(
       return ownership;
     }
 
-    const message = await appendRecallUserMessage({
+    const result = await appendRecallChatEvent({
       db,
       threadId: args.body.threadId,
       revokesEventId: args.body.revokesEventId,
       clientEventId: args.body.clientEventId,
     });
     signal.throwIfAborted();
-    if (!message.ok) {
-      return badRequestMessage(message.message);
+    if (!result.ok) {
+      return badRequestMessage(result.message);
     }
 
-    await publishChatMessageCreated(args.userId, args.body.threadId);
+    await publishChatEventCreated(args.userId, args.body.threadId);
     signal.throwIfAborted();
     return {
       status: 201 as const,
       body: {
         runId: null,
         threadId: args.body.threadId,
-        createdAt: message.createdAt.toISOString(),
+        createdAt: result.createdAt.toISOString(),
       },
     };
   },
@@ -2066,18 +2124,18 @@ const handleInterruptSend$ = command(
       return ownership;
     }
 
-    const message = await appendInterruptUserMessage({
+    const result = await appendInterruptUserMessage({
       db,
       threadId: args.body.threadId,
       interruptsRunId: args.body.interruptsRunId,
       clientEventId: args.body.clientEventId,
     });
     signal.throwIfAborted();
-    if (!message.ok) {
-      return badRequestMessage(message.message);
+    if (!result.ok) {
+      return badRequestMessage(result.message);
     }
 
-    await publishChatMessageCreated(args.userId, args.body.threadId);
+    await publishChatEventCreated(args.userId, args.body.threadId);
     signal.throwIfAborted();
 
     const cancelResult = await set(
@@ -2107,7 +2165,7 @@ const handleInterruptSend$ = command(
       body: {
         runId: null,
         threadId: args.body.threadId,
-        createdAt: message.createdAt.toISOString(),
+        createdAt: result.createdAt.toISOString(),
       },
     };
   },
@@ -2306,13 +2364,40 @@ function resolveTimedComputerAccess(
   );
 }
 
+async function resolveTimedPreflightClientEvent(
+  args: NormalSendArgs,
+  db: Db,
+): Promise<{
+  readonly prechecked: boolean;
+  readonly response: ClientSendResolution | undefined;
+}> {
+  const threadId = args.body.threadId ?? args.body.clientThreadId;
+  const prechecked = Boolean(threadId && args.body.clientEventId);
+  const response = threadId
+    ? await measureApiDispatchTiming(
+        args.timing,
+        "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
+        "nested",
+        () => {
+          return resolveClientEventSend({
+            db,
+            userId: args.userId,
+            threadId,
+            clientEventId: args.body.clientEventId,
+          });
+        },
+      )
+    : undefined;
+  return { prechecked, response };
+}
+
 const prepareNormalSend$ = command(
   async (
     { set },
     args: NormalSendArgs,
     signal: AbortSignal,
   ): Promise<
-    PreparedNormalSend | NormalSendFailure | CreatedChatMessageResponse
+    PreparedNormalSend | NormalSendFailure | CreatedChatEventResponse
   > => {
     const db = set(writeDb$);
     const agent = await loadTimedAuthorizedAgent(args, db, signal);
@@ -2320,28 +2405,13 @@ const prepareNormalSend$ = command(
       return agent;
     }
 
-    const preflightThreadId = args.body.threadId ?? args.body.clientThreadId;
-    const clientMessagePrechecked = Boolean(
-      preflightThreadId && args.body.clientEventId,
-    );
-    const preflightClientMessageResponse = preflightThreadId
-      ? await measureApiDispatchTiming(
-          args.timing,
-          "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
-          "nested",
-          () => {
-            return resolveClientMessageSend({
-              db,
-              userId: args.userId,
-              threadId: preflightThreadId,
-              clientEventId: args.body.clientEventId,
-            });
-          },
-        )
-      : undefined;
+    const {
+      prechecked: clientEventPrechecked,
+      response: preflightClientEventResponse,
+    } = await resolveTimedPreflightClientEvent(args, db);
     signal.throwIfAborted();
-    if (preflightClientMessageResponse?.status === 201) {
-      return preflightClientMessageResponse;
+    if (preflightClientEventResponse?.status === 201) {
+      return preflightClientEventResponse;
     }
 
     const featureSwitches = await resolveTimedNormalSendFeatureSwitches(
@@ -2419,6 +2489,15 @@ const prepareNormalSend$ = command(
     if ("status" in computerAccess) {
       return computerAccess;
     }
+    const attachFileMetadata = await set(
+      resolveAttachFileMetadata$,
+      {
+        userId: args.userId,
+        attachFiles: runtimeBody.attachFiles,
+        artifactKeyV2Enabled: featureSwitches.artifactKeyV2Enabled,
+      },
+      signal,
+    );
 
     return {
       db,
@@ -2430,14 +2509,15 @@ const prepareNormalSend$ = command(
       computerUseHostGrant: computerAccess.computerUseHostGrant,
       persistedExplicitSelection,
       initialThinkingEnabled: args.zeroPreCreateSource === undefined,
+      attachFileMetadata,
       runConfiguration,
-      clientMessagePrechecked,
-      preflightClientMessageConflict: preflightClientMessageResponse,
+      clientEventPrechecked,
+      preflightClientEventConflict: preflightClientEventResponse,
     };
   },
 );
 
-async function queueUnassociatedNormalMessage(params: {
+async function queueUnassociatedNormalEvent(params: {
   readonly prepared: PreparedNormalSend;
   readonly body: RuntimeNormalSendBody;
   readonly userId: string;
@@ -2445,10 +2525,10 @@ async function queueUnassociatedNormalMessage(params: {
   readonly orgId: string;
 }): Promise<{
   readonly response:
-    | CreatedChatMessageResponse
+    | CreatedChatEventResponse
     | ReturnType<typeof duplicateClientEventIdResponse>;
   /** Set when this call inserted a queue-first message. */
-  readonly queuedMessageId: string | undefined;
+  readonly queuedEventId: string | undefined;
 }> {
   const encryptedParams = params.body.realAgentInPreview
     ? await encryptQueuedUserMessageRunParams(
@@ -2461,20 +2541,23 @@ async function queueUnassociatedNormalMessage(params: {
         { orgId: params.orgId, userId: params.userId },
       )
     : undefined;
-  const message = await appendUnassociatedUserMessage({
+  const resolution = await appendUnassociatedUserMessage({
     db: params.prepared.db,
     threadId: params.prepared.thread.threadId,
     userId: params.userId,
+    orgId: params.orgId,
     prompt: params.body.prompt,
     attachFiles: params.body.attachFiles,
+    attachFileMetadata: params.prepared.attachFileMetadata,
     clientEventId: params.body.clientEventId,
     chatThreadSortEventId: params.body.chatThreadSortEventId,
     touchThreadSort: params.touchThreadSort,
     userMessage: params.body.userMessage,
     generationTemplate: params.body.generationTemplate,
     encryptedParams,
+    revokesEventId: params.body.revokesEventId,
   });
-  if (message.kind === "queued" && message.inserted) {
+  if (resolution.kind === "queued" && resolution.inserted) {
     waitUntil(
       tapError(publishThreadListChanged(params.userId), (error) => {
         L.warn("Failed to publish queue-first thread list changed signal", {
@@ -2486,20 +2569,20 @@ async function queueUnassociatedNormalMessage(params: {
     );
   }
   const response = clientEventIdResolutionResponse(
-    message,
+    resolution,
     params.prepared.thread.threadId,
   );
-  const queuedMessageId =
-    message.kind === "queued" && message.inserted
-      ? message.messageId
+  const queuedEventId =
+    resolution.kind === "queued" && resolution.inserted
+      ? resolution.messageId
       : undefined;
   if (!response) {
     return {
       response: duplicateClientEventIdResponse(),
-      queuedMessageId,
+      queuedEventId,
     };
   }
-  return { response, queuedMessageId };
+  return { response, queuedEventId };
 }
 
 function scheduleChatTitleGeneration(params: {
@@ -2509,23 +2592,18 @@ function scheduleChatTitleGeneration(params: {
   readonly userId: string;
   readonly orgId: string;
 }): void {
-  if (
-    params.body.hasTextContent === false ||
-    !isChatTitleGenerationConfigured()
-  ) {
+  if (params.body.hasTextContent === false) {
     return;
   }
 
-  waitUntil(
-    generateAndPersistChatThreadTitle({
-      db: params.db,
-      threadId: params.thread.threadId,
-      userId: params.userId,
-      orgId: params.orgId,
-      prompt: params.body.agentPrompt,
-      includePriorRounds: !params.thread.isNewThread,
-    }),
-  );
+  scheduleChatThreadTitleGeneration({
+    db: params.db,
+    threadId: params.thread.threadId,
+    userId: params.userId,
+    orgId: params.orgId,
+    prompt: params.body.agentPrompt,
+    includePriorRounds: !params.thread.isNewThread,
+  });
 }
 
 function scheduleAssociatedUserMessage(params: {
@@ -2533,10 +2611,12 @@ function scheduleAssociatedUserMessage(params: {
   readonly body: RuntimeNormalSendBody;
   readonly threadId: string;
   readonly userId: string;
+  readonly orgId: string;
   readonly runId: string;
   readonly appendQueueMarker: boolean;
   readonly appendInitialThinking: boolean;
   readonly touchThreadSort: boolean;
+  readonly attachFileMetadata: ChatEventAttachFileMetadata[] | null;
 }): void {
   waitUntil(
     (async () => {
@@ -2544,9 +2624,11 @@ function scheduleAssociatedUserMessage(params: {
         db: params.db,
         threadId: params.threadId,
         userId: params.userId,
+        orgId: params.orgId,
         prompt: params.body.prompt,
         runId: params.runId,
         attachFiles: params.body.attachFiles,
+        attachFileMetadata: params.attachFileMetadata,
         clientEventId: params.body.clientEventId,
         chatThreadSortEventId: params.body.chatThreadSortEventId,
         touchThreadSort: params.touchThreadSort,
@@ -2593,6 +2675,7 @@ function scheduleCreatedChatRunSideEffects(params: {
   readonly runId: string;
   readonly runStatus: string;
   readonly initialThinkingEnabled: boolean;
+  readonly attachFileMetadata: ChatEventAttachFileMetadata[] | null;
   readonly touchThreadSort: boolean;
   readonly queueFirstClaim:
     | {
@@ -2613,7 +2696,7 @@ function scheduleCreatedChatRunSideEffects(params: {
     params.body.hasTextContent !== false &&
     params.body.prompt.trim().length > 0;
   if (params.queueFirstClaim) {
-    scheduleClaimedQueueFirstMessageSideEffects({
+    scheduleClaimedQueueFirstEventSideEffects({
       db: params.db,
       body: params.body,
       threadId: params.thread.threadId,
@@ -2630,10 +2713,12 @@ function scheduleCreatedChatRunSideEffects(params: {
     body: params.body,
     threadId: params.thread.threadId,
     userId: params.userId,
+    orgId: params.orgId,
     runId: params.runId,
     appendQueueMarker: params.runStatus === "queued",
     appendInitialThinking,
     touchThreadSort: params.touchThreadSort,
+    attachFileMetadata: params.attachFileMetadata,
   });
 }
 
@@ -2642,7 +2727,7 @@ function scheduleCreatedChatRunSideEffects(params: {
  * transaction already appended the run-associated replacement, so only
  * publish the append and add the optional run markers here.
  */
-function scheduleClaimedQueueFirstMessageSideEffects(params: {
+function scheduleClaimedQueueFirstEventSideEffects(params: {
   readonly db: Db;
   readonly body: NormalSendBody;
   readonly threadId: string;
@@ -2663,7 +2748,7 @@ function scheduleClaimedQueueFirstMessageSideEffects(params: {
           });
         });
       }
-      await publishChatMessageCreated(params.userId, params.threadId);
+      await publishChatEventCreated(params.userId, params.threadId);
       await publishUserSignal(
         [params.userId],
         `chatThreadRunCreated:${params.threadId}`,
@@ -2705,12 +2790,12 @@ async function buildInsufficientCreditsAssistantMessage(params: {
   ].join("\n");
 }
 
-async function appendQueueFirstInsufficientCreditsMessages(params: {
+async function appendQueueFirstInsufficientCreditsEvents(params: {
   readonly prepared: PreparedNormalSend;
   readonly userId: string;
-  readonly messageId: string;
+  readonly eventId: string;
   readonly assistantContent: string;
-}): Promise<CreatedChatMessageResponse> {
+}): Promise<CreatedChatEventResponse> {
   // The queue-first send already persisted the pending input. Its rejected
   // replacement is the atomic claim that makes it non-runnable.
   const userCreatedAt = nowDate();
@@ -2718,30 +2803,33 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
     await lockUserMessageQueueThread(tx, params.prepared.thread.threadId);
     const pending = await loadPendingChatQueueEvent(tx, {
       chatThreadId: params.prepared.thread.threadId,
-      eventId: params.messageId,
+      eventId: params.eventId,
     });
     if (pending?.eventType !== "input.prompt") {
       throw new Error("Queue-first message is no longer available");
     }
     const [queuedMessage] = await tx
       .select({
-        content: chatMessages.content,
-        userMessage: chatMessages.userMessage,
-        attachFiles: chatMessages.attachFiles,
-        attachFileMetadata: chatMessages.attachFileMetadata,
-        generationTemplate: chatMessages.generationTemplate,
-        createdAt: chatMessages.createdAt,
+        userMessage: chatEvents.userMessage,
+        attachFiles: chatEvents.attachFiles,
+        attachFileMetadata: chatEventInputParams.attachFileMetadata,
+        generationTemplate: chatEvents.generationTemplate,
+        createdAt: chatEvents.createdAt,
       })
-      .from(chatMessages)
+      .from(chatEvents)
+      .leftJoin(
+        chatEventInputParams,
+        eq(chatEventInputParams.eventId, chatEvents.id),
+      )
       .where(
         and(
-          eq(chatMessages.id, params.messageId),
-          eq(chatMessages.chatThreadId, params.prepared.thread.threadId),
+          eq(chatEvents.id, params.eventId),
+          eq(chatEvents.chatThreadId, params.prepared.thread.threadId),
           chatEventTypeIn(["input.prompt"]),
-          isNull(chatMessages.runId),
+          isNull(chatEvents.runId),
         ),
       )
-      .for("update")
+      .for("update", { of: chatEvents })
       .limit(1);
     if (!queuedMessage) {
       throw new Error("Queue-first message is no longer available");
@@ -2754,10 +2842,9 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
     );
     const assistantCreatedAt = new Date(rejectedCreatedAt.getTime() + 1);
 
-    const replacement = await replaceChatEvent(tx, params.messageId, {
+    const replacement = await replaceChatEvent(tx, params.eventId, {
       chatThreadId: params.prepared.thread.threadId,
       eventType: "input.rejected",
-      content: queuedMessage.content,
       userMessage: queuedMessage.userMessage,
       runId: null,
       error: INSUFFICIENT_CREDITS_MARKER,
@@ -2786,10 +2873,7 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
     }
     return queuedMessage.createdAt;
   });
-  await publishChatMessageCreated(
-    params.userId,
-    params.prepared.thread.threadId,
-  );
+  await publishChatEventCreated(params.userId, params.prepared.thread.threadId);
   return {
     status: 201,
     body: {
@@ -2800,23 +2884,23 @@ async function appendQueueFirstInsufficientCreditsMessages(params: {
   };
 }
 
-async function appendInsufficientCreditsMessages(params: {
+async function appendInsufficientCreditsEvents(params: {
   readonly prepared: PreparedNormalSend;
   readonly body: RuntimeNormalSendBody;
   readonly userId: string;
   readonly orgId: string;
   readonly touchThreadSort: boolean;
-  readonly queueFirstMessageId?: string;
-}): Promise<CreatedChatMessageResponse> {
+  readonly queueFirstEventId?: string;
+}): Promise<CreatedChatEventResponse> {
   const assistantContent = await buildInsufficientCreditsAssistantMessage({
     db: params.prepared.db,
     orgId: params.orgId,
   });
-  if (params.queueFirstMessageId) {
-    return appendQueueFirstInsufficientCreditsMessages({
+  if (params.queueFirstEventId) {
+    return appendQueueFirstInsufficientCreditsEvents({
       prepared: params.prepared,
       userId: params.userId,
-      messageId: params.queueFirstMessageId,
+      eventId: params.queueFirstEventId,
       assistantContent,
     });
   }
@@ -2826,7 +2910,6 @@ async function appendInsufficientCreditsMessages(params: {
     await tx
       .update(chatThreads)
       .set({
-        draftContent: null,
         draftUserMessage: null,
         draftAttachments: null,
       })
@@ -2839,15 +2922,11 @@ async function appendInsufficientCreditsMessages(params: {
 
     const explicitId = params.body.clientEventId ?? undefined;
     const fileIds = attachFileIds(params.body.attachFiles);
-    const fileMetadata = attachFileMetadata(
-      params.userId,
-      params.body.attachFiles,
-    );
+    const fileMetadata = params.prepared.attachFileMetadata;
     const userValues: NewChatEvent = {
       ...(explicitId ? { id: explicitId } : {}),
       chatThreadId: params.prepared.thread.threadId,
       eventType: "input.rejected",
-      content: params.body.prompt,
       userMessage: params.body.userMessage,
       runId: null,
       error: INSUFFICIENT_CREDITS_MARKER,
@@ -2857,10 +2936,22 @@ async function appendInsufficientCreditsMessages(params: {
       attachFileMetadata: fileMetadata,
     };
     const userMessage = params.body.revokesEventId
-      ? await replaceChatEvent(tx, params.body.revokesEventId, userValues)
+      ? await replaceChatEvent(tx, params.body.revokesEventId, userValues, {
+          preserveAssetRefs: false,
+        })
       : await insertChatEvent(tx, userValues, "id");
 
     const createdAt = userMessage?.createdAt ?? userCreatedAt;
+    if (userMessage) {
+      await attachCanonicalWebInputAssetsToEvent(tx, {
+        eventId: userMessage.id,
+        chatThreadId: params.prepared.thread.threadId,
+        userId: params.userId,
+        orgId: params.orgId,
+        files: fileMetadata ?? [],
+        replaceExisting: params.body.revokesEventId !== undefined,
+      });
+    }
     if (userMessage && params.touchThreadSort) {
       await touchChatThreadLastMessageAt(
         tx,
@@ -2881,10 +2972,7 @@ async function appendInsufficientCreditsMessages(params: {
     return { createdAt, inserted: userMessage !== null };
   });
 
-  await publishChatMessageCreated(
-    params.userId,
-    params.prepared.thread.threadId,
-  );
+  await publishChatEventCreated(params.userId, params.prepared.thread.threadId);
   if (result.inserted) {
     await publishThreadListChanged(params.userId);
   }
@@ -3022,14 +3110,14 @@ async function buildTimedCreateZeroRunArgs(params: {
   );
 }
 
-async function resolveQueueFirstMessageAfterLostClaim(params: {
+async function resolveQueueFirstEventAfterLostClaim(params: {
   readonly db: Db;
   readonly threadId: string;
   readonly userId: string;
-  readonly messageId: string;
+  readonly eventId: string;
 }) {
   const resolution = await resolveClientEventId(params.db, {
-    clientEventId: params.messageId,
+    clientEventId: params.eventId,
     threadId: params.threadId,
     userId: params.userId,
   });
@@ -3044,7 +3132,7 @@ function createdNormalChatRunResponse(params: {
   readonly threadId: string;
   readonly status: string;
   readonly createdAt: string | undefined;
-}): CreatedChatMessageResponse {
+}): CreatedChatEventResponse {
   if (!params.createdAt) {
     throw new Error("Created chat run response is missing createdAt");
   }
@@ -3062,8 +3150,7 @@ function scheduleNormalChatRunSideEffects(params: {
   readonly prepared: PreparedNormalSend;
   readonly runId: string;
   readonly runStatus: string;
-  readonly queueFirstMessageId: string | undefined;
-  readonly queueFirstClaimedAt: Date | undefined;
+  readonly queueFirstClaimedAt: Date;
 }): void {
   scheduleCreatedChatRunSideEffects({
     db: params.prepared.db,
@@ -3074,16 +3161,14 @@ function scheduleNormalChatRunSideEffects(params: {
     runId: params.runId,
     runStatus: params.runStatus,
     initialThinkingEnabled: params.prepared.initialThinkingEnabled,
+    attachFileMetadata: params.prepared.attachFileMetadata,
     touchThreadSort: shouldTouchThreadSortFromNormalSend(
       params.args.zeroPreCreateSource,
       params.prepared.thread.isNewThread,
     ),
-    queueFirstClaim:
-      params.queueFirstMessageId && params.queueFirstClaimedAt
-        ? {
-            createdAt: params.queueFirstClaimedAt,
-          }
-        : undefined,
+    queueFirstClaim: {
+      createdAt: params.queueFirstClaimedAt,
+    },
   });
 }
 
@@ -3094,7 +3179,7 @@ const createNormalChatRun$ = command(
       readonly args: NormalSendArgs;
       readonly prepared: PreparedNormalSend;
       /** Queue-first sends replace this queued message at dispatch time. */
-      readonly queueFirstMessageId?: string;
+      readonly queueFirstEventId: string;
     },
     signal: AbortSignal,
   ) => {
@@ -3105,7 +3190,7 @@ const createNormalChatRun$ = command(
       if (providerAdmission.error.status !== 402) {
         return providerAdmission.error;
       }
-      return await appendInsufficientCreditsMessages({
+      return await appendInsufficientCreditsEvents({
         prepared,
         body: prepared.body,
         userId: args.userId,
@@ -3114,7 +3199,7 @@ const createNormalChatRun$ = command(
           args.zeroPreCreateSource,
           prepared.thread.isNewThread,
         ),
-        queueFirstMessageId: params.queueFirstMessageId,
+        queueFirstEventId: params.queueFirstEventId,
       });
     }
 
@@ -3124,7 +3209,7 @@ const createNormalChatRun$ = command(
     });
     signal.throwIfAborted();
 
-    const queueFirstMessageId = params.queueFirstMessageId;
+    const queueFirstEventId = params.queueFirstEventId;
 
     if (args.timing) {
       args.timing.recordElapsed(
@@ -3133,30 +3218,25 @@ const createNormalChatRun$ = command(
         createNormalRunStartedAt,
       );
     }
-    const runResult = queueFirstMessageId
-      ? await set(
-          createQueueFirstZeroRun$,
-          {
-            ...createRunArgs,
-            queueFirstAssociation: {
-              kind: "user_message",
-              threadId: prepared.thread.threadId,
-              messageId: queueFirstMessageId,
-            },
-          },
-          signal,
-        )
-      : await set(createZeroRun$, createRunArgs, signal);
+    const runResult = await set(
+      createQueueFirstZeroRun$,
+      {
+        ...createRunArgs,
+        queueFirstAssociation: {
+          kind: "user_message",
+          threadId: prepared.thread.threadId,
+          eventId: queueFirstEventId,
+        },
+      },
+      signal,
+    );
     signal.throwIfAborted();
     if (isQueueFirstRunClaimLost(runResult)) {
-      if (!queueFirstMessageId) {
-        throw new Error("Non-queue chat run lost a queue-first claim");
-      }
-      return await resolveQueueFirstMessageAfterLostClaim({
+      return await resolveQueueFirstEventAfterLostClaim({
         db: prepared.db,
         threadId: prepared.thread.threadId,
         userId: args.userId,
-        messageId: queueFirstMessageId,
+        eventId: queueFirstEventId,
       });
     }
     if (runResult.status !== 201) {
@@ -3168,17 +3248,13 @@ const createNormalChatRun$ = command(
       status: runResult.body.status,
       createdAt: runResult.body.createdAt,
     });
-    const queueFirstClaimedAt = runResult.queueFirstClaim?.createdAt;
-    if (queueFirstMessageId && !queueFirstClaimedAt) {
-      throw new Error("Queue-first chat run is missing claim metadata");
-    }
+    const queueFirstClaimedAt = runResult.queueFirstClaim.createdAt;
 
     scheduleNormalChatRunSideEffects({
       args,
       prepared,
       runId: runResult.body.runId,
       runStatus: runResult.body.status,
-      queueFirstMessageId,
       queueFirstClaimedAt,
     });
 
@@ -3196,7 +3272,7 @@ const createNormalChatRun$ = command(
   },
 );
 
-export const sendNormalMessage$ = command(
+export const sendNormalEvent$ = command(
   async ({ set }, args: NormalSendArgs, signal: AbortSignal) => {
     const prepared = await measureApiDispatchTiming(
       args.timing,
@@ -3211,9 +3287,9 @@ export const sendNormalMessage$ = command(
       return prepared;
     }
 
-    const clientMessageResolution =
-      prepared.preflightClientMessageConflict ??
-      (!prepared.clientMessagePrechecked ||
+    const clientEventResolution =
+      prepared.preflightClientEventConflict ??
+      (!prepared.clientEventPrechecked ||
       args.body.revokesEventId !== undefined ||
       prepared.thread.isClientThreadRetry
         ? await measureApiDispatchTiming(
@@ -3221,7 +3297,7 @@ export const sendNormalMessage$ = command(
             "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
             "nested",
             async () => {
-              return await resolveClientMessageSend({
+              return await resolveClientEventSend({
                 db: prepared.db,
                 userId: args.userId,
                 threadId: prepared.thread.threadId,
@@ -3231,8 +3307,8 @@ export const sendNormalMessage$ = command(
           )
         : undefined);
     signal.throwIfAborted();
-    if (clientMessageResolution) {
-      return clientMessageResolution;
+    if (clientEventResolution) {
+      return clientEventResolution;
     }
 
     const revocationError = await measureApiDispatchTiming(
@@ -3264,34 +3340,26 @@ export const sendNormalMessage$ = command(
       return badRequestMessage("Client thread id is already in use");
     }
 
-    // Normal user messages always enter the shared thread queue first. An
-    // inline drain appends its run-associated replacement when the thread is
-    // idle and the message is the queue head.
-    if (!args.body.revokesEventId) {
-      return await set(
-        sendQueueFirstNormalMessage$,
-        { args, prepared },
-        signal,
+    if (args.body.revokesEventId) {
+      const hasActiveRun = await measureApiDispatchTiming(
+        args.timing,
+        "api_dispatch_pre_create_zero_web_chat_check_active_run",
+        "nested",
+        async () => {
+          return await chatThreadAdmissionBlocked(prepared.db, {
+            threadId: prepared.thread.threadId,
+          });
+        },
       );
+      signal.throwIfAborted();
+      if (hasActiveRun) {
+        return badRequestMessage("Recommended follow-up cannot be queued");
+      }
     }
 
-    const hasActiveRun = await measureApiDispatchTiming(
-      args.timing,
-      "api_dispatch_pre_create_zero_web_chat_check_active_run",
-      "nested",
-      async () => {
-        return await chatThreadAdmissionBlocked(prepared.db, {
-          threadId: prepared.thread.threadId,
-        });
-      },
-    );
-    signal.throwIfAborted();
-    if (hasActiveRun) {
-      return badRequestMessage("Recommended follow-up cannot be queued");
-    }
-    signal.throwIfAborted();
-
-    return await set(createNormalChatRun$, { args, prepared }, signal);
+    // Every web chat send persists its input before the inline drain attempts
+    // an atomic queue claim, including recommended follow-up replacements.
+    return await set(sendQueueFirstNormalEvent$, { args, prepared }, signal);
   },
 );
 
@@ -3301,7 +3369,7 @@ export const sendNormalMessage$ = command(
  * and this message is the oldest unclaimed one. Response shapes match the
  * legacy path: `runId` when dispatched, `{runId: null}` when left queued.
  */
-const sendQueueFirstNormalMessage$ = command(
+const sendQueueFirstNormalEvent$ = command(
   async (
     { set },
     params: {
@@ -3312,12 +3380,12 @@ const sendQueueFirstNormalMessage$ = command(
   ) => {
     const { args, prepared } = params;
     const threadId = prepared.thread.threadId;
-    const { response, queuedMessageId } = await measureApiDispatchTiming(
+    const { response, queuedEventId } = await measureApiDispatchTiming(
       args.timing,
       "api_dispatch_pre_create_zero_web_chat_queue_first_enqueue",
       "nested",
       async () => {
-        return await queueUnassociatedNormalMessage({
+        return await queueUnassociatedNormalEvent({
           prepared,
           body: prepared.body,
           userId: args.userId,
@@ -3330,7 +3398,7 @@ const sendQueueFirstNormalMessage$ = command(
       },
     );
     signal.throwIfAborted();
-    if (!queuedMessageId) {
+    if (!queuedEventId) {
       // Duplicate clientEventId or an already-existing resolution — the
       // enqueue inserted nothing, so there is nothing to dispatch.
       return response;
@@ -3344,16 +3412,16 @@ const sendQueueFirstNormalMessage$ = command(
         if (await chatThreadAdmissionBlocked(prepared.db, { threadId })) {
           return "wait";
         }
-        const headMessageId = await loadNextUnclaimedQueuedUserMessageId(
+        const headEventId = await loadNextUnclaimedQueuedUserMessageId(
           prepared.db,
           threadId,
         );
-        return headMessageId === queuedMessageId ? "self" : "drain";
+        return headEventId === queuedEventId ? "self" : "drain";
       },
     );
     signal.throwIfAborted();
     if (dispatch === "wait") {
-      await publishChatMessageCreated(args.userId, threadId);
+      await publishChatEventCreated(args.userId, threadId);
       signal.throwIfAborted();
       return response;
     }
@@ -3361,7 +3429,7 @@ const sendQueueFirstNormalMessage$ = command(
       // The thread is idle but an older unclaimed message holds the queue
       // head (e.g. left behind by a cancelled run). Dispatch the head so the
       // thread keeps draining; this message stays queued behind it (#21392).
-      await publishChatMessageCreated(args.userId, threadId);
+      await publishChatEventCreated(args.userId, threadId);
       signal.throwIfAborted();
       await set(
         drainChatThreadQueueForThread$,
@@ -3377,7 +3445,7 @@ const sendQueueFirstNormalMessage$ = command(
 
     const result = await set(
       createNormalChatRun$,
-      { args, prepared, queueFirstMessageId: queuedMessageId },
+      { args, prepared, queueFirstEventId: queuedEventId },
       signal,
     );
     signal.throwIfAborted();
@@ -3389,7 +3457,7 @@ const sendQueueFirstNormalMessage$ = command(
     // failure.
     await discardUnclaimedUserMessage(prepared.db, {
       threadId,
-      messageId: queuedMessageId,
+      eventId: queuedEventId,
     });
     signal.throwIfAborted();
     return result;
@@ -3424,7 +3492,7 @@ const handleSendChatEvent$ = command(
     const apiStartTime = now();
     const timing = new ApiDispatchTimingCollector();
     return await set(
-      sendNormalMessage$,
+      sendNormalEvent$,
       {
         body: normalizedBody.data,
         auth,
@@ -3456,7 +3524,7 @@ export const zeroChatEventsRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "agent-run:write",
+        requiredCapability: "chat-event:write",
       },
       sendChatEventInner$,
     ),

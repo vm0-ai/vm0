@@ -1,6 +1,9 @@
 import type StripeSDK from "stripe";
+import type { LookupFunction } from "node:net";
 import { computed } from "ccstate";
+import { ws } from "msw";
 import { vi, type Mock } from "vitest";
+import { z } from "zod";
 
 import { mockStripeClient } from "../signals/external/stripe-client";
 
@@ -10,21 +13,24 @@ type SignalTimerDelayOptions = { readonly signal?: AbortSignal };
 type SignalTimerDelayMock = Mock<
   (ms: number, options?: SignalTimerDelayOptions) => Promise<void>
 >;
+type AbortSignalTimeoutMock = Mock<
+  (milliseconds: number) => AbortSignal | undefined
+>;
 type SyncMock = Mock<(...args: unknown[]) => void>;
 type UnknownMock = Mock<(...args: unknown[]) => unknown>;
-type LookupCallback = (
-  error: Error | null,
-  address: string,
-  family: number,
-) => void;
-
+interface BrowserUseCdpCommand {
+  readonly id: number;
+  readonly method: string;
+  readonly params: Record<string, unknown>;
+}
+type BrowserUseCdpCommandMock = Mock<
+  (command: BrowserUseCdpCommand) => unknown
+>;
 interface RequestOptionsLike {
+  readonly family?: number;
   readonly headers?: HeadersInit;
-  readonly lookup?: (
-    hostname: string,
-    options: unknown,
-    callback: LookupCallback,
-  ) => void;
+  readonly method?: string;
+  readonly lookup?: LookupFunction;
 }
 
 type PinnedRequestCallback = (
@@ -36,6 +42,9 @@ type PinnedRequestCallback = (
 ) => void;
 
 export interface ApiTestMocks {
+  readonly abortSignal: {
+    readonly timeout: AbortSignalTimeoutMock;
+  };
   readonly axiom: {
     readonly flush: AsyncMock;
     readonly ingest: BooleanMock;
@@ -81,6 +90,10 @@ export interface ApiTestMocks {
     readonly m2m: {
       readonly createToken: AsyncMock;
     };
+  };
+  readonly browserUseCdp: {
+    readonly connect: Mock<(url: string) => void>;
+    readonly command: BrowserUseCdpCommandMock;
   };
   readonly s3: {
     readonly send: AsyncMock;
@@ -378,6 +391,9 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
   };
 
   return {
+    abortSignal: {
+      timeout: vi.fn<(milliseconds: number) => AbortSignal | undefined>(),
+    },
     ably: {
       publish: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       createTokenRequest: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -385,6 +401,10 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     },
     axiom,
     axiomLogging,
+    browserUseCdp: {
+      connect: vi.fn<(url: string) => void>(),
+      command: vi.fn<(command: BrowserUseCdpCommand) => unknown>(),
+    },
     clerk,
     s3: {
       send: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -430,6 +450,47 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     },
   };
 });
+
+const originalAbortSignalTimeout = AbortSignal.timeout.bind(AbortSignal);
+vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
+  return (
+    apiTestMocks.abortSignal.timeout(milliseconds) ??
+    originalAbortSignalTimeout(milliseconds)
+  );
+});
+
+const browserUseCdpCommandSchema = z.object({
+  id: z.number().int(),
+  method: z.string(),
+  params: z.record(z.string(), z.unknown()),
+});
+
+function defaultBrowserUseCdpResult(command: BrowserUseCdpCommand): unknown {
+  if (command.method === "Target.getTargets") {
+    return { targetInfos: [{ targetId: "page-target", type: "page" }] };
+  }
+  if (command.method === "Browser.getWindowForTarget") {
+    return { windowId: 7 };
+  }
+  return {};
+}
+
+export function browserUseCdpHandler(url: string) {
+  const cdp = ws.link(url);
+  return cdp.addEventListener("connection", ({ client }) => {
+    apiTestMocks.browserUseCdp.connect(url);
+    client.addEventListener("message", (event) => {
+      if (typeof event.data !== "string") {
+        throw new Error("Expected a text CDP command");
+      }
+      const command = browserUseCdpCommandSchema.parse(JSON.parse(event.data));
+      const result =
+        apiTestMocks.browserUseCdp.command(command) ??
+        defaultBrowserUseCdpResult(command);
+      client.send(JSON.stringify({ id: command.id, result }));
+    });
+  });
+}
 
 vi.mock("@aws-sdk/client-s3", () => {
   class AbortMultipartUploadCommand {
@@ -601,19 +662,53 @@ async function mockPinnedRequestModule<TModule extends object>(
     }
     const [url, options, callback] = args;
     const req = new EventEmitter() as InstanceType<typeof EventEmitter> & {
-      end: () => void;
+      end: (body?: string) => void;
     };
-    req.end = () => {
+    req.end = (requestBody?: string) => {
       queueMicrotask(() => {
         void (async () => {
-          options.lookup?.(url.hostname, {}, (error, address) => {
-            if (error) {
-              throw error;
-            }
-            apiTestMocks.nodeRequest.pinnedAddresses.push(address);
-          });
+          if (options.family === 4 || options.family === 6) {
+            options.lookup?.(
+              url.hostname,
+              { family: options.family },
+              (error, address) => {
+                if (error) {
+                  throw error;
+                }
+                if (typeof address !== "string") {
+                  throw new TypeError("Expected a single pinned IP address");
+                }
+                apiTestMocks.nodeRequest.pinnedAddresses.push(address);
+              },
+            );
+          } else {
+            options.lookup?.(
+              url.hostname,
+              { all: true },
+              (error, addresses) => {
+                if (error) {
+                  throw error;
+                }
+                if (!Array.isArray(addresses)) {
+                  throw new TypeError(
+                    "Expected an array of pinned IP addresses",
+                  );
+                }
+                for (const address of addresses) {
+                  apiTestMocks.nodeRequest.pinnedAddresses.push(
+                    address.address,
+                  );
+                }
+              },
+            );
+          }
           const fetched = await fetch(url, {
+            method: options.method,
             headers: options.headers,
+            body:
+              options.method === "GET" || options.method === "HEAD"
+                ? undefined
+                : requestBody,
             redirect: "manual",
           });
           const headers: Record<string, string> = {};
@@ -876,8 +971,12 @@ vi.mock("../signals/external/telegram-client", async () => {
   };
 });
 
-vi.mock("../signals/external/axiom", () => {
+vi.mock("../signals/external/axiom", async () => {
+  const actual = await vi.importActual<
+    typeof import("../signals/external/axiom")
+  >("../signals/external/axiom");
   return {
+    ...actual,
     // Wrap the underlying vi.fn() in a ccstate `computed` so `get(queryAxiom(apl))`
     // resolves correctly. Tests configure responses via
     // `context.mocks.axiom.query.mockResolvedValue(...)`. The optional
@@ -941,6 +1040,7 @@ export function getApiTestMocks(): ApiTestMocks {
 }
 
 export function resetApiTestMocks(): void {
+  apiTestMocks.abortSignal.timeout.mockReset();
   apiTestMocks.ably.publish.mockReset();
   apiTestMocks.ably.publish.mockResolvedValue(undefined);
   apiTestMocks.ably.createTokenRequest.mockReset();
@@ -958,6 +1058,8 @@ export function resetApiTestMocks(): void {
   apiTestMocks.axiomLogging.warn.mockReset();
   apiTestMocks.axiomLogging.error.mockReset();
   apiTestMocks.axiomLogging.flush.mockReset();
+  apiTestMocks.browserUseCdp.connect.mockReset();
+  apiTestMocks.browserUseCdp.command.mockReset();
   apiTestMocks.clerk.authenticateRequest.mockReset();
   apiTestMocks.clerk.verifyWebhook.mockReset();
   apiTestMocks.clerk.organizations.createOrganizationInvitation.mockReset();

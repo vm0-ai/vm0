@@ -85,6 +85,24 @@ class TestRegistryBuiltinCatalogValidation:
         assert snapshot.catalog.firewalls["fallback"]["name"] == "fallback"
         assert snapshot.unavailable_reason is None
 
+    def test_runner_catalog_cache_fstat_failure_closes_opened_descriptor(self):
+        cache_path = Path("builtin-firewall-catalog-cache.json")
+        opened_fd = 42
+        error = OSError("fstat failed")
+
+        with (
+            patch.object(builtin_firewall_cache.os, "open", return_value=opened_fd),
+            patch.object(builtin_firewall_cache.os, "fstat", side_effect=error),
+            patch.object(builtin_firewall_cache.os, "close") as close,
+        ):
+            snapshot = builtin_firewall_cache.load_catalog_snapshot(str(cache_path))
+
+        assert snapshot.dependency_file_key is None
+        assert snapshot.catalog is None
+        assert snapshot.cache_path == str(cache_path.absolute())
+        assert snapshot.unavailable_reason == "cache_unavailable"
+        close.assert_called_once_with(opened_fd)
+
     def test_runner_catalog_cache_rejects_initial_oversize_before_parsing(self, tmp_path, mitm_ctx):
         cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
         write_catalog_cache(

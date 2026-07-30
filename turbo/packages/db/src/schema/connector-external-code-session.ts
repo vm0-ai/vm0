@@ -23,8 +23,7 @@ export const connectorExternalCodeSessions = pgTable(
     userId: text("user_id").notNull(),
     agentId: uuid("agent_id"),
     authorizeAgent: boolean("authorize_agent").default(false).notNull(),
-    // TODO(#23619): Rename the property and column in the persistence phase.
-    connectorType: varchar("connector_type", { length: 64 }).notNull(),
+    connectorSlug: varchar("connector_slug", { length: 64 }).notNull(),
     authMethod: varchar("auth_method", { length: 50 }).notNull(),
     status: connectorExternalCodeSessionStatusEnum("status")
       .default("pending")
@@ -44,10 +43,10 @@ export const connectorExternalCodeSessions = pgTable(
       uniqueIndex("idx_connector_external_code_sessions_token").on(
         table.sessionTokenHash,
       ),
-      index("idx_connector_external_code_sessions_owner_status").on(
+      index("idx_connector_external_code_sessions_owner_slug_status").on(
         table.orgId,
         table.userId,
-        table.connectorType,
+        table.connectorSlug,
         table.authMethod,
         table.status,
       ),

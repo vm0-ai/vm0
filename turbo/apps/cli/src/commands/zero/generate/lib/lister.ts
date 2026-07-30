@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { ZeroConnectorCatalogStatus } from "../../../../lib/api/domains/zero-connectors";
 import {
   getZeroBillingStatus,
   getZeroAgentUserConnectors,
@@ -319,19 +319,19 @@ function getGenerationContext(
 
 function getGenerationConnectors(
   generationType: ConnectorGenerationType,
-  connectors: readonly PublicConnectorCatalogStatusItem[],
-): PublicConnectorCatalogStatusItem[] {
+  connectors: readonly ZeroConnectorCatalogStatus[],
+): ZeroConnectorCatalogStatus[] {
   return connectors
     .filter((connector) => {
       return connector.generation.includes(generationType);
     })
     .sort((a, b) => {
-      return a.connectorRef.localeCompare(b.connectorRef);
+      return a.slug.localeCompare(b.slug);
     });
 }
 
 function formatAccount(
-  connector: PublicConnectorCatalogStatusItem,
+  connector: ZeroConnectorCatalogStatus,
 ): string | undefined {
   if (connector.connection?.externalUsername) {
     return `@${connector.connection.externalUsername}`;
@@ -381,14 +381,14 @@ function getAction(
 }
 
 function toCandidate(params: {
-  connector: PublicConnectorCatalogStatusItem;
+  connector: ZeroConnectorCatalogStatus;
   authorizedConnectorSlugs: Set<string> | null;
   agentId: string | undefined;
   platformOrigin: string;
 }): GenerationCandidate {
   const { connector, authorizedConnectorSlugs, agentId, platformOrigin } =
     params;
-  const connectorSlug = connector.connectorRef;
+  const connectorSlug = connector.slug;
 
   let status: CandidateStatus;
   let reason: string;

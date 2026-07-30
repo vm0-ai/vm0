@@ -4,6 +4,7 @@ import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { isBrazilianPortugueseLocaleRolloutEnabled } from "../../lib/brazilian-portuguese-locale-rollout";
+import { isJapaneseLocaleRolloutEnabled } from "../../lib/japanese-locale-rollout";
 import { isZeroMailReplyFollowUpRolloutEnabled } from "../../lib/zero-mail-reply-follow-up-rollout";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -25,6 +26,7 @@ function featureSwitchResponseBody(params: {
   readonly userId: string;
   readonly switches: Record<string, boolean>;
   readonly supportsStructuredInlineTemplates: boolean;
+  readonly supportsCustomConnectorOAuth2: boolean;
 }) {
   const effectiveSwitches = getAllFeatureStates({
     orgId: params.orgId,
@@ -35,11 +37,14 @@ function featureSwitchResponseBody(params: {
     isZeroMailReplyFollowUpRolloutEnabled();
   effectiveSwitches[FeatureSwitchKey.BrazilianPortugueseLocale] =
     isBrazilianPortugueseLocaleRolloutEnabled();
+  effectiveSwitches[FeatureSwitchKey.JapaneseLocale] =
+    isJapaneseLocaleRolloutEnabled();
 
   return {
     switches: params.switches,
     effectiveSwitches,
     supportsStructuredInlineTemplates: params.supportsStructuredInlineTemplates,
+    supportsCustomConnectorOAuth2: params.supportsCustomConnectorOAuth2,
   };
 }
 
@@ -55,6 +60,7 @@ const getFeatureSwitchesInner$ = computed(async (get): Promise<unknown> => {
       userId: auth.userId,
       switches,
       supportsStructuredInlineTemplates: true,
+      supportsCustomConnectorOAuth2: true,
     }),
   };
 });
@@ -89,6 +95,7 @@ const updateFeatureSwitchesInner$ = command(
         userId: auth.userId,
         switches,
         supportsStructuredInlineTemplates: true,
+        supportsCustomConnectorOAuth2: true,
       }),
     };
   },

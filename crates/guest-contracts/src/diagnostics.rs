@@ -5,6 +5,9 @@ use serde::{Deserialize, Serialize};
 /// Current JSON schema version for failure diagnostics.
 pub const FAILURE_DIAGNOSTIC_SCHEMA_VERSION: u8 = 1;
 
+/// Process exit code used for the runner-owned agent execution timeout.
+pub const AGENT_EXECUTION_TIMEOUT_EXIT_CODE: i32 = 124;
+
 // These are stable Unix signal numbers in the serialized diagnostic contract.
 const UNIX_SIGHUP_SIGNAL_NUMBER: i32 = 1;
 const UNIX_SIGINT_SIGNAL_NUMBER: i32 = 2;
@@ -44,6 +47,9 @@ pub struct FailureDiagnostic {
     pub prompt_bytes: u64,
     /// First prompt line length in bytes after stripping a trailing carriage return.
     pub first_line_bytes: u64,
+    /// Bounded event-delivery failure details, when delivery was terminally incomplete.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub event_delivery: Option<EventDeliveryDiagnostic>,
 }
 
 impl FailureDiagnostic {
@@ -68,6 +74,7 @@ impl FailureDiagnostic {
             prompt_shape: prompt.prompt_shape,
             prompt_bytes: prompt.prompt_bytes,
             first_line_bytes: prompt.first_line_bytes,
+            event_delivery: None,
         }
     }
 
@@ -124,6 +131,167 @@ impl FailureDiagnostic {
     ) -> Self {
         self.session_history_status = session_history_status;
         self
+    }
+
+    /// Attach bounded event-delivery failure details.
+    #[must_use]
+    pub fn with_event_delivery(mut self, event_delivery: EventDeliveryDiagnostic) -> Self {
+        self.event_delivery = Some(event_delivery);
+        self
+    }
+}
+
+/// Bounded structured details for terminal guest event-delivery failure.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventDeliveryDiagnostic {
+    /// Logical events included in delivery batches.
+    pub total_events: u64,
+    /// Logical delivery batches started.
+    pub total_batches: u64,
+    /// Logical batches whose HTTP retry budget was exhausted.
+    pub failed_batches: u64,
+    /// Highest contiguous event sequence acknowledged by the API.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_acknowledged_sequence: Option<u32>,
+    /// First logical batch whose retry budget was exhausted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_failed_batch: Option<EventDeliveryFailedBatchDiagnostic>,
+    /// Final delivery state captured at the global drain deadline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drain_timeout: Option<EventDeliveryDrainTimeoutDiagnostic>,
+}
+
+/// First logical event batch whose HTTP retry budget was exhausted.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventDeliveryFailedBatchDiagnostic {
+    /// First event sequence in the batch.
+    pub first_sequence: u32,
+    /// Last event sequence in the batch.
+    pub last_sequence: u32,
+    /// Number of events in the batch.
+    pub event_count: u32,
+    /// Conservative batch byte accounting used by guest admission control.
+    pub conservative_bytes: u64,
+    /// Whether the API explicitly rejected every terminal attempt.
+    pub outcome: EventDeliveryAcceptanceOutcome,
+    /// Completed failed attempts, bounded by the delivery retry budget.
+    pub attempts: Vec<EventDeliveryCompletedAttemptDiagnostic>,
+}
+
+/// One completed failed HTTP attempt for an exhausted event batch.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventDeliveryCompletedAttemptDiagnostic {
+    /// One-based attempt number.
+    pub attempt: u32,
+    /// Exact `x-client-request-id` value sent on the request.
+    pub client_request_id: String,
+    /// Monotonic elapsed request time in milliseconds.
+    pub elapsed_ms: u64,
+    /// Stable content-safe failure classification.
+    pub failure_kind: EventDeliveryAttemptFailureKind,
+    /// HTTP response status, when a response was received.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub http_status: Option<u16>,
+}
+
+/// Delivery state captured when the global drain deadline expires.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventDeliveryDrainTimeoutDiagnostic {
+    /// Events still waiting in the bounded channel.
+    pub queued_events: u32,
+    /// Conservative bytes still waiting in the bounded channel.
+    pub queued_bytes: u64,
+    /// Events held outside the channel for the next batch.
+    pub carried_events: u32,
+    /// Conservative bytes held outside the channel for the next batch.
+    pub carried_bytes: u64,
+    /// Logical batch active at the deadline, when one was active.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_batch: Option<EventDeliveryActiveBatchDiagnostic>,
+}
+
+/// Logical event batch active at the global drain deadline.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventDeliveryActiveBatchDiagnostic {
+    /// First event sequence in the batch.
+    pub first_sequence: u32,
+    /// Last event sequence in the batch.
+    pub last_sequence: u32,
+    /// Number of events in the batch.
+    pub event_count: u32,
+    /// Conservative batch byte accounting used by guest admission control.
+    pub conservative_bytes: u64,
+    /// Completed failed attempts before the drain deadline.
+    pub completed_attempts: Vec<EventDeliveryCompletedAttemptDiagnostic>,
+    /// Request attempt still in flight at the deadline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_attempt: Option<EventDeliveryActiveAttemptDiagnostic>,
+    /// Acceptance remains unknown because delivery did not reach a terminal response.
+    pub outcome: EventDeliveryAcceptanceOutcome,
+}
+
+/// Request attempt active when the global drain deadline expires.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EventDeliveryActiveAttemptDiagnostic {
+    /// One-based attempt number.
+    pub attempt: u32,
+    /// Exact `x-client-request-id` value sent on the request.
+    pub client_request_id: String,
+    /// Monotonic elapsed request time in milliseconds at the deadline.
+    pub elapsed_ms: u64,
+}
+
+/// Observed API acceptance outcome for terminal event delivery.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EventDeliveryAcceptanceOutcome {
+    /// Every failed attempt received an explicit non-success HTTP response.
+    ConfirmedRejection,
+    /// At least one request received no response, so acceptance is unknown.
+    OutcomeUnknown,
+}
+
+impl EventDeliveryAcceptanceOutcome {
+    /// Return the stable snake_case string representation.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::ConfirmedRejection => "confirmed_rejection",
+            Self::OutcomeUnknown => "outcome_unknown",
+        }
+    }
+}
+
+/// Content-safe failure classification for a completed event HTTP attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EventDeliveryAttemptFailureKind {
+    /// The request exceeded its transport timeout.
+    Timeout,
+    /// A connection could not be established.
+    Connect,
+    /// The API returned a non-success HTTP response.
+    HttpStatus,
+    /// Another transport failure occurred without an HTTP response.
+    Transport,
+}
+
+impl EventDeliveryAttemptFailureKind {
+    /// Return the stable snake_case string representation.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Timeout => "timeout",
+            Self::Connect => "connect",
+            Self::HttpStatus => "http_status",
+            Self::Transport => "transport",
+        }
     }
 }
 
@@ -323,6 +491,10 @@ impl CliTerminationInitiator {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CliTerminationReason {
+    /// The runner-owned agent execution budget elapsed.
+    ExecutionTimeout,
+    /// The user explicitly cancelled the active run.
+    UserCancellation,
     /// The guest agent reaped the process after receiving a final result.
     PostResultReap,
     /// The stuck-tool watchdog terminated the process.
@@ -346,6 +518,8 @@ impl CliTerminationReason {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
+            Self::ExecutionTimeout => "execution_timeout",
+            Self::UserCancellation => "user_cancellation",
             Self::PostResultReap => "post_result_reap",
             Self::StuckToolWatchdog => "stuck_tool_watchdog",
             Self::CodexResumeStartupTimeout => "codex_resume_startup_timeout",
@@ -709,6 +883,37 @@ mod tests {
         );
         assert_eq!(
             serde_json::from_value::<CliTerminationReason>(serde_json::json!("stdout_ingestion"))
+                .unwrap(),
+            reason
+        );
+    }
+
+    #[test]
+    fn execution_timeout_reason_has_stable_serialization_and_exit_code() {
+        let reason = CliTerminationReason::ExecutionTimeout;
+        assert_eq!(AGENT_EXECUTION_TIMEOUT_EXIT_CODE, 124);
+        assert_eq!(reason.as_str(), "execution_timeout");
+        assert_eq!(
+            serde_json::to_value(reason).unwrap(),
+            serde_json::json!("execution_timeout")
+        );
+        assert_eq!(
+            serde_json::from_value::<CliTerminationReason>(serde_json::json!("execution_timeout"))
+                .unwrap(),
+            reason
+        );
+    }
+
+    #[test]
+    fn user_cancellation_reason_has_stable_serialization() {
+        let reason = CliTerminationReason::UserCancellation;
+        assert_eq!(reason.as_str(), "user_cancellation");
+        assert_eq!(
+            serde_json::to_value(reason).unwrap(),
+            serde_json::json!("user_cancellation")
+        );
+        assert_eq!(
+            serde_json::from_value::<CliTerminationReason>(serde_json::json!("user_cancellation"))
                 .unwrap(),
             reason
         );
@@ -1115,6 +1320,94 @@ mod tests {
     }
 
     #[test]
+    fn failure_diagnostic_round_trips_bounded_event_delivery_details() {
+        let first_attempt = EventDeliveryCompletedAttemptDiagnostic {
+            attempt: 1,
+            client_request_id: "11111111-1111-4111-8111-111111111111".to_string(),
+            elapsed_ms: 30_000,
+            failure_kind: EventDeliveryAttemptFailureKind::HttpStatus,
+            http_status: Some(500),
+        };
+        let active_attempt = EventDeliveryActiveAttemptDiagnostic {
+            attempt: 2,
+            client_request_id: "22222222-2222-4222-8222-222222222222".to_string(),
+            elapsed_ms: 4_000,
+        };
+        let event_delivery = EventDeliveryDiagnostic {
+            total_events: 40,
+            total_batches: 2,
+            failed_batches: 1,
+            last_acknowledged_sequence: Some(7),
+            first_failed_batch: Some(EventDeliveryFailedBatchDiagnostic {
+                first_sequence: 8,
+                last_sequence: 15,
+                event_count: 8,
+                conservative_bytes: 2_048,
+                outcome: EventDeliveryAcceptanceOutcome::ConfirmedRejection,
+                attempts: vec![first_attempt.clone()],
+            }),
+            drain_timeout: Some(EventDeliveryDrainTimeoutDiagnostic {
+                queued_events: 0,
+                queued_bytes: 0,
+                carried_events: 0,
+                carried_bytes: 0,
+                active_batch: Some(EventDeliveryActiveBatchDiagnostic {
+                    first_sequence: 16,
+                    last_sequence: 39,
+                    event_count: 24,
+                    conservative_bytes: 8_192,
+                    completed_attempts: vec![first_attempt],
+                    active_attempt: Some(active_attempt),
+                    outcome: EventDeliveryAcceptanceOutcome::OutcomeUnknown,
+                }),
+            }),
+        };
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::EventUploadFailed,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("continue"),
+        )
+        .with_cli_exit_code(0)
+        .with_event_delivery(event_delivery);
+
+        let json = serde_json::to_value(&diagnostic).unwrap();
+        assert_eq!(
+            json["eventDelivery"]["firstFailedBatch"]["outcome"],
+            "confirmed_rejection"
+        );
+        assert_eq!(
+            json["eventDelivery"]["firstFailedBatch"]["attempts"][0]["failureKind"],
+            "http_status"
+        );
+        assert_eq!(
+            json["eventDelivery"]["drainTimeout"]["activeBatch"]["outcome"],
+            "outcome_unknown"
+        );
+        assert_eq!(
+            EventDeliveryAcceptanceOutcome::ConfirmedRejection.as_str(),
+            "confirmed_rejection"
+        );
+        assert_eq!(
+            EventDeliveryAttemptFailureKind::Transport.as_str(),
+            "transport"
+        );
+
+        let round_trip: FailureDiagnostic = serde_json::from_value(json.clone()).unwrap();
+        assert_eq!(round_trip, diagnostic);
+
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct OldFailureDiagnostic {
+            schema_version: u8,
+            failure_class: FailureClass,
+        }
+
+        let old_shape: OldFailureDiagnostic = serde_json::from_value(json).unwrap();
+        assert_eq!(old_shape.schema_version, FAILURE_DIAGNOSTIC_SCHEMA_VERSION);
+        assert_eq!(old_shape.failure_class, FailureClass::EventUploadFailed);
+    }
+
+    #[test]
     fn failure_diagnostic_deserializes_without_optional_fields() {
         let json = serde_json::json!({
             "schemaVersion": 1,
@@ -1133,5 +1426,6 @@ mod tests {
         assert_eq!(diagnostic.failure_detail_source, None);
         assert_eq!(diagnostic.failure_reason, None);
         assert_eq!(diagnostic.cli_termination, None);
+        assert_eq!(diagnostic.event_delivery, None);
     }
 }

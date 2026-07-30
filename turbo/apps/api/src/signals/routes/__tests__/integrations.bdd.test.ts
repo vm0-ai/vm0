@@ -11,6 +11,10 @@ import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
+import {
+  findPendingChatEventInputParamsByPromptFixture,
+  readChatEventInputParamsFixture,
+} from "../../../test-fixtures/chat-events";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
@@ -91,7 +95,7 @@ function sandboxOperationEventsForRun(
   });
 }
 
-function firstAssistantMessageEventsForRun(
+function firstAssistantEventsForRun(
   runId: string,
 ): readonly Record<string, unknown>[] {
   return sandboxOperationEventsForRun(runId).filter((event) => {
@@ -1501,7 +1505,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       expect.arrayContaining([
         expect.objectContaining({
           eventType: "input.prompt",
-          content: "admit this event once",
+          content: null,
           userMessage: {
             version: 1,
             parts: [
@@ -1536,10 +1540,17 @@ describe("INT-01: Slack app deep webhook flows", () => {
       ]),
     );
     expect(
-      visibleMessages.some((message) => {
-        return message.content?.includes("[Slack file]") ?? false;
-      }),
-    ).toBeFalsy();
+      visibleMessages
+        .filter((message) => {
+          return (
+            message.eventType === "input.prompt" ||
+            message.eventType === "input.rejected"
+          );
+        })
+        .every((message) => {
+          return message.content === null;
+        }),
+    ).toBeTruthy();
     const canonicalInputRun = await runs.readRun(actor, run1Id);
     expect(canonicalInputRun.prompt).toContain(
       `[Web file] source-notes.txt (text/plain)`,
@@ -1624,6 +1635,17 @@ describe("INT-01: Slack app deep webhook flows", () => {
         }),
       ]),
     );
+    const queuedSlackParams =
+      await findPendingChatEventInputParamsByPromptFixture(
+        "stay canonical on the same route",
+      );
+    expect(queuedSlackParams).toMatchObject({
+      eventId: expect.any(String),
+      encryptedParams: expect.any(String),
+    });
+    if (!queuedSlackParams) {
+      throw new Error("Expected queued canonical Slack transport params");
+    }
     context.mocks.slack.chat.postMessage.mockClear();
     await completeSlackTriggeredRun({
       runId: run1Id,
@@ -1642,7 +1664,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
         }),
       );
     });
-    expect(firstAssistantMessageEventsForRun(run1Id)).toHaveLength(1);
+    expect(firstAssistantEventsForRun(run1Id)).toHaveLength(1);
     await expect
       .poll(async () => {
         const callbacks = await callbackStore.set(
@@ -1679,7 +1701,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       payload: {
         channelId,
         threadTs,
-        chatMessageId: expect.any(String),
+        chatEventId: expect.any(String),
       },
     });
     const run1 = await runs.readRun(actor, run1Id);
@@ -1722,6 +1744,9 @@ describe("INT-01: Slack app deep webhook flows", () => {
       run2Id,
       claim2,
     }));
+    await expect(
+      readChatEventInputParamsFixture(queuedSlackParams.eventId),
+    ).resolves.toBeNull();
     expect(claim2.resumeSession?.sessionId).toBe(`bdd-slack-cli-${webRunId}`);
     state = await integrations.readSlackTestState(teamId);
     expect(state.recent_runs).toContainEqual(
@@ -1827,7 +1852,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     ).toStrictEqual(["is thinking...", "is thinking...", "", "is thinking..."]);
     releaseTerminalStatusClear.resolve(undefined);
     await flushWaitUntilForTest();
-    expect(firstAssistantMessageEventsForRun(run2Id)).toHaveLength(1);
+    expect(firstAssistantEventsForRun(run2Id)).toHaveLength(1);
     expect(
       context.mocks.slack.assistant.threads.setStatus,
     ).toHaveBeenCalledTimes(5);
@@ -1874,7 +1899,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
   it("forks Slack DM threads without replacing the main session", async () => {
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
-    await integrations.enableSlackDmSessionRoutingSwitch(actor);
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
     integrations.configureSlackAppMocks();
@@ -2179,7 +2203,16 @@ describe("INT-01: Slack app deep webhook flows", () => {
       expect.arrayContaining([
         expect.objectContaining({
           eventType: "input.prompt",
-          content: "recover this event after admission conflict",
+          content: null,
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "text",
+                text: "recover this event after admission conflict",
+              },
+            ],
+          },
         }),
       ]),
     );
@@ -2244,6 +2277,81 @@ describe("INT-01: Slack app deep webhook flows", () => {
       thread_ts: threadTs,
       status: "is thinking...",
     });
+  });
+
+  it("titles canonical Slack threads when their run is created", async () => {
+    const actor = bdd.user();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    const runnerGroup = runs.configureRunnerGroup();
+    integrations.configureSlackAppMocks();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+
+    const titlePrompts: string[] = [];
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    chatCallbacks.mockOpenRouterCompletions((body) => {
+      const systemContent = body.messages[0]?.content ?? "";
+      if (systemContent.includes("Generate a short, descriptive title")) {
+        titlePrompts.push(body.messages[1]?.content ?? "");
+        return "Canonical Slack Title";
+      }
+      return "Generated summary";
+    });
+
+    const slackUserId = uniqueSlackUserId();
+    const { teamId } = await integrations.installSlackWorkspace(actor, {
+      installerSlackUserId: slackUserId,
+    });
+    const channelId = "C_BDD_EAGER_TITLE";
+    const threadTs = "2960.000100";
+    const prompt = "title this canonical Slack thread";
+    await integrations.postSlackEvent(teamId, {
+      type: "app_mention",
+      user: slackUserId,
+      text: prompt,
+      ts: threadTs,
+      channel: channelId,
+      channel_type: "channel",
+    });
+    const runId = await pollSlackRun(runnerGroup);
+    const claim = await runs.claimRunnerJob(runId);
+    await flushWaitUntilForTest();
+
+    const state = await integrations.readSlackTestState(teamId);
+    const chatThreadId = state.chat_thread_routes.find((route) => {
+      return route.channelId === channelId && route.threadTs === threadTs;
+    })?.chatThreadId;
+    if (!chatThreadId) {
+      throw new Error("Expected the Slack event to create a canonical thread");
+    }
+    const beforeComplete = await chat.requestThreadEvents(actor, {}, [200]);
+    if (beforeComplete.status !== 200) {
+      throw new Error("Expected canonical Slack thread events to load");
+    }
+    // The title lands while the run is still in flight, so Slack threads no
+    // longer wait for the terminal callback to be named.
+    expect(beforeComplete.body.events).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "renamed",
+          chatThreadId,
+          title: "Canonical Slack Title",
+        }),
+      ]),
+    );
+    expect(titlePrompts).toHaveLength(1);
+    expect(titlePrompts[0]).toContain(prompt);
+
+    await completeSlackTriggeredRun({
+      runId,
+      sandboxToken: claim.sandboxToken,
+      cliAgentType: claim.cliAgentType,
+      assistantText: "Canonical Slack titled answer",
+    });
+    await flushWaitUntilForTest();
+
+    expect(titlePrompts).toHaveLength(1);
   });
 
   it("binds agent and model choices when canonical Slack threads are created", async () => {
@@ -3495,6 +3603,22 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
 
     integrations.mockSlackRunResultOutput("SLACK_BDD_OUTPUT");
+    let failedMessagePublishCount = 0;
+    let failedThreadListPublishCount = 0;
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (
+        typeof topic === "string" &&
+        topic.startsWith("chatThreadMessageCreated:")
+      ) {
+        failedMessagePublishCount++;
+        return Promise.reject(new Error("message realtime publish failed"));
+      }
+      if (topic === "threadListChanged") {
+        failedThreadListPublishCount++;
+        return Promise.reject(new Error("thread list publish failed"));
+      }
+      return Promise.resolve(undefined);
+    });
     await completeSlackTriggeredRun({
       runId: run1Id,
       sandboxToken: claim1.sandboxToken,
@@ -3509,6 +3633,9 @@ describe("INT-01: Slack app deep webhook flows", () => {
         }),
       );
     });
+    expect(failedMessagePublishCount).toBeGreaterThan(0);
+    expect(failedThreadListPublishCount).toBeGreaterThan(0);
+    context.mocks.ably.publish.mockResolvedValue(undefined);
     const auditedBlocks = slackPostMessageCallsJson();
     expect(auditedBlocks).toContain("Audit");
     expect(auditedBlocks).toContain(
@@ -4739,6 +4866,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
   });
 
   it("keeps GitHub no-install read and upload-init surfaces visible through APIs", async () => {
+    integrations.configureGithubAppInstallProvider();
     const actor = integrations.user();
 
     const installation = await integrations.readGithubInstallation(actor);
@@ -4749,6 +4877,33 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
         code: "NOT_FOUND",
       },
     });
+    const adminInstallUrl =
+      "installUrl" in installation.body ? installation.body.installUrl : null;
+    if (!adminInstallUrl) {
+      throw new Error("Expected an install URL for organization admins");
+    }
+    expect(adminInstallUrl).toContain(
+      "https://github.com/apps/bdd-github-app/installations/new",
+    );
+    expect(
+      new URL(adminInstallUrl).searchParams
+        .get("redirect_uri")
+        ?.endsWith("/api/github/app/setup/callback"),
+    ).toBeTruthy();
+
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected GitHub admin test user to have an org");
+    }
+    const member = integrations.user({ orgId, orgRole: "org:member" });
+    const memberInstallation =
+      await integrations.readGithubInstallation(member);
+    expect(memberInstallation.status).toBe(404);
+    expect(
+      "installUrl" in memberInstallation.body
+        ? memberInstallation.body.installUrl
+        : "unset",
+    ).toBeNull();
 
     const upload = await integrations.requestGithubUploadInit(
       actor,

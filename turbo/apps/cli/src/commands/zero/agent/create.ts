@@ -106,7 +106,7 @@ Examples:
           "  - Check authorization status (prints an authorize URL if not authorized):",
         );
         console.log(
-          `      zero connector status <type> --agent ${agent.agentId}`,
+          `      zero connector status <slug> --agent ${agent.agentId}`,
         );
       },
     ),

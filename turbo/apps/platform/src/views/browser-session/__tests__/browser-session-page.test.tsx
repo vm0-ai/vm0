@@ -3,15 +3,22 @@ import {
   zeroBrowserContract,
   type ZeroBrowserSession,
 } from "@vm0/api-contracts/contracts/zero-browser";
-import { describe, expect, it } from "vitest";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { i18n } from "../../../i18n/index.ts";
 
 const context = testContext();
+
+afterEach(async () => {
+  await i18n.changeLanguage("en-US");
+  document.documentElement.lang = "en-US";
+});
 
 const browserId = "c0000000-0000-4000-a000-000000000091";
 const liveUrl = "https://live.browser-use.com/?wss=test-browser-page-token";
@@ -27,7 +34,7 @@ function browserSession(
     liveUrl,
     proxyCountryCode: null,
     timeoutMinutes: 240,
-    maxCredits: 500,
+    maxCredits: 1,
     grossCredits: 0,
     creditsCharged: 0,
     idleExpiresAt: "2026-07-24T10:10:00.000Z",
@@ -40,6 +47,47 @@ function browserSession(
 }
 
 describe("browser session page", () => {
+  it.each([
+    {
+      locale: "en-US",
+      title: "Browser suspended",
+      resume: "Resume browser",
+    },
+    {
+      locale: "pt-BR",
+      title: "Navegador suspenso",
+      resume: "Retomar navegador",
+    },
+  ] as const)(
+    "localizes a suspended browser in $locale",
+    async ({ locale, title, resume }) => {
+      context.mocks.data.userPreferences({ locale });
+      context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+        return respond(200, {
+          browser: browserSession({
+            status: "suspended",
+            liveUrl: null,
+            suspendedAt: "2026-07-24T10:12:00.000Z",
+            suspensionReason: "idle",
+            idleExpiresAt: null,
+          }),
+        });
+      });
+
+      detachedSetupPage({
+        context,
+        path: `/browsers/${browserId}`,
+        featureSwitches: { [FeatureSwitchKey.LanguagePreference]: true },
+      });
+
+      await expect(screen.findByText(title)).resolves.toBeInTheDocument();
+      const resumeButton = queryAllByRoleFast("button").find((candidate) => {
+        return candidate.textContent === resume;
+      });
+      expect(resumeButton).toBeDefined();
+    },
+  );
+
   it("loads the authenticated live viewer and keeps the browser leased while it is open", async () => {
     let leaseRequests = 0;
     context.mocks.api(zeroBrowserContract.get, ({ params, query, respond }) => {
@@ -77,8 +125,6 @@ describe("browser session page", () => {
           suspendedAt: "2026-07-24T10:12:00.000Z",
           suspensionReason: "idle",
           idleExpiresAt: null,
-          grossCredits: 12,
-          creditsCharged: 12,
         }),
       });
     });

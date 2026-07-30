@@ -1,6 +1,7 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import type { Computed } from "ccstate";
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
@@ -24,20 +25,18 @@ import {
   DropdownMenuItem,
 } from "@vm0/ui";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import type {
-  PublicConnectorCatalogIcon,
-  PublicConnectorCatalogPermissionDetail,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { groupFirewallMetadataPermissionsByCategory } from "@vm0/connectors/firewall-metadata/policy";
 import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicies,
   type FirewallPolicyValue,
 } from "@vm0/connectors/firewall-types";
+import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type {
-  UserPermissionGrantExpiresIn,
-  UserPermissionGrantResponse,
-} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+  PlatformConnectorPermissionMetadata,
+  PlatformUserPermissionGrant,
+} from "../../../../signals/connector-domain.ts";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import {
   clearPermissionDraftInheritedExpiration,
@@ -95,6 +94,7 @@ import {
 } from "./permission-policy-toggle.tsx";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
+import { i18n } from "../../../../i18n/index.ts";
 
 interface ConnectorPermission {
   name: string;
@@ -106,10 +106,10 @@ interface PermissionsDrawerProps {
   targetKind?: "agent" | "workflow";
   connectorSlug: ConnectorSlug;
   connectorLabel: string;
-  metadata$: Computed<Promise<PublicConnectorCatalogPermissionDetail | null>>;
+  metadata$: Computed<Promise<PlatformConnectorPermissionMetadata | null>>;
   displayName: string;
   initialPolicies: FirewallPolicies;
-  initialGrants: readonly UserPermissionGrantResponse[];
+  initialGrants: readonly PlatformUserPermissionGrant[];
   initialIntent?: PermissionDraftIntent;
   initialSearch?: string;
   initialContextKey?: string;
@@ -123,7 +123,7 @@ interface PermissionsDrawerProps {
 }
 
 interface PermissionDrawerApplyOptions {
-  readonly metadata: PublicConnectorCatalogPermissionDetail;
+  readonly metadata: PlatformConnectorPermissionMetadata;
 }
 
 type PermissionsSurface = "sheet" | "dialog";
@@ -142,7 +142,7 @@ interface PermissionsDrawerFooterProps {
 }
 
 interface InitialPermissionDrawerState {
-  readonly explicitGrants: Map<string, UserPermissionGrantResponse>;
+  readonly explicitGrants: Map<string, PlatformUserPermissionGrant>;
   readonly initialPolicyKey: string;
 }
 
@@ -158,7 +158,7 @@ type LoadedPermissionsDrawerContentProps = Pick<
   | "onClose"
 > & {
   readonly surface: PermissionsSurface;
-  readonly metadata: PublicConnectorCatalogPermissionDetail;
+  readonly metadata: PlatformConnectorPermissionMetadata;
   readonly initialState: InitialPermissionDrawerState;
 };
 
@@ -172,7 +172,7 @@ function buildInitialPermissionDrawerState({
   PermissionsDrawerProps,
   "agentId" | "connectorSlug" | "initialPolicies" | "initialGrants"
 > & {
-  readonly metadata: PublicConnectorCatalogPermissionDetail;
+  readonly metadata: PlatformConnectorPermissionMetadata;
 }): InitialPermissionDrawerState {
   const explicitGrants = buildExplicitGrantMap(connectorSlug, initialGrants);
   const grantStateKey = explicitGrantStateKey(explicitGrants);
@@ -197,18 +197,33 @@ function PermissionsDrawerHeader({
   readonly icon: PublicConnectorCatalogIcon | undefined;
   readonly surface: PermissionsSurface;
 }) {
+  const { t } = useTranslation();
   const title = (
     <>
-      {connectorLabel} permissions
+      {t(
+        ($) => {
+          return $.connectors.permissions.title;
+        },
+        { connector: connectorLabel },
+      )}
       <span className="text-sm font-normal text-muted-foreground ml-1">
-        for {displayName}
+        {t(
+          ($) => {
+            return $.connectors.permissions.forTarget;
+          },
+          { target: displayName },
+        )}
       </span>
     </>
   );
   const description =
     targetKind === "workflow"
-      ? "Configure which actions this workflow is allowed to perform via this connector."
-      : "Configure which actions this agent is allowed to perform via this connector.";
+      ? t(($) => {
+          return $.connectors.permissions.descriptionWorkflow;
+        })
+      : t(($) => {
+          return $.connectors.permissions.descriptionAgent;
+        });
 
   if (surface === "dialog") {
     return (
@@ -265,10 +280,7 @@ function splitPermName(name: string): [string, string] {
   return [name, ""];
 }
 
-const POLICY_OPTIONS = [
-  { value: "allow" as const, label: "Allow" },
-  { value: "deny" as const, label: "Deny" },
-] as const;
+const POLICY_OPTIONS = ["allow", "deny"] as const;
 
 const PERMISSION_PAGE_SIZE = 100;
 
@@ -293,15 +305,16 @@ function PolicyPill({
   onChange?: (p: PermissionPolicy) => void;
   disabled?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <span className="inline-flex shrink-0 rounded-md overflow-hidden text-xs font-medium zero-border">
-      {POLICY_OPTIONS.map((opt, idx) => {
+      {POLICY_OPTIONS.map((option, idx) => {
         return (
           <button
-            key={opt.value}
+            key={option}
             type="button"
             disabled={disabled}
-            aria-pressed={policy === opt.value}
+            aria-pressed={policy === option}
             style={
               idx > 0
                 ? { borderLeft: "0.7px solid hsl(var(--gray-400))" }
@@ -310,11 +323,11 @@ function PolicyPill({
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              onChange?.(opt.value);
+              onChange?.(option);
             }}
             className={`flex items-center gap-1 px-2.5 py-1.5 transition-colors ${
-              policy === opt.value
-                ? opt.value === "allow"
+              policy === option
+                ? option === "allow"
                   ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
                   : "bg-rose-500/10 text-rose-700 dark:text-rose-400"
                 : disabled
@@ -322,9 +335,15 @@ function PolicyPill({
                   : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
             } ${disabled ? "cursor-default" : "cursor-pointer"}`}
           >
-            {opt.value === "allow" && <IconCheck size={12} stroke={2.5} />}
-            {opt.value === "deny" && <IconBan size={12} stroke={2.5} />}
-            {opt.label}
+            {option === "allow" && <IconCheck size={12} stroke={2.5} />}
+            {option === "deny" && <IconBan size={12} stroke={2.5} />}
+            {option === "allow"
+              ? t(($) => {
+                  return $.connectors.permissions.actions.allow;
+                })
+              : t(($) => {
+                  return $.connectors.permissions.actions.deny;
+                })}
           </button>
         );
       })}
@@ -333,20 +352,20 @@ function PolicyPill({
 }
 
 function buildSortedGroups(
-  metadata: PublicConnectorCatalogPermissionDetail,
+  metadata: PlatformConnectorPermissionMetadata,
 ): { category: string; permissions: ConnectorPermission[] }[] | null {
   return (
-    groupFirewallMetadataPermissionsByCategory(
-      metadata.permissions,
-      metadata,
-    )?.map((group) => {
+    groupFirewallMetadataPermissionsByCategory(metadata.permissions, {
+      ...metadata,
+      connectorRef: metadata.connectorSlug,
+    })?.map((group) => {
       return { ...group, permissions: sortPermissions(group.permissions) };
     }) ?? null
   );
 }
 
 function sortedPermissionsForMetadata(
-  metadata: PublicConnectorCatalogPermissionDetail,
+  metadata: PlatformConnectorPermissionMetadata,
 ): ConnectorPermission[] {
   return sortPermissions(metadata.permissions);
 }
@@ -369,11 +388,11 @@ function filterPermissionsForSearch(
 
 function buildExplicitGrantMap(
   connectorSlug: string,
-  grants: readonly UserPermissionGrantResponse[],
-): Map<string, UserPermissionGrantResponse> {
-  const result = new Map<string, UserPermissionGrantResponse>();
+  grants: readonly PlatformUserPermissionGrant[],
+): Map<string, PlatformUserPermissionGrant> {
+  const result = new Map<string, PlatformUserPermissionGrant>();
   for (const grant of grants) {
-    if (grant.connectorRef === connectorSlug) {
+    if (grant.connectorSlug === connectorSlug) {
       result.set(grant.permission, grant);
     }
   }
@@ -411,7 +430,7 @@ function canApplyPermissionPolicies({
   saving,
   hasChanges,
 }: {
-  metadata: PublicConnectorCatalogPermissionDetail;
+  metadata: PlatformConnectorPermissionMetadata;
   saving: boolean;
   hasChanges: boolean;
 }): boolean {
@@ -423,15 +442,20 @@ function UnknownEndpointsToggle({
 }: {
   policyControl: ReactNode;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="border-t border-border/40 -mx-6 px-3 pt-3 pb-1">
       <div className="flex items-center justify-between px-3">
         <div className="min-w-0 flex-1">
           <span className="text-xs font-medium text-foreground">
-            Other endpoints
+            {t(($) => {
+              return $.connectors.permissions.otherEndpoints;
+            })}
           </span>
           <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
-            API endpoints not matched by any permission above
+            {t(($) => {
+              return $.connectors.permissions.otherEndpointsDescription;
+            })}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">{policyControl}</div>
@@ -450,36 +474,80 @@ function permissionDurationLabel({
   return (
     allowDurationStatusLabel(selected) ??
     compactGrantExpirationText(expiresAt) ??
-    "Always"
+    i18n.t(($) => {
+      return $.connectors.permissions.always;
+    })
   );
 }
 
-const ALLOW_DURATION_MENU_OPTIONS: readonly {
-  readonly value: UserPermissionGrantExpiresIn;
-  readonly label: string;
-  readonly statusLabel: string;
-}[] = [
-  { value: "1h", label: "Allow for 1h", statusLabel: "1h" },
-  { value: "24h", label: "Allow for 24h", statusLabel: "24h" },
-  { value: "7d", label: "Allow for 7d", statusLabel: "7d" },
-  { value: "always", label: "Allow always", statusLabel: "Always" },
+const ALLOW_DURATION_MENU_OPTIONS: readonly UserPermissionGrantExpiresIn[] = [
+  "1h",
+  "24h",
+  "7d",
+  "always",
 ];
 
 function compactGrantExpirationText(expiresAt: string | null): string | null {
   const text = permissionGrantExpiryText(expiresAt);
-  if (text === "Expires in less than 1 hour") {
-    return "< 1 hour";
+  if (
+    text ===
+    i18n.t(($) => {
+      return $.authorization.permission.expiration.lessThanHour;
+    })
+  ) {
+    return i18n.t(($) => {
+      return $.authorization.permission.expiration.lessThanHourShort;
+    });
   }
-  return text?.replace(/^Expires in /, "") ?? null;
+  return (
+    text?.replace(
+      i18n.t(($) => {
+        return $.authorization.permission.expiration.prefix;
+      }),
+      "",
+    ) ?? null
+  );
 }
 
 function allowDurationStatusLabel(
   selected: UserPermissionGrantExpiresIn | undefined,
 ): string | null {
   const option = ALLOW_DURATION_MENU_OPTIONS.find((item) => {
-    return item.value === selected;
+    return item === selected;
   });
-  return option?.statusLabel ?? null;
+  if (!option) {
+    return null;
+  }
+  return option === "always"
+    ? i18n.t(($) => {
+        return $.connectors.permissions.always;
+      })
+    : option;
+}
+
+function allowDurationMenuLabel(option: UserPermissionGrantExpiresIn): string {
+  switch (option) {
+    case "1h": {
+      return i18n.t(($) => {
+        return $.connectors.permissions.allowDuration.oneHour;
+      });
+    }
+    case "24h": {
+      return i18n.t(($) => {
+        return $.connectors.permissions.allowDuration.twentyFourHours;
+      });
+    }
+    case "7d": {
+      return i18n.t(($) => {
+        return $.connectors.permissions.allowDuration.sevenDays;
+      });
+    }
+    case "always": {
+      return i18n.t(($) => {
+        return $.connectors.permissions.allowDuration.always;
+      });
+    }
+  }
 }
 
 function MenuItemCheck({ active }: { active: boolean }) {
@@ -492,7 +560,7 @@ function MenuItemCheck({ active }: { active: boolean }) {
 
 function menuOptionExpiresIn(
   value: UserPermissionGrantExpiresIn,
-  allowGrant: UserPermissionGrantResponse | undefined,
+  allowGrant: PlatformUserPermissionGrant | undefined,
 ): UserPermissionGrantExpiresIn | null {
   if (value === "always" && !allowGrant?.expiresAt) {
     return null;
@@ -530,13 +598,19 @@ function PermissionAllowDurationDropdown({
   saving: boolean;
   onSelect: (expiresIn: UserPermissionGrantExpiresIn) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <button
           type="button"
           disabled={saving}
-          aria-label={`${permission} allow options`}
+          aria-label={t(
+            ($) => {
+              return $.connectors.permissions.allowOptions;
+            },
+            { permission },
+          )}
           className={`inline-flex h-7 shrink-0 items-center gap-1 rounded-md border px-2 text-[11px] font-medium zero-border transition-colors ${
             saving
               ? "cursor-default text-muted-foreground/50"
@@ -558,18 +632,18 @@ function PermissionAllowDurationDropdown({
         {ALLOW_DURATION_MENU_OPTIONS.map((option) => {
           return (
             <DropdownMenuItem
-              key={option.value}
+              key={option}
               onSelect={() => {
-                onSelect(option.value);
+                onSelect(option);
               }}
               className="flex items-center justify-between gap-4"
             >
-              {option.label}
+              {allowDurationMenuLabel(option)}
               <MenuItemCheck
                 active={isDurationMenuOptionActive({
                   allowAlwaysActive,
                   selected,
-                  value: option.value,
+                  value: option,
                 })}
               />
             </DropdownMenuItem>
@@ -607,7 +681,7 @@ function PermissionGrantPolicyControl({
 }: {
   permission: string;
   policy: FirewallPolicyValue | "mixed";
-  grant: UserPermissionGrantResponse | undefined;
+  grant: PlatformUserPermissionGrant | undefined;
   selected: UserPermissionGrantExpiresIn | undefined;
   allowAlwaysActive: boolean;
   allowDurationMixed?: boolean;
@@ -688,7 +762,7 @@ function PermissionGrantPolicyControl({
 }
 
 function hasAllowAlwaysPolicy(
-  grant: UserPermissionGrantResponse | undefined,
+  grant: PlatformUserPermissionGrant | undefined,
   policy: FirewallPolicyValue,
 ): boolean {
   return policy === "allow" && !(grant?.action === "allow" && grant.expiresAt);
@@ -701,10 +775,16 @@ function ShowMorePermissions({
   readonly remaining: number;
   readonly onClick: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="px-3 py-2">
       <Button type="button" variant="outline" className="h-8" onClick={onClick}>
-        Show more ({remaining})
+        {t(
+          ($) => {
+            return $.connectors.permissions.showMore;
+          },
+          { count: remaining },
+        )}
       </Button>
     </div>
   );
@@ -728,7 +808,7 @@ function PermissionGroupHeader({
   draft: PermissionDraftIntent;
   category: string;
   permissions: ConnectorPermission[];
-  explicitGrants: ReadonlyMap<string, UserPermissionGrantResponse>;
+  explicitGrants: ReadonlyMap<string, PlatformUserPermissionGrant>;
   expanded: boolean;
   readOnly?: boolean;
   saving: boolean;
@@ -821,7 +901,7 @@ function PermissionRows({
   permissions: ConnectorPermission[];
   expandedGroups: ReadonlySet<string>;
   visibleCounts: Readonly<Record<string, number>>;
-  explicitGrants: Map<string, UserPermissionGrantResponse>;
+  explicitGrants: Map<string, PlatformUserPermissionGrant>;
   readOnly?: boolean;
   saving: boolean;
   onToggleGroup: (category: string) => void;
@@ -962,7 +1042,7 @@ function PermissionRow({
   permission: ConnectorPermission;
   showSeparator: boolean;
   indent?: boolean;
-  explicitGrants: Map<string, UserPermissionGrantResponse>;
+  explicitGrants: Map<string, PlatformUserPermissionGrant>;
   readOnly?: boolean;
   saving: boolean;
   onPolicyChange: (name: string, policy: PermissionPolicy) => void;
@@ -1069,17 +1149,30 @@ function PermissionsDrawerFooter({
   onClose,
   onApply,
 }: PermissionsDrawerFooterProps) {
+  const { t } = useTranslation();
   const showReset = !readOnly && resetEnabled && canReset;
 
   if (!showReset) {
     return (
       <PermissionsFooterShell surface={surface}>
         <Button variant="outline" onClick={onClose}>
-          {readOnly ? "Close" : "Cancel"}
+          {readOnly
+            ? t(($) => {
+                return $.connectors.actions.close;
+              })
+            : t(($) => {
+                return $.connectors.actions.cancel;
+              })}
         </Button>
         {!readOnly && (
           <Button onClick={onApply} disabled={!canApply}>
-            {saving ? "Saving..." : "Apply"}
+            {saving
+              ? t(($) => {
+                  return $.connectors.actions.saving;
+                })
+              : t(($) => {
+                  return $.connectors.actions.apply;
+                })}
           </Button>
         )}
       </PermissionsFooterShell>
@@ -1097,16 +1190,30 @@ function PermissionsDrawerFooter({
           onClick={onReset}
           disabled={saving || !resetAvailable}
         >
-          Restore
+          {t(($) => {
+            return $.connectors.permissions.restore;
+          })}
         </Button>
       </div>
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
         <Button variant="outline" onClick={onClose}>
-          {readOnly ? "Close" : "Cancel"}
+          {readOnly
+            ? t(($) => {
+                return $.connectors.actions.close;
+              })
+            : t(($) => {
+                return $.connectors.actions.cancel;
+              })}
         </Button>
         {!readOnly && (
           <Button onClick={onApply} disabled={!canApply}>
-            {saving ? "Saving..." : "Apply"}
+            {saving
+              ? t(($) => {
+                  return $.connectors.actions.saving;
+                })
+              : t(($) => {
+                  return $.connectors.actions.apply;
+                })}
           </Button>
         )}
       </div>
@@ -1127,6 +1234,7 @@ function LoadedPermissionsDrawerContent({
   metadata,
   initialState,
 }: LoadedPermissionsDrawerContentProps) {
+  const { t } = useTranslation();
   const { explicitGrants } = initialState;
   const stateKey = initialContextKey
     ? `${initialState.initialPolicyKey}\u0000${initialContextKey}`
@@ -1157,7 +1265,7 @@ function LoadedPermissionsDrawerContent({
   const saving = applyLoadable.state === "loading";
 
   const effectiveExplicitGrants = draft.resetPending
-    ? new Map<string, UserPermissionGrantResponse>()
+    ? new Map<string, PlatformUserPermissionGrant>()
     : explicitGrants;
   const permissions = sortedPermissionsForMetadata(metadata);
   const groups = buildSortedGroups(metadata);
@@ -1399,8 +1507,12 @@ function LoadedPermissionsDrawerContent({
               onChange={(event) => {
                 handleSearchChange(event.currentTarget.value);
               }}
-              aria-label="Find permissions"
-              placeholder="Find permissions..."
+              aria-label={t(($) => {
+                return $.connectors.permissions.find;
+              })}
+              placeholder={t(($) => {
+                return $.connectors.permissions.findPlaceholder;
+              })}
               className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-9 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-[3px] focus:ring-primary/10"
             />
             {search && (
@@ -1410,7 +1522,9 @@ function LoadedPermissionsDrawerContent({
                   handleSearchChange("");
                 }}
                 className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-                aria-label="Clear permission search"
+                aria-label={t(($) => {
+                  return $.connectors.permissions.clearSearch;
+                })}
               >
                 <IconX size={13} stroke={1.8} />
               </button>
@@ -1419,7 +1533,14 @@ function LoadedPermissionsDrawerContent({
           {!groups && !searchActive && (
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs font-medium text-foreground">
-                {readOnly ? "Permissions" : "Select all"} ({permissions.length})
+                {readOnly
+                  ? t(($) => {
+                      return $.connectors.permissions.permissions;
+                    })
+                  : t(($) => {
+                      return $.connectors.permissions.selectAll;
+                    })}{" "}
+                ({permissions.length})
               </span>
               {!readOnly && (
                 <PolicyPill
@@ -1440,7 +1561,12 @@ function LoadedPermissionsDrawerContent({
         >
           {searchActive && displayedPermissions.length === 0 ? (
             <p className="px-3 py-4 text-sm text-muted-foreground">
-              No results for &ldquo;{search.trim()}&rdquo;
+              {t(
+                ($) => {
+                  return $.connectors.permissions.noResults;
+                },
+                { search: search.trim() },
+              )}
             </p>
           ) : (
             <PermissionRows
@@ -1543,6 +1669,7 @@ function PermissionsContent({
   readonly surface: PermissionsSurface;
   readonly onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const metadataLoadable = useLoadable(props.metadata$);
   const loadedMetadata =
     metadataLoadable.state === "hasData" ? metadataLoadable.data : null;
@@ -1558,8 +1685,15 @@ function PermissionsContent({
   const loading = metadataLoadable.state === "loading";
   const message =
     metadataLoadable.state === "hasError"
-      ? "Failed to load permission metadata"
-      : `No permission metadata found for ${props.connectorSlug}`;
+      ? t(($) => {
+          return $.connectors.permissions.loadError;
+        })
+      : t(
+          ($) => {
+            return $.connectors.permissions.metadataMissing;
+          },
+          { connector: props.connectorSlug },
+        );
 
   return (
     <>
@@ -1586,7 +1720,9 @@ function PermissionsContent({
             {loading ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <IconLoader2 size={16} className="animate-spin" />
-                Loading permissions...
+                {t(($) => {
+                  return $.connectors.permissions.loading;
+                })}
               </div>
             ) : (
               <p className="text-sm text-destructive">{message}</p>
@@ -1595,7 +1731,13 @@ function PermissionsContent({
 
           <PermissionsFooterShell surface={surface}>
             <Button variant="outline" onClick={onClose}>
-              {props.readOnly ? "Close" : "Cancel"}
+              {props.readOnly
+                ? t(($) => {
+                    return $.connectors.actions.close;
+                  })
+                : t(($) => {
+                    return $.connectors.actions.cancel;
+                  })}
             </Button>
           </PermissionsFooterShell>
         </>

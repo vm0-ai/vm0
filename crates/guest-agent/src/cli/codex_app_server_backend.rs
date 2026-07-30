@@ -8,7 +8,9 @@ use std::future::Future;
 use std::path::PathBuf;
 
 use serde_json::{Map, Value, json};
+use tokio::io::AsyncWriteExt;
 use tokio::sync::oneshot;
+use tokio_util::sync::CancellationToken;
 
 use crate::env::Framework;
 use crate::error::AgentError;
@@ -25,11 +27,14 @@ use super::codex_app_server_events::{
 };
 use super::event_delivery::{EventDeliveryRuntime, EventDeliverySender};
 use super::{
-    CliEventIngestor, CliExecutionResult, CliRuntimeConfig, HeartbeatMonitor, HeartbeatStatus,
-    LOG_TAG, ParsedEventAction, command,
+    AgentExecutionDeadline, CliEventIngestor, CliExecutionResult, CliRuntimeConfig,
+    HeartbeatMonitor, HeartbeatStatus, LOG_TAG, ParsedEventAction, command,
 };
 use crate::active_input::{ActiveInputFrame, ActiveInputWriter};
 use guest_common::{log_info, log_warn};
+use guest_contracts::diagnostics::{
+    AGENT_EXECUTION_TIMEOUT_EXIT_CODE, CliTerminationDiagnostic, CliTerminationReason,
+};
 
 const TURN_NOTIFICATION_LABEL: &str = "turn notification";
 const API_TO_CODEX_OUTPUT_ITEM_STARTED: &str = "api_to_codex_output_item_started";
@@ -95,21 +100,55 @@ enum CodexRunEvent {
     ActiveInput(Option<ActiveInputFrame>),
 }
 
+enum AppServerRunOutcome {
+    Completed(Box<Result<CliExecutionResult, AgentError>>),
+    ExecutionTimedOut { timeout_secs: u64 },
+    UserCancelled,
+}
+
+async fn run_with_execution_deadline(
+    run: impl Future<Output = Result<CliExecutionResult, AgentError>>,
+    deadline: Option<AgentExecutionDeadline>,
+    user_cancellation: &CancellationToken,
+) -> AppServerRunOutcome {
+    tokio::pin!(run);
+
+    match deadline {
+        Some(deadline) => {
+            let deadline_sleep =
+                tokio::time::sleep_until(tokio::time::Instant::from_std(deadline.at));
+            tokio::pin!(deadline_sleep);
+            tokio::select! {
+                biased;
+                result = &mut run => AppServerRunOutcome::Completed(Box::new(result)),
+                () = user_cancellation.cancelled() => AppServerRunOutcome::UserCancelled,
+                () = &mut deadline_sleep => AppServerRunOutcome::ExecutionTimedOut {
+                    timeout_secs: deadline.timeout_secs,
+                },
+            }
+        }
+        None => {
+            tokio::select! {
+                biased;
+                result = &mut run => AppServerRunOutcome::Completed(Box::new(result)),
+                () = user_cancellation.cancelled() => AppServerRunOutcome::UserCancelled,
+            }
+        }
+    }
+}
+
 pub(super) async fn execute_codex_app_server_for_runtime(
     masker: &SecretMasker,
     mut heartbeat_monitor: HeartbeatMonitor,
     http: HttpClient,
     active_input: ActiveInputWriter,
+    user_cancellation: CancellationToken,
     runtime: &CliRuntimeConfig<'_>,
 ) -> Result<CliExecutionResult, AgentError> {
     log_info!(LOG_TAG, "Starting codex app-server execution...");
 
     let should_send_events = http.has_api();
-    let event_delivery = EventDeliveryRuntime::start(
-        http.clone(),
-        runtime.event_error_flag.to_string(),
-        &runtime.run_id,
-    )?;
+    let event_delivery = EventDeliveryRuntime::start(http.clone(), &runtime.run_id)?;
 
     let run_result = run_codex_app_server(
         masker,
@@ -117,13 +156,22 @@ pub(super) async fn execute_codex_app_server_for_runtime(
         should_send_events,
         event_delivery.sender(),
         active_input,
+        user_cancellation,
         runtime,
     )
     .await;
 
     match run_result {
+        Ok(mut result) if result.control_error.is_some() => {
+            let delivery_report = event_delivery.abort().await;
+            result.last_event_sequence = delivery_report.last_acknowledged_sequence;
+            result.event_delivery = delivery_report.diagnostic;
+            Ok(result)
+        }
         Ok(mut result) => {
-            result.last_event_sequence = event_delivery.finish().await?;
+            let delivery_report = event_delivery.finish().await?;
+            result.last_event_sequence = delivery_report.last_acknowledged_sequence;
+            result.event_delivery = delivery_report.diagnostic;
             Ok(result)
         }
         Err(error) => {
@@ -139,6 +187,7 @@ async fn run_codex_app_server(
     should_send_events: bool,
     event_tx: &EventDeliverySender,
     mut active_input: ActiveInputWriter,
+    user_cancellation: CancellationToken,
     runtime: &CliRuntimeConfig<'_>,
 ) -> Result<CliExecutionResult, AgentError> {
     let log_file = guest_contracts::runtime_paths::create_private(runtime.agent_log_file.as_ref())?;
@@ -150,7 +199,7 @@ async fn run_codex_app_server(
         .map_err(|error| app_server_error(masker, error))?;
     let mut heartbeat_done = false;
 
-    let run_result = async {
+    let run = async {
         race_with_heartbeat(
             client.initialize(),
             heartbeat_monitor,
@@ -316,40 +365,97 @@ async fn run_codex_app_server(
             cli_observed_exit: None,
             stderr_lines: Vec::new(),
             last_event_sequence: None,
+            event_delivery: None,
             claude_result: None,
             post_result_cleanup_result: None,
             failure_diagnostic: ingestor.failure_diagnostic(),
             control_error: None,
             cli_termination: None,
         })
-    }
-    .await;
+    };
+    let run_outcome =
+        run_with_execution_deadline(run, runtime.agent_execution_deadline, &user_cancellation)
+            .await;
     active_input.close_terminal();
 
-    let shutdown_result = if run_result.is_ok() {
-        client.shutdown().await
-    } else {
-        client.terminate().await
+    let shutdown_result = match &run_outcome {
+        AppServerRunOutcome::Completed(result) if result.is_ok() => client.shutdown().await,
+        AppServerRunOutcome::Completed(_)
+        | AppServerRunOutcome::ExecutionTimedOut { .. }
+        | AppServerRunOutcome::UserCancelled => client.terminate().await,
     };
     let stderr_lines = masker.mask_diagnostic_lines(client.stderr_tail().to_vec());
+    // Complete the final event-log write after the child is stopped and
+    // before callers observe the finished app-server execution.
+    let _ = log_file.flush().await;
 
-    match (run_result, shutdown_result) {
-        (Ok(mut result), Ok(())) => {
-            result.stderr_lines = stderr_lines;
-            Ok(result)
+    match run_outcome {
+        AppServerRunOutcome::Completed(run_result) => match (*run_result, shutdown_result) {
+            (Ok(mut result), Ok(())) => {
+                result.stderr_lines = stderr_lines;
+                Ok(result)
+            }
+            (Ok(_result), Err(error)) => Err(AgentError::Execution(format!(
+                "codex app-server shutdown failed: {}",
+                masker.mask_string(&error.to_string())
+            ))),
+            (Err(error), Ok(())) => Err(error),
+            (Err(error), Err(shutdown_error)) => {
+                let shutdown_error = masker.mask_string(&shutdown_error.to_string());
+                log_warn!(
+                    LOG_TAG,
+                    "codex app-server shutdown failed after run error: {shutdown_error}"
+                );
+                Err(error)
+            }
+        },
+        AppServerRunOutcome::ExecutionTimedOut { timeout_secs } => {
+            if let Err(shutdown_error) = shutdown_result {
+                let shutdown_error = masker.mask_string(&shutdown_error.to_string());
+                log_warn!(
+                    LOG_TAG,
+                    "codex app-server termination failed after execution timeout: {shutdown_error}"
+                );
+            }
+            Ok(CliExecutionResult {
+                exit_code: AGENT_EXECUTION_TIMEOUT_EXIT_CODE,
+                cli_observed_exit: None,
+                stderr_lines,
+                last_event_sequence: None,
+                event_delivery: None,
+                claude_result: None,
+                post_result_cleanup_result: None,
+                failure_diagnostic: ingestor.failure_diagnostic(),
+                control_error: Some(AgentError::Execution(format!(
+                    "Agent execution timed out after {timeout_secs} seconds"
+                ))),
+                cli_termination: Some(CliTerminationDiagnostic::new(
+                    CliTerminationReason::ExecutionTimeout,
+                )),
+            })
         }
-        (Ok(_result), Err(error)) => Err(AgentError::Execution(format!(
-            "codex app-server shutdown failed: {}",
-            masker.mask_string(&error.to_string())
-        ))),
-        (Err(error), Ok(())) => Err(error),
-        (Err(error), Err(shutdown_error)) => {
-            let shutdown_error = masker.mask_string(&shutdown_error.to_string());
-            log_warn!(
-                LOG_TAG,
-                "codex app-server shutdown failed after run error: {shutdown_error}"
-            );
-            Err(error)
+        AppServerRunOutcome::UserCancelled => {
+            if let Err(shutdown_error) = shutdown_result {
+                let shutdown_error = masker.mask_string(&shutdown_error.to_string());
+                log_warn!(
+                    LOG_TAG,
+                    "codex app-server termination failed after user cancellation: {shutdown_error}"
+                );
+            }
+            Ok(CliExecutionResult {
+                exit_code: 1,
+                cli_observed_exit: None,
+                stderr_lines,
+                last_event_sequence: None,
+                event_delivery: None,
+                claude_result: None,
+                post_result_cleanup_result: None,
+                failure_diagnostic: ingestor.failure_diagnostic(),
+                control_error: Some(AgentError::Execution("Run cancelled by user".to_string())),
+                cli_termination: Some(CliTerminationDiagnostic::new(
+                    CliTerminationReason::UserCancellation,
+                )),
+            })
         }
     }
 }

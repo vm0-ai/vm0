@@ -3,6 +3,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { chatThreadArtifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { accept } from "../../lib/accept.ts";
+import { i18n } from "../../i18n/index.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { isConnectorChangedPayloadFor } from "../connector-change.ts";
 import { connectors$, reloadConnectors$ } from "../external/connectors.ts";
@@ -33,7 +34,9 @@ type ArtifactGoogleDriveSyncFilesParams = {
 function googleDriveSyncErrorMessage(error: unknown): string {
   return error instanceof Error
     ? error.message
-    : "Failed to sync to Google Drive";
+    : i18n.t(($) => {
+        return $.artifacts.googleDrive.syncFailed;
+      });
 }
 
 function googleDriveSyncLoadingMessage(
@@ -41,15 +44,36 @@ function googleDriveSyncLoadingMessage(
 ): string {
   if (files.length === 1) {
     const filename = files[0]?.filename;
-    return filename ? `Syncing ${filename}...` : "Syncing artifact...";
+    return filename
+      ? i18n.t(
+          ($) => {
+            return $.artifacts.googleDrive.syncingNamed;
+          },
+          { filename },
+        )
+      : i18n.t(($) => {
+          return $.artifacts.googleDrive.syncingArtifact;
+        });
   }
-  return `Syncing ${files.length} files...`;
+  return i18n.t(
+    ($) => {
+      return $.artifacts.googleDrive.syncingFiles;
+    },
+    {
+      count: files.length,
+    },
+  );
 }
 
 function googleDriveSyncSuccessMessage(fileCount: number): string {
-  return fileCount === 1
-    ? "Synced to Google Drive"
-    : `Synced ${fileCount} files to Google Drive`;
+  return i18n.t(
+    ($) => {
+      return $.artifacts.googleDrive.syncedFiles;
+    },
+    {
+      count: fileCount,
+    },
+  );
 }
 
 type ArtifactGoogleDriveSyncResult =
@@ -70,7 +94,11 @@ async function syncArtifactFilesToGoogleDrive(
 ): Promise<boolean> {
   params.signal?.throwIfAborted();
   if (params.files.length === 0) {
-    toast.error("No artifacts to sync");
+    toast.error(
+      i18n.t(($) => {
+        return $.artifacts.googleDrive.noArtifacts;
+      }),
+    );
     return false;
   }
 
@@ -119,8 +147,19 @@ async function syncArtifactFilesToGoogleDrive(
     const firstFailure = results.find(isArtifactGoogleDriveSyncFailure);
     toast.error(
       syncedCount > 0
-        ? `Synced ${syncedCount} of ${params.files.length} files to Google Drive`
-        : (firstFailure?.message ?? "Failed to sync to Google Drive"),
+        ? i18n.t(
+            ($) => {
+              return $.artifacts.googleDrive.partial;
+            },
+            {
+              synced: syncedCount,
+              count: params.files.length,
+            },
+          )
+        : (firstFailure?.message ??
+            i18n.t(($) => {
+              return $.artifacts.googleDrive.syncFailed;
+            })),
       { id: toastId },
     );
     return syncedCount > 0;
@@ -162,7 +201,10 @@ async function authorizeGoogleDriveForAgent(params: {
   await accept(
     client.update({
       params: { id: params.agentId },
-      body: { enabledTypes: ["google-drive"], operation: "add" },
+      body: {
+        enabledConnectorSlugs: ["google-drive"],
+        operation: "add",
+      },
       fetchOptions: { signal: params.signal },
     }),
     [200],
@@ -203,7 +245,7 @@ export const waitForGoogleDriveAuthorization$ = command(
         sig.throwIfAborted();
         const connected = connectors.some((connector) => {
           return (
-            connector.type === "google-drive" &&
+            connector.slug === "google-drive" &&
             connector.connectionStatus === "connected"
           );
         });

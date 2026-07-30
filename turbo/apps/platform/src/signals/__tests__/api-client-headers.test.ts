@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { HttpResponse } from "msw";
 import {
   addClientCapabilityToVersion,
+  CLIENT_CAPABILITY_JA_JP_LOCALE,
   CLIENT_CAPABILITY_PT_BR_LOCALE,
   CLIENT_FORCE_UPGRADE_STATUS,
 } from "@vm0/api-contracts/contracts/client-headers";
@@ -27,8 +28,8 @@ const context = testContext();
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const EXPECTED_CLIENT_VERSION = addClientCapabilityToVersion(
-  "0.540.0",
-  CLIENT_CAPABILITY_PT_BR_LOCALE,
+  addClientCapabilityToVersion("0.540.0", CLIENT_CAPABILITY_PT_BR_LOCALE),
+  CLIENT_CAPABILITY_JA_JP_LOCALE,
 );
 
 interface ObservedClientHeaders {

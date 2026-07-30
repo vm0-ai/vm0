@@ -70,9 +70,10 @@ r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
 app_artifact_uri="s3://${R2_BUCKET_NAME}/okou-app/${TARGET_COMMIT}"
 app_artifact_dir=$(mktemp -d)
 trap 'rm -rf "$app_artifact_dir"' EXIT
-aws s3 cp "$app_artifact_uri/" "$app_artifact_dir/" \
-  --endpoint-url "$r2_endpoint" \
-  --recursive
+bash "${script_dir}/fetch-okou-app-artifact.sh" \
+  "$r2_endpoint" \
+  "$app_artifact_uri" \
+  "$app_artifact_dir"
 bash "${script_dir}/verify-okou-app-artifact.sh" \
   "$app_artifact_dir" \
   "$TARGET_COMMIT"

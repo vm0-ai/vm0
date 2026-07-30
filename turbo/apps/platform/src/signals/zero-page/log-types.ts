@@ -3,26 +3,10 @@ import type {
   LogStatus,
   TriggerSource,
 } from "@vm0/api-contracts/contracts/logs";
+import { i18n } from "../../i18n/index.ts";
 
 // Re-export from core contract to stay in sync with the API schema
 export type { LogStatus, TriggerSource };
-
-/** Human-readable labels for each trigger source, shared across activity views. */
-export const TRIGGER_SOURCE_LABELS: Readonly<Record<TriggerSource, string>> = {
-  web: "Web",
-  slack: "Slack",
-  teams: "Teams",
-  feishu: "Feishu",
-  email: "Email",
-  telegram: "Telegram",
-  agentphone: "AgentPhone",
-  github: "GitHub",
-  cli: "CLI",
-  agent: "Agent",
-  webhook: "Webhook",
-  "workflow-schedule": "Workflow schedule",
-  "workflow-event": "Workflow event",
-};
 
 /**
  * Build a display label for a trigger source.
@@ -33,9 +17,80 @@ export function getTriggerSourceLabel(
   triggerAgentName?: string | null,
 ): string {
   if (source === "agent" && triggerAgentName) {
-    return `Agent (${triggerAgentName})`;
+    return i18n.t(
+      ($) => {
+        return $.activity.sources.agentWithName;
+      },
+      { name: triggerAgentName },
+    );
   }
-  return TRIGGER_SOURCE_LABELS[source];
+  switch (source) {
+    case "web": {
+      return i18n.t(($) => {
+        return $.activity.sources.web;
+      });
+    }
+    case "slack": {
+      return i18n.t(($) => {
+        return $.activity.sources.slack;
+      });
+    }
+    case "teams": {
+      return i18n.t(($) => {
+        return $.activity.sources.teams;
+      });
+    }
+    case "feishu": {
+      return i18n.t(($) => {
+        return $.activity.sources.feishu;
+      });
+    }
+    case "email": {
+      return i18n.t(($) => {
+        return $.activity.sources.email;
+      });
+    }
+    case "telegram": {
+      return i18n.t(($) => {
+        return $.activity.sources.telegram;
+      });
+    }
+    case "agentphone": {
+      return i18n.t(($) => {
+        return $.activity.sources.agentphone;
+      });
+    }
+    case "github": {
+      return i18n.t(($) => {
+        return $.activity.sources.github;
+      });
+    }
+    case "cli": {
+      return i18n.t(($) => {
+        return $.activity.sources.cli;
+      });
+    }
+    case "agent": {
+      return i18n.t(($) => {
+        return $.activity.sources.agent;
+      });
+    }
+    case "webhook": {
+      return i18n.t(($) => {
+        return $.activity.sources.webhook;
+      });
+    }
+    case "workflow-schedule": {
+      return i18n.t(($) => {
+        return $.activity.sources.workflowSchedule;
+      });
+    }
+    case "workflow-event": {
+      return i18n.t(($) => {
+        return $.activity.sources.workflowEvent;
+      });
+    }
+  }
 }
 
 // List response - contains basic fields for list display

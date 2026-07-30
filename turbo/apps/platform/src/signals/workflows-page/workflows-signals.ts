@@ -4,6 +4,7 @@ import {
   zeroWorkflowsDetailContract,
   zeroWorkflowAutomationsContract,
   zeroWorkflowVisibilityContract,
+  type ChatRunFinishedEventConfig,
   type GmailLabelAppliedEventConfig,
   type GmailNewMessageEventConfig,
   type GoogleCalendarEventCancelledEventConfig,
@@ -21,7 +22,6 @@ import {
   type NotionPageContentUpdatedEventCreateConfig,
   type StrapiEntryPublishedEventConfig,
   type ZeroWorkflowDetailResponse,
-  type ZeroWorkflowConnectorReadinessResponse,
   type ZeroWorkflowSchedule,
   type ZeroWorkflowWebhookSecretResponse,
   type ZeroWorkflowSummary,
@@ -34,6 +34,7 @@ import {
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { activeRoute$ } from "../active-route.ts";
+import { locale$ } from "../locale.ts";
 import {
   detachedNavigateTo$,
   pathParams$,
@@ -52,6 +53,10 @@ import {
   reloadWorkflowData$,
   workflowReloadVersion$,
 } from "./workflow-reload.ts";
+import {
+  normalizeWorkflowConnectorReadinessResponse,
+  type PlatformWorkflowConnectorReadinessResponse,
+} from "../connector-domain.ts";
 
 type WorkflowDetailActionDialog = "copy" | "delete" | null;
 export type WorkflowDetailTab = "automations" | "instructions" | "info";
@@ -88,6 +93,7 @@ function defaultWorkflowCopyForm(): WorkflowCopyFormState {
   };
 }
 export type WorkflowAutomationCreateDialog =
+  | "chat-run-finished"
   | "interval"
   | "scheduled"
   | "once"
@@ -273,7 +279,7 @@ type WorkflowConnectorReadinessState =
       readonly workflowId: string;
       readonly requestId: string;
       readonly status: "success";
-      readonly response: ZeroWorkflowConnectorReadinessResponse;
+      readonly response: PlatformWorkflowConnectorReadinessResponse;
     };
 
 const internalWorkflowConnectorReadiness$ =
@@ -726,6 +732,7 @@ export const currentAgentVisibleWorkflows$ = computed(
 export const allVisibleWorkflows$ = computed(
   async (get): Promise<readonly ZeroWorkflowSummary[]> => {
     get(workflowReloadVersion$);
+    const locale = get(locale$);
     const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
     const result = await accept(client.list({ query: {} }), [200]);
     return [...result.body].sort((a, b) => {
@@ -734,7 +741,7 @@ export const allVisibleWorkflows$ = computed(
       }
       const aTitle = a.displayName ?? a.name;
       const bTitle = b.displayName ?? b.name;
-      return aTitle.localeCompare(bTitle);
+      return aTitle.localeCompare(bTitle, locale);
     });
   },
 );
@@ -742,6 +749,7 @@ export const allVisibleWorkflows$ = computed(
 export const allWorkflowAutomationEntries$ = computed(
   async (get): Promise<readonly WorkflowAutomationEntry[]> => {
     get(workflowReloadVersion$);
+    const locale = get(locale$);
     const automationClient = get(zeroClient$)(zeroWorkflowAutomationsContract);
     const automationResult = await accept(
       automationClient.listWorkspace(),
@@ -761,7 +769,7 @@ export const allWorkflowAutomationEntries$ = computed(
       }
       const aTitle = a.workflow.displayName ?? a.workflow.name;
       const bTitle = b.workflow.displayName ?? b.workflow.name;
-      return aTitle.localeCompare(bTitle);
+      return aTitle.localeCompare(bTitle, locale);
     });
   },
 );
@@ -821,7 +829,7 @@ export const checkWorkflowConnectorReadiness$ = command(
       workflowId,
       requestId,
       status: "success",
-      response: result.body,
+      response: normalizeWorkflowConnectorReadinessResponse(result.body),
     });
   },
 );
@@ -1160,6 +1168,33 @@ export const createWorkflowGoogleCalendarEventAutomation$ = command(
       client.create({
         params: { workflowId: input.workflowId },
         body,
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
+export const createWorkflowChatRunFinishedAutomation$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly workflowId: string;
+      readonly eventConfig: ChatRunFinishedEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowAutomationsContract);
+    await accept(
+      client.create({
+        params: { workflowId: input.workflowId },
+        body: {
+          kind: "event",
+          eventType: "chat-run-finished",
+          eventConfig: input.eventConfig,
+        },
         fetchOptions: { signal },
       }),
       [201],

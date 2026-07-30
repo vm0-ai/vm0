@@ -14,7 +14,7 @@ import {
   type ArtifactKind,
   type ArtifactThumbnail,
 } from "@vm0/db/schema/artifact";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { hostedDeployments, hostedSites } from "@vm0/db/schema/hosted-site";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
@@ -24,7 +24,7 @@ import { z } from "zod";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { publishArtifactCatalogChanged } from "./artifact-realtime.service";
-import { inferMimetype } from "./zero-chat-message-shared.service";
+import { inferMimetype } from "./zero-chat-event-shared.service";
 
 const ARTIFACT_CATALOG_DEFAULT_LIMIT = 60;
 
@@ -142,14 +142,14 @@ async function resolveChatThreadId(
     return run.chatThreadId;
   }
 
-  const [message] = await db
-    .select({ chatThreadId: chatMessages.chatThreadId })
-    .from(chatMessages)
-    .where(eq(chatMessages.runId, row.runId))
-    .orderBy(asc(chatMessages.seqId))
+  const [event] = await db
+    .select({ chatThreadId: chatEvents.chatThreadId })
+    .from(chatEvents)
+    .where(eq(chatEvents.runId, row.runId))
+    .orderBy(asc(chatEvents.seqId))
     .limit(1);
   signal.throwIfAborted();
-  return message?.chatThreadId ?? null;
+  return event?.chatThreadId ?? null;
 }
 
 async function resolveAuthorUserId(
@@ -350,6 +350,7 @@ async function syncHostedArtifact(args: {
       .select({
         id: hostedSites.id,
         slug: hostedSites.slug,
+        requestedSlug: hostedSites.requestedSlug,
         createdAt: hostedSites.createdAt,
       })
       .from(hostedSites)
@@ -401,7 +402,7 @@ async function syncHostedArtifact(args: {
       projectionCreatedAt: args.row.createdAt,
       orgId: args.orgId,
       authorUserId: args.authorUserId,
-      title: site.slug,
+      title: site.requestedSlug ?? site.slug,
       thumbnail: args.row.previewImageUrl
         ? { url: args.row.previewImageUrl }
         : null,
@@ -584,20 +585,40 @@ async function syncArtifactCatalogFile(
     return [];
   }
 
-  await upsertArtifact({
-    db,
-    kind,
-    entityId,
-    logicalKey: `file:${row.url}`,
-    projectionFileId: row.id,
-    projectionCreatedAt: row.createdAt,
-    orgId: row.orgId,
-    authorUserId,
-    title: row.filename ?? row.externalId,
-    thumbnail: fileThumbnail(row),
-    createdAt: row.createdAt,
+  const orgId = row.orgId;
+  const logicalKey = `file:${row.url}`;
+  const synced = await db.transaction(async (tx) => {
+    // Serialize retries for one file before touching either artifact key.
+    const [lockedFile] = await tx
+      .select({ id: runUploadedFiles.id })
+      .from(runUploadedFiles)
+      .where(eq(runUploadedFiles.id, row.id))
+      .for("update")
+      .limit(1);
+    signal.throwIfAborted();
+    if (!lockedFile) {
+      return false;
+    }
+
+    await upsertArtifact({
+      db: tx,
+      kind,
+      entityId,
+      logicalKey,
+      projectionFileId: row.id,
+      projectionCreatedAt: row.createdAt,
+      orgId,
+      authorUserId,
+      title: row.filename ?? row.externalId,
+      thumbnail: fileThumbnail(row),
+      createdAt: row.createdAt,
+    });
+    return true;
   });
   signal.throwIfAborted();
+  if (!synced) {
+    return [];
+  }
   await finishPendingArtifactFile(db, fileId, signal);
   return [authorUserId];
 }
@@ -846,6 +867,7 @@ async function hostedSiteDetail(
     .select({
       id: hostedSites.id,
       slug: hostedSites.slug,
+      requestedSlug: hostedSites.requestedSlug,
       publicSlug: hostedSites.publicSlug,
       deploymentVersion: hostedSites.activeDeploymentVersion,
       url: hostedDeployments.url,
@@ -860,7 +882,18 @@ async function hostedSiteDetail(
     .where(eq(hostedSites.id, hostedSiteId))
     .limit(1);
   signal.throwIfAborted();
-  return row ?? null;
+  if (!row) {
+    return null;
+  }
+  return {
+    id: row.id,
+    slug: row.requestedSlug ?? row.slug,
+    publicSlug: row.publicSlug,
+    url: row.url,
+    deploymentVersion: row.deploymentVersion,
+    entrypoint: row.entrypoint,
+    spaFallback: row.spaFallback,
+  };
 }
 
 /**

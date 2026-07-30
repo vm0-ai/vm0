@@ -8,9 +8,14 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 
-use api_contracts::generated::{constants::runners::RUNNER_POLL_EXCLUDED_RUN_IDS_MAX, routes};
+use api_contracts::generated::{
+    constants::runners::{
+        NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE, RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
+    },
+    routes,
+};
 use reqwest::{Response, StatusCode};
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use super::api_ably_supervisor::{
     AblySupervisor, AblySupervisorConfig, PollDue, PollOutcome, PollReason, PollWakeups,
@@ -77,6 +82,23 @@ struct PollRequestBody<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     excluded_run_ids: Option<&'a [RunId]>,
     telemetry: PollRequestTelemetry,
+}
+
+pub(super) enum NetworkPolicyRefreshOutcome {
+    Refreshed(NetworkPolicyRefreshBatchResponse),
+    RunTerminal,
+}
+
+#[derive(Deserialize)]
+struct ApiErrorEnvelope {
+    error: ApiErrorDetails,
+}
+
+#[derive(Deserialize)]
+struct ApiErrorDetails {
+    code: String,
+    #[serde(rename = "message")]
+    _message: String,
 }
 
 #[derive(Serialize)]
@@ -995,7 +1017,7 @@ impl ApiClient {
         &self,
         run_id: RunId,
         connector_slugs: &[String],
-    ) -> RunnerResult<NetworkPolicyRefreshBatchResponse> {
+    ) -> RunnerResult<NetworkPolicyRefreshOutcome> {
         let run_id = run_id.to_string();
         let resp = send_api(
             self.network_policy_refresh_request(&run_id, connector_slugs),
@@ -1003,8 +1025,20 @@ impl ApiClient {
         )
         .await?;
 
+        if resp.status() == StatusCode::CONFLICT {
+            let (status, body) = read_api_error(resp).await;
+            if serde_json::from_str::<ApiErrorEnvelope>(&body).is_ok_and(|response| {
+                response.error.code == NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE
+            }) {
+                return Ok(NetworkPolicyRefreshOutcome::RunTerminal);
+            }
+            return Err(api_status_error("network policy refresh", status, &body));
+        }
+
         let resp = check_api_status(resp, "network policy refresh").await?;
-        decode_api_json(resp, "network policy refresh").await
+        decode_api_json(resp, "network policy refresh")
+            .await
+            .map(NetworkPolicyRefreshOutcome::Refreshed)
     }
 
     fn network_policy_refresh_request(
@@ -1020,8 +1054,7 @@ impl ApiClient {
                 &self.token,
             )
             .timeout(NETWORK_POLICY_REFRESH_TIMEOUT)
-            // TODO(#23619): Rename this key with the runner API wire contract.
-            .json(&serde_json::json!({ "connectorRefs": connector_slugs }))
+            .json(&serde_json::json!({ "connectorSlugs": connector_slugs }))
     }
 
     pub(super) async fn resolve_builtin_firewall_catalog(
@@ -1474,7 +1507,7 @@ mod tests {
                 .body()
                 .and_then(reqwest::Body::as_bytes)
                 .expect("request should include JSON body"),
-            br#"{"connectorRefs":["slack"]}"#
+            br#"{"connectorSlugs":["slack"]}"#
         );
     }
 

@@ -26,10 +26,9 @@ export type ConnectorOauthCallbackResult = z.infer<
 export const connectorsSlugCallbackContract = c.router({
   callback: {
     method: "GET",
-    // TODO(#23619): Rename this path parameter and route compatibly.
-    path: "/api/connectors/:type/callback",
+    path: "/api/connectors/:connectorSlug/callback",
     headers: authHeadersSchema,
-    pathParams: z.object({ type: connectorSlugSchema }),
+    pathParams: z.object({ connectorSlug: connectorSlugSchema }),
     query: z
       .object({
         code: z.string().optional(),

@@ -142,7 +142,7 @@ const listChatEventsInner$ = computed(async (get) => {
   const params = get(pathParamsOf(chatThreadEventsContract.list));
   const query = get(queryOf(chatThreadEventsContract.list));
 
-  const page = await get(
+  const events = await get(
     zeroChatThreadEventsPage({
       threadId: params.threadId,
       userId: auth.userId,
@@ -153,16 +153,13 @@ const listChatEventsInner$ = computed(async (get) => {
       limit: query.limit,
     }),
   );
-  if (!page) {
+  if (!events) {
     return chatThreadNotFound();
   }
 
   return {
     status: 200 as const,
-    body: {
-      events: [...page.events],
-      hasHistoryBefore: page.hasHistoryBefore,
-    },
+    body: { events: [...events] },
   };
 });
 
@@ -330,7 +327,10 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
   },
   {
     route: chatThreadEventsContract.list,
-    handler: authRoute({}, listChatEventsInner$),
+    handler: authRoute(
+      { requiredCapability: "chat-event:read" },
+      listChatEventsInner$,
+    ),
   },
   {
     route: chatThreadEventsContract.get,
@@ -342,7 +342,7 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "chat-message:read",
+        requiredCapability: "chat-event:read",
       },
       searchChatInner$,
     ),

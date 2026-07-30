@@ -35,7 +35,18 @@ function parseAgentPhoneTypingTarget(
   return { conversationId: data.conversationId };
 }
 
-const refreshAgentPhoneTypingForRun$ = command(
+function parseCanonicalAgentPhoneTypingTarget(
+  payload: unknown,
+): AgentPhoneTypingTarget | undefined {
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+  return parseAgentPhoneTypingTarget(
+    (payload as Record<string, unknown>).agentphoneDelivery,
+  );
+}
+
+export const refreshAgentPhoneTypingForRun$ = command(
   async ({ get }, runId: string, signal: AbortSignal): Promise<void> => {
     const db = get(db$);
     const callbacks = await db
@@ -55,11 +66,13 @@ const refreshAgentPhoneTypingForRun$ = command(
 
     const targets = new Map<string, AgentPhoneTypingTarget>();
     for (const callback of callbacks) {
-      if (internalRunCallbackKindForRecord(callback) !== "agentphone") {
-        continue;
-      }
-
-      const target = parseAgentPhoneTypingTarget(callback.payload);
+      const kind = internalRunCallbackKindForRecord(callback);
+      const target =
+        kind === "chat"
+          ? parseCanonicalAgentPhoneTypingTarget(callback.payload)
+          : kind === "agentphone" || kind === "agentphone:chat"
+            ? parseAgentPhoneTypingTarget(callback.payload)
+            : undefined;
       if (target) {
         targets.set(target.conversationId, target);
       }

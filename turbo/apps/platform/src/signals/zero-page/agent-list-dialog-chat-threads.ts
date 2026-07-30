@@ -1,6 +1,7 @@
 import { computed } from "ccstate";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type { EventDrivenChatThread } from "@vm0/core/chat-thread-event-replay";
+import { i18n } from "../../i18n/index.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import {
   eventDrivenChatThreads$,
@@ -42,7 +43,11 @@ export const agentListDialogChatThreads$ = computed(
       readonly title: string;
     }[] = [];
     for (const thread of threads) {
-      const title = thread.title ?? "New chat";
+      const title =
+        thread.title ??
+        i18n.t(($) => {
+          return $.chat.newChat;
+        });
       if (query && !title.toLowerCase().includes(query)) {
         continue;
       }

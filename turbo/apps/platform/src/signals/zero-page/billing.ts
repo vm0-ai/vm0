@@ -22,6 +22,7 @@ import {
   applyStoredAdAttribution,
   getStoredAdAttributionMetadata,
 } from "../bootstrap/ad-attribution.ts";
+import { currentLocale, i18n } from "../../i18n/index.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -41,8 +42,6 @@ export type CreditCheckoutSelection =
 
 const RESTORE_PAYMENT_PENDING_KEY = "vm0:billing:restore-payment-pending";
 const DOWNGRADE_PAYMENT_PENDING_KEY = "vm0:billing:downgrade-payment-pending";
-const RESTORE_SUCCESS_TOAST =
-  "Plan restored. Your subscription will renew normally.";
 export const CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN = 1;
 export const CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX = 1000;
 
@@ -56,7 +55,7 @@ function formatEffectiveDate(effectiveDate: string | null): string | null {
     return null;
   }
 
-  return new Intl.DateTimeFormat("en-US", {
+  return new Intl.DateTimeFormat(currentLocale(), {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -100,13 +99,27 @@ function downgradeSuccessToastMessage(
   const effectiveDate = formatEffectiveDate(effectiveDateValue);
   if (targetTier === "limited-free-1" || targetTier === "pro-suspend") {
     return effectiveDate
-      ? `Cancellation scheduled. Your current plan stays active until ${effectiveDate}.`
-      : "Cancellation scheduled. Your current plan stays active until the billing period ends.";
+      ? i18n.t(
+          ($) => {
+            return $.billing.toasts.cancellationScheduledDate;
+          },
+          { date: effectiveDate },
+        )
+      : i18n.t(($) => {
+          return $.billing.toasts.cancellationScheduledPeriod;
+        });
   }
 
   return effectiveDate
-    ? `Downgrade scheduled. Your current plan stays active until ${effectiveDate}.`
-    : "Downgrade scheduled. Your current plan stays active until the billing period ends.";
+    ? i18n.t(
+        ($) => {
+          return $.billing.toasts.downgradeScheduledDate;
+        },
+        { date: effectiveDate },
+      )
+    : i18n.t(($) => {
+        return $.billing.toasts.downgradeScheduledPeriod;
+      });
 }
 
 function rememberPendingDowngradePayment(
@@ -177,7 +190,11 @@ function maybeShowPendingRestoreToast(status: BillingStatusResponse): void {
   }
 
   storage.removeItem(RESTORE_PAYMENT_PENDING_KEY);
-  toast.success(RESTORE_SUCCESS_TOAST);
+  toast.success(
+    i18n.t(($) => {
+      return $.billing.toasts.planRestored;
+    }),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -445,8 +462,15 @@ export const cancelConcurrencySubscription$ = command(
     const effectiveDate = formatEffectiveDate(result.body.currentPeriodEnd);
     toast.success(
       effectiveDate
-        ? `Concurrency subscription canceled. Slots stay active until ${effectiveDate}.`
-        : "Concurrency subscription canceled.",
+        ? i18n.t(
+            ($) => {
+              return $.billing.toasts.concurrencyCanceledDate;
+            },
+            { date: effectiveDate },
+          )
+        : i18n.t(($) => {
+            return $.billing.toasts.concurrencyCanceled;
+          }),
     );
   },
 );
@@ -468,7 +492,11 @@ export const restoreConcurrencySubscription$ = command(
       return x + 1;
     });
     set(internalConcurrencyConfirmDialog$, null);
-    toast.success("Concurrency subscription restored.");
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.concurrencyRestored;
+      }),
+    );
   },
 );
 
@@ -566,7 +594,11 @@ export const restorePlan$ = command(
     set(billingReload$, (x) => {
       return x + 1;
     });
-    toast.success(RESTORE_SUCCESS_TOAST);
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.planRestored;
+      }),
+    );
   },
 );
 
@@ -684,7 +716,11 @@ export const saveAutoRecharge$ = command(
     set(internalPendingEnabled$, null);
     set(internalFormThresholdOverride$, null);
     set(internalFormAmountOverride$, null);
-    toast.success("Auto-recharge updated");
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.autoRechargeUpdated;
+      }),
+    );
   },
 );
 
@@ -751,7 +787,11 @@ export const setReceiptDownloadEndMonth$ = command(
 
 export const downloadMonthlyReceipts$ = command(
   async ({ get }, range: ReceiptDownloadRange, signal: AbortSignal) => {
-    const toastId = toast.loading("Preparing receipt download...");
+    const toastId = toast.loading(
+      i18n.t(($) => {
+        return $.billing.toasts.preparingReceiptDownload;
+      }),
+    );
     signal.addEventListener(
       "abort",
       () => {
@@ -784,12 +824,22 @@ export const downloadMonthlyReceipts$ = command(
         return true;
       })(),
       () => {
-        toast.error("Failed to download receipts", { id: toastId });
+        toast.error(
+          i18n.t(($) => {
+            return $.billing.toasts.receiptDownloadFailed;
+          }),
+          { id: toastId },
+        );
       },
     );
     signal.throwIfAborted();
     if (downloaded) {
-      toast.success("Receipts downloaded", { id: toastId });
+      toast.success(
+        i18n.t(($) => {
+          return $.billing.toasts.receiptsDownloaded;
+        }),
+        { id: toastId },
+      );
     }
   },
 );

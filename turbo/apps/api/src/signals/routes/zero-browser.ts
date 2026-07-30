@@ -11,6 +11,7 @@ import {
   getZeroBrowser$,
   leaseCurrentZeroBrowser$,
   leaseZeroBrowserById$,
+  resizeZeroBrowserById$,
   resumeZeroBrowserFromViewer$,
   useZeroBrowser$,
   type BrowserServiceError,
@@ -117,6 +118,7 @@ const leaseBrowserByIdInner$ = command(
         orgId: auth.orgId,
         userId: auth.userId,
         browserId: get(leaseByIdParams$).browserId,
+        ...("runId" in auth ? { runId: auth.runId } : {}),
       },
       signal,
     );
@@ -142,6 +144,33 @@ const resumeBrowserByIdInner$ = command(
         orgId: auth.orgId,
         userId: auth.userId,
         browserId: get(resumeByIdParams$).browserId,
+        ...("runId" in auth ? { runId: auth.runId } : {}),
+      },
+      signal,
+    );
+    return result.kind === "error"
+      ? errorResponse(result)
+      : { status: 200 as const, body: { browser: result.value } };
+  },
+);
+
+const resizeByIdParams$ = pathParamsOf(zeroBrowserContract.resizeById);
+const resizeByIdBody$ = bodyResultOf(zeroBrowserContract.resizeById);
+const resizeBrowserByIdInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const body = await get(resizeByIdBody$);
+    signal.throwIfAborted();
+    if (!body.ok) {
+      return body.response;
+    }
+    const auth = get(organizationAuthContext$);
+    const result = await set(
+      resizeZeroBrowserById$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        browserId: get(resizeByIdParams$).browserId,
+        aspectRatio: body.data.aspectRatio,
       },
       signal,
     );
@@ -180,6 +209,7 @@ const getBrowserInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       userId: auth.userId,
       browserId: get(getParams$).browserId,
       chatThreadId: get(getQuery$).chatThreadId,
+      ...("runId" in auth ? { runId: auth.runId } : {}),
     },
     signal,
   );
@@ -242,6 +272,10 @@ export const zeroBrowserRoutes: readonly RouteEntry[] = [
   {
     route: zeroBrowserContract.resumeById,
     handler: authRoute(browserViewerWriteAuth, resumeBrowserByIdInner$),
+  },
+  {
+    route: zeroBrowserContract.resizeById,
+    handler: authRoute(browserViewerWriteAuth, resizeBrowserByIdInner$),
   },
   {
     route: zeroBrowserContract.current,

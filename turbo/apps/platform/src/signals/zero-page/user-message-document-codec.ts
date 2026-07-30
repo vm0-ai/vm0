@@ -11,9 +11,15 @@ import {
   type UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
+import { i18n } from "../../i18n/index.ts";
 import { formatFeedbackPrompt, type FeedbackSource } from "./chat-feedback.ts";
 import { serializeChatThreadMention } from "./chat-thread-suggestion-domain.ts";
+import {
+  serializeAgentMention,
+  splitAgentMentionSegments,
+} from "./composer-agent-suggestion-domain.ts";
 
+export const AGENT_MENTION_NODE_NAME = "agentMention";
 export const CHAT_THREAD_MENTION_NODE_NAME = "chatThreadMention";
 export const TEMPLATE_ATTACHMENT_NODE_NAME = "templateAttachment";
 export const INLINE_TEMPLATE_NODE_NAME = "inlineTemplate";
@@ -72,6 +78,21 @@ function chatThreadPart(
   };
 }
 
+function agentPart(
+  node: ProseMirrorNode,
+): Extract<UserMessagePart, { type: "agent" }> | null {
+  const agentId: unknown = node.attrs.agentId;
+  const name: unknown = node.attrs.name;
+  if (typeof agentId !== "string" || typeof name !== "string") {
+    return null;
+  }
+  return {
+    type: "agent",
+    agentId,
+    nameSnapshot: name,
+  };
+}
+
 function legacyTemplatePart(
   node: ProseMirrorNode,
   generationTemplate: GenerationTemplateRequest | undefined,
@@ -124,6 +145,14 @@ function appendParagraphParts(
     }
     if (node.type.name === "hardBreak") {
       appendTextPart(parts, "\n");
+      continue;
+    }
+    if (node.type.name === AGENT_MENTION_NODE_NAME) {
+      const part = agentPart(node);
+      if (!part) {
+        return false;
+      }
+      parts.push(part);
       continue;
     }
     if (node.type.name === CHAT_THREAD_MENTION_NODE_NAME) {
@@ -216,6 +245,7 @@ function feedbackPart(node: ProseMirrorNode): UserMessagePart | null {
       return (
         part.type === "text" ||
         part.type === "chat_thread" ||
+        part.type === "agent" ||
         part.type === "template"
       );
     })
@@ -413,6 +443,32 @@ function legacyTemplateNode(
   } satisfies JSONContent;
 }
 
+function agentMentionNode(part: Extract<UserMessagePart, { type: "agent" }>) {
+  return {
+    type: AGENT_MENTION_NODE_NAME,
+    attrs: {
+      agentId: part.agentId,
+      name: part.nameSnapshot,
+      avatarUrl: null,
+    },
+  } satisfies JSONContent;
+}
+
+function agentMentionInlineContent(line: string): JSONContent[] {
+  return splitAgentMentionSegments(line).map((segment): JSONContent => {
+    return segment.type === "text"
+      ? { type: "text", text: segment.text }
+      : {
+          type: AGENT_MENTION_NODE_NAME,
+          attrs: {
+            agentId: segment.agentId,
+            name: segment.name,
+            avatarUrl: null,
+          },
+        };
+  });
+}
+
 function feedbackNoteToPrompt(note: readonly FeedbackNotePart[]): string {
   return note
     .map((part) => {
@@ -421,6 +477,9 @@ function feedbackNoteToPrompt(note: readonly FeedbackNotePart[]): string {
       }
       if (part.type === "chat_thread") {
         return serializeChatThreadMention(part.threadId, part.titleSnapshot);
+      }
+      if (part.type === "agent") {
+        return serializeAgentMention(part.agentId, part.nameSnapshot);
       }
       return `Select ${part.titleSnapshot} ${part.template.type} template`;
     })
@@ -458,10 +517,15 @@ function feedbackNoteContent(note: readonly FeedbackNotePart[]): JSONContent[] {
       trailingParagraph = false;
       continue;
     }
+    if (part.type === "agent") {
+      paragraphContent.push(agentMentionNode(part));
+      trailingParagraph = false;
+      continue;
+    }
     const lines = part.text.split("\n");
     for (const [index, line] of lines.entries()) {
       if (line.length > 0) {
-        paragraphContent.push({ type: "text", text: line });
+        paragraphContent.push(...agentMentionInlineContent(line));
         trailingParagraph = false;
       }
       if (index < lines.length - 1) {
@@ -511,7 +575,7 @@ function appendRestoredText(state: RestoredEditorState, text: string): void {
   const lines = text.split("\n");
   for (const [index, line] of lines.entries()) {
     if (line.length > 0) {
-      state.paragraphContent.push({ type: "text", text: line });
+      state.paragraphContent.push(...agentMentionInlineContent(line));
       state.trailingParagraph = false;
     }
     if (index < lines.length - 1) {
@@ -559,6 +623,11 @@ export function messageDocumentToEditorDoc(
           title: part.titleSnapshot,
         },
       });
+      state.trailingParagraph = false;
+      continue;
+    }
+    if (part.type === "agent") {
+      state.paragraphContent.push(agentMentionNode(part));
       state.trailingParagraph = false;
       continue;
     }
@@ -653,6 +722,8 @@ export function messageDocumentToPrompt(
         part.threadId,
         part.titleSnapshot,
       );
+    } else if (part.type === "agent") {
+      inlineText += serializeAgentMention(part.agentId, part.nameSnapshot);
     } else if (part.type === "template" && options.inlineTemplates === true) {
       inlineText += `Select ${part.titleSnapshot} ${part.template.type} template`;
     }
@@ -700,21 +771,48 @@ export function messageDocumentToDisplayText(
       continue;
     }
     if (part.type === "chat_thread") {
-      inlineText += `[Chat thread: ${part.titleSnapshot}]`;
+      inlineText += i18n.t(
+        ($) => {
+          return $.chat.messageDocument.chatThread;
+        },
+        { title: part.titleSnapshot },
+      );
+      continue;
+    }
+    if (part.type === "agent") {
+      inlineText += i18n.t(
+        ($) => {
+          return $.chat.messageDocument.agent;
+        },
+        { name: part.nameSnapshot },
+      );
       continue;
     }
     if (part.type === "template") {
+      const templateLabel = i18n.t(
+        ($) => {
+          return $.chat.messageDocument.template;
+        },
+        { title: part.titleSnapshot },
+      );
       if (options.inlineTemplates === true) {
-        inlineText += `[Template: ${part.titleSnapshot}]`;
+        inlineText += templateLabel;
       } else {
         flushInlineText();
-        blocks.push(`[Template: ${part.titleSnapshot}]`);
+        blocks.push(templateLabel);
       }
       continue;
     }
 
     flushInlineText();
-    blocks.push(`[File: ${part.filenameSnapshot}]`);
+    blocks.push(
+      i18n.t(
+        ($) => {
+          return $.chat.messageDocument.file;
+        },
+        { filename: part.filenameSnapshot },
+      ),
+    );
   }
   flushFeedback();
   flushInlineText();

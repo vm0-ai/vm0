@@ -22,7 +22,7 @@ import { authorization$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { db$, writeDb$ } from "../external/db";
-import { flushAxiom, getDatasetName, ingestToAxiom } from "../external/axiom";
+import { getDatasetName, ingestAxiomDirect } from "../external/axiom";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import type { RouteEntry } from "../route-entry";
 import { dispatchProgressCallbacks$ } from "../services/agent-run-callbacks.service";
@@ -39,6 +39,7 @@ const SANDBOX_TELEMETRY_METRICS_DATASET = "sandbox-telemetry-metrics";
 const SANDBOX_TELEMETRY_NETWORK_DATASET = "sandbox-telemetry-network";
 const PG_FOREIGN_KEY_VIOLATION = "23503";
 const MODEL_USAGE_KIND = "model";
+const TELEMETRY_INGEST_TIMEOUT_MS = 10_000;
 
 const L = logger("webhooks:agent");
 
@@ -210,8 +211,6 @@ const usageEvent$ = command(async ({ get, set }, signal: AbortSignal) => {
         provider: event.provider,
         category: event.category,
         quantity: event.quantity,
-        grossCredits:
-          event.kind === MODEL_USAGE_KIND ? event.grossCredits : undefined,
         idempotencyKey: event.idempotencyKey,
       };
     });
@@ -343,56 +342,70 @@ const telemetry$ = command(async ({ get }, signal: AbortSignal) => {
     return notFound("Agent run not found");
   }
 
-  let telemetryBuffered = false;
+  const telemetryBatches: {
+    readonly dataset: string;
+    readonly events: readonly Record<string, unknown>[];
+  }[] = [];
 
   if (body.systemLog) {
-    telemetryBuffered =
-      ingestToAxiom(getDatasetName(SANDBOX_TELEMETRY_SYSTEM_DATASET), [
+    telemetryBatches.push({
+      dataset: getDatasetName(SANDBOX_TELEMETRY_SYSTEM_DATASET),
+      events: [
         {
           _time: nowDate().toISOString(),
           runId: body.runId,
           userId: auth.userId,
           log: body.systemLog,
         },
-      ]) || telemetryBuffered;
+      ],
+    });
   }
 
   if (body.metrics && body.metrics.length > 0) {
-    telemetryBuffered =
-      ingestToAxiom(
-        getDatasetName(SANDBOX_TELEMETRY_METRICS_DATASET),
-        body.metrics.map((metric) => {
-          return {
-            _time: metric.ts,
-            runId: body.runId,
-            userId: auth.userId,
-            cpu: metric.cpu,
-            mem_used: metric.mem_used,
-            mem_total: metric.mem_total,
-            disk_used: metric.disk_used,
-            disk_total: metric.disk_total,
-          };
-        }),
-      ) || telemetryBuffered;
+    telemetryBatches.push({
+      dataset: getDatasetName(SANDBOX_TELEMETRY_METRICS_DATASET),
+      events: body.metrics.map((metric) => {
+        return {
+          _time: metric.ts,
+          runId: body.runId,
+          userId: auth.userId,
+          cpu: metric.cpu,
+          mem_used: metric.mem_used,
+          mem_total: metric.mem_total,
+          disk_used: metric.disk_used,
+          disk_total: metric.disk_total,
+        };
+      }),
+    });
   }
 
   if (body.networkLogs && body.networkLogs.length > 0) {
-    telemetryBuffered =
-      ingestToAxiom(
-        getDatasetName(SANDBOX_TELEMETRY_NETWORK_DATASET),
-        body.networkLogs.map(({ timestamp, ...rest }) => {
-          return {
-            ...rest,
-            _time: timestamp,
-            runId: body.runId,
-            userId: auth.userId,
-          };
-        }),
-      ) || telemetryBuffered;
+    telemetryBatches.push({
+      dataset: getDatasetName(SANDBOX_TELEMETRY_NETWORK_DATASET),
+      events: body.networkLogs.map(({ timestamp, ...rest }) => {
+        return {
+          ...rest,
+          _time: timestamp,
+          runId: body.runId,
+          userId: auth.userId,
+        };
+      }),
+    });
   }
 
-  if (telemetryBuffered) {
-    await flushAxiom({ client: "telemetry", throwOnError: true });
+  if (telemetryBatches.length > 0) {
+    await Promise.all(
+      telemetryBatches.map(async (batch) => {
+        await ingestAxiomDirect(
+          batch.dataset,
+          batch.events,
+          AbortSignal.any([
+            signal,
+            AbortSignal.timeout(TELEMETRY_INGEST_TIMEOUT_MS),
+          ]),
+        );
+      }),
+    );
     signal.throwIfAborted();
   }
 

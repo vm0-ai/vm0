@@ -55,13 +55,14 @@ import { connectors } from "@vm0/db/schema/connector";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { secrets as secretsTable } from "@vm0/db/schema/secret";
 import { variables as variablesTable } from "@vm0/db/schema/variable";
-import { and, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { executeRawRows, pgInt8ToBigIntSchema } from "../../lib/db-raw-rows";
 import {
   pgInt8ToBigIntDecoder,
   pgNullDecoder,
+  pgTextDecoder,
 } from "../../lib/db-structured-result";
 import { optionalEnv } from "../../lib/env";
 import { badRequestMessage, insufficientCredits } from "../../lib/error";
@@ -101,6 +102,8 @@ import {
   resolveConnectorCredentialAccess,
   type ConnectorCredentialAccess,
 } from "./connector-credential-access.service";
+import { resolveLiveCustomConnectorOAuth2AccessToken } from "./custom-connector-oauth2.service";
+import { CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY } from "./zero-custom-connector.service";
 
 type AccessSecretSource = SecretConnectorMetadata["sourceType"];
 type StorageSecretSource = Exclude<AccessSecretSource, "platform-secret">;
@@ -922,6 +925,7 @@ async function upsertModelProviderSecretValue(
         secretsTable.name,
         secretsTable.type,
       ],
+      targetWhere: isNull(secretsTable.connectorId),
       set: {
         encryptedValue,
         updatedAt: nowDate(),
@@ -1078,7 +1082,7 @@ async function loadConnectorAccessStates(
   const rows = await db
     .select({
       connectorId: connectors.id,
-      type: connectors.type,
+      type: sql`${connectors.connectorSlug}`.mapWith(pgTextDecoder).as("type"),
       authMethod: connectors.authMethod,
       storageVersion: connectors.storageVersion,
       tokenExpiresAt: connectors.tokenExpiresAt,
@@ -1089,7 +1093,8 @@ async function loadConnectorAccessStates(
       and(
         eq(connectors.orgId, orgId),
         eq(connectors.userId, userId),
-        inArray(connectors.type, [...connectorTypes]),
+        isNotNull(connectors.connectorSlug),
+        inArray(connectors.connectorSlug, [...connectorTypes]),
       ),
     );
 
@@ -1804,7 +1809,7 @@ async function loadConnectorRefreshStateRow(
       and(
         eq(connectors.orgId, args.orgId),
         eq(connectors.userId, args.userId),
-        eq(connectors.type, args.connectorType),
+        eq(connectors.connectorSlug, args.connectorType),
       ),
     );
   const rows = lockRow
@@ -1980,7 +1985,7 @@ async function markRefreshSuccess(
         eq(connectors.id, prepared.connectorId),
         eq(connectors.orgId, args.orgId),
         eq(connectors.userId, args.userId),
-        eq(connectors.type, args.connectorType),
+        eq(connectors.connectorSlug, args.connectorType),
       ),
     );
   return Object.fromEntries(returnedSecretValues);
@@ -2030,7 +2035,7 @@ async function markRefreshFailure(
       and(
         eq(connectors.orgId, args.orgId),
         eq(connectors.userId, args.userId),
-        eq(connectors.type, args.connectorType),
+        eq(connectors.connectorSlug, args.connectorType),
       ),
     );
 }
@@ -2946,6 +2951,8 @@ function syncPlatformRuntimeSecrets(args: {
 async function syncCustomConnectorRuntimeSecrets(args: {
   readonly db: Db;
   readonly runId: string;
+  readonly orgId: string;
+  readonly userId: string;
   readonly secrets: Record<string, string>;
   readonly referencedKeys: Set<string>;
   readonly featureSwitchContext: FeatureSwitchContext;
@@ -2960,6 +2967,9 @@ async function syncCustomConnectorRuntimeSecrets(args: {
   const rows = await args.db
     .select({
       secretName: agentRunCustomConnectorAuthRefs.secretName,
+      connectorId: agentRunCustomConnectorAuthRefs.connectorId,
+      connectorRevision: agentRunCustomConnectorAuthRefs.connectorRevision,
+      key: agentRunCustomConnectorAuthRefs.key,
       encryptedValue: agentRunCustomConnectorAuthRefs.encryptedValue,
     })
     .from(agentRunCustomConnectorAuthRefs)
@@ -2975,8 +2985,32 @@ async function syncCustomConnectorRuntimeSecrets(args: {
     if (Object.hasOwn(args.secrets, row.secretName)) {
       continue;
     }
+    const encryptedValue =
+      row.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY
+        ? await tapError(
+            resolveLiveCustomConnectorOAuth2AccessToken({
+              db: args.db,
+              orgId: args.orgId,
+              userId: args.userId,
+              connectorId: row.connectorId,
+              connectorRevision: row.connectorRevision,
+              featureContext: args.featureSwitchContext,
+              signal: AbortSignal.timeout(firewallAuthRefreshTimeoutMs()),
+            }),
+            (error) => {
+              L.warn("Failed to resolve live custom connector OAuth token", {
+                runId: args.runId,
+                connectorId: row.connectorId,
+                error,
+              });
+            },
+          )
+        : row.encryptedValue;
+    if (!encryptedValue) {
+      continue;
+    }
     const decrypted = await tapError(
-      decryptStoredSecretValue(row.encryptedValue, args.featureSwitchContext),
+      decryptStoredSecretValue(encryptedValue, args.featureSwitchContext),
       (error) => {
         L.warn("Failed to decrypt custom connector auth ref", {
           runId: args.runId,
@@ -3025,6 +3059,8 @@ async function syncFirewallRuntimeSecrets(args: {
   await syncCustomConnectorRuntimeSecrets({
     db: args.db,
     runId: args.auth.runId,
+    orgId: args.orgId,
+    userId: args.auth.userId,
     secrets: args.secrets,
     referencedKeys: args.referencedKeys,
     featureSwitchContext: args.featureSwitchContext,

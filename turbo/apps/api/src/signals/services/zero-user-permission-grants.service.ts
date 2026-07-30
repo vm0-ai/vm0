@@ -32,7 +32,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import type {
-  ApplyUserPermissionGrantsRequest,
+  NormalizedApplyUserPermissionGrantsRequest,
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
@@ -61,7 +61,23 @@ import {
   currentConnectorCatalogValidatorIdentity,
 } from "./connector-catalog-validator-authority";
 
-type UserPermissionGrantRow = typeof userPermissionGrants.$inferSelect;
+const userPermissionGrantSelection = Object.freeze({
+  id: userPermissionGrants.id,
+  orgId: userPermissionGrants.orgId,
+  userId: userPermissionGrants.userId,
+  agentId: userPermissionGrants.agentId,
+  connectorRef: userPermissionGrants.connectorSlug,
+  permission: userPermissionGrants.permission,
+  action: userPermissionGrants.action,
+  expiresAt: userPermissionGrants.expiresAt,
+  createdAt: userPermissionGrants.createdAt,
+  updatedAt: userPermissionGrants.updatedAt,
+});
+
+type UserPermissionGrantRow = Omit<
+  typeof userPermissionGrants.$inferSelect,
+  "connectorSlug"
+> & { readonly connectorRef: string };
 type StoredPermissionGrantRow = UserPermissionGrantRow;
 type ResolvedPermissionGrant = Pick<
   UserPermissionGrantRow,
@@ -102,16 +118,11 @@ type UserPermissionGrantScope = UserPermissionGrantBaseScope & {
   readonly agentId: string;
 };
 
-type ApplyUserPermissionGrantsAgentRequest =
-  ApplyUserPermissionGrantsRequest & {
-    readonly agentId: string;
-  };
-
 interface ApplyUserPermissionGrantsArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly role?: string;
-  readonly apply: ApplyUserPermissionGrantsRequest;
+  readonly apply: NormalizedApplyUserPermissionGrantsRequest;
 }
 
 type NotFoundResponse = ReturnType<typeof notFound>;
@@ -163,15 +174,6 @@ function validationError(message: string): ValidationErrorResponse {
 
 function visibleZeroAgentCondition(userId: string) {
   return or(eq(zeroAgents.visibility, "public"), eq(zeroAgents.owner, userId));
-}
-
-function requireAgentGrantApply(
-  apply: ApplyUserPermissionGrantsRequest,
-): ApplyUserPermissionGrantsAgentRequest {
-  if (apply.agentId === undefined) {
-    throw new Error("Expected agent permission grant scope");
-  }
-  return apply as ApplyUserPermissionGrantsAgentRequest;
 }
 
 async function findVisibleAgent(
@@ -478,7 +480,7 @@ export async function resolveActiveNetworkPolicyRefreshesFromBaseline(
         catalogDigest: connectorCatalogActiveSnapshot.catalogDigest,
       },
       grant: {
-        connectorRef: userPermissionGrants.connectorRef,
+        connectorRef: userPermissionGrants.connectorSlug,
         permission: userPermissionGrants.permission,
         action: userPermissionGrants.action,
         expiresAt: userPermissionGrants.expiresAt,
@@ -495,7 +497,7 @@ export async function resolveActiveNetworkPolicyRefreshesFromBaseline(
         eq(userPermissionGrants.orgId, scope.orgId),
         eq(userPermissionGrants.userId, scope.userId),
         eq(userPermissionGrants.agentId, scope.agentId),
-        inArray(userPermissionGrants.connectorRef, connectorSlugs),
+        inArray(userPermissionGrants.connectorSlug, connectorSlugs),
         activeUserPermissionGrantCondition(checkedAt),
       ),
     )
@@ -513,7 +515,7 @@ export async function resolveActiveNetworkPolicyRefreshesFromBaseline(
       ),
     )
     .orderBy(
-      asc(userPermissionGrants.connectorRef),
+      asc(userPermissionGrants.connectorSlug),
       asc(userPermissionGrants.permission),
     );
 
@@ -597,6 +599,7 @@ function formatUserPermissionGrant(
   return {
     ...scope,
     connectorRef: row.connectorRef,
+    connectorSlug: row.connectorRef,
     permission: row.permission,
     action: row.action,
     expiresAt: row.expiresAt?.toISOString() ?? null,
@@ -611,7 +614,7 @@ async function loadActiveUserPermissionGrants(
   checkedAt: Date = nowDate(),
 ): Promise<readonly StoredPermissionGrantRow[]> {
   return await db
-    .select()
+    .select(userPermissionGrantSelection)
     .from(userPermissionGrants)
     .where(
       and(
@@ -622,7 +625,7 @@ async function loadActiveUserPermissionGrants(
       ),
     )
     .orderBy(
-      asc(userPermissionGrants.connectorRef),
+      asc(userPermissionGrants.connectorSlug),
       asc(userPermissionGrants.permission),
     );
 }
@@ -634,19 +637,19 @@ async function loadActiveUserPermissionGrantsForConnectorSlugs(
   checkedAt: Date,
 ): Promise<readonly StoredPermissionGrantRow[]> {
   return await db
-    .select()
+    .select(userPermissionGrantSelection)
     .from(userPermissionGrants)
     .where(
       and(
         eq(userPermissionGrants.orgId, scope.orgId),
         eq(userPermissionGrants.userId, scope.userId),
         eq(userPermissionGrants.agentId, scope.agentId),
-        inArray(userPermissionGrants.connectorRef, connectorSlugs),
+        inArray(userPermissionGrants.connectorSlug, connectorSlugs),
         activeUserPermissionGrantCondition(checkedAt),
       ),
     )
     .orderBy(
-      asc(userPermissionGrants.connectorRef),
+      asc(userPermissionGrants.connectorSlug),
       asc(userPermissionGrants.permission),
     );
 }
@@ -680,12 +683,12 @@ async function lockVisibleAgentForUpdate(
 }
 
 async function validateApplyUserPermissionGrants(
-  apply: ApplyUserPermissionGrantsRequest,
+  apply: NormalizedApplyUserPermissionGrantsRequest,
   catalog: ConnectorServerFirewallCatalog,
 ): Promise<ValidationErrorResponse | null> {
-  const index = await catalog.loadPermissionIndex(apply.connectorRef);
+  const index = await catalog.loadPermissionIndex(apply.connectorSlug);
   if (!index) {
-    return validationError(`Unknown connector ref: ${apply.connectorRef}`);
+    return validationError(`Unknown connector ref: ${apply.connectorSlug}`);
   }
 
   const seenPermissions = new Set<string>();
@@ -700,7 +703,7 @@ async function validateApplyUserPermissionGrants(
       !index.hasPermission(grant.permission)
     ) {
       return validationError(
-        `Unknown permission "${grant.permission}" for connector "${apply.connectorRef}"`,
+        `Unknown permission "${grant.permission}" for connector "${apply.connectorSlug}"`,
       );
     }
 
@@ -716,11 +719,7 @@ async function applyVisibleGrantRows(
   db: Db,
   args: ApplyUserPermissionGrantsArgs,
 ): Promise<readonly StoredPermissionGrantRow[] | NotFoundResponse> {
-  return await applyVisibleAgentGrantRows(
-    db,
-    args,
-    requireAgentGrantApply(args.apply).agentId,
-  );
+  return await applyVisibleAgentGrantRows(db, args, args.apply.agentId);
 }
 
 async function applyVisibleAgentGrantRows(
@@ -744,7 +743,7 @@ async function applyVisibleAgentGrantRows(
       eq(userPermissionGrants.orgId, args.orgId),
       eq(userPermissionGrants.userId, args.userId),
       eq(userPermissionGrants.agentId, agentId),
-      eq(userPermissionGrants.connectorRef, args.apply.connectorRef),
+      eq(userPermissionGrants.connectorSlug, args.apply.connectorSlug),
     );
 
     if (args.apply.mode === "replace") {
@@ -759,7 +758,7 @@ async function applyVisibleAgentGrantRows(
       args.apply.mode === "replace"
         ? []
         : await tx
-            .select()
+            .select(userPermissionGrantSelection)
             .from(userPermissionGrants)
             .where(connectorScopeCondition)
             .for("update");
@@ -790,25 +789,28 @@ async function applyVisibleAgentGrantRows(
                 eq(userPermissionGrants.orgId, args.orgId),
                 eq(userPermissionGrants.userId, args.userId),
                 eq(userPermissionGrants.agentId, agentId),
-                eq(userPermissionGrants.connectorRef, args.apply.connectorRef),
+                eq(
+                  userPermissionGrants.connectorSlug,
+                  args.apply.connectorSlug,
+                ),
                 eq(userPermissionGrants.permission, grant.permission),
               ),
             )
-            .returning()
+            .returning(userPermissionGrantSelection)
         : await tx
             .insert(userPermissionGrants)
             .values({
               orgId: args.orgId,
               userId: args.userId,
               agentId,
-              connectorRef: args.apply.connectorRef,
+              connectorSlug: args.apply.connectorSlug,
               permission: grant.permission,
               action: grant.action,
               expiresAt,
               createdAt: timestamp,
               updatedAt: timestamp,
             })
-            .returning();
+            .returning(userPermissionGrantSelection);
       if (!row) {
         throw new Error("User permission grant apply did not return a row");
       }
@@ -869,7 +871,7 @@ function permissionGrantResponseScope(scope: UserPermissionGrantScope): {
 function applyPermissionGrantResponseScope(
   args: ApplyUserPermissionGrantsArgs,
 ): { readonly agentId: string } {
-  return { agentId: requireAgentGrantApply(args.apply).agentId };
+  return { agentId: args.apply.agentId };
 }
 
 async function applyRowsAndPublishNetworkPolicyRefreshes(
@@ -882,7 +884,7 @@ async function applyRowsAndPublishNetworkPolicyRefreshes(
     return rows;
   }
 
-  if (!serverFirewalls.has(args.apply.connectorRef)) {
+  if (!serverFirewalls.has(args.apply.connectorSlug)) {
     return rows;
   }
 
@@ -894,7 +896,7 @@ async function applyRowsAndPublishNetworkPolicyRefreshes(
       userId: args.userId,
       agentId: responseScope.agentId,
     },
-    args.apply.connectorRef,
+    args.apply.connectorSlug,
   );
   return rows;
 }

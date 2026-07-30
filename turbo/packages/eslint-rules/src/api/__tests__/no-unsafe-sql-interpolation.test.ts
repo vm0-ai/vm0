@@ -95,9 +95,22 @@ ruleTester.run("no-unsafe-sql-interpolation", noUnsafeSqlInterpolation, {
         import * as drizzle from "drizzle-orm";
         declare const optionalCondition: SQL | undefined;
         declare const optionalConditions: readonly (SQL | undefined)[];
+        const fixedConditions = [
+          eq(users.id, 1),
+          optionalCondition,
+        ] as const;
+        declare const fixedUnion:
+          | readonly [SQL]
+          | readonly [SQL, SQL | undefined];
+        declare const fixedHead:
+          readonly [SQL, ...(SQL | undefined)[]];
         sql\`\${and(eq(users.id, 1), optionalCondition)}\`;
         sql\`\${or(eq(users.id, 1), ...optionalConditions)}\`;
         sql\`\${drizzle.and(drizzle.eq(users.id, 1), undefined)}\`;
+        sql\`\${and(or(eq(users.id, 1), optionalCondition), optionalCondition)}\`;
+        sql\`\${and(...fixedConditions)}\`;
+        sql\`\${or(...fixedUnion)}\`;
+        sql\`\${and(...fixedHead)}\`;
       `,
     },
     {
@@ -174,19 +187,33 @@ ruleTester.run("no-unsafe-sql-interpolation", noUnsafeSqlInterpolation, {
     },
     {
       code: `${drizzlePreamble}
-        import { and, sql, type SQL } from "drizzle-orm";
+        import { and, or, sql, type SQL } from "drizzle-orm";
         declare const optionalCondition: SQL | undefined;
         declare const optionalConditions: readonly (SQL | undefined)[];
+        declare const optionalTuple:
+          readonly [SQL | undefined, SQL | undefined];
+        declare const maybeEmptyTuple:
+          | readonly []
+          | readonly [SQL];
+        declare const restOnlyTuple: readonly [...SQL[]];
         declare const unsafeCondition: unknown;
         declare const unsafeConditions: readonly unknown[];
         declare function localAnd(condition: SQL): SQL | undefined;
         sql\`\${and(optionalCondition)}\`;
         sql\`\${and(...optionalConditions)}\`;
+        sql\`\${and(...optionalTuple)}\`;
+        sql\`\${and(...maybeEmptyTuple)}\`;
+        sql\`\${and(...restOnlyTuple)}\`;
+        sql\`\${and(or(optionalCondition), optionalCondition)}\`;
         sql\`\${and(sql\`true\`, unsafeCondition)}\`;
         sql\`\${and(sql\`true\`, ...unsafeConditions)}\`;
         sql\`\${localAnd(sql\`true\`)}\`;
       `,
       errors: [
+        { messageId: "undefinedInterpolation" },
+        { messageId: "undefinedInterpolation" },
+        { messageId: "undefinedInterpolation" },
+        { messageId: "undefinedInterpolation" },
         { messageId: "undefinedInterpolation" },
         { messageId: "undefinedInterpolation" },
         { messageId: "undefinedInterpolation" },

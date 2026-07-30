@@ -11,6 +11,8 @@ import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { userPreferences$ } from "../zero-page/settings/user-preferences.ts";
 import { listThreadWorkflowAutomations } from "../zero-page/workflow-automations-api.ts";
+import { i18n } from "../../i18n/index.ts";
+import { locale$ } from "../locale.ts";
 
 /** A workflow automation bound to a chat thread, projected for the header automation sidebar. */
 export interface HeaderWorkflowAutomationEntry {
@@ -68,39 +70,101 @@ function workflowAutomationSummary(
   automation: ChatThreadWorkflowAutomation,
 ): string {
   if (automation.kind === "event") {
+    if (automation.eventType === "chat-run-finished") {
+      return i18n.t(($) => {
+        return $.workflows.automations.chat.runFinishedTitle;
+      });
+    }
     if (automation.eventType === "gmail-new-message") {
-      return "Gmail new message";
+      return i18n.t(($) => {
+        return $.chat.automations.events.gmailNewMessage;
+      });
     }
     if (automation.eventType === "gmail-label-applied") {
-      return "Gmail label applied";
+      return i18n.t(($) => {
+        return $.chat.automations.events.gmailLabelApplied;
+      });
     }
     if (automation.eventType === "github-label-applied") {
-      return "GitHub label applied";
+      return i18n.t(($) => {
+        return $.chat.automations.events.githubLabelApplied;
+      });
     }
     if (automation.eventType === "github-workflow-job-completed") {
-      return "GitHub workflow job completed";
+      return i18n.t(($) => {
+        return $.chat.automations.events.githubWorkflowJobCompleted;
+      });
     }
     if (automation.eventType === "github-pull-request-review-submitted") {
-      return "GitHub pull request review submitted";
+      return i18n.t(($) => {
+        return $.chat.automations.events.githubReviewSubmitted;
+      });
     }
     if (automation.eventType === "github-deployment-status-created") {
-      return "GitHub deployment status created";
+      return i18n.t(($) => {
+        return $.chat.automations.events.githubDeploymentStatus;
+      });
     }
     if (automation.eventType === "github-issue-comment-created") {
-      return "GitHub issue comment created";
+      return i18n.t(($) => {
+        return $.chat.automations.events.githubIssueComment;
+      });
     }
     if (automation.eventType === "github-workflow-run-completed") {
-      return "GitHub workflow completed";
+      return i18n.t(($) => {
+        return $.chat.automations.events.githubWorkflowCompleted;
+      });
+    }
+    if (automation.eventType === "google-calendar-event-created") {
+      return i18n.t(($) => {
+        return $.chat.automations.events.googleCalendarCreated;
+      });
+    }
+    if (automation.eventType === "google-calendar-event-updated") {
+      return i18n.t(($) => {
+        return $.chat.automations.events.googleCalendarUpdated;
+      });
+    }
+    if (automation.eventType === "google-calendar-event-cancelled") {
+      return i18n.t(($) => {
+        return $.chat.automations.events.googleCalendarCancelled;
+      });
+    }
+    if (automation.eventType === "google-meet-transcript-generated") {
+      return i18n.t(($) => {
+        return $.chat.automations.events.googleMeetTranscript;
+      });
     }
     if (automation.eventType === "notion-child-page-created") {
-      return "New Notion child page";
+      return i18n.t(($) => {
+        return $.chat.automations.events.notionChildPage;
+      });
     }
     if (automation.eventType === "notion-database-item-created") {
-      return "New Notion database item";
+      return i18n.t(($) => {
+        return $.chat.automations.events.notionDatabaseItem;
+      });
     }
-    return "Event";
+    if (automation.eventType === "notion-page-content-updated") {
+      return i18n.t(($) => {
+        return $.chat.automations.events.notionPageUpdated;
+      });
+    }
+    if (automation.eventType === "webhook-received") {
+      return i18n.t(($) => {
+        return $.chat.automations.events.webhook;
+      });
+    }
+    return i18n.t(($) => {
+      return $.chat.automations.event;
+    });
   }
-  return automation.scheduleSummary ?? "Schedule";
+  return (
+    automation.scheduleSummary ??
+    i18n.t(($) => {
+      return $.chat.automations.schedule;
+    })
+  );
 }
 
 /**
@@ -120,6 +184,7 @@ export function createHeaderAutomationSignals(
   const automations$ = computed(
     async (get): Promise<readonly HeaderWorkflowAutomationEntry[]> => {
       get(reloadVersion$);
+      get(locale$);
       const automations = await listThreadWorkflowAutomations(
         get(zeroClient$),
         { threadId },

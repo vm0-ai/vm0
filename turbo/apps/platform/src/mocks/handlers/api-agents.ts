@@ -2,6 +2,7 @@ import {
   zeroTeamContract,
   type TeamComposeItem,
 } from "@vm0/api-contracts/contracts/zero-team";
+import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { zeroComposesListContract } from "@vm0/api-contracts/contracts/zero-composes";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import {
@@ -60,6 +61,7 @@ const DEFAULT_COMPOSES_LIST: ComposeListItem[] = [
 
 let mockComposesList: ComposeListItem[] = [...DEFAULT_COMPOSES_LIST];
 const mockEnabledConnectorSlugsByAgent = new Map<string, string[]>();
+const mockEnabledCustomConnectorIdsByAgent = new Map<string, string[]>();
 
 export function setMockComposesList(composes: ComposeListItem[]): void {
   mockComposesList = composes;
@@ -71,24 +73,23 @@ export function resetMockComposesList(): void {
 
 export function resetMockUserConnectors(): void {
   mockEnabledConnectorSlugsByAgent.clear();
+  mockEnabledCustomConnectorIdsByAgent.clear();
 }
 
-function mockUserConnectorUpdateResponse(
+function mockConnectorUpdateResponse(
   current: readonly string[],
-  body: {
-    readonly enabledTypes: readonly string[];
-    readonly operation?: "replace" | "add" | "remove";
-  },
+  requested: readonly string[],
+  operation: "replace" | "add" | "remove" | undefined,
 ): string[] {
-  if (body.operation === "add") {
-    return Array.from(new Set([...current, ...body.enabledTypes]));
+  if (operation === "add") {
+    return Array.from(new Set([...current, ...requested]));
   }
-  if (body.operation === "remove") {
-    return current.filter((connectorSlug) => {
-      return !body.enabledTypes.includes(connectorSlug);
+  if (operation === "remove") {
+    return current.filter((value) => {
+      return !requested.includes(value);
     });
   }
-  return [...body.enabledTypes];
+  return [...requested];
 }
 
 export const apiAgentsHandlers = [
@@ -104,22 +105,54 @@ export const apiAgentsHandlers = [
 
   // GET /api/zero/agents/:id/user-connectors
   mockApi(zeroUserConnectorsContract.get, ({ params, respond }) => {
+    const enabledConnectorSlugs =
+      mockEnabledConnectorSlugsByAgent.get(params.id) ?? [];
     return respond(200, {
-      enabledTypes: mockEnabledConnectorSlugsByAgent.get(params.id) ?? [],
+      enabledTypes: enabledConnectorSlugs,
+      enabledConnectorSlugs,
+    });
+  }),
+
+  // GET /api/zero/agents/:id/custom-connectors
+  mockApi(zeroAgentCustomConnectorsContract.get, ({ params, respond }) => {
+    return respond(200, {
+      enabledIds: mockEnabledCustomConnectorIdsByAgent.get(params.id) ?? [],
     });
   }),
 
   // PUT /api/zero/agents/:id/user-connectors
   mockApi(zeroUserConnectorsContract.update, ({ body, params, respond }) => {
-    const enabledConnectorSlugs = mockUserConnectorUpdateResponse(
+    const enabledConnectorSlugs = mockConnectorUpdateResponse(
       mockEnabledConnectorSlugsByAgent.get(params.id) ?? [],
-      body,
+      body.enabledConnectorSlugs,
+      body.operation,
     );
     mockEnabledConnectorSlugsByAgent.set(params.id, enabledConnectorSlugs);
     return respond(200, {
       enabledTypes: enabledConnectorSlugs,
+      enabledConnectorSlugs,
     });
   }),
+
+  // PUT /api/zero/agents/:id/custom-connectors
+  mockApi(
+    zeroAgentCustomConnectorsContract.update,
+    ({ body, params, respond }) => {
+      const requestedIds =
+        "enabledIds" in body
+          ? body.enabledIds
+          : body.grants.map((grant) => {
+              return grant.customConnectorId;
+            });
+      const enabledIds = mockConnectorUpdateResponse(
+        mockEnabledCustomConnectorIdsByAgent.get(params.id) ?? [],
+        requestedIds,
+        body.operation,
+      );
+      mockEnabledCustomConnectorIdsByAgent.set(params.id, enabledIds);
+      return respond(200, { enabledIds });
+    },
+  ),
 
   // GET /api/zero/agents/:id
   mockApi(zeroAgentsByIdContract.get, ({ respond }) => {

@@ -16,6 +16,7 @@ import {
   createWorkflowsBddApi,
   mockNotionConnectorOAuth,
 } from "./helpers/api-bdd-workflows";
+import { chatEventDisplayText } from "./helpers/chat-event";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -382,7 +383,7 @@ function record(value: unknown, label: string): Record<string, unknown> {
 function notionEventContextFromPrompt(
   appendSystemPrompt: string,
 ): Record<string, unknown> {
-  const marker = "# Notion event\n";
+  const marker = "# This run's event\n";
   const markerIndex = appendSystemPrompt.indexOf(marker);
   expect(markerIndex).toBeGreaterThanOrEqual(0);
   const parsed: unknown = JSON.parse(
@@ -863,7 +864,7 @@ describe("POST /api/webhooks/notion", () => {
     const workflowMessage = messages.find((message) => {
       return (
         message.eventType === "input.prompt" &&
-        message.content === `/${WORKFLOW_NAME}`
+        chatEventDisplayText(message)?.startsWith(`/${WORKFLOW_NAME}`) === true
       );
     });
     if (!workflowMessage?.runId) {

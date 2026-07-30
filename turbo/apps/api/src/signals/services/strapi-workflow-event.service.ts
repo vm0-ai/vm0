@@ -25,7 +25,7 @@ import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
 import { safeJsonParse, settle } from "../utils";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
-import type { WorkflowQueueAdmissionTransaction } from "./chat-message-queue.service";
+import type { WorkflowQueueAdmissionTransaction } from "./workflow-chat-event-queue.service";
 import {
   buildChatOnlyWorkflowAutomationCallbacks,
   runWorkflowAutomationNow$,
@@ -34,6 +34,11 @@ import {
   type RunWorkflowAutomationNowArgs,
   type RunWorkflowAutomationResult,
 } from "./zero-workflow-automation-run.service";
+import {
+  workflowAutomationAppendSystemPrompt,
+  workflowAutomationPrompt,
+  type WorkflowAutomationContext,
+} from "./workflow-automation-context.service";
 
 const log = logger("api:strapi-workflow-event");
 
@@ -592,34 +597,28 @@ async function processPendingEvent(args: {
     return "skipped";
   }
 
-  const appendSystemPrompt = [
-    "# Current context",
-    'You are running because a Strapi "Entry published" workflow event automation matched a published entry.',
-    "The workflow's procedure is available as a skill - execute it now.",
-    "This run is linked to a web chat thread; everything you output is shown to the user there.",
-    "The Strapi entry body is not included in this automation context. If the workflow needs content fields, use its configured Strapi connector with the instance and document metadata below.",
-    "",
-    "# Strapi event",
-    JSON.stringify(
-      {
-        automationId: row.automation.id,
-        integration: {
-          id: row.integrationId,
-          name: row.integrationName,
-          baseUrl: row.integrationBaseUrl,
-        },
-        event: "entry.publish",
-        uid: args.pending.uid,
-        model: args.pending.model,
-        documentId: args.pending.documentId,
-        locales: [...args.pending.locales].sort(),
-        firstEventAt: args.pending.firstEventAt.toISOString(),
-        latestEventAt: args.pending.latestEventAt.toISOString(),
+  const context: WorkflowAutomationContext = {
+    workflowName: row.workflowName,
+    trigger: `Strapi published entry ${args.pending.uid} ${args.pending.documentId} on ${row.integrationName} (latest change ${args.pending.latestEventAt.toISOString()}).`,
+    notes: [
+      "Not included below: the Strapi entry content fields. The configured Strapi connector returns them for the document metadata below.",
+    ],
+    event: {
+      automationId: row.automation.id,
+      integration: {
+        id: row.integrationId,
+        name: row.integrationName,
+        baseUrl: row.integrationBaseUrl,
       },
-      null,
-      2,
-    ),
-  ].join("\n");
+      event: "entry.publish",
+      uid: args.pending.uid,
+      model: args.pending.model,
+      documentId: args.pending.documentId,
+      locales: [...args.pending.locales].sort(),
+      firstEventAt: args.pending.firstEventAt.toISOString(),
+      latestEventAt: args.pending.latestEventAt.toISOString(),
+    },
+  };
   const result = await args.startRun(
     {
       due: {
@@ -630,7 +629,8 @@ async function processPendingEvent(args: {
       },
       apiStartTime: now(),
       triggerSource: "workflow-event",
-      appendSystemPrompt,
+      prompt: workflowAutomationPrompt(context),
+      appendSystemPrompt: workflowAutomationAppendSystemPrompt(context),
       triggerBrief: `Strapi published ${args.pending.uid} ${args.pending.documentId} (${args.pending.locales.length} locale${args.pending.locales.length === 1 ? "" : "s"})`,
       callbacks: buildChatOnlyWorkflowAutomationCallbacks(
         row.chatThreadId,

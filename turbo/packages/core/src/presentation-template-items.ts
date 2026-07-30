@@ -1354,7 +1354,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
   [
     {
       slug: "playful-launch-presentation",
-      title: "Playful launch",
+      title: "Sunburst playroom",
       prompt:
         "/gen presentation, create a 15-slide launch deck for SproutPop, a playful habit-building app for remote teams introducing a shared 30-day wellness challenge. Present it to people and culture leaders with cover, agenda, launch story, audience pain points, product vision, feature tour, rollout timeline, activation moments, team, early metrics, testimonials, pricing, and next steps. Make it saturated, joyful, idea-led, and structured.",
       embedUrl:
@@ -1375,7 +1375,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "botane-organic-deck",
-      title: "Botane organic",
+      title: "Mauve garden",
       prompt:
         "/gen presentation, create a 15-slide brand story deck for Moss & Moon, a coastal wellness retreat launching a seasonal herb garden, tea bar, and slow-living membership program. Present it to hospitality partners with cover, agenda, origin story, guest philosophy, retreat spaces, treatment menu, garden-to-table process, photography gallery, sustainability metrics, member testimonials, packages, and contact. Make it calm, editorial, rounded, and organic.",
       embedUrl:
@@ -1394,7 +1394,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "business-data-presentation",
-      title: "Business data",
+      title: "Berry dashboard",
       prompt:
         "/gen presentation, create a 15-slide executive data readout for HarborCart, an omnichannel grocery retailer reviewing 2026 growth, loyalty behavior, basket mix, and store-to-delivery conversion. Present it to the leadership team with cover, agenda, business context, KPI scorecard, regional segments, channel comparison, customer cohorts, operational drivers, forecast, strategic bets, risks, recommendations, and appendix contact. Make it number-first, chart-led, confident, modern, and readable.",
       embedUrl:
@@ -1415,7 +1415,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "crayon-learning-deck",
-      title: "Crayon learning",
+      title: "Crayon doodle",
       prompt:
         "/gen presentation, create a 15-slide parent-night deck for Rainbow Lab, a summer art-and-science camp where kids build storybooks, cardboard cities, and tiny robots. Present it to families with cover, agenda, camp promise, learning goals, weekly themes, instructor team, sample day, workshop stations, student gallery, safety plan, progress metrics, parent quotes, pricing, and registration steps. Make it bright, rounded, joyful, and crayon-like.",
       embedUrl:
@@ -1437,7 +1437,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "creative-agency-presentation",
-      title: "Creative agency",
+      title: "Foliage gallery",
       prompt:
         "/gen presentation, create a 15-slide rebrand pitch for Northstar Studio proposing a new identity, website, and launch campaign for a boutique hotel group expanding into three coastal cities. Present it to the client board with cover, agenda, brand challenge, strategic insight, creative direction, visual territories, service scope, project process, case-study gallery, launch roadmap, impact metrics, client quotes, investment, and contact. Make it minimal, editorial, sharp, and agency-grade.",
       embedUrl:
@@ -1459,7 +1459,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "data-report-presentation",
-      title: "Data report",
+      title: "Candy charts",
       prompt:
         "/gen presentation, create a 15-slide research findings deck for MetroPulse, a city mobility study comparing bike-share, buses, rideshare, and commuter rail across 12 neighborhoods. Present it to urban planning stakeholders with cover, contents, study context, methodology, demand trends, neighborhood segments, mode comparison, peak-hour bottlenecks, equity impact, emissions estimate, 12-month forecast, recommendations, summary, and contact. Make it chart-led, sharp, vivid, and number-first.",
       embedUrl:
@@ -1481,7 +1481,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "editorial-magazine-deck",
-      title: "Editorial magazine",
+      title: "Paper magazine",
       prompt:
         "/gen presentation, create a 15-slide media kit for Field Notes Quarterly, an independent culture magazine pitching its autumn issue on craft, travel, food, and design to premium sponsors. Include cover, editor letter, issue theme, audience profile, editorial departments, contributor roster, feature previews, photography gallery, distribution plan, partnership formats, audience metrics, sponsor examples, rate card, production timeline, and contact. Make it restrained, paper-forward, serif, and magazine-like.",
       embedUrl:
@@ -1503,7 +1503,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "landing-consulting-deck",
-      title: "Landing consulting",
+      title: "Neon browser",
       prompt:
         "/gen presentation, create a 15-slide growth proposal for ScaleBridge advising a B2B fintech SaaS team on reducing onboarding drop-off and improving trial-to-paid conversion. Present it to the revenue leadership team with cover, agenda, opportunity size, diagnosis, desired outcomes, engagement model, workstreams, sprint process, benchmark gallery, proof metrics, client testimonials, pricing tiers, decision timeline, and contact. Make it landing-page-like, sharp, high-contrast, and conversion-oriented.",
       embedUrl:
@@ -1525,7 +1525,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "lumina-creative-studio",
-      title: "Lumina creative studio",
+      title: "Brush stickers",
       prompt:
         "/gen presentation, create a 15-slide portfolio deck for LensLab Studio, a photography and motion team pitching a beauty brand's global campaign shoot across studio sets, street casting, and social cutdowns. Include cover, agenda, studio point of view, campaign concept, team, production services, creative process, location plan, image gallery, motion deliverables, campaign metrics, client quotes, package options, and contact. Make it bold, sticker-tagged, sharp, and creative-studio oriented.",
       embedUrl:
@@ -1547,7 +1547,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "mosaic-geometric-pitch",
-      title: "Mosaic geometric pitch",
+      title: "Bauhaus tiles",
       prompt:
         "/gen presentation, create a 15-slide modular identity pitch for CivicLink, a new transit app unifying buses, bikes, scooters, and commuter rail under one visual system. Present it to city innovation leaders with cover, agenda, brand problem, design principles, logo grid, color and icon system, app moments, rollout process, station signage gallery, accessibility impact, pilot metrics, stakeholder quotes, implementation budget, and contact. Make it bold, modular, Bauhaus-geometric, and colourful.",
       embedUrl:
@@ -1569,7 +1569,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "playful-pop-deck",
-      title: "Playful pop",
+      title: "Neon candy",
       prompt:
         "/gen presentation, create a 15-slide campus launch deck for FizzPop, a sparkling tea brand planning a colorful back-to-school sampling tour, creator challenge, and limited-edition flavor drop. Present it to retail and student ambassador partners with cover, agenda, brand world, audience insight, campaign idea, flavor lineup, activation map, event flow, content plan, gallery, reach metrics, partner testimonials, budget, and contact. Make it neon, bouncy, rounded, and pop-art playful.",
       embedUrl:
@@ -1590,7 +1590,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
 
     {
       slug: "bloom-pitch",
-      title: "Bloom pitch",
+      title: "Petal pitch",
       prompt:
         "/gen presentation, create a 15-slide investor pitch for PetalLoop, a climate-friendly flower delivery marketplace raising a seed round. Include cover, agenda, market shift, customer problem, solution, product flow, traction, business model, go-to-market, competitive position, roadmap, team, financial plan, ask, and next steps. Make it playful, optimistic, organic, and investor-ready.",
       embedUrl:
@@ -1611,7 +1611,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "blueprint-academy",
-      title: "Blueprint academy",
+      title: "Drafting campus",
       prompt:
         "/gen presentation, create a 15-slide curriculum proposal for Northline Academy launching an applied AI certificate for working professionals. Present it to academic leadership with cover, agenda, program context, learner needs, curriculum map, module sequence, faculty team, classroom experience, assessment model, outcomes, partnerships, enrollment plan, budget, and next steps. Make it academic, structured, blueprint-like, and credible.",
       embedUrl:
@@ -1632,7 +1632,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "meridian",
-      title: "Meridian",
+      title: "Cobalt blocks",
       prompt:
         "/gen presentation, create a 15-slide agency capabilities deck for Meridian Works, a data strategy studio helping enterprise teams modernize analytics operations. Present it to a prospective client executive team with cover, agenda, market context, client challenges, service model, team, process, case studies, measurement plan, operating rhythm, timeline, commercial model, and contact. Make it professional, sharp, data-led, and executive-ready.",
       embedUrl:
@@ -1652,7 +1652,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "neo-brutalism",
-      title: "Neo brutalism",
+      title: "Shadow shop",
       prompt:
         "/gen presentation, create a 15-slide founder pitch for BlockForge, a developer tooling startup launching a collaborative build system. Present it to early-stage investors with cover, agenda, problem, product, technical edge, market, traction, customer proof, business model, go-to-market, competition, roadmap, team, funding ask, and next steps. Make it bold, direct, high-contrast, and brutalist.",
       embedUrl:
@@ -1673,7 +1673,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "nocturne",
-      title: "Nocturne",
+      title: "Midnight stage",
       prompt:
         "/gen presentation, create a 15-slide annual keynote for NightOps Cloud reviewing reliability, infrastructure scale, and the roadmap for autonomous operations. Present it to technical customers with cover, agenda, state of the platform, usage growth, reliability metrics, architecture, product updates, customer stories, roadmap, ecosystem, pricing changes, and closing call to action. Make it dark, data-rich, polished, and keynote-ready.",
       embedUrl:
@@ -1693,7 +1693,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "pixel-glitch",
-      title: "Pixel glitch",
+      title: "Arcade pixels",
       prompt:
         "/gen presentation, create a 15-slide creative studio deck for Arcade Signal pitching a retro-futurist campaign for an indie game launch. Present it to the publisher team with cover, agenda, audience insight, campaign concept, visual world, channel plan, creator program, launch timeline, asset gallery, performance targets, budget, team, and next steps. Make it pixelated, energetic, digital, and sharp.",
       embedUrl:
@@ -1714,7 +1714,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "prospectus",
-      title: "Prospectus",
+      title: "Homepage pitch",
       prompt:
         "/gen presentation, create a 15-slide business plan for Atlas Harbor, a B2B logistics platform expanding into regional fulfillment. Present it to strategic partners with cover, agenda, market context, customer problem, solution, operating model, product experience, growth plan, financial model, implementation roadmap, risks, team, partnership terms, and next steps. Make it corporate, polished, structured, and proposal-ready.",
       embedUrl:
@@ -1735,7 +1735,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "schoolhouse",
-      title: "Schoolhouse",
+      title: "Kraft poster",
       prompt:
         "/gen presentation, create a 15-slide community education deck for Maple Hall launching a weekend skills program for families and local makers. Present it to city partners with cover, agenda, mission, audience needs, program tracks, sample day, instructor team, venue plan, safety approach, outcomes, testimonials, membership tiers, budget, and registration steps. Make it warm, retro, classroom-inspired, and approachable.",
       embedUrl:
@@ -1756,7 +1756,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "sticker-scrapbook",
-      title: "Sticker scrapbook",
+      title: "Sticker notebook",
       prompt:
         "/gen presentation, create a 15-slide brand collaboration deck for Patch Party, a youth culture festival launching sponsor activations, creator booths, and collectible merch. Present it to brand partners with cover, agenda, audience story, event concept, activation zones, creator plan, media moments, sponsor packages, timeline, reach metrics, testimonials, budget, and contact. Make it vibrant, scrapbook-like, sticker-heavy, and celebratory.",
       embedUrl:
@@ -1777,7 +1777,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "strata",
-      title: "Strata",
+      title: "Red staircase",
       prompt:
         "/gen presentation, create a 15-slide agency proposal for Strata Studio helping a fintech brand redesign its onboarding and lifecycle communications. Present it to the client leadership team with cover, agenda, business challenge, strategic principles, design direction, service scope, sprint process, sample work, measurement plan, timeline, investment, team, and next steps. Make it Swiss-minimal, precise, editorial, and agency-grade.",
       embedUrl:
@@ -1794,7 +1794,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "taped-consulting",
-      title: "Taped consulting",
+      title: "Polaroid wall",
       prompt:
         "/gen presentation, create a 15-slide transformation proposal for Clearpath Advisory helping a healthcare network improve patient intake operations. Present it to operations executives with cover, agenda, current-state diagnosis, opportunity, engagement model, workstreams, field research, process redesign, timeline, proof metrics, testimonials, pricing, and next steps. Make it consulting-focused, tactile, polished, and persuasive.",
       embedUrl:
@@ -1815,7 +1815,7 @@ export const PRESENTATION_TEMPLATE_PICKER_ITEMS: readonly PresentationTemplateIt
     },
     {
       slug: "vantage",
-      title: "Vantage",
+      title: "Numbered boardroom",
       prompt:
         "/gen presentation, create a 15-slide business proposal for Vantage Partners helping a robotics manufacturer launch a new service program. Present it to enterprise buyers with cover, agenda, market context, buyer pain points, proposed solution, service model, operating plan, proof metrics, roadmap, commercials, implementation timeline, team, and close. Make it business-focused, confident, structured, and modern.",
       embedUrl:

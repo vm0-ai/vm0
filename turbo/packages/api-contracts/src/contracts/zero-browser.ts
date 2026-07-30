@@ -10,8 +10,10 @@ const c = initContract();
 // can never cut a browser short while somebody is still using it.
 export const ZERO_BROWSER_PROVIDER_TIMEOUT_MINUTES = 240;
 export const ZERO_BROWSER_IDLE_LEASE_MINUTES = 10;
-export const ZERO_BROWSER_DEFAULT_MAX_CREDITS = 500;
-export const ZERO_BROWSER_MAX_CREDITS = 100_000;
+export const ZERO_BROWSER_SCREEN_WIDTH = 1440;
+export const ZERO_BROWSER_INITIAL_SCREEN_HEIGHT = 900;
+export const ZERO_BROWSER_MIN_SCREEN_HEIGHT = 320;
+export const ZERO_BROWSER_MAX_SCREEN_HEIGHT = 3456;
 
 export const zeroBrowserStatusSchema = z.enum([
   "creating",
@@ -27,10 +29,21 @@ export const zeroBrowserSuspensionReasonSchema = z.enum([
   "run_end",
   "idle",
   "timeout",
+  // Historical reason kept for rows written before browser billing was removed.
   "budget",
   "provider",
   "reconcile",
 ]);
+
+const zeroBrowserScreenSchema = z.object({
+  width: z.literal(ZERO_BROWSER_SCREEN_WIDTH),
+  height: z
+    .number()
+    .int()
+    .min(ZERO_BROWSER_MIN_SCREEN_HEIGHT)
+    .max(ZERO_BROWSER_MAX_SCREEN_HEIGHT),
+  resizable: z.boolean(),
+});
 
 export const zeroBrowserSessionSchema = z.object({
   id: z.uuid(),
@@ -40,9 +53,15 @@ export const zeroBrowserSessionSchema = z.object({
   liveUrl: z.url().nullable(),
   proxyCountryCode: z.string().length(2).nullable(),
   timeoutMinutes: z.number().int().positive(),
+  // Deprecated compatibility fields for clients deployed before browser
+  // billing moved to organization concurrency. Remove after that client
+  // version has drained.
   maxCredits: z.number().int().positive(),
   grossCredits: z.number().int().nonnegative(),
   creditsCharged: z.number().int().nonnegative(),
+  // Optional so a newly deployed frontend remains compatible with the
+  // previous API during rollout. New APIs include it for live instances.
+  screen: zeroBrowserScreenSchema.optional(),
   // When Zero reclaims the live provider instance unless somebody leases it
   // again. Null once no provider instance is running.
   idleExpiresAt: z.iso.datetime().nullable(),
@@ -69,12 +88,6 @@ export const zeroBrowserCreateRequestSchema = z.object({
     })
     .nullable()
     .default(null),
-  maxCredits: z
-    .number()
-    .int()
-    .min(1)
-    .max(ZERO_BROWSER_MAX_CREDITS)
-    .default(ZERO_BROWSER_DEFAULT_MAX_CREDITS),
 });
 
 export type ZeroBrowserCreateRequest = z.infer<
@@ -91,6 +104,10 @@ const browserGetQuerySchema = z.object({
 
 const browserResponseSchema = z.object({
   browser: zeroBrowserSessionSchema,
+});
+
+const browserResizeRequestSchema = z.object({
+  aspectRatio: z.number().positive().finite(),
 });
 
 const browserAuthorizationRequestTokenPathParamsSchema = z.object({
@@ -120,7 +137,6 @@ const browserConnectionResponseSchema = browserResponseSchema.extend({
 const commonErrorResponses = {
   400: apiErrorSchema,
   401: apiErrorSchema,
-  402: apiErrorSchema,
   403: apiErrorSchema,
   404: apiErrorSchema,
   409: apiErrorSchema,
@@ -198,7 +214,19 @@ export const zeroBrowserContract = c.router({
       200: browserResponseSchema,
       ...commonErrorResponses,
     },
-    summary: "Resume a suspended browser from its viewer and start billing it",
+    summary: "Resume a suspended browser from its viewer",
+  },
+  resizeById: {
+    method: "POST",
+    path: "/api/zero/browsers/:browserId/resize",
+    headers: authHeadersSchema,
+    pathParams: browserIdParamsSchema,
+    body: browserResizeRequestSchema,
+    responses: {
+      200: browserResponseSchema,
+      ...commonErrorResponses,
+    },
+    summary: "Resize a live browser to match a viewer aspect ratio",
   },
   current: {
     method: "GET",
@@ -219,7 +247,7 @@ export const zeroBrowserContract = c.router({
     responses: {
       200: browserResponseSchema,
       ...commonErrorResponses,
-    },
+    } as const,
     summary: "Get a managed browser by universal-link ID",
   },
 });

@@ -1,4 +1,9 @@
 use super::*;
+use guest_contracts::diagnostics::{
+    EventDeliveryAcceptanceOutcome, EventDeliveryAttemptFailureKind,
+    EventDeliveryCompletedAttemptDiagnostic, EventDeliveryDiagnostic,
+    EventDeliveryFailedBatchDiagnostic,
+};
 
 #[tokio::test]
 async fn execute_inner_appends_stream_overflow_marker() {
@@ -554,7 +559,7 @@ async fn execute_inner_guest_process_timeout_waits_for_terminal_grace_and_copies
 
     let start_calls = overrides.start_process_calls();
     assert_eq!(start_calls.len(), 1);
-    assert_eq!(start_calls[0].timeout, JOB_TIMEOUT);
+    assert_eq!(start_calls[0].timeout, job_supervisor_timeout());
 
     let wait_calls = overrides.wait_process_calls();
     assert_eq!(wait_calls.len(), 1);
@@ -643,6 +648,45 @@ async fn execute_inner_ordinary_124_timeout_text_is_generic_failure() {
     assert_eq!(failure.exit_code, 124);
     assert_eq!(failure.error, "Timeout");
     assert_eq!(failure.kind, ExecutionFailureKind::Generic);
+}
+
+#[tokio::test]
+async fn execute_inner_structured_guest_execution_timeout_marks_failure_kind() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.push_wait_process_exit(ProcessExit::new(1, 124, Vec::new(), Vec::new()));
+    let diagnostic = FailureDiagnostic::new(
+        FailureClass::CliExecutionError,
+        AgentFramework::ClaudeCode,
+        PromptMetadata::from_prompt("/help"),
+    )
+    .with_cli_exit_code(143)
+    .with_cli_termination(guest_contracts::diagnostics::CliTerminationDiagnostic::new(
+        guest_contracts::diagnostics::CliTerminationReason::ExecutionTimeout,
+    ));
+    overrides.push_read_file_result(Ok(Some(serde_json::to_vec(&diagnostic).unwrap())));
+    overrides.push_read_file_result(Ok(Some(b"Agent execution timed out".to_vec())));
+    let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
+    let ctx = minimal_context();
+    let outcome = run_new_sandbox_outcome(&factory, &ctx, &config, &default_params())
+        .await
+        .unwrap();
+
+    let failure = outcome.failure.as_ref().expect("expected failure");
+    assert_eq!(failure.exit_code, 124);
+    assert_eq!(failure.error, "Agent execution timed out");
+    match failure.kind {
+        ExecutionFailureKind::RunnerJobTimeout {
+            timeout_ms,
+            elapsed_ms: _,
+            guest_duration_ms,
+        } => {
+            assert_eq!(timeout_ms, JOB_TIMEOUT.as_millis());
+            assert_eq!(guest_duration_ms, None);
+        }
+        ExecutionFailureKind::Generic => panic!("expected runner job timeout failure kind"),
+    }
 }
 
 #[tokio::test]
@@ -872,18 +916,40 @@ async fn execute_inner_nonzero_with_failure_diagnostic_skips_abnormal_exit_diagn
         FailureClass::CliNonzero,
         AgentFramework::ClaudeCode,
         PromptMetadata::from_prompt("/help"),
-    );
+    )
+    .with_event_delivery(EventDeliveryDiagnostic {
+        total_events: 1,
+        total_batches: 1,
+        failed_batches: 1,
+        last_acknowledged_sequence: None,
+        first_failed_batch: Some(EventDeliveryFailedBatchDiagnostic {
+            first_sequence: 0,
+            last_sequence: 0,
+            event_count: 1,
+            conservative_bytes: 128,
+            outcome: EventDeliveryAcceptanceOutcome::OutcomeUnknown,
+            attempts: vec![EventDeliveryCompletedAttemptDiagnostic {
+                attempt: 1,
+                client_request_id: "11111111-1111-4111-8111-111111111111".to_string(),
+                elapsed_ms: 10_000,
+                failure_kind: EventDeliveryAttemptFailureKind::Timeout,
+                http_status: None,
+            }],
+        }),
+        drain_timeout: None,
+    });
     overrides.push_read_file_result(Ok(Some(serde_json::to_vec(&diagnostic).unwrap())));
     overrides.push_read_file_result(Ok(None));
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
 
-    let (exit_code, error) =
-        run_new_sandbox_status(&factory, &minimal_context(), &config, &default_params())
-            .await
-            .unwrap();
+    let outcome = run_new_sandbox_outcome(&factory, &minimal_context(), &config, &default_params())
+        .await
+        .unwrap();
 
-    assert_eq!(exit_code, 126);
-    assert_eq!(error.as_deref(), Some("Agent exited with code 126"));
+    let failure = outcome.failure.expect("expected execution failure");
+    assert_eq!(failure.exit_code, 126);
+    assert_eq!(failure.error, "Agent exited with code 126");
+    assert_eq!(failure.diagnostic, Some(diagnostic));
     assert!(
         overrides
             .exec_calls()

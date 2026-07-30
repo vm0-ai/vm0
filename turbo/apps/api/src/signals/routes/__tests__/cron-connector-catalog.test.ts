@@ -93,7 +93,7 @@ const miscApi = createMiscRoutesApi(context);
 const CRON_SECRET = "connector-catalog-cron-secret";
 const OFFICIAL_RUNNER_AUTHORIZATION =
   "Bearer vm0_official_abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
-const ACTIVE_KEY = "connectors/v1/active.json";
+const ACTIVE_KEY = "connectors/v2/active.json";
 const FIRST_SYNC_TIME = "2026-07-15T08:00:00.000Z";
 const DIAGNOSTICS_USER_ID = `user_${randomUUID()}`;
 const DIAGNOSTICS_ORG_ID = `org_${randomUUID()}`;
@@ -203,7 +203,7 @@ function catalogTemplate(reference: string): string {
 function releaseKeys(version: string): {
   readonly catalog: string;
 } {
-  const prefix = `connectors/v1/releases/${version}`;
+  const prefix = `connectors/v2/releases/${version}`;
   return {
     catalog: `${prefix}/catalog.json`,
   };
@@ -222,7 +222,7 @@ function buildCatalogConnector(args: {
   });
   presentationMethod.label = "API Token";
   return {
-    connectorRef: args.connectorSlug,
+    slug: args.connectorSlug,
     label: args.label,
     description: "An external connector used only by the sync fixture",
     category: "testing",
@@ -1091,7 +1091,7 @@ function buildRelease(options: ReleaseFixtureOptions): ReleaseFixture {
     "platform/views/zero-page/components/settings/icons/" +
     `${connectorSlug}-${iconDigest.slice("sha256:".length, 19)}.svg`;
   const catalog: JsonRecord = {
-    artifactSchemaVersion: 1,
+    artifactSchemaVersion: 2,
     catalogVersion: options.version,
     categoryMetadata: {
       categories: [
@@ -1689,7 +1689,7 @@ describe("connector catalog valid lifecycle", () => {
 
     const detail = await accept(
       catalogClient.get({
-        params: { connectorRef: release.connectorSlug },
+        params: { connectorSlug: release.connectorSlug },
         headers,
       }),
       [200],
@@ -1710,7 +1710,7 @@ describe("connector catalog valid lifecycle", () => {
 
     const permissions = await accept(
       catalogClient.permissions({
-        params: { connectorRef: release.connectorSlug },
+        params: { connectorSlug: release.connectorSlug },
         headers,
       }),
       [200],
@@ -1754,6 +1754,7 @@ describe("connector catalog valid lifecycle", () => {
     expect(search.body.connectors).toStrictEqual([
       {
         id: release.connectorSlug,
+        slug: release.connectorSlug,
         label: "External Test",
         description: "An external connector used only by the sync fixture",
         authMethods: ["api-token"],
@@ -1801,7 +1802,7 @@ describe("connector catalog valid lifecycle", () => {
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const response = await accept(
       setupApp({ context })(zeroConnectorCatalogContract).permissions({
-        params: { connectorRef: release.connectorSlug },
+        params: { connectorSlug: release.connectorSlug },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -1828,7 +1829,7 @@ describe("connector catalog valid lifecycle", () => {
       accept(catalogClient.list({ headers }), [200]),
       accept(
         catalogClient.get({
-          params: { connectorRef: release.connectorSlug },
+          params: { connectorSlug: release.connectorSlug },
           headers,
         }),
         [200],
@@ -1937,7 +1938,7 @@ describe("connector catalog valid lifecycle", () => {
     await replaceApiTestConnectorCatalogStoredBytes({
       catalogVersion: schemaRelease.version,
       rawBytes: jsonBytes({
-        artifactSchemaVersion: 2,
+        artifactSchemaVersion: 3,
         catalogVersion: schemaRelease.version,
       }),
       catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
@@ -1959,7 +1960,7 @@ describe("connector catalog valid lifecycle", () => {
     await replaceApiTestConnectorCatalogStoredBytes({
       catalogVersion: shapeRelease.version,
       rawBytes: jsonBytes({
-        artifactSchemaVersion: 1,
+        artifactSchemaVersion: 2,
       }),
       catalogValidationAuthority: apiTestConnectorCatalogValidationAuthority(),
     });
@@ -2248,7 +2249,7 @@ describe("connector catalog valid lifecycle", () => {
     await firewall.provisionRunReadyOrg(actor);
     const callsBeforeSeed = context.mocks.s3.send.mock.calls.length;
     await firewall.seedTestConnector(actor, {
-      connectorName: "test-oauth-device",
+      connectorSlug: "test-oauth-device",
       authMethod: "oauth",
       accessToken: "catalog-cli-access-token",
     });
@@ -2613,11 +2614,15 @@ describe("connector catalog valid lifecycle", () => {
       visibility: "private",
     });
     const created: { runId?: string } = {};
+    const customConnectorIds: string[] = [];
     const cleanupConnector = createConnectorCleanup(actor, connectorSlug);
     onTestFinished(async () => {
       context.mocks.s3.send.mockResolvedValue({ Contents: [] });
       if (created.runId) {
         await runs.requestCancelRun(actor, created.runId, [200, 404]);
+      }
+      for (const customConnectorId of customConnectorIds) {
+        await connectorsApi.deleteCustomConnector(actor, customConnectorId);
       }
       await cleanupConnector();
       await bdd.deleteAgent(actor, agent.agentId);
@@ -2658,19 +2663,16 @@ describe("connector catalog valid lifecycle", () => {
         permissions: [{ name: "items.read" }],
       },
     });
-    const hostCollision = await connectorsApi.requestCreateCustomConnector(
-      actor,
-      {
-        displayName: "External Host Collision",
-        prefixes: ["https://api.example.test/custom/"],
-        headerName: "Authorization",
-        headerTemplate: "Bearer {{secret}}",
-      },
-      [400],
-    );
-    expectApiError(hostCollision.body);
-    expect(hostCollision.body.error.message).toContain("api.example.test");
-    expect(hostCollision.body.error.message).toContain("External Runtime");
+    const hostOverlap = await connectorsApi.createCustomConnector(actor, {
+      displayName: "External Host Overlap",
+      prefixes: ["https://api.example.test/custom/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+    customConnectorIds.push(hostOverlap.id);
+    expect(hostOverlap.prefixes).toStrictEqual([
+      "https://api.example.test/custom/",
+    ]);
     const grants = await accept(
       setupApp({ context })(zeroUserPermissionGrantsContract).apply({
         headers: { authorization: "Bearer clerk-session" },
@@ -2864,7 +2866,7 @@ describe("connector catalog valid lifecycle", () => {
         .update(`newer:${connectorSlug}`)
         .digest("hex");
       return {
-        connectorRef: connectorSlug,
+        connectorSlug,
         selectedVersionId,
         newerVersionId,
         skill: buildBundledSkillFixture(connectorSlug, selectedVersionId),
@@ -2887,7 +2889,7 @@ describe("connector catalog valid lifecycle", () => {
     }
     const release = buildRelease({
       version: `2026-07-15.external-batch-skills-${fixtureSuffix}`,
-      connectorSlug: firstSkill.connectorRef,
+      connectorSlug: firstSkill.connectorSlug,
       label: "External Batch Skill 01",
       mutateArtifact: (artifact) => {
         const template = firstRecord(artifact.connectors, "connectors");
@@ -2898,7 +2900,7 @@ describe("connector catalog valid lifecycle", () => {
         artifact.connectors = skills.map((skill, index) => {
           const sequence = String(index + 1).padStart(2, "0");
           const connector = buildCatalogConnector({
-            connectorSlug: skill.connectorRef,
+            connectorSlug: skill.connectorSlug,
             label: `External Batch Skill ${sequence}`,
             iconKey,
           });
@@ -2975,7 +2977,7 @@ describe("connector catalog valid lifecycle", () => {
           storageName: skill.skill.storageName,
           previous: previousSystemStates[index] ?? null,
         });
-        await createConnectorCleanup(actor, skill.connectorRef)();
+        await createConnectorCleanup(actor, skill.connectorSlug)();
       }
       await bdd.deleteAgent(actor, agent.agentId);
     });
@@ -2983,7 +2985,7 @@ describe("connector catalog valid lifecycle", () => {
     for (const [index, skill] of skills.entries()) {
       await connectorsApi.connectManualGrant(
         actor,
-        skill.connectorRef,
+        skill.connectorSlug,
         "api-token",
         { credential: `batch-skill-secret-${index + 1}` },
         agent.agentId,
@@ -3028,7 +3030,7 @@ describe("connector catalog valid lifecycle", () => {
         expect(storageMounts).toContainEqual(
           expect.objectContaining({
             name: skill.skill.storageName,
-            mountPath: `/home/user/.claude/skills/${skill.connectorRef}`,
+            mountPath: `/home/user/.claude/skills/${skill.connectorSlug}`,
             versionId: skill.selectedVersionId,
             archiveSize: 321,
             archiveUrl: expect.any(String),
@@ -3386,7 +3388,7 @@ describe("connector catalog valid lifecycle", () => {
     const callsBeforeAction = context.mocks.s3.send.mock.calls.length;
     const start = await accept(
       setupApp({ context })(zeroConnectorOpenIdStartContract).start({
-        params: { type: "steam" },
+        params: { connectorSlug: "steam" },
         headers,
         body: { authMethod: "openid" },
       }),
@@ -3395,7 +3397,7 @@ describe("connector catalog valid lifecycle", () => {
     mockSteamOpenIdVerification();
     await accept(
       setupApp({ context })(connectorsSlugCallbackContract).callback({
-        params: { type: "steam" },
+        params: { connectorSlug: "steam" },
         headers: {},
         query: steamOpenIdCallbackQuery(start.body.authorizationUrl),
       }),
@@ -3928,6 +3930,7 @@ describe("connector catalog valid lifecycle", () => {
     expect(readiness.body.connectors).toStrictEqual([
       {
         connectorRef: "gmail",
+        connectorSlug: "gmail",
         label: "Catalog Gmail",
         icon: {
           url: expect.stringMatching(
@@ -4806,7 +4809,7 @@ describe("connector catalog valid lifecycle", () => {
           first.skill = firstSkill.descriptor;
 
           const second = structuredClone(first);
-          second.connectorRef = secondConnectorSlug;
+          second.slug = secondConnectorSlug;
           second.label = "Second Skill Identity";
           const secondMethod = firstRecord(second.authMethods, "authMethods");
           recordValue(secondMethod.storage, "storage").secrets = [
@@ -5630,7 +5633,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
         ).placeholder = "your-second-api-key";
 
         const second = structuredClone(first);
-        second.connectorRef = "aa-external-other";
+        second.slug = "aa-external-other";
         second.label = "External Other";
         const secondMethod = firstRecord(second.authMethods, "authMethods");
         recordValue(secondMethod.storage, "storage").secrets = [
@@ -5711,7 +5714,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
         );
 
         const second = structuredClone(first);
-        second.connectorRef = "collision-b";
+        second.slug = "collision-b";
         second.label = "Collision B";
         const secondMethod = firstRecord(second.authMethods, "authMethods");
         recordValue(secondMethod.storage, "storage").secrets = [
@@ -5796,7 +5799,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
           version: "legacy-pointer-reference",
           mutatePointer: (pointer) => {
             pointer.integrity = {
-              key: "connectors/v1/releases/legacy-pointer-reference/integrity/catalog.json",
+              key: "connectors/v2/releases/legacy-pointer-reference/integrity/catalog.json",
               digest: pointer.catalogDigest,
             };
             delete pointer.catalogDigest;
@@ -5823,7 +5826,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
         return buildRelease({
           version: "unsupported-schema",
           mutateArtifact: (artifact) => {
-            artifact.artifactSchemaVersion = 2;
+            artifact.artifactSchemaVersion = 3;
           },
         });
       },
@@ -5951,6 +5954,38 @@ describe("connector catalog rejection and latest-valid retention", () => {
       },
     },
     {
+      name: "duplicate connector slug",
+      expected: "invalid-artifact",
+      release: () => {
+        return buildRelease({
+          version: "duplicate-connector-slug",
+          mutateCatalog: (artifact) => {
+            const connectors = arrayValue(artifact.connectors, "connectors");
+            connectors.push(
+              structuredClone(firstRecord(connectors, "connectors")),
+            );
+          },
+        });
+      },
+    },
+    {
+      name: "unknown category group",
+      expected: "relationship-mismatch",
+      release: () => {
+        return buildRelease({
+          version: "unknown-category-group",
+          mutateCatalog: (artifact) => {
+            const categoryMetadata = recordValue(
+              artifact.categoryMetadata,
+              "categoryMetadata",
+            );
+            firstRecord(categoryMetadata.categories, "categories").groupId =
+              "unknown";
+          },
+        });
+      },
+    },
+    {
       name: "duplicate auth method id",
       expected: "invalid-artifact",
       release: () => {
@@ -5975,7 +6010,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
             const second = structuredClone(
               firstRecord(connectors, "connectors"),
             );
-            second.connectorRef = "zz-external-other";
+            second.slug = "zz-external-other";
             second.label = "External Other";
             connectors.push(second);
           },
@@ -5993,7 +6028,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
             const second = structuredClone(
               firstRecord(connectors, "connectors"),
             );
-            second.connectorRef = "zz-external-other";
+            second.slug = "zz-external-other";
             second.label = "External Other";
             connectors.push(second);
           },
@@ -6039,7 +6074,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
         return buildRelease({
           version: "model-provider-ref",
           mutateCatalog: (artifact) => {
-            firstRecord(artifact.connectors, "connectors").connectorRef =
+            firstRecord(artifact.connectors, "connectors").slug =
               "model-provider:external";
           },
         });

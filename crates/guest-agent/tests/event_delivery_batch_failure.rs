@@ -4,6 +4,9 @@
 mod common;
 
 use guest_agent::masker::SecretMasker;
+use guest_contracts::diagnostics::{
+    EventDeliveryAcceptanceOutcome, EventDeliveryAttemptFailureKind,
+};
 use serde_json::json;
 use std::io;
 use std::time::Duration;
@@ -39,7 +42,6 @@ async fn failed_batch_retries_three_times_and_later_batches_continue()
         Duration::ZERO,
     )?;
     let agent_log_file = runtime.paths.agent_log_file().to_string();
-    let event_error_flag = runtime.paths.event_error_flag().to_string();
     let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
 
     let execution = tokio::spawn(async move {
@@ -68,6 +70,13 @@ async fn failed_batch_retries_three_times_and_later_batches_continue()
     let failed_request = server.next_request(Duration::from_secs(5)).await?;
     let failed_sequences = common::event_request_sequences(&failed_request.request)?;
     let failed_body = failed_request.request.body.clone();
+    let mut failed_request_ids = vec![
+        failed_request
+            .request
+            .client_request_id
+            .clone()
+            .ok_or_else(|| io::Error::other("failed request omitted x-client-request-id"))?,
+    ];
     assert_eq!(failed_sequences.len(), 32);
     failed_request.respond(500)?;
     for _ in 1..3 {
@@ -77,11 +86,31 @@ async fn failed_batch_retries_three_times_and_later_batches_continue()
             common::event_request_sequences(&retry.request)?,
             failed_sequences
         );
+        failed_request_ids.push(
+            retry
+                .request
+                .client_request_id
+                .clone()
+                .ok_or_else(|| io::Error::other("retry omitted x-client-request-id"))?,
+        );
         retry.respond(500)?;
     }
 
     let mut logical_sequences = first_sequences;
-    logical_sequences.extend(failed_sequences);
+    logical_sequences.extend(failed_sequences.iter().copied());
+    let eventually_successful_request = server.next_request(Duration::from_secs(5)).await?;
+    let eventually_successful_sequences =
+        common::event_request_sequences(&eventually_successful_request.request)?;
+    let eventually_successful_body = eventually_successful_request.request.body.clone();
+    eventually_successful_request.respond(500)?;
+    let successful_retry = server.next_request(Duration::from_secs(5)).await?;
+    assert_eq!(successful_retry.request.body, eventually_successful_body);
+    assert_eq!(
+        common::event_request_sequences(&successful_retry.request)?,
+        eventually_successful_sequences
+    );
+    successful_retry.respond(200)?;
+    logical_sequences.extend(eventually_successful_sequences);
     while logical_sequences.len() < TOTAL_EVENTS {
         let request = server.next_request(Duration::from_secs(5)).await?;
         logical_sequences.extend(common::event_request_sequences(&request.request)?);
@@ -93,12 +122,58 @@ async fn failed_batch_retries_three_times_and_later_batches_continue()
         .expect("CLI should finish after later batches are acknowledged")??;
     assert_eq!(result.exit_code, common::CLEAN_EXIT);
     assert_eq!(result.last_event_sequence, Some(expected_watermark));
+    let delivery = result
+        .event_delivery
+        .ok_or_else(|| io::Error::other("failed delivery omitted structured diagnostic"))?;
+    assert_eq!(delivery.total_events, TOTAL_EVENTS as u64);
+    assert_eq!(delivery.failed_batches, 1);
+    assert_eq!(
+        delivery.last_acknowledged_sequence,
+        Some(expected_watermark)
+    );
+    assert!(delivery.drain_timeout.is_none());
+    let failed_batch = delivery
+        .first_failed_batch
+        .ok_or_else(|| io::Error::other("failed delivery omitted first failed batch"))?;
+    assert_eq!(
+        (failed_batch.first_sequence, failed_batch.last_sequence),
+        (
+            *failed_sequences
+                .first()
+                .ok_or_else(|| io::Error::other("failed batch was empty"))?,
+            *failed_sequences
+                .last()
+                .ok_or_else(|| io::Error::other("failed batch was empty"))?,
+        )
+    );
+    assert_eq!(failed_batch.event_count, failed_sequences.len() as u32);
+    assert!(failed_batch.conservative_bytes > 0);
+    assert_eq!(
+        failed_batch.outcome,
+        EventDeliveryAcceptanceOutcome::ConfirmedRejection
+    );
+    assert_eq!(failed_batch.attempts.len(), 3);
+    assert_eq!(
+        failed_batch
+            .attempts
+            .iter()
+            .map(|attempt| attempt.client_request_id.clone())
+            .collect::<Vec<_>>(),
+        failed_request_ids
+    );
+    assert!(failed_batch.attempts.iter().all(|attempt| {
+        attempt.failure_kind == EventDeliveryAttemptFailureKind::HttpStatus
+            && attempt.http_status == Some(500)
+    }));
+    let mut unique_request_ids = failed_request_ids.clone();
+    unique_request_ids.sort();
+    unique_request_ids.dedup();
+    assert_eq!(unique_request_ids.len(), 3);
     assert_eq!(
         logical_sequences,
         (0..TOTAL_EVENTS as u32).collect::<Vec<_>>(),
         "logical batches should remain FIFO even though one batch was retried"
     );
-    assert_eq!(std::fs::read_to_string(event_error_flag)?, "1");
 
     Ok(())
 }

@@ -28,7 +28,6 @@ export {
   chatEventCompatibilityRole,
   chatEventRunLifecycle,
   chatEventTypeSchema,
-  foldChatAutomationIntakePause,
   foldActiveChatGoalObjective,
   foldPendingChatQueueEvents,
   foldRunnableChatQueueEvents,
@@ -42,8 +41,6 @@ export {
   revokedChatEventIds,
   terminatedChatRunIds,
   type ChatEventCompatibilityRole,
-  type ChatAutomationIntakePauseFoldInput,
-  type ChatAutomationIntakePauseState,
   type ChatEventRunLifecycle,
   type ChatQueueFoldInput,
   type ChatEventType,
@@ -158,6 +155,10 @@ export {
   type ConcurrencyInfo,
   type QueueResponse,
 } from "./runs";
+export {
+  testAgentRunsContract,
+  type TestAgentRunsContract,
+} from "./test-agent-runs";
 export {
   zeroModelPoliciesMainContract,
   type ZeroModelPoliciesMainContract,
@@ -536,7 +537,6 @@ export {
   MODEL_PROVIDER_TYPES,
   SUPPORTED_RUN_MODELS,
   VM0_MODEL_PRICE_TIER,
-  VM0_MODEL_PRICE_TIER_LABEL,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   LIMITED_FREE1_DEFAULT_RUN_MODEL,
@@ -559,7 +559,6 @@ export {
   isSupportedRunModel,
   normalizeRunModelId,
   getVm0ModelPriceTier,
-  getVm0ModelPriceTierLabel,
   // Selectable provider filtering
   getSelectableProviderTypes,
   // Multi-auth provider support
@@ -1119,7 +1118,6 @@ export {
   type ZeroComposesListContract,
 } from "./zero-composes";
 export {
-  zeroRunsMainContract,
   zeroRunsByIdContract,
   zeroRunsCancelContract,
   zeroRunsQueueContract,
@@ -1128,7 +1126,6 @@ export {
   zeroRunNetworkLogsContract,
   zeroRunRunnerContract,
   zeroLogsSearchContract,
-  type ZeroRunsMainContract,
   type ZeroRunsByIdContract,
   type ZeroRunsCancelContract,
   type ZeroRunsQueueContract,
@@ -1174,16 +1171,32 @@ export {
   zeroCustomConnectorsContract,
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorSecretContract,
+  zeroCustomConnectorValuesContract,
+  zeroCustomConnectorOAuth2Contract,
   customConnectorResponseSchema,
   customConnectorListResponseSchema,
   createCustomConnectorBodySchema,
   setCustomConnectorSecretBodySchema,
+  setCustomConnectorValuesBodySchema,
+  startCustomConnectorOAuth2BodySchema,
+  startCustomConnectorOAuth2ResponseSchema,
   patchCustomConnectorBodySchema,
+  customConnectorAuthModeSchema,
+  customConnectorOAuthConfigSchema,
+  customConnectorOAuthConfigInputSchema,
   type ZeroCustomConnectorsContract,
   type ZeroCustomConnectorByIdContract,
   type ZeroCustomConnectorSecretContract,
+  type ZeroCustomConnectorValuesContract,
+  type ZeroCustomConnectorOAuth2Contract,
   type CustomConnectorResponse,
+  type CustomConnectorAuthMode,
+  type CustomConnectorOAuthConfig,
+  type CustomConnectorOAuthConfigInput,
   type CreateCustomConnectorBody,
+  type CustomConnectorValueInput,
+  type SetCustomConnectorValuesBody,
+  type UpdateCustomConnectorBody,
   type PatchCustomConnectorBody,
 } from "./zero-custom-connectors";
 export {

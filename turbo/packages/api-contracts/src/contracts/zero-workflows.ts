@@ -101,6 +101,7 @@ export type ZeroWorkflowAutomationKind = z.infer<
 >;
 
 export const zeroWorkflowEventTypeSchema = z.enum([
+  "chat-run-finished",
   "gmail-new-message",
   "gmail-label-applied",
   "github-label-applied",
@@ -120,6 +121,36 @@ export const zeroWorkflowEventTypeSchema = z.enum([
   "webhook-received",
 ]);
 export type ZeroWorkflowEventType = z.infer<typeof zeroWorkflowEventTypeSchema>;
+
+export const chatRunFinishedRunStatusSchema = z.enum([
+  "completed",
+  "failed",
+  "cancelled",
+]);
+export type ChatRunFinishedRunStatus = z.infer<
+  typeof chatRunFinishedRunStatusSchema
+>;
+
+/**
+ * Fires when a run in the watched chat thread reaches a terminal state.
+ *
+ * `outputPattern` is a `*`-wildcard expression matched case-insensitively
+ * against the run's final assistant text (codex: last agent message;
+ * claude code: result). Failed runs without assistant text never match a
+ * pattern; error messages are not searched.
+ */
+export const chatRunFinishedEventConfigSchema = z
+  .object({
+    provider: z.literal("chat"),
+    event: z.literal("run_finished"),
+    chatThreadId: z.string().uuid(),
+    runStatuses: z.array(chatRunFinishedRunStatusSchema).min(1).optional(),
+    outputPattern: z.string().trim().min(1).max(512).optional(),
+  })
+  .strict();
+export type ChatRunFinishedEventConfig = z.infer<
+  typeof chatRunFinishedEventConfigSchema
+>;
 
 const gmailTextMatchSchema = z
   .object({
@@ -660,6 +691,15 @@ export const zeroWorkflowScheduleAutomationSummarySchema =
     scheduleSummary: z.string(),
   });
 
+export const zeroWorkflowChatRunFinishedAutomationSummarySchema =
+  zeroWorkflowAutomationSummaryBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("chat-run-finished"),
+    eventConfig: chatRunFinishedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
 export const zeroWorkflowGmailNewMessageAutomationSummarySchema =
   zeroWorkflowAutomationSummaryBaseSchema.extend({
     kind: z.literal("event"),
@@ -821,6 +861,7 @@ export const zeroWorkflowWebhookReceivedAutomationSummarySchema =
 export const zeroWorkflowEventAutomationSummarySchema = z.discriminatedUnion(
   "eventType",
   [
+    zeroWorkflowChatRunFinishedAutomationSummarySchema,
     zeroWorkflowGmailNewMessageAutomationSummarySchema,
     zeroWorkflowGmailLabelAppliedAutomationSummarySchema,
     zeroWorkflowGithubLabelAppliedAutomationSummarySchema,
@@ -869,6 +910,15 @@ export const chatThreadWorkflowScheduleAutomationSchema =
     kind: z.literal("schedule"),
     schedule: zeroWorkflowScheduleSchema,
     scheduleSummary: z.string(),
+  });
+
+export const chatThreadWorkflowChatRunFinishedAutomationSchema =
+  chatThreadWorkflowAutomationBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("chat-run-finished"),
+    eventConfig: chatRunFinishedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
   });
 
 export const chatThreadWorkflowGmailNewMessageAutomationSchema =
@@ -1024,6 +1074,7 @@ export const chatThreadWorkflowWebhookReceivedAutomationSchema =
 
 export const chatThreadWorkflowAutomationSchema = z.union([
   chatThreadWorkflowScheduleAutomationSchema,
+  chatThreadWorkflowChatRunFinishedAutomationSchema,
   chatThreadWorkflowGmailNewMessageAutomationSchema,
   chatThreadWorkflowGmailLabelAppliedAutomationSchema,
   chatThreadWorkflowGithubLabelAppliedAutomationSchema,
@@ -1051,6 +1102,14 @@ export const zeroWorkflowScheduleAutomationCreateRequestSchema = z.object({
   schedule: zeroWorkflowScheduleSchema,
   enabled: z.boolean().optional(),
 });
+
+export const zeroWorkflowChatRunFinishedAutomationCreateRequestSchema =
+  z.object({
+    kind: z.literal("event"),
+    eventType: z.literal("chat-run-finished"),
+    eventConfig: chatRunFinishedEventConfigSchema,
+    enabled: z.boolean().optional(),
+  });
 
 export const zeroWorkflowGmailNewMessageAutomationCreateRequestSchema =
   z.object({
@@ -1214,6 +1273,7 @@ export const zeroWorkflowWebhookReceivedAutomationCreateRequestSchema =
 
 export const zeroWorkflowAutomationCreateRequestSchema = z.union([
   zeroWorkflowScheduleAutomationCreateRequestSchema,
+  zeroWorkflowChatRunFinishedAutomationCreateRequestSchema,
   zeroWorkflowGmailNewMessageAutomationCreateRequestSchema,
   zeroWorkflowGmailLabelAppliedAutomationCreateRequestSchema,
   zeroWorkflowGithubLabelAppliedAutomationCreateRequestSchema,
@@ -1372,8 +1432,9 @@ export type ZeroWorkflowConnectorReadinessStatus = z.infer<
 
 export const zeroWorkflowConnectorReadinessEntrySchema = z
   .object({
-    // TODO(#23619): Rename this workflow readiness response field with clients.
+    // TODO(#23821): Remove this legacy response field after clients migrate.
     connectorRef: connectorSlugSchema,
+    connectorSlug: connectorSlugSchema.optional(),
     label: z.string().min(1),
     icon: publicConnectorCatalogIconSchema,
     reason: z.string().min(1),

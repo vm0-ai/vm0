@@ -6,6 +6,7 @@ import {
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+import { useTranslation } from "react-i18next";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import {
   allConnectorCatalogItems$,
@@ -18,11 +19,110 @@ interface ScopeReviewModalProps {
   onReconnect: (connectorSlug: ConnectorSlug) => void;
 }
 
+function ScopeDiffContent({
+  connectorSlug,
+  addedScopes,
+  removedScopes,
+  onClose,
+  onReconnect,
+}: {
+  connectorSlug: ConnectorSlug;
+  addedScopes: readonly string[];
+  removedScopes: readonly string[];
+  onClose: () => void;
+  onReconnect: (connectorSlug: ConnectorSlug) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-muted-foreground">
+        {t(($) => {
+          return $.connectors.permissions.scopeReview.description;
+        })}
+      </p>
+
+      {addedScopes.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium text-muted-foreground">
+            {t(($) => {
+              return $.connectors.permissions.scopeReview.added;
+            })}
+          </span>
+          <ul className="flex flex-col gap-1">
+            {addedScopes.map((scope) => {
+              return (
+                <li
+                  key={scope}
+                  className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400"
+                >
+                  <span>+</span>
+                  <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                    {scope}
+                  </code>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      {removedScopes.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-medium text-muted-foreground">
+            {t(($) => {
+              return $.connectors.permissions.scopeReview.removed;
+            })}
+          </span>
+          <ul className="flex flex-col gap-1">
+            {removedScopes.map((scope) => {
+              return (
+                <li
+                  key={scope}
+                  className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400"
+                >
+                  <span>-</span>
+                  <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                    {scope}
+                  </code>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+
+      <div className="flex gap-2 pt-2">
+        <button
+          type="button"
+          onClick={() => {
+            return onReconnect(connectorSlug);
+          }}
+          className="flex-1 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+        >
+          {t(($) => {
+            return $.connectors.actions.reconnect;
+          })}
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
+        >
+          {t(($) => {
+            return $.connectors.actions.close;
+          })}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function ScopeReviewModal({
   connectorSlug,
   onClose,
   onReconnect,
 }: ScopeReviewModalProps) {
+  const { t } = useTranslation();
   const scopeDiffLoadable = useLoadable(scopeDiff$);
   const connectorCatalogItems = useLastResolved(allConnectorCatalogItems$);
   const loading = scopeDiffLoadable.state === "loading";
@@ -34,7 +134,7 @@ export function ScopeReviewModal({
   }
 
   const connector = connectorCatalogItems?.find((candidate) => {
-    return candidate.connectorRef === connectorSlug;
+    return candidate.slug === connectorSlug;
   });
   const connectorLabel = connector?.label ?? connectorSlug;
 
@@ -51,89 +151,36 @@ export function ScopeReviewModal({
             <div className="flex h-5 w-5 shrink-0 items-center justify-center">
               <ConnectorIcon icon={connector?.icon} size={20} />
             </div>
-            <DialogTitle>{connectorLabel} permissions update</DialogTitle>
+            <DialogTitle>
+              {t(
+                ($) => {
+                  return $.connectors.permissions.scopeReview.title;
+                },
+                { connector: connectorLabel },
+              )}
+            </DialogTitle>
           </div>
         </DialogHeader>
 
         {loading ? (
           <p className="text-sm text-muted-foreground">
-            Loading scope changes...
+            {t(($) => {
+              return $.connectors.permissions.scopeReview.loading;
+            })}
           </p>
         ) : scopeDiff ? (
-          <div className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              The required permissions for this connector have changed. Please
-              review and reconnect to apply the update.
-            </p>
-
-            {scopeDiff.addedScopes.length > 0 && (
-              <div className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium text-muted-foreground">
-                  New permissions
-                </span>
-                <ul className="flex flex-col gap-1">
-                  {scopeDiff.addedScopes.map((scope) => {
-                    return (
-                      <li
-                        key={scope}
-                        className="flex items-center gap-2 text-sm text-emerald-600 dark:text-emerald-400"
-                      >
-                        <span>+</span>
-                        <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
-                          {scope}
-                        </code>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            )}
-
-            {scopeDiff.removedScopes.length > 0 && (
-              <div className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium text-muted-foreground">
-                  Removed permissions
-                </span>
-                <ul className="flex flex-col gap-1">
-                  {scopeDiff.removedScopes.map((scope) => {
-                    return (
-                      <li
-                        key={scope}
-                        className="flex items-center gap-2 text-sm text-red-600 dark:text-red-400"
-                      >
-                        <span>-</span>
-                        <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
-                          {scope}
-                        </code>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            )}
-
-            <div className="flex gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  return onReconnect(connectorSlug);
-                }}
-                className="flex-1 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-              >
-                Reconnect
-              </button>
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
-              >
-                Close
-              </button>
-            </div>
-          </div>
+          <ScopeDiffContent
+            connectorSlug={connectorSlug}
+            addedScopes={scopeDiff.addedScopes}
+            removedScopes={scopeDiff.removedScopes}
+            onClose={onClose}
+            onReconnect={onReconnect}
+          />
         ) : (
           <p className="text-sm text-muted-foreground">
-            Failed to load scope changes.
+            {t(($) => {
+              return $.connectors.permissions.scopeReview.failed;
+            })}
           </p>
         )}
       </DialogContent>

@@ -17,9 +17,12 @@ import {
   useLastResolved,
   type Loadable,
 } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { i18n } from "../../i18n/index.ts";
 import { equalArrays } from "../../lib/equality.ts";
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
+import { softwareKeyboardOccludesViewport } from "../../lib/visual-viewport-keyboard.ts";
 import {
   IconAdjustmentsHorizontal,
   IconAlertTriangle,
@@ -28,14 +31,12 @@ import {
   IconColorSwatch,
   IconDeviceDesktop,
   IconDownload,
-  IconDots,
   IconPresentation,
   IconLoader2,
   IconLink,
   IconMicrophone,
   IconPaperclip,
   IconPalette,
-  IconPlayerPause,
   IconPlayerPlay,
   IconPlayerStop,
   IconPlug,
@@ -61,10 +62,6 @@ import {
   Button,
   Card,
   CardContent,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
   Input,
   Popover,
   PopoverClose,
@@ -142,7 +139,8 @@ import {
 } from "@vm0/core";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
+import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-providers";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
@@ -151,6 +149,8 @@ import {
 } from "./components/model-provider-picker.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ConnectorCard } from "./components/settings/connector-card.tsx";
+import { CustomConnectorIcon } from "./components/settings/custom-connector-icon.tsx";
+import { CustomConnectorConnectDialog } from "./components/settings/custom-connector-connect-dialog.tsx";
 import type { ConnectorConnectHandlers } from "./components/settings/launch-connector-connect.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
@@ -163,6 +163,7 @@ import {
   pollingOAuthAuthCodeConnectorSlug$,
   pollingOAuthDeviceAuthConnectorSlug$,
 } from "../../signals/zero-page/settings/connectors.ts";
+import { customConnectors$ } from "../../signals/zero-page/settings/custom-connectors.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
@@ -172,12 +173,11 @@ import {
   composerConnectorPermissionsEnabled$,
   featureSwitch$,
 } from "../../signals/external/feature-switch.ts";
-import {
-  zeroDesktopDownloadSupportStatus$,
-  ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL,
-  ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL,
-} from "../../signals/zero-page/computer-use-hosts.ts";
-import type { ComposerConnectorSignals } from "../../signals/zero-page/zero-connectors.ts";
+import { zeroDesktopDownloadSupportStatus$ } from "../../signals/zero-page/computer-use-hosts.ts";
+import type {
+  AgentCustomConnectorAuthorizations,
+  ComposerConnectorSignals,
+} from "../../signals/zero-page/zero-connectors.ts";
 import type { AgentConnectorAuthorizations } from "../../signals/zero-page/agent-connector-authorizations.ts";
 import { applyUserPermissionGrants$ } from "../../signals/permission-allow/permission-allow-signals.ts";
 import { activeUserPermissionGrantSnapshot } from "../../signals/user-permission-grants.ts";
@@ -350,14 +350,6 @@ export interface ZeroChatComposerProps {
   workflowEventItems?: WorkflowEventComposerItem[];
   /** Skips one pending workflow event. */
   onRemoveWorkflowEvent?: (id: string) => void;
-  /** Whether workflow event processing is paused for this thread. */
-  workflowEventsPaused?: boolean;
-  /** Optional server-provided reason for the paused workflow event queue. */
-  workflowEventsPauseReason?: string | null;
-  /** Pauses or resumes workflow event processing without affecting messages. */
-  onSetWorkflowEventsPaused?: (paused: boolean) => void;
-  /** Clears every pending workflow event without affecting messages. */
-  onClearWorkflowEvents?: () => void;
   /**
    * The thread's active goal. Rendered as a row beneath the queued messages in
    * the strip above the composer — a goal runs only once the queue drains, so it
@@ -370,9 +362,13 @@ export interface ZeroChatComposerProps {
 }
 
 export interface ComposerConnectorReadState {
-  readonly catalogItems: Loadable<readonly PublicConnectorCatalogStatusItem[]>;
+  readonly catalogItems: Loadable<
+    readonly PlatformConnectorCatalogStatusItem[]
+  >;
+  readonly customConnectors: Loadable<readonly CustomConnectorResponse[]>;
   readonly agentId: Loadable<string | null>;
   readonly authorizations: Loadable<AgentConnectorAuthorizations | null>;
+  readonly customAuthorizations: Loadable<AgentCustomConnectorAuthorizations | null>;
 }
 
 export interface QueuedComposerItem {
@@ -441,7 +437,11 @@ type TemplatePreviewImageSize = Parameters<typeof r2ImageTransformUrl>[1];
 // Helpers
 // ---------------------------------------------------------------------------
 
-type ComposerConnectorItem = PublicConnectorCatalogStatusItem & {
+type ComposerConnectorItem = PlatformConnectorCatalogStatusItem & {
+  readonly authorized: boolean;
+};
+
+type ComposerCustomConnectorItem = CustomConnectorResponse & {
   readonly authorized: boolean;
 };
 
@@ -494,7 +494,14 @@ function showVisualAttachmentUnsupportedToast(
   state: VisualAttachmentUnsupportedState,
 ): void {
   toast.error(
-    `${state.currentModelName} cannot recognize images or videos. Switch to a vision-capable model to attach them.`,
+    i18n.t(
+      ($) => {
+        return $.chat.composer.visualAttachmentsUnsupported;
+      },
+      {
+        modelName: state.currentModelName,
+      },
+    ),
     { id: "visual-attachment-unsupported" },
   );
 }
@@ -561,28 +568,53 @@ function ComposerStripRow({
   onOpenDetail?: () => void;
   removeAriaLabel: string;
 }) {
+  const { t } = useTranslation();
   const isGoal = kind === "goal";
   const isWorkflowEvent = kind === "workflow-event";
   const itemAriaLabel = isGoal
-    ? "Active goal"
+    ? t(($) => {
+        return $.chat.queue.activeGoal;
+      })
     : isWorkflowEvent
-      ? "Pending automation event"
-      : "Queued message";
+      ? t(($) => {
+          return $.chat.queue.pendingAutomationEvent;
+        })
+      : t(($) => {
+          return $.chat.queue.queuedMessage;
+        });
   const aboutAriaLabel = isGoal
-    ? "About this goal"
+    ? t(($) => {
+        return $.chat.queue.aboutGoal;
+      })
     : isWorkflowEvent
-      ? "About this automation event"
-      : "About this queued message";
+      ? t(($) => {
+          return $.chat.queue.aboutAutomationEvent;
+        })
+      : t(($) => {
+          return $.chat.queue.aboutQueuedMessage;
+        });
   const itemTitle = isGoal
-    ? "Goal"
+    ? t(($) => {
+        return $.chat.queue.goal;
+      })
     : isWorkflowEvent
-      ? "Automation event"
-      : "Queued message";
+      ? t(($) => {
+          return $.chat.queue.automationEvent;
+        })
+      : t(($) => {
+          return $.chat.queue.queuedMessage;
+        });
   const itemDescription = isGoal
-    ? "Runs after the queue drains and keeps running until you cancel it."
+    ? t(($) => {
+        return $.chat.queue.goalDescription;
+      })
     : isWorkflowEvent
-      ? "Waits behind queued messages and runs once the current run finishes."
-      : "Waits in line and sends once the current run finishes.";
+      ? t(($) => {
+          return $.chat.queue.automationEventDescription;
+        })
+      : t(($) => {
+          return $.chat.queue.queuedMessageDescription;
+        });
   return (
     <div
       role="listitem"
@@ -594,7 +626,9 @@ function ComposerStripRow({
           type="button"
           className="-ml-1 flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 text-left transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground focus-visible:bg-[hsl(var(--gray-200))] focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           onClick={onOpenDetail}
-          aria-label="Open goal details"
+          aria-label={t(($) => {
+            return $.chat.queue.openGoalDetails;
+          })}
         >
           <IconTarget
             size={16}
@@ -656,6 +690,7 @@ function ComposerStripRow({
 }
 
 function ActiveGoalObjectiveDialog({ threadId }: { threadId?: string }) {
+  const { t } = useTranslation();
   const dialogThreadId = useGet(activeGoalDialogThreadId$);
   const goalLoadable = useLoadable(activeGoalDialogGoal$);
   const closeDialog = useSet(closeChatThreadGoalDialog$);
@@ -676,9 +711,15 @@ function ActiveGoalObjectiveDialog({ threadId }: { threadId?: string }) {
         aria-describedby={undefined}
       >
         <DialogHeader>
-          <DialogTitle className="text-base">Goal</DialogTitle>
+          <DialogTitle className="text-base">
+            {t(($) => {
+              return $.chat.queue.goal;
+            })}
+          </DialogTitle>
           <DialogDescription className="leading-6">
-            Runs after the queue drains and keeps running until you cancel it.
+            {t(($) => {
+              return $.chat.queue.goalDescription;
+            })}
           </DialogDescription>
         </DialogHeader>
         <div className="max-h-[min(60vh,520px)] overflow-y-auto rounded-lg bg-muted/40 px-3 py-3 text-sm text-foreground sm:px-4">
@@ -690,15 +731,23 @@ function ActiveGoalObjectiveDialog({ threadId }: { threadId?: string }) {
                 className="animate-spin"
                 aria-hidden="true"
               />
-              <span>Loading goal...</span>
+              <span>
+                {t(($) => {
+                  return $.chat.queue.loadingGoal;
+                })}
+              </span>
             </div>
           ) : goalLoadable.state === "hasError" ? (
             <div className="flex min-h-28 flex-col justify-center gap-1 text-muted-foreground">
               <p className="font-medium text-foreground">
-                Couldn&apos;t load this goal
+                {t(($) => {
+                  return $.chat.queue.goalLoadFailed;
+                })}
               </p>
               <p className="text-xs">
-                Close the dialog and open it again to retry.
+                {t(($) => {
+                  return $.chat.queue.goalRetry;
+                })}
               </p>
             </div>
           ) : goal ? (
@@ -710,7 +759,9 @@ function ActiveGoalObjectiveDialog({ threadId }: { threadId?: string }) {
             />
           ) : (
             <div className="flex min-h-28 items-center text-muted-foreground">
-              This goal is no longer available.
+              {t(($) => {
+                return $.chat.queue.goalUnavailable;
+              })}
             </div>
           )}
         </div>
@@ -719,73 +770,12 @@ function ActiveGoalObjectiveDialog({ threadId }: { threadId?: string }) {
   );
 }
 
-function PendingItemsStripHeader({
-  count,
-  label,
-  workflowEventCount,
-  workflowEventsPaused,
-  onSetWorkflowEventsPaused,
-  onClearWorkflowEvents,
-}: {
-  count: number;
-  label: string;
-  workflowEventCount: number;
-  workflowEventsPaused: boolean;
-  onSetWorkflowEventsPaused?: (paused: boolean) => void;
-  onClearWorkflowEvents?: () => void;
-}) {
-  const showWorkflowControls =
-    onSetWorkflowEventsPaused !== undefined &&
-    (workflowEventCount > 0 || workflowEventsPaused);
+function PendingItemsStripHeader({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-2 px-5 pt-3 pb-2">
       <div className="min-w-0 flex-1">
-        <span className="text-sm text-muted-foreground">
-          {count > 0 ? label : "Automation events paused"}
-        </span>
+        <span className="text-sm text-muted-foreground">{label}</span>
       </div>
-      {showWorkflowControls ? (
-        <button
-          type="button"
-          className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={
-            workflowEventsPaused
-              ? "Resume automation events"
-              : "Pause automation events"
-          }
-          onClick={() => {
-            onSetWorkflowEventsPaused?.(!workflowEventsPaused);
-          }}
-        >
-          {workflowEventsPaused ? (
-            <IconPlayerPlay size={14} stroke={1.5} />
-          ) : (
-            <IconPlayerPause size={14} stroke={1.5} />
-          )}
-          {workflowEventsPaused ? "Resume events" : "Pause events"}
-        </button>
-      ) : null}
-      {workflowEventCount > 0 && onClearWorkflowEvents ? (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              aria-label="Automation event queue actions"
-            >
-              <IconDots size={16} stroke={1.5} />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-52">
-            <DropdownMenuItem
-              className="text-destructive focus:text-destructive"
-              onClick={onClearWorkflowEvents}
-            >
-              Clear automation events ({workflowEventCount})
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ) : null}
     </div>
   );
 }
@@ -795,10 +785,6 @@ function PendingItemsStrip({
   onRemove,
   workflowEvents,
   onRemoveWorkflowEvent,
-  workflowEventsPaused,
-  workflowEventsPauseReason,
-  onSetWorkflowEventsPaused,
-  onClearWorkflowEvents,
   activeGoal,
   onCancelGoal,
   onOpenGoal,
@@ -807,45 +793,55 @@ function PendingItemsStrip({
   onRemove?: (id: string) => void;
   workflowEvents: WorkflowEventComposerItem[] | undefined;
   onRemoveWorkflowEvent?: (id: string) => void;
-  workflowEventsPaused: boolean;
-  workflowEventsPauseReason?: string | null;
-  onSetWorkflowEventsPaused?: (paused: boolean) => void;
-  onClearWorkflowEvents?: () => void;
   activeGoal?: ActiveGoalComposerItem;
   onCancelGoal?: () => void;
   onOpenGoal?: () => void;
 }) {
+  const { t } = useTranslation();
   const queued = items ?? [];
   const events = workflowEvents ?? [];
   const count = queued.length + events.length;
-  const messageLabel = `${queued.length} ${queued.length === 1 ? "message" : "messages"}`;
-  const eventLabel = `${events.length} ${events.length === 1 ? "event" : "events"}`;
+  const messageLabel = t(
+    ($) => {
+      return $.chat.queue.message;
+    },
+    {
+      count: queued.length,
+    },
+  );
+  const eventLabel = t(
+    ($) => {
+      return $.chat.queue.event;
+    },
+    {
+      count: events.length,
+    },
+  );
   const label =
     queued.length > 0 && events.length > 0
-      ? `${messageLabel} and ${eventLabel} waiting`
-      : `${queued.length > 0 ? messageLabel : eventLabel} waiting`;
-  if (count === 0 && !activeGoal && !workflowEventsPaused) {
+      ? t(
+          ($) => {
+            return $.chat.queue.itemsWaitingTogether;
+          },
+          {
+            messages: messageLabel,
+            events: eventLabel,
+          },
+        )
+      : t(
+          ($) => {
+            return $.chat.queue.itemsWaiting;
+          },
+          {
+            items: queued.length > 0 ? messageLabel : eventLabel,
+          },
+        );
+  if (count === 0 && !activeGoal) {
     return null;
   }
   return (
     <div className="relative z-0 mx-5 -mb-6 overflow-hidden rounded-xl bg-gray-50 dark:bg-gray-100">
-      {count > 0 || workflowEventsPaused ? (
-        <PendingItemsStripHeader
-          count={count}
-          label={label}
-          workflowEventCount={events.length}
-          workflowEventsPaused={workflowEventsPaused}
-          onSetWorkflowEventsPaused={onSetWorkflowEventsPaused}
-          onClearWorkflowEvents={onClearWorkflowEvents}
-        />
-      ) : null}
-      {workflowEventsPaused ? (
-        <div className="mx-4 mb-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-700 dark:text-amber-400">
-          Automation events paused
-          {workflowEventsPauseReason ? `: ${workflowEventsPauseReason}` : ""}.
-          New events keep queueing and run after you resume.
-        </div>
-      ) : null}
+      {count > 0 ? <PendingItemsStripHeader label={label} /> : null}
       <div className="max-h-[200px] overflow-y-auto px-2 pb-7 pt-1" role="list">
         {queued.map((item) => {
           return (
@@ -856,7 +852,9 @@ function PendingItemsStrip({
               onRemove={() => {
                 onRemove?.(item.id);
               }}
-              removeAriaLabel="Remove queued message"
+              removeAriaLabel={t(($) => {
+                return $.chat.queue.removeQueuedMessage;
+              })}
             />
           );
         })}
@@ -869,7 +867,9 @@ function PendingItemsStrip({
               onRemove={() => {
                 onRemoveWorkflowEvent?.(event.id);
               }}
-              removeAriaLabel="Skip automation event"
+              removeAriaLabel={t(($) => {
+                return $.chat.queue.skipAutomationEvent;
+              })}
             />
           );
         })}
@@ -884,7 +884,9 @@ function PendingItemsStrip({
             onRemove={() => {
               onCancelGoal?.();
             }}
-            removeAriaLabel="Cancel goal"
+            removeAriaLabel={t(($) => {
+              return $.chat.queue.cancelGoal;
+            })}
           />
         ) : null}
       </div>
@@ -1135,6 +1137,7 @@ function videoTemplatePosterImage(item: VideoTemplateItem): string {
 }
 
 function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
+  const { t } = useTranslation();
   const posterImage = videoTemplatePosterImage(item);
   return (
     <div
@@ -1179,7 +1182,14 @@ function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
       />
       <button
         type="button"
-        aria-label={`Play video template preview ${item.title}`}
+        aria-label={t(
+          ($) => {
+            return $.artifacts.templates.playVideo;
+          },
+          {
+            title: item.title,
+          },
+        )}
         className="absolute inset-0 flex cursor-pointer items-center justify-center bg-black/0 text-white opacity-100 transition-colors duration-200 hover:bg-black/25 focus-visible:bg-black/25 focus-visible:outline-none peer-data-[preview-playing=true]:pointer-events-none peer-data-[preview-playing=true]:!opacity-0"
         onClick={(event) => {
           event.preventDefault();
@@ -1216,6 +1226,7 @@ function VideoTemplateCard({
   selected: boolean;
   onSelect: (item: VideoTemplateItem) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
@@ -1236,7 +1247,14 @@ function VideoTemplateCard({
         <div className="flex shrink-0 items-center">
           <button
             type="button"
-            aria-label={`Select video template ${item.title}`}
+            aria-label={t(
+              ($) => {
+                return $.artifacts.templates.selectVideo;
+              },
+              {
+                title: item.title,
+              },
+            )}
             aria-pressed={selected}
             onClick={() => {
               onSelect(item);
@@ -1248,7 +1266,9 @@ function VideoTemplateCard({
                 : "border-border bg-background text-foreground hover:bg-muted",
             )}
           >
-            Use
+            {t(($) => {
+              return $.artifacts.templates.use;
+            })}
           </button>
         </div>
       </div>
@@ -1292,6 +1312,7 @@ function WebsiteTemplateCard({
   onSelect: (item: WebsiteTemplateItem) => void;
   onPreview: (item: WebsiteTemplateItem) => void;
 }) {
+  const { t } = useTranslation();
   const previewImageUrl = websiteTemplateCardImageUrl(item);
   const preview = () => {
     onPreview(item);
@@ -1301,7 +1322,14 @@ function WebsiteTemplateCard({
     <div
       role="button"
       tabIndex={0}
-      aria-label={`Preview website template ${item.title}`}
+      aria-label={t(
+        ($) => {
+          return $.artifacts.templates.previewWebsite;
+        },
+        {
+          title: item.title,
+        },
+      )}
       onClick={preview}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -1317,8 +1345,22 @@ function WebsiteTemplateCard({
     >
       <div className="relative aspect-[16/9] shrink-0 overflow-hidden bg-muted">
         <img
-          alt={`${item.title} website template preview`}
-          title={`${item.title} website template preview`}
+          alt={t(
+            ($) => {
+              return $.artifacts.templates.websitePreview;
+            },
+            {
+              title: item.title,
+            },
+          )}
+          title={t(
+            ($) => {
+              return $.artifacts.templates.websitePreview;
+            },
+            {
+              title: item.title,
+            },
+          )}
           src={previewImageUrl}
           loading="eager"
           decoding="async"
@@ -1335,7 +1377,14 @@ function WebsiteTemplateCard({
         </div>
         <button
           type="button"
-          aria-label={`Select website template ${item.title}`}
+          aria-label={t(
+            ($) => {
+              return $.artifacts.templates.selectWebsite;
+            },
+            {
+              title: item.title,
+            },
+          )}
           aria-pressed={selected}
           onClick={(event) => {
             event.stopPropagation();
@@ -1348,7 +1397,9 @@ function WebsiteTemplateCard({
               : "border-border bg-background text-foreground hover:bg-muted",
           )}
         >
-          Use
+          {t(($) => {
+            return $.artifacts.templates.use;
+          })}
         </button>
       </div>
     </div>
@@ -1397,7 +1448,7 @@ function WorkflowTemplateConnectorIcons({
   const catalogConnectors = useLastResolved(allConnectorCatalogItems$);
   const visibleConnectors = connectors.flatMap((connectorSlug) => {
     const connector = catalogConnectors?.find((candidate) => {
-      return candidate.connectorRef === connectorSlug;
+      return candidate.slug === connectorSlug;
     });
     return connector ? [connector] : [];
   });
@@ -1421,7 +1472,7 @@ function WorkflowTemplateConnectorIcons({
         {displayedConnectors.map((connector) => {
           return (
             <span
-              key={connector.connectorRef}
+              key={connector.slug}
               className={cn(
                 "flex shrink-0 items-center justify-center border border-border/60 bg-background",
                 compact ? "h-5 w-5 rounded" : "h-7 w-7 rounded-md",
@@ -1455,6 +1506,7 @@ function WorkflowTemplateCard({
   selected: boolean;
   onSelect: (item: WorkflowTemplateItem) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
@@ -1474,7 +1526,14 @@ function WorkflowTemplateCard({
         />
         <button
           type="button"
-          aria-label={`Select workflow template ${item.title}`}
+          aria-label={t(
+            ($) => {
+              return $.artifacts.templates.selectWorkflow;
+            },
+            {
+              title: item.title,
+            },
+          )}
           aria-pressed={selected}
           onClick={() => {
             onSelect(item);
@@ -1486,7 +1545,9 @@ function WorkflowTemplateCard({
               : "border-border bg-background text-foreground hover:bg-muted",
           )}
         >
-          Use
+          {t(($) => {
+            return $.artifacts.templates.use;
+          })}
         </button>
       </div>
     </div>
@@ -1534,6 +1595,7 @@ function WorkflowTemplatePillRow({
   active: string;
   onSelect: (category: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex flex-wrap items-center gap-1.5 px-5 pt-4">
       {["all", ...pills].map((pill) => {
@@ -1553,7 +1615,11 @@ function WorkflowTemplatePillRow({
               onSelect(pill);
             }}
           >
-            {pill === "all" ? "All" : pill}
+            {pill === "all"
+              ? t(($) => {
+                  return $.artifacts.templates.all;
+                })
+              : pill}
           </button>
         );
       })}
@@ -1590,13 +1656,8 @@ function WorkflowTemplateGrid({
   );
 }
 
-function TemplateEmptyPanel({
-  title,
-  description,
-}: {
-  title: string;
-  description: string;
-}) {
+function TemplateEmptyPanel() {
+  const { t } = useTranslation();
   return (
     <div className="flex min-h-40 flex-1 items-center justify-center rounded-[22px] border-2 border-dashed border-border bg-background px-6 py-10 text-center">
       <div className="flex max-w-xl flex-col items-center">
@@ -1604,8 +1665,16 @@ function TemplateEmptyPanel({
           className="mb-4 h-8 w-8 text-muted-foreground/70"
           stroke={1.7}
         />
-        <p className="text-sm font-semibold text-muted-foreground">{title}</p>
-        <p className="mt-2 text-sm text-muted-foreground/80">{description}</p>
+        <p className="text-sm font-semibold text-muted-foreground">
+          {t(($) => {
+            return $.artifacts.templates.noMatches;
+          })}
+        </p>
+        <p className="mt-2 text-sm text-muted-foreground/80">
+          {t(($) => {
+            return $.artifacts.templates.tryDifferentSearch;
+          })}
+        </p>
       </div>
     </div>
   );
@@ -1895,9 +1964,7 @@ function prewarmIllustrationPreviewImagesNearScroll({
 
 interface PresentationTemplateThemeOption {
   readonly id: string;
-  readonly name: string;
   readonly group: "multi-accent" | "single-accent";
-  readonly paletteName: string;
   readonly colors: readonly [
     bg: string,
     surface: string,
@@ -1911,332 +1978,400 @@ interface PresentationTemplateThemeOption {
   ];
 }
 
-const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOption[] =
-  [
-    {
-      id: "prism",
-      name: "Prism",
-      group: "multi-accent",
-      paletteName: "Prism",
-      colors: [
-        "#FFFFFF",
-        "#F7F7FA",
-        "#1A1726",
-        "#5C5870",
-        "#7257E6",
-        "#FF6B4A",
-        "#AEE63E",
-        "#3FA9F5",
-        "#ECECF2",
-      ],
-    },
-    {
-      id: "carnival",
-      name: "Carnival",
-      group: "multi-accent",
-      paletteName: "Carnival",
-      colors: [
-        "#FFFDF7",
-        "#FFFFFF",
-        "#221C14",
-        "#5E564A",
-        "#FF7A1A",
-        "#E5388E",
-        "#F5B73E",
-        "#1FB6A6",
-        "#EFEADF",
-      ],
-    },
-    {
-      id: "pop-art",
-      name: "Pop Art",
-      group: "multi-accent",
-      paletteName: "Pop Art",
-      colors: [
-        "#111016",
-        "#1B1A22",
-        "#F4F2FA",
-        "#A09CB0",
-        "#3D7BFF",
-        "#FF3D9A",
-        "#C6FF4A",
-        "#FF7A1A",
-        "#26242E",
-      ],
-    },
-    {
-      id: "warm-sand",
-      name: "Warm Sand",
-      group: "single-accent",
-      paletteName: "Warm Sand",
-      colors: [
-        "#FFFDF8",
-        "#FFFFFF",
-        "#262626",
-        "#5A5A5A",
-        "#F19B3A",
-        "#8DACE5",
-        "#DDB8D9",
-        "#516049",
-        "#ECECEC",
-      ],
-    },
-    {
-      id: "bauhaus-primary",
-      name: "Bauhaus Primary",
-      group: "single-accent",
-      paletteName: "Bauhaus Primary",
-      colors: [
-        "#F5F1E6",
-        "#FFFFFF",
-        "#1A1A1A",
-        "#4A4A4A",
-        "#E63327",
-        "#2C5BD6",
-        "#F2B705",
-        "#1A1A1A",
-        "#E2DDD0",
-      ],
-    },
-    {
-      id: "nordic-frost",
-      name: "Nordic Frost",
-      group: "single-accent",
-      paletteName: "Nordic Frost",
-      colors: [
-        "#FBFCFD",
-        "#FFFFFF",
-        "#1F2933",
-        "#5B6B7B",
-        "#3E8EDE",
-        "#7BC6C9",
-        "#B8C4D0",
-        "#1F2933",
-        "#E8EDF1",
-      ],
-    },
-    {
-      id: "forest-editorial",
-      name: "Forest Editorial",
-      group: "single-accent",
-      paletteName: "Forest Editorial",
-      colors: [
-        "#F7F6F1",
-        "#FFFFFF",
-        "#1E2B22",
-        "#4F5C52",
-        "#5B7553",
-        "#C97B4A",
-        "#E4DFD0",
-        "#1E2B22",
-        "#E6E8E1",
-      ],
-    },
-    {
-      id: "coral-studio",
-      name: "Coral Studio",
-      group: "single-accent",
-      paletteName: "Coral Studio",
-      colors: [
-        "#FFF9F6",
-        "#FFFFFF",
-        "#3A2A26",
-        "#6E5B55",
-        "#FF6F5E",
-        "#FFB199",
-        "#2BB3A3",
-        "#3A2A26",
-        "#F0E7E2",
-      ],
-    },
-    {
-      id: "slate-corporate",
-      name: "Slate Corporate",
-      group: "single-accent",
-      paletteName: "Slate Corporate",
-      colors: [
-        "#FFFFFF",
-        "#F6F8FB",
-        "#16243B",
-        "#5A6678",
-        "#2F5BD0",
-        "#6E8BB8",
-        "#F0A03A",
-        "#16243B",
-        "#E9EDF3",
-      ],
-    },
-    {
-      id: "terracotta-clay",
-      name: "Terracotta Clay",
-      group: "single-accent",
-      paletteName: "Terracotta Clay",
-      colors: [
-        "#FBF4EC",
-        "#FFFFFF",
-        "#3B2A20",
-        "#6B5546",
-        "#C36A3F",
-        "#D9A441",
-        "#7A7A52",
-        "#EAD9C6",
-        "#ECE0D2",
-      ],
-    },
-    {
-      id: "berry-pop",
-      name: "Berry Pop",
-      group: "single-accent",
-      paletteName: "Berry Pop",
-      colors: [
-        "#FFFAFC",
-        "#FFFFFF",
-        "#2E1A2C",
-        "#6A5566",
-        "#D63A8E",
-        "#8E5BD0",
-        "#F4B8D4",
-        "#2E1A2C",
-        "#F0E6EC",
-      ],
-    },
-    {
-      id: "citrus-fresh",
-      name: "Citrus Fresh",
-      group: "single-accent",
-      paletteName: "Citrus Fresh",
-      colors: [
-        "#FFFFFB",
-        "#FFFFFF",
-        "#232318",
-        "#5C5C4E",
-        "#FF8A1E",
-        "#FFD23E",
-        "#8FB339",
-        "#4FA3A3",
-        "#EDEDE3",
-      ],
-    },
-    {
-      id: "mauve-dusk",
-      name: "Mauve Dusk",
-      group: "single-accent",
-      paletteName: "Mauve Dusk",
-      colors: [
-        "#FAF7FB",
-        "#FFFFFF",
-        "#2B2533",
-        "#635B70",
-        "#9C7BB8",
-        "#8AA0C9",
-        "#E0B6C9",
-        "#2B2533",
-        "#ECE7F0",
-      ],
-    },
-    {
-      id: "mono-ink",
-      name: "Mono Ink",
-      group: "single-accent",
-      paletteName: "Mono Ink",
-      colors: [
-        "#FFFFFF",
-        "#FAFAFA",
-        "#0A0A0A",
-        "#6B6B6B",
-        "#E5392E",
-        "#0A0A0A",
-        "#BFBFBF",
-        "#0A0A0A",
-        "#EEEEEE",
-      ],
-    },
-    {
-      id: "sunset-maroon",
-      name: "Sunset Maroon",
-      group: "single-accent",
-      paletteName: "Sunset Maroon",
-      colors: [
-        "#FFF7F2",
-        "#FFFFFF",
-        "#3A1F22",
-        "#6E4A4C",
-        "#F26B3A",
-        "#E0457B",
-        "#F2A93B",
-        "#3A1F22",
-        "#F0E2DA",
-      ],
-    },
-    {
-      id: "mint-tech",
-      name: "Mint Tech",
-      group: "single-accent",
-      paletteName: "Mint Tech",
-      colors: [
-        "#FBFFFD",
-        "#FFFFFF",
-        "#1B2A26",
-        "#56655F",
-        "#16B981",
-        "#4FA3E0",
-        "#9AE6C8",
-        "#3A4A45",
-        "#E6F0EB",
-      ],
-    },
-    {
-      id: "midnight-mono",
-      name: "Midnight Mono",
-      group: "single-accent",
-      paletteName: "Midnight Mono",
-      colors: [
-        "#121316",
-        "#1C1E22",
-        "#F2F2F0",
-        "#A0A3A8",
-        "#C6FF4A",
-        "#6B7280",
-        "#3A3D44",
-        "#C6FF4A",
-        "#2A2C31",
-      ],
-    },
-    {
-      id: "ocean-deep",
-      name: "Ocean Deep",
-      group: "single-accent",
-      paletteName: "Ocean Deep",
-      colors: [
-        "#0E2A33",
-        "#143840",
-        "#EAF6F4",
-        "#9DB8B8",
-        "#38C7B4",
-        "#5A93A8",
-        "#1F4A52",
-        "#38C7B4",
-        "#1B454E",
-      ],
-    },
-    {
-      id: "gold-luxe",
-      name: "Gold Luxe",
-      group: "single-accent",
-      paletteName: "Gold Luxe",
-      colors: [
-        "#16140F",
-        "#211E16",
-        "#F3EEE2",
-        "#ADA48E",
-        "#C9A24B",
-        "#8A6E3A",
-        "#3A352A",
-        "#C9A24B",
-        "#2A271E",
-      ],
-    },
-  ];
+const PRESENTATION_TEMPLATE_THEME_OPTIONS = [
+  {
+    id: "prism",
+    group: "multi-accent",
+    colors: [
+      "#FFFFFF",
+      "#F7F7FA",
+      "#1A1726",
+      "#5C5870",
+      "#7257E6",
+      "#FF6B4A",
+      "#AEE63E",
+      "#3FA9F5",
+      "#ECECF2",
+    ],
+  },
+  {
+    id: "carnival",
+    group: "multi-accent",
+    colors: [
+      "#FFFDF7",
+      "#FFFFFF",
+      "#221C14",
+      "#5E564A",
+      "#FF7A1A",
+      "#E5388E",
+      "#F5B73E",
+      "#1FB6A6",
+      "#EFEADF",
+    ],
+  },
+  {
+    id: "pop-art",
+    group: "multi-accent",
+    colors: [
+      "#111016",
+      "#1B1A22",
+      "#F4F2FA",
+      "#A09CB0",
+      "#3D7BFF",
+      "#FF3D9A",
+      "#C6FF4A",
+      "#FF7A1A",
+      "#26242E",
+    ],
+  },
+  {
+    id: "warm-sand",
+    group: "single-accent",
+    colors: [
+      "#FFFDF8",
+      "#FFFFFF",
+      "#262626",
+      "#5A5A5A",
+      "#F19B3A",
+      "#8DACE5",
+      "#DDB8D9",
+      "#516049",
+      "#ECECEC",
+    ],
+  },
+  {
+    id: "bauhaus-primary",
+    group: "single-accent",
+    colors: [
+      "#F5F1E6",
+      "#FFFFFF",
+      "#1A1A1A",
+      "#4A4A4A",
+      "#E63327",
+      "#2C5BD6",
+      "#F2B705",
+      "#1A1A1A",
+      "#E2DDD0",
+    ],
+  },
+  {
+    id: "nordic-frost",
+    group: "single-accent",
+    colors: [
+      "#FBFCFD",
+      "#FFFFFF",
+      "#1F2933",
+      "#5B6B7B",
+      "#3E8EDE",
+      "#7BC6C9",
+      "#B8C4D0",
+      "#1F2933",
+      "#E8EDF1",
+    ],
+  },
+  {
+    id: "forest-editorial",
+    group: "single-accent",
+    colors: [
+      "#F7F6F1",
+      "#FFFFFF",
+      "#1E2B22",
+      "#4F5C52",
+      "#5B7553",
+      "#C97B4A",
+      "#E4DFD0",
+      "#1E2B22",
+      "#E6E8E1",
+    ],
+  },
+  {
+    id: "coral-studio",
+    group: "single-accent",
+    colors: [
+      "#FFF9F6",
+      "#FFFFFF",
+      "#3A2A26",
+      "#6E5B55",
+      "#FF6F5E",
+      "#FFB199",
+      "#2BB3A3",
+      "#3A2A26",
+      "#F0E7E2",
+    ],
+  },
+  {
+    id: "slate-corporate",
+    group: "single-accent",
+    colors: [
+      "#FFFFFF",
+      "#F6F8FB",
+      "#16243B",
+      "#5A6678",
+      "#2F5BD0",
+      "#6E8BB8",
+      "#F0A03A",
+      "#16243B",
+      "#E9EDF3",
+    ],
+  },
+  {
+    id: "terracotta-clay",
+    group: "single-accent",
+    colors: [
+      "#FBF4EC",
+      "#FFFFFF",
+      "#3B2A20",
+      "#6B5546",
+      "#C36A3F",
+      "#D9A441",
+      "#7A7A52",
+      "#EAD9C6",
+      "#ECE0D2",
+    ],
+  },
+  {
+    id: "berry-pop",
+    group: "single-accent",
+    colors: [
+      "#FFFAFC",
+      "#FFFFFF",
+      "#2E1A2C",
+      "#6A5566",
+      "#D63A8E",
+      "#8E5BD0",
+      "#F4B8D4",
+      "#2E1A2C",
+      "#F0E6EC",
+    ],
+  },
+  {
+    id: "citrus-fresh",
+    group: "single-accent",
+    colors: [
+      "#FFFFFB",
+      "#FFFFFF",
+      "#232318",
+      "#5C5C4E",
+      "#FF8A1E",
+      "#FFD23E",
+      "#8FB339",
+      "#4FA3A3",
+      "#EDEDE3",
+    ],
+  },
+  {
+    id: "mauve-dusk",
+    group: "single-accent",
+    colors: [
+      "#FAF7FB",
+      "#FFFFFF",
+      "#2B2533",
+      "#635B70",
+      "#9C7BB8",
+      "#8AA0C9",
+      "#E0B6C9",
+      "#2B2533",
+      "#ECE7F0",
+    ],
+  },
+  {
+    id: "mono-ink",
+    group: "single-accent",
+    colors: [
+      "#FFFFFF",
+      "#FAFAFA",
+      "#0A0A0A",
+      "#6B6B6B",
+      "#E5392E",
+      "#0A0A0A",
+      "#BFBFBF",
+      "#0A0A0A",
+      "#EEEEEE",
+    ],
+  },
+  {
+    id: "sunset-maroon",
+    group: "single-accent",
+    colors: [
+      "#FFF7F2",
+      "#FFFFFF",
+      "#3A1F22",
+      "#6E4A4C",
+      "#F26B3A",
+      "#E0457B",
+      "#F2A93B",
+      "#3A1F22",
+      "#F0E2DA",
+    ],
+  },
+  {
+    id: "mint-tech",
+    group: "single-accent",
+    colors: [
+      "#FBFFFD",
+      "#FFFFFF",
+      "#1B2A26",
+      "#56655F",
+      "#16B981",
+      "#4FA3E0",
+      "#9AE6C8",
+      "#3A4A45",
+      "#E6F0EB",
+    ],
+  },
+  {
+    id: "midnight-mono",
+    group: "single-accent",
+    colors: [
+      "#121316",
+      "#1C1E22",
+      "#F2F2F0",
+      "#A0A3A8",
+      "#C6FF4A",
+      "#6B7280",
+      "#3A3D44",
+      "#C6FF4A",
+      "#2A2C31",
+    ],
+  },
+  {
+    id: "ocean-deep",
+    group: "single-accent",
+    colors: [
+      "#0E2A33",
+      "#143840",
+      "#EAF6F4",
+      "#9DB8B8",
+      "#38C7B4",
+      "#5A93A8",
+      "#1F4A52",
+      "#38C7B4",
+      "#1B454E",
+    ],
+  },
+  {
+    id: "gold-luxe",
+    group: "single-accent",
+    colors: [
+      "#16140F",
+      "#211E16",
+      "#F3EEE2",
+      "#ADA48E",
+      "#C9A24B",
+      "#8A6E3A",
+      "#3A352A",
+      "#C9A24B",
+      "#2A271E",
+    ],
+  },
+] as const satisfies readonly PresentationTemplateThemeOption[];
+
+type PresentationTemplateTheme =
+  (typeof PRESENTATION_TEMPLATE_THEME_OPTIONS)[number];
+
+const PRESENTATION_TEMPLATE_THEME_NAMES = {
+  "bauhaus-primary": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.bauhausPrimary;
+    });
+  },
+  "berry-pop": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.berryPop;
+    });
+  },
+  carnival: () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.carnival;
+    });
+  },
+  "citrus-fresh": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.citrusFresh;
+    });
+  },
+  "coral-studio": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.coralStudio;
+    });
+  },
+  "forest-editorial": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.forestEditorial;
+    });
+  },
+  "gold-luxe": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.goldLuxe;
+    });
+  },
+  "mauve-dusk": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.mauveDusk;
+    });
+  },
+  "midnight-mono": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.midnightMono;
+    });
+  },
+  "mint-tech": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.mintTech;
+    });
+  },
+  "mono-ink": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.monoInk;
+    });
+  },
+  "nordic-frost": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.nordicFrost;
+    });
+  },
+  "ocean-deep": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.oceanDeep;
+    });
+  },
+  "pop-art": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.popArt;
+    });
+  },
+  prism: () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.prism;
+    });
+  },
+  "slate-corporate": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.slateCorporate;
+    });
+  },
+  "sunset-maroon": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.sunsetMaroon;
+    });
+  },
+  "terracotta-clay": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.terracottaClay;
+    });
+  },
+  "warm-sand": () => {
+    return i18n.t(($) => {
+      return $.artifacts.templates.themeNames.warmSand;
+    });
+  },
+} satisfies Record<PresentationTemplateTheme["id"], () => string>;
+
+function presentationTemplateThemeName(
+  theme: PresentationTemplateTheme,
+): string {
+  return PRESENTATION_TEMPLATE_THEME_NAMES[theme.id]();
+}
 
 function defaultPresentationTemplateThemeId(
   item: PresentationTemplateItem,
@@ -2250,7 +2385,7 @@ function presentationTemplateColorSystemId(themeId: string): string {
 
 function findPresentationTemplateTheme(
   themeId: string,
-): PresentationTemplateThemeOption {
+): PresentationTemplateTheme {
   return (
     PRESENTATION_TEMPLATE_THEME_OPTIONS.find((theme) => {
       return theme.id === themeId;
@@ -2885,6 +3020,7 @@ function TemplatePreviewFrames({
   readonly primaryFrameUrl: string | null;
   readonly title: string;
 }) {
+  const { t } = useTranslation();
   const frameUrls: readonly string[] =
     primaryFrameUrl === null
       ? []
@@ -2910,8 +3046,18 @@ function TemplatePreviewFrames({
             key={frameUrl}
             title={
               frameUrl === overlayFrameUrl
-                ? `${title} active HTML preview`
-                : `${title} HTML preview`
+                ? t(
+                    ($) => {
+                      return $.artifacts.templates.activeHtmlPreview;
+                    },
+                    { title },
+                  )
+                : t(
+                    ($) => {
+                      return $.artifacts.templates.htmlPreview;
+                    },
+                    { title },
+                  )
             }
             data-testid={
               frameUrl === overlayFrameUrl || overlayFrameUrl === null
@@ -2954,6 +3100,7 @@ function TemplatePreview({
   runtime: TemplatePreviewRuntime;
   theme?: PresentationTemplateThemeOption;
 }) {
+  const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
   const hover = useGet(templateCardHover$);
   const setHover = useSet(setTemplateCardHover$);
@@ -3197,7 +3344,14 @@ function TemplatePreview({
       />
       <button
         type="button"
-        aria-label={`Preview ${item.title} at current slide`}
+        aria-label={t(
+          ($) => {
+            return $.artifacts.templates.previewCurrentSlide;
+          },
+          {
+            title: item.title,
+          },
+        )}
         className="absolute inset-0 z-10 cursor-zoom-in bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         onClick={openPreview}
       />
@@ -3272,6 +3426,7 @@ function TemplateDetailPreviewFrame({
   readonly slideIndex: number;
   readonly title: string;
 }) {
+  const { t } = useTranslation();
   const frames: readonly {
     readonly active: boolean;
     readonly slideIndex: number;
@@ -3297,8 +3452,18 @@ function TemplateDetailPreviewFrame({
         key={candidateFrame.url}
         title={
           candidateFrame.active
-            ? `${title} HTML preview`
-            : `${title} previous HTML preview`
+            ? t(
+                ($) => {
+                  return $.artifacts.templates.htmlPreview;
+                },
+                { title },
+              )
+            : t(
+                ($) => {
+                  return $.artifacts.templates.previousHtmlPreview;
+                },
+                { title },
+              )
         }
         data-template-detail-frame={
           candidateFrame.active ? "active" : "previous"
@@ -3354,6 +3519,7 @@ function TemplatePreviewPage({
   onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
   runtime: TemplatePreviewRuntime;
 }) {
+  const { t } = useTranslation();
   const detailPreview = useGet(templateDetailHtmlPreview$);
   const setCardThemeId = useSet(setTemplateCardThemeId$);
   const selectDetailPreview = useSet(selectPresentationTemplateDetailPreview$);
@@ -3443,7 +3609,9 @@ function TemplatePreviewPage({
             className="inline-flex shrink-0 items-center p-0 leading-none text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={onBack}
           >
-            Template
+            {t(($) => {
+              return $.artifacts.templates.template;
+            })}
           </button>
           <span className="shrink-0 text-muted-foreground">/</span>
           <span className="block min-w-0 truncate leading-none">
@@ -3455,7 +3623,14 @@ function TemplatePreviewPage({
         <div className="rounded-lg border border-border bg-background p-2.5 sm:p-3">
           <div
             role="group"
-            aria-label={`${item.title} slide preview`}
+            aria-label={t(
+              ($) => {
+                return $.artifacts.templates.slidePreview;
+              },
+              {
+                title: item.title,
+              },
+            )}
             tabIndex={0}
             onKeyDown={handleDetailSlideKeyDown}
             className="relative aspect-[16/9] overflow-hidden rounded-lg bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -3484,7 +3659,9 @@ function TemplatePreviewPage({
             />
             <button
               type="button"
-              aria-label="Preview previous slide"
+              aria-label={t(($) => {
+                return $.artifacts.templates.previousSlide;
+              })}
               disabled={activeSlideIndex === 0}
               tabIndex={-1}
               onClick={() => {
@@ -3494,7 +3671,9 @@ function TemplatePreviewPage({
             />
             <button
               type="button"
-              aria-label="Preview next slide"
+              aria-label={t(($) => {
+                return $.artifacts.templates.nextSlide;
+              })}
               disabled={activeSlideIndex >= detailSlideCount - 1}
               tabIndex={-1}
               onClick={() => {
@@ -3536,7 +3715,14 @@ function TemplatePreviewPage({
                 <button
                   key={slideNumber}
                   type="button"
-                  aria-label={`Preview slide ${slideNumber}`}
+                  aria-label={t(
+                    ($) => {
+                      return $.artifacts.templates.previewSlide;
+                    },
+                    {
+                      slideNumber,
+                    },
+                  )}
                   aria-pressed={active}
                   onClick={() => {
                     selectDetailSlide(slideIndex);
@@ -3554,7 +3740,15 @@ function TemplatePreviewPage({
                     runtime={runtime}
                     slideId={thumbnailSlide?.id ?? null}
                     themeVariables={thumbnailThemeVariables}
-                    title={`${item.title} slide ${slideNumber} preview`}
+                    title={t(
+                      ($) => {
+                        return $.artifacts.templates.slideThumbnail;
+                      },
+                      {
+                        title: item.title,
+                        slideNumber,
+                      },
+                    )}
                   />
                   <span className="absolute bottom-1 right-1 rounded border border-border bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold text-foreground shadow-sm backdrop-blur">
                     {slideNumber}
@@ -3572,12 +3766,18 @@ function TemplatePreviewPage({
             <div className="my-5 border-t border-border" />
             <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
               <IconPalette size={14} stroke={1.9} />
-              <span>Theme</span>
+              <span>
+                {t(($) => {
+                  return $.artifacts.templates.theme;
+                })}
+              </span>
             </p>
             <div className="mt-3 space-y-4">
               <div className="space-y-2">
                 <p className="px-1 text-xs font-medium text-muted-foreground">
-                  Multi-accent
+                  {t(($) => {
+                    return $.artifacts.templates.multiAccent;
+                  })}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {multiAccentThemes.map((theme) => {
@@ -3586,7 +3786,12 @@ function TemplatePreviewPage({
                       <button
                         key={theme.id}
                         type="button"
-                        aria-label={`Select style ${theme.name}`}
+                        aria-label={t(
+                          ($) => {
+                            return $.artifacts.templates.selectStyle;
+                          },
+                          { style: presentationTemplateThemeName(theme) },
+                        )}
                         aria-pressed={active}
                         onClick={() => {
                           selectDetailTheme(theme);
@@ -3618,7 +3823,9 @@ function TemplatePreviewPage({
               </div>
               <div className="space-y-2">
                 <p className="px-1 text-xs font-medium text-muted-foreground">
-                  Single-accent
+                  {t(($) => {
+                    return $.artifacts.templates.singleAccent;
+                  })}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {singleAccentThemes.map((theme) => {
@@ -3631,7 +3838,12 @@ function TemplatePreviewPage({
                       <button
                         key={theme.id}
                         type="button"
-                        aria-label={`Select style ${theme.name}`}
+                        aria-label={t(
+                          ($) => {
+                            return $.artifacts.templates.selectStyle;
+                          },
+                          { style: presentationTemplateThemeName(theme) },
+                        )}
                         aria-pressed={active}
                         onClick={() => {
                           selectDetailTheme(theme);
@@ -3662,7 +3874,14 @@ function TemplatePreviewPage({
             </div>
             <button
               type="button"
-              aria-label={`Select template ${item.title}`}
+              aria-label={t(
+                ($) => {
+                  return $.artifacts.templates.selectTemplate;
+                },
+                {
+                  title: item.title,
+                },
+              )}
               className="mt-4 h-12 w-full rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               onClick={() => {
                 setCardThemeId(item.slug, selectedTheme.id);
@@ -3672,7 +3891,9 @@ function TemplatePreviewPage({
                 );
               }}
             >
-              Use this template
+              {t(($) => {
+                return $.artifacts.templates.useThisTemplate;
+              })}
             </button>
           </div>
         </div>
@@ -3695,6 +3916,7 @@ function PptCard({
   priority?: boolean;
   runtime: TemplatePreviewRuntime;
 }) {
+  const { t } = useTranslation();
   const themeIdBySlug = useGet(templateCardThemeIdBySlug$);
   const selectedTheme = findPresentationTemplateTheme(
     themeIdBySlug[item.slug] ?? defaultPresentationTemplateThemeId(item),
@@ -3729,7 +3951,14 @@ function PptCard({
         </div>
         <button
           type="button"
-          aria-label={`Select template ${item.title}`}
+          aria-label={t(
+            ($) => {
+              return $.artifacts.templates.selectTemplate;
+            },
+            {
+              title: item.title,
+            },
+          )}
           aria-pressed={selected}
           onClick={() => {
             onSelect(item, presentationTemplateColorSystemId(selectedTheme.id));
@@ -3741,7 +3970,9 @@ function PptCard({
               : "bg-background text-foreground hover:bg-muted",
           )}
         >
-          Use
+          {t(($) => {
+            return $.artifacts.templates.use;
+          })}
         </button>
       </div>
     </div>
@@ -3765,6 +3996,7 @@ function IllustrationTemplateHero({
   onVariantChange: (slug: string, index: number) => void;
   runtime: TemplatePreviewRuntime;
 }) {
+  const { t } = useTranslation();
   const heroImage = illustrationHeroImageUrl(source);
   const navigable = images.length > 1;
   const variantAt = (direction: -1 | 1): number => {
@@ -3783,7 +4015,14 @@ function IllustrationTemplateHero({
       <img
         key={source}
         src={heroImage}
-        alt={`${item.title} illustration preview`}
+        alt={t(
+          ($) => {
+            return $.artifacts.templates.illustrationPreview;
+          },
+          {
+            title: item.title,
+          },
+        )}
         className={cn(
           "absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-150 data-[loaded=true]:opacity-100",
           navigable && "cursor-pointer",
@@ -4169,6 +4408,7 @@ function IllustrationTemplateCard({
   onVariantChange: (slug: string, index: number) => void;
   runtime: TemplatePreviewRuntime;
 }) {
+  const { t } = useTranslation();
   const images = item.previewImages;
   const safeIndex = Math.max(0, Math.min(activeIndex, images.length - 1));
   const heroSource = images[safeIndex] ?? item.previewImage;
@@ -4209,7 +4449,14 @@ function IllustrationTemplateCard({
               <button
                 key={image}
                 type="button"
-                aria-label={`Show variant ${index + 1}`}
+                aria-label={t(
+                  ($) => {
+                    return $.artifacts.templates.showVariant;
+                  },
+                  {
+                    variantNumber: index + 1,
+                  },
+                )}
                 aria-pressed={active}
                 className={cn(
                   "relative h-12 w-12 shrink-0 overflow-hidden rounded-md border-2 bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -4269,7 +4516,14 @@ function IllustrationTemplateCard({
         </p>
         <button
           type="button"
-          aria-label={`Select template ${item.title}`}
+          aria-label={t(
+            ($) => {
+              return $.artifacts.templates.selectTemplate;
+            },
+            {
+              title: item.title,
+            },
+          )}
           aria-pressed={selected}
           onClick={() => {
             onSelect(item);
@@ -4281,7 +4535,9 @@ function IllustrationTemplateCard({
               : "border-border bg-background text-foreground hover:bg-muted",
           )}
         >
-          Use
+          {t(($) => {
+            return $.artifacts.templates.use;
+          })}
         </button>
       </div>
     </div>
@@ -4319,36 +4575,6 @@ function resolveTemplatePickerCategory({
   return categories.includes(category) ? category : defaultCategory;
 }
 
-const TEMPLATE_PICKER_CATEGORY_META: Readonly<
-  Record<string, { title: string }>
-> = {
-  slides: {
-    title: "Presentation",
-  },
-  website: {
-    title: "Website",
-  },
-  illustration: {
-    title: "Illustration",
-  },
-  video: {
-    title: "Video",
-  },
-  workflow: {
-    title: "Workflow",
-  },
-};
-
-function templatePickerCategoryMeta(category: string): {
-  title: string;
-} {
-  return (
-    TEMPLATE_PICKER_CATEGORY_META[category] ?? {
-      title: "Template",
-    }
-  );
-}
-
 function TemplatePickerCategoryNav({
   selectedCategory,
   hasPptTab,
@@ -4364,6 +4590,7 @@ function TemplatePickerCategoryNav({
   hasWorkflowTab: boolean;
   onChange: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   const categoryOptions: {
     value: string;
     label: string;
@@ -4372,33 +4599,43 @@ function TemplatePickerCategoryNav({
   if (hasPptTab) {
     categoryOptions.push({
       value: "slides",
-      label: "Presentation",
+      label: t(($) => {
+        return $.artifacts.kinds.presentation;
+      }),
       Icon: IconPresentation,
     });
   }
   categoryOptions.push({
     value: "website",
-    label: "Website",
+    label: t(($) => {
+      return $.artifacts.templates.website;
+    }),
     Icon: IconWorld,
   });
   if (hasIllustrationTab) {
     categoryOptions.push({
       value: "illustration",
-      label: "Illustration",
+      label: t(($) => {
+        return $.artifacts.templates.illustration;
+      }),
       Icon: IconPhoto,
     });
   }
   if (hasVideoTab) {
     categoryOptions.push({
       value: "video",
-      label: "Video",
+      label: t(($) => {
+        return $.artifacts.kinds.video;
+      }),
       Icon: IconVideo,
     });
   }
   if (hasWorkflowTab) {
     categoryOptions.push({
       value: "workflow",
-      label: "Workflow",
+      label: t(($) => {
+        return $.artifacts.templates.workflow;
+      }),
       Icon: IconRoute,
     });
   }
@@ -4408,7 +4645,9 @@ function TemplatePickerCategoryNav({
       <div className="shrink-0 border-b border-border bg-gray-50 px-4 pb-4 pr-14 pt-4 sm:hidden">
         <Select value={selectedCategory} onValueChange={onChange}>
           <SelectTrigger
-            aria-label="Template category"
+            aria-label={t(($) => {
+              return $.artifacts.templates.category;
+            })}
             className="h-9 w-full bg-card"
           >
             <SelectValue />
@@ -4429,14 +4668,18 @@ function TemplatePickerCategoryNav({
       </div>
       <nav
         role="tablist"
-        aria-label="Template categories"
+        aria-label={t(($) => {
+          return $.artifacts.templates.categories;
+        })}
         aria-orientation="vertical"
         data-template-picker-sidebar=""
         className="hidden w-52 shrink-0 flex-col gap-1 overflow-y-auto border-r border-border bg-gray-50 p-3 sm:flex"
       >
         <div className="flex min-h-[50px] items-center px-2">
           <h2 className="text-lg font-semibold tracking-tight text-foreground">
-            Template
+            {t(($) => {
+              return $.artifacts.templates.template;
+            })}
           </h2>
         </div>
         {categoryOptions.map(({ value, label, Icon }, categoryIndex) => {
@@ -4496,7 +4739,31 @@ function TemplatePickerCategoryHeader({
 }: {
   selectedCategory: string;
 }) {
-  const meta = templatePickerCategoryMeta(selectedCategory);
+  const { t } = useTranslation();
+  const title =
+    selectedCategory === "slides"
+      ? t(($) => {
+          return $.artifacts.kinds.presentation;
+        })
+      : selectedCategory === "website"
+        ? t(($) => {
+            return $.artifacts.templates.website;
+          })
+        : selectedCategory === "illustration"
+          ? t(($) => {
+              return $.artifacts.templates.illustration;
+            })
+          : selectedCategory === "video"
+            ? t(($) => {
+                return $.artifacts.kinds.video;
+              })
+            : selectedCategory === "workflow"
+              ? t(($) => {
+                  return $.artifacts.templates.workflow;
+                })
+              : t(($) => {
+                  return $.artifacts.templates.template;
+                });
   return (
     <header
       className={cn(
@@ -4506,7 +4773,7 @@ function TemplatePickerCategoryHeader({
     >
       <div className="min-w-0">
         <h2 className="truncate text-lg font-semibold tracking-tight text-foreground">
-          {meta.title}
+          {title}
         </h2>
       </div>
     </header>
@@ -4522,6 +4789,7 @@ function TemplatePickerWorkflowSearch({
   search: string;
   onSearchChange: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   if (selectedCategory !== "workflow") {
     return null;
   }
@@ -4533,13 +4801,17 @@ function TemplatePickerWorkflowSearch({
           stroke={1.8}
         />
         <Input
-          aria-label="Search connectors"
+          aria-label={t(($) => {
+            return $.artifacts.templates.searchConnectors;
+          })}
           className="h-9 pl-9 text-sm sm:h-8"
           value={search}
           onChange={(event) => {
             onSearchChange(event.target.value);
           }}
-          placeholder="Search connector..."
+          placeholder={t(($) => {
+            return $.artifacts.templates.searchConnector;
+          })}
         />
       </div>
     </div>
@@ -4638,6 +4910,7 @@ function TemplatePickerDialog({
   hasWorkflowTab: boolean;
   runtime: TemplatePreviewRuntime;
 }) {
+  const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
   const category = useGet(templatePickerCategory$);
   const setCategory = useSet(setTemplatePickerCategory$);
@@ -4671,8 +4944,8 @@ function TemplatePickerDialog({
     "gap-0 overflow-hidden p-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0",
     skipEnterAnimation && "data-[state=open]:!animate-none",
     isPreviewing
-      ? "flex h-[min(90dvh,760px)] max-w-6xl flex-col sm:h-auto [&>button[aria-label=Close]]:top-[7px]"
-      : "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button[aria-label=Close]]:top-[7px] sm:[&>button[aria-label=Close]]:top-[19px]",
+      ? "flex h-[min(90dvh,760px)] max-w-6xl flex-col sm:h-auto [&>button]:top-[7px]"
+      : "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button]:top-[7px] sm:[&>button]:top-[19px]",
   );
   const filteredPptItems = presentationItems;
   const filteredIllustrationItems = ILLUSTRATION_TEMPLATE_ITEMS;
@@ -4885,6 +5158,9 @@ function TemplatePickerDialog({
       }}
     >
       <DialogContent
+        closeLabel={t(($) => {
+          return $.artifacts.actions.close;
+        })}
         className={dialogContentClassName}
         overlayClassName={
           skipEnterAnimation ? "data-[state=open]:!animate-none" : undefined
@@ -4914,7 +5190,11 @@ function TemplatePickerDialog({
         ) : (
           <>
             <DialogHeader className="shrink-0 border-b border-border px-5 py-4 sm:hidden">
-              <DialogTitle>Template</DialogTitle>
+              <DialogTitle>
+                {t(($) => {
+                  return $.artifacts.templates.template;
+                })}
+              </DialogTitle>
             </DialogHeader>
             <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
               <TemplatePickerCategoryNav
@@ -5044,10 +5324,7 @@ function TemplatePickerCategoryContent({
             runtime={runtime}
           />
         ) : (
-          <TemplateEmptyPanel
-            title="No matches"
-            description="Try a different search."
-          />
+          <TemplateEmptyPanel />
         )}
       </div>
     );
@@ -5067,10 +5344,7 @@ function TemplatePickerCategoryContent({
             onPreview={onPreviewWebsite}
           />
         ) : (
-          <TemplateEmptyPanel
-            title="No matches"
-            description="Try a different search."
-          />
+          <TemplateEmptyPanel />
         )}
       </div>
     );
@@ -5100,10 +5374,7 @@ function TemplatePickerCategoryContent({
             runtime={runtime}
           />
         ) : (
-          <TemplateEmptyPanel
-            title="No matches"
-            description="Try a different search."
-          />
+          <TemplateEmptyPanel />
         )}
       </div>
     );
@@ -5122,10 +5393,7 @@ function TemplatePickerCategoryContent({
             onSelect={onSelectVideo}
           />
         ) : (
-          <TemplateEmptyPanel
-            title="No matches"
-            description="Try a different search."
-          />
+          <TemplateEmptyPanel />
         )}
       </div>
     );
@@ -5153,10 +5421,7 @@ function TemplatePickerCategoryContent({
                 onSelect={onSelectWorkflow}
               />
             ) : (
-              <TemplateEmptyPanel
-                title="No matches"
-                description="Try a different search."
-              />
+              <TemplateEmptyPanel />
             )}
           </div>
           {/* Soften the hard clip where cards scroll up under the pill row,
@@ -5356,6 +5621,7 @@ function TemplatePickerButton({
   hasWorkflowTab: boolean;
   runtime: TemplatePreviewRuntime;
 }) {
+  const { t } = useTranslation();
   const open = useGet(templatePickerOpen$);
   const skipEnterAnimation = useGet(templatePickerSkipEnterAnimation$);
   const category = useGet(templatePickerCategory$);
@@ -5399,7 +5665,9 @@ function TemplatePickerButton({
                 COMPOSER_CONTROL_FOCUS_CLASS,
                 picker.value && "bg-accent text-foreground",
               )}
-              aria-label="Template"
+              aria-label={t(($) => {
+                return $.artifacts.templates.template;
+              })}
               aria-pressed={picker.value !== undefined}
               onPointerEnter={prewarmPicker}
               onFocus={prewarmPicker}
@@ -5417,7 +5685,18 @@ function TemplatePickerButton({
             </button>
           </TooltipTrigger>
           <TooltipContent side="top" className="text-xs">
-            {selectedTitle ? `Template: ${selectedTitle}` : "Template"}
+            {selectedTitle
+              ? t(
+                  ($) => {
+                    return $.artifacts.templates.selected;
+                  },
+                  {
+                    title: selectedTitle,
+                  },
+                )
+              : t(($) => {
+                  return $.artifacts.templates.template;
+                })}
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -5477,6 +5756,7 @@ function CreateWorkflowPromptButton({
 }: {
   onCreateWorkflowPrompt: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <TooltipProvider delayDuration={300}>
       <Tooltip>
@@ -5487,14 +5767,18 @@ function CreateWorkflowPromptButton({
               "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-accent hover:text-foreground sm:h-9 sm:w-9",
               COMPOSER_CONTROL_FOCUS_CLASS,
             )}
-            aria-label="Create workflow"
+            aria-label={t(($) => {
+              return $.chat.composer.createWorkflow;
+            })}
             onClick={onCreateWorkflowPrompt}
           >
             <IconRoute size={18} stroke={1.5} aria-hidden="true" />
           </button>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
-          Create workflow
+          {t(($) => {
+            return $.chat.composer.createWorkflow;
+          })}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -5518,28 +5802,49 @@ function ComposerWorkflowPromptSlot({
 
 function ConnectorTriggerIcons({
   connectors,
+  customConnectors,
   hasComputerUse,
   hasCloudBrowser,
 }: {
   connectors: ComposerConnectorItem[];
+  customConnectors: ComposerCustomConnectorItem[];
   hasComputerUse: boolean;
   hasCloudBrowser: boolean;
 }) {
-  const enabled = connectors
-    .filter((c) => {
-      return c.authorized;
-    })
-    .slice(0, 3);
+  const enabledConnectors = connectors.filter((connector) => {
+    return connector.authorized;
+  });
+  const enabledCustomConnectors = customConnectors.filter((connector) => {
+    return connector.authorized;
+  });
+  const enabled = [
+    ...enabledConnectors.map((connector) => {
+      return { kind: "builtin" as const, connector };
+    }),
+    ...enabledCustomConnectors.map((connector) => {
+      return { kind: "custom" as const, connector };
+    }),
+  ].slice(0, 3);
   if (enabled.length === 0 && !hasComputerUse && !hasCloudBrowser) {
     return <IconPlug size={18} stroke={1.5} />;
   }
   return (
     <span className="flex items-center -space-x-2 sm:-space-x-1.5">
-      {enabled.map((c) => {
+      {enabled.map((item) => {
+        const key =
+          item.kind === "builtin" ? item.connector.slug : item.connector.id;
         return (
-          <span key={c.connectorRef} className="relative shrink-0">
+          <span key={key} className="relative shrink-0">
             <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background zero-border sm:h-7 sm:w-7">
-              <ConnectorIcon icon={c.icon} size={16} />
+              {item.kind === "builtin" ? (
+                <ConnectorIcon icon={item.connector.icon} size={16} />
+              ) : (
+                <CustomConnectorIcon
+                  id={item.connector.id}
+                  displayName={item.connector.displayName}
+                  size={16}
+                />
+              )}
             </span>
           </span>
         );
@@ -5562,26 +5867,103 @@ function ConnectorTriggerIcons({
   );
 }
 
+function matchesCustomConnectorSearch(
+  search: string,
+  connector: CustomConnectorResponse,
+): boolean {
+  const normalizedSearch = search.trim().toLowerCase();
+  if (!normalizedSearch) {
+    return true;
+  }
+  return [connector.displayName, connector.slug, ...connector.prefixes].some(
+    (value) => {
+      return value.toLowerCase().includes(normalizedSearch);
+    },
+  );
+}
+
+function CustomConnectorCatalogCard({
+  connector,
+  onConnect,
+}: {
+  connector: CustomConnectorResponse;
+  onConnect: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <button
+      type="button"
+      aria-label={t(
+        ($) => {
+          return $.connectors.card.connectAria;
+        },
+        { connector: connector.displayName },
+      )}
+      className="zero-card cursor-pointer overflow-hidden text-left"
+      onClick={onConnect}
+    >
+      <span className="flex items-center gap-2.5 px-5 pb-1 pt-4">
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+          <CustomConnectorIcon
+            id={connector.id}
+            displayName={connector.displayName}
+            size={20}
+          />
+        </span>
+        <span
+          data-testid="connector-card-label"
+          className="min-w-0 flex-1 truncate text-sm font-medium text-foreground"
+        >
+          {connector.displayName}
+        </span>
+        <span
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground"
+          aria-hidden="true"
+        >
+          <IconPlus size={14} stroke={1.5} />
+        </span>
+      </span>
+      <span className="block px-5 pb-4 pt-1">
+        <span
+          data-testid="connector-help-text"
+          className="line-clamp-2 text-xs text-muted-foreground"
+        >
+          {connector.prefixes[0]}
+        </span>
+      </span>
+    </button>
+  );
+}
+
 function AddConnectorsDialog({
   signals,
   unconnected,
+  unconnectedCustom,
   busyConnectorSlug,
   connectHandlers,
+  onConnectCustom,
   onClose,
 }: {
   signals: ComposerConnectorSignals;
-  unconnected: PublicConnectorCatalogStatusItem[];
+  unconnected: PlatformConnectorCatalogStatusItem[];
+  unconnectedCustom: CustomConnectorResponse[];
   busyConnectorSlug: ConnectorSlug | null;
   connectHandlers: (
-    connector: PublicConnectorCatalogStatusItem,
+    connector: PlatformConnectorCatalogStatusItem,
   ) => ConnectorConnectHandlers;
+  onConnectCustom: (connector: CustomConnectorResponse) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const search = useGet(signals.addDialogSearch$);
   const setSearch = useSet(signals.setAddDialogSearch$);
   const filtered = unconnected.filter((item) => {
     return matchesConnectorSearch(search, item);
   });
+  const filteredCustom = unconnectedCustom.filter((item) => {
+    return matchesCustomConnectorSearch(search, item);
+  });
+  const connectorCount = unconnected.length + unconnectedCustom.length;
 
   return (
     <Dialog
@@ -5596,13 +5978,22 @@ function AddConnectorsDialog({
       >
         <DialogHeader className="shrink-0">
           <DialogTitle>
-            Available connectors to connect ({unconnected.length})
+            {t(
+              ($) => {
+                return $.chat.connectors.available;
+              },
+              {
+                count: connectorCount,
+              },
+            )}
           </DialogTitle>
         </DialogHeader>
         <div className="shrink-0">
           <Input
             type="text"
-            placeholder="Find connectors..."
+            placeholder={t(($) => {
+              return $.chat.connectors.find;
+            })}
             value={search}
             onChange={(e) => {
               return setSearch(e.target.value);
@@ -5615,11 +6006,22 @@ function AddConnectorsDialog({
             {filtered.map((item) => {
               return (
                 <ConnectorCard
-                  key={item.connectorRef}
+                  key={item.slug}
                   variant="catalog"
                   connector={item}
-                  busy={busyConnectorSlug === item.connectorRef}
+                  busy={busyConnectorSlug === item.slug}
                   connect={connectHandlers(item)}
+                />
+              );
+            })}
+            {filteredCustom.map((item) => {
+              return (
+                <CustomConnectorCatalogCard
+                  key={item.id}
+                  connector={item}
+                  onConnect={() => {
+                    onConnectCustom(item);
+                  }}
                 />
               );
             })}
@@ -5637,29 +6039,29 @@ function ComputerUseConnectorMenuSection({
   computerUse: ComposerComputerUse;
   onOpenDownloadDialog: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="shrink-0 border-t border-border/50 bg-gray-50 p-1 dark:bg-gray-100">
       <div className="px-2 pb-1 pt-1 text-xs text-muted-foreground">
-        Your computer
+        {t(($) => {
+          return $.chat.computerUse.yourComputer;
+        })}
       </div>
       {computerUse.cloudBrowserAvailable && (
         <div
           onClick={() => {
             computerUse.onCloudBrowserChange(!computerUse.cloudBrowserEnabled);
           }}
-          className={cn(
-            "flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 transition-colors",
-            computerUse.cloudBrowserEnabled
-              ? "bg-primary/5"
-              : "hover:bg-gray-100 dark:hover:bg-gray-200",
-          )}
+          className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
         >
           <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
             <IconWorld size={16} stroke={1.5} />
           </span>
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm text-foreground">
-              Cloud browser
+              {t(($) => {
+                return $.chat.computerUse.cloudBrowser;
+              })}
             </span>
           </span>
           <span
@@ -5674,7 +6076,15 @@ function ComputerUseConnectorMenuSection({
                 computerUse.onCloudBrowserChange(enabled);
               })}
               loading={false}
-              ariaLabel={`${computerUse.cloudBrowserEnabled ? "Disable" : "Enable"} Cloud browser`}
+              ariaLabel={
+                computerUse.cloudBrowserEnabled
+                  ? t(($) => {
+                      return $.chat.computerUse.disableCloudBrowser;
+                    })
+                  : t(($) => {
+                      return $.chat.computerUse.enableCloudBrowser;
+                    })
+              }
               size="sm"
             />
           </span>
@@ -5696,7 +6106,9 @@ function ComputerUseConnectorMenuSection({
         <div
           className="flex max-h-[108px] flex-col overflow-y-auto"
           role="group"
-          aria-label="Computer Use hosts"
+          aria-label={t(($) => {
+            return $.chat.computerUse.hosts;
+          })}
         >
           {computerUse.hosts.map((host) => {
             const checked = computerUse.selectedHostId === host.id;
@@ -5706,12 +6118,7 @@ function ComputerUseConnectorMenuSection({
                 onClick={() => {
                   computerUse.onChange(checked ? null : host.id);
                 }}
-                className={cn(
-                  "flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 transition-colors",
-                  checked
-                    ? "bg-primary/5"
-                    : "hover:bg-gray-100 dark:hover:bg-gray-200",
-                )}
+                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
               >
                 <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
                   <IconDeviceDesktop size={16} stroke={1.5} />
@@ -5722,7 +6129,9 @@ function ComputerUseConnectorMenuSection({
                   </span>
                   {host.status === "offline" && (
                     <span className="block text-[11px] leading-3 text-muted-foreground">
-                      Offline
+                      {t(($) => {
+                        return $.chat.computerUse.offline;
+                      })}
                     </span>
                   )}
                 </span>
@@ -5738,7 +6147,25 @@ function ComputerUseConnectorMenuSection({
                       computerUse.onChange(nextChecked ? host.id : null);
                     })}
                     loading={false}
-                    ariaLabel={`${checked ? "Disconnect" : "Connect"} ${host.displayName}`}
+                    ariaLabel={
+                      checked
+                        ? t(
+                            ($) => {
+                              return $.chat.computerUse.disconnectHost;
+                            },
+                            {
+                              hostName: host.displayName,
+                            },
+                          )
+                        : t(
+                            ($) => {
+                              return $.chat.computerUse.connectHost;
+                            },
+                            {
+                              hostName: host.displayName,
+                            },
+                          )
+                    }
                     size="sm"
                   />
                 </span>
@@ -5753,7 +6180,9 @@ function ComputerUseConnectorMenuSection({
             stroke={1.5}
             className="shrink-0 text-muted-foreground"
           />
-          No online computers
+          {t(($) => {
+            return $.chat.computerUse.noOnlineComputers;
+          })}
         </div>
       )}
       <PopoverClose asChild>
@@ -5767,7 +6196,9 @@ function ComputerUseConnectorMenuSection({
             stroke={1.5}
             className="shrink-0 text-muted-foreground"
           />
-          Connect my computer
+          {t(($) => {
+            return $.chat.computerUse.connectMyComputer;
+          })}
         </button>
       </PopoverClose>
     </div>
@@ -5787,6 +6218,7 @@ function ComposerConnectorPermissionDialog({
   connector: ComposerConnectorItem;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const grantsLoadable = useLastLoadable(signals.permissionGrants$);
   const pageSignal = useGet(pageSignal$);
   const [, applyGrantPolicies] = useLoadableSet(applyUserPermissionGrants$);
@@ -5804,7 +6236,7 @@ function ComposerConnectorPermissionDialog({
   return (
     <PermissionsDialog
       agentId={agentId}
-      connectorSlug={connector.connectorRef}
+      connectorSlug={connector.slug}
       connectorLabel={connector.label}
       metadata$={signals.permissionMetadata$}
       displayName={agentDisplayName}
@@ -5815,7 +6247,7 @@ function ComposerConnectorPermissionDialog({
       onApply={async (intent, { metadata: appliedMetadata }) => {
         await savePermissionDraftPolicies({
           scope: { agentId },
-          connectorSlug: connector.connectorRef,
+          connectorSlug: connector.slug,
           metadata: appliedMetadata,
           initialPolicies,
           initialGrants: activeSnapshot.grants,
@@ -5823,11 +6255,40 @@ function ComposerConnectorPermissionDialog({
           pageSignal,
           applyGrantPolicies,
         });
-        toast.success("Permissions updated");
+        toast.success(
+          t(($) => {
+            return $.chat.permissions.updated;
+          }),
+        );
       }}
       onClose={onClose}
     />
   );
+}
+
+type ComposerPopoverConnectorItem =
+  | {
+      readonly kind: "builtin";
+      readonly connector: ComposerConnectorItem;
+    }
+  | {
+      readonly kind: "custom";
+      readonly connector: ComposerCustomConnectorItem;
+    };
+
+function composerPopoverConnectorId(
+  item: ComposerPopoverConnectorItem,
+): string {
+  return item.kind === "builtin" ? item.connector.slug : item.connector.id;
+}
+
+function matchesComposerPopoverConnectorSearch(
+  search: string,
+  item: ComposerPopoverConnectorItem,
+): boolean {
+  return item.kind === "builtin"
+    ? matchesConnectorSearch(search, item.connector)
+    : matchesCustomConnectorSearch(search, item.connector);
 }
 
 function ConnectorsPopoverButton({
@@ -5835,25 +6296,35 @@ function ConnectorsPopoverButton({
   agentId,
   agentDisplayName,
   agentConnectors,
+  agentCustomConnectors,
   connectorsLoading,
   savingConnectorSlug,
+  savingCustomConnectorId,
   computerUse,
   onOpenAddDialog,
   onToggle,
+  onToggleCustom,
 }: {
   signals: ComposerConnectorSignals;
   agentId: string | null;
   agentDisplayName: string;
   agentConnectors: ComposerConnectorItem[];
+  agentCustomConnectors: ComposerCustomConnectorItem[];
   connectorsLoading: boolean;
   savingConnectorSlug: ConnectorSlug | null;
+  savingCustomConnectorId: string | null;
   computerUse: ComposerComputerUse | undefined;
   onOpenAddDialog: () => void;
   onToggle: (
     connectorSlug: ConnectorSlug,
     checked: boolean,
   ) => void | Promise<void>;
+  onToggleCustom: (
+    connectorId: string,
+    checked: boolean,
+  ) => void | Promise<void>;
 }) {
+  const { t } = useTranslation();
   const search = useGet(signals.popoverSearch$);
   const setSearch = useSet(signals.setPopoverSearch$);
   const sortOrder = useGet(signals.popoverSortOrder$);
@@ -5867,19 +6338,27 @@ function ConnectorsPopoverButton({
   const setPermissionConnectorSlug = useSet(
     signals.setPermissionConnectorSlug$,
   );
-  const showSearch = agentConnectors.length > 20;
+  const connectorItems: ComposerPopoverConnectorItem[] = [
+    ...agentConnectors.map((connector) => {
+      return { kind: "builtin" as const, connector };
+    }),
+    ...agentCustomConnectors.map((connector) => {
+      return { kind: "custom" as const, connector };
+    }),
+  ];
+  const showSearch = connectorItems.length > 20;
   const permissionConnector =
     permissionEntryEnabled && permissionConnectorSlug
       ? agentConnectors.find((c) => {
-          return c.connectorRef === permissionConnectorSlug;
+          return c.slug === permissionConnectorSlug;
         })
       : undefined;
 
   // Use snapshot order if available, otherwise preserve catalog order.
   const sorted = sortOrder
-    ? [...agentConnectors].sort((a, b) => {
-        const ai = sortOrder.indexOf(a.connectorRef);
-        const bi = sortOrder.indexOf(b.connectorRef);
+    ? [...connectorItems].sort((a, b) => {
+        const ai = sortOrder.indexOf(composerPopoverConnectorId(a));
+        const bi = sortOrder.indexOf(composerPopoverConnectorId(b));
         if (ai === -1 && bi === -1) {
           return 0;
         }
@@ -5891,21 +6370,19 @@ function ConnectorsPopoverButton({
         }
         return ai - bi;
       })
-    : agentConnectors;
+    : connectorItems;
 
   const visibleConnectors =
     showSearch && search.trim()
-      ? sorted.filter((c) => {
-          return matchesConnectorSearch(search, c);
+      ? sorted.filter((item) => {
+          return matchesComposerPopoverConnectorSearch(search, item);
         })
       : sorted;
 
   const handleOpenChange = (open: boolean) => {
     if (open) {
       // Snapshot the sort order when popover opens
-      const freshSort = agentConnectors.map((c) => {
-        return c.connectorRef;
-      });
+      const freshSort = connectorItems.map(composerPopoverConnectorId);
       setSortOrder(freshSort);
     } else {
       setSortOrder(null);
@@ -5925,10 +6402,13 @@ function ConnectorsPopoverButton({
                   "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-accent sm:h-9 sm:min-w-9 sm:px-1.5",
                   COMPOSER_CONTROL_FOCUS_CLASS,
                 )}
-                aria-label="Connectors"
+                aria-label={t(($) => {
+                  return $.chat.connectors.title;
+                })}
               >
                 <ConnectorTriggerIcons
                   connectors={agentConnectors}
+                  customConnectors={agentCustomConnectors}
                   hasComputerUse={Boolean(computerUse?.selectedHostId)}
                   hasCloudBrowser={Boolean(computerUse?.cloudBrowserEnabled)}
                 />
@@ -5936,7 +6416,9 @@ function ConnectorsPopoverButton({
             </TooltipTrigger>
           </PopoverTrigger>
           <TooltipContent side="top" className="text-xs">
-            Connectors
+            {t(($) => {
+              return $.chat.connectors.title;
+            })}
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -5945,13 +6427,15 @@ function ConnectorsPopoverButton({
         align="start"
         className="flex max-h-[var(--radix-popover-content-available-height)] w-72 flex-col overflow-hidden rounded-lg p-0"
       >
-        {(agentConnectors.length > 0 || connectorsLoading) && (
+        {(connectorItems.length > 0 || connectorsLoading) && (
           <div className="flex min-h-0 flex-col py-1">
             {showSearch && (
               <div className="px-3 py-1 border-b border-border/50">
                 <input
                   type="text"
-                  placeholder="Find connectors..."
+                  placeholder={t(($) => {
+                    return $.chat.connectors.find;
+                  })}
                   value={search}
                   onChange={(e) => {
                     return setSearch(e.target.value);
@@ -5975,41 +6459,112 @@ function ConnectorsPopoverButton({
             ) : (
               <div className="flex max-h-64 min-h-0 flex-col overflow-y-auto">
                 {visibleConnectors.map((item) => {
+                  if (item.kind === "custom") {
+                    const connector = item.connector;
+                    return (
+                      <label
+                        key={connector.id}
+                        className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
+                      >
+                        <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                          <CustomConnectorIcon
+                            id={connector.id}
+                            displayName={connector.displayName}
+                            size={16}
+                          />
+                        </span>
+                        <span className="text-sm flex-1 truncate text-foreground">
+                          {connector.displayName}
+                        </span>
+                        <LoadingSwitch
+                          checked={connector.authorized}
+                          onCheckedChange={onDomEventFn(async (checked) => {
+                            await onToggleCustom(connector.id, checked);
+                          })}
+                          loading={savingCustomConnectorId === connector.id}
+                          ariaLabel={
+                            connector.authorized
+                              ? t(
+                                  ($) => {
+                                    return $.chat.connectors.remove;
+                                  },
+                                  {
+                                    connectorName: connector.displayName,
+                                  },
+                                )
+                              : t(
+                                  ($) => {
+                                    return $.chat.connectors.add;
+                                  },
+                                  {
+                                    connectorName: connector.displayName,
+                                  },
+                                )
+                          }
+                          size="sm"
+                        />
+                      </label>
+                    );
+                  }
+                  const connector = item.connector;
                   return (
                     <label
-                      key={item.connectorRef}
+                      key={connector.slug}
                       className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
                     >
                       <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-                        <ConnectorIcon icon={item.icon} size={16} />
+                        <ConnectorIcon icon={connector.icon} size={16} />
                       </span>
                       <span className="text-sm flex-1 truncate text-foreground">
-                        {item.label}
+                        {connector.label}
                       </span>
                       {permissionEntryEnabled &&
                         agentId &&
-                        item.authorized &&
-                        item.permissionSummary.hasPermissions && (
+                        connector.authorized &&
+                        connector.permissionSummary.hasPermissions && (
                           <button
                             type="button"
                             onClick={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
-                              setPermissionConnectorSlug(item.connectorRef);
+                              setPermissionConnectorSlug(connector.slug);
                             }}
-                            aria-label={`Configure ${item.label} permissions`}
+                            aria-label={t(
+                              ($) => {
+                                return $.chat.connectors.configurePermissions;
+                              },
+                              { connectorName: connector.label },
+                            )}
                             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                           >
                             <IconAdjustmentsHorizontal size={15} stroke={1.5} />
                           </button>
                         )}
                       <LoadingSwitch
-                        checked={item.authorized}
+                        checked={connector.authorized}
                         onCheckedChange={onDomEventFn(async (checked) => {
-                          await onToggle(item.connectorRef, checked);
+                          await onToggle(connector.slug, checked);
                         })}
-                        loading={savingConnectorSlug === item.connectorRef}
-                        ariaLabel={`${item.authorized ? "Remove" : "Add"} ${item.label}`}
+                        loading={savingConnectorSlug === connector.slug}
+                        ariaLabel={
+                          connector.authorized
+                            ? t(
+                                ($) => {
+                                  return $.chat.connectors.remove;
+                                },
+                                {
+                                  connectorName: connector.label,
+                                },
+                              )
+                            : t(
+                                ($) => {
+                                  return $.chat.connectors.add;
+                                },
+                                {
+                                  connectorName: connector.label,
+                                },
+                              )
+                        }
                         size="sm"
                       />
                     </label>
@@ -6020,7 +6575,7 @@ function ConnectorsPopoverButton({
           </div>
         )}
         <div className="flex shrink-0 flex-col p-1">
-          {(agentConnectors.length > 0 || connectorsLoading) && (
+          {(connectorItems.length > 0 || connectorsLoading) && (
             <div className="mx-2 mb-1 border-t border-border/50" />
           )}
           <button
@@ -6033,7 +6588,9 @@ function ConnectorsPopoverButton({
             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
               <IconPlus size={13} stroke={1.5} />
             </span>
-            Add connectors
+            {t(($) => {
+              return $.chat.connectors.addConnectors;
+            })}
           </button>
         </div>
         {computerUse && (
@@ -6076,6 +6633,7 @@ function ComputerUseDownloadDialog({
   onOpenChange: (open: boolean) => void;
   downloadUrl: string;
 }) {
+  const { t } = useTranslation();
   const downloadSupportLoadable = useLoadable(
     zeroDesktopDownloadSupportStatus$,
   );
@@ -6096,25 +6654,34 @@ function ComputerUseDownloadDialog({
         </div>
         <DialogHeader className="space-y-2 px-6 pt-5 text-left">
           <DialogTitle className="text-xl leading-7">
-            Let Zero use your computer
+            {t(($) => {
+              return $.chat.computerUse.dialogTitle;
+            })}
           </DialogTitle>
           <DialogDescription className="leading-6">
-            So Zero can work in your browser and apps for you, even ones with no
-            connector like LinkedIn or Reddit.
+            {t(($) => {
+              return $.chat.computerUse.dialogDescription;
+            })}
           </DialogDescription>
           <p className="text-sm leading-5 text-muted-foreground">
-            {ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL}
+            {t(($) => {
+              return $.chat.computerUse.macosRequirement;
+            })}
           </p>
         </DialogHeader>
         <div className="px-6 pb-6 pt-4">
           {downloadSupportStatus === "unsupported-intel-mac" ? (
             <Button type="button" size="lg" className="w-full" disabled>
               <IconAlertTriangle size={16} stroke={1.5} />
-              {ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL}
+              {t(($) => {
+                return $.chat.computerUse.unsupportedIntelMac;
+              })}
             </Button>
           ) : downloadSupportStatus === "checking" ? (
             <Button type="button" size="lg" className="w-full" disabled>
-              Checking compatibility
+              {t(($) => {
+                return $.chat.computerUse.checkingCompatibility;
+              })}
             </Button>
           ) : (
             <Button asChild size="lg" className="w-full">
@@ -6127,7 +6694,9 @@ function ComputerUseDownloadDialog({
                 }}
               >
                 <IconDownload size={16} stroke={1.5} />
-                Download for macOS
+                {t(($) => {
+                  return $.chat.computerUse.downloadMacos;
+                })}
               </a>
             </Button>
           )}
@@ -6150,34 +6719,54 @@ interface MicButtonStatus {
 
 function micButtonAriaLabel(status: MicButtonStatus): string {
   if (status.recording) {
-    return "Stop recording";
+    return i18n.t(($) => {
+      return $.chat.voice.stopRecording;
+    });
   }
   if (status.starting) {
-    return "Starting voice input";
+    return i18n.t(($) => {
+      return $.chat.voice.starting;
+    });
   }
   if (status.transcribing) {
-    return "Transcribing";
+    return i18n.t(($) => {
+      return $.chat.voice.transcribing;
+    });
   }
   if (status.quotaLoading) {
-    return "Checking voice input limit";
+    return i18n.t(($) => {
+      return $.chat.voice.checkingLimit;
+    });
   }
-  return "Voice input";
+  return i18n.t(($) => {
+    return $.chat.voice.input;
+  });
 }
 
 function micButtonTooltip(status: MicButtonStatus): string {
   if (status.recording) {
-    return "Stop recording";
+    return i18n.t(($) => {
+      return $.chat.voice.stopRecording;
+    });
   }
   if (status.starting) {
-    return "Opening microphone...";
+    return i18n.t(($) => {
+      return $.chat.voice.openingMicrophone;
+    });
   }
   if (status.transcribing) {
-    return "Transcribing...";
+    return i18n.t(($) => {
+      return $.chat.voice.transcribingProgress;
+    });
   }
   if (status.quotaLoading) {
-    return "Checking voice input limit";
+    return i18n.t(($) => {
+      return $.chat.voice.checkingLimit;
+    });
   }
-  return "Voice input";
+  return i18n.t(($) => {
+    return $.chat.voice.input;
+  });
 }
 
 function MicButton({
@@ -6289,6 +6878,7 @@ function ComposerAttachButton({
 }: {
   readonly onSelectFile: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <TooltipProvider delayDuration={300}>
       <Tooltip>
@@ -6299,14 +6889,18 @@ function ComposerAttachButton({
               "rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]",
               COMPOSER_CONTROL_FOCUS_CLASS,
             )}
-            aria-label="Attach"
+            aria-label={t(($) => {
+              return $.chat.attachments.attach;
+            })}
             onClick={onSelectFile}
           >
             <IconPaperclip size={18} stroke={1.5} />
           </button>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
-          Attach
+          {t(($) => {
+            return $.chat.attachments.attach;
+          })}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -6322,6 +6916,7 @@ function ComposerUploadMenu({
   readonly onAppendText: (value: string) => void;
   readonly onSelectFile: () => void;
 }) {
+  const { t } = useTranslation();
   const uploadOpen = useGet(uploadPopoverOpen$);
   const setUploadOpen = useSet(setUploadPopoverOpen$);
   const addLink = (event: FormEvent<HTMLFormElement>) => {
@@ -6330,7 +6925,11 @@ function ComposerUploadMenu({
     const data = new FormData(form);
     const trimmed = String(data.get("uploadLink") ?? "").trim();
     if (!URL.canParse(trimmed)) {
-      toast.error("Enter a valid link");
+      toast.error(
+        t(($) => {
+          return $.chat.attachments.invalidLink;
+        }),
+      );
       return;
     }
     const normalized = new URL(trimmed).toString();
@@ -6349,10 +6948,14 @@ function ComposerUploadMenu({
           COMPOSER_CONTROL_FOCUS_CLASS,
           uploadOpen && "bg-accent text-foreground",
         )}
-        aria-label="Upload"
+        aria-label={t(($) => {
+          return $.chat.attachments.upload;
+        })}
         aria-expanded={uploadOpen}
         aria-haspopup="dialog"
-        title="Upload"
+        title={t(($) => {
+          return $.chat.attachments.upload;
+        })}
         data-testid="composer-upload"
         onClick={() => {
           setUploadOpen(!uploadOpen);
@@ -6363,7 +6966,9 @@ function ComposerUploadMenu({
       {uploadOpen && (
         <div
           role="dialog"
-          aria-label="Upload"
+          aria-label={t(($) => {
+            return $.chat.attachments.upload;
+          })}
           className="absolute bottom-full left-0 z-50 mb-2 w-72 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-2 text-foreground shadow-lg"
         >
           <button
@@ -6378,10 +6983,14 @@ function ComposerUploadMenu({
             <IconPaperclip size={16} stroke={1.6} />
             <span className="min-w-0">
               <span className="block text-sm font-medium text-foreground">
-                Upload from computer
+                {t(($) => {
+                  return $.chat.attachments.uploadFromComputer;
+                })}
               </span>
               <span className="block truncate text-xs text-muted-foreground">
-                Images, docs, audio, video and archives
+                {t(($) => {
+                  return $.chat.attachments.supportedTypes;
+                })}
               </span>
             </span>
           </button>
@@ -6391,12 +7000,16 @@ function ComposerUploadMenu({
           >
             <div className="flex items-center gap-2 text-sm font-medium text-foreground">
               <IconLink size={15} stroke={1.7} />
-              Upload from link
+              {t(($) => {
+                return $.chat.attachments.uploadFromLink;
+              })}
             </div>
             <Input
               className="mt-2 h-9 text-sm"
               name="uploadLink"
-              placeholder="https://example.com/image.png"
+              placeholder={t(($) => {
+                return $.chat.attachments.linkPlaceholder;
+              })}
               type="url"
               data-testid="composer-upload-link-input"
             />
@@ -6406,7 +7019,9 @@ function ComposerUploadMenu({
               className="mt-2 h-8 w-full rounded-lg text-xs font-medium"
               data-testid="composer-upload-link-add"
             >
-              Add link
+              {t(($) => {
+                return $.chat.attachments.addLink;
+              })}
             </Button>
           </form>
         </div>
@@ -6557,6 +7172,7 @@ function restoreChatClipboardPayload({
     return (
       part.type === "text" ||
       part.type === "chat_thread" ||
+      part.type === "agent" ||
       part.type === "feedback" ||
       (inlineTemplatesEnabled && part.type === "template")
     );
@@ -6642,6 +7258,7 @@ function ComposerSendButton({
   sendAction: KeyboardSendAction;
   onSend: () => void;
 }) {
+  const { t } = useTranslation();
   if (showStopButton) {
     return (
       <Button
@@ -6649,7 +7266,9 @@ function ComposerSendButton({
         variant="destructive"
         className="rounded-lg h-9 w-9 p-0 shrink-0"
         onClick={onCancel}
-        aria-label="Stop"
+        aria-label={t(($) => {
+          return $.chat.actions.stop;
+        })}
       >
         <IconPlayerStop size={16} />
       </Button>
@@ -6661,7 +7280,9 @@ function ComposerSendButton({
       className="rounded-lg h-9 w-9 p-0 shrink-0"
       onClick={onSend}
       disabled={sendAction === "none"}
-      aria-label="Send"
+      aria-label={t(($) => {
+        return $.chat.actions.send;
+      })}
     >
       <IconArrowUp size={18} stroke={2} />
     </Button>
@@ -6781,6 +7402,7 @@ function ComposerModelPickerSlot({
   submitBlocker: ZeroChatComposerProps["submitBlocker"];
   onModelPickerChange: (value: ModelProviderSelection | null) => void;
 }) {
+  const { t } = useTranslation();
   const codexFastModeEnabled = useGet(codexFastModeEnabled$);
   const modelPickerOpen = useGet(modelPickerOpen$);
   const setModelPickerOpen = useSet(setModelPickerOpen$);
@@ -6797,7 +7419,9 @@ function ComposerModelPickerSlot({
         <ModelProviderPicker
           value={modelPicker.value}
           onChange={onModelPickerChange}
-          placeholder="Select model"
+          placeholder={t(($) => {
+            return $.chat.composer.selectModel;
+          })}
           triggerClassName={cn(
             "h-9 w-9 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
             "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
@@ -6842,15 +7466,35 @@ function equalAgentConnectorAuthorizations(
   );
 }
 
+function equalAgentCustomConnectorAuthorizations(
+  left: AgentCustomConnectorAuthorizations | null,
+  right: AgentCustomConnectorAuthorizations | null,
+): boolean {
+  if (left === null || right === null) {
+    return left === right;
+  }
+  return (
+    left.agentId === right.agentId &&
+    equalArrays(left.enabledIds, right.enabledIds)
+  );
+}
+
 export function useComposerConnectorReadState(
   composerConnectors: ComposerConnectorSignals,
 ): ComposerConnectorReadState {
   return {
     catalogItems: useLastLoadable(allConnectorCatalogItems$),
+    customConnectors: useLastLoadable(customConnectors$),
     agentId: useLoadable(composerConnectors.agentId$),
     authorizations: useLastLoadable(composerConnectors.authorizations$, {
       equalityFn: equalAgentConnectorAuthorizations,
     }),
+    customAuthorizations: useLastLoadable(
+      composerConnectors.customAuthorizations$,
+      {
+        equalityFn: equalAgentCustomConnectorAuthorizations,
+      },
+    ),
   };
 }
 
@@ -6868,6 +7512,105 @@ function matchingAuthorizedConnectorSlugs(
     return null;
   }
   return authorizations.data.enabledConnectorSlugs;
+}
+
+function matchingAuthorizedCustomConnectorIds(
+  agentId: Loadable<string | null>,
+  authorizations: Loadable<AgentCustomConnectorAuthorizations | null>,
+): readonly string[] | null {
+  if (agentId.state !== "hasData" || authorizations.state !== "hasData") {
+    return null;
+  }
+  if (agentId.data === null) {
+    return authorizations.data === null ? [] : null;
+  }
+  if (authorizations.data?.agentId !== agentId.data) {
+    return null;
+  }
+  return authorizations.data.enabledIds;
+}
+
+interface ResolvedComposerConnectorCollections {
+  readonly authorizedSet: ReadonlySet<ConnectorSlug>;
+  readonly connectorMap: ReadonlyMap<
+    ConnectorSlug,
+    PlatformConnectorCatalogStatusItem
+  >;
+  readonly unconnectedConnectors: PlatformConnectorCatalogStatusItem[];
+  readonly unconnectedCustomConnectors: CustomConnectorResponse[];
+  readonly agentConnectors: ComposerConnectorItem[];
+  readonly agentCustomConnectors: ComposerCustomConnectorItem[];
+  readonly selectedCustomConnector: CustomConnectorResponse | undefined;
+}
+
+function resolveComposerConnectorCollections({
+  catalogItems,
+  customConnectors,
+  authorizedConnectorSlugs,
+  authorizedCustomConnectorIds,
+  optimisticConnected,
+  selectedCustomConnectorId,
+}: {
+  catalogItems: Loadable<readonly PlatformConnectorCatalogStatusItem[]>;
+  customConnectors: Loadable<readonly CustomConnectorResponse[]>;
+  authorizedConnectorSlugs: readonly ConnectorSlug[] | null;
+  authorizedCustomConnectorIds: readonly string[] | null;
+  optimisticConnected: ReadonlySet<ConnectorSlug>;
+  selectedCustomConnectorId: string | null;
+}): ResolvedComposerConnectorCollections {
+  const resolvedCatalogItems =
+    catalogItems.state === "hasData" ? catalogItems.data : [];
+  const resolvedCustomConnectors =
+    customConnectors.state === "hasData" ? customConnectors.data : [];
+  const authorizedSet = new Set(authorizedConnectorSlugs ?? []);
+  const authorizedCustomSet = new Set(authorizedCustomConnectorIds ?? []);
+  const connectorMap = new Map(
+    resolvedCatalogItems.map((connector) => {
+      return [connector.slug, connector];
+    }),
+  );
+  const unconnectedConnectors = resolvedCatalogItems.filter((connector) => {
+    return !connector.connected && !optimisticConnected.has(connector.slug);
+  });
+  const unconnectedCustomConnectors = resolvedCustomConnectors.filter(
+    (connector) => {
+      return !connector.connected;
+    },
+  );
+  const agentConnectors = resolvedCatalogItems
+    .filter((connector) => {
+      return connector.connected || optimisticConnected.has(connector.slug);
+    })
+    .map((connector) => {
+      return {
+        ...connector,
+        authorized: authorizedSet.has(connector.slug),
+      };
+    });
+  const agentCustomConnectors = resolvedCustomConnectors
+    .filter((connector) => {
+      return connector.connected;
+    })
+    .map((connector) => {
+      return {
+        ...connector,
+        authorized: authorizedCustomSet.has(connector.id),
+      };
+    });
+  const selectedCustomConnector = selectedCustomConnectorId
+    ? resolvedCustomConnectors.find((connector) => {
+        return connector.id === selectedCustomConnectorId;
+      })
+    : undefined;
+  return {
+    authorizedSet,
+    connectorMap,
+    unconnectedConnectors,
+    unconnectedCustomConnectors,
+    agentConnectors,
+    agentCustomConnectors,
+    selectedCustomConnector,
+  };
 }
 
 // The thread route invokes this hook from its ccstate-connected composer so
@@ -6903,15 +7646,12 @@ export function useZeroChatComposer(
     onRemoveQueuedItem,
     workflowEventItems,
     onRemoveWorkflowEvent,
-    workflowEventsPaused = false,
-    workflowEventsPauseReason,
-    onSetWorkflowEventsPaused,
-    onClearWorkflowEvents,
     activeGoal,
     onCancelActiveGoal,
   }: ZeroChatComposerProps,
   connectorReadState: ComposerConnectorReadState,
 ) {
+  const { t } = useTranslation();
   const showAddDialog = useGet(composerConnectors.showAddDialog$);
   const setShowAddDialog = useSet(composerConnectors.setShowAddDialog$);
   const openGoalDialog = useSet(openChatThreadGoalDialog$);
@@ -7009,7 +7749,16 @@ export function useZeroChatComposer(
       }
       if (file.size > MAX_FILE_SIZE) {
         e.preventDefault();
-        toast.error(`${file.name} exceeds the 1 GB limit`);
+        toast.error(
+          t(
+            ($) => {
+              return $.chat.attachments.fileTooLarge;
+            },
+            {
+              filename: file.name,
+            },
+          ),
+        );
         continue;
       }
       e.preventDefault();
@@ -7034,7 +7783,16 @@ export function useZeroChatComposer(
       }
       if (file.size > MAX_FILE_SIZE) {
         e.preventDefault();
-        toast.error(`${file.name} exceeds the 1 GB limit`);
+        toast.error(
+          t(
+            ($) => {
+              return $.chat.attachments.fileTooLarge;
+            },
+            {
+              filename: file.name,
+            },
+          ),
+        );
         continue;
       }
       detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
@@ -7058,8 +7816,10 @@ export function useZeroChatComposer(
 
   // Connectors: connected (org-level) + authorized (agent-level) → available
   const connectorCatalogItemsLoadable = connectorReadState.catalogItems;
+  const customConnectorsLoadable = connectorReadState.customConnectors;
   const agentIdLoadable = connectorReadState.agentId;
   const authorizationsLoadable = connectorReadState.authorizations;
+  const customAuthorizationsLoadable = connectorReadState.customAuthorizations;
   const pageSignal = useGet(pageSignal$);
   const selectedConnectorSlug = useGet(
     composerConnectors.selectedConnectorSlug$,
@@ -7071,6 +7831,12 @@ export function useZeroChatComposer(
   const setSelectedConnectorSlug = useSet(
     composerConnectors.setSelectedConnectorSlug$,
   );
+  const selectedCustomConnectorId = useGet(
+    composerConnectors.selectedCustomConnectorId$,
+  );
+  const setSelectedCustomConnectorId = useSet(
+    composerConnectors.setSelectedCustomConnectorId$,
+  );
   const pollingAuthCodeSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
   const pollingDeviceAuthSlug = useGet(pollingOAuthDeviceAuthConnectorSlug$);
   const connectFlowSlug = useGet(connectFlowConnectorSlug$);
@@ -7080,11 +7846,23 @@ export function useZeroChatComposer(
   const connectNoAuth = useSet(connectConnectorNoAuth$);
   const authorizeFn = useSet(composerConnectors.authorizeConnector$);
   const deauthorizeFn = useSet(composerConnectors.deauthorizeConnector$);
+  const authorizeCustomFn = useSet(
+    composerConnectors.authorizeCustomConnector$,
+  );
+  const deauthorizeCustomFn = useSet(
+    composerConnectors.deauthorizeCustomConnector$,
+  );
   const optimisticConnected = useGet(justConnectedSlugs$);
 
   const savingConnectorSlug = useGet(composerConnectors.savingConnectorSlug$);
   const setSavingConnectorSlug = useSet(
     composerConnectors.setSavingConnectorSlug$,
+  );
+  const savingCustomConnectorId = useGet(
+    composerConnectors.savingCustomConnectorId$,
+  );
+  const setSavingCustomConnectorId = useSet(
+    composerConnectors.setSavingCustomConnectorId$,
   );
   const agentRecordId = loadableDataOrNull(agentIdLoadable);
 
@@ -7092,40 +7870,33 @@ export function useZeroChatComposer(
     agentIdLoadable,
     authorizationsLoadable,
   );
+  const authorizedCustomConnectors = matchingAuthorizedCustomConnectorIds(
+    agentIdLoadable,
+    customAuthorizationsLoadable,
+  );
 
   const connectorsLoading =
     connectorCatalogItemsLoadable.state !== "hasData" ||
-    authorizedConnectors === null;
+    customConnectorsLoadable.state !== "hasData" ||
+    authorizedConnectors === null ||
+    authorizedCustomConnectors === null;
 
-  const connectorCatalogItems =
-    connectorCatalogItemsLoadable.state === "hasData"
-      ? connectorCatalogItemsLoadable.data
-      : [];
-  const connectorMap = new Map(
-    connectorCatalogItems.map((connector) => {
-      return [connector.connectorRef, connector];
-    }),
-  );
-  const authorizedSet = new Set(authorizedConnectors ?? []);
-
-  const unconnectedConnectors = connectorCatalogItems.filter((connector) => {
-    return (
-      !connector.connected && !optimisticConnected.has(connector.connectorRef)
-    );
+  const {
+    authorizedSet,
+    connectorMap,
+    unconnectedConnectors,
+    unconnectedCustomConnectors,
+    agentConnectors,
+    agentCustomConnectors,
+    selectedCustomConnector,
+  } = resolveComposerConnectorCollections({
+    catalogItems: connectorCatalogItemsLoadable,
+    customConnectors: customConnectorsLoadable,
+    authorizedConnectorSlugs: authorizedConnectors,
+    authorizedCustomConnectorIds: authorizedCustomConnectors,
+    optimisticConnected,
+    selectedCustomConnectorId,
   });
-
-  // Show all org-connected services so user can toggle authorization on/off per agent.
-  const connectedCatalogItems = connectorCatalogItems.filter((connector) => {
-    return (
-      connector.connected || optimisticConnected.has(connector.connectorRef)
-    );
-  });
-  const agentConnectors: ComposerConnectorItem[] = connectedCatalogItems.map(
-    (connector) => {
-      const authorized = authorizedSet.has(connector.connectorRef);
-      return { ...connector, authorized };
-    },
-  );
 
   const handleConnectSuccess = async (connectorSlug: ConnectorSlug) => {
     const label = connectorMap.get(connectorSlug)?.label ?? connectorSlug;
@@ -7136,7 +7907,15 @@ export function useZeroChatComposer(
       })(),
       () => {
         toast.error(
-          `${label} connected but could not be authorized for ${displayName}`,
+          t(
+            ($) => {
+              return $.chat.connectors.authorizationFailed;
+            },
+            {
+              connectorName: label,
+              agentName: displayName,
+            },
+          ),
           {
             id: `connector-save-error-${connectorSlug}`,
           },
@@ -7146,9 +7925,20 @@ export function useZeroChatComposer(
     if (authorized !== true) {
       return false;
     }
-    toast.success(`${label} connected and authorized for ${displayName}`, {
-      id: `connector-connected-${connectorSlug}`,
-    });
+    toast.success(
+      t(
+        ($) => {
+          return $.chat.connectors.authorized;
+        },
+        {
+          connectorName: label,
+          agentName: displayName,
+        },
+      ),
+      {
+        id: `connector-connected-${connectorSlug}`,
+      },
+    );
     return true;
   };
 
@@ -7167,9 +7957,9 @@ export function useZeroChatComposer(
   };
 
   const connectorConnectHandlers = (
-    connector: PublicConnectorCatalogStatusItem,
+    connector: PlatformConnectorCatalogStatusItem,
   ): ConnectorConnectHandlers => {
-    const connectorSlug = connector.connectorRef;
+    const connectorSlug = connector.slug;
     return {
       openModal: () => {
         setPendingConnectorSlug(connectorSlug);
@@ -7230,6 +8020,16 @@ export function useZeroChatComposer(
     setSavingConnectorSlug(null);
   };
 
+  const handleCustomToggle = async (connectorId: string, checked: boolean) => {
+    setSavingCustomConnectorId(connectorId);
+    await bestEffort(
+      checked
+        ? authorizeCustomFn(connectorId, pageSignal)
+        : deauthorizeCustomFn(connectorId, pageSignal),
+    );
+    setSavingCustomConnectorId(null);
+  };
+
   const handleSend = () => {
     const input = readInput();
     const sendAction = resolveKeyboardSendAction({
@@ -7286,8 +8086,14 @@ export function useZeroChatComposer(
 
   const handleKeyDown = (e: KeyboardEventLike) => {
     const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
+    // A fine pointer stands in for a hardware keyboard on tablets, but WebKit
+    // also reports one on iPhones, where every keystroke comes from the
+    // on-screen keyboard. An occluded visual viewport overrides that claim so
+    // plain Enter stays a newline there.
     const isTouchOnlyDevice =
-      isTouchDevice && !window.matchMedia("(any-pointer: fine)").matches;
+      isTouchDevice &&
+      (!window.matchMedia("(any-pointer: fine)").matches ||
+        softwareKeyboardOccludesViewport());
     const send = () => {
       handleSend();
     };
@@ -7324,7 +8130,16 @@ export function useZeroChatComposer(
       }
       if (file.size > MAX_FILE_SIZE) {
         e.preventDefault();
-        toast.error(`${file.name} exceeds the 1 GB limit`);
+        toast.error(
+          t(
+            ($) => {
+              return $.chat.attachments.fileTooLarge;
+            },
+            {
+              filename: file.name,
+            },
+          ),
+        );
         continue;
       }
       detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
@@ -7370,10 +8185,6 @@ export function useZeroChatComposer(
           onRemove={onRemoveQueuedItem}
           workflowEvents={workflowEventItems}
           onRemoveWorkflowEvent={onRemoveWorkflowEvent}
-          workflowEventsPaused={workflowEventsPaused}
-          workflowEventsPauseReason={workflowEventsPauseReason}
-          onSetWorkflowEventsPaused={onSetWorkflowEventsPaused}
-          onClearWorkflowEvents={onClearWorkflowEvents}
           activeGoal={activeGoal}
           onCancelGoal={onCancelActiveGoal}
           onOpenGoal={
@@ -7438,13 +8249,16 @@ export function useZeroChatComposer(
                     agentId={agentRecordId}
                     agentDisplayName={displayName}
                     agentConnectors={agentConnectors}
+                    agentCustomConnectors={agentCustomConnectors}
                     connectorsLoading={connectorsLoading}
                     savingConnectorSlug={savingConnectorSlug}
+                    savingCustomConnectorId={savingCustomConnectorId}
                     computerUse={computerUse}
                     onOpenAddDialog={() => {
                       return setShowAddDialog(true);
                     }}
                     onToggle={handleToggle}
+                    onToggleCustom={handleCustomToggle}
                   />
                 </div>
                 <div className="flex items-center gap-1 sm:gap-2">
@@ -7500,12 +8314,26 @@ export function useZeroChatComposer(
           }}
         />
       )}
+      {selectedCustomConnector && agentRecordId && (
+        <CustomConnectorConnectDialog
+          connector={selectedCustomConnector}
+          agentId={agentRecordId}
+          onClose={() => {
+            setSelectedCustomConnectorId(null);
+          }}
+        />
+      )}
       {showAddDialog && (
         <AddConnectorsDialog
           signals={composerConnectors}
           unconnected={unconnectedConnectors}
+          unconnectedCustom={unconnectedCustomConnectors}
           busyConnectorSlug={busyConnectorSlug}
           connectHandlers={connectorConnectHandlers}
+          onConnectCustom={(connector) => {
+            setShowAddDialog(false);
+            setSelectedCustomConnectorId(connector.id);
+          }}
           onClose={() => {
             setPendingConnectorSlug(null);
             return setShowAddDialog(false);

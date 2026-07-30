@@ -21,6 +21,7 @@ import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { readAgentRunCallbacks$ } from "./helpers/agent-run-callback";
+import { chatEventDisplayText } from "./helpers/chat-event";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -174,7 +175,7 @@ async function workflowRunMessages(
   return messages.flatMap((message) => {
     if (
       message.eventType !== "input.prompt" ||
-      message.content !== `/${WORKFLOW_NAME}` ||
+      !chatEventDisplayText(message)?.startsWith(`/${WORKFLOW_NAME}`) ||
       !message.runId
     ) {
       return [];
@@ -415,12 +416,13 @@ describe("zero workflow automation scheduler", () => {
     mockNow(Date.parse(created.body.nextRunAt) + 60_000);
     await executeDueWorkflowAutomations();
 
+    const onceRun = await onlyWorkflowRunMessage(threadId);
     const emittedCallbacks = await store.set(
       readAgentRunCallbacks$,
       {
         orgId: scenario.orgId,
         userId: scenario.userId,
-        prompt: `/${WORKFLOW_NAME}`,
+        runId: onceRun.runId,
       },
       context.signal,
     );
@@ -572,7 +574,7 @@ describe("zero workflow automation scheduler", () => {
       {
         orgId: scenario.orgId,
         userId: scenario.userId,
-        prompt: `/${WORKFLOW_NAME}`,
+        runId: run.runId,
       },
       context.signal,
     );
@@ -621,7 +623,7 @@ describe("zero workflow automation scheduler", () => {
       {
         orgId: scenario.orgId,
         userId: scenario.userId,
-        prompt: `/${WORKFLOW_NAME}`,
+        runId: run.runId,
       },
       context.signal,
     );

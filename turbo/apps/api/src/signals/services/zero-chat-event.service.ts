@@ -4,14 +4,16 @@ import {
   isValidChatEventRevocation,
 } from "@vm0/api-contracts/contracts/chat-events";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { chatEventAssetRefs } from "@vm0/db/schema/run-uploaded-file";
 import { eq, isNotNull, sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { nowDate } from "../external/time";
 
-type ChatEventInsert = typeof chatMessages.$inferInsert;
+type ChatEventInsert = typeof chatEvents.$inferInsert;
 type ChatEventWriteTransaction = Parameters<
   Parameters<Db["transaction"]>[0]
 >[0];
@@ -30,8 +32,9 @@ type ChatEventIdentity = Pick<
 
 type ChatEventInputPayload = Pick<
   ChatEventInsert,
-  "attachFiles" | "attachFileMetadata" | "generationTemplate" | "goalSnapshot"
+  "attachFiles" | "generationTemplate" | "goalSnapshot"
 > & {
+  readonly attachFileMetadata?: typeof chatEventInputParams.$inferInsert.attachFileMetadata;
   readonly userMessage: NonNullable<ChatEventInsert["userMessage"]>;
 };
 
@@ -43,7 +46,7 @@ type ChatEventOutputSequence = Pick<
 type InputPromptEvent = ChatEventIdentity &
   ChatEventInputPayload & {
     readonly eventType: "input.prompt";
-    readonly content: string | null;
+    readonly content?: null;
     readonly triggerSource?: TriggerSource;
     readonly encryptedParams?: string | null;
   };
@@ -60,7 +63,7 @@ type InputAutomationEvent = ChatEventIdentity & {
 type InputGoalEvent = ChatEventIdentity & {
   readonly eventType: "input.goal";
   readonly content?: null;
-  readonly encryptedParams: string;
+  readonly runGroupId: string;
   readonly goalSnapshot: NonNullable<ChatEventInsert["goalSnapshot"]>;
 };
 
@@ -68,7 +71,7 @@ type InputRejectedEvent = ChatEventIdentity &
   ChatEventInputPayload &
   Pick<ChatEventInsert, "sequenceNumber"> & {
     readonly eventType: "input.rejected";
-    readonly content: string | null;
+    readonly content?: null;
     readonly error: string;
     readonly automationId?: string;
     readonly triggerSource?: TriggerSource;
@@ -137,17 +140,6 @@ type RunCancelledEvent = ChatEventIdentity & {
   readonly error?: string;
 };
 
-type QueueAutomationPausedEvent = ChatEventIdentity & {
-  readonly eventType: "queue.automation_paused";
-  readonly content?: null;
-  readonly pauseReason: string | null;
-};
-
-type QueueAutomationResumedEvent = ChatEventIdentity & {
-  readonly eventType: "queue.automation_resumed";
-  readonly content?: null;
-};
-
 type ControlInterruptEvent = ChatEventIdentity & {
   readonly eventType: "control.interrupt";
   readonly content?: null;
@@ -188,8 +180,6 @@ export type NewChatEvent =
   | RunCompletedEvent
   | RunFailedEvent
   | RunCancelledEvent
-  | QueueAutomationPausedEvent
-  | QueueAutomationResumedEvent
   | ControlInterruptEvent
   | ControlRevokeEvent
   | GoalChangedEvent
@@ -218,22 +208,61 @@ type InsertChatEventsConflict = "any" | "run-sequence";
 
 type PersistedChatEvent = Omit<ChatEventInsert, "role" | "seqId">;
 
-function persistedChatEventValues(values: NewChatEvent): PersistedChatEvent {
-  const runLifecycleEvent = chatEventRunLifecycle(values.eventType);
-  if (values.eventType === "queue.automation_paused") {
-    const { pauseReason, ...event } = values;
-    return {
-      ...event,
-      content: null,
-      error: pauseReason,
-      eventType: event.eventType,
-    };
+function isPendingInputEvent(values: NewChatEvent): boolean {
+  return (
+    values.runId === null &&
+    (values.eventType === "input.prompt" ||
+      values.eventType === "input.automation" ||
+      values.eventType === "input.goal")
+  );
+}
+
+function eventInputParams(values: NewChatEvent):
+  | {
+      readonly encryptedParams: string;
+      readonly attachFileMetadata:
+        | typeof chatEventInputParams.$inferInsert.attachFileMetadata
+        | undefined;
+    }
+  | undefined {
+  if (
+    !isPendingInputEvent(values) ||
+    !("encryptedParams" in values) ||
+    !values.encryptedParams
+  ) {
+    return undefined;
   }
   return {
+    encryptedParams: values.encryptedParams,
+    attachFileMetadata:
+      "attachFileMetadata" in values ? values.attachFileMetadata : undefined,
+  };
+}
+
+async function insertEventInputParams(
+  tx: ChatEventWriteTransaction,
+  eventId: string,
+  values: NewChatEvent,
+): Promise<void> {
+  const params = eventInputParams(values);
+  if (!params) {
+    return;
+  }
+  await tx.insert(chatEventInputParams).values({
+    eventId,
+    encryptedParams: params.encryptedParams,
+    attachFileMetadata: params.attachFileMetadata,
+  });
+}
+
+function persistedChatEventValues(values: NewChatEvent): PersistedChatEvent {
+  const runLifecycleEvent = chatEventRunLifecycle(values.eventType);
+  return {
     ...values,
-    ...(values.eventType === "input.automation" ||
-    values.eventType === "input.goal" ||
-    values.eventType === "queue.automation_resumed"
+    ...(values.eventType === "input.prompt" ||
+    values.eventType === "input.rejected" ||
+    values.eventType === "input.automation" ||
+    values.eventType === "input.goal"
       ? { content: null }
       : {}),
     eventType: values.eventType,
@@ -253,14 +282,30 @@ async function reserveChatEventSeqIds(
   const [thread] = await tx
     .update(chatThreads)
     .set({
-      lastChatMessageSeqId: sql`${chatThreads.lastChatMessageSeqId} + ${count}`,
+      lastChatEventSeqId: sql`${chatThreads.lastChatEventSeqId} + ${count}`,
     })
     .where(eq(chatThreads.id, chatThreadId))
-    .returning({ lastSeqId: chatThreads.lastChatMessageSeqId });
+    .returning({ lastSeqId: chatThreads.lastChatEventSeqId });
   if (!thread) {
     throw new Error(`Chat thread ${chatThreadId} not found`);
   }
   return thread.lastSeqId - count + 1;
+}
+
+async function releaseChatEventSeqId(
+  tx: ChatEventWriteTransaction,
+  chatThreadId: string,
+): Promise<void> {
+  const [thread] = await tx
+    .update(chatThreads)
+    .set({
+      lastChatEventSeqId: sql`${chatThreads.lastChatEventSeqId} - 1`,
+    })
+    .where(eq(chatThreads.id, chatThreadId))
+    .returning({ id: chatThreads.id });
+  if (!thread) {
+    throw new Error(`Chat thread ${chatThreadId} not found`);
+  }
 }
 
 async function addSeqIdsToEvents(
@@ -305,39 +350,48 @@ export async function insertChatEvent(
     throw new Error("chat event seq_id was not assigned");
   }
 
-  const query = tx.insert(chatMessages).values(valueWithSeqId);
+  const query = tx.insert(chatEvents).values(valueWithSeqId);
   const rows =
     conflict === "any"
       ? await query.onConflictDoNothing().returning({
-          id: chatMessages.id,
-          createdAt: chatMessages.createdAt,
-          seqId: chatMessages.seqId,
+          id: chatEvents.id,
+          createdAt: chatEvents.createdAt,
+          seqId: chatEvents.seqId,
         })
       : conflict === "id"
-        ? await query
-            .onConflictDoNothing({ target: chatMessages.id })
-            .returning({
-              id: chatMessages.id,
-              createdAt: chatMessages.createdAt,
-              seqId: chatMessages.seqId,
-            })
+        ? await query.onConflictDoNothing({ target: chatEvents.id }).returning({
+            id: chatEvents.id,
+            createdAt: chatEvents.createdAt,
+            seqId: chatEvents.seqId,
+          })
         : conflict === "run-lifecycle"
           ? await query
               .onConflictDoNothing({
-                target: chatMessages.runId,
-                where: isNotNull(chatMessages.runLifecycleEvent),
+                target: chatEvents.runId,
+                where: isNotNull(chatEvents.runLifecycleEvent),
               })
               .returning({
-                id: chatMessages.id,
-                createdAt: chatMessages.createdAt,
-                seqId: chatMessages.seqId,
+                id: chatEvents.id,
+                createdAt: chatEvents.createdAt,
+                seqId: chatEvents.seqId,
               })
           : await query.returning({
-              id: chatMessages.id,
-              createdAt: chatMessages.createdAt,
-              seqId: chatMessages.seqId,
+              id: chatEvents.id,
+              createdAt: chatEvents.createdAt,
+              seqId: chatEvents.seqId,
             });
 
+  if (rows.length === 0) {
+    // A rejected idempotent write is not part of the canonical stream, so it
+    // must not consume the thread's next cursor.
+    await releaseChatEventSeqId(tx, values.chatThreadId);
+  } else {
+    const inserted = rows[0];
+    if (!inserted) {
+      throw new Error("Inserted chat event result is missing");
+    }
+    await insertEventInputParams(tx, inserted.id, values);
+  }
   return rows[0] ?? null;
 }
 
@@ -354,24 +408,24 @@ export async function insertChatEvents(
     tx,
     values.map(persistedChatEventValues),
   );
-  const query = tx.insert(chatMessages).values([...valuesWithSeqIds]);
+  const query = tx.insert(chatEvents).values([...valuesWithSeqIds]);
   if (conflict === "any") {
     return await query.onConflictDoNothing().returning({
-      id: chatMessages.id,
-      createdAt: chatMessages.createdAt,
-      seqId: chatMessages.seqId,
-      sequenceNumber: chatMessages.sequenceNumber,
+      id: chatEvents.id,
+      createdAt: chatEvents.createdAt,
+      seqId: chatEvents.seqId,
+      sequenceNumber: chatEvents.sequenceNumber,
     });
   }
   return await query
     .onConflictDoNothing({
-      target: [chatMessages.runId, chatMessages.sequenceNumber],
+      target: [chatEvents.runId, chatEvents.sequenceNumber],
     })
     .returning({
-      id: chatMessages.id,
-      createdAt: chatMessages.createdAt,
-      seqId: chatMessages.seqId,
-      sequenceNumber: chatMessages.sequenceNumber,
+      id: chatEvents.id,
+      createdAt: chatEvents.createdAt,
+      seqId: chatEvents.seqId,
+      sequenceNumber: chatEvents.sequenceNumber,
     });
 }
 
@@ -380,15 +434,22 @@ export async function replaceChatEvent(
   tx: ChatEventWriteTransaction,
   eventId: string,
   replacement: NewChatEvent,
+  options?: { readonly preserveAssetRefs?: boolean },
 ): Promise<ChatEventCommandResult | null> {
   const [target] = await tx
     .select({
-      chatThreadId: chatMessages.chatThreadId,
-      createdAt: chatMessages.createdAt,
-      eventType: chatMessages.eventType,
+      chatThreadId: chatEvents.chatThreadId,
+      createdAt: chatEvents.createdAt,
+      eventType: chatEvents.eventType,
+      encryptedParams: chatEventInputParams.encryptedParams,
+      attachFileMetadata: chatEventInputParams.attachFileMetadata,
     })
-    .from(chatMessages)
-    .where(eq(chatMessages.id, eventId))
+    .from(chatEvents)
+    .leftJoin(
+      chatEventInputParams,
+      eq(chatEventInputParams.eventId, chatEvents.id),
+    )
+    .where(eq(chatEvents.id, eventId))
     .limit(1);
   if (!target) {
     throw new Error("Cannot revoke a missing chat event");
@@ -411,21 +472,67 @@ export async function replaceChatEvent(
     );
   }
 
+  const replacementWithParams =
+    isPendingInputEvent(replacement) && target.encryptedParams
+      ? {
+          ...replacement,
+          encryptedParams:
+            "encryptedParams" in replacement && replacement.encryptedParams
+              ? replacement.encryptedParams
+              : target.encryptedParams,
+          attachFileMetadata:
+            "attachFileMetadata" in replacement
+              ? replacement.attachFileMetadata
+              : target.attachFileMetadata,
+        }
+      : replacement;
   const seqId = await reserveChatEventSeqIds(tx, replacement.chatThreadId, 1);
   const rows = await tx
-    .insert(chatMessages)
+    .insert(chatEvents)
     .values({
-      ...persistedChatEventValues({ ...replacement, createdAt }),
+      ...persistedChatEventValues({ ...replacementWithParams, createdAt }),
       seqId,
       revokesEventId: eventId,
     })
     .onConflictDoNothing()
     .returning({
-      id: chatMessages.id,
-      createdAt: chatMessages.createdAt,
-      seqId: chatMessages.seqId,
+      id: chatEvents.id,
+      createdAt: chatEvents.createdAt,
+      seqId: chatEvents.seqId,
     });
-  return rows[0] ?? null;
+  const inserted = rows[0];
+  if (!inserted) {
+    return null;
+  }
+
+  await insertEventInputParams(tx, inserted.id, replacementWithParams);
+  if (options?.preserveAssetRefs !== false) {
+    const assetRefs = await tx
+      .select({
+        assetId: chatEventAssetRefs.assetId,
+        position: chatEventAssetRefs.position,
+      })
+      .from(chatEventAssetRefs)
+      .where(eq(chatEventAssetRefs.chatEventId, eventId));
+    if (assetRefs.length > 0) {
+      await tx
+        .insert(chatEventAssetRefs)
+        .values(
+          assetRefs.map((assetRef) => {
+            return {
+              chatEventId: inserted.id,
+              assetId: assetRef.assetId,
+              position: assetRef.position,
+            };
+          }),
+        )
+        .onConflictDoNothing();
+    }
+  }
+  await tx
+    .delete(chatEventInputParams)
+    .where(eq(chatEventInputParams.eventId, eventId));
+  return inserted;
 }
 
 /** Append a payload-free revocation event for an existing chat event. */

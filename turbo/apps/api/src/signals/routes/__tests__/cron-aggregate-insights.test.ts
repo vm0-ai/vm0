@@ -22,6 +22,7 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   insertUsageEvent$,
   materializeHourlyUsage$,
+  readInsightsDailyPermissions$,
 } from "./helpers/zero-usage-insight";
 
 /**
@@ -819,11 +820,41 @@ describe("GET /api/cron/aggregate-insights", () => {
 
     await runAggregation();
 
+    if (!seeded.actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    const storedPermissions = await store.set(
+      readInsightsDailyPermissions$,
+      {
+        orgId: seeded.actor.orgId,
+        userId: seeded.actor.userId,
+        date: TODAY,
+      },
+      context.signal,
+    );
+    expect(storedPermissions).toHaveLength(2);
+    expect(storedPermissions).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          connectorSlug: "github",
+          denied: 2,
+        }),
+        expect.objectContaining({
+          connectorSlug: "github",
+          allowed: 1,
+        }),
+      ]),
+    );
+    for (const permission of storedPermissions) {
+      expect(permission).not.toHaveProperty("connectorType");
+    }
+
     const data = await findInsights(seeded.actor);
     const githubDeny = data?.permissions.find((permission) => {
       return permission.label === "github" && permission.denied > 0;
     });
     expect(githubDeny).toMatchObject({
+      connectorSlug: "github",
       connectorType: "github",
       denied: 2,
     });
@@ -831,6 +862,7 @@ describe("GET /api/cron/aggregate-insights", () => {
       return permission.label.includes("repo-read");
     });
     expect(repoRead).toMatchObject({
+      connectorSlug: "github",
       connectorType: "github",
       allowed: 1,
     });
@@ -891,6 +923,7 @@ describe("GET /api/cron/aggregate-insights", () => {
       return permission.label.includes("repo-read");
     });
     expect(repoRead).toMatchObject({
+      connectorSlug: "github",
       connectorType: "github",
       allowed: 1,
       denied: 0,
@@ -981,6 +1014,7 @@ describe("GET /api/cron/aggregate-insights", () => {
       return permission.label === "github";
     });
     expect(githubDeny).toMatchObject({
+      connectorSlug: "github",
       connectorType: "github",
       allowed: 0,
       denied: 3,
@@ -989,6 +1023,7 @@ describe("GET /api/cron/aggregate-insights", () => {
       return permission.label.includes("repo-read");
     });
     expect(repoRead).toMatchObject({
+      connectorSlug: "github",
       connectorType: "github",
       allowed: 1,
       denied: 0,

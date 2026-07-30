@@ -34,8 +34,7 @@ export const userPermissionGrants = pgTable(
         },
         { onDelete: "cascade" },
       ),
-    // TODO(#23619): Rename the property and column in the persistence phase.
-    connectorRef: varchar("connector_ref", { length: 64 }).notNull(),
+    connectorSlug: varchar("connector_slug", { length: 64 }).notNull(),
     permission: varchar("permission", { length: 128 }).notNull(),
     action: varchar("action", { length: 8 })
       .$type<UserPermissionGrantAction>()
@@ -46,11 +45,11 @@ export const userPermissionGrants = pgTable(
   },
   (table) => {
     return [
-      uniqueIndex("uq_user_permission_grants_grant").on(
+      uniqueIndex("uq_user_permission_grants_slug_permission").on(
         table.orgId,
         table.userId,
         table.agentId,
-        table.connectorRef,
+        table.connectorSlug,
         table.permission,
       ),
       index("idx_user_permission_grants_lookup").on(

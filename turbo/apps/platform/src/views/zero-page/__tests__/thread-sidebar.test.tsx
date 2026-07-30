@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   artifactCatalogContract,
@@ -22,7 +22,7 @@ import {
 import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   click,
@@ -223,12 +223,10 @@ function setupChatThread({
         events: events.filter((event) => {
           return event.seqId > sinceSeqId;
         }),
-        hasHistoryBefore: false,
       });
     }
     return respond(200, {
       events,
-      hasHistoryBefore: false,
     });
   });
   context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
@@ -306,9 +304,9 @@ describe("thread-owned utility sidebar", () => {
           liveUrl: null,
           proxyCountryCode: null,
           timeoutMinutes: 240,
-          maxCredits: 500,
-          grossCredits: 2,
-          creditsCharged: 2,
+          maxCredits: 1,
+          grossCredits: 0,
+          creditsCharged: 0,
           idleExpiresAt: null,
           suspendedAt: "2026-03-10T00:05:00.000Z",
           suspensionReason: "idle",
@@ -326,9 +324,9 @@ describe("thread-owned utility sidebar", () => {
           liveUrl: "https://live.browser-use.com/?wss=latest-browser",
           proxyCountryCode: null,
           timeoutMinutes: 240,
-          maxCredits: 500,
-          grossCredits: 3,
-          creditsCharged: 3,
+          maxCredits: 1,
+          grossCredits: 0,
+          creditsCharged: 0,
           idleExpiresAt: "2026-03-10T00:20:00.000Z",
           suspendedAt: null,
           suspensionReason: null,
@@ -486,12 +484,15 @@ describe("thread-owned utility sidebar", () => {
       ({ body, params, respond }) => {
         expect(params.id).toBe(AGENT_ID);
         expect(body).toStrictEqual({
-          enabledTypes: ["google-drive"],
+          enabledConnectorSlugs: ["google-drive"],
           operation: "add",
         });
-        enabledConnectorSlugs = [...body.enabledTypes];
+        enabledConnectorSlugs = [...body.enabledConnectorSlugs];
         agentAuthorized = true;
-        return respond(200, { enabledTypes: enabledConnectorSlugs });
+        return respond(200, {
+          enabledTypes: enabledConnectorSlugs,
+          enabledConnectorSlugs,
+        });
       },
     );
     context.mocks.api(
@@ -722,12 +723,120 @@ describe("thread-owned utility sidebar", () => {
   it("auto-opens a browser card from a running run", async () => {
     const browserId = "c0000000-0000-4000-a000-000000000051";
     const liveUrl = "https://live.browser-use.com/?wss=auto-open-browser";
+    const requestStarted = context.mocks.deferred<void>();
+    const releaseResponse = context.mocks.deferred<void>();
     const browser: ZeroBrowserSession = {
       id: browserId,
       name: "Auto-open browser",
       status: "active",
       viewerUrl: `https://app.vm0.ai/browsers/${browserId}`,
       liveUrl,
+      proxyCountryCode: null,
+      timeoutMinutes: 240,
+      maxCredits: 1,
+      grossCredits: 0,
+      creditsCharged: 0,
+      screen: { width: 1440, height: 900, resizable: true },
+      idleExpiresAt: "2026-03-10T00:10:00.000Z",
+      suspendedAt: null,
+      suspensionReason: null,
+      createdAt: "2026-03-10T00:00:00.000Z",
+      updatedAt: "2026-03-10T00:00:00.000Z",
+    };
+    context.mocks.browser.matchMedia((query) => {
+      return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
+    });
+    context.mocks.api(zeroBrowserContract.get, async ({ respond }) => {
+      requestStarted.resolve();
+      await releaseResponse.promise;
+      return respond(200, { browser });
+    });
+    let leaseRequests = 0;
+    context.mocks.api(zeroBrowserContract.leaseById, ({ respond }) => {
+      leaseRequests += 1;
+      return respond(200, {
+        browser: {
+          ...browser,
+          // The production lease endpoint extends the instance without
+          // returning its provider live URL.
+          liveUrl: null,
+        },
+      });
+    });
+    const resizeAspectRatios: number[] = [];
+    context.mocks.api(zeroBrowserContract.resizeById, ({ body, respond }) => {
+      resizeAspectRatios.push(body.aspectRatio);
+      return respond(200, {
+        browser: {
+          ...browser,
+          screen: { width: 1440, height: 1800, resizable: true },
+        },
+      });
+    });
+    setupChatThread({
+      autoOpenEnabled: true,
+      messages: [
+        {
+          id: "msg-running-browser",
+          role: "assistant",
+          content: `[Open browser](/browsers/${browserId})`,
+          runId: "run-browser",
+          seqId: 1,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    await requestStarted.promise;
+    const sidebar = await screen.findByLabelText("Live browser");
+    expect(sidebar).toHaveAttribute("data-browser-session-sidebar");
+    expect(
+      screen.queryByTitle("Live browser: Auto-open browser"),
+    ).not.toBeInTheDocument();
+
+    releaseResponse.resolve();
+    const frame = await screen.findByTitle("Live browser: Auto-open browser");
+    expect(frame).toHaveAttribute("src", liveUrl);
+    expect(frame.closest("[data-browser-session-sidebar]")).not.toBeNull();
+    expect(resizeAspectRatios).toStrictEqual([]);
+
+    const viewport = frame.closest("[data-browser-session-viewport]");
+    if (!(viewport instanceof HTMLDivElement)) {
+      throw new Error("Expected a live browser viewport");
+    }
+    vi.spyOn(viewport, "getBoundingClientRect").mockReturnValue(
+      DOMRect.fromRect({
+        width: 720,
+        height: 900,
+      }),
+    );
+    const fitWindow = queryAllByRoleFast("button").find((button) => {
+      return button.getAttribute("aria-label") === "Fit browser to window";
+    });
+    if (!(fitWindow instanceof HTMLButtonElement)) {
+      throw new Error("Expected the fit browser button");
+    }
+    expect(fitWindow).toBeEnabled();
+    click(fitWindow);
+
+    await waitFor(() => {
+      expect(leaseRequests).toBeGreaterThan(0);
+      expect(resizeAspectRatios).toStrictEqual([0.8]);
+      expect(fitWindow).toBeEnabled();
+      expect(
+        screen.getByTitle("Live browser: Auto-open browser"),
+      ).toHaveAttribute("src", liveUrl);
+    });
+  });
+
+  it("disables Fit Window for a session returned by the previous API", async () => {
+    const browserId = "c0000000-0000-4000-a000-000000000052";
+    const browser: ZeroBrowserSession = {
+      id: browserId,
+      name: "Previous API browser",
+      status: "active",
+      viewerUrl: `https://app.vm0.ai/browsers/${browserId}`,
+      liveUrl: "https://live.browser-use.com/?wss=previous-api-browser",
       proxyCountryCode: null,
       timeoutMinutes: 240,
       maxCredits: 500,
@@ -752,19 +861,24 @@ describe("thread-owned utility sidebar", () => {
       autoOpenEnabled: true,
       messages: [
         {
-          id: "msg-running-browser",
+          id: "msg-previous-api-browser",
           role: "assistant",
           content: `[Open browser](/browsers/${browserId})`,
-          runId: "run-browser",
+          runId: "run-previous-api-browser",
           seqId: 1,
           createdAt: "2026-03-10T00:00:00Z",
         },
       ],
     });
 
-    const frame = await screen.findByTitle("Live browser: Auto-open browser");
-    expect(frame).toHaveAttribute("src", liveUrl);
-    expect(frame.closest("[data-browser-session-sidebar]")).not.toBeNull();
+    await screen.findByTitle("Live browser: Previous API browser");
+    const fitWindow = queryAllByRoleFast("button").find((button) => {
+      return button.getAttribute("aria-label") === "Fit browser to window";
+    });
+    if (!(fitWindow instanceof HTMLButtonElement)) {
+      throw new Error("Expected the fit browser button");
+    }
+    expect(fitWindow).toBeDisabled();
   });
 
   it("falls back to the latest successful run and ignores failed and cancelled runs", async () => {
@@ -899,7 +1013,7 @@ describe("thread-owned utility sidebar", () => {
     expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
   });
 
-  it("skips deleted, reconnect-required, and unavailable cards before falling back", async () => {
+  it("opens browser cards without an availability preflight and marks unusable mail drafts", async () => {
     const completedUrl = "https://openable-fallback.sites.vm7.io";
     const deletedDraftId = "c0000000-0000-4000-a000-000000000061";
     const reconnectDraftId = "c0000000-0000-4000-a000-000000000062";
@@ -979,12 +1093,9 @@ describe("thread-owned utility sidebar", () => {
       ],
     });
 
-    await waitFor(() => {
-      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
-        "src",
-        completedUrl,
-      );
-    });
+    const browserSidebar = await screen.findByLabelText("Live browser");
+    expect(browserSidebar).toHaveAttribute("data-browser-session-sidebar");
+    expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
     await expect(
       screen.findByLabelText("Deleted email: Deleted draft"),
     ).resolves.toHaveAttribute("aria-disabled", "true");
@@ -994,8 +1105,15 @@ describe("thread-owned utility sidebar", () => {
       ),
     ).resolves.toBeInTheDocument();
     await expect(
-      screen.findByText("Browser unavailable"),
+      within(browserSidebar).findByText("Browser unavailable"),
     ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText("Cloud browser"),
+    ).resolves.toBeInTheDocument();
+    await expect(screen.findByText("Stopped")).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Browser unavailable"),
+    ).resolves.toBeDisabled();
   });
 
   it("auto-opens a background-synced sidebar card before mark-read completes", async () => {

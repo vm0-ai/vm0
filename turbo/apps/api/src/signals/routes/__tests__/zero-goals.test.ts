@@ -261,11 +261,19 @@ describe("zero goals", () => {
     }
 
     const page = await chat.listThreadEvents(actor, goal.threadId);
-    expect(
-      page.events.map((event) => {
-        return event.id;
-      }),
-    ).not.toContain(goalEventId);
+    expect(page.events[0]?.seqId).toBe(1);
+    const goalQueueEvent = page.events.find((event) => {
+      return event.id === goalEventId;
+    });
+    expect(goalQueueEvent).toStrictEqual({
+      id: goalEventId,
+      threadId: goal.threadId,
+      eventType: "input.goal",
+      content: null,
+      goalSnapshot: { objectiveBrief: "bootstrap autonomously" },
+      seqId: expect.any(Number),
+      createdAt: expect.any(String),
+    });
     expect(page.events).toContainEqual(
       expect.objectContaining({
         eventType: "input.prompt",
@@ -296,29 +304,23 @@ describe("zero goals", () => {
 
     const first = await admitGoalQueueEventFixture({
       threadId: fixture.threadId,
-      orgId: fixture.orgId,
-      userId: fixture.userId,
       goalId: goal.goalId,
       objectiveBrief: "coalesce goal triggers",
-      callbackSecret: "first-callback-secret",
     });
     const second = await admitGoalQueueEventFixture({
       threadId: fixture.threadId,
-      orgId: fixture.orgId,
-      userId: fixture.userId,
       goalId: goal.goalId,
       objectiveBrief: "coalesce goal triggers",
-      callbackSecret: "second-callback-secret",
     });
 
     expect(first.kind).toBe("inserted");
     expect(second).toStrictEqual({ kind: "coalesced" });
-    expect(kms.generateDataKeyCalls).toBe(1);
+    expect(kms.generateDataKeyCalls).toBe(0);
     const state = await readGoalQueueStateFixture(fixture.threadId);
     expect(state.eventIds).toHaveLength(1);
   });
 
-  it("keeps an unclaimed input.goal event out of materialized thread messages", async () => {
+  it("returns an unclaimed input.goal event without its server-side queue fields", async () => {
     const fixture = await seedGoalApiFixture();
     const objectiveBrief = "keep pending goal triggers internal";
     await createGoal(fixture, objectiveBrief);
@@ -330,15 +332,11 @@ describe("zero goals", () => {
     if (!goal) {
       throw new Error("Expected the active goal");
     }
-    useSecretKmsProbe();
 
     const admission = await admitGoalQueueEventFixture({
       threadId: fixture.threadId,
-      orgId: fixture.orgId,
-      userId: fixture.userId,
       goalId: goal.goalId,
       objectiveBrief,
-      callbackSecret: "pending-goal-callback-secret",
     });
     if (admission.kind !== "inserted") {
       throw new Error("Expected an unclaimed goal queue event");
@@ -346,17 +344,21 @@ describe("zero goals", () => {
 
     const chat = createChatFilesBddApi(context);
     const page = await chat.listThreadEvents(fixture.actor, fixture.threadId);
-    expect(
-      page.events.map((event) => {
-        return event.id;
-      }),
-    ).not.toContain(admission.eventId);
-    expect(page.events).not.toContainEqual(
-      expect.objectContaining({
-        eventType: "input.goal",
-        goalSnapshot: { objectiveBrief },
-      }),
-    );
+    const event = page.events.find((candidate) => {
+      return candidate.id === admission.eventId;
+    });
+    expect(event).toStrictEqual({
+      id: admission.eventId,
+      threadId: fixture.threadId,
+      eventType: "input.goal",
+      content: null,
+      goalSnapshot: { objectiveBrief },
+      seqId: expect.any(Number),
+      createdAt: expect.any(String),
+    });
+    await expect(
+      chat.getThreadEvent(fixture.actor, fixture.threadId, admission.eventId),
+    ).resolves.toStrictEqual(event);
   });
 
   it("edits a blocked goal back to active and replaces a completed goal", async () => {

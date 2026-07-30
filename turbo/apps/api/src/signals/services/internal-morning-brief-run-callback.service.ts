@@ -247,6 +247,19 @@ export async function handleMorningBriefEmailInternalCallback(
   if (!delivery) {
     return { success: false, error: "Morning brief delivery not found" };
   }
+  if (
+    envelope.status === "failed" &&
+    delivery.status === "failed" &&
+    delivery.error === null
+  ) {
+    await markDelivery(
+      db,
+      deliveryId,
+      "failed",
+      envelope.error ?? "Run failed",
+    );
+    return { success: true };
+  }
   // Idempotency guard: retried callbacks after a terminal state are no-ops.
   if (delivery.status !== "running" && delivery.status !== "collecting") {
     return { success: true, skipped: true };

@@ -1,4 +1,8 @@
 import {
+  boolean,
+  check,
+  foreignKey,
+  integer,
   pgTable,
   uuid,
   text,
@@ -6,15 +10,16 @@ import {
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import { zeroAgents } from "./zero-agent";
 import { orgCustomConnectors } from "./org-custom-connector";
 
 /**
  * Per-agent authorization for org custom connectors.
  * Sparse model: presence of a row = user has explicitly authorized this agent
- * to use this custom connector. A user's secret on `org_custom_connector_secrets`
- * alone is not enough; the mitm firewall is only synthesized when an agent is
- * listed here.
+ * to use this custom connector at one connector revision. A user's manual
+ * values or OAuth connection alone are not enough; the mitm firewall is only
+ * synthesized while a matching grant is listed here.
  *
  * Unlike `user_connectors` (which has no FK to `org_custom_connectors`), both
  * FKs carry DB-level ON DELETE CASCADE so deleting a connector or an agent
@@ -34,14 +39,17 @@ export const userCustomConnectors = pgTable(
         },
         { onDelete: "cascade" },
       ),
-    customConnectorId: uuid("custom_connector_id")
+    customConnectorId: uuid("custom_connector_id").notNull(),
+    connectorRevision: integer("connector_revision").notNull().default(1),
+    permissionNames: text("permission_names")
+      .array()
       .notNull()
-      .references(
-        () => {
-          return orgCustomConnectors.id;
-        },
-        { onDelete: "cascade" },
-      ),
+      .default(sql`'{}'::text[]`),
+    allowAllMcpTools: boolean("allow_all_mcp_tools").notNull().default(false),
+    mcpToolNames: text("mcp_tool_names")
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {
@@ -55,6 +63,15 @@ export const userCustomConnectors = pgTable(
       index("idx_user_custom_connectors_agent_user").on(
         table.agentId,
         table.userId,
+      ),
+      foreignKey({
+        name: "fk_user_custom_connectors_custom_connector",
+        columns: [table.customConnectorId, table.orgId],
+        foreignColumns: [orgCustomConnectors.id, orgCustomConnectors.orgId],
+      }).onDelete("cascade"),
+      check(
+        "chk_user_custom_connectors_mcp_grant",
+        sql`NOT ${table.allowAllMcpTools} OR cardinality(${table.mcpToolNames}) = 0`,
       ),
     ];
   },

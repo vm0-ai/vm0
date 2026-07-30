@@ -25,6 +25,12 @@ import {
   type InsightRange,
 } from "../../../signals/usage-page/usage-insight-signals.ts";
 import { getCardPalette } from "../../../lib/card-palette.ts";
+import { useTranslation } from "react-i18next";
+import { i18n, currentLocale } from "../../../i18n/index.ts";
+import {
+  formatCompactNumber,
+  formatLocalizedNumber,
+} from "../../../i18n/format.ts";
 
 // --- Constants ---
 
@@ -46,42 +52,89 @@ function colorFor(idx: number): string {
   return CATEGORY_SHADES[idx % CATEGORY_SHADES.length]!;
 }
 
-function formatCategoryLabel(key: string): string {
+function formatCategoryLabel(key: string, groupBy: InsightGroupBy): string {
+  if (key === "others") {
+    return i18n.t(($) => {
+      return $.usage.sources.others;
+    });
+  }
+  if (key === "unknown") {
+    return i18n.t(($) => {
+      return $.usage.sources.unknown;
+    });
+  }
+  if (groupBy === "agent") {
+    return key;
+  }
+  if (key === "chat") {
+    return i18n.t(($) => {
+      return $.usage.sources.chat;
+    });
+  }
+  if (key === "automation") {
+    return i18n.t(($) => {
+      return $.usage.sources.automation;
+    });
+  }
+  if (key === "slack") {
+    return i18n.t(($) => {
+      return $.usage.sources.slack;
+    });
+  }
+  if (key === "email") {
+    return i18n.t(($) => {
+      return $.usage.sources.email;
+    });
+  }
   if (key.length === 0) {
     return key;
   }
   return key.charAt(0).toUpperCase() + key.slice(1);
 }
 
-const RANGE_LABELS = {
-  today: "Today",
-  yesterday: "Yesterday",
-  day: "Selected day",
-  "7d": "Last 7 days",
-  "28d": "Last 28 days",
-  "30d": "Last 30 days",
-} as const satisfies Record<InsightRange, string>;
+function rangeLabel(range: InsightRange): string {
+  switch (range) {
+    case "today": {
+      return i18n.t(($) => {
+        return $.usage.range.today;
+      });
+    }
+    case "yesterday": {
+      return i18n.t(($) => {
+        return $.usage.range.yesterday;
+      });
+    }
+    case "day": {
+      return i18n.t(($) => {
+        return $.usage.range.selectedDay;
+      });
+    }
+    case "7d": {
+      return i18n.t(($) => {
+        return $.usage.range.last7Days;
+      });
+    }
+    case "28d": {
+      return i18n.t(($) => {
+        return $.usage.range.last28Days;
+      });
+    }
+    case "30d": {
+      return i18n.t(($) => {
+        return $.usage.range.last30Days;
+      });
+    }
+  }
+}
 
 // --- Helpers ---
 
 function formatValue(n: number): string {
-  if (n >= 1_000_000) {
-    return `${(n / 1_000_000).toFixed(1)}M`;
-  }
-  if (n >= 1000) {
-    return `${(n / 1000).toFixed(1)}K`;
-  }
-  return String(n);
+  return formatCompactNumber(n);
 }
 
 function formatTotal(n: number): string {
-  if (n >= 1_000_000) {
-    return `${(n / 1_000_000).toFixed(2)}M`;
-  }
-  if (n >= 1000) {
-    return `${(n / 1000).toFixed(1)}K`;
-  }
-  return n.toLocaleString();
+  return formatCompactNumber(n, n >= 1_000_000 ? 2 : 1);
 }
 
 function formatBucketLabel(ts: string, range: string): string {
@@ -102,7 +155,7 @@ function formatBucketLabel(ts: string, range: string): string {
   if (range === "today" || range === "yesterday" || range === "day") {
     return String(d.getUTCHours()).padStart(2, "0");
   }
-  return d.toLocaleDateString("en-US", {
+  return d.toLocaleDateString(currentLocale(), {
     month: "short",
     day: "numeric",
     timeZone: "UTC",
@@ -216,11 +269,14 @@ function useChartResizeRef(setWidth: (w: number) => void) {
 
 function ChartTooltipContent({
   data,
+  groupBy,
   range,
 }: {
   data: ChartTooltipData;
+  groupBy: InsightGroupBy;
   range: string;
 }) {
+  const { t } = useTranslation();
   // Lines are drawn per-category from y=0 (not stacked), so a synthetic Total
   // wouldn't correspond to anything visible. List per-category values that
   // match the dots on each line.
@@ -243,7 +299,11 @@ function ChartTooltipContent({
         {formatBucketLabel(data.ts, range)}
       </div>
       {breakdown.length === 0 ? (
-        <div className="text-muted-foreground">No usage</div>
+        <div className="text-muted-foreground">
+          {t(($) => {
+            return $.usage.chart.noUsage;
+          })}
+        </div>
       ) : (
         breakdown.map((v) => {
           return (
@@ -253,10 +313,10 @@ function ChartTooltipContent({
                 style={{ backgroundColor: v.color }}
               />
               <span className="text-muted-foreground">
-                {formatCategoryLabel(v.label)}:
+                {formatCategoryLabel(v.label, groupBy)}:
               </span>
               <span className="font-medium tabular-nums text-foreground">
-                {v.value.toLocaleString()}
+                {formatLocalizedNumber(v.value)}
               </span>
             </div>
           );
@@ -293,6 +353,7 @@ function buildChartTooltipData({
 
 function ChartTooltipHitAreas({
   buckets,
+  groupBy,
   range,
   stackOrder,
   tooltip,
@@ -300,12 +361,14 @@ function ChartTooltipHitAreas({
   setTooltip,
 }: {
   buckets: UsageInsightBucket[];
+  groupBy: InsightGroupBy;
   range: string;
   stackOrder: readonly string[];
   tooltip: ChartTooltipData | null;
   width: number;
   setTooltip: (data: ChartTooltipData | null) => void;
 }) {
+  const { t } = useTranslation();
   const xScale = createChartXScale(buckets.length, width);
   return (
     <div
@@ -342,7 +405,12 @@ function ChartTooltipHitAreas({
             <PopoverTrigger asChild>
               <button
                 type="button"
-                aria-label={`Show usage details for ${formatBucketLabel(bucket.ts, range)}`}
+                aria-label={t(
+                  ($) => {
+                    return $.usage.chart.showDetails;
+                  },
+                  { date: formatBucketLabel(bucket.ts, range) },
+                )}
                 className="absolute top-0 h-full cursor-crosshair rounded-sm bg-transparent focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-[-2px]"
                 style={{
                   left: previousMidpoint,
@@ -356,7 +424,7 @@ function ChartTooltipHitAreas({
                 }}
               />
             </PopoverTrigger>
-            <ChartTooltipContent data={data} range={range} />
+            <ChartTooltipContent data={data} groupBy={groupBy} range={range} />
           </Popover>
         );
       })}
@@ -609,6 +677,7 @@ export function UsageInsightBarChart({
   data: UsageInsightResponse;
   range: InsightRange;
 }) {
+  const { t } = useTranslation();
   const width = useGet(chartWidth$);
   const setWidth = useSet(setChartWidth$);
   const tooltip = useGet(chartTooltip$);
@@ -623,13 +692,15 @@ export function UsageInsightBarChart({
   const { accent } = getCardPalette(1);
   const { buckets } = data;
   const total = data.grandTotalCredits;
-  const rangeLabel = RANGE_LABELS[range];
+  const selectedRangeLabel = rangeLabel(range);
 
   const { stackOrder, keyTotals } = buildStackOrder(buckets);
 
   return (
     <section
-      aria-label="Credits totals"
+      aria-label={t(($) => {
+        return $.usage.chart.ariaLabel;
+      })}
       className="bg-gray-50 rounded-[20px] p-6 border border-border/40 break-inside-avoid relative"
     >
       {buckets.length > 0 && total > 0 && (
@@ -642,12 +713,14 @@ export function UsageInsightBarChart({
         className="text-xs font-semibold uppercase tracking-widest mb-3"
         style={{ color: accent }}
       >
-        credits
+        {t(($) => {
+          return $.usage.chart.credits;
+        })}
       </p>
       <p className="text-5xl font-black leading-none tabular-nums font-serif">
         {formatTotal(total)}
       </p>
-      <p className="text-sm opacity-60 mt-4">{rangeLabel}</p>
+      <p className="text-sm opacity-60 mt-4">{selectedRangeLabel}</p>
 
       {buckets.length > 0 && total > 0 && (
         <div className="relative mt-5">
@@ -663,6 +736,7 @@ export function UsageInsightBarChart({
           </div>
           <ChartTooltipHitAreas
             buckets={buckets}
+            groupBy={groupBy}
             stackOrder={stackOrder}
             width={width}
             range={range}
@@ -677,6 +751,7 @@ export function UsageInsightBarChart({
           stackOrder={stackOrder}
           keyTotals={keyTotals}
           total={total}
+          groupBy={groupBy}
           hoveredKey={hoveredKey}
           setHoveredKey={setHoveredKey}
         />
@@ -692,6 +767,7 @@ function GroupByToggle({
   groupBy: InsightGroupBy;
   setGroupBy: (value: InsightGroupBy) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Tabs
       value={groupBy}
@@ -701,10 +777,14 @@ function GroupByToggle({
     >
       <TabsList className="zero-tabs h-8 gap-1 px-1 py-1">
         <TabsTrigger value="source" className="px-3 text-xs">
-          Source
+          {t(($) => {
+            return $.usage.chart.groupBy.source;
+          })}
         </TabsTrigger>
         <TabsTrigger value="agent" className="px-3 text-xs">
-          Agent
+          {t(($) => {
+            return $.usage.chart.groupBy.agent;
+          })}
         </TabsTrigger>
       </TabsList>
     </Tabs>
@@ -712,12 +792,14 @@ function GroupByToggle({
 }
 
 function BreakdownList({
+  groupBy,
   stackOrder,
   keyTotals,
   total,
   hoveredKey,
   setHoveredKey,
 }: {
+  groupBy: InsightGroupBy;
   stackOrder: readonly string[];
   keyTotals: Map<string, number>;
   total: number;
@@ -745,7 +827,7 @@ function BreakdownList({
             }}
           >
             <span className="text-sm font-medium truncate decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2">
-              {formatCategoryLabel(key)}
+              {formatCategoryLabel(key, groupBy)}
             </span>
             <div className="h-1.5 rounded-full bg-foreground/10 overflow-hidden">
               <div

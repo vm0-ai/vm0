@@ -17,12 +17,6 @@ export const ZERO_DESKTOP_DOWNLOAD_URL = new URL(
   resolveApiBaseForNavigation("api"),
 ).toString();
 
-export const ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL =
-  "Requires an Apple silicon Mac with macOS 14 or newer. Intel Macs aren't supported.";
-
-export const ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL =
-  "Requires an Apple silicon Mac";
-
 type ZeroDesktopDownloadSupportStatus = "available" | "unsupported-intel-mac";
 
 interface UserAgentDataValues {

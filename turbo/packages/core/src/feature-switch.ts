@@ -232,7 +232,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description:
       "Enable workspace language bootstrap, persistence, and the Settings preference entry.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.BrazilianPortugueseLocale]: {
     maintainer: "yuma@vm0.ai",
@@ -241,11 +241,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     userOverridable: false,
   },
-  [FeatureSwitchKey.ZeroFinance]: {
-    maintainer: "ethan@vm0.ai",
+  [FeatureSwitchKey.JapaneseLocale]: {
+    maintainer: "yuma@vm0.ai",
     description:
-      "Enable the managed APIDojo-backed Zero Finance API and finance:read ZERO_TOKEN capability.",
-    enabled: true,
+      "Allow ja-JP preference writes after incompatible API readers and rollback candidates have drained.",
+    enabled: false,
+    userOverridable: false,
   },
   [FeatureSwitchKey.Banking]: {
     maintainer: "linghan@vm0.ai",
@@ -326,13 +327,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.CodexSessionPruning]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Prune oversized Codex checkpoint histories to the latest native compact generation.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ClaudeSessionPruning]: {
     maintainer: "liangyou@vm0.ai",
     description:
@@ -392,8 +386,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description:
       "Match chat composer slash skill suggestions by any slug substring instead of only prefixes.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ThreeColumnNav]: {
     maintainer: "ming@vm0.ai",
@@ -413,8 +406,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.SlackDmSessionRouting]: {
     maintainer: "yuma@vm0.ai",
     description:
-      "Reuse agent/model-scoped sessions for top-level Slack direct messages after compatible callback readers are deployed.",
-    enabled: false,
+      "Reuse agent/model-scoped sessions for top-level Slack direct messages.",
+    enabled: true,
   },
   [FeatureSwitchKey.TeamsIntegration]: {
     maintainer: "linghan@vm0.ai",
@@ -442,8 +435,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Show the Artifacts manage page for generated artifacts in the current organization.",
+    enabled: true,
+  },
+  [FeatureSwitchKey.ArtifactKeyV2]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Store new user artifacts under flat, ten-character hashed public keys.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.HostedArtifactVersions]: {
     maintainer: "yuma@vm0.ai",
@@ -486,12 +484,33 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ZeroChatMessaging]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Advertise zero chat create, send, and cancel in the agent system prompt without gating the CLI commands or API.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ComposerConnectorPermissions]: {
     maintainer: "ming@vm0.ai",
     description:
       "Show the configure-permissions entry in the chat composer connector popover, opening the agent×connector firewall dialog inline.",
     enabled: false,
     userOverridable: true,
+  },
+  [FeatureSwitchKey.CustomConnectorCliCreate]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Allow Zero CLI agents to create and configure custom connectors directly.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.CustomConnectorOAuth2]: {
+    maintainer: "liangyou@vm0.ai",
+    description:
+      "Allow org admins to add OAuth 2.0 authentication to custom connectors.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
 };
 

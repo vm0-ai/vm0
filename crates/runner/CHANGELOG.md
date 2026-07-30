@@ -1,5 +1,111 @@
 # Changelog
 
+## [0.149.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.149.3...runner-rs-v0.149.4) (2026-07-30)
+
+
+### Documentation
+
+* **mitm-addon:** document anthropic sse callbacks ([#24051](https://github.com/vm0-ai/vm0/issues/24051)) ([a32f31e](https://github.com/vm0-ai/vm0/commit/a32f31edf47e762dbb817c9e6a85ebdf74d12f04))
+* **python:** update auth.base fake socket contract ([#24069](https://github.com/vm0-ai/vm0/issues/24069)) ([2b44e44](https://github.com/vm0-ai/vm0/commit/2b44e44ebd66b83d6483a0b374f472a3b776710c))
+
+
+### Refactoring
+
+* **runner:** isolate terminal job logging ([#24055](https://github.com/vm0-ai/vm0/issues/24055)) ([ccf7fe2](https://github.com/vm0-ai/vm0/commit/ccf7fe23189feba1eb1d1f0a7ee9ebbb99d975d9))
+
+## [0.149.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.149.2...runner-rs-v0.149.3) (2026-07-30)
+
+
+### Bug Fixes
+
+* **mitm-addon:** validate firewall auth success metadata ([#24025](https://github.com/vm0-ai/vm0/issues/24025)) ([099050f](https://github.com/vm0-ai/vm0/commit/099050f999b88a38c1a0e75e0108170542476788))
+
+## [0.149.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.149.1...runner-rs-v0.149.2) (2026-07-30)
+
+
+### Documentation
+
+* **python:** correct mathematical final sigma test label ([#24021](https://github.com/vm0-ai/vm0/issues/24021)) ([d75d36b](https://github.com/vm0-ai/vm0/commit/d75d36bdecb37be32f4833cea8651dbaa4624ad8))
+
+## [0.149.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.149.0...runner-rs-v0.149.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* **runner:** cancel blocked network policy fail-close waits ([#23979](https://github.com/vm0-ai/vm0/issues/23979)) ([ef31f52](https://github.com/vm0-ai/vm0/commit/ef31f5298e115790af66f3b0fff37eb9e8fd5c01))
+* **runner:** reconcile terminal network policy refreshes ([#23975](https://github.com/vm0-ai/vm0/issues/23975)) ([5c57871](https://github.com/vm0-ai/vm0/commit/5c5787153a35882762ef786b734555a85243739d))
+* **runner:** treat ancestry depth cutoff as unknown ([#24006](https://github.com/vm0-ai/vm0/issues/24006)) ([930726c](https://github.com/vm0-ai/vm0/commit/930726c1243c1015ce6b9936f7a6185508b08594))
+
+## [0.149.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.39...runner-rs-v0.149.0) (2026-07-30)
+
+
+### Features
+
+* **events:** report structured guest event delivery failures ([#23974](https://github.com/vm0-ai/vm0/issues/23974)) ([ebdf828](https://github.com/vm0-ai/vm0/commit/ebdf8280b7b961ebf8404790a15696a7338ecd6e))
+
+## [0.148.39](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.38...runner-rs-v0.148.39) (2026-07-30)
+
+
+### Bug Fixes
+
+* **runner:** retain network log request correlation on timeout ([#23906](https://github.com/vm0-ai/vm0/issues/23906)) ([568e534](https://github.com/vm0-ai/vm0/commit/568e5344061fad3558766529851c3903e0406ede))
+
+
+### Refactoring
+
+* **observability:** migrate connector diagnostics to slug ([#23907](https://github.com/vm0-ai/vm0/issues/23907)) ([ce77eaa](https://github.com/vm0-ai/vm0/commit/ce77eaa374b8c2f6975c3550e8c76c15ccb224ce))
+
+## [0.148.38](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.37...runner-rs-v0.148.38) (2026-07-30)
+
+
+### Bug Fixes
+
+* remove legacy network policy connector fields ([#23866](https://github.com/vm0-ai/vm0/issues/23866)) ([8c5bd04](https://github.com/vm0-ai/vm0/commit/8c5bd0436863535ad36baa9c22b1f849657fb8ac))
+
+## [0.148.37](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.36...runner-rs-v0.148.37) (2026-07-30)
+
+## [0.148.36](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.35...runner-rs-v0.148.36) (2026-07-30)
+
+
+### Refactoring
+
+* **observability:** add canonical connector slug dimensions ([#23846](https://github.com/vm0-ai/vm0/issues/23846)) ([4a6483a](https://github.com/vm0-ai/vm0/commit/4a6483aa21fb45b84ce7d05d72511ebd5d683558))
+
+## [0.148.35](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.34...runner-rs-v0.148.35) (2026-07-29)
+
+
+### Bug Fixes
+
+* bridge network policy connector slug fields ([#23828](https://github.com/vm0-ai/vm0/issues/23828)) ([ce1a3bb](https://github.com/vm0-ai/vm0/commit/ce1a3bb8d32e5049e3916af9f7233447ed3f5790))
+
+
+### Refactoring
+
+* retire signed model pricing protocol ([#23811](https://github.com/vm0-ai/vm0/issues/23811)) ([918a5ef](https://github.com/vm0-ai/vm0/commit/918a5ef92aeccf84ebfbf78a745d1f6062a4d55e))
+
+
+### Performance Improvements
+
+* **python:** bound websocket json inspection work ([#23768](https://github.com/vm0-ai/vm0/issues/23768)) ([7a673c4](https://github.com/vm0-ai/vm0/commit/7a673c4e48fa96ecf2fe6bc7d23a907cc7975bab))
+* **runner:** move workspace images into cache ([#23817](https://github.com/vm0-ai/vm0/issues/23817)) ([80eb14e](https://github.com/vm0-ai/vm0/commit/80eb14e065a3dfda9a709d80cb80eb8e8cfaee11))
+
+## [0.148.34](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.33...runner-rs-v0.148.34) (2026-07-29)
+
+
+### Refactoring
+
+* **python:** retire auto model routing exception ([#23805](https://github.com/vm0-ai/vm0/issues/23805)) ([dacbaee](https://github.com/vm0-ai/vm0/commit/dacbaee367d03939e811a52bfbafa4870fac5927))
+
+## [0.148.33](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.32...runner-rs-v0.148.33) (2026-07-29)
+
+
+### Bug Fixes
+
+* **runner:** bound aws sigv4 request body buffering ([#23751](https://github.com/vm0-ai/vm0/issues/23751)) ([cdb3c0d](https://github.com/vm0-ai/vm0/commit/cdb3c0d67ff00d76c51be1a41a99694d95c46b29))
+* **runner:** checkpoint sessions before job timeout ([#23734](https://github.com/vm0-ai/vm0/issues/23734)) ([15f44cc](https://github.com/vm0-ai/vm0/commit/15f44cc68e1387d5b18f604fea9c964a1557561d))
+* **runner:** clarify locked workspace cache inspection totals ([#23747](https://github.com/vm0-ai/vm0/issues/23747)) ([b6ecaa8](https://github.com/vm0-ai/vm0/commit/b6ecaa80678bec63c37a0da5066f3aea5991dd5d))
+* **runner:** drain retained provider timings before shutdown ([#23782](https://github.com/vm0-ai/vm0/issues/23782)) ([ffd34ef](https://github.com/vm0-ai/vm0/commit/ffd34ef64f3efb66346f90dcc5e0279aef24705f))
+
 ## [0.148.32](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.31...runner-rs-v0.148.32) (2026-07-29)
 
 

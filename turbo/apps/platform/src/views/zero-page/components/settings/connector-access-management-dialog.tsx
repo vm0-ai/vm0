@@ -1,5 +1,6 @@
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 import {
   IconAdjustmentsHorizontal,
   IconLoader2,
@@ -19,7 +20,7 @@ import {
   cn,
 } from "@vm0/ui";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { PlatformConnectorPermissionMetadata } from "../../../../signals/connector-domain.ts";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { applyUserPermissionGrants$ } from "../../../../signals/permission-allow/permission-allow-signals.ts";
@@ -46,6 +47,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { AvatarFromUrl } from "../../zero-sidebar-shared.tsx";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { PermissionsDialog } from "./permissions-dialog.tsx";
+import { i18n } from "../../../../i18n/index.ts";
 
 interface ConnectorAccessManagementDialogProps {
   readonly connectorSlug: ConnectorSlug;
@@ -54,7 +56,12 @@ interface ConnectorAccessManagementDialogProps {
 }
 
 function agentName(agent: TeamComposeItem): string {
-  return agent.displayName ?? "Unnamed";
+  return (
+    agent.displayName ??
+    i18n.t(($) => {
+      return $.connectors.access.unnamedAgent;
+    })
+  );
 }
 
 function filterRows(
@@ -77,6 +84,7 @@ function ConnectorAccessSearch({
   readonly value: string;
   readonly onChange: (value: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="relative">
       <IconSearch
@@ -89,8 +97,12 @@ function ConnectorAccessSearch({
         onChange={(event) => {
           onChange(event.currentTarget.value);
         }}
-        aria-label="Find agents"
-        placeholder="Find agents"
+        aria-label={t(($) => {
+          return $.connectors.access.search;
+        })}
+        placeholder={t(($) => {
+          return $.connectors.access.search;
+        })}
         className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-9 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-[3px] focus:ring-primary/10"
       />
       {value && (
@@ -100,7 +112,9 @@ function ConnectorAccessSearch({
             onChange("");
           }}
           className="absolute right-1.5 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground"
-          aria-label="Clear agent search"
+          aria-label={t(($) => {
+            return $.connectors.access.clearSearch;
+          })}
         >
           <IconX size={13} stroke={1.8} />
         </button>
@@ -119,7 +133,7 @@ function AgentAccessRow({
 }: {
   readonly row: ConnectorAgentAccessRow;
   readonly connectorLabel: string;
-  readonly metadata: PublicConnectorCatalogPermissionDetail | null;
+  readonly metadata: PlatformConnectorPermissionMetadata | null;
   readonly saving: boolean;
   readonly onToggle: (
     row: ConnectorAgentAccessRow,
@@ -127,6 +141,7 @@ function AgentAccessRow({
   ) => void;
   readonly onManage: (row: ConnectorAgentAccessRow) => void;
 }) {
+  const { t } = useTranslation();
   const name = agentName(row.agent);
   const canManage = row.authorized && (metadata?.permissionCount ?? 0) > 0;
 
@@ -149,13 +164,22 @@ function AgentAccessRow({
                 onClick={() => {
                   onManage(row);
                 }}
-                aria-label={`Manage ${connectorLabel} permissions for ${name}`}
+                aria-label={t(
+                  ($) => {
+                    return $.connectors.access.managePermissionsFor;
+                  },
+                  { connector: connectorLabel, agent: name },
+                )}
                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               >
                 <IconAdjustmentsHorizontal size={16} stroke={1.5} />
               </button>
             </TooltipTrigger>
-            <TooltipContent>Manage permissions</TooltipContent>
+            <TooltipContent>
+              {t(($) => {
+                return $.connectors.access.managePermissions;
+              })}
+            </TooltipContent>
           </Tooltip>
         </TooltipProvider>
       )}
@@ -165,7 +189,22 @@ function AgentAccessRow({
         onCheckedChange={(checked) => {
           onToggle(row, checked);
         }}
-        ariaLabel={`${row.authorized ? "Revoke" : "Authorize"} ${connectorLabel} access for ${name}`}
+        ariaLabel={t(
+          ($) => {
+            return $.connectors.access.accessFor;
+          },
+          {
+            action: row.authorized
+              ? t(($) => {
+                  return $.connectors.actions.revoke;
+                })
+              : t(($) => {
+                  return $.connectors.actions.authorize;
+                }),
+            connector: connectorLabel,
+            agent: name,
+          },
+        )}
       />
     </div>
   );
@@ -182,7 +221,7 @@ function AgentAccessList({
 }: {
   readonly rows: readonly ConnectorAgentAccessRow[];
   readonly connectorLabel: string;
-  readonly metadata: PublicConnectorCatalogPermissionDetail | null;
+  readonly metadata: PlatformConnectorPermissionMetadata | null;
   readonly savingAgentId: string | null;
   readonly search: string;
   readonly onToggle: (
@@ -191,12 +230,20 @@ function AgentAccessList({
   ) => void;
   readonly onManage: (row: ConnectorAgentAccessRow) => void;
 }) {
+  const { t } = useTranslation();
   if (rows.length === 0) {
     return (
       <p className="py-8 text-center text-sm text-muted-foreground">
         {search.trim()
-          ? `No agents matching "${search.trim()}"`
-          : "No agents found"}
+          ? t(
+              ($) => {
+                return $.connectors.access.noMatchingAgents;
+              },
+              { search: search.trim() },
+            )
+          : t(($) => {
+              return $.connectors.access.noAgents;
+            })}
       </p>
     );
   }
@@ -221,10 +268,13 @@ function AgentAccessList({
 }
 
 function LoadingAgents() {
+  const { t } = useTranslation();
   return (
     <div className="flex min-h-[240px] flex-1 items-center justify-center gap-2 text-sm text-muted-foreground">
       <IconLoader2 size={16} className="animate-spin" />
-      Loading agents...
+      {t(($) => {
+        return $.connectors.access.loading;
+      })}
     </div>
   );
 }
@@ -245,7 +295,7 @@ function ConnectorAccessDialog({
   readonly connectorLabel: string;
   readonly rows: readonly ConnectorAgentAccessRow[];
   readonly rowsLoaded: boolean;
-  readonly metadata: PublicConnectorCatalogPermissionDetail | null;
+  readonly metadata: PlatformConnectorPermissionMetadata | null;
   readonly savingAgentId: string | null;
   readonly search: string;
   readonly onSearchChange: (value: string) => void;
@@ -255,6 +305,7 @@ function ConnectorAccessDialog({
   ) => void;
   readonly onManage: (row: ConnectorAgentAccessRow) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Dialog
       open
@@ -270,10 +321,17 @@ function ConnectorAccessDialog({
             </span>
             <div className="min-w-0">
               <DialogTitle className="text-base">
-                Manage {connectorLabel} access
+                {t(
+                  ($) => {
+                    return $.connectors.access.title;
+                  },
+                  { connector: connectorLabel },
+                )}
               </DialogTitle>
               <DialogDescription>
-                Choose which agents can use this connector.
+                {t(($) => {
+                  return $.connectors.access.description;
+                })}
               </DialogDescription>
             </div>
           </div>
@@ -319,13 +377,14 @@ function AgentPermissionDialog({
   onClose,
 }: {
   readonly row: ConnectorAgentAccessRow | undefined;
-  readonly metadata: PublicConnectorCatalogPermissionDetail | null;
+  readonly metadata: PlatformConnectorPermissionMetadata | null;
   readonly connectorSlug: ConnectorSlug;
   readonly connectorLabel: string;
   readonly pageSignal: AbortSignal;
   readonly applyGrantPolicies: ApplyUserPermissionGrants;
   readonly onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const grants = row?.grants ?? [];
   if (!row || !metadata) {
     return null;
@@ -355,7 +414,11 @@ function AgentPermissionDialog({
           pageSignal,
           applyGrantPolicies,
         });
-        toast.success("Permissions updated");
+        toast.success(
+          t(($) => {
+            return $.connectors.access.permissionsUpdated;
+          }),
+        );
       }}
       onClose={onClose}
     />
@@ -367,6 +430,7 @@ export function ConnectorAccessManagementDialog({
   connectorLabel,
   onClose,
 }: ConnectorAccessManagementDialogProps) {
+  const { t } = useTranslation();
   const rowsLoadable = useLastLoadable(managedConnectorAgentAccessRows$);
   const metadataLoadable = useLastLoadable(
     managedConnectorFirewallPermissionMetadata$,
@@ -407,7 +471,14 @@ export function ConnectorAccessManagementDialog({
             { agentId: row.agent.id, connectorSlug, authorized },
             pageSignal,
           );
-          toast.success(`${connectorLabel} access updated`);
+          toast.success(
+            t(
+              ($) => {
+                return $.connectors.access.accessUpdated;
+              },
+              { connector: connectorLabel },
+            ),
+          );
         })(),
         () => {
           setSavingAgentId(null);

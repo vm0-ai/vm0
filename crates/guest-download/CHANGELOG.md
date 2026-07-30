@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.22.9](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.8...guest-download-v0.22.9) (2026-07-30)
+
+## [0.22.8](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.7...guest-download-v0.22.8) (2026-07-30)
+
+## [0.22.7](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.6...guest-download-v0.22.7) (2026-07-29)
+
+
+### Refactoring
+
+* **guest-download:** reject trailing path arguments ([#23748](https://github.com/vm0-ai/vm0/issues/23748)) ([1d12a27](https://github.com/vm0-ai/vm0/commit/1d12a2756bce188d7d76b504bddcd9a9738dd2b0))
+
 ## [0.22.6](https://github.com/vm0-ai/vm0/compare/guest-download-v0.22.5...guest-download-v0.22.6) (2026-07-29)
 
 

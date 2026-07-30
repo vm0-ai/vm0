@@ -10,6 +10,8 @@ import {
   heartbeatBodySchema,
   heldSessionStateSchema,
   jobSchema,
+  NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX,
+  NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
   RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
@@ -17,6 +19,7 @@ import {
   resumeSessionSchema,
   runnersBuiltinFirewallsResolveContract,
   runnersJobClaimContract,
+  runnersNetworkPolicyRefreshContract,
   runnersPollContract,
   storageMountEntrySchema,
   storageManifestSchema,
@@ -880,6 +883,64 @@ describe("runner poll request contract", () => {
     });
 
     expect(body.telemetry).toEqual({});
+  });
+});
+
+describe("runner network policy refresh contract", () => {
+  const bodySchema = runnersNetworkPolicyRefreshContract.refresh.body;
+  const terminalResponseSchema =
+    runnersNetworkPolicyRefreshContract.refresh.responses[409];
+
+  it("normalizes canonical connector slugs and ignores additional fields", () => {
+    expect(
+      bodySchema.parse({
+        connectorSlugs: ["slack", "github", "slack"],
+        additionalField: true,
+      }),
+    ).toEqual({ connectorSlugs: ["slack", "github"] });
+  });
+
+  it.each([
+    ["missing canonical field", {}],
+    ["empty canonical field", { connectorSlugs: [] }],
+    ["invalid canonical slug", { connectorSlugs: ["invalid/slack"] }],
+    [
+      "oversized canonical field",
+      {
+        connectorSlugs: Array.from(
+          { length: NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX + 1 },
+          () => {
+            return "slack";
+          },
+        ),
+      },
+    ],
+  ])("rejects %s", (_, body) => {
+    expect(bodySchema.safeParse(body).success).toBe(false);
+  });
+
+  it("requires the terminal error code for conflict responses", () => {
+    expect(
+      terminalResponseSchema.parse({
+        error: {
+          code: NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+          message: "Run is terminal",
+        },
+      }),
+    ).toEqual({
+      error: {
+        code: "RUN_TERMINAL",
+        message: "Run is terminal",
+      },
+    });
+    expect(
+      terminalResponseSchema.safeParse({
+        error: {
+          code: "CONFLICT",
+          message: "Run is not refreshable",
+        },
+      }).success,
+    ).toBe(false);
   });
 });
 

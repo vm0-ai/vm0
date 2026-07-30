@@ -206,6 +206,7 @@ describe("GET /api/zero/connector-catalog", () => {
       return connector.connectorRef === "openai";
     });
     expect(openai).toBeDefined();
+    expect(openai?.slug).toBe(openai?.connectorRef);
     expect(openai?.label).toBe("OpenAI");
     expect(openai?.generation).toContain("text");
     expect(openai?.tags).toContain("llm");
@@ -236,7 +237,7 @@ describe("GET /api/zero/connector-catalog", () => {
     const listResponse = await accept(client.list({ headers }), [200]);
     const statusResponse = await accept(client.status({ headers }), [200]);
     const detailResponse = await accept(
-      client.get({ params: { connectorRef: "openai" }, headers }),
+      client.get({ params: { connectorSlug: "openai" }, headers }),
       [200],
     );
 
@@ -617,7 +618,7 @@ describe("GET /api/zero/connector-catalog", () => {
     await authDevice.requestTestConnector(
       { email: actor.email },
       {
-        connectorName: "github",
+        connectorSlug: "github",
         authMethod: "oauth",
         accessToken: "github-access-token",
         expiresIn: 3600,
@@ -656,7 +657,7 @@ describe("GET /api/zero/connector-catalog", () => {
     await authDevice.requestTestConnector(
       { email: actor.email },
       {
-        connectorName: "github",
+        connectorSlug: "github",
         authMethod: "oauth",
         accessToken: "expired-github-access-token",
         expiresIn: -60,
@@ -699,7 +700,7 @@ describe("GET /api/zero/connector-catalog", () => {
     const client = setupApp({ context })(zeroConnectorCatalogContract);
     const response = await accept(
       client.get({
-        params: { connectorRef: "openai" },
+        params: { connectorSlug: "openai" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -728,7 +729,7 @@ describe("GET /api/zero/connector-catalog", () => {
     const client = setupApp({ context })(zeroConnectorCatalogContract);
     const response = await accept(
       client.get({
-        params: { connectorRef: "parallel" },
+        params: { connectorSlug: "parallel" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -767,7 +768,7 @@ describe("GET /api/zero/connector-catalog", () => {
     for (const connector of listResponse.body.connectors) {
       const detailResponse = await accept(
         client.get({
-          params: { connectorRef: connector.connectorRef },
+          params: { connectorSlug: connector.connectorRef },
           headers: { authorization: "Bearer clerk-session" },
         }),
         [200],
@@ -784,7 +785,7 @@ describe("GET /api/zero/connector-catalog", () => {
     const client = setupApp({ context })(zeroConnectorCatalogContract);
     const response = await accept(
       client.get({
-        params: { connectorRef: "test-oauth-device" },
+        params: { connectorSlug: "test-oauth-device" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [404],
@@ -804,14 +805,14 @@ describe("GET /api/zero/connector-catalog", () => {
     const connectorSlug = "x".repeat(65);
     const detailResponse = await accept(
       client.get({
-        params: { connectorRef: connectorSlug },
+        params: { connectorSlug },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [400],
     );
     const permissionResponse = await accept(
       client.permissions({
-        params: { connectorRef: connectorSlug },
+        params: { connectorSlug },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [400],
@@ -832,7 +833,7 @@ describe("GET /api/zero/connector-catalog", () => {
     const client = setupApp({ context })(zeroConnectorCatalogContract);
     const response = await accept(
       client.get({
-        params: { connectorRef: "test-oauth-device" },
+        params: { connectorSlug: "test-oauth-device" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -865,7 +866,7 @@ describe("GET /api/zero/connector-catalog", () => {
     const client = setupApp({ context })(zeroConnectorCatalogContract);
     const response = await accept(
       client.get({
-        params: { connectorRef: "neon" },
+        params: { connectorSlug: "neon" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -890,7 +891,7 @@ describe("GET /api/zero/connector-catalog", () => {
     const client = setupApp({ context })(zeroConnectorCatalogContract);
     const response = await accept(
       client.get({
-        params: { connectorRef: "neon" },
+        params: { connectorSlug: "neon" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -912,14 +913,14 @@ describe("GET /api/zero/connector-catalog", () => {
     const client = setupApp({ context })(zeroConnectorCatalogContract);
     const response = await accept(
       client.permissions({
-        params: { connectorRef: "notion" },
+        params: { connectorSlug: "notion" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
     );
     const detailResponse = await accept(
       client.get({
-        params: { connectorRef: "notion" },
+        params: { connectorSlug: "notion" },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
@@ -927,6 +928,9 @@ describe("GET /api/zero/connector-catalog", () => {
 
     assertPublicConnectorCatalogHasNoPrivateFields(response.body);
     expect(response.body.permissions.connectorRef).toBe("notion");
+    expect(response.body.permissions.connectorSlug).toBe(
+      response.body.permissions.connectorRef,
+    );
     expect(response.body.permissions.icon).toStrictEqual(
       detailResponse.body.connector.icon,
     );

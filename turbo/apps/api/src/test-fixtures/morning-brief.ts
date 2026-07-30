@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { morningBriefDeliveries } from "@vm0/db/schema/morning-brief";
 import { and, eq } from "drizzle-orm";
 
@@ -8,9 +9,12 @@ import { db } from "../lib/db";
 import {
   decryptQueuedUserMessageRunParams,
   encryptQueuedUserMessageRunParams,
-} from "../signals/services/zero-chat-queued-message.service";
-import { insertChatEvent } from "../signals/services/zero-chat-event.service";
-import { touchChatThreadLastMessageAt } from "../signals/services/zero-chat-message-shared.service";
+} from "../signals/services/zero-chat-queued-event.service";
+import {
+  insertChatEvent,
+  replaceChatEvent,
+} from "../signals/services/zero-chat-event.service";
+import { touchChatThreadLastMessageAt } from "../signals/services/zero-chat-event-shared.service";
 import { createUserMessageDocument } from "../signals/services/zero-chat-user-message.service";
 
 export async function readMorningBriefDeliveryFixture(args: {
@@ -25,6 +29,7 @@ export async function readMorningBriefDeliveryFixture(args: {
       runId: morningBriefDeliveries.runId,
       inputKey: morningBriefDeliveries.inputKey,
       outputKey: morningBriefDeliveries.outputKey,
+      error: morningBriefDeliveries.error,
     })
     .from(morningBriefDeliveries)
     .where(
@@ -38,38 +43,129 @@ export async function readMorningBriefDeliveryFixture(args: {
   return delivery ?? null;
 }
 
+export async function readMorningBriefQueuedParamsForDeliveryFixture(args: {
+  readonly deliveryId: string;
+  readonly threadId: string;
+  readonly orgId: string;
+  readonly userId: string;
+}) {
+  const messages = await db()
+    .select({
+      encryptedParams: chatEventInputParams.encryptedParams,
+    })
+    .from(chatEvents)
+    .leftJoin(
+      chatEventInputParams,
+      eq(chatEventInputParams.eventId, chatEvents.id),
+    )
+    .where(eq(chatEvents.chatThreadId, args.threadId));
+  for (const message of messages) {
+    const params = await decryptQueuedUserMessageRunParams(
+      message.encryptedParams,
+      { orgId: args.orgId, userId: args.userId },
+    );
+    if (params?.morningBriefDelivery?.deliveryId === args.deliveryId) {
+      return params;
+    }
+  }
+  return null;
+}
+
+/**
+ * Replace the opaque callback payload on a queued Morning Brief. Public APIs
+ * always create the valid shape, so only a fixture can exercise terminal chat
+ * handling when the internal callback rejects persisted payload data.
+ */
+export async function replaceMorningBriefQueuedCallbackPayloadFixture(args: {
+  readonly deliveryId: string;
+  readonly threadId: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly payload: unknown;
+}): Promise<void> {
+  const messages = await db()
+    .select({
+      id: chatEvents.id,
+      encryptedParams: chatEventInputParams.encryptedParams,
+      userMessage: chatEvents.userMessage,
+      attachFiles: chatEvents.attachFiles,
+      attachFileMetadata: chatEventInputParams.attachFileMetadata,
+      generationTemplate: chatEvents.generationTemplate,
+      triggerSource: chatEvents.triggerSource,
+    })
+    .from(chatEvents)
+    .leftJoin(
+      chatEventInputParams,
+      eq(chatEventInputParams.eventId, chatEvents.id),
+    )
+    .where(eq(chatEvents.chatThreadId, args.threadId));
+  for (const message of messages) {
+    const params = await decryptQueuedUserMessageRunParams(
+      message.encryptedParams,
+      { orgId: args.orgId, userId: args.userId },
+    );
+    if (params?.morningBriefDelivery?.deliveryId !== args.deliveryId) {
+      continue;
+    }
+    const encryptedParams = await encryptQueuedUserMessageRunParams(
+      {
+        ...params,
+        morningBriefDelivery: {
+          ...params.morningBriefDelivery,
+          payload: args.payload,
+        },
+      },
+      { orgId: args.orgId, userId: args.userId },
+    );
+    if (!message.userMessage) {
+      throw new Error("Expected the queued Morning Brief user message");
+    }
+    const userMessage = message.userMessage;
+    const replaced = await db().transaction(async (tx) => {
+      return await replaceChatEvent(tx, message.id, {
+        chatThreadId: args.threadId,
+        eventType: "input.prompt",
+        userMessage,
+        runId: null,
+        encryptedParams,
+        attachFiles: message.attachFiles ? [...message.attachFiles] : null,
+        attachFileMetadata: message.attachFileMetadata
+          ? [...message.attachFileMetadata]
+          : null,
+        generationTemplate: message.generationTemplate,
+        ...(message.triggerSource
+          ? { triggerSource: message.triggerSource }
+          : {}),
+      });
+    });
+    if (!replaced) {
+      throw new Error("Expected the queued Morning Brief callback payload");
+    }
+    return;
+  }
+  throw new Error("Expected the queued Morning Brief delivery");
+}
+
 export async function readMorningBriefQueuedParamsFixture(args: {
   readonly messageId: string;
   readonly orgId: string;
   readonly userId: string;
 }) {
-  const [message] = await db()
-    .select({ encryptedParams: chatMessages.encryptedParams })
-    .from(chatMessages)
-    .where(eq(chatMessages.id, args.messageId))
+  const [event] = await db()
+    .select({
+      encryptedParams: chatEventInputParams.encryptedParams,
+    })
+    .from(chatEvents)
+    .leftJoin(
+      chatEventInputParams,
+      eq(chatEventInputParams.eventId, chatEvents.id),
+    )
+    .where(eq(chatEvents.id, args.messageId))
     .limit(1);
   return await decryptQueuedUserMessageRunParams(
-    message?.encryptedParams ?? null,
+    event?.encryptedParams ?? null,
     { orgId: args.orgId, userId: args.userId },
   );
-}
-
-/**
- * Appends the production automation-pause control event to a dedicated brief
- * thread. The workflow queue API intentionally has no resource for this
- * non-automation thread, so the acceptance test uses the event writer.
- */
-export async function pauseMorningBriefAutomationIntakeFixture(
-  threadId: string,
-): Promise<void> {
-  await db().transaction(async (tx) => {
-    await insertChatEvent(tx, {
-      chatThreadId: threadId,
-      eventType: "queue.automation_paused",
-      runId: null,
-      pauseReason: "Morning Brief queue acceptance test",
-    });
-  });
 }
 
 /**
@@ -87,7 +183,6 @@ export async function insertQueuedWebUserMessageFixture(args: {
       id: messageId,
       chatThreadId: args.threadId,
       eventType: "input.prompt",
-      content: args.content,
       userMessage: createUserMessageDocument({ text: args.content }),
       runId: null,
       triggerSource: "web",
@@ -117,6 +212,7 @@ export async function insertOldFormatQueuedUserMessageFixture(args: {
   readonly content: string;
   readonly prompt: string;
   readonly appendSystemPrompt: string;
+  readonly apiStartTime?: number;
 }): Promise<string> {
   const messageId = randomUUID();
   const encryptedParams = await encryptQueuedUserMessageRunParams(
@@ -124,6 +220,7 @@ export async function insertOldFormatQueuedUserMessageFixture(args: {
       version: 1,
       prompt: args.prompt,
       appendSystemPrompt: args.appendSystemPrompt,
+      apiStartTime: args.apiStartTime,
     },
     { orgId: args.orgId, userId: args.userId },
   );
@@ -132,7 +229,6 @@ export async function insertOldFormatQueuedUserMessageFixture(args: {
       id: messageId,
       chatThreadId: args.threadId,
       eventType: "input.prompt",
-      content: args.content,
       userMessage: createUserMessageDocument({ text: args.content }),
       runId: null,
       triggerSource: "workflow-schedule",

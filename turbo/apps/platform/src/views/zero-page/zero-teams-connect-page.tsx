@@ -7,6 +7,8 @@ import {
   IconLoader2,
 } from "@tabler/icons-react";
 import { Button } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
+import { i18n } from "../../i18n/index.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { searchParams$ } from "../../signals/route.ts";
 import {
@@ -24,13 +26,16 @@ type PageStatus = TeamsConnectPageStatus | "checking" | "error";
 const teamsIconImg = settingsIconAssetUrl("teams");
 
 function BackLink() {
+  const { t } = useTranslation();
   return (
     <Link
       pathname="/works"
       className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors no-underline"
     >
       <IconArrowLeft size={14} />
-      Back to settings
+      {t(($) => {
+        return $.connectors.providerConnect.common.backToSettings;
+      })}
     </Link>
   );
 }
@@ -49,7 +54,11 @@ export function ZeroTeamsConnectPage() {
 
 function connectedLabel(params: URLSearchParams): string {
   return (
-    params.get("teamName") ?? params.get("tenantName") ?? "Microsoft Teams"
+    params.get("teamName") ??
+    params.get("tenantName") ??
+    i18n.t(($) => {
+      return $.connectors.providerConnect.teams.providerName;
+    })
   );
 }
 
@@ -80,7 +89,71 @@ function TeamsLogo({ size }: { readonly size: "sm" | "lg" }) {
   );
 }
 
+function ErrorState({ message }: { message: string }) {
+  const { t } = useTranslation();
+  return (
+    <>
+      <IconAlertCircle size={40} className="text-destructive" />
+      <div className="text-center space-y-1.5">
+        <h2 className="text-base font-semibold text-foreground">
+          {t(($) => {
+            return $.connectors.providerConnect.common.connectionFailed;
+          })}
+        </h2>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          {message}
+        </p>
+      </div>
+      <BackLink />
+    </>
+  );
+}
+
+function CheckingState() {
+  const { t } = useTranslation();
+  return (
+    <>
+      <IconLoader2 size={40} className="text-muted-foreground animate-spin" />
+      <div className="text-center space-y-1.5">
+        <h2 className="text-base font-semibold text-foreground">
+          {t(($) => {
+            return $.connectors.providerConnect.common.checkingTitle;
+          })}
+        </h2>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          {t(($) => {
+            return $.connectors.providerConnect.common.verifying;
+          })}
+        </p>
+      </div>
+    </>
+  );
+}
+
+function InvalidState() {
+  const { t } = useTranslation();
+  return (
+    <>
+      <IconAlertCircle size={40} className="text-muted-foreground/40" />
+      <div className="text-center space-y-1.5">
+        <h2 className="text-base font-semibold text-foreground">
+          {t(($) => {
+            return $.connectors.providerConnect.common.invalidLink;
+          })}
+        </h2>
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          {t(($) => {
+            return $.connectors.providerConnect.teams.invalidDescription;
+          })}
+        </p>
+      </div>
+      <BackLink />
+    </>
+  );
+}
+
 function PageContent() {
+  const { t } = useTranslation();
   const params = useGet(searchParams$);
   const tenantId = params.get("tenantId");
   const teamsUserId = params.get("teamsUserId");
@@ -106,20 +179,7 @@ function PageContent() {
   };
 
   if (status === "error") {
-    return (
-      <>
-        <IconAlertCircle size={40} className="text-destructive" />
-        <div className="text-center space-y-1.5">
-          <h2 className="text-base font-semibold text-foreground">
-            Connection Failed
-          </h2>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            {effectiveError}
-          </p>
-        </div>
-        <BackLink />
-      </>
-    );
+    return <ErrorState message={effectiveError} />;
   }
 
   if (status === "success") {
@@ -129,11 +189,17 @@ function PageContent() {
         <IconCircleCheck size={40} className="text-emerald-500" />
         <div className="text-center space-y-1.5">
           <h2 className="text-base font-semibold text-foreground">
-            Connected to Microsoft Teams
+            {t(($) => {
+              return $.connectors.providerConnect.teams.successTitle;
+            })}
           </h2>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            You are connected to {label}. Mention <strong>@Zero</strong> in
-            Teams to start chatting.
+            {t(
+              ($) => {
+                return $.connectors.providerConnect.teams.successDescription;
+              },
+              { team: label },
+            )}
           </p>
         </div>
         <div className="flex flex-col gap-3 w-full">
@@ -145,7 +211,9 @@ function PageContent() {
             }}
           >
             <TeamsLogo size="sm" />
-            Open Teams
+            {t(($) => {
+              return $.connectors.providerConnect.teams.open;
+            })}
           </Button>
           <div className="flex justify-center">
             <BackLink />
@@ -156,19 +224,7 @@ function PageContent() {
   }
 
   if (status === "checking") {
-    return (
-      <>
-        <IconLoader2 size={40} className="text-muted-foreground animate-spin" />
-        <div className="text-center space-y-1.5">
-          <h2 className="text-base font-semibold text-foreground">
-            Checking account status...
-          </h2>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            Please wait while we verify your connection.
-          </p>
-        </div>
-      </>
-    );
+    return <CheckingState />;
   }
 
   if (tenantId && (teamsUserId || teamsAadObjectId)) {
@@ -177,11 +233,22 @@ function PageContent() {
         <TeamsLogo size="lg" />
         <div className="text-center space-y-1.5">
           <h2 className="text-base font-semibold text-foreground">
-            Connect Microsoft Teams
+            {t(($) => {
+              return $.connectors.providerConnect.teams.connectTitle;
+            })}
           </h2>
           <p className="text-sm text-muted-foreground leading-relaxed">
-            {displayName ? `${displayName}, link` : "Link"} your Teams account
-            so you can interact with your agent directly from Microsoft Teams.
+            {displayName
+              ? t(
+                  ($) => {
+                    return $.connectors.providerConnect.teams
+                      .connectDescriptionNamed;
+                  },
+                  { displayName },
+                )
+              : t(($) => {
+                  return $.connectors.providerConnect.teams.connectDescription;
+                })}
           </p>
         </div>
         <Button
@@ -193,25 +260,18 @@ function PageContent() {
           {connectLoading ? (
             <IconLoader2 size={16} className="animate-spin mr-2" />
           ) : null}
-          {connectLoading ? "Connecting..." : "Connect"}
+          {connectLoading
+            ? t(($) => {
+                return $.connectors.actions.connecting;
+              })
+            : t(($) => {
+                return $.connectors.actions.connect;
+              })}
         </Button>
         <BackLink />
       </>
     );
   }
 
-  return (
-    <>
-      <IconAlertCircle size={40} className="text-muted-foreground/40" />
-      <div className="text-center space-y-1.5">
-        <h2 className="text-base font-semibold text-foreground">
-          Invalid Link
-        </h2>
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          This page is meant to be opened from a Microsoft Teams connect link.
-        </p>
-      </div>
-      <BackLink />
-    </>
-  );
+  return <InvalidState />;
 }

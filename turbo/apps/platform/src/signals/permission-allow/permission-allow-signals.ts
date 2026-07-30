@@ -4,10 +4,8 @@ import {
   type UserPermissionGrantApplyMode,
   type UserPermissionGrantExpiresIn,
   type UserPermissionGrantAction,
-  type UserPermissionGrantResponse,
   zeroUserPermissionGrantsContract,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicyValue,
@@ -21,6 +19,12 @@ import { setAblyLoop$ } from "../realtime.ts";
 import { retryTransientLoad } from "../utils.ts";
 import { resolveActiveUserPermissionGrantPolicy } from "../user-permission-grants.ts";
 import { parseUserPermissionGrantExpiresIn } from "./permission-grant-expiration.ts";
+import { i18n } from "../../i18n/index.ts";
+import {
+  normalizeUserPermissionGrants,
+  type PlatformConnectorPermissionMetadata,
+  type PlatformUserPermissionGrant,
+} from "../connector-domain.ts";
 
 // ---------------------------------------------------------------------------
 // Route params
@@ -33,8 +37,9 @@ export const permissionAllowAgentId$ = computed((get) => {
 });
 
 export const permissionAllowConnectorSlug$ = computed((get) => {
-  // TODO(#23619): Rename this serialized chat-action query parameter.
-  return get(searchParams$).get("ref") ?? null;
+  const searchParams = get(searchParams$);
+  // TODO(#23823): Remove the legacy serialized-action query fallback.
+  return searchParams.get("connectorSlug") ?? searchParams.get("ref") ?? null;
 });
 
 export const permissionAllowPermission$ = computed((get) => {
@@ -79,13 +84,15 @@ export interface Permission {
 }
 
 export function findPermissionInMetadata(
-  metadata: PublicConnectorCatalogPermissionDetail,
+  metadata: PlatformConnectorPermissionMetadata,
   name: string,
 ): Permission | null {
   if (name === UNKNOWN_PERMISSION_GRANT) {
     return {
       name: UNKNOWN_PERMISSION_GRANT,
-      description: "Unknown endpoints",
+      description: i18n.t(($) => {
+        return $.authorization.permission.unknownEndpoints;
+      }),
     };
   }
   return (
@@ -121,8 +128,8 @@ export const subscribePermissionUpdate$ = command(
 );
 
 export function resolveUserPermissionGrantPolicy(
-  grants: readonly UserPermissionGrantResponse[],
-  metadata: PublicConnectorCatalogPermissionDetail,
+  grants: readonly PlatformUserPermissionGrant[],
+  metadata: PlatformConnectorPermissionMetadata,
   permission: string,
 ): FirewallPolicyValue | undefined {
   return resolveActiveUserPermissionGrantPolicy(grants, metadata, permission);
@@ -134,27 +141,29 @@ interface UserPermissionGrantsByAgentParams {
 
 export function userPermissionGrantsByAgent(
   params: UserPermissionGrantsByAgentParams,
-): Computed<Promise<readonly UserPermissionGrantResponse[]>> {
+): Computed<Promise<readonly PlatformUserPermissionGrant[]>> {
   return computed(async (get) => {
     get(internalUserPermissionGrantsReload$);
     const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
     const result = await retryTransientLoad(() => {
       return accept(client.list({ query: params }), [200]);
     });
-    return result.body;
+    return normalizeUserPermissionGrants(result.body);
   });
 }
 
 export function userPermissionGrantsByAgentIfExists(
   params: UserPermissionGrantsByAgentParams,
-): Computed<Promise<readonly UserPermissionGrantResponse[] | null>> {
+): Computed<Promise<readonly PlatformUserPermissionGrant[] | null>> {
   return computed(async (get) => {
     get(internalUserPermissionGrantsReload$);
     const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
     const result = await retryTransientLoad(() => {
       return accept(client.list({ query: params }), [200, 404]);
     });
-    return result.status === 404 ? null : result.body;
+    return result.status === 404
+      ? null
+      : normalizeUserPermissionGrants(result.body);
   });
 }
 
@@ -196,7 +205,7 @@ export const applyUserPermissionGrants$ = command(
       grants: readonly ApplyUserPermissionGrant[];
     },
     signal: AbortSignal,
-  ): Promise<readonly UserPermissionGrantResponse[]> => {
+  ): Promise<readonly PlatformUserPermissionGrant[]> => {
     if (!params.agentId) {
       throw new Error("Permission grant scope is required");
     }
@@ -205,7 +214,7 @@ export const applyUserPermissionGrants$ = command(
       client.apply({
         body: {
           agentId: params.agentId,
-          connectorRef: params.connectorSlug,
+          connectorSlug: params.connectorSlug,
           mode: params.mode,
           grants: [...params.grants],
         },
@@ -221,7 +230,7 @@ export const applyUserPermissionGrants$ = command(
       return prev + 1;
     });
     set(reloadAgentById$);
-    return result.body;
+    return normalizeUserPermissionGrants(result.body);
   },
 );
 
@@ -236,7 +245,7 @@ export const applyUserPermissionGrant$ = command(
       expiresIn?: UserPermissionGrantExpiresIn;
     },
     signal: AbortSignal,
-  ): Promise<UserPermissionGrantResponse> => {
+  ): Promise<PlatformUserPermissionGrant> => {
     const grants = await set(
       applyUserPermissionGrants$,
       {

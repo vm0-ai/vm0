@@ -20,7 +20,9 @@ import type {
 const context = testContext();
 const user = userEvent.setup();
 
-function inspectFile(): File {
+function inspectFile(
+  triggerSource: NonNullable<LogDetail["triggerSource"]> = "cli",
+): File {
   const meta: Partial<LogDetail> = {
     id: "b0000000-0000-4000-a000-000000000777",
     sessionId: "session-inspect",
@@ -29,7 +31,7 @@ function inspectFile(): File {
     framework: "claude-code",
     modelProvider: null,
     selectedModel: null,
-    triggerSource: "cli",
+    triggerSource,
     triggerAgentName: null,
     status: "completed",
     prompt: "Inspect the latest OAuth trace",
@@ -126,6 +128,19 @@ function inspectFile(): File {
       firewall_name: "github",
       firewall_permission: "read-repos",
       browser_user_agent: true,
+      connector_diagnostic_slug: "github-connector",
+    },
+    {
+      timestamp: "2026-03-10T14:56:04.000Z",
+      type: "http",
+      action: "ALLOW",
+      method: "POST",
+      url: "https://slack.com/api/auth.test",
+      status: 401,
+      latency_ms: 87,
+      request_size: 24,
+      response_size: 512,
+      connector_diagnostic_type: "slack-connector",
     },
   ];
 
@@ -482,6 +497,32 @@ describe("activity inspect page", () => {
     expect(within(networkTable).getByText("200")).toBeInTheDocument();
     expect(within(networkTable).getByText("123ms")).toBeInTheDocument();
     expect(within(networkTable).getByText("github")).toBeInTheDocument();
+
+    const networkRows = within(networkTable).getAllByRole("row");
+    const networkRow = networkRows[1];
+    if (!networkRow) {
+      throw new Error("Expected a network log row");
+    }
+    await user.click(networkRow);
+    await waitFor(() => {
+      expect(screen.getByText("github-connector")).toBeInTheDocument();
+    });
+    expect(screen.getAllByText("Connector Diagnostic")).toHaveLength(1);
+
+    await user.click(networkRow);
+    await waitFor(() => {
+      expect(screen.queryByText("github-connector")).not.toBeInTheDocument();
+    });
+
+    const legacyNetworkRow = networkRows[2];
+    if (!legacyNetworkRow) {
+      throw new Error("Expected a legacy network log row");
+    }
+    await user.click(legacyNetworkRow);
+    await waitFor(() => {
+      expect(screen.getByText("slack-connector")).toBeInTheDocument();
+    });
+    expect(screen.getAllByText("Connector Diagnostic")).toHaveLength(1);
   });
 
   it("ignores debug tab query params when debug tabs are disabled", async () => {
@@ -512,6 +553,33 @@ describe("activity inspect page", () => {
     ).toBeFalsy();
     expect(screen.queryByText("github-token")).not.toBeInTheDocument();
   });
+
+  it.each([
+    { triggerSource: "teams", sourceLabel: "Teams" },
+    { triggerSource: "feishu", sourceLabel: "Feishu" },
+  ] as const)(
+    "preserves the $triggerSource source from an exported log",
+    async ({ triggerSource, sourceLabel }) => {
+      detachedSetupPage({
+        context,
+        path: "/activities/inspect",
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText("No log loaded")).toBeInTheDocument();
+      });
+
+      await user.upload(getFileInput(), inspectFile(triggerSource));
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: "Imported Analysis" }),
+        ).toBeInTheDocument();
+      });
+      expect(screen.getByText("Source")).toBeInTheDocument();
+      expect(screen.getByText(sourceLabel)).toBeInTheDocument();
+    },
+  );
 
   it("keeps the newest uploaded log when file reads resolve out of order", async () => {
     detachedSetupPage({

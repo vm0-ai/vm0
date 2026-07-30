@@ -59,7 +59,7 @@ async function readState(
       and(
         eq(connectors.orgId, body.org_id),
         eq(connectors.userId, body.user_id),
-        eq(connectors.type, body.connector_ref),
+        eq(connectors.connectorSlug, body.connector_ref),
       ),
     )
     .limit(1);
@@ -137,7 +137,7 @@ async function seedOwnedSecret(
       .values({
         orgId: body.org_id,
         userId: body.user_id,
-        type: body.connector_ref,
+        connectorSlug: body.connector_ref,
         authMethod: body.auth_method,
         storageVersion: body.storage_version,
       })
@@ -170,7 +170,7 @@ async function seedConnector(
     .values({
       orgId: body.org_id,
       userId: body.user_id,
-      type: body.connector_ref,
+      connectorSlug: body.connector_ref,
       authMethod: body.auth_method,
       storageVersion: body.storage_version,
     })
@@ -204,7 +204,7 @@ async function setConnectorState(
       and(
         eq(connectors.orgId, body.org_id),
         eq(connectors.userId, body.user_id),
-        eq(connectors.type, body.connector_ref),
+        eq(connectors.connectorSlug, body.connector_ref),
       ),
     )
     .returning({ id: connectors.id });

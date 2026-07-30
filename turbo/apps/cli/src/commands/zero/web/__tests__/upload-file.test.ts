@@ -13,6 +13,7 @@ import { basename, join } from "path";
 import { tmpdir } from "os";
 import { http, HttpResponse } from "msw";
 import {
+  CLIENT_CAPABILITY_CONNECTOR_SLUG_IDENTITIES,
   CLIENT_REQUEST_ID_HEADER,
   CLIENT_SESSION_ID_HEADER,
   CLIENT_TYPE_CLI,
@@ -26,6 +27,7 @@ import chalk from "chalk";
 const PREPARE_URL = "http://localhost:3000/api/zero/uploads/prepare";
 const COMPLETE_URL = "http://localhost:3000/api/zero/uploads/complete";
 const PUT_URL = "https://mock-r2.test/upload-target";
+const CLI_VERSION = `0.0.0-test+${CLIENT_CAPABILITY_CONNECTOR_SLUG_IDENTITIES}`;
 
 function requiredHeader(headers: Headers, name: string): string {
   const value = headers.get(name);
@@ -72,6 +74,11 @@ describe("zero web upload-file command", () => {
         contentType: "application/pdf",
         size: 13,
         uploadUrl: PUT_URL,
+        uploadHeaders: {
+          "x-amz-meta-artifact-id": "file-uuid-1",
+          "x-amz-meta-filename": "report.pdf",
+          "x-amz-meta-user-id": "user-test",
+        },
         url: "https://presigned.example.com/file-uuid-1/report.pdf?sig=abc",
       };
 
@@ -86,7 +93,7 @@ describe("zero web upload-file command", () => {
             "Bearer test-token",
           );
           expect(request.headers.get("content-type")).toBe("application/json");
-          expect(request.headers.get(CLIENT_VERSION_HEADER)).toBe("0.0.0-test");
+          expect(request.headers.get(CLIENT_VERSION_HEADER)).toBe(CLI_VERSION);
           expect(request.headers.get(CLIENT_TYPE_HEADER)).toBe(CLIENT_TYPE_CLI);
           prepareSessionId = requiredHeader(
             request.headers,
@@ -101,15 +108,22 @@ describe("zero web upload-file command", () => {
             filename: string;
             contentType: string;
             size: number;
+            supportsUploadHeaders: true;
           };
           expect(body.filename).toBe("report.pdf");
           expect(body.contentType).toBe("application/pdf");
           expect(body.size).toBe(13);
+          expect(body.supportsUploadHeaders).toBe(true);
 
           return HttpResponse.json(prepared, { status: 200 });
         }),
         http.put(PUT_URL, ({ request }) => {
           putReceivedContentType = request.headers.get("content-type");
+          expect(request.headers.get("x-amz-meta-artifact-id")).toBe(
+            "file-uuid-1",
+          );
+          expect(request.headers.get("x-amz-meta-filename")).toBe("report.pdf");
+          expect(request.headers.get("x-amz-meta-user-id")).toBe("user-test");
           expect(request.headers.get(CLIENT_TYPE_HEADER)).toBeNull();
           expect(request.headers.get(CLIENT_VERSION_HEADER)).toBeNull();
           expect(request.headers.get(CLIENT_SESSION_ID_HEADER)).toBeNull();
@@ -120,7 +134,7 @@ describe("zero web upload-file command", () => {
           expect(request.headers.get("authorization")).toBe(
             "Bearer test-token",
           );
-          expect(request.headers.get(CLIENT_VERSION_HEADER)).toBe("0.0.0-test");
+          expect(request.headers.get(CLIENT_VERSION_HEADER)).toBe(CLI_VERSION);
           expect(request.headers.get(CLIENT_TYPE_HEADER)).toBe(CLIENT_TYPE_CLI);
           expect(
             requiredHeader(request.headers, CLIENT_SESSION_ID_HEADER),

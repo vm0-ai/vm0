@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "@vm0/ui";
 import type { NetworkLogEntry } from "@vm0/api-contracts/contracts/runs";
+import { useTranslation } from "react-i18next";
 import { type BadgeColor, formatSize, InlineBadge } from "./network-badge.tsx";
 import { CapturedBodySections } from "./captured-body-sections.tsx";
 import {
@@ -28,21 +29,16 @@ import {
   setNetworkLogTypeFilter$,
   toggleNetworkLogRowExpanded$,
 } from "../../../signals/zero-page/network-log-ui.ts";
+import { i18n } from "../../../i18n/index.ts";
+import { formatAppNumber } from "../../../i18n/format.ts";
+import { formatActivityClockTime } from "../../../signals/activity-page/activity-time.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 function formatTime(timestamp: string): string {
-  const d = new Date(timestamp);
-  if (Number.isNaN(d.getTime())) {
-    return timestamp.trim().length > 0 ? timestamp : "—";
-  }
-  const h = String(d.getHours()).padStart(2, "0");
-  const m = String(d.getMinutes()).padStart(2, "0");
-  const s = String(d.getSeconds()).padStart(2, "0");
-  const ms = String(d.getMilliseconds()).padStart(3, "0");
-  return `${h}:${m}:${s}.${ms}`;
+  return formatActivityClockTime(timestamp);
 }
 
 function formatLatency(ms: number | undefined | null): string {
@@ -50,9 +46,16 @@ function formatLatency(ms: number | undefined | null): string {
     return "—";
   }
   if (ms < 1000) {
-    return `${ms}ms`;
+    return `${formatAppNumber(ms, {
+      maximumFractionDigits: 0,
+      useGrouping: false,
+    })}ms`;
   }
-  return `${(ms / 1000).toFixed(1)}s`;
+  return `${formatAppNumber(ms / 1000, {
+    maximumFractionDigits: 1,
+    minimumFractionDigits: 1,
+    useGrouping: false,
+  })}s`;
 }
 
 function entryType(entry: NetworkLogEntry): string {
@@ -76,7 +79,12 @@ function networkTarget(entry: NetworkLogEntry, isHttp: boolean): string {
   if (isHttp) {
     return nonEmptyLogField(entry.url) ?? hostPortTarget(entry) ?? "—";
   }
-  return `${nonEmptyLogField(entry.host) ?? "unknown"}:${entry.port ?? 0}`;
+  return `${
+    nonEmptyLogField(entry.host) ??
+    i18n.t(($) => {
+      return $.activity.network.unknown;
+    })
+  }:${entry.port ?? 0}`;
 }
 
 function typeBadgeColor(type: string): BadgeColor {
@@ -133,7 +141,13 @@ function TypeBadge({
   action?: NetworkLogEntry["action"];
 }) {
   if (action === "BLOCK") {
-    return <InlineBadge color="warning">BLOCK</InlineBadge>;
+    return (
+      <InlineBadge color="warning">
+        {i18n.t(($) => {
+          return $.activity.network.actions.block;
+        })}
+      </InlineBadge>
+    );
   }
 
   const denied = action === "DENY";
@@ -218,16 +232,33 @@ function toggleSelectedType(
 
 function typeFilterLabel(typeFilter: NetworkLogTypeFilter): string {
   if (typeFilter.mode === "all") {
-    return "All types";
+    return i18n.t(($) => {
+      return $.activity.network.filter.allTypes;
+    });
   }
   const selectedTypes = typeFilter.types;
   if (selectedTypes.length === 0) {
-    return "All types";
+    return i18n.t(($) => {
+      return $.activity.network.filter.allTypes;
+    });
   }
   if (selectedTypes.length === 1) {
-    return selectedTypes[0] ?? "All types";
+    return (
+      selectedTypes[0] ??
+      i18n.t(($) => {
+        return $.activity.network.filter.allTypes;
+      })
+    );
   }
-  return `${selectedTypes.length} types`;
+  return i18n.t(
+    ($) => {
+      return $.activity.network.filter.selectedTypes;
+    },
+    {
+      count: selectedTypes.length,
+      formattedCount: formatAppNumber(selectedTypes.length),
+    },
+  );
 }
 
 function TypeFilter({
@@ -239,6 +270,7 @@ function TypeFilter({
   typeFilter: NetworkLogTypeFilter;
   onChange: (filter: NetworkLogTypeFilter) => void;
 }) {
+  const { t } = useTranslation();
   const selectedTypes = selectedTypeValues(typeFilter, typeOptions);
   const selectedSet = new Set(selectedTypes);
 
@@ -247,7 +279,9 @@ function TypeFilter({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
-          aria-label="Type filter"
+          aria-label={t(($) => {
+            return $.activity.network.filter.type;
+          })}
           className="flex h-8 min-w-[140px] items-center justify-between gap-1.5 rounded-md border border-border bg-input px-3 text-xs text-foreground outline-none transition-colors hover:bg-accent focus:border-primary focus:ring-[3px] focus:ring-primary/10"
         >
           <span className="flex items-center gap-1.5">
@@ -272,7 +306,9 @@ function TypeFilter({
           <span className="flex h-4 w-4 items-center justify-center">
             {typeFilter.mode === "all" && <IconCheck size={14} />}
           </span>
-          All types
+          {t(($) => {
+            return $.activity.network.filter.allTypes;
+          })}
         </DropdownMenuItem>
         {typeOptions.map((type) => {
           const selected = selectedSet.has(type);
@@ -303,7 +339,16 @@ function formatValue(value: unknown): string {
     return "—";
   }
   if (typeof value === "boolean") {
-    return value ? "Yes" : "No";
+    return value
+      ? i18n.t(($) => {
+          return $.activity.network.yes;
+        })
+      : i18n.t(($) => {
+          return $.activity.network.no;
+        });
+  }
+  if (typeof value === "number") {
+    return formatAppNumber(value, { useGrouping: false });
   }
   if (Array.isArray(value)) {
     return value.length > 0 ? value.join(", ") : "—";
@@ -342,6 +387,321 @@ function hasValue(value: unknown): boolean {
   return true;
 }
 
+const NETWORK_DETAIL_LABELS = Object.freeze({
+  action: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.action;
+    });
+  },
+  authCacheHit: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.authCacheHit;
+    });
+  },
+  authRefreshedConnectors: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.authRefreshedConnectors;
+    });
+  },
+  authRefreshedSecrets: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.authRefreshedSecrets;
+    });
+  },
+  authResolvedSecrets: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.authResolvedSecrets;
+    });
+  },
+  authUrlRewrite: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.authUrlRewrite;
+    });
+  },
+  baseUrl: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.baseUrl;
+    });
+  },
+  billable: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.billable;
+    });
+  },
+  browserUserAgent: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.browserUserAgent;
+    });
+  },
+  connectorBaseUrl: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.connectorBaseUrl;
+    });
+  },
+  connectorDiagnostic: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.connectorDiagnostic;
+    });
+  },
+  connectorEnvNames: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.connectorEnvNames;
+    });
+  },
+  connectorReason: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.connectorReason;
+    });
+  },
+  connectorRouteCandidates: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.connectorRouteCandidates;
+    });
+  },
+  connectorRouteReason: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.connectorRouteReason;
+    });
+  },
+  dnsEvent: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.dnsEvent;
+    });
+  },
+  dnsQueryType: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.dnsQueryType;
+    });
+  },
+  dnsResult: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.dnsResult;
+    });
+  },
+  dnsSerial: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.dnsSerial;
+    });
+  },
+  error: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.error;
+    });
+  },
+  firewall: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.firewall;
+    });
+  },
+  host: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.host;
+    });
+  },
+  latency: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.latency;
+    });
+  },
+  method: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.method;
+    });
+  },
+  modelCatalogCacheBypassReason: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.modelCatalogCacheBypassReason;
+    });
+  },
+  modelCatalogCacheEntryAge: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.modelCatalogCacheEntryAge;
+    });
+  },
+  modelCatalogCacheEvictionCount: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.modelCatalogCacheEvictionCount;
+    });
+  },
+  modelCatalogCacheStatus: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.modelCatalogCacheStatus;
+    });
+  },
+  modelCatalogCacheValidationLatency: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.modelCatalogCacheValidationLatency;
+    });
+  },
+  modelCatalogPrefetchRole: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.modelCatalogPrefetchRole;
+    });
+  },
+  modelCatalogUpstreamEncoding: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.modelCatalogUpstreamEncoding;
+    });
+  },
+  params: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.params;
+    });
+  },
+  permission: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.permission;
+    });
+  },
+  permissionError: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.permissionError;
+    });
+  },
+  port: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.port;
+    });
+  },
+  requestSize: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.requestSize;
+    });
+  },
+  responseSize: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.responseSize;
+    });
+  },
+  ruleMatch: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.ruleMatch;
+    });
+  },
+  status: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.status;
+    });
+  },
+  timestamp: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.timestamp;
+    });
+  },
+  type: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.type;
+    });
+  },
+  upstreamBindingClientBindingCount: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.upstreamBindingClientBindingCount;
+    });
+  },
+  upstreamBindingClientBindingEndpointMatch: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details
+        .upstreamBindingClientBindingEndpointMatch;
+    });
+  },
+  upstreamBindingClientBindingHosts: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.upstreamBindingClientBindingHosts;
+    });
+  },
+  upstreamBindingClientBindingMatch: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.upstreamBindingClientBindingMatch;
+    });
+  },
+  upstreamBindingClientId: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.upstreamBindingClientId;
+    });
+  },
+  upstreamBindingClientSockname: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.upstreamBindingClientSockname;
+    });
+  },
+  upstreamBindingDirectBindingHost: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.upstreamBindingDirectBindingHost;
+    });
+  },
+  upstreamBindingDirectBindingKinds: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.upstreamBindingDirectBindingKinds;
+    });
+  },
+  upstreamBindingDirectBindingPort: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.upstreamBindingDirectBindingPort;
+    });
+  },
+  upstreamBindingDirectBindingPresent: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.upstreamBindingDirectBindingPresent;
+    });
+  },
+  upstreamBindingReason: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.upstreamBindingReason;
+    });
+  },
+  upstreamBindingRequestHost: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.upstreamBindingRequestHost;
+    });
+  },
+  upstreamBindingRequestPort: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.upstreamBindingRequestPort;
+    });
+  },
+  upstreamBindingServerAddress: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.upstreamBindingServerAddress;
+    });
+  },
+  upstreamBindingServerConnected: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.upstreamBindingServerConnected;
+    });
+  },
+  upstreamBindingServerId: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.upstreamBindingServerId;
+    });
+  },
+  upstreamBindingServerPeername: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.upstreamBindingServerPeername;
+    });
+  },
+  upstreamBindingServerSockname: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.upstreamBindingServerSockname;
+    });
+  },
+  upstreamBindingTrustedHost: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.upstreamBindingTrustedHost;
+    });
+  },
+  url: () => {
+    return i18n.t(($) => {
+      return $.activity.network.details.url;
+    });
+  },
+});
+
+type NetworkDetailLabelKey = keyof typeof NETWORK_DETAIL_LABELS;
+
+function localizeNetworkDetailLabel(labelKey: NetworkDetailLabelKey): string {
+  return NETWORK_DETAIL_LABELS[labelKey]();
+}
+
 function addField(
   out: [string, string][],
   label: string,
@@ -357,18 +717,18 @@ function addField(
 // The exhaustive Record makes a new contract field fail type checking until
 // the UI either adds a detail formatter or explicitly delegates it.
 interface NetworkLogDetailDescriptor {
-  readonly label: string;
+  readonly labelKey: NetworkDetailLabelKey;
   readonly value: (entry: NetworkLogEntry) => unknown;
   readonly format: (entry: NetworkLogEntry) => string;
 }
 
 function detailField<K extends keyof NetworkLogEntry>(
-  label: string,
+  labelKey: NetworkDetailLabelKey,
   key: K,
   formatter: (value: NetworkLogEntry[K]) => string = formatValue,
 ): NetworkLogDetailDescriptor {
   return {
-    label,
+    labelKey,
     value: (entry) => {
       return entry[key];
     },
@@ -379,174 +739,183 @@ function detailField<K extends keyof NetworkLogEntry>(
 }
 
 const networkLogDetailFields = {
-  timestamp: detailField("Timestamp", "timestamp"),
-  type: detailField("Type", "type"),
-  action: detailField("Action", "action"),
-  method: detailField("Method", "method"),
-  url: detailField("URL", "url"),
-  host: detailField("Host", "host"),
-  port: detailField("Port", "port"),
-  status: detailField("Status", "status"),
-  latency_ms: detailField("Latency", "latency_ms", formatLatency),
-  request_size: detailField("Request Size", "request_size", formatSize),
-  response_size: detailField("Response Size", "response_size", formatSize),
-  browser_user_agent: detailField("Browser User-Agent", "browser_user_agent"),
+  timestamp: detailField("timestamp", "timestamp"),
+  type: detailField("type", "type"),
+  action: detailField("action", "action"),
+  method: detailField("method", "method"),
+  url: detailField("url", "url"),
+  host: detailField("host", "host"),
+  port: detailField("port", "port"),
+  status: detailField("status", "status"),
+  latency_ms: detailField("latency", "latency_ms", formatLatency),
+  request_size: detailField("requestSize", "request_size", formatSize),
+  response_size: detailField("responseSize", "response_size", formatSize),
+  browser_user_agent: detailField("browserUserAgent", "browser_user_agent"),
   model_catalog_cache_status: detailField(
-    "Model Catalog Cache Status",
+    "modelCatalogCacheStatus",
     "model_catalog_cache_status",
   ),
   model_catalog_cache_upstream_encoding: detailField(
-    "Model Catalog Upstream Encoding",
+    "modelCatalogUpstreamEncoding",
     "model_catalog_cache_upstream_encoding",
   ),
   model_catalog_cache_bypass_reason: detailField(
-    "Model Catalog Cache Bypass Reason",
+    "modelCatalogCacheBypassReason",
     "model_catalog_cache_bypass_reason",
   ),
   model_catalog_cache_entry_age_ms: detailField(
-    "Model Catalog Cache Entry Age",
+    "modelCatalogCacheEntryAge",
     "model_catalog_cache_entry_age_ms",
     formatLatency,
   ),
   model_catalog_cache_validation_latency_ms: detailField(
-    "Model Catalog Cache Validation Latency",
+    "modelCatalogCacheValidationLatency",
     "model_catalog_cache_validation_latency_ms",
     formatLatency,
   ),
   model_catalog_cache_eviction_count: detailField(
-    "Model Catalog Cache Eviction Count",
+    "modelCatalogCacheEvictionCount",
     "model_catalog_cache_eviction_count",
   ),
   model_catalog_prefetch_role: detailField(
-    "Model Catalog Prefetch Role",
+    "modelCatalogPrefetchRole",
     "model_catalog_prefetch_role",
   ),
-  dns_event: detailField("DNS Event", "dns_event"),
-  dns_query_type: detailField("DNS Query Type", "dns_query_type"),
-  dns_result: detailField("DNS Result", "dns_result"),
-  dns_serial: detailField("DNS Serial", "dns_serial"),
-  firewall_name: detailField("Firewall", "firewall_name"),
-  firewall_permission: detailField("Permission", "firewall_permission"),
-  firewall_rule_match: detailField("Rule Match", "firewall_rule_match"),
-  firewall_base: detailField("Base URL", "firewall_base"),
-  firewall_params: detailField("Params", "firewall_params", formatParams),
-  firewall_billable: detailField("Billable", "firewall_billable"),
-  firewall_error: detailField("Permission Error", "firewall_error"),
+  dns_event: detailField("dnsEvent", "dns_event"),
+  dns_query_type: detailField("dnsQueryType", "dns_query_type"),
+  dns_result: detailField("dnsResult", "dns_result"),
+  dns_serial: detailField("dnsSerial", "dns_serial"),
+  firewall_name: detailField("firewall", "firewall_name"),
+  firewall_permission: detailField("permission", "firewall_permission"),
+  firewall_rule_match: detailField("ruleMatch", "firewall_rule_match"),
+  firewall_base: detailField("baseUrl", "firewall_base"),
+  firewall_params: detailField("params", "firewall_params", formatParams),
+  firewall_billable: detailField("billable", "firewall_billable"),
+  firewall_error: detailField("permissionError", "firewall_error"),
   upstream_binding_reason: detailField(
-    "Upstream Binding Reason",
+    "upstreamBindingReason",
     "upstream_binding_reason",
   ),
   upstream_binding_trusted_host: detailField(
-    "Upstream Binding Trusted Host",
+    "upstreamBindingTrustedHost",
     "upstream_binding_trusted_host",
   ),
   upstream_binding_request_host: detailField(
-    "Upstream Binding Request Host",
+    "upstreamBindingRequestHost",
     "upstream_binding_request_host",
   ),
   upstream_binding_request_port: detailField(
-    "Upstream Binding Request Port",
+    "upstreamBindingRequestPort",
     "upstream_binding_request_port",
   ),
   upstream_binding_server_connected: detailField(
-    "Upstream Binding Server Connected",
+    "upstreamBindingServerConnected",
     "upstream_binding_server_connected",
   ),
   upstream_binding_server_address: detailField(
-    "Upstream Binding Server Address",
+    "upstreamBindingServerAddress",
     "upstream_binding_server_address",
   ),
   upstream_binding_server_peername: detailField(
-    "Upstream Binding Server Peername",
+    "upstreamBindingServerPeername",
     "upstream_binding_server_peername",
   ),
   upstream_binding_server_sockname: detailField(
-    "Upstream Binding Server Sockname",
+    "upstreamBindingServerSockname",
     "upstream_binding_server_sockname",
   ),
   upstream_binding_client_sockname: detailField(
-    "Upstream Binding Client Sockname",
+    "upstreamBindingClientSockname",
     "upstream_binding_client_sockname",
   ),
   upstream_binding_server_id: detailField(
-    "Upstream Binding Server ID",
+    "upstreamBindingServerId",
     "upstream_binding_server_id",
   ),
   upstream_binding_client_id: detailField(
-    "Upstream Binding Client ID",
+    "upstreamBindingClientId",
     "upstream_binding_client_id",
   ),
   upstream_binding_direct_binding_present: detailField(
-    "Upstream Direct Binding Present",
+    "upstreamBindingDirectBindingPresent",
     "upstream_binding_direct_binding_present",
   ),
   upstream_binding_direct_binding_host: detailField(
-    "Upstream Direct Binding Host",
+    "upstreamBindingDirectBindingHost",
     "upstream_binding_direct_binding_host",
   ),
   upstream_binding_direct_binding_port: detailField(
-    "Upstream Direct Binding Port",
+    "upstreamBindingDirectBindingPort",
     "upstream_binding_direct_binding_port",
   ),
   upstream_binding_direct_binding_kinds: detailField(
-    "Upstream Direct Binding Kinds",
+    "upstreamBindingDirectBindingKinds",
     "upstream_binding_direct_binding_kinds",
   ),
   upstream_binding_client_binding_count: detailField(
-    "Upstream Client Binding Count",
+    "upstreamBindingClientBindingCount",
     "upstream_binding_client_binding_count",
   ),
   upstream_binding_client_binding_match: detailField(
-    "Upstream Client Binding Match",
+    "upstreamBindingClientBindingMatch",
     "upstream_binding_client_binding_match",
   ),
   upstream_binding_client_binding_endpoint_match: detailField(
-    "Upstream Client Binding Endpoint Match",
+    "upstreamBindingClientBindingEndpointMatch",
     "upstream_binding_client_binding_endpoint_match",
   ),
   upstream_binding_client_binding_hosts: detailField(
-    "Upstream Client Binding Hosts",
+    "upstreamBindingClientBindingHosts",
     "upstream_binding_client_binding_hosts",
   ),
-  connector_diagnostic_type: detailField(
-    "Connector Diagnostic",
-    "connector_diagnostic_type",
-  ),
+  connector_diagnostic_slug: {
+    labelKey: "connectorDiagnostic",
+    value: (entry) => {
+      return entry.connector_diagnostic_slug ?? entry.connector_diagnostic_type;
+    },
+    format: (entry) => {
+      return formatValue(
+        entry.connector_diagnostic_slug ?? entry.connector_diagnostic_type,
+      );
+    },
+  },
+  // TODO(#23838): Remove after the diagnostic compatibility window.
+  connector_diagnostic_type: null,
   connector_diagnostic_reason: detailField(
-    "Connector Reason",
+    "connectorReason",
     "connector_diagnostic_reason",
   ),
   connector_diagnostic_env_names: detailField(
-    "Connector Env Names",
+    "connectorEnvNames",
     "connector_diagnostic_env_names",
   ),
   connector_diagnostic_base: detailField(
-    "Connector Base URL",
+    "connectorBaseUrl",
     "connector_diagnostic_base",
   ),
   connector_route_reason: detailField(
-    "Connector Route Reason",
+    "connectorRouteReason",
     "connector_route_reason",
   ),
   connector_route_candidates: detailField(
-    "Connector Route Candidates",
+    "connectorRouteCandidates",
     "connector_route_candidates",
   ),
   auth_resolved_secrets: detailField(
-    "Resolved Secrets",
+    "authResolvedSecrets",
     "auth_resolved_secrets",
   ),
   auth_refreshed_connectors: detailField(
-    "Refreshed Connectors",
+    "authRefreshedConnectors",
     "auth_refreshed_connectors",
   ),
   auth_refreshed_secrets: detailField(
-    "Refreshed Secrets",
+    "authRefreshedSecrets",
     "auth_refreshed_secrets",
   ),
-  auth_cache_hit: detailField("Cache Hit", "auth_cache_hit"),
-  auth_url_rewrite: detailField("URL Rewrite", "auth_url_rewrite"),
-  error: detailField("Error", "error"),
+  auth_cache_hit: detailField("authCacheHit", "auth_cache_hit"),
+  auth_url_rewrite: detailField("authUrlRewrite", "auth_url_rewrite"),
+  error: detailField("error", "error"),
   // CapturedBodySections renders these fields below the detail grid.
   request_headers: null,
   request_body: null,
@@ -564,7 +933,7 @@ function collectDetails(entry: NetworkLogEntry): [string, string][] {
     if (descriptor) {
       addField(
         out,
-        descriptor.label,
+        localizeNetworkDetailLabel(descriptor.labelKey),
         descriptor.value(entry),
         descriptor.format(entry),
       );
@@ -612,6 +981,7 @@ function NetworkLogRow({
   entry: NetworkLogEntry;
   rowKey: string;
 }) {
+  const { t } = useTranslation();
   const expandedRows = useGet(networkLogExpandedRows$);
   const toggleExpanded = useSet(toggleNetworkLogRowExpanded$);
   const expanded = expandedRows.has(rowKey);
@@ -659,7 +1029,9 @@ function NetworkLogRow({
             ) : null}
             {entry.browser_user_agent ? (
               <span className="shrink-0 font-mono text-muted-foreground">
-                browser
+                {t(($) => {
+                  return $.activity.network.browser;
+                })}
               </span>
             ) : null}
           </div>
@@ -685,6 +1057,7 @@ export function NetworkContent({
   loading?: boolean;
   onLoadMore?: () => void;
 }) {
+  const { t } = useTranslation();
   const typeFilter = useGet(networkLogTypeFilter$);
   const setTypeFilter = useSet(setNetworkLogTypeFilter$);
   const typeOptions = networkTypeOptions(networkLogs, typeFilter);
@@ -709,13 +1082,41 @@ export function NetworkContent({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[100px]">Time</TableHead>
-            <TableHead className="w-[60px]">Type</TableHead>
-            <TableHead className="w-[60px]">Method</TableHead>
-            <TableHead>URL / Host</TableHead>
-            <TableHead className="w-[60px]">Status</TableHead>
-            <TableHead className="w-[80px]">Latency</TableHead>
-            <TableHead className="w-[160px]">Permission</TableHead>
+            <TableHead className="w-[100px]">
+              {t(($) => {
+                return $.activity.network.headers.time;
+              })}
+            </TableHead>
+            <TableHead className="w-[60px]">
+              {t(($) => {
+                return $.activity.network.headers.type;
+              })}
+            </TableHead>
+            <TableHead className="w-[60px]">
+              {t(($) => {
+                return $.activity.network.headers.method;
+              })}
+            </TableHead>
+            <TableHead>
+              {t(($) => {
+                return $.activity.network.headers.urlHost;
+              })}
+            </TableHead>
+            <TableHead className="w-[60px]">
+              {t(($) => {
+                return $.activity.network.headers.status;
+              })}
+            </TableHead>
+            <TableHead className="w-[80px]">
+              {t(($) => {
+                return $.activity.network.headers.latency;
+              })}
+            </TableHead>
+            <TableHead className="w-[160px]">
+              {t(($) => {
+                return $.activity.network.headers.permission;
+              })}
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -725,7 +1126,9 @@ export function NetworkContent({
                 colSpan={7}
                 className="h-24 text-center text-sm text-muted-foreground"
               >
-                No matching logs in loaded results
+                {t(($) => {
+                  return $.activity.network.noMatchingLogs;
+                })}
               </td>
             </TableRow>
           ) : (
@@ -746,7 +1149,9 @@ export function NetworkContent({
               className="text-sm text-muted-foreground hover:text-foreground transition-colors"
               onClick={onLoadMore}
             >
-              Load more
+              {t(($) => {
+                return $.activity.network.loadMore;
+              })}
             </button>
           )}
         </div>

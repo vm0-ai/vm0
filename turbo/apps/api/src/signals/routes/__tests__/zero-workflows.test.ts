@@ -327,6 +327,7 @@ describe("zero workflows", () => {
     expect(response.body.connectors).toStrictEqual([
       {
         connectorRef: "gmail",
+        connectorSlug: "gmail",
         label: "Gmail",
         icon: {
           url: "https://static.vm0.io/test-fixtures/connectors/gmail.svg",
@@ -337,6 +338,7 @@ describe("zero workflows", () => {
       },
       {
         connectorRef: "runtime",
+        connectorSlug: "runtime",
         label: "Runtime",
         icon: {
           url: "https://static.vm0.io/test-fixtures/connectors/runtime.svg",
@@ -347,6 +349,7 @@ describe("zero workflows", () => {
       },
       {
         connectorRef: "gitlab",
+        connectorSlug: "gitlab",
         label: "GitLab",
         icon: {
           url: "https://static.vm0.io/test-fixtures/connectors/gitlab.svg",

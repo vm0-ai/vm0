@@ -780,12 +780,14 @@ const queryBuilderCases = {
     },
     {
       code: `${unnestUpdatePreamble}
-        import { sql } from "drizzle-orm";
+        import { eq, sql } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const target = alias(allowanceWindows, "target");
         await db.execute(sql\`
-          UPDATE \${allowanceWindows} AS target
+          UPDATE \${allowanceWindows} AS \${target}
           SET consumed_units = consumption.units_applied
           FROM unnest(\${sql.param(unitDeltas)}::bigint[]) AS consumption(units_applied)
-          WHERE target.id = consumption.window_id
+          WHERE \${eq(target.id, sql\`consumption.window_id\`)}
         \`);
         await db.execute(sql\`
           UPDATE \${allowanceWindows}
@@ -2259,6 +2261,21 @@ const queryBuilderCases = {
         await db.execute(query);
       `,
     },
+    {
+      code: `${structuredSelectionPreamble}
+        import { eq, max, sql } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const boundaryMessage = alias(messages, "boundary_message");
+        const boundary = db
+          .select({ id: max(boundaryMessage.id) })
+          .from(boundaryMessage)
+          .where(eq(boundaryMessage.userId, users.id));
+        db
+          .select()
+          .from(users)
+          .where(sql\`\${users.id} > COALESCE(\${boundary}, 0)\`);
+      `,
+    },
   ],
   readInvalid: [
     {
@@ -3513,6 +3530,23 @@ const queryBuilderCases = {
         { messageId: "structuredScalarQuery" },
         { messageId: "structuredScalarQuery" },
       ],
+    },
+    {
+      code: `${structuredSelectionPreamble}
+        import { eq, max, sql } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const boundaryMessage = alias(messages, "boundary_message");
+        const boundary = sql\`COALESCE((
+          SELECT \${max(boundaryMessage.id)}
+          FROM \${boundaryMessage}
+          WHERE \${eq(boundaryMessage.userId, users.id)}
+        ), 0)\`;
+        db
+          .select()
+          .from(users)
+          .where(sql\`boundary_matches(\${boundary})\`);
+      `,
+      errors: [{ messageId: "structuredScalarQuery" }],
     },
   ],
 } satisfies {

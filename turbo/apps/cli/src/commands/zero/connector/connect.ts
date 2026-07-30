@@ -55,8 +55,7 @@ function parseConnectorValues(rawValues: readonly string[] | undefined) {
 export const connectCommand = new Command()
   .name("connect")
   .description("Connect a connector with manual grant values")
-  // TODO(#23619): Rename this stable CLI argument label in the CLI rollout.
-  .argument("<type>", "Connector type (e.g., zendesk)")
+  .argument("<slug>", "Connector slug (e.g., zendesk)")
   .option("--auth-method <method>", "Connector auth method to use")
   .option(
     "--value <name=value>",
@@ -86,7 +85,7 @@ export const connectCommand = new Command()
         options.authMethod,
       );
       const connector = await connectZeroConnectorManualGrant(
-        connectorMetadata.connectorRef,
+        connectorMetadata.slug,
         authMethod.id,
         values,
       );
@@ -97,8 +96,8 @@ export const connectCommand = new Command()
       }
 
       console.log(chalk.green(`✓ ${connectorMetadata.label} connected`));
-      console.log(chalk.dim(`  Type: ${connector.type}`));
+      console.log(chalk.dim(`  Slug: ${connector.slug}`));
       console.log(chalk.dim(`  Auth Method: ${connector.authMethod}`));
-      console.log(chalk.dim(`  Run: zero connector status ${connector.type}`));
+      console.log(chalk.dim(`  Run: zero connector status ${connector.slug}`));
     }),
   );

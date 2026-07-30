@@ -28,7 +28,7 @@ import {
 import { settle, tapError } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import {
-  attachCanonicalAssetsToMessage,
+  attachCanonicalAssetsToEvent,
   materializeCanonicalSlackInputAssets$,
   type CanonicalSlackInputAsset,
 } from "./canonical-asset.service";
@@ -43,10 +43,10 @@ import {
   isSlackDirectMessageSessionThreadTs,
   slackSessionThreadTs,
 } from "./slack-chat-ingress.service";
-import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
+import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
-import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-message.service";
+import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-event.service";
 
 const L = logger("CanonicalSlackIngressProcessor");
 const PROCESSING_STALE_AFTER_MS = 5 * 60 * 1000;
@@ -354,7 +354,6 @@ async function persistCanonicalSlackMessage(
         id: args.ingress.ingressId,
         chatThreadId: args.chatThreadId,
         eventType: "input.prompt",
-        content: args.displayContent,
         userMessage: createUserMessageDocument({
           text: args.displayContent,
           files: args.canonicalAssets.map((asset) => {
@@ -377,7 +376,7 @@ async function persistCanonicalSlackMessage(
     if (!inserted) {
       throw new Error("Canonical Slack ingress message already exists");
     }
-    await attachCanonicalAssetsToMessage(
+    await attachCanonicalAssetsToEvent(
       tx,
       args.ingress.ingressId,
       args.canonicalAssets,

@@ -62,6 +62,12 @@ let internalMockedOrganization: {
 let internalMockedInvitations: MockedInvitation[] = [];
 let internalMockedMemberships: MockedMembership[] = [{ id: "org_default" }];
 let internalMockedClientSessions: MockedClientSession[] = [];
+let internalMockedClerkLoadOptions: MockedClerkLoadOptions = {};
+let internalMockedClerkLoaded = true;
+
+export function mockClerkLoaded(loaded: boolean): void {
+  internalMockedClerkLoaded = loaded;
+}
 
 export function mockUser(
   user: {
@@ -152,6 +158,8 @@ export function clearMockedAuth() {
   internalMockedInvitations = [];
   internalMockedMemberships = [{ id: "org_default" }];
   internalMockedClientSessions = [];
+  internalMockedClerkLoadOptions = {};
+  internalMockedClerkLoaded = true;
   clerkListeners.length = 0;
   mockedClerk.on = defaultClerkStatusOn;
   mockedClerk.signOut.mockReset();
@@ -173,6 +181,8 @@ export function clearMockedAuth() {
   });
   mockedClerk.buildUrlWithAuth.mockReset();
   mockedClerk.buildUrlWithAuth.mockImplementation(defaultBuildUrlWithAuthImpl);
+  mockedClerk.buildSignInUrl.mockReset();
+  mockedClerk.buildSignInUrl.mockImplementation(defaultBuildSignInUrlImpl);
   mockedClerk.initialize.mockReset();
 }
 
@@ -205,7 +215,40 @@ const clientSignInCreate = vi.fn(
 const defaultBuildUrlWithAuthImpl = (to: string) => {
   return to;
 };
-const defaultLoadImpl = () => {
+
+interface MockedClerkLoadOptions {
+  isSatellite?: boolean;
+  signInUrl?: string;
+}
+
+interface MockedSignInRedirectOptions {
+  redirectUrl?: string | null;
+}
+
+const defaultBuildSignInUrlImpl = (
+  options?: MockedSignInRedirectOptions,
+): string => {
+  if (!internalMockedClerkLoaded) {
+    return "";
+  }
+
+  const signInUrl = new URL(
+    internalMockedClerkLoadOptions.signInUrl ?? "/sign-in",
+    window.location.origin,
+  );
+  const redirectUrl = new URL(
+    options?.redirectUrl ?? window.location.href,
+    window.location.origin,
+  );
+  if (internalMockedClerkLoadOptions.isSatellite) {
+    redirectUrl.searchParams.set("__clerk_synced", "false");
+  }
+  signInUrl.searchParams.set("redirect_url", redirectUrl.toString());
+  return signInUrl.toString();
+};
+
+const defaultLoadImpl = (options?: MockedClerkLoadOptions) => {
+  internalMockedClerkLoadOptions = options ?? {};
   return Promise.resolve();
 };
 export const mockedClerkLoad = vi.fn<typeof defaultLoadImpl>(defaultLoadImpl);
@@ -251,6 +294,9 @@ interface MockedUserProfileOptions {
 
 export const mockedClerk = {
   initialize,
+  get loaded() {
+    return internalMockedClerkLoaded;
+  },
   get user() {
     return internalMockedUser;
   },
@@ -293,6 +339,9 @@ export const mockedClerk = {
     };
   },
   redirectToSignIn: vi.fn(),
+  buildSignInUrl: vi.fn<typeof defaultBuildSignInUrlImpl>(
+    defaultBuildSignInUrlImpl,
+  ),
   // Production-instance behavior: the URL passes through unchanged. Dev
   // instances append the __clerk_db_jwt session handoff parameter.
   buildUrlWithAuth: vi.fn(defaultBuildUrlWithAuthImpl),

@@ -49,7 +49,7 @@ async function connectGithub(actor: ApiTestUser): Promise<void> {
   });
 }
 
-describe("GET /api/zero/connectors/:type/scope-diff", () => {
+describe("GET /api/zero/connectors/:connectorSlug/scope-diff", () => {
   it("returns 401 when not authenticated", async () => {
     const response = await connectorsApi.requestScopeDiff(
       null,
@@ -87,7 +87,7 @@ describe("GET /api/zero/connectors/:type/scope-diff", () => {
     const client = setupApp({ context })(zeroConnectorScopeDiffContract);
     const response = await accept(
       client.getScopeDiff({
-        params: { type: "github" },
+        params: { connectorSlug: "github" },
         headers: { authorization: `Bearer ${token}` },
       }),
       [403],

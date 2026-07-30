@@ -430,7 +430,7 @@ describe("FW-3: billable firewall lease", () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedTestConnector(actor, {
-      connectorName: "test-oauth",
+      connectorSlug: "test-oauth",
       authMethod: "oauth",
       accessToken: "stale-access",
       refreshToken: "refresh-1",
@@ -627,7 +627,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedTestConnector(actor, {
-      connectorName: "test-oauth",
+      connectorSlug: "test-oauth",
       authMethod: "oauth",
       accessToken: "stale-access",
       refreshToken: "refresh-1",
@@ -672,7 +672,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedTestConnector(actor, {
-      connectorName: "test-oauth",
+      connectorSlug: "test-oauth",
       authMethod: "oauth",
       accessToken: "stale-access",
       refreshToken: "refresh-1",
@@ -708,7 +708,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedTestConnector(actor, {
-      connectorName: "test-oauth",
+      connectorSlug: "test-oauth",
       authMethod: "oauth",
       accessToken: "current-access",
       refreshToken: "refresh-1",
@@ -746,7 +746,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedTestConnector(actor, {
-      connectorName: "test-oauth",
+      connectorSlug: "test-oauth",
       authMethod: "oauth",
       accessToken: "db-access",
       refreshToken: "refresh-1",
@@ -847,7 +847,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedTestConnector(actor, {
-      connectorName: "test-oauth",
+      connectorSlug: "test-oauth",
       authMethod: "oauth",
       accessToken: "stale-access",
       refreshToken: "refresh-1",
@@ -913,7 +913,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedTestConnector(actor, {
-      connectorName: "test-oauth",
+      connectorSlug: "test-oauth",
       authMethod: "oauth",
       accessToken: "stale-access",
       refreshToken: "refresh-1",
@@ -980,7 +980,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     const { actor, headers } = await firewallRun();
     const longSubtype = `invalid_rapt:${"x".repeat(200)}`;
     await fw.seedTestConnector(actor, {
-      connectorName: "test-oauth",
+      connectorSlug: "test-oauth",
       authMethod: "oauth",
       accessToken: "stale-access",
       refreshToken: "refresh-1",
@@ -1043,7 +1043,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedTestConnector(actor, {
-      connectorName: "test-oauth",
+      connectorSlug: "test-oauth",
       authMethod: "oauth",
       accessToken: "stale-access",
       refreshToken: "refresh-1",
@@ -1093,7 +1093,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedTestConnector(actor, {
-      connectorName: "test-oauth",
+      connectorSlug: "test-oauth",
       authMethod: "oauth",
       accessToken: "stale-access",
       refreshToken: "refresh-1",
@@ -1136,7 +1136,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedTestConnector(actor, {
-      connectorName: "test-oauth",
+      connectorSlug: "test-oauth",
       authMethod: "oauth",
       accessToken: "stale-access",
       refreshToken: "refresh-1",
@@ -1170,7 +1170,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedTestConnector(actor, {
-      connectorName: "test-oauth",
+      connectorSlug: "test-oauth",
       authMethod: "oauth",
       accessToken: "stale-access",
       expiresIn: -60,
@@ -1222,7 +1222,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     });
     const { actor, headers } = await firewallRun();
     await fw.seedTestConnector(actor, {
-      connectorName: "test-oauth",
+      connectorSlug: "test-oauth",
       authMethod: "oauth",
       accessToken: "stale-access",
       refreshToken: "refresh-1",
@@ -1275,7 +1275,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedTestConnector(actor, {
-      connectorName: "test-oauth",
+      connectorSlug: "test-oauth",
       authMethod: "oauth",
       accessToken: "stale-access",
       refreshToken: "refresh-1",
@@ -1372,7 +1372,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedTestConnector(actor, {
-      connectorName: "test-oauth",
+      connectorSlug: "test-oauth",
       authMethod: "api",
       accessToken: "stale-api-access",
       refreshToken: "api-refresh-1",
@@ -1457,7 +1457,7 @@ describe("FW-7: client-unconfigured and mixed-reason refresh failures", () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedTestConnector(actor, {
-      connectorName: "notion",
+      connectorSlug: "notion",
       authMethod: "oauth",
       accessToken: "stale-notion",
       refreshToken: "notion-refresh",
@@ -1489,14 +1489,14 @@ describe("FW-7: client-unconfigured and mixed-reason refresh failures", () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedTestConnector(actor, {
-      connectorName: "notion",
+      connectorSlug: "notion",
       authMethod: "oauth",
       accessToken: "stale-notion",
       refreshToken: "notion-refresh",
       expiresIn: -60,
     });
     await fw.seedTestConnector(actor, {
-      connectorName: "test-oauth",
+      connectorSlug: "test-oauth",
       authMethod: "oauth",
       accessToken: "stale-access",
       refreshToken: "refresh-1",
@@ -1540,7 +1540,7 @@ describe("FW-8: static access tokens and unavailable sources", () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedTestConnector(actor, {
-      connectorName: "test-oauth-device",
+      connectorSlug: "test-oauth-device",
       authMethod: "oauth",
       accessToken: "stale-device",
       expiresIn: -60,
@@ -1562,7 +1562,7 @@ describe("FW-8: static access tokens and unavailable sources", () => {
     expect(expired.body.error.connectors).toStrictEqual(["test-oauth-device"]);
 
     await fw.seedTestConnector(actor, {
-      connectorName: "test-oauth-device",
+      connectorSlug: "test-oauth-device",
       authMethod: "oauth",
       accessToken: "current-device",
       expiresIn: 3600,
@@ -1579,7 +1579,7 @@ describe("FW-8: static access tokens and unavailable sources", () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedTestConnector(actor, {
-      connectorName: "test-oauth-device",
+      connectorSlug: "test-oauth-device",
       authMethod: "oauth",
       accessToken: "no-expiry-device",
     });
@@ -2053,7 +2053,7 @@ describe("FW-10: platform connector secrets", () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedTestConnector(actor, {
-      connectorName: "google-ads",
+      connectorSlug: "google-ads",
       authMethod: "oauth",
       accessToken: "google-ads-access",
       refreshToken: "google-ads-refresh",
@@ -2101,7 +2101,7 @@ describe("FW-10: platform connector secrets", () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedTestConnector(actor, {
-      connectorName: "google-ads",
+      connectorSlug: "google-ads",
       authMethod: "oauth",
       accessToken: "google-ads-access",
       refreshToken: "google-ads-refresh",
@@ -2139,7 +2139,7 @@ describe("FW-10: platform connector secrets", () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedTestConnector(actor, {
-      connectorName: "google-ads",
+      connectorSlug: "google-ads",
       authMethod: "oauth",
       accessToken: "google-ads-access",
       refreshToken: "google-ads-refresh",
@@ -2176,7 +2176,7 @@ describe("FW-10: platform connector secrets", () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
     await fw.seedTestConnector(actor, {
-      connectorName: "google-ads",
+      connectorSlug: "google-ads",
       authMethod: "oauth",
       accessToken: "google-ads-access",
       refreshToken: "google-ads-refresh",

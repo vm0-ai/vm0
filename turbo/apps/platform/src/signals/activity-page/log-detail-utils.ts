@@ -1,4 +1,5 @@
 import type { AgentEvent } from "../zero-page/log-types.ts";
+import { i18n } from "../../i18n/index.ts";
 import { normalizeCodexEventsForGrouping } from "./codex-activity-normalizer.ts";
 
 interface ToolResultContent {
@@ -71,7 +72,12 @@ function stringifyArrayJsonValue(
   if (value.length > MAX_STRINGIFY_ARRAY_ITEMS) {
     items.push(
       quoteJsonString(
-        `... ${value.length - MAX_STRINGIFY_ARRAY_ITEMS} more items`,
+        i18n.t(
+          ($) => {
+            return $.activity.events.moreItems;
+          },
+          { count: value.length - MAX_STRINGIFY_ARRAY_ITEMS },
+        ),
       ),
     );
   }
@@ -90,7 +96,13 @@ function stringifyObjectJsonValue(
       continue;
     }
     if (inspectedFields >= MAX_STRINGIFY_OBJECT_FIELDS) {
-      entries.push(`${quoteJsonString("...")}:${quoteJsonString("truncated")}`);
+      entries.push(
+        `${quoteJsonString("...")}:${quoteJsonString(
+          i18n.t(($) => {
+            return $.activity.events.truncated;
+          }),
+        )}`,
+      );
       break;
     }
     inspectedFields += 1;
@@ -782,7 +794,9 @@ function processToolResult(params: {
     toolOperations: [
       {
         toolUseId: toolUseId ?? fallbackToolUseIdValue,
-        toolName: "Unknown",
+        toolName: i18n.t(($) => {
+          return $.activity.events.unknownTool;
+        }),
         keyParam: "",
         input: {},
         result: {

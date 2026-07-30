@@ -116,9 +116,6 @@ function sourceGrant(method: ConnectorCatalogAuthMethod): ConnectorGrantSource {
 function validateConnectorSemantics(artifact: ConnectorCatalogArtifact): void {
   const catalogSource = catalogSourceSchema.parse({
     catalogVersion: artifact.catalogVersion,
-    connectorRefs: artifact.connectors.map((connector) => {
-      return connector.connectorRef;
-    }),
     categoryMetadata: artifact.categoryMetadata,
   });
   validateCatalogSourceSemantics(catalogSource);
@@ -134,18 +131,15 @@ function validateConnectorSemantics(artifact: ConnectorCatalogArtifact): void {
   const skillVersionOwners = new Map<string, string>();
 
   for (const connector of artifact.connectors) {
-    if (connector.connectorRef.startsWith(MODEL_PROVIDER_FIREWALL_PREFIX)) {
+    if (connector.slug.startsWith(MODEL_PROVIDER_FIREWALL_PREFIX)) {
       throw new Error(
-        `Connector catalog uses reserved ownership: ${connector.connectorRef}`,
+        `Connector catalog uses reserved ownership: ${connector.slug}`,
       );
     }
     if (!categoryIds.has(connector.category)) {
-      throw new Error(
-        `Unknown category for connector ${connector.connectorRef}`,
-      );
+      throw new Error(`Unknown category for connector ${connector.slug}`);
     }
     const source = connectorSourceSchema.parse({
-      ref: connector.connectorRef,
       label: connector.label,
       description: connector.description,
       category: connector.category,
@@ -168,47 +162,47 @@ function validateConnectorSemantics(artifact: ConnectorCatalogArtifact): void {
         };
       }),
     });
-    validateConnectorSourceSemantics(source);
+    validateConnectorSourceSemantics({
+      connectorSlug: connector.slug,
+      source,
+    });
 
     if (connector.skill.kind === "bundled") {
       const storageOwner = skillStorageOwners.get(connector.skill.storageName);
       if (storageOwner !== undefined) {
         throw new Error(
-          `Connector skill storage ${connector.skill.storageName} is claimed by ${storageOwner} and ${connector.connectorRef}`,
+          `Connector skill storage ${connector.skill.storageName} is claimed by ${storageOwner} and ${connector.slug}`,
         );
       }
-      skillStorageOwners.set(
-        connector.skill.storageName,
-        connector.connectorRef,
-      );
+      skillStorageOwners.set(connector.skill.storageName, connector.slug);
 
       const versionOwner = skillVersionOwners.get(connector.skill.versionId);
       if (versionOwner !== undefined) {
         throw new Error(
-          `Connector skill version ${connector.skill.versionId} is claimed by ${versionOwner} and ${connector.connectorRef}`,
+          `Connector skill version ${connector.skill.versionId} is claimed by ${versionOwner} and ${connector.slug}`,
         );
       }
-      skillVersionOwners.set(connector.skill.versionId, connector.connectorRef);
+      skillVersionOwners.set(connector.skill.versionId, connector.slug);
     }
 
     for (const method of connector.authMethods) {
       for (const secretName of method.storage.secrets) {
         const owner = secretOwners.get(secretName);
-        if (owner !== undefined && owner !== connector.connectorRef) {
+        if (owner !== undefined && owner !== connector.slug) {
           throw new Error(
-            `Connector storage secret ${secretName} is claimed by ${owner} and ${connector.connectorRef}`,
+            `Connector storage secret ${secretName} is claimed by ${owner} and ${connector.slug}`,
           );
         }
-        secretOwners.set(secretName, connector.connectorRef);
+        secretOwners.set(secretName, connector.slug);
       }
       for (const variableName of method.storage.variables) {
         const owner = variableOwners.get(variableName);
-        if (owner !== undefined && owner !== connector.connectorRef) {
+        if (owner !== undefined && owner !== connector.slug) {
           throw new Error(
-            `Connector storage variable ${variableName} is claimed by ${owner} and ${connector.connectorRef}`,
+            `Connector storage variable ${variableName} is claimed by ${owner} and ${connector.slug}`,
           );
         }
-        variableOwners.set(variableName, connector.connectorRef);
+        variableOwners.set(variableName, connector.slug);
       }
     }
   }
@@ -220,7 +214,7 @@ export function connectorCatalogFirewallConfig(
   return connector.firewall.kind === "none"
     ? null
     : {
-        name: connector.connectorRef,
+        name: connector.slug,
         ...connector.firewall.config,
       };
 }
@@ -352,22 +346,19 @@ function validateFirewallSemantics(artifact: ConnectorCatalogArtifact): void {
       throw new Error("Generated connector firewall is unavailable");
     }
     validateFirewallGeneratorResult({
-      connectorRef: connector.connectorRef,
       firewall,
       categories: connector.firewall.categories,
       defaultAllowed: connector.firewall.defaultAllowed,
       defaultUnknownPolicy: connector.firewall.defaultUnknownPolicy,
     });
     validateFirewallBindings({ connector, firewall });
-    validateBaseUrlTemplates(connector.connectorRef, firewall);
+    validateBaseUrlTemplates(connector.slug, firewall);
 
     const routing = deriveConnectorCatalogFirewallRouting(firewall);
     for (const rawHost of routing.fixedHosts) {
       const host = normalizeFirewallFixedHost(rawHost);
       if (!host) {
-        throw new Error(
-          `Firewall fixed host is invalid: ${connector.connectorRef}`,
-        );
+        throw new Error(`Firewall fixed host is invalid: ${connector.slug}`);
       }
     }
   }

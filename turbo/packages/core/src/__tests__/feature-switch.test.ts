@@ -12,9 +12,18 @@ import {
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.ZeroFinance, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.Artifacts, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.ImageStyleR2, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.VideoArtifactPosters, {})).toBe(
+      true,
+    );
+    expect(isFeatureEnabled(FeatureSwitchKey.LanguagePreference, {})).toBe(
+      true,
+    );
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.ComposerSkillSubstringSearch, {}),
+    ).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.SlackDmSessionRouting, {})).toBe(
       true,
     );
   });
@@ -35,22 +44,22 @@ describe("isFeatureEnabled", () => {
       false,
     );
     expect(isFeatureEnabled(FeatureSwitchKey.JoggAiConnector, {})).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.Artifacts, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.ComposerUploadPopover, {})).toBe(
       false,
     );
     expect(
       isFeatureEnabled(FeatureSwitchKey.StructuredPromptInlineTemplates, {}),
     ).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.LanguagePreference, {})).toBe(
-      false,
-    );
     expect(
       isFeatureEnabled(FeatureSwitchKey.ChatThreadSidebarAutoOpen, {}),
     ).toBe(false);
     expect(
       isFeatureEnabled(FeatureSwitchKey.BrazilianPortugueseLocale, {}),
     ).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.JapaneseLocale, {})).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.ZeroChatMessaging, {})).toBe(
+      false,
+    );
   });
 
   it("should return false for disabled switch with non-matching userId", () => {
@@ -122,13 +131,13 @@ describe("getAllFeatureStates", () => {
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.LanguagePreference]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.ZeroChatMessaging]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.LanguagePreference]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.BrazilianPortugueseLocale]).toBe(
       false,
     );
-    expect(staffOrgStates[FeatureSwitchKey.CodexSessionPruning]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.JapaneseLocale]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
@@ -137,7 +146,9 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ComposerSkillSubstringSearch]).toBe(
       true,
     );
+    expect(staffOrgStates[FeatureSwitchKey.SlackDmSessionRouting]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.Artifacts]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.HostedArtifactVersions]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ImageStyleR2]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
@@ -156,13 +167,13 @@ describe("getAllFeatureStates", () => {
       orgId: "org_nonexistent",
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ZeroFinance]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.LanguagePreference]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ZeroChatMessaging]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.LanguagePreference]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.BrazilianPortugueseLocale]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.CodexSessionPruning]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.JapaneseLocale]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
       false,
@@ -171,9 +182,11 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.ComposerSkillSubstringSearch]).toBe(
-      false,
+      true,
     );
-    expect(otherOrgStates[FeatureSwitchKey.Artifacts]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.SlackDmSessionRouting]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.Artifacts]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ImageStyleR2]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(
@@ -234,6 +247,9 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.BrazilianPortugueseLocale,
     );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.JapaneseLocale,
+    );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ZeroBrowser,
     );
@@ -245,9 +261,6 @@ describe("user-overridable switches", () => {
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.StructuredPromptInlineTemplates,
-    );
-    expect(getUserOverridableFeatureSwitchKeys()).toContain(
-      FeatureSwitchKey.ZeroFinance,
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ComposerConnectorPermissions,
@@ -263,6 +276,7 @@ describe("user-overridable switches", () => {
         [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
         [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
         [FeatureSwitchKey.BrazilianPortugueseLocale]: true,
+        [FeatureSwitchKey.JapaneseLocale]: true,
         [FeatureSwitchKey.ZeroBrowser]: true,
         [FeatureSwitchKey.ComposerConnectorPermissions]: true,
         [FeatureSwitchKey.Dummy]: false,

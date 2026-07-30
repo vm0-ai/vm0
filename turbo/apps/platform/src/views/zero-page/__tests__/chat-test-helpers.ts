@@ -794,7 +794,7 @@ export function mockChatLifecycle(
           return event.seqId === beforeSeqId;
         });
         if (beforeIndex <= 0) {
-          return respond(200, { events: [], hasHistoryBefore: false });
+          return respond(200, { events: [] });
         }
         const olderEvents = pagedEvents.slice(
           Math.max(0, beforeIndex - limit),
@@ -802,7 +802,6 @@ export function mockChatLifecycle(
         );
         return respond(200, {
           events: normalizeMockChatEvents(olderEvents.map(cloneMockChatEvent)),
-          hasHistoryBefore: beforeIndex - olderEvents.length > 0,
         });
       });
     }
@@ -842,7 +841,6 @@ export function mockChatLifecycle(
           .slice(Math.max(0, latestEvents.length - limit))
           .map(cloneMockChatEvent),
       ),
-      hasHistoryBefore: historyEvents.length > 0 || latestEvents.length > limit,
     };
     options?.afterInitialEventsList?.();
     return respond(200, body);

@@ -835,15 +835,16 @@ fn parse_network_policy_refresh_notification(
             return None;
         }
     };
-    // TODO(#23619): Rename this key with the realtime notification contract.
-    let Some(connector_slug) = msg
-        .data
-        .get("connectorRef")
-        .and_then(|v| v.as_str())
-        .filter(|value| !value.is_empty())
-    else {
-        warn!("ably: network-policy-refresh message missing connectorRef");
-        return None;
+    let connector_slug = match msg.data.get("connectorSlug") {
+        Some(serde_json::Value::String(value)) if !value.is_empty() => value,
+        Some(_) => {
+            warn!("ably: network-policy-refresh message has invalid connectorSlug");
+            return None;
+        }
+        None => {
+            warn!("ably: network-policy-refresh message missing connectorSlug");
+            return None;
+        }
     };
 
     Some(NetworkPolicyRefreshNotification {
@@ -1113,32 +1114,40 @@ mod tests {
 
     fn malformed_network_policy_refresh_messages(
         unrelated_name: &'static str,
-    ) -> [(&'static str, Option<&'static str>, serde_json::Value); 5] {
+    ) -> [(&'static str, Option<&'static str>, serde_json::Value); 6] {
         [
             (
                 "invalid runId",
                 Some("network-policy-refresh"),
                 serde_json::json!({
                     "runId": "not-a-uuid",
-                    "connectorRef": "github"
+                    "connectorSlug": "github"
                 }),
             ),
             (
                 "missing runId",
                 Some("network-policy-refresh"),
-                serde_json::json!({ "connectorRef": "github" }),
+                serde_json::json!({ "connectorSlug": "github" }),
             ),
             (
-                "missing connectorRef",
+                "missing connectorSlug",
                 Some("network-policy-refresh"),
                 serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000003" }),
             ),
             (
-                "empty connectorRef",
+                "empty connectorSlug",
                 Some("network-policy-refresh"),
                 serde_json::json!({
                     "runId": "00000000-0000-0000-0000-000000000003",
-                    "connectorRef": ""
+                    "connectorSlug": ""
+                }),
+            ),
+            (
+                "invalid connectorSlug",
+                Some("network-policy-refresh"),
+                serde_json::json!({
+                    "runId": "00000000-0000-0000-0000-000000000003",
+                    "connectorSlug": 1
                 }),
             ),
             (
@@ -1146,7 +1155,7 @@ mod tests {
                 Some(unrelated_name),
                 serde_json::json!({
                     "runId": "00000000-0000-0000-0000-000000000003",
-                    "connectorRef": "github"
+                    "connectorSlug": "github"
                 }),
             ),
         ]
@@ -2102,12 +2111,13 @@ mod tests {
     }
 
     #[test]
-    fn parse_network_policy_refresh_notification_valid() {
+    fn parse_network_policy_refresh_notification_ignores_additional_fields() {
         let msg = make_message(
             Some("network-policy-refresh"),
             serde_json::json!({
                 "runId": "00000000-0000-0000-0000-000000000003",
-                "connectorRef": "github"
+                "connectorSlug": "github",
+                "additionalField": true
             }),
         );
 

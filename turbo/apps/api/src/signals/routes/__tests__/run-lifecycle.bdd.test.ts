@@ -12,9 +12,15 @@ import {
   getVm0ConcreteProviderType,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
-import type { Job as RunnerJob } from "@vm0/api-contracts/contracts/runners";
+import {
+  NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+  type Job as RunnerJob,
+} from "@vm0/api-contracts/contracts/runners";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { getCustomSkillStorageName } from "@vm0/core/storage-names";
+import {
+  getCustomConnectorSkillStorageName,
+  getCustomSkillStorageName,
+} from "@vm0/core/storage-names";
 import {
   UNKNOWN_PERMISSION_GRANT,
   type ExecutionFirewallEntry,
@@ -60,10 +66,12 @@ import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createComposesBddApi } from "./helpers/api-bdd-composes";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
-import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
+import {
+  createConnectorBddApi,
+  mockCustomConnectorOAuth2Provider,
+} from "./helpers/api-bdd-connectors";
 import { createFirewallApi } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
-import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import {
   createRunsApi,
   expectCanonicalStorageManifest,
@@ -113,7 +121,7 @@ import {
 const context = testContext();
 const callbackStore = createStore();
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
-const ASSISTANT_MESSAGE_ID_NAMESPACE = "bfec4fb6-d5b8-43e4-a72a-9f58f87d7e01";
+const ASSISTANT_EVENT_ID_NAMESPACE = "bfec4fb6-d5b8-43e4-a72a-9f58f87d7e01";
 const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 
 function sessionAffinityProtectedUntil(
@@ -173,11 +181,11 @@ const CLAIM_ROUTE_TIMING_ACTION_TYPES = [
   ...CLAIM_ROUTE_TRANSITION_TIMING_ACTION_TYPES,
 ] as const;
 
-function assistantMessageIdForRunEvent(
+function assistantEventIdForRunEvent(
   runId: string,
   runEventId: string,
 ): string {
-  return uuidv5(`${runId}:${runEventId}`, ASSISTANT_MESSAGE_ID_NAMESPACE);
+  return uuidv5(`${runId}:${runEventId}`, ASSISTANT_EVENT_ID_NAMESPACE);
 }
 
 const RUNNER_POLL_TIMING_ACTION_TYPES = [
@@ -4941,99 +4949,55 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
   });
 });
 
-describe("RUN-01: zero run request validation and token boundaries", () => {
-  it("rejects invalid zero run requests and run-scoped tokens without agent-run:write", async () => {
+describe("RUN-01: zero run authorization and session boundaries", () => {
+  it("does not expose the removed Zero run creation route", async () => {
+    const actor = createBddApi(context).user();
+    await expect(
+      createRunsApi(context).requestRemovedZeroRunCreation(actor),
+    ).resolves.toBe(404);
+  });
+
+  it("accepts session and PAT cancellation while rejecting run-scoped tokens", async () => {
     const api = createRunsApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const { actor, agentId } = await entitledRunActor();
 
-    const unauthenticated = await api.requestCreateRun(
-      null,
-      { agentId: randomUUID(), prompt: "hello" },
-      [401],
-    );
-    expectApiError(unauthenticated.body);
-    expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
-
-    const missingAgent = await api.requestCreateRun(
-      actor,
-      { prompt: "hello" },
-      [400],
-    );
-    expectApiError(missingAgent.body);
-    expect(missingAgent.body.error.message).toBe("agentId is required");
-
-    const policiesRejected = await api.requestCreateRunUnchecked(
-      actor,
-      {
-        prompt: "hello",
-        agentId: randomUUID(),
-        permissionPolicies: { x: { policies: { "tweet.write": "allow" } } },
-      },
-      [400],
-    );
-    expectApiError(policiesRejected.body);
-    expect(policiesRejected.body.error.code).toBe("BAD_REQUEST");
-    expect(policiesRejected.body.error.message).toContain("permissionPolicies");
-
-    for (const tools of [[""], ["   "], ["Bash,Read"], ["--help"], [" -x"]]) {
-      const ambiguous = await api.requestCreateRun(
-        actor,
-        { prompt: "hello", agentId: randomUUID(), tools },
-        [400],
-      );
-      expectApiError(ambiguous.body);
-      expect(ambiguous.body.error.message).toContain("tools");
-      expect(ambiguous.body.error.message).toContain("Claude tool name");
-    }
-
-    const missingSession = await api.requestCreateRun(
-      actor,
-      { prompt: "hello", sessionId: randomUUID() },
-      [404],
-    );
-    expectApiError(missingSession.body);
-    expect(missingSession.body.error.message).toBe("Session not found");
-
-    // A claimed run exposes both run-scoped credentials: the agent-facing
-    // zero token (in the compose environment) and the sandbox webhook token.
-    // Neither carries agent-run:write, so nested run creation is forbidden.
-    const run = await api.createRun(actor, {
+    const sessionRun = await api.createRun(actor, {
       agentId,
-      prompt: "issue run-scoped credentials",
+      prompt: "cancel with a Clerk session",
       modelProvider: "anthropic-api-key",
     });
-    await api.heartbeatRunner(runnerGroup);
-    const claim = await api.claimRunnerJob(run.runId);
-    const zeroToken = claim.environment?.ZERO_TOKEN;
-    if (!zeroToken) {
-      throw new Error(
-        "Expected claim.environment.ZERO_TOKEN to carry the run-scoped zero token",
-      );
-    }
+    await api.requestCancelRun(actor, sessionRun.runId, [200]);
+    expect((await api.readRun(actor, sessionRun.runId)).status).toBe(
+      "cancelled",
+    );
 
-    const zeroTokenRejected = await api.requestCreateRunAs(
-      `Bearer ${zeroToken}`,
-      { agentId, prompt: "nested run" },
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "cancel with accepted credential types",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const sandboxDenied = await api.requestCancelRunAs(
+      `Bearer ${api.sandboxTokenForRun(actor, run.runId)}`,
+      run.runId,
       [403],
     );
-    expectApiError(zeroTokenRejected.body);
-    expect(zeroTokenRejected.body.error.message).toContain(
-      "Missing required capability: agent-run:write",
-    );
+    expectApiError(sandboxDenied.body);
+    expect((await api.readRun(actor, run.runId)).status).toBe("pending");
 
-    const sandboxRejected = await api.requestCreateRunAs(
-      `Bearer ${claim.sandboxToken}`,
-      { agentId, prompt: "nested run" },
+    const zeroDenied = await api.requestCancelRunAs(
+      `Bearer ${api.zeroTokenForRunWithCapabilities(actor, run.runId, [
+        "agent-run:read",
+      ])}`,
+      run.runId,
       [403],
     );
-    expectApiError(sandboxRejected.body);
-    expect(sandboxRejected.body.error.message).toContain(
-      "Missing required capability: agent-run:write",
-    );
+    expectApiError(zeroDenied.body);
+    expect((await api.readRun(actor, run.runId)).status).toBe("pending");
 
-    await api.requestCancelRun(actor, run.runId, [200]);
-    const cancelled = await api.readRun(actor, run.runId);
-    expect(cancelled.status).toBe("cancelled");
+    const pat = await api.createCliToken(actor);
+    await api.requestCancelRunAs(`Bearer ${pat.token}`, run.runId, [200]);
+    expect((await api.readRun(actor, run.runId)).status).toBe("cancelled");
   });
 
   it("limits private agents to their owner and infers the agent from a session", async () => {
@@ -5124,7 +5088,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     bdd.acceptAgentStorageWrites();
     api.acceptStorageDownloads();
     api.acceptTelemetryIngest();
-    api.configureRunnerGroup();
+    const runnerGroup = api.configureRunnerGroup();
 
     await upsertOrgPlanEntitlementFixture({
       orgId: STAFF_ORG_ID,
@@ -5167,6 +5131,15 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expectNoApiDispatchActions(apiDispatchTimingEventsForRun(run.runId), [
       "api_dispatch_check_org_tier",
     ]);
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const appendSystemPrompt = claim.appendSystemPrompt ?? "";
+    expect(claim.featureFlags).toMatchObject({
+      [FeatureSwitchKey.ZeroChatMessaging]: true,
+    });
+    expect(appendSystemPrompt).toContain("zero chat send");
+    expect(appendSystemPrompt).toContain("zero chat cancel");
+    expect(appendSystemPrompt).not.toContain("zero chat queued");
     await api.requestCancelRun(actor, run.runId, [200]);
 
     await upsertOrgPlanEntitlementFixture({
@@ -5895,7 +5868,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     await fw.seedTestConnector(actor, {
-      connectorName: "x",
+      connectorSlug: "x",
       authMethod: "oauth",
       accessToken: "x-bdd-unallowed-access",
       refreshToken: "x-bdd-unallowed-refresh",
@@ -5935,7 +5908,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
 
     await fw.seedTestConnector(actor, {
-      connectorName: "x",
+      connectorSlug: "x",
       authMethod: "oauth",
       accessToken: "x-bdd-direct-unallowed-access",
       refreshToken: "x-bdd-direct-unallowed-refresh",
@@ -5986,7 +5959,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     }
 
     await fw.seedTestConnector(actor, {
-      connectorName: "x",
+      connectorSlug: "x",
       authMethod: "oauth",
       accessToken: "x-bdd-version-unallowed-access",
       refreshToken: "x-bdd-version-unallowed-refresh",
@@ -6046,7 +6019,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
 
     await fw.seedTestConnector(actor, {
-      connectorName: "x",
+      connectorSlug: "x",
       authMethod: "oauth",
       accessToken: "x-bdd-public-owner-access",
       refreshToken: "x-bdd-public-owner-refresh",
@@ -6079,13 +6052,13 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     await fw.seedTestConnector(actor, {
-      connectorName: "x",
+      connectorSlug: "x",
       authMethod: "oauth",
       accessToken: "x-bdd-access",
       refreshToken: "x-bdd-refresh",
     });
     await fw.seedTestConnector(actor, {
-      connectorName: "slack",
+      connectorSlug: "slack",
       authMethod: "oauth",
       accessToken: "xoxb-bdd-unenabled-access",
     });
@@ -6202,7 +6175,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     await api.grantProEntitlement(actor);
 
     await fw.seedTestConnector(actor, {
-      connectorName: "x",
+      connectorSlug: "x",
       authMethod: "oauth",
       accessToken: "x-bdd-overridden-access",
       refreshToken: "x-bdd-overridden-refresh",
@@ -6358,7 +6331,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     await api.grantProEntitlement(actor);
 
     await fw.seedTestConnector(actor, {
-      connectorName: "test-oauth",
+      connectorSlug: "test-oauth",
       authMethod: "oauth",
       accessToken: "test-oauth-bdd-access",
       refreshToken: "test-oauth-bdd-refresh",
@@ -6407,7 +6380,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     await api.grantProEntitlement(actor);
 
     await fw.seedTestConnector(actor, {
-      connectorName: "test-oauth",
+      connectorSlug: "test-oauth",
       authMethod: "oauth",
       accessToken: "incompatible-access",
       refreshToken: "incompatible-refresh",
@@ -6501,13 +6474,13 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
 
     await fw.seedTestConnector(actor, {
-      connectorName: "x",
+      connectorSlug: "x",
       authMethod: "oauth",
       accessToken: "x-bdd-direct-access",
       refreshToken: "x-bdd-direct-refresh",
     });
     await fw.seedTestConnector(actor, {
-      connectorName: "slack",
+      connectorSlug: "slack",
       authMethod: "oauth",
       accessToken: "xoxb-bdd-direct-unenabled-access",
     });
@@ -6613,7 +6586,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const { actor, agentId } = await entitledRunActor();
 
     await fw.seedTestConnector(actor, {
-      connectorName: "x",
+      connectorSlug: "x",
       authMethod: "oauth",
       accessToken: "x-bdd-lazy-access",
       refreshToken: "x-bdd-lazy-refresh",
@@ -6746,7 +6719,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     );
 
     await fw.seedTestConnector(actor, {
-      connectorName: "google-ads",
+      connectorSlug: "google-ads",
       authMethod: "oauth",
       accessToken: "google-ads-bdd-access",
       refreshToken: "google-ads-bdd-refresh",
@@ -6837,7 +6810,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     mockOptionalEnv("GOOGLE_ADS_DEVELOPER_TOKEN", "platform-developer-token");
 
     await fw.seedTestConnector(actor, {
-      connectorName: "google-ads",
+      connectorSlug: "google-ads",
       authMethod: "oauth",
       accessToken: "google-ads-bdd-access",
       refreshToken: "google-ads-bdd-refresh",
@@ -7109,7 +7082,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
 });
 
 describe("RUN-02: custom connectors, grants, and network policies", () => {
-  it("preserves global fixed-host ownership after selected firewall metadata is used", async () => {
+  it("lets an enabled custom connector override a connected built-in connector", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -7125,35 +7098,93 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     await api.enableAgentConnectors(actor, agentId, ["figma"]);
 
+    const custom = await connectors.createCustomConnector(actor, {
+      slug: `_figma-override-${randomUUID().slice(0, 8)}`,
+      displayName: "Custom Figma",
+      prefixes: ["https://api.figma.com/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+    await connectors.setCustomConnectorSecret(
+      actor,
+      custom.id,
+      "custom-figma-token",
+    );
+    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+
     const run = await api.createRun(actor, {
       agentId,
-      prompt: "use selected connector metadata before a global lookup",
+      prompt: "use the custom connector instead of the built-in connector",
       modelProvider: "anthropic-api-key",
     });
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
+    const internalName = `custom_connector_${custom.id.replaceAll("-", "")}`;
+    expect(findFirewallEntry(claim.firewalls, "figma")).toBeUndefined();
+    expect(inlineFirewallApis(claim.firewalls, internalName)).toMatchObject([
+      {
+        base: "https://api.figma.com/",
+      },
+    ]);
+    expect(claim.networkPolicies ?? {}).not.toHaveProperty("figma");
+    expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("allow");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    expect((await api.readRun(actor, run.runId)).status).toBe("cancelled");
+    await connectors.deleteCustomConnector(actor, custom.id);
+  });
+
+  it("keeps a built-in connector when a custom connector only overrides a narrower path", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await connectors.connectManualGrant(
+      actor,
+      "figma",
+      "api-token",
+      {
+        accessToken: "selected-figma-token",
+      },
+      agentId,
+    );
+    await api.enableAgentConnectors(actor, agentId, ["figma"]);
+
+    const custom = await connectors.createCustomConnector(actor, {
+      slug: `_figma-files-${randomUUID().slice(0, 8)}`,
+      displayName: "Custom Figma Files",
+      prefixes: ["https://api.figma.com/v1/files/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+    await connectors.setCustomConnectorSecret(
+      actor,
+      custom.id,
+      "custom-figma-files-token",
+    );
+    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use custom auth for Figma files and built-in auth elsewhere",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const internalName = `custom_connector_${custom.id.replaceAll("-", "")}`;
     expect(findFirewallEntry(claim.firewalls, "figma")).toMatchObject({
       kind: "builtin",
       name: "figma",
     });
-
-    const collision = await connectors.requestCreateCustomConnector(
-      actor,
+    expect(inlineFirewallApis(claim.firewalls, internalName)).toMatchObject([
       {
-        slug: `lazy-global-${randomUUID().slice(0, 8)}`,
-        displayName: "Lazy Global Collision",
-        prefixes: ["https://api.github.com/v3/"],
-        headerName: "Authorization",
-        headerTemplate: "Bearer {{secret}}",
+        base: "https://api.figma.com/v1/files/",
       },
-      [400],
-    );
-    expectApiError(collision.body);
-    expect(collision.body.error.message).toContain("api.github.com");
-    expect(collision.body.error.message).toContain("GitHub");
+    ]);
 
     await api.requestCancelRun(actor, run.runId, [200]);
     expect((await api.readRun(actor, run.runId)).status).toBe("cancelled");
+    await connectors.deleteCustomConnector(actor, custom.id);
   });
 
   it("injects enabled custom connector firewalls with resolvable org secrets", async () => {
@@ -7162,7 +7193,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
-    const slug = `bdd-internal-${randomUUID().slice(0, 8)}`;
+    const slug = `_bdd-internal-${randomUUID().slice(0, 8)}`;
     const custom = await connectors.createCustomConnector(actor, {
       slug,
       displayName: "BDD Internal API",
@@ -7232,6 +7263,296 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("enforces custom connector permission grants and mounts its generated skill", async () => {
+    const api = createRunsApi(context);
+    createBddApi(context).acceptAgentStorageWrites();
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const slug = `_bdd-permission-skill-${randomUUID().slice(0, 8)}`;
+    const custom = await connectors.createCustomConnector(actor, {
+      slug,
+      displayName: "BDD Permissioned API",
+      prefixes: ["https://permissioned.example.test/api/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+      permissionBundleRef: "builtin:slack@1",
+      skillMarkdown: "Use the selected Slack-compatible operations only.",
+    });
+    await connectors.setCustomConnectorSecret(
+      actor,
+      custom.id,
+      "permissioned-custom-secret",
+    );
+    const grant = {
+      customConnectorId: custom.id,
+      permissionNames: ["chat:write"],
+    };
+    const grantResponse =
+      await connectors.requestUpdateAgentCustomConnectorGrants(
+        actor,
+        agentId,
+        [grant],
+        [200],
+      );
+    if (grantResponse.status !== 200) {
+      throw new Error("Expected custom connector permission grant to succeed");
+    }
+    expect(grantResponse.body.grants).toStrictEqual([grant]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use only the authorized custom connector operation",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const internalName = `custom_connector_${custom.id.replaceAll("-", "")}`;
+    const customApis = inlineFirewallApis(claim.firewalls, internalName);
+    expect(customApis[0]?.permissions).toStrictEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "chat:write" })]),
+    );
+    expect(claim.networkPolicies?.[internalName]?.allow).toContain(
+      "chat:write",
+    );
+    expect(claim.networkPolicies?.[internalName]?.deny.length).toBeGreaterThan(
+      0,
+    );
+    expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("deny");
+
+    const skillMount = expectCanonicalStorageManifest(
+      claim.storageManifest,
+    )?.storageMounts.find((storage) => {
+      return storage.name === getCustomConnectorSkillStorageName(custom.id);
+    });
+    expect(skillMount?.mountPath).toBe(
+      `/home/user/.claude/skills/custom-${slug.slice(1, 49)}-${custom.id.replaceAll("-", "").slice(0, 8)}`,
+    );
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    expect((await api.readRun(actor, run.runId)).status).toBe("cancelled");
+  });
+
+  it("serializes and injects custom connector OAuth 2.0 refreshes", async () => {
+    const provider = mockCustomConnectorOAuth2Provider(context, {
+      initialExpiresIn: 3600,
+      refreshResponse: (attempt) => {
+        if (attempt > 1) {
+          return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
+        }
+        return HttpResponse.json({
+          access_token: "custom-oauth-refreshed-access-token",
+          refresh_token: "custom-oauth-rotated-refresh-token",
+          token_type: "Bearer",
+          expires_in: 3600,
+        });
+      },
+    });
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.CustomConnectorOAuth2]: true,
+    });
+    const custom = await connectors.createCustomConnector(actor, {
+      displayName: "BDD OAuth 2.0 Runtime API",
+      prefixTemplates: ["https://oauth-runtime.example.test/api/"],
+      fields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "oauth",
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "runtime-client-id",
+        clientSecret: "runtime-client-secret",
+        authorizationUrl: provider.authorizationUrl,
+        tokenUrl: provider.tokenUrl,
+        tokenEndpointAuthMethod: "client_secret_basic",
+        pkceMethod: "none",
+        scopes: ["read"],
+        authorizationParams: {},
+      },
+    });
+    const authorizationUrl = await connectors.startCustomConnectorOAuth2(
+      actor,
+      custom.id,
+    );
+    const state = new URL(authorizationUrl).searchParams.get("state");
+    if (!state) {
+      throw new Error("Expected custom connector OAuth state");
+    }
+    await connectors.completeCustomConnectorOAuth2Callback({
+      code: "runtime-authorization-code",
+      state,
+    });
+    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the OAuth custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    const expectedBasicAuthorization = `Basic ${Buffer.from(
+      "runtime-client-id:runtime-client-secret",
+      "utf8",
+    ).toString("base64")}`;
+    expect(provider.tokenBodies).toHaveLength(1);
+    expect(provider.authorizationHeaders).toStrictEqual([
+      expectedBasicAuthorization,
+    ]);
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const internalName = `custom_connector_${custom.id.replaceAll("-", "")}`;
+    const secretKey = `CUSTOM_${custom.id.replaceAll("-", "")}_S___OAUTH_ACCESS_TOKEN`;
+    const customApis = inlineFirewallApis(claim.firewalls, internalName);
+    expect(customApis).toHaveLength(1);
+    expect(customApis[0]?.auth?.headers?.Authorization).toBe(
+      `Bearer \${{ secrets.${secretKey} }}`,
+    );
+    expect(claim.secretValues).not.toContain(
+      "Bearer custom-oauth-initial-access-token",
+    );
+
+    mockNow(now() + 2 * 3_600_000);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    const [firstResolved, secondResolved] = await Promise.all([
+      fw.requestFirewallAuth(
+        { authorization: `Bearer ${claim.sandboxToken}` },
+        {
+          encryptedSecrets: fw.encryptedSecretsBody({}),
+          authHeaders: {
+            Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+          },
+        },
+        [200],
+      ),
+      fw.requestFirewallAuth(
+        { authorization: `Bearer ${claim.sandboxToken}` },
+        {
+          encryptedSecrets: fw.encryptedSecretsBody({}),
+          authHeaders: {
+            Authorization: `Bearer \${{ secrets.${secretKey} }}`,
+          },
+        },
+        [200],
+      ),
+    ]);
+    for (const resolved of [firstResolved, secondResolved]) {
+      if (resolved.status !== 200) {
+        throw new Error("Expected custom OAuth firewall auth to resolve");
+      }
+      expect(resolved.body.headers).toStrictEqual({
+        Authorization: "Bearer custom-oauth-refreshed-access-token",
+      });
+    }
+    expect(
+      provider.tokenBodies.map((body) => {
+        return body.get("grant_type");
+      }),
+    ).toStrictEqual(["authorization_code", "refresh_token"]);
+    expect(provider.tokenBodies[1]?.get("refresh_token")).toBe(
+      "custom-oauth-refresh-token",
+    );
+    expect(provider.authorizationHeaders).toStrictEqual([
+      expectedBasicAuthorization,
+      expectedBasicAuthorization,
+    ]);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("marks a custom OAuth connection for reconnect after invalid_grant", async () => {
+    const provider = mockCustomConnectorOAuth2Provider(context, {
+      refreshResponse: () => {
+        return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
+      },
+    });
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.CustomConnectorOAuth2]: true,
+    });
+    const custom = await connectors.createCustomConnector(actor, {
+      displayName: "BDD Revoked OAuth 2.0 Runtime API",
+      prefixTemplates: ["https://revoked-oauth.example.test/api/"],
+      fields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "oauth",
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "revoked-runtime-client-id",
+        clientSecret: "revoked-runtime-client-secret",
+        authorizationUrl: provider.authorizationUrl,
+        tokenUrl: provider.tokenUrl,
+        tokenEndpointAuthMethod: "client_secret_basic",
+        pkceMethod: "none",
+        scopes: ["read"],
+        authorizationParams: {},
+      },
+    });
+    const authorizationUrl = await connectors.startCustomConnectorOAuth2(
+      actor,
+      custom.id,
+    );
+    const state = new URL(authorizationUrl).searchParams.get("state");
+    if (!state) {
+      throw new Error("Expected custom connector OAuth state");
+    }
+    await connectors.completeCustomConnectorOAuth2Callback({
+      code: "revoked-runtime-authorization-code",
+      state,
+    });
+    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+
+    const firstRun = await api.createRun(actor, {
+      agentId,
+      prompt: "use the revoked OAuth custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(
+      provider.tokenBodies.map((body) => {
+        return body.get("grant_type");
+      }),
+    ).toStrictEqual(["authorization_code", "refresh_token"]);
+
+    const customConnectors = await connectors.listCustomConnectors(actor);
+    expect(
+      customConnectors.find((connector) => {
+        return connector.id === custom.id;
+      }),
+    ).toMatchObject({
+      connected: false,
+      missingRequiredFields: ["oauth"],
+    });
+
+    const secondRun = await api.createRun(actor, {
+      agentId,
+      prompt: "do not retry the revoked OAuth custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(provider.tokenBodies).toHaveLength(2);
+
+    await api.requestCancelRun(actor, firstRun.runId, [200]);
+    await api.requestCancelRun(actor, secondRun.runId, [200]);
   });
 
   it("resolves custom connector auth from run-scoped refs when encrypted secrets omit aliases", async () => {
@@ -7381,7 +7702,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
 
-    const allowedSlug = `bdd-direct-internal-${randomUUID().slice(0, 8)}`;
+    const allowedSlug = `_bdd-direct-internal-${randomUUID().slice(0, 8)}`;
     const allowed = await connectors.createCustomConnector(actor, {
       slug: allowedSlug,
       displayName: "BDD Direct Internal API",
@@ -7395,7 +7716,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       "direct-custom-secret-value",
     );
 
-    const blockedSlug = `bdd-direct-blocked-${randomUUID().slice(0, 8)}`;
+    const blockedSlug = `_bdd-direct-blocked-${randomUUID().slice(0, 8)}`;
     const blocked = await connectors.createCustomConnector(actor, {
       slug: blockedSlug,
       displayName: "BDD Direct Blocked API",
@@ -7721,7 +8042,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const { actor, agentId } = await entitledRunActor();
     const secret = "legacy-invalid-host-secret";
     const custom = await connectors.createCustomConnector(actor, {
-      slug: `bdd-legacy-host-${randomUUID().slice(0, 8)}`,
+      slug: `_bdd-legacy-host-${randomUUID().slice(0, 8)}`,
       displayName: "BDD Legacy Invalid Host",
       prefixes: ["https://valid.example.test/v1/"],
       headerName: "Authorization",
@@ -7768,7 +8089,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
 
     // Built-in connector-owned vars must not leak into custom connector bases.
-    const slug = `bdd-vars-${randomUUID().slice(0, 8)}`;
+    const slug = `_bdd-vars-${randomUUID().slice(0, 8)}`;
     const custom = await connectors.createCustomConnector(actor, {
       slug,
       displayName: "BDD Vars Custom",
@@ -7840,7 +8161,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     const agentId = agent.agentId;
     await fw.seedTestConnector(actor, {
-      connectorName: "slack",
+      connectorSlug: "slack",
       authMethod: "oauth",
       accessToken: "xoxb-bdd-baseline",
     });
@@ -7929,7 +8250,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       displayName: "BDD permission baseline fallback agent",
     });
     await fw.seedTestConnector(actor, {
-      connectorName: "slack",
+      connectorSlug: "slack",
       authMethod: "oauth",
       accessToken: "xoxb-bdd-baseline-fallback",
     });
@@ -7999,7 +8320,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     const agentId = agent.agentId;
     await fw.seedTestConnector(actor, {
-      connectorName: "slack",
+      connectorSlug: "slack",
       authMethod: "oauth",
       accessToken: "xoxb-bdd-grants",
     });
@@ -8169,7 +8490,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const sameUserRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
       `Bearer ${actorRunnerKey.token}`,
       snapshotRun.runId,
-      "slack",
+      { connectorSlugs: ["slack"] },
       [200],
     );
     if (sameUserRefresh.status !== 200) {
@@ -8178,10 +8499,13 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(sameUserRefresh.body.refreshes[0]?.networkPolicy.deny).toContain(
       "chat:write",
     );
+    expect(sameUserRefresh.body.refreshes[0]).toMatchObject({
+      connectorSlug: "slack",
+    });
     const otherUserRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
       `Bearer ${memberRunnerKey.token}`,
       snapshotRun.runId,
-      "slack",
+      { connectorSlugs: ["slack"] },
       [403],
     );
     if (otherUserRefresh.status !== 403) {
@@ -8201,7 +8525,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "network-policy-refresh",
-      { runId: snapshotRun.runId, connectorRef: "slack" },
+      {
+        runId: snapshotRun.runId,
+        connectorSlug: "slack",
+      },
     );
     const refreshedPolicy = await api.refreshRunnerNetworkPolicy(
       snapshotRun.runId,
@@ -8228,8 +8555,155 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(failedRefreshNotification.status).toBe(500);
 
     await api.requestCancelRun(actor, snapshotRun.runId, [200]);
+    const cancelledRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
+      `Bearer ${actorRunnerKey.token}`,
+      snapshotRun.runId,
+      { connectorSlugs: ["slack"] },
+      [409],
+    );
+    expect(cancelledRefresh.body.error.code).toBe(
+      NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+    );
     const drained = await api.readRunQueue(actor);
     expect(drained.body.concurrency.active).toBe(0);
+  });
+
+  it("distinguishes a terminal policy refresh from missing runs", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const member = createBddApi(context).user({
+      orgId: actor.orgId,
+      orgRole: "org:member",
+    });
+    await api.heartbeatRunner(runnerGroup);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "complete before runner policy cleanup",
+      modelProvider: "anthropic-api-key",
+    });
+    const claim = await api.claimRunnerJob(run.runId);
+    const history = `terminal refresh history ${run.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    mockSessionHistoryBlob(historyHash, history);
+    const sandboxHeaders = {
+      authorization: `Bearer ${claim.sandboxToken}`,
+    };
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: run.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `terminal-refresh-${run.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      sandboxHeaders,
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
+      sandboxHeaders,
+      [200],
+    );
+    expect((await api.readRun(actor, run.runId)).status).toBe("completed");
+
+    const actorRunnerKey = await api.createCliToken(actor);
+    const memberRunnerKey = await api.createCliToken(member);
+    const body = { connectorSlugs: ["slack"] };
+    const sameUserRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
+      `Bearer ${actorRunnerKey.token}`,
+      run.runId,
+      body,
+      [409],
+    );
+    expect(sameUserRefresh.body.error).toStrictEqual({
+      code: NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+      message: "Run is terminal",
+    });
+    const officialRefresh = await api.requestRefreshRunnerNetworkPolicy(
+      run.runId,
+      body,
+      [409],
+    );
+    expect(officialRefresh.body.error.code).toBe(
+      NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+    );
+
+    const foreignRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
+      `Bearer ${memberRunnerKey.token}`,
+      run.runId,
+      body,
+      [404],
+    );
+    expect(foreignRefresh.body.error.code).toBe("NOT_FOUND");
+    const missingRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
+      `Bearer ${actorRunnerKey.token}`,
+      randomUUID(),
+      body,
+      [404],
+    );
+    expect(missingRefresh.body.error.code).toBe("NOT_FOUND");
+
+    const failedRun = await api.createRun(actor, {
+      agentId,
+      prompt: "fail before runner policy cleanup",
+      modelProvider: "anthropic-api-key",
+    });
+    const failedClaim = await api.claimRunnerJob(failedRun.runId);
+    await webhooks.requestAgentComplete(
+      {
+        runId: failedRun.runId,
+        exitCode: 1,
+        error: "terminal refresh failure fixture",
+        lastEventSequence: 0,
+      },
+      { authorization: `Bearer ${failedClaim.sandboxToken}` },
+      [200],
+    );
+    expect((await api.readRun(actor, failedRun.runId)).status).toBe("failed");
+    const failedRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
+      `Bearer ${actorRunnerKey.token}`,
+      failedRun.runId,
+      body,
+      [409],
+    );
+    expect(failedRefresh.body.error.code).toBe(
+      NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+    );
+  });
+
+  it("does not classify queued or pending runs as terminal", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const runnerKey = await api.createCliToken(actor);
+    const createNonTerminalRun = async (prompt: string) => {
+      return await api.createRun(actor, {
+        agentId,
+        prompt,
+        modelProvider: "anthropic-api-key",
+      });
+    };
+
+    const firstPending = await createNonTerminalRun("pending refresh one");
+    const secondPending = await createNonTerminalRun("pending refresh two");
+    const queued = await createNonTerminalRun("queued refresh");
+    expect(firstPending.status).toBe("pending");
+    expect(secondPending.status).toBe("pending");
+    expect(queued.status).toBe("queued");
+
+    for (const run of [firstPending, secondPending, queued]) {
+      const refresh = await api.requestRefreshRunnerNetworkPolicyAs(
+        `Bearer ${runnerKey.token}`,
+        run.runId,
+        { connectorSlugs: ["slack"] },
+        [404],
+      );
+      expect(refresh.body.error.code).toBe("NOT_FOUND");
+    }
+
+    await api.requestCancelRun(actor, queued.runId, [200]);
+    await api.requestCancelRun(actor, secondPending.runId, [200]);
+    await api.requestCancelRun(actor, firstPending.runId, [200]);
   });
 
   it("records co-occurring resume and policy response timing", async () => {
@@ -8239,7 +8713,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     await fw.seedTestConnector(actor, {
-      connectorName: "slack",
+      connectorSlug: "slack",
       authMethod: "oauth",
       accessToken: "xoxb-bdd-claim-response-timing",
     });
@@ -8335,7 +8809,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const authOrg = createAuthOrgAgentsBddApi(context);
     const api = createRunsApi(context);
     const fw = createFirewallApi(context);
-    const reads = createRunReadsApi(context);
     const foreignActor = bdd.user();
     const actor = bdd.user();
 
@@ -8384,7 +8857,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.grantProEntitlement(actor);
     await api.ensureOrgModelProvider(actor);
     await fw.seedTestConnector(actor, {
-      connectorName: "slack",
+      connectorSlug: "slack",
       authMethod: "oauth",
       accessToken: "xoxb-bdd-shared-version",
     });
@@ -8441,7 +8914,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "network-policy-refresh",
-      { runId: parent.runId, connectorRef: "slack" },
+      {
+        runId: parent.runId,
+        connectorSlug: "slack",
+      },
     );
 
     const refreshed = await api.refreshRunnerNetworkPolicy(
@@ -8452,37 +8928,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(refreshed.networkPolicy.allow).toContain("files:write");
     expect(refreshed.networkPolicy.deny).not.toContain("files:write");
 
-    const parentToken = api.zeroTokenForRunWithCapabilities(
-      actor,
-      parent.runId,
-      ["agent-run:write"],
-    );
-    const child = await api.requestCreateRunAs(
-      `Bearer ${parentToken}`,
-      {
-        agentId,
-        prompt: "shared version child run",
-        modelProvider: "anthropic-api-key",
-      },
-      [201],
-    );
-    if (child.status !== 201) {
-      throw new Error("Expected shared-version child run creation");
-    }
-    const childLog = await reads.requestReadLogById(
-      actor,
-      child.body.runId,
-      [200],
-    );
-    expect(childLog.body).toMatchObject({
-      id: child.body.runId,
-      agentId,
-      displayName: "Current shared agent",
-      triggerSource: "agent",
-      triggerAgentName: "Current shared agent",
-    });
-
-    await api.requestCancelRun(actor, child.body.runId, [200]);
     await api.requestCancelRun(actor, parent.runId, [200]);
     const drained = await api.readRunQueue(actor);
     expect(drained.body.concurrency.active).toBe(0);
@@ -8499,7 +8944,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     const agentId = agent.agentId;
     await fw.seedTestConnector(actor, {
-      connectorName: "cloudflare",
+      connectorSlug: "cloudflare",
       authMethod: "oauth",
       accessToken: "cloudflare-bdd-token",
     });
@@ -8555,7 +9000,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.grantProEntitlement(actor);
 
     await fw.seedTestConnector(actor, {
-      connectorName: "cloudflare",
+      connectorSlug: "cloudflare",
       authMethod: "oauth",
       accessToken: "cloudflare-direct-bdd-token",
     });
@@ -8641,7 +9086,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       visibility: "private",
     });
     await fw.seedTestConnector(actor, {
-      connectorName: "slack",
+      connectorSlug: "slack",
       authMethod: "oauth",
       accessToken: "xoxb-bdd-context",
     });
@@ -8653,7 +9098,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       action: "allow",
     });
     const customConnector = await connectors.createCustomConnector(actor, {
-      slug: `bdd-context-${randomUUID().slice(0, 8)}`,
+      slug: `_bdd-context-${randomUUID().slice(0, 8)}`,
       displayName: "BDD Context API",
       prefixes: ["https://context.example.com/api/"],
       headerName: "Authorization",
@@ -8805,6 +9250,9 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       expect(appendSystemPrompt).toContain(toolHint);
     }
     expect(appendSystemPrompt).toContain("zero upgrade pro");
+    expect(appendSystemPrompt).not.toContain("zero chat send");
+    expect(appendSystemPrompt).not.toContain("zero chat cancel");
+    expect(appendSystemPrompt).not.toContain("zero chat queued");
     for (const otherIntegrationHint of [
       "zero slack download-file -h",
       "zero github download-file -h",
@@ -8819,8 +9267,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(appendSystemPrompt).toContain("Timezone: America/Los_Angeles");
 
     expect(claim.featureFlags).toMatchObject({
-      [FeatureSwitchKey.ZeroFinance]: true,
-      [FeatureSwitchKey.CodexSessionPruning]: false,
+      [FeatureSwitchKey.ZeroChatMessaging]: false,
       [FeatureSwitchKey.ClaudeSessionPruning]: false,
     });
     expect(claim.featureFlags).not.toHaveProperty("zeroWebSearch");
@@ -10041,20 +10488,40 @@ describe("HOOK-02: event-consumer dispatch failures", () => {
       authorization: `Bearer ${claim.sandboxToken}`,
     };
 
-    context.mocks.axiom.flush.mockResolvedValue(undefined);
-    context.mocks.axiom.flush.mockRejectedValueOnce(new Error("axiom down"));
+    let ingestRequests = 0;
+    server.use(
+      http.post(
+        "https://api.axiom.co/v1/datasets/agent-run-events/ingest",
+        async ({ request }) => {
+          ingestRequests += 1;
+          const events: unknown = await request.json();
+          if (!Array.isArray(events)) {
+            throw new Error("Expected an Axiom event array");
+          }
+          if (ingestRequests === 1) {
+            return HttpResponse.text("axiom down", { status: 503 });
+          }
+          return HttpResponse.json({
+            ingested: events.length,
+            failed: 0,
+            processedBytes: 123,
+            blocksCreated: 1,
+            walLength: 456,
+          });
+        },
+      ),
+    );
     const failed = await webhooks.requestAgentEvents(
       {
         runId: run.runId,
         events: [{ type: "system", sequenceNumber: 0 }],
       },
       sandboxHeaders,
-      [500],
+      [503],
     );
     expectApiError(failed.body);
-    expect(failed.body.error.message).toContain(
-      "Required event consumer dispatch failed",
-    );
+    expect(failed.body.error.code).toBe("EVENT_DELIVERY_UNAVAILABLE");
+    expect(ingestRequests).toBe(1);
 
     const recovered = await webhooks.requestAgentEvents(
       {
@@ -10065,6 +10532,7 @@ describe("HOOK-02: event-consumer dispatch failures", () => {
       [200],
     );
     expect(recovered.status).toBe(200);
+    expect(ingestRequests).toBe(2);
   });
 });
 
@@ -10241,7 +10709,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       return message.eventType === "output.message" && message.runId === runId;
     });
     expect(firstAssistant?.id).toBe(
-      assistantMessageIdForRunEvent(runId, "msg_bdd_1"),
+      assistantEventIdForRunEvent(runId, "msg_bdd_1"),
     );
     expect(firstAssistant?.content).toBe("Hello from BDD events");
     expect(
@@ -10249,7 +10717,17 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
         runId,
         "api_to_first_assistant_message",
       ),
-    ).toStrictEqual([]);
+    ).toStrictEqual([
+      {
+        _time: new Date(apiStartedAt).toISOString(),
+        source: "api",
+        op_type: "api_to_first_assistant_message",
+        sandbox_type: "runner",
+        duration_ms: 0,
+        success: true,
+        run_id: runId,
+      },
+    ]);
 
     mockNow(acknowledgedAt);
     const swallowed = await webhooks.requestAgentEvents(
@@ -10298,11 +10776,11 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       ),
     ).toStrictEqual([
       {
-        _time: new Date(acknowledgedAt).toISOString(),
+        _time: new Date(apiStartedAt).toISOString(),
         source: "api",
         op_type: "api_to_first_assistant_message",
         sandbox_type: "runner",
-        duration_ms: acknowledgedAt - apiStartedAt,
+        duration_ms: 0,
         success: true,
         run_id: runId,
       },
@@ -10343,6 +10821,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       sandboxHeaders,
       [200],
     );
+    await flushWaitUntilForTest();
     const afterCodex = await chat.listThreadEvents(actor, threadId);
     const codexPersisted = afterCodex.events.filter((message) => {
       return message.eventType === "output.message" && message.runId === runId;
@@ -10382,6 +10861,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       sandboxHeaders,
       [200],
     );
+    await flushWaitUntilForTest();
     const afterSilent = await chat.listThreadEvents(actor, threadId);
     expect(
       afterSilent.events.filter((message) => {
@@ -10408,11 +10888,9 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       sandboxHeaders,
       [200],
     );
+    await flushWaitUntilForTest();
     const afterDuplicate = await chat.listThreadEvents(actor, threadId);
-    const duplicatedMessageId = assistantMessageIdForRunEvent(
-      runId,
-      "msg_bdd_1",
-    );
+    const duplicatedMessageId = assistantEventIdForRunEvent(runId, "msg_bdd_1");
     const matchingDuplicateRows = afterDuplicate.events.filter((message) => {
       return (
         message.eventType === "output.message" &&
@@ -10451,6 +10929,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       { authorization: `Bearer ${detachedClaim.sandboxToken}` },
       [200],
     );
+    await flushWaitUntilForTest();
     const eventsAfter = await chat.requestThreadEvents(actor, {}, [200]);
     expect(eventsAfter.status).toBe(200);
     if (eventsAfter.status !== 200) {
@@ -10838,16 +11317,33 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
 });
 
 describe("BILL-02: usage reads for an entitled organization with runs", () => {
-  it("uses runner-supplied gross credits instead of the pricing table", async () => {
+  it("prices model usage from the server pricing table", async () => {
     const api = createRunsApi(context);
     const billing = createBillingMediaApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     await seedVm0ManagedDefaultModelKey();
+    const modelProvider = `bdd-model-pricing-${randomUUID()}`;
+    onTestFinished(async () => {
+      await deleteUsagePricingRows({
+        kind: "model",
+        provider: modelProvider,
+        categories: ["tokens.output"],
+      });
+    });
+    await seedUsagePricingRows([
+      {
+        kind: "model",
+        provider: modelProvider,
+        category: "tokens.output",
+        unitPrice: 17,
+        unitSize: 1000,
+      },
+    ]);
 
     const run = await api.createRun(actor, {
       agentId,
-      prompt: "generate pre-priced model usage",
+      prompt: "generate server-priced model usage",
       modelProvider: "vm0",
     });
     await api.heartbeatRunner(runnerGroup);
@@ -10859,10 +11355,9 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
           {
             idempotencyKey: randomUUID(),
             kind: "model",
-            provider: "vm0-model",
+            provider: modelProvider,
             category: "tokens.output",
             quantity: 1000,
-            grossCredits: 17,
           },
         ],
       },
@@ -11132,6 +11627,32 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
       throw new Error("Expected the run to mount memory");
     }
     const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
+    const telemetryIngests: {
+      readonly dataset: string;
+      readonly events: readonly unknown[];
+    }[] = [];
+    server.use(
+      http.post(
+        "https://api.axiom.co/v1/datasets/:dataset/ingest",
+        async ({ params, request }) => {
+          const events: unknown = await request.json();
+          if (!Array.isArray(events)) {
+            throw new Error("Expected an Axiom telemetry event array");
+          }
+          telemetryIngests.push({
+            dataset: String(params.dataset),
+            events,
+          });
+          return HttpResponse.json({
+            ingested: events.length,
+            failed: 0,
+            processedBytes: 123,
+            blocksCreated: 1,
+            walLength: 456,
+          });
+        },
+      ),
+    );
 
     await webhooks.requestAgentTelemetryUnchecked(
       {
@@ -11150,6 +11671,7 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
             model_catalog_cache_status: "model_catalog_cold_stored",
             model_catalog_cache_upstream_encoding: "br",
             model_catalog_cache_entry_age_ms: 4000,
+            connector_diagnostic_type: "github",
           },
           {
             timestamp: nowDate().toISOString(),
@@ -11165,6 +11687,8 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
             response_size: 128,
             firewall_name: "blocked-service",
             firewall_error: "connector_not_configured",
+            connector_diagnostic_slug: "slack",
+            connector_diagnostic_type: "slack",
           },
         ],
         sandboxOperations: [
@@ -11191,14 +11715,12 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
       sandboxHeaders,
       [200],
     );
-    const networkIngestCall = context.mocks.axiom.ingest.mock.calls.find(
-      ([dataset]) => {
-        return dataset === "sandbox-telemetry-network";
-      },
-    );
+    const networkIngestCall = telemetryIngests.find((call) => {
+      return call.dataset === "sandbox-telemetry-network";
+    });
     expect(networkIngestCall).toBeDefined();
-    expect(networkIngestCall?.[1]).toHaveLength(2);
-    expect(networkIngestCall?.[1]).toStrictEqual([
+    expect(networkIngestCall?.events).toHaveLength(2);
+    expect(networkIngestCall?.events).toStrictEqual([
       expect.objectContaining({
         runId: created.runId,
         host: "api.example.test",
@@ -11206,14 +11728,86 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
         model_catalog_cache_status: "model_catalog_cold_stored",
         model_catalog_cache_upstream_encoding: "br",
         model_catalog_cache_entry_age_ms: 4000,
+        connector_diagnostic_slug: "github",
+        connector_diagnostic_type: "github",
       }),
       expect.objectContaining({
         runId: created.runId,
         action: "BLOCK",
         host: "blocked.example.test",
         firewall_error: "connector_not_configured",
+        connector_diagnostic_slug: "slack",
+        connector_diagnostic_type: "slack",
       }),
     ]);
+    const networkIngestCallCount = telemetryIngests.filter((call) => {
+      return call.dataset === "sandbox-telemetry-network";
+    }).length;
+    const conflictingTelemetry = await webhooks.requestAgentTelemetryUnchecked(
+      {
+        runId: created.runId,
+        networkLogs: [
+          {
+            timestamp: nowDate().toISOString(),
+            connector_diagnostic_slug: "github",
+            connector_diagnostic_type: "gitlab",
+          },
+        ],
+      },
+      sandboxHeaders,
+      [400],
+    );
+    expectApiError(conflictingTelemetry.body);
+    expect(
+      telemetryIngests.filter((call) => {
+        return call.dataset === "sandbox-telemetry-network";
+      }),
+    ).toHaveLength(networkIngestCallCount);
+
+    let failedTelemetryRequests = 0;
+    server.use(
+      http.post(
+        "https://api.axiom.co/v1/datasets/sandbox-telemetry-network/ingest",
+        () => {
+          failedTelemetryRequests += 1;
+          return HttpResponse.text("unavailable", { status: 503 });
+        },
+      ),
+    );
+    const failedTelemetry = await webhooks.requestAgentTelemetry(
+      {
+        runId: created.runId,
+        networkLogs: [
+          {
+            timestamp: nowDate().toISOString(),
+            host: "failed.example.test",
+          },
+        ],
+      },
+      sandboxHeaders,
+      [500],
+    );
+    expect(failedTelemetry.status).toBe(500);
+    expect(failedTelemetryRequests).toBe(1);
+
+    mockOptionalEnv("AXIOM_TOKEN_TELEMETRY", undefined);
+    const unconfiguredTelemetry = await webhooks.requestAgentTelemetry(
+      {
+        runId: created.runId,
+        networkLogs: [
+          {
+            timestamp: nowDate().toISOString(),
+            host: "unconfigured.example.test",
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    expect(unconfiguredTelemetry.status).toBe(200);
+    expect(failedTelemetryRequests).toBe(1);
+    mockOptionalEnv("AXIOM_TOKEN_TELEMETRY", "xaat-test-telemetry");
+
     expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
       "vm0-sandbox-op-log-dev",
       [
@@ -11390,6 +11984,70 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
     );
     expectApiError(expiredTelemetry.body);
     expect(expiredTelemetry.body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("continues from a recovery checkpoint posted after timeout completion", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const source = await api.createRun(actor, {
+      agentId,
+      prompt: "run until the execution deadline",
+      modelProvider: "anthropic-api-key",
+    });
+    const sourceClaim = await api.claimRunnerJob(source.runId);
+    const history = `bdd timeout recovery history ${source.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    const cliSessionId = `bdd-timeout-cli-${source.runId}`;
+    mockSessionHistoryBlob(historyHash, history);
+    const sandboxHeaders = {
+      authorization: `Bearer ${sourceClaim.sandboxToken}`,
+    };
+
+    const completion = await webhooks.requestAgentComplete(
+      {
+        runId: source.runId,
+        exitCode: 124,
+        error: "Agent execution timed out after 7200 seconds",
+        lastEventSequence: 0,
+      },
+      sandboxHeaders,
+      [200],
+    );
+    expect(completion.body).toStrictEqual({ success: true, status: "failed" });
+    const failed = await api.readRun(actor, source.runId);
+    expect(failed.status).toBe("failed");
+    expect(failed.error).toBe("Agent execution timed out after 7200 seconds");
+
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: source.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: cliSessionId,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      sandboxHeaders,
+      [200],
+    );
+
+    const continued = await api.createRun(actor, {
+      agentId,
+      sessionId: source.sessionId,
+      prompt: "continue after the execution deadline",
+      modelProvider: "anthropic-api-key",
+    });
+    const continuedClaim = await api.claimRunnerJob(continued.runId);
+    expect(continuedClaim.resumeSession).toMatchObject({
+      sessionId: cliSessionId,
+      historyRef: {
+        kind: "blob",
+        hash: historyHash,
+        url: expect.any(String),
+      },
+    });
+
+    await api.requestCancelRun(actor, continued.runId, [200]);
   });
 
   it("acknowledges a clean exit whose missing checkpoint fails the run", async () => {

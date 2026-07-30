@@ -1,5 +1,7 @@
 import { command } from "ccstate";
 import { zeroCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -10,6 +12,7 @@ import {
 } from "../services/zero-custom-connector.service";
 import { isBadRequestResponse } from "../../lib/error";
 import type { RouteEntry } from "../route-entry";
+import { userFeatureSwitchContext } from "../services/feature-switches.service";
 
 const adminRequired = Object.freeze({
   status: 403 as const,
@@ -34,7 +37,43 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!bodyResult.ok) {
     return bodyResult.response;
   }
-
+  if (auth.tokenType === "zero" || bodyResult.data.authMode === "oauth") {
+    const featureContext = await get(
+      userFeatureSwitchContext(auth.orgId, auth.userId),
+    );
+    signal.throwIfAborted();
+    if (
+      auth.tokenType === "zero" &&
+      !isFeatureEnabled(
+        FeatureSwitchKey.CustomConnectorCliCreate,
+        featureContext,
+      )
+    ) {
+      return {
+        status: 403 as const,
+        body: {
+          error: {
+            message: "Custom connector CLI creation is not enabled",
+            code: "FORBIDDEN" as const,
+          },
+        },
+      };
+    }
+    if (
+      bodyResult.data.authMode === "oauth" &&
+      !isFeatureEnabled(FeatureSwitchKey.CustomConnectorOAuth2, featureContext)
+    ) {
+      return {
+        status: 403 as const,
+        body: {
+          error: {
+            message: "Custom connector OAuth 2.0 is not enabled",
+            code: "FORBIDDEN" as const,
+          },
+        },
+      };
+    }
+  }
   const result = await set(
     createCustomConnector$,
     { orgId: auth.orgId, userId: auth.userId, input: bodyResult.data },
@@ -56,7 +95,11 @@ export const zeroCustomConnectorsCreateRoutes: readonly RouteEntry[] = [
   {
     route: zeroCustomConnectorsContract.create,
     handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "connector:write",
+      },
       createInner$,
     ),
   },

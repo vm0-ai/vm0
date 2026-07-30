@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { IconCopy, IconMessageCircle } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 import {
   getShortcutParts,
   Popover,
@@ -49,6 +50,7 @@ function FeedbackToolbar({
   onCopy: () => void;
   onProvideFeedback: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <PopoverContent
       side="top"
@@ -70,7 +72,9 @@ function FeedbackToolbar({
           className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
         >
           <IconCopy size={14} stroke={2} />
-          Copy
+          {t(($) => {
+            return $.chat.actions.copy;
+          })}
           <ShortcutHint shortcut="c" />
         </button>
         <div className="h-4 w-px bg-border" />
@@ -81,7 +85,9 @@ function FeedbackToolbar({
           className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
         >
           <IconMessageCircle size={14} stroke={2} />
-          Provide feedback
+          {t(($) => {
+            return $.chat.feedback.provide;
+          })}
           <ShortcutHint shortcut="f" />
         </button>
       </div>

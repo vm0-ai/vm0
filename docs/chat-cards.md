@@ -28,9 +28,9 @@ state creation inside React render.
 The body parser accepts platform links in common message forms:
 
 ```markdown
-https://app.vm0.ai/agents/agent-123/permissions?ref=slack&permission=messages.write
+https://app.vm0.ai/agents/agent-123/permissions?connectorSlug=slack&permission=messages.write
 
-[Review permission](https://app.vm0.ai/agents/agent-123/permissions?ref=slack&permission=messages.write)
+[Review permission](https://app.vm0.ai/agents/agent-123/permissions?connectorSlug=slack&permission=messages.write)
 
 /computer-use/authorize/request-token
 ```
@@ -42,8 +42,8 @@ link remains ordinary Markdown.
 
 Current link-backed card patterns include:
 
-- `/connectors/:connectorRef/connect` and
-  `/connectors/:connectorRef/authorize`
+- `/connectors/:connectorSlug/connect` and
+  `/connectors/:connectorSlug/authorize`
 - `/connectors/custom/proposal?p=...`
 - `/agents/:agentId/permissions?...`
 - `/computer-use/authorize/:requestToken`
@@ -277,20 +277,22 @@ through the authenticated Zero Browser API and includes the current chat thread
 ID in that request. A copied card therefore cannot resolve a browser owned by a
 different thread.
 
-The fixed-height card shows the browser name, charged credits, and status, and
-opens the shared right sidebar surface. The live view lives in that sidebar and
-in the full-page route rather than in the message stream, because a live page
-resizes as it loads and would otherwise shift the transcript.
+The compact `268px × 48px` card shows `Cloud browser` and a simplified `Live`
+or `Stopped` status without browser-specific metadata or charged credits. Its
+explicit `Open` button opens the shared right sidebar surface. The live view
+lives in that sidebar and in the full-page route rather than in the message
+stream, because a live page resizes as it loads and would otherwise shift the
+transcript.
 
 A provider instance outlives the run that opened it. Every terminal run callback
 only extends the instance's idle lease, so the user can keep working in the same
 window and a later run in the same thread attaches to it with
-`zero browser use`. The reconciler reclaims and settles an instance once its
-lease expires, its budget is reached, its chat thread is deleted, or the
-provider ends it. While the sidebar or full-page viewer is open and its page is
-visible, it refreshes the lease on a timer; the CLI can do the same with
-`zero browser lease`. Each lease is a fixed window from now and cannot be
-stacked. The whole instance is billed to the run that last used it.
+`zero browser use`. The reconciler reclaims an instance once its lease expires,
+its hard timeout is reached, or the provider ends it. Deleting a chat thread
+also reclaims all of its browsers. While the sidebar or full-page viewer is open
+and its page is visible, it refreshes the lease on a timer; the CLI can do the
+same with `zero browser lease`. Each lease is a fixed window from now and cannot
+be stacked.
 
 Once an instance is reclaimed the card shows the suspended state and keeps the
 stable `/browsers/:browserId` link. The viewer's resume action, and
@@ -302,9 +304,12 @@ matching shared card signals, so repeated cards and the sidebar move between
 live and suspended state together.
 Logical browsers remain scoped to their chat threads, while every thread for the
 same user in the same organization uses one shared login profile. Multiple
-threads may run provider instances with that profile in parallel. The API
-serializes only the profile's first creation so concurrent first use still
-creates one provider profile.
+threads may run provider instances with that profile in parallel up to the
+organization's run concurrency entitlement. Before starting another provider
+instance, the API reclaims the active browser with the earliest idle lease
+until a slot is available. Provider stop requests are best-effort and do not
+delay the new start. The API serializes only the profile's first creation so
+concurrent first use still creates one provider profile.
 
 The same universal link also has an authenticated full-page route. The browser
 provider's CDP URL is reserved for the Zero CLI to connect `agent-browser` and

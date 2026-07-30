@@ -5,23 +5,16 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
 import { db$, writeDb$, type ReadonlyDb } from "../external/db";
-import {
-  publishChatThreadMessageCreatedSafely,
-  publishChatThreadWorkflowQueueChangedSafely,
-} from "../external/realtime";
+import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import { notFound } from "../../lib/error";
-import { nowDate } from "../external/time";
 import {
   clearWorkflowQueueEvents,
   deleteWorkflowQueueEventById,
   listPendingWorkflowQueueEvents,
   loadRunningWorkflowThreadRun,
   loadWorkflowQueueThread,
-  setWorkflowQueuePause,
   type WorkflowQueueThreadRow,
-} from "../services/chat-message-queue.service";
-import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
-import { drainChatThreadQueueForThread$ } from "../services/chat-thread-queue-drain.service";
+} from "../services/workflow-chat-event-queue.service";
 import type { RouteEntry } from "../route-entry";
 
 const workflowReadAuth = {
@@ -65,21 +58,32 @@ async function workflowQueueResponse(
           createdAt: event.createdAt.toISOString(),
         };
       }),
-      pausedAt: thread.automationPausedAt?.toISOString() ?? null,
-      pauseReason: thread.pauseReason,
+      // Automation queues are no longer pausable. Keep the previous response
+      // shape during the rolling-deployment window without restoring pause
+      // state or scheduler gating.
+      pausedAt: null,
+      pauseReason: null,
     },
   };
+}
+
+async function loadOwnedQueue(
+  db: ReadonlyDb,
+  auth: { readonly orgId: string; readonly userId: string },
+  threadId: string,
+) {
+  return await loadWorkflowQueueThread(db, {
+    orgId: auth.orgId,
+    userId: auth.userId,
+    threadId,
+  });
 }
 
 const getQueueInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroWorkflowQueueContract.get));
   const db = get(db$);
-  const thread = await loadWorkflowQueueThread(db, {
-    orgId: auth.orgId,
-    userId: auth.userId,
-    threadId: params.threadId,
-  });
+  const thread = await loadOwnedQueue(db, auth, params.threadId);
   if (!thread) {
     return notFound(`No workflow queue for thread: ${params.threadId}`);
   }
@@ -99,20 +103,11 @@ const skipEventInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!deleted) {
     return notFound(`No workflow queue event: ${params.id}`);
   }
-  const thread = await loadWorkflowQueueThread(db, {
-    orgId: auth.orgId,
-    userId: auth.userId,
-    threadId: deleted.chatThreadId,
-  });
+  const thread = await loadOwnedQueue(db, auth, deleted.chatThreadId);
   signal.throwIfAborted();
   if (!thread) {
     return notFound(`No workflow queue for thread: ${deleted.chatThreadId}`);
   }
-  await publishChatThreadWorkflowQueueChangedSafely(
-    auth.userId,
-    deleted.chatThreadId,
-  );
-  signal.throwIfAborted();
   await publishChatThreadMessageCreatedSafely(
     auth.userId,
     deleted.chatThreadId,
@@ -125,91 +120,47 @@ const clearQueueInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroWorkflowQueueContract.clear));
   const db = set(writeDb$);
-  const thread = await loadWorkflowQueueThread(db, {
-    orgId: auth.orgId,
-    userId: auth.userId,
-    threadId: params.threadId,
-  });
+  const thread = await loadOwnedQueue(db, auth, params.threadId);
   signal.throwIfAborted();
   if (!thread) {
     return notFound(`No workflow queue for thread: ${params.threadId}`);
   }
   await clearWorkflowQueueEvents(db, thread);
   signal.throwIfAborted();
-  await publishChatThreadWorkflowQueueChangedSafely(
-    auth.userId,
-    params.threadId,
-  );
-  signal.throwIfAborted();
   await publishChatThreadMessageCreatedSafely(auth.userId, params.threadId);
   signal.throwIfAborted();
   return await workflowQueueResponse(db, thread, params.threadId);
 });
 
-const setPauseInner = (paused: boolean) => {
-  return command(async ({ get, set }, signal: AbortSignal) => {
+function removedPauseActionInner(
+  route:
+    | typeof zeroWorkflowQueueContract.pause
+    | typeof zeroWorkflowQueueContract.resume,
+) {
+  return command(async ({ get }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
-    const params = get(
-      pathParamsOf(
-        paused
-          ? zeroWorkflowQueueContract.pause
-          : zeroWorkflowQueueContract.resume,
-      ),
-    );
-    const db = set(writeDb$);
-    const thread = await loadWorkflowQueueThread(db, {
-      orgId: auth.orgId,
-      userId: auth.userId,
-      threadId: params.threadId,
-    });
+    const params = get(pathParamsOf(route));
+    const db = get(db$);
+    const thread = await loadOwnedQueue(db, auth, params.threadId);
     signal.throwIfAborted();
     if (!thread) {
       return notFound(`No workflow queue for thread: ${params.threadId}`);
     }
-    const currentTime = nowDate();
-    await setWorkflowQueuePause(
-      db,
-      thread,
-      paused ? { pausedAt: currentTime, pauseReason: null } : null,
-      currentTime,
-    );
-    signal.throwIfAborted();
-    if (!paused) {
-      // Resuming re-drains immediately instead of waiting for the next
-      // terminal run or the safety-net cron.
-      await set(
-        drainChatThreadQueueForThread$,
-        {
-          chatThreadId: params.threadId,
-          dispatchFailedCallbacks: dispatchFailedRunCallbacks,
-        },
-        signal,
-      );
-      signal.throwIfAborted();
-    }
-    await publishChatThreadWorkflowQueueChangedSafely(
-      auth.userId,
-      params.threadId,
-    );
-    signal.throwIfAborted();
-    await publishChatThreadMessageCreatedSafely(auth.userId, params.threadId);
-    signal.throwIfAborted();
-    const updated = await loadWorkflowQueueThread(db, {
-      orgId: auth.orgId,
-      userId: auth.userId,
-      threadId: params.threadId,
-    });
-    signal.throwIfAborted();
-    if (!updated) {
-      return notFound(`No workflow queue for thread: ${params.threadId}`);
-    }
-    return await workflowQueueResponse(db, updated, params.threadId);
+    return await workflowQueueResponse(db, thread, params.threadId);
   });
-};
+}
 
-const pauseQueueInner$ = setPauseInner(true);
-const resumeQueueInner$ = setPauseInner(false);
+const pauseQueueInner$ = removedPauseActionInner(
+  zeroWorkflowQueueContract.pause,
+);
+const resumeQueueInner$ = removedPauseActionInner(
+  zeroWorkflowQueueContract.resume,
+);
 
+/**
+ * Previous-frontend compatibility adapter. No current platform code consumes
+ * this contract; pending rows and supported controls use canonical ChatEvents.
+ */
 export const zeroWorkflowQueueRoutes: readonly RouteEntry[] = [
   {
     route: zeroWorkflowQueueContract.get,

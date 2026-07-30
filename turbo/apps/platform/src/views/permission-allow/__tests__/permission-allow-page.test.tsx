@@ -98,7 +98,7 @@ describe("permission allow page", () => {
     context.mocks.api(
       zeroConnectorCatalogContract.permissions,
       ({ params, respond }) => {
-        expect(params.connectorRef).toBe("slack");
+        expect(params.connectorSlug).toBe("slack");
         return respond(200, {
           permissions: catalogPermissionDetail({
             connectorRef: "slack",
@@ -128,7 +128,8 @@ describe("permission allow page", () => {
         return respond(200, [
           {
             agentId: body.agentId,
-            connectorRef: body.connectorRef,
+            connectorRef: body.connectorSlug,
+            connectorSlug: body.connectorSlug,
             permission: appliedGrant.permission,
             action: appliedGrant.action,
             expiresAt: isoFromNowMs(24 * 60 * 60 * 1000),
@@ -148,7 +149,7 @@ describe("permission allow page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${agentId}/permissions?ref=slack&permission=catalog.analytics%3Aread&action=allow&expiresIn=24h&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`,
+      path: `/agents/${agentId}/permissions?connectorSlug=slack&permission=catalog.analytics%3Aread&action=allow&expiresIn=24h&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`,
       user: {
         id: "test-user-123",
         fullName: "Dana Analyst",
@@ -186,7 +187,7 @@ describe("permission allow page", () => {
     expect(screen.getByText(/Expires in (1 day|24 hours)/)).toBeInTheDocument();
     expect(capturedBody).toMatchObject({
       agentId,
-      connectorRef: "slack",
+      connectorSlug: "slack",
       mode: "patch",
       grants: [
         {
@@ -286,7 +287,8 @@ describe("permission allow page", () => {
         expect(body.mode).toBe("patch");
         const grant: UserPermissionGrantResponse = {
           agentId: body.agentId,
-          connectorRef: body.connectorRef,
+          connectorRef: body.connectorSlug,
+          connectorSlug: body.connectorSlug,
           permission: appliedGrant.permission,
           action: appliedGrant.action,
           expiresAt: null,
@@ -504,7 +506,7 @@ describe("permission allow page", () => {
     context.mocks.api(
       zeroConnectorCatalogContract.permissions,
       ({ params, respond }) => {
-        expect(params.connectorRef).toBe("slack");
+        expect(params.connectorSlug).toBe("slack");
         return respond(200, {
           permissions: catalogPermissionDetail({
             connectorRef: "slack",
@@ -636,7 +638,8 @@ describe("permission allow page", () => {
         expect(body.mode).toBe("patch");
         const grant: UserPermissionGrantResponse = {
           agentId: body.agentId,
-          connectorRef: body.connectorRef,
+          connectorRef: body.connectorSlug,
+          connectorSlug: body.connectorSlug,
           permission: appliedGrant.permission,
           action: appliedGrant.action,
           expiresAt: isoFromNowMs(60 * 60 * 1000),

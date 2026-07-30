@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.5.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.4.7...guest-contracts-v0.5.0) (2026-07-30)
+
+
+### Features
+
+* **events:** report structured guest event delivery failures ([#23974](https://github.com/vm0-ai/vm0/issues/23974)) ([ebdf828](https://github.com/vm0-ai/vm0/commit/ebdf8280b7b961ebf8404790a15696a7338ecd6e))
+
+## [0.4.7](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.4.6...guest-contracts-v0.4.7) (2026-07-30)
+
+
+### Bug Fixes
+
+* **guest-agent:** checkpoint user cancellations before completion ([#23899](https://github.com/vm0-ai/vm0/issues/23899)) ([ba905f6](https://github.com/vm0-ai/vm0/commit/ba905f65bb5f99fac077c236b4ca57175708ead5))
+
+## [0.4.6](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.4.5...guest-contracts-v0.4.6) (2026-07-29)
+
+
+### Bug Fixes
+
+* **runner:** checkpoint sessions before job timeout ([#23734](https://github.com/vm0-ai/vm0/issues/23734)) ([15f44cc](https://github.com/vm0-ai/vm0/commit/15f44cc68e1387d5b18f604fea9c964a1557561d))
+
 ## [0.4.5](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.4.4...guest-contracts-v0.4.5) (2026-07-28)
 
 

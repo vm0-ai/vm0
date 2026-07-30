@@ -1,6 +1,6 @@
 {
   "name": "@vm0/app",
-  "version": "0.654.0",
+  "version": "0.662.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,8 +10,9 @@
     "test": "vitest run",
     "i18n:extract": "i18next-cli extract",
     "i18n:check": "i18next-cli extract --ci --quiet && i18next-cli status",
+    "lint:localized-ui": "node --test scripts/check-localized-ui.node.mjs && node scripts/check-localized-ui.mjs",
     "lint:static-assets": "node scripts/check-static-assets.mjs",
-    "lint": "pnpm lint:static-assets && pnpm i18n:check && oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
+    "lint": "pnpm lint:static-assets && pnpm lint:localized-ui && pnpm i18n:check && oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
     "check-types": "tsc -p tsconfig.production.json --noEmit && tsc -p tsconfig.tests.json --noEmit"
   },
   "dependencies": {

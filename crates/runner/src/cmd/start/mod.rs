@@ -13,6 +13,7 @@
 //! - `job_discovery`: discovery branch handling and idle-reuse admission.
 //! - `job_lifecycle`: cleanup, budget, and completion ownership state.
 //! - `job_spawn`: claimed job task spawning, completion, and panic cleanup.
+//! - `job_terminal_log`: terminal outcome tracing and diagnostic projection.
 //! - `mitm_restart`: mitmproxy crash restart and backoff.
 //! - `orphan_reap`: orphan active-run reconciliation.
 //! - `ownership`: active/idle/orphan ownership transition ordering.
@@ -80,6 +81,7 @@ mod idle_lifecycle;
 mod job_discovery;
 mod job_lifecycle;
 mod job_spawn;
+mod job_terminal_log;
 mod mitm_restart;
 mod orphan_reap;
 mod ownership;
@@ -1831,7 +1833,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
     shutdown_runtime(runtime.as_mut(), Some(&teardown)).await;
 
-    // Wait for buffered and pending usage reports before stopping the proxy.
+    // Wait for buffered and pending proxy webhook work before stopping the proxy.
     // The runner writes a shutdown request marker, then the addon replies with
     // fresh pending snapshots after SIGUSR1-triggered flush requests. This
     // remains bounded best-effort, and timeout is the abnormal data-loss path.

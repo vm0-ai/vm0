@@ -498,7 +498,17 @@ def feed_model_websocket_usage(
     """
     if not is_model_websocket_usage_enabled(flow):
         return
-    usage_result = usage.extract_openai_responses_usage_from_event(event)
+    usage_result, inspection_error = usage.extract_openai_responses_usage_from_event(event)
+    if inspection_error is not None:
+        log_proxy_entry(
+            flow_metadata.proxy_log_path(flow.metadata),
+            "warn",
+            "Model provider WebSocket usage extraction failed",
+            type="usage_event",
+            usage_protocol="openai_responses_websocket",
+            error=inspection_error,
+        )
+        return
     if not usage_result:
         return
     message_id = usage_result.get("message_id")

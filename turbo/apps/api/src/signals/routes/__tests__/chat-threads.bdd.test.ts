@@ -21,10 +21,10 @@ import {
   seedUsagePricingRows,
 } from "../../../test-fixtures/system-config-seeds";
 import {
-  holdChatMessageInsertTransactionFixture,
-  insertChatMessageTransactionFixture,
+  holdChatEventInsertTransactionFixture,
+  insertChatEventTransactionFixture,
   insertOutputEventWithConflictingLegacyPayloadFixture,
-} from "../../../test-fixtures/chat-messages";
+} from "../../../test-fixtures/chat-events";
 import {
   holdChatThreadEventInsertTransactionFixture,
   insertChatThreadEventTransactionFixture,
@@ -52,6 +52,7 @@ import {
 } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { chatEventDisplayText } from "./helpers/chat-event";
 import {
   deleteVm0ManagedDefaultModelKey,
   seedVm0ManagedDefaultModelKey,
@@ -881,7 +882,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     });
     await waitForThreadMessages(actor, run.threadId, (messages) => {
       return userMessages(messages).some((message) => {
-        return message.content === "move this thread when I send it";
+        return (
+          chatEventDisplayText(message) === "move this thread when I send it"
+        );
       });
     });
     await flushWaitUntilForTest();
@@ -1657,18 +1660,28 @@ describe("CHAT-01 chat thread read state", () => {
     });
 
     const full = await chat.listThreadEvents(owner, threadId);
-    expect(full.hasHistoryBefore).toBeFalsy();
+    // The thread's first event owns seqId 1, which is how clients detect that
+    // no history remains behind the page.
+    expect(full.events[0]?.seqId).toBe(1);
     expect(
       full.events.map((event) => {
         return [event.eventType, event.content] as const;
       }),
     ).toStrictEqual([
-      ["input.prompt", "cursor round one"],
-      ["input.rejected", "cursor round one"],
+      ["input.prompt", null],
+      ["input.rejected", null],
       ["output.error", expect.stringContaining("Insufficient credits")],
-      ["input.prompt", "cursor round two"],
-      ["input.rejected", "cursor round two"],
+      ["input.prompt", null],
+      ["input.rejected", null],
       ["output.error", expect.stringContaining("Insufficient credits")],
+    ]);
+    expect(full.events.map(chatEventDisplayText)).toStrictEqual([
+      "cursor round one",
+      "cursor round one",
+      expect.stringContaining("Insufficient credits"),
+      "cursor round two",
+      "cursor round two",
+      expect.stringContaining("Insufficient credits"),
     ]);
     const seqIds = full.events.map((message) => {
       return message.seqId;
@@ -1726,7 +1739,7 @@ describe("CHAT-01 chat thread read state", () => {
         return message.id;
       }),
     ).toStrictEqual([secondReplacement, secondAssistant]);
-    expect(latest.hasHistoryBefore).toBeTruthy();
+    expect(latest.events[0]?.seqId).toBeGreaterThan(1);
 
     // Forward pagination strictly after the cursor.
     const since = await chat.listThreadEvents(owner, threadId, {
@@ -1756,7 +1769,7 @@ describe("CHAT-01 chat thread read state", () => {
         return message.id;
       }),
     ).toStrictEqual([firstQueuedUser, firstReplacement, firstAssistant]);
-    expect(before.hasHistoryBefore).toBeFalsy();
+    expect(before.events[0]?.seqId).toBe(1);
     const legacyBefore = await chat.listThreadEvents(owner, threadId, {
       beforeId: secondQueuedUser,
       limit: 3,
@@ -1766,7 +1779,7 @@ describe("CHAT-01 chat thread read state", () => {
         return message.id;
       }),
     ).toStrictEqual([firstQueuedUser, firstReplacement, firstAssistant]);
-    expect(legacyBefore.hasHistoryBefore).toBeFalsy();
+    expect(legacyBefore.events[0]?.seqId).toBe(1);
 
     const beforeOverflow = await chat.listThreadEvents(owner, threadId, {
       beforeSeqId: secondAssistantSeqId,
@@ -1777,7 +1790,7 @@ describe("CHAT-01 chat thread read state", () => {
         return message.id;
       }),
     ).toStrictEqual([secondQueuedUser, secondReplacement]);
-    expect(beforeOverflow.hasHistoryBefore).toBeTruthy();
+    expect(beforeOverflow.events[0]?.seqId).toBeGreaterThan(1);
   }, 30_000);
 
   it("serializes concurrent message sequence writes through commit", async () => {
@@ -1793,12 +1806,12 @@ describe("CHAT-01 chat thread read state", () => {
 
     const firstContent = `held sequence message ${randomUUID()}`;
     const secondContent = `blocked sequence message ${randomUUID()}`;
-    const held = await holdChatMessageInsertTransactionFixture({
+    const held = await holdChatEventInsertTransactionFixture({
       threadId,
       content: firstContent,
       signal: context.signal,
     });
-    const secondInsert = insertChatMessageTransactionFixture({
+    const secondInsert = insertChatEventTransactionFixture({
       threadId,
       content: secondContent,
     });
@@ -1812,7 +1825,8 @@ describe("CHAT-01 chat thread read state", () => {
     expect(
       beforeCommit.events.some((message) => {
         return (
-          message.content === firstContent || message.content === secondContent
+          chatEventDisplayText(message) === firstContent ||
+          chatEventDisplayText(message) === secondContent
         );
       }),
     ).toBeFalsy();
@@ -1822,14 +1836,14 @@ describe("CHAT-01 chat thread read state", () => {
     const second = await secondInsert;
     const committed = await chat.listThreadEvents(owner, threadId);
     const concurrentRows = committed.events.filter((message) => {
-      return message.id === held.message.id || message.id === second.id;
+      return message.id === held.event.id || message.id === second.id;
     });
     expect(
       concurrentRows.map((message) => {
         return message.id;
       }),
-    ).toStrictEqual([held.message.id, second.id]);
-    expect(held.message.seqId).toBeLessThan(second.seqId);
+    ).toStrictEqual([held.event.id, second.id]);
+    expect(held.event.seqId).toBeLessThan(second.seqId);
   }, 30_000);
 });
 
@@ -2207,7 +2221,7 @@ describe("CHAT-03 run usage events", () => {
 });
 
 describe("CHAT-01 chat search", () => {
-  it("rejects search without an org session or the chat-message:read capability", async () => {
+  it("rejects search without an org session or the chat-event:read capability", async () => {
     const unauthenticated = await chat.requestSearchChat(
       null,
       "hello",
@@ -2234,7 +2248,7 @@ describe("CHAT-01 chat search", () => {
     );
     expectApiError(forbidden.body);
     expect(forbidden.body.error.code).toBe("FORBIDDEN");
-    expect(forbidden.body.error.message).toContain("chat-message:read");
+    expect(forbidden.body.error.message).toContain("chat-event:read");
   });
 
   it("searches own messages with filters, context, and like-escaping", async () => {
@@ -2303,6 +2317,30 @@ describe("CHAT-01 chat search", () => {
     );
     const legacySearch = await chat.searchChat(owner, legacyKeyword);
     expect(legacySearch.results).toStrictEqual([]);
+
+    // Agent mention parts contribute their name snapshot to both keyword
+    // matching and the canonical display projection.
+    const mentionKeyword = `mention-${randomUUID()}`;
+    await sendNoCreditMessage(owner, {
+      agentId: agentA.agentId,
+      prompt: `legacy-${randomUUID()}`,
+      userMessage: {
+        version: 1,
+        parts: [
+          { type: "text", text: "Ask " },
+          {
+            type: "agent",
+            agentId: agentB.agentId,
+            nameSnapshot: `${mentionKeyword} agent`,
+          },
+        ],
+      },
+    });
+    const mentionSearch = await chat.searchChat(owner, mentionKeyword);
+    expect(mentionSearch.results).toHaveLength(1);
+    expect(mentionSearch.results[0]?.matchedMessage.content).toBe(
+      `Ask [Agent: ${mentionKeyword} agent]`,
+    );
 
     // Cross-org isolation for the same user.
     const sameUserOtherOrg = bdd.user({ userId: owner.userId });

@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { zeroUsageInsightContract } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
@@ -199,5 +200,77 @@ describe("/usage page", () => {
     expect(
       within(creditsTotals()).queryByText("Slack"),
     ).not.toBeInTheDocument();
+  });
+
+  it("localizes usage copy, plurals, and numeric totals in Portuguese", async () => {
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
+    context.mocks.api(zeroUsageInsightContract.get, ({ respond }) => {
+      return respond(200, usageInsightTodayFixture);
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/usage",
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe("pt-BR");
+      expect(
+        screen.getByRole("heading", { level: 1, name: "Uso" }),
+      ).toBeInTheDocument();
+      expect(
+        within(
+          screen.getByRole("region", { name: "Totais de créditos" }),
+        ).getByText(/1,3\s+mil/u),
+      ).toBeInTheDocument();
+      expect(screen.getByText("1 automação usou 300 créditos")).toBeVisible();
+      expect(screen.getByText("1 conversa usou 200 créditos")).toBeVisible();
+      expect(screen.getByText("Conversa")).toBeVisible();
+    });
+
+    click(screen.getByLabelText("Período do uso"));
+    expect(
+      screen.getByRole("option", { name: "Últimos 7 dias" }),
+    ).toBeInTheDocument();
+  });
+
+  it("localizes usage copy, counts, and numeric totals in Japanese", async () => {
+    context.mocks.data.userPreferences({ locale: "ja-JP" });
+    context.mocks.api(zeroUsageInsightContract.get, ({ respond }) => {
+      return respond(200, usageInsightTodayFixture);
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/usage",
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe("ja-JP");
+      expect(
+        screen.getByRole("heading", { level: 1, name: "使用量" }),
+      ).toBeInTheDocument();
+      expect(
+        within(
+          screen.getByRole("region", { name: "クレジットの合計" }),
+        ).getByText("1300"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("1件のオートメーションで300クレジットを使用"),
+      ).toBeVisible();
+      expect(screen.getByText("1件の会話で200クレジットを使用")).toBeVisible();
+      expect(screen.getAllByText("チャット")).not.toHaveLength(0);
+    });
+
+    click(screen.getByLabelText("日付範囲"));
+    expect(
+      screen.getByRole("option", { name: "過去7日間" }),
+    ).toBeInTheDocument();
   });
 });

@@ -9,13 +9,13 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { connectors } from "@vm0/db/schema/connector";
 import {
   connectorCatalogActiveSnapshot,
   connectorCatalogSyncState,
 } from "@vm0/db/schema/connector-catalog";
+import { connectors } from "@vm0/db/schema/connector";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -67,7 +67,7 @@ import { createZeroRouteMocks } from "../__tests__/helpers/zero-route-test";
 // iterations would otherwise see an unseeded DB, error silently in
 // tinybench, and produce empty samples without failing the suite.
 //
-// The fixture bulks up zero_runs / agent_runs / chat_messages and the
+// The fixture bulks up zero_runs / agent_runs / chat_events and the
 // user-visible GET data sets well past planner cross-over so Postgres uses the
 // same index-driven paths production hits. With tiny fixtures the planner picks
 // seq scans and the per-query overhead this bench needs to measure disappears.
@@ -116,7 +116,7 @@ function benchCatalogConnector(args: {
   readonly secretName: string;
 }): ConnectorCatalogArtifactConnector {
   return {
-    connectorRef: args.connectorSlug,
+    slug: args.connectorSlug,
     label: args.label,
     description: `${args.label} connector used by the API benchmark`,
     category: "benchmark",
@@ -604,11 +604,11 @@ async function seedTargetThreadRuns(
     triggerSource: string;
     chatThreadId: string;
   }[] = [];
-  const messageRows: {
+  const eventRows: {
     chatThreadId: string;
     runId: string;
     eventType: "input.prompt" | "output.message";
-    content: string;
+    content?: string;
     sequenceNumber: number;
     seqId: number;
     attachFiles?: string[];
@@ -639,16 +639,17 @@ async function seedTargetThreadRuns(
           ? targetAttachmentId(i - latestAttachmentStart)
           : undefined;
       const content = markdownLorem(i, m);
-      messageRows.push({
+      eventRows.push({
         chatThreadId: fixture.threadId,
         runId,
         eventType: m === 0 ? "input.prompt" : "output.message",
-        content,
         sequenceNumber: m,
         seqId: i * TARGET_MESSAGES_PER_RUN + m + 1,
+        // Input events carry their text in user_message only; chat_events
+        // rejects a non-null content projection for them.
         ...(m === 0
           ? { userMessage: benchUserMessage(content, attachmentId) }
-          : {}),
+          : { content }),
         ...(attachmentId ? { attachFiles: [attachmentId] } : {}),
         createdAt: new Date(now + i * 1000 + m),
       });
@@ -660,12 +661,12 @@ async function seedTargetThreadRuns(
   await chunkedInsert(zRunRows, (chunk) => {
     return db.insert(zeroRuns).values(chunk);
   });
-  await chunkedInsert(messageRows, (chunk) => {
-    return db.insert(chatMessages).values(chunk);
+  await chunkedInsert(eventRows, (chunk) => {
+    return db.insert(chatEvents).values(chunk);
   });
   await db
     .update(chatThreads)
-    .set({ lastChatMessageSeqId: messageRows.length })
+    .set({ lastChatEventSeqId: eventRows.length })
     .where(eq(chatThreads.id, fixture.threadId));
 }
 
@@ -715,7 +716,7 @@ async function seedSideEffectFreeGetData(
     {
       orgId: fixture.orgId,
       userId: fixture.userId,
-      type: "benchmark-github",
+      connectorSlug: "benchmark-github",
       authMethod: "api-token",
       storageVersion: 1,
       externalId: "bench-github",
@@ -724,7 +725,7 @@ async function seedSideEffectFreeGetData(
     {
       orgId: fixture.orgId,
       userId: fixture.userId,
-      type: "benchmark-slack",
+      connectorSlug: "benchmark-slack",
       authMethod: "api-token",
       storageVersion: 1,
       externalId: "bench-slack",
@@ -733,7 +734,7 @@ async function seedSideEffectFreeGetData(
     {
       orgId: fixture.orgId,
       userId: fixture.userId,
-      type: "benchmark-notion",
+      connectorSlug: "benchmark-notion",
       authMethod: "api-token",
       storageVersion: 1,
       externalId: "bench-notion",
@@ -773,7 +774,7 @@ async function logPlannerDiagnostic(
       zero_runs,
       agent_runs,
       chat_threads,
-      chat_messages,
+      chat_events,
       connectors,
       org_metadata,
       org_members_metadata,
@@ -836,7 +837,7 @@ const ensureSeeded: () => Promise<BenchChatThreadFixture> = (() => {
       );
       const missingConnectorSlugs = BENCH_CONNECTOR_CATALOG.connectors
         .map((connector) => {
-          return connector.connectorRef;
+          return connector.slug;
         })
         .filter((connectorSlug) => {
           return !listedConnectorSlugs.has(connectorSlug);

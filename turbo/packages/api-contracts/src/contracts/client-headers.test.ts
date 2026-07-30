@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   addClientCapabilityToVersion,
   clientVersionSupportsCapability,
+  CLIENT_CAPABILITY_CONNECTOR_SLUG_IDENTITIES,
+  CLIENT_CAPABILITY_JA_JP_LOCALE,
   CLIENT_CAPABILITY_PT_BR_LOCALE,
   CLIENT_FORCE_UPGRADE_STATUS,
   CLIENT_HEADER_NAMES,
@@ -61,12 +63,26 @@ describe("client header contract", () => {
 
   it("advertises capabilities through backward-compatible version metadata", () => {
     const version = addClientCapabilityToVersion(
-      "0.636.1",
-      CLIENT_CAPABILITY_PT_BR_LOCALE,
+      addClientCapabilityToVersion(
+        addClientCapabilityToVersion("0.636.1", CLIENT_CAPABILITY_PT_BR_LOCALE),
+        CLIENT_CAPABILITY_JA_JP_LOCALE,
+      ),
+      CLIENT_CAPABILITY_CONNECTOR_SLUG_IDENTITIES,
     );
-    expect(version).toBe("0.636.1+pt-br-locale-v1");
+    expect(version).toBe(
+      "0.636.1+pt-br-locale-v1.ja-jp-locale-v1.connector-slug-identities-v1",
+    );
     expect(
       clientVersionSupportsCapability(version, CLIENT_CAPABILITY_PT_BR_LOCALE),
+    ).toBe(true);
+    expect(
+      clientVersionSupportsCapability(version, CLIENT_CAPABILITY_JA_JP_LOCALE),
+    ).toBe(true);
+    expect(
+      clientVersionSupportsCapability(
+        version,
+        CLIENT_CAPABILITY_CONNECTOR_SLUG_IDENTITIES,
+      ),
     ).toBe(true);
     expect(
       clientVersionSupportsCapability(

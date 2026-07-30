@@ -19,10 +19,13 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import {
   browserProfiles,
+  browserSessionInstances,
+  browserSessionResizeStates,
   browserSessions,
 } from "@vm0/db/schema/browser-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
+import { hostedSites } from "@vm0/db/schema/hosted-site";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
@@ -42,7 +45,11 @@ import {
 } from "../../lib/secret-kms-client";
 import { testOverride } from "../../lib/singleton";
 import type { RouteEntry } from "../route-entry";
-import { createDeferredPromise, onRejection } from "../utils";
+import {
+  createDeferredPromise,
+  onRejection,
+  settleIncludingAbort,
+} from "../utils";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -706,6 +713,113 @@ async function insertLegacyArtifactCatalogFile(
   };
 }
 
+type PreviousApiHostedSiteAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "insert-hosted-site-as-previous-api" }
+>;
+
+async function insertHostedSiteAsPreviousApi(
+  db: Db,
+  body: PreviousApiHostedSiteAction,
+  signal: AbortSignal,
+) {
+  // The previous API writes only the organization-level slug and originating
+  // run. Migration 0742 derives the canonical requested slug and chat owner.
+  const [site] = await db
+    .insert(hostedSites)
+    .values({
+      orgId: body.org_id,
+      userId: body.user_id,
+      slug: body.site,
+      publicSlug: body.public_slug,
+      createdFromRunId: body.run_id,
+    })
+    .returning({ id: hostedSites.id });
+  signal.throwIfAborted();
+  if (!site) {
+    throw new Error("Failed to insert a previous API hosted site");
+  }
+  return {
+    status: 200 as const,
+    body: { ok: true as const, hosted_site_id: site.id },
+  };
+}
+
+type PreviousApiHostedDeploymentAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "insert-hosted-deployment-as-previous-api" }
+>;
+
+function isHostedDeploymentScopeConflict(error: unknown): boolean {
+  const databaseError =
+    error instanceof Error && error.cause instanceof Error
+      ? error.cause
+      : error;
+  return (
+    databaseError instanceof Error &&
+    "code" in databaseError &&
+    databaseError.code === "23514" &&
+    databaseError.message.includes("Hosted site belongs to a different chat")
+  );
+}
+
+async function writeHostedDeploymentAsPreviousApi(
+  db: Db,
+  body: PreviousApiHostedDeploymentAction,
+): Promise<void> {
+  await db.execute(sql`
+      INSERT INTO "hosted_deployments" (
+        "site_id",
+        "org_id",
+        "user_id",
+        "run_id",
+        "status",
+        "r2_prefix",
+        "manifest",
+        "manifest_hash",
+        "content_hash",
+        "file_count",
+        "size_bytes",
+        "url"
+      )
+      VALUES (
+        ${body.hosted_site_id},
+        ${body.org_id},
+        ${body.user_id},
+        ${body.run_id},
+        'uploading',
+        'previous-api-scope-fixture',
+        '{}'::jsonb,
+        repeat('0', 64),
+        repeat('0', 64),
+        0,
+        0,
+        'https://previous-api-scope-fixture.invalid'
+      )
+    `);
+}
+
+async function insertHostedDeploymentAsPreviousApi(
+  db: Db,
+  body: PreviousApiHostedDeploymentAction,
+  signal: AbortSignal,
+) {
+  const inserted = await settleIncludingAbort(
+    writeHostedDeploymentAsPreviousApi(db, body),
+  );
+  signal.throwIfAborted();
+  if (!inserted.ok && !isHostedDeploymentScopeConflict(inserted.error)) {
+    throw inserted.error;
+  }
+  return {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      hosted_deployment_scope_blocked: !inserted.ok,
+    },
+  };
+}
+
 type PreviousApiComputerAccessAction = Extract<
   TestRuntimeStateActionBody,
   { action: "set-computer-use-host-as-previous-api" }
@@ -767,6 +881,52 @@ type PreviousApiBrowserProfileAction = Extract<
   { action: "read-browser-profile-as-previous-api" }
 >;
 
+type PreviousApiBrowserInstanceAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "set-browser-instance-as-previous-api" }
+>;
+
+async function setBrowserInstanceAsPreviousApi(
+  db: Db,
+  body: PreviousApiBrowserInstanceAction,
+  signal: AbortSignal,
+) {
+  const [instance] = await db
+    .select({
+      providerSessionId: browserSessionInstances.providerSessionId,
+    })
+    .from(browserSessionInstances)
+    .where(
+      and(
+        eq(browserSessionInstances.browserSessionId, body.browser_id),
+        eq(browserSessionInstances.status, "active"),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  if (!instance) {
+    throw new Error("Expected an active previous API browser instance");
+  }
+  // Previous API inserts have no companion row. The migration consistency
+  // suite executes that binary's real insert shape after migration 0734.
+  const [deleted] = await db
+    .delete(browserSessionResizeStates)
+    .where(
+      eq(
+        browserSessionResizeStates.providerSessionId,
+        instance.providerSessionId,
+      ),
+    )
+    .returning({
+      providerSessionId: browserSessionResizeStates.providerSessionId,
+    });
+  signal.throwIfAborted();
+  if (!deleted) {
+    throw new Error("Expected a current API browser resize state");
+  }
+  return { status: 200 as const, body: { ok: true as const } };
+}
+
 async function readBrowserProfileAsPreviousApi(
   db: Db,
   body: PreviousApiBrowserProfileAction,
@@ -821,9 +981,12 @@ async function readBrowserProfileAsPreviousApi(
 
 type CompatibilityFixtureAction =
   | LegacyArtifactCatalogFileAction
+  | PreviousApiHostedSiteAction
+  | PreviousApiHostedDeploymentAction
   | PreviousApiComputerAccessAction
   | PreviousApiRunnerJobContextProfileAction
   | PreviousApiBrowserProfileAction
+  | PreviousApiBrowserInstanceAction
   | ConnectorPermissionBaselineMutationAction;
 
 function isCompatibilityFixtureAction(
@@ -831,9 +994,12 @@ function isCompatibilityFixtureAction(
 ): body is CompatibilityFixtureAction {
   return [
     "insert-legacy-artifact-catalog-file",
+    "insert-hosted-site-as-previous-api",
+    "insert-hosted-deployment-as-previous-api",
     "set-computer-use-host-as-previous-api",
     "set-runner-job-context-profile-as-previous-api",
     "read-browser-profile-as-previous-api",
+    "set-browser-instance-as-previous-api",
     "mutate-runner-job-connector-permission-baseline",
   ].includes(body.action);
 }
@@ -847,6 +1013,12 @@ async function compatibilityFixtureActionResponse(
     case "insert-legacy-artifact-catalog-file": {
       return await insertLegacyArtifactCatalogFile(db, body, signal);
     }
+    case "insert-hosted-site-as-previous-api": {
+      return await insertHostedSiteAsPreviousApi(db, body, signal);
+    }
+    case "insert-hosted-deployment-as-previous-api": {
+      return await insertHostedDeploymentAsPreviousApi(db, body, signal);
+    }
     case "set-computer-use-host-as-previous-api": {
       return await setComputerUseHostAsPreviousApi(db, body, signal);
     }
@@ -855,6 +1027,9 @@ async function compatibilityFixtureActionResponse(
     }
     case "read-browser-profile-as-previous-api": {
       return await readBrowserProfileAsPreviousApi(db, body, signal);
+    }
+    case "set-browser-instance-as-previous-api": {
+      return await setBrowserInstanceAsPreviousApi(db, body, signal);
     }
     case "mutate-runner-job-connector-permission-baseline": {
       await mutateRunnerJobConnectorPermissionBaseline(db, body, signal);

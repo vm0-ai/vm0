@@ -1,49 +1,66 @@
 import {
   MODEL_PROVIDER_TYPES,
   getVm0ModelPriceTier,
-  getVm0ModelPriceTierLabel,
   type ModelProviderType,
   type SupportedRunModel,
   type Vm0ModelPriceTier,
 } from "@vm0/api-contracts/contracts/model-providers";
-
-/**
- * UI-only display overrides for provider labels. These do not modify the core
- * contracts, only how the platform UI renders them.
- */
-
-interface ProviderUIOverrides {
-  label?: string;
-}
-
-const PROVIDER_UI_OVERRIDES = Object.freeze<
-  Partial<Record<ModelProviderType, ProviderUIOverrides>>
->({
-  "claude-code-oauth-token": {
-    label: "Claude Code (OAuth token)",
-  },
-  "deepseek-api-key": {
-    label: "Deepseek",
-  },
-  "azure-foundry": {
-    label: "Azure foundry portal",
-  },
-  vm0: {
-    label: "Built-in model",
-  },
-});
-
-function getOverrides(
-  type: ModelProviderType,
-): ProviderUIOverrides | undefined {
-  return PROVIDER_UI_OVERRIDES[type];
-}
+import { i18n } from "../../../../i18n/index.ts";
 
 /**
  * Get the display label for a provider type (UI override or core fallback)
  */
 export function getUILabel(type: ModelProviderType): string {
-  return getOverrides(type)?.label ?? MODEL_PROVIDER_TYPES[type].label;
+  switch (type) {
+    case "vm0": {
+      return i18n.t(($) => {
+        return $.settings.models.picker.builtInModel;
+      });
+    }
+    case "claude-code-oauth-token": {
+      return i18n.t(($) => {
+        return $.settings.models.picker.providerLabels.claudeCodeOauth;
+      });
+    }
+    case "deepseek-api-key": {
+      return i18n.t(($) => {
+        return $.settings.models.picker.providerLabels.deepseek;
+      });
+    }
+    case "azure-foundry": {
+      return i18n.t(($) => {
+        return $.settings.models.picker.providerLabels.azureFoundryPortal;
+      });
+    }
+    default: {
+      return MODEL_PROVIDER_TYPES[type].label;
+    }
+  }
+}
+
+export function getVm0ModelPriceTierLabel(tier: Vm0ModelPriceTier): string {
+  switch (tier) {
+    case "$": {
+      return i18n.t(($) => {
+        return $.settings.models.picker.priceTiers.economy;
+      });
+    }
+    case "$$": {
+      return i18n.t(($) => {
+        return $.settings.models.picker.priceTiers.balanced;
+      });
+    }
+    case "$$$": {
+      return i18n.t(($) => {
+        return $.settings.models.picker.priceTiers.frontier;
+      });
+    }
+    case "$$$$": {
+      return i18n.t(($) => {
+        return $.settings.models.picker.priceTiers.premium;
+      });
+    }
+  }
 }
 
 const MODEL_BRAND_ICON: Readonly<Record<SupportedRunModel, ModelProviderType>> =
@@ -74,8 +91,4 @@ export function getModelBrandIconType(
 ): ModelProviderType {
   return MODEL_BRAND_ICON[model];
 }
-export {
-  getVm0ModelPriceTier,
-  getVm0ModelPriceTierLabel,
-  type Vm0ModelPriceTier,
-};
+export { getVm0ModelPriceTier, type Vm0ModelPriceTier };

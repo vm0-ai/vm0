@@ -214,9 +214,73 @@ describe("zero user permission grants", () => {
     expect(listed[0]).toMatchObject({
       agentId,
       connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
       permission: SLACK_READ_PERMISSION,
       action: "allow",
     });
+  });
+
+  it("accepts transitional connector fields and rejects conflicting aliases", async () => {
+    const fixture = await createFixture();
+    const agentId = await seedAgent(fixture);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const base = {
+      agentId,
+      mode: "patch" as const,
+      grants: [
+        {
+          permission: SLACK_READ_PERMISSION,
+          action: "allow" as const,
+        },
+      ],
+    };
+
+    const canonical = await accept(
+      client().apply({
+        body: { ...base, connectorSlug: SLACK_CONNECTOR },
+        headers: AUTH_HEADERS,
+      }),
+      [200],
+    );
+    expect(canonical.body[0]).toMatchObject({
+      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
+    });
+
+    const dual = await accept(
+      client().apply({
+        body: {
+          ...base,
+          connectorRef: SLACK_CONNECTOR,
+          connectorSlug: SLACK_CONNECTOR,
+        },
+        headers: AUTH_HEADERS,
+      }),
+      [200],
+    );
+    expect(dual.body[0]).toMatchObject({
+      connectorRef: SLACK_CONNECTOR,
+      connectorSlug: SLACK_CONNECTOR,
+    });
+
+    const conflicting = await accept(
+      client().apply({
+        body: {
+          ...base,
+          connectorRef: SLACK_CONNECTOR,
+          connectorSlug: "notion",
+        },
+        headers: AUTH_HEADERS,
+      }),
+      [400],
+    );
+    expect(conflicting.body.error.code).toBe("BAD_REQUEST");
+
+    const missing = await accept(
+      client().apply({ body: base, headers: AUTH_HEADERS }),
+      [400],
+    );
+    expect(missing.body.error.code).toBe("BAD_REQUEST");
   });
 
   it("uses visible-agent scope for private and cross-org agents", async () => {

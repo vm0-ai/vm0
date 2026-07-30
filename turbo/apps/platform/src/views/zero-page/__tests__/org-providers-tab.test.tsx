@@ -9,8 +9,9 @@ import type {
   ModelProviderResponse,
   OrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   click,
@@ -18,9 +19,16 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { initializeI18n } from "../../../i18n/index.ts";
+import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
+
+afterEach(async () => {
+  document.documentElement.lang = DEFAULT_LOCALE;
+  await initializeI18n(DEFAULT_LOCALE);
+});
 
 function staleCodexProvider(): ModelProviderResponse {
   return {
@@ -293,6 +301,54 @@ function dialogContaining(element: HTMLElement): HTMLElement {
 }
 
 describe("organization model providers settings", () => {
+  it("localizes built-in model policy updates in Portuguese", async () => {
+    mockAdminOrg();
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([
+      builtInPolicy(
+        "00000000-0000-4000-a000-000000000214",
+        "deepseek-v4-pro",
+        "DeepSeek V4 Pro",
+        true,
+      ),
+      builtInPolicy(
+        "00000000-0000-4000-a000-000000000215",
+        "gpt-5.5",
+        "GPT 5.5",
+        false,
+      ),
+    ]);
+    mockBillingCapabilities({
+      supportByok: true,
+      restrictedVm0Models: false,
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=model",
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
+    });
+
+    await expect(
+      screen.findByRole("heading", { name: "Modelos" }),
+    ).resolves.toBeInTheDocument();
+    const deepseekRow = await screen.findByTestId(
+      "org-model-policy-row-deepseek-v4-pro",
+    );
+    expect(within(deepseekRow).getByText("Integrado")).toBeInTheDocument();
+
+    const defaultRow = screen.getByTestId("default-model-row");
+    click(within(defaultRow).getByRole("combobox"));
+    click(await screen.findByRole("option", { name: "GPT 5.5" }));
+
+    await expect(
+      screen.findByText("Configurações dos provedores de modelo atualizadas"),
+    ).resolves.toBeInTheDocument();
+  });
+
   it("only offers OpenAI and Anthropic models when adding a model", async () => {
     mockAdminOrg();
     context.mocks.data.orgModelProviders([]);

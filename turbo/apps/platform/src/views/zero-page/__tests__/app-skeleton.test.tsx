@@ -1,4 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -57,5 +58,26 @@ describe("app skeleton", () => {
     bootstrapSkeleton.dispatchEvent(new Event("transitionend"));
 
     expect(document.getElementById("app-bootstrap-skeleton")).toBeNull();
+  });
+
+  it("renders the loading state in the workspace locale", async () => {
+    context.mocks.data.userPreferences({
+      locale: "pt-BR",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/_/skeleton",
+      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: true },
+    });
+
+    const skeletons = await screen.findAllByRole("status", {
+      name: "Carregando seu espaço de trabalho",
+    });
+    expect(skeletons.length).toBeGreaterThan(0);
+    expect(skeletons[0]).toHaveTextContent(
+      /Aquecendo os neurônios|Preparando algumas ideias|Preparando tudo|Quase lá|Carregando seu espaço de trabalho|Ajustando os instrumentos|Ligando os pontos|Reunindo a equipe/u,
+    );
   });
 });

@@ -253,7 +253,7 @@ function mockConnectorOauthStart(args?: {
     ({ body, params, respond }) => {
       args?.onStart?.(body.agentId, body.authorizeAgent);
       return respond(200, {
-        authorizationUrl: `https://oauth.test/${params.type}/authorize`,
+        authorizationUrl: `https://oauth.test/${params.connectorSlug}/authorize`,
       });
     },
   );
@@ -279,7 +279,7 @@ function mockConnectorOpenIdStart(args?: {
     ({ params, respond }) => {
       args?.onStart?.();
       return respond(200, {
-        authorizationUrl: `https://openid.test/${params.type}/authorize`,
+        authorizationUrl: `https://openid.test/${params.connectorSlug}/authorize`,
       });
     },
   );
@@ -400,7 +400,7 @@ describe("directed connector connect page", () => {
       zeroConnectorNoAuthGrantContract.connect,
       ({ body, params, respond }) => {
         connectCalls += 1;
-        expect(params.type).toBe("stripe");
+        expect(params.connectorSlug).toBe("stripe");
         expect(body).toStrictEqual({
           authMethod: "api",
           agentId: AGENT_ID,
@@ -527,7 +527,7 @@ describe("directed connector connect page", () => {
     await screen.findByRole("dialog", { name: "Public GitHub" });
 
     context.store.set(detachedNavigateTo$, ROUTES.directedConnect, {
-      pathParams: { type: "github" },
+      pathParams: { connectorSlug: "github" },
       searchParams: new URLSearchParams({ agentId: SECOND_AGENT_ID }),
     });
 
@@ -556,7 +556,7 @@ describe("directed connector connect page", () => {
     context.mocks.api(
       zeroConnectorManualGrantContract.connect,
       ({ body, params, respond }) => {
-        expect(params.type).toBe("axiom");
+        expect(params.connectorSlug).toBe("axiom");
         expect(body.agentId).toBe(AGENT_ID);
         submittedValues = body.values;
         return respond(200, {
@@ -645,7 +645,7 @@ describe("directed connector connect page", () => {
     });
 
     context.store.set(detachedNavigateTo$, ROUTES.directedConnect, {
-      pathParams: { type: "stripe" },
+      pathParams: { connectorSlug: "stripe" },
       searchParams: new URLSearchParams({ agentId: AGENT_ID }),
     });
 
@@ -688,7 +688,7 @@ describe("directed connector connect page", () => {
     });
 
     context.store.set(detachedNavigateTo$, ROUTES.directedConnect, {
-      pathParams: { type: "axiom" },
+      pathParams: { connectorSlug: "axiom" },
       searchParams: new URLSearchParams({ agentId: SECOND_AGENT_ID }),
     });
 

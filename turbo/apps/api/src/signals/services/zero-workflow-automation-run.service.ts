@@ -1,14 +1,11 @@
 import { command } from "ccstate";
 
 import { writeDb$ } from "../external/db";
-import {
-  publishChatThreadMessageCreatedSafely,
-  publishChatThreadWorkflowQueueChangedSafely,
-} from "../external/realtime";
+import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import {
   admitWorkflowAutomationEvent,
   type WorkflowQueueEventParams,
-} from "./chat-message-queue.service";
+} from "./workflow-chat-event-queue.service";
 import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
 import {
   ApiDispatchTimingCollector,
@@ -21,6 +18,7 @@ import type {
 
 export {
   buildChatOnlyWorkflowAutomationCallbacks,
+  scheduleTriggerContext,
   type AutomationRow,
   type DueWorkflowAutomation,
   type RunFailure,
@@ -94,11 +92,6 @@ export const runWorkflowAutomationNow$ = command(
     );
     signal.throwIfAborted();
 
-    await publishChatThreadWorkflowQueueChangedSafely(
-      automation.ownerUserId,
-      chatThreadId,
-    );
-    signal.throwIfAborted();
     if (admission.kind === "inserted") {
       await publishChatThreadMessageCreatedSafely(
         automation.ownerUserId,

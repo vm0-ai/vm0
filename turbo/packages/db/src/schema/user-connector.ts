@@ -29,17 +29,16 @@ export const userConnectors = pgTable(
         },
         { onDelete: "cascade" },
       ),
-    // TODO(#23619): Rename the property and column in the persistence phase.
-    connectorType: varchar("connector_type", { length: 64 }).notNull(),
+    connectorSlug: varchar("connector_slug", { length: 64 }).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {
     return [
-      uniqueIndex("idx_user_connectors_unique").on(
+      uniqueIndex("idx_user_connectors_unique_slug").on(
         table.orgId,
         table.userId,
         table.agentId,
-        table.connectorType,
+        table.connectorSlug,
       ),
       index("idx_user_connectors_agent_user").on(table.agentId, table.userId),
     ];

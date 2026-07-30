@@ -8,6 +8,7 @@ import {
 import { now } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
+import { i18n } from "../../i18n/index.ts";
 
 interface GithubIntegrationMissingData extends GithubInstallationNotFoundResponse {
   readonly isInstalled: false;
@@ -18,7 +19,7 @@ interface GithubIntegrationMissingData extends GithubInstallationNotFoundRespons
   readonly connectUrl: string;
 }
 
-type GithubIntegrationData =
+export type GithubIntegrationData =
   | (GithubInstallationResponse & { readonly isInstalled: true })
   | GithubIntegrationMissingData;
 
@@ -67,7 +68,11 @@ function openGithubOAuthWindow(): Pick<Window, "closed" | "location"> {
   const authWindow = window.open("about:blank", "_blank", popupFeatures);
 
   if (!authWindow && !standalone) {
-    throw new Error("Failed to open authorization window");
+    throw new Error(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.errors.githubAuthorizationWindow;
+      }),
+    );
   }
 
   if (authWindow) {

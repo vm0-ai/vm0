@@ -7,19 +7,15 @@ import { eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
-import {
-  publishChatThreadMessageCreatedSafely,
-  publishChatThreadWorkflowQueueChangedSafely,
-} from "../external/realtime";
+import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import { writeDb$, type Db } from "../external/db";
 import { now } from "../external/time";
 import {
   decryptWorkflowQueueEventParams,
-  failWorkflowQueueEventAfterRunFailure,
   loadNextWorkflowQueueEvent,
   rejectWorkflowQueueEvent,
   type PendingWorkflowQueueEvent,
-} from "./chat-message-queue.service";
+} from "./workflow-chat-event-queue.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import {
   launchQueuedWorkflowAutomation$,
@@ -62,8 +58,7 @@ async function loadDequeueTarget(
  * Advance the thread's workflow queue: as long as user queued messages always
  * win (enforced inside `loadNextWorkflowQueueEvent`), prepare the oldest event
  * and turn it into a run. The final run persistence transaction consumes the
- * event. Stale events are rejected; a run-creation failure atomically rejects
- * its trigger and pauses later automation intake.
+ * event. Stale events and failed run creations reject only their own trigger.
  */
 export interface WorkflowQueueDrainResult {
   readonly eventId: string;
@@ -89,15 +84,10 @@ type WorkflowQueueDrainStep =
   | null
   | typeof CONTINUE_DRAIN;
 
-async function publishQueueChanged(
+async function publishQueueEventChanged(
   event: PendingWorkflowQueueEvent,
   signal: AbortSignal,
 ): Promise<void> {
-  await publishChatThreadWorkflowQueueChangedSafely(
-    event.userId,
-    event.chatThreadId,
-  );
-  signal.throwIfAborted();
   await publishChatThreadMessageCreatedSafely(event.userId, event.chatThreadId);
   signal.throwIfAborted();
 }
@@ -118,7 +108,7 @@ async function consumeInvalidWorkflowEvent(
   if (!consumed) {
     return null;
   }
-  await publishQueueChanged(event, signal);
+  await publishQueueEventChanged(event, signal);
   if (launchHint?.eventId !== event.id) {
     return CONTINUE_DRAIN;
   }
@@ -136,7 +126,7 @@ async function handleWorkflowLaunchResult(
   signal: AbortSignal,
 ): Promise<WorkflowQueueDrainStep> {
   if (result.kind === "ok" || result.kind === "enqueued") {
-    await publishQueueChanged(event, signal);
+    await publishQueueEventChanged(event, signal);
     return { eventId: event.id, result };
   }
   if (result.kind === "conflict") {
@@ -154,25 +144,25 @@ async function handleWorkflowLaunchResult(
     if (!consumed) {
       return null;
     }
-    await publishQueueChanged(event, signal);
+    await publishQueueEventChanged(event, signal);
     return launchHint ? { eventId: event.id, result } : CONTINUE_DRAIN;
   }
 
-  const failed = await failWorkflowQueueEventAfterRunFailure(db, {
+  const failed = await rejectWorkflowQueueEvent(db, {
     eventId: event.id,
     chatThreadId: event.chatThreadId,
-    pauseReason: result.response.body.error.message,
+    reason: result.response.body.error.message,
   });
   signal.throwIfAborted();
   if (!failed) {
     return null;
   }
-  log.warn("Workflow queue paused after run creation failure", {
+  log.warn("Workflow queue event rejected after run creation failure", {
     eventId: event.id,
     chatThreadId: event.chatThreadId,
     code: result.response.body.error.code,
   });
-  await publishQueueChanged(event, signal);
+  await publishQueueEventChanged(event, signal);
   return {
     eventId: event.id,
     result,
@@ -260,6 +250,7 @@ export const drainWorkflowQueueForThread$ = command(
               params.allowClaimedOnceScheduleAutomation,
           },
           queueEventId: event.id,
+          queueEventCreatedAt: event.createdAt,
           apiStartTime: launchHint?.apiStartTime ?? now(),
           prompt: params.prompt,
           triggerBrief: event.triggerBrief ?? undefined,

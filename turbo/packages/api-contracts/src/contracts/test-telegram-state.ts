@@ -36,9 +36,6 @@ export const testTelegramStateActionBodySchema = z
       "delete-post-fixture",
       "get-post-run-state",
       "get-telegram-link-id",
-      "seed-agent-session",
-      "seed-thread-session",
-      "has-thread-session",
       "seed-running-run",
       "seed-completed-run",
       "seed-model-policies",
@@ -48,7 +45,7 @@ export const testTelegramStateActionBodySchema = z
       "update-run-callback",
       "update-run",
       "get-run",
-      "find-thread-session",
+      "find-chat-thread-route",
       "delete-fixture",
     ]),
   })
@@ -72,7 +69,7 @@ export const testTelegramStateResponseSchema = z.object({
   mock_calls: z.array(z.unknown()),
   messages: z.array(z.unknown()),
   official_messages: z.array(z.unknown()),
-  thread_sessions: z.array(z.unknown()),
+  routes: z.array(z.unknown()),
 });
 
 export const testTelegramStateDeleteResponseSchema = z.object({

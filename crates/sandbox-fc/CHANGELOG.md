@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.37.164](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.163...sandbox-fc-v0.37.164) (2026-07-30)
+
+## [0.37.163](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.162...sandbox-fc-v0.37.163) (2026-07-30)
+
+## [0.37.162](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.161...sandbox-fc-v0.37.162) (2026-07-30)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** support cross-filesystem workspace seed moves ([#23876](https://github.com/vm0-ai/vm0/issues/23876)) ([9230b4d](https://github.com/vm0-ai/vm0/commit/9230b4dd9d7b834eb3d36a6dbec150c40060fbc4))
+
+## [0.37.161](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.160...sandbox-fc-v0.37.161) (2026-07-29)
+
 ## [0.37.160](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.159...sandbox-fc-v0.37.160) (2026-07-29)
 
 

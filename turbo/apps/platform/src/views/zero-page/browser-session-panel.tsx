@@ -4,8 +4,13 @@ import {
   IconLoader2,
   IconPlayerPlay,
 } from "@tabler/icons-react";
+import {
+  ZERO_BROWSER_INITIAL_SCREEN_HEIGHT,
+  ZERO_BROWSER_SCREEN_WIDTH,
+} from "@vm0/api-contracts/contracts/zero-browser";
 import { cn } from "@vm0/ui";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 
 import {
   browserSessionReclaimHint,
@@ -16,6 +21,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 
 interface BrowserSessionPanelProps {
   readonly signals: BrowserSessionSignals;
+  readonly containLiveFrame?: boolean;
 }
 
 function PanelFrame({
@@ -59,7 +65,46 @@ function PanelMessage({
   );
 }
 
-export function BrowserSessionPanel({ signals }: BrowserSessionPanelProps) {
+function LiveBrowserFrame({
+  liveUrl,
+  title,
+  contain,
+  aspectRatio,
+}: {
+  readonly liveUrl: string;
+  readonly title: string;
+  readonly contain: boolean;
+  readonly aspectRatio: number;
+}) {
+  return (
+    <iframe
+      src={liveUrl}
+      title={title}
+      referrerPolicy="no-referrer"
+      allow="autoplay; clipboard-read; clipboard-write; fullscreen"
+      style={
+        contain
+          ? {
+              aspectRatio: String(aspectRatio),
+              width: `min(100cqw, calc(100cqh * ${String(aspectRatio)}))`,
+            }
+          : undefined
+      }
+      className={cn(
+        "border-0 bg-background",
+        contain
+          ? "block h-auto max-h-full max-w-full shrink-0"
+          : "w-full min-h-0 flex-1",
+      )}
+    />
+  );
+}
+
+export function BrowserSessionPanel({
+  signals,
+  containLiveFrame = false,
+}: BrowserSessionPanelProps) {
+  const { t } = useTranslation();
   const sessionLoadable = useLastLoadable(signals.panelSession$);
   const keepAliveRef = useSet(signals.keepAliveRef$);
   const resume = useSet(signals.resume$);
@@ -69,11 +114,16 @@ export function BrowserSessionPanel({ signals }: BrowserSessionPanelProps) {
   if (sessionLoadable.state === "loading") {
     return (
       <PanelFrame>
-        <div className="flex flex-1 items-center justify-center">
+        <div role="status" className="flex flex-1 items-center justify-center">
           <IconLoader2
             className="animate-spin text-muted-foreground"
             size={20}
           />
+          <span className="sr-only">
+            {t(($) => {
+              return $.browserSession.status.starting;
+            })}
+          </span>
         </div>
       </PanelFrame>
     );
@@ -83,14 +133,21 @@ export function BrowserSessionPanel({ signals }: BrowserSessionPanelProps) {
       <PanelFrame>
         <PanelMessage
           icon={<IconBrowserOff size={26} className="text-muted-foreground" />}
-          title="Browser unavailable"
-          description="This browser does not belong to this chat or has been removed."
+          title={t(($) => {
+            return $.browserSession.unavailable.title;
+          })}
+          description={t(($) => {
+            return $.browserSession.unavailable.description;
+          })}
         />
       </PanelFrame>
     );
   }
 
   const session = sessionLoadable.data;
+  const browserAspectRatio = session.screen
+    ? session.screen.width / session.screen.height
+    : ZERO_BROWSER_SCREEN_WIDTH / ZERO_BROWSER_INITIAL_SCREEN_HEIGHT;
   const liveUrl = session.status === "active" ? session.liveUrl : null;
   if (liveUrl === null) {
     return (
@@ -99,10 +156,16 @@ export function BrowserSessionPanel({ signals }: BrowserSessionPanelProps) {
           icon={<IconBrowser size={26} className="text-muted-foreground" />}
           title={
             session.status === "suspended"
-              ? "Browser suspended"
-              : "Browser not live"
+              ? t(($) => {
+                  return $.browserSession.panel.suspended;
+                })
+              : t(($) => {
+                  return $.browserSession.panel.notLive;
+                })
           }
-          description="Resuming restores the saved login profile and storage. The previous pages and tabs do not come back."
+          description={t(($) => {
+            return $.browserSession.panel.resumeDescription;
+          })}
           action={
             <button
               type="button"
@@ -118,7 +181,13 @@ export function BrowserSessionPanel({ signals }: BrowserSessionPanelProps) {
               ) : (
                 <IconPlayerPlay size={14} />
               )}
-              {resuming ? "Resuming…" : "Resume browser"}
+              {resuming
+                ? t(($) => {
+                    return $.browserSession.panel.resuming;
+                  })
+                : t(($) => {
+                    return $.browserSession.panel.resume;
+                  })}
             </button>
           }
         />
@@ -126,15 +195,33 @@ export function BrowserSessionPanel({ signals }: BrowserSessionPanelProps) {
     );
   }
 
+  const liveFrame = (
+    <LiveBrowserFrame
+      liveUrl={liveUrl}
+      title={t(
+        ($) => {
+          return $.browserSession.iframeTitle;
+        },
+        { name: session.name },
+      )}
+      contain={containLiveFrame}
+      aspectRatio={browserAspectRatio}
+    />
+  );
+
   return (
     <PanelFrame panelRef={keepAliveRef}>
-      <iframe
-        src={liveUrl}
-        title={`Live browser: ${session.name}`}
-        referrerPolicy="no-referrer"
-        allow="autoplay; clipboard-read; clipboard-write; fullscreen"
-        className={cn("w-full min-h-0 flex-1 border-0 bg-background")}
-      />
+      {containLiveFrame ? (
+        <div
+          data-browser-session-viewport
+          style={{ containerType: "size" }}
+          className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-muted/20"
+        >
+          {liveFrame}
+        </div>
+      ) : (
+        liveFrame
+      )}
       <p className="border-t border-border/60 px-3.5 py-2 text-[11px] leading-4 text-muted-foreground">
         {browserSessionReclaimHint(session)}
       </p>

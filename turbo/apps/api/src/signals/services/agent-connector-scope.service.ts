@@ -2,7 +2,9 @@ import {
   connectorSlugSchema,
   type ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
+import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
+import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import {
   zeroAgents,
@@ -15,6 +17,7 @@ import type { ReadonlyDb } from "../external/db";
 export interface AgentConnectorScope {
   readonly allowedConnectorSlugs: readonly ConnectorSlug[];
   readonly allowedCustomConnectorIds: readonly string[];
+  readonly customConnectorGrants: readonly AgentCustomConnectorGrant[];
 }
 
 export interface AgentConnectorSlugRow {
@@ -23,6 +26,7 @@ export interface AgentConnectorSlugRow {
 
 export interface AgentCustomConnectorRow {
   readonly customConnectorId: string;
+  readonly permissionNames: readonly string[];
 }
 
 interface ZeroBackedComposeAgent {
@@ -39,7 +43,7 @@ async function loadAgentAllowedConnectorSlugRows(
   },
 ): Promise<readonly AgentConnectorSlugRow[]> {
   return await db
-    .select({ connectorSlug: userConnectors.connectorType })
+    .select({ connectorSlug: userConnectors.connectorSlug })
     .from(userConnectors)
     .where(
       and(
@@ -59,13 +63,28 @@ async function loadAgentAllowedCustomConnectorRows(
   },
 ): Promise<readonly AgentCustomConnectorRow[]> {
   return await db
-    .select({ customConnectorId: userCustomConnectors.customConnectorId })
+    .select({
+      customConnectorId: userCustomConnectors.customConnectorId,
+      permissionNames: userCustomConnectors.permissionNames,
+    })
     .from(userCustomConnectors)
+    .innerJoin(
+      orgCustomConnectors,
+      and(
+        eq(orgCustomConnectors.id, userCustomConnectors.customConnectorId),
+        eq(orgCustomConnectors.orgId, userCustomConnectors.orgId),
+        eq(
+          orgCustomConnectors.revision,
+          userCustomConnectors.connectorRevision,
+        ),
+      ),
+    )
     .where(
       and(
         eq(userCustomConnectors.orgId, args.orgId),
         eq(userCustomConnectors.userId, args.userId),
         eq(userCustomConnectors.agentId, args.agentId),
+        eq(orgCustomConnectors.enabled, true),
       ),
     );
 }
@@ -81,7 +100,17 @@ export function agentConnectorScopeFromRows(args: {
   const allowedCustomConnectorIds = args.customConnectorRows.map((row) => {
     return row.customConnectorId;
   });
-  return { allowedConnectorSlugs, allowedCustomConnectorIds };
+  const customConnectorGrants = args.customConnectorRows.map((row) => {
+    return {
+      customConnectorId: row.customConnectorId,
+      permissionNames: [...row.permissionNames],
+    };
+  });
+  return {
+    allowedConnectorSlugs,
+    allowedCustomConnectorIds,
+    customConnectorGrants,
+  };
 }
 
 export async function loadAgentConnectorScope(

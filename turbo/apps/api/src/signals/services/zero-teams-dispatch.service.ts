@@ -8,7 +8,7 @@ import {
   type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { teamsOrgConnections } from "@vm0/db/schema/teams-org-connection";
 import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
@@ -68,11 +68,11 @@ import {
   disconnectTeamsConnection$,
   publishTeamsChanged$,
 } from "./zero-teams-connect.service";
-import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
+import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
-import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-message.service";
+import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-event.service";
 
 const L = logger("TeamsDispatch");
 const TEAMS_LOGIN_PROMPT_FALLBACK_TEXT =
@@ -100,7 +100,7 @@ const TEAMS_FILE_DOWNLOAD_INFO_CONTENT_TYPE =
 const TEAMS_REFERENCE_ATTACHMENT_CONTENT_TYPE = "reference";
 const TEAMS_CHAT_MESSAGE_ID_NAMESPACE = "b60a5846-d85f-4db8-b9aa-d7d803efbb57";
 const TEAMS_DIRECT_MESSAGE_THREAD_ID = "direct-message";
-const teamsQueueEventRevoker = alias(chatMessages, "teams_queue_event_revoker");
+const teamsQueueEventRevoker = alias(chatEvents, "teams_queue_event_revoker");
 
 type TeamsBotCommand = "help" | "connect" | "disconnect" | "switch" | "model";
 type TeamsCardAction = "switch_agent" | "switch_model";
@@ -1617,7 +1617,7 @@ async function persistTeamsChatMessage(args: {
   | {
       readonly inserted: true;
       readonly chatThreadId: string;
-      readonly chatMessageId: string;
+      readonly chatEventId: string;
     }
   | { readonly inserted: false }
 > {
@@ -1672,15 +1672,14 @@ async function persistTeamsChatMessage(args: {
   );
   args.signal.throwIfAborted();
 
-  const chatMessageId = teamsChatMessageId(args.activity, args.connection.id);
+  const chatEventId = teamsChatMessageId(args.activity, args.connection.id);
   const inserted = await args.db.transaction(async (tx) => {
-    const message = await insertChatEvent(
+    const event = await insertChatEvent(
       tx,
       {
-        id: chatMessageId,
+        id: chatEventId,
         chatThreadId: route.chatThreadId,
         eventType: "input.prompt",
-        content: prompt,
         userMessage: createUserMessageDocument({
           text: args.activity.text,
           files: args.promptFiles.map((file) => {
@@ -1699,20 +1698,20 @@ async function persistTeamsChatMessage(args: {
       "id",
     );
     args.signal.throwIfAborted();
-    if (!message) {
+    if (!event) {
       return false;
     }
     await touchChatThreadLastMessageAt(
       tx,
       route.chatThreadId,
       currentTime,
-      chatMessageId,
+      chatEventId,
     );
     return true;
   });
   args.signal.throwIfAborted();
   return inserted
-    ? { inserted: true, chatThreadId: route.chatThreadId, chatMessageId }
+    ? { inserted: true, chatThreadId: route.chatThreadId, chatEventId }
     : { inserted: false };
 }
 
@@ -1720,40 +1719,38 @@ async function teamsMessageDispatchState(
   db: Db,
   args: {
     readonly chatThreadId: string;
-    readonly chatMessageId: string;
+    readonly chatEventId: string;
   },
 ): Promise<TeamsMessageDispatchResult> {
   const [[run], [queued]] = await Promise.all([
     db
       .select({ runId: agentRuns.id, status: agentRuns.status })
-      .from(chatMessages)
-      .innerJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+      .from(chatEvents)
+      .innerJoin(agentRuns, eq(agentRuns.id, chatEvents.runId))
       .where(
         and(
-          eq(chatMessages.chatThreadId, args.chatThreadId),
+          eq(chatEvents.chatThreadId, args.chatThreadId),
           or(
-            eq(chatMessages.id, args.chatMessageId),
-            eq(chatMessages.revokesEventId, args.chatMessageId),
+            eq(chatEvents.id, args.chatEventId),
+            eq(chatEvents.revokesEventId, args.chatEventId),
           ),
         ),
       )
       .limit(1),
     db
-      .select({ id: chatMessages.id })
-      .from(chatMessages)
+      .select({ id: chatEvents.id })
+      .from(chatEvents)
       .where(
         and(
-          eq(chatMessages.id, args.chatMessageId),
-          eq(chatMessages.chatThreadId, args.chatThreadId),
+          eq(chatEvents.id, args.chatEventId),
+          eq(chatEvents.chatThreadId, args.chatThreadId),
           chatEventTypeIn(["input.prompt"]),
-          isNull(chatMessages.runId),
+          isNull(chatEvents.runId),
           notExists(
             db
               .select({ id: teamsQueueEventRevoker.id })
               .from(teamsQueueEventRevoker)
-              .where(
-                eq(teamsQueueEventRevoker.revokesEventId, chatMessages.id),
-              ),
+              .where(eq(teamsQueueEventRevoker.revokesEventId, chatEvents.id)),
           ),
         ),
       )
@@ -2177,11 +2174,11 @@ const runResolvedTeamsAgentForActivity$ = command(
   ): Promise<TeamsMessageDispatchResult> => {
     const db = set(writeDb$);
     const [existingMessage] = await db
-      .select({ id: chatMessages.id })
-      .from(chatMessages)
+      .select({ id: chatEvents.id })
+      .from(chatEvents)
       .where(
         eq(
-          chatMessages.id,
+          chatEvents.id,
           teamsChatMessageId(args.activity, args.connection.id),
         ),
       )

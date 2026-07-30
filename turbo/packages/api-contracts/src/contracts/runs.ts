@@ -266,7 +266,7 @@ const runsListResponseSchema = z.object({
 
 /**
  * Runs main route contract (/api/agent/runs)
- * Handles GET list and POST create
+ * Handles GET list
  */
 export const runsMainContract = c.router({
   /**
@@ -291,28 +291,6 @@ export const runsMainContract = c.router({
       403: apiErrorSchema,
     },
     summary: "List agent runs",
-  },
-  /**
-   * POST /api/agent/runs
-   * Create and execute a new agent run
-   */
-  create: {
-    method: "POST",
-    path: "/api/agent/runs",
-    headers: authHeadersSchema,
-    body: unifiedRunRequestSchema,
-    responses: {
-      201: createRunResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      402: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      429: apiErrorSchema,
-      422: apiErrorSchema,
-      503: apiErrorSchema,
-    },
-    summary: "Create and execute agent run",
   },
 });
 
@@ -773,7 +751,7 @@ const modelCatalogCacheEvictionCountSchema = z.number().int().min(0).max(32);
  * Network log entry schema.
  * [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
  */
-const networkLogEntrySchema = z.object({
+const networkLogEntryInputSchema = z.object({
   timestamp: z.string(),
   type: z.string().optional(),
   action: networkLogActionSchema.optional(),
@@ -828,6 +806,8 @@ const networkLogEntrySchema = z.object({
   upstream_binding_client_binding_match: z.boolean().optional(),
   upstream_binding_client_binding_endpoint_match: z.boolean().optional(),
   upstream_binding_client_binding_hosts: z.string().optional(),
+  connector_diagnostic_slug: z.string().optional(),
+  // TODO(#23838): Remove after the diagnostic compatibility window.
   connector_diagnostic_type: z.string().optional(),
   connector_diagnostic_reason: z.string().optional(),
   connector_diagnostic_env_names: z.array(z.string()).optional(),
@@ -850,6 +830,34 @@ const networkLogEntrySchema = z.object({
   response_body_encoding: z.enum(["utf-8", "base64", "binary"]).optional(),
   response_body_truncated: z.boolean().optional(),
 });
+
+const networkLogEntrySchema = networkLogEntryInputSchema
+  .superRefine((entry, context) => {
+    if (
+      entry.connector_diagnostic_slug !== undefined &&
+      entry.connector_diagnostic_type !== undefined &&
+      entry.connector_diagnostic_slug !== entry.connector_diagnostic_type
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["connector_diagnostic_slug"],
+        message:
+          "connector_diagnostic_slug and connector_diagnostic_type must match",
+      });
+    }
+  })
+  .overwrite((entry) => {
+    const connectorDiagnosticSlug =
+      entry.connector_diagnostic_slug ?? entry.connector_diagnostic_type;
+    if (connectorDiagnosticSlug === undefined) {
+      return entry;
+    }
+    return {
+      ...entry,
+      connector_diagnostic_slug: connectorDiagnosticSlug,
+      connector_diagnostic_type: connectorDiagnosticSlug,
+    };
+  });
 
 /**
  * Network logs response schema

@@ -21,6 +21,10 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
+import {
+  findPendingChatEventInputParamsByPromptFixture,
+  readChatEventInputParamsFixture,
+} from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { now } from "../../external/time";
 import { createDeferredPromise } from "../../utils";
@@ -30,6 +34,7 @@ import { zeroFeishuOauthRoutes } from "../zero-feishu-oauth";
 import { zeroIntegrationsFeishuFileRoutes } from "../zero-integrations-feishu-files";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import type { ApiTestUser } from "./helpers/api-bdd";
+import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -39,6 +44,7 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const authOrgApi = createAuthOrgAgentsBddApi(context);
+const chatCallbacks = createChatCallbacksApi(context);
 const runsApi = createRunsApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
 const APP_ORIGIN = "https://app.vm0.test";
@@ -675,20 +681,23 @@ describe("Feishu integration", () => {
       headers,
       [200],
     );
-    await webhooksApi.requestAgentEvents(
-      {
-        runId: args.runId,
-        events: [
-          {
-            type: "assistant",
-            sequenceNumber: 0,
-            message: {
-              id: `msg_bdd_feishu_${args.runId}`,
-              content: [{ type: "text", text: args.assistantText }],
-            },
-          },
-        ],
+    const assistantEvent = {
+      type: "assistant" as const,
+      sequenceNumber: 0,
+      message: {
+        id: `msg_bdd_feishu_${args.runId}`,
+        content: [{ type: "text" as const, text: args.assistantText }],
       },
+    };
+    chatCallbacks.mockChatOutputEvents([
+      {
+        eventType: assistantEvent.type,
+        sequenceNumber: assistantEvent.sequenceNumber,
+        eventData: { message: assistantEvent.message },
+      },
+    ]);
+    await webhooksApi.requestAgentEvents(
+      { runId: args.runId, events: [assistantEvent] },
       headers,
       [200],
     );
@@ -698,6 +707,7 @@ describe("Feishu integration", () => {
       [200],
     );
     await flushWaitUntilForTest();
+    chatCallbacks.mockChatOutputEvents([]);
   }
 
   async function findRun(
@@ -1808,12 +1818,7 @@ describe("Feishu integration", () => {
     );
     expect(threadEventsPage.body.events).toContainEqual(
       expect.objectContaining({
-        content: [
-          "[Feishu file] quarterly-report.pdf",
-          "   [MESSAGE_ID] om_file_message",
-          `   [FILE_KEY] ${fileId}`,
-          "   [TYPE] file",
-        ].join("\n"),
+        content: null,
         userMessage: {
           version: 1,
           parts: [
@@ -1983,7 +1988,11 @@ describe("Feishu integration", () => {
     );
     expect(threadMessages.body.events).toContainEqual(
       expect.objectContaining({
-        content: "do the Feishu task",
+        content: null,
+        userMessage: {
+          version: 1,
+          parts: [{ type: "text", text: "do the Feishu task" }],
+        },
         feishuChatOpenUrl:
           "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_dm",
       }),
@@ -2420,7 +2429,6 @@ describe("Feishu integration", () => {
         },
       ),
     ).toBeFalsy();
-
     await connectFixtureUser(fixture, secondActor, secondOpenId);
     await postEvent(
       callbackUrl,
@@ -2496,7 +2504,15 @@ describe("Feishu integration", () => {
         },
       ),
     ).toBeFalsy();
-
+    const queuedFeishuParams =
+      await findPendingChatEventInputParamsByPromptFixture(secondPrompt);
+    expect(queuedFeishuParams).toMatchObject({
+      eventId: expect.any(String),
+      encryptedParams: expect.any(String),
+    });
+    if (!queuedFeishuParams) {
+      throw new Error("Expected queued canonical Feishu transport params");
+    }
     await runsApi.heartbeatRunner(runnerGroup);
     const firstClaim = await runsApi.claimRunnerJob(firstRun.id);
     const firstCliSessionId = `bdd-feishu-canonical-group-${firstRun.id}`;
@@ -2509,6 +2525,9 @@ describe("Feishu integration", () => {
     });
 
     const secondRun = await findRun(secondActor, secondPrompt);
+    await expect(
+      readChatEventInputParamsFixture(queuedFeishuParams.eventId),
+    ).resolves.toBeNull();
     await runsApi.heartbeatRunner(runnerGroup);
     const secondClaim = await runsApi.claimRunnerJob(secondRun.id);
     expect(secondClaim.resumeSession?.sessionId).toBe(firstCliSessionId);

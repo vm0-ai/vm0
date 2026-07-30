@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
+import { initializeI18n } from "../../../../i18n/index.ts";
+import { DEFAULT_LOCALE } from "../../../../i18n/resources.ts";
 import type { AgentEvent } from "../../../../signals/zero-page/log-types.ts";
 import {
   groupEventsIntoGroups,
@@ -10,6 +12,10 @@ import {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
+beforeAll(async () => {
+  await initializeI18n(DEFAULT_LOCALE);
+});
 
 describe("groupEventsIntoGroups progress events", () => {
   it("filters Claude Code thinking token progress events", () => {

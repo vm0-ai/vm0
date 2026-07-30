@@ -93,86 +93,38 @@ jobs:
       image: semgrep/semgrep
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Trust checked out repository
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Run Semgrep
-        run: semgrep scan --config auto --json-output semgrep-results.json --sarif --output semgrep-results.sarif .
+        run: sh .github/scripts/run-semgrep.sh
         env:
+          EVENT_NAME: ${{ github.event_name }}
+          MERGE_GROUP_BASE_SHA: ${{ github.event.merge_group.base_sha }}
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
 
       - name: Check against baseline
-        shell: python3 {0}
-        run: |
-          import json, sys
-
-          with open(".github/semgrep-baseline.json") as f:
-              baseline = json.load(f)
-
-          with open("semgrep-results.json") as f:
-              results = json.load(f)
-
-          current = {}
-          for r in results.get("results", []):
-              rid = r["check_id"]
-              current[rid] = current.get(rid, 0) + 1
-
-          errors = []
-          for rule, count in sorted(current.items()):
-              allowed = baseline.get(rule, 0)
-              if count > allowed:
-                  if allowed == 0:
-                      errors.append(f"NEW rule {rule}: {count} finding(s)")
-                  else:
-                      errors.append(f"REGRESSION {rule}: {count} (baseline: {allowed})")
-
-          print(f"Semgrep: {len(current)} rules, {sum(current.values())} total findings")
-          for rule, count in sorted(current.items()):
-              status = "OK" if count <= baseline.get(rule, 0) else "FAIL"
-              print(f"  [{status}] {rule}: {count} (baseline: {baseline.get(rule, 0)})")
-
-          if errors:
-              print(f"\n{len(errors)} regression(s) found:")
-              for e in errors:
-                  print(f"  - {e}")
-              sys.exit(1)
-          else:
-              print("\nNo regressions. All findings within baseline.")
+        run: >-
+          python3 .github/scripts/semgrep-results.py check
+          "$SEMGREP_SCAN_MODE"
+          .github/semgrep-baseline.json
+          semgrep-results.json
+        env:
+          SEMGREP_SCAN_MODE: ${{ github.event_name == 'push' && 'full' || 'diff' }}
 
       - name: Filter Semgrep SARIF for Code Scanning upload
         if: always()
-        shell: python3 {0}
-        run: |
-          import json
-
-          with open(".github/semgrep-baseline.json") as f:
-              baseline = json.load(f)
-
-          with open("semgrep-results.sarif") as f:
-              sarif = json.load(f)
-
-          total_results = 0
-          uploaded_results = 0
-          for run in sarif.get("runs", []):
-              filtered = []
-              seen = {}
-
-              for result in run.get("results", []):
-                  rule = result.get("ruleId")
-                  seen[rule] = seen.get(rule, 0) + 1
-                  total_results += 1
-
-                  if seen[rule] > baseline.get(rule, 0):
-                      filtered.append(result)
-
-              uploaded_results += len(filtered)
-              run["results"] = filtered
-
-          with open("semgrep-results-for-code-scanning.sarif", "w") as f:
-              json.dump(sarif, f)
-
-          print(
-              "Semgrep SARIF upload filtered: "
-              f"{uploaded_results}/{total_results} result(s) exceed baseline"
-          )
+        run: >-
+          python3 .github/scripts/semgrep-results.py filter
+          "$SEMGREP_SCAN_MODE"
+          .github/semgrep-baseline.json
+          semgrep-results.sarif
+          semgrep-results-for-code-scanning.sarif
+        env:
+          SEMGREP_SCAN_MODE: ${{ github.event_name == 'push' && 'full' || 'diff' }}
 
       - name: Upload Semgrep SARIF
         uses: github/codeql-action/upload-sarif@v4
@@ -184,8 +136,8 @@ jobs:
   codeql:
     needs: [detect-release]
     name: CodeQL SAST
-    # Skip for release-please PRs, commits, and merge queue entries
-    if: needs.detect-release.outputs.skip != 'true'
+    # PR and main results are uploaded for CASA; merge groups cannot upload SARIF.
+    if: needs.detect-release.outputs.skip != 'true' && github.event_name != 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -203,7 +155,6 @@ jobs:
         uses: github/codeql-action/analyze@v4
         with:
           category: codeql
-          upload: ${{ github.event_name != 'merge_group' }}
 
   pnpm-audit:
     needs: [detect-release]
@@ -268,16 +219,25 @@ jobs:
           )
           bash -n "${script_files[@]}"
           shellcheck \
+            e2e/helpers/storage-fixtures.bash \
             .github/scripts/check-release-please-component-releases.sh \
             .github/scripts/check-workflow-shell-compatibility.sh \
+            .github/scripts/cloudflare-ssh-command.sh \
+            .github/scripts/cloudflare-ssh-diagnostics.sh \
             .github/scripts/cloudflare-ssh-preconnect.sh \
+            .github/scripts/pass-release-pr-ci-gates.sh \
+            .github/scripts/run-semgrep.sh \
             .github/scripts/runner-behavior-*.sh \
             .github/scripts/tests/ansible-ssh-control-path-test.sh \
             .github/scripts/tests/check-release-please-component-releases-test.sh \
             .github/scripts/tests/check-workflow-shell-compatibility-test.sh \
+            .github/scripts/tests/cloudflare-ssh-command-test.sh \
             .github/scripts/tests/cloudflare-ssh-preconnect-test.sh \
             .github/scripts/tests/cloudflare-ssh-proxy-test.sh \
-            .github/scripts/tests/runner-behavior-balloon-test.sh
+            .github/scripts/tests/run-semgrep-test.sh \
+            .github/scripts/tests/semgrep-results-test.sh \
+            .github/scripts/tests/runner-behavior-balloon-test.sh \
+            .github/scripts/tests/storage-fixtures-test.sh
           # actionlint assumes Bash when shell is omitted and does not model the
           # sh default used by container jobs.
           .github/scripts/check-workflow-shell-compatibility.sh
@@ -335,6 +295,7 @@ jobs:
     steps:
       - name: Validate CI results
         env:
+          EVENT_NAME: ${{ github.event_name }}
           IS_RELEASE: ${{ needs.detect-release.outputs.skip }}
         run: |
           # Auto-pass for release-please PRs, commits, and merge queue entries
@@ -357,7 +318,11 @@ jobs:
 
           check_result "pr-title" "${{ needs.pr-title.result }}"
           check_result "semgrep" "${{ needs.semgrep.result }}"
-          check_result "codeql" "${{ needs.codeql.result }}"
+          if [[ "$EVENT_NAME" == "merge_group" ]]; then
+            echo "⏭️ codeql: skipped (merge_group cannot upload SARIF)"
+          else
+            check_result "codeql" "${{ needs.codeql.result }}"
+          fi
           check_result "pnpm-audit" "${{ needs.pnpm-audit.result }}"
           check_result "actionlint" "${{ needs.actionlint.result }}"
           check_result "gitleaks" "${{ needs.gitleaks.result }}"

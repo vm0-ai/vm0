@@ -68,19 +68,19 @@ export const {
 export function applyUserConnectorUpdate(
   current: readonly string[],
   body: {
-    readonly enabledTypes: readonly string[];
+    readonly enabledConnectorSlugs: readonly string[];
     readonly operation?: "replace" | "add" | "remove";
   },
 ): string[] {
   if (body.operation === "add") {
-    return Array.from(new Set([...current, ...body.enabledTypes]));
+    return Array.from(new Set([...current, ...body.enabledConnectorSlugs]));
   }
   if (body.operation === "remove") {
     return current.filter((connectorSlug) => {
-      return !body.enabledTypes.includes(connectorSlug);
+      return !body.enabledConnectorSlugs.includes(connectorSlug);
     });
   }
-  return [...body.enabledTypes];
+  return [...body.enabledConnectorSlugs];
 }
 
 const NOW = "2026-05-08T00:00:00.000Z";
@@ -426,11 +426,10 @@ export function mockThread(options?: {
       query.sinceId ||
       query.beforeId
     ) {
-      return respond(200, { events: [], hasHistoryBefore: false });
+      return respond(200, { events: [] });
     }
     return respond(200, {
       events: normalizeMockChatEvents(options?.messages ?? []),
-      hasHistoryBefore: false,
     });
   });
 }
@@ -670,11 +669,11 @@ export async function openTemplatePicker(
       screen.getByTestId(`${template.title} detail HTML preview`),
     ).toBeInTheDocument();
   });
-  expect(screen.getByLabelText("Select style Carnival")).toHaveAttribute(
+  expect(screen.getByLabelText("Select style Funfair")).toHaveAttribute(
     "aria-pressed",
     "true",
   );
-  expect(screen.getByLabelText("Select style Gold Luxe")).toBeInTheDocument();
+  expect(screen.getByLabelText("Select style Award night")).toBeInTheDocument();
 
   await user.click(screen.getByLabelText(`Select template ${template.title}`));
   await waitFor(() => {

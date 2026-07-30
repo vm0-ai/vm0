@@ -23,6 +23,7 @@ use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
+use std::future::Future;
 use std::io;
 use std::os::fd::{AsFd, AsRawFd, OwnedFd};
 use std::path::{Path, PathBuf};
@@ -50,6 +51,8 @@ pub const SIGKILL_EXIT: i32 = 137;
 
 /// Normal clean exit. Reap should never fire on this path.
 pub const CLEAN_EXIT: i32 = 0;
+
+pub const MOCK_TERMINATION_READY_EVENT: &str = "vm0_mock_termination_ready";
 
 /// Documented maximum number of stderr lines returned in
 /// `guest_agent::cli::CliExecutionResult`.
@@ -82,6 +85,7 @@ pub struct RecordedRequest {
     pub path: String,
     pub authorization: Option<String>,
     pub content_type: Option<String>,
+    pub client_request_id: Option<String>,
     pub body: String,
 }
 
@@ -232,6 +236,8 @@ impl ControlledRequest {
 pub struct ControlledHttpServer {
     pub base_url: String,
     requests: Arc<AtomicUsize>,
+    completed_responses: Arc<AtomicUsize>,
+    recorded_requests: Arc<Mutex<Vec<RecordedRequest>>>,
     request_rx: mpsc::UnboundedReceiver<ControlledRequest>,
     handle: tokio::task::JoinHandle<()>,
 }
@@ -246,17 +252,26 @@ impl ControlledHttpServer {
             .map_err(|error| format!("controlled HTTP server local_addr: {error}"))?;
         let requests = Arc::new(AtomicUsize::new(0));
         let task_requests = Arc::clone(&requests);
+        let completed_responses = Arc::new(AtomicUsize::new(0));
+        let task_completed_responses = Arc::clone(&completed_responses);
+        let recorded_requests = Arc::new(Mutex::new(Vec::new()));
+        let task_recorded_requests = Arc::clone(&recorded_requests);
         let (request_tx, request_rx) = mpsc::unbounded_channel();
         let handle = tokio::spawn(async move {
             while let Ok((mut socket, _peer)) = listener.accept().await {
                 let connection_tx = request_tx.clone();
                 let connection_requests = Arc::clone(&task_requests);
+                let connection_completed_responses = Arc::clone(&task_completed_responses);
+                let connection_recorded_requests = Arc::clone(&task_recorded_requests);
                 tokio::spawn(async move {
                     let Ok(request) = read_http_request(&mut socket).await else {
                         let _ = write_http_response(&mut socket, 400).await;
                         return;
                     };
                     connection_requests.fetch_add(1, Ordering::SeqCst);
+                    if let Ok(mut requests) = connection_recorded_requests.lock() {
+                        requests.push(request.clone());
+                    }
                     let (response, response_rx) = oneshot::channel();
                     if connection_tx
                         .send(ControlledRequest { request, response })
@@ -268,6 +283,7 @@ impl ControlledHttpServer {
                         return;
                     };
                     let _ = write_http_response(&mut socket, status).await;
+                    connection_completed_responses.fetch_add(1, Ordering::SeqCst);
                 });
             }
         });
@@ -275,6 +291,8 @@ impl ControlledHttpServer {
         Ok(Self {
             base_url: format!("http://{addr}"),
             requests,
+            completed_responses,
+            recorded_requests,
             request_rx,
             handle,
         })
@@ -289,6 +307,17 @@ impl ControlledHttpServer {
 
     pub fn request_count(&self) -> usize {
         self.requests.load(Ordering::SeqCst)
+    }
+
+    pub fn completed_response_count(&self) -> usize {
+        self.completed_responses.load(Ordering::SeqCst)
+    }
+
+    pub fn requests(&self) -> Result<Vec<RecordedRequest>, String> {
+        self.recorded_requests
+            .lock()
+            .map(|requests| requests.clone())
+            .map_err(|_| "controlled HTTP request mutex poisoned".to_string())
     }
 }
 
@@ -324,7 +353,6 @@ impl Drop for RunFilesGuard {
 
 fn cleanup_run_files_for_paths(paths: &guest_agent::paths::GuestPaths) {
     let _ = std::fs::remove_file(paths.agent_log_file());
-    let _ = std::fs::remove_file(paths.event_error_flag());
     let _ = std::fs::remove_file(paths.session_id_file());
     let _ = std::fs::remove_file(paths.session_history_path_file());
     let _ = std::fs::remove_file(paths.sandbox_ops_file());
@@ -367,6 +395,7 @@ async fn read_http_request(socket: &mut tokio::net::TcpStream) -> Result<Recorde
 
     let mut authorization = None;
     let mut content_type = None;
+    let mut client_request_id = None;
     let mut content_length = 0usize;
     for line in header_lines.lines() {
         let Some((name, value)) = line.split_once(':') else {
@@ -379,6 +408,9 @@ async fn read_http_request(socket: &mut tokio::net::TcpStream) -> Result<Recorde
         }
         if trimmed_name.eq_ignore_ascii_case("content-type") {
             content_type = Some(trimmed_value.to_string());
+        }
+        if trimmed_name.eq_ignore_ascii_case("x-client-request-id") {
+            client_request_id = Some(trimmed_value.to_string());
         }
         if trimmed_name.eq_ignore_ascii_case("content-length") {
             content_length = trimmed_value
@@ -418,6 +450,7 @@ async fn read_http_request(socket: &mut tokio::net::TcpStream) -> Result<Recorde
         path,
         authorization,
         content_type,
+        client_request_id,
         body,
     })
 }
@@ -657,6 +690,7 @@ pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
         guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV,
         guest_contracts::env::RESUME_SESSION_ID_ENV,
         guest_contracts::env::API_START_TIME_ENV,
+        guest_contracts::env::AGENT_EXECUTION_TIMEOUT_SECS_ENV,
         guest_contracts::env::SECRET_VALUES_ENV,
         guest_contracts::env::DISALLOWED_TOOLS_ENV,
         guest_contracts::env::TOOLS_ENV,
@@ -957,6 +991,82 @@ pub async fn execute_cli_with_active_input_for_runtime(
         &runtime.paths,
     )
     .await
+}
+
+pub async fn execute_cli_with_cancellation_for_runtime(
+    runtime: &guest_agent::run_context::GuestRuntime,
+    masker: &guest_agent::masker::SecretMasker,
+    heartbeat: guest_agent::cli::HeartbeatMonitor,
+    cancellation: tokio_util::sync::CancellationToken,
+) -> Result<guest_agent::cli::CliExecutionResult, guest_agent::error::AgentError> {
+    let active_input = guest_agent::active_input::ActiveInputRuntime::new_with_initial_prompt(
+        &runtime.config.run_id,
+        false,
+        &runtime.config.prompt,
+    );
+    guest_agent::cli::execute_cli_with_controls_for_config_started_at(
+        masker,
+        heartbeat,
+        runtime.http.clone(),
+        guest_agent::cli::CliExecutionControls::new(active_input.into_writer(), cancellation),
+        &runtime.config,
+        &runtime.paths,
+        Instant::now(),
+    )
+    .await
+}
+
+pub struct VirtualTimeCheckpoint<'a> {
+    pub file: &'a str,
+    pub needle: &'a str,
+    pub advance: Duration,
+}
+
+pub async fn execute_with_virtual_time_checkpoints<F>(
+    future: F,
+    checkpoints: &[VirtualTimeCheckpoint<'_>],
+) -> Result<F::Output, String>
+where
+    F: Future,
+{
+    for checkpoint in checkpoints {
+        guest_agent::paths::ensure_parent_dir(checkpoint.file).map_err(|error| {
+            format!(
+                "prepare parent directory for virtual-time checkpoint {}: {error}",
+                checkpoint.file
+            )
+        })?;
+    }
+
+    tokio::pin!(future);
+    for checkpoint in checkpoints {
+        tokio::select! {
+            _ = &mut future => {
+                return Err(format!(
+                    "CLI execution completed before {:?} appeared in {}",
+                    checkpoint.needle, checkpoint.file
+                ));
+            }
+            ready = wait_for_file_contains(
+                Path::new(checkpoint.file),
+                checkpoint.needle,
+                Duration::from_secs(5),
+            ) => {
+                ready.map_err(|error| {
+                    format!(
+                        "wait for {:?} in {} before advancing time: {error}",
+                        checkpoint.needle, checkpoint.file
+                    )
+                })?;
+            }
+        }
+
+        tokio::time::pause();
+        tokio::time::advance(checkpoint.advance).await;
+        tokio::time::resume();
+    }
+
+    Ok(future.await)
 }
 
 pub async fn wait_for_path(path: &Path, timeout: Duration) -> io::Result<()> {

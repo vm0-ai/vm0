@@ -25,6 +25,7 @@ import {
   mockGoogleCalendarConnectorOAuth,
   mockNotionConnectorOAuth,
 } from "./helpers/api-bdd-workflows";
+import { chatEventDisplayText } from "./helpers/chat-event";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -2386,7 +2387,7 @@ describe("zero workflow automations", () => {
     const workflowMessage = messages.find((message) => {
       return (
         message.eventType === "input.prompt" &&
-        message.content === `/${WORKFLOW_NAME}`
+        chatEventDisplayText(message)?.startsWith(`/${WORKFLOW_NAME}`) === true
       );
     });
     expect(workflowMessage).toBeDefined();

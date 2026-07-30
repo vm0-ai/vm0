@@ -19,6 +19,7 @@ import type {
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import type { EditorDocumentSnapshot } from "./user-message-document-codec.ts";
+import { i18n } from "../../i18n/index.ts";
 
 // ---------------------------------------------------------------------------
 // Attachment types (moved from zero-chat.ts)
@@ -236,6 +237,7 @@ function createChatAttachment(file: File): ZeroChatAttachment {
             filename: file.name,
             contentType,
             size: file.size,
+            supportsUploadHeaders: true,
             ...(file.size >= MULTIPART_UPLOAD_THRESHOLD_BYTES
               ? { multipart: true as const }
               : {}),
@@ -297,7 +299,10 @@ function createChatAttachment(file: File): ZeroChatAttachment {
       const putRes = await fetch(prepared.body.uploadUrl, {
         method: "PUT",
         body: file,
-        headers: { "content-type": prepared.body.contentType },
+        headers: {
+          "content-type": prepared.body.contentType,
+          ...prepared.body.uploadHeaders,
+        },
         signal,
       });
       signal.throwIfAborted();
@@ -588,7 +593,14 @@ export function createDraftSignals(): DraftSignals {
             return a !== attachment;
           });
         });
-        toast.error(`Failed to upload ${file.name}`);
+        toast.error(
+          i18n.t(
+            ($) => {
+              return $.chat.attachments.uploadFailed;
+            },
+            { filename: file.name },
+          ),
+        );
       });
     },
   );

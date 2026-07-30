@@ -1,59 +1,37 @@
 import {
-  chatMessages,
-  type ChatMessageGoalSnapshot,
-} from "@vm0/db/schema/chat-message";
+  chatEvents,
+  type ChatEventGoalSnapshot,
+} from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, eq, gt, isNull, notExists } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import { z } from "zod";
 
 import type { Db } from "../external/db";
-import { settle } from "../utils";
 import {
   listPendingChatQueueEvents,
-  loadChatAutomationIntakePause,
   loadPendingChatQueueEvent,
   lockChatQueueThread,
 } from "./chat-event-queue.service";
-import {
-  decryptPersistentSecretsMap,
-  encryptPersistentSecretsMap,
-} from "./crypto.utils";
 import { insertChatEvent, replaceChatEvent } from "./zero-chat-event.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 
-const GOAL_QUEUE_EVENT_PARAMS_KEY = "__goal_queue_event_params__";
-const goalEventRevoker = alias(chatMessages, "goal_event_revoker");
-const laterGoalChange = alias(chatMessages, "later_goal_change");
-
-const goalQueueEventParamsSchema = z.object({
-  goalId: z.string().uuid(),
-  callbackSecret: z.string().min(1),
-});
-
-interface GoalQueueEventParams {
-  readonly goalId: string;
-  readonly callbackSecret: string;
-}
+const goalEventRevoker = alias(chatEvents, "goal_event_revoker");
+const laterGoalChange = alias(chatEvents, "later_goal_change");
 
 export type GoalQueueAdmission =
   | { readonly kind: "inserted"; readonly eventId: string }
   | { readonly kind: "coalesced" };
-
-type GoalQueueAdmissionAttempt =
-  | GoalQueueAdmission
-  | { readonly kind: "payload-required" };
 
 export interface PendingGoalQueueEvent {
   readonly id: string;
   readonly chatThreadId: string;
   readonly userId: string;
   readonly orgId: string;
-  readonly encryptedParams: string;
+  readonly goalId: string;
   readonly createdAt: Date;
 }
 
@@ -67,49 +45,23 @@ export interface GoalQueueTarget {
   readonly objectiveBrief: string;
 }
 
-async function encryptGoalQueueEventParams(
-  params: GoalQueueEventParams,
-  ctx: { readonly userId: string; readonly orgId: string },
-): Promise<string> {
-  const encrypted = await encryptPersistentSecretsMap(
-    { [GOAL_QUEUE_EVENT_PARAMS_KEY]: JSON.stringify(params) },
-    ctx,
-  );
-  if (!encrypted) {
-    throw new Error("Failed to encrypt goal queue event params");
-  }
-  return encrypted;
-}
-
-export async function decryptGoalQueueEventParams(
-  encryptedParams: string,
-  ctx: { readonly userId: string; readonly orgId: string },
-): Promise<GoalQueueEventParams | null> {
-  const decrypted = await decryptPersistentSecretsMap(encryptedParams, ctx);
-  const raw = decrypted?.[GOAL_QUEUE_EVENT_PARAMS_KEY];
-  if (!raw) {
-    return null;
-  }
-  return goalQueueEventParamsSchema.parse(JSON.parse(raw) as unknown);
-}
-
 async function pendingGoalEventExists(
   db: Pick<Db, "select">,
   chatThreadId: string,
 ): Promise<boolean> {
   const [event] = await db
-    .select({ id: chatMessages.id })
-    .from(chatMessages)
+    .select({ id: chatEvents.id })
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.chatThreadId, chatThreadId),
+        eq(chatEvents.chatThreadId, chatThreadId),
         chatEventTypeIn(["input.goal"]),
-        isNull(chatMessages.runId),
+        isNull(chatEvents.runId),
         notExists(
           db
             .select({ id: goalEventRevoker.id })
             .from(goalEventRevoker)
-            .where(eq(goalEventRevoker.revokesEventId, chatMessages.id)),
+            .where(eq(goalEventRevoker.revokesEventId, chatEvents.id)),
         ),
       ),
     )
@@ -117,14 +69,18 @@ async function pendingGoalEventExists(
   return event !== undefined;
 }
 
-async function attemptGoalQueueAdmission(
+/** Persist one coalesced goal continuation trigger without preparing its run. */
+export async function admitGoalQueueEvent(
   db: Db,
   args: {
     readonly chatThreadId: string;
-    readonly encryptedParams: string | undefined;
-    readonly goalSnapshot: ChatMessageGoalSnapshot;
+    readonly goalId: string;
+    readonly objectiveBrief: string;
   },
-): Promise<GoalQueueAdmissionAttempt> {
+): Promise<GoalQueueAdmission> {
+  const goalSnapshot: ChatEventGoalSnapshot = {
+    objectiveBrief: args.objectiveBrief,
+  };
   return await db.transaction(async (tx) => {
     if (!(await lockChatQueueThread(tx, args.chatThreadId))) {
       throw new Error("Goal chat thread no longer exists");
@@ -132,85 +88,19 @@ async function attemptGoalQueueAdmission(
     if (await pendingGoalEventExists(tx, args.chatThreadId)) {
       return { kind: "coalesced" };
     }
-    if (args.encryptedParams === undefined) {
-      return { kind: "payload-required" };
-    }
     const inserted = await insertChatEvent(tx, {
       chatThreadId: args.chatThreadId,
       eventType: "input.goal",
       content: null,
       runId: null,
-      encryptedParams: args.encryptedParams,
-      goalSnapshot: args.goalSnapshot,
+      runGroupId: args.goalId,
+      goalSnapshot,
     });
     if (!inserted) {
       throw new Error("Goal queue event insert returned no row");
     }
     return { kind: "inserted", eventId: inserted.id };
   });
-}
-
-/** Persist one coalesced goal continuation trigger without preparing its run. */
-export async function admitGoalQueueEvent(
-  db: Db,
-  args: {
-    readonly chatThreadId: string;
-    readonly orgId: string;
-    readonly userId: string;
-    readonly objectiveBrief: string;
-    readonly params: GoalQueueEventParams;
-  },
-): Promise<GoalQueueAdmission> {
-  const goalSnapshot: ChatMessageGoalSnapshot = {
-    objectiveBrief: args.objectiveBrief,
-  };
-  const initial = await attemptGoalQueueAdmission(db, {
-    chatThreadId: args.chatThreadId,
-    encryptedParams: undefined,
-    goalSnapshot,
-  });
-  if (initial.kind !== "payload-required") {
-    return initial;
-  }
-
-  const encrypted = await settle(
-    encryptGoalQueueEventParams(args.params, {
-      orgId: args.orgId,
-      userId: args.userId,
-    }),
-  );
-  if (!encrypted.ok) {
-    const retryWithoutPayload = await attemptGoalQueueAdmission(db, {
-      chatThreadId: args.chatThreadId,
-      encryptedParams: undefined,
-      goalSnapshot,
-    });
-    if (retryWithoutPayload.kind !== "payload-required") {
-      return retryWithoutPayload;
-    }
-    throw encrypted.error;
-  }
-
-  const final = await attemptGoalQueueAdmission(db, {
-    chatThreadId: args.chatThreadId,
-    encryptedParams: encrypted.value,
-    goalSnapshot,
-  });
-  if (final.kind === "payload-required") {
-    throw new Error("Goal queue admission still required encrypted params");
-  }
-  return final;
-}
-
-function runnableGoalHead(
-  pending: Awaited<ReturnType<typeof listPendingChatQueueEvents>>,
-  automationPaused: boolean,
-) {
-  return automationPaused
-    ? pending.find((event) => {
-        return event.eventType !== "input.automation";
-      })
-    : pending[0];
 }
 
 function noGoalChangeAfterQueueEvent(db: Pick<Db, "select">) {
@@ -220,15 +110,15 @@ function noGoalChangeAfterQueueEvent(db: Pick<Db, "select">) {
       .from(laterGoalChange)
       .where(
         and(
-          eq(laterGoalChange.chatThreadId, chatMessages.chatThreadId),
+          eq(laterGoalChange.chatThreadId, chatEvents.chatThreadId),
           eq(laterGoalChange.eventType, "goal.changed"),
-          gt(laterGoalChange.seqId, chatMessages.seqId),
+          gt(laterGoalChange.seqId, chatEvents.seqId),
         ),
       ),
   );
 }
 
-/** Load the next runnable goal trigger without letting automation pause gate it. */
+/** Load the next runnable goal trigger. */
 export async function loadNextGoalQueueEvent(
   db: Db,
   chatThreadId: string,
@@ -246,43 +136,38 @@ export async function loadNextGoalQueueEvent(
       chatThreadId,
       queueItemCreatedBefore,
     );
-    const automationPause = await loadChatAutomationIntakePause(
-      tx,
-      chatThreadId,
-    );
-    const head = runnableGoalHead(pending, automationPause !== null);
+    const head = pending[0];
     if (!head || head.eventType !== "input.goal") {
       return null;
     }
 
     const [event] = await tx
       .select({
-        id: chatMessages.id,
-        chatThreadId: chatMessages.chatThreadId,
+        id: chatEvents.id,
+        chatThreadId: chatEvents.chatThreadId,
         userId: chatThreads.userId,
         orgId: zeroAgents.orgId,
-        encryptedParams: chatMessages.encryptedParams,
-        createdAt: chatMessages.createdAt,
+        goalId: chatEvents.runGroupId,
+        createdAt: chatEvents.createdAt,
       })
-      .from(chatMessages)
-      .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
+      .from(chatEvents)
+      .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
       .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
-      .where(eq(chatMessages.id, head.id))
+      .where(eq(chatEvents.id, head.id))
       .limit(1);
     if (!event) {
       return null;
     }
-    if (!event.encryptedParams) {
-      throw new Error(`Goal queue event ${event.id} is missing its payload`);
+    if (!event.goalId) {
+      throw new Error(`Goal queue event ${event.id} is missing its goal id`);
     }
-    return { ...event, encryptedParams: event.encryptedParams };
+    return { ...event, goalId: event.goalId };
   });
 }
 
 export async function loadGoalQueueTarget(
   db: Pick<Db, "select">,
   event: PendingGoalQueueEvent,
-  goalId: string,
 ): Promise<GoalQueueTarget | null> {
   const [goal] = await db
     .select({
@@ -297,15 +182,15 @@ export async function loadGoalQueueTarget(
     })
     .from(threadGoals)
     .innerJoin(
-      chatMessages,
+      chatEvents,
       and(
-        eq(chatMessages.id, event.id),
-        eq(chatMessages.chatThreadId, threadGoals.chatThreadId),
+        eq(chatEvents.id, event.id),
+        eq(chatEvents.chatThreadId, threadGoals.chatThreadId),
       ),
     )
     .where(
       and(
-        eq(threadGoals.id, goalId),
+        eq(threadGoals.id, event.goalId),
         eq(threadGoals.chatThreadId, event.chatThreadId),
         eq(threadGoals.orgId, event.orgId),
         eq(threadGoals.ownerUserId, event.userId),
@@ -344,10 +229,10 @@ export async function goalQueueEventMatchesActiveGoal(
     })
     .from(threadGoals)
     .innerJoin(
-      chatMessages,
+      chatEvents,
       and(
-        eq(chatMessages.id, args.eventId),
-        eq(chatMessages.chatThreadId, threadGoals.chatThreadId),
+        eq(chatEvents.id, args.eventId),
+        eq(chatEvents.chatThreadId, threadGoals.chatThreadId),
       ),
     )
     .where(
@@ -391,22 +276,22 @@ export async function rejectGoalQueueEvent(
     }
     const [payload] = await tx
       .select({
-        goalSnapshot: chatMessages.goalSnapshot,
+        goalSnapshot: chatEvents.goalSnapshot,
         currentGoalObjectiveBrief: threadGoals.objectiveBrief,
       })
-      .from(chatMessages)
+      .from(chatEvents)
       .leftJoin(
         threadGoals,
         and(
-          eq(threadGoals.chatThreadId, chatMessages.chatThreadId),
+          eq(threadGoals.chatThreadId, chatEvents.chatThreadId),
           eq(threadGoals.orgId, args.orgId),
           eq(threadGoals.ownerUserId, args.userId),
         ),
       )
       .where(
         and(
-          eq(chatMessages.id, args.eventId),
-          eq(chatMessages.chatThreadId, args.chatThreadId),
+          eq(chatEvents.id, args.eventId),
+          eq(chatEvents.chatThreadId, args.chatThreadId),
         ),
       )
       .limit(1);
@@ -420,7 +305,6 @@ export async function rejectGoalQueueEvent(
     const rejected = await replaceChatEvent(tx, args.eventId, {
       chatThreadId: args.chatThreadId,
       eventType: "input.rejected",
-      content: objectiveBrief,
       userMessage: createUserMessageDocument({ text: objectiveBrief }),
       runId: null,
       error: args.reason,

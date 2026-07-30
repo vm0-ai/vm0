@@ -53,7 +53,7 @@ async function connectOpenai(fixture: AuthenticatedFixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
     setupApp({ context })(zeroConnectorManualGrantContract).connect({
-      params: { type: "openai" },
+      params: { connectorSlug: "openai" },
       body: {
         authMethod: "api-token",
         values: { apiKey: "sk-test-token" },
@@ -68,14 +68,14 @@ async function deleteOpenai(fixture: AuthenticatedFixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
   await accept(
     setupApp({ context })(zeroConnectorsBySlugContract).delete({
-      params: { type: "openai" },
+      params: { connectorSlug: "openai" },
       headers: authHeaders(),
     }),
     [204, 404],
   );
 }
 
-describe("GET /api/zero/connectors/:type", () => {
+describe("GET /api/zero/connectors/:connectorSlug", () => {
   const seededFixtures: AuthenticatedFixture[] = [];
 
   afterEach(async () => {
@@ -90,7 +90,7 @@ describe("GET /api/zero/connectors/:type", () => {
   it("returns 401 when not authenticated", async () => {
     const client = setupApp({ context })(zeroConnectorsBySlugContract);
     const response = await accept(
-      client.get({ params: { type: "github" }, headers: {} }),
+      client.get({ params: { connectorSlug: "github" }, headers: {} }),
       [401],
     );
 
@@ -103,7 +103,7 @@ describe("GET /api/zero/connectors/:type", () => {
     const client = setupApp({ context })(zeroConnectorsBySlugContract);
     const response = await accept(
       client.get({
-        params: { type: "github" },
+        params: { connectorSlug: "github" },
         headers: authHeaders(),
       }),
       [401],
@@ -119,7 +119,7 @@ describe("GET /api/zero/connectors/:type", () => {
     const client = setupApp({ context })(zeroConnectorsBySlugContract);
     const response = await accept(
       client.get({
-        params: { type: "github" },
+        params: { connectorSlug: "github" },
         headers: authHeaders(),
       }),
       [404],
@@ -137,7 +137,7 @@ describe("GET /api/zero/connectors/:type", () => {
     const client = setupApp({ context })(zeroConnectorsBySlugContract);
     const response = await accept(
       client.get({
-        params: { type: "openai" },
+        params: { connectorSlug: "openai" },
         headers: authHeaders(),
       }),
       [200],
@@ -145,6 +145,7 @@ describe("GET /api/zero/connectors/:type", () => {
 
     expect(response.body).toMatchObject({
       type: "openai",
+      slug: "openai",
       authMethod: "api-token",
       connectionStatus: "connected",
     });
@@ -169,7 +170,7 @@ describe("GET /api/zero/connectors/:type", () => {
     const client = setupApp({ context })(zeroConnectorsBySlugContract);
     const response = await accept(
       client.get({
-        params: { type: "openai" },
+        params: { connectorSlug: "openai" },
         headers: { authorization: `Bearer ${token}` },
       }),
       [200],

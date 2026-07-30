@@ -77,6 +77,7 @@ export function catalogItem(
 ): PublicConnectorCatalogItem {
   return {
     connectorRef: overrides.connectorSlug,
+    slug: overrides.connectorSlug,
     label: overrides.label ?? overrides.connectorSlug,
     description:
       overrides.description ?? `${overrides.connectorSlug} connector`,
@@ -102,6 +103,7 @@ export function catalogStatusItem(
     overrides.connectionStatus ?? (connection ? "connected" : "not-connected");
   return {
     connectorRef: overrides.connectorSlug,
+    slug: overrides.connectorSlug,
     label: overrides.label ?? overrides.connectorSlug,
     description:
       overrides.description ?? `${overrides.connectorSlug} connector`,
@@ -134,6 +136,7 @@ export function catalogPermissionDetail(
   const permissions = overrides.permissions ?? [];
   return {
     connectorRef: overrides.connectorSlug,
+    connectorSlug: overrides.connectorSlug,
     label: overrides.label ?? overrides.connectorSlug,
     icon: overrides.icon ?? {
       url: `https://icons.example.test/${overrides.connectorSlug}.svg`,
@@ -172,13 +175,13 @@ export function stubConnectorCatalogPermissions(
 ) {
   const detailsBySlug = new Map(
     details.map((detail) => {
-      return [detail.connectorRef, detail] as const;
+      return [detail.connectorSlug ?? detail.connectorRef, detail] as const;
     }),
   );
   return http.get(
-    `${origin}/api/zero/connector-catalog/:connectorRef/permissions`,
+    `${origin}/api/zero/connector-catalog/:connectorSlug/permissions`,
     ({ params }) => {
-      const connectorSlug = String(params.connectorRef);
+      const connectorSlug = String(params.connectorSlug);
       const permissions = detailsBySlug.get(connectorSlug);
       if (!permissions) {
         return HttpResponse.json(

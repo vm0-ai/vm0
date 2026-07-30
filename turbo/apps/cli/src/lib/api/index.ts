@@ -82,6 +82,7 @@ export {
   updateZeroAgentInstructions,
   getZeroAgentUserConnectors,
   getZeroAgentCustomConnectors,
+  addZeroAgentCustomConnector,
   listZeroUserPermissionGrants,
 } from "./domains/zero-agents";
 
@@ -126,7 +127,10 @@ export {
   getZeroConnectorCatalogPermissions,
   connectZeroConnectorManualGrant,
   listZeroCustomConnectors,
+  createZeroCustomConnector,
   getZeroCustomConnector,
+  setZeroCustomConnectorValues,
+  startZeroCustomConnectorOAuth2,
 } from "./domains/zero-connectors";
 
 // Domain modules - Zero Mail
@@ -193,11 +197,15 @@ export { listZeroLogs, searchZeroLogs } from "./domains/zero-logs";
 
 // Domain modules - Zero Chat
 export {
+  createZeroChatThread,
+  getZeroChatThreadAgentId,
   getZeroChatThreadSnapshot,
   getZeroChatThread,
+  listZeroChatEvents,
   listZeroChatThreadEvents,
   renameZeroChatThread,
   searchZeroChat,
+  sendZeroChatEvent,
   updateZeroChatThreadModelSelection,
 } from "./domains/zero-chat";
 export type {

@@ -72,7 +72,6 @@ function userMessageAgentDraftAttachments(
 
 function userMessageAgentDraftState(
   args: {
-    readonly draftContent: string | null;
     readonly draftUserMessage?: UserMessageDocument | null;
     readonly draftAttachments: PersistedAttachment[] | null;
   },
@@ -120,7 +119,6 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
         client.patch({
           params: { id: agentId },
           body: {
-            draftContent: payload.content,
             draftUserMessage: payload.userMessage,
             draftAttachments: payload.attachments,
           },
@@ -177,11 +175,7 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
 
   const flushDraftClear$ = command(async ({ set }, signal: AbortSignal) => {
     set(draftSyncReset$);
-    await set(
-      patchDraft$,
-      { content: null, userMessage: null, attachments: null },
-      signal,
-    );
+    await set(patchDraft$, { userMessage: null, attachments: null }, signal);
   });
 
   return { queueDraftSync$, cancelDraftSync$, flushDraftClear$ };

@@ -1,9 +1,13 @@
 import {
   zeroCustomConnectorByIdContract,
+  zeroCustomConnectorOAuth2Contract,
   zeroCustomConnectorSecretContract,
   zeroCustomConnectorsContract,
+  type CreateCustomConnectorBody,
   type CustomConnectorResponse,
+  type UpdateCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroConnectorExternalCodeSessionContract,
   zeroConnectorOpenIdStartContract,
@@ -27,10 +31,11 @@ import type {
   ConnectorAuthMethodId,
   ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
+import { CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY } from "@vm0/connectors/app-oauth-callback";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import {
   click,
@@ -38,16 +43,35 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { initializeI18n } from "../../../i18n/index.ts";
+import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { search } from "../../../signals/location.ts";
 import { setFeatureSwitch$ } from "../../../signals/external/feature-switch.ts";
+import { localStorageSignals } from "../../../signals/external/local-storage.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { resetSignal } from "../../../signals/utils.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { submitManualGrant$ } from "../../../signals/zero-page/settings/connectors.ts";
+import { customConnectorCreateForm$ } from "../../../signals/zero-page/settings/custom-connectors.ts";
 
 const context = testContext();
 const resetAfterManualGrantConnectSignal$ = resetSignal();
+const { get$: hiddenConnectorSlugs$ } = localStorageSignals(
+  "vm0.connections.hiddenConnectorSlugs",
+);
+const {
+  get$: legacyHiddenConnectorSlugs$,
+  set$: setLegacyHiddenConnectorSlugs$,
+} = localStorageSignals("vm0.connections.hiddenTypes");
+const { get$: connectorAppOauthCallbackMetadata$ } = localStorageSignals(
+  CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY,
+);
+
+afterEach(async () => {
+  document.documentElement.lang = DEFAULT_LOCALE;
+  await initializeI18n(DEFAULT_LOCALE);
+});
 
 function createMockAuthWindow(): Window {
   const authWindow = context.mocks.browser.authWindow();
@@ -80,6 +104,19 @@ function queryButtonByText(
   );
 }
 
+function buttonByAriaLabel(
+  label: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!button) {
+    throw new Error(`${label} button not found`);
+  }
+  return button;
+}
+
 function queryMenuItemByText(text: string): HTMLElement | null {
   return (
     queryAllByRoleFast("menuitem").find((candidate) => {
@@ -94,6 +131,16 @@ function menuItemByText(text: string): HTMLElement {
     throw new Error(`${text} menu item not found`);
   }
   return menuItem;
+}
+
+function tabByText(text: string): HTMLElement {
+  const tab = queryAllByRoleFast("tab").find((candidate) => {
+    return candidate.textContent === text;
+  });
+  if (!tab) {
+    throw new Error(`${text} tab not found`);
+  }
+  return tab;
 }
 
 function queryConnectorCardByLabel(label: string): HTMLElement | null {
@@ -128,19 +175,19 @@ function connectorIconByLabel(label: string): HTMLImageElement {
 function applyUserConnectorUpdate(
   current: readonly string[],
   body: {
-    readonly enabledTypes: readonly string[];
+    readonly enabledConnectorSlugs: readonly string[];
     readonly operation?: "replace" | "add" | "remove";
   },
 ): string[] {
   if (body.operation === "add") {
-    return Array.from(new Set([...current, ...body.enabledTypes]));
+    return Array.from(new Set([...current, ...body.enabledConnectorSlugs]));
   }
   if (body.operation === "remove") {
     return current.filter((connectorSlug) => {
-      return !body.enabledTypes.includes(connectorSlug);
+      return !body.enabledConnectorSlugs.includes(connectorSlug);
     });
   }
-  return [...body.enabledTypes];
+  return [...body.enabledConnectorSlugs];
 }
 
 function reconnectReasonHelpButton(container: ParentNode): HTMLElement | null {
@@ -264,6 +311,13 @@ function customConnector(
   };
 }
 
+function publicCustomConnectorOAuthConfig(
+  config: NonNullable<CreateCustomConnectorBody["oauthConfig"]>,
+) {
+  const { clientSecret: _clientSecret, ...publicConfig } = config;
+  return publicConfig;
+}
+
 function publicStatusItem(args: {
   readonly connectorSlug: ConnectorSlug;
   readonly label: string;
@@ -346,7 +400,13 @@ function mockCustomConnectorStory(): void {
     ({ params, respond }) => {
       connectors = connectors.map((connector) => {
         return connector.id === params.id
-          ? { ...connector, hasSecret: true }
+          ? {
+              ...connector,
+              connected: true,
+              missingRequiredFields: [],
+              configuredFieldKeys: ["secret"],
+              hasSecret: true,
+            }
           : connector;
       });
       return respond(204);
@@ -357,7 +417,13 @@ function mockCustomConnectorStory(): void {
     ({ params, respond }) => {
       connectors = connectors.map((connector) => {
         return connector.id === params.id
-          ? { ...connector, hasSecret: false }
+          ? {
+              ...connector,
+              connected: false,
+              missingRequiredFields: ["secret"],
+              configuredFieldKeys: [],
+              hasSecret: false,
+            }
           : connector;
       });
       return respond(204);
@@ -377,6 +443,43 @@ function mockCustomConnectorStory(): void {
         return renamed;
       });
       return respond(200, renamed ?? customConnector({}));
+    },
+  );
+  context.mocks.api(
+    zeroCustomConnectorByIdContract.update,
+    ({ params, body, respond }) => {
+      let updated = connectors.find((connector) => {
+        return connector.id === params.id;
+      });
+      connectors = connectors.map((connector) => {
+        if (connector.id !== params.id) {
+          return connector;
+        }
+        const firstHeader = body.headerInjections[0];
+        updated = {
+          ...connector,
+          displayName: body.displayName,
+          prefixes: body.prefixTemplates,
+          prefixTemplates: body.prefixTemplates,
+          fields: body.fields,
+          headerInjections: body.headerInjections,
+          queryInjections: body.queryInjections,
+          authMode: body.authMode ?? connector.authMode,
+          ...(body.oauthConfig
+            ? {
+                oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
+              }
+            : {}),
+          headerName: firstHeader?.name ?? connector.headerName,
+          headerTemplate:
+            firstHeader?.valueTemplate.replaceAll(
+              "{{secrets.secret}}",
+              "{{secret}}",
+            ) ?? connector.headerTemplate,
+        };
+        return updated;
+      });
+      return respond(200, updated ?? customConnector({}));
     },
   );
   context.mocks.api(
@@ -425,6 +528,45 @@ async function expectConnectorCardsVisible(expected: {
 }
 
 describe("connectors page", () => {
+  it("migrates legacy hidden connector storage to the canonical key", async () => {
+    const hiddenConnectorSlugs = JSON.stringify(["github"]);
+    context.store.set(setLegacyHiddenConnectorSlugs$, hiddenConnectorSlugs);
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await screen.findByPlaceholderText("Find connectors");
+    await waitFor(() => {
+      expect(context.store.get(hiddenConnectorSlugs$)).toBe(
+        hiddenConnectorSlugs,
+      );
+      expect(context.store.get(legacyHiddenConnectorSlugs$)).toBeNull();
+    });
+  });
+
+  it("syncs the active connector tab with the URL query", async () => {
+    mockCustomConnectorStory();
+
+    detachedSetupPage({ context, path: "/connectors?tab=custom" });
+
+    await waitFor(() => {
+      expect(tabByText("Custom")).toHaveAttribute("aria-selected", "true");
+    });
+    const customTab = tabByText("Custom");
+    expect(new URLSearchParams(search()).get("tab")).toBe("custom");
+
+    click(tabByText("Built-in"));
+    await waitFor(() => {
+      expect(new URLSearchParams(search()).has("tab")).toBeFalsy();
+      expect(tabByText("Built-in")).toHaveAttribute("aria-selected", "true");
+    });
+
+    click(customTab);
+    await waitFor(() => {
+      expect(new URLSearchParams(search()).get("tab")).toBe("custom");
+      expect(customTab).toHaveAttribute("aria-selected", "true");
+    });
+  });
+
   it("lets users browse connectors by grouped categories", async () => {
     mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
 
@@ -455,6 +597,154 @@ describe("connectors page", () => {
       aiGroup.compareDocumentPosition(engineeringGroup) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+  });
+
+  it("localizes the catalog, reconnect state, and access management in Portuguese", async () => {
+    document.documentElement.lang = "pt-BR";
+    const researchAgentId = "c0000000-0000-4000-a000-000000000001";
+    mockConnectors([
+      { connectorSlug: "github", externalUsername: "octocat" },
+      {
+        connectorSlug: "meta-ads",
+        connectionStatus: "reconnect-required",
+        reconnectReason: "authorization_expired_or_revoked",
+      },
+    ]);
+    context.mocks.data.team([teamAgent(researchAgentId, "Research Agent")]);
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes: ["github"] });
+    });
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, []);
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.MetaAdsConnector]: true },
+    });
+
+    await expect(
+      screen.findByRole("heading", { name: "Conectores" }),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText("Buscar conectores"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Engenharia e execução da equipe"),
+    ).toBeInTheDocument();
+
+    const metaAdsCard = connectorCardByLabel("Meta Ads");
+    expect(
+      within(metaAdsCard).getByText("A conexão expirou"),
+    ).toBeInTheDocument();
+    click(within(metaAdsCard).getByLabelText("Mais opções"));
+    await waitFor(() => {
+      expect(menuItemByText("Reconectar")).toBeInTheDocument();
+    });
+
+    click(
+      within(connectorCardByLabel("GitHub")).getByLabelText(
+        "Gerenciar acesso ao GitHub",
+      ),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Gerenciar acesso ao GitHub",
+    });
+    expect(
+      within(dialog).getByText(
+        "Escolha quais agentes podem usar este conector.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByLabelText(
+        "Revogar acesso ao GitHub para Research Agent",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("localizes the AI catalog subcategories in Portuguese", async () => {
+    document.documentElement.lang = "pt-BR";
+    mockConnectors([]);
+    mockPublicConnectorStatus(
+      [
+        publicStatusItem({
+          connectorSlug: "openai",
+          label: "OpenAI",
+          category: "ai-image-video",
+          authMethods: [],
+        }),
+        publicStatusItem({
+          connectorSlug: "elevenlabs",
+          label: "ElevenLabs",
+          category: "ai-voice-audio",
+          authMethods: [],
+        }),
+        publicStatusItem({
+          connectorSlug: "langfuse",
+          label: "Langfuse",
+          category: "ai-memory-tracing-eval",
+          authMethods: [],
+        }),
+        publicStatusItem({
+          connectorSlug: "axiom",
+          label: "Axiom",
+          category: "engineering-team-execution",
+          authMethods: [],
+        }),
+      ],
+      {
+        categories: [
+          {
+            id: "ai-image-video",
+            label: "Image / Video Generation",
+            menuLabel: "Image / Video",
+            groupId: "ai",
+          },
+          {
+            id: "ai-voice-audio",
+            label: "Voice / Audio",
+            menuLabel: "Voice / Audio",
+            groupId: "ai",
+          },
+          {
+            id: "ai-memory-tracing-eval",
+            label: "Memory / Tracing / Evaluation",
+            menuLabel: "Memory / Tracing",
+            groupId: "ai",
+          },
+          {
+            id: "engineering-team-execution",
+            label: "Engineering / Team Execution",
+            menuLabel: "Engineering",
+            groupId: null,
+          },
+        ],
+        groups: [{ id: "ai", label: "AI", menuLabel: "AI" }],
+      },
+    );
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await expect(
+      screen.findByRole("heading", {
+        name: "Geração de imagens e vídeos",
+      }),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Voz e áudio" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", {
+        name: "Memória, rastreamento e avaliação",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("connector-category-menu-ai-image-video"),
+    ).toHaveTextContent("Imagens e vídeos");
+    expect(
+      screen.getByTestId("connector-category-menu-ai-memory-tracing-eval"),
+    ).toHaveTextContent("Memória e avaliação");
   });
 
   it("renders connector icons from server-authored catalog descriptors", async () => {
@@ -771,7 +1061,7 @@ describe("connectors page", () => {
     context.mocks.api(
       zeroConnectorOauthStartContract.start,
       ({ body, params, respond }) => {
-        expect(params.type).toBe("meta-ads");
+        expect(params.connectorSlug).toBe("meta-ads");
         expect(body.callbackTarget).toBe("app");
         return respond(200, {
           authorizationUrl: "https://oauth.test/meta-ads/authorize",
@@ -854,7 +1144,7 @@ describe("connectors page", () => {
     context.mocks.api(
       zeroConnectorScopeDiffContract.getScopeDiff,
       ({ params, respond }) => {
-        expect(params.type).toBe("google-ads");
+        expect(params.connectorSlug).toBe("google-ads");
         return respond(200, {
           addedScopes,
           removedScopes: [],
@@ -999,7 +1289,8 @@ describe("connectors page", () => {
     context.mocks.data.team([teamAgent(agentId, "Research Agent", "preset:0")]);
     context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
       return respond(200, {
-        enabledTypes: params.id === agentId ? ["github"] : [],
+        enabledTypes: [],
+        enabledConnectorSlugs: params.id === agentId ? ["github"] : [],
       });
     });
 
@@ -1415,7 +1706,7 @@ describe("connectors page", () => {
     context.mocks.api(
       zeroConnectorOauthStartContract.start,
       ({ body, params, respond }) => {
-        expect(params.type).toBe("google-maps");
+        expect(params.connectorSlug).toBe("google-maps");
         expect(body.callbackTarget).toBe("app");
         return respond(200, {
           authorizationUrl: "https://oauth.test/google-maps/authorize",
@@ -1436,6 +1727,11 @@ describe("connectors page", () => {
         "https://oauth.test/google-maps/authorize",
       );
     });
+    const callbackMetadata = context.store.get(
+      connectorAppOauthCallbackMetadata$,
+    );
+    expect(callbackMetadata).toContain('"connectorSlug":"google-maps"');
+    expect(callbackMetadata).not.toContain("connectorRef");
     expect(
       screen.queryByRole("dialog", { name: "Google Maps" }),
     ).not.toBeInTheDocument();
@@ -1449,7 +1745,7 @@ describe("connectors page", () => {
       zeroConnectorOauthStartContract.start,
       ({ params, respond }) => {
         return respond(200, {
-          authorizationUrl: `https://oauth.test/${params.type}/authorize`,
+          authorizationUrl: `https://oauth.test/${params.connectorSlug}/authorize`,
         });
       },
     );
@@ -1479,6 +1775,7 @@ describe("connectors page", () => {
   it.each([
     ["airtable", "Airtable"],
     ["asana", "Asana"],
+    ["cloudflare", "Cloudflare"],
     ["gumroad", "Gumroad"],
     ["hubspot", "HubSpot"],
     ["intervals-icu", "Intervals.icu"],
@@ -1494,6 +1791,7 @@ describe("connectors page", () => {
     ["strava", "Strava"],
     ["todoist", "Todoist"],
     ["vercel", "Vercel"],
+    ["xero", "Xero"],
   ] as const)(
     "starts %s OAuth with the app callback",
     async (connectorSlug, label) => {
@@ -1520,7 +1818,7 @@ describe("connectors page", () => {
       context.mocks.api(
         zeroConnectorOauthStartContract.start,
         ({ body, params, respond }) => {
-          expect(params.type).toBe(connectorSlug);
+          expect(params.connectorSlug).toBe(connectorSlug);
           expect(body.callbackTarget).toBe("app");
           return respond(200, {
             authorizationUrl: `https://oauth.test/${connectorSlug}/authorize`,
@@ -1544,8 +1842,8 @@ describe("connectors page", () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
-        connectorSlug: "cloudflare",
-        label: "Cloudflare",
+        connectorSlug: "slack",
+        label: "Slack",
         authMethods: [
           {
             id: "oauth",
@@ -1564,21 +1862,21 @@ describe("connectors page", () => {
     context.mocks.api(
       zeroConnectorOauthStartContract.start,
       ({ body, params, respond }) => {
-        expect(params.type).toBe("cloudflare");
+        expect(params.connectorSlug).toBe("slack");
         expect(body.callbackTarget).toBeUndefined();
         return respond(200, {
-          authorizationUrl: "https://oauth.test/cloudflare/authorize",
+          authorizationUrl: "https://oauth.test/slack/authorize",
         });
       },
     );
 
     detachedSetupPage({ context, path: "/connectors" });
 
-    click(await screen.findByLabelText("Connect Cloudflare"));
+    click(await screen.findByLabelText("Connect Slack"));
 
     await waitFor(() => {
       expect(authWindow.location.href).toBe(
-        "https://oauth.test/cloudflare/authorize",
+        "https://oauth.test/slack/authorize",
       );
     });
   });
@@ -1613,7 +1911,7 @@ describe("connectors page", () => {
     context.mocks.api(
       zeroConnectorOpenIdStartContract.start,
       ({ body, params, respond }) => {
-        expect(params.type).toBe(connectorSlug);
+        expect(params.connectorSlug).toBe(connectorSlug);
         expect(body.authMethod).toBe(authMethod);
         return respond(200, {
           authorizationUrl: "https://openid.test/partner-steam/authorize",
@@ -1679,7 +1977,7 @@ describe("connectors page", () => {
       ({ params, respond }) => {
         startCount += 1;
         return respond(200, {
-          authorizationUrl: `https://oauth.test/${params.type}/authorize`,
+          authorizationUrl: `https://oauth.test/${params.connectorSlug}/authorize`,
         });
       },
     );
@@ -1846,7 +2144,7 @@ describe("connectors page", () => {
     context.mocks.api(
       zeroConnectorOauthStartContract.start,
       ({ body, params, respond }) => {
-        expect(params.type).toBe("stripe");
+        expect(params.connectorSlug).toBe("stripe");
         expect(body?.authMethod).toBe("oauth");
         return respond(200, {
           authorizationUrl: "https://oauth.test/stripe/authorize",
@@ -1893,7 +2191,9 @@ describe("connectors page", () => {
     expect(authorizedAgentIds).toStrictEqual([]);
 
     mockConnectors([{ connectorSlug: "stripe", authMethod: "oauth" }]);
-    context.mocks.ably.trigger("connector:changed", null);
+    context.mocks.ably.trigger("connector:changed", {
+      connectorRef: "stripe",
+    });
 
     await waitFor(() => {
       expect(authorizedAgentIds).toStrictEqual([researchAgentId]);
@@ -1941,13 +2241,13 @@ describe("connectors page", () => {
       zeroConnectorNoAuthGrantContract.connect,
       ({ body, params, respond }) => {
         connectCount += 1;
-        expect(params.type).toBe("stripe");
+        expect(params.connectorSlug).toBe("stripe");
         expect(body.authMethod).toBe("api");
         expect(body.authorizeAgent).toBeTruthy();
         expect(body.agentId).toBeUndefined();
         return respond(200, {
           id: crypto.randomUUID(),
-          type: params.type,
+          type: params.connectorSlug,
           authMethod: body.authMethod,
           externalId: null,
           externalUsername: null,
@@ -2029,11 +2329,11 @@ describe("connectors page", () => {
       zeroConnectorNoAuthGrantContract.connect,
       ({ body, params, respond }) => {
         connectCount += 1;
-        expect(params.type).toBe("stripe");
+        expect(params.connectorSlug).toBe("stripe");
         expect(body.authMethod).toBe("api");
         return respond(200, {
           id: crypto.randomUUID(),
-          type: params.type,
+          type: params.connectorSlug,
           authMethod: body.authMethod,
           externalId: null,
           externalUsername: null,
@@ -2166,7 +2466,7 @@ describe("connectors page", () => {
       zeroConnectorOauthDeviceAuthSessionContract.create,
       ({ body, params, respond }) => {
         startCount += 1;
-        expect(params.type).toBe("stripe");
+        expect(params.connectorSlug).toBe("stripe");
         capturedOptions = body.options ?? null;
         return respond(200, {
           sessionId: "00000000-0000-4000-8000-000000000010",
@@ -2294,7 +2594,7 @@ describe("connectors page", () => {
       zeroConnectorManualGrantContract.connect,
       ({ body, params, respond }) => {
         submitCount += 1;
-        expect(params.type).toBe("axiom");
+        expect(params.connectorSlug).toBe("axiom");
         submittedValues = body.values;
         return respond(200, {
           id: crypto.randomUUID(),
@@ -2384,7 +2684,7 @@ describe("connectors page", () => {
     context.mocks.api(
       zeroConnectorManualGrantContract.connect,
       ({ body, params, respond }) => {
-        expect(params.type).toBe("axiom");
+        expect(params.connectorSlug).toBe("axiom");
         expect(body.values).toStrictEqual({ apiToken: "xaat-test" });
         catalogStatusItems = [
           {
@@ -2634,7 +2934,7 @@ describe("connectors page", () => {
         expect(body.agentId).toBeUndefined();
         return respond(200, {
           id: crypto.randomUUID(),
-          type: params.type,
+          type: params.connectorSlug,
           authMethod: body.authMethod,
           externalId: null,
           externalUsername: null,
@@ -2747,7 +3047,7 @@ describe("connectors page", () => {
       ({ body, params, respond }) => {
         return respond(200, {
           id: crypto.randomUUID(),
-          type: params.type,
+          type: params.connectorSlug,
           authMethod: body.authMethod,
           externalId: null,
           externalUsername: null,
@@ -2770,10 +3070,13 @@ describe("connectors page", () => {
       ({ body, params, respond }) => {
         authorizedAgentIds.push(params.id);
         expect(body).toStrictEqual({
-          enabledTypes: ["axiom"],
+          enabledConnectorSlugs: ["axiom"],
           operation: "add",
         });
-        return respond(200, { enabledTypes: ["axiom"] });
+        return respond(200, {
+          enabledTypes: ["axiom"],
+          enabledConnectorSlugs: ["axiom"],
+        });
       },
     );
 
@@ -2979,8 +3282,472 @@ describe("connectors page", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows connection status and authorized agents on custom connector cards", async () => {
+    const researchAgentId = "c0000000-0000-4000-a000-000000000031";
+    const supportAgentId = "c0000000-0000-4000-a000-000000000032";
+    const connector = customConnector({
+      connected: true,
+      missingRequiredFields: [],
+      configuredFieldKeys: ["secret"],
+      hasSecret: true,
+    });
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.data.team([
+      teamAgent(researchAgentId, "Research"),
+      teamAgent(supportAgentId, "Support"),
+    ]);
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.get,
+      ({ params, respond }) => {
+        return respond(200, {
+          enabledIds: params.id === researchAgentId ? [connector.id] : [],
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: "/connectors?tab=custom" });
+
+    await waitFor(() => {
+      const card = connectorCardByLabel("Acme Search");
+      expect(within(card).getByText("Connected")).toBeInTheDocument();
+      expect(
+        within(card).getByTestId("custom-connector-card-agent-usage"),
+      ).toHaveTextContent("Used by Research");
+    });
+    expect(
+      screen.queryByText("https://api.acme.test/v1/"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("localizes the custom connector OAuth entry flow in Portuguese", async () => {
+    const researchAgentId = "c0000000-0000-4000-a000-000000000033";
+    const connector = customConnector({
+      connected: true,
+      missingRequiredFields: [],
+      configuredFieldKeys: ["secret"],
+      hasSecret: true,
+    });
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
+    context.mocks.data.team([teamAgent(researchAgentId, "Research")]);
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledIds: [connector.id] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors?tab=custom",
+      featureSwitches: {
+        [FeatureSwitchKey.CustomConnectorOAuth2]: true,
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
+    });
+
+    await waitFor(() => {
+      const card = connectorCardByLabel("Acme Search");
+      expect(within(card).getByText("Conectado")).toBeInTheDocument();
+      expect(
+        within(card).getByTestId("custom-connector-card-agent-usage"),
+      ).toHaveTextContent("Usado por Research");
+    });
+
+    click(await screen.findByText("Novo conector"));
+    const createDialog = await screen.findByRole("dialog", {
+      name: "Novo conector personalizado",
+    });
+    expect(
+      within(createDialog).getByLabelText("Nome de exibição"),
+    ).toBeInTheDocument();
+    expect(within(createDialog).getByLabelText("Fechar")).toBeInTheDocument();
+
+    click(buttonByText("Adicionar autenticação", createDialog));
+    click(menuItemByText("OAuth 2.0"));
+
+    expect(
+      within(createDialog).getByText(
+        "Configure um app OAuth para os membros autorizarem.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(createDialog).getByLabelText("URL do token"),
+    ).toBeInTheDocument();
+    expect(
+      within(createDialog).getByLabelText("ID do cliente"),
+    ).toBeInTheDocument();
+    expect(
+      within(createDialog).getByText("Configurações avançadas"),
+    ).toBeInTheDocument();
+    expect(within(createDialog).getByLabelText("PKCE")).toHaveTextContent(
+      "Nenhum",
+    );
+  });
+
+  it("configures OAuth app credentials at creation and authorizes on connect", async () => {
+    const defaultAgentId = "c0000000-0000-4000-a000-000000000001";
+    const researchAgentId = "c0000000-0000-4000-a000-000000000041";
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.data.team([
+      teamAgent(defaultAgentId, "Zero"),
+      teamAgent(researchAgentId, "Research"),
+    ]);
+    const createdBodies: CreateCustomConnectorBody[] = [];
+    const updatedBodies: UpdateCustomConnectorBody[] = [];
+    let oauthStartCount = 0;
+    let connector: CustomConnectorResponse | null = null;
+    const authWindow = createMockAuthWindow();
+    const browserOpen = context.mocks.browser.open(authWindow);
+    const clipboard = context.mocks.browser.clipboardWriteText();
+
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: connector ? [connector] : [] });
+    });
+    context.mocks.api(
+      zeroCustomConnectorsContract.create,
+      ({ body, respond }) => {
+        createdBodies.push(body);
+        connector = customConnector({
+          displayName: body.displayName,
+          prefixes: body.prefixTemplates ?? [],
+          prefixTemplates: body.prefixTemplates ?? [],
+          fields: body.fields ?? [],
+          headerInjections: body.headerInjections ?? [],
+          queryInjections: body.queryInjections ?? [],
+          authMode: body.authMode,
+          ...(body.oauthConfig
+            ? {
+                oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
+              }
+            : {}),
+        });
+        return respond(201, connector);
+      },
+    );
+    context.mocks.api(
+      zeroCustomConnectorByIdContract.update,
+      ({ params, body, respond }) => {
+        expect(params.id).toBe(connector?.id);
+        updatedBodies.push(body);
+        if (!connector) {
+          throw new Error("Expected custom connector to exist");
+        }
+        connector = {
+          ...connector,
+          displayName: body.displayName,
+          prefixes: body.prefixTemplates,
+          prefixTemplates: body.prefixTemplates,
+          fields: body.fields,
+          headerInjections: body.headerInjections,
+          queryInjections: body.queryInjections,
+          authMode: body.authMode ?? connector.authMode,
+          ...(body.oauthConfig
+            ? {
+                oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
+              }
+            : {}),
+        };
+        return respond(200, connector);
+      },
+    );
+    context.mocks.api(
+      zeroCustomConnectorOAuth2Contract.start,
+      ({ params, body, respond }) => {
+        expect(params.id).toBe(connector?.id);
+        expect(body).toStrictEqual({});
+        oauthStartCount += 1;
+        if (!connector) {
+          throw new Error("Expected custom connector to exist");
+        }
+        connector = {
+          ...connector,
+          connected: true,
+          hasSecret: true,
+          missingRequiredFields: [],
+        };
+        authWindow.close();
+        return respond(200, {
+          authorizationUrl: "https://oauth.acme.test/authorize?state=ui-test",
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: {
+        [FeatureSwitchKey.CustomConnectorOAuth2]: true,
+      },
+    });
+
+    click(await screen.findByText("Custom"));
+    click(await screen.findByText("New connector"));
+
+    const createDialog = await screen.findByRole("dialog", {
+      name: "New custom connector",
+    });
+    await fill(within(createDialog).getByLabelText("Display name"), "Acme API");
+    await fill(
+      within(createDialog).getByLabelText(/Prefixes/u),
+      "https://api.acme.test/v1/",
+    );
+
+    expect(
+      context.store.get(customConnectorCreateForm$).authMethodTypes,
+    ).toStrictEqual([]);
+    expect(
+      within(createDialog).queryByText("API authentication"),
+    ).not.toBeInTheDocument();
+    expect(buttonByText("Create", createDialog)).toBeDisabled();
+
+    click(buttonByText("Add authentication", createDialog));
+    click(menuItemByText("OAuth 2.0"));
+    await waitFor(() => {
+      expect(
+        context.store.get(customConnectorCreateForm$).authMethodTypes,
+      ).toStrictEqual(["oauth2"]);
+    });
+    await fill(
+      within(createDialog).getByLabelText("Token URL"),
+      "https://oauth.acme.test/token",
+    );
+    await fill(
+      within(createDialog).getByLabelText("Client ID"),
+      "connector-oauth-client-id",
+    );
+    await fill(
+      within(createDialog).getByLabelText("Client secret"),
+      "connector-oauth-client-secret",
+    );
+    await fill(
+      within(createDialog).getByLabelText(/Scopes/u),
+      "search.read\nsearch.write",
+    );
+    const advancedSettingsLabel =
+      within(createDialog).getByText("Advanced settings");
+    const advancedSettings = advancedSettingsLabel.closest("details");
+    if (!(advancedSettings instanceof HTMLDetailsElement)) {
+      throw new Error("Expected OAuth advanced settings disclosure");
+    }
+    expect(advancedSettings.open).toBeFalsy();
+    click(advancedSettingsLabel);
+    expect(advancedSettings.open).toBeTruthy();
+    click(within(createDialog).getByLabelText("PKCE"));
+    click(await screen.findByRole("option", { name: "S256" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    });
+    await fill(
+      within(createDialog).getByLabelText(/Resource/u),
+      "https://api.acme.test",
+    );
+    await fill(within(createDialog).getByLabelText(/Audience/u), "acme-api");
+    await fill(within(createDialog).getByLabelText(/Access type/u), "offline");
+    await fill(within(createDialog).getByLabelText(/Prompt/u), "consent");
+    await fill(
+      within(createDialog).getByLabelText("Authorization URL"),
+      "https://oauth.acme.test/authorize",
+    );
+    const redirectUrlInput = within(createDialog).getByLabelText(
+      /^Redirect URL/u,
+      {
+        selector: "input",
+      },
+    );
+    if (!(redirectUrlInput instanceof HTMLInputElement)) {
+      throw new Error("Expected custom connector redirect URL input");
+    }
+    const redirectUrl = new URL(redirectUrlInput.value);
+    expect(redirectUrl.origin).toBe(window.location.origin);
+    expect(redirectUrl.pathname).toBe("/connectors/custom/callback");
+    click(within(createDialog).getByLabelText("Copy Redirect URL"));
+    await waitFor(() => {
+      expect(clipboard.writes).toStrictEqual([redirectUrlInput.value]);
+    });
+
+    const createButton = buttonByText("Create", createDialog);
+    expect(context.store.get(customConnectorCreateForm$)).toMatchObject({
+      displayName: "Acme API",
+      prefixesRaw: "https://api.acme.test/v1/",
+      authMethodTypes: ["oauth2"],
+      oauthAuthorizationUrl: "https://oauth.acme.test/authorize",
+      oauthTokenUrl: "https://oauth.acme.test/token",
+      oauthClientId: "connector-oauth-client-id",
+      oauthClientSecret: "connector-oauth-client-secret",
+      oauthPkceMethod: "S256",
+      oauthResource: "https://api.acme.test",
+      oauthAudience: "acme-api",
+      oauthAccessType: "offline",
+      oauthPrompt: "consent",
+    });
+    expect(createButton).toBeEnabled();
+    click(createButton);
+    await waitFor(() => {
+      expect(createdBodies).toHaveLength(1);
+    });
+    await waitFor(() => {
+      expect(screen.getByText("Acme API")).toBeInTheDocument();
+    });
+    expect(createdBodies).toHaveLength(1);
+    expect(createdBodies[0]).toMatchObject({
+      displayName: "Acme API",
+      prefixTemplates: ["https://api.acme.test/v1/"],
+      fields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      authMode: "oauth",
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "connector-oauth-client-id",
+        clientSecret: "connector-oauth-client-secret",
+        authorizationUrl: "https://oauth.acme.test/authorize",
+        tokenUrl: "https://oauth.acme.test/token",
+        scopes: ["search.read", "search.write"],
+        tokenEndpointAuthMethod: "client_secret_post",
+        pkceMethod: "S256",
+        authorizationParams: {
+          resource: "https://api.acme.test",
+          audience: "acme-api",
+          access_type: "offline",
+          prompt: "consent",
+        },
+      },
+    });
+
+    click(screen.getByLabelText("More options"));
+    click(await screen.findByText("Edit"));
+    const editDialog = await screen.findByRole("dialog", {
+      name: "Edit custom connector",
+    });
+    expect(within(editDialog).getByLabelText("Authorization URL")).toHaveValue(
+      "https://oauth.acme.test/authorize",
+    );
+    expect(within(editDialog).getByLabelText("Client ID")).toHaveValue(
+      "connector-oauth-client-id",
+    );
+    expect(within(editDialog).getByLabelText("New client secret")).toHaveValue(
+      "",
+    );
+    expect(within(editDialog).getByLabelText(/Scopes/u)).toHaveValue(
+      "search.read\nsearch.write",
+    );
+    expect(within(editDialog).getByLabelText("PKCE")).toHaveTextContent("S256");
+    expect(within(editDialog).getByLabelText(/Resource/u)).toHaveValue(
+      "https://api.acme.test",
+    );
+    expect(within(editDialog).getByLabelText(/Audience/u)).toHaveValue(
+      "acme-api",
+    );
+    expect(within(editDialog).getByLabelText(/Access type/u)).toHaveValue(
+      "offline",
+    );
+    expect(within(editDialog).getByLabelText(/Prompt/u)).toHaveValue("consent");
+    await fill(
+      within(editDialog).getByLabelText(/Prefixes/u),
+      "https://api.acme.test/v2/",
+    );
+    await fill(
+      within(editDialog).getByLabelText(/Scopes/u),
+      "search.read\ncalendar.write",
+    );
+    click(buttonByText("Save", editDialog));
+    const confirmationDialog = await screen.findByRole("dialog", {
+      name: "Disconnect existing OAuth connections?",
+    });
+    expect(updatedBodies).toHaveLength(0);
+    expect(
+      within(confirmationDialog).getByText(
+        /disconnect every member currently connected with OAuth/u,
+      ),
+    ).toBeInTheDocument();
+    expect(editDialog).toBeInTheDocument();
+    click(buttonByText("Save and disconnect", confirmationDialog));
+    await waitFor(() => {
+      expect(updatedBodies).toHaveLength(1);
+    });
+    expect(screen.getByText("https://api.acme.test/v2/")).toBeInTheDocument();
+    expect(updatedBodies[0]).toMatchObject({
+      displayName: "Acme API",
+      prefixTemplates: ["https://api.acme.test/v2/"],
+      authMode: "oauth",
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "connector-oauth-client-id",
+        authorizationUrl: "https://oauth.acme.test/authorize",
+        tokenUrl: "https://oauth.acme.test/token",
+        scopes: ["search.read", "calendar.write"],
+        tokenEndpointAuthMethod: "client_secret_post",
+        pkceMethod: "S256",
+        authorizationParams: {
+          resource: "https://api.acme.test",
+          audience: "acme-api",
+          access_type: "offline",
+          prompt: "consent",
+        },
+      },
+    });
+    expect(updatedBodies[0]?.oauthConfig).not.toHaveProperty("clientSecret");
+
+    const connectorCardButton = buttonByAriaLabel("Connect Acme API");
+    expect(
+      within(connectorCardButton).queryByText("Connect"),
+    ).not.toBeInTheDocument();
+    click(connectorCardButton);
+    expect(document.querySelector('[role="dialog"]')).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://oauth.acme.test/authorize?state=ui-test",
+      );
+      const card = connectorCardByLabel("Acme API");
+      expect(within(card).getByText("Connected")).toBeInTheDocument();
+      expect(
+        within(card).getByTestId("custom-connector-card-agent-usage"),
+      ).toHaveTextContent("Used by Zero, Research");
+    });
+    expect(browserOpen.calls).toStrictEqual([
+      {
+        url: "about:blank",
+        target: "_blank",
+        features: "width=600,height=700",
+      },
+    ]);
+    expect(oauthStartCount).toBe(1);
+  });
+
   it("manages a custom connector from creation through deletion", async () => {
+    const defaultAgentId = "c0000000-0000-4000-a000-000000000001";
+    const researchAgentId = "c0000000-0000-4000-a000-000000000051";
+    const supportAgentId = "c0000000-0000-4000-a000-000000000052";
     mockCustomConnectorStory();
+    context.mocks.data.team([
+      teamAgent(defaultAgentId, "Zero"),
+      teamAgent(researchAgentId, "Research"),
+      teamAgent(supportAgentId, "Support"),
+    ]);
 
     detachedSetupPage({ context, path: "/connectors" });
 
@@ -3006,11 +3773,18 @@ describe("connectors page", () => {
     click(buttonByText("Create", createDialog));
 
     await waitFor(() => {
-      expect(screen.getByText("Acme API")).toBeInTheDocument();
-      expect(screen.getByText("https://api.acme.test/v1/")).toBeInTheDocument();
+      const card = connectorCardByLabel("Acme API");
+      expect(
+        within(card).getByText("https://api.acme.test/v1/"),
+      ).toBeInTheDocument();
+      expect(within(card).queryByText("Not connected")).not.toBeInTheDocument();
     });
 
-    click(screen.getByText("Connect"));
+    const connectorCardButton = buttonByAriaLabel("Connect Acme API");
+    expect(
+      within(connectorCardButton).queryByText("Connect"),
+    ).not.toBeInTheDocument();
+    click(connectorCardButton);
 
     const connectDialog = await screen.findByRole("dialog");
     expect(
@@ -3020,8 +3794,20 @@ describe("connectors page", () => {
     click(buttonByText("Save", connectDialog));
 
     await waitFor(() => {
-      expect(screen.getByText("Connected")).toBeInTheDocument();
+      const card = connectorCardByLabel("Acme API");
+      expect(within(card).getByText("Connected")).toBeInTheDocument();
+      expect(
+        within(card).getByTestId("custom-connector-card-agent-usage"),
+      ).toHaveTextContent("Used by Zero, Research +1");
     });
+    expect(
+      within(connectorCardByLabel("Acme API")).getByTestId(
+        "custom-connector-card-agent-usage",
+      ),
+    ).toHaveAttribute("title", "Zero, Research, Support");
+    expect(
+      screen.queryByText("https://api.acme.test/v1/"),
+    ).not.toBeInTheDocument();
 
     click(screen.getByLabelText("More options"));
     click(await screen.findByText("Rename"));
@@ -3044,7 +3830,7 @@ describe("connectors page", () => {
     click(await screen.findByText("Disconnect"));
 
     await waitFor(() => {
-      expect(screen.getByText("Connect")).toBeInTheDocument();
+      expect(buttonByAriaLabel("Connect Acme Billing API")).toBeInTheDocument();
     });
 
     click(screen.getByLabelText("More options"));

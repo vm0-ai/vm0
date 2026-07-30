@@ -16,12 +16,12 @@ import type { BodyRenderBlock } from "./parse-body-blocks.ts";
 import type { ChatEventGroup } from "./chat-event.ts";
 import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
 import type { HeaderAutomationSignals } from "./header-automation-menu.ts";
-import type { WorkflowQueueSignals } from "./workflow-queue.ts";
 import type { ThreadSidebarSignals } from "./thread-sidebar.ts";
 import type { MailDraftSignals } from "./mail-draft.ts";
 import type { BrowserSessionSignals } from "./browser-session-block.ts";
 import type { ComposerConnectorSignals } from "../zero-page/zero-connectors.ts";
 import type { EditorDocumentSnapshot } from "../zero-page/user-message-document-codec.ts";
+import type { AgentReferenceSignals } from "./agent-reference-signals.ts";
 import type { ArtifactSignals } from "./artifact-card-signals.ts";
 import type { ThreadSidebarAutoOpenCandidate } from "./thread-sidebar-auto-open.ts";
 
@@ -34,10 +34,18 @@ export interface RecommendedFollowupSource {
   readonly followups: readonly RecommendedFollowup[];
 }
 
-export interface QueuedChatEventItem {
-  readonly id: string;
-  readonly text: string;
-}
+export type QueuedChatEventItem =
+  | {
+      readonly kind: "message";
+      readonly id: string;
+      readonly text: string;
+    }
+  | {
+      readonly kind: "automation";
+      readonly id: string;
+      readonly automationId: string;
+      readonly triggerBrief: string | null;
+    };
 
 export type ThinkingIndicatorMode =
   | "waiting"
@@ -109,6 +117,7 @@ export interface ChatThreadSignals {
     [string, QueueMessageOptions, AbortSignal]
   >;
   recallMessage$: Command<Promise<void>, [string, AbortSignal]>;
+  skipAutomationEvent$: Command<Promise<void>, [string, AbortSignal]>;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;
   setScrollContainer$: Command<(() => void) | undefined, [HTMLElement | null]>;
   autoScroll$: Command<void, []>;
@@ -136,7 +145,6 @@ export interface ChatThreadSignals {
   agentPinned$: Computed<Promise<boolean | null>>;
   // -- Thread-owned automation resources -----------------------------------
   headerAutomations: HeaderAutomationSignals;
-  workflowQueue: WorkflowQueueSignals;
   // -- Thread-owned utility sidebar -----------------------------------------
   sidebar: ThreadSidebarSignals;
   // -- Per-thread UI state --------------------------------------------------
@@ -162,6 +170,7 @@ export interface ChatThreadSignals {
   >;
   eventImageGroups$: Computed<Promise<EventImageGroupProjection[]>>;
   artifactSignalsForUrl: (url: string) => ArtifactSignals | undefined;
+  agentReferenceSignalsForId: (agentId: string) => AgentReferenceSignals;
   mailDraftCardSignalsById$: Computed<ReadonlyMap<string, MailDraftSignals>>;
   browserSessionCardSignalsById$: Computed<
     ReadonlyMap<string, BrowserSessionSignals>

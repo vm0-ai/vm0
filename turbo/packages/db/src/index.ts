@@ -15,6 +15,7 @@ import * as sandboxTelemetrySchema from "./schema/sandbox-telemetry";
 import * as runnerSchema from "./schema/runner-job-queue";
 import * as runnerStateSchema from "./schema/runner-state";
 import * as agentRunQueueSchema from "./schema/agent-run-queue";
+import * as chatEventInputParamsSchema from "./schema/chat-event-input-params";
 import * as secretSchema from "./schema/secret";
 import * as modelProviderSchema from "./schema/model-provider";
 import * as orgModelPolicySchema from "./schema/org-model-policy";
@@ -33,16 +34,16 @@ import * as runBuiltInAdmissionSchema from "./schema/run-built-in-admission";
 import * as usageDailySchema from "./schema/usage-daily";
 import * as githubInstallationSchema from "./schema/github-installation";
 import * as githubUserLinkSchema from "./schema/github-user-link";
-import * as githubIssueSessionSchema from "./schema/github-issue-session";
+import * as githubChatThreadRouteSchema from "./schema/github-chat-thread-route";
 import * as telegramInstallationSchema from "./schema/telegram-installation";
 import * as telegramOfficialUserLinkSchema from "./schema/telegram-official-user-link";
 import * as telegramUserLinkSchema from "./schema/telegram-user-link";
 import * as telegramUserAgentPreferenceSchema from "./schema/telegram-user-agent-preference";
-import * as telegramThreadSessionSchema from "./schema/telegram-thread-session";
+import * as telegramChatThreadRouteSchema from "./schema/telegram-chat-thread-route";
 import * as telegramMessageSchema from "./schema/telegram-message";
 import * as agentphoneUserLinkSchema from "./schema/agentphone-user-link";
 import * as agentphoneUserAgentPreferenceSchema from "./schema/agentphone-user-agent-preference";
-import * as agentphoneThreadSessionSchema from "./schema/agentphone-thread-session";
+import * as agentphoneChatThreadRouteSchema from "./schema/agentphone-chat-thread-route";
 import * as agentphoneMessageSchema from "./schema/agentphone-message";
 import * as agentphoneVerificationSendCooldownSchema from "./schema/agentphone-verification-send-cooldown";
 import * as slackOrgInstallationSchema from "./schema/slack-org-installation";
@@ -53,11 +54,9 @@ import * as slackUserAgentPreferenceSchema from "./schema/slack-user-agent-prefe
 import * as teamsOrgInstallationSchema from "./schema/teams-org-installation";
 import * as teamsOrgConnectionSchema from "./schema/teams-org-connection";
 import * as teamsChatThreadRouteSchema from "./schema/teams-chat-thread-route";
-import * as teamsOrgThreadSessionSchema from "./schema/teams-org-thread-session";
 import * as teamsUserAgentPreferenceSchema from "./schema/teams-user-agent-preference";
 import * as feishuOrgInstallationSchema from "./schema/feishu-org-installation";
 import * as feishuOrgConnectionSchema from "./schema/feishu-org-connection";
-import * as feishuOrgThreadSessionSchema from "./schema/feishu-org-thread-session";
 import * as feishuOrgEventSchema from "./schema/feishu-org-event";
 import * as feishuChatThreadRouteSchema from "./schema/feishu-chat-thread-route";
 import * as feishuChatIngressSchema from "./schema/feishu-chat-ingress";
@@ -91,12 +90,13 @@ import * as computerUseHostSchema from "./schema/computer-use-host";
 import * as insightsDailySchema from "./schema/insights-daily";
 import * as userFeatureSwitchesSchema from "./schema/user-feature-switches";
 import * as userBehaviorCountSchema from "./schema/user-behavior-count";
-import * as chatMessageSchema from "./schema/chat-message";
+import * as chatEventSchema from "./schema/chat-event";
 import * as chatThreadEventSchema from "./schema/chat-thread-event";
 import * as chatThreadSnapshotSchema from "./schema/chat-thread-snapshot";
 import * as chatOutputMaterializationSchema from "./schema/chat-output-materialization";
 import * as agentRunCustomConnectorAuthRefSchema from "./schema/agent-run-custom-connector-auth-ref";
 import * as orgCustomConnectorSchema from "./schema/org-custom-connector";
+import * as orgCustomConnectorOauthConfigSchema from "./schema/org-custom-connector-oauth-config";
 import * as orgCustomConnectorSecretSchema from "./schema/org-custom-connector-secret";
 import * as orgCustomConnectorValueSchema from "./schema/org-custom-connector-value";
 import * as hostedSiteSchema from "./schema/hosted-site";
@@ -132,6 +132,7 @@ export const schema = {
   ...runnerSchema,
   ...runnerStateSchema,
   ...agentRunQueueSchema,
+  ...chatEventInputParamsSchema,
   ...secretSchema,
   ...modelProviderSchema,
   ...orgModelPolicySchema,
@@ -145,11 +146,9 @@ export const schema = {
   ...teamsOrgInstallationSchema,
   ...teamsOrgConnectionSchema,
   ...teamsChatThreadRouteSchema,
-  ...teamsOrgThreadSessionSchema,
   ...teamsUserAgentPreferenceSchema,
   ...feishuOrgInstallationSchema,
   ...feishuOrgConnectionSchema,
-  ...feishuOrgThreadSessionSchema,
   ...feishuOrgEventSchema,
   ...feishuChatThreadRouteSchema,
   ...feishuChatIngressSchema,
@@ -169,16 +168,16 @@ export const schema = {
   ...usageDailySchema,
   ...githubInstallationSchema,
   ...githubUserLinkSchema,
-  ...githubIssueSessionSchema,
+  ...githubChatThreadRouteSchema,
   ...telegramInstallationSchema,
   ...telegramOfficialUserLinkSchema,
   ...telegramUserLinkSchema,
   ...telegramUserAgentPreferenceSchema,
-  ...telegramThreadSessionSchema,
+  ...telegramChatThreadRouteSchema,
   ...telegramMessageSchema,
   ...agentphoneUserLinkSchema,
   ...agentphoneUserAgentPreferenceSchema,
-  ...agentphoneThreadSessionSchema,
+  ...agentphoneChatThreadRouteSchema,
   ...agentphoneMessageSchema,
   ...agentphoneVerificationSendCooldownSchema,
   ...orgSchema,
@@ -208,12 +207,13 @@ export const schema = {
   ...insightsDailySchema,
   ...userFeatureSwitchesSchema,
   ...userBehaviorCountSchema,
-  ...chatMessageSchema,
+  ...chatEventSchema,
   ...chatThreadEventSchema,
   ...chatThreadSnapshotSchema,
   ...chatOutputMaterializationSchema,
   ...agentRunCustomConnectorAuthRefSchema,
   ...orgCustomConnectorSchema,
+  ...orgCustomConnectorOauthConfigSchema,
   ...orgCustomConnectorSecretSchema,
   ...orgCustomConnectorValueSchema,
   ...hostedSiteSchema,

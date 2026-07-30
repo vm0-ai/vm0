@@ -5,7 +5,6 @@ import { agentComposesByIdRoutes } from "./routes/agent-composes-id";
 import { agentComposesReadRoutes } from "./routes/agent-composes-read";
 import { agentComposesRoutes } from "./routes/agent-composes";
 import { agentRunsCancelRoutes } from "./routes/agent-runs-cancel";
-import { agentRunsCreateRoutes } from "./routes/agent-runs-create";
 import { agentRunsReadRoutes } from "./routes/agent-runs-read";
 import { agentRunTelemetryRoutes } from "./routes/agent-run-telemetry";
 import { agentSessionsRoutes } from "./routes/agent-sessions-id";
@@ -24,7 +23,7 @@ import { cronConnectorOauthStateCleanupRoutes } from "./routes/cron-connector-oa
 import { cronDrainEmailOutboxRoutes } from "./routes/cron-drain-email-outbox";
 import { cronExecuteMorningBriefsRoutes } from "./routes/cron-execute-morning-briefs";
 import { cronExecuteWorkflowAutomationsRoutes } from "./routes/cron-execute-workflow-automations";
-import { cronMonitorChatMessageQueueRoutes } from "./routes/cron-monitor-chat-message-queue";
+import { cronMonitorChatEventQueueRoutes } from "./routes/cron-monitor-chat-event-queue";
 import { cronRenewGmailWatchesRoutes } from "./routes/cron-renew-gmail-watches";
 import { cronRenewGoogleCalendarWatchesRoutes } from "./routes/cron-renew-google-calendar-watches";
 import { cronRenewGoogleWorkspaceEventSubscriptionsRoutes } from "./routes/cron-renew-google-workspace-event-subscriptions";
@@ -237,7 +236,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...agentComposesReadRoutes,
   ...agentComposesByIdRoutes,
   ...agentComposesRoutes,
-  ...agentRunsCreateRoutes,
   ...agentRunsCancelRoutes,
   ...agentRunsReadRoutes,
   ...agentRunTelemetryRoutes,
@@ -253,7 +251,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronDrainEmailOutboxRoutes,
   ...cronExecuteMorningBriefsRoutes,
   ...cronExecuteWorkflowAutomationsRoutes,
-  ...cronMonitorChatMessageQueueRoutes,
+  ...cronMonitorChatEventQueueRoutes,
   ...cronRenewGmailWatchesRoutes,
   ...cronRenewGoogleCalendarWatchesRoutes,
   ...cronRenewGoogleWorkspaceEventSubscriptionsRoutes,
@@ -351,8 +349,8 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroSecretsRoutes,
   ...zeroWorkflowsRoutes,
   ...zeroWorkflowAutomationsRoutes,
-  ...zeroStrapiIntegrationsRoutes,
   ...zeroWorkflowQueueRoutes,
+  ...zeroStrapiIntegrationsRoutes,
   ...integrationsGithubRoutes,
   ...zeroSlackConnectRoutes,
   ...zeroSlackOauthRoutes,

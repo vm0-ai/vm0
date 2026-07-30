@@ -25,7 +25,7 @@ import { agentRuns, agentSessions } from "./agent-run-session-conversation";
  * Chat Threads table
  * User-facing conversation thread identity, created before any run starts.
  * Provides instant sidebar entries and stable URL routing.
- * Messages are stored in the chat_messages table (1:N relationship).
+ * ChatEvents are stored in the chat_events table (1:N relationship).
  */
 export const chatThreads = pgTable(
   "chat_threads",
@@ -69,15 +69,9 @@ export const chatThreads = pgTable(
       },
       { onDelete: "set null" },
     ),
-    /**
-     * Draft text content for the thread's composer. Null when no draft is saved.
-     * Persisted with local-first sync: local state takes precedence on first visit.
-     */
-    draftContent: text("draft_content"),
-    /** Stable business representation of the composer's rich draft content. */
-    draftUserMessage: jsonb(
-      "draft_structured_prompt",
-    ).$type<ChatThreadDraftUserMessage>(),
+    /** Canonical rich document for the thread composer's saved draft. */
+    draftUserMessage:
+      jsonb("draft_user_message").$type<ChatThreadDraftUserMessage>(),
     /**
      * Draft attachment metadata for the thread's composer. Only completed uploads.
      * Null when no draft attachments are saved.
@@ -108,7 +102,7 @@ export const chatThreads = pgTable(
     /**
      * Legacy generation template column retained for schema compatibility.
      * Current prompt injection reads the generation template attached to the
-     * current chat message only.
+     * current input event only.
      */
     generationTemplate: jsonb(
       "generation_template",
@@ -140,7 +134,7 @@ export const chatThreads = pgTable(
      */
     renamedAt: timestamp("renamed_at"),
     /**
-     * Most recent message timestamp, denormalized from chat_messages.
+     * Most recent message timestamp, denormalized from chat_events.
      * Maintained app-side for direct user messages and terminal run-finished
      * markers via GREATEST() — monotonic, never rewound. Triggered/goal user
      * messages, billing rows, and other control rows do not advance it. Powers
@@ -148,8 +142,8 @@ export const chatThreads = pgTable(
      * thread queries.
      */
     lastMessageAt: timestamp("last_message_at").defaultNow().notNull(),
-    /** Last seq_id allocated to a message in this thread. */
-    lastChatMessageSeqId: bigint("last_chat_message_seq_id", {
+    /** Last seq_id allocated to an event in this thread. */
+    lastChatEventSeqId: bigint("last_chat_message_seq_id", {
       mode: "number",
     })
       .default(0)
@@ -166,10 +160,7 @@ export const chatThreads = pgTable(
       check(
         "chat_threads_draft_user_message_check",
         sql`${table.draftUserMessage} IS NOT NULL
-          OR (
-            COALESCE(${table.draftContent}, '') = ''
-            AND COALESCE(${table.draftAttachments}, '[]'::jsonb) = '[]'::jsonb
-          )`,
+          OR COALESCE(${table.draftAttachments}, '[]'::jsonb) = '[]'::jsonb`,
       ),
       index("idx_chat_threads_user_compose_updated").on(
         table.userId,

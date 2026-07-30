@@ -6,7 +6,7 @@ import type {
   ChatThreadArtifactRun,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { hostedDeployments } from "@vm0/db/schema/hosted-site";
 import {
@@ -21,6 +21,7 @@ import { ZipArchive } from "archiver";
 
 import { env, optionalEnv } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
+import { isArtifactKeyV2 } from "../../lib/file-url";
 import { db$, type ReadonlyDb } from "../external/db";
 import { downloadHostedSitesS3Buffer, downloadS3Buffer } from "../external/s3";
 import {
@@ -106,7 +107,7 @@ async function threadAllowsGoogleDriveArtifactSync(
         eq(userConnectors.orgId, args.orgId),
         eq(userConnectors.userId, args.userId),
         eq(userConnectors.agentId, chatThreads.agentComposeId),
-        eq(userConnectors.connectorType, "google-drive"),
+        eq(userConnectors.connectorSlug, "google-drive"),
       ),
     )
     .where(
@@ -593,12 +594,12 @@ async function loadArtifactFile(
           eq(zeroRuns.chatThreadId, args.threadId),
           exists(
             db
-              .select({ one: chatMessages.id })
-              .from(chatMessages)
+              .select({ one: chatEvents.id })
+              .from(chatEvents)
               .where(
                 and(
-                  eq(chatMessages.runId, runUploadedFiles.runId),
-                  eq(chatMessages.chatThreadId, args.threadId),
+                  eq(chatEvents.runId, runUploadedFiles.runId),
+                  eq(chatEvents.chatThreadId, args.threadId),
                 ),
               ),
           ),
@@ -616,7 +617,10 @@ function resolveArtifactS3ObjectFromKey(
   value: string,
   userId: string,
 ): ArtifactS3Object | null {
-  if (value.startsWith(`artifacts/${encodeURIComponent(userId)}/`)) {
+  if (
+    value.startsWith(`artifacts/${encodeURIComponent(userId)}/`) ||
+    isArtifactKeyV2(value)
+  ) {
     return {
       bucketName: env("R2_USER_ARTIFACTS_BUCKET_NAME"),
       key: value,

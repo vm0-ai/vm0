@@ -81,9 +81,12 @@ describe("connectorOauthDeviceAuthorizationSessions schema", () => {
     expect(connectorOauthDeviceAuthorizationSessions.userId.name).toBe(
       "user_id",
     );
-    expect(connectorOauthDeviceAuthorizationSessions.connectorType.name).toBe(
-      "connector_type",
+    expect(connectorOauthDeviceAuthorizationSessions.connectorSlug.name).toBe(
+      "connector_slug",
     );
+    expect(
+      connectorOauthDeviceAuthorizationSessions.connectorSlug.notNull,
+    ).toBe(true);
     expect(connectorOauthDeviceAuthorizationSessions.authMethod.name).toBe(
       "auth_method",
     );
@@ -134,19 +137,19 @@ describe("connectorOauthDeviceAuthorizationSessions schema", () => {
     ).toStrictEqual(
       expect.arrayContaining([
         "idx_connector_oauth_device_authorization_sessions_token",
-        "idx_connector_oauth_device_authorization_sessions_owner_status",
+        "idx_connector_oauth_device_sessions_owner_slug_status",
         "idx_connector_oauth_device_authorization_sessions_expiration",
       ]),
     );
     expect(
       getExtraConfigColumnNames(
         connectorOauthDeviceAuthorizationSessions,
-        "idx_connector_oauth_device_authorization_sessions_owner_status",
+        "idx_connector_oauth_device_sessions_owner_slug_status",
       ),
     ).toStrictEqual([
       "org_id",
       "user_id",
-      "connector_type",
+      "connector_slug",
       "auth_method",
       "status",
     ]);

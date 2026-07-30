@@ -5,11 +5,19 @@ import json
 import pytest
 
 import usage.openai_responses as openai_responses
+from usage import extract_openai_responses_usage_from_event as _extract_usage_with_error
 from usage import (
-    extract_openai_responses_usage_from_event,
     inspect_openai_responses_event_json,
     merge_openai_responses_usage_result,
 )
+
+
+def extract_openai_responses_usage_from_event(
+    event: openai_responses.OpenAIResponsesEvent,
+) -> dict | None:
+    usage_result, error = _extract_usage_with_error(event)
+    assert error is None
+    return usage_result
 
 
 def test_extracts_usage_from_wrapped_response_completed_event():
@@ -346,12 +354,13 @@ def test_duplicate_top_level_unknown_type_keeps_first_type_boundary():
 def test_late_known_non_usage_event_type_is_ignored():
     body = (
         b'{"padding":"'
-        + b"x" * (openai_responses._RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES + 1)
+        + b"x" * (openai_responses._RESPONSES_EVENT_PREFILTER_MAX_BYTES + 1)
         + b'","type":"response.output_text.delta",'
         + b'"response":{"model":"gpt-5.6","usage":{"input_tokens":9,"output_tokens":4}}}'
     )
     event = inspect_openai_responses_event_json(body)
 
+    assert event.event_type is None
     assert extract_openai_responses_usage_from_event(event) is None
 
 
@@ -384,6 +393,23 @@ def test_terminal_event_type_after_skipped_fields_still_extracts_usage():
         "tokens.input": 10,
         "tokens.output": 5,
         "tokens.cache_read": 2,
+    }
+
+
+def test_terminal_event_with_large_bulk_string_still_extracts_usage():
+    body = (
+        b'{"type":"response.completed","padding":"'
+        + b"x" * (256 * 1024)
+        + b'","response":{"id":"resp_bulk","model":"gpt-5.6",'
+        b'"usage":{"input_tokens":9,"output_tokens":4}}}'
+    )
+    event = inspect_openai_responses_event_json(body)
+
+    assert extract_openai_responses_usage_from_event(event) == {
+        "message_id": "resp_bulk",
+        "model": "gpt-5.6",
+        "tokens.input": 9,
+        "tokens.output": 4,
     }
 
 
@@ -442,6 +468,17 @@ def test_returns_none_for_malformed_json():
     event = inspect_openai_responses_event_json(b'{"type":"response.completed"')
 
     assert extract_openai_responses_usage_from_event(event) is None
+
+
+def test_work_limit_rejects_partial_usage_and_returns_stable_error():
+    body = (
+        b'{"type":"response.completed","response":{"id":"resp_partial",'
+        b'"model":"gpt-5.6","usage":{"input_tokens":9,"output_tokens":4}},'
+        b'"padding":[' + b",".join([b"0"] * 40_000) + b"]}"
+    )
+    event = inspect_openai_responses_event_json(body)
+
+    assert _extract_usage_with_error(event) == (None, "work_limit_exceeded")
 
 
 def test_returns_none_for_usage_event_without_usage_quantities():

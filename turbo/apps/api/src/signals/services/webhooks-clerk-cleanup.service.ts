@@ -372,7 +372,7 @@ const revokeOrgConnectorTokens$ = command(
     const snapshot = await loadConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();
     const rows = await db
-      .select({ userId: connectors.userId, type: connectors.type })
+      .select({ userId: connectors.userId, type: connectors.connectorSlug })
       .from(connectors)
       .where(eq(connectors.orgId, orgId));
     signal.throwIfAborted();
@@ -411,7 +411,7 @@ const revokeUserConnectorTokens$ = command(
     const snapshot = await loadConnectorRuntimeSnapshot(db);
     signal.throwIfAborted();
     const rows = await db
-      .select({ orgId: connectors.orgId, type: connectors.type })
+      .select({ orgId: connectors.orgId, type: connectors.connectorSlug })
       .from(connectors)
       .where(eq(connectors.userId, userId));
     signal.throwIfAborted();

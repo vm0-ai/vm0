@@ -1,5 +1,9 @@
 import Ably from "ably";
-import type { BrowserSessionChangedPayload } from "@vm0/api-contracts/contracts/realtime";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
+import type {
+  BrowserSessionChangedPayload,
+  ConnectorChangedPayload,
+} from "@vm0/api-contracts/contracts/realtime";
 import type { SessionAffinityResource } from "@vm0/api-contracts/contracts/runners";
 import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-built-in-generation";
 
@@ -69,10 +73,9 @@ export async function createRunnerGroupRealtimeToken(
  * Platform clients subscribe via the existing /api/zero/realtime/token
  * endpoint and receive events published by the API backend.
  *
- * NOT best-effort: rejections from Ably propagate to the caller, matching
- * the original route behaviour. Mutation handlers should use this directly; if
- * a non-blocking publish becomes necessary for a future route, prefer
- * `settle` from ../utils.
+ * NOT best-effort: rejections from Ably propagate to the caller. Use this
+ * directly only when delivery failure should fail the operation. Post-commit
+ * invalidations should expose a topic-specific safe publisher instead.
  */
 export async function publishUserSignal(
   userIds: readonly string[],
@@ -87,6 +90,24 @@ export async function publishUserSignal(
     }),
   );
   L.debug(`Published "${topic}" to ${userIds.length} user(s)`);
+}
+
+export async function publishConnectorChangedForUserSafely(
+  userId: string,
+  connectorSlug: ConnectorSlug,
+): Promise<void> {
+  await tapError(
+    publishUserSignal([userId], "connector:changed", {
+      connectorRef: connectorSlug,
+      connectorSlug,
+    } satisfies ConnectorChangedPayload),
+    (error) => {
+      L.warn("Failed to publish connector changed signal", {
+        connectorSlug,
+        error,
+      });
+    },
+  );
 }
 
 export async function publishRunChangedForUserSafely(
@@ -265,27 +286,6 @@ export async function publishChatThreadWorkflowsChangedSafely(
   );
 }
 
-/**
- * Notify a chat thread's UI that its workflow queue changed (event enqueued,
- * drained, skipped, cleared, paused, or resumed). Best-effort like the
- * automations signal: a failed publish must not fail the mutation. The client
- * re-fetches the authoritative queue state on any delivery.
- */
-export async function publishChatThreadWorkflowQueueChangedSafely(
-  userId: string,
-  threadId: string,
-): Promise<void> {
-  await tapError(
-    publishUserSignal([userId], `chatThreadWorkflowQueueChanged:${threadId}`),
-    (error) => {
-      L.warn("Failed to publish chat thread workflow queue changed signal", {
-        threadId,
-        error,
-      });
-    },
-  );
-}
-
 export async function publishBuiltInGenerationChanged(
   userId: string,
   generationId: string,
@@ -334,10 +334,9 @@ export async function publishNetworkPolicyRefreshToRunnerGroup(
   connectorSlug: string,
 ): Promise<void> {
   const channel = ablyClient().channels.get(`runner-group:${group}`);
-  // TODO(#23619): Rename with the runner realtime notification contract.
   await channel.publish("network-policy-refresh", {
     runId,
-    connectorRef: connectorSlug,
+    connectorSlug,
   });
   L.debug(
     `Published network policy refresh ${runId}/${connectorSlug} to runner-group:${group}`,

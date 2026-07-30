@@ -3,20 +3,39 @@ import {
   logsByIdContract,
   logsListContract,
 } from "@vm0/api-contracts/contracts/logs";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { zeroRunAgentEventsContract } from "@vm0/api-contracts/contracts/zero-runs";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { i18n, initializeI18n } from "../../../i18n/index.ts";
+import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { setLocale$ } from "../../../signals/locale.ts";
 import type {
   AgentEventsResponse,
   LogEntry,
   LogDetail,
 } from "../../../signals/zero-page/log-types.ts";
-
 const context = testContext();
 
-function mockActivityAPIs(): void {
+beforeEach(async () => {
+  await initializeI18n(DEFAULT_LOCALE);
+  await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
+});
+
+afterEach(async () => {
+  await i18n.changeLanguage("en-US");
+  document.documentElement.lang = "en-US";
+});
+
+function mockActivityAPIs(
+  pagination = {
+    hasMore: false,
+    nextCursor: null as string | null,
+    totalPages: 1,
+  },
+): void {
   const runId = "a0000000-0000-4000-a000-000000000001";
   const logDetail: LogDetail = {
     id: runId,
@@ -83,7 +102,7 @@ function mockActivityAPIs(): void {
           completedAt: "2026-03-10T14:56:04Z",
         },
       ],
-      pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
+      pagination,
       filters: { statuses: [], sources: [], agents: [] },
     });
   });
@@ -126,28 +145,58 @@ function makeActivityRow(
 }
 
 describe("activity page routing", () => {
-  it("opens an activity detail from the list and returns by breadcrumb", async () => {
-    mockActivityAPIs();
+  it.each([
+    {
+      locale: "en-US",
+      listTitle: "Activity",
+      statusFilter: "Status filter",
+      steps: "Steps",
+      duration: "3.0s",
+    },
+    {
+      locale: "pt-BR",
+      listTitle: "Atividade",
+      statusFilter: "Filtro de status",
+      steps: "Etapas",
+      duration: "3,0s",
+    },
+  ] as const)(
+    "opens an activity detail from the list in $locale",
+    async ({ locale, listTitle, statusFilter, steps, duration }) => {
+      context.mocks.data.userPreferences({ locale });
+      mockActivityAPIs();
 
-    detachedSetupPage({ context, path: "/activities" });
+      detachedSetupPage({
+        context,
+        path: "/activities",
+        featureSwitches: { [FeatureSwitchKey.LanguagePreference]: true },
+      });
 
-    await waitFor(() => {
-      expect(screen.getByText("Test Agent")).toBeInTheDocument();
-    });
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: listTitle }),
+        ).toBeInTheDocument();
+        expect(
+          screen.getByRole("combobox", { name: statusFilter }),
+        ).toBeInTheDocument();
+        expect(screen.getByText("Test Agent")).toBeInTheDocument();
+      });
 
-    const row = screen.getByText("Test Agent").closest("a");
-    expect(row).not.toBeNull();
-    click(row!);
+      const row = screen.getByText("Test Agent").closest("a");
+      expect(row).not.toBeNull();
+      click(row!);
 
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Test Agent" }),
-      ).toBeInTheDocument();
-    });
-    expect(screen.getByText("3.0s")).toBeInTheDocument();
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: "Test Agent" }),
+        ).toBeInTheDocument();
+      });
+      expect(screen.getByText(duration)).toBeInTheDocument();
+      expect(screen.getByText(steps)).toBeInTheDocument();
 
-    expect(screen.getByText("Summary done.")).toBeInTheDocument();
-  });
+      expect(screen.getByText("Summary done.")).toBeInTheDocument();
+    },
+  );
 
   it("identifies delegated activity with the parent agent source", async () => {
     context.mocks.data.composesList([
@@ -188,6 +237,31 @@ describe("activity page routing", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Agent (Parent Bot)")).toBeInTheDocument();
+    });
+  });
+
+  it("localizes shared pagination controls", async () => {
+    mockActivityAPIs({
+      hasMore: true,
+      nextCursor: "page-2",
+      totalPages: 2,
+    });
+    context.mocks.data.userPreferences({
+      locale: "pt-BR",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/activities",
+      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Página 1 de 2")).toBeInTheDocument();
+      expect(screen.getByLabelText("Linhas por página")).toBeInTheDocument();
+      expect(screen.getByLabelText("Página anterior")).toBeDisabled();
+      expect(screen.getByLabelText("Próxima página")).toBeEnabled();
     });
   });
 

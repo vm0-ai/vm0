@@ -35,9 +35,8 @@ export const SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT =
 export const SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT =
   "default_r2_endpoint";
 export const SESSION_HISTORY_GZIP_MIN_BYTES = 64 * 1024;
-// TODO(#23619): Rename with the generated runner constant in a compatible
-// runner/API rollout.
-export const NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX = 256;
+export const NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX = 256;
+export const NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE = "RUN_TERMINAL";
 export const RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX = 512;
 export const sessionHistoryEncodingSchema = z.enum([
   SESSION_HISTORY_ENCODING_IDENTITY,
@@ -718,18 +717,19 @@ export const runnersNetworkPolicyRefreshContract = c.router({
       runId: z.uuid(),
     }),
     body: z.object({
-      // TODO(#23619): Rename runner wire fields in a compatibility-safe rollout.
-      connectorRefs: z
+      connectorSlugs: z
         .array(connectorSlugSchema)
         .min(1)
-        .max(NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX),
+        .max(NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX)
+        .transform((connectorSlugs) => {
+          return [...new Set(connectorSlugs)];
+        }),
     }),
     responses: {
       200: z.object({
         refreshes: z.array(
           z.object({
-            // TODO(#23619): Keep the response aligned with the request rollout.
-            connectorRef: connectorSlugSchema,
+            connectorSlug: connectorSlugSchema,
             networkPolicy: networkPolicySchema,
             nextRefreshAt: z.string().datetime({ offset: true }).nullable(),
           }),
@@ -739,6 +739,11 @@ export const runnersNetworkPolicyRefreshContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema.extend({
+        error: apiErrorSchema.shape.error.extend({
+          code: z.literal(NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE),
+        }),
+      }),
       500: apiErrorSchema,
     },
     summary: "Refresh active run network policies",

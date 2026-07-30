@@ -46,6 +46,32 @@ const drizzlePreamble = `
   declare const db: DrizzleDatabase;
 `;
 
+const conflictPreamble = `
+  import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
+
+  const hosts = pgTable("hosts", {
+    id: text("id").notNull(),
+    installationId: text("installation_id"),
+    revokedAt: timestamp("revoked_at"),
+  });
+  const archivedHosts = pgTable("archived_hosts", {
+    id: text("id").notNull(),
+    installationId: text("installation_id"),
+    revokedAt: timestamp("revoked_at"),
+  });
+  const retiredHosts = pgTable("retired_hosts", {
+    id: text("id").notNull(),
+    retiredAt: timestamp("retired_at"),
+  });
+  type DrizzleDatabase =
+    import("drizzle-orm/node-postgres").NodePgDatabase<{
+      archivedHosts: typeof archivedHosts;
+      hosts: typeof hosts;
+      retiredHosts: typeof retiredHosts;
+    }>;
+  declare const db: DrizzleDatabase;
+`;
+
 const readQueryPreamble = `
   import { executeRawRows } from "./lib/db-raw-rows";
   import { integer, jsonb, pgTable, text } from "drizzle-orm/pg-core";
@@ -616,7 +642,7 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         db.select({
           qualified: sql\`CASE
             WHEN \${eq(users.id, 1)} THEN \${"one"}
-            ELSE \${sql\`\${users.name}\`}
+            ELSE \${sql\`\${users.name}\`.mapWith(users.name)}
           END\`.mapWith(users.name),
           distinctAlias: sql\`\${users.name}\`
             .mapWith(users.name)
@@ -642,6 +668,63 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
       `,
     },
     {
+      name: "concrete and optional-element conjunction contracts stay raw",
+      code: `${drizzlePreamble}
+        import { eq, sql, type SQL } from "drizzle-orm";
+        declare const optionalCondition: SQL | undefined;
+        declare const optionalSeparator: SQL | undefined;
+        function concreteCondition(): SQL {
+          return sql.join(
+            [eq(users.id, 1), eq(users.name, "name")],
+            sql\` AND \`,
+          );
+        }
+        function dynamicConditions(): SQL[] {
+          const conditions = [
+            eq(users.id, 1),
+            eq(users.name, "name"),
+          ];
+          return conditions;
+        }
+        function optionalConditions(): (SQL | undefined)[] {
+          return [eq(users.id, 1), optionalCondition];
+        }
+        db.select()
+          .from(users)
+          .where(
+            sql.join(
+              [eq(users.id, 1), optionalCondition],
+              sql\` AND \`,
+            ),
+          );
+        db.select()
+          .from(users)
+          .where(
+            sql.join(
+              [eq(users.id, 1), eq(users.name, "name")],
+              optionalSeparator,
+            ),
+          );
+        db.select()
+          .from(users)
+          .where(sql.join(dynamicConditions(), sql\` AND \`));
+        db.select()
+          .from(users)
+          .where(sql.join(optionalConditions(), sql\` AND \`));
+        const castIdentity = sql\`CASE
+          WHEN \${eq(users.id, 1)} THEN \${"one"}
+          ELSE \${sql\`\${users.name}\` as SQL}
+        END\`;
+        const aliasedIdentity = sql\`CASE
+          WHEN \${eq(users.id, 1)} THEN \${"one"}
+          ELSE \${sql\`\${users.name}\`.as("nested_name")}
+        END\`;
+        void concreteCondition();
+        void castIdentity;
+        void aliasedIdentity;
+      `,
+    },
+    {
       name: "unmapped SQL results retain their noop decoder",
       code: `${drizzlePreamble}
         import { sql } from "drizzle-orm";
@@ -663,8 +746,343 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         db.select({ name: sql\`\${lookalike}\` }).from(users);
       `,
     },
+    {
+      name: "scalar select builders inside retained predicates remain valid",
+      code: `${drizzlePreamble}
+        import { and, eq, max, notExists, sql } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const boundaryEvent = alias(users, "boundary_event");
+        const boundaryRevoker = alias(users, "boundary_revoker");
+        const boundary = db
+          .select({ id: max(boundaryEvent.id) })
+          .from(boundaryEvent)
+          .where(
+            and(
+              eq(boundaryEvent.name, users.name),
+              notExists(
+                db
+                  .select({ id: boundaryRevoker.id })
+                  .from(boundaryRevoker)
+                  .where(eq(boundaryRevoker.id, boundaryEvent.id)),
+              ),
+            ),
+          );
+        db
+          .select()
+          .from(users)
+          .where(sql\`\${users.id} > COALESCE(\${boundary}, 0)\`);
+      `,
+    },
+    {
+      name: "unproven scalar relations and unsupported clauses remain valid",
+      code: `${drizzlePreamble}
+        import { asc, eq, max, sql, type SQL } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const boundaryEvent = alias(users, "boundary_event");
+        declare const unresolvedRelation: SQL;
+        const literalRelation = sql\`COALESCE((
+          SELECT \${max(boundaryEvent.id)}
+          FROM users AS boundary_event
+          WHERE \${eq(boundaryEvent.name, users.name)}
+        ), 0)\`;
+        const unresolved = sql\`COALESCE((
+          SELECT \${max(boundaryEvent.id)}
+          FROM \${unresolvedRelation}
+          WHERE \${eq(boundaryEvent.name, users.name)}
+        ), 0)\`;
+        const ordered = sql\`COALESCE((
+          SELECT \${max(boundaryEvent.id)}
+          FROM \${boundaryEvent}
+          WHERE \${eq(boundaryEvent.name, users.name)}
+          ORDER BY \${asc(boundaryEvent.id)}
+        ), 0)\`;
+        db
+          .select()
+          .from(users)
+          .where(
+            sql\`boundary_matches(
+              \${literalRelation},
+              \${unresolved},
+              \${ordered}
+            )\`,
+          );
+      `,
+    },
+    {
+      name: "predicate scalar capability stays out of other SQL contexts",
+      code: `${drizzlePreamble}
+        import { eq, max, sql } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const boundaryEvent = alias(users, "boundary_event");
+        const scalar = sql\`COALESCE((
+          SELECT \${max(boundaryEvent.id)}
+          FROM \${boundaryEvent}
+          WHERE \${eq(boundaryEvent.name, users.name)}
+        ), 0)\`;
+        db.select({ value: scalar }).from(users);
+        db.select().from(users).orderBy(scalar);
+        db.update(users).set({ id: scalar });
+      `,
+    },
+    {
+      name: "scalar branch disagreement and opaque flow stay conservative",
+      code: `${drizzlePreamble}
+        import { eq, max, sql, type SQL } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const boundaryEvent = alias(users, "boundary_event");
+        declare const chooseScalar: boolean;
+        function opaque(value: SQL): SQL {
+          return value;
+        }
+        const conditional = chooseScalar
+          ? sql\`COALESCE((
+              SELECT \${max(boundaryEvent.id)}
+              FROM \${boundaryEvent}
+              WHERE \${eq(boundaryEvent.name, users.name)}
+            ), 0)\`
+          : sql\`COALESCE(\${users.id}, 0)\`;
+        const hidden = opaque(sql\`COALESCE((
+          SELECT \${max(boundaryEvent.id)}
+          FROM \${boundaryEvent}
+          WHERE \${eq(boundaryEvent.name, users.name)}
+        ), 0)\`);
+        db
+          .select()
+          .from(users)
+          .where(sql\`boundary_matches(\${conditional}, \${hidden})\`);
+      `,
+    },
+    {
+      name: "stable grouping expressions and input fields stay valid",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const bucket = sql\`DATE(\${users.deletedAt})\`.mapWith(String);
+        const selectedUsers = db
+          .select({ name: users.name })
+          .from(users)
+          .as("selected_users");
+
+        db.select({
+          bucket: bucket.as("bucket"),
+        }).from(users).groupBy(bucket);
+        db.select({
+          name: selectedUsers.name,
+        }).from(selectedUsers).groupBy(({ name }) => name);
+      `,
+    },
+    {
+      name: "unusual grouping shapes stay opaque",
+      code: `${drizzlePreamble}
+        import { eq, sql, type SQL } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const otherUsers = alias(users, "other_users");
+        const selection = {
+          bucket: sql\`DATE(\${users.deletedAt})\`
+            .mapWith(String)
+            .as("bucket"),
+        };
+        const query = db.select(selection).from(users);
+        const rawSource: SQL = sql\`users\`;
+
+        query.groupBy(sql\`1\`);
+        db.select(selection).from(rawSource).groupBy(sql\`1\`);
+        db.select({
+          bucket: sql\`DATE(\${users.deletedAt})\`
+            .mapWith(String)
+            .as("bucket"),
+        })
+          .from(users)
+          .innerJoin(otherUsers, eq(otherUsers.id, users.id))
+          .groupBy(sql\`1\`);
+        db.select({
+          bucket: sql\`DATE(\${users.deletedAt})\`
+            .mapWith(String)
+            .as("bucket"),
+        }).from(users).groupBy(({ bucket }) => sql\`LOWER(\${bucket})\`);
+      `,
+    },
+    {
+      name: "non-equivalent and invalid grouping tags stay valid",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select({
+          bucket: sql\`DATE(\${users.deletedAt})\`
+            .mapWith(String)
+            .as("bucket"),
+        }).from(users).groupBy(sql\`0\`);
+        db.select({
+          bucket: sql\`DATE(\${users.deletedAt})\`
+            .mapWith(String)
+            .as("bucket"),
+        }).from(users).groupBy(sql\`2\`);
+        db.select({
+          bucket: sql\`DATE(\${users.deletedAt})\`
+            .mapWith(String)
+            .as("bucket"),
+        }).from(users).groupBy(sql\`DATE(\${users.id})\`);
+        db.select({
+          bucket: sql\`LOWER(\${users.name})\`
+            .mapWith(String)
+            .as("bucket"),
+        }).from(users).groupBy(sql\`UPPER(\${users.name})\`);
+        db.select().from(users).orderBy(sql\`random()\`);
+      `,
+    },
   ],
   invalid: [
+    {
+      name: "directly nested identity column wrapper",
+      code: `${drizzlePreamble}
+        import { eq, sql } from "drizzle-orm";
+        const expression = sql\`CASE
+          WHEN \${eq(users.id, 1)} THEN \${"one"}
+          ELSE \${sql\`\${users.name}\`}
+        END\`.mapWith(users.name);
+        void expression;
+      `,
+      errors: [{ messageId: "directColumn", line: 22 }],
+    },
+    {
+      name: "fixed conjunction under explicit optional SQL return",
+      code: `${drizzlePreamble}
+        import { eq, or, sql, type SQL } from "drizzle-orm";
+        declare const optionalCondition: SQL | undefined;
+        function visibleCondition(): SQL | undefined {
+          return sql.join(
+            [
+              eq(users.id, 1),
+              or(eq(users.name, "name"), optionalCondition),
+            ],
+            sql\` AND \`,
+          );
+        }
+        void visibleCondition();
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 22,
+        },
+      ],
+    },
+    {
+      name: "fixed conjunction from local array factory",
+      code: `${drizzlePreamble}
+        import { eq, sql, type SQL } from "drizzle-orm";
+        function callerConditions(id: number, name: string): SQL[] {
+          return [eq(users.id, id), eq(users.name, name)];
+        }
+        const conditions = callerConditions(1, "name");
+        db.select()
+          .from(users)
+          .where(sql.join(conditions, sql\` AND \`));
+        db.select()
+          .from(users)
+          .where(
+            sql.join(callerConditions(2, "other"), sql\` AND \`),
+          );
+      `,
+      errors: [
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 26,
+        },
+        {
+          messageId: "typedApi",
+          data: { helper: "and" },
+          line: 30,
+        },
+      ],
+    },
+    {
+      name: "repeated selected grouping expression",
+      code: `${drizzlePreamble}
+        import { isNotNull, sql } from "drizzle-orm";
+        db.select({
+          bucket: sql\`DATE(\${users.deletedAt})\`
+            .mapWith(String)
+            .as("bucket"),
+          normalized: sql\`LOWER(\${users.name})\`
+            .mapWith(String)
+            .as("normalized"),
+        })
+          .from(users)
+          .where(isNotNull(users.deletedAt))
+          .groupBy(sql\`DATE(\${users.deletedAt})\`);
+      `,
+      errors: [{ messageId: "unstableGrouping" }],
+    },
+    {
+      name: "positional selected grouping with renamed sql import",
+      code: `${drizzlePreamble}
+        import { sql as query } from "drizzle-orm";
+        db.select({
+          model: query\`LOWER(\${users.name})\`
+            .mapWith(String)
+            .as("ranking_model"),
+          id: users.id,
+        }).from(users).groupBy(query\`1\`);
+      `,
+      errors: [{ messageId: "unstableGrouping" }],
+    },
+    {
+      name: "positional selected grouping with namespace sql import",
+      code: `${drizzlePreamble}
+        import * as drizzle from "drizzle-orm";
+        db.select({
+          model: drizzle.sql\`LOWER(\${users.name})\`
+            .mapWith(String)
+            .as("ranking_model"),
+          weight: drizzle.sql\`LENGTH(\${users.name})\`
+            .mapWith(Number)
+            .as("weight"),
+        }).from(users).groupBy(drizzle.sql\`1\`);
+      `,
+      errors: [{ messageId: "unstableGrouping" }],
+    },
+    {
+      name: "computed output alias grouping",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select({
+          bucket: sql\`DATE(\${users.deletedAt})\`
+            .mapWith(String)
+            .as("bucket"),
+          normalized: sql\`LOWER(\${users.name})\`
+            .mapWith(String)
+            .as("normalized"),
+        })
+          .from(users)
+          .groupBy(({ bucket: selectedBucket, normalized }) => {
+            return [selectedBucket, normalized];
+          });
+      `,
+      errors: [{ messageId: "unstableGrouping" }],
+    },
+    {
+      name: "bound computed output alias grouping",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const bucket = sql\`DATE(\${users.deletedAt})\`.mapWith(String);
+        db.select({
+          bucket: bucket.as("bucket"),
+        }).from(users).groupBy(({ bucket: selectedBucket }) => selectedBucket);
+      `,
+      errors: [{ messageId: "unstableGrouping" }],
+    },
+    {
+      name: "positional grouping of a direct column",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select({
+          id: users.id,
+          name: users.name,
+        }).from(users).groupBy(sql\`1\`);
+      `,
+      errors: [{ messageId: "unstableGrouping" }],
+    },
     {
       name: "identity column wrappers use direct structured fields",
       code: `${drizzlePreamble}
@@ -2525,11 +2943,238 @@ ruleTester.run("prefer-drizzle-apis source-local analysis", preferDrizzleApis, {
       `,
     },
     {
+      name: "typed conflict target remains valid",
+      code: `${conflictPreamble}
+        import { and, isNotNull, isNull } from "drizzle-orm";
+        await db
+          .insert(hosts)
+          .values({ id: "host" })
+          .onConflictDoUpdate({
+            target: hosts.id,
+            set: { revokedAt: null },
+            targetWhere: and(
+              isNotNull(hosts.installationId),
+              isNull(hosts.revokedAt),
+            ),
+          });
+      `,
+    },
+    {
+      name: "indirect conflict builder remains opaque",
+      code: `${conflictPreamble}
+        import { sql } from "drizzle-orm";
+        const builder = db.insert(hosts).values({ id: "host" });
+        await builder.onConflictDoUpdate({
+          target: hosts.id,
+          set: { revokedAt: null },
+          targetWhere: sql\`installation_id IS NOT NULL AND revoked_at IS NULL\`,
+        });
+      `,
+    },
+    {
+      name: "dynamic conflict table remains opaque",
+      code: `${conflictPreamble}
+        import { sql } from "drizzle-orm";
+        declare const useArchive: boolean;
+        const targetTable = useArchive ? archivedHosts : hosts;
+        await db
+          .insert(targetTable)
+          .values({ id: "host" })
+          .onConflictDoUpdate({
+            target: targetTable.id,
+            set: { revokedAt: null },
+            targetWhere: sql\`installation_id IS NOT NULL AND revoked_at IS NULL\`,
+          });
+      `,
+    },
+    {
+      name: "lookalike conflict API remains opaque",
+      code: `${conflictPreamble}
+        import { sql } from "drizzle-orm";
+        const fakeDb = {
+          insert(_table: unknown) {
+            return {
+              values(_value: unknown) {
+                return {
+                  onConflictDoUpdate(options: unknown) {
+                    return options;
+                  },
+                };
+              },
+            };
+          },
+        };
+        fakeDb
+          .insert(hosts)
+          .values({ id: "host" })
+          .onConflictDoUpdate({
+            target: hosts.id,
+            set: { revokedAt: null },
+            targetWhere: sql\`installation_id IS NOT NULL AND revoked_at IS NULL\`,
+          });
+      `,
+    },
+    {
+      name: "computed conflict predicate property remains opaque",
+      code: `${conflictPreamble}
+        import { sql } from "drizzle-orm";
+        const targetWhere = "targetWhere";
+        await db
+          .insert(hosts)
+          .values({ id: "host" })
+          .onConflictDoUpdate({
+            target: hosts.id,
+            set: { revokedAt: null },
+            [targetWhere]: sql\`installation_id IS NOT NULL AND revoked_at IS NULL\`,
+          });
+      `,
+    },
+    {
+      name: "spread conflict options remain opaque",
+      code: `${conflictPreamble}
+        import { sql, type SQL } from "drizzle-orm";
+        declare const extraOptions: { readonly setWhere?: SQL };
+        await db
+          .insert(hosts)
+          .values({ id: "host" })
+          .onConflictDoUpdate({
+            ...extraOptions,
+            target: hosts.id,
+            set: { revokedAt: null },
+            targetWhere: sql\`installation_id IS NOT NULL AND revoked_at IS NULL\`,
+          });
+      `,
+    },
+    {
+      name: "nested conflict relation remains opaque",
+      code: `${conflictPreamble}
+        import { sql } from "drizzle-orm";
+        await db
+          .insert(hosts)
+          .values({ id: "host" })
+          .onConflictDoUpdate({
+            target: hosts.id,
+            set: { revokedAt: null },
+            targetWhere: sql\`
+              EXISTS (
+                SELECT 1
+                FROM archived_hosts
+                WHERE revoked_at IS NULL
+              )
+            \`,
+          });
+      `,
+    },
+    {
       name: "dynamic predicate spread remains opaque",
       code: `${drizzlePreamble}
         import { and, type SQL } from "drizzle-orm";
         declare const fragments: SQL[];
         db.select().from(users).where(and(...fragments));
+      `,
+    },
+    {
+      name: "non-schema relation aliases remain opaque",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        sql\`
+          WITH event AS (
+            SELECT 1 AS id
+          )
+          SELECT event.id
+          FROM event
+          WHERE event.id = 1
+        \`;
+        sql\`
+          SELECT event.id
+          FROM (SELECT 1 AS id) event
+          WHERE event.id IS NOT NULL
+        \`;
+        sql\`
+          SELECT event.id
+          FROM jsonb_array_elements(\${users.tags}) event
+          WHERE event.id > 0
+        \`;
+      `,
+    },
+    {
+      name: "local opaque alias shadows a schema alias",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        sql\`
+          SELECT event.id
+          FROM \${users} event
+          WHERE EXISTS (
+            SELECT 1
+            FROM (SELECT 1 AS id) event
+            WHERE event.id = 1
+          )
+        \`;
+      `,
+    },
+    {
+      name: "ambiguous and renamed schema aliases remain opaque",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        sql\`
+          SELECT event.id
+          FROM \${users} event, \${users} event
+          WHERE event.id = 1
+        \`;
+        sql\`
+          SELECT event.event_id
+          FROM \${users} event(event_id, event_name, deleted_at, tags)
+          WHERE event.event_id = 1
+        \`;
+      `,
+    },
+    {
+      name: "raw relations and aliased join results remain opaque",
+      code: `${drizzlePreamble}
+        import { sql, type SQL } from "drizzle-orm";
+        declare const relation: SQL;
+        sql\`
+          SELECT event.id
+          FROM \${relation} event
+          WHERE event.id = 1
+        \`;
+        sql\`
+          SELECT pair.id
+          FROM (
+            \${users} event
+            JOIN (SELECT 1 AS other_id) other ON TRUE
+          ) pair
+          WHERE pair.id = 1
+        \`;
+      `,
+    },
+    {
+      name: "a Drizzle alias for a different source table remains opaque",
+      code: `${structuredReadPreamble}
+        import { sql } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const event = alias(messages, "event");
+        sql\`
+          SELECT event.id
+          FROM \${users} \${event}
+          WHERE event.id = 1
+        \`;
+      `,
+    },
+    {
+      name: "unknown schema columns and unsupported operators remain raw",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        sql\`
+          SELECT event.id
+          FROM \${users} event
+          WHERE event.unknown_column = 1
+        \`;
+        sql\`
+          SELECT event.id
+          FROM \${users} event
+          WHERE event.id IS DISTINCT FROM 1
+        \`;
       `,
     },
   ],
@@ -2657,6 +3302,60 @@ ruleTester.run("prefer-drizzle-apis source-local analysis", preferDrizzleApis, {
       errors: [{ messageId: "typedApi", data: { helper: "gt" } }],
     },
     {
+      name: "conflict target resolves one known insert column",
+      code: `${conflictPreamble}
+        import { sql } from "drizzle-orm";
+        await db
+          .insert(hosts)
+          .values({ id: "host" })
+          .onConflictDoUpdate({
+            target: hosts.id,
+            set: { revokedAt: null },
+            targetWhere: sql\`revoked_at IS NULL\`,
+          });
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "isNull" } }],
+    },
+    {
+      name: "conflict target resolves multiple known insert columns",
+      code: `${conflictPreamble}
+        import { sql } from "drizzle-orm";
+        await db
+          .insert(hosts)
+          .values({ id: "host" })
+          .onConflictDoUpdate({
+            target: hosts.id,
+            set: { revokedAt: null },
+            targetWhere: sql\`installation_id IS NOT NULL AND revoked_at IS NULL\`,
+          });
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "and" } }],
+    },
+    {
+      name: "shared conflict predicate keeps target-aware analysis",
+      code: `${conflictPreamble}
+        import { sql } from "drizzle-orm";
+        const predicate = sql\`revoked_at IS NULL\`;
+        await db
+          .insert(retiredHosts)
+          .values({ id: "archived" })
+          .onConflictDoUpdate({
+            target: retiredHosts.id,
+            set: { retiredAt: null },
+            targetWhere: predicate,
+          });
+        await db
+          .insert(hosts)
+          .values({ id: "host" })
+          .onConflictDoUpdate({
+            target: hosts.id,
+            set: { revokedAt: null },
+            targetWhere: predicate,
+          });
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "isNull" } }],
+    },
+    {
       name: "conflict update fields use write and predicate contexts",
       code: `${drizzlePreamble}
         import { eq, sql } from "drizzle-orm";
@@ -2712,6 +3411,103 @@ ruleTester.run("prefer-drizzle-apis source-local analysis", preferDrizzleApis, {
         )\`;
       `,
       errors: [{ messageId: "typedApi", data: { helper: "gt" } }],
+    },
+    {
+      name: "schema-backed scalar subquery is the maximal predicate finding",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const boundaryEvent = alias(users, "boundary_event");
+        const boundaryRevoker = alias(users, "boundary_revoker");
+        db
+          .select()
+          .from(users)
+          .where(sql\`boundary_matches(COALESCE(
+            (
+              SELECT MAX(\${boundaryEvent.id})
+              FROM \${boundaryEvent}
+              WHERE \${boundaryEvent.name} = \${users.name}
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM \${boundaryRevoker}
+                  WHERE \${boundaryRevoker.id} = \${boundaryEvent.id}
+                )
+            ),
+            0
+          ))\`);
+      `,
+      errors: [{ messageId: "structuredScalarQuery" }],
+    },
+    {
+      name: "independent scalar subqueries retain independent findings",
+      code: `${drizzlePreamble}
+        import { eq, max, sql } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const firstBoundary = alias(users, "first_boundary");
+        const secondBoundary = alias(users, "second_boundary");
+        db
+          .select()
+          .from(users)
+          .where(sql\`
+            COALESCE((
+              SELECT \${max(firstBoundary.id)}
+              FROM \${firstBoundary}
+              WHERE \${eq(firstBoundary.name, users.name)}
+            ), 0)
+            >
+            COALESCE((
+              SELECT \${max(secondBoundary.id)}
+              FROM \${secondBoundary}
+              WHERE \${eq(secondBoundary.name, users.name)}
+            ), 0)
+          \`);
+      `,
+      errors: [
+        { messageId: "structuredScalarQuery" },
+        { messageId: "structuredScalarQuery" },
+      ],
+    },
+    {
+      name: "scalar query remains maximal in an optional predicate argument",
+      code: `${drizzlePreamble}
+        import { and, eq, max, sql } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const boundaryEvent = alias(users, "boundary_event");
+        const boundary = sql\`COALESCE((
+          SELECT \${max(boundaryEvent.id)}
+          FROM \${boundaryEvent}
+          WHERE \${and(
+            eq(boundaryEvent.name, users.name),
+            eq(boundaryEvent.id, users.id),
+          )}
+        ), 0)\`;
+        db
+          .select()
+          .from(users)
+          .where(and(sql\`boundary_matches(\${boundary})\`, eq(users.id, 1)));
+      `,
+      errors: [{ messageId: "structuredScalarQuery" }],
+    },
+    {
+      name: "unsupported scalar shape still exposes supported descendants",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const boundaryEvent = alias(users, "boundary_event");
+        db
+          .select()
+          .from(users)
+          .where(sql\`boundary_matches(COALESCE((
+            SELECT MAX(\${boundaryEvent.id})
+            FROM \${boundaryEvent}
+            WHERE \${boundaryEvent.name} = \${users.name}
+            GROUP BY \${boundaryEvent.name}
+          ), 0))\`);
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "max" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
+      ],
     },
     {
       name: "nested hand-built existence leaves remain source-local",
@@ -2779,6 +3575,314 @@ ruleTester.run("prefer-drizzle-apis source-local analysis", preferDrizzleApis, {
         { messageId: "typedApi", data: { helper: "eq" } },
         { messageId: "typedApi", data: { helper: "eq" } },
       ],
+    },
+    {
+      name: "direct schema alias comparison",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        sql\`
+          SELECT event.id
+          FROM \${users} event
+          WHERE event.id = \${1}
+        \`;
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "eq" } }],
+    },
+    {
+      name: "matching interpolated Drizzle alias comparison",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const event = alias(users, "event");
+        sql\`
+          SELECT event.id
+          FROM \${users} \${event}
+          WHERE event.id = \${1}
+        \`;
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "eq" } }],
+    },
+    {
+      name: "schema alias analysis survives an interpolated aggregate filter",
+      code: `${drizzlePreamble}
+        import { count, isNotNull, sql } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const event = alias(users, "event");
+        sql\`
+          SELECT \${count()} FILTER (
+            WHERE \${isNotNull(event.deletedAt)}
+          )
+          FROM \${users} \${event}
+          WHERE event.id = 1
+        \`;
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "eq" } }],
+    },
+    {
+      name: "matching interpolated alias of an imported schema comparison",
+      code: `
+        import { usageEvent } from "./src/schema/usage-event";
+        import { sql } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const event = alias(usageEvent, "event");
+        sql\`
+          SELECT event.id
+          FROM \${usageEvent} \${event}
+          WHERE event.status = 'processed'
+        \`;
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "eq" } }],
+    },
+    {
+      name: "matching interpolated schema alias inside a select cte",
+      code: `
+        import { usageEvent } from "./src/schema/usage-event";
+        import { asc, count, sql, type SQL } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        import { executeRawRows } from "./lib/db-raw-rows";
+        const event = alias(usageEvent, "event");
+        const oldest = sql\`\${asc(event.processedAt)} NULLS FIRST\`;
+        declare const db: never;
+        declare const rowSchema: never;
+        declare const cutoff: string;
+        function probeQuery(args: { readonly cutoff: string }): SQL {
+          return sql\`
+            WITH probed AS MATERIALIZED (
+              SELECT event.billing_error
+              FROM \${usageEvent} \${event}
+              WHERE event.status = 'processed'
+                AND event.processed_at IS NOT NULL
+                AND event.processed_at < \${args.cutoff}::timestamp
+              ORDER BY \${oldest}
+            )
+            SELECT \${count()}
+            FROM probed
+          \`;
+        }
+        await executeRawRows(
+          db,
+          probeQuery({ cutoff }),
+          rowSchema,
+        );
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "and" } }],
+    },
+    {
+      name: "direct schema alias null predicates",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        sql\`
+          SELECT event.id
+          FROM \${users} event
+          WHERE event.deleted_at IS NOT NULL
+        \`;
+        sql\`
+          SELECT event.id
+          FROM \${users} event
+          WHERE event.deleted_at IS NULL
+        \`;
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "isNotNull" } },
+        { messageId: "typedApi", data: { helper: "isNull" } },
+      ],
+    },
+    {
+      name: "direct schema alias ordering with retained null order",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        sql\`
+          SELECT event.id
+          FROM \${users} event
+          ORDER BY event.name ASC NULLS FIRST
+        \`;
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "asc" } }],
+    },
+    {
+      name: "direct schema alias mapped aggregate",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        sql\`
+          SELECT MAX(event.id)
+          FROM \${users} event
+        \`.mapWith(users.id);
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "max" } }],
+    },
+    {
+      name: "direct schema alias comparison capabilities",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        sql\`
+          SELECT event.id
+          FROM \${users} event
+          WHERE CASE
+            WHEN event.id = 1 THEN event.id
+            WHEN event.id <> 2 THEN event.id
+            WHEN event.id > 3 THEN event.id
+            WHEN event.id >= 4 THEN event.id
+            WHEN event.id < 5 THEN event.id
+            WHEN event.id <= 6 THEN event.id
+          END IS NOT NULL
+        \`;
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "ne" } },
+        { messageId: "typedApi", data: { helper: "gt" } },
+        { messageId: "typedApi", data: { helper: "gte" } },
+        { messageId: "typedApi", data: { helper: "lt" } },
+        { messageId: "typedApi", data: { helper: "lte" } },
+      ],
+    },
+    {
+      name: "direct schema alias membership",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        sql\`
+          SELECT event.id
+          FROM \${users} event
+          WHERE event.id IN (1, 2)
+        \`;
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "inArray" } }],
+    },
+    {
+      name: "direct schema alias boolean capabilities",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        sql\`
+          SELECT event.id
+          FROM \${users} event
+          WHERE event.id = 1 AND event.name = 'one'
+        \`;
+        sql\`
+          SELECT event.id
+          FROM \${users} event
+          WHERE event.id = 1 OR event.name = 'one'
+        \`;
+        sql\`
+          SELECT event.id
+          FROM \${users} event
+          WHERE NOT event.id = 1
+        \`;
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "and" } },
+        { messageId: "typedApi", data: { helper: "or" } },
+        { messageId: "typedApi", data: { helper: "not" } },
+      ],
+    },
+    {
+      name: "two direct schema aliases in a join",
+      code: `${structuredReadPreamble}
+        import { sql } from "drizzle-orm";
+        sql\`
+          SELECT event.id
+          FROM \${users} event
+          INNER JOIN \${messages} message
+            ON event.id = message.user_id
+        \`;
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "eq" } }],
+    },
+    {
+      name: "direct schema aliases in update and delete statements",
+      code: `${structuredReadPreamble}
+        import { sql } from "drizzle-orm";
+        sql\`
+          UPDATE \${users} event
+          SET name = 'updated'
+          FROM \${messages} message
+          WHERE event.id = message.user_id
+        \`;
+        sql\`
+          DELETE FROM \${users} event
+          USING \${messages} message
+          WHERE event.id = message.user_id
+        \`;
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
+      ],
+    },
+    {
+      name: "direct schema alias in a data-modifying cte",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        sql\`
+          WITH changed AS (
+            UPDATE \${users} event
+            SET name = 'updated'
+            WHERE event.id = \${1}
+            RETURNING event.id
+          )
+          SELECT changed.id
+          FROM changed
+        \`;
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "eq" } }],
+    },
+    {
+      name: "correlated and lateral schema aliases use the nearest scope",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        sql\`
+          SELECT (
+            SELECT nested.id
+            FROM \${users} nested
+            WHERE nested.id = event.id
+            GROUP BY nested.id
+          )
+          FROM \${users} event
+        \`;
+        sql\`
+          SELECT selected.id
+          FROM \${users} event
+          CROSS JOIN LATERAL (
+            SELECT event.id
+            WHERE event.id = 1
+          ) selected
+        \`;
+      `,
+      errors: [
+        { messageId: "typedApi", data: { helper: "eq" } },
+        { messageId: "typedApi", data: { helper: "eq" } },
+      ],
+    },
+    {
+      name: "an inner schema alias shadows an outer schema alias",
+      code: `${structuredReadPreamble}
+        import { sql } from "drizzle-orm";
+        sql\`
+          SELECT event.id
+          FROM \${users} event
+          WHERE EXISTS (
+            SELECT 1
+            FROM \${messages} event
+            WHERE event.user_id = 1
+          )
+        \`;
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "eq" } }],
+    },
+    {
+      name: "local opaque aliases stop correlated outer lookup",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        sql\`
+          SELECT (
+            SELECT event.id
+            FROM (SELECT 1 AS id) event
+            WHERE event.id = 1
+          )
+          FROM \${users} event
+          WHERE event.id = 2
+        \`;
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "eq" } }],
     },
   ],
 });

@@ -31,8 +31,7 @@ export const connectorOauthDeviceAuthorizationSessions = pgTable(
     userId: text("user_id").notNull(),
     agentId: uuid("agent_id"),
     authorizeAgent: boolean("authorize_agent").default(false).notNull(),
-    // TODO(#23619): Rename the property and column in the persistence phase.
-    connectorType: varchar("connector_type", { length: 64 }).notNull(),
+    connectorSlug: varchar("connector_slug", { length: 64 }).notNull(),
     authMethod: varchar("auth_method", { length: 50 }).notNull(),
     status: connectorOauthDeviceAuthorizationSessionStatusEnum("status")
       .default("awaiting_user_authorization")
@@ -55,12 +54,10 @@ export const connectorOauthDeviceAuthorizationSessions = pgTable(
       uniqueIndex("idx_connector_oauth_device_authorization_sessions_token").on(
         table.sessionTokenHash,
       ),
-      index(
-        "idx_connector_oauth_device_authorization_sessions_owner_status",
-      ).on(
+      index("idx_connector_oauth_device_sessions_owner_slug_status").on(
         table.orgId,
         table.userId,
-        table.connectorType,
+        table.connectorSlug,
         table.authMethod,
         table.status,
       ),

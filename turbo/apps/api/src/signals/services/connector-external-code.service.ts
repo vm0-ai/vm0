@@ -59,7 +59,32 @@ const SUPERSEDED_SESSION_ERROR_MESSAGE =
 const PROVIDER_STATE_MAX_BYTES = 16 * 1024;
 const COMPLETING_SESSION_STALE_AFTER_MS = 30 * 60 * 1000;
 
-type ExternalCodeSessionRow = typeof connectorExternalCodeSessions.$inferSelect;
+const externalCodeSessionSelection = Object.freeze({
+  id: connectorExternalCodeSessions.id,
+  orgId: connectorExternalCodeSessions.orgId,
+  userId: connectorExternalCodeSessions.userId,
+  agentId: connectorExternalCodeSessions.agentId,
+  authorizeAgent: connectorExternalCodeSessions.authorizeAgent,
+  connectorType: connectorExternalCodeSessions.connectorSlug,
+  authMethod: connectorExternalCodeSessions.authMethod,
+  status: connectorExternalCodeSessions.status,
+  sessionTokenHash: connectorExternalCodeSessions.sessionTokenHash,
+  encryptedProviderState: connectorExternalCodeSessions.encryptedProviderState,
+  authorizationUrl: connectorExternalCodeSessions.authorizationUrl,
+  errorCode: connectorExternalCodeSessions.errorCode,
+  errorMessage: connectorExternalCodeSessions.errorMessage,
+  createdAt: connectorExternalCodeSessions.createdAt,
+  updatedAt: connectorExternalCodeSessions.updatedAt,
+  expiresAt: connectorExternalCodeSessions.expiresAt,
+  completedAt: connectorExternalCodeSessions.completedAt,
+});
+
+type ExternalCodeSessionRow = Omit<
+  typeof connectorExternalCodeSessions.$inferSelect,
+  "connectorSlug"
+> & {
+  readonly connectorType: typeof connectorExternalCodeSessions.$inferSelect.connectorSlug;
+};
 
 type ExternalCodeSessionOwner = {
   readonly connectorSlug: ConnectorSlug;
@@ -232,7 +257,7 @@ async function markPendingSessionsSuperseded(
       and(
         eq(connectorExternalCodeSessions.orgId, args.orgId),
         eq(connectorExternalCodeSessions.userId, args.userId),
-        eq(connectorExternalCodeSessions.connectorType, args.connectorSlug),
+        eq(connectorExternalCodeSessions.connectorSlug, args.connectorSlug),
         eq(connectorExternalCodeSessions.authMethod, args.authMethod),
         inArray(connectorExternalCodeSessions.status, [
           ...SUPERSEDABLE_EXTERNAL_CODE_SESSION_STATUSES,
@@ -251,14 +276,14 @@ async function loadOwnedSession(args: {
   readonly signal: AbortSignal;
 }): Promise<ExternalCodeSessionRow | null> {
   const [session] = await args.writeDb
-    .select()
+    .select(externalCodeSessionSelection)
     .from(connectorExternalCodeSessions)
     .where(
       and(
         eq(connectorExternalCodeSessions.id, args.sessionId),
         eq(connectorExternalCodeSessions.orgId, args.orgId),
         eq(connectorExternalCodeSessions.userId, args.userId),
-        eq(connectorExternalCodeSessions.connectorType, args.connectorSlug),
+        eq(connectorExternalCodeSessions.connectorSlug, args.connectorSlug),
         eq(
           connectorExternalCodeSessions.sessionTokenHash,
           sessionTokenHash(args.sessionToken),
@@ -350,7 +375,7 @@ async function claimSession(args: {
         eq(connectorExternalCodeSessions.status, "pending"),
       ),
     )
-    .returning();
+    .returning(externalCodeSessionSelection);
   args.signal.throwIfAborted();
   return claimedSession ?? null;
 }
@@ -819,7 +844,7 @@ export const startConnectorExternalCodeSession$ = command(
           userId: args.userId,
           agentId: args.agentId,
           authorizeAgent: connectorAgentAuthorizationRequested(args),
-          connectorType: resolved.connectorSlug,
+          connectorSlug: resolved.connectorSlug,
           authMethod: resolved.authMethodId,
           status: "pending",
           sessionTokenHash: sessionTokenHash(sessionToken),
@@ -829,7 +854,9 @@ export const startConnectorExternalCodeSession$ = command(
           updatedAt: now,
           expiresAt,
         })
-        .returning({ id: connectorExternalCodeSessions.id });
+        .returning({
+          id: connectorExternalCodeSessions.id,
+        });
     });
     signal.throwIfAborted();
 
@@ -841,6 +868,7 @@ export const startConnectorExternalCodeSession$ = command(
       sessionId: session.id,
       sessionToken,
       type: resolved.connectorSlug,
+      connectorSlug: resolved.connectorSlug,
       status: "pending",
       authorizationUrl: startResult.authorizationUrl,
       expiresIn: startResult.expiresIn,

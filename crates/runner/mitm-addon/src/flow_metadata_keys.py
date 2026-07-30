@@ -83,8 +83,8 @@ Firewall and auth context
 - ``FIREWALL_ERROR``: optional ``str`` error code for auth, forwarding, or
   registry failures. It is orthogonal to ``FIREWALL_ACTION``: an ``ALLOW``
   decision can still have an auth or forwarding error.
-- ``CONNECTOR_DIAGNOSTIC_TYPE``: optional ``str`` connector slug stored under
-  the legacy type key for a generic connector availability diagnostic. HTTP
+- ``CONNECTOR_DIAGNOSTIC_SLUG``: optional ``str`` connector slug stored under
+  the canonical slug key for a generic connector availability diagnostic. HTTP
   request classification records this for an inactive built-in connector
   candidate from the request-header stream path or the request hook; network
   logs expose it only after the response/error hook turns the candidate into an
@@ -113,6 +113,9 @@ Firewall and auth context
   reservation written by header-phase auth.base admission and consumed by the
   request auth.base forwarder path. Released by request/terminal cleanup if it
   is not transferred to the forwarder.
+- ``AWS_SIGV4_BODY_ADMISSION``: opaque aggregate reservation for a buffered
+  body-dependent SigV4 request. Written before body buffering and released by
+  terminal flow cleanup.
 - ``TRUSTED_AUTHORITY_HOST``: ``str`` host from authority validation. Read by
   auth-base URL rewrite logic when reconstructing trusted request authority.
 
@@ -136,9 +139,10 @@ Request streaming
   capture paths. Read by request body capture and connector billing refinement.
   Removed by stream cleanup after terminal hooks.
 - ``REQUEST_STREAM_BUFFER_STATE``: ``dict`` with at least ``truncated`` and
-  ``total_bytes``. Written with ``REQUEST_STREAM_BUFFER`` and read for request
-  size, capture truncation, and connector billing refinement. Removed by stream
-  cleanup.
+  ``total_bytes``. Always written by request streaming setup and read for
+  request size. Capture-enabled paths also write ``REQUEST_STREAM_BUFFER`` and
+  use this state for capture truncation and connector billing refinement.
+  Removed by stream cleanup.
 - ``REQUEST_STREAM_COMPLETE``: ``bool`` written by ``request()`` after
   mitmproxy has delivered the full streamed request body to the addon. Read by
   connector billing before treating a non-truncated request stream buffer as a
@@ -158,9 +162,6 @@ Model-provider usage
   observable model-provider flows already carry ``MODEL_USAGE_PROVIDER``.
 - ``MODEL_USAGE_PROVIDER``: optional ``str`` canonical model id from registry VM
   info. Read by model-provider usage observability and reported-model selection.
-- ``MODEL_USAGE_PRICING``: optional signed model-provider pricing metadata with
-  the unit size and credits-per-token-category map. Read only by billable
-  usage-event reporting.
 - ``MODEL_JSON_USAGE_FINALIZED``: ``bool`` written when JSON usage finalization
   ran. Read by ``response()`` to skip legacy fallback JSON extraction.
 
@@ -204,8 +205,7 @@ FIREWALL_PARAMS: Final = "firewall_params"
 FIREWALL_BILLABLE: Final = "firewall_billable"
 FIREWALL_ACTION: Final = "firewall_action"
 FIREWALL_ERROR: Final = "firewall_error"
-# TODO(#23619): Rename only with the flow-metadata and network-log schemas.
-CONNECTOR_DIAGNOSTIC_TYPE: Final = "connector_diagnostic_type"
+CONNECTOR_DIAGNOSTIC_SLUG: Final = "connector_diagnostic_slug"
 CONNECTOR_DIAGNOSTIC_REASON: Final = "connector_diagnostic_reason"
 CONNECTOR_DIAGNOSTIC_ENV_NAMES: Final = "connector_diagnostic_env_names"
 CONNECTOR_DIAGNOSTIC_BASE: Final = "connector_diagnostic_base"
@@ -217,13 +217,13 @@ AUTH_REFRESHED_SECRETS: Final = "auth_refreshed_secrets"
 AUTH_CACHE_HIT: Final = "auth_cache_hit"
 AUTH_URL_REWRITE: Final = "auth_url_rewrite"
 AUTH_BASE_FORWARD_ADMISSION: Final = "auth_base_forward_admission"
+AWS_SIGV4_BODY_ADMISSION: Final = "aws_sigv4_body_admission"
 TRUSTED_AUTHORITY_HOST: Final = "trusted_authority_host"
 
 # Usage and streaming metadata
 MODEL_PROVIDER_USAGE: Final = "model_provider_usage"
 MODEL_PROVIDER_USAGE_SOURCES: Final = "model_provider_usage_sources"
 MODEL_USAGE_PROVIDER: Final = "model_usage_provider"
-MODEL_USAGE_PRICING: Final = "model_usage_pricing"
 MODEL_JSON_USAGE_FINALIZED: Final = "_model_json_usage_finalized"
 RESPONSE_STREAM_STATE: Final = "response_stream_state"
 STREAM_BUFFER: Final = "stream_buffer"

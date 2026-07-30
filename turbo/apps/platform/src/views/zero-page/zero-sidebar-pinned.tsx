@@ -20,6 +20,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 import {
   isChatRoute,
   setSidebarExpanded$,
@@ -69,6 +70,7 @@ function PinnedAgentSideDecorator({
   isPrimarySelected: boolean;
   hasUnread: boolean;
 }) {
+  const { t } = useTranslation("agents");
   const [pinLoadable, saveAgentPinned] = useLoadableSet(setAgentPinned$);
   const [markReadLoadable, markAgentThreadsRead] = useLoadableSet(
     markAgentThreadsRead$,
@@ -103,7 +105,9 @@ function PinnedAgentSideDecorator({
     ...(hasUnread
       ? [
           {
-            label: "Mark all read",
+            label: t(($) => {
+              return $.sidebar.markAllRead;
+            }),
             disabled: markingRead,
             icon: <IconChecks size={16} stroke={2} />,
             onSelect: markAllRead,
@@ -114,13 +118,17 @@ function PinnedAgentSideDecorator({
       ? [
           isPinned
             ? {
-                label: "Unpin",
+                label: t(($) => {
+                  return $.sidebar.unpin;
+                }),
                 disabled: savingPinned,
                 icon: <IconPinnedOff size={16} stroke={2} />,
                 onSelect: unpinAgent,
               }
             : {
-                label: "Pin to sidebar",
+                label: t(($) => {
+                  return $.sidebar.pin;
+                }),
                 disabled: savingPinned,
                 icon: <IconPin size={16} stroke={2} />,
                 onSelect: pinAgent,
@@ -197,6 +205,7 @@ export function PinnedAgentListSection({
 }: {
   layout?: "vertical" | "horizontal";
 }) {
+  const { t } = useTranslation("agents");
   const activeRoute = useGet(activeRoute$);
   const pathParams = useGet(pathParams$);
   const routeAgentId =
@@ -231,7 +240,9 @@ export function PinnedAgentListSection({
     return (
       <div className="shrink-0" data-testid="pinned-agents-horizontal">
         <span className="block px-1 pb-2 text-[13px] font-medium leading-4 text-sidebar-foreground/50">
-          Pinned agents
+          {t(($) => {
+            return $.sidebar.pinnedAgents;
+          })}
         </span>
         <div className="flex items-start gap-1 overflow-x-auto pb-1">
           {pinnedAgentsLoadable.state === "hasData" &&
@@ -272,13 +283,19 @@ export function PinnedAgentListSection({
             onClick={() => {
               openAgentListDialog();
             }}
-            aria-label="Open a conversation"
+            aria-label={t(($) => {
+              return $.sidebar.openConversation;
+            })}
             className="flex w-[60px] shrink-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
           >
             <span className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-[hsl(var(--gray-300))]">
               <IconPlus size={16} stroke={2} />
             </span>
-            <span className="text-[11px] leading-tight">New</span>
+            <span className="text-[11px] leading-tight">
+              {t(($) => {
+                return $.sidebar.new;
+              })}
+            </span>
           </button>
         </div>
         <AgentListDialogContainer />
@@ -296,7 +313,9 @@ export function PinnedAgentListSection({
         }}
       >
         <span className="flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
-          Pinned
+          {t(($) => {
+            return $.sidebar.pinned;
+          })}
           <span className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
             <IconChevronRight
               size={12}
@@ -315,13 +334,19 @@ export function PinnedAgentListSection({
                   openAgentListDialog();
                 }}
                 className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors"
-                aria-label="Open a conversation"
+                aria-label={t(($) => {
+                  return $.sidebar.openConversation;
+                })}
               >
                 <IconPlus size={15} stroke={2.5} />
               </button>
             </TooltipTrigger>
             <TooltipContent side="right">
-              <p className="text-xs">Open a conversation</p>
+              <p className="text-xs">
+                {t(($) => {
+                  return $.sidebar.openConversation;
+                })}
+              </p>
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>

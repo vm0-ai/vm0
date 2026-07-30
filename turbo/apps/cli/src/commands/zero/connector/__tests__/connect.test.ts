@@ -23,6 +23,7 @@ function connectorResponse(connectorSlug: string, authMethod = "api-token") {
   return {
     id: "00000000-0000-4000-8000-000000000001",
     type: connectorSlug,
+    slug: connectorSlug,
     authMethod,
     externalId: null,
     externalUsername: null,
@@ -60,10 +61,12 @@ describe("zero connector connect command", () => {
     let receivedBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:type/manual-grant",
+        "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
         async ({ params, request }) => {
           receivedBody = await request.json();
-          return HttpResponse.json(connectorResponse(String(params.type)));
+          return HttpResponse.json(
+            connectorResponse(String(params.connectorSlug)),
+          );
         },
       ),
     );
@@ -98,10 +101,12 @@ describe("zero connector connect command", () => {
     let receivedBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:type/manual-grant",
+        "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
         async ({ params, request }) => {
           receivedBody = await request.json();
-          return HttpResponse.json(connectorResponse(String(params.type)));
+          return HttpResponse.json(
+            connectorResponse(String(params.connectorSlug)),
+          );
         },
       ),
     );
@@ -138,9 +143,9 @@ describe("zero connector connect command", () => {
         }),
       ]),
       http.post(
-        "http://localhost:3000/api/zero/connectors/:type/manual-grant",
+        "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
         async ({ params, request }) => {
-          receivedType = String(params.type);
+          receivedType = String(params.connectorSlug);
           receivedBody = await request.json();
           return HttpResponse.json(
             connectorResponse(connectorSlug, authMethod),
@@ -167,9 +172,11 @@ describe("zero connector connect command", () => {
   it("prints JSON output when requested", async () => {
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:type/manual-grant",
+        "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
         ({ params }) => {
-          return HttpResponse.json(connectorResponse(String(params.type)));
+          return HttpResponse.json(
+            connectorResponse(String(params.connectorSlug)),
+          );
         },
       ),
     );
@@ -185,7 +192,7 @@ describe("zero connector connect command", () => {
 
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(JSON.parse(output)).toMatchObject({
-      type: "openai",
+      slug: "openai",
       authMethod: "api-token",
     });
   });
@@ -206,7 +213,7 @@ describe("zero connector connect command", () => {
     let requestCalled = false;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:type/manual-grant",
+        "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
         () => {
           requestCalled = true;
           return HttpResponse.json(connectorResponse("openai"));
@@ -228,7 +235,7 @@ describe("zero connector connect command", () => {
     let requestCalled = false;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:type/manual-grant",
+        "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
         () => {
           requestCalled = true;
           return HttpResponse.json(connectorResponse("github"));
@@ -260,7 +267,7 @@ describe("zero connector connect command", () => {
     let requestCalled = false;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:type/manual-grant",
+        "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
         () => {
           requestCalled = true;
           return HttpResponse.json(connectorResponse("stripe"));
@@ -291,7 +298,7 @@ describe("zero connector connect command", () => {
   it("surfaces API validation errors without printing secret values", async () => {
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:type/manual-grant",
+        "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
         () => {
           return HttpResponse.json(
             {
@@ -324,7 +331,7 @@ describe("zero connector connect command", () => {
   it("surfaces unavailable connector errors without printing secret values", async () => {
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:type/manual-grant",
+        "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
         () => {
           return HttpResponse.json(
             {

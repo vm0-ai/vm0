@@ -50,7 +50,7 @@ type ChatRealtimeSubscription = {
 const patchDraft$ = command(
   async (
     { get, set },
-    { threadId, content, userMessage, attachments }: PatchDraftArgs,
+    { threadId, userMessage, attachments }: PatchDraftArgs,
     signal: AbortSignal,
   ) => {
     const client = get(zeroClient$)(chatThreadByIdContract);
@@ -58,7 +58,6 @@ const patchDraft$ = command(
       client.patch({
         params: { id: threadId },
         body: {
-          draftContent: content,
           draftUserMessage: userMessage,
           draftAttachments: attachments,
         },
@@ -233,7 +232,7 @@ export const listEventsAfter$ = command(
     { threadId, sinceSeqId }: ListEventsAfterArgs,
     signal: AbortSignal,
   ) => {
-    const result = await listChatEvents(
+    const events = await listChatEvents(
       get(zeroClient$),
       threadId,
       { sinceSeqId, limit: CHAT_EVENTS_PAGE_LIMIT },
@@ -243,8 +242,8 @@ export const listEventsAfter$ = command(
     L.debug("listEventsAfter$", {
       threadId,
       sinceSeqId,
-      count: result.events.length,
-      runEvents: result.events.flatMap((event) => {
+      count: events.length,
+      runEvents: events.flatMap((event) => {
         if (!event.runId) {
           return [];
         }
@@ -256,7 +255,7 @@ export const listEventsAfter$ = command(
         ];
       }),
     });
-    return result;
+    return events;
   },
 );
 
@@ -269,7 +268,7 @@ const listEventsBefore$ = command(
     return await listChatEvents(
       get(zeroClient$),
       threadId,
-      { beforeSeqId, limit: 50 },
+      { beforeSeqId, limit: CHAT_EVENTS_PAGE_LIMIT },
       signal,
     );
   },
@@ -346,10 +345,6 @@ function createSubscribeRealtime() {
         {
           topic: `chatThreadWorkflowsChanged:${threadId}`,
           loopCommand$: handlers.onWorkflowsChanged$,
-        },
-        {
-          topic: `chatThreadWorkflowQueueChanged:${threadId}`,
-          loopCommand$: handlers.onWorkflowQueueChanged$,
         },
       ];
 

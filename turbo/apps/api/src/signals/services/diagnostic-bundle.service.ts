@@ -604,7 +604,7 @@ function collectNetworkLog(
 | where runId in (${runIdList})
 | order by _time asc`;
 
-    return (
+    const networkLogs =
       (await tapError(
         (async (): Promise<Record<string, unknown>[]> => {
           return (await get(queryAxiom(apl))) as Record<string, unknown>[];
@@ -614,8 +614,35 @@ function collectNetworkLog(
             error: String(error),
           });
         },
-      )) ?? []
-    );
+      )) ?? [];
+
+    return networkLogs.flatMap((event) => {
+      const canonical = event.connector_diagnostic_slug;
+      const legacy = event.connector_diagnostic_type;
+      if (
+        typeof canonical === "string" &&
+        typeof legacy === "string" &&
+        canonical !== legacy
+      ) {
+        return [];
+      }
+
+      const connectorDiagnosticSlug =
+        typeof canonical === "string"
+          ? canonical
+          : typeof legacy === "string"
+            ? legacy
+            : undefined;
+      return connectorDiagnosticSlug === undefined
+        ? [event]
+        : [
+            {
+              ...event,
+              connector_diagnostic_slug: connectorDiagnosticSlug,
+              connector_diagnostic_type: connectorDiagnosticSlug,
+            },
+          ];
+    });
   });
 }
 

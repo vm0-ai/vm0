@@ -1,8 +1,12 @@
 import { waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { detachedSetupPage } from "../../__tests__/page-helper.ts";
-import { mockedClerk, mockedClerkLoad } from "../../__tests__/mock-auth.ts";
+import { detachedSetupPage, setupPage } from "../../__tests__/page-helper.ts";
+import {
+  mockClerkLoaded,
+  mockedClerk,
+  mockedClerkLoad,
+} from "../../__tests__/mock-auth.ts";
 import {
   deriveServiceOrigin,
   getAllowedAuthRedirectOrigins,
@@ -150,6 +154,22 @@ describe("platform auth URLs", () => {
 });
 
 describe("platform auth redirects", () => {
+  it("does not override Clerk satellite auto-sync navigation", async () => {
+    const url = "https://app.okou.ai/agents?utm_source=okou-launch";
+    setBrowserUrl(url);
+    mockClerkLoaded(false);
+
+    await setupPage({
+      context,
+      path: "/agents",
+      session: null,
+      user: null,
+      withoutRender: true,
+    });
+
+    expect(window.location.href).toBe(url);
+  });
+
   it("redirects unauthenticated users to app auth on the current origin", async () => {
     setBrowserUrl("https://pr-18532-app.omby.ai/agents");
 
@@ -237,7 +257,7 @@ describe("platform auth redirects", () => {
       expect(url.origin).toBe("https://app.vm0.ai");
       expect(url.pathname).toBe("/sign-in");
       expect(url.searchParams.get("redirect_url")).toBe(
-        "https://app.okou.ai/agents?utm_source=okou-launch",
+        "https://app.okou.ai/agents?utm_source=okou-launch&__clerk_synced=false",
       );
     });
 

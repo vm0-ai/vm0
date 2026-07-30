@@ -16,6 +16,8 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { initializeI18n } from "../../../i18n/index.ts";
+import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import { clearMockNow, mockNow } from "../../../lib/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -24,8 +26,10 @@ const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
-afterEach(() => {
+afterEach(async () => {
   clearMockNow();
+  document.documentElement.lang = DEFAULT_LOCALE;
+  await initializeI18n(DEFAULT_LOCALE);
 });
 
 function connectedPersonalCodexProvider(
@@ -869,6 +873,33 @@ describe("zero sidebar account menu", () => {
     });
   });
 
+  it("preserves satellite session sync after signing out", async () => {
+    prepareDefaultAgent();
+    window.location.href = "https://app.okou.ai/";
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      user: {
+        id: "test-user-123",
+        fullName: "Alex Rivera",
+        email: "alex.rivera@example.test",
+      },
+    });
+
+    const menu = await openAccountMenu();
+    click(within(menu).getByText("Sign out"));
+
+    await waitFor(() => {
+      expect(mockedClerk.signOut).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: "test-session-id",
+          redirectUrl: expect.stringMatching(/__clerk_synced%3Dfalse/),
+        }),
+      );
+    });
+  });
+
   it("retries auth recovery network failures before replaying the request", async () => {
     mockAdminAccountSidebar();
     const provider = connectedPersonalCodexProvider();
@@ -876,6 +907,7 @@ describe("zero sidebar account menu", () => {
 
     let modelProviderRequests = 0;
     let forcedTokenRefreshes = 0;
+    const authRecoveryCompleted = context.mocks.deferred<void>();
     context.mocks.http.get("*/api/zero/me/model-providers", () => {
       modelProviderRequests += 1;
       if (modelProviderRequests === 1) {
@@ -891,6 +923,9 @@ describe("zero sidebar account menu", () => {
       }
       if (modelProviderRequests === 2) {
         return HttpResponse.error();
+      }
+      if (modelProviderRequests === 3) {
+        authRecoveryCompleted.resolve();
       }
       return HttpResponse.json({ modelProviders: [provider] });
     });
@@ -923,10 +958,9 @@ describe("zero sidebar account menu", () => {
       featureSwitches: { [FeatureSwitchKey.SidebarSubscriptionUsage]: true },
     });
 
-    await waitFor(() => {
-      expect(modelProviderRequests).toBe(3);
-      expect(forcedTokenRefreshes).toBe(3);
-    });
+    await authRecoveryCompleted.promise;
+    expect(modelProviderRequests).toBe(3);
+    expect(forcedTokenRefreshes).toBe(3);
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
 
     const menu = await openAccountMenu();
@@ -1073,6 +1107,9 @@ describe("zero sidebar account menu", () => {
 
   it("localizes account actions without changing account data or routes", async () => {
     mockAdminAccountSidebar();
+    context.mocks.data.personalModelProviders([
+      connectedPersonalCodexProvider(),
+    ]);
     context.mocks.data.userPreferences({
       locale: "pt-BR",
       supportedLocales: ["en-US", "pt-BR"],
@@ -1109,7 +1146,10 @@ describe("zero sidebar account menu", () => {
           },
         ],
       },
-      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: true },
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+        [FeatureSwitchKey.SidebarSubscriptionUsage]: true,
+      },
     });
 
     let menu = await openAccountMenu();
@@ -1119,6 +1159,19 @@ describe("zero sidebar account menu", () => {
     expect(within(menu).getByText("Trocar de conta")).toBeVisible();
     expect(within(menu).getByText("Exportar dados")).toBeVisible();
     expect(within(menu).getByText("Sair")).toBeVisible();
+    expect(within(menu).getByText("12.500 créditos")).toBeVisible();
+    const subscriptions = await within(menu).findByTestId(
+      "account-menu-subscriptions",
+    );
+    expect(
+      within(subscriptions).getByText("2 redefinições restantes"),
+    ).toBeVisible();
+    expect(
+      within(subscriptions).getByRole("progressbar", {
+        name: "Codex: 5h restante",
+      }),
+    ).toHaveAttribute("aria-valuenow", "82");
+    expect(within(subscriptions).getByText("Redefinir")).toBeInTheDocument();
 
     click(within(menu).getByText("Exportar dados"));
     await waitFor(() => {

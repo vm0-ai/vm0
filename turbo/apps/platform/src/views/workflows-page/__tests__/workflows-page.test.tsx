@@ -16,6 +16,7 @@ import {
   type ZeroWorkflowAutomationSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
+import { integrationsGithubContract } from "@vm0/api-contracts/contracts/integrations-github";
 import { zeroStrapiIntegrationsContract } from "@vm0/api-contracts/contracts/zero-strapi-integrations";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -40,6 +41,7 @@ import {
   createDefaultMockGithubIntegration,
   setMockGithubIntegration,
 } from "../../../mocks/handlers/api-integrations-github.ts";
+import { i18n } from "../../../i18n/index.ts";
 
 const context = testContext();
 const CURRENT_USER_ID = "test-user-123";
@@ -995,7 +997,8 @@ function mockCreateWorkflowAutomation(
       }
       if (
         body.eventConfig.provider === "github" ||
-        body.eventConfig.provider === "strapi"
+        body.eventConfig.provider === "strapi" ||
+        body.eventConfig.provider === "chat"
       ) {
         return respond(201, {
           ...gmailWorkflowAutomation(),
@@ -1447,6 +1450,96 @@ describe("workflows routes", () => {
   });
 });
 
+describe("workflow localization", () => {
+  afterEach(async () => {
+    await i18n.changeLanguage("en-US");
+    document.documentElement.lang = "en-US";
+  });
+
+  const localeCases = [
+    {
+      locale: "en-US",
+      listTitle: "Workflows",
+      detailTitle: "Workflow",
+      openWorkflow: "Open Sales Research",
+      automationsTab: "Automations",
+      scheduleTitle: "Every weekday at 6:00 AM",
+      eventTitle: "Gmail new message",
+      eventSummary:
+        'from contains "@acme.com"; subject does not contain "newsletter"',
+      last: "Last",
+      next: "Next",
+    },
+    {
+      locale: "pt-BR",
+      listTitle: "Fluxos de trabalho",
+      detailTitle: "Fluxo de trabalho",
+      openWorkflow: "Abrir Sales Research",
+      automationsTab: "Automações",
+      scheduleTitle: "A cada dia útil às 6:00",
+      eventTitle: "Nova mensagem do Gmail",
+      eventSummary: 'de contém "@acme.com"; assunto não contém "newsletter"',
+      last: "Última",
+      next: "Próxima",
+    },
+  ] as const;
+
+  it.each(localeCases)(
+    "localizes representative list, detail, schedule, and event UI in $locale",
+    async (localeCase) => {
+      const workflow = {
+        ...salesResearch(),
+        automations: [weekdayWorkflowAutomation(), gmailWorkflowAutomation()],
+      };
+      context.mocks.data.userPreferences({
+        locale: localeCase.locale,
+        timezone: "America/Sao_Paulo",
+      });
+      mockBillingTier("team");
+      mockWorkflowApis([workflow]);
+      mockConnectedAutomationConnectors();
+
+      detachedSetupPage({
+        context,
+        path: "/workflows",
+        featureSwitches: {
+          [FeatureSwitchKey.LanguagePreference]: true,
+        },
+      });
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: localeCase.listTitle }),
+        ).toBeInTheDocument();
+        expect(document.title.split(" | ")[0]).toBe(localeCase.listTitle);
+      });
+      expect(screen.getByText("Sales Research")).toBeInTheDocument();
+
+      click(screen.getByLabelText(localeCase.openWorkflow));
+      await waitFor(() => {
+        expect(pathname()).toBe(workflowDetailPath("automations"));
+        expect(screen.getByText(localeCase.scheduleTitle)).toBeInTheDocument();
+        expect(document.title.split(" | ")[0]).toBe(localeCase.detailTitle);
+      });
+
+      expect(tabByName(localeCase.automationsTab)).toBeInTheDocument();
+      expect(screen.getByText(localeCase.eventTitle)).toBeInTheDocument();
+      expect(screen.getByText(localeCase.eventSummary)).toBeInTheDocument();
+      expect(screen.getAllByText(localeCase.last)).not.toHaveLength(0);
+      expect(screen.getAllByText(localeCase.next)).not.toHaveLength(0);
+
+      const expectedLastRun = new Date(
+        "2026-06-18T01:00:00.000Z",
+      ).toLocaleString(localeCase.locale, {
+        dateStyle: "medium",
+        timeStyle: "short",
+        timeZone: "America/Sao_Paulo",
+      });
+      expect(screen.getByText(expectedLastRun)).toBeInTheDocument();
+    },
+  );
+});
+
 describe("workflow detail page", () => {
   it("renders the instruction, files, and automations", async () => {
     context.mocks.data.userPreferences({ timezone: "UTC" });
@@ -1574,7 +1667,8 @@ describe("workflow detail page", () => {
               status: "scope-mismatch",
             },
             {
-              connectorRef: "gmail",
+              connectorRef: "slack",
+              connectorSlug: "gmail",
               label: "Gmail",
               reason: "The workflow reads outreach replies.",
               status: "reconnect-required",
@@ -2440,6 +2534,69 @@ describe("workflow detail page", () => {
         },
       });
     });
+  });
+
+  it("offers a GitHub App install link when GitHub is not installed", async () => {
+    mockWorkflowApis([salesResearch()]);
+    setMockGithubIntegration(null);
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
+
+    await waitFor(() => {
+      expect(buttonByText("Add automation")).toBeInTheDocument();
+    });
+    click(buttonByText("Add automation"));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    pickAutomation("Integrations", /^GitHub workflow completed/);
+
+    const form = await screen.findByRole("form", {
+      name: "Add GitHub workflow automation",
+    });
+    await waitFor(() => {
+      expect(linkByText("Install GitHub App", form)).toHaveAttribute(
+        "href",
+        "https://github.com/apps/vm0-test/installations/new?state=abc",
+      );
+    });
+  });
+
+  it("asks for an org admin when the API omits the install URL", async () => {
+    mockWorkflowApis([salesResearch()]);
+    setMockGithubIntegration(null);
+    context.mocks.api(
+      integrationsGithubContract.getInstallation,
+      ({ respond }) => {
+        return respond(404, {
+          error: {
+            message: "GitHub installation not found",
+            code: "NOT_FOUND",
+          },
+        });
+      },
+    );
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
+
+    await waitFor(() => {
+      expect(buttonByText("Add automation")).toBeInTheDocument();
+    });
+    click(buttonByText("Add automation"));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    pickAutomation("Integrations", /^GitHub workflow completed/);
+
+    const form = await screen.findByRole("form", {
+      name: "Add GitHub workflow automation",
+    });
+    await waitFor(() => {
+      expect(
+        within(form).getByText("Ask an organization admin to install it."),
+      ).toBeInTheDocument();
+    });
+    expect(queryAllByRoleFast("link", form)).toHaveLength(0);
   });
 
   it("hides new GitHub webhook creation entries when the feature is disabled", async () => {

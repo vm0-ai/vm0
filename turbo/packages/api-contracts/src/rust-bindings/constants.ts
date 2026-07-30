@@ -17,7 +17,8 @@ import {
 import {
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
-  NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX,
+  NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX,
+  NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
@@ -254,11 +255,20 @@ export const rustConstantBindings = [
   },
   {
     rustModulePath: ["runners"],
-    rustConstName: "NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX",
-    value: rustU64(NETWORK_POLICY_REFRESH_CONNECTOR_REFS_MAX),
+    rustConstName: "NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX",
+    value: rustU64(NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX),
     rustDoc: [
-      "Maximum connector refs accepted by the runner network policy refresh endpoint.",
+      "Maximum connector slugs accepted by the runner network policy refresh endpoint.",
       "Rust runners use this shared contract value to split refresh requests before calling the API.",
+    ],
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE",
+    value: rustString(NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE),
+    rustDoc: [
+      "API error code returned when network policy refresh targets a terminal run.",
+      "Rust runners use this shared contract value to distinguish terminal reconciliation from ambiguous refresh failures.",
     ],
   },
   {

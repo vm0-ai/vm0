@@ -1,23 +1,20 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { command } from "ccstate";
 import {
   CANONICAL_ASSET_VERSION,
   canonicalAssetDeliveries,
-  chatMessageAssetRefs,
+  chatEventAssetRefs,
   runUploadedFiles,
   type CanonicalAssetMaterializationStatus,
   type RunUploadedFileSource,
 } from "@vm0/db/schema/run-uploaded-file";
+import type { ChatEventAttachFileMetadata } from "@vm0/db/schema/chat-event";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq, isNull, sql } from "drizzle-orm";
 
 import type { SlackFile } from "../../lib/slack-webhook-context";
 import { env } from "../../lib/env";
-import {
-  buildArtifactKey,
-  buildFileUrl,
-  sanitizeArtifactFilename,
-} from "../../lib/file-url";
+import { buildFileUrlFromKey, isArtifactKeyV2 } from "../../lib/file-url";
 import { inferMimetype } from "../../lib/mimetype";
 import { isAllowedUploadType } from "../../lib/uploads-constants";
 import { type Db, writeDb$ } from "../external/db";
@@ -30,9 +27,15 @@ import {
 import {
   generatePresignedPutUrl,
   putS3Object,
+  s3MetadataHeaders,
   s3ObjectHead,
 } from "../external/s3";
 import { settleIncludingAbort } from "../utils";
+import {
+  allocateArtifactObject$,
+  artifactObjectMetadata,
+  type ArtifactObjectLocation,
+} from "./artifact-storage.service";
 import { syncArtifactCatalogForFile$ } from "./artifact-catalog.service";
 import { publishArtifactsChangedForRun } from "./artifact-realtime.service";
 import { sourceForRun } from "./run-uploaded-files.service";
@@ -243,19 +246,14 @@ async function ensureSlackInputAsset(
     readonly fileId: string;
     readonly filename: string;
     readonly contentType: string;
+    readonly artifact: ArtifactObjectLocation;
   },
 ): Promise<CanonicalAssetRow> {
-  const assetId = randomUUID();
-  const storageKey = buildArtifactKey(
-    args.userId,
-    assetId,
-    sanitizeArtifactFilename(args.filename),
-  );
   const scope = "slack-input";
   const [inserted] = await db
     .insert(runUploadedFiles)
     .values({
-      id: assetId,
+      id: args.artifact.id,
       runId: null,
       chatThreadId: args.chatThreadId,
       source: "slack",
@@ -272,7 +270,7 @@ async function ensureSlackInputAsset(
       accessLevel: "private",
       materializationStatus: "pending",
       checksumSha256: null,
-      storageKey,
+      storageKey: args.artifact.key,
       provenance: {
         provider: "slack",
         workspaceId: args.workspaceId,
@@ -505,7 +503,14 @@ const importCanonicalSlackInputFile$ = command(
             args.asset.storageKey,
             buffer,
             args.contentType,
-            importSignal,
+            {
+              signal: importSignal,
+              metadata: artifactObjectMetadata(
+                args.userId,
+                args.asset.id,
+                args.asset.filename ?? args.asset.id,
+              ),
+            },
           ),
         );
         return { buffer, checksumSha256 };
@@ -548,12 +553,22 @@ const materializeCanonicalSlackInputFile$ = command(
     }
     const filename = slackFileFilename(args.file);
     const contentType = slackFileContentType(args.file, filename);
+    const artifact = await set(
+      allocateArtifactObject$,
+      {
+        userId: args.userId,
+        orgId: args.orgId,
+        filename,
+      },
+      signal,
+    );
     const db = set(writeDb$);
     let asset = await ensureSlackInputAsset(db, {
       ...args,
       fileId,
       filename,
       contentType,
+      artifact,
     });
     signal.throwIfAborted();
     if (asset.materializationStatus === "ready") {
@@ -644,26 +659,86 @@ export const materializeCanonicalSlackInputAssets$ = command(
   },
 );
 
-export async function attachCanonicalAssetsToMessage(
+export async function attachCanonicalAssetsToEvent(
   db: Db,
-  messageId: string,
-  assets: readonly CanonicalSlackInputAsset[],
+  eventId: string,
+  assets: readonly {
+    readonly assetId: string;
+    readonly position: number;
+  }[],
 ): Promise<void> {
   if (assets.length === 0) {
     return;
   }
   await db
-    .insert(chatMessageAssetRefs)
+    .insert(chatEventAssetRefs)
     .values(
       assets.map((asset) => {
         return {
-          chatMessageId: messageId,
+          chatEventId: eventId,
           assetId: asset.assetId,
           position: asset.position,
         };
       }),
     )
     .onConflictDoNothing();
+}
+
+export async function attachCanonicalWebInputAssetsToEvent(
+  db: Db,
+  args: {
+    readonly eventId: string;
+    readonly chatThreadId: string;
+    readonly userId: string;
+    readonly orgId: string;
+    readonly files: readonly ChatEventAttachFileMetadata[];
+    readonly replaceExisting?: boolean;
+  },
+): Promise<void> {
+  if (args.replaceExisting) {
+    await db
+      .delete(chatEventAssetRefs)
+      .where(eq(chatEventAssetRefs.chatEventId, args.eventId));
+  }
+  const assets: { readonly assetId: string; readonly position: number }[] = [];
+  for (const [position, file] of args.files.entries()) {
+    const [inserted] = await db
+      .insert(runUploadedFiles)
+      .values({
+        runId: null,
+        chatThreadId: args.chatThreadId,
+        source: "web",
+        externalId: file.id,
+        userId: args.userId,
+        orgId: args.orgId,
+        filename: file.filename,
+        contentType: file.contentType,
+        sizeBytes: file.size,
+        url: buildFileUrlFromKey(file.objectKey),
+        metadata: {},
+        assetVersion: CANONICAL_ASSET_VERSION,
+        classification: "input",
+        accessLevel: "private",
+        materializationStatus: "ready",
+        storageKey: file.objectKey,
+        idempotencyScope: "web-input",
+        idempotencyKey: file.id,
+      })
+      .onConflictDoNothing()
+      .returning({ id: runUploadedFiles.id });
+    const asset =
+      inserted ??
+      (await canonicalAssetByIdentity(db, {
+        userId: args.userId,
+        scope: "web-input",
+        key: file.id,
+      }));
+    if (!asset) {
+      throw new Error("Canonical web input asset conflict is missing");
+    }
+    assets.push({ assetId: asset.id, position });
+  }
+  await attachCanonicalAssetsToEvent(db, args.eventId, assets);
 }
 
 interface PrepareCanonicalPublishedAssetArgs {
@@ -675,6 +750,7 @@ interface PrepareCanonicalPublishedAssetArgs {
   readonly contentType: string;
   readonly size: number;
   readonly checksumSha256: string;
+  readonly allowV2: boolean;
   readonly destination: {
     readonly channelId: string;
     readonly threadTs?: string;
@@ -687,28 +763,24 @@ interface PreparedCanonicalPublishedAsset {
   readonly assetId: string;
   readonly operationId: string;
   readonly uploadUrl?: string;
+  readonly uploadHeaders?: Readonly<Record<string, string>>;
   readonly url: string;
 }
 
 async function ensureCanonicalPublishedAsset(
   db: Db,
   args: PrepareCanonicalPublishedAssetArgs,
+  artifact: ArtifactObjectLocation,
   context: {
     readonly scope: string;
     readonly source: RunUploadedFileSource;
     readonly chatThreadId: string | null;
   },
 ): Promise<CanonicalAssetRow> {
-  const proposedAssetId = randomUUID();
-  const proposedStorageKey = buildArtifactKey(
-    args.userId,
-    proposedAssetId,
-    sanitizeArtifactFilename(args.filename),
-  );
   const [inserted] = await db
     .insert(runUploadedFiles)
     .values({
-      id: proposedAssetId,
+      id: artifact.id,
       runId: args.runId,
       chatThreadId: context.chatThreadId,
       source: context.source,
@@ -725,7 +797,7 @@ async function ensureCanonicalPublishedAsset(
       accessLevel: "published",
       materializationStatus: "pending",
       checksumSha256: args.checksumSha256,
-      storageKey: proposedStorageKey,
+      storageKey: artifact.key,
       provenance: { provider: "agent" },
       materializationError: null,
       idempotencyScope: context.scope,
@@ -830,7 +902,17 @@ export const prepareCanonicalPublishedAsset$ = command(
       throw new Error("Canonical publication run does not exist");
     }
 
-    const asset = await ensureCanonicalPublishedAsset(db, args, {
+    const artifact = await set(
+      allocateArtifactObject$,
+      {
+        userId: args.userId,
+        orgId: args.orgId,
+        filename: args.filename,
+        allowV2: args.allowV2,
+      },
+      signal,
+    );
+    const asset = await ensureCanonicalPublishedAsset(db, args, artifact, {
       scope,
       source,
       chatThreadId: run.chatThreadId,
@@ -842,12 +924,12 @@ export const prepareCanonicalPublishedAsset$ = command(
     if (!storageKey) {
       throw new Error("Canonical publication storage key is missing");
     }
+    const metadata = isArtifactKeyV2(storageKey)
+      ? artifactObjectMetadata(args.userId, asset.id, args.filename)
+      : undefined;
+    const uploadHeaders = metadata ? s3MetadataHeaders(metadata) : undefined;
 
-    const url = buildFileUrl(
-      args.userId,
-      asset.id,
-      sanitizeArtifactFilename(args.filename),
-    );
+    const url = buildFileUrlFromKey(storageKey);
     if (asset.materializationStatus === "ready") {
       return {
         assetId: asset.id,
@@ -871,7 +953,10 @@ export const prepareCanonicalPublishedAsset$ = command(
         storageKey,
         args.contentType,
         CANONICAL_UPLOAD_URL_TTL_SECONDS,
-        true,
+        {
+          usePublicEndpoint: true,
+          metadata,
+        },
       ),
     );
     signal.throwIfAborted();
@@ -879,6 +964,7 @@ export const prepareCanonicalPublishedAsset$ = command(
       assetId: asset.id,
       operationId: args.operationId,
       uploadUrl,
+      ...(uploadHeaders ? { uploadHeaders } : {}),
       url,
     };
   },
@@ -930,11 +1016,7 @@ export const materializeCanonicalPublishedAsset$ = command(
         message: "Canonical publication asset was not found",
       };
     }
-    const url = buildFileUrl(
-      args.userId,
-      asset.id,
-      sanitizeArtifactFilename(asset.filename),
-    );
+    const url = buildFileUrlFromKey(asset.storageKey);
     if (asset.materializationStatus === "ready") {
       await set(syncArtifactCatalogForFile$, asset.id, signal);
       return { ok: true, assetId: asset.id, url };

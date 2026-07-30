@@ -48,10 +48,8 @@ interface TelegramCallbackPayload {
   readonly installationId: string;
   readonly chatId: string;
   readonly messageId: string;
-  readonly rootMessageId?: string | null;
   readonly userLinkId: string;
   readonly agentId: string;
-  readonly existingSessionId?: string | null;
   readonly isDM: boolean;
   readonly thinkingMessageId?: string | null;
 }
@@ -63,7 +61,6 @@ interface TelegramFixture {
   readonly installationId: string;
   readonly userLinkId: string;
   readonly runId: string;
-  readonly sessionId: string;
   readonly callbackId: string;
   readonly payload: TelegramCallbackPayload;
 }
@@ -300,7 +297,7 @@ async function seedTelegramCallback(args: {
 /**
  * Seeds an org-scoped actor with credits (Stripe webhook grant) and an agent
  * created through the product agent API whose compose head declares an inline
- * ANTHROPIC_API_KEY, so real runs can be created through POST /api/zero/runs
+ * ANTHROPIC_API_KEY, so real runs can be created through the test fixture
  * without an org model provider (the run then records no selected model,
  * matching the pre-existing fixture runs these tests were written against).
  */
@@ -343,11 +340,11 @@ async function createFixtureRun(
   actor: ApiTestUser,
   agentId: string,
   prompt: string,
-): Promise<{ readonly runId: string; readonly sessionId: string }> {
+): Promise<{ readonly runId: string }> {
   api.acceptStorageDownloads();
   api.acceptTelemetryIngest();
   const run = await api.createRun(actor, { agentId, prompt });
-  return { runId: run.runId, sessionId: run.sessionId };
+  return { runId: run.runId };
 }
 
 async function seedFixture(): Promise<TelegramFixture> {
@@ -359,7 +356,7 @@ async function seedFixture(): Promise<TelegramFixture> {
     userId: actor.userId,
     composeId,
   });
-  const { runId, sessionId } = await createFixtureRun(
+  const { runId } = await createFixtureRun(
     actor,
     composeId,
     "Handle Telegram message",
@@ -368,10 +365,8 @@ async function seedFixture(): Promise<TelegramFixture> {
     installationId,
     chatId: "12345",
     messageId: "42",
-    rootMessageId: "100",
     userLinkId,
     agentId: composeId,
-    existingSessionId: null,
     isDM: false,
   };
   const { callbackId } = await seedTelegramCallback({ runId, payload });
@@ -383,7 +378,6 @@ async function seedFixture(): Promise<TelegramFixture> {
     installationId,
     userLinkId,
     runId,
-    sessionId,
     callbackId,
     payload,
   };
@@ -399,7 +393,7 @@ async function seedResponderFixture(): Promise<TelegramFixture> {
     userId: actor.userId,
     composeId: defaultComposeId,
   });
-  const { runId, sessionId } = await createFixtureRun(
+  const { runId } = await createFixtureRun(
     actor,
     responderComposeId,
     "Handle Telegram responder message",
@@ -408,10 +402,8 @@ async function seedResponderFixture(): Promise<TelegramFixture> {
     installationId,
     chatId: "12345",
     messageId: "42",
-    rootMessageId: "100",
     userLinkId,
     agentId: responderComposeId,
-    existingSessionId: null,
     isDM: false,
   };
   const { callbackId } = await seedTelegramCallback({ runId, payload });
@@ -423,7 +415,6 @@ async function seedResponderFixture(): Promise<TelegramFixture> {
     installationId,
     userLinkId,
     runId,
-    sessionId,
     callbackId,
     payload,
   };
@@ -470,29 +461,6 @@ async function enableAuditLink(fixture: TelegramFixture): Promise<void> {
   await updateFeatureSwitchesForUser(context, fixture, {
     [FeatureSwitchKey.ZeroDebug]: true,
   });
-}
-
-async function findThreadSession(args: {
-  readonly userLinkId: string;
-  readonly chatId: string;
-  readonly rootMessageId: string;
-}): Promise<{ readonly agentSessionId: string } | null> {
-  const response = await postTelegramStateAction({
-    action: "find-thread-session",
-    user_link_id: args.userLinkId,
-    chat_id: args.chatId,
-    root_message_id: args.rootMessageId,
-  });
-  const threadSession =
-    typeof response.thread_session === "object" &&
-    response.thread_session !== null
-      ? (response.thread_session as Record<string, unknown>)
-      : null;
-  const agentSessionId =
-    typeof threadSession?.agent_session_id === "string"
-      ? threadSession.agent_session_id
-      : null;
-  return agentSessionId ? { agentSessionId } : null;
 }
 
 afterEach(() => {
@@ -812,24 +780,8 @@ describe("POST /api/internal/callbacks/telegram", () => {
     expect(text).toContain("Cannot continue session from checkpoint");
   });
 
-  it("does not quote DM replies and replaces the DM thread mapping", async () => {
+  it("does not quote DM replies", async () => {
     const fixture = await seedFixture();
-    const oldSession = await postTelegramStateAction({
-      action: "seed-thread-session",
-      user_link_id: fixture.userLinkId,
-      chat_id: fixture.payload.chatId,
-      root_message_id: "dm",
-      org_id: fixture.orgId,
-      user_id: fixture.userId,
-      compose_id: fixture.composeId,
-    });
-    const oldSessionId =
-      typeof oldSession.agent_session_id === "string"
-        ? oldSession.agent_session_id
-        : null;
-    if (!oldSessionId) {
-      throw new Error("Expected old session");
-    }
     const telegram = telegramApiMocks();
     completedOutput("DM result");
 
@@ -839,21 +791,12 @@ describe("POST /api/internal/callbacks/telegram", () => {
       status: "completed",
       payload: {
         ...fixture.payload,
-        rootMessageId: "dm",
-        existingSessionId: null,
         isDM: true,
       },
     });
 
     expect(result).toStrictEqual({ success: true });
     expect(telegram.sentMessages[0]?.reply_parameters).toBeUndefined();
-    const session = await findThreadSession({
-      userLinkId: fixture.userLinkId,
-      chatId: fixture.payload.chatId,
-      rootMessageId: "dm",
-    });
-    expect(session?.agentSessionId).toBe(fixture.sessionId);
-    expect(session?.agentSessionId).not.toBe(oldSessionId);
   });
 
   it("uses the official bot token and official message scope", async () => {

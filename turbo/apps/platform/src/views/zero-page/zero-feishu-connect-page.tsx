@@ -8,7 +8,9 @@ import {
   IconLoader2,
 } from "@tabler/icons-react";
 import { Button } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 
+import { i18n } from "../../i18n/index.ts";
 import { brandName$ } from "../../signals/branding.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
@@ -23,13 +25,16 @@ import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets
 const feishuIconImg = settingsIconAssetUrl("lark");
 
 function BackLink() {
+  const { t } = useTranslation();
   return (
     <Link
       pathname="/settings/feishu"
       className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors no-underline hover:text-foreground"
     >
       <IconArrowLeft size={14} />
-      Back to Feishu settings
+      {t(($) => {
+        return $.connectors.providerConnect.feishu.back;
+      })}
     </Link>
   );
 }
@@ -66,10 +71,62 @@ function CenterText({ title, body }: { title: string; body: ReactNode }) {
 function errorMessage(error: unknown): string {
   return error instanceof Error
     ? error.message
-    : "We couldn't connect Feishu. Open a fresh connect link and try again.";
+    : i18n.t(($) => {
+        return $.connectors.providerConnect.feishu.errorFallback;
+      });
+}
+
+function SuccessState({
+  botName,
+  openUrl,
+}: {
+  botName: string | null;
+  openUrl: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <PageShell>
+      <IconCircleCheck size={40} className="text-emerald-500" />
+      <CenterText
+        title={t(($) => {
+          return $.connectors.providerConnect.feishu.successTitle;
+        })}
+        body={
+          botName
+            ? t(
+                ($) => {
+                  return $.connectors.providerConnect.feishu
+                    .successDescriptionNamed;
+                },
+                { bot: botName },
+              )
+            : t(($) => {
+                return $.connectors.providerConnect.feishu.successDescription;
+              })
+        }
+      />
+      <div className="flex w-full flex-col gap-3">
+        <Button
+          className="w-full gap-2"
+          onClick={() => {
+            window.location.href = openUrl;
+          }}
+        >
+          <img src={feishuIconImg} alt="" className="h-4 w-4" />
+          {t(($) => {
+            return $.connectors.providerConnect.feishu.open;
+          })}
+        </Button>
+        <div className="flex justify-center">
+          <BackLink />
+        </div>
+      </div>
+    </PageShell>
+  );
 }
 
 export function ZeroFeishuConnectPage() {
+  const { t } = useTranslation();
   const brandName = useGet(brandName$);
   const params = useGet(feishuConnectParams$);
   const statusLoadable = useLoadable(feishuConnectStatus$);
@@ -81,8 +138,12 @@ export function ZeroFeishuConnectPage() {
       <PageShell>
         <IconAlertCircle size={40} className="text-destructive" />
         <CenterText
-          title="Invalid Link"
-          body="Open a fresh connect link from Feishu and try again."
+          title={t(($) => {
+            return $.connectors.providerConnect.common.invalidLink;
+          })}
+          body={t(($) => {
+            return $.connectors.providerConnect.feishu.invalidDescription;
+          })}
         />
         <BackLink />
       </PageShell>
@@ -96,33 +157,7 @@ export function ZeroFeishuConnectPage() {
         ? statusLoadable.data
         : null;
   if (result) {
-    return (
-      <PageShell>
-        <IconCircleCheck size={40} className="text-emerald-500" />
-        <CenterText
-          title="Connected to Feishu!"
-          body={
-            result.botName
-              ? `You're connected to ${result.botName}. Send a message in Feishu to start chatting.`
-              : "You're connected. Send a message in Feishu to start chatting."
-          }
-        />
-        <div className="flex w-full flex-col gap-3">
-          <Button
-            className="w-full gap-2"
-            onClick={() => {
-              window.location.href = result.openUrl;
-            }}
-          >
-            <img src={feishuIconImg} alt="" className="h-4 w-4" />
-            Open Feishu
-          </Button>
-          <div className="flex justify-center">
-            <BackLink />
-          </div>
-        </div>
-      </PageShell>
-    );
+    return <SuccessState botName={result.botName} openUrl={result.openUrl} />;
   }
 
   const connecting = connectLoadable.state === "loading";
@@ -140,11 +175,26 @@ export function ZeroFeishuConnectPage() {
         <FeishuMark />
       )}
       <CenterText
-        title={checking ? "Checking account status…" : "Connect to Feishu"}
+        title={
+          checking
+            ? t(($) => {
+                return $.connectors.providerConnect.feishu.checkingTitle;
+              })
+            : t(($) => {
+                return $.connectors.providerConnect.feishu.connectTitle;
+              })
+        }
         body={
           checking
-            ? "Please wait while we verify your connection."
-            : `Link your ${brandName} account to this Feishu bot so you can work with your agent directly from Feishu.`
+            ? t(($) => {
+                return $.connectors.providerConnect.common.verifying;
+              })
+            : t(
+                ($) => {
+                  return $.connectors.providerConnect.feishu.connectDescription;
+                },
+                { brandName },
+              )
         }
       />
       {error ? (
@@ -166,7 +216,13 @@ export function ZeroFeishuConnectPage() {
           {connecting ? (
             <IconLoader2 size={16} className="animate-spin" />
           ) : null}
-          {connecting ? "Connecting..." : "Connect"}
+          {connecting
+            ? t(($) => {
+                return $.connectors.actions.connecting;
+              })
+            : t(($) => {
+                return $.connectors.actions.connect;
+              })}
         </Button>
         <div className="flex justify-center">
           <BackLink />

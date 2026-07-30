@@ -13,6 +13,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import {
+  findPendingChatEventInputParamsByPromptFixture,
+  readChatEventInputParamsFixture,
+} from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { zeroTeamsConnectRoutes } from "../zero-teams-connect";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
@@ -434,12 +438,12 @@ async function dispatchTeamsRun(args: {
   return await runIdForPrompt(actor, args.text);
 }
 
-async function dispatchTeamsPersonalRun(args: {
+async function postTeamsPersonalMessage(args: {
   readonly fixture: TeamsConnectFixture;
   readonly activityId: string;
   readonly threadId?: string;
   readonly text: string;
-}): Promise<string> {
+}): Promise<void> {
   const response = await postTeamsActivityForTest({
     signal: context.signal,
     activity: teamsMessageActivityForTest(args.fixture, {
@@ -467,6 +471,15 @@ async function dispatchTeamsPersonalRun(args: {
   );
   expect(body).not.toHaveProperty("dispatch");
   await flushWaitUntilForTest();
+}
+
+async function dispatchTeamsPersonalRun(args: {
+  readonly fixture: TeamsConnectFixture;
+  readonly activityId: string;
+  readonly threadId?: string;
+  readonly text: string;
+}): Promise<string> {
+  await postTeamsPersonalMessage(args);
   const actor = authOrgApi.user({
     userId: args.fixture.userId,
     orgId: args.fixture.orgId,
@@ -608,40 +621,70 @@ afterEach(async () => {
 });
 
 describe("Teams chat callbacks", () => {
-  it("forks personal message threads without replacing the main session", async () => {
+  it("keeps queued Teams transport params until the input is claimed", async () => {
     const teams = await setupConnectedTeamsActor();
-    const teamsApi = teamsApiMocks({ serviceUrl: teams.fixture.serviceUrl });
+    teamsApiMocks({ serviceUrl: teams.fixture.serviceUrl });
     const firstRunId = await dispatchTeamsPersonalRun({
       fixture: teams.fixture,
-      activityId: "activity-personal-main-first",
-      text: "remember this DM context",
+      activityId: "activity-queue-params-first",
+      text: "hold the Teams queue",
     });
     const firstClaim = await claimTeamsRun({
       runnerGroup: teams.runnerGroup,
       runId: firstRunId,
     });
-    expect(firstClaim.resumeSession).toBeNull();
-    clearTeamsApiCalls(teamsApi);
-    const firstMainSessionId = await completeSandboxRun({
+
+    const queuedPrompt = "claim Teams queue transport params";
+    await postTeamsPersonalMessage({
+      fixture: teams.fixture,
+      activityId: "activity-queue-params-second",
+      text: queuedPrompt,
+    });
+    const queuedParams =
+      await findPendingChatEventInputParamsByPromptFixture(queuedPrompt);
+    expect(queuedParams).toMatchObject({
+      eventId: expect.any(String),
+      encryptedParams: expect.any(String),
+    });
+    if (!queuedParams) {
+      throw new Error("Expected queued Teams transport params");
+    }
+    await completeSandboxRun({
       runId: firstRunId,
       sandboxToken: firstClaim.sandboxToken,
       exitCode: 0,
     });
-
-    const secondRunId = await dispatchTeamsPersonalRun({
-      fixture: teams.fixture,
-      activityId: "activity-personal-main-second",
-      text: "use the previous DM context",
-    });
-    const secondClaim = await claimTeamsRun({
+    const queuedRunId = await runIdForPrompt(teams.actor, queuedPrompt);
+    await expect(
+      readChatEventInputParamsFixture(queuedParams.eventId),
+    ).resolves.toBeNull();
+    const queuedClaim = await claimTeamsRun({
       runnerGroup: teams.runnerGroup,
-      runId: secondRunId,
+      runId: queuedRunId,
     });
-    expect(secondClaim.resumeSession?.sessionId).toBe(firstMainSessionId);
+    expect(queuedClaim.appendSystemPrompt).toContain(
+      "You are currently running inside: Microsoft Teams",
+    );
+    await runsApi.requestCancelRun(teams.actor, queuedRunId, [200]);
+  });
+
+  it("keeps personal message sessions scoped to the selected agent", async () => {
+    const teams = await setupConnectedTeamsActor();
+    const teamsApi = teamsApiMocks({ serviceUrl: teams.fixture.serviceUrl });
+    const defaultRunId = await dispatchTeamsPersonalRun({
+      fixture: teams.fixture,
+      activityId: "activity-personal-default-agent",
+      text: "remember this DM context",
+    });
+    const defaultClaim = await claimTeamsRun({
+      runnerGroup: teams.runnerGroup,
+      runId: defaultRunId,
+    });
+    expect(defaultClaim.resumeSession).toBeNull();
     clearTeamsApiCalls(teamsApi);
-    const latestMainSessionId = await completeSandboxRun({
-      runId: secondRunId,
-      sandboxToken: secondClaim.sandboxToken,
+    const defaultSessionId = await completeSandboxRun({
+      runId: defaultRunId,
+      sandboxToken: defaultClaim.sandboxToken,
       exitCode: 0,
     });
 
@@ -676,7 +719,41 @@ describe("Teams chat callbacks", () => {
       agentId: teams.defaultAgentId,
     });
 
-    const rootActivityId = "activity-personal-main-second";
+    const returnToDefaultRunId = await dispatchTeamsPersonalRun({
+      fixture: teams.fixture,
+      activityId: "activity-personal-default-agent-return",
+      text: "return to the default Teams DM agent",
+    });
+    const returnToDefaultClaim = await claimTeamsRun({
+      runnerGroup: teams.runnerGroup,
+      runId: returnToDefaultRunId,
+    });
+    expect(returnToDefaultClaim.resumeSession?.sessionId).toBe(
+      defaultSessionId,
+    );
+  });
+
+  it("forks personal message threads without replacing the main session", async () => {
+    const teams = await setupConnectedTeamsActor();
+    const teamsApi = teamsApiMocks({ serviceUrl: teams.fixture.serviceUrl });
+    const rootActivityId = "activity-personal-main";
+    const mainRunId = await dispatchTeamsPersonalRun({
+      fixture: teams.fixture,
+      activityId: rootActivityId,
+      text: "remember the main Teams DM context",
+    });
+    const mainClaim = await claimTeamsRun({
+      runnerGroup: teams.runnerGroup,
+      runId: mainRunId,
+    });
+    expect(mainClaim.resumeSession).toBeNull();
+    clearTeamsApiCalls(teamsApi);
+    const mainSessionId = await completeSandboxRun({
+      runId: mainRunId,
+      sandboxToken: mainClaim.sandboxToken,
+      exitCode: 0,
+    });
+
     const threadRunId = await dispatchTeamsPersonalRun({
       fixture: teams.fixture,
       activityId: "activity-personal-thread-first",
@@ -722,9 +799,7 @@ describe("Teams chat callbacks", () => {
       runnerGroup: teams.runnerGroup,
       runId: returnToMainRunId,
     });
-    expect(returnToMainClaim.resumeSession?.sessionId).toBe(
-      latestMainSessionId,
-    );
+    expect(returnToMainClaim.resumeSession?.sessionId).toBe(mainSessionId);
   });
 
   it("posts completed run replies and persists canonical Teams thread sessions", async () => {
@@ -763,7 +838,11 @@ describe("Teams chat callbacks", () => {
     expect(threadMessages.body.events).toContainEqual(
       expect.objectContaining({
         eventType: "input.prompt",
-        content: "finish the task",
+        content: null,
+        userMessage: {
+          version: 1,
+          parts: [{ type: "text", text: "finish the task" }],
+        },
       }),
     );
     const claim = await claimTeamsRun({

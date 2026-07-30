@@ -31,11 +31,17 @@ import { reloadUserModelPreference$ } from "../external/user-model-preference.ts
 import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 import { checkUnifiedSettingsParam$ } from "./settings/settings-dialog.ts";
 import { setupAgentChatKeyboardShortcuts$ } from "./agent-chat-keyboard.ts";
+import { i18n } from "../../i18n/index.ts";
 
 export const setupAgentChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(updatePage$, createElement(AgentChatPage), "sidebar");
-    set(updateDocumentTitle$, "Chat");
+    set(
+      updateDocumentTitle$,
+      i18n.t(($) => {
+        return $.chat.documentTitle;
+      }),
+    );
     set(reloadTagline$);
 
     set(resetChatPageModelSelection$);
@@ -82,7 +88,13 @@ export const setupAgentChatPage$ = command(
     }
 
     set(rememberLastUsedAgentId$, agentId);
-    set(updateDocumentTitle$, agent.displayName ?? "Chat");
+    set(
+      updateDocumentTitle$,
+      agent.displayName ??
+        i18n.t(($) => {
+          return $.chat.documentTitle;
+        }),
+    );
     set(setupAgentChatKeyboardShortcuts$, signal);
 
     await set(checkUnifiedSettingsParam$, signal);

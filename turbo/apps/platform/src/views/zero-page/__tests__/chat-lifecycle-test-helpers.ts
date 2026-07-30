@@ -294,7 +294,7 @@ export function makeEvent(
     id,
     threadId,
     eventType: "input.prompt",
-    content: text,
+    content: null,
     userMessage: {
       version: 1,
       parts: [{ type: "text", text }],
@@ -405,7 +405,6 @@ export function mockKeyboardNavigationThreads({
               ]
             : [],
         ),
-        hasHistoryBefore: false,
       });
     },
   );
@@ -599,7 +598,6 @@ export function mockServerQueuedThreadStories(): void {
         events: normalizeMockChatEvents(
           byId.get(params.threadId)?.messages ?? [],
         ),
-        hasHistoryBefore: false,
       });
     },
   );

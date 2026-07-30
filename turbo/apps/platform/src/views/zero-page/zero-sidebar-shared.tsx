@@ -1,4 +1,5 @@
 import { useLastResolved } from "ccstate-react";
+import { useTranslation } from "react-i18next";
 import { agents$ } from "../../signals/agent.ts";
 import { currentChatAgentDisplayName$ } from "../../signals/agent-chat.ts";
 import { resolveAvatarUrl, resolveAvatarSvgConfig } from "./avatar-utils.ts";
@@ -10,11 +11,22 @@ import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
  * surfaces stay in sync without duplicating the logic.
  */
 export function useChatThreadsTitleLabels() {
+  const { t } = useTranslation();
   const agentDisplayName = useLastResolved(currentChatAgentDisplayName$);
   const agentName = agentDisplayName ?? "Zero";
   return {
-    titleLabel: `Chats with ${agentName}`,
-    newChatAriaLabel: `New chat with ${agentName}`,
+    titleLabel: t(
+      ($) => {
+        return $.chat.sidebar.chatsWith;
+      },
+      { agentName },
+    ),
+    newChatAriaLabel: t(
+      ($) => {
+        return $.chat.sidebar.newChatWith;
+      },
+      { agentName },
+    ),
   };
 }
 

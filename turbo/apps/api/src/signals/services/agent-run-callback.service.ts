@@ -27,10 +27,6 @@ import {
   handleMorningBriefEmailInternalCallback$,
 } from "./internal-morning-brief-run-callback.service";
 import {
-  handleGithubIssuesInternalCallback$,
-  handleGithubIssuesInternalCallbackWithoutCcstate,
-} from "./internal-github-issues-run-callback.service";
-import {
   handleFeishuOrgInternalCallback$,
   handleFeishuOrgInternalCallbackWithoutCcstate,
 } from "./internal-feishu-org-run-callback.service";
@@ -136,6 +132,12 @@ const dispatchInternalCallback$ = command(
           signal,
         );
       }
+      case "agentphone:chat": {
+        return {
+          success: false,
+          error: "AgentPhone chat delivery callbacks are inline-only",
+        };
+      }
       case "chat": {
         return await set(
           handleChatInternalCallback$,
@@ -156,12 +158,11 @@ const dispatchInternalCallback$ = command(
           signal,
         );
       }
-      case "github:issues": {
-        return await set(
-          handleGithubIssuesInternalCallback$,
-          input.envelope,
-          signal,
-        );
+      case "github:chat": {
+        return {
+          success: false,
+          error: "GitHub chat delivery callbacks are inline-only",
+        };
       }
       case "morning-brief:email": {
         return await set(
@@ -193,6 +194,12 @@ const dispatchInternalCallback$ = command(
         return {
           success: false,
           error: "Teams chat delivery callbacks are inline-only",
+        };
+      }
+      case "telegram:chat": {
+        return {
+          success: false,
+          error: "Telegram chat delivery callbacks are inline-only",
         };
       }
       case "telegram": {
@@ -326,6 +333,8 @@ async function dispatchRunCallbacks(
             "slack:chat",
             "feishu:chat",
             "teams:chat",
+            "telegram:chat",
+            "github:chat",
             "slack:org",
           ]),
         ),
@@ -403,6 +412,8 @@ export const dispatchRunCallbacks$ = command(
               "slack:chat",
               "feishu:chat",
               "teams:chat",
+              "telegram:chat",
+              "github:chat",
               "slack:org",
             ]),
           ),
@@ -534,17 +545,23 @@ async function dispatchInternalCallbackWithoutCcstate(
         callbackEnvelope(input),
       );
     }
+    case "agentphone:chat": {
+      return {
+        success: false,
+        error: "AgentPhone chat delivery callbacks are inline-only",
+      };
+    }
     case "chat": {
       return await handleChatInternalCallbackWithoutCcstate(
         input.db,
         callbackEnvelope(input),
       );
     }
-    case "github:issues": {
-      return await handleGithubIssuesInternalCallbackWithoutCcstate(
-        input.db,
-        callbackEnvelope(input),
-      );
+    case "github:chat": {
+      return {
+        success: false,
+        error: "GitHub chat delivery callbacks are inline-only",
+      };
     }
     case "morning-brief:email": {
       return await handleMorningBriefEmailInternalCallback(
@@ -574,6 +591,12 @@ async function dispatchInternalCallbackWithoutCcstate(
       return {
         success: false,
         error: "Teams chat delivery callbacks are inline-only",
+      };
+    }
+    case "telegram:chat": {
+      return {
+        success: false,
+        error: "Telegram chat delivery callbacks are inline-only",
       };
     }
     case "telegram": {

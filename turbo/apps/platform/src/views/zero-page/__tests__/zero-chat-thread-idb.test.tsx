@@ -208,7 +208,7 @@ describe("zero chat thread IndexedDB fallback", () => {
     context.mocks.api(chatThreadEventsContract.list, async ({ respond }) => {
       catchUpRequested.resolve();
       await releaseCatchUp.promise;
-      return respond(200, { events: [], hasHistoryBefore: false });
+      return respond(200, { events: [] });
     });
 
     try {
@@ -224,6 +224,63 @@ describe("zero chat thread IndexedDB fallback", () => {
       await expect(
         screen.findByText("Cached initial deck"),
       ).resolves.toBeInTheDocument();
+    } finally {
+      if (!releaseCatchUp.settled()) {
+        releaseCatchUp.resolve();
+      }
+      runtimeDb.close();
+    }
+  });
+
+  it("ignores cached pause markers written by a previous frontend", async () => {
+    prepareDefaultAgent();
+    mockCurrentThreadDetail();
+    mockSidebarThread();
+    const runtimeDb = await primeRuntimeChatDb();
+    await runtimeDb.put(CHAT_MESSAGES_STORE, {
+      id: "legacy-cached-pause",
+      threadId: THREAD_ID,
+      eventType: "queue.automation_paused",
+      content: null,
+      pauseReason: "Previous frontend request",
+      seqId: 1,
+      createdAt: "2026-03-10T00:00:00Z",
+    });
+    await runtimeDb.put(CHAT_MESSAGES_STORE, {
+      id: "00000000-0000-4000-8000-000000000093",
+      threadId: THREAD_ID,
+      eventType: "output.message",
+      content: "Cached message after legacy markers",
+      seqId: 2,
+      createdAt: "2026-03-10T00:00:01Z",
+    });
+    await runtimeDb.put(CHAT_MESSAGES_STORE, {
+      id: "legacy-cached-resume",
+      threadId: THREAD_ID,
+      eventType: "queue.automation_resumed",
+      content: null,
+      seqId: 3,
+      createdAt: "2026-03-10T00:00:02Z",
+    });
+
+    const catchUpRequested = context.mocks.deferred<void>();
+    const releaseCatchUp = context.mocks.deferred<void>();
+    context.mocks.api(chatThreadEventsContract.list, async ({ respond }) => {
+      catchUpRequested.resolve();
+      await releaseCatchUp.promise;
+      return respond(200, { events: [] });
+    });
+
+    try {
+      setupChatPage();
+      await catchUpRequested.promise;
+
+      await expect(
+        screen.findByText("Cached message after legacy markers"),
+      ).resolves.toBeInTheDocument();
+      expect(
+        screen.queryByText("Previous frontend request"),
+      ).not.toBeInTheDocument();
     } finally {
       if (!releaseCatchUp.settled()) {
         releaseCatchUp.resolve();
@@ -250,7 +307,7 @@ describe("zero chat thread IndexedDB fallback", () => {
             id: "00000000-0000-4000-8000-000000000101",
             threadId: THREAD_ID,
             eventType: "input.prompt" as const,
-            content: USER_MESSAGE,
+            content: null,
             userMessage: {
               version: 1,
               parts: [{ type: "text", text: USER_MESSAGE }],
@@ -307,7 +364,7 @@ describe("zero chat thread IndexedDB fallback", () => {
     context.mocks.api(chatThreadEventsContract.list, async ({ respond }) => {
       messageListRequested.resolve();
       await initialMessageList.promise;
-      return respond(200, { events: [], hasHistoryBefore: false });
+      return respond(200, { events: [] });
     });
 
     try {

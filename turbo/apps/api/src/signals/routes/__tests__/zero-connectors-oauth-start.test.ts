@@ -77,7 +77,7 @@ function mockOAuthEnv(): void {
 function expectCloudflareAuthorizationScopes(authorizationUrl: URL): void {
   const method = API_TEST_CONNECTOR_CATALOG.connectors
     .find((connector) => {
-      return connector.connectorRef === "cloudflare";
+      return connector.slug === "cloudflare";
     })
     ?.authMethods.find((authMethod) => {
       return authMethod.id === "oauth";
@@ -179,7 +179,7 @@ async function rejectProviderAuthorization(
   await app.request(callbackUrl.toString());
 }
 
-describe("POST /api/zero/connectors/:type/oauth/start", () => {
+describe("POST /api/zero/connectors/:connectorSlug/oauth/start", () => {
   beforeEach(() => {
     mockEnv("VM0_API_BACKEND_URL", API_ORIGIN);
     mockEnv("VM0_WEB_URL", WEB_ORIGIN);
@@ -435,7 +435,8 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     await rejectProviderAuthorization(authorizationUrl);
   });
 
-  it("keeps denylisted API-origin callbacks on the API", async () => {
+  it("moves api-origin callbacks to the App once the connector is enabled", async () => {
+    mockEnv("APP_URL", "https://app.vm0.test");
     mockAuthenticatedSession();
 
     const response = await requestOauthStart("cloudflare", {
@@ -453,9 +454,28 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
       "cloudflare-test-client-id",
     );
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
-      `${API_ORIGIN}/api/connectors/cloudflare/callback`,
+      "https://app.vm0.test/connectors/cloudflare/callback",
     );
     expectCloudflareAuthorizationScopes(authorizationUrl);
+    expectOauthState(authorizationUrl);
+    await rejectProviderAuthorization(authorizationUrl);
+  });
+
+  it("keeps denylisted callbacks on the legacy path", async () => {
+    mockEnv("APP_URL", "https://app.vm0.test");
+    mockAuthenticatedSession();
+
+    const response = await requestOauthStart("slack", {
+      headers: authHeaders(),
+      origin: WEB_ORIGIN,
+      callbackTarget: "app",
+    });
+
+    expect(response.status).toBe(200);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      `${WEB_ORIGIN}/api/connectors/slack/callback`,
+    );
     expectOauthState(authorizationUrl);
     await rejectProviderAuthorization(authorizationUrl);
   });

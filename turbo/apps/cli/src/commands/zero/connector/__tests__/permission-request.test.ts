@@ -83,7 +83,8 @@ describe("zero connector permission-request command", () => {
     );
     expect(logCalls).toContain("[Manage Slack permissions]");
     expect(logCalls).toContain("/agents/agent-abc-123/permissions?");
-    expect(logCalls).toContain("ref=slack");
+    expect(logCalls).toContain("connectorSlug=slack");
+    expect(logCalls).not.toContain("ref=");
     expect(logCalls).toContain(
       `permission=${encodeURIComponent(SLACK_READ_PERMISSION)}`,
     );
@@ -109,7 +110,7 @@ describe("zero connector permission-request command", () => {
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain("/agents/agent-abc-123/permissions?");
     expect(logCalls).not.toContain("/workflows/wf-789/permissions?");
-    expect(logCalls).toContain("ref=slack");
+    expect(logCalls).toContain("connectorSlug=slack");
     expect(logCalls).toContain(
       `permission=${encodeURIComponent(SLACK_READ_PERMISSION)}`,
     );
@@ -134,6 +135,8 @@ describe("zero connector permission-request command", () => {
     ]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("connectorSlug=slack");
+    expect(logCalls).not.toContain("ref=");
     expect(logCalls).toContain("action=allow");
     expect(logCalls).toContain("threadId=thread-abc-123");
     expect(logCalls).toContain(
@@ -209,7 +212,7 @@ describe("zero connector permission-request command", () => {
       "You can allow unknown endpoints for your connector access",
     );
     expect(logCalls).toContain("[Manage Cloudflare permissions]");
-    expect(logCalls).toContain("ref=cloudflare");
+    expect(logCalls).toContain("connectorSlug=cloudflare");
     expect(logCalls).toContain("permission=__unknown__");
     expect(logCalls).toContain("action=allow");
     expect(logCalls).not.toContain("expiresIn=");
@@ -248,7 +251,7 @@ describe("zero connector permission-request command", () => {
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain("/agents/target-agent-123/permissions?");
-    expect(logCalls).toContain("ref=slack");
+    expect(logCalls).toContain("connectorSlug=slack");
     expect(logCalls).toContain("action=allow");
   });
 
@@ -351,11 +354,11 @@ describe("zero connector permission-request command", () => {
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain("[Manage Server Only permissions]");
-    expect(logCalls).toContain("ref=server-only");
+    expect(logCalls).toContain("connectorSlug=server-only");
     expect(logCalls).toContain("permission=records.read");
   });
 
-  it("exits with an error for an unknown connector type", async () => {
+  it("exits with an error for an unknown connector slug", async () => {
     await expect(async () => {
       await permissionRequestCommand.parseAsync([
         "node",
@@ -367,7 +370,7 @@ describe("zero connector permission-request command", () => {
     }).rejects.toThrow("process.exit called");
 
     expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("Unknown connector type: unknown-service"),
+      expect.stringContaining("Unknown connector slug: unknown-service"),
     );
   });
 
@@ -442,7 +445,7 @@ describe("zero connector permission-request command", () => {
 
     const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
     expect(errorOutput).toContain("Failed to fetch");
-    expect(errorOutput).not.toContain("Unknown connector type");
+    expect(errorOutput).not.toContain("Unknown connector slug");
   });
 
   it("rejects permission metadata for a different connector slug", async () => {
@@ -452,11 +455,14 @@ describe("zero connector permission-request command", () => {
         "https://app.vm0.ai/api/zero/connector-catalog/slack/permissions",
         () => {
           return HttpResponse.json({
-            permissions: catalogPermissionDetail({
-              connectorSlug: "github",
-              label: "GitHub",
-              permissions: [{ name: SLACK_READ_PERMISSION }],
-            }),
+            permissions: {
+              ...catalogPermissionDetail({
+                connectorSlug: "github",
+                label: "GitHub",
+                permissions: [{ name: SLACK_READ_PERMISSION }],
+              }),
+              connectorRef: "legacy-github",
+            },
           });
         },
       ),
@@ -474,7 +480,7 @@ describe("zero connector permission-request command", () => {
 
     expect(mockConsoleError).toHaveBeenCalledWith(
       expect.stringContaining(
-        "Permission metadata connectorRef mismatch: expected slack, got github",
+        "Permission metadata connector slug mismatch: expected slack, got github",
       ),
     );
   });

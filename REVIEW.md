@@ -101,14 +101,6 @@ chat cards or their resource signals:
 gh api repos/vm0-ai/vm0/contents/docs/chat-cards.md --jq '.content' | base64 -d
 ```
 
-Fetch the signed pricing protocol when the PR changes model-usage pricing
-headers, their producer, signature, runner acceptance, stripping, billing
-fallback, or protocol versioning:
-
-```bash
-gh api repos/vm0-ai/vm0/contents/docs/model-usage-pricing-protocol.md --jq '.content' | base64 -d
-```
-
 Fetch the runner multi-architecture contract when the PR changes runner build,
 release, deploy, promote, rollback, host inventory, target selection, or
 architecture-specific workflow logic:
@@ -341,7 +333,6 @@ Review posted: https://github.com/vm0-ai/vm0/pull/<number>#pullrequestreview-<re
 - React and ccstate cache practices: https://github.com/vm0-ai/vm0/blob/main/docs/cache.md
 - Deployment compatibility: https://github.com/vm0-ai/vm0/blob/main/docs/deployment-compatibility.md
 - Chat cards: https://github.com/vm0-ai/vm0/blob/main/docs/chat-cards.md
-- Signed model usage pricing protocol: https://github.com/vm0-ai/vm0/blob/main/docs/model-usage-pricing-protocol.md
 - Runner multi-architecture contract: https://github.com/vm0-ai/vm0/blob/main/docs/runner-multi-architecture.md
 - React commit analysis: https://github.com/vm0-ai/vm0/blob/main/docs/react-commit.md
 - ccstate practices: https://github.com/vm0-ai/vm0/blob/main/.claude/skills/ccstate/SKILL.md

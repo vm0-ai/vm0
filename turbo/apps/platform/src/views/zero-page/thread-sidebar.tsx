@@ -8,6 +8,7 @@ import {
 } from "@tabler/icons-react";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { cn } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -87,13 +88,16 @@ function ThreadSidebarHeader({
   readonly onBack?: () => void;
   readonly onClose: () => void;
 }) {
+  const { t, i18n } = useTranslation();
   return (
     <div className="flex min-h-14 shrink-0 items-center gap-1 border-b border-border/60 px-4">
       {onBack ? (
         <button
           type="button"
           onClick={onBack}
-          aria-label="Back to artifacts"
+          aria-label={t(($) => {
+            return $.artifacts.actions.backToArtifacts;
+          })}
           className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
         >
           <IconArrowLeft size={16} />
@@ -106,7 +110,15 @@ function ThreadSidebarHeader({
         <button
           type="button"
           onClick={onToggleFullscreen}
-          aria-label={fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          aria-label={
+            fullscreen
+              ? t(($) => {
+                  return $.artifacts.actions.exitFullscreen;
+                })
+              : t(($) => {
+                  return $.artifacts.actions.enterFullscreen;
+                })
+          }
           data-testid="thread-sidebar-fullscreen-toggle"
           className="hidden xl:inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
         >
@@ -116,7 +128,16 @@ function ThreadSidebarHeader({
       <button
         type="button"
         onClick={onClose}
-        aria-label={`Close ${title.toLowerCase()}`}
+        aria-label={t(
+          ($) => {
+            return $.artifacts.actions.closeNamed;
+          },
+          {
+            title: title.toLocaleLowerCase(
+              i18n.resolvedLanguage ?? i18n.language,
+            ),
+          },
+        )}
         className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground"
       >
         <IconX size={16} />
@@ -126,6 +147,7 @@ function ThreadSidebarHeader({
 }
 
 function ThreadArtifactsPanel({ thread }: { thread: ChatThreadSignals }) {
+  const { t } = useTranslation();
   const sidebar = thread.sidebar;
   const catalogLoadable = useLastLoadable(sidebar.artifactCatalog.catalog$);
   const fullscreen = useGet(sidebar.fullscreen$);
@@ -163,7 +185,9 @@ function ThreadArtifactsPanel({ thread }: { thread: ChatThreadSignals }) {
 
   const panel = (
     <aside
-      aria-label="Artifacts"
+      aria-label={t(($) => {
+        return $.artifacts.sidebar.panelTitle;
+      })}
       data-testid="thread-sidebar-artifacts"
       className={cn(
         fullscreen
@@ -172,7 +196,9 @@ function ThreadArtifactsPanel({ thread }: { thread: ChatThreadSignals }) {
       )}
     >
       <ThreadSidebarHeader
-        title="Artifacts"
+        title={t(($) => {
+          return $.artifacts.sidebar.panelTitle;
+        })}
         fullscreen={fullscreen}
         onToggleFullscreen={toggleFullscreen}
         onClose={close}
@@ -215,21 +241,28 @@ function ThreadArtifactUnavailable({
   readonly thread: ChatThreadSignals;
   readonly showBack: boolean;
 }) {
+  const { t } = useTranslation();
   const close = useSet(thread.sidebar.close$);
   const backToArtifacts = useOpenThreadArtifacts(thread);
   return (
     <aside
-      aria-label="Artifact"
+      aria-label={t(($) => {
+        return $.artifacts.sidebar.singularTitle;
+      })}
       data-testid="thread-sidebar-artifact-unavailable"
       className="flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0"
     >
       <ThreadSidebarHeader
-        title="Artifact"
+        title={t(($) => {
+          return $.artifacts.sidebar.singularTitle;
+        })}
         onBack={showBack ? backToArtifacts : undefined}
         onClose={close}
       />
       <div className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-sm text-muted-foreground">
-        This artifact is no longer available.
+        {t(($) => {
+          return $.artifacts.sidebar.unavailable;
+        })}
       </div>
     </aside>
   );
@@ -242,6 +275,7 @@ function ThreadArtifactDetail({
   readonly thread: ChatThreadSignals;
   readonly source: ThreadSidebarArtifactSource;
 }) {
+  const { t } = useTranslation();
   const sidebar = thread.sidebar;
   const fullscreen = useGet(sidebar.fullscreen$);
   const toggleFullscreen = useSet(sidebar.toggleFullscreen$);
@@ -278,11 +312,15 @@ function ThreadArtifactDetail({
   if (detailLoadable.state === "loading") {
     return (
       <aside
-        aria-label="Artifact"
+        aria-label={t(($) => {
+          return $.artifacts.sidebar.singularTitle;
+        })}
         className="flex h-full w-full min-h-0 flex-col border-l border-border/60 bg-background xl:border-l-0"
       >
         <ThreadSidebarHeader
-          title="Artifact"
+          title={t(($) => {
+            return $.artifacts.sidebar.singularTitle;
+          })}
           onBack={backToArtifacts}
           onClose={close}
         />

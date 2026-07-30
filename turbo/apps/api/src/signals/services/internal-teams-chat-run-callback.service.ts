@@ -1,6 +1,6 @@
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { teamsChatThreadRoutes } from "@vm0/db/schema/teams-chat-thread-route";
@@ -122,26 +122,26 @@ async function loadTeamsChatDeliveryContext(args: {
     throw new Error("Teams chat delivery run context is unavailable");
   }
 
-  const [message] = await args.db
-    .select({ content: chatMessages.content })
-    .from(chatMessages)
+  const [event] = await args.db
+    .select({ content: chatEvents.content })
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.id, payload.chatMessageId),
-        eq(chatMessages.runId, args.callback.runId),
-        eq(chatMessages.chatThreadId, run.chatThreadId),
+        eq(chatEvents.id, payload.chatEventId),
+        eq(chatEvents.runId, args.callback.runId),
+        eq(chatEvents.chatThreadId, run.chatThreadId),
         chatEventTypeIn([
           "output.message",
           "output.error",
           "run.failed",
           "run.cancelled",
         ]),
-        isNotNull(chatMessages.content),
+        isNotNull(chatEvents.content),
       ),
     )
     .limit(1);
   args.signal.throwIfAborted();
-  if (!message?.content) {
+  if (!event?.content) {
     throw new Error("Teams chat delivery message is unavailable");
   }
 
@@ -174,7 +174,7 @@ async function loadTeamsChatDeliveryContext(args: {
     )
     .limit(1);
   args.signal.throwIfAborted();
-  return { payload, run, messageContent: message.content, binding };
+  return { payload, run, messageContent: event.content, binding };
 }
 
 async function countTeamsMentioners(args: {
@@ -387,7 +387,7 @@ interface TeamsChatAdmissionFailureArgs {
   readonly orgId: string;
   readonly agentId: string;
   readonly target: TeamsDeliveryTarget;
-  readonly chatMessageId: string;
+  readonly chatEventId: string;
   readonly signal: AbortSignal;
 }
 
@@ -399,16 +399,16 @@ interface TeamsAdmissionFailureContext {
 async function loadTeamsAdmissionFailureContext(
   args: TeamsChatAdmissionFailureArgs,
 ): Promise<TeamsAdmissionFailureContext | undefined> {
-  const [messageRows, bindingRows] = await Promise.all([
+  const [eventRows, bindingRows] = await Promise.all([
     args.db
-      .select({ content: chatMessages.content })
-      .from(chatMessages)
+      .select({ content: chatEvents.content })
+      .from(chatEvents)
       .where(
         and(
-          eq(chatMessages.id, args.chatMessageId),
-          eq(chatMessages.chatThreadId, args.chatThreadId),
+          eq(chatEvents.id, args.chatEventId),
+          eq(chatEvents.chatThreadId, args.chatThreadId),
           chatEventTypeIn(["output.error"]),
-          isNotNull(chatMessages.content),
+          isNotNull(chatEvents.content),
         ),
       )
       .limit(1),
@@ -440,13 +440,13 @@ async function loadTeamsAdmissionFailureContext(
       .limit(1),
   ]);
   args.signal.throwIfAborted();
-  const message = messageRows[0];
+  const event = eventRows[0];
   const binding = bindingRows[0];
-  if (!message?.content || !binding) {
+  if (!event?.content || !binding) {
     return undefined;
   }
   return {
-    messageContent: message.content,
+    messageContent: event.content,
     installationServiceUrl: binding.serviceUrl,
   };
 }

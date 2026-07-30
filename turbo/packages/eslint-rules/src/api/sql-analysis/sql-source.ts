@@ -14,6 +14,7 @@ import {
   isIdentifier,
   isNonNullExpression,
   isParenthesizedExpression,
+  isPropertyAccessExpression,
   isReturnStatement,
   isSatisfiesExpression,
   isTemplateSpan,
@@ -22,16 +23,20 @@ import {
   isVariableDeclarationList,
   isVariableStatement,
   NodeFlags,
+  TypeFlags,
   type Node,
   type Symbol as TypeScriptSymbol,
+  type Type,
   type TypeChecker,
   type VariableDeclaration,
 } from "typescript";
 
 import {
+  isDefinitelyPresentDrizzleBooleanHelper,
   isDrizzleSqlType,
   isDrizzleSqlTag,
   isDrizzleSymbol,
+  isDrizzleWrapperType,
   resolvedSymbol,
 } from "../drizzle.ts";
 
@@ -92,6 +97,11 @@ interface LocalFunction {
   readonly declaration: Node;
   readonly parameters: readonly TypeScriptSymbol[];
   readonly returned: TSESTree.Expression;
+}
+
+interface StaticArray {
+  readonly declarations: ReadonlySet<Node>;
+  readonly node: TSESTree.ArrayExpression;
 }
 
 function quasiText(node: TSESTree.TemplateElement): string {
@@ -406,6 +416,20 @@ export function createSqlSourceComposer(
       ) {
         current = current.parent;
       }
+      let hasPropertyAccess = false;
+      while (
+        isPropertyAccessExpression(current.parent) &&
+        current.parent.expression === current
+      ) {
+        hasPropertyAccess = true;
+        current = current.parent;
+      }
+      if (
+        hasPropertyAccess &&
+        isDrizzleWrapperType(checker, checker.getTypeAtLocation(current))
+      ) {
+        return false;
+      }
       const parent = current.parent;
       return (
         current === root ||
@@ -543,6 +567,56 @@ export function createSqlSourceComposer(
     };
   }
 
+  function localStaticArrayFactory(node: TSESTree.CallExpression): {
+    readonly declaration: Node;
+    readonly returned: TSESTree.ArrayExpression;
+  } | null {
+    if (
+      node.callee.type !== AST_NODE_TYPES.Identifier ||
+      node.arguments.some((argument) => {
+        return argument.type === AST_NODE_TYPES.SpreadElement;
+      })
+    ) {
+      return null;
+    }
+    const tsCallee = services.esTreeNodeToTSNodeMap.get(node.callee);
+    const declaration = symbolAt(node.callee)?.valueDeclaration;
+    if (
+      declaration === undefined ||
+      !isFunctionDeclaration(declaration) ||
+      declaration.getSourceFile() !== tsCallee.getSourceFile() ||
+      declaration.body === undefined ||
+      declaration.body.statements.length !== 1 ||
+      declaration.parameters.length !== node.arguments.length ||
+      declaration.parameters.some((parameter) => {
+        return (
+          parameter.dotDotDotToken !== undefined ||
+          parameter.initializer !== undefined ||
+          !isIdentifier(parameter.name)
+        );
+      })
+    ) {
+      return null;
+    }
+    const statement = declaration.body.statements[0];
+    if (
+      statement === undefined ||
+      !isReturnStatement(statement) ||
+      statement.expression === undefined
+    ) {
+      return null;
+    }
+    let returned = services.tsNodeToESTreeNodeMap.get(statement.expression);
+    let transparent = transparentExpression(returned);
+    while (transparent !== null) {
+      returned = transparent;
+      transparent = transparentExpression(returned);
+    }
+    return returned.type === AST_NODE_TYPES.ArrayExpression
+      ? { declaration, returned }
+      : null;
+  }
+
   function localConstInitializer(node: TSESTree.Identifier): {
     readonly declaration: Node;
     readonly initializer: TSESTree.Expression;
@@ -592,6 +666,42 @@ export function createSqlSourceComposer(
       expression = substitution.expression;
     }
     return { expression, origins };
+  }
+
+  function typeMayBeUndefined(type: Type): boolean {
+    if ((type.flags & (TypeFlags.Any | TypeFlags.Unknown)) !== 0) {
+      return true;
+    }
+    if ((type.flags & TypeFlags.TypeParameter) !== 0) {
+      const constraint = checker.getBaseConstraintOfType(type);
+      return constraint === undefined || typeMayBeUndefined(constraint);
+    }
+    if (type.isUnion()) {
+      return type.types.some(typeMayBeUndefined);
+    }
+    return (type.flags & (TypeFlags.Undefined | TypeFlags.Void)) !== 0;
+  }
+
+  function expressionIsDefinitelyPresent(
+    node: TSESTree.Expression,
+    state: MutableCompositionState,
+  ): boolean {
+    const resolved = resolvedExpression(node, state);
+    let expression = resolved.expression;
+    let transparent = transparentExpression(expression);
+    while (transparent !== null) {
+      expression = transparent;
+      transparent = transparentExpression(expression);
+    }
+    const tsNode = services.esTreeNodeToTSNodeMap.get(expression);
+    if (!typeMayBeUndefined(checker.getTypeAtLocation(tsNode))) {
+      return true;
+    }
+    return isDefinitelyPresentDrizzleBooleanHelper(
+      checker,
+      services,
+      expression,
+    );
   }
 
   function composeInterpolation(
@@ -683,10 +793,14 @@ export function createSqlSourceComposer(
     );
   }
 
-  function staticArray(node: TSESTree.Expression): {
-    readonly declaration: Node | undefined;
-    readonly node: TSESTree.ArrayExpression;
-  } | null {
+  function staticArray(
+    node: TSESTree.Expression,
+    state: MutableCompositionState,
+    visited: ReadonlySet<Node> = new Set(),
+  ): StaticArray | null {
+    if (!consumeStep(state)) {
+      return null;
+    }
     let current = node;
     let transparent = transparentExpression(current);
     while (transparent !== null) {
@@ -694,24 +808,38 @@ export function createSqlSourceComposer(
       transparent = transparentExpression(current);
     }
     if (current.type === AST_NODE_TYPES.ArrayExpression) {
-      return { declaration: undefined, node: current };
+      return { declarations: new Set(), node: current };
     }
-    if (current.type !== AST_NODE_TYPES.Identifier) {
+    if (current.type === AST_NODE_TYPES.Identifier) {
+      const initializer = localConstInitializer(current);
+      if (initializer === null || visited.has(initializer.declaration)) {
+        return null;
+      }
+      const nested = staticArray(
+        initializer.initializer,
+        state,
+        new Set([...visited, initializer.declaration]),
+      );
+      return nested === null
+        ? null
+        : {
+            declarations: new Set([
+              initializer.declaration,
+              ...nested.declarations,
+            ]),
+            node: nested.node,
+          };
+    }
+    if (current.type !== AST_NODE_TYPES.CallExpression) {
       return null;
     }
-    const initializer = localConstInitializer(current);
-    if (initializer === null) {
-      return null;
-    }
-    let value = initializer.initializer;
-    let wrapper = transparentExpression(value);
-    while (wrapper !== null) {
-      value = wrapper;
-      wrapper = transparentExpression(value);
-    }
-    return value.type === AST_NODE_TYPES.ArrayExpression
-      ? { declaration: initializer.declaration, node: value }
-      : null;
+    const factory = localStaticArrayFactory(current);
+    return factory === null || visited.has(factory.declaration)
+      ? null
+      : {
+          declarations: new Set([factory.declaration]),
+          node: factory.returned,
+        };
   }
 
   function composeJoin(
@@ -734,80 +862,75 @@ export function createSqlSourceComposer(
     ) {
       return null;
     }
-    const array = staticArray(itemsArgument);
+    const array = staticArray(itemsArgument, state);
+    if (array === null) {
+      return null;
+    }
+    const elements = array.node.elements;
     if (
-      array === null ||
-      array.node.elements.some((element) => {
+      elements.some((element) => {
         return (
-          element === null || element.type === AST_NODE_TYPES.SpreadElement
+          element === null ||
+          element.type === AST_NODE_TYPES.SpreadElement ||
+          !expressionIsDefinitelyPresent(element, state)
         );
       }) ||
-      (array.declaration !== undefined &&
-        state.activeDeclarations.has(array.declaration))
+      [...array.declarations].some((declaration) => {
+        return state.activeDeclarations.has(declaration);
+      })
     ) {
       return null;
     }
-
-    if (array.declaration !== undefined) {
-      state.activeDeclarations.add(array.declaration);
-    }
     const separatorArgument = node.arguments[1];
-    if (separatorArgument?.type === AST_NODE_TYPES.SpreadElement) {
-      if (array.declaration !== undefined) {
-        state.activeDeclarations.delete(array.declaration);
-      }
+    if (
+      separatorArgument?.type === AST_NODE_TYPES.SpreadElement ||
+      (separatorArgument !== undefined &&
+        !expressionIsDefinitelyPresent(separatorArgument, state))
+    ) {
       return null;
     }
-    const separator =
-      separatorArgument === undefined
-        ? emptySource()
-        : composeJoinedChunk(separatorArgument, state);
-    if (separator === null) {
-      if (array.declaration !== undefined) {
-        state.activeDeclarations.delete(array.declaration);
-      }
-      return null;
+    for (const declaration of array.declarations) {
+      state.activeDeclarations.add(declaration);
     }
 
-    let result = emptySource();
-    for (let index = 0; index < array.node.elements.length; index += 1) {
-      const element = array.node.elements[index];
-      if (element === null || element.type === AST_NODE_TYPES.SpreadElement) {
-        if (array.declaration !== undefined) {
-          state.activeDeclarations.delete(array.declaration);
-        }
+    try {
+      const separator =
+        separatorArgument === undefined
+          ? emptySource()
+          : composeJoinedChunk(separatorArgument, state);
+      if (separator === null) {
         return null;
       }
-      if (index > 0) {
-        const withSeparator = concatenateSources(result, separator);
-        if (withSeparator === null) {
-          if (array.declaration !== undefined) {
-            state.activeDeclarations.delete(array.declaration);
-          }
+
+      let result = emptySource();
+      for (let index = 0; index < elements.length; index += 1) {
+        const element = elements[index];
+        if (element === null || element.type === AST_NODE_TYPES.SpreadElement) {
           return null;
         }
-        result = withSeparator;
-      }
-      const item = composeJoinedChunk(element, state);
-      if (item === null) {
-        if (array.declaration !== undefined) {
-          state.activeDeclarations.delete(array.declaration);
+        if (index > 0) {
+          const withSeparator = concatenateSources(result, separator);
+          if (withSeparator === null) {
+            return null;
+          }
+          result = withSeparator;
         }
-        return null;
-      }
-      const withItem = concatenateSources(result, item);
-      if (withItem === null) {
-        if (array.declaration !== undefined) {
-          state.activeDeclarations.delete(array.declaration);
+        const item = composeJoinedChunk(element, state);
+        if (item === null) {
+          return null;
         }
-        return null;
+        const withItem = concatenateSources(result, item);
+        if (withItem === null) {
+          return null;
+        }
+        result = withItem;
       }
-      result = withItem;
+      return withLocalExpansion(prependOrigin(result, node));
+    } finally {
+      for (const declaration of array.declarations) {
+        state.activeDeclarations.delete(declaration);
+      }
     }
-    if (array.declaration !== undefined) {
-      state.activeDeclarations.delete(array.declaration);
-    }
-    return withLocalExpansion(prependOrigin(result, node));
   }
 
   function composeFactory(

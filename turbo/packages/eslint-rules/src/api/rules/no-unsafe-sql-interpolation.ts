@@ -1,20 +1,11 @@
-import {
-  ESLintUtils,
-  type ParserServicesWithTypeInformation,
-  type TSESTree,
-} from "@typescript-eslint/utils";
-import {
-  IndexKind,
-  isCallExpression,
-  TypeFlags,
-  type Type,
-  type TypeChecker,
-} from "typescript";
+import { ESLintUtils, type TSESTree } from "@typescript-eslint/utils";
+import { TypeFlags, type Type, type TypeChecker } from "typescript";
 
 import {
+  constrainedTypeMembers,
+  isDefinitelyPresentDrizzleBooleanHelper,
   isDrizzleSqlTag,
   isDrizzleWrapperType,
-  isNamedDrizzleSignature,
 } from "../drizzle.ts";
 import { createRule } from "../utils.ts";
 
@@ -25,45 +16,11 @@ type MessageId =
   | "undefinedInterpolation"
   | "unknownInterpolation";
 
-function constrainedTypeMembers(
-  checker: TypeChecker,
-  type: Type,
-  visited: Set<Type>,
-): Type[] | null {
-  if ((type.flags & TypeFlags.TypeParameter) !== 0) {
-    if (visited.has(type)) {
-      return null;
-    }
-    visited.add(type);
-    const constraint = checker.getBaseConstraintOfType(type);
-    const members =
-      constraint === undefined
-        ? null
-        : constrainedTypeMembers(checker, constraint, visited);
-    visited.delete(type);
-    return members;
-  }
-
-  if (!type.isUnion()) {
-    return [type];
-  }
-
-  const members: Type[] = [];
-  for (const member of type.types) {
-    const constrainedMembers = constrainedTypeMembers(checker, member, visited);
-    if (constrainedMembers === null) {
-      return null;
-    }
-    members.push(...constrainedMembers);
-  }
-  return members;
-}
-
 function interpolationProblem(
   checker: TypeChecker,
   type: Type,
 ): MessageId | null {
-  const members = constrainedTypeMembers(checker, type, new Set<Type>());
+  const members = constrainedTypeMembers(checker, type);
   if (members === null) {
     return "unknownInterpolation";
   }
@@ -109,70 +66,6 @@ function interpolationProblem(
   return null;
 }
 
-function isDefinitelyPresentBooleanHelper(
-  checker: TypeChecker,
-  services: ParserServicesWithTypeInformation,
-  expression: TSESTree.Expression,
-): boolean {
-  if (expression.type !== "CallExpression") {
-    return false;
-  }
-  const tsExpression = services.esTreeNodeToTSNodeMap.get(expression);
-  if (!isCallExpression(tsExpression)) {
-    return false;
-  }
-  const signature = checker.getResolvedSignature(tsExpression);
-  if (
-    signature === undefined ||
-    (!isNamedDrizzleSignature(signature, "and") &&
-      !isNamedDrizzleSignature(signature, "or"))
-  ) {
-    return false;
-  }
-  let hasPresentCondition = false;
-  for (const argument of expression.arguments) {
-    if (argument.type === "SpreadElement") {
-      const tsArgument = services.esTreeNodeToTSNodeMap.get(argument.argument);
-      const elementType = checker.getIndexTypeOfType(
-        checker.getTypeAtLocation(tsArgument),
-        IndexKind.Number,
-      );
-      if (
-        elementType === undefined ||
-        !isOptionalDrizzleWrapperType(checker, elementType)
-      ) {
-        return false;
-      }
-      continue;
-    }
-    const tsArgument = services.esTreeNodeToTSNodeMap.get(argument);
-    const type = checker.getTypeAtLocation(tsArgument);
-    if (!isOptionalDrizzleWrapperType(checker, type)) {
-      return false;
-    }
-    if (isDrizzleWrapperType(checker, type)) {
-      hasPresentCondition = true;
-    }
-  }
-  return hasPresentCondition;
-}
-
-function isOptionalDrizzleWrapperType(
-  checker: TypeChecker,
-  type: Type,
-): boolean {
-  const members = constrainedTypeMembers(checker, type, new Set<Type>());
-  return (
-    members !== null &&
-    members.every((member) => {
-      return (
-        (member.flags & (TypeFlags.Undefined | TypeFlags.Void)) !== 0 ||
-        isDrizzleWrapperType(checker, member)
-      );
-    })
-  );
-}
-
 export const noUnsafeSqlInterpolation = createRule({
   name: "no-unsafe-sql-interpolation",
   defaultOptions: [],
@@ -215,7 +108,11 @@ export const noUnsafeSqlInterpolation = createRule({
           if (
             messageId !== null &&
             (messageId !== "undefinedInterpolation" ||
-              !isDefinitelyPresentBooleanHelper(checker, services, expression))
+              !isDefinitelyPresentDrizzleBooleanHelper(
+                checker,
+                services,
+                expression,
+              ))
           ) {
             context.report({ node: expression, messageId });
           }

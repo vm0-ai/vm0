@@ -1,5 +1,4 @@
 import { Command, Option } from "commander";
-import { findFirewallMetadataPermission } from "@vm0/connectors/firewall-metadata/policy";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { withErrorHandler } from "../../../lib/command";
 import { getPlatformOrigin } from "../doctor/platform-url";
@@ -22,6 +21,7 @@ import {
   connectorActionCallbackAvailable,
   printCallbackTurnInstruction,
 } from "./action-url";
+import { hasConnectorFirewallMetadataPermission } from "../shared/firewall-permissions";
 
 function permissionDescription(permission: string): string {
   return permission === UNKNOWN_PERMISSION_GRANT
@@ -167,7 +167,7 @@ async function outputPermissionRequestMessage(
   const platformOrigin = await getPlatformOrigin();
 
   const urlParams = new URLSearchParams({
-    ref: connectorSlug,
+    connectorSlug,
     permission,
     action: "allow",
   });
@@ -205,8 +205,7 @@ const callbackPromptNotes = callbackPromptAvailable
 export const permissionRequestCommand = new Command()
   .name("permission-request")
   .description("Request permission to use a connector capability")
-  // TODO(#23619): Rename this stable CLI argument label in the CLI rollout.
-  .argument("<connector-ref>", "The connector type (e.g. github)")
+  .argument("<slug>", "The connector slug (e.g. github)")
   .addOption(
     new Option(
       "--permission <name>",
@@ -281,12 +280,12 @@ ${callbackPromptNotes}  - Permission requests update the current user's connecto
         const metadata =
           await getZeroConnectorCatalogPermissions(connectorSlug);
         if (!metadata) {
-          throw new Error(`Unknown connector type: ${connectorSlug}`);
+          throw new Error(`Unknown connector slug: ${connectorSlug}`);
         }
 
         if (
           opts.permission !== UNKNOWN_PERMISSION_GRANT &&
-          !findFirewallMetadataPermission(metadata, opts.permission)
+          !hasConnectorFirewallMetadataPermission(metadata, opts.permission)
         ) {
           throw new Error(
             `Unknown permission "${opts.permission}" for ${connectorSlug}`,

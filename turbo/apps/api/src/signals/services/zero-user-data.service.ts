@@ -24,7 +24,7 @@ import { morningBriefSchedules } from "@vm0/db/schema/morning-brief";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import { db$, writeDb$, type ReadonlyDb } from "../external/db";
@@ -60,7 +60,12 @@ function parseSendMode(value: unknown): SendMode {
 }
 
 function parseUserLocale(value: unknown): UserLocale | null {
-  if (value === null || value === "en-US" || value === "pt-BR") {
+  if (
+    value === null ||
+    value === "en-US" ||
+    value === "pt-BR" ||
+    value === "ja-JP"
+  ) {
     return value;
   }
   // TODO(#23508): remove after persisted legacy values are migrated.
@@ -179,11 +184,23 @@ export function userModelPreference({
 interface UpdateUserPreferencesArgs extends UserScopedQuery {
   readonly preferences: UpdateUserPreferencesRequest;
   readonly allowBrazilianPortuguese?: boolean;
+  readonly allowJapanese?: boolean;
 }
 
 type UpdateUserPreferencesResult =
   | { readonly ok: true; readonly data: UserPreferencesResponse }
   | { readonly ok: false; readonly message: string };
+
+function isUserPreferencesUpdateAllowed(
+  args: UpdateUserPreferencesArgs,
+): boolean {
+  const { locale, timezone } = args.preferences;
+  return (
+    (locale !== "pt-BR" || args.allowBrazilianPortuguese === true) &&
+    (locale !== "ja-JP" || args.allowJapanese === true) &&
+    (timezone === undefined || isValidTimeZone(timezone))
+  );
+}
 
 export const updateUserPreferences$ = command(
   async (
@@ -192,19 +209,7 @@ export const updateUserPreferences$ = command(
     signal: AbortSignal,
   ): Promise<UpdateUserPreferencesResult> => {
     const preferences = args.preferences;
-    if (
-      preferences.locale === "pt-BR" &&
-      args.allowBrazilianPortuguese !== true
-    ) {
-      return {
-        ok: false,
-        message: "Invalid request",
-      };
-    }
-    if (
-      preferences.timezone !== undefined &&
-      !isValidTimeZone(preferences.timezone)
-    ) {
+    if (!isUserPreferencesUpdateAllowed(args)) {
       return {
         ok: false,
         message: "Invalid request",
@@ -530,6 +535,7 @@ export const setUserSecret$ = command(
       })
       .onConflictDoUpdate({
         target: [secrets.orgId, secrets.userId, secrets.name, secrets.type],
+        targetWhere: isNull(secrets.connectorId),
         set: {
           encryptedValue,
           description: args.secret.description ?? null,

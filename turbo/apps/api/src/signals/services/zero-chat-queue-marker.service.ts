@@ -1,5 +1,5 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { and, eq, notExists } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
@@ -13,7 +13,7 @@ const QUEUED_RUN_ASSISTANT_MESSAGE = "Waiting in queue...";
 
 const QUEUED_RUN_MARKER_EVENT_ID = "queue:queued";
 
-const revoker = alias(chatMessages, "revoker");
+const revoker = alias(chatEvents, "revoker");
 const QUEUED_RUN_MARKER_REVOKE_EVENT_ID = "queue:dequeued";
 
 export interface QueueMarkerRevokeNotification {
@@ -45,13 +45,13 @@ export async function appendQueuedRunAssistantMarker(
   }
 
   const [existing] = await tx
-    .select({ id: chatMessages.id })
-    .from(chatMessages)
+    .select({ id: chatEvents.id })
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.runId, args.runId),
+        eq(chatEvents.runId, args.runId),
         chatEventTypeIn(["run.queued"]),
-        eq(chatMessages.runEventId, QUEUED_RUN_MARKER_EVENT_ID),
+        eq(chatEvents.runEventId, QUEUED_RUN_MARKER_EVENT_ID),
       ),
     )
     .limit(1);
@@ -85,21 +85,21 @@ export async function revokeQueuedRunAssistantMarkers(
 ): Promise<QueueMarkerRevokeNotification | null> {
   const markers = await tx
     .select({
-      id: chatMessages.id,
-      chatThreadId: chatMessages.chatThreadId,
-      runGroupId: chatMessages.runGroupId,
+      id: chatEvents.id,
+      chatThreadId: chatEvents.chatThreadId,
+      runGroupId: chatEvents.runGroupId,
     })
-    .from(chatMessages)
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.runId, args.runId),
+        eq(chatEvents.runId, args.runId),
         chatEventTypeIn(["run.queued"]),
-        eq(chatMessages.runEventId, QUEUED_RUN_MARKER_EVENT_ID),
+        eq(chatEvents.runEventId, QUEUED_RUN_MARKER_EVENT_ID),
         notExists(
           tx
             .select({ one: revoker.id })
             .from(revoker)
-            .where(eq(revoker.revokesEventId, chatMessages.id)),
+            .where(eq(revoker.revokesEventId, chatEvents.id)),
         ),
       ),
     );

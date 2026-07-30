@@ -4,10 +4,8 @@ import {
   type ConnectorAuthMethodId,
   type ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
-import type {
-  PublicConnectorCatalogAuthMethodDetail,
-  PublicConnectorCatalogStatusItem,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { PublicConnectorCatalogAuthMethodDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import { Input } from "@vm0/ui/components/ui/input";
 import {
   Dialog,
@@ -61,6 +59,7 @@ import { IconCheck, IconLoader2 } from "@tabler/icons-react";
 import { Vm0LogoLink } from "./zero-directed-shared.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import type { FormEvent } from "react";
+import { useTranslation } from "react-i18next";
 import { ConnectorHelpText } from "./components/settings/connector-help-text.tsx";
 import {
   routeChatActionCallback$,
@@ -68,7 +67,7 @@ import {
 } from "../../signals/chat-page/action-callback.ts";
 
 function runDirectedConnect(params: {
-  item: PublicConnectorCatalogStatusItem;
+  item: PlatformConnectorCatalogStatusItem;
   connectorSlug: ConnectorSlug;
   agentId: string | null;
   signal: AbortSignal;
@@ -77,7 +76,7 @@ function runDirectedConnect(params: {
     method: PublicConnectorCatalogAuthMethodDetail,
     options: {
       readonly connectorLabel?: string;
-      readonly connectorIcon: PublicConnectorCatalogStatusItem["icon"];
+      readonly connectorIcon: PlatformConnectorCatalogStatusItem["icon"];
       readonly agentId?: string;
     },
     signal: AbortSignal,
@@ -183,6 +182,7 @@ function ManualGrantForm({
   manualGrantMethod: PublicConnectorCatalogAuthMethodDetail;
   onSuccess: () => void | Promise<void>;
 }) {
+  const { t } = useTranslation();
   const submit = useSet(submitManualGrant$);
   const setFormValue = useSet(setManualGrantFormValue$);
   const clearForm = useSet(clearManualGrantForm$);
@@ -271,7 +271,13 @@ function ManualGrantForm({
         className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-[10px] bg-[#ed4e01] text-sm font-medium text-white transition-colors hover:bg-[#d35400] disabled:opacity-60"
       >
         {submitting && <IconLoader2 size={14} className="animate-spin" />}
-        {submitting ? "Saving..." : "Save"}
+        {submitting
+          ? t(($) => {
+              return $.connectors.actions.saving;
+            })
+          : t(($) => {
+              return $.connectors.actions.save;
+            })}
       </button>
     </form>
   );
@@ -289,7 +295,7 @@ function ManualGrantDialog({
 }: {
   connectorSlug: ConnectorSlug;
   agentId: string | null;
-  icon: PublicConnectorCatalogStatusItem["icon"] | undefined;
+  icon: PlatformConnectorCatalogStatusItem["icon"] | undefined;
   connectorLabel: string;
   manualGrantMethod: PublicConnectorCatalogAuthMethodDetail | null;
   open: boolean;
@@ -334,12 +340,15 @@ function ConnectActions({
   disabled: boolean;
   onConnect: () => void;
 }) {
+  const { t } = useTranslation();
   if (isConnected) {
     return (
       <>
         <div className="inline-flex h-9 w-[100px] items-center justify-center gap-1.5 text-sm font-medium text-emerald-600">
           <IconCheck size={16} />
-          Connected
+          {t(($) => {
+            return $.connectors.card.connected;
+          })}
         </div>
         <button
           type="button"
@@ -348,7 +357,13 @@ function ConnectActions({
           className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-60 inline-flex items-center gap-1.5"
         >
           {isConnecting && <IconLoader2 size={12} className="animate-spin" />}
-          {isConnecting ? "Reconnecting..." : "Reconnect"}
+          {isConnecting
+            ? t(($) => {
+                return $.connectors.directed.reconnecting;
+              })
+            : t(($) => {
+                return $.connectors.actions.reconnect;
+              })}
         </button>
       </>
     );
@@ -361,7 +376,13 @@ function ConnectActions({
       className="inline-flex h-9 w-[100px] items-center justify-center gap-2 rounded-[10px] bg-[#ed4e01] text-sm font-medium text-white transition-colors hover:bg-[#d35400] disabled:opacity-60"
     >
       {isConnecting && <IconLoader2 size={14} className="animate-spin" />}
-      {isConnecting ? "Connecting..." : "Connect"}
+      {isConnecting
+        ? t(($) => {
+            return $.connectors.actions.connecting;
+          })
+        : t(($) => {
+            return $.connectors.actions.connect;
+          })}
     </button>
   );
 }
@@ -405,7 +426,7 @@ function DirectedConnectDialogs({
   onSuccess,
 }: {
   readonly connectorSlug: ConnectorSlug;
-  readonly icon: PublicConnectorCatalogStatusItem["icon"] | undefined;
+  readonly icon: PlatformConnectorCatalogStatusItem["icon"] | undefined;
   readonly connectorLabel: string;
   readonly manualGrantMethod: PublicConnectorCatalogAuthMethodDetail | null;
   readonly manualGrantDialogOpen: boolean;
@@ -450,7 +471,7 @@ function useDirectedConnectConnectorSlug(): ConnectorSlug | null {
 }
 
 function useDirectedConnectCatalogState(connectorSlug: ConnectorSlug | null): {
-  readonly item: PublicConnectorCatalogStatusItem | undefined;
+  readonly item: PlatformConnectorCatalogStatusItem | undefined;
   readonly isConnected: boolean;
   readonly isLoading: boolean;
   readonly unavailable: boolean;
@@ -461,7 +482,7 @@ function useDirectedConnectCatalogState(connectorSlug: ConnectorSlug | null): {
   const allData = catalogLoaded ? allLoadable.data : [];
   const item = connectorSlug
     ? allData.find((connector) => {
-        return connector.connectorRef === connectorSlug;
+        return connector.slug === connectorSlug;
       })
     : undefined;
   const optimisticallyConnected =
@@ -523,7 +544,7 @@ function DirectedConnectCardContent({
   canConnect,
   onConnect,
 }: {
-  readonly icon: PublicConnectorCatalogStatusItem["icon"] | undefined;
+  readonly icon: PlatformConnectorCatalogStatusItem["icon"] | undefined;
   readonly connectorLabel: string;
   readonly connectorDescription: string;
   readonly agentName: string;
@@ -533,6 +554,7 @@ function DirectedConnectCardContent({
   readonly canConnect: boolean;
   readonly onConnect: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
       <div className="pointer-events-auto flex w-[430px] max-w-[calc(100%-48px)] flex-col items-center gap-12 rounded-[20px] border border-border bg-background px-6 py-12 text-center">
@@ -548,8 +570,18 @@ function DirectedConnectCardContent({
               <>
                 <h1 className="text-lg font-medium text-foreground">
                   {isConnected
-                    ? `${connectorLabel} connected`
-                    : `${agentName} needs ${connectorLabel} to proceed`}
+                    ? t(
+                        ($) => {
+                          return $.connectors.directed.connected;
+                        },
+                        { connector: connectorLabel },
+                      )
+                    : t(
+                        ($) => {
+                          return $.connectors.directed.needsConnector;
+                        },
+                        { agent: agentName, connector: connectorLabel },
+                      )}
                 </h1>
                 <div className="flex items-center justify-center rounded-[10px] bg-muted p-2.5">
                   <ConnectorIcon icon={icon} size={20} />

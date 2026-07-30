@@ -5083,6 +5083,265 @@
       "when": 1785315790679,
       "tag": "0725_rename_chat_message_asset_refs_to_chat_event_asset_refs",
       "breakpoints": true
+    },
+    {
+      "idx": 726,
+      "version": "7",
+      "when": 1785319219172,
+      "tag": "0726_drop_teams_org_thread_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 727,
+      "version": "7",
+      "when": 1785322216162,
+      "tag": "0727_long_amphibian",
+      "breakpoints": true
+    },
+    {
+      "idx": 728,
+      "version": "7",
+      "when": 1785322216163,
+      "tag": "0728_add-canonical-user-message-columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 729,
+      "version": "7",
+      "when": 1785322216164,
+      "tag": "0729_bridge-canonical-user-message-columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 730,
+      "version": "7",
+      "when": 1785322216165,
+      "tag": "0730_switch-canonical-user-message-constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 731,
+      "version": "7",
+      "when": 1785322216166,
+      "tag": "0731_prefix_custom_connector_slugs",
+      "breakpoints": true
+    },
+    {
+      "idx": 732,
+      "version": "7",
+      "when": 1785322216167,
+      "tag": "0732_custom_connector_oauth_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 733,
+      "version": "7",
+      "when": 1785322216168,
+      "tag": "0733_enforce_custom_connector_oauth_mode",
+      "breakpoints": true
+    },
+    {
+      "idx": 734,
+      "version": "7",
+      "when": 1785326636355,
+      "tag": "0734_prepare_browser_billing_removal",
+      "breakpoints": true
+    },
+    {
+      "idx": 735,
+      "version": "7",
+      "when": 1785326650784,
+      "tag": "0735_remove_browser_usage_pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 736,
+      "version": "7",
+      "when": 1785336324333,
+      "tag": "0736_drop_chat_messages_compatibility_view",
+      "breakpoints": true
+    },
+    {
+      "idx": 737,
+      "version": "7",
+      "when": 1785341952944,
+      "tag": "0737_browser_session_resize_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 738,
+      "version": "7",
+      "when": 1785344698053,
+      "tag": "0738_expand_connector_slug_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 739,
+      "version": "7",
+      "when": 1785367511267,
+      "tag": "0739_retire_legacy_user_message_storage",
+      "breakpoints": true
+    },
+    {
+      "idx": 740,
+      "version": "7",
+      "when": 1785376274586,
+      "tag": "0740_drop_chat_message_asset_refs_compatibility_view",
+      "breakpoints": true
+    },
+    {
+      "idx": 741,
+      "version": "7",
+      "when": 1785381995195,
+      "tag": "0741_drop_telegram_thread_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 742,
+      "version": "7",
+      "when": 1785381995196,
+      "tag": "0742_chat_run_finished_trigger",
+      "breakpoints": true
+    },
+    {
+      "idx": 743,
+      "version": "7",
+      "when": 1785385539836,
+      "tag": "0743_workable_blob",
+      "breakpoints": true
+    },
+    {
+      "idx": 744,
+      "version": "7",
+      "when": 1785386872400,
+      "tag": "0744_add_agentphone_chat_thread_routes",
+      "breakpoints": true
+    },
+    {
+      "idx": 745,
+      "version": "7",
+      "when": 1785388611589,
+      "tag": "0745_spooky_nightcrawler",
+      "breakpoints": true
+    },
+    {
+      "idx": 746,
+      "version": "7",
+      "when": 1785391854798,
+      "tag": "0746_same_vision",
+      "breakpoints": true
+    },
+    {
+      "idx": 747,
+      "version": "7",
+      "when": 1785391854799,
+      "tag": "0747_groovy_ultragirl",
+      "breakpoints": true
+    },
+    {
+      "idx": 748,
+      "version": "7",
+      "when": 1785395016610,
+      "tag": "0748_secret_alex_power",
+      "breakpoints": true
+    },
+    {
+      "idx": 749,
+      "version": "7",
+      "when": 1785395016611,
+      "tag": "0749_add_draft_user_message_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 750,
+      "version": "7",
+      "when": 1785395016612,
+      "tag": "0750_validate_draft_user_message_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 751,
+      "version": "7",
+      "when": 1785395016613,
+      "tag": "0751_retire_draft_content_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 752,
+      "version": "7",
+      "when": 1785400935228,
+      "tag": "0752_chunky_gateway",
+      "breakpoints": true
+    },
+    {
+      "idx": 753,
+      "version": "7",
+      "when": 1785400947601,
+      "tag": "0753_backfill_chat_scoped_hosted_sites",
+      "breakpoints": true
+    },
+    {
+      "idx": 754,
+      "version": "7",
+      "when": 1785402433504,
+      "tag": "0754_expand_insights_connector_slug",
+      "breakpoints": true
+    },
+    {
+      "idx": 755,
+      "version": "7",
+      "when": 1785402433505,
+      "tag": "0755_expand_revokes_event_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 756,
+      "version": "7",
+      "when": 1785402433506,
+      "tag": "0756_expand_last_chat_event_seq_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 757,
+      "version": "7",
+      "when": 1785402433507,
+      "tag": "0757_expand_first_assistant_event_acknowledged_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 758,
+      "version": "7",
+      "when": 1785405505957,
+      "tag": "0758_drop_agentphone_thread_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 759,
+      "version": "7",
+      "when": 1785406871736,
+      "tag": "0759_drop_feishu_org_thread_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 760,
+      "version": "7",
+      "when": 1785408754076,
+      "tag": "0760_rename_chat_event_input_params",
+      "breakpoints": true
+    },
+    {
+      "idx": 761,
+      "version": "7",
+      "when": 1785409880174,
+      "tag": "0761_drop_github_issue_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 762,
+      "version": "7",
+      "when": 1785410977112,
+      "tag": "0762_remove_legacy_connector_identity_columns",
+      "breakpoints": true
     }
   ]
 }

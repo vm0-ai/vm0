@@ -203,7 +203,7 @@ function privateMethodFacts(
   const facts = new Map<string, PrivateAuthMethodFacts>();
   for (const connector of artifact.connectors) {
     for (const method of connector.authMethods) {
-      facts.set(authMethodKey(connector.connectorRef, method.id), {
+      facts.set(authMethodKey(connector.slug, method.id), {
         requiredScopes: [...requiredScopes(method)],
         supportsRefresh: method.access.kind === "refresh-token",
       });
@@ -415,7 +415,7 @@ async function readCurrentCatalog(args: {
         artifact,
         connectorBySlug: new Map(
           artifact.connectors.map((connector) => {
-            return [connector.connectorRef, connector];
+            return [connector.slug, connector];
           }),
         ),
         privateMethodFacts: privateMethodFacts(artifact),
@@ -553,7 +553,7 @@ function effectiveConnectors(args: {
     const authMethods = connector.authMethods.filter((method) => {
       if (
         args.catalog.filteredMethodKeys.has(
-          authMethodKey(connector.connectorRef, method.id),
+          authMethodKey(connector.slug, method.id),
         )
       ) {
         return false;
@@ -591,10 +591,10 @@ function referenceMetadataForCatalog(
 ): readonly ConnectorCatalogReferenceMetadata[] {
   const requestedSlugs = new Set(connectorSlugs);
   return catalog.artifact.connectors.flatMap((connector) => {
-    return requestedSlugs.has(connector.connectorRef)
+    return requestedSlugs.has(connector.slug)
       ? [
           {
-            connectorSlug: connector.connectorRef,
+            connectorSlug: connector.slug,
             label: connector.label,
             icon: iconForCatalog(connector),
           },
@@ -679,7 +679,8 @@ function connectorCatalogItem(
   effective: EffectiveConnector,
 ): PublicConnectorCatalogItem {
   return {
-    connectorRef: effective.connector.connectorRef,
+    connectorRef: effective.connector.slug,
+    slug: effective.connector.slug,
     label: effective.connector.label,
     description: effective.connector.description,
     icon: iconForCatalog(effective.connector),
@@ -722,7 +723,7 @@ export function listAcceptedConnectorCatalogAvailableSlugs(args: {
     featureStates: args.featureStates,
   })
     .map((entry) => {
-      return entry.connector.connectorRef;
+      return entry.connector.slug;
     })
     .sort();
 }
@@ -814,10 +815,7 @@ function connectorCatalogStatusItem(args: {
   const connector = effectiveMethod ? args.connector : null;
   const facts = effectiveMethod
     ? args.catalog.privateMethodFacts.get(
-        authMethodKey(
-          args.effective.connector.connectorRef,
-          effectiveMethod.id,
-        ),
+        authMethodKey(args.effective.connector.slug, effectiveMethod.id),
       )
     : undefined;
   if (effectiveMethod && !facts) {
@@ -940,7 +938,8 @@ export async function searchExternalConnectorCatalog(
     }
     return [
       {
-        id: connector.connectorRef,
+        id: connector.slug,
+        slug: connector.slug,
         label: connector.label,
         description: connector.description,
         authMethods: entry.authMethods.map((method) => {
@@ -960,7 +959,7 @@ export async function getExternalPublicConnectorCatalogDetail(
     featureStates: args.featureStates,
   });
   const connector = effective.find((entry) => {
-    return entry.connector.connectorRef === args.connectorSlug;
+    return entry.connector.slug === args.connectorSlug;
   });
   return connector ? connectorCatalogDetail(connector) : null;
 }
@@ -982,7 +981,7 @@ export async function listExternalPublicConnectorCatalogStatus(
     return connectorCatalogStatusItem({
       catalog,
       effective: entry,
-      connector: connectorsBySlug.get(entry.connector.connectorRef) ?? null,
+      connector: connectorsBySlug.get(entry.connector.slug) ?? null,
     });
   });
   return {
@@ -1006,7 +1005,7 @@ export async function getExternalPublicConnectorCatalogPermissionDetail(
     featureStates: args.featureStates,
   });
   const entry = effective.find((connector) => {
-    return connector.connector.connectorRef === args.connectorSlug;
+    return connector.connector.slug === args.connectorSlug;
   });
   if (!entry || entry.connector.firewall.kind === "none") {
     return null;
@@ -1016,7 +1015,8 @@ export async function getExternalPublicConnectorCatalogPermissionDetail(
     firewall.config.apis,
   );
   return {
-    connectorRef: entry.connector.connectorRef,
+    connectorRef: entry.connector.slug,
+    connectorSlug: entry.connector.slug,
     label: entry.connector.label,
     icon: iconForCatalog(entry.connector),
     permissionCount: permissions.length,

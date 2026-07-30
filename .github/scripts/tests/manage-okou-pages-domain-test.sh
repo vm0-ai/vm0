@@ -94,17 +94,24 @@ export CLOUDFLARE_API_TOKEN="test-token"
 export MOCK_CURL_LOG="$request_log"
 
 export MOCK_DNS_CONTENT="pr-22239-app.okou-app.pages.dev"
-PATH="${tmp_dir}/bin:${PATH}" bash "$script" \
-  ensure account-id zone-id okou-app pr-22239-app.omby.ai pr-22239-app
+status="$(PATH="${tmp_dir}/bin:${PATH}" bash "$script" \
+  begin account-id zone-id okou-app pr-22239-app.omby.ai pr-22239-app)"
+test "$status" = "active"
 if grep -q -- '--request PUT' "$request_log"; then
   echo "expected an already-correct DNS record to skip PUT" >&2
   exit 1
 fi
 
 : > "$request_log"
+output="$(PATH="${tmp_dir}/bin:${PATH}" bash "$script" \
+  ensure account-id zone-id okou-app pr-22239-app.omby.ai pr-22239-app)"
+grep -q 'Cloudflare Pages custom branch domain configured' <<< "$output"
+
+: > "$request_log"
 export MOCK_DNS_CONTENT="okou-app.pages.dev"
-PATH="${tmp_dir}/bin:${PATH}" bash "$script" \
-  ensure account-id zone-id okou-app pr-22239-app.omby.ai pr-22239-app
+status="$(PATH="${tmp_dir}/bin:${PATH}" bash "$script" \
+  begin account-id zone-id okou-app pr-22239-app.omby.ai pr-22239-app)"
+test "$status" = "active"
 grep -q -- '--request PUT' "$request_log"
 
 : > "$request_log"
@@ -113,8 +120,18 @@ printf '0\n' > "$pages_state_file"
 export MOCK_PAGES_PENDING_RESPONSES="31"
 export MOCK_PAGES_STATE_FILE="$pages_state_file"
 export MOCK_DNS_CONTENT="okou-app.pages.dev"
+status="$(PATH="${tmp_dir}/bin:${PATH}" bash "$script" \
+  begin account-id zone-id okou-app pr-22239-app.omby.ai pr-22239-app)"
+test "$status" = "pending"
+test "$(<"$pages_state_file")" = "1"
+if grep -q 'pr-22239-app.okou-app.pages.dev' "$request_log"; then
+  echo "expected pending validation to keep the project Pages target" >&2
+  exit 1
+fi
+
+: > "$request_log"
 PATH="${tmp_dir}/bin:${PATH}" bash "$script" \
-  ensure account-id zone-id okou-app pr-22239-app.omby.ai pr-22239-app
+  finish account-id zone-id okou-app pr-22239-app.omby.ai pr-22239-app
 test "$(<"$pages_state_file")" = "32"
 grep -q -- '--request PUT' "$request_log"
 unset MOCK_PAGES_PENDING_RESPONSES MOCK_PAGES_STATE_FILE
@@ -122,8 +139,9 @@ unset MOCK_PAGES_PENDING_RESPONSES MOCK_PAGES_STATE_FILE
 : > "$request_log"
 export MOCK_PAGES_DOMAIN_EXISTS="false"
 export MOCK_DNS_CONTENT="pr-22239-app.okou-app.pages.dev"
-PATH="${tmp_dir}/bin:${PATH}" bash "$script" \
-  ensure account-id zone-id okou-app pr-22239-app.omby.ai pr-22239-app
+status="$(PATH="${tmp_dir}/bin:${PATH}" bash "$script" \
+  begin account-id zone-id okou-app pr-22239-app.omby.ai pr-22239-app)"
+test "$status" = "active"
 grep -q -- '--request POST' "$request_log"
 
 echo "manage-okou-pages-domain tests passed"

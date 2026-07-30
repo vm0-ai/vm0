@@ -1,4 +1,5 @@
 import type { AgentInstructions } from "../../signals/zero-page/agent-types.ts";
+import { useTranslation } from "react-i18next";
 import { ZeroUnsavedBar } from "./zero-unsaved-bar.tsx";
 import { TiptapInstructionsEditor } from "./tiptap-instructions-editor.tsx";
 
@@ -27,6 +28,7 @@ export function ZeroInstructionsTab({
   onDiscard,
   onBuild,
 }: ZeroInstructionsTabProps) {
+  const { t } = useTranslation("agents");
   const rawContent = instructions?.content ?? "";
   const displayContent = editedContent ?? rawContent;
 
@@ -51,6 +53,47 @@ export function ZeroInstructionsTab({
             initialContent={displayContent}
             onChange={onEdit}
             disabled={isBuilding}
+            ariaLabel={t(($) => {
+              return $.instructions.editor.accessibilityLabel;
+            })}
+            placeholder={t(($) => {
+              return $.instructions.editor.placeholder;
+            })}
+            footerHint={t(($) => {
+              return $.instructions.editor.footerHint;
+            })}
+            toolbarLabels={{
+              bold: t(($) => {
+                return $.instructions.editor.toolbar.bold;
+              }),
+              italic: t(($) => {
+                return $.instructions.editor.toolbar.italic;
+              }),
+              strikethrough: t(($) => {
+                return $.instructions.editor.toolbar.strikethrough;
+              }),
+              inlineCode: t(($) => {
+                return $.instructions.editor.toolbar.inlineCode;
+              }),
+              heading1: t(($) => {
+                return $.instructions.editor.toolbar.heading1;
+              }),
+              heading2: t(($) => {
+                return $.instructions.editor.toolbar.heading2;
+              }),
+              heading3: t(($) => {
+                return $.instructions.editor.toolbar.heading3;
+              }),
+              bulletList: t(($) => {
+                return $.instructions.editor.toolbar.bulletList;
+              }),
+              orderedList: t(($) => {
+                return $.instructions.editor.toolbar.orderedList;
+              }),
+              blockquote: t(($) => {
+                return $.instructions.editor.toolbar.blockquote;
+              }),
+            }}
           />
           {buildError && (
             <p className="text-xs font-medium text-destructive mt-3">
@@ -65,6 +108,15 @@ export function ZeroInstructionsTab({
           onDiscard={onDiscard}
           onSave={onBuild}
           saving={isBuilding}
+          message={t(($) => {
+            return $.unsaved.message;
+          })}
+          discardLabel={t(($) => {
+            return $.actions.discard;
+          })}
+          saveLabel={t(($) => {
+            return $.actions.save;
+          })}
         />
       )}
     </div>

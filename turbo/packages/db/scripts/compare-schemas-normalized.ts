@@ -32,6 +32,46 @@ interface ConstraintInfo {
   constraint_def: string;
 }
 
+// Browser billing is in the first half of a two-release column contraction:
+// current code no longer declares these columns, but the physical columns must
+// remain until the previous API version drains. Remove this allowlist together
+// with the physical columns in the follow-up contraction migration.
+const TRANSITIONAL_BROWSER_BILLING_COLUMNS = new Set([
+  "browser_sessions.max_credits",
+  "browser_sessions.gross_credits",
+  "browser_sessions.credits_charged",
+  "browser_session_instances.billing_run_id",
+  "browser_session_instances.browser_cost_microusd",
+  "browser_session_instances.proxy_cost_microusd",
+  "browser_session_instances.proxy_used_mb",
+  "browser_session_instances.pricing_unit_price",
+  "browser_session_instances.pricing_unit_size",
+  "browser_session_instances.gross_credits",
+  "browser_session_instances.credits_charged",
+  "browser_session_instances.usage_event_id",
+  "browser_session_instances.settled_at",
+]);
+const TRANSITIONAL_BROWSER_BILLING_CONSTRAINTS = new Set([
+  "browser_session_instances.browser_session_instances_usage_event_id_usage_event_id_fk",
+]);
+
+// ChatEvent property columns are in release 1 of a three-release expansion.
+// The physical columns and canonical index/FK exist, but this release must not
+// declare them in Drizzle: an ORM-generated SELECT or RETURNING list would then
+// reference them if API promotion raced the migration. Remove these allowlists
+// in the property-cutover release, when the columns enter the runtime schema.
+const TRANSITIONAL_CHAT_EVENT_PROPERTY_COLUMNS = new Set([
+  "chat_events.revokes_event_id",
+  "chat_threads.last_chat_event_seq_id",
+  "zero_runs.first_assistant_event_acknowledged_at",
+]);
+const TRANSITIONAL_CHAT_EVENT_PROPERTY_INDEXES = new Set([
+  "chat_events_revokes_event_id_unique",
+]);
+const TRANSITIONAL_CHAT_EVENT_PROPERTY_CONSTRAINTS = new Set([
+  "chat_events.chat_events_revokes_event_id_chat_events_id_fk",
+]);
+
 // Get database URLs from command line args
 const db1Url = process.argv[2];
 const db2Url = process.argv[3];
@@ -60,7 +100,13 @@ async function getTableColumns(client: Client): Promise<TableColumn[]> {
       AND t.table_type = 'BASE TABLE'
     ORDER BY c.table_name, c.column_name
   `);
-  return result.rows;
+  return result.rows.filter((column) => {
+    const columnName = `${column.table_name}.${column.column_name}`;
+    return (
+      !TRANSITIONAL_BROWSER_BILLING_COLUMNS.has(columnName) &&
+      !TRANSITIONAL_CHAT_EVENT_PROPERTY_COLUMNS.has(columnName)
+    );
+  });
 }
 
 async function getIndexes(client: Client): Promise<IndexInfo[]> {
@@ -73,7 +119,9 @@ async function getIndexes(client: Client): Promise<IndexInfo[]> {
     WHERE schemaname = 'public'
     ORDER BY tablename, indexname
   `);
-  return result.rows;
+  return result.rows.filter((index) => {
+    return !TRANSITIONAL_CHAT_EVENT_PROPERTY_INDEXES.has(index.index_name);
+  });
 }
 
 async function getConstraints(client: Client): Promise<ConstraintInfo[]> {
@@ -96,13 +144,21 @@ async function getConstraints(client: Client): Promise<ConstraintInfo[]> {
       -- CHECK constraints are validated against the Drizzle snapshot. PostgreSQL
       -- 18 also exposes NOT NULL constraints here, but column nullability is
       -- already compared above and their generated names change across renames.
-      AND catalog_constraint.contype NOT IN ('c', 'n')
+      -- Trigger constraints, like ordinary triggers, are migration-owned objects
+      -- that Drizzle cannot represent and require dedicated behavioral checks.
+      AND catalog_constraint.contype NOT IN ('c', 'n', 't')
     ORDER BY
       relation.relname,
       catalog_constraint.contype,
       catalog_constraint.conname
   `);
-  return result.rows;
+  return result.rows.filter((constraint) => {
+    const constraintName = `${constraint.table_name}.${constraint.constraint_name}`;
+    return (
+      !TRANSITIONAL_BROWSER_BILLING_CONSTRAINTS.has(constraintName) &&
+      !TRANSITIONAL_CHAT_EVENT_PROPERTY_CONSTRAINTS.has(constraintName)
+    );
+  });
 }
 
 function normalizeColumnDefault(def: string | null): string | null {

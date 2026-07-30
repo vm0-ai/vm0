@@ -100,7 +100,22 @@ cat >"${fake_bin}/aws" <<'SH'
 set -euo pipefail
 printf 'aws %s\n' "$*" >>"$MOCK_BOUNDARY_LOG"
 [ "${1:-}" = "s3" ] && [ "${2:-}" = "cp" ] || exit 2
-cp -a "${MOCK_APP_ARTIFACT_DIR}/." "$4/"
+case "$3" in
+  */dist.tar.gz)
+    tar -czf "$4" \
+      -C "$MOCK_APP_ARTIFACT_DIR" \
+      --exclude=./manifest.json \
+      --exclude=./ready.json \
+      .
+    ;;
+  */manifest.json | */ready.json)
+    cp "${MOCK_APP_ARTIFACT_DIR}/$(basename "$3")" "$4"
+    ;;
+  *)
+    echo "unexpected App artifact object: $3" >&2
+    exit 2
+    ;;
+esac
 SH
 
 cat >"${fake_bin}/ssh" <<'SH'
@@ -158,7 +173,10 @@ grep -qx "api_deployment_url=https://api-0.vercel.app" "$output_file" || fail "m
 grep -qx "runner_version=1.2.3" "$output_file" || fail "missing Runner version output"
 runner_matrix=$(sed -n 's/^runner_matrix=//p' "$output_file")
 jq -e 'length == 2 and .[0].id == "arm64" and .[1].id == "x86_64"' >/dev/null <<<"$runner_matrix" || fail "unexpected Runner matrix"
-grep -q "aws s3 cp s3://test-bucket/okou-app/${target_commit}/" "${tmp_dir}/boundaries.log" || fail "full App artifact was not downloaded"
+grep -q "aws s3 cp s3://test-bucket/okou-app/${target_commit}/dist.tar.gz" "${tmp_dir}/boundaries.log" || fail "full App artifact was not downloaded"
+if grep -q -- '--recursive' "${tmp_dir}/boundaries.log"; then
+  fail "archived App artifacts must not be downloaded per file"
+fi
 
 : >"${tmp_dir}/boundaries.log"
 assert_failure "found 0" run_resolver "${tmp_dir}/zero.output" MOCK_VERCEL_MATCH_COUNT=0
@@ -247,16 +265,22 @@ ruby -e '
   require "yaml"
   rollback_config = YAML.safe_load(File.read(ARGV[0]), aliases: true)
   release_config = YAML.safe_load(File.read(ARGV[1]), aliases: true)
+  turbo_config = YAML.safe_load(File.read(ARGV[2]), aliases: true)
   raise "rollback must not use lossy GitHub concurrency" if rollback_config.key?("concurrency")
   raise "release must not use lossy GitHub concurrency" if release_config.key?("concurrency")
   rollback = rollback_config.fetch("jobs")
   release = release_config.fetch("jobs")
+  turbo = turbo_config.fetch("jobs")
   raise "rollback resolver must wait for queue" unless rollback.fetch("resolve-target").fetch("needs") == "queue-production-deploy"
   raise "App must wait for resolver" unless rollback.fetch("rollback-app").fetch("needs") == "resolve-target"
   raise "Runner must wait for resolver" unless rollback.fetch("rollback-runner").fetch("needs") == "resolve-target"
   raise "API must wait for resolver" unless rollback.fetch("rollback-api").fetch("needs") == "resolve-target"
   release_job = release.fetch("release-please")
-  raise "release must wait for production queue" unless release_job.fetch("needs") == "queue-production-deploy"
+  release_needs = Array(release_job.fetch("needs"))
+  raise "release must wait for production queue" unless release_needs.include?("queue-production-deploy")
+  raise "release must wait for release detection" unless release_needs.include?("detect-release-commit")
+  queue_needs = Array(release.fetch("queue-production-deploy").fetch("needs"))
+  raise "production queue must wait for release detection" unless queue_needs.include?("detect-release-commit")
   release_target_output = "$" + "{{ steps.release-target.outputs.sha }}"
   raise "release job must expose the resolved release target" unless release_job.fetch("outputs").fetch("release_target") == release_target_output
   raise "release workflow must not use the triggering workflow SHA as a release target" if File.read(ARGV[1]).include?("github.event.workflow_run.head_sha")
@@ -265,6 +289,7 @@ ruby -e '
   desktop_target = "desktop-v" + "$" + "{{ needs.release-please.outputs.desktop_version }}"
   checkout_ref_exceptions = {
     "queue-production-deploy" => "main",
+    "refresh-release-pull-request" => "main",
     "build-desktop-release" => desktop_target,
     "publish-desktop-update-manifest" => desktop_target,
     "update-rollback-dashboard" => "main",
@@ -288,6 +313,22 @@ ruby -e '
   raise "Runtime API Schema must use the resolved release target" unless schema_step.fetch("env").fetch("RELEASE_SHA") == expected_target
   dashboard_step = release.fetch("update-rollback-dashboard").fetch("steps").find { |step| step["name"] == "Update rollback dashboard issue" }
   raise "rollback dashboard must use the resolved release target" unless dashboard_step.fetch("env").fetch("RELEASE_TARGET") == expected_target
-' "${repo_root}/.github/workflows/rollback-production.yml" "${repo_root}/.github/workflows/release-please.yml"
+
+  artifact_fetch_helper = "fetch-okou-app-artifact.sh"
+  release_app_step = release.fetch("promote-app-production").fetch("steps").find { |step| step["id"] == "pages-production" }
+  release_app_run = release_app_step.fetch("run")
+  raise "release App deployment must use the shared artifact fetcher" unless release_app_run.include?(artifact_fetch_helper)
+  raise "release App deployment must not fall back to per-file artifacts" if release_app_run.include?("--recursive")
+  rollback_app_step = rollback.fetch("rollback-app").fetch("steps").find { |step| step["id"] == "app" }
+  raise "rollback App deployment must use the shared artifact fetcher" unless rollback_app_step.fetch("run").include?(artifact_fetch_helper)
+
+  artifact_upload_step = turbo.fetch("deploy-app").fetch("steps").find { |step| step["name"] == "Upload canonical app artifact" }
+  artifact_upload_run = artifact_upload_step.fetch("run")
+  raise "deploy-app must upload the archived App artifact" unless artifact_upload_run.include?("/dist.tar.gz")
+  raise "deploy-app must not upload per-file App artifacts" if artifact_upload_run.include?("aws s3 cp turbo/apps/platform/dist")
+' \
+  "${repo_root}/.github/workflows/rollback-production.yml" \
+  "${repo_root}/.github/workflows/release-please.yml" \
+  "${repo_root}/.github/workflows/turbo.yml"
 
 echo "resolve-production-rollback-target tests passed"

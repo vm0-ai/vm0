@@ -353,6 +353,7 @@ export const detectWorkflowConnectorReadiness$ = command(
         }
         connectors.push({
           connectorRef: connectorSlug,
+          connectorSlug,
           label: fallbackMetadata.label,
           icon: fallbackMetadata.icon,
           reason,
@@ -362,6 +363,7 @@ export const detectWorkflowConnectorReadiness$ = command(
       }
       connectors.push({
         connectorRef: connectorSlug,
+        connectorSlug,
         label: catalogEntry.label,
         icon: catalogEntry.icon,
         reason,

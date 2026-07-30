@@ -147,6 +147,21 @@ describe("auth tokens", () => {
     expect(verifyZeroToken(token)?.capabilities).toContain("chat-thread:write");
   });
 
+  it("grants chat event read and write independently of prompt discovery", () => {
+    const token = generateZeroToken("user_zero", "run_zero", "org_zero", {
+      [FeatureSwitchKey.ZeroChatMessaging]: false,
+    });
+
+    expect(decodeZeroTokenPayloadForTest(token)).toMatchObject({
+      capabilities: expect.arrayContaining([
+        "chat-event:read",
+        "chat-event:write",
+      ]),
+    });
+    expect(verifyZeroToken(token)?.capabilities).toContain("chat-event:read");
+    expect(verifyZeroToken(token)?.capabilities).toContain("chat-event:write");
+  });
+
   it("gates banking capability behind the banking feature switch", () => {
     const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
     const enabledToken = generateZeroToken(
@@ -164,6 +179,23 @@ describe("auth tokens", () => {
     );
   });
 
+  it("gates custom connector writes behind the CLI create feature switch", () => {
+    const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
+    const enabledToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_zero",
+      { [FeatureSwitchKey.CustomConnectorCliCreate]: true },
+    );
+
+    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
+      "connector:write",
+    );
+    expect(verifyZeroToken(enabledToken)?.capabilities).toContain(
+      "connector:write",
+    );
+  });
+
   it("grants scrape capability by default", () => {
     const token = generateZeroToken("user_zero", "run_zero", "org_zero");
 
@@ -176,21 +208,10 @@ describe("auth tokens", () => {
     expect(verifyZeroToken(token)?.capabilities).toContain("web-search:read");
   });
 
-  it("grants finance capability by default and respects explicit opt-out", () => {
-    const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
-    const disabledToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_zero",
-      { [FeatureSwitchKey.ZeroFinance]: false },
-    );
+  it("grants finance capability by default", () => {
+    const token = generateZeroToken("user_zero", "run_zero", "org_zero");
 
-    expect(verifyZeroToken(defaultToken)?.capabilities).toContain(
-      "finance:read",
-    );
-    expect(verifyZeroToken(disabledToken)?.capabilities).not.toContain(
-      "finance:read",
-    );
+    expect(verifyZeroToken(token)?.capabilities).toContain("finance:read");
   });
 
   it("includes people-search capability in zero-scoped tokens", () => {

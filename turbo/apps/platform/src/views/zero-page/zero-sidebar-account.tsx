@@ -29,11 +29,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
 } from "@vm0/ui";
-import {
-  clerk$,
-  currentUserInfo$,
-  resolveAppAuthUrl,
-} from "../../signals/auth.ts";
+import { clerk$, currentUserInfo$ } from "../../signals/auth.ts";
 import { suppressUnauthorizedRedirectForAuthTransition$ } from "../../signals/auth-retry.ts";
 import {
   reloadAccountMenuSubscriptionUsageRows$,
@@ -69,6 +65,8 @@ import {
   useSubscriptionUsageRows,
 } from "./zero-sidebar-subscriptions.tsx";
 import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.tsx";
+import { formatLocalizedNumber } from "../../i18n/format.ts";
+import { i18n } from "../../i18n/index.ts";
 
 interface SessionAccount {
   sessionId: string;
@@ -77,6 +75,18 @@ interface SessionAccount {
   initial: string;
   imageUrl: string | undefined;
   isActive: boolean;
+}
+
+function formatCreditBalance(credits: number): string {
+  return i18n.t(
+    ($) => {
+      return $.settings.accountMenu.creditBalance;
+    },
+    {
+      count: credits,
+      value: formatLocalizedNumber(credits),
+    },
+  );
 }
 
 function AccountAvatar({
@@ -290,10 +300,7 @@ function AccountCreditBalanceGroup({
   const credits =
     billingLoadable.state === "hasData" ? billingLoadable.data.credits : null;
   const loading = billingLoadable.state === "loading" && credits === null;
-  const creditLabel =
-    credits !== null
-      ? `${credits.toLocaleString("en-US")} ${credits === 1 ? "credit" : "credits"}`
-      : null;
+  const creditLabel = credits !== null ? formatCreditBalance(credits) : null;
 
   if (!loading && creditLabel === null) {
     return null;
@@ -329,10 +336,7 @@ function AccountUsageGroupWithCredit({
   const credits =
     billingLoadable.state === "hasData" ? billingLoadable.data.credits : null;
   const creditLoading = billingLoadable.state === "loading" && credits === null;
-  const creditLabel =
-    credits !== null
-      ? `${credits.toLocaleString("en-US")} ${credits === 1 ? "credit" : "credits"}`
-      : null;
+  const creditLabel = credits !== null ? formatCreditBalance(credits) : null;
   const showCredit = creditLoading || creditLabel !== null;
   const showSubscriptions = subscriptionsLoading || rows.length > 0;
 
@@ -664,10 +668,9 @@ export function AccountDropdown({
   const handleAccountAction = (action: ZeroAccountAction) => {
     if (action === "signout") {
       const sessionId = clerk?.session?.id;
-      const signInUrl = new URL(resolveAppAuthUrl("/sign-in"));
-      signInUrl.searchParams.set("redirect_url", location.href);
+      const signInUrl = clerk?.buildSignInUrl({ redirectUrl: location.href });
       detach(
-        clerk?.signOut({ sessionId, redirectUrl: signInUrl.toString() }),
+        clerk?.signOut({ sessionId, redirectUrl: signInUrl }),
         Reason.DomCallback,
       );
       return;

@@ -1,5 +1,172 @@
 # Changelog
 
+## [8.491.0](https://github.com/vm0-ai/vm0/compare/core-v8.490.0...core-v8.491.0) (2026-07-30)
+
+
+### Features
+
+* **platform:** enable artifacts for all organizations ([#24071](https://github.com/vm0-ai/vm0/issues/24071)) ([72ffe1b](https://github.com/vm0-ai/vm0/commit/72ffe1bf636822e60edc31ce52231ee5b16f3d1a))
+
+
+### Refactoring
+
+* remove legacy chat message capability aliases ([#24063](https://github.com/vm0-ai/vm0/issues/24063)) ([9ecc474](https://github.com/vm0-ai/vm0/commit/9ecc4744be290710c473f47a06460cd49a158a52))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.251.1
+
+## [8.490.0](https://github.com/vm0-ai/vm0/compare/core-v8.489.0...core-v8.490.0) (2026-07-30)
+
+
+### Features
+
+* **connectors:** add agent-driven custom connector creation ([#24020](https://github.com/vm0-ai/vm0/issues/24020)) ([49a30be](https://github.com/vm0-ai/vm0/commit/49a30bed8aa3295f875ea56ad81edcd473a49fce))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.251.0
+
+## [8.489.0](https://github.com/vm0-ai/vm0/compare/core-v8.488.3...core-v8.489.0) (2026-07-30)
+
+
+### Features
+
+* **platform:** enable locale rollout and browser detection ([#23983](https://github.com/vm0-ai/vm0/issues/23983)) ([9b689ad](https://github.com/vm0-ai/vm0/commit/9b689ad900016b7a04f930a57ae20f9702fdff69))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.250.2
+
+## [8.488.3](https://github.com/vm0-ai/vm0/compare/core-v8.488.2...core-v8.488.3) (2026-07-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.250.1
+
+## [8.488.2](https://github.com/vm0-ai/vm0/compare/core-v8.488.1...core-v8.488.2) (2026-07-30)
+
+
+### Refactoring
+
+* **cli:** remove unnecessary resource candidate groups ([#23961](https://github.com/vm0-ai/vm0/issues/23961)) ([6c46502](https://github.com/vm0-ai/vm0/commit/6c46502cc34dc59fcd6b612cb72c7c21659178da))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.250.0
+
+## [8.488.1](https://github.com/vm0-ai/vm0/compare/core-v8.488.0...core-v8.488.1) (2026-07-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.249.2
+
+## [8.488.0](https://github.com/vm0-ai/vm0/compare/core-v8.487.0...core-v8.488.0) (2026-07-30)
+
+
+### Features
+
+* enable codex session pruning globally ([#23937](https://github.com/vm0-ai/vm0/issues/23937)) ([e186ffe](https://github.com/vm0-ai/vm0/commit/e186ffe85a92fe9a5b960e5e3174893d54526557))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.249.1
+
+## [8.487.0](https://github.com/vm0-ai/vm0/compare/core-v8.486.3...core-v8.487.0) (2026-07-30)
+
+
+### Features
+
+* rename presentation picker templates and palettes ([#23879](https://github.com/vm0-ai/vm0/issues/23879)) ([68e29a5](https://github.com/vm0-ai/vm0/commit/68e29a5f25798f10561afb25c217233c5381316d))
+
+
+### Refactoring
+
+* remove the fully rolled out zero-finance feature switch ([#23889](https://github.com/vm0-ai/vm0/issues/23889)) ([aa55c8f](https://github.com/vm0-ai/vm0/commit/aa55c8f6a90c5a1b3c6fa043b8852c71f1dbc009))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.249.0
+
+## [8.486.3](https://github.com/vm0-ai/vm0/compare/core-v8.486.2...core-v8.486.3) (2026-07-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.248.1
+
+## [8.486.2](https://github.com/vm0-ai/vm0/compare/core-v8.486.1...core-v8.486.2) (2026-07-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.248.0
+
+## [8.486.1](https://github.com/vm0-ai/vm0/compare/core-v8.486.0...core-v8.486.1) (2026-07-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.247.0
+
+## [8.486.0](https://github.com/vm0-ai/vm0/compare/core-v8.485.1...core-v8.486.0) (2026-07-29)
+
+
+### Features
+
+* **cli:** add chat send, queue, and cancel commands ([#23798](https://github.com/vm0-ai/vm0/issues/23798)) ([acae822](https://github.com/vm0-ai/vm0/commit/acae82290bcd72aaf2af292f405db86a05821226))
+
+
+### Refactoring
+
+* **connectors:** align custom oauth storage with organization model ([#23521](https://github.com/vm0-ai/vm0/issues/23521)) ([ab3e118](https://github.com/vm0-ai/vm0/commit/ab3e118690a3d7346dadb571ffb38bf9e5d40bbf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.246.0
+
+## [8.485.1](https://github.com/vm0-ai/vm0/compare/core-v8.485.0...core-v8.485.1) (2026-07-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.245.0
+
 ## [8.485.0](https://github.com/vm0-ai/vm0/compare/core-v8.484.4...core-v8.485.0) (2026-07-29)
 
 
@@ -7904,7 +8071,7 @@
 ### Features
 
 * add zero web upload-file and file:read/file:write caps ([#10256](https://github.com/vm0-ai/vm0/issues/10256)) ([497dc17](https://github.com/vm0-ai/vm0/commit/497dc17f454d584e1427b10a6ae3e28a63c7c726))
-* **cli:** scaffold zero search command and chat-message:read capability ([#10251](https://github.com/vm0-ai/vm0/issues/10251)) ([bc6cb51](https://github.com/vm0-ai/vm0/commit/bc6cb51312022317278d86896e360cca6ef777f4))
+* **cli:** scaffold zero search command and chat message read capability ([#10251](https://github.com/vm0-ai/vm0/issues/10251)) ([bc6cb51](https://github.com/vm0-ai/vm0/commit/bc6cb51312022317278d86896e360cca6ef777f4))
 * **voice-io:** gate audio input by org tier with free-tier quota ([#10258](https://github.com/vm0-ai/vm0/issues/10258)) ([2df8bb8](https://github.com/vm0-ai/vm0/commit/2df8bb8bf4baf7fbc744e20a621bd9a1107ba552))
 
 
@@ -8170,7 +8337,7 @@
 
 * add auth.query support to firewall schema for query-parameter authentication ([#9583](https://github.com/vm0-ai/vm0/issues/9583)) ([c39727a](https://github.com/vm0-ai/vm0/commit/c39727abd12ddd86271294324cf352fe86f96658))
 * add GET /api/zero/chat-threads/:id/messages with sinceId cursor pagination ([#9561](https://github.com/vm0-ai/vm0/issues/9561)) ([dcc04b4](https://github.com/vm0-ai/vm0/commit/dcc04b4feb23d25c75220b4ad983b91c0dd56fee))
-* add zero chat message send command with chat-message:write capability ([#9580](https://github.com/vm0-ai/vm0/issues/9580)) ([93692d7](https://github.com/vm0-ai/vm0/commit/93692d7cff357a7d9d015e194dd134f475dd9ccb))
+* add zero chat message send command with chat message write capability ([#9580](https://github.com/vm0-ai/vm0/issues/9580)) ([93692d7](https://github.com/vm0-ai/vm0/commit/93692d7cff357a7d9d015e194dd134f475dd9ccb))
 
 ## [8.189.1](https://github.com/vm0-ai/vm0/compare/core-v8.189.0...core-v8.189.1) (2026-04-16)
 

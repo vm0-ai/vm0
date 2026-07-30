@@ -3,6 +3,7 @@ import { connectorSlugSchema } from "@vm0/api-contracts/contracts/connector-iden
 import {
   compatibleStoredExecutionContextSchema,
   elapsedSinceApiStartMs,
+  NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   runnersNetworkPolicyRefreshContract,
   runnersBuiltinFirewallsResolveContract,
@@ -17,6 +18,10 @@ import {
   type StoredConnectorPermissionBaseline,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
+import {
+  runStatusSchema,
+  type RunStatus,
+} from "@vm0/api-contracts/contracts/runs";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
@@ -735,11 +740,12 @@ interface ClaimedRun {
   readonly vars: unknown;
 }
 
-interface ActiveRunNetworkPolicyScope {
+interface RunNetworkPolicyScope {
   readonly runId: string;
   readonly userId: string;
   readonly orgId: string;
   readonly agentId: string;
+  readonly status: RunStatus;
 }
 
 type ClaimLookupResult = ClaimableJob | ReturnType<typeof notFound>;
@@ -748,29 +754,35 @@ function isClaimableJob(value: ClaimLookupResult): value is ClaimableJob {
   return "job" in value;
 }
 
-async function getActiveRunNetworkPolicyScope(
+async function getRunNetworkPolicyScope(
   db: Db,
   runId: string,
   signal: AbortSignal,
-): Promise<ActiveRunNetworkPolicyScope | undefined> {
+): Promise<RunNetworkPolicyScope | undefined> {
   const [row] = await db
     .select({
       runId: agentRuns.id,
       userId: agentRuns.userId,
       orgId: agentRuns.orgId,
       agentId: agentSessions.agentComposeId,
+      status: agentRuns.status,
     })
     .from(agentRuns)
     .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
-    .where(and(eq(agentRuns.id, runId), eq(agentRuns.status, "running")))
+    .where(eq(agentRuns.id, runId))
     .limit(1);
   signal.throwIfAborted();
-  return row;
+  return row
+    ? {
+        ...row,
+        status: runStatusSchema.parse(row.status),
+      }
+    : undefined;
 }
 
 function runnerRunAuthorizationError(
   auth: RunnerAuthContext,
-  run: Pick<ActiveRunNetworkPolicyScope, "userId">,
+  run: Pick<RunNetworkPolicyScope, "userId">,
 ) {
   if (auth.type === "official-runner") {
     return null;
@@ -778,6 +790,15 @@ function runnerRunAuthorizationError(
   return run.userId === auth.userId
     ? null
     : forbidden("Run does not belong to user");
+}
+
+function isTerminalRunStatus(status: RunStatus): boolean {
+  return (
+    status === "completed" ||
+    status === "failed" ||
+    status === "timeout" ||
+    status === "cancelled"
+  );
 }
 
 async function getClaimableJob(
@@ -2322,17 +2343,31 @@ const networkPolicyRefreshInner$ = command(
       pathParamsOf(runnersNetworkPolicyRefreshContract.refresh),
     ).runId;
     const db = set(writeDb$);
-    const run = await getActiveRunNetworkPolicyScope(db, runId, signal);
+    const run = await getRunNetworkPolicyScope(db, runId, signal);
     if (!run) {
       return notFound("Run not found");
     }
 
     const authError = runnerRunAuthorizationError(auth, run);
+    if (run.status !== "running") {
+      if (authError || !isTerminalRunStatus(run.status)) {
+        return notFound("Run not found");
+      }
+      return {
+        status: 409 as const,
+        body: {
+          error: {
+            code: NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+            message: "Run is terminal",
+          },
+        },
+      };
+    }
     if (authError) {
       return authError;
     }
 
-    const connectorSlugs = [...new Set(body.data.connectorRefs)];
+    const { connectorSlugs } = body.data;
     const refreshes = await resolveActiveNetworkPolicyRefreshes(
       db,
       {
@@ -2352,8 +2387,7 @@ const networkPolicyRefreshInner$ = command(
       body: {
         refreshes: refreshes.map((refresh) => {
           return {
-            // TODO(#23619): Rename with the runner response wire contract.
-            connectorRef: refresh.connectorSlug,
+            connectorSlug: refresh.connectorSlug,
             networkPolicy: refresh.networkPolicy,
             nextRefreshAt: refresh.nextRefreshAt,
           };

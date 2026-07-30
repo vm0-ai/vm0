@@ -1,9 +1,20 @@
-import { browserSessionInstances } from "@vm0/db/schema/browser-session";
 import { usageAllowanceAllocations } from "@vm0/db/schema/org-usage-allowance";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usageEventHourlyRollup } from "@vm0/db/schema/usage-event-hourly-rollup";
 import { command } from "ccstate";
-import { count, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  count,
+  eq,
+  gte,
+  isNotNull,
+  isNull,
+  lt,
+  sql,
+  type SQL,
+} from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
 import {
@@ -17,6 +28,9 @@ import { lockUsageEventCompaction } from "./usage-event-compaction-lock.service"
 
 const L = logger("CronCompactUsageEvents");
 const USAGE_EVENT_COMPACTION_RAW_SEED_LIMIT = 500;
+const event = alias(usageEvent, "event");
+const allocation = alias(usageAllowanceAllocations, "allocation");
+const hourly = alias(usageEventHourlyRollup, "hourly");
 
 type UsageEventCompactionDb = Pick<Db, "execute" | "transaction">;
 
@@ -26,7 +40,6 @@ interface UsageEventCompactionStats {
   readonly seededRawRows: number;
   readonly selectedGrains: number;
   readonly probedRawRows: number;
-  readonly browserHeldRows: number;
   readonly billingErrorHeldRows: number;
   readonly rawRowsCompacted: number;
   readonly hourlyRowsDeleted: number;
@@ -50,7 +63,6 @@ const cutoffRowSchema = z.object({
 
 const holdProbeRowSchema = z.object({
   probedRawRows: z.int(),
-  browserHeldRows: z.int(),
   billingErrorHeldRows: z.int(),
 });
 
@@ -74,37 +86,15 @@ const remainingRawRowSchema = z.object({
 
 // The explicit null order matches a reverse scan of the deployed
 // idx_usage_event_processed_org_user index. Eligible rows are always non-null.
-const oldestProcessedEventOrder = sql`event.processed_at ASC NULLS FIRST`;
+const oldestProcessedEventOrder = sql`${asc(event.processedAt)} NULLS FIRST`;
 
 function eligibleRawPredicate(cutoff: string): SQL {
-  return sql`
-    event.status = 'processed'
-    AND event.processed_at IS NOT NULL
-    AND event.processed_at < ${cutoff}::timestamp
-    AND event.billing_error IS NULL
-    AND NOT EXISTS (
-      SELECT 1
-      FROM ${browserSessionInstances} browser
-      WHERE browser.provider_session_id = event.idempotency_key
-        AND browser.settled_at IS NULL
-    )
-  `;
-}
-
-function physicalGrainMatch(leftAlias: string, rightAlias: string): SQL {
-  const left = sql.identifier(leftAlias);
-  const right = sql.identifier(rightAlias);
-  return sql`
-    ${left}.processed_hour = ${right}.processed_hour
-    AND ${left}.org_id = ${right}.org_id
-    AND ${left}.user_id = ${right}.user_id
-    AND ${left}.run_id IS NOT DISTINCT FROM ${right}.run_id
-    AND ${left}.kind = ${right}.kind
-    AND ${left}.provider = ${right}.provider
-    AND ${left}.category = ${right}.category
-    AND ${left}.short_window_id IS NOT DISTINCT FROM ${right}.short_window_id
-    AND ${left}.weekly_window_id IS NOT DISTINCT FROM ${right}.weekly_window_id
-  `;
+  return sql`${and(
+    eq(event.status, sql`'processed'`),
+    isNotNull(event.processedAt),
+    lt(event.processedAt, sql`${cutoff}::timestamp`),
+    isNull(event.billingError),
+  )}`;
 }
 
 function physicalGrainColumns(alias: string): SQL {
@@ -154,9 +144,9 @@ function candidateCtes(args: {
         event.category,
         allocation.short_window_id,
         allocation.weekly_window_id
-      FROM ${usageEvent} event
-      LEFT JOIN ${usageAllowanceAllocations} allocation
-        ON allocation.usage_event_id = event.id
+      FROM ${usageEvent} ${event}
+      LEFT JOIN ${usageAllowanceAllocations} ${allocation}
+        ON ${eq(allocation.usageEventId, event.id)}
       WHERE ${eligibleRawPredicate(args.cutoff)}
       ORDER BY ${oldestProcessedEventOrder}
       LIMIT ${args.rawSeedLimit}
@@ -191,20 +181,24 @@ function lockedSourceCtes(cutoff: string): SQL {
         event.quantity,
         COALESCE(event.credits_charged, 0)::bigint AS credits_charged
       FROM selected_grains grain
-      INNER JOIN ${usageEvent} event
-        ON event.processed_at >= grain.processed_hour
-       AND event.processed_at < grain.processed_hour + interval '1 hour'
-       AND event.org_id = grain.org_id
-       AND event.user_id = grain.user_id
-       AND event.run_id IS NOT DISTINCT FROM grain.run_id
-       AND event.kind = grain.kind
-       AND event.provider = grain.provider
-       AND event.category = grain.category
-      LEFT JOIN ${usageAllowanceAllocations} allocation
-        ON allocation.usage_event_id = event.id
-      WHERE ${eligibleRawPredicate(cutoff)}
-        AND allocation.short_window_id IS NOT DISTINCT FROM grain.short_window_id
-        AND allocation.weekly_window_id IS NOT DISTINCT FROM grain.weekly_window_id
+      INNER JOIN ${usageEvent} ${event}
+        ON ${and(
+          gte(event.processedAt, sql`grain.processed_hour`),
+          lt(event.processedAt, sql`grain.processed_hour + interval '1 hour'`),
+          eq(event.orgId, sql`grain.org_id`),
+          eq(event.userId, sql`grain.user_id`),
+          sql`${event.runId} IS NOT DISTINCT FROM grain.run_id`,
+          eq(event.kind, sql`grain.kind`),
+          eq(event.provider, sql`grain.provider`),
+          eq(event.category, sql`grain.category`),
+        )}
+      LEFT JOIN ${usageAllowanceAllocations} ${allocation}
+        ON ${eq(allocation.usageEventId, event.id)}
+      WHERE ${and(
+        eligibleRawPredicate(cutoff),
+        sql`${allocation.shortWindowId} IS NOT DISTINCT FROM grain.short_window_id`,
+        sql`${allocation.weeklyWindowId} IS NOT DISTINCT FROM grain.weekly_window_id`,
+      )}
       FOR UPDATE OF event
     ),
     locked_raw_allocations AS MATERIALIZED (
@@ -212,8 +206,8 @@ function lockedSourceCtes(cutoff: string): SQL {
         allocation.usage_event_id,
         allocation.units_applied
       FROM locked_raw_events event
-      INNER JOIN ${usageAllowanceAllocations} allocation
-        ON allocation.usage_event_id = event.id
+      INNER JOIN ${usageAllowanceAllocations} ${allocation}
+        ON ${eq(allocation.usageEventId, sql`event.id`)}
       FOR UPDATE OF allocation
     ),
     locked_raw AS MATERIALIZED (
@@ -251,8 +245,18 @@ function lockedSourceCtes(cutoff: string): SQL {
         hourly.credits_charged,
         hourly.allowance_units
       FROM selected_grains grain
-      INNER JOIN ${usageEventHourlyRollup} hourly
-        ON ${physicalGrainMatch("hourly", "grain")}
+      INNER JOIN ${usageEventHourlyRollup} ${hourly}
+        ON ${and(
+          eq(hourly.processedHour, sql`grain.processed_hour`),
+          eq(hourly.orgId, sql`grain.org_id`),
+          eq(hourly.userId, sql`grain.user_id`),
+          sql`${hourly.runId} IS NOT DISTINCT FROM grain.run_id`,
+          eq(hourly.kind, sql`grain.kind`),
+          eq(hourly.provider, sql`grain.provider`),
+          eq(hourly.category, sql`grain.category`),
+          sql`${hourly.shortWindowId} IS NOT DISTINCT FROM grain.short_window_id`,
+          sql`${hourly.weeklyWindowId} IS NOT DISTINCT FROM grain.weekly_window_id`,
+        )}
       FOR UPDATE OF hourly
     ),
     source_facts AS MATERIALIZED (
@@ -287,9 +291,9 @@ function lockedSourceCtes(cutoff: string): SQL {
 function mutationCtes(): SQL {
   return sql`
     deleted_hourly AS (
-      DELETE FROM ${usageEventHourlyRollup} hourly
+      DELETE FROM ${usageEventHourlyRollup} ${hourly}
       USING locked_hourly
-      WHERE hourly.id = locked_hourly.id
+      WHERE ${eq(hourly.id, sql`locked_hourly.id`)}
       RETURNING hourly.id
     ),
     inserted_hourly AS (
@@ -328,11 +332,13 @@ function mutationCtes(): SQL {
         allowance_units
     ),
     compacted_raw AS (
-      UPDATE ${usageEvent} event
+      UPDATE ${usageEvent} ${event}
       SET status = 'compacted'
       FROM locked_raw
-      WHERE event.id = locked_raw.id
-        AND event.status = 'processed'
+      WHERE ${and(
+        eq(event.id, sql`locked_raw.id`),
+        eq(event.status, sql`'processed'`),
+      )}
       RETURNING event.id
     )
   `;
@@ -523,24 +529,18 @@ async function loadHoldProbe(
     db,
     sql`
       WITH probed AS MATERIALIZED (
-        SELECT
-          event.billing_error,
-          EXISTS (
-            SELECT 1
-            FROM ${browserSessionInstances} browser
-            WHERE browser.provider_session_id = event.idempotency_key
-              AND browser.settled_at IS NULL
-          ) AS browser_held
-        FROM ${usageEvent} event
-        WHERE event.status = 'processed'
-          AND event.processed_at IS NOT NULL
-          AND event.processed_at < ${cutoff}::timestamp
+        SELECT event.billing_error
+        FROM ${usageEvent} ${event}
+        WHERE ${and(
+          eq(event.status, sql`'processed'`),
+          isNotNull(event.processedAt),
+          lt(event.processedAt, sql`${cutoff}::timestamp`),
+        )}
         ORDER BY ${oldestProcessedEventOrder}
         LIMIT ${rawSeedLimit}
       )
       SELECT
         ${count()}::int AS "probedRawRows",
-        ${count()} FILTER (WHERE browser_held)::int AS "browserHeldRows",
         ${count()} FILTER (WHERE billing_error IS NOT NULL)::int
           AS "billingErrorHeldRows"
       FROM probed
@@ -565,7 +565,7 @@ async function hasRemainingRawUsage(
     sql`
       SELECT EXISTS (
         SELECT 1
-        FROM ${usageEvent} event
+        FROM ${usageEvent} ${event}
         WHERE ${eligibleRawPredicate(cutoff)}
         LIMIT 1
       ) AS "hasMoreRaw"
@@ -626,7 +626,6 @@ async function compactUsageEventBatch(
       seededRawRows: compacted.seededRawRows,
       selectedGrains: compacted.selectedGrains,
       probedRawRows: holdProbe.probedRawRows,
-      browserHeldRows: holdProbe.browserHeldRows,
       billingErrorHeldRows: holdProbe.billingErrorHeldRows,
       rawRowsCompacted: compacted.rawRowsCompacted,
       hourlyRowsDeleted: compacted.hourlyRowsDeleted,

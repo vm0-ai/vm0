@@ -300,31 +300,6 @@ export const insertUsageEvent$ = command(
   },
 );
 
-export const setBrowserUsageHold$ = command(
-  async (
-    _,
-    args: {
-      readonly orgId: string;
-      readonly userId: string;
-      readonly runId: string;
-      readonly chatThreadId: string;
-      readonly idempotencyKey: string;
-      readonly settled: boolean;
-    },
-    signal: AbortSignal,
-  ): Promise<void> => {
-    await postAction(signal, {
-      action: "set-browser-usage-hold",
-      org_id: args.orgId,
-      user_id: args.userId,
-      run_id: args.runId,
-      chat_thread_id: args.chatThreadId,
-      idempotency_key: args.idempotencyKey,
-      settled: args.settled,
-    });
-  },
-);
-
 export const attachUsageAllowance$ = command(
   async (
     _,
@@ -514,6 +489,31 @@ export const readUsageCompactionStorageCounts$ = command(
       compactedRaw: response.compacted_raw_count,
       hourly: response.hourly_count,
     };
+  },
+);
+
+export const readInsightsDailyPermissions$ = command(
+  async (
+    _,
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly date: string;
+    },
+    signal: AbortSignal,
+  ): Promise<readonly Record<string, unknown>[]> => {
+    const response = await postAction(signal, {
+      action: "read-insights-daily-permissions",
+      org_id: args.orgId,
+      user_id: args.userId,
+      date: args.date,
+    });
+    if (response.insights_daily_permissions === undefined) {
+      throw new Error(
+        "readInsightsDailyPermissions$: response missing permissions",
+      );
+    }
+    return response.insights_daily_permissions;
   },
 );
 
