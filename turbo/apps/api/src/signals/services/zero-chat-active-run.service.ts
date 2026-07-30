@@ -2,6 +2,7 @@ import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@vm0/api-contracts/contrac
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatEvents } from "@vm0/db/schema/chat-event";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   and,
@@ -81,6 +82,43 @@ function unresolvedCancellationRecoveryCondition(
   );
 }
 
+function freshUnresolvedCancellationRecoveryCondition(
+  db: Pick<Db, "select">,
+  apiStartTime?: number,
+): SQL | undefined {
+  return unresolvedCancellationRecoveryCondition(
+    db,
+    gt(
+      agentRuns.completedAt,
+      new Date(
+        (apiStartTime ?? nowDate().getTime()) -
+          CANCELLATION_RECOVERY_STALE_AFTER_MS,
+      ),
+    ),
+  );
+}
+
+export async function cancellationRecoveryPendingForThread(
+  db: Pick<Db, "select">,
+  args: {
+    readonly threadId: string;
+  },
+): Promise<boolean> {
+  const [run] = await db
+    .select({ id: zeroRuns.id })
+    .from(zeroRuns)
+    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .where(
+      and(
+        eq(zeroRuns.chatThreadId, args.threadId),
+        freshUnresolvedCancellationRecoveryCondition(db),
+      ),
+    )
+    .limit(1);
+
+  return run !== undefined;
+}
+
 async function activeChatRunExists(
   db: Pick<Db, "select">,
   args: {
@@ -101,16 +139,7 @@ async function activeChatRunExists(
           : ne(zeroRuns.id, args.excludeRunId),
         or(
           activeChatRunCondition(db),
-          unresolvedCancellationRecoveryCondition(
-            db,
-            gt(
-              agentRuns.completedAt,
-              new Date(
-                (args.apiStartTime ?? nowDate().getTime()) -
-                  CANCELLATION_RECOVERY_STALE_AFTER_MS,
-              ),
-            ),
-          ),
+          freshUnresolvedCancellationRecoveryCondition(db, args.apiStartTime),
         ),
       ),
     )
@@ -134,16 +163,20 @@ export async function chatThreadAdmissionBlocked(
 }
 
 /** Pending queue threads whose cancellation recovery barrier has failed open. */
-export async function expiredCancellationRecoveryThreadIds(
+export async function expiredCancellationRecoveryThreads(
   db: Pick<Db, "select" | "selectDistinct">,
   args: {
     readonly expiredBefore: Date;
     readonly limit: number;
   },
-): Promise<readonly string[]> {
+): Promise<readonly { chatThreadId: string; userId: string }[]> {
   const rows = await db
-    .selectDistinct({ chatThreadId: chatEvents.chatThreadId })
+    .selectDistinct({
+      chatThreadId: chatEvents.chatThreadId,
+      userId: chatThreads.userId,
+    })
     .from(chatEvents)
+    .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
     .where(
       and(
         pendingChatQueueEventCondition(db),
@@ -177,7 +210,5 @@ export async function expiredCancellationRecoveryThreadIds(
       ),
     )
     .limit(args.limit);
-  return rows.map((row) => {
-    return row.chatThreadId;
-  });
+  return rows;
 }

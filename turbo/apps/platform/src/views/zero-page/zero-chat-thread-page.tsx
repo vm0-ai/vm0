@@ -4280,6 +4280,8 @@ function ChatThreadComposer({
   connectorReadState: ComposerConnectorReadState;
 }) {
   const queuedEventItems = useQueuedEventItems(thread);
+  const cancellationRecoveryPending =
+    useLastResolved(thread.cancellationRecoveryPending$) ?? false;
   const hasEventsResolved = useLastResolved(thread.hasEvents$);
   const hasEvents = hasEventsResolved ?? false;
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
@@ -4364,6 +4366,7 @@ function ChatThreadComposer({
     submitBlocker: submitBlockerProps,
     queuedItems,
     onRemoveQueuedItem,
+    cancellationRecoveryPending,
     ...workflowEvents,
     activeGoal,
     onCancelActiveGoal,

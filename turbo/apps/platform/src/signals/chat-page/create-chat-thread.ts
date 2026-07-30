@@ -3265,6 +3265,7 @@ function createOnSubscribedCommand({
   reloadMailDrafts$,
   reloadComposerWorkflows$,
   markThreadReadIfNeeded$,
+  dataSource,
 }: Pick<
   RunTrackingDeps,
   | "threadId"
@@ -3273,6 +3274,7 @@ function createOnSubscribedCommand({
   | "reloadArtifacts$"
   | "reloadMailDrafts$"
   | "reloadComposerWorkflows$"
+  | "dataSource"
 > & {
   markThreadReadIfNeeded$: Command<Promise<void>, [AbortSignal]>;
 }): Command<Promise<void>, [AbortSignal]> {
@@ -3281,6 +3283,7 @@ function createOnSubscribedCommand({
   const hasSubscribed$ = state(false);
   return command(async ({ get, set }, signal: AbortSignal) => {
     L.debug("subscribeChatThread$ catchup start", { threadId });
+    set(dataSource.reloadCancellationRecoveryPending$);
     set(reloadArtifacts$);
     if (get(hasSubscribed$)) {
       set(reloadMailDrafts$);
@@ -3288,6 +3291,7 @@ function createOnSubscribedCommand({
       set(hasSubscribed$, true);
     }
     await Promise.all([
+      get(dataSource.cancellationRecoveryPending$),
       set(reloadComposerWorkflows$, signal),
       get(optimisticCreateUnsettled$)
         ? set(settleEventSync$)
@@ -3376,12 +3380,19 @@ function createRunTracking({
     reloadMailDrafts$,
     reloadComposerWorkflows$,
     markThreadReadIfNeeded$,
+    dataSource,
   });
 
   const subscribeChatThread$ = command(async ({ set }, signal: AbortSignal) => {
     L.debug("subscribeChatThread$ start", { threadId });
     await set(initializeIndexedDbEvents$, signal);
     signal.throwIfAborted();
+
+    const onThreadDetailChanged$ = command(({ set }) => {
+      L.debug("onThreadDetailChanged$ fired", { threadId });
+      set(dataSource.reloadCancellationRecoveryPending$);
+      return false;
+    });
 
     const onAutomationsChanged$ = command(({ set }) => {
       set(automationSignals.headerAutomations.reload$);
@@ -3412,6 +3423,7 @@ function createRunTracking({
         {
           threadId,
           handlers: {
+            onThreadDetailChanged$,
             onAutomationsChanged$,
             onArtifactsChanged$,
             onWorkflowsChanged$,
@@ -4778,8 +4790,7 @@ export function createChatThreadSignals(
   );
   const scroll = createChatThreadScrollSignals(threadId);
   const container = createChatThreadContainerSignals();
-  const { composerFileInput$, setComposerFileInput$ } =
-    createComposerFileInput();
+  const composerFileInput = createComposerFileInput();
   const threadOwned = createThreadOwnedSignals(threadId, threadMeta$);
   const composer = createThreadComposer(
     draft,
@@ -4851,6 +4862,7 @@ export function createChatThreadSignals(
     threadMeta$,
     ...threadTitle,
     threadSettledInServer$,
+    cancellationRecoveryPending$: dataSource.cancellationRecoveryPending$,
     ...modelSelection,
     ...computerUseHostSelection,
     ...messageActions,
@@ -4861,8 +4873,7 @@ export function createChatThreadSignals(
     ...container,
     draft,
     ...composer,
-    composerFileInput$,
-    setComposerFileInput$,
+    ...composerFileInput,
     ...threadOwned,
     queueDraftSync$,
     ...publicChatThreadEventSignals(events),

@@ -510,6 +510,19 @@ async function waitForQueuedEventReplacement(
   return runId;
 }
 
+async function expectCancellationRecoveryPending(
+  actor: ApiTestUser,
+  threadId: string,
+  expected: boolean,
+): Promise<void> {
+  await expect
+    .poll(async () => {
+      const detail = await chat.readThread(actor, threadId);
+      return detail.cancellationRecoveryPending;
+    })
+    .toBe(expected);
+}
+
 function cancellationRecoveryCronClient() {
   return setupApp({ context })(cronBrowserReconcileContract);
 }
@@ -2082,6 +2095,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       prompt: "continue after an unknown capability",
     });
 
+    context.mocks.ably.publish.mockClear();
     await api.requestCancelRun(actor, run.runId, [200]);
     const replacementRunId = await waitForQueuedEventReplacement(
       actor,
@@ -2089,6 +2103,11 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       queuedEventId,
     );
     expect(replacementRunId).not.toBe(run.runId);
+    await expectCancellationRecoveryPending(actor, run.threadId, false);
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      `chatThreadDetailChanged:${run.threadId}`,
+      null,
+    );
 
     await api.requestCancelRun(actor, replacementRunId, [200]);
     await waitForRunStatus(actor, replacementRunId, "cancelled");
@@ -2116,6 +2135,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       queuedEventId,
     );
     expect(replacementRunId).not.toBe(run.runId);
+    await expectCancellationRecoveryPending(actor, run.threadId, false);
 
     await api.requestCancelRun(actor, replacementRunId, [200]);
     await waitForRunStatus(actor, replacementRunId, "cancelled");
@@ -2149,6 +2169,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       queuedEventId,
     );
     expect(replacementRunId).not.toBe(queuedRun.runId);
+    await expectCancellationRecoveryPending(actor, queuedRun.threadId, false);
 
     await api.requestCancelRun(actor, replacementRunId, [200]);
     await waitForRunStatus(actor, replacementRunId, "cancelled");
@@ -2168,6 +2189,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
       "future-cancellation-recovery-v2",
     ]);
+    await expectCancellationRecoveryPending(actor, run.threadId, false);
     const queuedEventId = await queueChatEvent(actor, {
       agentId,
       threadId: run.threadId,
@@ -2186,10 +2208,25 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
         );
       }),
     ).toHaveLength(0);
-    context.mocks.ably.publish.mockClear();
-    context.mocks.ably.publish.mockRejectedValueOnce(
-      new Error("Injected recovery drain signal failure"),
+    await expectCancellationRecoveryPending(actor, run.threadId, true);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadDetailChanged:${run.threadId}`,
+      null,
     );
+    context.mocks.ably.publish.mockClear();
+    let rejectedRecoveryDrainSignal = false;
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (
+        !rejectedRecoveryDrainSignal &&
+        topic === `chatThreadMessageCreated:${run.threadId}`
+      ) {
+        rejectedRecoveryDrainSignal = true;
+        return Promise.reject(
+          new Error("Injected recovery drain signal failure"),
+        );
+      }
+      return Promise.resolve(undefined);
+    });
     const completion = await webhooks.requestAgentComplete(
       { runId: run.runId, exitCode: 1, error: "Run cancelled" },
       sandboxHeaders,
@@ -2203,6 +2240,11 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
     await waitForRunStatus(actor, run.runId, "cancelled");
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `chatThreadMessageCreated:${run.threadId}`,
+      null,
+    );
+    await expectCancellationRecoveryPending(actor, run.threadId, false);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadDetailChanged:${run.threadId}`,
       null,
     );
     const replacementRunId = await waitForQueuedEventReplacement(
@@ -2260,6 +2302,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       [200],
     );
     await flushWaitUntilForTest();
+    await expectCancellationRecoveryPending(actor, run.threadId, true);
     const beforeRedrive = await chat.listThreadEvents(actor, run.threadId);
     expect(
       lifecycleMarkers(beforeRedrive.events, run.runId, "cancelled"),
@@ -2283,6 +2326,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
     expect(
       lifecycleMarkers(afterRedrive.events, run.runId, "cancelled"),
     ).toHaveLength(1);
+    await expectCancellationRecoveryPending(actor, run.threadId, false);
 
     await api.requestCancelRun(actor, replacementRunId, [200]);
     await waitForRunStatus(actor, replacementRunId, "cancelled");
@@ -2319,6 +2363,11 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
         });
       })
       .toBe(true);
+    await expectCancellationRecoveryPending(actor, run.threadId, true);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadDetailChanged:${run.threadId}`,
+      null,
+    );
     const completion = await webhooks.requestAgentComplete(
       { runId: run.runId, exitCode: 1, error: "Run cancelled" },
       sandboxHeaders,
@@ -2339,6 +2388,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
         );
       }),
     ).toHaveLength(0);
+    await expectCancellationRecoveryPending(actor, run.threadId, true);
 
     const duplicateCompletion = await webhooks.requestAgentComplete(
       { runId: run.runId, exitCode: 1, error: "Run cancelled" },
@@ -2361,6 +2411,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
     expect(
       lifecycleMarkers(afterLifecycle.events, run.runId, "cancelled"),
     ).toHaveLength(1);
+    await expectCancellationRecoveryPending(actor, run.threadId, false);
 
     await api.requestCancelRun(actor, replacementRunId, [200]);
     await waitForRunStatus(actor, replacementRunId, "cancelled");
@@ -2442,6 +2493,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
 
     await api.requestCancelRun(actor, run.runId, [200]);
     await flushWaitUntilForTest();
+    await expectCancellationRecoveryPending(actor, run.threadId, true);
     const whileFresh = await chat.listThreadEvents(actor, run.threadId);
     expect(
       lifecycleMarkers(whileFresh.events, run.runId, "cancelled"),
@@ -2471,7 +2523,9 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
         );
       }),
     ).toHaveLength(0);
+    await expectCancellationRecoveryPending(actor, run.threadId, true);
 
+    context.mocks.ably.publish.mockClear();
     mockNow(startedAt + CANCELLATION_RECOVERY_STALE_AFTER_MS + 1);
     await accept(
       cancellationRecoveryCronClient().reconcile({
@@ -2485,6 +2539,11 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       actor,
       run.threadId,
       queuedEventId,
+    );
+    await expectCancellationRecoveryPending(actor, run.threadId, false);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadDetailChanged:${run.threadId}`,
+      null,
     );
 
     await api.requestCancelRun(actor, replacementRunId, [200]);

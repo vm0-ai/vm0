@@ -696,6 +696,11 @@ const chatThreadDetailSchema = z.object({
    * is newer than this timestamp.
    */
   lastReadAt: z.string().nullable(),
+  /**
+   * A capable cancelled run is still preserving its resumable session before
+   * same-thread continuation can start. Optional during API/Platform rollout.
+   */
+  cancellationRecoveryPending: z.boolean().optional(),
 });
 
 const chatThreadMetadataSchema = z.object({
@@ -988,7 +993,7 @@ export const chatThreadByIdContract = c.router({
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get chat thread read state",
+    summary: "Get private chat thread state",
   },
   patch: {
     method: "PATCH",
