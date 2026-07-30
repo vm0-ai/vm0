@@ -229,7 +229,7 @@ function upsertedCte(updatedAt: Date): SQL {
         rebuilt.latest_event_id,
         rebuilt.latest_event_seq_id,
         rebuilt.chat_threads,
-        ${sql.param(updatedAt, chatThreadSnapshots.updatedAt)},
+        ${sql.param(updatedAt, chatThreadSnapshots.createdAt)},
         ${sql.param(updatedAt, chatThreadSnapshots.updatedAt)}
       FROM rebuilt
       ON CONFLICT (user_id, org_id)
