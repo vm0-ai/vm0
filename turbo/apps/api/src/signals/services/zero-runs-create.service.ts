@@ -65,7 +65,7 @@ import {
   type ConnectorRuntimeSnapshot,
 } from "./connector-catalog-runtime.service";
 import { expandConnectorServerFirewallPolicies } from "./connector-server-firewall-catalog.service";
-import type { QueueFirstRunAssociation } from "./zero-chat-queued-message.service";
+import type { QueueFirstRunAssociation } from "./zero-chat-queued-event.service";
 import { buildZeroChatMessagingToolPrompt } from "./zero-chat-messaging-tool-prompt";
 
 type ZeroRunCreateBody = z.infer<(typeof zeroRunsMainContract.create)["body"]>;

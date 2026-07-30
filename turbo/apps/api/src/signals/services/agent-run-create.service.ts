@@ -202,8 +202,8 @@ import {
   recordQueueFirstFailedRun,
   type QueueFirstRunAssociation,
   type QueueFirstRunClaimResult,
-} from "./zero-chat-queued-message.service";
-import { recordFirstAssistantMessageEligibility } from "./zero-chat-first-assistant-message-metric.service";
+} from "./zero-chat-queued-event.service";
+import { recordFirstAssistantEventEligibility } from "./zero-chat-first-assistant-event-metric.service";
 import {
   activePaidConcurrencySlots,
   cappedBaseConcurrencyLimit,
@@ -5677,7 +5677,7 @@ async function commitFailedLaunch(args: {
   }
 
   if (args.createArgs.chatThreadId) {
-    recordFirstAssistantMessageEligibility({
+    recordFirstAssistantEventEligibility({
       runId: args.identity.runId,
       apiStartedAt: args.createArgs.apiStartTime,
     });
@@ -7120,7 +7120,7 @@ async function committedAtomicLaunchResponse(args: {
   }
 
   if (args.createArgs.chatThreadId) {
-    recordFirstAssistantMessageEligibility({
+    recordFirstAssistantEventEligibility({
       runId: args.committed.run.id,
       apiStartedAt: args.createArgs.apiStartTime,
     });

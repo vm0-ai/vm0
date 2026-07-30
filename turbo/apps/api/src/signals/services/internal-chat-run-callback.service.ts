@@ -14,11 +14,11 @@ import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatOutputMaterializations } from "@vm0/db/schema/chat-output-materialization";
 import {
-  chatMessages,
-  type ChatMessageGenerationTemplate,
-  type ChatMessageRecommendedFollowups,
-  type ChatMessageUserMessage,
-} from "@vm0/db/schema/chat-message";
+  chatEvents,
+  type ChatEventGenerationTemplate,
+  type ChatEventRecommendedFollowups,
+  type ChatEventUserMessage,
+} from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { morningBriefDeliveries } from "@vm0/db/schema/morning-brief";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -98,12 +98,12 @@ import {
 } from "./canonical-slack-thread-status.service";
 import { saveRunSummary, saveRunSummary$ } from "./run-summary.service";
 import {
-  insertAssistantEventMessages,
-  insertAssistantEventMessages$,
+  insertAssistantEvents,
+  insertAssistantEvents$,
   runGroupIdForRun,
   touchChatThreadLastMessageAt,
   visibleChatEventCondition,
-} from "./zero-chat-message-shared.service";
+} from "./zero-chat-event-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
 import { loadWebChatIncompleteContext } from "./zero-chat-incomplete-context.service";
 import { chatThreadAdmissionBlocked } from "./zero-chat-active-run.service";
@@ -113,17 +113,17 @@ import {
 } from "./zero-chat-user-message.service";
 import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import {
-  integrationCompletionFallbackMessageIdForRun,
-  recommendedFollowupsMessageIdForRun,
-} from "./assistant-message-id";
-import { attachCanonicalPublishedAssetsToCompletionEvent } from "./canonical-published-asset-message.service";
+  integrationCompletionFallbackEventIdForRun,
+  recommendedFollowupsEventIdForRun,
+} from "./assistant-event-id";
+import { attachCanonicalPublishedAssetsToCompletionEvent } from "./canonical-published-asset-event.service";
 import {
   decryptQueuedUserMessageRunParams,
   discardUnclaimedUserMessageInTransaction,
   failQueuedUserMessage,
   loadNextUnclaimedQueuedUserMessage,
   type QueuedUserMessage,
-} from "./zero-chat-queued-message.service";
+} from "./zero-chat-queued-event.service";
 import { handleMorningBriefEmailInternalCallback } from "./internal-morning-brief-run-callback.service";
 import { sendUserPushNotifications } from "./zero-push-notifications.service";
 import {
@@ -141,7 +141,7 @@ import { onRejection, settle, tapError, throwIfAbort } from "../utils";
 import { resolveThreadGenerationTemplatePrompt } from "../routes/thread-generation-template";
 import { resolveChatThreadSession } from "./chat-session-continuity.service";
 import { loadComputerUseHostGrantForAutoSend } from "./zero-chat-computer-use-host.service";
-import { resolveRunChatThreadModelContext } from "./zero-chat-run-message.service";
+import { resolveRunChatThreadModelContext } from "./zero-chat-run-event.service";
 import { releaseThreadBrowsersForRun$ } from "./zero-browser.service";
 import {
   resolveModelFirstProviderAdmission,
@@ -382,20 +382,20 @@ interface CompletedChatOutputLoad {
   readonly skipExistingAssistantLookup: boolean;
 }
 
-interface PriorRunMessage {
+interface PriorRunEvent {
   readonly eventType: ChatEventType;
   readonly role: "user" | "assistant";
   readonly content: string | null;
-  readonly userMessage: ChatMessageUserMessage | null;
+  readonly userMessage: ChatEventUserMessage | null;
   readonly attachFiles: readonly string[] | null;
-  readonly generationTemplate: ChatMessageGenerationTemplate | null;
+  readonly generationTemplate: ChatEventGenerationTemplate | null;
 }
 
 interface PriorRun {
   readonly runId: string;
   readonly status: string;
   readonly prompt: string;
-  readonly messages: readonly PriorRunMessage[];
+  readonly events: readonly PriorRunEvent[];
 }
 
 interface AgentForAutoSend {
@@ -406,7 +406,7 @@ interface AgentForAutoSend {
 type CreatedQueuedRun = {
   readonly runId: string;
   readonly status: "queued" | "pending" | "running";
-  readonly claimedMessageCreatedAt: Date;
+  readonly claimedEventCreatedAt: Date;
 };
 
 type CreateQueuedRun = (
@@ -755,7 +755,7 @@ function buildQueuedCreateZeroRunArgs(
     queueFirstAssociation: {
       kind: "user_message" as const,
       threadId: input.threadId,
-      messageId: input.queuedMessage.id,
+      eventId: input.queuedMessage.id,
       ...(input.morningBriefDelivery
         ? {
             morningBriefDeliveryId: input.morningBriefDelivery.deliveryId,
@@ -901,38 +901,38 @@ ${sequenceCap}
   return { assistantItems, resultFallback };
 }
 
-async function latestEventBackedAssistantMessage(
+async function latestEventBackedAssistantEvent(
   db: Db,
   runId: string,
   options: { readonly maxSequenceNumber?: number } = {},
 ): Promise<AssistantEventItem | null> {
-  const [message] = await db
+  const [event] = await db
     .select({
-      content: chatMessages.content,
-      sequenceNumber: chatMessages.sequenceNumber,
+      content: chatEvents.content,
+      sequenceNumber: chatEvents.sequenceNumber,
     })
-    .from(chatMessages)
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.runId, runId),
+        eq(chatEvents.runId, runId),
         chatEventTypeIn(["output.message"]),
-        isNotNull(chatMessages.sequenceNumber),
-        isNotNull(chatMessages.content),
-        not(sql`${chatMessages.content} ~ '^[[:space:]]*$'`),
+        isNotNull(chatEvents.sequenceNumber),
+        isNotNull(chatEvents.content),
+        not(sql`${chatEvents.content} ~ '^[[:space:]]*$'`),
         ...(options.maxSequenceNumber === undefined
           ? []
-          : [lte(chatMessages.sequenceNumber, options.maxSequenceNumber)]),
+          : [lte(chatEvents.sequenceNumber, options.maxSequenceNumber)]),
       ),
     )
-    .orderBy(desc(chatMessages.sequenceNumber))
+    .orderBy(desc(chatEvents.sequenceNumber))
     .limit(1);
 
-  if (!message || message.content === null || message.sequenceNumber === null) {
+  if (!event || event.content === null || event.sequenceNumber === null) {
     return null;
   }
   return {
-    content: message.content,
-    sequenceNumber: message.sequenceNumber,
+    content: event.content,
+    sequenceNumber: event.sequenceNumber,
   };
 }
 
@@ -959,7 +959,7 @@ async function loadDbCompletedChatOutputState(args: {
     return { kind: "incomplete" };
   }
 
-  const latestAssistant = await latestEventBackedAssistantMessage(
+  const latestAssistant = await latestEventBackedAssistantEvent(
     args.db,
     args.runId,
     { maxSequenceNumber: args.lastEventSequence },
@@ -1057,21 +1057,21 @@ async function recordLastEventToComplete(db: Db, runId: string): Promise<void> {
     return;
   }
 
-  const [message] = await db
+  const [event] = await db
     .select({
-      lastEventAt: max(chatMessages.createdAt).mapWith(
-        nullableDriverValueDecoder(chatMessages.createdAt),
+      lastEventAt: max(chatEvents.createdAt).mapWith(
+        nullableDriverValueDecoder(chatEvents.createdAt),
       ),
     })
-    .from(chatMessages)
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.runId, runId),
+        eq(chatEvents.runId, runId),
         chatEventTypeIn(["output.message"]),
-        isNotNull(chatMessages.sequenceNumber),
+        isNotNull(chatEvents.sequenceNumber),
       ),
     );
-  if (!message?.lastEventAt) {
+  if (!event?.lastEventAt) {
     return;
   }
 
@@ -1080,7 +1080,7 @@ async function recordLastEventToComplete(db: Db, runId: string): Promise<void> {
     actionType: "last_event_to_complete",
     durationMs: Math.max(
       0,
-      run.completedAt.getTime() - message.lastEventAt.getTime(),
+      run.completedAt.getTime() - event.lastEventAt.getTime(),
     ),
     success: true,
     runId,
@@ -1269,7 +1269,7 @@ async function insertTelegramChatDeliveryCallback(args: {
   return callback.id;
 }
 
-async function insertAssistantErrorMessage(args: {
+async function insertAssistantErrorEvent(args: {
   readonly db: Db;
   readonly runId: string;
   readonly threadId: string;
@@ -1285,7 +1285,7 @@ async function insertAssistantErrorMessage(args: {
   const displayErrorMessage = await args.getFormattedError();
   const runGroupId = await runGroupIdForRun(args.db, args.runId);
   const inserted = await args.db.transaction(async (tx) => {
-    const message = await insertChatEvent(
+    const event = await insertChatEvent(
       tx,
       {
         chatThreadId: args.threadId,
@@ -1298,7 +1298,7 @@ async function insertAssistantErrorMessage(args: {
       },
       "run-lifecycle",
     );
-    if (!message) {
+    if (!event) {
       return null;
     }
     const slackDeliveryCallbackId = args.slackDelivery
@@ -1307,7 +1307,7 @@ async function insertAssistantErrorMessage(args: {
           runId: args.runId,
           sourceCallbackId: args.sourceCallbackId,
           target: args.slackDelivery,
-          chatMessageId: message.id,
+          chatMessageId: event.id,
         })
       : undefined;
     const feishuDeliveryCallbackId = args.feishuDelivery
@@ -1316,7 +1316,7 @@ async function insertAssistantErrorMessage(args: {
           runId: args.runId,
           sourceCallbackId: args.sourceCallbackId,
           target: args.feishuDelivery,
-          chatMessageId: message.id,
+          chatMessageId: event.id,
         })
       : undefined;
     const teamsDeliveryCallbackId = args.teamsDelivery
@@ -1325,7 +1325,7 @@ async function insertAssistantErrorMessage(args: {
           runId: args.runId,
           sourceCallbackId: args.sourceCallbackId,
           target: args.teamsDelivery,
-          chatMessageId: message.id,
+          chatMessageId: event.id,
         })
       : undefined;
     const telegramDeliveryCallbackId = args.telegramDelivery
@@ -1334,10 +1334,10 @@ async function insertAssistantErrorMessage(args: {
           runId: args.runId,
           sourceCallbackId: args.sourceCallbackId,
           target: args.telegramDelivery,
-          chatMessageId: message.id,
+          chatMessageId: event.id,
         })
       : undefined;
-    await touchChatThreadLastMessageAt(tx, args.threadId, message.createdAt);
+    await touchChatThreadLastMessageAt(tx, args.threadId, event.createdAt);
     return {
       slackDeliveryCallbackId,
       feishuDeliveryCallbackId,
@@ -1363,7 +1363,7 @@ async function insertAssistantErrorMessage(args: {
 
 type ChatCallbackTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
-interface CanonicalDeliveryMessage {
+interface CanonicalDeliveryEvent {
   readonly id: string;
 }
 
@@ -1372,40 +1372,37 @@ async function teamsRunLifecycleMarkerExists(
   runId: string,
 ): Promise<boolean> {
   const [marker] = await db
-    .select({ id: chatMessages.id })
-    .from(chatMessages)
+    .select({ id: chatEvents.id })
+    .from(chatEvents)
     .where(
-      and(
-        eq(chatMessages.runId, runId),
-        isNotNull(chatMessages.runLifecycleEvent),
-      ),
+      and(eq(chatEvents.runId, runId), isNotNull(chatEvents.runLifecycleEvent)),
     )
     .limit(1);
   return marker !== undefined;
 }
 
-async function loadCanonicalDeliveryMessage(
+async function loadCanonicalDeliveryEvent(
   db: ChatCallbackTransaction,
   runId: string,
   enabled: boolean,
-): Promise<CanonicalDeliveryMessage | undefined> {
+): Promise<CanonicalDeliveryEvent | undefined> {
   if (!enabled) {
     return undefined;
   }
-  const [message] = await db
-    .select({ id: chatMessages.id })
-    .from(chatMessages)
+  const [event] = await db
+    .select({ id: chatEvents.id })
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.runId, runId),
+        eq(chatEvents.runId, runId),
         chatEventTypeIn(["output.message"]),
-        isNotNull(chatMessages.content),
-        isNotNull(chatMessages.sequenceNumber),
+        isNotNull(chatEvents.content),
+        isNotNull(chatEvents.sequenceNumber),
       ),
     )
-    .orderBy(desc(chatMessages.sequenceNumber))
+    .orderBy(desc(chatEvents.sequenceNumber))
     .limit(1);
-  return message;
+  return event;
 }
 
 async function insertIntegrationCompletionFallback(args: {
@@ -1414,12 +1411,12 @@ async function insertIntegrationCompletionFallback(args: {
   readonly threadId: string;
   readonly runGroupId: string | null | undefined;
   readonly createdAt: Date;
-}): Promise<CanonicalDeliveryMessage> {
-  const messageId = integrationCompletionFallbackMessageIdForRun(args.runId);
+}): Promise<CanonicalDeliveryEvent> {
+  const eventId = integrationCompletionFallbackEventIdForRun(args.runId);
   const inserted = await insertChatEvent(
     args.db,
     {
-      id: messageId,
+      id: eventId,
       chatThreadId: args.threadId,
       eventType: "output.message",
       content: "Task completed successfully.",
@@ -1433,9 +1430,9 @@ async function insertIntegrationCompletionFallback(args: {
     return { id: inserted.id };
   }
   const [existing] = await args.db
-    .select({ id: chatMessages.id })
-    .from(chatMessages)
-    .where(eq(chatMessages.id, messageId))
+    .select({ id: chatEvents.id })
+    .from(chatEvents)
+    .where(eq(chatEvents.id, eventId))
     .limit(1);
   if (!existing) {
     throw new Error("Failed to persist integration completion fallback");
@@ -1487,17 +1484,17 @@ async function insertRunLifecycleMarkerTransaction(args: {
   ) {
     return null;
   }
-  let deliveryMessage = await loadCanonicalDeliveryMessage(
+  let deliveryEvent = await loadCanonicalDeliveryEvent(
     args.tx,
     input.runId,
     hasCanonicalIntegrationDelivery(input),
   );
   if (
-    !deliveryMessage &&
+    !deliveryEvent &&
     input.event === "completed" &&
     (input.teamsDelivery || input.telegramDelivery)
   ) {
-    deliveryMessage = await insertIntegrationCompletionFallback({
+    deliveryEvent = await insertIntegrationCompletionFallback({
       db: args.tx,
       runId: input.runId,
       threadId: input.threadId,
@@ -1529,43 +1526,43 @@ async function insertRunLifecycleMarkerTransaction(args: {
     });
   }
   const slackDeliveryCallbackId =
-    deliveryMessage && input.slackDelivery
+    deliveryEvent && input.slackDelivery
       ? await insertSlackChatDeliveryCallback({
           db: args.tx,
           runId: input.runId,
           sourceCallbackId: input.sourceCallbackId,
           target: input.slackDelivery,
-          chatMessageId: deliveryMessage.id,
+          chatMessageId: deliveryEvent.id,
         })
       : undefined;
   const feishuDeliveryCallbackId =
-    deliveryMessage && input.feishuDelivery
+    deliveryEvent && input.feishuDelivery
       ? await insertFeishuChatDeliveryCallback({
           db: args.tx,
           runId: input.runId,
           sourceCallbackId: input.sourceCallbackId,
           target: input.feishuDelivery,
-          chatMessageId: deliveryMessage.id,
+          chatMessageId: deliveryEvent.id,
         })
       : undefined;
   const teamsDeliveryCallbackId =
-    deliveryMessage && input.teamsDelivery
+    deliveryEvent && input.teamsDelivery
       ? await insertTeamsChatDeliveryCallback({
           db: args.tx,
           runId: input.runId,
           sourceCallbackId: input.sourceCallbackId,
           target: input.teamsDelivery,
-          chatMessageId: deliveryMessage.id,
+          chatMessageId: deliveryEvent.id,
         })
       : undefined;
   const telegramDeliveryCallbackId =
-    deliveryMessage && input.telegramDelivery
+    deliveryEvent && input.telegramDelivery
       ? await insertTelegramChatDeliveryCallback({
           db: args.tx,
           runId: input.runId,
           sourceCallbackId: input.sourceCallbackId,
           target: input.telegramDelivery,
-          chatMessageId: deliveryMessage.id,
+          chatMessageId: deliveryEvent.id,
         })
       : undefined;
   await touchChatThreadLastMessageAt(
@@ -1611,19 +1608,19 @@ async function insertRunLifecycleMarker(
   };
 }
 
-async function insertRecommendedFollowupsMessage(args: {
+async function insertRecommendedFollowupsEvent(args: {
   readonly db: Db;
   readonly runId: string;
   readonly threadId: string;
   readonly userId: string;
-  readonly recommendedFollowups: ChatMessageRecommendedFollowups;
+  readonly recommendedFollowups: ChatEventRecommendedFollowups;
 }): Promise<boolean> {
   const runGroupId = await runGroupIdForRun(args.db, args.runId);
   const inserted = await args.db.transaction(async (tx) => {
     return await insertChatEvent(
       tx,
       {
-        id: recommendedFollowupsMessageIdForRun(args.runId),
+        id: recommendedFollowupsEventIdForRun(args.runId),
         chatThreadId: args.threadId,
         eventType: "output.followups",
         content: null,
@@ -1651,7 +1648,7 @@ async function generateRecommendedFollowupsForCompletedRun(args: {
   readonly followupContext: readonly ChatCompletionContextMessage[];
   readonly threadId: string;
   readonly signal: AbortSignal;
-}): Promise<ChatMessageRecommendedFollowups | undefined> {
+}): Promise<ChatEventRecommendedFollowups | undefined> {
   args.signal.throwIfAborted();
   const suggestions = await generateChatThreadRecommendedFollowupsFromContext({
     messages: args.followupContext,
@@ -1722,7 +1719,7 @@ async function materializeCompletedChatResult(args: {
       "api_dispatch_pre_create_zero_chat_callback_lookup_existing_assistant",
       "nested",
       () => {
-        return latestEventBackedAssistantMessage(args.db, args.runId, {
+        return latestEventBackedAssistantEvent(args.db, args.runId, {
           maxSequenceNumber: args.lastEventSequence ?? undefined,
         });
       },
@@ -1891,7 +1888,7 @@ async function runCompletedChatCallbackSideEffects(args: {
         signal: args.signal,
       });
     if (recommendedFollowups) {
-      await insertRecommendedFollowupsMessage({
+      await insertRecommendedFollowupsEvent({
         db: args.db,
         runId: args.runId,
         threadId: args.chatThread.chatThreadId,
@@ -1968,7 +1965,7 @@ async function handleFailedChatCallback(args: {
     args.errorMessage.trim().toLowerCase() === "run cancelled"
       ? "cancelled"
       : "failed";
-  return await insertAssistantErrorMessage({
+  return await insertAssistantErrorEvent({
     db: args.db,
     runId: args.runId,
     threadId: args.chatThread.chatThreadId,
@@ -2077,14 +2074,14 @@ function truncatePrior(value: string): string {
   return `${value.slice(0, PRIOR_MESSAGE_CHAR_CAP)}...[truncated]`;
 }
 
-function formatPriorRunMessage(
-  message: PriorRunMessage,
+function formatPriorRunEvent(
+  event: PriorRunEvent,
   inlineTemplatesEnabled: boolean,
 ): string {
-  const roleLabel = message.role === "user" ? "User" : "Assistant";
+  const roleLabel = event.role === "user" ? "User" : "Assistant";
   const userMessage = requiredUserMessageForEvent(
-    message.eventType,
-    message.userMessage,
+    event.eventType,
+    event.userMessage,
   );
   if (userMessage) {
     const prompt = projectUserMessage(userMessage, {
@@ -2093,11 +2090,11 @@ function formatPriorRunMessage(
     return `${roleLabel}: ${truncatePrior(prompt) || "[empty message]"}`;
   }
   const body = `${roleLabel}: ${
-    message.content === null
+    event.content === null
       ? "[empty message]"
-      : truncatePrior(message.content) || "[empty message]"
+      : truncatePrior(event.content) || "[empty message]"
   }`;
-  const attach = formatAttachFileIds(message.attachFiles);
+  const attach = formatAttachFileIds(event.attachFiles);
   return attach ? `${body}\n${attach}` : body;
 }
 
@@ -2110,12 +2107,12 @@ function buildChatPriorRunsContext(
     return "";
   }
   const sections = runs.map((run, index) => {
-    const renderedMessages = run.messages.map((message) => {
-      return formatPriorRunMessage(message, inlineTemplatesEnabled);
+    const renderedEvents = run.events.map((event) => {
+      return formatPriorRunEvent(event, inlineTemplatesEnabled);
     });
     const transcript =
-      renderedMessages.length > 0
-        ? renderedMessages.join("\n\n")
+      renderedEvents.length > 0
+        ? renderedEvents.join("\n\n")
         : [
             `User: ${truncatePrior(run.prompt) || "[empty message]"}`,
             "Assistant: [no visible assistant message recorded]",
@@ -2187,44 +2184,44 @@ async function getLatestRunsByThreadId(
     return [];
   }
 
-  const messageRows = await db
+  const eventRows = await db
     .select({
-      runId: chatMessages.runId,
-      eventType: chatMessages.eventType,
-      content: chatMessages.content,
-      userMessage: chatMessages.userMessage,
-      attachFiles: chatMessages.attachFiles,
-      createdAt: chatMessages.createdAt,
-      sequenceNumber: chatMessages.sequenceNumber,
-      generationTemplate: chatMessages.generationTemplate,
+      runId: chatEvents.runId,
+      eventType: chatEvents.eventType,
+      content: chatEvents.content,
+      userMessage: chatEvents.userMessage,
+      attachFiles: chatEvents.attachFiles,
+      createdAt: chatEvents.createdAt,
+      sequenceNumber: chatEvents.sequenceNumber,
+      generationTemplate: chatEvents.generationTemplate,
     })
-    .from(chatMessages)
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.chatThreadId, threadId),
+        eq(chatEvents.chatThreadId, threadId),
         or(
           and(
             chatEventTypeIn(["input.prompt", "input.rejected"]),
-            isNotNull(chatMessages.userMessage),
+            isNotNull(chatEvents.userMessage),
           ),
           and(
             not(chatEventTypeIn(["input.prompt", "input.rejected"])),
-            isNotNull(chatMessages.content),
+            isNotNull(chatEvents.content),
           ),
         ),
-        inArray(chatMessages.runId, runIds),
+        inArray(chatEvents.runId, runIds),
         chatEventTypeIn(CHAT_EVENT_TYPES),
         visibleChatEventCondition(db),
       ),
     )
-    .orderBy(asc(chatMessages.seqId));
+    .orderBy(asc(chatEvents.seqId));
 
-  const messagesByRunId = new Map<string, PriorRunMessage[]>();
-  for (const row of messageRows) {
+  const eventsByRunId = new Map<string, PriorRunEvent[]>();
+  for (const row of eventRows) {
     if (row.runId === null) {
       continue;
     }
-    const existing = messagesByRunId.get(row.runId) ?? [];
+    const existing = eventsByRunId.get(row.runId) ?? [];
     existing.push({
       eventType: row.eventType,
       role: chatEventCompatibilityRole(row.eventType),
@@ -2233,7 +2230,7 @@ async function getLatestRunsByThreadId(
       attachFiles: row.attachFiles,
       generationTemplate: row.generationTemplate,
     });
-    messagesByRunId.set(row.runId, existing);
+    eventsByRunId.set(row.runId, existing);
   }
 
   return orderedRuns.map((run) => {
@@ -2241,7 +2238,7 @@ async function getLatestRunsByThreadId(
       runId: run.runId,
       status: run.status,
       prompt: run.prompt,
-      messages: messagesByRunId.get(run.runId) ?? [],
+      events: eventsByRunId.get(run.runId) ?? [],
     };
   });
 }
@@ -2376,17 +2373,17 @@ async function resolveUnpinnedSlackQueuedMessageModelRoute(args: {
       modelProviderCredentialScope: zeroRuns.modelProviderCredentialScope,
       selectedModel: zeroRuns.selectedModel,
     })
-    .from(chatMessages)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, chatMessages.runId))
+    .from(chatEvents)
+    .innerJoin(zeroRuns, eq(zeroRuns.id, chatEvents.runId))
     .where(
       and(
-        eq(chatMessages.chatThreadId, args.threadId),
+        eq(chatEvents.chatThreadId, args.threadId),
         chatEventTypeIn(["input.prompt"]),
-        isNotNull(chatMessages.runId),
+        isNotNull(chatEvents.runId),
         eq(zeroRuns.triggerSource, "slack"),
       ),
     )
-    .orderBy(asc(chatMessages.seqId))
+    .orderBy(asc(chatEvents.seqId))
     .limit(1);
   const modelPin: ModelFirstPin = firstRun
     ? {
@@ -2863,7 +2860,7 @@ async function appendAutoSentQueuedRunMarkerIfQueued(args: {
     () => {
       return appendAutoSentQueuedRunMarker({
         db: args.db,
-        createdAfter: args.run.claimedMessageCreatedAt,
+        createdAfter: args.run.claimedEventCreatedAt,
         runId: args.run.runId,
         threadId: args.threadId,
       });
@@ -2913,7 +2910,7 @@ async function handleSlackQueuedMessageAdmissionFailure(args: {
   args.signal.throwIfAborted();
   const failed = await failQueuedUserMessage(args.db, {
     threadId: args.failure.threadId,
-    messageId: args.failure.queuedMessage.id,
+    eventId: args.failure.queuedMessage.id,
     assistantContent: displayError,
     errorMarker: args.failure.error.code.toLowerCase(),
     currentTime: nowDate(),
@@ -2941,7 +2938,7 @@ async function handleSlackQueuedMessageAdmissionFailure(args: {
         ...(args.failure.slackDelivery.routeThreadTs
           ? { routeThreadTs: args.failure.slackDelivery.routeThreadTs }
           : {}),
-        chatMessageId: failed.assistantMessageId,
+        chatMessageId: failed.assistantEventId,
       },
       args.signal,
     ),
@@ -2973,7 +2970,7 @@ async function handleTeamsQueuedMessageAdmissionFailure(args: {
   args.signal.throwIfAborted();
   const failed = await failQueuedUserMessage(args.db, {
     threadId: args.failure.threadId,
-    messageId: args.failure.queuedMessage.id,
+    eventId: args.failure.queuedMessage.id,
     assistantContent: displayError,
     errorMarker: args.failure.error.code.toLowerCase(),
     currentTime: nowDate(),
@@ -2997,7 +2994,7 @@ async function handleTeamsQueuedMessageAdmissionFailure(args: {
         orgId: args.failure.orgId,
         agentId: args.failure.agentId,
         target: args.failure.teamsDelivery,
-        chatMessageId: failed.assistantMessageId,
+        chatMessageId: failed.assistantEventId,
       },
       args.signal,
     ),
@@ -3029,7 +3026,7 @@ async function handleTelegramQueuedMessageAdmissionFailure(args: {
   args.signal.throwIfAborted();
   const failed = await failQueuedUserMessage(args.db, {
     threadId: args.failure.threadId,
-    messageId: args.failure.queuedMessage.id,
+    eventId: args.failure.queuedMessage.id,
     assistantContent: displayError,
     errorMarker: args.failure.error.code.toLowerCase(),
     currentTime: nowDate(),
@@ -3053,7 +3050,7 @@ async function handleTelegramQueuedMessageAdmissionFailure(args: {
         orgId: args.failure.orgId,
         agentId: args.failure.agentId,
         target: args.failure.telegramDelivery,
-        chatMessageId: failed.assistantMessageId,
+        chatMessageId: failed.assistantEventId,
       },
       args.signal,
     ),
@@ -3110,7 +3107,7 @@ async function handleQueuedMessageAdmissionFailure(args: {
   await args.db.transaction(async (tx) => {
     const discarded = await discardUnclaimedUserMessageInTransaction(tx, {
       threadId: failure.threadId,
-      messageId: failure.queuedMessage.id,
+      eventId: failure.queuedMessage.id,
     });
     if (!discarded || !failure.morningBriefDelivery) {
       return;
@@ -3884,18 +3881,18 @@ async function claimedUserMessageExistsForRun(
   db: Db,
   runId: string,
 ): Promise<boolean> {
-  const [message] = await db
-    .select({ id: chatMessages.id })
-    .from(chatMessages)
+  const [event] = await db
+    .select({ id: chatEvents.id })
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.runId, runId),
+        eq(chatEvents.runId, runId),
         chatEventTypeIn(["input.prompt"]),
-        isNotNull(chatMessages.revokesEventId),
+        isNotNull(chatEvents.revokesEventId),
       ),
     )
     .limit(1);
-  return message !== undefined;
+  return event !== undefined;
 }
 
 function buildQueuedChatDispatchFailedCallbacks(args: {
@@ -4093,7 +4090,7 @@ export async function handleChatInternalCallbackWithoutCcstate(
         );
       },
       insertAssistantItems: async (args, inputSignal) => {
-        await insertAssistantEventMessages(db, args, inputSignal);
+        await insertAssistantEvents(db, args, inputSignal);
       },
       saveRunSummary: (runId, prompt, resultText, inputSignal) => {
         return saveRunSummary(
@@ -4160,7 +4157,7 @@ const buildChatCallbackDependencies$ = command(
         return set(releaseThreadBrowsersForRun$, args, inputSignal);
       },
       insertAssistantItems: async (args, inputSignal) => {
-        await set(insertAssistantEventMessages$, args, inputSignal);
+        await set(insertAssistantEvents$, args, inputSignal);
       },
       saveRunSummary: (runId, prompt, resultText, inputSignal) => {
         return set(
@@ -4262,7 +4259,7 @@ const buildChatCallbackDependencies$ = command(
         return {
           runId: runResult.body.runId,
           status: runResult.body.status,
-          claimedMessageCreatedAt: runResult.queueFirstClaim.createdAt,
+          claimedEventCreatedAt: runResult.queueFirstClaim.createdAt,
         };
       },
     };

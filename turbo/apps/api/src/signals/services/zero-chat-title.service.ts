@@ -5,10 +5,10 @@ import {
   type ChatEventType,
 } from "@vm0/api-contracts/contracts/chat-events";
 import {
-  chatMessages,
-  type ChatMessageRecommendedFollowups,
-  type ChatMessageUserMessage,
-} from "@vm0/db/schema/chat-message";
+  chatEvents,
+  type ChatEventRecommendedFollowups,
+  type ChatEventUserMessage,
+} from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import {
   and,
@@ -31,13 +31,13 @@ import type { Db } from "../external/db";
 import { nowDate } from "../external/time";
 import { safeJsonParse, tapError } from "../utils";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
-import { visibleChatEventCondition } from "./zero-chat-message-shared.service";
+import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
 import {
   RECOMMENDED_FOLLOWUP_LIMIT,
   normalizeRecommendedFollowups,
 } from "./zero-chat-recommended-followups.service";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
-import { queuedUserMessageExists } from "./zero-chat-queued-message.service";
+import { queuedUserMessageExists } from "./zero-chat-queued-event.service";
 import {
   projectUserMessage,
   requiredUserMessageForEvent,
@@ -86,7 +86,7 @@ interface ChatMessageForGeneration {
 interface ChatCompletionContextRow {
   readonly eventType: ChatEventType;
   readonly content: string | null;
-  readonly userMessage: ChatMessageUserMessage | null;
+  readonly userMessage: ChatEventUserMessage | null;
 }
 
 type SelectDb = Pick<Db, "select">;
@@ -100,14 +100,14 @@ function completedConversationContextMessageCondition(db: SelectDb) {
     not(queuedUserMessageExists(db)),
     not(
       and(
-        isNotNull(chatMessages.runId),
+        isNotNull(chatEvents.runId),
         exists(
           db
             .select({ one: agentRuns.id })
             .from(agentRuns)
             .where(
               and(
-                eq(agentRuns.id, chatMessages.runId),
+                eq(agentRuns.id, chatEvents.runId),
                 inArray(agentRuns.status, ["queued", "pending", "running"]),
               ),
             ),
@@ -121,11 +121,11 @@ function contextMessageContentCondition(): SQL {
   return or(
     and(
       chatEventTypeIn(["input.prompt", "input.rejected"]),
-      isNotNull(chatMessages.userMessage),
+      isNotNull(chatEvents.userMessage),
     ),
     and(
       not(chatEventTypeIn(["input.prompt", "input.rejected"])),
-      isNotNull(chatMessages.content),
+      isNotNull(chatEvents.content),
     ),
   ) as SQL;
 }
@@ -247,7 +247,7 @@ async function getLatestTitleContextMessages(
   options?: { readonly excludeRunId?: string },
 ): Promise<ChatCompletionContextMessage[]> {
   const filters = [
-    eq(chatMessages.chatThreadId, threadId),
+    eq(chatEvents.chatThreadId, threadId),
     contextMessageContentCondition(),
     chatEventTypeIn(CHAT_EVENT_TYPES),
     visibleChatEventCondition(db),
@@ -258,24 +258,24 @@ async function getLatestTitleContextMessages(
       // Keep prior context free of the current exchange. User rows have the run
       // id too, so this excludes both sides of the just-completed round.
       or(
-        isNull(chatMessages.runId),
-        ne(chatMessages.runId, options.excludeRunId),
+        isNull(chatEvents.runId),
+        ne(chatEvents.runId, options.excludeRunId),
       ) as SQL,
     );
   }
 
   const rows = await db
     .select({
-      eventType: chatMessages.eventType,
-      content: chatMessages.content,
-      userMessage: chatMessages.userMessage,
-      createdAt: chatMessages.createdAt,
-      sequenceNumber: chatMessages.sequenceNumber,
+      eventType: chatEvents.eventType,
+      content: chatEvents.content,
+      userMessage: chatEvents.userMessage,
+      createdAt: chatEvents.createdAt,
+      sequenceNumber: chatEvents.sequenceNumber,
     })
-    .from(chatMessages)
-    .leftJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+    .from(chatEvents)
+    .leftJoin(agentRuns, eq(agentRuns.id, chatEvents.runId))
     .where(and(...filters))
-    .orderBy(desc(chatMessages.seqId))
+    .orderBy(desc(chatEvents.seqId))
     .limit(TITLE_PRIOR_MESSAGE_CAP);
 
   return rows.reverse().flatMap((row) => {
@@ -445,7 +445,7 @@ export function generateChatNotificationSummary(
 
 function parseRecommendedFollowups(
   text: string,
-): ChatMessageRecommendedFollowups {
+): ChatEventRecommendedFollowups {
   const unfenced = text
     .trim()
     .replace(/^```(?:json)?\s*/i, "")
@@ -461,23 +461,23 @@ async function getLatestFollowupContextMessages(
 ): Promise<ChatCompletionContextMessage[]> {
   const rows = await db
     .select({
-      eventType: chatMessages.eventType,
-      content: chatMessages.content,
-      userMessage: chatMessages.userMessage,
-      createdAt: chatMessages.createdAt,
-      sequenceNumber: chatMessages.sequenceNumber,
+      eventType: chatEvents.eventType,
+      content: chatEvents.content,
+      userMessage: chatEvents.userMessage,
+      createdAt: chatEvents.createdAt,
+      sequenceNumber: chatEvents.sequenceNumber,
     })
-    .from(chatMessages)
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.chatThreadId, threadId),
+        eq(chatEvents.chatThreadId, threadId),
         contextMessageContentCondition(),
         chatEventTypeIn(CHAT_EVENT_TYPES),
         visibleChatEventCondition(db),
         completedConversationContextMessageCondition(db),
       ),
     )
-    .orderBy(desc(chatMessages.seqId))
+    .orderBy(desc(chatEvents.seqId))
     .limit(FOLLOWUP_CONTEXT_MESSAGE_CAP);
 
   return rows.reverse().flatMap((row) => {
@@ -487,7 +487,7 @@ async function getLatestFollowupContextMessages(
 
 async function generateRecommendedFollowups(
   messages: readonly ChatCompletionContextMessage[],
-): Promise<ChatMessageRecommendedFollowups> {
+): Promise<ChatEventRecommendedFollowups> {
   const last = messages[messages.length - 1];
   if (last?.role !== "assistant" || last.content.trim().length === 0) {
     return [];
@@ -535,7 +535,7 @@ export async function loadChatThreadRecommendedFollowupContext(args: {
 export async function generateChatThreadRecommendedFollowupsFromContext(args: {
   readonly messages: readonly ChatCompletionContextMessage[];
   readonly threadId?: string;
-}): Promise<ChatMessageRecommendedFollowups> {
+}): Promise<ChatEventRecommendedFollowups> {
   return (
     (await tapError(generateRecommendedFollowups(args.messages), (err) => {
       log.warn("Recommended follow-up generation failed", {

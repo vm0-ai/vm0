@@ -85,7 +85,7 @@ import {
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import type {
-  ChatMessageUsagePayload,
+  ChatEventUsagePayload,
   FeedbackNotePart,
   ChatFollowupsEvent,
   GenerationTemplateRequest,
@@ -2915,7 +2915,7 @@ function firstRunIdForEvents(
 
 function usageByRunIdFromGroups(
   groups: readonly ChatEventGroup[],
-): Map<string, ChatMessageUsagePayload> {
+): Map<string, ChatEventUsagePayload> {
   return foldLatestChatUsageByRunId(
     groups.flatMap((group) => {
       const runId = firstRunIdForEvents(group.events);
@@ -2936,7 +2936,7 @@ function usageByRunIdFromGroups(
 
 function attachUsageToCompletedWorkGroups(
   groups: readonly ChatEventGroup[],
-  usageByRunId: ReadonlyMap<string, ChatMessageUsagePayload>,
+  usageByRunId: ReadonlyMap<string, ChatEventUsagePayload>,
 ): ChatEventGroup[] {
   return groups.map((group) => {
     if (group.role !== "assistant") {
@@ -7795,7 +7795,7 @@ function parseUsageKind(kind: string): {
 }
 
 function buildRunUsageDisplayRows(
-  usage: ChatMessageUsagePayload,
+  usage: ChatEventUsagePayload,
 ): readonly RunUsageDisplayRow[] {
   const rows = new Map<string, RunUsageDisplayRow>();
 
@@ -7826,7 +7826,7 @@ function UsageChip({
   open,
   setOpen,
 }: {
-  usage: ChatMessageUsagePayload;
+  usage: ChatEventUsagePayload;
   title: string;
   ariaLabel: string;
   contentAlign?: "start" | "center" | "end";
@@ -7880,7 +7880,7 @@ function RunUsageChip({
   usage,
 }: {
   runId: string;
-  usage: ChatMessageUsagePayload;
+  usage: ChatEventUsagePayload;
 }) {
   const { t } = useTranslation();
   const openRunId = useGet(runUsagePopoverOpenRunId$);
@@ -7912,7 +7912,7 @@ function PagedGroupPrimaryActions({
 }: {
   firstRunId: string | undefined;
   hasContent: boolean;
-  usage: ChatMessageUsagePayload | undefined;
+  usage: ChatEventUsagePayload | undefined;
   copied: boolean;
   onCopy: () => void;
 }) {

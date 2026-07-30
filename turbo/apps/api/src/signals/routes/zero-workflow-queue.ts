@@ -14,7 +14,7 @@ import {
   loadRunningWorkflowThreadRun,
   loadWorkflowQueueThread,
   type WorkflowQueueThreadRow,
-} from "../services/chat-message-queue.service";
+} from "../services/workflow-chat-event-queue.service";
 import type { RouteEntry } from "../route-entry";
 
 const workflowReadAuth = {

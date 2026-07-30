@@ -5,7 +5,7 @@ import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import {
   admitWorkflowAutomationEvent,
   type WorkflowQueueEventParams,
-} from "./chat-message-queue.service";
+} from "./workflow-chat-event-queue.service";
 import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
 import {
   ApiDispatchTimingCollector,

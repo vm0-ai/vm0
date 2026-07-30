@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { morningBriefDeliveries } from "@vm0/db/schema/morning-brief";
 import { and, eq } from "drizzle-orm";
 
@@ -8,12 +8,12 @@ import { db } from "../lib/db";
 import {
   decryptQueuedUserMessageRunParams,
   encryptQueuedUserMessageRunParams,
-} from "../signals/services/zero-chat-queued-message.service";
+} from "../signals/services/zero-chat-queued-event.service";
 import {
   insertChatEvent,
   replaceChatEvent,
 } from "../signals/services/zero-chat-event.service";
-import { touchChatThreadLastMessageAt } from "../signals/services/zero-chat-message-shared.service";
+import { touchChatThreadLastMessageAt } from "../signals/services/zero-chat-event-shared.service";
 import { createUserMessageDocument } from "../signals/services/zero-chat-user-message.service";
 
 export async function readMorningBriefDeliveryFixture(args: {
@@ -49,9 +49,9 @@ export async function readMorningBriefQueuedParamsForDeliveryFixture(args: {
   readonly userId: string;
 }) {
   const messages = await db()
-    .select({ encryptedParams: chatMessages.encryptedParams })
-    .from(chatMessages)
-    .where(eq(chatMessages.chatThreadId, args.threadId));
+    .select({ encryptedParams: chatEvents.encryptedParams })
+    .from(chatEvents)
+    .where(eq(chatEvents.chatThreadId, args.threadId));
   for (const message of messages) {
     const params = await decryptQueuedUserMessageRunParams(
       message.encryptedParams,
@@ -78,16 +78,16 @@ export async function replaceMorningBriefQueuedCallbackPayloadFixture(args: {
 }): Promise<void> {
   const messages = await db()
     .select({
-      id: chatMessages.id,
-      encryptedParams: chatMessages.encryptedParams,
-      userMessage: chatMessages.userMessage,
-      attachFiles: chatMessages.attachFiles,
-      attachFileMetadata: chatMessages.attachFileMetadata,
-      generationTemplate: chatMessages.generationTemplate,
-      triggerSource: chatMessages.triggerSource,
+      id: chatEvents.id,
+      encryptedParams: chatEvents.encryptedParams,
+      userMessage: chatEvents.userMessage,
+      attachFiles: chatEvents.attachFiles,
+      attachFileMetadata: chatEvents.attachFileMetadata,
+      generationTemplate: chatEvents.generationTemplate,
+      triggerSource: chatEvents.triggerSource,
     })
-    .from(chatMessages)
-    .where(eq(chatMessages.chatThreadId, args.threadId));
+    .from(chatEvents)
+    .where(eq(chatEvents.chatThreadId, args.threadId));
   for (const message of messages) {
     const params = await decryptQueuedUserMessageRunParams(
       message.encryptedParams,
@@ -140,13 +140,13 @@ export async function readMorningBriefQueuedParamsFixture(args: {
   readonly orgId: string;
   readonly userId: string;
 }) {
-  const [message] = await db()
-    .select({ encryptedParams: chatMessages.encryptedParams })
-    .from(chatMessages)
-    .where(eq(chatMessages.id, args.messageId))
+  const [event] = await db()
+    .select({ encryptedParams: chatEvents.encryptedParams })
+    .from(chatEvents)
+    .where(eq(chatEvents.id, args.messageId))
     .limit(1);
   return await decryptQueuedUserMessageRunParams(
-    message?.encryptedParams ?? null,
+    event?.encryptedParams ?? null,
     { orgId: args.orgId, userId: args.userId },
   );
 }

@@ -72,7 +72,7 @@ export const zeroRuns = pgTable(
     // First-assistant timing origin. Concurrency-queued runs leave this null
     // until promotion supplies the same start used by runner telemetry.
     apiStartedAt: timestamp("api_started_at"),
-    firstAssistantMessageAcknowledgedAt: timestamp(
+    firstAssistantEventAcknowledgedAt: timestamp(
       "first_assistant_message_acknowledged_at",
     ),
     // Brief AI-generated summary of what the run did (≤50 words)

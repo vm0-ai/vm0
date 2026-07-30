@@ -15,7 +15,7 @@ import {
   cronDrainEmailOutboxContract,
   cronExecuteMorningBriefsContract,
   cronExecuteWorkflowAutomationsContract,
-  cronMonitorChatMessageQueueContract,
+  cronMonitorChatEventQueueContract,
   cronProcessUsageEventsContract,
   cronRenewGoogleCalendarWatchesContract,
   cronRenewGmailWatchesContract,
@@ -51,7 +51,7 @@ const expectedVercelCrons = [
     schedule: "* * * * *",
   },
   {
-    path: cronMonitorChatMessageQueueContract.monitor.path,
+    path: cronMonitorChatEventQueueContract.monitor.path,
     schedule: "* * * * *",
   },
   {

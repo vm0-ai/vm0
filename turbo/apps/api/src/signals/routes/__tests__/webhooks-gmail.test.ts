@@ -37,7 +37,7 @@ import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { chatEventDisplayText } from "./helpers/chat-event";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { replaceBddVm0ApiKeys } from "../../../test-fixtures/chat-messages";
+import { replaceBddVm0ApiKeys } from "../../../test-fixtures/chat-events";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);

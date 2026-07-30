@@ -73,8 +73,8 @@ import {
   deleteAgentRunFixture,
   deleteBddVm0ApiKeys,
   hasVm0ApiKeyLabel,
-  holdChatMessageFixture,
-  holdChatMessageQueueItemFixture,
+  holdChatEventFixture,
+  holdChatEventQueueItemFixture,
   holdOrgAdmissionLockFixture,
   holdThreadSessionBindingClearFixture,
   holdThreadSessionConversationChangesFixture,
@@ -82,7 +82,7 @@ import {
   insertRetiredQueuePauseEventsFixture,
   replaceBddVm0ApiKeys,
   replaceThreadSessionBindingFixture,
-} from "../../../test-fixtures/chat-messages";
+} from "../../../test-fixtures/chat-events";
 
 /**
  * CHAT-02 / RUN-01 / CHAIN-CHAT: the web chat send route end to end.
@@ -228,7 +228,7 @@ type OutputMessage = Extract<
   ChatEventResponse,
   { eventType: "output.message" }
 >;
-type FollowupsMessage = Extract<
+type FollowupsEvent = Extract<
   ChatEventResponse,
   { eventType: "output.followups" }
 >;
@@ -409,7 +409,7 @@ function sandboxOperationEventsForRun(
   });
 }
 
-function firstAssistantMessageEventsForRun(
+function firstAssistantEventsForRun(
   runId: string,
 ): readonly Record<string, unknown>[] {
   return sandboxOperationEventsForRun(runId).filter((event) => {
@@ -417,7 +417,7 @@ function firstAssistantMessageEventsForRun(
   });
 }
 
-function firstAssistantMessageEligibilityEventsForRun(
+function firstAssistantEligibilityEventsForRun(
   runId: string,
 ): readonly Record<string, unknown>[] {
   return sandboxOperationEventsForRun(runId).filter((event) => {
@@ -686,11 +686,11 @@ function eventBackedContents(
   });
 }
 
-function recommendedFollowupMessages(
+function recommendedFollowupEvents(
   messages: readonly ChatEventResponse[],
   runId: string,
-): FollowupsMessage[] {
-  return messages.filter((message): message is FollowupsMessage => {
+): FollowupsEvent[] {
+  return messages.filter((message): message is FollowupsEvent => {
     return (
       message.eventType === "output.followups" &&
       message.runId === runId &&
@@ -1790,7 +1790,7 @@ describe("CHAT-02: dispatch failure", () => {
     expect(sent.body.status).toBe("failed");
     await flushWaitUntilForTest();
     expect(
-      firstAssistantMessageEligibilityEventsForRun(sent.body.runId),
+      firstAssistantEligibilityEventsForRun(sent.body.runId),
     ).toStrictEqual([
       expect.objectContaining({
         op_type: "first_assistant_message_eligible",
@@ -1869,9 +1869,9 @@ describe("CHAT-02: dispatch failure", () => {
       status: "failed",
     });
     await flushWaitUntilForTest();
-    expect(
-      firstAssistantMessageEligibilityEventsForRun(sent.body.runId),
-    ).toHaveLength(1);
+    expect(firstAssistantEligibilityEventsForRun(sent.body.runId)).toHaveLength(
+      1,
+    );
     const queue = await api.readRunQueue(actor);
     expect(queue.body.queue).not.toContainEqual(
       expect.objectContaining({ runId: sent.body.runId }),
@@ -4028,7 +4028,7 @@ describe("CHAT-02: initial thinking indicator", () => {
     );
     expect(thinkingPromptPayload).toContain("Draft a launch checklist");
     await flushWaitUntilForTest();
-    expect(firstAssistantMessageEventsForRun(run.runId)).toStrictEqual([]);
+    expect(firstAssistantEventsForRun(run.runId)).toStrictEqual([]);
 
     await cancelChatRun(actor, run.runId);
   });
@@ -4092,14 +4092,12 @@ describe("CHAT-02: prior rounds and thread titles", () => {
       actor,
       first.threadId,
       (items) => {
-        return recommendedFollowupMessages(items, first.runId).some(
-          (message) => {
-            return (message.recommendedFollowups?.length ?? 0) > 0;
-          },
-        );
+        return recommendedFollowupEvents(items, first.runId).some((message) => {
+          return (message.recommendedFollowups?.length ?? 0) > 0;
+        });
       },
     );
-    const recommender = recommendedFollowupMessages(
+    const recommender = recommendedFollowupEvents(
       afterFirst.events,
       first.runId,
     ).find((message) => {
@@ -6074,9 +6072,9 @@ describe("CHAT-02: shared user message queue", () => {
       orgId: actor.orgId,
       signal: context.signal,
     });
-    const messageQueueLock = await holdChatMessageQueueItemFixture({
+    const eventQueueLock = await holdChatEventQueueItemFixture({
       threadId: anchor.threadId,
-      messageId,
+      eventId: messageId,
       signal: context.signal,
     });
 
@@ -6087,8 +6085,8 @@ describe("CHAT-02: shared user message queue", () => {
         releaseCallbackQuery.resolve(undefined);
       }
       admissionLock.release();
-      messageQueueLock.release();
-      await Promise.all([admissionLock.done, messageQueueLock.done]);
+      eventQueueLock.release();
+      await Promise.all([admissionLock.done, eventQueueLock.done]);
     });
 
     context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
@@ -6113,7 +6111,7 @@ describe("CHAT-02: shared user message queue", () => {
     await expect.poll(admissionLock.waiterCount).toBe(2);
     admissionLock.release();
     await admissionLock.done;
-    await expect.poll(messageQueueLock.directBlockedWaiterCount).toBe(1);
+    await expect.poll(eventQueueLock.directBlockedWaiterCount).toBe(1);
 
     const recall = Promise.allSettled([
       chat.requestSendEvent(
@@ -6127,8 +6125,8 @@ describe("CHAT-02: shared user message queue", () => {
         [400],
       ),
     ]);
-    await expect.poll(messageQueueLock.blockedWaiterCount).toBe(2);
-    messageQueueLock.release();
+    await expect.poll(eventQueueLock.blockedWaiterCount).toBe(2);
+    eventQueueLock.release();
 
     const [recallResult] = await recall;
     if (recallResult.status === "rejected") {
@@ -6139,7 +6137,7 @@ describe("CHAT-02: shared user message queue", () => {
     expect(recalled.body.error.message).toBe(
       "Only queued user messages can be recalled",
     );
-    await messageQueueLock.done;
+    await eventQueueLock.done;
     await flushWaitUntilForTest();
 
     const messages = await waitForThreadMessages(
@@ -6206,9 +6204,9 @@ describe("CHAT-02: shared user message queue", () => {
       orgId: actor.orgId,
       signal: context.signal,
     });
-    const messageQueueLock = await holdChatMessageQueueItemFixture({
+    const eventQueueLock = await holdChatEventQueueItemFixture({
       threadId: anchor.threadId,
-      messageId,
+      eventId: messageId,
       signal: context.signal,
     });
 
@@ -6222,8 +6220,8 @@ describe("CHAT-02: shared user message queue", () => {
         releaseCallbackQuery.resolve(undefined);
       }
       admissionLock.release();
-      messageQueueLock.release();
-      await Promise.all([admissionLock.done, messageQueueLock.done]);
+      eventQueueLock.release();
+      await Promise.all([admissionLock.done, eventQueueLock.done]);
     });
 
     context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
@@ -6260,14 +6258,14 @@ describe("CHAT-02: shared user message queue", () => {
         [201],
       ),
     ]);
-    await expect.poll(messageQueueLock.directBlockedWaiterCount).toBe(1);
+    await expect.poll(eventQueueLock.directBlockedWaiterCount).toBe(1);
 
     admissionLock.release();
     await admissionLock.done;
     await expect
-      .poll(messageQueueLock.blockedWaiterCount)
+      .poll(eventQueueLock.blockedWaiterCount)
       .toBeGreaterThanOrEqual(2);
-    messageQueueLock.release();
+    eventQueueLock.release();
 
     const [recallResult] = await recall;
     if (recallResult.status === "rejected") {
@@ -6278,7 +6276,7 @@ describe("CHAT-02: shared user message queue", () => {
       runId: null,
       threadId: anchor.threadId,
     });
-    await messageQueueLock.done;
+    await eventQueueLock.done;
     await flushWaitUntilForTest();
 
     await expect
@@ -6385,24 +6383,24 @@ describe("CHAT-02: shared user message queue", () => {
 
     // Hold a child message row so deletion owns the thread lock while the
     // post-commit marker reaches that exact parent/child race.
-    const messageLock = await holdChatMessageFixture({
+    const eventLock = await holdChatEventFixture({
       threadId: anchor.threadId,
-      messageId,
+      eventId: messageId,
       signal: context.signal,
     });
     onTestFinished(async () => {
-      messageLock.release();
-      await messageLock.done;
+      eventLock.release();
+      await eventLock.done;
     });
     const deletion = chat.deleteThread(actor, anchor.threadId);
-    await expect.poll(messageLock.blockedWaiterCount).toBeGreaterThanOrEqual(1);
+    await expect.poll(eventLock.blockedWaiterCount).toBeGreaterThanOrEqual(1);
 
     context.mocks.ably.publish.mockClear();
     releaseQueuePublish.resolve(undefined);
-    await expect.poll(messageLock.blockedWaiterCount).toBeGreaterThanOrEqual(2);
-    messageLock.release();
+    await expect.poll(eventLock.blockedWaiterCount).toBeGreaterThanOrEqual(2);
+    eventLock.release();
 
-    await Promise.all([messageLock.done, deletion]);
+    await Promise.all([eventLock.done, deletion]);
     await flushWaitUntilForTest();
     expect(
       apiDispatchActionTypes(apiDispatchTimingEventsForRun(autoRun.id)),

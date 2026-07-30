@@ -9,7 +9,7 @@ import {
   chatThreadPinContract,
   chatThreadUnpinContract,
   chatThreadRenameContract,
-  type ChatMessageUsagePayload,
+  type ChatEventUsagePayload,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -33,7 +33,7 @@ export interface ChatEventGroup {
   beginEventId: string;
   role: "user" | "assistant";
   events: EnrichedChatEvent[];
-  usage?: ChatMessageUsagePayload;
+  usage?: ChatEventUsagePayload;
 }
 
 // ---------------------------------------------------------------------------

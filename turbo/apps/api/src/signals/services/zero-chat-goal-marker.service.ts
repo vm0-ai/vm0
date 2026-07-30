@@ -1,4 +1,4 @@
-import type { ChatMessageGoalEvent } from "@vm0/db/schema/chat-message";
+import type { ChatEventGoalEvent } from "@vm0/db/schema/chat-event";
 import { not, type SQL } from "drizzle-orm";
 
 import type { Db } from "../external/db";
@@ -19,7 +19,7 @@ export async function appendGoalEventMarker(
   tx: DbTransaction,
   args: {
     readonly chatThreadId: string;
-    readonly event: ChatMessageGoalEvent;
+    readonly event: ChatEventGoalEvent;
   },
 ): Promise<void> {
   await insertChatEvent(tx, {
@@ -32,7 +32,7 @@ export async function appendGoalEventMarker(
   });
 }
 
-export function activeGoalEvent(objectiveBrief: string): ChatMessageGoalEvent {
+export function activeGoalEvent(objectiveBrief: string): ChatEventGoalEvent {
   return {
     type: "state",
     status: "active",
@@ -42,11 +42,11 @@ export function activeGoalEvent(objectiveBrief: string): ChatMessageGoalEvent {
 
 export function hiddenGoalStateEvent(
   status: "paused" | "blocked" | "complete",
-): ChatMessageGoalEvent {
+): ChatEventGoalEvent {
   return { type: "state", status };
 }
 
-export function clearedGoalEvent(): ChatMessageGoalEvent {
+export function clearedGoalEvent(): ChatEventGoalEvent {
   return { type: "cleared" };
 }
 
