@@ -320,13 +320,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.CodexSessionPruning]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Prune oversized Codex checkpoint histories to the latest native compact generation.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ClaudeSessionPruning]: {
     maintainer: "liangyou@vm0.ai",
     description:
@@ -483,7 +476,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ZeroChatMessaging]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Advertise zero chat send and cancel in the agent system prompt without gating the CLI commands or API.",
+      "Advertise zero chat create, send, and cancel in the agent system prompt without gating the CLI commands or API.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

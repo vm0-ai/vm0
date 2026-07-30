@@ -34,9 +34,9 @@ export const userPermissionGrants = pgTable(
         },
         { onDelete: "cascade" },
       ),
-    // Legacy rollout bridge. Switch in #23793 and remove in #23794.
-    connectorRef: varchar("connector_ref", { length: 64 }).notNull(),
-    connectorSlug: varchar("connector_slug", { length: 64 }),
+    // Compatibility bridge for pre-#23793 releases. Remove in #23794.
+    legacyConnectorRef: varchar("connector_ref", { length: 64 }).notNull(),
+    connectorSlug: varchar("connector_slug", { length: 64 }).notNull(),
     permission: varchar("permission", { length: 128 }).notNull(),
     action: varchar("action", { length: 8 })
       .$type<UserPermissionGrantAction>()
@@ -51,7 +51,7 @@ export const userPermissionGrants = pgTable(
         table.orgId,
         table.userId,
         table.agentId,
-        table.connectorRef,
+        table.legacyConnectorRef,
         table.permission,
       ),
       uniqueIndex("uq_user_permission_grants_slug_permission").on(
@@ -75,7 +75,7 @@ export const userPermissionGrants = pgTable(
       check(
         "chk_user_permission_grants_slug_matches_ref",
         sql`${table.connectorSlug} IS NOT NULL
-          AND ${table.connectorSlug} = ${table.connectorRef}`,
+          AND ${table.connectorSlug} = ${table.legacyConnectorRef}`,
       ),
     ];
   },

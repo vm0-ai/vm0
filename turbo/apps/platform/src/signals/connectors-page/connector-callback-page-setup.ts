@@ -24,6 +24,7 @@ import { updatePage$ } from "../react-router.ts";
 import { pathParams$, replacePathSilently$, searchParams$ } from "../route.ts";
 import { ROUTES } from "../route-paths.ts";
 import { jsonParseOr } from "../utils.ts";
+import { i18n } from "../../i18n/index.ts";
 
 type ConnectorCallbackPageResult =
   | { readonly status: "loading" }
@@ -48,12 +49,25 @@ function connectorTypeFromPath(
 
 function connectorLabel(connectorType: ConnectorCallbackType | null): string {
   if (!connectorType) {
-    return "Connector";
+    return i18n.t(($) => {
+      return $.connectors.callback.genericLabel;
+    });
   }
   if (connectorType === "custom") {
-    return "Custom connector";
+    return i18n.t(($) => {
+      return $.connectors.callback.customConnectorLabel;
+    });
   }
   return connectorType === "github" ? "GitHub" : connectorType.toUpperCase();
+}
+
+function connectorCallbackDocumentTitle(label: string): string {
+  return i18n.t(
+    ($) => {
+      return $.connectors.callback.documentTitle;
+    },
+    { connector: label },
+  );
 }
 
 function connectorIconFromSearchParams(
@@ -136,7 +150,10 @@ function resultFromPath(
     return {
       status,
       message:
-        searchParams.get("message") || "An error occurred during connection.",
+        searchParams.get("message") ||
+        i18n.t(($) => {
+          return $.connectors.callback.errorFallback;
+        }),
     };
   }
   return null;
@@ -222,7 +239,7 @@ export const setupConnectorCallbackPage$ = command(
 
     if (pathResult) {
       set(updatePage$, callbackPageElement(connectorIcon, label, pathResult));
-      set(updateDocumentTitle$, `Connect ${label}`);
+      set(updateDocumentTitle$, connectorCallbackDocumentTitle(label));
       await set(hideAppSkeleton$, signal);
       return;
     }
@@ -232,10 +249,12 @@ export const setupConnectorCallbackPage$ = command(
         updatePage$,
         callbackPageElement(connectorIcon, label, {
           status: "error",
-          message: "Invalid connector callback URL.",
+          message: i18n.t(($) => {
+            return $.connectors.callback.invalidUrl;
+          }),
         }),
       );
-      set(updateDocumentTitle$, `Connect ${label}`);
+      set(updateDocumentTitle$, connectorCallbackDocumentTitle(label));
       await set(hideAppSkeleton$, signal);
       return;
     }
@@ -244,7 +263,7 @@ export const setupConnectorCallbackPage$ = command(
       updatePage$,
       callbackPageElement(connectorIcon, label, { status: "loading" }),
     );
-    set(updateDocumentTitle$, `Connect ${label}`);
+    set(updateDocumentTitle$, connectorCallbackDocumentTitle(label));
     await set(hideAppSkeleton$, signal);
 
     const query = Object.fromEntries(searchParams);

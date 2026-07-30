@@ -35,9 +35,17 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
-import { eq } from "drizzle-orm";
+import { eq, isNotNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Client } from "pg";
+import {
+  connectorSlugCanonicalInsertConnectors,
+  connectorSlugCanonicalInsertExternalCodeSessions,
+  connectorSlugCanonicalInsertOauthDeviceSessions,
+  connectorSlugCanonicalInsertOauthStates,
+  connectorSlugCanonicalInsertUserConnectors,
+  connectorSlugCanonicalInsertUserPermissionGrants,
+} from "../src/compat/connector-slug-canonical-insert";
 import {
   connectorSlugLegacyInsertConnectors,
   connectorSlugLegacyInsertExternalCodeSessions,
@@ -797,6 +805,143 @@ async function validateChatEventSourcesAreAppendOnly(
         agentComposeId,
       ]);
     }
+    await client.end();
+  }
+}
+
+async function validateChatEventContextPointerConstraints(
+  dbUrl: string,
+): Promise<void> {
+  console.log("=== Phase 2.5: Validate chat event context pointer ===\n");
+  const client = new Client({ connectionString: dbUrl });
+  await client.connect();
+
+  const agentComposeId = "00000000-0000-4000-8000-000000074501";
+  const threadId = "00000000-0000-4000-8000-000000074502";
+
+  try {
+    await client.query(
+      `
+        INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+        VALUES ($1, 'context-pointer-test-user', 'context-pointer-test', 'context-pointer-test-org')
+      `,
+      [agentComposeId],
+    );
+    await client.query(
+      `
+        INSERT INTO "chat_threads" (
+          "id",
+          "user_id",
+          "agent_compose_id",
+          "title"
+        )
+        VALUES ($1, 'context-pointer-test-user', $2, 'context pointer test')
+      `,
+      [threadId, agentComposeId],
+    );
+
+    const accepted = await client.query<{
+      contextId: string | null;
+      contextType: string | null;
+    }>(
+      `
+        INSERT INTO "chat_events" (
+          "id",
+          "chat_thread_id",
+          "event_type",
+          "context_type",
+          "context_id"
+        )
+        VALUES
+          ('00000000-0000-4000-8000-000000074510', $1, 'output.message', NULL, NULL),
+          (
+            '00000000-0000-4000-8000-000000074511',
+            $1,
+            'output.message',
+            'slack',
+            '00000000-0000-4000-8000-000000074503'
+          )
+        RETURNING
+          "context_type" AS "contextType",
+          "context_id" AS "contextId"
+      `,
+      [threadId],
+    );
+    assert.deepEqual(accepted.rows, [
+      { contextId: null, contextType: null },
+      {
+        contextId: "00000000-0000-4000-8000-000000074503",
+        contextType: "slack",
+      },
+    ]);
+
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: "chat_events_context_pair_check",
+      query: `
+        INSERT INTO "chat_events" (
+          "id",
+          "chat_thread_id",
+          "event_type",
+          "context_type"
+        )
+        VALUES (
+          '00000000-0000-4000-8000-000000074512',
+          $1,
+          'output.message',
+          'slack'
+        )
+      `,
+      values: [threadId],
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: "chat_events_context_pair_check",
+      query: `
+        INSERT INTO "chat_events" (
+          "id",
+          "chat_thread_id",
+          "event_type",
+          "context_id"
+        )
+        VALUES (
+          '00000000-0000-4000-8000-000000074513',
+          $1,
+          'output.message',
+          '00000000-0000-4000-8000-000000074504'
+        )
+      `,
+      values: [threadId],
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: "chat_events_context_type_check",
+      query: `
+        INSERT INTO "chat_events" (
+          "id",
+          "chat_thread_id",
+          "event_type",
+          "context_type",
+          "context_id"
+        )
+        VALUES (
+          '00000000-0000-4000-8000-000000074514',
+          $1,
+          'output.message',
+          'telegram',
+          '00000000-0000-4000-8000-000000074505'
+        )
+      `,
+      values: [threadId],
+    });
+
+    console.log(
+      "   ✅ Chat event context pointers are paired and reject unknown types\n",
+    );
+  } finally {
+    await client.query(`DELETE FROM "agent_composes" WHERE "id" = $1`, [
+      agentComposeId,
+    ]);
     await client.end();
   }
 }
@@ -6382,6 +6527,7 @@ const CONNECTOR_SLUG_EXPANSION_CUSTOM_OAUTH_STATE_ID =
   "71000000-0000-4000-8000-000000000096";
 const CONNECTOR_SLUG_EXPANSION_PREVIOUS_MIGRATION = 737;
 const CONNECTOR_SLUG_EXPANSION_MIGRATION = 738;
+const CONNECTOR_SLUG_CUTOVER_MIGRATION = 745;
 const connectorSlugLegacyInsertIds = {
   connector_external_code_sessions: "71000000-0000-4000-8000-000000000085",
   connector_oauth_device_authorization_sessions:
@@ -6398,6 +6544,15 @@ const connectorSlugLegacyInsertValues = {
   connectors: "google-drive",
   user_connectors: "google-calendar",
   user_permission_grants: "slack",
+} as const;
+const connectorSlugCanonicalInsertIds = {
+  connector_external_code_sessions: "71000000-0000-4000-8000-000000000091",
+  connector_oauth_device_authorization_sessions:
+    "71000000-0000-4000-8000-000000000090",
+  connector_oauth_states: "71000000-0000-4000-8000-000000000089",
+  connectors: "71000000-0000-4000-8000-000000000087",
+  user_connectors: "71000000-0000-4000-8000-000000000088",
+  user_permission_grants: "71000000-0000-4000-8000-000000000092",
 } as const;
 
 const connectorSlugCompatibilitySpecs: readonly ConnectorSlugCompatibilitySpec[] =
@@ -6626,7 +6781,7 @@ function requireSingleResultRow<T>(rows: readonly T[]): T {
   return row;
 }
 
-async function validateExpandedBuildAgainstConnectorSlugPredecessor(
+async function validateExpandReleaseAgainstConnectorSlugPredecessor(
   client: Client,
 ): Promise<void> {
   const database = drizzle(client);
@@ -6660,19 +6815,29 @@ async function validateExpandedBuildAgainstConnectorSlugPredecessor(
   assert.equal(
     (
       await database
-        .select({ id: connectors.id, type: connectors.type })
-        .from(connectors)
-        .where(eq(connectors.id, connectorSpec.originalId))
+        .select({
+          id: connectorSlugLegacyInsertConnectors.id,
+          type: connectorSlugLegacyInsertConnectors.type,
+        })
+        .from(connectorSlugLegacyInsertConnectors)
+        .where(
+          eq(connectorSlugLegacyInsertConnectors.id, connectorSpec.originalId),
+        )
     ).length,
     1,
   );
   assert.equal(
     (
       await database
-        .update(connectors)
+        .update(connectorSlugLegacyInsertConnectors)
         .set({ type: connectorSpec.originalSlug })
-        .where(eq(connectors.id, connectorSpec.originalId))
-        .returning({ id: connectors.id, type: connectors.type })
+        .where(
+          eq(connectorSlugLegacyInsertConnectors.id, connectorSpec.originalId),
+        )
+        .returning({
+          id: connectorSlugLegacyInsertConnectors.id,
+          type: connectorSlugLegacyInsertConnectors.type,
+        })
     ).length,
     1,
   );
@@ -6681,68 +6846,88 @@ async function validateExpandedBuildAgainstConnectorSlugPredecessor(
     (
       await database
         .select({
-          id: userConnectors.id,
-          connectorType: userConnectors.connectorType,
+          id: connectorSlugLegacyInsertUserConnectors.id,
+          connectorType: connectorSlugLegacyInsertUserConnectors.connectorType,
         })
-        .from(userConnectors)
-        .where(eq(userConnectors.id, userConnectorSpec.originalId))
+        .from(connectorSlugLegacyInsertUserConnectors)
+        .where(
+          eq(
+            connectorSlugLegacyInsertUserConnectors.id,
+            userConnectorSpec.originalId,
+          ),
+        )
     ).length,
     1,
   );
   assert.equal(
     (
       await database
-        .update(userConnectors)
+        .update(connectorSlugLegacyInsertUserConnectors)
         .set({
           connectorType: userConnectorSpec.originalSlug,
         })
-        .where(eq(userConnectors.id, userConnectorSpec.originalId))
-        .returning({
-          id: userConnectors.id,
-          connectorType: userConnectors.connectorType,
-        })
-    ).length,
-    1,
-  );
-
-  assert.equal(
-    (
-      await database
-        .select({
-          id: connectorOauthStates.id,
-          type: connectorOauthStates.type,
-        })
-        .from(connectorOauthStates)
-        .where(eq(connectorOauthStates.id, oauthStateSpec.originalId))
-    ).length,
-    1,
-  );
-  assert.equal(
-    (
-      await database
-        .update(connectorOauthStates)
-        .set({ type: oauthStateSpec.originalSlug })
-        .where(eq(connectorOauthStates.id, oauthStateSpec.originalId))
-        .returning({
-          id: connectorOauthStates.id,
-          type: connectorOauthStates.type,
-        })
-    ).length,
-    1,
-  );
-
-  assert.equal(
-    (
-      await database
-        .select({
-          id: connectorOauthDeviceAuthorizationSessions.id,
-          connectorType:
-            connectorOauthDeviceAuthorizationSessions.connectorType,
-        })
-        .from(connectorOauthDeviceAuthorizationSessions)
         .where(
           eq(
-            connectorOauthDeviceAuthorizationSessions.id,
+            connectorSlugLegacyInsertUserConnectors.id,
+            userConnectorSpec.originalId,
+          ),
+        )
+        .returning({
+          id: connectorSlugLegacyInsertUserConnectors.id,
+          connectorType: connectorSlugLegacyInsertUserConnectors.connectorType,
+        })
+    ).length,
+    1,
+  );
+
+  assert.equal(
+    (
+      await database
+        .select({
+          id: connectorSlugLegacyInsertOauthStates.id,
+          type: connectorSlugLegacyInsertOauthStates.type,
+        })
+        .from(connectorSlugLegacyInsertOauthStates)
+        .where(
+          eq(
+            connectorSlugLegacyInsertOauthStates.id,
+            oauthStateSpec.originalId,
+          ),
+        )
+    ).length,
+    1,
+  );
+  assert.equal(
+    (
+      await database
+        .update(connectorSlugLegacyInsertOauthStates)
+        .set({ type: oauthStateSpec.originalSlug })
+        .where(
+          eq(
+            connectorSlugLegacyInsertOauthStates.id,
+            oauthStateSpec.originalId,
+          ),
+        )
+        .returning({
+          id: connectorSlugLegacyInsertOauthStates.id,
+          type: connectorSlugLegacyInsertOauthStates.type,
+        })
+    ).length,
+    1,
+  );
+
+  assert.equal(
+    (
+      await database
+        .select({
+          id: connectorSlugLegacyInsertOauthDeviceSessions.id,
+          connectorType:
+            connectorSlugLegacyInsertOauthDeviceSessions.connectorType,
+        })
+        .from(connectorSlugLegacyInsertOauthDeviceSessions)
+        .where(
+          eq(
+            connectorSlugLegacyInsertOauthDeviceSessions.id,
             deviceSessionSpec.originalId,
           ),
         )
@@ -6752,20 +6937,20 @@ async function validateExpandedBuildAgainstConnectorSlugPredecessor(
   assert.equal(
     (
       await database
-        .update(connectorOauthDeviceAuthorizationSessions)
+        .update(connectorSlugLegacyInsertOauthDeviceSessions)
         .set({
           connectorType: deviceSessionSpec.originalSlug,
         })
         .where(
           eq(
-            connectorOauthDeviceAuthorizationSessions.id,
+            connectorSlugLegacyInsertOauthDeviceSessions.id,
             deviceSessionSpec.originalId,
           ),
         )
         .returning({
-          id: connectorOauthDeviceAuthorizationSessions.id,
+          id: connectorSlugLegacyInsertOauthDeviceSessions.id,
           connectorType:
-            connectorOauthDeviceAuthorizationSessions.connectorType,
+            connectorSlugLegacyInsertOauthDeviceSessions.connectorType,
         })
     ).length,
     1,
@@ -6775,13 +6960,14 @@ async function validateExpandedBuildAgainstConnectorSlugPredecessor(
     (
       await database
         .select({
-          id: connectorExternalCodeSessions.id,
-          connectorType: connectorExternalCodeSessions.connectorType,
+          id: connectorSlugLegacyInsertExternalCodeSessions.id,
+          connectorType:
+            connectorSlugLegacyInsertExternalCodeSessions.connectorType,
         })
-        .from(connectorExternalCodeSessions)
+        .from(connectorSlugLegacyInsertExternalCodeSessions)
         .where(
           eq(
-            connectorExternalCodeSessions.id,
+            connectorSlugLegacyInsertExternalCodeSessions.id,
             externalCodeSessionSpec.originalId,
           ),
         )
@@ -6791,19 +6977,20 @@ async function validateExpandedBuildAgainstConnectorSlugPredecessor(
   assert.equal(
     (
       await database
-        .update(connectorExternalCodeSessions)
+        .update(connectorSlugLegacyInsertExternalCodeSessions)
         .set({
           connectorType: externalCodeSessionSpec.originalSlug,
         })
         .where(
           eq(
-            connectorExternalCodeSessions.id,
+            connectorSlugLegacyInsertExternalCodeSessions.id,
             externalCodeSessionSpec.originalId,
           ),
         )
         .returning({
-          id: connectorExternalCodeSessions.id,
-          connectorType: connectorExternalCodeSessions.connectorType,
+          id: connectorSlugLegacyInsertExternalCodeSessions.id,
+          connectorType:
+            connectorSlugLegacyInsertExternalCodeSessions.connectorType,
         })
     ).length,
     1,
@@ -6813,25 +7000,37 @@ async function validateExpandedBuildAgainstConnectorSlugPredecessor(
     (
       await database
         .select({
-          id: userPermissionGrants.id,
-          connectorRef: userPermissionGrants.connectorRef,
+          id: connectorSlugLegacyInsertUserPermissionGrants.id,
+          connectorRef:
+            connectorSlugLegacyInsertUserPermissionGrants.connectorRef,
         })
-        .from(userPermissionGrants)
-        .where(eq(userPermissionGrants.id, permissionGrantSpec.originalId))
+        .from(connectorSlugLegacyInsertUserPermissionGrants)
+        .where(
+          eq(
+            connectorSlugLegacyInsertUserPermissionGrants.id,
+            permissionGrantSpec.originalId,
+          ),
+        )
     ).length,
     1,
   );
   assert.equal(
     (
       await database
-        .update(userPermissionGrants)
+        .update(connectorSlugLegacyInsertUserPermissionGrants)
         .set({
           connectorRef: permissionGrantSpec.originalSlug,
         })
-        .where(eq(userPermissionGrants.id, permissionGrantSpec.originalId))
+        .where(
+          eq(
+            connectorSlugLegacyInsertUserPermissionGrants.id,
+            permissionGrantSpec.originalId,
+          ),
+        )
         .returning({
-          id: userPermissionGrants.id,
-          connectorRef: userPermissionGrants.connectorRef,
+          id: connectorSlugLegacyInsertUserPermissionGrants.id,
+          connectorRef:
+            connectorSlugLegacyInsertUserPermissionGrants.connectorRef,
         })
     ).length,
     1,
@@ -6948,6 +7147,386 @@ async function validateExpandedBuildAgainstConnectorSlugPredecessor(
   );
 }
 
+async function validateCutoverReleaseAgainstExpandedSchema(
+  client: Client,
+): Promise<void> {
+  const database = drizzle(client);
+
+  assert.deepEqual(
+    await database
+      .insert(connectorSlugCanonicalInsertConnectors)
+      .values({
+        id: connectorSlugCanonicalInsertIds.connectors,
+        connectorSlug: "cutover-google-drive",
+        authMethod: "oauth",
+        storageVersion: 1,
+        userId: "connector-slug-cutover-connector-user",
+        orgId: "connector-slug-org",
+      })
+      .returning({ id: connectorSlugCanonicalInsertConnectors.id }),
+    [{ id: connectorSlugCanonicalInsertIds.connectors }],
+  );
+  assert.deepEqual(
+    await database
+      .insert(connectorSlugCanonicalInsertUserConnectors)
+      .values({
+        id: connectorSlugCanonicalInsertIds.user_connectors,
+        orgId: "connector-slug-org",
+        userId: "connector-slug-cutover-user-connector-user",
+        agentId: CONNECTOR_SLUG_EXPANSION_AGENT_ID,
+        connectorSlug: "cutover-google-calendar",
+      })
+      .returning({ id: connectorSlugCanonicalInsertUserConnectors.id }),
+    [{ id: connectorSlugCanonicalInsertIds.user_connectors }],
+  );
+  assert.deepEqual(
+    await database
+      .insert(connectorSlugCanonicalInsertOauthStates)
+      .values({
+        id: connectorSlugCanonicalInsertIds.connector_oauth_states,
+        state: "connector-slug-cutover-state",
+        connectorSlug: "cutover-gmail",
+        authMethod: "oauth",
+        userId: "connector-slug-cutover-oauth-state-user",
+        orgId: "connector-slug-org",
+        redirectUri: "https://example.com/cutover/callback",
+        expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+      })
+      .returning({ id: connectorSlugCanonicalInsertOauthStates.id }),
+    [{ id: connectorSlugCanonicalInsertIds.connector_oauth_states }],
+  );
+  assert.deepEqual(
+    await database
+      .insert(connectorSlugCanonicalInsertOauthDeviceSessions)
+      .values({
+        id: connectorSlugCanonicalInsertIds.connector_oauth_device_authorization_sessions,
+        orgId: "connector-slug-org",
+        userId: "connector-slug-cutover-device-user",
+        connectorSlug: "cutover-youtube",
+        authMethod: "oauth-device",
+        sessionTokenHash: "connector-slug-cutover-device-token",
+        encryptedProviderState: "connector-slug-cutover-device-state",
+        userCode: "CUTOVER",
+        verificationUri: "https://example.com/cutover/device",
+        intervalSeconds: 5,
+        expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+      })
+      .returning({
+        id: connectorSlugCanonicalInsertOauthDeviceSessions.id,
+      }),
+    [
+      {
+        id: connectorSlugCanonicalInsertIds.connector_oauth_device_authorization_sessions,
+      },
+    ],
+  );
+  assert.deepEqual(
+    await database
+      .insert(connectorSlugCanonicalInsertExternalCodeSessions)
+      .values({
+        id: connectorSlugCanonicalInsertIds.connector_external_code_sessions,
+        orgId: "connector-slug-org",
+        userId: "connector-slug-cutover-external-code-user",
+        connectorSlug: "cutover-x",
+        authMethod: "external-code",
+        sessionTokenHash: "connector-slug-cutover-external-code-token",
+        encryptedProviderState: "connector-slug-cutover-external-code-state",
+        authorizationUrl: "https://example.com/cutover/authorize",
+        expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+      })
+      .returning({
+        id: connectorSlugCanonicalInsertExternalCodeSessions.id,
+      }),
+    [
+      {
+        id: connectorSlugCanonicalInsertIds.connector_external_code_sessions,
+      },
+    ],
+  );
+  assert.deepEqual(
+    await database
+      .insert(connectorSlugCanonicalInsertUserPermissionGrants)
+      .values({
+        id: connectorSlugCanonicalInsertIds.user_permission_grants,
+        orgId: "connector-slug-org",
+        userId: "connector-slug-cutover-permission-user",
+        agentId: CONNECTOR_SLUG_EXPANSION_AGENT_ID,
+        connectorSlug: "cutover-slack",
+        permission: "channels:history",
+        action: "allow",
+      })
+      .returning({
+        id: connectorSlugCanonicalInsertUserPermissionGrants.id,
+      }),
+    [{ id: connectorSlugCanonicalInsertIds.user_permission_grants }],
+  );
+
+  assert.deepEqual(
+    await database
+      .select({ connectorSlug: connectors.connectorSlug })
+      .from(connectors)
+      .where(eq(connectors.id, connectorSlugCanonicalInsertIds.connectors)),
+    [{ connectorSlug: "cutover-google-drive" }],
+  );
+  assert.deepEqual(
+    await database
+      .select({ connectorSlug: userConnectors.connectorSlug })
+      .from(userConnectors)
+      .where(
+        eq(userConnectors.id, connectorSlugCanonicalInsertIds.user_connectors),
+      ),
+    [{ connectorSlug: "cutover-google-calendar" }],
+  );
+  assert.deepEqual(
+    await database
+      .select({ connectorSlug: connectorOauthStates.connectorSlug })
+      .from(connectorOauthStates)
+      .where(
+        eq(
+          connectorOauthStates.id,
+          connectorSlugCanonicalInsertIds.connector_oauth_states,
+        ),
+      ),
+    [{ connectorSlug: "cutover-gmail" }],
+  );
+  assert.deepEqual(
+    await database
+      .select({
+        connectorSlug: connectorOauthDeviceAuthorizationSessions.connectorSlug,
+      })
+      .from(connectorOauthDeviceAuthorizationSessions)
+      .where(
+        eq(
+          connectorOauthDeviceAuthorizationSessions.id,
+          connectorSlugCanonicalInsertIds.connector_oauth_device_authorization_sessions,
+        ),
+      ),
+    [{ connectorSlug: "cutover-youtube" }],
+  );
+  assert.deepEqual(
+    await database
+      .select({ connectorSlug: connectorExternalCodeSessions.connectorSlug })
+      .from(connectorExternalCodeSessions)
+      .where(
+        eq(
+          connectorExternalCodeSessions.id,
+          connectorSlugCanonicalInsertIds.connector_external_code_sessions,
+        ),
+      ),
+    [{ connectorSlug: "cutover-x" }],
+  );
+  assert.deepEqual(
+    await database
+      .select({ connectorSlug: userPermissionGrants.connectorSlug })
+      .from(userPermissionGrants)
+      .where(
+        eq(
+          userPermissionGrants.id,
+          connectorSlugCanonicalInsertIds.user_permission_grants,
+        ),
+      ),
+    [{ connectorSlug: "cutover-slack" }],
+  );
+
+  assert.equal(
+    (
+      await database
+        .update(connectors)
+        .set({ connectorSlug: "cutover-google-drive" })
+        .where(eq(connectors.id, connectorSlugCanonicalInsertIds.connectors))
+        .returning({ id: connectors.id })
+    ).length,
+    1,
+  );
+  assert.equal(
+    (
+      await database
+        .update(userConnectors)
+        .set({ connectorSlug: "cutover-google-calendar" })
+        .where(
+          eq(
+            userConnectors.id,
+            connectorSlugCanonicalInsertIds.user_connectors,
+          ),
+        )
+        .returning({ id: userConnectors.id })
+    ).length,
+    1,
+  );
+  assert.equal(
+    (
+      await database
+        .update(connectorOauthStates)
+        .set({ connectorSlug: "cutover-gmail" })
+        .where(
+          eq(
+            connectorOauthStates.id,
+            connectorSlugCanonicalInsertIds.connector_oauth_states,
+          ),
+        )
+        .returning({ id: connectorOauthStates.id })
+    ).length,
+    1,
+  );
+  assert.equal(
+    (
+      await database
+        .update(connectorOauthDeviceAuthorizationSessions)
+        .set({ connectorSlug: "cutover-youtube" })
+        .where(
+          eq(
+            connectorOauthDeviceAuthorizationSessions.id,
+            connectorSlugCanonicalInsertIds.connector_oauth_device_authorization_sessions,
+          ),
+        )
+        .returning({ id: connectorOauthDeviceAuthorizationSessions.id })
+    ).length,
+    1,
+  );
+  assert.equal(
+    (
+      await database
+        .update(connectorExternalCodeSessions)
+        .set({ connectorSlug: "cutover-x" })
+        .where(
+          eq(
+            connectorExternalCodeSessions.id,
+            connectorSlugCanonicalInsertIds.connector_external_code_sessions,
+          ),
+        )
+        .returning({ id: connectorExternalCodeSessions.id })
+    ).length,
+    1,
+  );
+  assert.equal(
+    (
+      await database
+        .update(userPermissionGrants)
+        .set({ connectorSlug: "cutover-slack" })
+        .where(
+          eq(
+            userPermissionGrants.id,
+            connectorSlugCanonicalInsertIds.user_permission_grants,
+          ),
+        )
+        .returning({ id: userPermissionGrants.id })
+    ).length,
+    1,
+  );
+
+  assert.deepEqual(
+    await database
+      .insert(connectorSlugCanonicalInsertConnectors)
+      .values({
+        connectorSlug: "cutover-google-drive",
+        authMethod: "oauth",
+        storageVersion: 2,
+        userId: "connector-slug-cutover-connector-user",
+        orgId: "connector-slug-org",
+      })
+      .onConflictDoUpdate({
+        target: [
+          connectorSlugCanonicalInsertConnectors.orgId,
+          connectorSlugCanonicalInsertConnectors.userId,
+          connectorSlugCanonicalInsertConnectors.connectorSlug,
+        ],
+        targetWhere: isNotNull(
+          connectorSlugCanonicalInsertConnectors.connectorSlug,
+        ),
+        set: { storageVersion: 2 },
+      })
+      .returning({ id: connectorSlugCanonicalInsertConnectors.id }),
+    [{ id: connectorSlugCanonicalInsertIds.connectors }],
+  );
+  assert.deepEqual(
+    await database
+      .insert(connectorSlugCanonicalInsertUserConnectors)
+      .values({
+        orgId: "connector-slug-org",
+        userId: "connector-slug-cutover-user-connector-user",
+        agentId: CONNECTOR_SLUG_EXPANSION_AGENT_ID,
+        connectorSlug: "cutover-google-calendar",
+      })
+      .onConflictDoNothing({
+        target: [
+          connectorSlugCanonicalInsertUserConnectors.orgId,
+          connectorSlugCanonicalInsertUserConnectors.userId,
+          connectorSlugCanonicalInsertUserConnectors.agentId,
+          connectorSlugCanonicalInsertUserConnectors.connectorSlug,
+        ],
+      })
+      .returning({ id: connectorSlugCanonicalInsertUserConnectors.id }),
+    [],
+  );
+  assert.deepEqual(
+    await database
+      .insert(connectorSlugCanonicalInsertUserPermissionGrants)
+      .values({
+        orgId: "connector-slug-org",
+        userId: "connector-slug-cutover-permission-user",
+        agentId: CONNECTOR_SLUG_EXPANSION_AGENT_ID,
+        connectorSlug: "cutover-slack",
+        permission: "channels:history",
+        action: "deny",
+      })
+      .onConflictDoNothing({
+        target: [
+          connectorSlugCanonicalInsertUserPermissionGrants.orgId,
+          connectorSlugCanonicalInsertUserPermissionGrants.userId,
+          connectorSlugCanonicalInsertUserPermissionGrants.agentId,
+          connectorSlugCanonicalInsertUserPermissionGrants.connectorSlug,
+          connectorSlugCanonicalInsertUserPermissionGrants.permission,
+        ],
+      })
+      .returning({
+        id: connectorSlugCanonicalInsertUserPermissionGrants.id,
+      }),
+    [],
+  );
+
+  const customConnectorId = "71000000-0000-4000-8000-000000000093";
+  const customOauthStateId = "71000000-0000-4000-8000-000000000094";
+  await database.insert(connectorSlugCanonicalInsertConnectors).values({
+    id: customConnectorId,
+    customConnectorId: CONNECTOR_SLUG_EXPANSION_CUSTOM_CONNECTOR_ID,
+    authMethod: "oauth2",
+    storageVersion: 1,
+    userId: "connector-slug-cutover-custom-user",
+    orgId: "connector-slug-org",
+  });
+  await database.insert(connectorSlugCanonicalInsertOauthStates).values({
+    id: customOauthStateId,
+    state: "connector-slug-cutover-custom-state",
+    customConnectorId: CONNECTOR_SLUG_EXPANSION_CUSTOM_CONNECTOR_ID,
+    connectorRevision: 1,
+    authMethod: "oauth2",
+    userId: "connector-slug-cutover-custom-user",
+    orgId: "connector-slug-org",
+    redirectUri: "https://example.com/cutover/custom/callback",
+    expiresAt: new Date("2030-01-01T00:00:00.000Z"),
+  });
+  assert.deepEqual(
+    await database
+      .select({
+        connectorSlug: connectors.connectorSlug,
+        legacyType: connectors.legacyType,
+      })
+      .from(connectors)
+      .where(eq(connectors.id, customConnectorId)),
+    [{ connectorSlug: null, legacyType: null }],
+  );
+  assert.deepEqual(
+    await database
+      .select({
+        connectorSlug: connectorOauthStates.connectorSlug,
+        legacyType: connectorOauthStates.legacyType,
+      })
+      .from(connectorOauthStates)
+      .where(eq(connectorOauthStates.id, customOauthStateId)),
+    [{ connectorSlug: null, legacyType: null }],
+  );
+}
+
 async function waitForConnectorSlugMigrationLock(
   observer: Client,
   migrationPid: number,
@@ -7041,9 +7620,9 @@ async function applyConnectorSlugExpansionBehindConcurrentWriter(
   }
 }
 
-async function validateConnectorSlugExpansion(): Promise<void> {
+async function validateConnectorSlugRollout(): Promise<void> {
   console.log(
-    "=== Phase 1.6: Validate connector slug expansion compatibility ===\n",
+    "=== Phase 1.6: Validate connector slug rollout compatibility ===\n",
   );
   const testDb = "migration_connector_slug_expansion_test";
   const testDbUrl = createTestDbUrl(testDb);
@@ -7224,7 +7803,7 @@ async function validateConnectorSlugExpansion(): Promise<void> {
         );
       }
 
-      await validateExpandedBuildAgainstConnectorSlugPredecessor(client);
+      await validateExpandReleaseAgainstConnectorSlugPredecessor(client);
 
       await applyConnectorSlugExpansionBehindConcurrentWriter(
         testDbUrl,
@@ -7275,6 +7854,46 @@ async function validateConnectorSlugExpansion(): Promise<void> {
         customConnectorId: CONNECTOR_SLUG_EXPANSION_CUSTOM_CONNECTOR_ID,
         type: null,
       });
+
+      await validateCutoverReleaseAgainstExpandedSchema(client);
+      await applyMigrationsUpTo(client, CONNECTOR_SLUG_CUTOVER_MIGRATION);
+
+      const canonicalNullability = await client.query<{
+        readonly isNullable: "NO" | "YES";
+        readonly tableName: string;
+      }>(
+        `
+          SELECT
+            "table_name" AS "tableName",
+            "is_nullable" AS "isNullable"
+          FROM "information_schema"."columns"
+          WHERE "table_schema" = current_schema()
+            AND "column_name" = 'connector_slug'
+            AND "table_name" = ANY(ARRAY[
+              'connector_external_code_sessions',
+              'connector_oauth_device_authorization_sessions',
+              'connector_oauth_states',
+              'connectors',
+              'user_connectors',
+              'user_permission_grants'
+            ])
+          ORDER BY "table_name"
+        `,
+      );
+      assert.deepEqual(canonicalNullability.rows, [
+        {
+          isNullable: "NO",
+          tableName: "connector_external_code_sessions",
+        },
+        {
+          isNullable: "NO",
+          tableName: "connector_oauth_device_authorization_sessions",
+        },
+        { isNullable: "YES", tableName: "connector_oauth_states" },
+        { isNullable: "YES", tableName: "connectors" },
+        { isNullable: "NO", tableName: "user_connectors" },
+        { isNullable: "NO", tableName: "user_permission_grants" },
+      ]);
 
       for (const spec of connectorSlugCompatibilitySpecs) {
         const stored = await client.query<{
@@ -7704,7 +8323,7 @@ async function validateConnectorSlugExpansion(): Promise<void> {
   }
 
   console.log(
-    "   ✅ Connector slug expansion preserves predecessor inserts, avoids lock-upgrade deadlocks, and enforces mirrored identity\n",
+    "   ✅ Connector slug rollout preserves old/new writes, avoids lock-upgrade deadlocks, and enforces mirrored identity\n",
   );
 }
 
@@ -8921,7 +9540,7 @@ async function main(): Promise<void> {
 
     await validateConnectorCredentialOwnershipBackfill();
     await validateConnectorCredentialOwnershipContraction();
-    await validateConnectorSlugExpansion();
+    await validateConnectorSlugRollout();
 
     await validateStorageArchiveSizeFinalization();
     await validateStorageLegacyTypeContraction();
@@ -8964,6 +9583,7 @@ async function main(): Promise<void> {
 
     await validatePreviousBrowserApiAfterThreadLifecycleMigration(dbUrl1);
     await validateChatEventSourcesAreAppendOnly(dbUrl1);
+    await validateChatEventContextPointerConstraints(dbUrl1);
     await validateConnectorCatalogFinalConstraints(dbUrl1);
     await validateCustomConnectorOauthModeConstraints(dbUrl1);
 

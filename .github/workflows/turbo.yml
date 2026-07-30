@@ -1372,6 +1372,22 @@ jobs:
             --endpoint-url "$r2_endpoint" \
             --recursive
 
+          # A single archive keeps readers to one request instead of one per
+          # file, which is where R2 kept breaking the transfer mid-stream.
+          tar -czf /tmp/okou-app-dist.tar.gz -C turbo/apps/platform/dist .
+
+          aws s3api put-object \
+            --endpoint-url "$r2_endpoint" \
+            --bucket "$R2_BUCKET_NAME" \
+            --key "${ARTIFACT_PREFIX}/dist.tar.gz" \
+            --body /tmp/okou-app-dist.tar.gz \
+            --content-type application/gzip \
+            --cache-control "$cache_control"
+
+          # Keep the per-file layout until every release or rollback workflow
+          # created before archive readers shipped has finished. Those queued
+          # workflows cannot extract dist.tar.gz. Remove this copy after that
+          # reader rollout window has drained.
           aws s3 cp turbo/apps/platform/dist "$artifact_uri/" \
             --endpoint-url "$r2_endpoint" \
             --recursive \
@@ -1399,6 +1415,7 @@ jobs:
       - name: Prepare Cloudflare Pages preview
         id: pages-preview
         env:
+          ARTIFACT_EXISTS: ${{ steps.existing.outputs.exists }}
           ARTIFACT_PREFIX: ${{ steps.artifact.outputs.prefix }}
           PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
         run: |
@@ -1410,14 +1427,23 @@ jobs:
 
           r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
           artifact_uri="s3://${R2_BUCKET_NAME}/${ARTIFACT_PREFIX}"
-          canonical_dist="$(mktemp -d)"
           pages_dist="$(mktemp -d)"
           job_ref="${PAGES_BRANCH%-app}"
           api_origin="https://${job_ref}-api.${PREVIEW_DOMAIN}"
 
-          aws s3 cp "$artifact_uri/" "$canonical_dist/" \
-            --endpoint-url "$r2_endpoint" \
-            --recursive
+          if [[ "$ARTIFACT_EXISTS" == "true" ]]; then
+            canonical_dist="$(mktemp -d)"
+            bash .github/scripts/fetch-okou-app-artifact.sh \
+              "$r2_endpoint" \
+              "$artifact_uri" \
+              "$canonical_dist"
+          else
+            # This job built and uploaded the artifact, so the canonical bytes
+            # are still on disk. Reading them back from R2 only adds latency and
+            # a network failure mode.
+            canonical_dist="turbo/apps/platform/dist"
+          fi
+
           bash .github/scripts/prepare-okou-pages-dist.sh \
             "$canonical_dist" \
             "$pages_dist" \

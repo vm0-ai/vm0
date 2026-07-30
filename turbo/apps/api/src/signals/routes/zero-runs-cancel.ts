@@ -71,7 +71,7 @@ export const zeroRunsCancelRoutes: readonly RouteEntry[] = [
       {
         requireOrganization: true,
         missingOrganizationStatus: 401,
-        requiredCapability: "agent-run:write",
+        accept: ["session", "pat"],
       },
       cancelInner$,
     ),

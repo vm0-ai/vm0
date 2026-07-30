@@ -1,10 +1,6 @@
 import { connectorAuthMethodIdSchema } from "@vm0/api-contracts/contracts/connector-identity";
 import { z } from "zod";
-import {
-  connectorSlugSchema,
-  connectorCatalogVersionSchema,
-  privateNameSchema,
-} from "./common";
+import { connectorCatalogVersionSchema, privateNameSchema } from "./common";
 
 export const publicFieldIdSchema = z.string().regex(/^[a-z][a-zA-Z0-9]*$/u);
 export const connectorFeatureSwitchKeySchema = z
@@ -53,8 +49,6 @@ const categorySourceSchema = z
 export const catalogSourceSchema = z
   .object({
     catalogVersion: connectorCatalogVersionSchema,
-    // TODO(#23619): Rename only with the external catalog source format.
-    connectorRefs: z.array(connectorSlugSchema).min(1),
     categoryMetadata: z
       .object({
         categories: z.array(categorySourceSchema).min(1),
@@ -262,8 +256,6 @@ const connectorAuthMethodSourceSchema = z
 
 export const connectorSourceSchema = z
   .object({
-    // TODO(#23619): Rename only with the external connector source format.
-    ref: connectorSlugSchema,
     label: z.string().min(1),
     description: z.string().min(1),
     category: connectorCategoryIdSchema,
@@ -517,25 +509,25 @@ function validateAuthMethodSemantics(args: {
   validateRefreshableSecrets(methodRef, args.authMethod, storage);
 }
 
-export function validateConnectorSourceSemantics(
-  source: ConnectorSource,
-): void {
+export function validateConnectorSourceSemantics(args: {
+  readonly connectorSlug: string;
+  readonly source: ConnectorSource;
+}): void {
   assertUnique({
-    values: source.authMethods.map((authMethod) => {
+    values: args.source.authMethods.map((authMethod) => {
       return authMethod.id;
     }),
-    label: `${source.ref} auth method id`,
+    label: `${args.connectorSlug} auth method id`,
   });
-  for (const authMethod of source.authMethods) {
-    validateAuthMethodSemantics({ connectorSlug: source.ref, authMethod });
+  for (const authMethod of args.source.authMethods) {
+    validateAuthMethodSemantics({
+      connectorSlug: args.connectorSlug,
+      authMethod,
+    });
   }
 }
 
 export function validateCatalogSourceSemantics(source: CatalogSource): void {
-  assertUnique({
-    values: source.connectorRefs,
-    label: "catalog connector ref",
-  });
   const groupIds = source.categoryMetadata.groups.map((group) => {
     return group.id;
   });

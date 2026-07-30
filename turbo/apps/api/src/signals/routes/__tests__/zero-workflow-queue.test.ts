@@ -38,6 +38,7 @@ import {
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
   completeRunWithoutCallbacksFixture,
+  holdChatEventQueueAdmissionLockFixture,
   holdOrgAdmissionLockFixture,
   readChatInputQueueParamsFixture,
   setQueuedUserMessageCreatedAtFixture,
@@ -772,6 +773,45 @@ describe("workflow queue", () => {
     await expect(
       workflowRunIds(webhookAutomation.threadId),
     ).resolves.toHaveLength(2);
+  });
+
+  it("serializes concurrent workflow admissions for the same thread", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    const admissionLock = await holdChatEventQueueAdmissionLockFixture({
+      threadId: automation.threadId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      admissionLock.release();
+      await admissionLock.done;
+    });
+
+    const firstRequest = postWorkflowWebhook(automation, "first concurrent");
+    await expect.poll(admissionLock.directWaiterCount).toBe(1);
+
+    const secondRequest = postWorkflowWebhook(automation, "second concurrent");
+    // The first admission holds the legacy key while waiting on the canonical
+    // key; the second admission must wait behind it on that same legacy key.
+    await expect.poll(admissionLock.transitiveWaiterCount).toBe(2);
+    await expect.poll(admissionLock.directWaiterCount).toBe(1);
+    await expect(
+      pendingWorkflowEvents(automation.threadId),
+    ).resolves.toStrictEqual([]);
+
+    admissionLock.release();
+    const results = await Promise.all([firstRequest, secondRequest]);
+    await admissionLock.done;
+
+    expect(
+      results.map((result) => {
+        return result.status;
+      }),
+    ).toStrictEqual([200, 200]);
+    await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(1);
+    await expect(
+      pendingWorkflowEvents(automation.threadId),
+    ).resolves.toHaveLength(1);
   });
 
   it("propagates queue encryption failure while persistence remains necessary", async () => {

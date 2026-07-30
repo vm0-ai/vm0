@@ -1,5 +1,6 @@
 import { command, computed, type Computed } from "ccstate";
 import { randomUUID } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type {
   CreateCustomConnectorBody,
@@ -9,6 +10,7 @@ import type {
   CustomConnectorHeaderInjection,
   CustomConnectorOAuthConfig,
   CustomConnectorOAuthConfigInput,
+  CustomConnectorPermissionBundleRef,
   CustomConnectorProposal,
   CustomConnectorQueryInjection,
   CustomConnectorResponse,
@@ -42,6 +44,9 @@ import {
 } from "./crypto.utils";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 import { addUserCustomConnector } from "./user-connectors.service";
+import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
+import { loadCustomConnectorPermissionBundle } from "./custom-connector-permission-bundle.service";
+import { syncCustomConnectorSkillVolume$ } from "./custom-connector-skill-volume.service";
 
 const L = logger("CustomConnectorService");
 
@@ -96,6 +101,8 @@ export interface CustomConnectorRow {
   readonly queryInjections: readonly CustomConnectorQueryInjection[];
   readonly authMode: CustomConnectorAuthMode;
   readonly oauthConfig: CustomConnectorOAuthConfigRow | null;
+  readonly permissionBundleRef: CustomConnectorPermissionBundleRef | null;
+  readonly skillMarkdown: string | null;
   readonly revision: number;
   readonly createdBy: string;
   readonly createdAt: Date;
@@ -109,6 +116,8 @@ interface DefinitionInput {
   readonly headerInjections: readonly CustomConnectorHeaderInjection[];
   readonly queryInjections: readonly CustomConnectorQueryInjection[];
   readonly authMode?: CustomConnectorAuthMode;
+  readonly permissionBundleRef: CustomConnectorPermissionBundleRef | null;
+  readonly skillMarkdown: string | null;
   readonly slug?: string;
 }
 
@@ -119,6 +128,8 @@ interface ValidatedDefinition {
   readonly headerInjections: readonly CustomConnectorHeaderInjection[];
   readonly queryInjections: readonly CustomConnectorQueryInjection[];
   readonly authMode: CustomConnectorAuthMode;
+  readonly permissionBundleRef: CustomConnectorPermissionBundleRef | null;
+  readonly skillMarkdown: string | null;
   readonly slug: string | undefined;
 }
 
@@ -331,7 +342,7 @@ function oauthConfigsEqual(
 }
 
 function jsonValuesEqual(left: unknown, right: unknown): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
+  return isDeepStrictEqual(left, right);
 }
 
 function grantConfigurationChanged(args: {
@@ -354,6 +365,7 @@ function grantConfigurationChanged(args: {
       args.existing.queryInjections,
       args.definition.queryInjections,
     ) ||
+    args.existing.permissionBundleRef !== args.definition.permissionBundleRef ||
     !oauthConfigsEqual(args.existing.oauthConfig, args.nextOAuthConfig)
   );
 }
@@ -464,6 +476,8 @@ export function serialiseCustomConnector(args: {
     ...(args.row.oauthConfig
       ? { oauthConfig: serialiseOAuthConfig(args.row.oauthConfig) }
       : {}),
+    permissionBundleRef: args.row.permissionBundleRef,
+    skillMarkdown: args.row.skillMarkdown,
     revision: args.row.revision,
     connected,
     missingRequiredFields: [...responseMissingRequiredFields],
@@ -1050,8 +1064,29 @@ function validateDefinition(
     headerInjections,
     queryInjections,
     authMode,
+    permissionBundleRef: input.permissionBundleRef,
+    skillMarkdown: input.skillMarkdown,
     slug,
   };
+}
+
+async function validatePermissionBundleRef(
+  db: ReadonlyDb,
+  permissionBundleRef: CustomConnectorPermissionBundleRef | null,
+): Promise<BadRequestResponse | null> {
+  if (permissionBundleRef === null) {
+    return null;
+  }
+  const snapshot = await loadConnectorRuntimeSnapshot(db);
+  const bundle = await loadCustomConnectorPermissionBundle({
+    snapshot,
+    ref: permissionBundleRef,
+  });
+  return bundle
+    ? null
+    : badRequestMessage(
+        `Unknown custom connector permission bundle: ${permissionBundleRef}`,
+      );
 }
 
 function definitionFromCreateInput(
@@ -1072,6 +1107,8 @@ function definitionFromCreateInput(
       headerInjections: input.headerInjections ?? [],
       queryInjections: input.queryInjections ?? [],
       authMode: input.authMode,
+      permissionBundleRef: input.permissionBundleRef ?? null,
+      skillMarkdown: input.skillMarkdown ?? null,
       slug: input.slug,
     };
   }
@@ -1097,13 +1134,15 @@ function definitionFromCreateInput(
     ],
     queryInjections: [],
     authMode: "manual",
+    permissionBundleRef: input.permissionBundleRef ?? null,
+    skillMarkdown: input.skillMarkdown ?? null,
     slug: input.slug,
   };
 }
 
 function definitionFromUpdateInput(
   input: UpdateCustomConnectorBody,
-  authMode: CustomConnectorAuthMode = "manual",
+  existing?: CustomConnectorRow,
 ): DefinitionInput {
   return {
     displayName: input.displayName,
@@ -1111,7 +1150,15 @@ function definitionFromUpdateInput(
     fields: input.fields,
     headerInjections: input.headerInjections,
     queryInjections: input.queryInjections,
-    authMode: input.authMode ?? authMode,
+    authMode: input.authMode ?? existing?.authMode ?? "manual",
+    permissionBundleRef:
+      input.permissionBundleRef !== undefined
+        ? input.permissionBundleRef
+        : (existing?.permissionBundleRef ?? null),
+    skillMarkdown:
+      input.skillMarkdown !== undefined
+        ? input.skillMarkdown
+        : (existing?.skillMarkdown ?? null),
   };
 }
 
@@ -1305,6 +1352,14 @@ export const createCustomConnector$ = command(
     if (isBadRequest(v)) {
       return v;
     }
+    const invalidPermissionBundle = await validatePermissionBundleRef(
+      writeDb,
+      v.permissionBundleRef,
+    );
+    signal.throwIfAborted();
+    if (invalidPermissionBundle) {
+      return invalidPermissionBundle;
+    }
     const oauthConfigUpdate = validateOAuthConfigUpdate({
       authMode: v.authMode,
       input: args.input.oauthConfig,
@@ -1356,6 +1411,8 @@ export const createCustomConnector$ = command(
           headerInjections: [...v.headerInjections],
           queryInjections: [...v.queryInjections],
           authMode: v.authMode,
+          permissionBundleRef: v.permissionBundleRef,
+          skillMarkdown: v.skillMarkdown,
           createdBy: args.userId,
         })
         .returning();
@@ -1384,7 +1441,25 @@ export const createCustomConnector$ = command(
       return created;
     }
 
-    return normaliseCustomConnectorRow(created.row, created.oauthConfig);
+    const result = normaliseCustomConnectorRow(
+      created.row,
+      created.oauthConfig,
+    );
+    if (result.skillMarkdown !== null) {
+      await set(
+        syncCustomConnectorSkillVolume$,
+        {
+          orgId: result.orgId,
+          connectorId: result.id,
+          connectorSlug: result.slug,
+          displayName: result.displayName,
+          skillMarkdown: result.skillMarkdown,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+    }
+    return result;
   },
 );
 
@@ -1484,6 +1559,8 @@ async function persistCustomConnectorUpdate(
         headerInjections: [...args.definition.headerInjections],
         queryInjections: [...args.definition.queryInjections],
         authMode: args.definition.authMode,
+        permissionBundleRef: args.definition.permissionBundleRef,
+        skillMarkdown: args.definition.skillMarkdown,
         revision: args.grantConfigurationChanged
           ? args.existing.revision + 1
           : args.existing.revision,
@@ -1566,10 +1643,18 @@ export const updateCustomConnectorDefinition$ = command(
       return notFound("Custom connector not found");
     }
     const v = validateDefinition(
-      definitionFromUpdateInput(args.input, existingConnector.authMode),
+      definitionFromUpdateInput(args.input, existingConnector),
     );
     if (isBadRequest(v)) {
       return v;
+    }
+    const invalidPermissionBundle = await validatePermissionBundleRef(
+      writeDb,
+      v.permissionBundleRef,
+    );
+    signal.throwIfAborted();
+    if (invalidPermissionBundle) {
+      return invalidPermissionBundle;
     }
     const oauthConfigUpdate = validateOAuthConfigUpdate({
       authMode: v.authMode,
@@ -1625,7 +1710,28 @@ export const updateCustomConnectorDefinition$ = command(
     if (!result) {
       return notFound("Custom connector not found");
     }
-    return normaliseCustomConnectorRow(result.row, result.oauthConfig);
+    const normalized = normaliseCustomConnectorRow(
+      result.row,
+      result.oauthConfig,
+    );
+    if (
+      normalized.skillMarkdown !== null ||
+      args.input.skillMarkdown !== undefined
+    ) {
+      await set(
+        syncCustomConnectorSkillVolume$,
+        {
+          orgId: normalized.orgId,
+          connectorId: normalized.id,
+          connectorSlug: normalized.slug,
+          displayName: normalized.displayName,
+          skillMarkdown: normalized.skillMarkdown,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+    }
+    return normalized;
   },
 );
 
@@ -1670,6 +1776,18 @@ export const deleteCustomConnector$ = command(
     if (!deleted) {
       return notFound("Custom connector not found");
     }
+    await set(
+      syncCustomConnectorSkillVolume$,
+      {
+        orgId: args.orgId,
+        connectorId: args.id,
+        connectorSlug: "_deleted",
+        displayName: "Deleted custom connector",
+        skillMarkdown: null,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
     L.debug("custom connector deleted", { orgId: args.orgId, id: args.id });
     return undefined;
   },
@@ -2443,7 +2561,11 @@ const authorizeProposalAgent$ = command(
     if (added.status === "customConnectorsNotFound") {
       return notFound("Custom connector not found");
     }
-    if (added.status === "customConnectorsNotConfigured") {
+    if (
+      added.status === "customConnectorsNotConfigured" ||
+      added.status === "customConnectorPermissionSelectionRequired" ||
+      added.status === "invalidCustomConnectorPermissions"
+    ) {
       return undefined;
     }
     return args.agentId;

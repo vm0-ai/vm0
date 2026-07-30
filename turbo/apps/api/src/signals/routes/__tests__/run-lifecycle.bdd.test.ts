@@ -14,7 +14,10 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import type { Job as RunnerJob } from "@vm0/api-contracts/contracts/runners";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { getCustomSkillStorageName } from "@vm0/core/storage-names";
+import {
+  getCustomConnectorSkillStorageName,
+  getCustomSkillStorageName,
+} from "@vm0/core/storage-names";
 import {
   UNKNOWN_PERMISSION_GRANT,
   type ExecutionFirewallEntry,
@@ -66,7 +69,6 @@ import {
 } from "./helpers/api-bdd-connectors";
 import { createFirewallApi } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
-import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import {
   createRunsApi,
   expectCanonicalStorageManifest,
@@ -4944,99 +4946,55 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
   });
 });
 
-describe("RUN-01: zero run request validation and token boundaries", () => {
-  it("rejects invalid zero run requests and run-scoped tokens without agent-run:write", async () => {
+describe("RUN-01: zero run authorization and session boundaries", () => {
+  it("does not expose the removed Zero run creation route", async () => {
+    const actor = createBddApi(context).user();
+    await expect(
+      createRunsApi(context).requestRemovedZeroRunCreation(actor),
+    ).resolves.toBe(404);
+  });
+
+  it("accepts session and PAT cancellation while rejecting run-scoped tokens", async () => {
     const api = createRunsApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const { actor, agentId } = await entitledRunActor();
 
-    const unauthenticated = await api.requestCreateRun(
-      null,
-      { agentId: randomUUID(), prompt: "hello" },
-      [401],
-    );
-    expectApiError(unauthenticated.body);
-    expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
-
-    const missingAgent = await api.requestCreateRun(
-      actor,
-      { prompt: "hello" },
-      [400],
-    );
-    expectApiError(missingAgent.body);
-    expect(missingAgent.body.error.message).toBe("agentId is required");
-
-    const policiesRejected = await api.requestCreateRunUnchecked(
-      actor,
-      {
-        prompt: "hello",
-        agentId: randomUUID(),
-        permissionPolicies: { x: { policies: { "tweet.write": "allow" } } },
-      },
-      [400],
-    );
-    expectApiError(policiesRejected.body);
-    expect(policiesRejected.body.error.code).toBe("BAD_REQUEST");
-    expect(policiesRejected.body.error.message).toContain("permissionPolicies");
-
-    for (const tools of [[""], ["   "], ["Bash,Read"], ["--help"], [" -x"]]) {
-      const ambiguous = await api.requestCreateRun(
-        actor,
-        { prompt: "hello", agentId: randomUUID(), tools },
-        [400],
-      );
-      expectApiError(ambiguous.body);
-      expect(ambiguous.body.error.message).toContain("tools");
-      expect(ambiguous.body.error.message).toContain("Claude tool name");
-    }
-
-    const missingSession = await api.requestCreateRun(
-      actor,
-      { prompt: "hello", sessionId: randomUUID() },
-      [404],
-    );
-    expectApiError(missingSession.body);
-    expect(missingSession.body.error.message).toBe("Session not found");
-
-    // A claimed run exposes both run-scoped credentials: the agent-facing
-    // zero token (in the compose environment) and the sandbox webhook token.
-    // Neither carries agent-run:write, so nested run creation is forbidden.
-    const run = await api.createRun(actor, {
+    const sessionRun = await api.createRun(actor, {
       agentId,
-      prompt: "issue run-scoped credentials",
+      prompt: "cancel with a Clerk session",
       modelProvider: "anthropic-api-key",
     });
-    await api.heartbeatRunner(runnerGroup);
-    const claim = await api.claimRunnerJob(run.runId);
-    const zeroToken = claim.environment?.ZERO_TOKEN;
-    if (!zeroToken) {
-      throw new Error(
-        "Expected claim.environment.ZERO_TOKEN to carry the run-scoped zero token",
-      );
-    }
+    await api.requestCancelRun(actor, sessionRun.runId, [200]);
+    expect((await api.readRun(actor, sessionRun.runId)).status).toBe(
+      "cancelled",
+    );
 
-    const zeroTokenRejected = await api.requestCreateRunAs(
-      `Bearer ${zeroToken}`,
-      { agentId, prompt: "nested run" },
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "cancel with accepted credential types",
+      modelProvider: "anthropic-api-key",
+    });
+
+    const sandboxDenied = await api.requestCancelRunAs(
+      `Bearer ${api.sandboxTokenForRun(actor, run.runId)}`,
+      run.runId,
       [403],
     );
-    expectApiError(zeroTokenRejected.body);
-    expect(zeroTokenRejected.body.error.message).toContain(
-      "Missing required capability: agent-run:write",
-    );
+    expectApiError(sandboxDenied.body);
+    expect((await api.readRun(actor, run.runId)).status).toBe("pending");
 
-    const sandboxRejected = await api.requestCreateRunAs(
-      `Bearer ${claim.sandboxToken}`,
-      { agentId, prompt: "nested run" },
+    const zeroDenied = await api.requestCancelRunAs(
+      `Bearer ${api.zeroTokenForRunWithCapabilities(actor, run.runId, [
+        "agent-run:read",
+      ])}`,
+      run.runId,
       [403],
     );
-    expectApiError(sandboxRejected.body);
-    expect(sandboxRejected.body.error.message).toContain(
-      "Missing required capability: agent-run:write",
-    );
+    expectApiError(zeroDenied.body);
+    expect((await api.readRun(actor, run.runId)).status).toBe("pending");
 
-    await api.requestCancelRun(actor, run.runId, [200]);
-    const cancelled = await api.readRun(actor, run.runId);
-    expect(cancelled.status).toBe("cancelled");
+    const pat = await api.createCliToken(actor);
+    await api.requestCancelRunAs(`Bearer ${pat.token}`, run.runId, [200]);
+    expect((await api.readRun(actor, run.runId)).status).toBe("cancelled");
   });
 
   it("limits private agents to their owner and infers the agent from a session", async () => {
@@ -7304,6 +7262,75 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
+  it("enforces custom connector permission grants and mounts its generated skill", async () => {
+    const api = createRunsApi(context);
+    createBddApi(context).acceptAgentStorageWrites();
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const slug = `_bdd-permission-skill-${randomUUID().slice(0, 8)}`;
+    const custom = await connectors.createCustomConnector(actor, {
+      slug,
+      displayName: "BDD Permissioned API",
+      prefixes: ["https://permissioned.example.test/api/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+      permissionBundleRef: "builtin:slack@1",
+      skillMarkdown: "Use the selected Slack-compatible operations only.",
+    });
+    await connectors.setCustomConnectorSecret(
+      actor,
+      custom.id,
+      "permissioned-custom-secret",
+    );
+    const grant = {
+      customConnectorId: custom.id,
+      permissionNames: ["chat:write"],
+    };
+    const grantResponse =
+      await connectors.requestUpdateAgentCustomConnectorGrants(
+        actor,
+        agentId,
+        [grant],
+        [200],
+      );
+    if (grantResponse.status !== 200) {
+      throw new Error("Expected custom connector permission grant to succeed");
+    }
+    expect(grantResponse.body.grants).toStrictEqual([grant]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use only the authorized custom connector operation",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const internalName = `custom_connector_${custom.id.replaceAll("-", "")}`;
+    const customApis = inlineFirewallApis(claim.firewalls, internalName);
+    expect(customApis[0]?.permissions).toStrictEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "chat:write" })]),
+    );
+    expect(claim.networkPolicies?.[internalName]?.allow).toContain(
+      "chat:write",
+    );
+    expect(claim.networkPolicies?.[internalName]?.deny.length).toBeGreaterThan(
+      0,
+    );
+    expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("deny");
+
+    const skillMount = expectCanonicalStorageManifest(
+      claim.storageManifest,
+    )?.storageMounts.find((storage) => {
+      return storage.name === getCustomConnectorSkillStorageName(custom.id);
+    });
+    expect(skillMount?.mountPath).toBe(
+      `/home/user/.claude/skills/custom-${slug.slice(1, 49)}-${custom.id.replaceAll("-", "").slice(0, 8)}`,
+    );
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    expect((await api.readRun(actor, run.runId)).status).toBe("cancelled");
+  });
+
   it("serializes and injects custom connector OAuth 2.0 refreshes", async () => {
     const provider = mockCustomConnectorOAuth2Provider(context, {
       initialExpiresIn: 3600,
@@ -8632,7 +8659,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const authOrg = createAuthOrgAgentsBddApi(context);
     const api = createRunsApi(context);
     const fw = createFirewallApi(context);
-    const reads = createRunReadsApi(context);
     const foreignActor = bdd.user();
     const actor = bdd.user();
 
@@ -8752,37 +8778,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(refreshed.networkPolicy.allow).toContain("files:write");
     expect(refreshed.networkPolicy.deny).not.toContain("files:write");
 
-    const parentToken = api.zeroTokenForRunWithCapabilities(
-      actor,
-      parent.runId,
-      ["agent-run:write"],
-    );
-    const child = await api.requestCreateRunAs(
-      `Bearer ${parentToken}`,
-      {
-        agentId,
-        prompt: "shared version child run",
-        modelProvider: "anthropic-api-key",
-      },
-      [201],
-    );
-    if (child.status !== 201) {
-      throw new Error("Expected shared-version child run creation");
-    }
-    const childLog = await reads.requestReadLogById(
-      actor,
-      child.body.runId,
-      [200],
-    );
-    expect(childLog.body).toMatchObject({
-      id: child.body.runId,
-      agentId,
-      displayName: "Current shared agent",
-      triggerSource: "agent",
-      triggerAgentName: "Current shared agent",
-    });
-
-    await api.requestCancelRun(actor, child.body.runId, [200]);
     await api.requestCancelRun(actor, parent.runId, [200]);
     const drained = await api.readRunQueue(actor);
     expect(drained.body.concurrency.active).toBe(0);
@@ -9123,7 +9118,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
 
     expect(claim.featureFlags).toMatchObject({
       [FeatureSwitchKey.ZeroChatMessaging]: false,
-      [FeatureSwitchKey.CodexSessionPruning]: false,
       [FeatureSwitchKey.ClaudeSessionPruning]: false,
     });
     expect(claim.featureFlags).not.toHaveProperty("zeroWebSearch");

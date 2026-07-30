@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.148.39](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.38...runner-rs-v0.148.39) (2026-07-30)
+
+
+### Bug Fixes
+
+* **runner:** retain network log request correlation on timeout ([#23906](https://github.com/vm0-ai/vm0/issues/23906)) ([568e534](https://github.com/vm0-ai/vm0/commit/568e5344061fad3558766529851c3903e0406ede))
+
+
+### Refactoring
+
+* **observability:** migrate connector diagnostics to slug ([#23907](https://github.com/vm0-ai/vm0/issues/23907)) ([ce77eaa](https://github.com/vm0-ai/vm0/commit/ce77eaa374b8c2f6975c3550e8c76c15ccb224ce))
+
 ## [0.148.38](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.37...runner-rs-v0.148.38) (2026-07-30)
 
 

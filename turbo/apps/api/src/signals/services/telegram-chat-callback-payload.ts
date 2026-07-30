@@ -19,5 +19,5 @@ export type TelegramDeliveryTarget = z.infer<
 
 export const telegramChatCallbackPayloadSchema =
   telegramDeliveryTargetSchema.extend({
-    chatMessageId: z.string().uuid(),
+    chatEventId: z.string().uuid(),
   });

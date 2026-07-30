@@ -1572,7 +1572,7 @@ async function persistAgentPhoneChatMessage(args: {
   | {
       readonly inserted: true;
       readonly chatThreadId: string;
-      readonly chatMessageId: string;
+      readonly chatEventId: string;
     }
   | { readonly inserted: false }
 > {
@@ -1616,7 +1616,7 @@ async function persistAgentPhoneChatMessage(args: {
   );
   args.signal.throwIfAborted();
 
-  const chatMessageId = agentPhoneChatMessageId({
+  const chatEventId = agentPhoneChatMessageId({
     event: args.event,
     userLinkId: args.userLink.id,
     rootMessageId: args.rootMessageId,
@@ -1625,7 +1625,7 @@ async function persistAgentPhoneChatMessage(args: {
     const event = await insertChatEvent(
       tx,
       {
-        id: chatMessageId,
+        id: chatEventId,
         chatThreadId: route.chatThreadId,
         eventType: "input.prompt",
         userMessage: createUserMessageDocument({ text: args.prompt }),
@@ -1644,7 +1644,7 @@ async function persistAgentPhoneChatMessage(args: {
       tx,
       route.chatThreadId,
       currentTime,
-      chatMessageId,
+      chatEventId,
     );
     return true;
   });
@@ -1653,7 +1653,7 @@ async function persistAgentPhoneChatMessage(args: {
     ? {
         inserted: true,
         chatThreadId: route.chatThreadId,
-        chatMessageId,
+        chatEventId,
       }
     : { inserted: false };
 }
@@ -1662,7 +1662,7 @@ async function agentPhoneMessageDispatchState(
   db: Db,
   args: {
     readonly chatThreadId: string;
-    readonly chatMessageId: string;
+    readonly chatEventId: string;
   },
 ): Promise<AgentPhoneMessageDispatchResult> {
   const [[run], [queued]] = await Promise.all([
@@ -1674,8 +1674,8 @@ async function agentPhoneMessageDispatchState(
         and(
           eq(chatEvents.chatThreadId, args.chatThreadId),
           or(
-            eq(chatEvents.id, args.chatMessageId),
-            eq(chatEvents.revokesEventId, args.chatMessageId),
+            eq(chatEvents.id, args.chatEventId),
+            eq(chatEvents.revokesEventId, args.chatEventId),
           ),
         ),
       )
@@ -1685,7 +1685,7 @@ async function agentPhoneMessageDispatchState(
       .from(chatEvents)
       .where(
         and(
-          eq(chatEvents.id, args.chatMessageId),
+          eq(chatEvents.id, args.chatEventId),
           eq(chatEvents.chatThreadId, args.chatThreadId),
           chatEventTypeIn(["input.prompt"]),
           isNull(chatEvents.runId),

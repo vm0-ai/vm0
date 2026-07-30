@@ -20,9 +20,11 @@ import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import { emitMockedClerkEvent } from "../../../__tests__/mock-auth.ts";
+import { initializeI18n } from "../../../i18n/index.ts";
+import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { orgModelPolicies$ } from "../../../signals/external/org-model-policies.ts";
 import {
   reloadUserModelPreference$,
@@ -77,6 +79,11 @@ import {
 
 beforeEach(() => {
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
+});
+
+afterEach(async () => {
+  document.documentElement.lang = DEFAULT_LOCALE;
+  await initializeI18n(DEFAULT_LOCALE);
 });
 
 async function navigateToChatThread(threadId: string): Promise<void> {
@@ -243,6 +250,69 @@ describe("chat composer models", () => {
         codexServiceTier: "fast",
       });
     });
+  });
+
+  it("localizes model routes, price guidance, and Codex speed controls in Portuguese", async () => {
+    const user = userEvent.setup({ delay: null });
+    const codexProvider = buildProvider({
+      id: "00000000-0000-4000-a000-000000000913",
+      type: "codex-oauth-token",
+      framework: "codex",
+      secretName: null,
+      authMethod: "auth_json",
+      secretNames: ["CODEX_AUTH_JSON"],
+    });
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
+    context.mocks.data.orgModelPolicies([
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000914",
+        model: "gpt-5.6-sol",
+        modelLabel: "GPT 5.6 Sol",
+        isDefault: true,
+        defaultProviderType: "codex-oauth-token",
+        credentialScope: "member",
+      }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000915",
+        model: "deepseek-v4-pro",
+        modelLabel: "DeepSeek V4 Pro",
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+    ]);
+    context.mocks.data.personalModelProviders([codexProvider]);
+    mockAgent();
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.CodexFastMode]: true,
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    click(await findComposerModel("GPT 5.6 Sol"));
+    const runSpeed = await screen.findByRole("group", {
+      name: "Velocidade de execução",
+    });
+    expect(buttonContainingText("Padrão", runSpeed)).toBeInTheDocument();
+    expect(buttonContainingText("Rápido", runSpeed)).toBeInTheDocument();
+    expect(within(runSpeed).getByText("Uso equilibrado")).toBeInTheDocument();
+    expect(
+      within(runSpeed).getByText("Prioriza a velocidade"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Usa mais créditos do Codex.")).toBeInTheDocument();
+
+    await user.hover(screen.getByText("$"));
+    await expect(
+      screen.findAllByText("Nível econômico para tarefas simples do dia a dia"),
+    ).resolves.not.toHaveLength(0);
+
+    await user.hover(screen.getByText("BYOK"));
+    await expect(
+      screen.findAllByText("Usa seu provedor configurado"),
+    ).resolves.not.toHaveLength(0);
   });
 
   it("remembers Codex fast mode for new chats in the current browser account", async () => {

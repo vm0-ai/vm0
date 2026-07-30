@@ -137,10 +137,10 @@ import { handleMorningBriefEmailInternalCallback } from "./internal-morning-brie
 import { sendUserPushNotifications } from "./zero-push-notifications.service";
 import {
   type ChatCompletionContextMessage,
-  generateAndPersistChatThreadTitleFromCallback,
   generateChatThreadRecommendedFollowupsFromContext,
   generateChatNotificationSummary,
   loadChatThreadRecommendedFollowupContext,
+  scheduleChatThreadTitleGeneration,
 } from "./zero-chat-title.service";
 import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
 import { loadActiveGoalForThread } from "./zero-goal.service";
@@ -487,7 +487,7 @@ interface ChatCallbackDependencies {
       readonly channelId: string;
       readonly threadTs: string;
       readonly routeThreadTs?: string;
-      readonly chatMessageId: string;
+      readonly chatEventId: string;
     },
     signal: AbortSignal,
   ) => Promise<void>;
@@ -510,7 +510,7 @@ interface ChatCallbackDependencies {
       readonly orgId: string;
       readonly agentId: string;
       readonly target: TeamsDeliveryTarget;
-      readonly chatMessageId: string;
+      readonly chatEventId: string;
     },
     signal: AbortSignal,
   ) => Promise<void>;
@@ -526,7 +526,7 @@ interface ChatCallbackDependencies {
       readonly orgId: string;
       readonly agentId: string;
       readonly target: TelegramDeliveryTarget;
-      readonly chatMessageId: string;
+      readonly chatEventId: string;
     },
     signal: AbortSignal,
   ) => Promise<void>;
@@ -542,7 +542,7 @@ interface ChatCallbackDependencies {
       readonly orgId: string;
       readonly agentId: string;
       readonly target: AgentPhoneDeliveryTarget;
-      readonly chatMessageId: string;
+      readonly chatEventId: string;
     },
     signal: AbortSignal,
   ) => Promise<void>;
@@ -1146,7 +1146,7 @@ async function insertSlackChatDeliveryCallback(args: {
   readonly runId: string;
   readonly sourceCallbackId?: string;
   readonly target: SlackDeliveryTarget;
-  readonly chatMessageId: string;
+  readonly chatEventId: string;
 }): Promise<string> {
   const callbackCondition = args.sourceCallbackId
     ? and(
@@ -1175,7 +1175,7 @@ async function insertSlackChatDeliveryCallback(args: {
       encryptedSecret: sourceCallback.encryptedSecret,
       payload: {
         ...args.target,
-        chatMessageId: args.chatMessageId,
+        chatEventId: args.chatEventId,
       },
     })
     .returning({ id: agentRunCallbacks.id });
@@ -1190,7 +1190,7 @@ async function insertFeishuChatDeliveryCallback(args: {
   readonly runId: string;
   readonly sourceCallbackId?: string;
   readonly target: FeishuDeliveryTarget;
-  readonly chatMessageId: string;
+  readonly chatEventId: string;
 }): Promise<string> {
   const callbackCondition = args.sourceCallbackId
     ? and(
@@ -1219,7 +1219,7 @@ async function insertFeishuChatDeliveryCallback(args: {
       encryptedSecret: sourceCallback.encryptedSecret,
       payload: {
         ...args.target,
-        chatMessageId: args.chatMessageId,
+        chatEventId: args.chatEventId,
       },
     })
     .returning({ id: agentRunCallbacks.id });
@@ -1234,7 +1234,7 @@ async function insertTeamsChatDeliveryCallback(args: {
   readonly runId: string;
   readonly sourceCallbackId?: string;
   readonly target: TeamsDeliveryTarget;
-  readonly chatMessageId: string;
+  readonly chatEventId: string;
 }): Promise<string> {
   const callbackCondition = args.sourceCallbackId
     ? and(
@@ -1263,7 +1263,7 @@ async function insertTeamsChatDeliveryCallback(args: {
       encryptedSecret: sourceCallback.encryptedSecret,
       payload: {
         ...args.target,
-        chatMessageId: args.chatMessageId,
+        chatEventId: args.chatEventId,
       },
     })
     .returning({ id: agentRunCallbacks.id });
@@ -1278,7 +1278,7 @@ async function insertTelegramChatDeliveryCallback(args: {
   readonly runId: string;
   readonly sourceCallbackId?: string;
   readonly target: TelegramDeliveryTarget;
-  readonly chatMessageId: string;
+  readonly chatEventId: string;
 }): Promise<string> {
   const callbackCondition = args.sourceCallbackId
     ? and(
@@ -1307,7 +1307,7 @@ async function insertTelegramChatDeliveryCallback(args: {
       encryptedSecret: sourceCallback.encryptedSecret,
       payload: {
         ...args.target,
-        chatMessageId: args.chatMessageId,
+        chatEventId: args.chatEventId,
       },
     })
     .returning({ id: agentRunCallbacks.id });
@@ -1322,7 +1322,7 @@ async function insertAgentPhoneChatDeliveryCallback(args: {
   readonly runId: string;
   readonly sourceCallbackId?: string;
   readonly target: AgentPhoneDeliveryTarget;
-  readonly chatMessageId: string;
+  readonly chatEventId: string;
 }): Promise<string> {
   const callbackCondition = args.sourceCallbackId
     ? and(
@@ -1351,7 +1351,7 @@ async function insertAgentPhoneChatDeliveryCallback(args: {
       encryptedSecret: sourceCallback.encryptedSecret,
       payload: {
         ...args.target,
-        chatMessageId: args.chatMessageId,
+        chatEventId: args.chatEventId,
       },
     })
     .returning({ id: agentRunCallbacks.id });
@@ -1400,7 +1400,7 @@ async function insertAssistantErrorEvent(args: {
           runId: args.runId,
           sourceCallbackId: args.sourceCallbackId,
           target: args.slackDelivery,
-          chatMessageId: event.id,
+          chatEventId: event.id,
         })
       : undefined;
     const feishuDeliveryCallbackId = args.feishuDelivery
@@ -1409,7 +1409,7 @@ async function insertAssistantErrorEvent(args: {
           runId: args.runId,
           sourceCallbackId: args.sourceCallbackId,
           target: args.feishuDelivery,
-          chatMessageId: event.id,
+          chatEventId: event.id,
         })
       : undefined;
     const teamsDeliveryCallbackId = args.teamsDelivery
@@ -1418,7 +1418,7 @@ async function insertAssistantErrorEvent(args: {
           runId: args.runId,
           sourceCallbackId: args.sourceCallbackId,
           target: args.teamsDelivery,
-          chatMessageId: event.id,
+          chatEventId: event.id,
         })
       : undefined;
     const telegramDeliveryCallbackId = args.telegramDelivery
@@ -1427,7 +1427,7 @@ async function insertAssistantErrorEvent(args: {
           runId: args.runId,
           sourceCallbackId: args.sourceCallbackId,
           target: args.telegramDelivery,
-          chatMessageId: event.id,
+          chatEventId: event.id,
         })
       : undefined;
     const agentphoneDeliveryCallbackId = args.agentphoneDelivery
@@ -1436,7 +1436,7 @@ async function insertAssistantErrorEvent(args: {
           runId: args.runId,
           sourceCallbackId: args.sourceCallbackId,
           target: args.agentphoneDelivery,
-          chatMessageId: event.id,
+          chatEventId: event.id,
         })
       : undefined;
     await touchChatThreadLastMessageAt(tx, args.threadId, event.createdAt);
@@ -1646,7 +1646,7 @@ async function insertRunLifecycleMarkerTransaction(args: {
           runId: input.runId,
           sourceCallbackId: input.sourceCallbackId,
           target: input.slackDelivery,
-          chatMessageId: deliveryEvent.id,
+          chatEventId: deliveryEvent.id,
         })
       : undefined;
   const feishuDeliveryCallbackId =
@@ -1656,7 +1656,7 @@ async function insertRunLifecycleMarkerTransaction(args: {
           runId: input.runId,
           sourceCallbackId: input.sourceCallbackId,
           target: input.feishuDelivery,
-          chatMessageId: deliveryEvent.id,
+          chatEventId: deliveryEvent.id,
         })
       : undefined;
   const teamsDeliveryCallbackId =
@@ -1666,7 +1666,7 @@ async function insertRunLifecycleMarkerTransaction(args: {
           runId: input.runId,
           sourceCallbackId: input.sourceCallbackId,
           target: input.teamsDelivery,
-          chatMessageId: deliveryEvent.id,
+          chatEventId: deliveryEvent.id,
         })
       : undefined;
   const telegramDeliveryCallbackId =
@@ -1676,7 +1676,7 @@ async function insertRunLifecycleMarkerTransaction(args: {
           runId: input.runId,
           sourceCallbackId: input.sourceCallbackId,
           target: input.telegramDelivery,
-          chatMessageId: deliveryEvent.id,
+          chatEventId: deliveryEvent.id,
         })
       : undefined;
   const agentphoneDeliveryCallbackId =
@@ -1686,7 +1686,7 @@ async function insertRunLifecycleMarkerTransaction(args: {
           runId: input.runId,
           sourceCallbackId: input.sourceCallbackId,
           target: input.agentphoneDelivery,
-          chatMessageId: deliveryEvent.id,
+          chatEventId: deliveryEvent.id,
         })
       : undefined;
   await touchChatThreadLastMessageAt(
@@ -2012,16 +2012,6 @@ async function runCompletedChatCallbackSideEffects(args: {
     args.signal,
   );
 
-  const titleStep = generateAndPersistChatThreadTitleFromCallback({
-    db: args.db,
-    threadId: args.chatThread.chatThreadId,
-    userId: args.chatThread.userId,
-    orgId: args.chatThread.orgId,
-    runId: args.runId,
-    prompt: args.run.prompt,
-    currentAssistantReply: args.lastResultText ?? undefined,
-  });
-
   const followupsStep = (async () => {
     const recommendedFollowups =
       await generateRecommendedFollowupsForCompletedRun({
@@ -2073,7 +2063,6 @@ async function runCompletedChatCallbackSideEffects(args: {
   const results = await Promise.allSettled([
     saveSummaryStep,
     chatRunFinishedStep,
-    titleStep,
     followupsStep,
     pushStep,
   ]);
@@ -3138,7 +3127,7 @@ async function handleSlackQueuedMessageAdmissionFailure(args: {
         ...(args.failure.slackDelivery.routeThreadTs
           ? { routeThreadTs: args.failure.slackDelivery.routeThreadTs }
           : {}),
-        chatMessageId: failed.assistantEventId,
+        chatEventId: failed.assistantEventId,
       },
       args.signal,
     ),
@@ -3194,7 +3183,7 @@ async function handleTeamsQueuedMessageAdmissionFailure(args: {
         orgId: args.failure.orgId,
         agentId: args.failure.agentId,
         target: args.failure.teamsDelivery,
-        chatMessageId: failed.assistantEventId,
+        chatEventId: failed.assistantEventId,
       },
       args.signal,
     ),
@@ -3250,7 +3239,7 @@ async function handleTelegramQueuedMessageAdmissionFailure(args: {
         orgId: args.failure.orgId,
         agentId: args.failure.agentId,
         target: args.failure.telegramDelivery,
-        chatMessageId: failed.assistantEventId,
+        chatEventId: failed.assistantEventId,
       },
       args.signal,
     ),
@@ -3306,7 +3295,7 @@ async function handleAgentPhoneQueuedMessageAdmissionFailure(args: {
         orgId: args.failure.orgId,
         agentId: args.failure.agentId,
         target: args.failure.agentphoneDelivery,
-        chatMessageId: failed.assistantEventId,
+        chatEventId: failed.assistantEventId,
       },
       args.signal,
     ),
@@ -3542,6 +3531,16 @@ async function autoSendQueuedMessageForThread(
     }),
   );
   if (run) {
+    // Ingress channels never touch the web send route, so this is where their
+    // threads get an eager title instead of waiting for the run to finish.
+    scheduleChatThreadTitleGeneration({
+      db: args.db,
+      threadId,
+      userId,
+      orgId: runInput.orgId,
+      prompt: runInput.prompt,
+      includePriorRounds: true,
+    });
     args.timing.flush(run.runId, runInput.triggerSource);
   }
 }
