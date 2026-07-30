@@ -47,7 +47,9 @@ export const setupConnectorRedirectingPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const params = get(pathParams$);
     const connectorSlug = connectorSlugFromPath(
-      typeof params?.type === "string" ? params.type : undefined,
+      typeof params?.connectorSlug === "string"
+        ? params.connectorSlug
+        : undefined,
     );
     const searchParams = get(searchParams$);
     const connectorLabel =

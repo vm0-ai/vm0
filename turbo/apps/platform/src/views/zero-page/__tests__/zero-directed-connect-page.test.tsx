@@ -527,7 +527,7 @@ describe("directed connector connect page", () => {
     await screen.findByRole("dialog", { name: "Public GitHub" });
 
     context.store.set(detachedNavigateTo$, ROUTES.directedConnect, {
-      pathParams: { type: "github" },
+      pathParams: { connectorSlug: "github" },
       searchParams: new URLSearchParams({ agentId: SECOND_AGENT_ID }),
     });
 
@@ -645,7 +645,7 @@ describe("directed connector connect page", () => {
     });
 
     context.store.set(detachedNavigateTo$, ROUTES.directedConnect, {
-      pathParams: { type: "stripe" },
+      pathParams: { connectorSlug: "stripe" },
       searchParams: new URLSearchParams({ agentId: AGENT_ID }),
     });
 
@@ -688,7 +688,7 @@ describe("directed connector connect page", () => {
     });
 
     context.store.set(detachedNavigateTo$, ROUTES.directedConnect, {
-      pathParams: { type: "axiom" },
+      pathParams: { connectorSlug: "axiom" },
       searchParams: new URLSearchParams({ agentId: SECOND_AGENT_ID }),
     });
 

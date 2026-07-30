@@ -113,11 +113,11 @@ import {
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   r2ImageTransformUrl,
 } from "@vm0/core";
+import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type {
-  UserPermissionGrantExpiresIn,
-  UserPermissionGrantResponse,
-} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+  PlatformConnectorPermissionMetadata,
+  PlatformUserPermissionGrant,
+} from "../../signals/connector-domain.ts";
 import { emptyChatImg } from "./platform-assets.ts";
 import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -5052,7 +5052,7 @@ function PlanUpgradeCard({ signals }: { signals: PlanUpgradeSignals }) {
 
 type PermissionAction = "allow" | "deny";
 
-type PermissionActionUserGrant = UserPermissionGrantResponse;
+type PermissionActionUserGrant = PlatformUserPermissionGrant;
 
 type PermissionActionCardStatus =
   | { kind: "loading" }
@@ -5080,7 +5080,7 @@ type ApplyUserPermissionGrantFn = (
     expiresIn?: UserPermissionGrantExpiresIn;
   },
   signal: AbortSignal,
-) => Promise<UserPermissionGrantResponse>;
+) => Promise<PlatformUserPermissionGrant>;
 
 function loadableData<T>(loadable: LoadableLike<T>): T | undefined {
   return loadable.state === "hasData" ? loadable.data : undefined;
@@ -5324,7 +5324,7 @@ function isPermissionActionAlreadyApplied(params: {
 
 function findPermissionActionPermission(
   block: PermissionSignals,
-  metadata: PublicConnectorCatalogPermissionDetail | undefined,
+  metadata: PlatformConnectorPermissionMetadata | undefined,
 ) {
   return metadata
     ? (findPermissionInMetadata(metadata, block.permission) ?? undefined)
@@ -5334,7 +5334,7 @@ function findPermissionActionPermission(
 function permissionActionUserGrantPolicy(
   loadable: LoadableLike<readonly PermissionActionUserGrant[]>,
   block: PermissionSignals,
-  metadata: PublicConnectorCatalogPermissionDetail | undefined,
+  metadata: PlatformConnectorPermissionMetadata | undefined,
 ): FirewallPolicyValue | undefined {
   const grants = loadableData(loadable);
   if (!grants || !metadata) {
@@ -5353,7 +5353,7 @@ function permissionActionUserGrant(
   }
   return grants.find((grant) => {
     return (
-      grant.connectorRef === block.connectorSlug &&
+      grant.connectorSlug === block.connectorSlug &&
       grant.permission === block.permission &&
       grant.action === block.action
     );
@@ -5426,7 +5426,7 @@ function createPermissionActionCardViewState(params: {
   block: PermissionSignals;
   hasAgent: boolean;
   agentLoadableState: string;
-  permissionMetadataLoadable: LoadableLike<PublicConnectorCatalogPermissionDetail | null>;
+  permissionMetadataLoadable: LoadableLike<PlatformConnectorPermissionMetadata | null>;
   userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
   grantLoadableState: string;
   savedGrantActive: boolean;
@@ -5565,7 +5565,7 @@ function PermissionActionCardContent({
   onClick,
 }: {
   signals: PermissionSignals;
-  icon: PublicConnectorCatalogPermissionDetail["icon"] | undefined;
+  icon: PlatformConnectorPermissionMetadata["icon"] | undefined;
   connectorLabel: string;
   actionLabel: string;
   permissionName: string;
