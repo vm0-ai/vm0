@@ -24,11 +24,14 @@ import {
 } from "@vm0/ui";
 import {
   getCanonicalModelDisplayName,
+  getFrameworkForType,
   getProvidersForModel,
+  getVm0ConcreteProviderType,
   isCodexFastModeModel,
   isSupportedRunModel,
   VM0_MODEL_TO_PROVIDER,
   type ModelProviderType,
+  type ModelProviderFramework,
   type OrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
 import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
@@ -96,6 +99,10 @@ interface ModelProviderPickerProps {
    * not user/workspace defaults.
    */
   resolveDefaultSelection?: boolean;
+  /** Restricts selectable policies to the requested CLI frameworks. */
+  allowedFrameworks?: readonly ModelProviderFramework[];
+  /** Hides one model from the selectable policy list. */
+  excludedModel?: string;
 }
 
 // Radix Select reserves the empty string for "no value" and throws if a
@@ -261,6 +268,26 @@ function selectablePoliciesForPlan(
   }
   return policies.filter((policy) => {
     return modelPolicyAllowedForPlan(policy, modelCapabilities);
+  });
+}
+
+function filteredPolicies(
+  policies: OrgModelPolicy[],
+  allowedFrameworks: readonly ModelProviderFramework[] | undefined,
+  excludedModel: string | undefined,
+): OrgModelPolicy[] {
+  return policies.filter((policy) => {
+    if (policy.model === excludedModel) {
+      return false;
+    }
+    if (!allowedFrameworks) {
+      return true;
+    }
+    const providerType =
+      policy.defaultProviderType === "vm0"
+        ? getVm0ConcreteProviderType(policy.model)
+        : policy.defaultProviderType;
+    return allowedFrameworks.includes(getFrameworkForType(providerType));
   });
 }
 
@@ -742,6 +769,8 @@ function resolveModelFirstModelPickerState({
   resolveDefaultSelection,
   codexFastModeEnabled,
   placeholder,
+  allowedFrameworks,
+  excludedModel,
 }: {
   value: ModelProviderSelection | null;
   userPreference: { selectedModel: string | null } | null | undefined;
@@ -750,8 +779,14 @@ function resolveModelFirstModelPickerState({
   resolveDefaultSelection: boolean;
   codexFastModeEnabled: boolean;
   placeholder: string;
+  allowedFrameworks: readonly ModelProviderFramework[] | undefined;
+  excludedModel: string | undefined;
 }): ModelFirstModelPickerState {
-  const policies = policyResponse?.policies ?? [];
+  const policies = filteredPolicies(
+    policyResponse?.policies ?? [],
+    allowedFrameworks,
+    excludedModel,
+  );
   const selectablePolicies = selectablePoliciesForPlan(
     policies,
     modelCapabilities,
@@ -865,6 +900,8 @@ function SubscribedModelFirstModelPicker({
   disabled,
   userPreference,
   resolveDefaultSelection,
+  allowedFrameworks,
+  excludedModel,
 }: ModelProviderPickerProps & {
   placeholder: string;
   compactTrigger: boolean;
@@ -892,6 +929,8 @@ function SubscribedModelFirstModelPicker({
     resolveDefaultSelection,
     codexFastModeEnabled,
     placeholder,
+    allowedFrameworks,
+    excludedModel,
   });
 
   if (disabled) {
@@ -1044,11 +1083,15 @@ function SubscribedExplicitModelFirstModelPickerContent({
   placeholder,
   codexFastModeEnabled,
   onChange,
+  allowedFrameworks,
+  excludedModel,
 }: {
   value: ModelProviderSelection | null;
   placeholder: string;
   codexFastModeEnabled: boolean;
   onChange: (value: ModelProviderSelection | null) => void;
+  allowedFrameworks: readonly ModelProviderFramework[] | undefined;
+  excludedModel: string | undefined;
 }) {
   const policiesLoadable = useLastLoadable(orgModelPolicies$);
   const modelCapabilities =
@@ -1077,6 +1120,8 @@ function SubscribedExplicitModelFirstModelPickerContent({
     resolveDefaultSelection: false,
     codexFastModeEnabled,
     placeholder,
+    allowedFrameworks,
+    excludedModel,
   });
   return (
     <ModelFirstModelPickerContent
@@ -1144,6 +1189,8 @@ function EnabledExplicitModelFirstModelPicker(
             placeholder={props.placeholder}
             codexFastModeEnabled={props.codexFastModeEnabled ?? false}
             onChange={props.onChange}
+            allowedFrameworks={props.allowedFrameworks}
+            excludedModel={props.excludedModel}
           />
         ) : undefined
       }
@@ -1211,6 +1258,8 @@ export function ModelProviderPicker({
   onOpenChange,
   disabled = false,
   resolveDefaultSelection = true,
+  allowedFrameworks,
+  excludedModel,
 }: ModelProviderPickerProps) {
   const { t } = useTranslation();
   const resolvedPlaceholder =
@@ -1229,6 +1278,8 @@ export function ModelProviderPicker({
     open,
     onOpenChange,
     disabled,
+    allowedFrameworks,
+    excludedModel,
   };
   if (resolveDefaultSelection) {
     return <ModelFirstModelPickerWithDefaultSelection {...props} />;

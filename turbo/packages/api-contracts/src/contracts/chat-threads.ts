@@ -709,12 +709,6 @@ const chatThreadMetadataSchema = z.object({
 
 const chatThreadDraftSchema = z
   .object({
-    /**
-     * Response-only compatibility projection for older App bundles. Optional
-     * so this App version tolerates its removal after becoming the minimum
-     * supported version.
-     */
-    draftContent: z.string().nullable().optional(),
     draftUserMessage: userMessageDocumentSchema.nullable(),
     draftAttachments: z.array(persistedAttachmentSchema).nullable(),
   })

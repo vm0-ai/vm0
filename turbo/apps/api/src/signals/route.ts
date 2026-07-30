@@ -4,9 +4,6 @@ import { healthContract } from "@vm0/api-contracts/contracts/health";
 import { agentComposesByIdRoutes } from "./routes/agent-composes-id";
 import { agentComposesReadRoutes } from "./routes/agent-composes-read";
 import { agentComposesRoutes } from "./routes/agent-composes";
-import { agentRunsCancelRoutes } from "./routes/agent-runs-cancel";
-import { agentRunsReadRoutes } from "./routes/agent-runs-read";
-import { agentRunTelemetryRoutes } from "./routes/agent-run-telemetry";
 import { agentSessionsRoutes } from "./routes/agent-sessions-id";
 import { authMeRoutes } from "./routes/auth-me";
 import { cliAuthRoutes } from "./routes/cli-auth";
@@ -236,9 +233,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...agentComposesReadRoutes,
   ...agentComposesByIdRoutes,
   ...agentComposesRoutes,
-  ...agentRunsCancelRoutes,
-  ...agentRunsReadRoutes,
-  ...agentRunTelemetryRoutes,
   ...agentSessionsRoutes,
   ...connectorsSlugCallbackRoutes,
   ...cronAggregateInsightsRoutes,

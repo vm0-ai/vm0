@@ -11,6 +11,11 @@ import { listenForceUpgradeDialog$ } from "../signals/force-upgrade.ts";
 import { setupAuthenticatedDaemons$ } from "../signals/authenticated-daemons.ts";
 import { rootSignal$ } from "../signals/root-signal.ts";
 import { detach, Reason } from "../signals/utils.ts";
+import { pwaChatKeyboardGesturesEnabled$ } from "../signals/external/feature-switch.ts";
+import {
+  isStandalonePwa,
+  setupKeyboardDismissGesture,
+} from "../lib/keyboard-dismiss-gesture.ts";
 import { IN_VITEST } from "../env.ts";
 import "./css/index.css";
 
@@ -19,6 +24,24 @@ export const setupRouter = (
   render: (children: React.ReactNode) => void,
 ) => {
   const signal = store.get(rootSignal$);
+  let cleanupKeyboardDismissGesture: (() => void) | undefined;
+  store.watch(
+    (get) => {
+      cleanupKeyboardDismissGesture?.();
+      cleanupKeyboardDismissGesture = undefined;
+      if (get(pwaChatKeyboardGesturesEnabled$) && isStandalonePwa()) {
+        cleanupKeyboardDismissGesture = setupKeyboardDismissGesture();
+      }
+    },
+    { signal, debugLabel: "pwa-chat-keyboard-gestures" },
+  );
+  signal.addEventListener(
+    "abort",
+    () => {
+      cleanupKeyboardDismissGesture?.();
+    },
+    { once: true },
+  );
   detach(store.set(setupAuthenticatedDaemons$, signal), Reason.Daemon);
   detach(
     store.set(listenForceUpgradeDialog$, signal),

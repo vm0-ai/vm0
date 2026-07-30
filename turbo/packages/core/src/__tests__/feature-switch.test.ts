@@ -56,6 +56,7 @@ describe("isFeatureEnabled", () => {
       isFeatureEnabled(FeatureSwitchKey.BrazilianPortugueseLocale, {}),
     ).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.JapaneseLocale, {})).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.KoreanLocale, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.ZeroChatMessaging, {})).toBe(
       false,
     );
@@ -137,8 +138,11 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(staffOrgStates[FeatureSwitchKey.JapaneseLocale]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.KoreanLocale]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.PwaChatKeyboardGestures]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
       true,
     );
@@ -172,8 +176,13 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.JapaneseLocale]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.KoreanLocale]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
+      false,
+    );
+    expect(otherOrgStates[FeatureSwitchKey.PwaChatKeyboardGestures]).toBe(
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
@@ -236,6 +245,9 @@ describe("user-overridable switches", () => {
       FeatureSwitchKey.WorkflowConnectorReadiness,
     );
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.PwaChatKeyboardGestures,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.ZeroMailReplyFollowUp,
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
@@ -246,6 +258,9 @@ describe("user-overridable switches", () => {
     );
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.JapaneseLocale,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.KoreanLocale,
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ZeroBrowser,
@@ -270,10 +285,12 @@ describe("user-overridable switches", () => {
       filterUserOverridableFeatureSwitchOverrides({
         [FeatureSwitchKey.ComposerUploadPopover]: true,
         [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
+        [FeatureSwitchKey.PwaChatKeyboardGestures]: true,
         [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
         [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
         [FeatureSwitchKey.BrazilianPortugueseLocale]: true,
         [FeatureSwitchKey.JapaneseLocale]: true,
+        [FeatureSwitchKey.KoreanLocale]: true,
         [FeatureSwitchKey.ZeroBrowser]: true,
         [FeatureSwitchKey.ComposerConnectorPermissions]: true,
         [FeatureSwitchKey.Dummy]: false,

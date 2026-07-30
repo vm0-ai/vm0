@@ -167,6 +167,7 @@ import {
   type BrowserSessionCardSignalsRegistry,
 } from "./browser-session-block.ts";
 import { createChatThreadContainerSignals } from "./chat-thread-container.ts";
+import { createAssistantErrorRecoverySignals } from "./assistant-error-recovery.ts";
 import {
   createComposerConnectorSignals,
   type ComposerConnectorAuthorizationSignals,
@@ -1343,6 +1344,7 @@ function createRenderedChatGroups(
     async (get): Promise<EventImageGroupProjection[]> => {
       return (await get(allRenderedChatGroups$)).map((group) => {
         return {
+          role: group.role,
           events: group.events.map((event) => {
             return {
               attachFiles: chatEventAttachFiles(event),
@@ -4708,6 +4710,11 @@ export function createChatThreadSignals(
     appendOptimisticEvent$: events.appendOptimisticEvent$,
     dataSource,
   });
+  const assistantErrorRecovery = createAssistantErrorRecoverySignals({
+    visibleRenderedChatGroups$: events.visibleRenderedChatGroups$,
+    selectedModel$: modelSelection.selectedModel$,
+    sendMessage$: messageActions.sendMessage$,
+  });
   return {
     threadId,
     threadDraft$,
@@ -4717,6 +4724,7 @@ export function createChatThreadSignals(
     ...modelSelection,
     ...computerUseHostSelection,
     ...messageActions,
+    ...assistantErrorRecovery,
     composerSendButtonStatus$: composerSendButton.composerSendButtonStatus$,
     ...scrollSignals,
     ...container,

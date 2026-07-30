@@ -1542,11 +1542,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     }
   });
 
-  it("retains direct plan admission and emits direct create timing", async () => {
+  it("retains direct plan admission and emits create timing", async () => {
     const api = createRunsApi(context);
     const { actor } = await entitledRunActor();
-    const prompt = "direct route api dispatch timing should not leak prompt";
-    const composeName = `bdd-direct-route-timing-${randomUUID().slice(0, 8)}`;
+    const prompt = "direct service dispatch timing should not leak prompt";
+    const composeName = `bdd-direct-service-timing-${randomUUID().slice(0, 8)}`;
     const compose = await api.createCompose(actor, {
       version: "1",
       agents: {
@@ -1609,14 +1609,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       ["api_dispatch_check_org_tier"],
       "top_level",
     );
-    expectApiDispatchActions(
+    expectNoApiDispatchActions(
       timingEvents,
       API_DISPATCH_DIRECT_PRE_CREATE_ACTION_TYPES,
-    );
-    expectApiDispatchSpanKind(
-      timingEvents,
-      API_DISPATCH_DIRECT_PRE_CREATE_ACTION_TYPES,
-      "nested",
     );
     expectApiDispatchSpanKind(
       timingEvents,

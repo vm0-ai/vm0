@@ -59,7 +59,6 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
     );
 
     expect(response.body).toStrictEqual({
-      draftContent: null,
       draftUserMessage: null,
       draftAttachments: null,
     });
@@ -114,7 +113,6 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
       [200],
     );
     expect(saved.body).toStrictEqual({
-      draftContent: null,
       draftUserMessage,
       draftAttachments: [attachment],
     });
@@ -139,7 +137,6 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
       [200],
     );
     expect(cleared.body).toStrictEqual({
-      draftContent: null,
       draftUserMessage: null,
       draftAttachments: null,
     });
@@ -175,7 +172,6 @@ describe("GET/PATCH /api/zero/agents/:id/draft", () => {
       [200],
     );
     expect(peerDraft.body).toStrictEqual({
-      draftContent: null,
       draftUserMessage: null,
       draftAttachments: null,
     });

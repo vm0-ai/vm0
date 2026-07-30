@@ -68,6 +68,7 @@ export type AttachmentLightboxState =
       kind: "image";
       url: string;
       filename?: string;
+      threadId?: string;
       artifact?: AttachmentArtifactMetadata;
       shareAvailable?: boolean;
       showSizeInSubtitle?: boolean;
@@ -136,6 +137,7 @@ export const openImageLightbox$ = command(
       | {
           url: string;
           filename?: string;
+          threadId?: string;
           artifact?: AttachmentArtifactMetadata;
           shareAvailable?: boolean;
           showSizeInSubtitle?: boolean;
@@ -167,6 +169,7 @@ export const navigateImageLightbox$ = command(
     value: {
       url: string;
       filename?: string;
+      threadId?: string;
       artifact?: AttachmentArtifactMetadata;
       shareAvailable?: boolean;
       showSizeInSubtitle?: boolean;

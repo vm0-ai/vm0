@@ -248,6 +248,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     userOverridable: false,
   },
+  [FeatureSwitchKey.KoreanLocale]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Allow ko-KR preference writes after incompatible API readers and rollback candidates have drained.",
+    enabled: false,
+    userOverridable: false,
+  },
   [FeatureSwitchKey.Banking]: {
     maintainer: "linghan@vm0.ai",
     description:
@@ -374,6 +381,21 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show chat thread title results from the local event-driven thread cache in the command-shift-a conversation picker.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ChatErrorRecovery]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Replace supported Codex and Claude Code limit errors with recovery actions in chat.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.PwaChatKeyboardGestures]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Keep the PWA chat composer pinned above the software keyboard and support swipe-to-dismiss gestures.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: false,
   },
   [FeatureSwitchKey.ChatThreadSidebarAutoOpen]: {
     maintainer: "ethan@vm0.ai",
