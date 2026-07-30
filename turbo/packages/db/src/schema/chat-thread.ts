@@ -143,7 +143,7 @@ export const chatThreads = pgTable(
      */
     lastMessageAt: timestamp("last_message_at").defaultNow().notNull(),
     /** Last seq_id allocated to an event in this thread. */
-    lastChatEventSeqId: bigint("last_chat_message_seq_id", {
+    lastChatEventSeqId: bigint("last_chat_event_seq_id", {
       mode: "number",
     })
       .default(0)

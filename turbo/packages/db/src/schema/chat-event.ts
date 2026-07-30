@@ -86,7 +86,7 @@ export const chatEvents = pgTable(
     // A null value on an unrevoked input.prompt/input.automation/input.goal is pending.
     runId: uuid("run_id"),
     usagePayload: jsonb("usage_payload").$type<ChatEventUsagePayload>(),
-    revokesEventId: uuid("revokes_message_id").references(
+    revokesEventId: uuid("revokes_event_id").references(
       (): AnyPgColumn => {
         return chatEvents.id;
       },
@@ -150,7 +150,7 @@ export const chatEvents = pgTable(
       index("chat_events_usage_run_id_idx")
         .on(table.runId)
         .where(sql`${table.usagePayload} IS NOT NULL`),
-      uniqueIndex("chat_events_revokes_message_id_unique").on(
+      uniqueIndex("chat_events_revokes_event_id_unique").on(
         table.revokesEventId,
       ),
       uniqueIndex("chat_events_interrupts_run_id_unique").on(

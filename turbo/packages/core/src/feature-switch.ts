@@ -444,12 +444,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
     userOverridable: false,
   },
-  [FeatureSwitchKey.Artifacts]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Show the Artifacts manage page for generated artifacts in the current organization.",
-    enabled: true,
-  },
   [FeatureSwitchKey.ArtifactKeyV2]: {
     maintainer: "yuma@vm0.ai",
     description:
