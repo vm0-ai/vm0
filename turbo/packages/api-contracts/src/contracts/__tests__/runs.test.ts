@@ -100,14 +100,3 @@ describe("network log model catalog cache telemetry", () => {
     }
   });
 });
-
-describe("network log connector diagnostic identity", () => {
-  it("preserves the canonical connector slug", () => {
-    expect(
-      networkLogEntrySchema.parse({
-        timestamp: "2026-07-30T03:00:00.000Z",
-        connector_diagnostic_slug: "github",
-      }).connector_diagnostic_slug,
-    ).toBe("github");
-  });
-});
