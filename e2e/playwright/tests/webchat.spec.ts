@@ -100,9 +100,35 @@ test("send a chat message, preserve media layout, cap long drafts, and preserve 
 
   await page.route("**/*layout-shift*.png*", async (route) => {
     const method = route.request().method();
+    if (method === "OPTIONS") {
+      const requestedHeaders = route.request().headers()[
+        "access-control-request-headers"
+      ];
+      await route.fulfill({
+        status: 204,
+        headers: {
+          "access-control-allow-headers": requestedHeaders ?? "content-type",
+          "access-control-allow-methods": "PUT, OPTIONS",
+          "access-control-allow-origin": appUrl,
+        },
+      });
+      return;
+    }
+    if (method === "PUT") {
+      // Preview deployments use a per-commit origin that storage cannot
+      // pre-allow. Proxy the signed PUT outside browser CORS while preserving
+      // the real write needed by the runner.
+      const response = await route.fetch();
+      await route.fulfill({
+        response,
+        headers: {
+          ...response.headers(),
+          "access-control-allow-origin": appUrl,
+        },
+      });
+      return;
+    }
     if (method !== "GET") {
-      // Let the attachment reach real storage so the runner can read it.
-      // Only browser image reads are delayed for the layout-shift assertions.
       await route.continue();
       return;
     }
