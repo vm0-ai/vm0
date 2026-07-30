@@ -1,6 +1,6 @@
 {
   "name": "@vm0/cli",
-  "version": "9.271.3",
+  "version": "9.271.4",
   "private": true,
   "description": "Zero command-line interface for vm0",
   "repository": {

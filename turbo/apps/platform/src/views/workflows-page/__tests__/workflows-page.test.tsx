@@ -1482,6 +1482,19 @@ describe("workflow localization", () => {
       last: "Última",
       next: "Próxima",
     },
+    {
+      locale: "fr-FR",
+      listTitle: "Workflows",
+      detailTitle: "Workflow",
+      openWorkflow: "Ouvrir Sales Research",
+      automationsTab: "Automatisations",
+      scheduleTitle: "Chaque jour de semaine à 6:00",
+      eventTitle: "Nouveau message Gmail",
+      eventSummary:
+        'de contient "@acme.com"; objet ne contient pas "newsletter"',
+      last: "Dernière",
+      next: "Prochaine",
+    },
   ] as const;
 
   it.each(localeCases)(

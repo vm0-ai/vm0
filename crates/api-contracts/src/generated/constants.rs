@@ -100,6 +100,10 @@ pub mod model_provider_env {
 
 /// Runner contract constants shared by TypeScript and Rust.
 pub mod runners {
+    /// Maximum API admission hold after public user cancellation when recovery completion is lost.
+    /// The stale queue sweep reconsiders expired recovery barriers independently of the generic queue-item age.
+    pub const CANCELLATION_RECOVERY_STALE_AFTER_MS: u64 = 120000;
+
     /// Maximum connector slugs accepted by the runner network policy refresh endpoint.
     /// Rust runners use this shared contract value to split refresh requests before calling the API.
     pub const NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX: u64 = 256;
@@ -111,6 +115,14 @@ pub mod runners {
     /// Maximum resume session history blob size accepted by the API, runner, and guest verifier.
     /// Rust and TypeScript components use this shared contract value when validating resume history refs, downloads, and idle-reuse verification.
     pub const RESUME_SESSION_HISTORY_MAX_BYTES: u64 = 134217728;
+
+    /// Claim capability for cooperative user-cancellation recovery.
+    /// Supporting runners advertise this value so the API can activate the cancellation recovery barrier.
+    pub const RUNNER_CANCELLATION_RECOVERY_CAPABILITY: &str = "user-cancellation-recovery-v1";
+
+    /// Maximum cooperative user-cancellation recovery window enforced by capable runners.
+    /// The API stale barrier remains longer than this runner-owned deadline so delivery latency cannot release a healthy recovery early.
+    pub const RUNNER_CANCELLATION_RECOVERY_GRACE_MS: u64 = 90000;
 
     /// Maximum runner-local claim cooldown exclusions accepted by the poll endpoint.
     /// Rust runners use this shared contract value to bound local cooldown state and poll request size.

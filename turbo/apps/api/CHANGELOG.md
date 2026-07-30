@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.355.1](https://github.com/vm0-ai/vm0/compare/api-v1.355.0...api-v1.355.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* **api:** hold thread continuation until cancellation recovery ([#23976](https://github.com/vm0-ai/vm0/issues/23976)) ([8da33a4](https://github.com/vm0-ai/vm0/commit/8da33a426b1359f8aa55f81f4f7ff834a6b6f4e9))
+* **api:** prepare model usage observations for projection ([#24130](https://github.com/vm0-ai/vm0/issues/24130)) ([62f3445](https://github.com/vm0-ai/vm0/commit/62f3445b0ab993ffb420c12fdf3d1a6d20ea91ef))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.255.1
+    * @vm0/core bumped to 8.495.1
+    * @vm0/db bumped to 1.157.3
+
 ## [1.355.0](https://github.com/vm0-ai/vm0/compare/api-v1.354.0...api-v1.355.0) (2026-07-30)
 
 

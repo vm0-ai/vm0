@@ -8,6 +8,11 @@ import type {
   ChatEventResponse,
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { cronBrowserReconcileContract } from "@vm0/api-contracts/contracts/cron";
+import {
+  CANCELLATION_RECOVERY_STALE_AFTER_MS,
+  RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
+} from "@vm0/api-contracts/contracts/runners";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
@@ -19,7 +24,12 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { accept, setupApp } from "../../../__tests__/test-helpers";
 import { readGoalQueueStateFixture } from "../../../test-fixtures/goal-queue";
-import { holdChatEventInsertTransactionFixture } from "../../../test-fixtures/chat-events";
+import {
+  holdCheckpointReadsFixture,
+  holdChatEventInsertTransactionFixture,
+  invalidatePendingChatEventInputParamsFixture,
+  removeAcknowledgedCancellationLifecycleFixture,
+} from "../../../test-fixtures/chat-events";
 import { testContext } from "../../../__tests__/test-context";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -62,6 +72,8 @@ function goalsClient() {
 const USER_ARTIFACTS_BUCKET = "test-user-artifacts";
 const CHAT_CALLBACK_PRE_CREATE_TIMING_PREFIX =
   "api_dispatch_pre_create_zero_chat_callback_";
+const CANCELLATION_RECOVERY_CRON_SECRET =
+  "bdd-cancellation-recovery-cron-secret";
 const GOAL_CAPABILITIES = [
   "goal:read",
   "goal:agent-result:write",
@@ -279,13 +291,15 @@ async function queueChatEvent(
     readonly attachFiles?: readonly AttachFile[];
     readonly generationTemplate?: GenerationTemplateRequest;
   },
-): Promise<void> {
+): Promise<string> {
+  const messageId = randomUUID();
   const sent = await chat.requestSendEvent(
     actor,
     {
       agentId: body.agentId,
       threadId: body.threadId,
       prompt: body.prompt,
+      clientEventId: messageId,
       ...(body.attachFiles === undefined
         ? {}
         : { attachFiles: body.attachFiles }),
@@ -298,6 +312,7 @@ async function queueChatEvent(
   if (sent.status !== 201 || sent.body.runId !== null) {
     throw new Error("Expected the chat send to queue while a run is active");
   }
+  return messageId;
 }
 
 function zeroGoalHeaders(
@@ -350,13 +365,22 @@ async function createGoalForRun(
   );
 }
 
-async function claimChatRunJob(runnerGroup: string, runId: string) {
+async function claimChatRunJob(
+  runnerGroup: string,
+  runId: string,
+  capabilities?: readonly string[],
+) {
   await api.heartbeatRunner(runnerGroup);
   let claim: Awaited<ReturnType<typeof api.requestClaimRunnerJob>> | undefined;
   await expect
     .poll(
       async () => {
-        claim = await api.requestClaimRunnerJob(true, runId, [200, 404]);
+        claim = await api.requestClaimRunnerJob(
+          true,
+          runId,
+          [200, 404],
+          capabilities === undefined ? {} : { capabilities: [...capabilities] },
+        );
         return claim.status;
       },
       { interval: 100, timeout: 10_000 },
@@ -371,8 +395,9 @@ async function claimChatRunJob(runnerGroup: string, runId: string) {
 async function claimChatRun(
   runnerGroup: string,
   runId: string,
+  capabilities?: readonly string[],
 ): Promise<{ readonly authorization: string }> {
-  const claim = await claimChatRunJob(runnerGroup, runId);
+  const claim = await claimChatRunJob(runnerGroup, runId, capabilities);
   return { authorization: `Bearer ${claim.sandboxToken}` };
 }
 
@@ -446,7 +471,13 @@ async function readThreadTitleFromEvents(
 async function waitForRunStatus(
   actor: ApiTestUser,
   runId: string,
-  status: "cancelled" | "completed" | "failed" | "pending" | "running",
+  status:
+    | "cancelled"
+    | "completed"
+    | "failed"
+    | "pending"
+    | "queued"
+    | "running",
 ): Promise<void> {
   await expect
     .poll(async () => {
@@ -454,6 +485,33 @@ async function waitForRunStatus(
       return run.status;
     })
     .toBe(status);
+}
+
+async function waitForQueuedEventReplacement(
+  actor: ApiTestUser,
+  threadId: string,
+  queuedEventId: string,
+): Promise<string> {
+  const page = await waitForThreadMessages(actor, threadId, (events) => {
+    return userMessages(events).some((event) => {
+      return (
+        event.revokesEventId === queuedEventId && event.runId !== undefined
+      );
+    });
+  });
+  const replacements = userMessages(page.events).filter((event) => {
+    return event.revokesEventId === queuedEventId && event.runId !== undefined;
+  });
+  expect(replacements).toHaveLength(1);
+  const runId = replacements[0]?.runId;
+  if (runId === undefined) {
+    throw new Error("Expected the queued event to have one replacement run");
+  }
+  return runId;
+}
+
+function cancellationRecoveryCronClient() {
+  return setupApp({ context })(cronBrowserReconcileContract);
 }
 
 async function waitForRunContext(actor: ApiTestUser, runId: string) {
@@ -478,15 +536,9 @@ async function goalRunIds(threadId: string): Promise<readonly string[]> {
   return (await readGoalQueueStateFixture(threadId)).runIds;
 }
 
-/**
- * Checkpoint + exitCode-0 complete. Completing without a checkpoint routes to
- * the missing-checkpoint handler and FAILS the run, so every successful chat
- * round checkpoints first.
- */
-async function completeChatRunOk(
+async function checkpointChatRun(
   runId: string,
   sandboxHeaders: { readonly authorization: string },
-  options: { readonly lastEventSequence?: number } = {},
 ): Promise<void> {
   const stagedOutputEvents = chatCallbacks.consumeMockChatOutputEvents();
   const { lastEventSequence } = options;
@@ -516,6 +568,19 @@ async function completeChatRunOk(
     sandboxHeaders,
     [200],
   );
+}
+
+/**
+ * Checkpoint + exitCode-0 complete. Completing without a checkpoint routes to
+ * the missing-checkpoint handler and FAILS the run, so every successful chat
+ * round checkpoints first.
+ */
+async function completeChatRunOk(
+  runId: string,
+  sandboxHeaders: { readonly authorization: string },
+  options: { readonly lastEventSequence?: number } = {},
+): Promise<void> {
+  await checkpointChatRun(runId, sandboxHeaders);
   await webhooks.requestAgentComplete(
     {
       runId,
@@ -1996,6 +2061,506 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     await waitForRunStatus(actor, claimed.runId, "pending");
     await api.requestCancelRun(actor, claimed.runId, [200]);
     await waitForRunStatus(actor, claimed.runId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+});
+
+describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
+  it("ignores unknown claim capabilities and preserves immediate release", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "cancel an unknown-capability run",
+    });
+    await claimChatRun(runnerGroup, run.runId, [
+      "future-cancellation-recovery-v2",
+    ]);
+    const queuedEventId = await queueChatEvent(actor, {
+      agentId,
+      threadId: run.threadId,
+      prompt: "continue after an unknown capability",
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const replacementRunId = await waitForQueuedEventReplacement(
+      actor,
+      run.threadId,
+      queuedEventId,
+    );
+    expect(replacementRunId).not.toBe(run.runId);
+
+    await api.requestCancelRun(actor, replacementRunId, [200]);
+    await waitForRunStatus(actor, replacementRunId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
+  it("preserves immediate release when a pending run is cancelled", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "cancel before runner claim",
+    });
+    await waitForRunStatus(actor, run.runId, "pending");
+    const queuedEventId = await queueChatEvent(actor, {
+      agentId,
+      threadId: run.threadId,
+      prompt: "continue after pending cancellation",
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const replacementRunId = await waitForQueuedEventReplacement(
+      actor,
+      run.threadId,
+      queuedEventId,
+    );
+    expect(replacementRunId).not.toBe(run.runId);
+
+    await api.requestCancelRun(actor, replacementRunId, [200]);
+    await waitForRunStatus(actor, replacementRunId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
+  it("preserves immediate release when an org-queued run is cancelled", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+    const blocker = await startChatRun(actor, {
+      agentId,
+      prompt: "hold the only org run slot",
+    });
+    await waitForRunStatus(actor, blocker.runId, "pending");
+    const queuedRun = await startChatRun(actor, {
+      agentId,
+      prompt: "cancel while waiting for the org slot",
+    });
+    await waitForRunStatus(actor, queuedRun.runId, "queued");
+    const queuedEventId = await queueChatEvent(actor, {
+      agentId,
+      threadId: queuedRun.threadId,
+      prompt: "continue after queued cancellation",
+    });
+
+    await api.requestCancelRun(actor, queuedRun.runId, [200]);
+    const replacementRunId = await waitForQueuedEventReplacement(
+      actor,
+      queuedRun.threadId,
+      queuedEventId,
+    );
+    expect(replacementRunId).not.toBe(queuedRun.runId);
+
+    await api.requestCancelRun(actor, replacementRunId, [200]);
+    await waitForRunStatus(actor, replacementRunId, "cancelled");
+    await api.requestCancelRun(actor, blocker.runId, [200]);
+    await waitForRunStatus(actor, blocker.runId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
+  it("redrives lifecycle-first recovery after a partial side-effect failure", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "cancel before the recovery completion",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId, [
+      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
+      "future-cancellation-recovery-v2",
+    ]);
+    const queuedEventId = await queueChatEvent(actor, {
+      agentId,
+      threadId: run.threadId,
+      prompt: "wait for cancellation recovery",
+    });
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await flushWaitUntilForTest();
+    const afterCancel = await chat.listThreadEvents(actor, run.threadId);
+    expect(
+      lifecycleMarkers(afterCancel.events, run.runId, "cancelled"),
+    ).toHaveLength(1);
+    expect(
+      userMessages(afterCancel.events).filter((event) => {
+        return (
+          event.revokesEventId === queuedEventId && event.runId !== undefined
+        );
+      }),
+    ).toHaveLength(0);
+    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.publish.mockRejectedValueOnce(
+      new Error("Injected recovery drain signal failure"),
+    );
+    const completion = await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 1, error: "Run cancelled" },
+      sandboxHeaders,
+      [200],
+    );
+    expect(completion.body).toStrictEqual({
+      success: true,
+      status: "failed",
+    });
+    await flushWaitUntilForTest();
+    await waitForRunStatus(actor, run.runId, "cancelled");
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadMessageCreated:${run.threadId}`,
+      null,
+    );
+    const replacementRunId = await waitForQueuedEventReplacement(
+      actor,
+      run.threadId,
+      queuedEventId,
+    );
+
+    await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 1, error: "Run cancelled" },
+      sandboxHeaders,
+      [200],
+    );
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await flushWaitUntilForTest();
+    const afterDuplicates = await chat.listThreadEvents(actor, run.threadId);
+    expect(
+      userMessages(afterDuplicates.events).filter((event) => {
+        return (
+          event.revokesEventId === queuedEventId && event.runId !== undefined
+        );
+      }),
+    ).toHaveLength(1);
+
+    await api.requestCancelRun(actor, replacementRunId, [200]);
+    await waitForRunStatus(actor, replacementRunId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
+  it("redrives an acknowledged chat callback after terminal processing is lost", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "cancel before losing detached terminal processing",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId, [
+      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
+    ]);
+    const queuedEventId = await queueChatEvent(actor, {
+      agentId,
+      threadId: run.threadId,
+      prompt: "continue after acknowledged callback recovery",
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await flushWaitUntilForTest();
+    await removeAcknowledgedCancellationLifecycleFixture({
+      runId: run.runId,
+    });
+
+    await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 1, error: "Run cancelled" },
+      sandboxHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+    const beforeRedrive = await chat.listThreadEvents(actor, run.threadId);
+    expect(
+      lifecycleMarkers(beforeRedrive.events, run.runId, "cancelled"),
+    ).toHaveLength(0);
+    expect(
+      userMessages(beforeRedrive.events).filter((event) => {
+        return (
+          event.revokesEventId === queuedEventId && event.runId !== undefined
+        );
+      }),
+    ).toHaveLength(0);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await flushWaitUntilForTest();
+    const replacementRunId = await waitForQueuedEventReplacement(
+      actor,
+      run.threadId,
+      queuedEventId,
+    );
+    const afterRedrive = await chat.listThreadEvents(actor, run.threadId);
+    expect(
+      lifecycleMarkers(afterRedrive.events, run.runId, "cancelled"),
+    ).toHaveLength(1);
+
+    await api.requestCancelRun(actor, replacementRunId, [200]);
+    await waitForRunStatus(actor, replacementRunId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
+  it("waits for the lifecycle event when recovery completion arrives first", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "delay the cancellation lifecycle callback",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId, [
+      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
+    ]);
+    const queuedEventId = await queueChatEvent(actor, {
+      agentId,
+      threadId: run.threadId,
+      prompt: "wait for the delayed lifecycle event",
+    });
+    const cancelPublishGate = deferredGate();
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      return topic === "cancel"
+        ? cancelPublishGate.wait()
+        : Promise.resolve(undefined);
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some(([topic]) => {
+          return topic === "cancel";
+        });
+      })
+      .toBe(true);
+    const completion = await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 1, error: "Run cancelled" },
+      sandboxHeaders,
+      [200],
+    );
+    expect(completion.body).toStrictEqual({
+      success: true,
+      status: "failed",
+    });
+    const beforeLifecycle = await chat.listThreadEvents(actor, run.threadId);
+    expect(
+      lifecycleMarkers(beforeLifecycle.events, run.runId, "cancelled"),
+    ).toHaveLength(0);
+    expect(
+      userMessages(beforeLifecycle.events).filter((event) => {
+        return (
+          event.revokesEventId === queuedEventId && event.runId !== undefined
+        );
+      }),
+    ).toHaveLength(0);
+
+    const duplicateCompletion = await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 1, error: "Run cancelled" },
+      sandboxHeaders,
+      [200],
+    );
+    expect(duplicateCompletion.body).toStrictEqual({
+      success: true,
+      status: "failed",
+    });
+
+    cancelPublishGate.release();
+    await flushWaitUntilForTest();
+    const replacementRunId = await waitForQueuedEventReplacement(
+      actor,
+      run.threadId,
+      queuedEventId,
+    );
+    const afterLifecycle = await chat.listThreadEvents(actor, run.threadId);
+    expect(
+      lifecycleMarkers(afterLifecycle.events, run.runId, "cancelled"),
+    ).toHaveLength(1);
+
+    await api.requestCancelRun(actor, replacementRunId, [200]);
+    await waitForRunStatus(actor, replacementRunId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
+  it("records recovery when completion races the cancellation transition", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "race completion with cancellation",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId, [
+      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
+    ]);
+    await checkpointChatRun(run.runId, sandboxHeaders);
+    const queuedEventId = await queueChatEvent(actor, {
+      agentId,
+      threadId: run.threadId,
+      prompt: "continue after the concurrent completion",
+    });
+    const checkpointGate = await holdCheckpointReadsFixture({
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      checkpointGate.release();
+      await checkpointGate.done;
+    });
+
+    const completionPromise = webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
+      sandboxHeaders,
+      [200],
+    );
+    await expect.poll(checkpointGate.blockedWaiterCount).toBe(1);
+    await api.requestCancelRun(actor, run.runId, [200]);
+    checkpointGate.release();
+    await checkpointGate.done;
+    const completion = await completionPromise;
+    expect(completion.body).toStrictEqual({
+      success: true,
+      status: "failed",
+    });
+    await flushWaitUntilForTest();
+    await waitForRunStatus(actor, run.runId, "cancelled");
+    const replacementRunId = await waitForQueuedEventReplacement(
+      actor,
+      run.threadId,
+      queuedEventId,
+    );
+
+    await api.requestCancelRun(actor, replacementRunId, [200]);
+    await waitForRunStatus(actor, replacementRunId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
+  it("releases a lost recovery completion through the recovery-aware stale sweep", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const startedAt = now();
+    mockNow(startedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    mockEnv("CRON_SECRET", CANCELLATION_RECOVERY_CRON_SECRET);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "cancel without a recovery completion",
+    });
+    await claimChatRun(runnerGroup, run.runId, [
+      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
+    ]);
+    const queuedEventId = await queueChatEvent(actor, {
+      agentId,
+      threadId: run.threadId,
+      prompt: "continue after the recovery barrier expires",
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await flushWaitUntilForTest();
+    const whileFresh = await chat.listThreadEvents(actor, run.threadId);
+    expect(
+      lifecycleMarkers(whileFresh.events, run.runId, "cancelled"),
+    ).toHaveLength(1);
+    expect(
+      userMessages(whileFresh.events).filter((event) => {
+        return (
+          event.revokesEventId === queuedEventId && event.runId !== undefined
+        );
+      }),
+    ).toHaveLength(0);
+
+    mockNow(startedAt + CANCELLATION_RECOVERY_STALE_AFTER_MS - 1);
+    await accept(
+      cancellationRecoveryCronClient().reconcile({
+        headers: {
+          authorization: `Bearer ${CANCELLATION_RECOVERY_CRON_SECRET}`,
+        },
+      }),
+      [200],
+    );
+    const beforeExpiry = await chat.listThreadEvents(actor, run.threadId);
+    expect(
+      userMessages(beforeExpiry.events).filter((event) => {
+        return (
+          event.revokesEventId === queuedEventId && event.runId !== undefined
+        );
+      }),
+    ).toHaveLength(0);
+
+    mockNow(startedAt + CANCELLATION_RECOVERY_STALE_AFTER_MS + 1);
+    await accept(
+      cancellationRecoveryCronClient().reconcile({
+        headers: {
+          authorization: `Bearer ${CANCELLATION_RECOVERY_CRON_SECRET}`,
+        },
+      }),
+      [200],
+    );
+    const replacementRunId = await waitForQueuedEventReplacement(
+      actor,
+      run.threadId,
+      queuedEventId,
+    );
+
+    await api.requestCancelRun(actor, replacementRunId, [200]);
+    await waitForRunStatus(actor, replacementRunId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
+  it("continues the recovery stale sweep after one thread drain fails", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const startedAt = now();
+    mockNow(startedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    mockEnv("CRON_SECRET", CANCELLATION_RECOVERY_CRON_SECRET);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const poisonedRun = await startChatRun(actor, {
+      agentId,
+      prompt: "cancel before a poisoned recovery drain",
+    });
+    const healthyRun = await startChatRun(actor, {
+      agentId,
+      prompt: "cancel before a healthy recovery drain",
+    });
+    await claimChatRun(runnerGroup, poisonedRun.runId, [
+      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
+    ]);
+    await claimChatRun(runnerGroup, healthyRun.runId, [
+      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
+    ]);
+    const poisonedEventId = await queueChatEvent(actor, {
+      agentId,
+      threadId: poisonedRun.threadId,
+      prompt: "fail this expired recovery drain",
+    });
+    const healthyEventId = await queueChatEvent(actor, {
+      agentId,
+      threadId: healthyRun.threadId,
+      prompt: "continue despite the other drain failure",
+    });
+
+    await api.requestCancelRun(actor, poisonedRun.runId, [200]);
+    await api.requestCancelRun(actor, healthyRun.runId, [200]);
+    await flushWaitUntilForTest();
+    await invalidatePendingChatEventInputParamsFixture(poisonedEventId);
+
+    mockNow(startedAt + CANCELLATION_RECOVERY_STALE_AFTER_MS + 1);
+    await accept(
+      cancellationRecoveryCronClient().reconcile({
+        headers: {
+          authorization: `Bearer ${CANCELLATION_RECOVERY_CRON_SECRET}`,
+        },
+      }),
+      [200],
+    );
+
+    const replacementRunId = await waitForQueuedEventReplacement(
+      actor,
+      healthyRun.threadId,
+      healthyEventId,
+    );
+    const poisonedThread = await chat.listThreadEvents(
+      actor,
+      poisonedRun.threadId,
+    );
+    expect(
+      userMessages(poisonedThread.events).filter((event) => {
+        return (
+          event.revokesEventId === poisonedEventId && event.runId !== undefined
+        );
+      }),
+    ).toHaveLength(0);
+
+    await api.requestCancelRun(actor, replacementRunId, [200]);
+    await waitForRunStatus(actor, replacementRunId, "cancelled");
     await flushWaitUntilForTest();
   }, 90_000);
 });

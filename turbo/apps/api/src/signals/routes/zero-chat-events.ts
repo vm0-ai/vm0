@@ -84,6 +84,7 @@ import {
 import {
   cancelRun$,
   dispatchCancelSideEffects$,
+  shouldDispatchCancelSideEffects,
   type CancelRunResult,
 } from "../services/zero-run-cancel.service";
 import { scheduleChatThreadTitleGeneration } from "../services/zero-chat-title.service";
@@ -2152,7 +2153,7 @@ const handleInterruptSend$ = command(
     if (!isCancelResult(cancelResult)) {
       return cancelResult;
     }
-    if (!cancelResult.alreadyCancelled) {
+    if (shouldDispatchCancelSideEffects(cancelResult)) {
       const backgroundSignal = new AbortController().signal;
       waitUntil(
         bestEffort(
