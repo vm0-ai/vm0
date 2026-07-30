@@ -478,10 +478,10 @@ export function TiptapWorkflowComposer({
           className={
             hasTemplateAttachment
               ? singleLineOnMobile
-                ? "min-h-[82px] md:min-h-[134px] [&_.ProseMirror]:min-h-[82px] md:[&_.ProseMirror]:min-h-[134px]"
+                ? "min-h-[106px] md:min-h-[134px] [&_.ProseMirror]:min-h-[106px] md:[&_.ProseMirror]:min-h-[134px]"
                 : "min-h-[134px] [&_.ProseMirror]:min-h-[134px]"
               : singleLineOnMobile
-                ? "min-h-[44px] md:min-h-[96px]"
+                ? "min-h-[68px] md:min-h-[96px]"
                 : "min-h-[96px]"
           }
           ref={setContainerRef}

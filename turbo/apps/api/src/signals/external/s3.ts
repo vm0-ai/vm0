@@ -457,14 +457,34 @@ export function generatePresignedPutUrl(
   key: string,
   contentType: string,
   expiresIn: number,
-  usePublicEndpoint = false,
+  options:
+    | boolean
+    | {
+        readonly usePublicEndpoint?: boolean;
+        readonly metadata?: Readonly<Record<string, string>>;
+      } = false,
 ): Computed<Promise<string>> {
+  const usePublicEndpoint =
+    typeof options === "boolean"
+      ? options
+      : (options.usePublicEndpoint ?? false);
+  const metadata = typeof options === "boolean" ? undefined : options.metadata;
   return generatePresignedPutUrlWithClient(
     s3ClientForBucket(bucket, usePublicEndpoint),
     bucket,
     key,
     contentType,
-    expiresIn,
+    { expiresIn, metadata },
+  );
+}
+
+export function s3MetadataHeaders(
+  metadata: Readonly<Record<string, string>>,
+): Readonly<Record<string, string>> {
+  return Object.fromEntries(
+    Object.entries(metadata).map(([name, value]) => {
+      return [`x-amz-meta-${name}`, value];
+    }),
   );
 }
 
@@ -472,6 +492,7 @@ export function createMultipartS3Upload(
   bucket: string,
   key: string,
   contentType: string,
+  metadata?: Readonly<Record<string, string>>,
 ): Computed<Promise<string>> {
   return computed(async (get): Promise<string> => {
     const client = get(s3ClientForBucket(bucket));
@@ -480,6 +501,7 @@ export function createMultipartS3Upload(
         Bucket: bucket,
         Key: key,
         ContentType: contentType,
+        Metadata: metadata,
       }),
     );
     if (!response.UploadId) {
@@ -511,22 +533,30 @@ export function generatePresignedUploadPartUrl(
   });
 }
 
-export function listMultipartS3Parts(
+export function tryListMultipartS3Parts(
   bucket: string,
   key: string,
   uploadId: string,
-): Computed<Promise<readonly MultipartS3Part[]>> {
-  return computed(async (get): Promise<readonly MultipartS3Part[]> => {
+): Computed<Promise<readonly MultipartS3Part[] | null>> {
+  return computed(async (get): Promise<readonly MultipartS3Part[] | null> => {
     const client = get(s3ClientForBucket(bucket));
-    const response = await client.send(
-      new ListPartsCommand({
-        Bucket: bucket,
-        Key: key,
-        UploadId: uploadId,
-        MaxParts: 1000,
-      }),
+    const result = await settle(
+      client.send(
+        new ListPartsCommand({
+          Bucket: bucket,
+          Key: key,
+          UploadId: uploadId,
+          MaxParts: 1000,
+        }),
+      ),
     );
-    return (response.Parts ?? []).map((part) => {
+    if (!result.ok) {
+      if (isS3NotFoundError(result.error)) {
+        return null;
+      }
+      throw result.error;
+    }
+    return (result.value.Parts ?? []).map((part) => {
       if (part.PartNumber === undefined || part.ETag === undefined) {
         throw new Error("R2 returned incomplete multipart part metadata");
       }
@@ -580,16 +610,30 @@ function generatePresignedPutUrlWithClient(
   bucket: string,
   key: string,
   contentType: string,
-  expiresIn: number,
+  options: {
+    readonly expiresIn: number;
+    readonly metadata?: Readonly<Record<string, string>>;
+  },
 ): Computed<Promise<string>> {
   return computed((get): Promise<string> => {
     const client = get(client$);
+    const metadataHeaders = options.metadata
+      ? s3MetadataHeaders(options.metadata)
+      : undefined;
     const command = new PutObjectCommand({
       Bucket: bucket,
       Key: key,
       ContentType: contentType,
+      Metadata: options.metadata,
     });
-    return getSignedUrl(client, command, { expiresIn });
+    return getSignedUrl(client, command, {
+      expiresIn: options.expiresIn,
+      ...(metadataHeaders
+        ? {
+            unhoistableHeaders: new Set(Object.keys(metadataHeaders)),
+          }
+        : {}),
+    });
   });
 }
 
@@ -605,7 +649,7 @@ export function generateHostedSitesPresignedPutUrl(
     bucket,
     key,
     contentType,
-    expiresIn,
+    { expiresIn },
   );
 }
 
@@ -664,14 +708,21 @@ export function putS3Object(
   key: string,
   body: string | Buffer,
   contentType: string,
-  signal?: AbortSignal,
+  options?:
+    | AbortSignal
+    | {
+        readonly signal?: AbortSignal;
+        readonly metadata?: Readonly<Record<string, string>>;
+      },
 ): Computed<Promise<void>> {
+  const writeOptions = isAbortSignal(options) ? { signal: options } : options;
   return putS3ObjectWithClient(s3ClientForBucket(bucket), {
     bucket,
     key,
     body,
     contentType,
-    signal,
+    signal: writeOptions?.signal,
+    metadata: writeOptions?.metadata,
   });
 }
 
@@ -681,6 +732,16 @@ interface PutS3ObjectArgs {
   readonly body: string | Buffer;
   readonly contentType: string;
   readonly signal?: AbortSignal;
+  readonly metadata?: Readonly<Record<string, string>>;
+}
+
+function isAbortSignal(value: unknown): value is AbortSignal {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "aborted" in value &&
+    "addEventListener" in value
+  );
 }
 
 function putS3ObjectWithClient(
@@ -695,6 +756,7 @@ function putS3ObjectWithClient(
         Key: args.key,
         Body: args.body,
         ContentType: args.contentType,
+        Metadata: args.metadata,
       }),
       args.signal ? { abortSignal: args.signal } : undefined,
     );
@@ -723,9 +785,15 @@ export function putImmutableS3Object(
   key: string,
   body: string | Buffer,
   contentType: string,
-  signal?: AbortSignal,
+  options?:
+    | AbortSignal
+    | {
+        readonly signal?: AbortSignal;
+        readonly metadata?: Readonly<Record<string, string>>;
+      },
 ): Computed<Promise<void>> {
   return computed(async (get): Promise<void> => {
+    const writeOptions = isAbortSignal(options) ? { signal: options } : options;
     const client = get(s3ClientForBucket(bucket));
     const uploaded = await settle(
       client.send(
@@ -734,10 +802,11 @@ export function putImmutableS3Object(
           Key: key,
           Body: body,
           ContentType: contentType,
+          Metadata: writeOptions?.metadata,
           CacheControl: IMMUTABLE_CACHE_CONTROL,
           IfNoneMatch: "*",
         }),
-        signal ? { abortSignal: signal } : undefined,
+        writeOptions?.signal ? { abortSignal: writeOptions.signal } : undefined,
       ),
     );
     if (!uploaded.ok && !isS3PreconditionFailedError(uploaded.error)) {
@@ -790,6 +859,9 @@ export type S3ObjectHead =
   | {
       readonly kind: "found";
       readonly contentLength: number | undefined;
+      readonly contentType: string | undefined;
+      readonly lastModified: Date | undefined;
+      readonly metadata: Readonly<Record<string, string>>;
     };
 
 function isS3NotFoundError(error: unknown): boolean {
@@ -798,7 +870,9 @@ function isS3NotFoundError(error: unknown): boolean {
     readonly $metadata?: { readonly httpStatusCode?: number };
   };
   return (
-    candidate.name === "NotFound" || candidate.$metadata?.httpStatusCode === 404
+    candidate.name === "NotFound" ||
+    candidate.name === "NoSuchUpload" ||
+    candidate.$metadata?.httpStatusCode === 404
   );
 }
 
@@ -829,6 +903,9 @@ function s3ObjectHeadWithClient(
     return {
       kind: "found",
       contentLength: result.value.ContentLength,
+      contentType: result.value.ContentType,
+      lastModified: result.value.LastModified,
+      metadata: result.value.Metadata ?? {},
     };
   });
 }

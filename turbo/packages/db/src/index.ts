@@ -15,7 +15,7 @@ import * as sandboxTelemetrySchema from "./schema/sandbox-telemetry";
 import * as runnerSchema from "./schema/runner-job-queue";
 import * as runnerStateSchema from "./schema/runner-state";
 import * as agentRunQueueSchema from "./schema/agent-run-queue";
-import * as chatInputQueueParamsSchema from "./schema/chat-input-queue-params";
+import * as chatEventInputParamsSchema from "./schema/chat-event-input-params";
 import * as secretSchema from "./schema/secret";
 import * as modelProviderSchema from "./schema/model-provider";
 import * as orgModelPolicySchema from "./schema/org-model-policy";
@@ -34,7 +34,6 @@ import * as runBuiltInAdmissionSchema from "./schema/run-built-in-admission";
 import * as usageDailySchema from "./schema/usage-daily";
 import * as githubInstallationSchema from "./schema/github-installation";
 import * as githubUserLinkSchema from "./schema/github-user-link";
-import * as githubIssueSessionSchema from "./schema/github-issue-session";
 import * as githubChatThreadRouteSchema from "./schema/github-chat-thread-route";
 import * as telegramInstallationSchema from "./schema/telegram-installation";
 import * as telegramOfficialUserLinkSchema from "./schema/telegram-official-user-link";
@@ -133,7 +132,7 @@ export const schema = {
   ...runnerSchema,
   ...runnerStateSchema,
   ...agentRunQueueSchema,
-  ...chatInputQueueParamsSchema,
+  ...chatEventInputParamsSchema,
   ...secretSchema,
   ...modelProviderSchema,
   ...orgModelPolicySchema,
@@ -169,7 +168,6 @@ export const schema = {
   ...usageDailySchema,
   ...githubInstallationSchema,
   ...githubUserLinkSchema,
-  ...githubIssueSessionSchema,
   ...githubChatThreadRouteSchema,
   ...telegramInstallationSchema,
   ...telegramOfficialUserLinkSchema,

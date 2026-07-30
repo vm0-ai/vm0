@@ -6,13 +6,13 @@ import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
-import { buildArtifactKey, buildFileUrl } from "../../lib/file-url";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$ } from "../external/db";
 import { putImmutableS3Object } from "../external/s3";
 import { tapError } from "../utils";
+import { allocateArtifactObject$ } from "./artifact-storage.service";
 import { syncArtifactCatalogForFile$ } from "./artifact-catalog.service";
 import { publishArtifactsChangedForRun } from "./artifact-realtime.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
@@ -55,6 +55,7 @@ export interface RenderArtifactPreviewArgs {
   readonly id: string;
   readonly runId: string;
   readonly userId: string;
+  readonly orgId: string;
   readonly url: string;
   // Discriminates the renderer: `video/*` extracts a poster frame, otherwise a
   // Browser Rendering page screenshot.
@@ -223,14 +224,24 @@ const renderAndStoreArtifactPreview$ = command(
     }
     signal.throwIfAborted();
 
-    const key = buildArtifactKey(args.userId, args.id, filename);
+    const artifact = await set(
+      allocateArtifactObject$,
+      {
+        userId: args.userId,
+        orgId: args.orgId,
+        id: args.id,
+        filename,
+        variant: filename,
+      },
+      signal,
+    );
     await get(
       putImmutableS3Object(
         env("R2_USER_ARTIFACTS_BUCKET_NAME"),
-        key,
+        artifact.key,
         image,
         contentType,
-        signal,
+        { signal, metadata: artifact.metadata },
       ),
     );
     signal.throwIfAborted();
@@ -239,7 +250,7 @@ const renderAndStoreArtifactPreview$ = command(
     await db
       .update(runUploadedFiles)
       .set({
-        previewImageUrl: buildFileUrl(args.userId, args.id, filename),
+        previewImageUrl: artifact.url,
         updatedAt: nowDate(),
       })
       .where(eq(runUploadedFiles.id, args.id));
@@ -276,9 +287,7 @@ export const scheduleArtifactPreviewRender$ = command(
   },
 );
 
-export interface VideoArtifactPreviewRenderArgs extends RenderArtifactPreviewArgs {
-  readonly orgId: string;
-}
+export type VideoArtifactPreviewRenderArgs = RenderArtifactPreviewArgs;
 
 const renderVideoArtifactPreviewIfEnabled$ = command(
   async (

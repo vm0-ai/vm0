@@ -4,6 +4,14 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
+const directUploadCapabilityShape = {
+  supportsUploadHeaders: z.literal(true).optional(),
+};
+
+const directUploadResponseShape = {
+  uploadHeaders: z.record(z.string(), z.string()).optional(),
+};
+
 /**
  * Integration Slack message contract
  * POST /api/zero/integrations/slack/message
@@ -199,6 +207,7 @@ const feishuUploadInitBodySchema = z.object({
       FEISHU_FILE_UPLOAD_MAX_BYTES,
       `File must not exceed ${FEISHU_FILE_UPLOAD_MAX_BYTES} bytes`,
     ),
+  ...directUploadCapabilityShape,
 });
 
 export type FeishuUploadInitBody = z.infer<typeof feishuUploadInitBodySchema>;
@@ -210,6 +219,7 @@ const feishuUploadInitResponseSchema = z.object({
   filename: z.string(),
   contentType: z.string(),
   size: z.number().int().nonnegative(),
+  ...directUploadResponseShape,
 });
 
 export type FeishuUploadInitResponse = z.infer<
@@ -588,6 +598,7 @@ export type IntegrationsTelegramBotListContract =
 const slackUploadInitBodySchema = z.object({
   filename: z.string().min(1, "Filename is required"),
   length: z.number().int().positive("File length must be a positive integer"),
+  ...directUploadCapabilityShape,
   canonical: z
     .object({
       operationId: z.string().uuid(),
@@ -614,6 +625,7 @@ const canonicalSlackUploadInitResponseSchema = z.object({
   operationId: z.string().uuid(),
   uploadUrl: z.string().url().optional(),
   url: z.string().url(),
+  ...directUploadResponseShape,
 });
 
 const slackUploadInitResponseSchema = z.union([
@@ -706,6 +718,7 @@ const telegramUploadInitBodySchema = z.object({
   filename: z.string().min(1, "Filename is required").max(255),
   contentType: z.string().min(1, "Content type is required").max(200),
   length: z.number().int().positive("File length must be a positive integer"),
+  ...directUploadCapabilityShape,
 });
 
 export type TelegramUploadInitBody = z.infer<
@@ -719,6 +732,7 @@ const telegramUploadInitResponseSchema = z.object({
   filename: z.string(),
   contentType: z.string(),
   size: z.number().int().nonnegative(),
+  ...directUploadResponseShape,
 });
 
 export type TelegramUploadInitResponse = z.infer<
@@ -754,6 +768,7 @@ const teamsUploadInitBodySchema = z.object({
   filename: z.string().min(1, "Filename is required").max(255),
   contentType: z.string().min(1, "Content type is required").max(200),
   length: z.number().int().positive("File length must be a positive integer"),
+  ...directUploadCapabilityShape,
 });
 
 export type TeamsUploadInitBody = z.infer<typeof teamsUploadInitBodySchema>;
@@ -765,6 +780,7 @@ const teamsUploadInitResponseSchema = z.object({
   filename: z.string(),
   contentType: z.string(),
   size: z.number().int().nonnegative(),
+  ...directUploadResponseShape,
 });
 
 export type TeamsUploadInitResponse = z.infer<
@@ -905,6 +921,7 @@ const githubUploadInitBodySchema = z.object({
   filename: z.string().min(1, "Filename is required").max(255),
   contentType: z.string().min(1, "Content type is required").max(200),
   length: z.number().int().positive("File length must be a positive integer"),
+  ...directUploadCapabilityShape,
 });
 
 export type GithubUploadInitBody = z.infer<typeof githubUploadInitBodySchema>;
@@ -916,6 +933,7 @@ const githubUploadInitResponseSchema = z.object({
   filename: z.string(),
   contentType: z.string(),
   size: z.number().int().nonnegative(),
+  ...directUploadResponseShape,
 });
 
 export type GithubUploadInitResponse = z.infer<
@@ -1013,6 +1031,7 @@ const phoneUploadInitBodySchema = z.object({
   filename: z.string().min(1, "Filename is required").max(255),
   contentType: z.string().min(1, "Content type is required").max(200),
   length: z.number().int().positive("File length must be a positive integer"),
+  ...directUploadCapabilityShape,
 });
 
 export type PhoneUploadInitBody = z.infer<typeof phoneUploadInitBodySchema>;
@@ -1024,6 +1043,7 @@ const phoneUploadInitResponseSchema = z.object({
   filename: z.string(),
   contentType: z.string(),
   size: z.number().int().nonnegative(),
+  ...directUploadResponseShape,
 });
 
 export type PhoneUploadInitResponse = z.infer<

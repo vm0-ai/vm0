@@ -237,6 +237,7 @@ function createChatAttachment(file: File): ZeroChatAttachment {
             filename: file.name,
             contentType,
             size: file.size,
+            supportsUploadHeaders: true,
             ...(file.size >= MULTIPART_UPLOAD_THRESHOLD_BYTES
               ? { multipart: true as const }
               : {}),
@@ -298,7 +299,10 @@ function createChatAttachment(file: File): ZeroChatAttachment {
       const putRes = await fetch(prepared.body.uploadUrl, {
         method: "PUT",
         body: file,
-        headers: { "content-type": prepared.body.contentType },
+        headers: {
+          "content-type": prepared.body.contentType,
+          ...prepared.body.uploadHeaders,
+        },
         signal,
       });
       signal.throwIfAborted();

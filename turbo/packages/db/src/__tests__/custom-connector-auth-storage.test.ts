@@ -52,7 +52,6 @@ describe("custom connector auth storage schema", () => {
     const connectorConfig = getTableConfig(connectors);
     const stateConfig = getTableConfig(connectorOauthStates);
 
-    expect(connectors.legacyType.notNull).toBe(false);
     expect(connectors.connectorSlug.notNull).toBe(false);
     expect(connectors.customConnectorId.notNull).toBe(false);
     expect(names(connectorConfig.checks)).toContain("chk_connectors_identity");
@@ -62,7 +61,7 @@ describe("custom connector auth storage schema", () => {
       }),
     ).toEqual(
       expect.arrayContaining([
-        "idx_connectors_org_user_type",
+        "idx_connectors_org_user_slug",
         "idx_connectors_org_user_custom_connector",
       ]),
     );
@@ -71,11 +70,10 @@ describe("custom connector auth storage schema", () => {
     );
     expect(
       connectorConfig.indexes.find((index) => {
-        return index.config.name === "idx_connectors_org_user_type";
+        return index.config.name === "idx_connectors_org_user_slug";
       })?.config.where,
     ).toBeDefined();
 
-    expect(connectorOauthStates.legacyType.notNull).toBe(false);
     expect(connectorOauthStates.connectorSlug.notNull).toBe(false);
     expect(names(stateConfig.checks)).toEqual(
       expect.arrayContaining([

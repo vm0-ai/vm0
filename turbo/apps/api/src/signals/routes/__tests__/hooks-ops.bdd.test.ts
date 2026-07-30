@@ -203,6 +203,7 @@ describe("OPS-01: feature switches and report-error routes", () => {
         body: {
           switches: {
             [FeatureSwitchKey.ChatThreadUnifiedSearch]: true,
+            [FeatureSwitchKey.ArtifactKeyV2]: true,
             [FeatureSwitchKey.Dummy]: false,
           },
         },
@@ -221,6 +222,7 @@ describe("OPS-01: feature switches and report-error routes", () => {
     expect(
       peerRead.body.switches[FeatureSwitchKey.ChatThreadUnifiedSearch],
     ).toBeTruthy();
+    expect(peerRead.body.switches[FeatureSwitchKey.ArtifactKeyV2]).toBeTruthy();
     expect(peerRead.body.switches[FeatureSwitchKey.Dummy]).toBeUndefined();
 
     const outsiderRead = await accept(
@@ -257,6 +259,9 @@ describe("OPS-01: feature switches and report-error routes", () => {
       ],
     ).toBeFalsy();
     expect(
+      ownerReadAfterPeerUpdate.body.switches[FeatureSwitchKey.ArtifactKeyV2],
+    ).toBeTruthy();
+    expect(
       ownerReadAfterPeerUpdate.body.switches[FeatureSwitchKey.Dummy],
     ).toBeFalsy();
 
@@ -274,6 +279,9 @@ describe("OPS-01: feature switches and report-error routes", () => {
       peerReadAfterDelete.body.switches[
         FeatureSwitchKey.ChatThreadUnifiedSearch
       ],
+    ).toBeUndefined();
+    expect(
+      peerReadAfterDelete.body.switches[FeatureSwitchKey.ArtifactKeyV2],
     ).toBeUndefined();
     expect(
       peerReadAfterDelete.body.switches[FeatureSwitchKey.Dummy],
