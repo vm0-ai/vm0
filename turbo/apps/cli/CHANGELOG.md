@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.271.3](https://github.com/vm0-ai/vm0/compare/cli-v9.271.2...cli-v9.271.3) (2026-07-30)
+
+
+### Refactoring
+
+* **api:** remove legacy connector client schema aliases ([#24108](https://github.com/vm0-ai/vm0/issues/24108)) ([cfde606](https://github.com/vm0-ai/vm0/commit/cfde606e0e7dc755e8ff3e407b0b0cf79f19a3cc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.255.0
+    * @vm0/core bumped to 8.495.0
+
 ## [9.271.2](https://github.com/vm0-ai/vm0/compare/cli-v9.271.1...cli-v9.271.2) (2026-07-30)
 
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.495.0](https://github.com/vm0-ai/vm0/compare/core-v8.494.0...core-v8.495.0) (2026-07-30)
+
+
+### Features
+
+* **platform:** support italian locale ([#24056](https://github.com/vm0-ai/vm0/issues/24056)) ([21d5c14](https://github.com/vm0-ai/vm0/commit/21d5c1459b5a044d3973fa9431ea3ce80c4deacd))
+* **platform:** support spanish locale ([#24052](https://github.com/vm0-ai/vm0/issues/24052)) ([e6bb124](https://github.com/vm0-ai/vm0/commit/e6bb12414447aad1817787f4b3c1b01010a3102f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.255.0
+
 ## [8.494.0](https://github.com/vm0-ai/vm0/compare/core-v8.493.0...core-v8.494.0) (2026-07-30)
 
 
