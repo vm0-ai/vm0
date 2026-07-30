@@ -135,7 +135,7 @@ describe("cron monitor chat event queue", () => {
     expect(
       context.mocks.sentry.captureException.mock.calls.at(-1)?.[0],
     ).toMatchObject({
-      name: "OrphanedQueuedChatMessagesError",
+      name: "OrphanedQueuedChatEventsError",
       code: "ORPHANED_QUEUED_CHAT_MESSAGES",
       orphanedMessages: 1,
     });
@@ -146,7 +146,7 @@ describe("cron monitor chat event queue", () => {
       method: "GET",
       errorCode: "ORPHANED_QUEUED_CHAT_MESSAGES",
       error: {
-        name: "OrphanedQueuedChatMessagesError",
+        name: "OrphanedQueuedChatEventsError",
         code: "ORPHANED_QUEUED_CHAT_MESSAGES",
         orphanedMessages: 1,
       },

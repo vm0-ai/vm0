@@ -20,5 +20,5 @@ export type AgentPhoneDeliveryTarget = z.infer<
 
 export const agentphoneChatCallbackPayloadSchema =
   agentphoneDeliveryTargetSchema.extend({
-    chatMessageId: z.string().uuid(),
+    chatEventId: z.string().uuid(),
   });

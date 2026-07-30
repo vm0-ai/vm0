@@ -262,7 +262,7 @@ async function loadTelegramChatDeliveryContext(args: {
     .from(chatEvents)
     .where(
       and(
-        eq(chatEvents.id, payload.chatMessageId),
+        eq(chatEvents.id, payload.chatEventId),
         eq(chatEvents.runId, args.callback.runId),
         eq(chatEvents.chatThreadId, run.chatThreadId),
         chatEventTypeIn([
@@ -603,7 +603,7 @@ interface TelegramChatAdmissionFailureArgs {
   readonly userId: string;
   readonly orgId: string;
   readonly target: TelegramDeliveryTarget;
-  readonly chatMessageId: string;
+  readonly chatEventId: string;
   readonly signal: AbortSignal;
 }
 
@@ -615,7 +615,7 @@ export async function deliverTelegramChatAdmissionFailure(
     .from(chatEvents)
     .where(
       and(
-        eq(chatEvents.id, args.chatMessageId),
+        eq(chatEvents.id, args.chatEventId),
         eq(chatEvents.chatThreadId, args.chatThreadId),
         chatEventTypeIn(["output.error"]),
         isNotNull(chatEvents.content),
