@@ -1,5 +1,24 @@
 # Changelog
 
+## [8.491.0](https://github.com/vm0-ai/vm0/compare/core-v8.490.0...core-v8.491.0) (2026-07-30)
+
+
+### Features
+
+* **platform:** enable artifacts for all organizations ([#24071](https://github.com/vm0-ai/vm0/issues/24071)) ([72ffe1b](https://github.com/vm0-ai/vm0/commit/72ffe1bf636822e60edc31ce52231ee5b16f3d1a))
+
+
+### Refactoring
+
+* remove legacy chat message capability aliases ([#24063](https://github.com/vm0-ai/vm0/issues/24063)) ([9ecc474](https://github.com/vm0-ai/vm0/commit/9ecc4744be290710c473f47a06460cd49a158a52))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.251.1
+
 ## [8.490.0](https://github.com/vm0-ai/vm0/compare/core-v8.489.0...core-v8.490.0) (2026-07-30)
 
 
