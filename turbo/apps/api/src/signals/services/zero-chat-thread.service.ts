@@ -684,7 +684,10 @@ async function canonicalEventAttachments(
       row.accessLevel === "published";
     const attachments = byEvent.get(row.eventId) ?? [];
     attachments.push({
-      id: row.source === "web" ? row.externalId : row.assetId,
+      id:
+        !isPublishedOutput && row.source === "web"
+          ? row.externalId
+          : row.assetId,
       filename,
       contentType: row.contentType ?? inferMimetype(filename),
       size: row.sizeBytes ?? 0,
