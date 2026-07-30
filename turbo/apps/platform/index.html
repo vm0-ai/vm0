@@ -166,8 +166,10 @@
               ? "id-ID"
               : /^de(?:-|$)/i.test(navigator.language)
                 ? "de-DE"
-                : /^es(?:-|$)/i.test(navigator.language)
-                  ? "es-ES"
+              : /^es(?:-|$)/i.test(navigator.language)
+                ? "es-ES"
+                : /^it(?:-|$)/i.test(navigator.language)
+                  ? "it-IT"
                   : /^pt(?:-|$)/i.test(navigator.language)
                     ? "pt-BR"
                     : "en-US";
@@ -178,7 +180,8 @@
           cached === "ko-KR" ||
           cached === "id-ID" ||
           cached === "de-DE" ||
-          cached === "es-ES"
+          cached === "es-ES" ||
+          cached === "it-IT"
             ? cached
             : browserLocale;
         var copyByLocale = {
@@ -544,6 +547,58 @@
               description:
                 "Zero es tu compañero de IA de vm0. Escríbele a Zero o chatea en la web: investiga, envía correos, crea documentos y usa Slack, GitHub, Notion y más de 100 herramientas.",
               title: "Zero — Tu compañero de IA de vm0",
+            },
+          },
+          "it-IT": {
+            browserUpgrade: {
+              browser: {
+                actionLabel: "Aggiorna browser",
+                description:
+                  "Zero non supporta la versione attuale del tuo browser. Aggiorna il browser per continuare.",
+                title: "Aggiorna il browser per continuare",
+              },
+              chrome: {
+                actionLabel: "Aggiorna Chrome",
+                description:
+                  "Zero non supporta la versione attuale del tuo browser. Aggiorna Chrome per continuare.",
+                title: "Aggiorna Chrome per continuare",
+              },
+              chromium: {
+                actionLabel: "Aggiorna Chromium",
+                description:
+                  "Zero non supporta la versione attuale del tuo browser. Aggiorna Chromium per continuare.",
+                title: "Aggiorna Chromium per continuare",
+              },
+              ios: {
+                actionLabel: "Aggiorna iOS",
+                description:
+                  "Zero non supporta la versione attuale del tuo browser. Aggiorna iOS per continuare.",
+                title: "Aggiorna iOS per continuare",
+              },
+              safari: {
+                actionLabel: "Aggiorna Safari",
+                description:
+                  "Zero non supporta la versione attuale del tuo browser. Aggiorna Safari per continuare.",
+                title: "Aggiorna Safari per continuare",
+              },
+            },
+            loading: {
+              ariaLabel: "Caricamento dell'area di lavoro",
+              messages: [
+                "Riscaldamento dei neuroni...",
+                "Preparando qualche idea...",
+                "Preparando tutto...",
+                "Ci siamo quasi...",
+                "Caricamento dell'area di lavoro...",
+                "Accordando gli strumenti...",
+                "Unendo i puntini...",
+                "Radunando il team...",
+              ],
+            },
+            metadata: {
+              description:
+                "Zero è il tuo collega AI di vm0. Scrivi a Zero o chatta sul web — ricerca, email, documenti, Slack, GitHub, Notion e oltre 100 strumenti.",
+              title: "Zero — Il tuo collega AI di vm0",
             },
           },
         };

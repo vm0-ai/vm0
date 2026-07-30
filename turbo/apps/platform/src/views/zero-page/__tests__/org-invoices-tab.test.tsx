@@ -187,6 +187,33 @@ describe("organization invoices settings", () => {
     });
   });
 
+  it("formats Italian invoice dates and currency", async () => {
+    mockInvoicesStory();
+    context.mocks.data.userPreferences({ locale: "it-IT" });
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=invoices",
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
+    });
+
+    const date = new Date(
+      unixSecondsFromIso("2026-03-15T00:00:00.000Z") * 1000,
+    ).toLocaleDateString("it-IT");
+
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe("it-IT");
+      expect(screen.getByText("Fattura")).toBeInTheDocument();
+      expect(screen.getByText("Data")).toBeInTheDocument();
+      expect(screen.getByText("Importo")).toBeInTheDocument();
+      expect(screen.getAllByText("Paid").length).toBeGreaterThan(0);
+      expect(screen.getByText(/20,00\s+USD/u)).toBeInTheDocument();
+      expect(screen.getByText(date)).toBeInTheDocument();
+    });
+  });
+
   it("hides ZIP downloads while an older API deployment is active", async () => {
     context.mocks.data.org({
       id: "org_1",
