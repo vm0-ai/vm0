@@ -38,16 +38,18 @@ where
 fn process_has_ancestor_from_walk(walk: PpidChainWalk) -> Option<bool> {
     match walk {
         PpidChainWalk::FoundTarget => Some(true),
-        PpidChainWalk::ReachedBoundary | PpidChainWalk::MaxDepth => Some(false),
-        PpidChainWalk::Unreadable => None,
+        PpidChainWalk::ReachedBoundary => Some(false),
+        PpidChainWalk::Unreadable | PpidChainWalk::MaxDepth => None,
     }
 }
 
 /// Walk the ppid chain from `pid` upward to determine whether it descends from
 /// one of `ancestor_pids`.
 ///
-/// Returns `None` when the chain cannot be read, so callers can choose whether
-/// to treat an unreadable process tree as conservative or absent.
+/// Reads at most 16 parent entries. Returns `Some(true)` when an ancestor is
+/// found and `Some(false)` when the walk reaches PID 1 or PPID 0 without a
+/// match. Returns `None` when the chain cannot be read or the depth limit is
+/// exhausted before either conclusive outcome.
 pub async fn process_has_ancestor(pid: u32, ancestor_pids: &[u32]) -> Option<bool> {
     process_has_ancestor_from_walk(walk_ppid_chain(pid, ancestor_pids, read_ppid).await)
 }
@@ -65,10 +67,12 @@ fn is_orphan_from_walk(walk: PpidChainWalk) -> bool {
 /// `runner → sudo → ip netns exec → sudo -u → firecracker`, so checking
 /// only the immediate ppid is insufficient. This function walks up the
 /// process tree until it either finds a runner PID (not orphan) or reaches
-/// PID 1 / init or the PPid 0 boundary (orphan).
+/// PID 1 / init or the PPid 0 boundary (orphan), reading at most 16 parent
+/// entries.
 ///
-/// Returns `false` (not orphan) when the ppid chain cannot be read, to
-/// avoid false positives.
+/// Returns `false` (not orphan) when the ppid chain cannot be read or the
+/// depth limit is exhausted, to avoid false positives. Returns `true` only
+/// after reaching the process-tree boundary without finding a runner PID.
 pub async fn is_orphan(pid: u32, runner_pids: &[u32]) -> bool {
     is_orphan_from_walk(walk_ppid_chain(pid, runner_pids, read_ppid).await)
 }
@@ -189,12 +193,12 @@ mod tests {
         let walk = walk_test_ppid_chain(10, &[99], &[(10, Some(11)), (11, Some(10))]).await;
 
         assert_eq!(walk, PpidChainWalk::MaxDepth);
-        assert_eq!(process_has_ancestor_from_walk(walk), Some(false));
+        assert_eq!(process_has_ancestor_from_walk(walk), None);
         assert!(!is_orphan_from_walk(walk));
     }
 
     #[tokio::test]
-    async fn ppid_chain_target_after_max_depth_is_false_negative() {
+    async fn ppid_chain_target_after_max_depth_is_unknown() {
         let chain = [
             (100, Some(101)),
             (101, Some(102)),
@@ -217,7 +221,7 @@ mod tests {
         let walk = walk_test_ppid_chain(100, &[117], &chain).await;
 
         assert_eq!(walk, PpidChainWalk::MaxDepth);
-        assert_eq!(process_has_ancestor_from_walk(walk), Some(false));
+        assert_eq!(process_has_ancestor_from_walk(walk), None);
         assert!(!is_orphan_from_walk(walk));
     }
 
