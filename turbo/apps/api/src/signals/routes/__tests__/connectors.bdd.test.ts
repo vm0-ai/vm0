@@ -2547,7 +2547,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     bdd.acceptAgentStorageWrites();
     await connectorsApi.updateFeatureSwitches(admin, {
       [FeatureSwitchKey.CustomConnectorOAuth2]: true,
-      [FeatureSwitchKey.CustomConnectorPermissionsAndSkills]: true,
     });
     const slug = uniqueSlug("bdd-permission-skill");
 

@@ -494,13 +494,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.CustomConnectorPermissionsAndSkills]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Allow custom connectors to use builtin permission bundles and generated skills.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
 };
 
 interface ResolvedHashes {

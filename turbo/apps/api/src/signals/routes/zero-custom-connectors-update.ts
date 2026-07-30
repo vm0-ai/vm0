@@ -55,25 +55,6 @@ const updateInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       },
     };
   }
-  if (
-    (bodyResult.data.permissionBundleRef !== undefined ||
-      bodyResult.data.skillMarkdown !== undefined) &&
-    !isFeatureEnabled(
-      FeatureSwitchKey.CustomConnectorPermissionsAndSkills,
-      featureContext,
-    )
-  ) {
-    return {
-      status: 403 as const,
-      body: {
-        error: {
-          message: "Custom connector permissions and skills are not enabled",
-          code: "FORBIDDEN" as const,
-        },
-      },
-    };
-  }
-
   const result = await set(
     updateCustomConnectorDefinition$,
     {

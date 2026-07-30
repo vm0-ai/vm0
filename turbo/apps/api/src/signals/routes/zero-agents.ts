@@ -11,8 +11,6 @@ import {
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -45,7 +43,6 @@ import {
   updateUserConnectors,
   updateUserCustomConnectors,
 } from "../services/user-connectors.service";
-import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import type { RouteEntry } from "../route-entry";
 
 const PUBLIC_AGENT_LIMIT = 7;
@@ -752,23 +749,6 @@ const updateAgentCustomConnectorsInner$ = command(
     signal.throwIfAborted();
     if (!exists) {
       return agentNotFound(params.id);
-    }
-
-    if ("grants" in body.data) {
-      const featureContext = await get(
-        userFeatureSwitchContext(auth.orgId, auth.userId),
-      );
-      signal.throwIfAborted();
-      if (
-        !isFeatureEnabled(
-          FeatureSwitchKey.CustomConnectorPermissionsAndSkills,
-          featureContext,
-        )
-      ) {
-        return forbidden(
-          "Custom connector permissions and skills are not enabled",
-        );
-      }
     }
 
     const writeDb = set(writeDb$);

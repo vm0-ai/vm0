@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
@@ -91,9 +90,6 @@ async function createPermissionedCustomConnector(
   actor: ApiTestUser,
   slug: string,
 ) {
-  await connectors.updateFeatureSwitches(actor, {
-    [FeatureSwitchKey.CustomConnectorPermissionsAndSkills]: true,
-  });
   const connector = await connectors.createCustomConnector(actor, {
     displayName: `Connector ${slug}`,
     slug: `_${slug}`,
