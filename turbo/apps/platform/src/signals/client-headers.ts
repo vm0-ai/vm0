@@ -1,5 +1,6 @@
 import {
   addClientCapabilityToVersion,
+  CLIENT_CAPABILITY_ES_ES_LOCALE,
   CLIENT_CAPABILITY_JA_JP_LOCALE,
   CLIENT_CAPABILITY_KO_KR_LOCALE,
   CLIENT_CAPABILITY_ID_ID_LOCALE,
@@ -34,16 +35,19 @@ function createClientHeaders(): Record<string, string> {
         addClientCapabilityToVersion(
           addClientCapabilityToVersion(
             addClientCapabilityToVersion(
-              clientVersion,
-              CLIENT_CAPABILITY_PT_BR_LOCALE,
+              addClientCapabilityToVersion(
+                clientVersion,
+                CLIENT_CAPABILITY_PT_BR_LOCALE,
+              ),
+              CLIENT_CAPABILITY_JA_JP_LOCALE,
             ),
-            CLIENT_CAPABILITY_JA_JP_LOCALE,
+            CLIENT_CAPABILITY_KO_KR_LOCALE,
           ),
-          CLIENT_CAPABILITY_KO_KR_LOCALE,
+          CLIENT_CAPABILITY_ID_ID_LOCALE,
         ),
-        CLIENT_CAPABILITY_ID_ID_LOCALE,
+        CLIENT_CAPABILITY_DE_DE_LOCALE,
       ),
-      CLIENT_CAPABILITY_DE_DE_LOCALE,
+      CLIENT_CAPABILITY_ES_ES_LOCALE,
     ),
     [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
     [CLIENT_SESSION_ID_HEADER]: clientSessionId,

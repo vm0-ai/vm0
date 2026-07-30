@@ -112,6 +112,23 @@ describe("bootstrap locale", () => {
     });
   });
 
+  it("normalizes a Spanish browser language before bundle render", () => {
+    context.mocks.browser.language("es");
+
+    executeLocaleEntrypoint();
+
+    expect(document.documentElement.lang).toBe("es-ES");
+    expect(context.store.get(testLocaleStorage.get$)).toBeNull();
+    expect(window.__vm0PreBundleCopy).toMatchObject({
+      loading: {
+        ariaLabel: "Cargando tu espacio de trabajo",
+      },
+      metadata: {
+        title: "Zero — Tu compañero de IA de vm0",
+      },
+    });
+  });
+
   it("loads Korean pre-bundle copy and typed resources from the browser locale", async () => {
     context.mocks.browser.language("ko-KR");
     executeLocaleEntrypoint();
@@ -180,6 +197,7 @@ describe("bootstrap locale", () => {
     expect(i18n.hasResourceBundle("ja-JP", "common")).toBeTruthy();
     expect(i18n.hasResourceBundle("ko-KR", "common")).toBeTruthy();
     expect(i18n.hasResourceBundle("id-ID", "common")).toBeTruthy();
+    expect(i18n.hasResourceBundle("es-ES", "common")).toBeTruthy();
     expect(new Intl.NumberFormat(i18n.language).format(1234.5)).toBe("1.234,5");
     expect(
       new Intl.DateTimeFormat(i18n.language, {
@@ -462,6 +480,64 @@ describe("bootstrap locale", () => {
         return $.onboarding.workflows["auto-merge-github-prs"].steps.two.title;
       }),
     ).toBe("Zero prüft und wartet auf CI");
+
+    await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
+  });
+
+  it("uses cached Spanish across pre-bundle UI and i18next", async () => {
+    sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
+    context.store.set(testLocaleStorage.set$, "es-ES");
+    executeLocaleEntrypoint();
+    executeBrowserCompatibilityEntrypoint(
+      "Mozilla/5.0 Chrome/100.0.0.0 Safari/537.36",
+    );
+
+    const metadata = document.createElement("meta");
+    metadata.name = "description";
+    document.head.append(metadata);
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        metadata.remove();
+      },
+      { once: true },
+    );
+    executeMetadataEntrypoint();
+
+    await setupPage({
+      context,
+      path: "/error",
+      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: false },
+      withoutRender: true,
+    });
+
+    expect(context.store.get(locale$)).toBe("es-ES");
+    expect(i18n.language).toBe("es-ES");
+    expect(window.__vm0BrowserSupported).toBeFalsy();
+    expect(window.__vm0BrowserUpgrade).toMatchObject({
+      actionLabel: "Actualizar Chrome",
+      actionUrl: "https://www.google.com/chrome/",
+      title: "Actualiza Chrome para continuar",
+    });
+    expect(metadata).toHaveAttribute(
+      "content",
+      expect.stringContaining("Zero es tu compañero de IA de vm0"),
+    );
+    expect(window.__vm0PreBundleCopy).toMatchObject({
+      browserUpgrade: {
+        safari: {
+          actionLabel: "Actualizar Safari",
+          title: "Actualiza Safari para continuar",
+        },
+      },
+      loading: {
+        ariaLabel: "Cargando tu espacio de trabajo",
+        messages: expect.arrayContaining(["Activando las neuronas..."]),
+      },
+      metadata: {
+        title: "Zero — Tu compañero de IA de vm0",
+      },
+    });
 
     await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
   });
