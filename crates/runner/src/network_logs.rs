@@ -453,17 +453,14 @@ impl<'a> NetworkLogBatchUploader<'a> {
         let source_file_bytes = self.progress.source_file_bytes.unwrap_or_default();
         let remaining_source_bytes =
             source_file_bytes.saturating_sub(self.progress.source_bytes_examined);
-        let (batch_index, client_request_id, client_session_id, client_version, request_state) =
-            match self.active_request.as_ref() {
-                Some(request) => (
-                    request.batch_index,
-                    request.context.client_request_id.as_str(),
-                    request.context.client_session_id.as_str(),
-                    request.context.client_version.as_str(),
-                    request.state.at_deadline().as_str(),
-                ),
-                None => (0, "", "", "", ""),
-            };
+        let active_request = self.active_request.as_ref();
+        let batch_index = active_request.map(|request| request.batch_index);
+        let client_request_id =
+            active_request.map(|request| request.context.client_request_id.as_str());
+        let client_session_id =
+            active_request.map(|request| request.context.client_session_id.as_str());
+        let client_version = active_request.map(|request| request.context.client_version.as_str());
+        let request_state = active_request.map(|request| request.state.at_deadline().as_str());
 
         warn!(
             run_id = %self.run_id,
@@ -1240,6 +1237,18 @@ mod tests {
             .await;
         let event = captured_event(&events, "network log upload truncated");
         assert_event_field(event, "reason", "batch_count");
+        for field in [
+            "batch_index",
+            "client_request_id",
+            "client_session_id",
+            "client_version",
+            "request_state",
+        ] {
+            assert!(
+                !event.fields.contains_key(field),
+                "inactive request field {field} should be omitted; event={event:#?}"
+            );
+        }
         assert_event_field(event, "source_file_bytes", &content.len().to_string());
         assert_event_field(
             event,
