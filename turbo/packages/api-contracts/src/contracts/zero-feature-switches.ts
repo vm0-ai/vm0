@@ -17,6 +17,11 @@ export const featureSwitchesResponseSchema = z.object({
    * Older API deployments omit this field.
    */
   supportsCustomConnectorOAuth2: z.boolean().optional(),
+  /**
+   * Optional capability handshake for admin-defined model gateways.
+   * Older API deployments omit this field.
+   */
+  supportsCustomModelGateways: z.boolean().optional(),
 });
 
 export type FeatureSwitchesResponse = z.infer<
