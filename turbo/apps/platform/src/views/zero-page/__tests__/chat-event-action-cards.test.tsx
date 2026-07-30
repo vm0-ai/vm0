@@ -392,6 +392,149 @@ function selectMailText(element: HTMLElement): void {
 }
 
 describe("chat event action cards", () => {
+  it("keeps connector action card height stable while catalog metadata loads", async () => {
+    const threadId = `${THREAD_ID}-connector-loading-height`;
+    const connectorUrl = `${window.location.origin}/connectors/slack/authorize?agentId=${AGENT_ID}`;
+    let catalogRequestStarted = false;
+    let resolveCatalog = (): void => {
+      throw new Error("Catalog request did not start");
+    };
+    context.mocks.api(
+      zeroConnectorCatalogContract.status,
+      async ({ deferred, respond }) => {
+        const catalogDeferred = deferred<void>();
+        resolveCatalog = () => {
+          catalogDeferred.resolve();
+        };
+        catalogRequestStarted = true;
+        await catalogDeferred.promise;
+        return respond(200, {
+          connectors: [
+            publicConnectorStatusItem({
+              slug: "slack",
+              label: "Slack",
+            }),
+          ],
+        });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Connector loading height",
+      chatEvents: [
+        {
+          id: `${threadId}-message`,
+          role: "assistant",
+          content: connectorUrl,
+          runId: `${threadId}-run`,
+          createdAt: "2026-07-30T10:00:00.000Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const loadingCard = await screen.findByTestId(
+      "connector-action-card-loading",
+    );
+    expect(loadingCard).toHaveClass("h-[136px]", "sm:h-[88px]");
+    await waitFor(() => {
+      expect(catalogRequestStarted).toBeTruthy();
+    });
+    resolveCatalog();
+
+    const connectorCard = await screen.findByTestId("connector-action-card");
+    expect(connectorCard).toHaveClass("h-[136px]", "sm:h-[88px]");
+    expect(
+      screen.queryByTestId("connector-action-card-loading"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps sent mail card height stable while draft data loads", async () => {
+    const threadId = `${THREAD_ID}-mail-loading-height`;
+    const mailDraftId = "c0000000-0000-4000-a000-000000000091";
+    const mailDraftUrl = `https://app.vm0.ai/mail/drafts/${mailDraftId}`;
+    const createdAt = "2026-07-30T10:00:00.000Z";
+    let draftRequestStarted = false;
+    let resolveDraft = (): void => {
+      throw new Error("Draft request did not start");
+    };
+    mockConnectorCatalogStatus([
+      publicConnectorStatusItem({ slug: "gmail", label: "Gmail" }),
+    ]);
+    context.mocks.api(
+      zeroMailContract.getDraft,
+      async ({ deferred, respond }) => {
+        const draftDeferred = deferred<void>();
+        resolveDraft = () => {
+          draftDeferred.resolve();
+        };
+        draftRequestStarted = true;
+        await draftDeferred.promise;
+        return respond(200, {
+          mailDraftId,
+          mailDraftUrl,
+          mailDraft: {
+            version: 3,
+            provider: "gmail",
+            from: "sender@example.com",
+            to: ["recipient@example.com"],
+            cc: [],
+            bcc: [],
+            subject: MAIL_FOLLOW_UP_SUBJECT,
+            body: "Mail body",
+            status: "sent",
+            detailAvailable: true,
+            gmailDraftId: "gmail-draft-id",
+            gmailThreadId: "gmail-thread-id",
+            gmailMessageId: "gmail-message-id",
+            sentGmailMessageId: "gmail-sent-message-id",
+            sentAt: createdAt,
+            references: [],
+            attachments: [],
+            createdAt,
+            updatedAt: createdAt,
+          },
+        });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Mail loading height",
+      chatEvents: [
+        {
+          id: `${threadId}-message`,
+          role: "assistant",
+          content: mailDraftUrl,
+          runId: `${threadId}-run`,
+          createdAt,
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
+      },
+    });
+
+    const loadingCard = await screen.findByTestId("mail-draft-card-loading");
+    expect(loadingCard).toHaveClass("h-[76px]");
+    await waitFor(() => {
+      expect(draftRequestStarted).toBeTruthy();
+    });
+    resolveDraft();
+
+    await screen.findByText(MAIL_FOLLOW_UP_SUBJECT);
+    const mailCard = document.querySelector("[data-mail-draft-card]");
+    expect(mailCard).toHaveClass("h-[76px]");
+    expect(
+      screen.queryByTestId("mail-draft-card-loading"),
+    ).not.toBeInTheDocument();
+  });
+
   it("opens a shared mail draft without reloading and refreshes after sending", async () => {
     const user = userEvent.setup({ delay: null });
     const clipboard = context.mocks.browser.clipboardWriteText();

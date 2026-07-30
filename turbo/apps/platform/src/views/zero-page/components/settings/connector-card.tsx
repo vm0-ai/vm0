@@ -70,6 +70,7 @@ type ActionConnectorCardProps = {
   readonly connected: boolean;
   readonly complete: boolean;
   readonly busy: boolean;
+  readonly className?: string;
   readonly onActivate: () => void;
 };
 
@@ -435,6 +436,7 @@ function ActionConnectorCard({
   connected,
   complete,
   busy,
+  className,
   onActivate,
 }: ActionConnectorCardProps) {
   const { t } = useTranslation();
@@ -459,7 +461,10 @@ function ActionConnectorCard({
   return (
     <div
       data-testid="connector-action-card"
-      className="zero-card flex min-h-[88px] w-full flex-col gap-3 p-3 text-left sm:flex-row sm:items-center sm:justify-between"
+      className={cn(
+        "zero-card flex min-h-[88px] w-full flex-col gap-3 p-3 text-left sm:flex-row sm:items-center sm:justify-between",
+        className,
+      )}
     >
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
