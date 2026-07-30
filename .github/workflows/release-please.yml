@@ -596,147 +596,6 @@ jobs:
             --repo "${{ github.repository }}" \
             --clobber
 
-  # Run database migrations in production for API releases only. The API staged
-  # deployment is built first, then migrations run, then API traffic is promoted.
-  migrate-production:
-    needs: [release-please, builds-complete, build-api-production]
-    # always() prevents GitHub Actions from propagating "skipped" when upstream
-    # build jobs (build-runner-production, etc.) are skipped. The explicit
-    # builds-complete and build-api-production result checks gate on actual
-    # build success.
-    if: >-
-      always() &&
-      needs.release-please.outputs.api_release_created == 'true' &&
-      needs.builds-complete.result == 'success' &&
-      needs.build-api-production.result == 'success'
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
-    permissions:
-      contents: read
-    environment: production
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          ref: ${{ needs.release-please.outputs.release_target }}
-
-      - uses: ./.github/actions/toolchain-init
-
-      - name: Notify Slack - Starting
-        id: slack-start
-        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v4.0.0
-        with:
-          method: chat.postMessage
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: "*Database Migration* starting..."
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*Database Migration* starting...\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>"
-
-      - name: Record start time
-        id: timer
-        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
-
-      - name: Run Production Migration Smoke Test
-        id: run-migration-smoke-test
-        uses: ./.github/actions/production-migration-smoke
-        with:
-          neon-api-key: ${{ secrets.NEON_API_KEY }}
-          neon-project-id: ${{ vars.NEON_PROJECT_ID }}
-          branch-name: release-smoke/migrate-${{ github.run_id }}-${{ github.run_attempt }}
-
-      - name: Get Production Database URL
-        id: get-db-url
-        run: |
-          # Get the production branch database URL.
-          DATABASE_URL=$(neonctl connection-string production --project-id ${{ vars.NEON_PROJECT_ID }} --database-name neondb --role-name neondb_owner --pooled)
-          echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
-        env:
-          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
-
-      - name: Run Production Migrations
-        run: |
-          echo "Running production migrations on production"
-          cd turbo && pnpm -F @vm0/db db:migrate
-        env:
-          DATABASE_URL: ${{ steps.get-db-url.outputs.database-url }}
-          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
-
-      - name: Calculate duration
-        id: duration
-        if: ${{ always() && steps.timer.outputs.start }}
-        run: |
-          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
-          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
-          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
-          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
-          else text="${s}s"; fi
-          echo "text=$text" >> "$GITHUB_OUTPUT"
-
-      - name: Notify Slack - Success
-        if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v4.0.0
-        with:
-          method: chat.update
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Database Migration* ✅ Migration completed"
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*Database Migration* ✅ Migration completed\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>"
-
-      - name: Notify Slack - Smoke Failure
-        if: >-
-          ${{
-            failure() &&
-            steps.slack-start.outputs.ts &&
-            steps.run-migration-smoke-test.outcome == 'failure'
-          }}
-        uses: slackapi/slack-github-action@v4.0.0
-        with:
-          method: chat.update
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Database Migration Smoke* ❌ Smoke check failed"
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*Database Migration Smoke* ❌ Smoke check failed\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n⚠️ Production database migration was not run. The failure happened before the real production DB migration, on its temporary Neon production clone or during cleanup.\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
-
-      - name: Notify Slack - Failure
-        if: >-
-          ${{
-            failure() &&
-            steps.slack-start.outputs.ts &&
-            steps.run-migration-smoke-test.outcome != 'failure'
-          }}
-        uses: slackapi/slack-github-action@v4.0.0
-        with:
-          method: chat.update
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Database Migration* ❌ Migration failed"
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*Database Migration* ❌ Migration failed\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
-
   # Build API production deployment (Staged - prod-eligible, not serving traffic)
   build-api-production:
     needs: release-please
@@ -1055,7 +914,7 @@ jobs:
     # Use always() so this job runs even when upstream build jobs are skipped.
     # !cancelled() is insufficient — it still propagates "skipped" from needs
     # dependencies, which causes builds-complete (and transitively
-    # migrate-production) to be skipped whenever any build job is skipped.
+    # promote-api-production) to be skipped whenever any build job is skipped.
     # The jq step below performs the actual failure check and exits 1, making
     # the barrier explicit.
     if: ${{ always() && needs.release-please.outputs.releases_created == 'true' }}
@@ -1081,16 +940,10 @@ jobs:
           fi
           echo "✅ All build-phase jobs succeeded or were skipped."
 
-  # Promote web staged deployment to production. If the same release run also
-  # promotes API, wait for API traffic to be live first.
+  # Run required production migrations and immediately promote the staged API
+  # deployment in the same job, avoiding a second runner and toolchain setup.
   promote-api-production:
-    needs:
-      [
-        release-please,
-        builds-complete,
-        build-api-production,
-        migrate-production,
-      ]
+    needs: [release-please, builds-complete, build-api-production]
     if: >-
       always() &&
       !failure() && !cancelled() &&
@@ -1109,7 +962,129 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ needs.release-please.outputs.release_target }}
-      - uses: ./.github/actions/toolchain-init
+
+      - name: Initialize migration toolchain
+        if: ${{ needs.release-please.outputs.api_release_created == 'true' }}
+        uses: ./.github/actions/toolchain-init
+
+      - name: Notify Slack - Migration Starting
+        id: migration-slack-start
+        if: ${{ needs.release-please.outputs.api_release_created == 'true' && vars.SLACK_RELEASE_CHANNEL_ID != '' }}
+        uses: slackapi/slack-github-action@v4.0.0
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            text: "*Database Migration* starting..."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Database Migration* starting...\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>"
+
+      - name: Record migration start time
+        id: migration-timer
+        if: ${{ needs.release-please.outputs.api_release_created == 'true' }}
+        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: Run Production Migration Smoke Test
+        id: run-migration-smoke-test
+        if: ${{ needs.release-please.outputs.api_release_created == 'true' }}
+        uses: ./.github/actions/production-migration-smoke
+        with:
+          neon-api-key: ${{ secrets.NEON_API_KEY }}
+          neon-project-id: ${{ vars.NEON_PROJECT_ID }}
+          branch-name: release-smoke/migrate-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Get Production Database URL
+        id: get-migration-db-url
+        if: ${{ needs.release-please.outputs.api_release_created == 'true' }}
+        run: |
+          # Get the production branch database URL.
+          DATABASE_URL=$(neonctl connection-string production --project-id ${{ vars.NEON_PROJECT_ID }} --database-name neondb --role-name neondb_owner --pooled)
+          echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+
+      - name: Run Production Migrations
+        if: ${{ needs.release-please.outputs.api_release_created == 'true' }}
+        run: |
+          echo "Running production migrations on production"
+          cd turbo && pnpm -F @vm0/db db:migrate
+        env:
+          DATABASE_URL: ${{ steps.get-migration-db-url.outputs.database-url }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
+
+      - name: Calculate migration duration
+        id: migration-duration
+        if: ${{ always() && steps.migration-timer.outputs.start }}
+        run: |
+          elapsed=$(( $(date +%s) - ${{ steps.migration-timer.outputs.start }} ))
+          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
+          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
+          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
+          else text="${s}s"; fi
+          echo "text=$text" >> "$GITHUB_OUTPUT"
+
+      - name: Notify Slack - Migration Success
+        if: ${{ success() && steps.migration-slack-start.outputs.ts }}
+        uses: slackapi/slack-github-action@v4.0.0
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.migration-slack-start.outputs.ts }}"
+            text: "*Database Migration* ✅ Migration completed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Database Migration* ✅ Migration completed\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.migration-duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>"
+
+      - name: Notify Slack - Migration Smoke Failure
+        if: >-
+          ${{
+            failure() &&
+            steps.migration-slack-start.outputs.ts &&
+            steps.run-migration-smoke-test.outcome == 'failure'
+          }}
+        uses: slackapi/slack-github-action@v4.0.0
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.migration-slack-start.outputs.ts }}"
+            text: "*Database Migration Smoke* ❌ Smoke check failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Database Migration Smoke* ❌ Smoke check failed\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.migration-duration.outputs.text }}`\n⚠️ Production database migration was not run. The failure happened before the real production DB migration, on its temporary Neon production clone or during cleanup.\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
+
+      - name: Notify Slack - Migration Failure
+        if: >-
+          ${{
+            failure() &&
+            steps.migration-slack-start.outputs.ts &&
+            steps.run-migration-smoke-test.outcome != 'failure'
+          }}
+        uses: slackapi/slack-github-action@v4.0.0
+        with:
+          method: chat.update
+          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
+          payload: |
+            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
+            ts: "${{ steps.migration-slack-start.outputs.ts }}"
+            text: "*Database Migration* ❌ Migration failed"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*Database Migration* ❌ Migration failed\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.migration-duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
       - name: Start GitHub Deployment
         id: deployment
@@ -1158,7 +1133,7 @@ jobs:
           deployment-url: ${{ needs.build-api-production.outputs.deployment_url }}
 
       - name: Finish GitHub Deployment
-        if: always()
+        if: ${{ always() && steps.deployment.outputs.deployment_id }}
         uses: bobheadxi/deployments@v1
         with:
           step: finish
@@ -1274,16 +1249,15 @@ jobs:
 
           echo "Published runtime API schema for $RELEASE_SHA"
 
-  # Publish the immutable app artifact to Cloudflare Pages after any required
-  # production migration succeeds, without waiting for API promotion.
+  # Publish the immutable app artifact to Cloudflare Pages after the API
+  # production lifecycle, including any required migration and traffic promotion.
   promote-app-production:
-    needs: [release-please, builds-complete, migrate-production]
+    needs: [release-please, builds-complete, promote-api-production]
     if: >-
       always() &&
       needs.release-please.outputs.app_release_created == 'true' &&
       needs.builds-complete.result == 'success' &&
-      (needs.release-please.outputs.api_release_created != 'true' ||
-       needs.migrate-production.result == 'success')
+      needs.promote-api-production.result == 'success'
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622

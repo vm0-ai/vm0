@@ -6052,12 +6052,7 @@ function ComputerUseConnectorMenuSection({
           onClick={() => {
             computerUse.onCloudBrowserChange(!computerUse.cloudBrowserEnabled);
           }}
-          className={cn(
-            "flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 transition-colors",
-            computerUse.cloudBrowserEnabled
-              ? "bg-primary/5"
-              : "hover:bg-gray-100 dark:hover:bg-gray-200",
-          )}
+          className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
         >
           <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
             <IconWorld size={16} stroke={1.5} />
@@ -6123,12 +6118,7 @@ function ComputerUseConnectorMenuSection({
                 onClick={() => {
                   computerUse.onChange(checked ? null : host.id);
                 }}
-                className={cn(
-                  "flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 transition-colors",
-                  checked
-                    ? "bg-primary/5"
-                    : "hover:bg-gray-100 dark:hover:bg-gray-200",
-                )}
+                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 transition-colors hover:bg-gray-100 dark:hover:bg-gray-200"
               >
                 <span className="flex h-4 w-4 shrink-0 items-center justify-center text-muted-foreground">
                   <IconDeviceDesktop size={16} stroke={1.5} />
