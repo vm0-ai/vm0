@@ -837,6 +837,143 @@ async function validateChatEventSourcesAreAppendOnly(
   }
 }
 
+async function validateChatEventContextPointerConstraints(
+  dbUrl: string,
+): Promise<void> {
+  console.log("=== Phase 2.5: Validate chat event context pointer ===\n");
+  const client = new Client({ connectionString: dbUrl });
+  await client.connect();
+
+  const agentComposeId = "00000000-0000-4000-8000-000000074501";
+  const threadId = "00000000-0000-4000-8000-000000074502";
+
+  try {
+    await client.query(
+      `
+        INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+        VALUES ($1, 'context-pointer-test-user', 'context-pointer-test', 'context-pointer-test-org')
+      `,
+      [agentComposeId],
+    );
+    await client.query(
+      `
+        INSERT INTO "chat_threads" (
+          "id",
+          "user_id",
+          "agent_compose_id",
+          "title"
+        )
+        VALUES ($1, 'context-pointer-test-user', $2, 'context pointer test')
+      `,
+      [threadId, agentComposeId],
+    );
+
+    const accepted = await client.query<{
+      contextId: string | null;
+      contextType: string | null;
+    }>(
+      `
+        INSERT INTO "chat_events" (
+          "id",
+          "chat_thread_id",
+          "event_type",
+          "context_type",
+          "context_id"
+        )
+        VALUES
+          ('00000000-0000-4000-8000-000000074510', $1, 'output.message', NULL, NULL),
+          (
+            '00000000-0000-4000-8000-000000074511',
+            $1,
+            'output.message',
+            'slack',
+            '00000000-0000-4000-8000-000000074503'
+          )
+        RETURNING
+          "context_type" AS "contextType",
+          "context_id" AS "contextId"
+      `,
+      [threadId],
+    );
+    assert.deepEqual(accepted.rows, [
+      { contextId: null, contextType: null },
+      {
+        contextId: "00000000-0000-4000-8000-000000074503",
+        contextType: "slack",
+      },
+    ]);
+
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: "chat_events_context_pair_check",
+      query: `
+        INSERT INTO "chat_events" (
+          "id",
+          "chat_thread_id",
+          "event_type",
+          "context_type"
+        )
+        VALUES (
+          '00000000-0000-4000-8000-000000074512',
+          $1,
+          'output.message',
+          'slack'
+        )
+      `,
+      values: [threadId],
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: "chat_events_context_pair_check",
+      query: `
+        INSERT INTO "chat_events" (
+          "id",
+          "chat_thread_id",
+          "event_type",
+          "context_id"
+        )
+        VALUES (
+          '00000000-0000-4000-8000-000000074513',
+          $1,
+          'output.message',
+          '00000000-0000-4000-8000-000000074504'
+        )
+      `,
+      values: [threadId],
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: "chat_events_context_type_check",
+      query: `
+        INSERT INTO "chat_events" (
+          "id",
+          "chat_thread_id",
+          "event_type",
+          "context_type",
+          "context_id"
+        )
+        VALUES (
+          '00000000-0000-4000-8000-000000074514',
+          $1,
+          'output.message',
+          'telegram',
+          '00000000-0000-4000-8000-000000074505'
+        )
+      `,
+      values: [threadId],
+    });
+
+    console.log(
+      "   ✅ Chat event context pointers are paired and reject unknown types\n",
+    );
+  } finally {
+    await client.query(`DELETE FROM "agent_composes" WHERE "id" = $1`, [
+      agentComposeId,
+    ]);
+    await client.end();
+  }
+}
+
 async function runNormalizedComparison(
   dbUrl1: string,
   dbUrl2: string,
@@ -9260,8 +9397,8 @@ async function validateBrowserResizeStateRolloutCompatibility(): Promise<void> {
   );
 }
 
-const CUSTOM_MODEL_GATEWAY_PREVIOUS_MIGRATION = 746;
-const CUSTOM_MODEL_GATEWAY_MIGRATION = 747;
+const CUSTOM_MODEL_GATEWAY_PREVIOUS_MIGRATION = 747;
+const CUSTOM_MODEL_GATEWAY_MIGRATION = 748;
 
 async function customModelGatewaySchemaAvailable(
   client: Client,
@@ -9376,7 +9513,7 @@ async function validateCustomModelGatewayRolloutCompatibility(): Promise<void> {
     await dropDatabase(testDb);
   }
   console.log(
-    "   ✅ Current API reads the pre-0747 policy shape and previous API writes remain valid after 0747\n",
+    "   ✅ Current API reads the pre-0748 policy shape and previous API writes remain valid after 0748\n",
   );
 }
 
@@ -9595,6 +9732,7 @@ async function main(): Promise<void> {
 
     await validatePreviousBrowserApiAfterBillingMigration(dbUrl1);
     await validateChatEventSourcesAreAppendOnly(dbUrl1);
+    await validateChatEventContextPointerConstraints(dbUrl1);
     await validateConnectorCatalogFinalConstraints(dbUrl1);
     await validateCustomConnectorOauthModeConstraints(dbUrl1);
 

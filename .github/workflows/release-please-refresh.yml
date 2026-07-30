@@ -1,0 +1,43 @@
+name: release-please-refresh
+
+on:
+  push:
+    branches: ["main"]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+  checks: write
+
+# Only the newest main state is worth publishing to the release pull request, so
+# an in-flight refresh is cancelled by a newer push.
+concurrency:
+  group: release-please-pull-request
+  cancel-in-progress: true
+
+jobs:
+  refresh-release-pull-request:
+    # Release commits are refreshed by release-please.yml instead, because that
+    # workflow creates the tags before it regenerates the pull request. Doing it
+    # here first would rebuild the pull request from a baseline whose releases do
+    # not exist yet and bump every just-released component a second time.
+    if: "${{ !startsWith(github.event.head_commit.message, 'chore: release') }}"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+
+      - uses: vm0-ai/release-please-action@3971df459631cdcf704dcbf86231cb26b790a7c8 # vm0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          skip-github-release: true
+
+      - name: Pass ci-gate checks for release PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/pass-release-pr-ci-gates.sh

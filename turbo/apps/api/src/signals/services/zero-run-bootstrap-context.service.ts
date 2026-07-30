@@ -58,6 +58,9 @@ const bootstrapMetadataRowKindDecoder = zodEnumDriverValueDecoder(
 const bootstrapMetadataSwitchesDecoder = zodDriverValueDecoder(
   z.record(z.string(), z.boolean()),
 );
+const customConnectorPermissionNamesDecoder = zodDriverValueDecoder(
+  z.array(z.string()),
+);
 const permissionGrantActionDecoder = zodEnumDriverValueDecoder(
   userPermissionGrantActionSchema,
 );
@@ -68,6 +71,8 @@ const nullableBootstrapMetadataSwitchesDecoder = nullableDriverValueDecoder(
 const nullablePermissionGrantActionDecoder = nullableDriverValueDecoder(
   permissionGrantActionDecoder,
 );
+const nullableCustomConnectorPermissionNamesDecoder =
+  nullableDriverValueDecoder(customConnectorPermissionNamesDecoder);
 
 interface BootstrapMetadataQueryRow {
   readonly kind: BootstrapMetadataRowKind;
@@ -79,6 +84,7 @@ interface BootstrapMetadataQueryRow {
   readonly switches: Record<string, boolean> | null;
   readonly detail: string | null;
   readonly action: FirewallPermissionGrantAction | null;
+  readonly permissionNames: readonly string[] | null;
 }
 
 export interface UserInfo {
@@ -136,6 +142,9 @@ function emptyBootstrapMetadataFields() {
     action: sql`NULL::text`
       .mapWith(nullablePermissionGrantActionDecoder)
       .as("action"),
+    permissionNames: sql`NULL::text[]`
+      .mapWith(nullableCustomConnectorPermissionNamesDecoder)
+      .as("permission_names"),
   };
 }
 
@@ -171,6 +180,9 @@ function zeroRunCustomConnectorMetadataQuery(
       id: sql`${userCustomConnectors.customConnectorId}::text`
         .mapWith(nullableTextDecoder)
         .as("id"),
+      permissionNames: sql`${userCustomConnectors.permissionNames}`
+        .mapWith(nullableCustomConnectorPermissionNamesDecoder)
+        .as("permission_names"),
     })
     .from(userCustomConnectors)
     .innerJoin(
@@ -381,12 +393,15 @@ export function materializeZeroRunBootstrapContext(
         break;
       }
       case "custom_connector": {
-        if (row.id === null) {
+        if (row.id === null || row.permissionNames === null) {
           throw new Error(
             "Invalid Zero bootstrap metadata custom connector row",
           );
         }
-        customConnectorRows.push({ customConnectorId: row.id });
+        customConnectorRows.push({
+          customConnectorId: row.id,
+          permissionNames: row.permissionNames,
+        });
         break;
       }
       case "permission_grant": {

@@ -53,6 +53,7 @@ type StorageManifestEntryKind = "compose" | "additional" | "artifact";
 export type StorageManifestSource =
   | "system_skill"
   | "connector_skill"
+  | "custom_connector_skill"
   | "workflow_skill"
   | "request_additional_volume"
   | "compose_additional_volume"
@@ -312,6 +313,7 @@ const STORAGE_MANIFEST_COUNT_BUCKET_DIMENSIONS = [
 const STORAGE_MANIFEST_SOURCES = [
   "system_skill",
   "connector_skill",
+  "custom_connector_skill",
   "workflow_skill",
   "request_additional_volume",
   "compose_additional_volume",
@@ -358,6 +360,7 @@ function emptyStorageManifestSourceCounts(): StorageManifestSourceCounts {
   return {
     system_skill: 0,
     connector_skill: 0,
+    custom_connector_skill: 0,
     workflow_skill: 0,
     request_additional_volume: 0,
     compose_additional_volume: 0,

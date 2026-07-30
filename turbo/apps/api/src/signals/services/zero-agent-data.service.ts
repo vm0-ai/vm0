@@ -5,6 +5,7 @@ import {
   connectorSlugSchema,
   type ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
+import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
@@ -187,39 +188,48 @@ export function zeroAgentEnabledConnectorSlugs(args: {
   });
 }
 
-export function zeroAgentEnabledCustomConnectorIds(args: {
+export function zeroAgentCustomConnectorGrants(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly agentId: string;
-}): Computed<Promise<readonly string[]>> {
-  return computed(async (get): Promise<readonly string[]> => {
-    const rows = await get(db$)
-      .select({ customConnectorId: userCustomConnectors.customConnectorId })
-      .from(userCustomConnectors)
-      .innerJoin(
-        orgCustomConnectors,
-        and(
-          eq(orgCustomConnectors.id, userCustomConnectors.customConnectorId),
-          eq(orgCustomConnectors.orgId, userCustomConnectors.orgId),
-          eq(
-            orgCustomConnectors.revision,
-            userCustomConnectors.connectorRevision,
+}): Computed<Promise<readonly AgentCustomConnectorGrant[]>> {
+  return computed(
+    async (get): Promise<readonly AgentCustomConnectorGrant[]> => {
+      const rows = await get(db$)
+        .select({
+          customConnectorId: userCustomConnectors.customConnectorId,
+          permissionNames: userCustomConnectors.permissionNames,
+        })
+        .from(userCustomConnectors)
+        .innerJoin(
+          orgCustomConnectors,
+          and(
+            eq(orgCustomConnectors.id, userCustomConnectors.customConnectorId),
+            eq(orgCustomConnectors.orgId, userCustomConnectors.orgId),
+            eq(
+              orgCustomConnectors.revision,
+              userCustomConnectors.connectorRevision,
+            ),
           ),
-        ),
-      )
-      .where(
-        and(
-          eq(userCustomConnectors.orgId, args.orgId),
-          eq(userCustomConnectors.userId, args.userId),
-          eq(userCustomConnectors.agentId, args.agentId),
-          eq(orgCustomConnectors.enabled, true),
-        ),
-      );
+        )
+        .where(
+          and(
+            eq(userCustomConnectors.orgId, args.orgId),
+            eq(userCustomConnectors.userId, args.userId),
+            eq(userCustomConnectors.agentId, args.agentId),
+            eq(orgCustomConnectors.enabled, true),
+          ),
+        )
+        .orderBy(asc(userCustomConnectors.customConnectorId));
 
-    return rows.map((row) => {
-      return row.customConnectorId;
-    });
-  });
+      return rows.map((row) => {
+        return {
+          customConnectorId: row.customConnectorId,
+          permissionNames: [...row.permissionNames],
+        };
+      });
+    },
+  );
 }
 
 export function zeroTeam(

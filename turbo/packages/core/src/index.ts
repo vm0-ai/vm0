@@ -725,6 +725,8 @@ export {
   getInstructionsStorageName,
   getSkillStorageName,
   getCustomSkillStorageName,
+  getCustomConnectorSkillStorageName,
+  getCustomConnectorSkillName,
   VOLUME_ORG_USER_ID,
   SYSTEM_ORG_ID,
 } from "./storage-names";
