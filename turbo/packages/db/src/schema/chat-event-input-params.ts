@@ -3,11 +3,11 @@ import type { ChatEventAttachFileMetadataList } from "@vm0/db/jsonb-contracts/ch
 import { chatEvents } from "./chat-event";
 
 /**
- * Chat input queue parameters table.
- * Temporary storage for server-only transport state while an input event is
- * pending. Records are deleted after claim or rejection.
+ * Chat event input parameters table.
+ * A row exists only while its input event is pending and is deleted when that
+ * event is claimed or rejected.
  */
-export const chatInputQueueParams = pgTable("chat_input_queue_params", {
+export const chatEventInputParams = pgTable("chat_event_input_params", {
   eventId: uuid("event_id")
     .primaryKey()
     .references(

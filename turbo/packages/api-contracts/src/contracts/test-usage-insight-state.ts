@@ -135,6 +135,12 @@ export const testUsageInsightStateActionBodySchema = z.discriminatedUnion(
       id: z.string(),
     }),
     z.object({
+      action: z.literal("read-insights-daily-permissions"),
+      org_id: z.string(),
+      user_id: z.string(),
+      date: z.string(),
+    }),
+    z.object({
       action: z.literal("delete-usage-data"),
       scope: z.enum(["organization", "user"]),
       id: z.string(),
@@ -162,6 +168,9 @@ export const testUsageInsightStateActionResponseSchema = z.object({
   raw_allowance_units: z.string().optional(),
   hourly_allowance_units: z.string().optional(),
   allocation_count: z.number().optional(),
+  insights_daily_permissions: z
+    .array(z.record(z.string(), z.unknown()))
+    .optional(),
 });
 
 export const testUsageInsightStateContract = c.router({

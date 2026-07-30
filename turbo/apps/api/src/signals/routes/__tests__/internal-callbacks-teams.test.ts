@@ -14,8 +14,8 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import {
-  findPendingChatInputQueueParamsByPromptFixture,
-  readChatInputQueueParamsFixture,
+  findPendingChatEventInputParamsByPromptFixture,
+  readChatEventInputParamsFixture,
 } from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { zeroTeamsConnectRoutes } from "../zero-teams-connect";
@@ -641,7 +641,7 @@ describe("Teams chat callbacks", () => {
       text: queuedPrompt,
     });
     const queuedParams =
-      await findPendingChatInputQueueParamsByPromptFixture(queuedPrompt);
+      await findPendingChatEventInputParamsByPromptFixture(queuedPrompt);
     expect(queuedParams).toMatchObject({
       eventId: expect.any(String),
       encryptedParams: expect.any(String),
@@ -656,7 +656,7 @@ describe("Teams chat callbacks", () => {
     });
     const queuedRunId = await runIdForPrompt(teams.actor, queuedPrompt);
     await expect(
-      readChatInputQueueParamsFixture(queuedParams.eventId),
+      readChatEventInputParamsFixture(queuedParams.eventId),
     ).resolves.toBeNull();
     const queuedClaim = await claimTeamsRun({
       runnerGroup: teams.runnerGroup,

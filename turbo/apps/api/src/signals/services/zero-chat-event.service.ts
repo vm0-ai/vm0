@@ -4,7 +4,7 @@ import {
   isValidChatEventRevocation,
 } from "@vm0/api-contracts/contracts/chat-events";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
-import { chatInputQueueParams } from "@vm0/db/schema/chat-input-queue-params";
+import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatEventAssetRefs } from "@vm0/db/schema/run-uploaded-file";
@@ -34,7 +34,7 @@ type ChatEventInputPayload = Pick<
   ChatEventInsert,
   "attachFiles" | "generationTemplate" | "goalSnapshot"
 > & {
-  readonly attachFileMetadata?: typeof chatInputQueueParams.$inferInsert.attachFileMetadata;
+  readonly attachFileMetadata?: typeof chatEventInputParams.$inferInsert.attachFileMetadata;
   readonly userMessage: NonNullable<ChatEventInsert["userMessage"]>;
 };
 
@@ -226,11 +226,11 @@ function isPendingInputEvent(values: NewChatEvent): boolean {
   );
 }
 
-function inputQueueParams(values: NewChatEvent):
+function eventInputParams(values: NewChatEvent):
   | {
       readonly encryptedParams: string;
       readonly attachFileMetadata:
-        | typeof chatInputQueueParams.$inferInsert.attachFileMetadata
+        | typeof chatEventInputParams.$inferInsert.attachFileMetadata
         | undefined;
     }
   | undefined {
@@ -248,16 +248,16 @@ function inputQueueParams(values: NewChatEvent):
   };
 }
 
-async function insertInputQueueParams(
+async function insertEventInputParams(
   tx: ChatEventWriteTransaction,
   eventId: string,
   values: NewChatEvent,
 ): Promise<void> {
-  const params = inputQueueParams(values);
+  const params = eventInputParams(values);
   if (!params) {
     return;
   }
-  await tx.insert(chatInputQueueParams).values({
+  await tx.insert(chatEventInputParams).values({
     eventId,
     encryptedParams: params.encryptedParams,
     attachFileMetadata: params.attachFileMetadata,
@@ -399,7 +399,7 @@ export async function insertChatEvent(
     if (!inserted) {
       throw new Error("Inserted chat event result is missing");
     }
-    await insertInputQueueParams(tx, inserted.id, values);
+    await insertEventInputParams(tx, inserted.id, values);
   }
   return rows[0] ?? null;
 }
@@ -450,13 +450,13 @@ export async function replaceChatEvent(
       chatThreadId: chatEvents.chatThreadId,
       createdAt: chatEvents.createdAt,
       eventType: chatEvents.eventType,
-      encryptedParams: chatInputQueueParams.encryptedParams,
-      attachFileMetadata: chatInputQueueParams.attachFileMetadata,
+      encryptedParams: chatEventInputParams.encryptedParams,
+      attachFileMetadata: chatEventInputParams.attachFileMetadata,
     })
     .from(chatEvents)
     .leftJoin(
-      chatInputQueueParams,
-      eq(chatInputQueueParams.eventId, chatEvents.id),
+      chatEventInputParams,
+      eq(chatEventInputParams.eventId, chatEvents.id),
     )
     .where(eq(chatEvents.id, eventId))
     .limit(1);
@@ -514,7 +514,7 @@ export async function replaceChatEvent(
     return null;
   }
 
-  await insertInputQueueParams(tx, inserted.id, replacementWithParams);
+  await insertEventInputParams(tx, inserted.id, replacementWithParams);
   if (options?.preserveAssetRefs !== false) {
     const assetRefs = await tx
       .select({
@@ -539,8 +539,8 @@ export async function replaceChatEvent(
     }
   }
   await tx
-    .delete(chatInputQueueParams)
-    .where(eq(chatInputQueueParams.eventId, eventId));
+    .delete(chatEventInputParams)
+    .where(eq(chatEventInputParams.eventId, eventId));
   return inserted;
 }
 

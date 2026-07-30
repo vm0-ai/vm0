@@ -7,7 +7,7 @@ import {
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatInputQueueParams } from "@vm0/db/schema/chat-input-queue-params";
+import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { command } from "ccstate";
@@ -147,7 +147,7 @@ async function seedFixture(
   }
 
   if (fixtureKind === "queued-integration") {
-    await db.insert(chatInputQueueParams).values({
+    await db.insert(chatEventInputParams).values({
       eventId: event.id,
       encryptedParams: "encrypted-monitor-params",
     });

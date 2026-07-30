@@ -13,6 +13,7 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
+import { insightsDaily } from "@vm0/db/schema/insights-daily";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import {
   orgUsageAllowanceEntitlements,
@@ -118,6 +119,7 @@ type UsageInsightEventMaterializationAction = UsageInsightAction<
   | "set-usage-event-created-at"
   | "materialize-hourly-usage"
   | "read-usage-storage-counts"
+  | "read-insights-daily-permissions"
 >;
 
 type UsageInsightCleanupAction = UsageInsightAction<"delete-usage-data">;
@@ -930,6 +932,41 @@ async function readUsageStorageCounts(
   };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function readInsightsDailyPermissions(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly date: string;
+  },
+): Promise<readonly Record<string, unknown>[]> {
+  const [row] = await db
+    .select({ data: insightsDaily.data })
+    .from(insightsDaily)
+    .where(
+      and(
+        eq(insightsDaily.orgId, args.orgId),
+        eq(insightsDaily.userId, args.userId),
+        eq(insightsDaily.date, args.date),
+      ),
+    )
+    .limit(1);
+  if (!row || !isRecord(row.data)) {
+    throw new Error("readInsightsDailyPermissions: insight data not found");
+  }
+  const { permissions } = row.data;
+  if (!Array.isArray(permissions) || !permissions.every(isRecord)) {
+    throw new Error(
+      "readInsightsDailyPermissions: insight permissions not found",
+    );
+  }
+  return permissions;
+}
+
 async function readUsageEventState(
   db: Db,
   idempotencyKey: string,
@@ -1222,6 +1259,21 @@ async function mutateUsageInsightEventMaterializationState(
         },
       };
     }
+    case "read-insights-daily-permissions": {
+      const permissions = await readInsightsDailyPermissions(db, {
+        orgId: body.org_id,
+        userId: body.user_id,
+        date: body.date,
+      });
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          insights_daily_permissions: permissions,
+        },
+      };
+    }
   }
 }
 
@@ -1265,7 +1317,8 @@ async function mutateUsageInsightState(
     case "seed-usage-overflow-grain":
     case "set-usage-event-created-at":
     case "materialize-hourly-usage":
-    case "read-usage-storage-counts": {
+    case "read-usage-storage-counts":
+    case "read-insights-daily-permissions": {
       return await mutateUsageInsightEventMaterializationState(
         db,
         body,
