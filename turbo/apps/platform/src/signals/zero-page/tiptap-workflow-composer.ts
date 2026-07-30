@@ -24,6 +24,7 @@ import {
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
+import { agents$ } from "../agent.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { onRef, resetSignal } from "../utils.ts";
 import type { DraftInputSyncTarget, DraftSignals } from "./chat-draft.ts";
@@ -46,7 +47,9 @@ import {
 } from "./composer-agent-suggestion-domain.ts";
 import {
   agentMentionText,
+  createAgentMentionAvatarRuntime,
   createAgentMentionNode,
+  type AgentMentionAvatarRuntime,
 } from "./composer-agent-mention-node.ts";
 import {
   createComposerChatThreadSuggestions,
@@ -80,6 +83,7 @@ type WorkflowNamesSyncCommand = Command<
   Promise<void>,
   [AbortSignal, AbortSignal]
 >;
+type AgentMentionAvatarsSyncCommand = Command<Promise<void>, [AbortSignal]>;
 
 interface MountedWorkflowNamesSync {
   readonly command$: WorkflowNamesSyncCommand;
@@ -286,10 +290,6 @@ const COMPOSER_INLINE_REFERENCE_CLASS =
   "data-[selected]:ring-1 data-[selected]:ring-inset " +
   "data-[selected]:ring-orange-500/40 dark:data-[selected]:bg-orange-400/20 " +
   "dark:data-[selected]:ring-orange-300/40";
-
-const AgentMentionNode = createAgentMentionNode(
-  COMPOSER_INLINE_REFERENCE_CLASS,
-);
 
 interface ChatThreadMentionAttributes {
   readonly threadId: string;
@@ -1478,7 +1478,10 @@ function createFeedbackItemNode(
   });
 }
 
-function createWorkflowEditor(runtime: WorkflowComposerRuntime): Editor {
+function createWorkflowEditor(
+  runtime: WorkflowComposerRuntime,
+  agentMentionAvatarRuntime: AgentMentionAvatarRuntime,
+): Editor {
   return new Editor({
     element: null,
     extensions: [
@@ -1486,7 +1489,10 @@ function createWorkflowEditor(runtime: WorkflowComposerRuntime): Editor {
       createTemplateAttachmentNode(runtime),
       createInlineTemplateNode(runtime),
       createFeedbackItemNode(runtime),
-      AgentMentionNode,
+      createAgentMentionNode(
+        COMPOSER_INLINE_REFERENCE_CLASS,
+        agentMentionAvatarRuntime,
+      ),
       ChatThreadMentionNode,
       WorkflowHighlight,
     ],
@@ -1666,6 +1672,16 @@ function createSyncWorkflowNamesCommand(
   );
 }
 
+function createSyncAgentMentionAvatarsCommand(
+  avatarRuntime: AgentMentionAvatarRuntime,
+): AgentMentionAvatarsSyncCommand {
+  return command(async ({ get }, signal: AbortSignal): Promise<void> => {
+    const agents = await get(agents$);
+    signal.throwIfAborted();
+    avatarRuntime.replaceAgents(agents);
+  });
+}
+
 function mountCompositionListeners(
   editor: Editor,
   compositionGate: CompositionGate,
@@ -1693,6 +1709,7 @@ interface MountEditorOptions {
   feedback: FeedbackSignals;
   compositionGate: CompositionGate;
   syncWorkflowNames$: WorkflowNamesSyncCommand;
+  syncAgentMentionAvatars$: AgentMentionAvatarsSyncCommand;
   inlineTemplatesEnabled: boolean;
   autoFocus: boolean;
   singleLineOnMobile: boolean;
@@ -1708,6 +1725,7 @@ function createMountEditorCommand({
   feedback,
   compositionGate,
   syncWorkflowNames$,
+  syncAgentMentionAvatars$,
   inlineTemplatesEnabled,
   autoFocus,
   singleLineOnMobile,
@@ -1817,7 +1835,10 @@ function createMountEditorCommand({
         set(editorFocusedState$, false);
         editor.unmount();
       });
-      await set(syncWorkflowNames$, signal, signal);
+      await Promise.all([
+        set(syncWorkflowNames$, signal, signal),
+        set(syncAgentMentionAvatars$, signal),
+      ]);
     }),
   );
 }
@@ -2237,15 +2258,19 @@ export function createWorkflowComposerSignals<
   const editorFocusedState$ = state(false);
   const selectedSuggestionIndexState$ = state(0);
   const runtime = createWorkflowComposerRuntime();
+  const agentMentionAvatarRuntime = createAgentMentionAvatarRuntime();
   const templatePreview = createTemplatePreviewRuntime();
   const compositionGate = createCompositionGate();
   const { agentId$, workflows$ } = createComposerAgentResources(agentIdSource$);
 
-  const editor = createWorkflowEditor(runtime);
+  const editor = createWorkflowEditor(runtime, agentMentionAvatarRuntime);
   const syncWorkflowNames$ = createSyncWorkflowNamesCommand(
     editor,
     agentId$,
     workflows$,
+  );
+  const syncAgentMentionAvatars$ = createSyncAgentMentionAvatarsCommand(
+    agentMentionAvatarRuntime,
   );
   const templateAttachment = createTemplateAttachmentControls(editor, runtime);
   const feedback = createComposerFeedback(threadId, editor);
@@ -2300,6 +2325,7 @@ export function createWorkflowComposerSignals<
       feedback,
       compositionGate,
       syncWorkflowNames$,
+      syncAgentMentionAvatars$,
       inlineTemplatesEnabled,
       autoFocus,
       singleLineOnMobile,

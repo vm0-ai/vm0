@@ -1,7 +1,10 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { chatThreadByIdContract } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  chatThreadByIdContract,
+  chatThreadDraftContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -626,6 +629,54 @@ describe("chat composer models", () => {
         expect.objectContaining({
           draftContent: `[Zeta Agent](/agents/${zetaAgentId}/chat)`,
         }),
+      );
+    });
+  });
+
+  it("restores a persisted agent item with its current avatar", async () => {
+    const mentionedAgentId = "a1000000-0000-4000-a000-000000000006";
+    const mentionedAgentAvatarUrl =
+      "https://example.com/restored-agent-avatar.png";
+    const mention = `[Restored Agent](/agents/${mentionedAgentId}/chat)`;
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    mockThread();
+    context.mocks.data.team([
+      suggestionAgent({ id: AGENT_ID, displayName: "Scout" }),
+      suggestionAgent({
+        id: mentionedAgentId,
+        displayName: "Restored Agent",
+        avatarUrl: mentionedAgentAvatarUrl,
+      }),
+    ]);
+    context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
+      return respond(200, {
+        draftContent: mention,
+        draftUserMessage: {
+          version: 1,
+          parts: [{ type: "text", text: mention }],
+        },
+        draftAttachments: null,
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroChatMessaging]: true,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    await waitFor(() => {
+      const item = editor.querySelector(
+        `span[data-agent-mention="${mentionedAgentId}"]`,
+      );
+      expect(item).toHaveTextContent("Restored Agent");
+      expect(item?.querySelector("img")).toHaveAttribute(
+        "src",
+        mentionedAgentAvatarUrl,
       );
     });
   });

@@ -16,6 +16,42 @@ interface AgentMentionAttributes {
   readonly avatarUrl: string | null;
 }
 
+interface AgentMentionAvatarSource {
+  readonly id: string;
+  readonly avatarUrl: string | null;
+}
+
+export interface AgentMentionAvatarRuntime {
+  readonly resolve: (agentId: string, fallback: string | null) => string | null;
+  readonly replaceAgents: (agents: readonly AgentMentionAvatarSource[]) => void;
+  readonly subscribe: (listener: () => void) => () => void;
+}
+
+export function createAgentMentionAvatarRuntime(): AgentMentionAvatarRuntime {
+  let agents: readonly AgentMentionAvatarSource[] = [];
+  const listeners = new Set<() => void>();
+  return {
+    resolve(agentId, fallback) {
+      const agent = agents.find((candidate) => {
+        return candidate.id === agentId;
+      });
+      return agent ? agent.avatarUrl : fallback;
+    },
+    replaceAgents(nextAgents) {
+      agents = nextAgents;
+      for (const listener of listeners) {
+        listener();
+      }
+    },
+    subscribe(listener) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+  };
+}
+
 function agentMentionAttributes(node: ProseMirrorNode): AgentMentionAttributes {
   const agentId: unknown = node.attrs.agentId;
   const name: unknown = node.attrs.name;
@@ -69,6 +105,7 @@ function renderAgentMentionAvatar(
 function createAgentMentionNodeView(
   node: ProseMirrorNode,
   className: string,
+  avatarRuntime: AgentMentionAvatarRuntime,
 ): NodeView {
   const dom = document.createElement("span");
   dom.className = className;
@@ -88,20 +125,27 @@ function createAgentMentionNodeView(
   let currentAvatarUrl: string | null | undefined;
   function render(nextNode: ProseMirrorNode): void {
     const attributes = agentMentionAttributes(nextNode);
+    const avatarUrl = avatarRuntime.resolve(
+      attributes.agentId,
+      attributes.avatarUrl,
+    );
     dom.dataset.agentMention = attributes.agentId;
     dom.dataset.agentName = attributes.name;
-    if (attributes.avatarUrl === null) {
+    if (avatarUrl === null) {
       delete dom.dataset.agentAvatarUrl;
     } else {
-      dom.dataset.agentAvatarUrl = attributes.avatarUrl;
+      dom.dataset.agentAvatarUrl = avatarUrl;
     }
     name.textContent = attributes.name;
-    if (attributes.avatarUrl !== currentAvatarUrl) {
-      currentAvatarUrl = attributes.avatarUrl;
-      renderAgentMentionAvatar(avatar, attributes.avatarUrl);
+    if (avatarUrl !== currentAvatarUrl) {
+      currentAvatarUrl = avatarUrl;
+      renderAgentMentionAvatar(avatar, avatarUrl);
     }
   }
   render(node);
+  const unsubscribe = avatarRuntime.subscribe(() => {
+    render(currentNode);
+  });
 
   return {
     dom,
@@ -122,11 +166,15 @@ function createAgentMentionNodeView(
     ignoreMutation() {
       return true;
     },
+    destroy() {
+      unsubscribe();
+    },
   };
 }
 
 export function createAgentMentionNode(
   className: string,
+  avatarRuntime: AgentMentionAvatarRuntime,
 ): Node<undefined, unknown> {
   return Node.create({
     name: AGENT_MENTION_NODE_NAME,
@@ -172,7 +220,7 @@ export function createAgentMentionNode(
     },
     addNodeView() {
       return ({ node }) => {
-        return createAgentMentionNodeView(node, className);
+        return createAgentMentionNodeView(node, className, avatarRuntime);
       };
     },
   });
