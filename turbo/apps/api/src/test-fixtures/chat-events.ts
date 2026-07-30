@@ -8,6 +8,7 @@ import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
 import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatEvents } from "@vm0/db/schema/chat-event";
+import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { and, count, eq, isNull, like, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
@@ -271,6 +272,50 @@ export async function completeRunWithoutCallbacksFixture(args: {
   if (updated.length !== 1) {
     throw new Error("Expected one running run to complete without callbacks");
   }
+}
+
+/**
+ * Holds checkpoint reads after `/complete` has loaded its run but before its
+ * terminal compare-and-set. Product APIs cannot pause at this race boundary.
+ */
+export async function holdCheckpointReadsFixture(args: {
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly blockedWaiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const pidRows = await executeRawRows(
+      tx,
+      sql`
+        SELECT pg_backend_pid() AS "pid"
+      `,
+      databasePidRowSchema,
+    );
+    const holderPid = pidRows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the checkpoint lock holder pid");
+    }
+    await tx.execute(sql`LOCK TABLE ${checkpoints} IN ACCESS EXCLUSIVE MODE`);
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    blockedWaiterCount: async () => {
+      return await directBlockedWaiterCount(holderPid);
+    },
+  };
 }
 
 /**

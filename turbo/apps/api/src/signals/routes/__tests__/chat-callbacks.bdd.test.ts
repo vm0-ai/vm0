@@ -25,6 +25,7 @@ import { clearMockNow, mockNow } from "../../../lib/time";
 import { accept, setupApp } from "../../../__tests__/test-helpers";
 import { readGoalQueueStateFixture } from "../../../test-fixtures/goal-queue";
 import {
+  holdCheckpointReadsFixture,
   holdChatEventInsertTransactionFixture,
   removeAcknowledgedCancellationLifecycleFixture,
 } from "../../../test-fixtures/chat-events";
@@ -2370,13 +2371,23 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       threadId: run.threadId,
       prompt: "continue after the concurrent completion",
     });
+    const checkpointGate = await holdCheckpointReadsFixture({
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      checkpointGate.release();
+      await checkpointGate.done;
+    });
 
     const completionPromise = webhooks.requestAgentComplete(
       { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
       sandboxHeaders,
       [200],
     );
+    await expect.poll(checkpointGate.blockedWaiterCount).toBe(1);
     await api.requestCancelRun(actor, run.runId, [200]);
+    checkpointGate.release();
+    await checkpointGate.done;
     const completion = await completionPromise;
     expect(completion.body).toStrictEqual({
       success: true,
