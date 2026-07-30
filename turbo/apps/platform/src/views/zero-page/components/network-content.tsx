@@ -868,19 +868,10 @@ const networkLogDetailFields = {
     "upstreamBindingClientBindingHosts",
     "upstream_binding_client_binding_hosts",
   ),
-  connector_diagnostic_slug: {
-    labelKey: "connectorDiagnostic",
-    value: (entry) => {
-      return entry.connector_diagnostic_slug ?? entry.connector_diagnostic_type;
-    },
-    format: (entry) => {
-      return formatValue(
-        entry.connector_diagnostic_slug ?? entry.connector_diagnostic_type,
-      );
-    },
-  },
-  // TODO(#23838): Remove after the diagnostic compatibility window.
-  connector_diagnostic_type: null,
+  connector_diagnostic_slug: detailField(
+    "connectorDiagnostic",
+    "connector_diagnostic_slug",
+  ),
   connector_diagnostic_reason: detailField(
     "connectorReason",
     "connector_diagnostic_reason",

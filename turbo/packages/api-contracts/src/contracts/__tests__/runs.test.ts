@@ -102,60 +102,12 @@ describe("network log model catalog cache telemetry", () => {
 });
 
 describe("network log connector diagnostic identity", () => {
-  const timestamp = "2026-07-30T03:00:00.000Z";
-
-  it.each([
-    {
-      name: "absent",
-      identity: {},
-      expected: {
-        connector_diagnostic_slug: undefined,
-        connector_diagnostic_type: undefined,
-      },
-    },
-    {
-      name: "legacy-only",
-      identity: { connector_diagnostic_type: "github" },
-      expected: {
-        connector_diagnostic_slug: "github",
-        connector_diagnostic_type: "github",
-      },
-    },
-    {
-      name: "canonical-only",
-      identity: { connector_diagnostic_slug: "github" },
-      expected: {
-        connector_diagnostic_slug: "github",
-        connector_diagnostic_type: "github",
-      },
-    },
-    {
-      name: "equal dual",
-      identity: {
-        connector_diagnostic_slug: "github",
-        connector_diagnostic_type: "github",
-      },
-      expected: {
-        connector_diagnostic_slug: "github",
-        connector_diagnostic_type: "github",
-      },
-    },
-  ])("normalizes $name input", ({ identity, expected }) => {
-    const parsed = networkLogEntrySchema.parse({ timestamp, ...identity });
-
-    expect({
-      connector_diagnostic_slug: parsed.connector_diagnostic_slug,
-      connector_diagnostic_type: parsed.connector_diagnostic_type,
-    }).toStrictEqual(expected);
-  });
-
-  it("rejects conflicting dual identity", () => {
+  it("preserves the canonical connector slug", () => {
     expect(
-      networkLogEntrySchema.safeParse({
-        timestamp,
+      networkLogEntrySchema.parse({
+        timestamp: "2026-07-30T03:00:00.000Z",
         connector_diagnostic_slug: "github",
-        connector_diagnostic_type: "gitlab",
-      }).success,
-    ).toBe(false);
+      }).connector_diagnostic_slug,
+    ).toBe("github");
   });
 });

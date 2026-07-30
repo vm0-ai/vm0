@@ -423,7 +423,6 @@ class TestAddFirewallMetadata:
             "firewall_rule_match": "",
             "firewall_billable": False,
             "connector_diagnostic_slug": "fal",
-            "connector_diagnostic_type": "fal",
             "connector_diagnostic_reason": "not_configured_for_run",
             "connector_diagnostic_env_names": ["FAL_TOKEN"],
             "connector_diagnostic_base": "https://fal.run",

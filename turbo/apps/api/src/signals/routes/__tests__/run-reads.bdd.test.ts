@@ -1897,7 +1897,7 @@ describe("RUN-04: agent run telemetry families", () => {
             firewall_params: { owner: "vm0-ai", empty: null },
             firewall_billable: true,
             firewall_error: "none",
-            connector_diagnostic_type: "fal",
+            connector_diagnostic_slug: "fal",
             connector_diagnostic_reason: "not_configured_for_run",
             connector_diagnostic_env_names: ["FAL_TOKEN"],
             connector_diagnostic_base: "https://fal.run",
@@ -2177,82 +2177,6 @@ describe("RUN-04: agent run telemetry families", () => {
       networkLogs: expectedNetworkLogs,
       hasMore: true,
       nextCursor: expectedNextCursor,
-    });
-  });
-
-  it("normalizes connector diagnostic identity from axiom", async () => {
-    const actor = await entitledActor();
-    const compose = await createClaudeCompose(
-      actor,
-      "bdd-network-diagnostic-identity",
-    );
-    const run = await api.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
-      prompt: "read connector diagnostic identity",
-    });
-
-    dispatchAxiomQueries({
-      [run.runId]: {
-        network: [
-          {
-            _time: "2026-07-30T04:00:00Z",
-            runId: run.runId,
-            userId: actor.userId,
-            connector_diagnostic_type: "legacy",
-          },
-          {
-            _time: "2026-07-30T04:01:00Z",
-            runId: run.runId,
-            userId: actor.userId,
-            connector_diagnostic_slug: "canonical",
-          },
-          {
-            _time: "2026-07-30T04:02:00Z",
-            runId: run.runId,
-            userId: actor.userId,
-            connector_diagnostic_slug: "dual",
-            connector_diagnostic_type: "dual",
-          },
-          {
-            _time: "2026-07-30T04:03:00Z",
-            runId: run.runId,
-            userId: actor.userId,
-            connector_diagnostic_slug: "github",
-            connector_diagnostic_type: "gitlab",
-          },
-        ],
-      },
-    });
-
-    const network = await reads.requestZeroRunNetworkLogs(
-      actor,
-      run.runId,
-      { limit: 10, order: "asc" },
-      [200],
-    );
-    if (network.status !== 200) {
-      throw new Error("Expected the zero network log read to succeed");
-    }
-
-    expect(network.body).toStrictEqual({
-      networkLogs: [
-        {
-          timestamp: "2026-07-30T04:00:00Z",
-          connector_diagnostic_slug: "legacy",
-          connector_diagnostic_type: "legacy",
-        },
-        {
-          timestamp: "2026-07-30T04:01:00Z",
-          connector_diagnostic_slug: "canonical",
-          connector_diagnostic_type: "canonical",
-        },
-        {
-          timestamp: "2026-07-30T04:02:00Z",
-          connector_diagnostic_slug: "dual",
-          connector_diagnostic_type: "dual",
-        },
-      ],
-      hasMore: false,
     });
   });
 
@@ -2774,7 +2698,7 @@ describe("RUN-04: agent run telemetry families", () => {
             request_size: 100,
             response_size: 2048,
             firewall_params: { owner: "vm0-ai", broken: 5 },
-            connector_diagnostic_type: "fal",
+            connector_diagnostic_slug: "fal",
             connector_diagnostic_reason: "not_configured_for_run",
             connector_diagnostic_env_names: ["FAL_TOKEN"],
             connector_diagnostic_base: "https://fal.run",
@@ -2980,7 +2904,7 @@ describe("RUN-04: agent run telemetry families", () => {
             request_size: 100,
             response_size: 2048,
             firewall_params: { owner: "vm0-ai", broken: 5 },
-            connector_diagnostic_type: "fal",
+            connector_diagnostic_slug: "fal",
             connector_diagnostic_reason: "not_configured_for_run",
             connector_diagnostic_env_names: ["FAL_TOKEN"],
             connector_diagnostic_base: "https://fal.run",
@@ -3056,7 +2980,6 @@ describe("RUN-04: agent run telemetry families", () => {
       response_size: 2048,
       firewall_params: { owner: "vm0-ai" },
       connector_diagnostic_slug: "fal",
-      connector_diagnostic_type: "fal",
       connector_diagnostic_reason: "not_configured_for_run",
       connector_diagnostic_env_names: ["FAL_TOKEN"],
       connector_diagnostic_base: "https://fal.run",

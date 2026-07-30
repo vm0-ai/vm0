@@ -631,7 +631,7 @@ describe("POST /api/zero/mail/drafts/link", () => {
     expect(refreshCalls).toBe(0);
   });
 
-  it("logs canonical and legacy connector dimensions on refresh failure", async () => {
+  it("logs the canonical connector dimension on refresh failure", async () => {
     const fixture = await seedGmailMailCardFixture();
     await setConnectorCredentialStorageState(context, {
       orgId: fixture.actor.orgId ?? "",
@@ -666,7 +666,6 @@ describe("POST /api/zero/mail/drafts/link", () => {
       "Connector credential refresh failed",
       expect.objectContaining({
         connectorSlug: "gmail",
-        connectorRef: "gmail",
       }),
     );
   });
