@@ -302,8 +302,8 @@ describe("chat-run-finished workflow automations", () => {
 
       await expectAutomationFired(fireAlways);
       await expectAutomationFired(patternMatch);
-      expect(await automationLastRunAt(failedOnly)).toBeNull();
-      expect(await automationLastRunAt(patternMiss)).toBeNull();
+      await expect(automationLastRunAt(failedOnly)).resolves.toBeNull();
+      await expect(automationLastRunAt(patternMiss)).resolves.toBeNull();
     },
   );
 
@@ -336,10 +336,10 @@ describe("chat-run-finished workflow automations", () => {
       );
 
       await expectAutomationFired(failedOnly);
-      expect(await automationLastRunAt(completedOnly)).toBeNull();
+      await expect(automationLastRunAt(completedOnly)).resolves.toBeNull();
       // Error messages are not matchable output, so pattern automations stay
       // silent even when the error text would match.
-      expect(await automationLastRunAt(failedWithPattern)).toBeNull();
+      await expect(automationLastRunAt(failedWithPattern)).resolves.toBeNull();
     },
   );
 });

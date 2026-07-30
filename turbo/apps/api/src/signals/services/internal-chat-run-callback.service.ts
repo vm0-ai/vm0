@@ -97,10 +97,7 @@ import {
   type CanonicalSlackThreadStatusTarget,
 } from "./canonical-slack-thread-status.service";
 import { saveRunSummary, saveRunSummary$ } from "./run-summary.service";
-import {
-  dispatchChatRunFinishedWorkflowEvents$,
-  type ChatRunFinishedEvent,
-} from "./chat-run-finished-workflow-event.service";
+import type { ChatRunFinishedEvent } from "./chat-run-finished-workflow-event.service";
 import {
   insertAssistantEventMessages,
   insertAssistantEventMessages$,
@@ -4151,7 +4148,9 @@ export async function handleChatInternalCallbackWithoutCcstate(
           inputSignal,
         );
       },
-      dispatchChatRunFinishedAutomations: (event, inputSignal) => {
+      dispatchChatRunFinishedAutomations: async (event, inputSignal) => {
+        const { dispatchChatRunFinishedWorkflowEvents$ } =
+          await import("./chat-run-finished-workflow-event.service");
         return createStore().set(
           dispatchChatRunFinishedWorkflowEvents$,
           event,
@@ -4218,7 +4217,11 @@ const buildChatCallbackDependencies$ = command(
       insertAssistantItems: async (args, inputSignal) => {
         await set(insertAssistantEventMessages$, args, inputSignal);
       },
-      dispatchChatRunFinishedAutomations: (event, inputSignal) => {
+      dispatchChatRunFinishedAutomations: async (event, inputSignal) => {
+        // Imported lazily: the dispatcher reaches runWorkflowAutomationNow$,
+        // whose queue-drain path imports this module back.
+        const { dispatchChatRunFinishedWorkflowEvents$ } =
+          await import("./chat-run-finished-workflow-event.service");
         return set(dispatchChatRunFinishedWorkflowEvents$, event, inputSignal);
       },
       saveRunSummary: (runId, prompt, resultText, inputSignal) => {

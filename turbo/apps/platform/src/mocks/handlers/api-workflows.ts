@@ -538,6 +538,36 @@ function createNotionPageContentUpdatedAutomationSummary(
   };
 }
 
+/**
+ * Config-passthrough event kinds whose mock summary is just the request
+ * config echoed back. The caller narrows `body` by eliminating every other
+ * kind first, so no runtime dispatch is needed here.
+ */
+function passthroughEventAutomationSummaryForRequest(
+  base: WorkflowAutomationCreateBase,
+  body: Extract<
+    ZeroWorkflowAutomationCreateRequest,
+    {
+      readonly eventType:
+        | "google-calendar-event-created"
+        | "google-calendar-event-updated"
+        | "google-calendar-event-cancelled"
+        | "google-meet-transcript-generated"
+        | "strapi-entry-published"
+        | "chat-run-finished";
+    }
+  >,
+): ZeroWorkflowAutomationSummary {
+  return {
+    ...base,
+    kind: "event",
+    eventType: body.eventType,
+    eventConfig: body.eventConfig,
+    schedule: null,
+    scheduleSummary: null,
+  } as ZeroWorkflowAutomationSummary;
+}
+
 function createWorkflowAutomationSummaryForRequest(
   base: WorkflowAutomationCreateBase,
   body: ZeroWorkflowAutomationCreateRequest,
@@ -615,21 +645,6 @@ function createWorkflowAutomationSummaryForRequest(
       scheduleSummary: null,
     } as ZeroWorkflowAutomationSummary;
   }
-  if (
-    body.eventType === "google-calendar-event-created" ||
-    body.eventType === "google-calendar-event-updated" ||
-    body.eventType === "google-calendar-event-cancelled" ||
-    body.eventType === "google-meet-transcript-generated"
-  ) {
-    return {
-      ...base,
-      kind: "event",
-      eventType: body.eventType,
-      eventConfig: body.eventConfig,
-      schedule: null,
-      scheduleSummary: null,
-    } as ZeroWorkflowAutomationSummary;
-  }
   if (body.eventType === "notion-child-page-created") {
     return createNotionChildPageAutomationSummary(
       base,
@@ -648,28 +663,7 @@ function createWorkflowAutomationSummaryForRequest(
       databaseUrl: body.eventConfig.databaseUrl,
     });
   }
-  if (body.eventType === "strapi-entry-published") {
-    return {
-      ...base,
-      kind: "event",
-      eventType: "strapi-entry-published",
-      eventConfig: body.eventConfig,
-      schedule: null,
-      scheduleSummary: null,
-    };
-  }
-  if (body.eventType === "chat-run-finished") {
-    return {
-      ...base,
-      kind: "event",
-      eventType: "chat-run-finished",
-      eventConfig: body.eventConfig,
-      schedule: null,
-      scheduleSummary: null,
-    };
-  }
-  const exhaustive: never = body;
-  return exhaustive;
+  return passthroughEventAutomationSummaryForRequest(base, body);
 }
 
 function workflowAutomationCreateHandlers() {

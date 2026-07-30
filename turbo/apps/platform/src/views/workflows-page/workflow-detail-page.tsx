@@ -4179,6 +4179,20 @@ function githubWorkflowAutomationSummary(
   }
 }
 
+function meetOrChatWorkflowAutomationSummary(
+  automation: Extract<ZeroWorkflowAutomationSummary, { kind: "event" }>,
+): string | null {
+  if (automation.eventType === "google-meet-transcript-generated") {
+    return i18n.t(($) => {
+      return $.workflows.automations.meet.summary;
+    });
+  }
+  if (automation.eventType === "chat-run-finished") {
+    return chatRunFinishedAutomationSummary(automation.eventConfig);
+  }
+  return null;
+}
+
 function workflowAutomationSummary(
   automation: ZeroWorkflowAutomationSummary,
 ): string | null {
@@ -4212,13 +4226,9 @@ function workflowAutomationSummary(
       { calendar: quote(automation.eventConfig.calendarId) },
     );
   }
-  if (automation.eventType === "google-meet-transcript-generated") {
-    return i18n.t(($) => {
-      return $.workflows.automations.meet.summary;
-    });
-  }
-  if (automation.eventType === "chat-run-finished") {
-    return chatRunFinishedAutomationSummary(automation.eventConfig);
+  const meetOrChatSummary = meetOrChatWorkflowAutomationSummary(automation);
+  if (meetOrChatSummary) {
+    return meetOrChatSummary;
   }
   if (automation.eventType === "notion-child-page-created") {
     const title = automation.eventConfig.parentPage.title;
@@ -5022,6 +5032,97 @@ const CHAT_RUN_FINISHED_STATUSES: readonly ChatRunFinishedRunStatus[] = [
   "cancelled",
 ];
 
+function ChatRunFinishedAutomationFields({
+  creating,
+}: {
+  readonly creating: boolean;
+}) {
+  return (
+    <>
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        {i18n.t(($) => {
+          return $.workflows.automations.chat.threadIdLabel;
+        })}
+        <Input
+          name="chatThreadId"
+          required
+          disabled={creating}
+          placeholder="00000000-0000-0000-0000-000000000000"
+        />
+      </label>
+      <p className="text-xs text-muted-foreground">
+        {i18n.t(($) => {
+          return $.workflows.automations.chat.threadIdHint;
+        })}
+      </p>
+      <fieldset className="flex flex-col gap-2">
+        <legend className="text-xs text-muted-foreground">
+          {i18n.t(($) => {
+            return $.workflows.automations.chat.statusesLabel;
+          })}
+        </legend>
+        <div className="flex flex-wrap gap-4">
+          {CHAT_RUN_FINISHED_STATUSES.map((status) => {
+            return (
+              <label key={status} className="flex items-center gap-2">
+                <Checkbox name={`status-${status}`} defaultChecked />
+                <span className="text-sm text-foreground">
+                  {chatRunFinishedStatusLabel(status)}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        {i18n.t(($) => {
+          return $.workflows.automations.chat.patternLabel;
+        })}
+        <Input
+          name="outputPattern"
+          disabled={creating}
+          placeholder="*deploy failed*"
+        />
+      </label>
+      <p className="text-xs text-muted-foreground">
+        {i18n.t(($) => {
+          return $.workflows.automations.chat.patternHint;
+        })}
+      </p>
+      <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+        {i18n.t(($) => {
+          return $.workflows.automations.chat.statusesHint;
+        })}
+      </div>
+    </>
+  );
+}
+
+function buildChatRunFinishedEventConfig(
+  form: FormData,
+): ChatRunFinishedEventConfig | null {
+  const chatThreadId = String(form.get("chatThreadId") ?? "").trim();
+  if (!chatThreadId) {
+    return null;
+  }
+  const statuses = CHAT_RUN_FINISHED_STATUSES.filter((status) => {
+    return form.get(`status-${status}`) === "on";
+  });
+  if (statuses.length === 0) {
+    return null;
+  }
+  const outputPattern = String(form.get("outputPattern") ?? "").trim();
+  return {
+    provider: "chat",
+    event: "run_finished",
+    chatThreadId,
+    ...(statuses.length === CHAT_RUN_FINISHED_STATUSES.length
+      ? {}
+      : { runStatuses: [...statuses] }),
+    ...(outputPattern ? { outputPattern } : {}),
+  };
+}
+
 function CreateChatRunFinishedAutomationDialog({
   workflowId,
   open,
@@ -5060,29 +5161,12 @@ function CreateChatRunFinishedAutomationDialog({
           className="flex flex-col gap-4"
           onSubmit={(event) => {
             event.preventDefault();
-            const form = new FormData(event.currentTarget);
-            const chatThreadId = String(form.get("chatThreadId") ?? "").trim();
-            if (!chatThreadId) {
+            const eventConfig = buildChatRunFinishedEventConfig(
+              new FormData(event.currentTarget),
+            );
+            if (!eventConfig) {
               return;
             }
-            const statuses = CHAT_RUN_FINISHED_STATUSES.filter((status) => {
-              return form.get(`status-${status}`) === "on";
-            });
-            if (statuses.length === 0) {
-              return;
-            }
-            const outputPattern = String(
-              form.get("outputPattern") ?? "",
-            ).trim();
-            const eventConfig: ChatRunFinishedEventConfig = {
-              provider: "chat",
-              event: "run_finished",
-              chatThreadId,
-              ...(statuses.length === CHAT_RUN_FINISHED_STATUSES.length
-                ? {}
-                : { runStatuses: [...statuses] }),
-              ...(outputPattern ? { outputPattern } : {}),
-            };
             detach(
               (async () => {
                 await createAutomation({ workflowId, eventConfig }, pageSignal);
@@ -5092,61 +5176,7 @@ function CreateChatRunFinishedAutomationDialog({
             );
           }}
         >
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            {i18n.t(($) => {
-              return $.workflows.automations.chat.threadIdLabel;
-            })}
-            <Input
-              name="chatThreadId"
-              required
-              disabled={creating}
-              placeholder="00000000-0000-0000-0000-000000000000"
-            />
-          </label>
-          <p className="text-xs text-muted-foreground">
-            {i18n.t(($) => {
-              return $.workflows.automations.chat.threadIdHint;
-            })}
-          </p>
-          <fieldset className="flex flex-col gap-2">
-            <legend className="text-xs text-muted-foreground">
-              {i18n.t(($) => {
-                return $.workflows.automations.chat.statusesLabel;
-              })}
-            </legend>
-            <div className="flex flex-wrap gap-4">
-              {CHAT_RUN_FINISHED_STATUSES.map((status) => {
-                return (
-                  <label key={status} className="flex items-center gap-2">
-                    <Checkbox name={`status-${status}`} defaultChecked />
-                    <span className="text-sm text-foreground">
-                      {chatRunFinishedStatusLabel(status)}
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-          </fieldset>
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            {i18n.t(($) => {
-              return $.workflows.automations.chat.patternLabel;
-            })}
-            <Input
-              name="outputPattern"
-              disabled={creating}
-              placeholder="*deploy failed*"
-            />
-          </label>
-          <p className="text-xs text-muted-foreground">
-            {i18n.t(($) => {
-              return $.workflows.automations.chat.patternHint;
-            })}
-          </p>
-          <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-            {i18n.t(($) => {
-              return $.workflows.automations.chat.statusesHint;
-            })}
-          </div>
+          <ChatRunFinishedAutomationFields creating={creating} />
           <DialogFooter>
             <Button
               type="button"
@@ -5526,19 +5556,10 @@ function WorkflowAutomationCreateDialogs({
         createDialog={createDialog}
         setCreateDialog={setCreateDialog}
       />
-      <CreateGoogleMeetTranscriptGeneratedAutomationDialog
+      <ConversationAutomationCreateDialogs
         workflowId={workflowId}
-        open={createDialog === "google-meet-transcript-generated"}
-        onOpenChange={(open) => {
-          setCreateDialog(open ? "google-meet-transcript-generated" : null);
-        }}
-      />
-      <CreateChatRunFinishedAutomationDialog
-        workflowId={workflowId}
-        open={createDialog === "chat-run-finished"}
-        onOpenChange={(open) => {
-          setCreateDialog(open ? "chat-run-finished" : null);
-        }}
+        createDialog={createDialog}
+        setCreateDialog={setCreateDialog}
       />
       <CreateNotionChildPageAutomationDialog
         workflowId={workflowId}
@@ -5578,6 +5599,35 @@ function WorkflowAutomationCreateDialogs({
         }}
       />
       <WorkflowWebhookUpgradeDialog />
+    </>
+  );
+}
+
+function ConversationAutomationCreateDialogs({
+  workflowId,
+  createDialog,
+  setCreateDialog,
+}: {
+  readonly workflowId: string;
+  readonly createDialog: WorkflowAutomationCreateDialog;
+  readonly setCreateDialog: (dialog: WorkflowAutomationCreateDialog) => void;
+}) {
+  return (
+    <>
+      <CreateGoogleMeetTranscriptGeneratedAutomationDialog
+        workflowId={workflowId}
+        open={createDialog === "google-meet-transcript-generated"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "google-meet-transcript-generated" : null);
+        }}
+      />
+      <CreateChatRunFinishedAutomationDialog
+        workflowId={workflowId}
+        open={createDialog === "chat-run-finished"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "chat-run-finished" : null);
+        }}
+      />
     </>
   );
 }

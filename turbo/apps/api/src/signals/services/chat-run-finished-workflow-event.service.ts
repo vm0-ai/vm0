@@ -32,17 +32,33 @@ export interface ChatRunFinishedEvent {
 }
 
 /**
- * Compiles a `*`-wildcard expression into an anchored case-insensitive
- * matcher. Every character except `*` matches literally.
+ * Anchored case-insensitive `*`-wildcard match. Every character except `*`
+ * matches literally; a greedy left-to-right segment scan avoids building a
+ * regular expression from user input.
  */
 function chatRunFinishedPatternMatches(pattern: string, text: string): boolean {
-  const escaped = pattern
-    .split("*")
-    .map((part) => {
-      return part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    })
-    .join("[\\s\\S]*");
-  return new RegExp(`^${escaped}$`, "i").test(text);
+  const segments = pattern.toLowerCase().split("*");
+  const haystack = text.toLowerCase();
+  if (segments.length === 1) {
+    return haystack === segments[0];
+  }
+  const first = segments[0]!;
+  const last = segments[segments.length - 1]!;
+  if (!haystack.startsWith(first)) {
+    return false;
+  }
+  let cursor = first.length;
+  for (const segment of segments.slice(1, -1)) {
+    if (segment.length === 0) {
+      continue;
+    }
+    const index = haystack.indexOf(segment, cursor);
+    if (index === -1) {
+      return false;
+    }
+    cursor = index + segment.length;
+  }
+  return haystack.length - last.length >= cursor && haystack.endsWith(last);
 }
 
 function automationMatchesEvent(

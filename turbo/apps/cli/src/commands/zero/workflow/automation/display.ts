@@ -49,6 +49,18 @@ type WorkflowNotionPageContentUpdatedAutomationSummary = Extract<
     readonly eventType: "notion-page-content-updated";
   }
 >;
+function chatRunFinishedKindLabel(eventConfig: {
+  readonly chatThreadId: string;
+  readonly runStatuses?: readonly string[];
+  readonly outputPattern?: string;
+}): string {
+  const statuses = eventConfig.runStatuses?.join(",") ?? "any";
+  const pattern = eventConfig.outputPattern
+    ? ` matching "${eventConfig.outputPattern}"`
+    : "";
+  return `Chat run finished (${statuses})${pattern}: ${eventConfig.chatThreadId}`;
+}
+
 type WorkflowStrapiAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   { readonly kind: "event"; readonly eventType: "strapi-entry-published" }
@@ -290,13 +302,8 @@ function workflowAutomationKindLabel(
     return formatWorkflowAutomationEntry(automation);
   }
   switch (automation.eventType) {
-    case "chat-run-finished": {
-      const { chatThreadId, runStatuses, outputPattern } =
-        automation.eventConfig;
-      const statuses = runStatuses?.join(",") ?? "any";
-      const pattern = outputPattern ? ` matching "${outputPattern}"` : "";
-      return `Chat run finished (${statuses})${pattern}: ${chatThreadId}`;
-    }
+    case "chat-run-finished":
+      return chatRunFinishedKindLabel(automation.eventConfig);
     case "gmail-new-message":
       return "Gmail new message";
     case "gmail-label-applied":
