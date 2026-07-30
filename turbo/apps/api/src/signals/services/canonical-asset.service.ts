@@ -679,8 +679,14 @@ export async function attachCanonicalWebInputAssetsToEvent(
     readonly userId: string;
     readonly orgId: string;
     readonly files: readonly ChatEventAttachFileMetadata[];
+    readonly replaceExisting?: boolean;
   },
 ): Promise<void> {
+  if (args.replaceExisting) {
+    await db
+      .delete(chatEventAssetRefs)
+      .where(eq(chatEventAssetRefs.chatEventId, args.eventId));
+  }
   const assets: { readonly assetId: string; readonly position: number }[] = [];
   for (const [position, file] of args.files.entries()) {
     const [inserted] = await db

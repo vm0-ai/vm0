@@ -434,6 +434,7 @@ export async function replaceChatEvent(
   tx: ChatEventWriteTransaction,
   eventId: string,
   replacement: NewChatEvent,
+  options?: { readonly preserveAssetRefs?: boolean },
 ): Promise<ChatEventCommandResult | null> {
   const [target] = await tx
     .select({
@@ -505,7 +506,7 @@ export async function replaceChatEvent(
   }
 
   await insertInputQueueParams(tx, inserted.id, replacementWithParams);
-  if (target.encryptedParams && !("encryptedParams" in replacement)) {
+  if (options?.preserveAssetRefs !== false) {
     const assetRefs = await tx
       .select({
         assetId: chatEventAssetRefs.assetId,

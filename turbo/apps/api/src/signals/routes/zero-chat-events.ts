@@ -1601,7 +1601,9 @@ function appendUnassociatedUserMessage(params: {
       generationTemplate: params.generationTemplate,
     };
     const inserted = params.revokesEventId
-      ? await replaceChatEvent(tx, params.revokesEventId, event)
+      ? await replaceChatEvent(tx, params.revokesEventId, event, {
+          preserveAssetRefs: false,
+        })
       : await insertChatEvent(tx, event, "id");
     if (inserted) {
       await attachCanonicalWebInputAssetsToEvent(tx, {
@@ -1721,7 +1723,9 @@ async function appendAssociatedUserMessage(params: {
       generationTemplate: params.generationTemplate,
     };
     const inserted = params.revokesEventId
-      ? await replaceChatEvent(tx, params.revokesEventId, event)
+      ? await replaceChatEvent(tx, params.revokesEventId, event, {
+          preserveAssetRefs: false,
+        })
       : await insertChatEvent(tx, event, "id");
     if (inserted) {
       await attachCanonicalWebInputAssetsToEvent(tx, {
@@ -2883,10 +2887,22 @@ async function appendInsufficientCreditsEvents(params: {
       attachFileMetadata: fileMetadata,
     };
     const userMessage = params.body.revokesEventId
-      ? await replaceChatEvent(tx, params.body.revokesEventId, userValues)
+      ? await replaceChatEvent(tx, params.body.revokesEventId, userValues, {
+          preserveAssetRefs: false,
+        })
       : await insertChatEvent(tx, userValues, "id");
 
     const createdAt = userMessage?.createdAt ?? userCreatedAt;
+    if (userMessage) {
+      await attachCanonicalWebInputAssetsToEvent(tx, {
+        eventId: userMessage.id,
+        chatThreadId: params.prepared.thread.threadId,
+        userId: params.userId,
+        orgId: params.orgId,
+        files: fileMetadata ?? [],
+        replaceExisting: params.body.revokesEventId !== undefined,
+      });
+    }
     if (userMessage && params.touchThreadSort) {
       await touchChatThreadLastMessageAt(
         tx,
