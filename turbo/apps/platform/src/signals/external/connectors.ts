@@ -68,7 +68,7 @@ export const reloadConnectors$ = command(({ set }) => {
 });
 
 /**
- * Delete a connector by ref.
+ * Delete a connector by slug.
  */
 export const deleteConnector$ = command(
   async ({ get, set }, connectorSlug: ConnectorSlug, signal: AbortSignal) => {
