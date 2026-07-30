@@ -2387,7 +2387,7 @@ describe("zero workflow automations", () => {
     const workflowMessage = messages.find((message) => {
       return (
         message.eventType === "input.prompt" &&
-        chatEventDisplayText(message) === `/${WORKFLOW_NAME}`
+        chatEventDisplayText(message)?.startsWith(`/${WORKFLOW_NAME}`) === true
       );
     });
     expect(workflowMessage).toBeDefined();

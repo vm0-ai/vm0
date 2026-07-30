@@ -201,6 +201,68 @@ export async function saveAgentPhoneThreadSession(
   }
 }
 
+/**
+ * Dual-write a canonical AgentPhone thread binding into the legacy session
+ * table so rollback-eligible API versions continue from the canonical session.
+ */
+export async function saveCanonicalAgentPhoneThreadSession(
+  db: Db,
+  opts: {
+    readonly userLinkId: string;
+    readonly conversationId: string | null;
+    readonly rootMessageId: string;
+    readonly agentSessionId: string;
+    readonly messageId: string;
+    readonly runStatus: "completed" | "failed";
+  },
+): Promise<void> {
+  const [existing] = await db
+    .select({ agentSessionId: agentphoneThreadSessions.agentSessionId })
+    .from(agentphoneThreadSessions)
+    .where(
+      and(
+        eq(agentphoneThreadSessions.agentphoneUserLinkId, opts.userLinkId),
+        eq(agentphoneThreadSessions.rootMessageId, opts.rootMessageId),
+      ),
+    )
+    .limit(1);
+
+  const updateLastProcessed =
+    opts.runStatus === "completed" ||
+    existing?.agentSessionId !== opts.agentSessionId;
+  const updated = await db
+    .update(agentphoneThreadSessions)
+    .set({
+      agentSessionId: opts.agentSessionId,
+      conversationId: opts.conversationId,
+      ...(updateLastProcessed
+        ? { lastProcessedMessageId: opts.messageId }
+        : {}),
+      updatedAt: nowDate(),
+    })
+    .where(
+      and(
+        eq(agentphoneThreadSessions.agentphoneUserLinkId, opts.userLinkId),
+        eq(agentphoneThreadSessions.rootMessageId, opts.rootMessageId),
+      ),
+    )
+    .returning({ id: agentphoneThreadSessions.id });
+  if (updated.length > 0) {
+    return;
+  }
+
+  await db
+    .insert(agentphoneThreadSessions)
+    .values({
+      agentphoneUserLinkId: opts.userLinkId,
+      conversationId: opts.conversationId,
+      rootMessageId: opts.rootMessageId,
+      agentSessionId: opts.agentSessionId,
+      lastProcessedMessageId: opts.messageId,
+    })
+    .onConflictDoNothing();
+}
+
 export function formatAgentPhoneAuditLink(logsUrl: string): string {
   return `Audit: ${logsUrl}`;
 }

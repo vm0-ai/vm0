@@ -175,7 +175,7 @@ async function workflowRunMessages(
   return messages.flatMap((message) => {
     if (
       message.eventType !== "input.prompt" ||
-      chatEventDisplayText(message) !== `/${WORKFLOW_NAME}` ||
+      !chatEventDisplayText(message)?.startsWith(`/${WORKFLOW_NAME}`) ||
       !message.runId
     ) {
       return [];
@@ -416,12 +416,13 @@ describe("zero workflow automation scheduler", () => {
     mockNow(Date.parse(created.body.nextRunAt) + 60_000);
     await executeDueWorkflowAutomations();
 
+    const onceRun = await onlyWorkflowRunMessage(threadId);
     const emittedCallbacks = await store.set(
       readAgentRunCallbacks$,
       {
         orgId: scenario.orgId,
         userId: scenario.userId,
-        prompt: `/${WORKFLOW_NAME}`,
+        runId: onceRun.runId,
       },
       context.signal,
     );
@@ -573,7 +574,7 @@ describe("zero workflow automation scheduler", () => {
       {
         orgId: scenario.orgId,
         userId: scenario.userId,
-        prompt: `/${WORKFLOW_NAME}`,
+        runId: run.runId,
       },
       context.signal,
     );
@@ -622,7 +623,7 @@ describe("zero workflow automation scheduler", () => {
       {
         orgId: scenario.orgId,
         userId: scenario.userId,
-        prompt: `/${WORKFLOW_NAME}`,
+        runId: run.runId,
       },
       context.signal,
     );

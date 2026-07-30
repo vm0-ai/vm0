@@ -136,6 +136,12 @@ const dispatchInternalCallback$ = command(
           signal,
         );
       }
+      case "agentphone:chat": {
+        return {
+          success: false,
+          error: "AgentPhone chat delivery callbacks are inline-only",
+        };
+      }
       case "chat": {
         return await set(
           handleChatInternalCallback$,
@@ -541,6 +547,12 @@ async function dispatchInternalCallbackWithoutCcstate(
         input.db,
         callbackEnvelope(input),
       );
+    }
+    case "agentphone:chat": {
+      return {
+        success: false,
+        error: "AgentPhone chat delivery callbacks are inline-only",
+      };
     }
     case "chat": {
       return await handleChatInternalCallbackWithoutCcstate(

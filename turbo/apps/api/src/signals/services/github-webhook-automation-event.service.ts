@@ -34,6 +34,11 @@ import {
   runWorkflowAutomationNow$,
   type AutomationRow,
 } from "./zero-workflow-automation-run.service";
+import {
+  workflowAutomationAppendSystemPrompt,
+  workflowAutomationPrompt,
+  type WorkflowAutomationContext,
+} from "./workflow-automation-context.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 import {
   WorkflowEventSourceTiming,
@@ -765,30 +770,23 @@ function eventPromptMetadata(
   }
 }
 
-function buildGithubWebhookSystemPrompt(args: {
+function githubWebhookTriggerContext(args: {
   readonly automation: GithubWebhookAutomationRow;
   readonly deliveryId: string;
   readonly event: GithubWebhookAutomationEvent;
-}): string {
-  return [
-    "# Current context",
-    `You are running because ${eventPromptSummary(args.event)}.`,
-    "The workflow's procedure is available as a skill - execute it now.",
-    "This run is linked to a web chat thread; everything you output is shown to the user there.",
-    "This context intentionally includes only GitHub event metadata. User-authored review and comment bodies are not included.",
-    "Use connected GitHub tools or the GitHub API if the workflow needs event content, logs, artifacts, or related details.",
-    "",
-    "# GitHub webhook event",
-    JSON.stringify(
-      {
-        automationId: args.automation.automation.id,
-        deliveryId: args.deliveryId,
-        ...eventPromptMetadata(args.event),
-      },
-      null,
-      2,
-    ),
-  ].join("\n");
+}): WorkflowAutomationContext {
+  return {
+    workflowName: args.automation.workflowName,
+    trigger: `${eventPromptSummary(args.event)} (GitHub webhook delivery ${args.deliveryId}).`,
+    notes: [
+      "Not included below: user-authored review and comment bodies, logs, and artifacts. Connected GitHub tools and the GitHub API return them.",
+    ],
+    event: {
+      automationId: args.automation.automation.id,
+      deliveryId: args.deliveryId,
+      ...eventPromptMetadata(args.event),
+    },
+  };
 }
 
 const startGithubWebhookAutomation$ = command(
@@ -803,6 +801,7 @@ const startGithubWebhookAutomation$ = command(
     },
     signal: AbortSignal,
   ): Promise<"ok" | "error"> => {
+    const context = githubWebhookTriggerContext(args);
     const result = await set(
       runWorkflowAutomationNow$,
       {
@@ -814,7 +813,8 @@ const startGithubWebhookAutomation$ = command(
         },
         apiStartTime: args.apiStartTime,
         triggerSource: "workflow-event",
-        appendSystemPrompt: buildGithubWebhookSystemPrompt(args),
+        prompt: workflowAutomationPrompt(context),
+        appendSystemPrompt: workflowAutomationAppendSystemPrompt(context),
         callbacks: buildChatOnlyWorkflowAutomationCallbacks(
           args.automation.chatThreadId,
           args.automation.agentId,

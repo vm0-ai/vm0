@@ -18,6 +18,11 @@ import {
   buildChatOnlyWorkflowAutomationCallbacks,
   runWorkflowAutomationNow$,
 } from "./zero-workflow-automation-run.service";
+import {
+  workflowAutomationAppendSystemPrompt,
+  workflowAutomationPrompt,
+  type WorkflowAutomationContext,
+} from "./workflow-automation-context.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 
 const CHAT_RUN_FINISHED_EVENT_TYPE = "chat-run-finished";
@@ -83,34 +88,29 @@ function automationMatchesEvent(
   );
 }
 
-function buildChatRunFinishedSystemPrompt(args: {
+function chatRunFinishedTriggerContext(args: {
+  readonly workflowName: string;
   readonly automationId: string;
   readonly event: ChatRunFinishedEvent;
-}): string {
+}): WorkflowAutomationContext {
   const excerpt = args.event.lastResultText?.slice(0, OUTPUT_EXCERPT_CHAR_CAP);
-  return [
-    "# Current context",
-    "You are running because a run in a watched chat thread finished.",
-    "The workflow's procedure is available as a skill - execute it now.",
-    "This run is linked to a web chat thread; everything you output is shown to the user there.",
-    "Use `zero logs <runId>` for the finished run's full transcript when the workflow needs more than the final output below.",
-    "",
-    "# Chat run finished event",
-    JSON.stringify(
-      {
-        automationId: args.automationId,
-        eventType: CHAT_RUN_FINISHED_EVENT_TYPE,
-        watchedChatThreadId: args.event.chatThreadId,
-        runId: args.event.runId,
-        runStatus: args.event.runStatus,
-        lastResultText: excerpt ?? null,
-        lastResultTextTruncated:
-          (args.event.lastResultText?.length ?? 0) > OUTPUT_EXCERPT_CHAR_CAP,
-      },
-      null,
-      2,
-    ),
-  ].join("\n");
+  return {
+    workflowName: args.workflowName,
+    trigger: `run ${args.event.runId} in watched chat thread ${args.event.chatThreadId} finished with status "${args.event.runStatus}".`,
+    notes: [
+      "Not included below: the finished run's full transcript, and its final output beyond the excerpt. `zero logs <runId>` returns the transcript.",
+    ],
+    event: {
+      automationId: args.automationId,
+      eventType: CHAT_RUN_FINISHED_EVENT_TYPE,
+      watchedChatThreadId: args.event.chatThreadId,
+      runId: args.event.runId,
+      runStatus: args.event.runStatus,
+      lastResultText: excerpt ?? null,
+      lastResultTextTruncated:
+        (args.event.lastResultText?.length ?? 0) > OUTPUT_EXCERPT_CHAR_CAP,
+    },
+  };
 }
 
 /**
@@ -187,6 +187,11 @@ export const dispatchChatRunFinishedWorkflowEvents$ = command(
         }));
       signal.throwIfAborted();
 
+      const context = chatRunFinishedTriggerContext({
+        workflowName: row.workflowName,
+        automationId: row.automation.id,
+        event,
+      });
       await set(
         runWorkflowAutomationNow$,
         {
@@ -198,10 +203,8 @@ export const dispatchChatRunFinishedWorkflowEvents$ = command(
           },
           apiStartTime: performance.now(),
           triggerSource: "workflow-event",
-          appendSystemPrompt: buildChatRunFinishedSystemPrompt({
-            automationId: row.automation.id,
-            event,
-          }),
+          prompt: workflowAutomationPrompt(context),
+          appendSystemPrompt: workflowAutomationAppendSystemPrompt(context),
           triggerBrief: `Chat run ${event.runStatus} in watched thread`,
           callbacks: buildChatOnlyWorkflowAutomationCallbacks(
             chatThreadId,
