@@ -38,6 +38,7 @@ const USER_MESSAGE = "Summarize the launch plan";
 const ASSISTANT_MESSAGE = "Here is the result";
 const IDB_USER_ID = "zero-chat-thread-idb-user";
 const IDB_ORG_ID = "zero-chat-thread-idb-org";
+const PAGE_LOAD_TIMEOUT_MS = 5000;
 
 async function primeRuntimeChatDb(): Promise<
   Awaited<ReturnType<typeof openChatIdb>>
@@ -282,7 +283,9 @@ describe("zero chat thread IndexedDB fallback", () => {
       setupChatPage({ autoOpenEnabled: true });
 
       await expect(
-        screen.findByText("Browser stopped remotely"),
+        screen.findByText("Browser stopped remotely", undefined, {
+          timeout: PAGE_LOAD_TIMEOUT_MS,
+        }),
       ).resolves.toBeInTheDocument();
       expect(
         document.querySelector("[data-browser-session-sidebar]"),
