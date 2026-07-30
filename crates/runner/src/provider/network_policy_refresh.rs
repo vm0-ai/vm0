@@ -1936,6 +1936,12 @@ mod tests {
             )
             .await
             .expect("valid refresh deadline should schedule");
+        let scheduled_task = {
+            let active_runs = harness.handle.core.inner.active_runs.lock().await;
+            active_runs[&run_id].refresh_tasks["github"]
+                .handle
+                .abort_handle()
+        };
 
         let (_, events) = capture_network_policy_events(harness.refresh_slack()).await;
 
@@ -1962,7 +1968,17 @@ mod tests {
             }),
             "terminal reconciliation should not emit the generic failure warning"
         );
-        captured_event(&events, "reconciled terminal run network policies");
+        assert_eq!(
+            captured_event(&events, "reconciled terminal run network policies").level,
+            tracing::Level::INFO
+        );
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while !scheduled_task.is_finished() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("terminal reconciliation should stop scheduled refresh tasks");
 
         harness
             .handle
