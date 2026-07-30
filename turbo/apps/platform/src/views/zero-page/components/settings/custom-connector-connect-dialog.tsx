@@ -194,8 +194,10 @@ function ConnectDialogFooter({
 
 export function CustomConnectorConnectDialog({
   connector,
+  onClose,
 }: {
   readonly connector: CustomConnectorResponse;
+  readonly onClose?: () => void;
 }) {
   const { t } = useTranslation();
   const form = useGet(customConnectorConnectForm$);
@@ -229,7 +231,11 @@ export function CustomConnectorConnectDialog({
 
   const close = () => {
     resetForm();
-    closeDialog();
+    if (onClose) {
+      onClose();
+    } else {
+      closeDialog();
+    }
   };
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {

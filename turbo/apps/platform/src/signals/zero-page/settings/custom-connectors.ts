@@ -25,6 +25,10 @@ const internalAuthorizedAgentsReload$ = state(0);
 
 export type CustomConnectorAuthMethodType = "api" | "oauth2";
 
+export const customConnectorAuthorizationReloadVersion$ = computed((get) => {
+  return get(internalAuthorizedAgentsReload$);
+});
+
 // ---------------------------------------------------------------------------
 // Active tab on the Connectors settings page
 // ---------------------------------------------------------------------------
@@ -65,7 +69,7 @@ export const customConnectors$ = computed(
 
 export const customConnectorAuthorizedAgentsById$ = computed(
   async (get): Promise<ReadonlyMap<string, readonly TeamComposeItem[]>> => {
-    get(internalAuthorizedAgentsReload$);
+    get(customConnectorAuthorizationReloadVersion$);
     const connectors = await get(customConnectors$);
     if (
       !connectors.some((connector) => {
