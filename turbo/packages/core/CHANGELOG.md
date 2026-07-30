@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.489.0](https://github.com/vm0-ai/vm0/compare/core-v8.488.3...core-v8.489.0) (2026-07-30)
+
+
+### Features
+
+* **platform:** enable locale rollout and browser detection ([#23983](https://github.com/vm0-ai/vm0/issues/23983)) ([9b689ad](https://github.com/vm0-ai/vm0/commit/9b689ad900016b7a04f930a57ae20f9702fdff69))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.250.2
+
 ## [8.488.3](https://github.com/vm0-ai/vm0/compare/core-v8.488.2...core-v8.488.3) (2026-07-30)
 
 

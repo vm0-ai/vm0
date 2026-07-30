@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.350.0](https://github.com/vm0-ai/vm0/compare/api-v1.349.1...api-v1.350.0) (2026-07-30)
+
+
+### Features
+
+* **platform:** enable locale rollout and browser detection ([#23983](https://github.com/vm0-ai/vm0/issues/23983)) ([9b689ad](https://github.com/vm0-ai/vm0/commit/9b689ad900016b7a04f930a57ae20f9702fdff69))
+
+
+### Refactoring
+
+* **api:** move runner run creation to test route ([#24013](https://github.com/vm0-ai/vm0/issues/24013)) ([6114c5e](https://github.com/vm0-ai/vm0/commit/6114c5e93b9b28e11bd8c1d3a78bebea32739732))
+* **insights:** migrate connector identity to slug ([#23952](https://github.com/vm0-ai/vm0/issues/23952)) ([596d96d](https://github.com/vm0-ai/vm0/commit/596d96d3d5972f9753c20ba3cdaff4e4506a0969))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.250.2
+    * @vm0/core bumped to 8.489.0
+    * @vm0/db bumped to 1.156.2
+
 ## [1.349.1](https://github.com/vm0-ai/vm0/compare/api-v1.349.0...api-v1.349.1) (2026-07-30)
 
 

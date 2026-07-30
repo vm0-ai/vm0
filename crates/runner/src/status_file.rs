@@ -113,12 +113,8 @@ pub(crate) struct StatusActiveRunMapping {
 pub(crate) struct StatusActiveRun {
     pub(crate) run_id: String,
     pub(crate) sandbox_id: String,
-    // Optional for rolling compatibility with status files written before
-    // active-run phases were added. Current writers always serialize it.
-    pub(crate) phase: Option<String>,
-    // Optional for the same compatibility reason. Current writers always
-    // serialize it as the current phase start time.
-    pub(crate) phase_started_at: Option<String>,
+    pub(crate) phase: String,
+    pub(crate) phase_started_at: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -192,10 +188,10 @@ mod tests {
             status.active_runs[0].run_id,
             "0191c4e0-0000-7000-8000-000000000001"
         );
-        assert_eq!(status.active_runs[0].phase.as_deref(), Some("preparing"));
+        assert_eq!(status.active_runs[0].phase, "preparing");
         assert_eq!(
-            status.active_runs[0].phase_started_at.as_deref(),
-            Some("2026-04-13T00:00:01.000Z")
+            status.active_runs[0].phase_started_at,
+            "2026-04-13T00:00:01.000Z"
         );
         assert_eq!(status.idle_vms.len(), 1);
         assert_eq!(status.idle_vms[0].session_id, "sess-1");
