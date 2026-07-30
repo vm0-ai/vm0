@@ -96,8 +96,9 @@ def create_anthropic_messages_sse_usage_extractor(
     absent or not a string. Event-less frames can again use the JSON ``type``.
     Conflicting SSE and JSON event types, malformed events, oversized selected
     fields, and unknown or irrelevant events do not emit lifecycle observations.
-    These callback values contain no message, thinking, text, tool, or other
-    response content.
+    Only event identity and bounded block-type metadata cross this callback
+    boundary; message text, thinking text, tool input, and other response
+    payload content do not.
 
     HTTP content decoding and decoder errors remain caller-owned; this parser
     receives decoded bytes and owns only SSE framing and selected JSON fields.
