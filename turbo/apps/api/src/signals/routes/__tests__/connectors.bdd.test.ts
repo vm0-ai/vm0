@@ -69,10 +69,10 @@ function customConnectorBody(slug: string) {
 
 function connectorBySlug(
   connectors: readonly ConnectorResponse[],
-  type: ConnectorResponse["slug"],
+  connectorSlug: ConnectorResponse["slug"],
 ): ConnectorResponse | undefined {
   return connectors.find((connector) => {
-    return connector.slug === type;
+    return connector.slug === connectorSlug;
   });
 }
 
