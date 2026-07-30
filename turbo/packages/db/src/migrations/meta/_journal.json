@@ -5230,6 +5230,13 @@
       "when": 1785391854798,
       "tag": "0746_same_vision",
       "breakpoints": true
+    },
+    {
+      "idx": 747,
+      "version": "7",
+      "when": 1785391854799,
+      "tag": "0747_groovy_ultragirl",
+      "breakpoints": true
     }
   ]
 }
