@@ -19,6 +19,7 @@ import {
   userFeatureSwitchOverrides,
 } from "../services/feature-switches.service";
 import { modelProviderGatewaySchemaAvailable } from "../services/model-provider-gateway-schema.service";
+import { isGermanLocaleRolloutEnabled } from "../../lib/german-locale-rollout";
 
 const featureSwitchesAuthOptions = {
   requireOrganization: true,
@@ -48,6 +49,8 @@ function featureSwitchResponseBody(params: {
     isKoreanLocaleRolloutEnabled();
   effectiveSwitches[FeatureSwitchKey.IndonesianLocale] =
     isIndonesianLocaleRolloutEnabled();
+  effectiveSwitches[FeatureSwitchKey.GermanLocale] =
+    isGermanLocaleRolloutEnabled();
 
   return {
     switches: params.switches,

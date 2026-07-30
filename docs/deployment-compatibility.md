@@ -171,6 +171,29 @@ promotion are independent and locale preferences are shared persisted state:
 5. Remove the projection, capability handshake, and deploy gate only after
    stale browser clients and rollback windows have closed.
 
+### German locale rollout
+
+The `de-DE` locale transition uses a receiver-first rollout because Platform
+and API promotion are independent and locale preferences are shared persisted
+state:
+
+1. Deploy API and Platform receivers while
+   `GERMAN_LOCALE_ROLLOUT_ENABLED` remains disabled in production. The API
+   projects stored `de-DE` preferences to `en-US` for incompatible clients and
+   advertises German only to clients carrying the `de-de-locale-v1`
+   capability.
+2. Verify that every API reader which rejects stored `de-DE` values, including
+   rollback candidates, has drained.
+3. Enable `GERMAN_LOCALE_ROLLOUT_ENABLED`. The corresponding `GermanLocale`
+   feature switch is API-controlled and cannot be set through user overrides.
+   A capable API then advertises `de-DE`, and Platform exposes the language
+   selector only after receiving that handshake.
+4. Remove the old-client response projection, capability handshake, and rollout
+   switch only after stale browser clients and rollback windows have closed.
+
+Do not enable German preference writes during step 1. A stored `de-DE` value is
+not readable by the API release that preceded this receiver change.
+
 ### Treat Deploy-before-migrate Windows as a First-class Risk
 
 Schema changes have two independent compatibility directions:

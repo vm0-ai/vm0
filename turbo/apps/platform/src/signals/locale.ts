@@ -79,14 +79,20 @@ export const syncLocalePreference$ = command(
     const preferences = await get(userPreferences$);
     signal.throwIfAborted();
     const supportedLocales = preferences.supportedLocales;
+    if (preferences.locale === undefined || supportedLocales === undefined) {
+      return;
+    }
     if (
-      preferences.locale === undefined ||
-      supportedLocales === undefined ||
-      (!supportedLocales.includes("pt-BR") &&
-        !supportedLocales.includes("ja-JP") &&
-        !supportedLocales.includes("ko-KR") &&
-        !supportedLocales.includes("id-ID"))
+      supportedLocales.every((supportedLocale) => {
+        return supportedLocale === DEFAULT_LOCALE;
+      })
     ) {
+      await set(
+        applyLocalePreference$,
+        clerk.organization.id,
+        DEFAULT_LOCALE,
+        signal,
+      );
       return;
     }
 
