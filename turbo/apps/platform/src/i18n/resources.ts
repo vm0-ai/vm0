@@ -12,6 +12,8 @@ import koKRCommon from "./locales/ko-KR/common.json";
 import koKRAgents from "./locales/ko-KR/agents.json";
 import idIDCommon from "./locales/id-ID/common.json";
 import idIDAgents from "./locales/id-ID/agents.json";
+import deDECommon from "./locales/de-DE/common.json";
+import deDEAgents from "./locales/de-DE/agents.json";
 
 export const DEFAULT_LOCALE = "en-US";
 export const DEFAULT_NAMESPACE = "common";
@@ -45,5 +47,9 @@ export const resources = {
   "id-ID": {
     agents: idIDAgents,
     common: idIDCommon,
+  },
+  "de-DE": {
+    agents: deDEAgents,
+    common: deDECommon,
   },
 } as const;

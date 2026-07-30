@@ -249,6 +249,26 @@ describe("bootstrap locale", () => {
     expect(upgradeAction).toHaveTextContent("Update Chrome");
   });
 
+  it("detects German from the browser before a workspace is active", () => {
+    context.mocks.browser.language("de");
+
+    try {
+      executeLocaleEntrypoint();
+
+      expect(document.documentElement.lang).toBe("de-DE");
+      expect(window.__vm0PreBundleCopy).toMatchObject({
+        loading: {
+          ariaLabel: "Ihr Arbeitsbereich wird geladen",
+        },
+        metadata: {
+          title: "Zero — Ihr KI-Kollege von vm0",
+        },
+      });
+    } finally {
+      document.documentElement.lang = DEFAULT_LOCALE;
+    }
+  });
+
   it("uses the cached locale across pre-bundle UI and i18next", async () => {
     context.mocks.browser.language("en-US");
     sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
@@ -322,6 +342,40 @@ describe("bootstrap locale", () => {
       true,
       true,
     );
+
+    await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
+  });
+
+  it("loads German before bundle render and restores it from workspace cache", async () => {
+    context.mocks.browser.language("en-US");
+    sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
+    context.store.set(testLocaleStorage.set$, "de-DE");
+
+    executeLocaleEntrypoint();
+
+    expect(document.documentElement.lang).toBe("de-DE");
+    expect(window.__vm0PreBundleCopy).toMatchObject({
+      loading: {
+        ariaLabel: "Ihr Arbeitsbereich wird geladen",
+        messages: expect.arrayContaining(["Neuronen werden aufgewärmt..."]),
+      },
+      metadata: {
+        title: "Zero — Ihr KI-Kollege von vm0",
+      },
+    });
+
+    await setupPage({
+      context,
+      path: "/error",
+      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: false },
+      withoutRender: true,
+    });
+
+    expect(context.store.get(locale$)).toBe("de-DE");
+    expect(i18n.language).toBe("de-DE");
+    expect(i18n.hasResourceBundle("de-DE", "common")).toBeTruthy();
+    expect(i18n.hasResourceBundle("de-DE", "agents")).toBeTruthy();
+    expect(document.documentElement.lang).toBe("de-DE");
 
     await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
   });

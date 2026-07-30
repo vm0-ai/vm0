@@ -121,6 +121,13 @@ export function LanguageSettings() {
                   })}
                 </SelectItem>
               )}
+              {availableLocales.includes("de-DE") && (
+                <SelectItem value="de-DE">
+                  {t(($) => {
+                    return $.settings.preferences.language.options.german;
+                  })}
+                </SelectItem>
+              )}
             </SelectContent>
           </Select>
         </div>

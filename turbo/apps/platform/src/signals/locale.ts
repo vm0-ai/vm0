@@ -85,7 +85,8 @@ export const syncLocalePreference$ = command(
       (!supportedLocales.includes("pt-BR") &&
         !supportedLocales.includes("ja-JP") &&
         !supportedLocales.includes("ko-KR") &&
-        !supportedLocales.includes("id-ID"))
+        !supportedLocales.includes("id-ID") &&
+        !supportedLocales.includes("de-DE"))
     ) {
       return;
     }

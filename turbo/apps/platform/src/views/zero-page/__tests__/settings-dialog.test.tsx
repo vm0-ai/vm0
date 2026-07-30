@@ -173,6 +173,44 @@ describe("settings dialog", () => {
     });
   });
 
+  it("selects and persists German through the advertised locale handshake", async () => {
+    const submittedLocales: UserLocale[] = [];
+    let serverLocale: UserLocale | null = null;
+    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+      return respond(200, createPreferences(serverLocale));
+    });
+    context.mocks.api(
+      zeroUserPreferencesContract.update,
+      ({ body, respond }) => {
+        if (body.locale !== undefined) {
+          serverLocale = body.locale;
+          submittedLocales.push(body.locale);
+        }
+        return respond(200, createPreferences(serverLocale));
+      },
+    );
+
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: true,
+    });
+
+    click(
+      await screen.findByRole("combobox", {
+        name: "Language",
+      }),
+    );
+    click(screen.getByRole("option", { name: "Deutsch" }));
+
+    await waitFor(() => {
+      expect(submittedLocales).toContain("de-DE");
+      expect(
+        screen.getByRole("combobox", { name: "Sprache" }),
+      ).toHaveTextContent("Deutsch");
+      expect(document.documentElement.lang).toBe("de-DE");
+      expect(cachedLocale()).toBe("de-DE");
+    });
+  });
+
   it("overrides a cached language with the workspace server preference", async () => {
     document.documentElement.lang = "en-US";
     context.store.set(setCachedLocale$, "en-US");
@@ -475,7 +513,9 @@ describe("settings dialog", () => {
   });
 
   it("hides the language entry while the API locale rollout is disabled", async () => {
-    const guardedPreferences = createPreferences("en-US");
+    document.documentElement.lang = "de-DE";
+    context.store.set(setCachedLocale$, "de-DE");
+    const guardedPreferences = createPreferences("de-DE");
     guardedPreferences.supportedLocales = ["en-US"];
     context.mocks.data.userPreferences(guardedPreferences);
 
@@ -486,6 +526,8 @@ describe("settings dialog", () => {
     await waitFor(() => {
       expect(screen.getByText("Theme")).toBeInTheDocument();
       expect(screen.queryByText("Language")).not.toBeInTheDocument();
+      expect(document.documentElement.lang).toBe("en-US");
+      expect(cachedLocale()).toBe("en-US");
     });
   });
 
