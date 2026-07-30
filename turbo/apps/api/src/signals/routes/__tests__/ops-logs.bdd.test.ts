@@ -2,7 +2,7 @@ import { createHash, createHmac, randomUUID } from "node:crypto";
 import { gzipSync, zstdCompressSync } from "node:zlib";
 
 import AdmZip from "adm-zip";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, onTestFinished } from "vitest";
 
 import type {
   GenerationTemplateRequest,
@@ -25,6 +25,15 @@ import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createOpsLogsApi } from "./helpers/api-bdd-ops-logs";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import {
+  deleteModelStatsFixture,
+  deleteModelStatsObservations,
+  holdModelStatsAggregationLock,
+  insertZeroTokenModelStatsObservation,
+  readModelStatsAggregationLockState,
+  readModelStatsObservations,
+  releaseModelStatsAggregationLock,
+} from "./helpers/model-stats-state";
 import { commitMemoryVersion } from "./helpers/zero-memory";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
@@ -32,12 +41,11 @@ import { createFixtureTracker } from "./helpers/zero-route-test";
  * BILL-02 model stats and OPS-01 user export.
  *
  * This file is the SOLE OWNER of GET /api/cron/aggregate-model-stats:
- * the cron is a global sweep (window-scoped DELETE+reinsert over model_stat
- * plus an unconditional compact observation retention delete), so calling
- * it from any other test file would race this file's far-past observation
- * windows on the shared database — the same single-file-ownership rule as the
- * email drain / billing reconcile / screenshot cleanup crons (see the shared
- * cron auth helper in helpers/api-bdd-runs.ts).
+ * the cron is a global projection sweep over model_stat, so calling it from
+ * any other test file would race this file's far-past observation windows on
+ * the shared database — the same single-file-ownership rule as the email
+ * drain / billing reconcile / screenshot cleanup crons (see the shared cron
+ * auth helper in helpers/api-bdd-runs.ts).
  *
  * Shared-DB time design: the model-stats chain derives a random far-past UTC
  * day (2003-2009) per run and asserts rankings as baseline+delta, so leftovers
@@ -255,15 +263,14 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     });
   });
 
-  it("aggregates sandbox model observations into public rankings and applies retention", async () => {
+  it("prepares model observations atomically for public rankings", async () => {
     const api = createOpsLogsApi(context);
     const runs = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const model = "claude-sonnet-4-6";
 
-    // Random far-past UTC day (2003-2009): immune to the soon-deleted legacy
-    // model-stats cron (its retention windows live in 2001) and far enough in
-    // the past that the retention sweep below cannot touch real-now rows.
+    // Random far-past UTC day (2003-2009): isolated from real-now ranking
+    // windows and unlikely to collide with another interrupted test fixture.
     const seed = Number.parseInt(randomUUID().slice(0, 8), 16);
     const dayYear = 2003 + (seed % 7);
     const dayMonth = Math.floor(seed / 7) % 12;
@@ -278,6 +285,23 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     const windowStartIso = new Date(aggregateAt - DAY_MS).toISOString();
     const windowEndIso = new Date(aggregateAt).toISOString();
     const todayStartIso = new Date(dayStart).toISOString();
+    const fixtureObservationKeys: string[] = [];
+    let aggregationLockRequest: Promise<void> | null = null;
+
+    onTestFinished(async () => {
+      await releaseModelStatsAggregationLock(context);
+      if (aggregationLockRequest) {
+        await aggregationLockRequest;
+      }
+      if (fixtureObservationKeys.length > 0) {
+        await deleteModelStatsFixture(context, {
+          idempotencyKeys: fixtureObservationKeys,
+          models: [model],
+          windowStart: new Date(dayStart - 40 * DAY_MS),
+          windowEnd: new Date(dayStart + DAY_MS),
+        });
+      }
+    });
 
     // Given: the run and its sandbox token are created at the real wall
     // clock, then terminal-ized before any mocked-time ingestion.
@@ -300,9 +324,11 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     );
     expect(baselineAggregate.body).toMatchObject({
       success: true,
-      windowStart: windowStartIso,
       windowEnd: windowEndIso,
     });
+    expect(
+      new Date(baselineAggregate.body.windowStart).getTime(),
+    ).toBeLessThanOrEqual(new Date(windowStartIso).getTime());
 
     const baseline = await api.readModelRankings("today");
     expect(baseline.headers.get("cache-control")).toBe(
@@ -324,6 +350,7 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
 
     mockNow(mainObservedAt);
     const compactIdempotencyKey = randomUUID();
+    fixtureObservationKeys.push(compactIdempotencyKey);
     const compactBody = {
       runId: created.runId,
       events: [
@@ -375,14 +402,46 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     ]);
 
     mockNow(previousObservedAt);
+    const previousIdempotencyKey = randomUUID();
+    fixtureObservationKeys.push(previousIdempotencyKey);
     await webhooks.requestAgentModelUsageObservationV2(
       {
         runId: created.runId,
         events: [
           {
-            idempotencyKey: randomUUID(),
+            idempotencyKey: previousIdempotencyKey,
             model,
             inputTokens: 80,
+            outputTokens: 0,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+
+    mockNow(mainObservedAt);
+    const zeroTokenIdempotencyKey = randomUUID();
+    fixtureObservationKeys.push(zeroTokenIdempotencyKey);
+    await insertZeroTokenModelStatsObservation(context, {
+      idempotencyKey: zeroTokenIdempotencyKey,
+      model,
+      observedAt: new Date(mainObservedAt),
+    });
+
+    mockNow(aggregateAt + 10 * 60_000);
+    const currentHourIdempotencyKey = randomUUID();
+    fixtureObservationKeys.push(currentHourIdempotencyKey);
+    await webhooks.requestAgentModelUsageObservationV2(
+      {
+        runId: created.runId,
+        events: [
+          {
+            idempotencyKey: currentHourIdempotencyKey,
+            model,
+            inputTokens: 7,
             outputTokens: 0,
             cacheReadInputTokens: 0,
             cacheCreationInputTokens: 0,
@@ -414,15 +473,44 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     });
     expect(afterIngest.body.totalTokens).toBe(baseTotal + 550);
 
-    // Re-ingest into the already-aggregated hour: the window DELETE+reinsert
-    // must surface the additional output tokens on the next aggregation.
+    const initialObservationStates = await readModelStatsObservations(context, [
+      compactIdempotencyKey,
+      previousIdempotencyKey,
+      zeroTokenIdempotencyKey,
+      currentHourIdempotencyKey,
+    ]);
+    expect(initialObservationStates).toStrictEqual(
+      expect.arrayContaining([
+        {
+          idempotencyKey: compactIdempotencyKey,
+          aggregatedAt: windowEndIso,
+        },
+        {
+          idempotencyKey: previousIdempotencyKey,
+          aggregatedAt: windowEndIso,
+        },
+        {
+          idempotencyKey: zeroTokenIdempotencyKey,
+          aggregatedAt: windowEndIso,
+        },
+        {
+          idempotencyKey: currentHourIdempotencyKey,
+          aggregatedAt: null,
+        },
+      ]),
+    );
+
+    // Re-ingest into the already-aggregated hour: exact replacement must
+    // surface the additional output tokens on the next aggregation.
     mockNow(mainObservedAt);
+    const lateIdempotencyKey = randomUUID();
+    fixtureObservationKeys.push(lateIdempotencyKey);
     await webhooks.requestAgentModelUsageObservationV2(
       {
         runId: created.runId,
         events: [
           {
-            idempotencyKey: randomUUID(),
+            idempotencyKey: lateIdempotencyKey,
             model,
             inputTokens: 0,
             outputTokens: 50,
@@ -466,8 +554,132 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     const fallback = await api.readModelRankings("unsupported");
     expect(fallback.body.period).toBe("week");
 
-    // A failed rebuild must roll back the window DELETE. 1,024 maximum safe
-    // integers still fit in PostgreSQL bigint; the 1,025th overflows SUM.
+    // Pending complete-hour observations extend the internal rebuild window
+    // even when they are older than the public route's maximum hours value.
+    const oldPendingAt = aggregateAt - 769 * HOUR_MS + 10 * 60_000;
+    const oldPendingHourIso = new Date(
+      aggregateAt - 769 * HOUR_MS,
+    ).toISOString();
+    mockNow(oldPendingAt);
+    const oldPendingIdempotencyKey = randomUUID();
+    fixtureObservationKeys.push(oldPendingIdempotencyKey);
+    await webhooks.requestAgentModelUsageObservationV2(
+      {
+        runId: created.runId,
+        events: [
+          {
+            idempotencyKey: oldPendingIdempotencyKey,
+            model,
+            inputTokens: 17,
+            outputTokens: 0,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    mockNow(aggregateAt);
+    const extended = await api.requestAggregateModelStats("valid", 24, [200]);
+    expect(extended.body).toMatchObject({
+      success: true,
+      windowStart: oldPendingHourIso,
+      windowEnd: windowEndIso,
+    });
+    await expect(
+      readModelStatsObservations(context, [oldPendingIdempotencyKey]),
+    ).resolves.toStrictEqual([
+      {
+        idempotencyKey: oldPendingIdempotencyKey,
+        aggregatedAt: windowEndIso,
+      },
+    ]);
+    await expect(api.readModelRankings("today")).resolves.toMatchObject({
+      body: reprocessed.body,
+    });
+
+    // Both cron requests begin before this observation is committed. The
+    // transaction lock must serialize them without freezing a pre-lock
+    // REPEATABLE READ snapshot that would miss the newly committed row.
+    aggregationLockRequest = holdModelStatsAggregationLock(context);
+    await expect
+      .poll(
+        async () => {
+          return await readModelStatsAggregationLockState(context);
+        },
+        { timeout: 5000, interval: 20 },
+      )
+      .toMatchObject({ held: true });
+    const concurrentAggregations = [
+      api.requestAggregateModelStats("valid", 24, [200]),
+      api.requestAggregateModelStats("valid", 24, [200]),
+    ];
+    await expect
+      .poll(
+        async () => {
+          return (await readModelStatsAggregationLockState(context))
+            .waiterCount;
+        },
+        { timeout: 5000, interval: 20 },
+      )
+      .toBe(2);
+
+    mockNow(mainObservedAt);
+    const concurrentIdempotencyKey = randomUUID();
+    fixtureObservationKeys.push(concurrentIdempotencyKey);
+    await webhooks.requestAgentModelUsageObservationV2(
+      {
+        runId: created.runId,
+        events: [
+          {
+            idempotencyKey: concurrentIdempotencyKey,
+            model,
+            inputTokens: 0,
+            outputTokens: 25,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+
+    mockNow(aggregateAt);
+    await releaseModelStatsAggregationLock(context);
+    await aggregationLockRequest;
+    aggregationLockRequest = null;
+    const concurrentResults = await Promise.all(concurrentAggregations);
+    for (const result of concurrentResults) {
+      expect(result.body.success).toBeTruthy();
+    }
+
+    const afterConcurrent = await api.readModelRankings("today");
+    expect(
+      afterConcurrent.body.rows.find((row) => {
+        return row.model === model;
+      }),
+    ).toStrictEqual({
+      model,
+      inputTokens: baseRow.inputTokens + 350,
+      outputTokens: baseRow.outputTokens + 275,
+      totalTokens: baseRow.totalTokens + 625,
+      previousTotalTokens: baseRow.previousTotalTokens + 80,
+    });
+    expect(afterConcurrent.body.totalTokens).toBe(baseTotal + 625);
+    await expect(
+      readModelStatsObservations(context, [concurrentIdempotencyKey]),
+    ).resolves.toStrictEqual([
+      {
+        idempotencyKey: concurrentIdempotencyKey,
+        aggregatedAt: windowEndIso,
+      },
+    ]);
+
+    // A failed rebuild must roll back every statistic mutation. 1,024 maximum
+    // safe integers still fit in PostgreSQL bigint; the 1,025th overflows SUM.
+    // The observation markers must roll back with the stats replacement.
     mockNow(mainObservedAt);
     const overflowEvents = Array.from({ length: 1025 }, () => {
       return {
@@ -479,6 +691,11 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
         cacheCreationInputTokens: 0,
       };
     });
+    fixtureObservationKeys.push(
+      ...overflowEvents.map((event) => {
+        return event.idempotencyKey;
+      }),
+    );
     for (let offset = 0; offset < overflowEvents.length; offset += 100) {
       await webhooks.requestAgentModelUsageObservationV2(
         {
@@ -506,29 +723,63 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       error: "Internal server error",
     });
     const afterFailedRebuild = await api.readModelRankings("today");
-    expect(afterFailedRebuild.body).toStrictEqual(reprocessed.body);
+    expect(afterFailedRebuild.body).toStrictEqual(afterConcurrent.body);
+    const firstOverflowEvent = overflowEvents[0];
+    const lastOverflowEvent = overflowEvents.at(-1);
+    if (!firstOverflowEvent || !lastOverflowEvent) {
+      throw new Error("Expected overflow observation fixtures");
+    }
+    const overflowStates = await readModelStatsObservations(context, [
+      firstOverflowEvent.idempotencyKey,
+      lastOverflowEvent.idempotencyKey,
+    ]);
+    expect(overflowStates).toHaveLength(2);
+    expect(
+      overflowStates.every((observation) => {
+        return observation.aggregatedAt === null;
+      }),
+    ).toBeTruthy();
+    await deleteModelStatsObservations(
+      context,
+      overflowEvents.map((event) => {
+        return event.idempotencyKey;
+      }),
+    );
 
-    // Retention: 33 days later the cron deletes every observation at or
-    // before our day; the re-aggregation then empties the window's stats, so
-    // the strict empty read is safe even against colliding leftovers.
-    mockNow(dayStart + 33 * DAY_MS + 4 * HOUR_MS);
-    const retention = await api.requestAggregateModelStats(
+    // The projection lifecycle marker replaces observation retention. A
+    // later run still retains old source rows and can rebuild their stats.
+    const laterAggregateAt = dayStart + 33 * DAY_MS + 4 * HOUR_MS;
+    mockNow(laterAggregateAt);
+    const laterPreparation = await api.requestAggregateModelStats(
       "valid",
       undefined,
       [200],
     );
-    expect(retention.body.success).toBeTruthy();
+    expect(laterPreparation.body).toMatchObject({
+      success: true,
+      windowStart: windowEndIso,
+      windowEnd: new Date(laterAggregateAt).toISOString(),
+    });
+    const retainedStates = await readModelStatsObservations(context, [
+      compactIdempotencyKey,
+      previousIdempotencyKey,
+      zeroTokenIdempotencyKey,
+      currentHourIdempotencyKey,
+      lateIdempotencyKey,
+      oldPendingIdempotencyKey,
+      concurrentIdempotencyKey,
+    ]);
+    expect(retainedStates).toHaveLength(7);
+    expect(
+      retainedStates.every((observation) => {
+        return observation.aggregatedAt !== null;
+      }),
+    ).toBeTruthy();
 
     mockNow(aggregateAt);
     await api.requestAggregateModelStats("valid", 24, [200]);
-    const emptied = await api.readModelRankings("today");
-    expect(emptied.body).toStrictEqual({
-      period: "today",
-      totalTokens: 0,
-      windowStart: todayStartIso,
-      windowEnd: windowEndIso,
-      rows: [],
-    });
+    const rebuilt = await api.readModelRankings("today");
+    expect(rebuilt.body).toStrictEqual(afterConcurrent.body);
   });
 });
 
