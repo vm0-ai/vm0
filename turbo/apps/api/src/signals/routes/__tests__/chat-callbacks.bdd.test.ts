@@ -200,6 +200,9 @@ async function startChatRun(
     readonly userMessage?: UserMessageDocument;
     readonly revokesEventId?: string;
   },
+  options?: {
+    readonly onMessageAccepted?: () => void;
+  },
 ): Promise<{
   readonly runId: string;
   readonly threadId: string;
@@ -233,6 +236,9 @@ async function startChatRun(
   if (sent.status !== 201) {
     throw new Error("Expected the entitled chat send to create a run");
   }
+  // Concurrency tests may need to release competing work after the queue-first
+  // message commits but before this helper waits for its run replacement.
+  options?.onMessageAccepted?.();
   let runId: string | null | undefined = sent.body.runId;
   if (runId === null) {
     // A terminal callback may claim the queued row between enqueue and the
@@ -1799,12 +1805,20 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
 
     const userMessageId = randomUUID();
     const [userRun] = await Promise.all([
-      startChatRun(actor, {
-        agentId,
-        threadId: first.threadId,
-        prompt: "user message admitted during goal run preparation",
-        clientEventId: userMessageId,
-      }),
+      startChatRun(
+        actor,
+        {
+          agentId,
+          threadId: first.threadId,
+          prompt: "user message admitted during goal run preparation",
+          clientEventId: userMessageId,
+        },
+        {
+          onMessageAccepted: () => {
+            releaseGoalRunPreparation.release();
+          },
+        },
+      ),
       waitForThreadMessages(actor, first.threadId, (events) => {
         return events.some((event) => {
           return (
