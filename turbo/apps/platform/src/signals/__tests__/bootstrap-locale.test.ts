@@ -438,6 +438,16 @@ describe("bootstrap locale", () => {
     ).toBe("Akteure");
     expect(
       i18n.t(($) => {
+        return $.workflows.automations.github.addWorkflowDescription;
+      }),
+    ).toContain("GitHub Actions");
+    expect(
+      i18n.t(($) => {
+        return $.settings.models.stale.claudeFailed;
+      }),
+    ).toContain("Claude Code");
+    expect(
+      i18n.t(($) => {
         return $.workflows.automations.webhook.signedCurl;
       }),
     ).toBe("Signierter curl-Befehl");
