@@ -11,7 +11,7 @@ import pytest
 import firewall_auth_cache as auth_cache
 import firewall_auth_client as auth_client
 import registry as registry_cache
-from tests.auth_endpoint_helpers import FakeAuthEndpoint
+from tests.auth_endpoint_helpers import FakeAuthEndpoint, firewall_auth_success_response
 from tests.auth_state_helpers import (
     auth_cache_key,
     cached_headers,
@@ -45,10 +45,10 @@ class TestFirewallHeaderCache:
         endpoint = FakeAuthEndpoint()
         release_response = threading.Event()
         endpoint.queue_json_response(
-            {
-                "headers": {"Authorization": "Bearer token"},
-                "expiresAt": time.time() + 3600,
-            },
+            firewall_auth_success_response(
+                {"Authorization": "Bearer token"},
+                expires_at=time.time() + 3600,
+            ),
             release_event=release_response,
         )
 
@@ -91,10 +91,10 @@ class TestFirewallHeaderCache:
         endpoint = FakeAuthEndpoint()
         release_response = threading.Event()
         endpoint.queue_json_response(
-            {
-                "headers": {"Authorization": "Bearer refreshed"},
-                "expiresAt": time.time() + 3600,
-            },
+            firewall_auth_success_response(
+                {"Authorization": "Bearer refreshed"},
+                expires_at=time.time() + 3600,
+            ),
             release_event=release_response,
         )
         cache_key = auth_cache_key()
@@ -143,10 +143,10 @@ class TestFirewallHeaderCache:
         release_failure = threading.Event()
         endpoint.queue_response(500, body=b"not-json", release_event=release_failure)
         endpoint.queue_json_response(
-            {
-                "headers": {"Authorization": "Bearer retry"},
-                "expiresAt": time.time() + 3600,
-            }
+            firewall_auth_success_response(
+                {"Authorization": "Bearer retry"},
+                expires_at=time.time() + 3600,
+            )
         )
         cache_key = auth_cache_key()
         auth_request = _firewall_auth_request(auth_headers={"Authorization": "template"})
@@ -193,16 +193,16 @@ class TestFirewallHeaderCache:
         """Different auth cache keys should fetch independently."""
         endpoint = FakeAuthEndpoint()
         endpoint.queue_json_response(
-            {
-                "headers": {"Authorization": "Bearer token-1"},
-                "expiresAt": time.time() + 3600,
-            }
+            firewall_auth_success_response(
+                {"Authorization": "Bearer token-1"},
+                expires_at=time.time() + 3600,
+            )
         )
         endpoint.queue_json_response(
-            {
-                "headers": {"Authorization": "Bearer token-2"},
-                "expiresAt": time.time() + 3600,
-            }
+            firewall_auth_success_response(
+                {"Authorization": "Bearer token-2"},
+                expires_at=time.time() + 3600,
+            )
         )
 
         with endpoint.run(), mitm_ctx(api_url=endpoint.api_url):
@@ -229,16 +229,16 @@ class TestFirewallHeaderCache:
         """Same run/api pairs with different auth inputs must not share headers."""
         endpoint = FakeAuthEndpoint()
         endpoint.queue_json_response(
-            {
-                "headers": {"Authorization": "Bearer explicit"},
-                "expiresAt": time.time() + 3600,
-            }
+            firewall_auth_success_response(
+                {"Authorization": "Bearer explicit"},
+                expires_at=time.time() + 3600,
+            )
         )
         endpoint.queue_json_response(
-            {
-                "headers": {"Authorization": "Bearer default"},
-                "expiresAt": time.time() + 3600,
-            }
+            firewall_auth_success_response(
+                {"Authorization": "Bearer default"},
+                expires_at=time.time() + 3600,
+            )
         )
 
         explicit_key = auth_cache_key(auth_identity="explicit-permission")
@@ -293,10 +293,10 @@ class TestFirewallHeaderCache:
         endpoint = FakeAuthEndpoint()
         endpoint.queue_response(500, body=b"not-json")
         endpoint.queue_json_response(
-            {
-                "headers": {"Authorization": "Bearer retry"},
-                "expiresAt": time.time() + 3600,
-            }
+            firewall_auth_success_response(
+                {"Authorization": "Bearer retry"},
+                expires_at=time.time() + 3600,
+            )
         )
         auth_request = _firewall_auth_request(auth_headers={"Authorization": "template"})
 

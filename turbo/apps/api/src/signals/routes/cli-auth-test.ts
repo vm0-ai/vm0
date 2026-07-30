@@ -234,24 +234,24 @@ const createTestConnector$ = command(
       }
       return stringError(
         400,
-        "connectorName, authMethod, and accessToken are required",
+        "connectorSlug, authMethod, and accessToken are required",
       );
     }
 
     const connectorParsed = connectorSlugSchema.safeParse(
-      bodyResult.data.connectorName,
+      bodyResult.data.connectorSlug,
     );
     if (!connectorParsed.success) {
       return stringError(
         400,
-        `Unknown connector type: "${bodyResult.data.connectorName}"`,
+        `Unknown connector slug: "${bodyResult.data.connectorSlug}"`,
       );
     }
     const connectorSlug = connectorParsed.data;
     const snapshot = await loadConnectorRuntimeSnapshot(get(db$));
     signal.throwIfAborted();
     if (getConnectorRuntimeConnector(snapshot, connectorSlug) === undefined) {
-      return stringError(400, `Unknown connector type: "${connectorSlug}"`);
+      return stringError(400, `Unknown connector slug: "${connectorSlug}"`);
     }
 
     const query = get(testConnectorQuery$);
@@ -276,7 +276,7 @@ const createTestConnector$ = command(
     });
     signal.throwIfAborted();
     if (!resolvedSlug.ok) {
-      return stringError(400, `Unknown connector type: "${connectorSlug}"`);
+      return stringError(400, `Unknown connector slug: "${connectorSlug}"`);
     }
     const catalogMethod =
       resolvedSlug.runtimeConnector.catalogConnector.authMethods.find(
@@ -340,7 +340,7 @@ const createTestConnector$ = command(
 
     return {
       status: 200 as const,
-      body: { ok: true as const, connectorType: connectorSlug, orgId },
+      body: { ok: true as const, connectorSlug, orgId },
     };
   },
 );
@@ -360,16 +360,16 @@ const enableTestConnectors$ = command(
       ) {
         return stringError(400, "Invalid JSON body");
       }
-      return stringError(400, "composeId and connectorTypes are required");
+      return stringError(400, "composeId and connectorSlugs are required");
     }
 
     const { connectorSlugs, invalidConnectorSlugs } = parseConnectorSlugs(
-      bodyResult.data.connectorTypes,
+      bodyResult.data.connectorSlugs,
     );
     if (invalidConnectorSlugs.length > 0) {
       return stringError(
         400,
-        `Unknown connector types: ${invalidConnectorSlugs.join(", ")}`,
+        `Unknown connector slugs: ${invalidConnectorSlugs.join(", ")}`,
       );
     }
 
@@ -383,7 +383,7 @@ const enableTestConnectors$ = command(
     if (unknownConnectorSlug !== undefined) {
       return stringError(
         400,
-        `Unknown connector types: ${unknownConnectorSlug}`,
+        `Unknown connector slugs: ${unknownConnectorSlug}`,
       );
     }
 
@@ -410,7 +410,7 @@ const enableTestConnectors$ = command(
     if (!resolvedSlugs.ok) {
       return stringError(
         400,
-        `Unknown connector types: ${resolvedSlugs.connectorSlug}`,
+        `Unknown connector slugs: ${resolvedSlugs.connectorSlug}`,
       );
     }
 
@@ -475,7 +475,7 @@ const enableTestConnectors$ = command(
       body: {
         ok: true as const,
         composeId: bodyResult.data.composeId,
-        connectorTypes: connectorSlugs,
+        connectorSlugs,
       },
     };
   },

@@ -160,6 +160,18 @@ describe("chat message response contract", () => {
     );
   });
 
+  it("accepts thread draft responses without the legacy content projection", () => {
+    const response = {
+      draftUserMessage: {
+        version: 1 as const,
+        parts: [{ type: "text" as const, text: "Resume the draft" }],
+      },
+      draftAttachments: null,
+    };
+
+    expect(chatThreadDraftSchema.parse(response)).toStrictEqual(response);
+  });
+
   it("requires userMessage for non-empty thread drafts", () => {
     expect(
       chatThreadByIdContract.patch.body.safeParse({

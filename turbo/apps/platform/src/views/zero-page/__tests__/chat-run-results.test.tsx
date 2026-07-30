@@ -971,6 +971,67 @@ describe("chat lifecycle", () => {
     expect(document.documentElement.lang).toBe("pt-BR");
   });
 
+  it("formats completed-run timestamps with the selected Japanese locale", async () => {
+    const completedAt = "2026-06-09T10:00:21Z";
+    const completedAtLabel = new Date(completedAt).toLocaleString("ja-JP", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    context.mocks.data.userPreferences({ locale: "ja-JP" });
+    mockChatLifecycle(context, {
+      threadId: "thread-japanese-completed-run",
+      chatEvents: [
+        {
+          role: "user",
+          content: "リリース計画を準備してください",
+          runId: "run-japanese-completed-run",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "リリース計画が完了しました。",
+          runId: "run-japanese-completed-run",
+          createdAt: "2026-06-09T10:00:20Z",
+        },
+        {
+          role: "assistant",
+          content: null,
+          runId: "run-japanese-completed-run",
+          runLifecycleEvent: "completed",
+          createdAt: completedAt,
+        },
+        {
+          role: "assistant",
+          content: null,
+          runId: "run-japanese-completed-run",
+          recommendedFollowups: [
+            {
+              prompt: "プレゼンテーションに変換する",
+              kind: "generate",
+              generationType: "presentation",
+            },
+          ],
+          createdAt: "2026-06-09T10:00:30Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-japanese-completed-run",
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
+    });
+
+    await expect(
+      screen.findByText(`続ける · ${completedAtLabel}`),
+    ).resolves.toBeInTheDocument();
+    expect(document.documentElement.lang).toBe("ja-JP");
+  });
+
   it("does not let an attached lifecycle marker hide the final answer", async () => {
     mockChatLifecycle(context, {
       threadId: "thread-work-folding-completion-marker",

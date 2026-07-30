@@ -13,6 +13,7 @@
 //! - `job_discovery`: discovery branch handling and idle-reuse admission.
 //! - `job_lifecycle`: cleanup, budget, and completion ownership state.
 //! - `job_spawn`: claimed job task spawning, completion, and panic cleanup.
+//! - `job_terminal_log`: terminal outcome tracing and diagnostic projection.
 //! - `mitm_restart`: mitmproxy crash restart and backoff.
 //! - `orphan_reap`: orphan active-run reconciliation.
 //! - `ownership`: active/idle/orphan ownership transition ordering.
@@ -80,6 +81,7 @@ mod idle_lifecycle;
 mod job_discovery;
 mod job_lifecycle;
 mod job_spawn;
+mod job_terminal_log;
 mod mitm_restart;
 mod orphan_reap;
 mod ownership;

@@ -2249,7 +2249,7 @@ describe("connector catalog valid lifecycle", () => {
     await firewall.provisionRunReadyOrg(actor);
     const callsBeforeSeed = context.mocks.s3.send.mock.calls.length;
     await firewall.seedTestConnector(actor, {
-      connectorName: "test-oauth-device",
+      connectorSlug: "test-oauth-device",
       authMethod: "oauth",
       accessToken: "catalog-cli-access-token",
     });

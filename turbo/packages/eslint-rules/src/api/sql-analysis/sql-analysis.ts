@@ -12,8 +12,10 @@ import {
   isIdentifier,
   isNonNullExpression,
   isParenthesizedExpression,
+  isPropertyAccessExpression,
   isSatisfiesExpression,
   isSpreadElement,
+  isStringLiteral,
   isVariableDeclaration,
   isVariableDeclarationList,
   IndexKind,
@@ -187,6 +189,7 @@ type SqlHelper =
   | "sumDistinct";
 
 interface SqlMarker {
+  readonly aggregateHelper: AggregateHelper | undefined;
   readonly chunk: SqlSourceChunk;
   readonly columnMetadata:
     | Readonly<
@@ -210,10 +213,12 @@ interface SqlMarker {
   readonly isWrapper: boolean;
   readonly node: TSESTree.Expression;
   readonly tableMetadata: DrizzleTableMetadata | undefined;
+  readonly tableAlias: SqlTableAlias | undefined;
 }
 
 interface ParsedSql {
   readonly markers: ReadonlyMap<string, SqlMarker>;
+  readonly schemaColumns: ReadonlyMap<Record<string, unknown>, SqlSchemaColumn>;
   readonly sourceRanges: readonly SqlSourceRange[];
   readonly statement: unknown;
 }
@@ -229,6 +234,18 @@ interface SqlSourceRange {
   readonly start: number;
 }
 
+interface SqlSchemaColumn {
+  readonly alias: string;
+  readonly column: DrizzleTableColumnMetadata;
+  readonly relationMarker: SqlMarker;
+  readonly tableMarker: SqlMarker;
+}
+
+interface SqlTableAlias {
+  readonly name: string;
+  readonly sourceSymbol: TypeScriptSymbol;
+}
+
 type StructuralExpression = (
   | {
       readonly children: readonly StructuralExpression[];
@@ -241,6 +258,10 @@ type StructuralExpression = (
   | {
       readonly kind: "marker";
       readonly marker: SqlMarker;
+    }
+  | {
+      readonly kind: "schema-column";
+      readonly schemaColumn: SqlSchemaColumn;
     }
   | {
       readonly kind: "comparison";
@@ -538,6 +559,78 @@ function markerTableMetadata(
 ): DrizzleTableMetadata | undefined {
   const tsNode = services.esTreeNodeToTSNodeMap.get(node);
   return getDrizzleTableMetadataForWrite(checker, tsNode);
+}
+
+function markerTableAlias(
+  node: TSESTree.Expression,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+): SqlTableAlias | undefined {
+  const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+  const local = localConstInitializer(
+    checker,
+    tsNode,
+    tsNode.getSourceFile(),
+    new Set(),
+  );
+  if (local === undefined) {
+    return undefined;
+  }
+  const initializer = unwrapWriteInterpolationExpression(local.initializer);
+  if (
+    !isCallExpression(initializer) ||
+    drizzleCallName(checker, initializer) !== "alias" ||
+    initializer.arguments.length !== 2
+  ) {
+    return undefined;
+  }
+  const source = initializer.arguments[0];
+  const name = initializer.arguments[1];
+  if (
+    source === undefined ||
+    name === undefined ||
+    isSpreadElement(source) ||
+    isSpreadElement(name) ||
+    !isStringLiteral(name)
+  ) {
+    return undefined;
+  }
+  const sourceExpression = unwrapWriteInterpolationExpression(source);
+  const symbolNode = isPropertyAccessExpression(sourceExpression)
+    ? sourceExpression.name
+    : sourceExpression;
+  const sourceSymbol = resolvedSymbol(
+    checker,
+    checker.getSymbolAtLocation(symbolNode),
+  );
+  const metadata = getDrizzleTableMetadataForWrite(checker, tsNode);
+  return sourceSymbol === undefined || metadata?.name !== name.text
+    ? undefined
+    : { name: name.text, sourceSymbol };
+}
+
+function markerAggregateHelper(
+  node: TSESTree.Expression,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+): AggregateHelper | undefined {
+  const tsNode = unwrapWriteInterpolationExpression(
+    services.esTreeNodeToTSNodeMap.get(node),
+  );
+  if (!isCallExpression(tsNode)) {
+    return undefined;
+  }
+  const helper = drizzleCallName(checker, tsNode);
+  return helper === "avg" ||
+    helper === "avgDistinct" ||
+    helper === "count" ||
+    helper === "countDistinct" ||
+    helper === "max" ||
+    helper === "min" ||
+    helper === "sum" ||
+    helper === "sumDistinct"
+    ? helper
+    : undefined;
 }
 
 function markerIsColumn(
@@ -1060,6 +1153,7 @@ function parseSqlVariant(
       selectCandidateNames.add(name);
     }
     precedingLiteral = "";
+    let cachedAggregateHelper: AggregateHelper | null | undefined;
     let cachedArrayParameter: boolean | undefined;
     let cachedArrayOperand: boolean | undefined;
     let cachedBoundScalar: boolean | undefined;
@@ -1072,9 +1166,15 @@ function parseSqlVariant(
     let cachedAnalyzableWriteInterpolation: boolean | undefined;
     let cachedStringOrWrapper: boolean | undefined;
     let cachedTable: boolean | undefined;
+    let cachedTableAlias: SqlTableAlias | null | undefined;
     let cachedTableMetadata: DrizzleTableMetadata | null | undefined;
     let cachedWrapper: boolean | undefined;
     const marker: SqlMarker = {
+      get aggregateHelper(): AggregateHelper | undefined {
+        cachedAggregateHelper ??=
+          markerAggregateHelper(expression, checker, services) ?? null;
+        return cachedAggregateHelper ?? undefined;
+      },
       chunk,
       get columnMetadata(): SqlMarker["columnMetadata"] {
         cachedColumnMetadata ??=
@@ -1157,6 +1257,11 @@ function parseSqlVariant(
           markerTableMetadata(expression, checker, services) ?? null;
         return cachedTableMetadata ?? undefined;
       },
+      get tableAlias(): SqlTableAlias | undefined {
+        cachedTableAlias ??=
+          markerTableAlias(expression, checker, services) ?? null;
+        return cachedTableAlias ?? undefined;
+      },
     };
     markers.set(name, marker);
   }
@@ -1181,13 +1286,16 @@ function parseSqlVariant(
         if (name === undefined) {
           return { source: "", sourceRanges: [] };
         }
+        const marker = markers.get(name);
         const markerIdentifier = `"${name}"`;
         chunkSource =
-          useSelectMarkers &&
-          selectCandidateNames.has(name) &&
-          markers.get(name)?.isSelect === true
-            ? `(SELECT ${markerIdentifier})`
-            : markerIdentifier;
+          marker?.aggregateHelper !== undefined
+            ? `${markerIdentifier}()`
+            : useSelectMarkers &&
+                selectCandidateNames.has(name) &&
+                marker?.isSelect === true
+              ? `(SELECT ${markerIdentifier})`
+              : markerIdentifier;
       }
       source += chunkSource;
       if (trackSourceRanges) {
@@ -1208,9 +1316,15 @@ function parseSqlVariant(
     return null;
   }
   const statement = parseResult.statements[0];
-  return statement === undefined
-    ? null
-    : { markers, sourceRanges: rendered.sourceRanges, statement };
+  if (statement === undefined) {
+    return null;
+  }
+  return {
+    markers,
+    schemaColumns: resolveSchemaColumns(statement, markers),
+    sourceRanges: rendered.sourceRanges,
+    statement,
+  };
 }
 
 function stringNodeValue(value: unknown): string | undefined {
@@ -1238,6 +1352,24 @@ function columnMarker(
   return name === undefined ? undefined : markers.get(name);
 }
 
+function aggregateMarkerCall(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+):
+  | {
+      readonly call: Record<string, unknown>;
+      readonly marker: SqlMarker;
+    }
+  | undefined {
+  const call = recordProperty(value, "FuncCall");
+  const names = functionName(value);
+  if (call === undefined || names?.length !== 1 || Array.isArray(call.args)) {
+    return undefined;
+  }
+  const marker = markers.get(names[0] ?? "");
+  return marker?.aggregateHelper === undefined ? undefined : { call, marker };
+}
+
 function relationMarker(
   value: unknown,
   markers: ReadonlyMap<string, SqlMarker>,
@@ -1253,6 +1385,403 @@ function relationMarker(
     return undefined;
   }
   return markers.get(rangeVar.relname);
+}
+
+type RelationBinding =
+  | {
+      readonly kind: "opaque";
+    }
+  | {
+      readonly kind: "schema";
+      readonly relationMarker: SqlMarker;
+      readonly tableMarker: SqlMarker;
+      readonly metadata: DrizzleTableMetadata;
+    };
+
+interface RelationScope {
+  readonly bindings: ReadonlyMap<string, RelationBinding>;
+  readonly parent: RelationScope | undefined;
+}
+
+const OPAQUE_RELATION_BINDING: RelationBinding = { kind: "opaque" };
+
+function scopeRangeVarPayload(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  const wrapped = recordProperty(value, "RangeVar");
+  if (wrapped !== undefined) {
+    return wrapped;
+  }
+  return isRecord(value) && typeof value.relname === "string"
+    ? value
+    : undefined;
+}
+
+function relationAliasName(value: unknown): string | undefined {
+  return isRecord(value) && typeof value.aliasname === "string"
+    ? value.aliasname
+    : undefined;
+}
+
+function directRelationAliasName(value: unknown): string | undefined {
+  return isRecord(value) &&
+    typeof value.aliasname === "string" &&
+    hasOnlyKeys(value, new Set(["aliasname"]))
+    ? value.aliasname
+    : undefined;
+}
+
+function addRelationBinding(
+  bindings: Map<string, RelationBinding>,
+  name: string,
+  binding: RelationBinding,
+): void {
+  bindings.set(name, bindings.has(name) ? OPAQUE_RELATION_BINDING : binding);
+}
+
+function mergeRelationBindings(
+  target: Map<string, RelationBinding>,
+  source: ReadonlyMap<string, RelationBinding>,
+): void {
+  for (const [name, binding] of source) {
+    addRelationBinding(target, name, binding);
+  }
+}
+
+function rangeVarBinding(
+  rangeVar: Record<string, unknown>,
+  markers: ReadonlyMap<string, SqlMarker>,
+): readonly [string, RelationBinding] | undefined {
+  if (typeof rangeVar.relname !== "string") {
+    return undefined;
+  }
+  const parsedAlias = directRelationAliasName(rangeVar.alias);
+  if (parsedAlias === undefined) {
+    const exposedName = relationAliasName(rangeVar.alias) ?? rangeVar.relname;
+    return [exposedName, OPAQUE_RELATION_BINDING];
+  }
+  const relationMarker = markers.get(rangeVar.relname);
+  if (relationMarker?.isTable !== true) {
+    return [parsedAlias, OPAQUE_RELATION_BINDING];
+  }
+  const aliasMarker = markers.get(parsedAlias);
+  const tableAlias = aliasMarker?.tableAlias;
+  const isMatchingAliasMarker =
+    tableAlias !== undefined &&
+    tableAlias.sourceSymbol === relationMarker.expressionSymbol;
+  const exposedName = isMatchingAliasMarker ? tableAlias.name : parsedAlias;
+  const tableMarker =
+    isMatchingAliasMarker && aliasMarker !== undefined
+      ? aliasMarker
+      : relationMarker;
+  const metadata = tableMarker.tableMetadata;
+  return metadata === undefined
+    ? [exposedName, OPAQUE_RELATION_BINDING]
+    : [
+        exposedName,
+        {
+          kind: "schema",
+          metadata,
+          relationMarker,
+          tableMarker,
+        },
+      ];
+}
+
+function relationBindings(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+): ReadonlyMap<string, RelationBinding> {
+  const bindings = new Map<string, RelationBinding>();
+  const rangeVar = scopeRangeVarPayload(value);
+  if (rangeVar !== undefined) {
+    const entry = rangeVarBinding(rangeVar, markers);
+    if (entry !== undefined) {
+      addRelationBinding(bindings, entry[0], entry[1]);
+    }
+    return bindings;
+  }
+
+  const join = recordProperty(value, "JoinExpr");
+  if (join !== undefined) {
+    const alias = relationAliasName(join.alias);
+    if (alias !== undefined) {
+      addRelationBinding(bindings, alias, OPAQUE_RELATION_BINDING);
+      return bindings;
+    }
+    mergeRelationBindings(bindings, relationBindings(join.larg, markers));
+    mergeRelationBindings(bindings, relationBindings(join.rarg, markers));
+    return bindings;
+  }
+
+  const subselect = recordProperty(value, "RangeSubselect");
+  if (subselect !== undefined) {
+    const alias = relationAliasName(subselect.alias);
+    if (alias !== undefined) {
+      addRelationBinding(bindings, alias, OPAQUE_RELATION_BINDING);
+    }
+    return bindings;
+  }
+
+  const rangeFunction = recordProperty(value, "RangeFunction");
+  if (rangeFunction !== undefined) {
+    const alias = relationAliasName(rangeFunction.alias);
+    if (alias !== undefined) {
+      addRelationBinding(bindings, alias, OPAQUE_RELATION_BINDING);
+    }
+  }
+  return bindings;
+}
+
+function hasPotentialSchemaAlias(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+): boolean {
+  if (Array.isArray(value)) {
+    return value.some((item) => {
+      return hasPotentialSchemaAlias(item, markers);
+    });
+  }
+  if (!isRecord(value)) {
+    return false;
+  }
+  const rangeVar = scopeRangeVarPayload(value);
+  if (
+    rangeVar !== undefined &&
+    typeof rangeVar.relname === "string" &&
+    directRelationAliasName(rangeVar.alias) !== undefined &&
+    markers.has(rangeVar.relname)
+  ) {
+    return true;
+  }
+  return Object.values(value).some((item) => {
+    return hasPotentialSchemaAlias(item, markers);
+  });
+}
+
+function resolveSchemaColumns(
+  statement: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+): ReadonlyMap<Record<string, unknown>, SqlSchemaColumn> {
+  const columns = new Map<Record<string, unknown>, SqlSchemaColumn>();
+  if (!hasPotentialSchemaAlias(statement, markers)) {
+    return columns;
+  }
+
+  function scopeForRelations(
+    relations: readonly unknown[],
+    parent: RelationScope | undefined,
+  ): RelationScope {
+    const bindings = new Map<string, RelationBinding>();
+    for (const relation of relations) {
+      mergeRelationBindings(bindings, relationBindings(relation, markers));
+    }
+    return { bindings, parent };
+  }
+
+  function resolveColumn(
+    columnRef: Record<string, unknown>,
+    scope: RelationScope | undefined,
+  ): void {
+    if (
+      !Array.isArray(columnRef.fields) ||
+      columnRef.fields.length !== 2 ||
+      !hasOnlyKeys(columnRef, new Set(["fields", "location"]))
+    ) {
+      return;
+    }
+    const alias = stringNodeValue(columnRef.fields[0]);
+    const databaseName = stringNodeValue(columnRef.fields[1]);
+    if (alias === undefined || databaseName === undefined) {
+      return;
+    }
+    let current = scope;
+    while (current !== undefined) {
+      const binding = current.bindings.get(alias);
+      if (binding !== undefined) {
+        if (binding.kind === "schema") {
+          const column = binding.metadata.columns.get(databaseName);
+          if (column !== undefined) {
+            columns.set(columnRef, {
+              alias,
+              column,
+              relationMarker: binding.relationMarker,
+              tableMarker: binding.tableMarker,
+            });
+          }
+        }
+        return;
+      }
+      current = current.parent;
+    }
+  }
+
+  function visitWithClause(
+    value: unknown,
+    parent: RelationScope | undefined,
+  ): void {
+    if (!isRecord(value) || !Array.isArray(value.ctes)) {
+      return;
+    }
+    for (const item of value.ctes) {
+      const expression = recordProperty(item, "CommonTableExpr");
+      if (expression?.ctequery !== undefined) {
+        visit(expression.ctequery, parent);
+      }
+    }
+  }
+
+  function visitFromItem(value: unknown, scope: RelationScope): void {
+    const join = recordProperty(value, "JoinExpr");
+    if (join !== undefined) {
+      const alias = relationAliasName(join.alias);
+      if (alias === undefined) {
+        visit(join.quals, scope);
+      } else {
+        const inputBindings = new Map<string, RelationBinding>();
+        mergeRelationBindings(
+          inputBindings,
+          relationBindings(join.larg, markers),
+        );
+        mergeRelationBindings(
+          inputBindings,
+          relationBindings(join.rarg, markers),
+        );
+        visit(join.quals, { bindings: inputBindings, parent: scope.parent });
+      }
+      visitFromItem(join.larg, scope);
+      visitFromItem(join.rarg, scope);
+      return;
+    }
+
+    const subselect = recordProperty(value, "RangeSubselect");
+    if (subselect?.subquery !== undefined) {
+      visit(
+        subselect.subquery,
+        subselect.lateral === true ? scope : scope.parent,
+      );
+      return;
+    }
+
+    const rangeFunction = recordProperty(value, "RangeFunction");
+    if (rangeFunction !== undefined) {
+      for (const [key, child] of Object.entries(rangeFunction)) {
+        if (key !== "alias") {
+          visit(child, scope);
+        }
+      }
+    }
+  }
+
+  function visitSelect(
+    select: Record<string, unknown>,
+    parent: RelationScope | undefined,
+  ): void {
+    const fromClause = Array.isArray(select.fromClause)
+      ? select.fromClause
+      : [];
+    const scope = scopeForRelations(fromClause, parent);
+    visitWithClause(select.withClause, parent);
+    for (const relation of fromClause) {
+      visitFromItem(relation, scope);
+    }
+    for (const [key, child] of Object.entries(select)) {
+      if (key === "fromClause" || key === "withClause") {
+        continue;
+      }
+      visit(child, key === "larg" || key === "rarg" ? parent : scope);
+    }
+  }
+
+  function visitUpdate(
+    update: Record<string, unknown>,
+    parent: RelationScope | undefined,
+  ): void {
+    const relations = [
+      update.relation,
+      ...(Array.isArray(update.fromClause) ? update.fromClause : []),
+    ].filter((item) => {
+      return item !== undefined;
+    });
+    const scope = scopeForRelations(relations, parent);
+    visitWithClause(update.withClause, parent);
+    for (const relation of relations.slice(1)) {
+      visitFromItem(relation, scope);
+    }
+    for (const [key, child] of Object.entries(update)) {
+      if (key !== "relation" && key !== "fromClause" && key !== "withClause") {
+        visit(child, scope);
+      }
+    }
+  }
+
+  function visitDelete(
+    deletion: Record<string, unknown>,
+    parent: RelationScope | undefined,
+  ): void {
+    const relations = [
+      deletion.relation,
+      ...(Array.isArray(deletion.usingClause) ? deletion.usingClause : []),
+    ].filter((item) => {
+      return item !== undefined;
+    });
+    const scope = scopeForRelations(relations, parent);
+    visitWithClause(deletion.withClause, parent);
+    for (const relation of relations.slice(1)) {
+      visitFromItem(relation, scope);
+    }
+    for (const [key, child] of Object.entries(deletion)) {
+      if (key !== "relation" && key !== "usingClause" && key !== "withClause") {
+        visit(child, scope);
+      }
+    }
+  }
+
+  function visit(value: unknown, scope: RelationScope | undefined): void {
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        visit(item, scope);
+      }
+      return;
+    }
+    if (!isRecord(value)) {
+      return;
+    }
+    const columnRef = recordProperty(value, "ColumnRef");
+    if (columnRef !== undefined) {
+      resolveColumn(columnRef, scope);
+      return;
+    }
+    const select = recordProperty(value, "SelectStmt");
+    if (select !== undefined) {
+      visitSelect(select, scope);
+      return;
+    }
+    const update = recordProperty(value, "UpdateStmt");
+    if (update !== undefined) {
+      visitUpdate(update, scope);
+      return;
+    }
+    const deletion = recordProperty(value, "DeleteStmt");
+    if (deletion !== undefined) {
+      visitDelete(deletion, scope);
+      return;
+    }
+    const subselect = recordProperty(value, "RangeSubselect");
+    if (subselect?.subquery !== undefined) {
+      visit(
+        subselect.subquery,
+        subselect.lateral === true ? scope : scope?.parent,
+      );
+      return;
+    }
+    for (const child of Object.values(value)) {
+      visit(child, scope);
+    }
+  }
+
+  visit(statement, undefined);
+  return columns;
 }
 
 function operatorName(value: unknown): string | undefined {
@@ -1312,6 +1841,7 @@ function mergeSourceChunks(
 function collectStructuralExpressions(
   value: unknown,
   markers: ReadonlyMap<string, SqlMarker>,
+  schemaColumns: ReadonlyMap<Record<string, unknown>, SqlSchemaColumn>,
   sourceRanges: readonly SqlSourceRange[],
 ): StructuralExpression[] {
   const expressions: StructuralExpression[] = [];
@@ -1327,7 +1857,9 @@ function collectStructuralExpressions(
       return;
     }
     if (isExpressionNode(current)) {
-      expressions.push(structuralExpression(current, markers, sourceRanges));
+      expressions.push(
+        structuralExpression(current, markers, schemaColumns, sourceRanges),
+      );
       return;
     }
     for (const child of Object.values(current)) {
@@ -1399,6 +1931,7 @@ function opaqueNodeKey(value: unknown): string {
 function structuralExpression(
   value: unknown,
   markers: ReadonlyMap<string, SqlMarker>,
+  schemaColumns: ReadonlyMap<Record<string, unknown>, SqlSchemaColumn>,
   sourceRanges: readonly SqlSourceRange[],
 ): StructuralExpression {
   const marker = columnMarker(value, markers);
@@ -1409,10 +1942,60 @@ function structuralExpression(
       sourceChunks: new Set([marker.chunk]),
     };
   }
+  const columnRef = recordProperty(value, "ColumnRef");
+  const schemaColumn =
+    columnRef === undefined ? undefined : schemaColumns.get(columnRef);
+  if (schemaColumn !== undefined) {
+    return {
+      kind: "schema-column",
+      schemaColumn,
+      sourceChunks: new Set([
+        ...ownSourceChunks(value, sourceRanges),
+        schemaColumn.relationMarker.chunk,
+        schemaColumn.tableMarker.chunk,
+      ]),
+    };
+  }
   if (recordProperty(value, "A_Const") !== undefined) {
     return {
       kind: "constant",
       sourceChunks: ownSourceChunks(value, sourceRanges),
+    };
+  }
+  const aggregateMarker = aggregateMarkerCall(value, markers);
+  if (aggregateMarker !== undefined) {
+    const children = collectStructuralExpressions(
+      [
+        aggregateMarker.call.agg_filter,
+        aggregateMarker.call.agg_order,
+        aggregateMarker.call.over,
+      ],
+      markers,
+      schemaColumns,
+      sourceRanges,
+    );
+    if (children.length === 0) {
+      return {
+        kind: "marker",
+        marker: aggregateMarker.marker,
+        sourceChunks: new Set([aggregateMarker.marker.chunk]),
+      };
+    }
+    return {
+      children: [
+        {
+          kind: "marker",
+          marker: aggregateMarker.marker,
+          sourceChunks: new Set([aggregateMarker.marker.chunk]),
+        },
+        ...children,
+      ],
+      kind: "opaque",
+      nodeKey: opaqueNodeKey(value),
+      sourceChunks: mergeSourceChunks(
+        ownSourceChunks(value, sourceRanges),
+        children,
+      ),
     };
   }
 
@@ -1424,8 +2007,18 @@ function structuralExpression(
     binary.lexpr !== undefined &&
     binary.rexpr !== undefined
   ) {
-    const left = structuralExpression(binary.lexpr, markers, sourceRanges);
-    const right = structuralExpression(binary.rexpr, markers, sourceRanges);
+    const left = structuralExpression(
+      binary.lexpr,
+      markers,
+      schemaColumns,
+      sourceRanges,
+    );
+    const right = structuralExpression(
+      binary.rexpr,
+      markers,
+      schemaColumns,
+      sourceRanges,
+    );
     const own = ownSourceChunks(value, sourceRanges);
     if (binary.kind === "AEXPR_LIKE" || binary.kind === "AEXPR_ILIKE") {
       const helper = PATTERN_HELPERS.get(binaryOperator);
@@ -1441,10 +2034,20 @@ function structuralExpression(
           rightNames[1] === "like_escape" &&
           rightArguments?.length === 2;
         const pattern = hasEscape
-          ? structuralExpression(rightArguments?.[0], markers, sourceRanges)
+          ? structuralExpression(
+              rightArguments?.[0],
+              markers,
+              schemaColumns,
+              sourceRanges,
+            )
           : right;
         const escape = hasEscape
-          ? structuralExpression(rightArguments?.[1], markers, sourceRanges)
+          ? structuralExpression(
+              rightArguments?.[1],
+              markers,
+              schemaColumns,
+              sourceRanges,
+            )
           : undefined;
         return {
           escape,
@@ -1485,7 +2088,7 @@ function structuralExpression(
       (binaryOperator === "=" || binaryOperator === "<>")
     ) {
       const values = items.map((item) => {
-        return structuralExpression(item, markers, sourceRanges);
+        return structuralExpression(item, markers, schemaColumns, sourceRanges);
       });
       return {
         helper: binaryOperator === "=" ? "inArray" : "notInArray",
@@ -1500,8 +2103,18 @@ function structuralExpression(
         binary.kind === "AEXPR_NOT_BETWEEN") &&
       items?.length === 2
     ) {
-      const minimum = structuralExpression(items[0], markers, sourceRanges);
-      const maximum = structuralExpression(items[1], markers, sourceRanges);
+      const minimum = structuralExpression(
+        items[0],
+        markers,
+        schemaColumns,
+        sourceRanges,
+      );
+      const maximum = structuralExpression(
+        items[1],
+        markers,
+        schemaColumns,
+        sourceRanges,
+      );
       return {
         helper: binary.kind === "AEXPR_BETWEEN" ? "between" : "notBetween",
         kind: "range",
@@ -1519,7 +2132,12 @@ function structuralExpression(
     (nullTest.nulltesttype === "IS_NULL" ||
       nullTest.nulltesttype === "IS_NOT_NULL")
   ) {
-    const operand = structuralExpression(nullTest.arg, markers, sourceRanges);
+    const operand = structuralExpression(
+      nullTest.arg,
+      markers,
+      schemaColumns,
+      sourceRanges,
+    );
     return {
       helper: nullTest.nulltesttype === "IS_NULL" ? "isNull" : "isNotNull",
       kind: "null",
@@ -1540,7 +2158,7 @@ function structuralExpression(
       (boolean.boolop !== "NOT_EXPR" && boolean.args.length >= 2))
   ) {
     const items = boolean.args.map((item) => {
-      return structuralExpression(item, markers, sourceRanges);
+      return structuralExpression(item, markers, schemaColumns, sourceRanges);
     });
     return {
       items,
@@ -1570,17 +2188,27 @@ function structuralExpression(
     if (helper !== undefined && validArity) {
       const orderings = Array.isArray(call.agg_order)
         ? call.agg_order.flatMap((item) => {
-            return structuralOrdering(item, markers, sourceRanges);
+            return structuralOrdering(
+              item,
+              markers,
+              schemaColumns,
+              sourceRanges,
+            );
           })
         : [];
       const argument =
         args[0] === undefined
           ? undefined
-          : structuralExpression(args[0], markers, sourceRanges);
+          : structuralExpression(args[0], markers, schemaColumns, sourceRanges);
       const filter =
         call.agg_filter === undefined
           ? undefined
-          : structuralExpression(call.agg_filter, markers, sourceRanges);
+          : structuralExpression(
+              call.agg_filter,
+              markers,
+              schemaColumns,
+              sourceRanges,
+            );
       return {
         argument,
         filter,
@@ -1619,14 +2247,25 @@ function structuralExpression(
     const selection =
       selectionValue === undefined
         ? undefined
-        : structuralExpression(selectionValue, markers, sourceRanges);
+        : structuralExpression(
+            selectionValue,
+            markers,
+            schemaColumns,
+            sourceRanges,
+          );
     const predicate =
       select?.whereClause === undefined
         ? undefined
-        : structuralExpression(select.whereClause, markers, sourceRanges);
+        : structuralExpression(
+            select.whereClause,
+            markers,
+            schemaColumns,
+            sourceRanges,
+          );
     const children = collectStructuralExpressions(
       sublink.subselect,
       markers,
+      schemaColumns,
       sourceRanges,
     );
     const from = select?.fromClause;
@@ -1671,6 +2310,7 @@ function structuralExpression(
     const children = collectStructuralExpressions(
       sublink.subselect,
       markers,
+      schemaColumns,
       sourceRanges,
     );
     return {
@@ -1687,7 +2327,12 @@ function structuralExpression(
   }
 
   const payload = isRecord(value) ? Object.values(value)[0] : undefined;
-  const children = collectStructuralExpressions(payload, markers, sourceRanges);
+  const children = collectStructuralExpressions(
+    payload,
+    markers,
+    schemaColumns,
+    sourceRanges,
+  );
   return {
     children,
     kind: "opaque",
@@ -1797,10 +2442,36 @@ function nodeMatchesRole(
   return isDrizzleWrapperType(checker, type);
 }
 
+function schemaColumnMatchesRole(
+  schemaColumn: SqlSchemaColumn,
+  role: DrizzleOperandRole,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+): boolean {
+  const tableNode = services.esTreeNodeToTSNodeMap.get(
+    schemaColumn.tableMarker.node,
+  );
+  const type = checker.getTypeOfSymbolAtLocation(
+    schemaColumn.column.propertySymbol,
+    tableNode,
+  );
+  if (role === "array") {
+    return isDrizzleArrayOperandType(checker, type, tableNode);
+  }
+  if (role === "pattern") {
+    return isDrizzlePatternOperandType(checker, type, tableNode);
+  }
+  return isDrizzleColumnType(checker, type, tableNode);
+}
+
 function directStructuralChildren(
   expression: StructuralExpression,
 ): readonly StructuralExpression[] {
-  if (expression.kind === "marker" || expression.kind === "constant") {
+  if (
+    expression.kind === "marker" ||
+    expression.kind === "schema-column" ||
+    expression.kind === "constant"
+  ) {
     return [];
   }
   if (expression.kind === "comparison" || expression.kind === "array") {
@@ -1843,6 +2514,9 @@ function retainableInlineMarkers(
   expression: StructuralExpression,
   context: ClassificationContext,
 ): readonly SqlMarker[] | undefined {
+  if (expression.kind === "schema-column") {
+    return [];
+  }
   if (expression.kind === "marker") {
     const marker = expression.marker;
     return !marker.isTable &&
@@ -1878,6 +2552,9 @@ function isSafeHelperValueOperand(
   context: ClassificationContext,
 ): boolean {
   if (expression.kind === "constant") {
+    return true;
+  }
+  if (expression.kind === "schema-column") {
     return true;
   }
   if (expression.kind === "marker") {
@@ -1929,6 +2606,16 @@ function operandAnchor(
   classificationContext: ClassificationContext,
   retainedRequirement: RetainedOperandRequirement = "schema-column",
 ): TSESTree.Expression | undefined {
+  if (expression.kind === "schema-column") {
+    return schemaColumnMatchesRole(
+      expression.schemaColumn,
+      role,
+      classificationContext.checker,
+      classificationContext.services,
+    )
+      ? literalBoundaryNode(expression.sourceChunks, classificationContext.root)
+      : undefined;
+  }
   if (expression.kind === "marker") {
     return directMarkerMatchesRole(expression.marker, role)
       ? expression.marker.node
@@ -2130,6 +2817,13 @@ function classifyExpression(
   expression: StructuralExpression,
   context: ClassificationContext,
 ): ExpressionClassification {
+  if (expression.kind === "schema-column") {
+    return {
+      anchor: literalBoundaryNode(expression.sourceChunks, context.root),
+      findings: [],
+      isWholeReplacement: false,
+    };
+  }
   if (expression.kind === "marker") {
     return {
       anchor:
@@ -4369,6 +5063,7 @@ function contextOwnsWholeExpression(
 function orderingExpressions(
   statement: unknown,
   markers: ReadonlyMap<string, SqlMarker>,
+  schemaColumns: ReadonlyMap<Record<string, unknown>, SqlSchemaColumn>,
   sourceRanges: readonly SqlSourceRange[],
 ): readonly StructuralOrdering[] {
   const select = selectStatement(statement);
@@ -4376,20 +5071,26 @@ function orderingExpressions(
     return [];
   }
   return select.sortClause.flatMap((item) => {
-    return structuralOrdering(item, markers, sourceRanges);
+    return structuralOrdering(item, markers, schemaColumns, sourceRanges);
   });
 }
 
 function structuralOrdering(
   value: unknown,
   markers: ReadonlyMap<string, SqlMarker>,
+  schemaColumns: ReadonlyMap<Record<string, unknown>, SqlSchemaColumn>,
   sourceRanges: readonly SqlSourceRange[],
 ): readonly StructuralOrdering[] {
   const sort = recordProperty(value, "SortBy");
   if (sort?.node === undefined) {
     return [];
   }
-  const expression = structuralExpression(sort.node, markers, sourceRanges);
+  const expression = structuralExpression(
+    sort.node,
+    markers,
+    schemaColumns,
+    sourceRanges,
+  );
   const direction =
     sort.sortby_dir === "SORTBY_ASC"
       ? "asc"
@@ -4411,6 +5112,7 @@ function structuralOrdering(
 function collectStructuralOrderings(
   value: unknown,
   markers: ReadonlyMap<string, SqlMarker>,
+  schemaColumns: ReadonlyMap<Record<string, unknown>, SqlSchemaColumn>,
   sourceRanges: readonly SqlSourceRange[],
 ): readonly StructuralOrdering[] {
   const orderings: StructuralOrdering[] = [];
@@ -4425,7 +5127,12 @@ function collectStructuralOrderings(
     if (!isRecord(current)) {
       return;
     }
-    const ordering = structuralOrdering(current, markers, sourceRanges);
+    const ordering = structuralOrdering(
+      current,
+      markers,
+      schemaColumns,
+      sourceRanges,
+    );
     if (ordering.length > 0) {
       orderings.push(...ordering);
       return;
@@ -4452,7 +5159,14 @@ function structuralExpressionsForContext(
     const predicate = predicateExpression(parsed.statement);
     return predicate === undefined
       ? []
-      : [structuralExpression(predicate, parsed.markers, parsed.sourceRanges)];
+      : [
+          structuralExpression(
+            predicate,
+            parsed.markers,
+            parsed.schemaColumns,
+            parsed.sourceRanges,
+          ),
+        ];
   }
   if (
     context === "selection" ||
@@ -4464,6 +5178,7 @@ function structuralExpressionsForContext(
       return structuralExpression(
         expression,
         parsed.markers,
+        parsed.schemaColumns,
         parsed.sourceRanges,
       );
     });
@@ -4473,6 +5188,7 @@ function structuralExpressionsForContext(
     return collectStructuralExpressions(
       from,
       parsed.markers,
+      parsed.schemaColumns,
       parsed.sourceRanges,
     );
   }
@@ -4480,6 +5196,7 @@ function structuralExpressionsForContext(
     return orderingExpressions(
       parsed.statement,
       parsed.markers,
+      parsed.schemaColumns,
       parsed.sourceRanges,
     ).map((ordering) => {
       return ordering.expression;
@@ -4488,6 +5205,7 @@ function structuralExpressionsForContext(
   return collectStructuralExpressions(
     parsed.statement,
     parsed.markers,
+    parsed.schemaColumns,
     parsed.sourceRanges,
   );
 }
@@ -4541,6 +5259,17 @@ function sameStructuralExpression(
   }
   if (left.kind === "marker" && right.kind === "marker") {
     return left.marker.chunk === right.marker.chunk;
+  }
+  if (left.kind === "schema-column" && right.kind === "schema-column") {
+    return (
+      left.schemaColumn.relationMarker.chunk ===
+        right.schemaColumn.relationMarker.chunk &&
+      left.schemaColumn.tableMarker.chunk ===
+        right.schemaColumn.tableMarker.chunk &&
+      left.schemaColumn.alias === right.schemaColumn.alias &&
+      left.schemaColumn.column.databaseName ===
+        right.schemaColumn.column.databaseName
+    );
   }
   if (left.kind === "constant" && right.kind === "constant") {
     return true;
@@ -4772,6 +5501,7 @@ function exactExpressionBoundary(
     const candidateExpression = structuralExpression(
       selected[0],
       parsed.markers,
+      parsed.schemaColumns,
       parsed.sourceRanges,
     );
     if (sameStructuralExpression(expression, candidateExpression)) {
@@ -4970,77 +5700,126 @@ function replacementBoundaryForFinding(
         return chunk.origins.includes(candidate);
       }),
     };
-    const parsed = parseSqlVariant(
-      candidateVariant,
-      finding.isolationContext,
-      true,
-      checker,
-      services,
-    );
-    if (parsed === null) {
-      continue;
-    }
+    const attempts: Array<{
+      readonly context: SqlAnalysisContext;
+      readonly requiresWholeOwnership: boolean;
+    }> = [
+      {
+        context: finding.isolationContext,
+        requiresWholeOwnership: true,
+      },
+    ];
+    const firstChunk = candidateVariant.chunks[0];
     if (
-      !contextOwnsWholeExpression(finding.isolationContext, parsed.statement)
+      firstChunk?.kind === "literal" &&
+      sourceLocalContextForLeadingLiteral(firstChunk.text) ===
+        "source-statement"
     ) {
-      continue;
-    }
-    const classificationContext: ClassificationContext = {
-      allowsOptionalSql: true,
-      allowsRetainedSqlWrapper,
-      allowsScalarQuery,
-      capabilities,
-      checker,
-      ownsResultMapping: false,
-      root: candidate,
-      services,
-      variant: candidateVariant,
-    };
-    const classifications =
-      finding.isolationContext === "ordering"
-        ? orderingExpressions(
-            parsed.statement,
-            parsed.markers,
-            parsed.sourceRanges,
-          ).map((ordering) => {
-            return classifyOrdering(ordering, classificationContext);
-          })
-        : structuralExpressionsForContext(finding.isolationContext, parsed).map(
-            (expression) => {
-              return classifyExpression(expression, classificationContext);
-            },
-          );
-    const matchingFinding = classifications
-      .flatMap((classification) => {
-        return classification.findings;
-      })
-      .find((candidateFinding) => {
-        return (
-          candidateFinding.kind === finding.kind &&
-          (candidateFinding.kind === "query-builder" &&
-          finding.kind === "query-builder"
-            ? candidateFinding.capability === finding.capability
-            : candidateFinding.kind !== "query-builder" &&
-              finding.kind !== "query-builder" &&
-              candidateFinding.helper === finding.helper) &&
-          candidateFinding.isolationContext === finding.isolationContext &&
-          candidateFinding.isPartial === finding.isPartial &&
-          sameSourceChunks(candidateFinding.sourceChunks, finding.sourceChunks)
-        );
+      attempts.push({
+        context: "source-statement",
+        requiresWholeOwnership: false,
       });
-    if (matchingFinding === undefined) {
-      continue;
     }
-    const classification = classifications[0];
-    if (
-      classifications.length === 1 &&
-      classification?.isWholeReplacement === true &&
-      classification.findings.length === 1 &&
-      classification.findings[0] === matchingFinding
-    ) {
-      return candidate;
+    for (const attempt of attempts) {
+      const parsed = parseSqlVariant(
+        candidateVariant,
+        attempt.context,
+        true,
+        checker,
+        services,
+      );
+      if (
+        parsed === null ||
+        (attempt.requiresWholeOwnership &&
+          !contextOwnsWholeExpression(
+            finding.isolationContext,
+            parsed.statement,
+          ))
+      ) {
+        continue;
+      }
+      const classificationContext: ClassificationContext = {
+        allowsOptionalSql: true,
+        allowsRetainedSqlWrapper,
+        allowsScalarQuery,
+        capabilities,
+        checker,
+        ownsResultMapping: false,
+        root: candidate,
+        services,
+        variant: candidateVariant,
+      };
+      const classifications =
+        attempt.context === "source-statement"
+          ? [
+              ...structuralExpressionsForContext(attempt.context, parsed).map(
+                (expression) => {
+                  return classifyExpression(expression, classificationContext);
+                },
+              ),
+              ...collectStructuralOrderings(
+                parsed.statement,
+                parsed.markers,
+                parsed.schemaColumns,
+                parsed.sourceRanges,
+              ).map((ordering) => {
+                return classifyOrdering(ordering, classificationContext);
+              }),
+            ]
+          : finding.isolationContext === "ordering"
+            ? orderingExpressions(
+                parsed.statement,
+                parsed.markers,
+                parsed.schemaColumns,
+                parsed.sourceRanges,
+              ).map((ordering) => {
+                return classifyOrdering(ordering, classificationContext);
+              })
+            : structuralExpressionsForContext(
+                finding.isolationContext,
+                parsed,
+              ).map((expression) => {
+                return classifyExpression(expression, classificationContext);
+              });
+      const matchingFinding = classifications
+        .flatMap((classification) => {
+          return classification.findings;
+        })
+        .find((candidateFinding) => {
+          return (
+            candidateFinding.kind === finding.kind &&
+            (candidateFinding.kind === "query-builder" &&
+            finding.kind === "query-builder"
+              ? candidateFinding.capability === finding.capability
+              : candidateFinding.kind !== "query-builder" &&
+                finding.kind !== "query-builder" &&
+                candidateFinding.helper === finding.helper) &&
+            candidateFinding.isolationContext === finding.isolationContext &&
+            candidateFinding.isPartial === finding.isPartial &&
+            sameSourceChunks(
+              candidateFinding.sourceChunks,
+              finding.sourceChunks,
+            )
+          );
+        });
+      if (matchingFinding === undefined) {
+        continue;
+      }
+      const classification = classifications[0];
+      if (
+        attempt.requiresWholeOwnership &&
+        classifications.length === 1 &&
+        classification?.isWholeReplacement === true &&
+        classification.findings.length === 1 &&
+        classification.findings[0] === matchingFinding
+      ) {
+        return candidate;
+      }
+      descendantBoundary ??=
+        attempt.context === "source-statement"
+          ? (candidates[0] ?? candidate)
+          : candidate;
     }
-    descendantBoundary ??= candidate;
   }
   return descendantBoundary;
 }
@@ -5090,12 +5869,14 @@ function analyzeParsed(
       ? orderingExpressions(
           parsed.statement,
           parsed.markers,
+          parsed.schemaColumns,
           parsed.sourceRanges,
         )
       : context === "statement" || context === "source-statement"
         ? collectStructuralOrderings(
             parsed.statement,
             parsed.markers,
+            parsed.schemaColumns,
             parsed.sourceRanges,
           )
         : context === "selection" ||
@@ -5106,6 +5887,7 @@ function analyzeParsed(
               return collectStructuralOrderings(
                 expression,
                 parsed.markers,
+                parsed.schemaColumns,
                 parsed.sourceRanges,
               );
             })
@@ -5518,11 +6300,9 @@ export function analyzeSql(
   return analysis;
 }
 
-function sourceLocalContext(
-  node: TSESTree.TaggedTemplateExpression,
+function sourceLocalContextForLeadingLiteral(
+  leadingLiteral: string,
 ): SqlAnalysisContext {
-  const leadingLiteral =
-    node.quasi.quasis[0]?.value.cooked ?? node.quasi.quasis[0]?.value.raw ?? "";
   if (/^\s*(?:DELETE|INSERT|SELECT|UPDATE|WITH)\b/iu.test(leadingLiteral)) {
     return "source-statement";
   }
@@ -5533,6 +6313,14 @@ function sourceLocalContext(
     return "source-predicate-prefix";
   }
   return "source-selection";
+}
+
+function sourceLocalContext(
+  node: TSESTree.TaggedTemplateExpression,
+): SqlAnalysisContext {
+  return sourceLocalContextForLeadingLiteral(
+    node.quasi.quasis[0]?.value.cooked ?? node.quasi.quasis[0]?.value.raw ?? "",
+  );
 }
 
 export function analyzeSqlSource(

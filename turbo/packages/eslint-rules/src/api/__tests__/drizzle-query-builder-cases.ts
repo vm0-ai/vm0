@@ -780,12 +780,14 @@ const queryBuilderCases = {
     },
     {
       code: `${unnestUpdatePreamble}
-        import { sql } from "drizzle-orm";
+        import { eq, sql } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const target = alias(allowanceWindows, "target");
         await db.execute(sql\`
-          UPDATE \${allowanceWindows} AS target
+          UPDATE \${allowanceWindows} AS \${target}
           SET consumed_units = consumption.units_applied
           FROM unnest(\${sql.param(unitDeltas)}::bigint[]) AS consumption(units_applied)
-          WHERE target.id = consumption.window_id
+          WHERE \${eq(target.id, sql\`consumption.window_id\`)}
         \`);
         await db.execute(sql\`
           UPDATE \${allowanceWindows}
