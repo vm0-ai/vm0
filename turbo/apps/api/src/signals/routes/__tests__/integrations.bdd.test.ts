@@ -336,6 +336,22 @@ async function completeSlackTriggeredRun(args: {
           },
         ]
       : [];
+    chatCallbacks.mockChatOutputEvents([
+      ...assistantEvents.map((event) => {
+        return {
+          eventType: event.type,
+          sequenceNumber: event.sequenceNumber,
+          eventData: { message: event.message },
+        };
+      }),
+      ...resultEvents.map((event) => {
+        return {
+          eventType: event.type,
+          sequenceNumber: event.sequenceNumber,
+          eventData: { result: event.result },
+        };
+      }),
+    ]);
     await webhooks.requestAgentEvents(
       {
         runId: args.runId,
@@ -344,24 +360,6 @@ async function completeSlackTriggeredRun(args: {
       sandboxHeaders,
       [200],
     );
-    if (args.resultText) {
-      chatCallbacks.mockChatOutputEvents([
-        ...assistantEvents.map((event) => {
-          return {
-            eventType: event.type,
-            sequenceNumber: event.sequenceNumber,
-            eventData: { message: event.message },
-          };
-        }),
-        ...resultEvents.map((event) => {
-          return {
-            eventType: event.type,
-            sequenceNumber: event.sequenceNumber,
-            eventData: { result: event.result },
-          };
-        }),
-      ]);
-    }
   }
   const lastEventSequence =
     args.resultText !== undefined ? (args.assistantText ? 1 : 0) : 0;
