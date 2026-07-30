@@ -4,10 +4,11 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const appRoot = path.resolve(__dirname, "..");
+const scriptPath = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(scriptPath);
+const defaultAppRoot = path.resolve(__dirname, "..");
 
-function getCheckedFiles() {
+function getCheckedFiles(appRoot) {
   const excludedDirectories = new Set(["__tests__", "i18n", "mocks", "test"]);
   const checkedFiles = [];
 
@@ -68,6 +69,7 @@ function isUserVisibleProperty(value) {
     "message",
     "name",
     "placeholder",
+    "result",
     "subtitle",
     "summary",
     "title",
@@ -81,8 +83,17 @@ function isToastMethod(value) {
 }
 
 function isUserVisibleFunctionName(value) {
-  return /(caption|copy|description|heading|help|hint|label|message|summary|title|tooltip)$/iu.test(
-    value,
+  return (
+    /(caption|copy|description|displayName|displayText|heading|help|hint|label|message|plainText|summary|title|tooltip)$/iu.test(
+      value,
+    ) ||
+    /^format.*(?:Codex|Plan)/u.test(value) ||
+    [
+      "formatMessageHtml",
+      "normalizeCodexRunEvent",
+      "stringifyArrayJsonValue",
+      "stringifyObjectJsonValue",
+    ].includes(value)
   );
 }
 
@@ -98,6 +109,10 @@ function getInternalAllowedLiterals() {
     [
       "src/signals/zero-page/chat-feedback.ts\u0000an email draft (mail draft ID: {…})",
       "locale-neutral serialized agent prompt metadata",
+    ],
+    [
+      "src/signals/activity-page/log-detail-utils.ts\u0000null",
+      "JSON null literal in user-visible diagnostic serialization",
     ],
     [
       "src/signals/chat-page/create-chat-thread.ts\u0000Run cancelled",
@@ -294,21 +309,202 @@ function hasHumanText(value) {
   return /\p{L}/u.test(withoutEntities);
 }
 
-function isTranslationCall(node) {
+function bindingNames(node) {
+  if (ts.isIdentifier(node)) {
+    return [node.text];
+  }
+  if (ts.isObjectBindingPattern(node) || ts.isArrayBindingPattern(node)) {
+    return node.elements.flatMap((element) => {
+      return ts.isBindingElement(element) ? bindingNames(element.name) : [];
+    });
+  }
+  return [];
+}
+
+function variableBindingScope(node) {
+  if (ts.isCatchClause(node.parent)) {
+    return node.parent;
+  }
+  let parent = node.parent;
+  while (parent) {
+    if (ts.isBlock(parent) || ts.isSourceFile(parent)) {
+      return parent;
+    }
+    parent = parent.parent;
+  }
+  return null;
+}
+
+function declarationBindingScope(node) {
+  let parent = node.parent;
+  while (parent) {
+    if (ts.isBlock(parent) || ts.isSourceFile(parent)) {
+      return parent;
+    }
+    parent = parent.parent;
+  }
+  return null;
+}
+
+function addBinding(scopeBindings, scope, name, kind) {
+  if (!scope) {
+    return;
+  }
+  let bindings = scopeBindings.get(scope);
+  if (!bindings) {
+    bindings = new Map();
+    scopeBindings.set(scope, bindings);
+  }
+  const existing = bindings.get(name);
+  bindings.set(name, existing && existing !== kind ? "other" : kind);
+}
+
+function resolveBindingKind(node, name, scopeBindings) {
+  let parent = node;
+  while (parent) {
+    const kind = scopeBindings.get(parent)?.get(name);
+    if (kind) {
+      return kind;
+    }
+    parent = parent.parent;
+  }
+  return null;
+}
+
+function getTranslationBindings(sourceFile) {
+  const scopeBindings = new Map();
+  const translationCandidates = [];
+
+  for (const statement of sourceFile.statements) {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteral(statement.moduleSpecifier)
+    ) {
+      continue;
+    }
+    const moduleName = statement.moduleSpecifier.text;
+    const importClause = statement.importClause;
+    if (!importClause) {
+      continue;
+    }
+    if (importClause.name) {
+      addBinding(scopeBindings, sourceFile, importClause.name.text, "other");
+    }
+    const namedBindings = importClause.namedBindings;
+    if (namedBindings && ts.isNamespaceImport(namedBindings)) {
+      addBinding(scopeBindings, sourceFile, namedBindings.name.text, "other");
+      continue;
+    }
+    if (!namedBindings || !ts.isNamedImports(namedBindings)) {
+      continue;
+    }
+    for (const element of namedBindings.elements) {
+      const imported = element.propertyName?.text ?? element.name.text;
+      const kind =
+        moduleName === "react-i18next" && imported === "useTranslation"
+          ? "useTranslation"
+          : /(?:^|\/)i18n\/index(?:\.ts)?$/u.test(moduleName) &&
+              imported === "i18n"
+            ? "i18n"
+            : "other";
+      addBinding(scopeBindings, sourceFile, element.name.text, kind);
+    }
+  }
+
+  function visit(node) {
+    if (ts.isVariableDeclaration(node)) {
+      const scope = variableBindingScope(node);
+      const isTranslationCandidate =
+        ts.isObjectBindingPattern(node.name) &&
+        node.initializer &&
+        ts.isCallExpression(node.initializer) &&
+        ts.isIdentifier(node.initializer.expression);
+      for (const name of bindingNames(node.name)) {
+        const element = ts.isObjectBindingPattern(node.name)
+          ? node.name.elements.find((candidate) => {
+              return (
+                ts.isIdentifier(candidate.name) && candidate.name.text === name
+              );
+            })
+          : undefined;
+        const imported = element?.propertyName?.getText(sourceFile) ?? name;
+        if (isTranslationCandidate && imported === "t") {
+          translationCandidates.push({
+            hookCall: node.initializer,
+            localName: name,
+            scope,
+          });
+        } else {
+          addBinding(scopeBindings, scope, name, "other");
+        }
+      }
+    } else if (ts.isParameter(node)) {
+      const scope = ts.isFunctionLike(node.parent) ? node.parent : null;
+      for (const name of bindingNames(node.name)) {
+        addBinding(scopeBindings, scope, name, "other");
+      }
+    } else if (
+      (ts.isFunctionDeclaration(node) || ts.isClassDeclaration(node)) &&
+      node.name
+    ) {
+      addBinding(
+        scopeBindings,
+        declarationBindingScope(node),
+        node.name.text,
+        "other",
+      );
+    } else if (ts.isFunctionExpression(node) && node.name) {
+      addBinding(scopeBindings, node, node.name.text, "other");
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  for (const candidate of translationCandidates) {
+    const hookName = candidate.hookCall.expression.text;
+    const kind =
+      resolveBindingKind(candidate.hookCall, hookName, scopeBindings) ===
+      "useTranslation"
+        ? "translation"
+        : "other";
+    addBinding(scopeBindings, candidate.scope, candidate.localName, kind);
+  }
+  return scopeBindings;
+}
+
+function isTranslationCall(node, translationBindings) {
   if (!ts.isCallExpression(node)) {
     return false;
   }
   if (ts.isIdentifier(node.expression)) {
-    return node.expression.text === "t";
+    return (
+      resolveBindingKind(node, node.expression.text, translationBindings) ===
+      "translation"
+    );
   }
   return (
     ts.isPropertyAccessExpression(node.expression) &&
-    node.expression.name.text === "t"
+    node.expression.name.text === "t" &&
+    ts.isIdentifier(node.expression.expression) &&
+    resolveBindingKind(
+      node,
+      node.expression.expression.text,
+      translationBindings,
+    ) === "i18n"
   );
 }
 
-function checkVisibleExpression(node, record, kind) {
-  if (isTranslationCall(node)) {
+function isPotentialTranslationCall(node) {
+  return (
+    ts.isCallExpression(node) &&
+    ((ts.isIdentifier(node.expression) && node.expression.text === "t") ||
+      (ts.isPropertyAccessExpression(node.expression) &&
+        node.expression.name.text === "t"))
+  );
+}
+
+function checkVisibleExpression(node, record, kind, translationBindings) {
+  if (isTranslationCall(node, translationBindings)) {
     return;
   }
   const value = getLiteralValue(node);
@@ -317,8 +513,8 @@ function checkVisibleExpression(node, record, kind) {
     return;
   }
   if (ts.isConditionalExpression(node)) {
-    checkVisibleExpression(node.whenTrue, record, kind);
-    checkVisibleExpression(node.whenFalse, record, kind);
+    checkVisibleExpression(node.whenTrue, record, kind, translationBindings);
+    checkVisibleExpression(node.whenFalse, record, kind, translationBindings);
     return;
   }
   if (ts.isBinaryExpression(node)) {
@@ -327,12 +523,12 @@ function checkVisibleExpression(node, record, kind) {
       node.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
       node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
     ) {
-      checkVisibleExpression(node.left, record, kind);
-      checkVisibleExpression(node.right, record, kind);
+      checkVisibleExpression(node.left, record, kind, translationBindings);
+      checkVisibleExpression(node.right, record, kind, translationBindings);
       return;
     }
     if (node.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken) {
-      checkVisibleExpression(node.right, record, kind);
+      checkVisibleExpression(node.right, record, kind, translationBindings);
     }
     return;
   }
@@ -343,12 +539,131 @@ function checkVisibleExpression(node, record, kind) {
     ts.isNonNullExpression(node) ||
     ts.isSatisfiesExpression(node)
   ) {
-    checkVisibleExpression(node.expression, record, kind);
+    checkVisibleExpression(node.expression, record, kind, translationBindings);
     return;
   }
   if (ts.isArrayLiteralExpression(node)) {
     for (const element of node.elements) {
-      checkVisibleExpression(element, record, kind);
+      checkVisibleExpression(element, record, kind, translationBindings);
+    }
+    return;
+  }
+  if (isPotentialTranslationCall(node)) {
+    for (const argument of node.arguments) {
+      checkVisibleExpression(argument, record, kind, translationBindings);
+    }
+  }
+}
+
+function checkVisibleCallChain(node, record, kind, translationBindings) {
+  if (isTranslationCall(node, translationBindings)) {
+    return;
+  }
+  if (ts.isCallExpression(node)) {
+    if (ts.isPropertyAccessExpression(node.expression)) {
+      checkVisibleCallChain(
+        node.expression.expression,
+        record,
+        kind,
+        translationBindings,
+      );
+    }
+    for (const argument of node.arguments) {
+      checkVisibleCallChain(argument, record, kind, translationBindings);
+    }
+    return;
+  }
+  checkVisibleExpression(node, record, kind, translationBindings);
+}
+
+function checkVisibleStructure(node, record, kind, translationBindings) {
+  if (ts.isObjectLiteralExpression(node)) {
+    for (const property of node.properties) {
+      if (ts.isPropertyAssignment(property)) {
+        checkVisibleStructure(
+          property.initializer,
+          record,
+          kind,
+          translationBindings,
+        );
+      }
+    }
+    return;
+  }
+  if (ts.isArrayLiteralExpression(node)) {
+    for (const element of node.elements) {
+      checkVisibleStructure(element, record, kind, translationBindings);
+    }
+    return;
+  }
+  if (
+    ts.isParenthesizedExpression(node) ||
+    ts.isAsExpression(node) ||
+    ts.isTypeAssertionExpression(node) ||
+    ts.isNonNullExpression(node) ||
+    ts.isSatisfiesExpression(node)
+  ) {
+    checkVisibleStructure(node.expression, record, kind, translationBindings);
+    return;
+  }
+  checkVisibleExpression(node, record, kind, translationBindings);
+}
+
+function checkHtmlExpression(node, record, kind, translationBindings) {
+  if (isTranslationCall(node, translationBindings)) {
+    return;
+  }
+  const value = getLiteralValue(node);
+  if (value !== null) {
+    const visibleText = value
+      .replace(/<[^>]*>/gu, " ")
+      .replaceAll("{…}", " ")
+      .trim();
+    record(node, visibleText, kind);
+    if (ts.isTemplateExpression(node)) {
+      for (const span of node.templateSpans) {
+        checkHtmlExpression(span.expression, record, kind, translationBindings);
+      }
+    }
+    return;
+  }
+  if (ts.isConditionalExpression(node)) {
+    checkHtmlExpression(node.whenTrue, record, kind, translationBindings);
+    checkHtmlExpression(node.whenFalse, record, kind, translationBindings);
+    return;
+  }
+  if (ts.isBinaryExpression(node)) {
+    checkHtmlExpression(node.left, record, kind, translationBindings);
+    checkHtmlExpression(node.right, record, kind, translationBindings);
+    return;
+  }
+  if (
+    ts.isParenthesizedExpression(node) ||
+    ts.isAsExpression(node) ||
+    ts.isTypeAssertionExpression(node) ||
+    ts.isNonNullExpression(node) ||
+    ts.isSatisfiesExpression(node)
+  ) {
+    checkHtmlExpression(node.expression, record, kind, translationBindings);
+    return;
+  }
+  if (ts.isArrayLiteralExpression(node)) {
+    for (const element of node.elements) {
+      checkHtmlExpression(element, record, kind, translationBindings);
+    }
+    return;
+  }
+  if (ts.isCallExpression(node)) {
+    if (ts.isPropertyAccessExpression(node.expression)) {
+      checkHtmlExpression(
+        node.expression.expression,
+        record,
+        kind,
+        translationBindings,
+      );
+    }
+    for (const argument of node.arguments) {
+      checkHtmlExpression(argument, record, kind, translationBindings);
     }
   }
 }
@@ -367,7 +682,7 @@ function checkJsxText(node, record) {
   }
 }
 
-function checkJsxAttribute(node, record) {
+function checkJsxAttribute(node, record, translationBindings) {
   if (!ts.isJsxAttribute(node)) {
     return;
   }
@@ -384,22 +699,32 @@ function checkJsxAttribute(node, record) {
     return;
   }
   if (ts.isJsxExpression(node.initializer) && node.initializer.expression) {
-    checkVisibleExpression(node.initializer.expression, record, attributeName);
+    checkVisibleExpression(
+      node.initializer.expression,
+      record,
+      attributeName,
+      translationBindings,
+    );
   }
 }
 
-function checkJsxExpression(node, record) {
+function checkJsxExpression(node, record, translationBindings) {
   if (
     ts.isJsxExpression(node) &&
     node.expression &&
     (ts.isJsxElement(node.parent) || ts.isJsxFragment(node.parent)) &&
     !isStyleElement(node.parent)
   ) {
-    checkVisibleExpression(node.expression, record, "JSX expression");
+    checkVisibleExpression(
+      node.expression,
+      record,
+      "JSX expression",
+      translationBindings,
+    );
   }
 }
 
-function checkPropertyAssignment(node, record) {
+function checkPropertyAssignment(node, record, translationBindings) {
   if (!ts.isPropertyAssignment(node)) {
     return;
   }
@@ -407,10 +732,15 @@ function checkPropertyAssignment(node, record) {
   if (!propertyName || !isUserVisibleProperty(propertyName)) {
     return;
   }
-  checkVisibleExpression(node.initializer, record, propertyName);
+  checkVisibleExpression(
+    node.initializer,
+    record,
+    propertyName,
+    translationBindings,
+  );
 }
 
-function checkDocumentTitle(node, record) {
+function checkDocumentTitle(node, record, translationBindings) {
   if (
     !ts.isCallExpression(node) ||
     node.arguments.length < 2 ||
@@ -419,10 +749,15 @@ function checkDocumentTitle(node, record) {
   ) {
     return;
   }
-  checkVisibleExpression(node.arguments[1], record, "document title");
+  checkVisibleExpression(
+    node.arguments[1],
+    record,
+    "document title",
+    translationBindings,
+  );
 }
 
-function checkToastCall(node, record) {
+function checkToastCall(node, record, translationBindings) {
   if (
     !ts.isCallExpression(node) ||
     node.arguments.length === 0 ||
@@ -433,10 +768,15 @@ function checkToastCall(node, record) {
   ) {
     return;
   }
-  checkVisibleExpression(node.arguments[0], record, "toast");
+  checkVisibleExpression(
+    node.arguments[0],
+    record,
+    "toast",
+    translationBindings,
+  );
 }
 
-function checkBrowserDialogCall(node, record) {
+function checkBrowserDialogCall(node, record, translationBindings) {
   if (!ts.isCallExpression(node) || node.arguments.length === 0) {
     return;
   }
@@ -449,7 +789,12 @@ function checkBrowserDialogCall(node, record) {
   if (!methodName || !["alert", "confirm", "prompt"].includes(methodName)) {
     return;
   }
-  checkVisibleExpression(node.arguments[0], record, `browser ${methodName}`);
+  checkVisibleExpression(
+    node.arguments[0],
+    record,
+    `browser ${methodName}`,
+    translationBindings,
+  );
 }
 
 function functionLikeName(node) {
@@ -477,24 +822,125 @@ function functionLikeName(node) {
   return null;
 }
 
-function checkUserVisibleFunctionReturn(node, record) {
-  if (!ts.isReturnStatement(node) || !node.expression) {
-    return;
-  }
+function enclosingUserVisibleFunctionName(node) {
   let parent = node.parent;
   while (parent && !ts.isSourceFile(parent)) {
     if (ts.isFunctionLike(parent)) {
       const name = functionLikeName(parent);
-      if (name && isUserVisibleFunctionName(name)) {
-        checkVisibleExpression(node.expression, record, `${name} return`);
-      }
-      return;
+      return name && isUserVisibleFunctionName(name) ? name : null;
     }
     parent = parent.parent;
   }
+  return null;
 }
 
-function checkSetAttributeCall(node, record) {
+function checkUserVisibleFunctionReturn(node, record, translationBindings) {
+  if (!ts.isReturnStatement(node) || !node.expression) {
+    return;
+  }
+  const name = enclosingUserVisibleFunctionName(node);
+  if (name) {
+    const checkExpression =
+      name === "formatMessageHtml"
+        ? checkHtmlExpression
+        : /(?:Codex|Plan|plainText)/iu.test(name)
+          ? checkVisibleCallChain
+          : checkVisibleExpression;
+    checkExpression(
+      node.expression,
+      record,
+      `${name} return`,
+      translationBindings,
+    );
+  }
+}
+
+function checkUserVisibleFunctionMutation(node, record, translationBindings) {
+  const name = enclosingUserVisibleFunctionName(node);
+  if (!name) {
+    return;
+  }
+  if (
+    ts.isBinaryExpression(node) &&
+    node.operatorToken.kind === ts.SyntaxKind.PlusEqualsToken
+  ) {
+    checkVisibleExpression(
+      node.right,
+      record,
+      `${name} output`,
+      translationBindings,
+    );
+    return;
+  }
+  if (
+    ts.isCallExpression(node) &&
+    ts.isPropertyAccessExpression(node.expression) &&
+    ["push", "unshift"].includes(node.expression.name.text)
+  ) {
+    const checkExpression = [
+      "stringifyArrayJsonValue",
+      "stringifyObjectJsonValue",
+    ].includes(name)
+      ? checkVisibleCallChain
+      : checkVisibleExpression;
+    for (const argument of node.arguments) {
+      checkExpression(argument, record, `${name} output`, translationBindings);
+    }
+    return;
+  }
+  if (
+    ts.isCallExpression(node) &&
+    ts.isIdentifier(node.expression) &&
+    node.expression.text === "makeCodexAssistantTextEvent"
+  ) {
+    for (const argument of node.arguments.slice(1)) {
+      checkVisibleCallChain(
+        argument,
+        record,
+        `${name} output`,
+        translationBindings,
+      );
+    }
+  }
+}
+
+function checkUserVisibleFunctionInitializer(
+  node,
+  record,
+  translationBindings,
+) {
+  if (!ts.isVariableDeclaration(node) || !node.initializer) {
+    return;
+  }
+  const name = enclosingUserVisibleFunctionName(node);
+  if (name === "formatMessageHtml") {
+    checkHtmlExpression(
+      node.initializer,
+      record,
+      `${name} output`,
+      translationBindings,
+    );
+  }
+}
+
+function checkUserVisibleNamedInitializer(node, record, translationBindings) {
+  if (
+    !ts.isVariableDeclaration(node) ||
+    !ts.isIdentifier(node.name) ||
+    !node.name.text.endsWith("_DISPLAY_NAMES") ||
+    !node.initializer
+  ) {
+    return;
+  }
+  checkVisibleStructure(
+    node.initializer,
+    record,
+    `${node.name.text} initializer`,
+    translationBindings,
+  );
+}
+
+function checkSetAttributeCall(node, record, translationBindings) {
   if (
     !ts.isCallExpression(node) ||
     node.arguments.length < 2 ||
@@ -511,10 +957,11 @@ function checkSetAttributeCall(node, record) {
     node.arguments[1],
     record,
     `setAttribute(${attribute})`,
+    translationBindings,
   );
 }
 
-function checkUserVisibleAssignment(node, record) {
+function checkUserVisibleAssignment(node, record, translationBindings) {
   if (
     !ts.isBinaryExpression(node) ||
     node.operatorToken.kind !== ts.SyntaxKind.EqualsToken ||
@@ -530,12 +977,20 @@ function checkUserVisibleAssignment(node, record) {
   ) {
     return;
   }
-  checkVisibleExpression(node.right, record, `${propertyName} assignment`);
+  checkVisibleExpression(
+    node.right,
+    record,
+    `${propertyName} assignment`,
+    translationBindings,
+  );
 }
 
-function checkFile(relativePath, allowedLiterals, usedAllowedLiterals) {
-  const absolutePath = path.join(appRoot, relativePath);
-  const sourceText = readFileSync(absolutePath, "utf8");
+export function checkSource(
+  relativePath,
+  sourceText,
+  allowedLiterals = new Map(),
+  usedAllowedLiterals = new Set(),
+) {
   const sourceFile = ts.createSourceFile(
     relativePath,
     sourceText,
@@ -543,6 +998,7 @@ function checkFile(relativePath, allowedLiterals, usedAllowedLiterals) {
     true,
     relativePath.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
   );
+  const translationBindings = getTranslationBindings(sourceFile);
   const violations = [];
 
   function record(node, value, kind) {
@@ -566,15 +1022,18 @@ function checkFile(relativePath, allowedLiterals, usedAllowedLiterals) {
 
   function visit(node) {
     checkJsxText(node, record);
-    checkJsxAttribute(node, record);
-    checkJsxExpression(node, record);
-    checkPropertyAssignment(node, record);
-    checkDocumentTitle(node, record);
-    checkToastCall(node, record);
-    checkBrowserDialogCall(node, record);
-    checkUserVisibleFunctionReturn(node, record);
-    checkSetAttributeCall(node, record);
-    checkUserVisibleAssignment(node, record);
+    checkJsxAttribute(node, record, translationBindings);
+    checkJsxExpression(node, record, translationBindings);
+    checkPropertyAssignment(node, record, translationBindings);
+    checkDocumentTitle(node, record, translationBindings);
+    checkToastCall(node, record, translationBindings);
+    checkBrowserDialogCall(node, record, translationBindings);
+    checkUserVisibleFunctionReturn(node, record, translationBindings);
+    checkUserVisibleFunctionMutation(node, record, translationBindings);
+    checkUserVisibleFunctionInitializer(node, record, translationBindings);
+    checkUserVisibleNamedInitializer(node, record, translationBindings);
+    checkSetAttributeCall(node, record, translationBindings);
+    checkUserVisibleAssignment(node, record, translationBindings);
     ts.forEachChild(node, visit);
   }
 
@@ -582,16 +1041,36 @@ function checkFile(relativePath, allowedLiterals, usedAllowedLiterals) {
   return violations;
 }
 
+function checkFile(
+  appRoot,
+  relativePath,
+  allowedLiterals,
+  usedAllowedLiterals,
+) {
+  const absolutePath = path.join(appRoot, relativePath);
+  const sourceText = readFileSync(absolutePath, "utf8");
+  return checkSource(
+    relativePath,
+    sourceText,
+    allowedLiterals,
+    usedAllowedLiterals,
+  );
+}
+
 function main() {
+  const appRoot = defaultAppRoot;
   const allowedLiterals = getAllowedLiterals();
   const usedAllowedLiterals = new Set();
-  const checkedFiles = getCheckedFiles();
+  const checkedFiles = getCheckedFiles(appRoot);
   const violations = checkedFiles.flatMap((relativePath) => {
-    return checkFile(relativePath, allowedLiterals, usedAllowedLiterals).map(
-      (violation) => {
-        return { relativePath, ...violation };
-      },
-    );
+    return checkFile(
+      appRoot,
+      relativePath,
+      allowedLiterals,
+      usedAllowedLiterals,
+    ).map((violation) => {
+      return { relativePath, ...violation };
+    });
   });
   const unusedAllowedLiterals = Array.from(allowedLiterals.entries()).filter(
     ([key]) => {
@@ -630,4 +1109,6 @@ ${
   }
 }
 
-main();
+if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
+  main();
+}

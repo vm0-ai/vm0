@@ -1,11 +1,36 @@
 {
   "activity": {
     "codex": {
+      "codexError": "Codex error",
       "commandStatus": "Command {{status}}",
+      "error": "Error: {{error}}",
+      "fileChangeKind": "change",
       "fileOperationCompleted": "File operation completed",
       "fileOperationStatus": "File operation {{status}}",
       "fileReadCompleted": "File read completed",
-      "fileReadStatus": "File read {{status}}"
+      "fileReadStatus": "File read {{status}}",
+      "filesChanged": "[files] Files changed:",
+      "genericEvent": "Codex {{eventType}}",
+      "genericItem": "Codex {{label}} ({{details}}){{suffix}}",
+      "idDetail": "id: {{id}}",
+      "item": "item",
+      "moreChanges_one": "- ... +{{count}} more change",
+      "moreChanges_other": "- ... +{{count}} more changes",
+      "moreSteps_one": "- ... +{{count}} more step",
+      "moreSteps_other": "- ... +{{count}} more steps",
+      "planPrefix": "[plan]",
+      "planStatus": {
+        "completed": "completed",
+        "inProgress": "in progress",
+        "pending": "pending",
+        "step": "step"
+      },
+      "status": "Status: {{status}}",
+      "statusDetail": "status: {{status}}",
+      "turnFailed": "Turn failed",
+      "turnStatus": "Turn {{status}}",
+      "warning": "[warning] {{message}}",
+      "warningFallback": "Codex warning"
     },
     "context": {
       "artifact": "Artifact",
@@ -134,6 +159,8 @@
       "inputTokens": "in: {{formattedCount}}",
       "models_one": "{{formattedCount}} model",
       "models_other": "{{formattedCount}} models",
+      "moreItems_one": "... {{count}} more item",
+      "moreItems_other": "... {{count}} more items",
       "nameLabel": "name:",
       "outputTokens": "out: {{formattedCount}}",
       "remainingLines_one": "+{{formattedCount}} line",
@@ -149,8 +176,10 @@
       "toolFailed": "{{toolName}} failed",
       "tools_one": "tool",
       "tools_other": "tools",
+      "truncated": "truncated",
       "turns_one": "{{formattedCount}} turn",
-      "turns_other": "{{formattedCount}} turns"
+      "turns_other": "{{formattedCount}} turns",
+      "unknownTool": "Unknown"
     },
     "inspect": {
       "contextUnavailable": {
@@ -1314,6 +1343,11 @@
       },
       "toRecipients": "To: {{recipients}}",
       "unavailable": "This email is no longer available."
+    },
+    "messageDocument": {
+      "chatThread": "[Chat thread: {{title}}]",
+      "file": "[File: {{filename}}]",
+      "template": "[Template: {{title}}]"
     },
     "newChat": "New chat",
     "origins": {
@@ -4473,6 +4507,16 @@
       "summary_other": "{{chats}} used {{credits}}",
       "title": "Chats",
       "untitled": "(untitled)"
+    },
+    "displayNames": {
+      "auto": "Auto",
+      "finance": "Finance",
+      "maps": "Maps",
+      "peopleSearch": "People Search",
+      "usage": "Usage",
+      "weather": "Weather",
+      "webFetch": "Web Fetch",
+      "webSearch": "Web Search"
     },
     "kinds": {
       "connector": "Connectors",
