@@ -2601,7 +2601,6 @@ describe("zero sidebar", () => {
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
       featureSwitches: {
-        [FeatureSwitchKey.Artifacts]: true,
         [FeatureSwitchKey.LanguagePreference]: true,
         [FeatureSwitchKey.ThreeColumnNav]: true,
         [FeatureSwitchKey.ZeroDebug]: true,
