@@ -1,0 +1,1 @@
+ALTER TABLE "model_usage_observation" ADD COLUMN "aggregated_at" timestamp;
