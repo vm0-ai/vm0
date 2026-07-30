@@ -254,6 +254,34 @@ impl CandidateState {
 /// The source is never modified. Files at or below 64 MiB are left unchanged.
 /// For larger files, only the final 64 MiB can contain an eligible candidate,
 /// so the older prefix is neither parsed nor retained.
+///
+/// # Selection contract
+///
+/// An eligible candidate contains the exact raw records from the newest
+/// recognized native compact boundary through the EOF observed during
+/// selection. The record immediately following the boundary must be a linked,
+/// nonempty native compact-summary user message. Every retained later record is
+/// included without rewriting.
+///
+/// Every newer recognized compact boundary supersedes the preceding candidate.
+/// If the newest boundary or its retained generation is invalid, selection
+/// fails closed instead of falling back to an older generation. The retained
+/// generation must preserve the expected native session identity, supported
+/// boundary, summary, and message shapes and relationships, unique UUID
+/// ancestry whose non-null parents resolve to earlier retained records, and
+/// complete ordered tool-use/tool-result pairs. Malformed or oversized records,
+/// candidate size violations, and changes to the observed EOF or source length
+/// likewise make the source [`ClaudeHistorySelection::Ineligible`].
+///
+/// `Ineligible` is an expected eligibility or compatibility outcome that lets
+/// the caller use its ordinary checkpoint path. The selector only chooses an
+/// in-memory candidate: staging, checkpoint commit, and live-file reconciliation
+/// remain the caller's responsibility.
+///
+/// # Errors
+///
+/// Returns an [`io::Error`] when an underlying source open, metadata, seek, or
+/// read operation fails.
 pub fn select_claude_compact_generation(
     source_path: impl AsRef<Path>,
     expected_session_id: &str,
