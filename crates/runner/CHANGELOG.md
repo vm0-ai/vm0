@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.150.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.149.4...runner-rs-v0.150.0) (2026-07-30)
+
+
+### Features
+
+* add admin-defined model gateway connections ([#23807](https://github.com/vm0-ai/vm0/issues/23807)) ([0632cb4](https://github.com/vm0-ai/vm0/commit/0632cb4e4dfda2c844a2531d6c13a3dd74b86e29))
+
 ## [0.149.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.149.3...runner-rs-v0.149.4) (2026-07-30)
 
 
