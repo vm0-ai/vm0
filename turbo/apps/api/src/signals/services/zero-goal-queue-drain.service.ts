@@ -1,4 +1,4 @@
-import type { ChatMessageGoalSnapshot } from "@vm0/db/schema/chat-message";
+import type { ChatEventGoalSnapshot } from "@vm0/db/schema/chat-event";
 import { command } from "ccstate";
 
 import { logger } from "../../lib/log";
@@ -17,7 +17,7 @@ import {
   type PendingGoalQueueEvent,
 } from "./chat-goal-queue.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
-import { resolveRunChatThreadModelContext } from "./zero-chat-run-message.service";
+import { resolveRunChatThreadModelContext } from "./zero-chat-run-event.service";
 import { normalizeGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
 import { pauseActiveGoalForThread } from "./zero-goal.service";
 import type { ModelFirstPin } from "./zero-model-selection.service";
@@ -207,7 +207,7 @@ const launchQueuedGoal$ = command(
       }),
     };
     const prompt = buildGoalContinuationPrompt(normalizedGoal);
-    const goalSnapshot: ChatMessageGoalSnapshot = {
+    const goalSnapshot: ChatEventGoalSnapshot = {
       objectiveBrief: normalizedGoal.objectiveBrief,
     };
     const result = await set(
@@ -333,23 +333,26 @@ export const drainGoalQueueForThread$ = command(
         return;
       }
 
-      const paused = await pauseActiveGoalForThread(db, {
-        orgId: goal.orgId,
-        userId: goal.userId,
-        threadId: goal.threadId,
-      });
-      signal.throwIfAborted();
-      await rejectGoalEvent(
+      const rejected = await rejectGoalEvent(
         db,
         event,
         result.response.body.error.message,
         signal,
       );
-      log.warn("Goal queue event failed to create a run; goal paused", {
+      const paused = rejected
+        ? await pauseActiveGoalForThread(db, {
+            orgId: goal.orgId,
+            userId: goal.userId,
+            threadId: goal.threadId,
+          })
+        : null;
+      signal.throwIfAborted();
+      log.warn("Goal queue event failed to create a run", {
         eventId: event.id,
         goalId: goal.goalId,
         code: result.response.body.error.code,
-        pauseResult: paused.kind,
+        rejected,
+        pauseResult: paused?.kind ?? "not_paused",
       });
       return;
     }

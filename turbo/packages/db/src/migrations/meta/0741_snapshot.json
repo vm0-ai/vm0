@@ -1,5 +1,5 @@
 {
-  "id": "dede218b-78a6-485f-904c-a8d0e2c39fcf",
+  "id": "ee81455e-0e21-4975-bbbb-9e91d17eac01",
   "prevId": "387dcec5-7303-4c39-94bf-54dc1e371517",
   "version": "7",
   "dialect": "postgresql",
@@ -11878,230 +11878,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.model_provider_connections": {
-      "name": "model_provider_connections",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "org_id": {
-          "name": "org_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "display_name": {
-          "name": "display_name",
-          "type": "varchar(128)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "secret_id": {
-          "name": "secret_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "idx_model_provider_connections_org": {
-          "name": "idx_model_provider_connections_org",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_model_provider_connections_secret": {
-          "name": "idx_model_provider_connections_secret",
-          "columns": [
-            {
-              "expression": "secret_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "model_provider_connections_secret_id_secrets_id_fk": {
-          "name": "model_provider_connections_secret_id_secrets_id_fk",
-          "tableFrom": "model_provider_connections",
-          "tableTo": "secrets",
-          "columnsFrom": [
-            "secret_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.model_provider_surfaces": {
-      "name": "model_provider_surfaces",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "connection_id": {
-          "name": "connection_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "protocol": {
-          "name": "protocol",
-          "type": "varchar(32)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "api_base_url": {
-          "name": "api_base_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "auth_header_name": {
-          "name": "auth_header_name",
-          "type": "varchar(128)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "auth_header_template": {
-          "name": "auth_header_template",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "model_mappings": {
-          "name": "model_mappings",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "idx_model_provider_surfaces_connection": {
-          "name": "idx_model_provider_surfaces_connection",
-          "columns": [
-            {
-              "expression": "connection_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_model_provider_surfaces_connection_protocol": {
-          "name": "idx_model_provider_surfaces_connection_protocol",
-          "columns": [
-            {
-              "expression": "connection_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "protocol",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "model_provider_surfaces_connection_id_model_provider_connections_id_fk": {
-          "name": "model_provider_surfaces_connection_id_model_provider_connections_id_fk",
-          "tableFrom": "model_provider_surfaces",
-          "tableTo": "model_provider_connections",
-          "columnsFrom": [
-            "connection_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "chk_model_provider_surfaces_protocol": {
-          "name": "chk_model_provider_surfaces_protocol",
-          "value": "\"model_provider_surfaces\".\"protocol\" IN ('anthropic-messages', 'openai-responses')"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.model_providers": {
       "name": "model_providers",
       "schema": "",
@@ -14496,12 +14272,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "model_provider_surface_id": {
-          "name": "model_provider_surface_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_by_user_id": {
           "name": "created_by_user_id",
           "type": "text",
@@ -14582,22 +14352,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "idx_org_model_policies_surface": {
-          "name": "idx_org_model_policies_surface",
-          "columns": [
-            {
-              "expression": "model_provider_surface_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "model_provider_surface_id IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -14607,19 +14361,6 @@
           "tableTo": "model_providers",
           "columnsFrom": [
             "model_provider_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "org_model_policies_model_provider_surface_id_model_provider_surfaces_id_fk": {
-          "name": "org_model_policies_model_provider_surface_id_model_provider_surfaces_id_fk",
-          "tableFrom": "org_model_policies",
-          "tableTo": "model_provider_surfaces",
-          "columnsFrom": [
-            "model_provider_surface_id"
           ],
           "columnsTo": [
             "id"
@@ -14638,15 +14379,11 @@
         },
         "chk_org_model_policies_member_scope_no_provider_id": {
           "name": "chk_org_model_policies_member_scope_no_provider_id",
-          "value": "credential_scope <> 'member' OR (model_provider_id IS NULL AND model_provider_surface_id IS NULL)"
+          "value": "credential_scope <> 'member' OR model_provider_id IS NULL"
         },
         "chk_org_model_policies_builtin_route_no_provider_id": {
           "name": "chk_org_model_policies_builtin_route_no_provider_id",
-          "value": "default_provider_type <> 'vm0' OR (model_provider_id IS NULL AND model_provider_surface_id IS NULL)"
-        },
-        "chk_org_model_policies_one_route_id": {
-          "name": "chk_org_model_policies_one_route_id",
-          "value": "model_provider_id IS NULL OR model_provider_surface_id IS NULL"
+          "value": "default_provider_type <> 'vm0' OR model_provider_id IS NULL"
         },
         "chk_org_model_policies_member_scope_oauth_provider": {
           "name": "chk_org_model_policies_member_scope_oauth_provider",
@@ -19815,210 +19552,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.telegram_thread_sessions": {
-      "name": "telegram_thread_sessions",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "telegram_user_link_id": {
-          "name": "telegram_user_link_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "telegram_official_user_link_id": {
-          "name": "telegram_official_user_link_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "chat_id": {
-          "name": "chat_id",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "root_message_id": {
-          "name": "root_message_id",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "agent_session_id": {
-          "name": "agent_session_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "last_processed_message_id": {
-          "name": "last_processed_message_id",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "idx_telegram_thread_sessions_chat_user_link": {
-          "name": "idx_telegram_thread_sessions_chat_user_link",
-          "columns": [
-            {
-              "expression": "telegram_user_link_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "chat_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "root_message_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "telegram_user_link_id IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_telegram_thread_sessions_chat_official_link": {
-          "name": "idx_telegram_thread_sessions_chat_official_link",
-          "columns": [
-            {
-              "expression": "telegram_official_user_link_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "chat_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "root_message_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "telegram_official_user_link_id IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_telegram_thread_sessions_user_link": {
-          "name": "idx_telegram_thread_sessions_user_link",
-          "columns": [
-            {
-              "expression": "telegram_user_link_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "telegram_user_link_id IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_telegram_thread_sessions_official_user_link": {
-          "name": "idx_telegram_thread_sessions_official_user_link",
-          "columns": [
-            {
-              "expression": "telegram_official_user_link_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "telegram_official_user_link_id IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "telegram_thread_sessions_telegram_user_link_id_telegram_user_links_id_fk": {
-          "name": "telegram_thread_sessions_telegram_user_link_id_telegram_user_links_id_fk",
-          "tableFrom": "telegram_thread_sessions",
-          "tableTo": "telegram_user_links",
-          "columnsFrom": [
-            "telegram_user_link_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "telegram_thread_sessions_telegram_official_user_link_id_telegram_official_user_links_id_fk": {
-          "name": "telegram_thread_sessions_telegram_official_user_link_id_telegram_official_user_links_id_fk",
-          "tableFrom": "telegram_thread_sessions",
-          "tableTo": "telegram_official_user_links",
-          "columnsFrom": [
-            "telegram_official_user_link_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "telegram_thread_sessions_agent_session_id_agent_sessions_id_fk": {
-          "name": "telegram_thread_sessions_agent_session_id_agent_sessions_id_fk",
-          "tableFrom": "telegram_thread_sessions",
-          "tableTo": "agent_sessions",
-          "columnsFrom": [
-            "agent_session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "chk_telegram_thread_sessions_one_owner": {
-          "name": "chk_telegram_thread_sessions_one_owner",
-          "value": "(telegram_user_link_id IS NOT NULL) <> (telegram_official_user_link_id IS NOT NULL)"
-        }
-      },
       "isRLSEnabled": false
     },
     "public.telegram_user_agent_preferences": {

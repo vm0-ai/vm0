@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { feishuChatIngress } from "@vm0/db/schema/feishu-chat-ingress";
 import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
@@ -30,10 +30,10 @@ import {
   resolveIntegrationModelRouteForUser$,
   type IntegrationModelRoutePin,
 } from "./integration-model-route.service";
-import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
+import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
-import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-message.service";
+import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-event.service";
 import {
   addFeishuThinkingReaction,
   buildFeishuSystemPrompt,
@@ -367,12 +367,12 @@ async function notifyQueuedFeishuRun(args: {
 }): Promise<void> {
   const [run] = await args.db
     .select({ status: agentRuns.status })
-    .from(chatMessages)
-    .innerJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+    .from(chatEvents)
+    .innerJoin(agentRuns, eq(agentRuns.id, chatEvents.runId))
     .where(
       or(
-        eq(chatMessages.id, args.ingressId),
-        eq(chatMessages.revokesEventId, args.ingressId),
+        eq(chatEvents.id, args.ingressId),
+        eq(chatEvents.revokesEventId, args.ingressId),
       ),
     )
     .limit(1);

@@ -65,7 +65,7 @@ async function printAgentAction(
   connector: PublicConnectorStatus,
   agentCtx: AgentContext,
 ): Promise<void> {
-  const connectorSlug = connector.connectorRef;
+  const connectorSlug = connector.slug;
   const authorized = agentCtx.authorizedConnectorSlugs.has(connectorSlug);
   const isConnected = connector.connected;
   const needsReconnect = connector.connectionStatus === "reconnect-required";
@@ -135,7 +135,7 @@ async function printAgentAction(
 async function printStandaloneAction(
   connector: PublicConnectorStatus,
 ): Promise<void> {
-  const connectorSlug = connector.connectorRef;
+  const connectorSlug = connector.slug;
   if (
     connector.connectionStatus === "connected" ||
     connector.connectionStatus === "scope-mismatch"
@@ -160,8 +160,7 @@ async function printStandaloneAction(
 export const statusCommand = new Command()
   .name("status")
   .description("Show detailed status of a connector")
-  // TODO(#23619): Rename this stable CLI argument label in the CLI rollout.
-  .argument("<type>", "Connector type (e.g., github)")
+  .argument("<slug>", "Connector slug (e.g., github)")
   .option("--agent <id>", "Show authorization state for the given agent")
   .action(
     withErrorHandler(
@@ -185,7 +184,7 @@ export const statusCommand = new Command()
           );
         }
 
-        console.log(`Connector: ${chalk.cyan(connector.connectorRef)}`);
+        console.log(`Connector: ${chalk.cyan(connector.slug)}`);
         console.log();
 
         printConnectorDetails(connector);

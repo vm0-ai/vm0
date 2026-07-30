@@ -670,11 +670,11 @@ export async function openTemplatePicker(
       screen.getByTestId(`${template.title} detail HTML preview`),
     ).toBeInTheDocument();
   });
-  expect(screen.getByLabelText("Select style Carnival")).toHaveAttribute(
+  expect(screen.getByLabelText("Select style Funfair")).toHaveAttribute(
     "aria-pressed",
     "true",
   );
-  expect(screen.getByLabelText("Select style Gold Luxe")).toBeInTheDocument();
+  expect(screen.getByLabelText("Select style Award night")).toBeInTheDocument();
 
   await user.click(screen.getByLabelText(`Select template ${template.title}`));
   await waitFor(() => {

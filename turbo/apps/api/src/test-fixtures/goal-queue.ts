@@ -1,4 +1,4 @@
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq, isNotNull } from "drizzle-orm";
@@ -37,12 +37,12 @@ export async function readGoalQueueStateFixture(threadId: string): Promise<{
 }> {
   const [events, runs] = await Promise.all([
     db()
-      .select({ id: chatMessages.id })
-      .from(chatMessages)
+      .select({ id: chatEvents.id })
+      .from(chatEvents)
       .where(
         and(
-          eq(chatMessages.chatThreadId, threadId),
-          eq(chatMessages.eventType, "input.goal"),
+          eq(chatEvents.chatThreadId, threadId),
+          eq(chatEvents.eventType, "input.goal"),
         ),
       ),
     db()

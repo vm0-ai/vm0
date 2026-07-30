@@ -1057,10 +1057,10 @@ describe("chat composer templates", () => {
       throw new Error("Prism card preview not found");
     }
     await user.click(
-      within(templateDialog).getByLabelText("Select style Prism"),
+      within(templateDialog).getByLabelText("Select style Candy party"),
     );
     expect(
-      within(templateDialog).getByLabelText("Select style Prism"),
+      within(templateDialog).getByLabelText("Select style Candy party"),
     ).toHaveAttribute("aria-pressed", "true");
     expect(
       context.store.get(templateCardThemeIdBySlug$)[template.slug],
@@ -1367,7 +1367,7 @@ describe("chat composer templates", () => {
       ).not.toBeNull();
 
       await user.click(
-        within(templateDialog).getByLabelText("Select style Prism"),
+        within(templateDialog).getByLabelText("Select style Candy party"),
       );
       await waitFor(() => {
         expect(frame()).toHaveAttribute(
@@ -1478,15 +1478,8 @@ describe("chat composer templates", () => {
         }),
       ).toBeInTheDocument();
     });
-    const defaultThemeLabel = (
-      template.colorSystemId ?? "color-system:warm-sand"
-    )
-      .replace("color-system:", "")
-      .replace(/-/g, " ");
     expect(
-      within(templateDialog).getByLabelText(
-        new RegExp(`^Select style ${defaultThemeLabel}$`, "i"),
-      ),
+      within(templateDialog).getByLabelText("Select style Lavender dusk"),
     ).toHaveAttribute("aria-pressed", "true");
 
     const templateButton = queryAllByRoleFast("button", templateDialog).find(
@@ -1916,13 +1909,13 @@ describe("chat composer templates", () => {
       carnivalShadowRoot?.querySelector("[tabindex]"),
     ).not.toBeInTheDocument();
     expect(firstSlidePreviewButton.querySelectorAll("span")).toHaveLength(1);
-    expect(screen.getByLabelText("Select style Carnival")).toHaveAttribute(
+    expect(screen.getByLabelText("Select style Funfair")).toHaveAttribute(
       "aria-pressed",
       "true",
     );
 
-    click(screen.getByLabelText("Select style Prism"));
-    expect(screen.getByLabelText("Select style Prism")).toHaveAttribute(
+    click(screen.getByLabelText("Select style Candy party"));
+    expect(screen.getByLabelText("Select style Candy party")).toHaveAttribute(
       "aria-pressed",
       "true",
     );
@@ -1961,7 +1954,7 @@ describe("chat composer templates", () => {
         within(templateDialog).getByLabelText("Preview slide 1"),
       ).toHaveAttribute("aria-pressed", "true");
     });
-    expect(screen.getByLabelText("Select style Carnival")).toHaveAttribute(
+    expect(screen.getByLabelText("Select style Funfair")).toHaveAttribute(
       "aria-pressed",
       "true",
     );
@@ -1994,7 +1987,7 @@ describe("chat composer templates", () => {
       );
     });
 
-    const themeButton = screen.getByLabelText("Select style Carnival");
+    const themeButton = screen.getByLabelText("Select style Funfair");
     themeButton.focus();
     expect(themeButton).toHaveFocus();
     fireEvent.keyDown(themeButton, {

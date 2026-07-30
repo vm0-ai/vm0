@@ -1,7 +1,6 @@
 import { Command, Option } from "commander";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type {
-  ConnectorCheckDiagnosticResult,
   ConnectorCheckPolicy,
   ConnectorCheckRequest,
 } from "@vm0/api-contracts/contracts/zero-connector-check";
@@ -10,6 +9,7 @@ import { getApiUrl } from "../../../lib/api/config";
 import {
   diagnoseZeroConnectorCheck,
   getZeroConnector,
+  type ZeroConnectorCheckDiagnosticResult,
 } from "../../../lib/api/domains/zero-connectors";
 import { getZeroAgentUserConnectors } from "../../../lib/api/domains/zero-agents";
 import { withErrorHandler } from "../../../lib/command";
@@ -40,7 +40,7 @@ type ValidatedCheckConnectorOptions = CheckConnectorOptions &
   );
 
 type ResolvedDiagnostic = Extract<
-  ConnectorCheckDiagnosticResult,
+  ZeroConnectorCheckDiagnosticResult,
   { readonly outcome: "resolved" }
 >;
 type ResolvedUrlDiagnostic = Extract<
@@ -170,7 +170,9 @@ function buildDiagnosticRequest(
       mode: "url",
       method,
       url: stripUrlQueryAndFragment(opts.url),
-      ...(opts.connector !== undefined ? { connectorRef: opts.connector } : {}),
+      ...(opts.connector !== undefined
+        ? { connectorSlug: opts.connector }
+        : {}),
       ...(opts.envName !== undefined ? { environmentName: opts.envName } : {}),
     };
   }
@@ -206,7 +208,7 @@ function requestedEnvironmentName(request: ConnectorCheckRequest): string {
 
 function unsafeInputError(
   reason: Extract<
-    ConnectorCheckDiagnosticResult,
+    ZeroConnectorCheckDiagnosticResult,
     { readonly outcome: "unsafe-input" }
   >["reason"],
 ): Error {
@@ -229,29 +231,29 @@ function unsafeInputError(
 function ambiguousConnectorError(
   request: UrlDiagnosticRequest,
   result: Extract<
-    ConnectorCheckDiagnosticResult,
+    ZeroConnectorCheckDiagnosticResult,
     { readonly outcome: "ambiguous" }
   >,
 ): Error {
   const candidates = [...result.candidates].sort((left, right) => {
-    return left.connectorRef.localeCompare(right.connectorRef);
+    return left.connectorSlug.localeCompare(right.connectorSlug);
   });
   const commands = candidates.map((candidate) => {
-    return `  ${connectorSelectionCommand(request.url, request.method, candidate.connectorRef)}`;
+    return `  ${connectorSelectionCommand(request.url, request.method, candidate.connectorSlug)}`;
   });
   return new Error(
     `Multiple connectors match ${request.method} ${request.url}: ${candidates
       .map((candidate) => {
-        return candidate.connectorRef;
+        return candidate.connectorSlug;
       })
       .join(", ")}\nSelect one explicitly:\n${commands.join("\n")}`,
   );
 }
 
 function unknownConnectorError(request: ConnectorCheckRequest): Error {
-  if (request.mode === "url" && request.connectorRef !== undefined) {
+  if (request.mode === "url" && request.connectorSlug !== undefined) {
     return new Error(
-      `Unknown connector type: ${request.connectorRef}\nRun: zero connector search ${shellQuoteArg(request.connectorRef)}`,
+      `Unknown connector slug: ${request.connectorSlug}\nRun: zero connector search ${shellQuoteArg(request.connectorSlug)}`,
     );
   }
   return new Error("The requested connector is unknown.");
@@ -259,7 +261,7 @@ function unknownConnectorError(request: ConnectorCheckRequest): Error {
 
 function noMatchError(
   result: Extract<
-    ConnectorCheckDiagnosticResult,
+    ZeroConnectorCheckDiagnosticResult,
     { readonly outcome: "no-match" }
   >,
 ): Error {
@@ -273,20 +275,20 @@ function noMatchError(
 function connectorMismatchError(
   request: UrlDiagnosticRequest,
   result: Extract<
-    ConnectorCheckDiagnosticResult,
+    ZeroConnectorCheckDiagnosticResult,
     { readonly outcome: "connector-mismatch" }
   >,
 ): Error {
-  const requestedSlug = request.connectorRef ?? "the requested connector";
+  const requestedSlug = request.connectorSlug ?? "the requested connector";
   return new Error(
-    `Connector ${requestedSlug} does not own ${request.method} ${request.url}; the matching connector is ${result.connector.connectorRef}\nRun: ${connectorSelectionCommand(request.url, request.method, result.connector.connectorRef)}`,
+    `Connector ${requestedSlug} does not own ${request.method} ${request.url}; the matching connector is ${result.connector.connectorSlug}\nRun: ${connectorSelectionCommand(request.url, request.method, result.connector.connectorSlug)}`,
   );
 }
 
 function environmentNotOwnedError(
   request: ConnectorCheckRequest,
   result: Extract<
-    ConnectorCheckDiagnosticResult,
+    ZeroConnectorCheckDiagnosticResult,
     { readonly outcome: "environment-not-owned" }
   >,
 ): Error {
@@ -299,7 +301,7 @@ function environmentNotOwnedError(
 function environmentNotUsedError(
   request: ConnectorCheckRequest,
   result: Extract<
-    ConnectorCheckDiagnosticResult,
+    ZeroConnectorCheckDiagnosticResult,
     { readonly outcome: "environment-not-used" }
   >,
 ): Error {
@@ -311,7 +313,7 @@ function environmentNotUsedError(
 
 function resolvedDiagnostic(
   request: ConnectorCheckRequest,
-  result: ConnectorCheckDiagnosticResult,
+  result: ZeroConnectorCheckDiagnosticResult,
 ): ResolvedDiagnostic {
   switch (result.outcome) {
     case "resolved":
@@ -336,7 +338,7 @@ function resolvedDiagnostic(
       throw environmentNotUsedError(request, result);
     case "unresolved-dynamic-base":
       throw new Error(
-        `No authoritative ${result.connector.label} base URL is available for this diagnostic. Verify the ${result.connector.connectorRef} connector configuration for the affected context and retry.`,
+        `No authoritative ${result.connector.label} base URL is available for this diagnostic. Verify the ${result.connector.connectorSlug} connector configuration for the affected context and retry.`,
       );
     case "run-context-unavailable":
       throw new Error(
@@ -352,7 +354,7 @@ function printDiagnosticSummary(
   if (result.mode === "url") {
     const urlRequest = requireUrlRequest(request);
     console.log(
-      `URL ${urlRequest.url} matches the ${result.connector.label} connector (type: ${result.connector.connectorRef}).`,
+      `URL ${urlRequest.url} matches the ${result.connector.label} connector (slug: ${result.connector.connectorSlug}).`,
     );
     console.log(`  Matched base URL: ${result.base}`);
     console.log(`  Relative path:    ${result.relativePath}`);
@@ -367,7 +369,7 @@ function printDiagnosticSummary(
   }
 
   console.log(
-    `${result.environmentName} is managed by the ${result.connector.label} connector (type: ${result.connector.connectorRef}).`,
+    `${result.environmentName} is managed by the ${result.connector.label} connector (slug: ${result.connector.connectorSlug}).`,
   );
 }
 
@@ -773,7 +775,7 @@ function printUrlPermissionDiagnostic(
     console.log("");
     for (const permission of result.permission.permissions) {
       printNamedPolicyResult(
-        result.connector.connectorRef,
+        result.connector.connectorSlug,
         permission.name,
         permission.policy,
         agentId,
@@ -785,7 +787,7 @@ function printUrlPermissionDiagnostic(
     );
     console.log("");
     printUnknownEndpointPolicy(
-      result.connector.connectorRef,
+      result.connector.connectorSlug,
       result.permission.policy,
       agentId,
     );
@@ -813,7 +815,7 @@ function printEnvironmentPermissionDiagnostic(
   );
   console.log("");
   printNamedPolicyResult(
-    result.connector.connectorRef,
+    result.connector.connectorSlug,
     permissionName,
     result.permission,
     agentId,
@@ -866,9 +868,8 @@ export const checkConnectorCommand = new Command()
     ),
   )
   .addOption(
-    // TODO(#23619): Rename this stable CLI option value label in the CLI rollout.
     new Option(
-      "--connector <type>",
+      "--connector <slug>",
       "Select the connector when multiple connectors own the same URL route",
     ),
   )
@@ -920,7 +921,7 @@ How connectors work:
       const platformUrl = toPlatformUrl(await getApiUrl());
       const ctx: DiagContext = {
         environmentNames: diagnosticEnvironmentNames(result),
-        connectorSlug: result.connector.connectorRef,
+        connectorSlug: result.connector.connectorSlug,
         label: result.connector.label,
         connectorAvailable: result.connector.visibility === "available",
         credentialResolution: result.connector.credentialResolution,

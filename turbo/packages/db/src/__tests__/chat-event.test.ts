@@ -1,12 +1,12 @@
 import { getTableConfig } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 
-import { chatMessages } from "../schema/chat-message";
+import { chatEvents } from "../schema/chat-event";
 
-describe("chatMessages schema", () => {
+describe("chatEvents schema", () => {
   it("exposes only canonical userMessage storage", () => {
     const columns = new Map(
-      getTableConfig(chatMessages).columns.map((column) => {
+      getTableConfig(chatEvents).columns.map((column) => {
         return [column.name, column.notNull] as const;
       }),
     );
@@ -16,7 +16,7 @@ describe("chatMessages schema", () => {
   });
 
   it("keeps run references after runs are deleted", () => {
-    const foreignKeys = getTableConfig(chatMessages).foreignKeys.map(
+    const foreignKeys = getTableConfig(chatEvents).foreignKeys.map(
       (foreignKey) => {
         const reference = foreignKey.reference();
         return {

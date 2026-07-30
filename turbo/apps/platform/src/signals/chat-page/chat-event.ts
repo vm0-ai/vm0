@@ -9,12 +9,13 @@ import {
   chatThreadPinContract,
   chatThreadUnpinContract,
   chatThreadRenameContract,
-  type ChatMessageUsagePayload,
+  type ChatEventUsagePayload,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import type { BodyRenderBlock } from "./parse-body-blocks.ts";
 import { nowDate } from "../../lib/time.ts";
+import { i18n } from "../../i18n/index.ts";
 import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
 import type { ChatEvent } from "./chat-event-types.ts";
 import type { OptimisticChatThreadEvent } from "./chat-thread-event-types.ts";
@@ -32,7 +33,7 @@ export interface ChatEventGroup {
   beginEventId: string;
   role: "user" | "assistant";
   events: EnrichedChatEvent[];
-  usage?: ChatMessageUsagePayload;
+  usage?: ChatEventUsagePayload;
 }
 
 // ---------------------------------------------------------------------------
@@ -73,7 +74,11 @@ export const deleteChatThread$ = command(
     );
     signal.throwIfAborted();
 
-    toast.success("Chat deleted");
+    toast.success(
+      i18n.t(($) => {
+        return $.chat.toasts.deleted;
+      }),
+    );
 
     if (get(currentChatThreadId$) === threadId) {
       const idx = threads.findIndex((t) => {

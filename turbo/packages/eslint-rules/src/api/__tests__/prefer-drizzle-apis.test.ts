@@ -769,8 +769,171 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           .where(sql\`boundary_matches(\${conditional}, \${hidden})\`);
       `,
     },
+    {
+      name: "stable grouping expressions and input fields stay valid",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const bucket = sql\`DATE(\${users.deletedAt})\`.mapWith(String);
+        const selectedUsers = db
+          .select({ name: users.name })
+          .from(users)
+          .as("selected_users");
+
+        db.select({
+          bucket: bucket.as("bucket"),
+        }).from(users).groupBy(bucket);
+        db.select({
+          name: selectedUsers.name,
+        }).from(selectedUsers).groupBy(({ name }) => name);
+      `,
+    },
+    {
+      name: "unusual grouping shapes stay opaque",
+      code: `${drizzlePreamble}
+        import { eq, sql, type SQL } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const otherUsers = alias(users, "other_users");
+        const selection = {
+          bucket: sql\`DATE(\${users.deletedAt})\`
+            .mapWith(String)
+            .as("bucket"),
+        };
+        const query = db.select(selection).from(users);
+        const rawSource: SQL = sql\`users\`;
+
+        query.groupBy(sql\`1\`);
+        db.select(selection).from(rawSource).groupBy(sql\`1\`);
+        db.select({
+          bucket: sql\`DATE(\${users.deletedAt})\`
+            .mapWith(String)
+            .as("bucket"),
+        })
+          .from(users)
+          .innerJoin(otherUsers, eq(otherUsers.id, users.id))
+          .groupBy(sql\`1\`);
+        db.select({
+          bucket: sql\`DATE(\${users.deletedAt})\`
+            .mapWith(String)
+            .as("bucket"),
+        }).from(users).groupBy(({ bucket }) => sql\`LOWER(\${bucket})\`);
+      `,
+    },
+    {
+      name: "non-equivalent and invalid grouping tags stay valid",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select({
+          bucket: sql\`DATE(\${users.deletedAt})\`
+            .mapWith(String)
+            .as("bucket"),
+        }).from(users).groupBy(sql\`0\`);
+        db.select({
+          bucket: sql\`DATE(\${users.deletedAt})\`
+            .mapWith(String)
+            .as("bucket"),
+        }).from(users).groupBy(sql\`2\`);
+        db.select({
+          bucket: sql\`DATE(\${users.deletedAt})\`
+            .mapWith(String)
+            .as("bucket"),
+        }).from(users).groupBy(sql\`DATE(\${users.id})\`);
+        db.select({
+          bucket: sql\`LOWER(\${users.name})\`
+            .mapWith(String)
+            .as("bucket"),
+        }).from(users).groupBy(sql\`UPPER(\${users.name})\`);
+        db.select().from(users).orderBy(sql\`random()\`);
+      `,
+    },
   ],
   invalid: [
+    {
+      name: "repeated selected grouping expression",
+      code: `${drizzlePreamble}
+        import { isNotNull, sql } from "drizzle-orm";
+        db.select({
+          bucket: sql\`DATE(\${users.deletedAt})\`
+            .mapWith(String)
+            .as("bucket"),
+          normalized: sql\`LOWER(\${users.name})\`
+            .mapWith(String)
+            .as("normalized"),
+        })
+          .from(users)
+          .where(isNotNull(users.deletedAt))
+          .groupBy(sql\`DATE(\${users.deletedAt})\`);
+      `,
+      errors: [{ messageId: "unstableGrouping" }],
+    },
+    {
+      name: "positional selected grouping with renamed sql import",
+      code: `${drizzlePreamble}
+        import { sql as query } from "drizzle-orm";
+        db.select({
+          model: query\`LOWER(\${users.name})\`
+            .mapWith(String)
+            .as("ranking_model"),
+          id: users.id,
+        }).from(users).groupBy(query\`1\`);
+      `,
+      errors: [{ messageId: "unstableGrouping" }],
+    },
+    {
+      name: "positional selected grouping with namespace sql import",
+      code: `${drizzlePreamble}
+        import * as drizzle from "drizzle-orm";
+        db.select({
+          model: drizzle.sql\`LOWER(\${users.name})\`
+            .mapWith(String)
+            .as("ranking_model"),
+          weight: drizzle.sql\`LENGTH(\${users.name})\`
+            .mapWith(Number)
+            .as("weight"),
+        }).from(users).groupBy(drizzle.sql\`1\`);
+      `,
+      errors: [{ messageId: "unstableGrouping" }],
+    },
+    {
+      name: "computed output alias grouping",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select({
+          bucket: sql\`DATE(\${users.deletedAt})\`
+            .mapWith(String)
+            .as("bucket"),
+          normalized: sql\`LOWER(\${users.name})\`
+            .mapWith(String)
+            .as("normalized"),
+        })
+          .from(users)
+          .groupBy(({ bucket: selectedBucket, normalized }) => {
+            return [selectedBucket, normalized];
+          });
+      `,
+      errors: [{ messageId: "unstableGrouping" }],
+    },
+    {
+      name: "bound computed output alias grouping",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const bucket = sql\`DATE(\${users.deletedAt})\`.mapWith(String);
+        db.select({
+          bucket: bucket.as("bucket"),
+        }).from(users).groupBy(({ bucket: selectedBucket }) => selectedBucket);
+      `,
+      errors: [{ messageId: "unstableGrouping" }],
+    },
+    {
+      name: "positional grouping of a direct column",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select({
+          id: users.id,
+          name: users.name,
+        }).from(users).groupBy(sql\`1\`);
+      `,
+      errors: [{ messageId: "unstableGrouping" }],
+    },
     {
       name: "identity column wrappers use direct structured fields",
       code: `${drizzlePreamble}

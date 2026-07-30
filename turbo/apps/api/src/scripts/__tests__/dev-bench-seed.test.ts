@@ -5,32 +5,32 @@ import { buildProfileRows, DEV_BENCH_THREAD_PROFILES } from "../dev-bench-seed";
 
 const EXPECTED_PROFILE_SHAPES = {
   "feature-switch-digest": {
-    messages: 1429,
+    events: 1429,
     runs: 134,
     userMessages: 139,
-    assistantMessages: 1290,
-    nullRunMessages: 9,
-    completedLifecycleMessages: 133,
-    failedLifecycleMessages: 1,
-    recommendedFollowupMessages: 72,
-    usageMessages: 32,
+    assistantEvents: 1290,
+    nullRunEvents: 9,
+    completedLifecycleEvents: 133,
+    failedLifecycleEvents: 1,
+    recommendedFollowupEvents: 72,
+    usageEvents: 32,
     workflowScheduleRuns: 46,
     triggerBriefRuns: 46,
-    revokeMessages: 6,
+    revokeEvents: 6,
   },
   "release-pr-auto-merge": {
-    messages: 2821,
+    events: 2821,
     runs: 142,
     userMessages: 142,
-    assistantMessages: 2679,
-    nullRunMessages: 0,
-    completedLifecycleMessages: 142,
-    failedLifecycleMessages: 0,
-    recommendedFollowupMessages: 142,
-    usageMessages: 0,
+    assistantEvents: 2679,
+    nullRunEvents: 0,
+    completedLifecycleEvents: 142,
+    failedLifecycleEvents: 0,
+    recommendedFollowupEvents: 142,
+    usageEvents: 0,
     workflowScheduleRuns: 135,
     triggerBriefRuns: 135,
-    revokeMessages: 6,
+    revokeEvents: 6,
   },
 } as const;
 
@@ -62,50 +62,50 @@ describe("dev bench seed profile rows", () => {
 
       expect(rows.runRows).toHaveLength(expected.runs);
       expect(rows.zeroRunRows).toHaveLength(expected.runs);
-      expect(rows.messageRows).toHaveLength(expected.messages);
+      expect(rows.eventRows).toHaveLength(expected.events);
       expect(
-        rows.messageRows.some((row) => {
+        rows.eventRows.some((row) => {
           return "role" in row;
         }),
       ).toBeFalsy();
       expect(
-        countWhere(rows.messageRows, (row) => {
+        countWhere(rows.eventRows, (row) => {
           return chatEventCompatibilityRole(row.eventType) === "user";
         }),
       ).toBe(expected.userMessages);
       expect(
-        countWhere(rows.messageRows, (row) => {
+        countWhere(rows.eventRows, (row) => {
           return chatEventCompatibilityRole(row.eventType) === "assistant";
         }),
-      ).toBe(expected.assistantMessages);
+      ).toBe(expected.assistantEvents);
       expect(
-        countWhere(rows.messageRows, (row) => {
+        countWhere(rows.eventRows, (row) => {
           return row.runId === null;
         }),
-      ).toBe(expected.nullRunMessages);
+      ).toBe(expected.nullRunEvents);
       expect(
-        countWhere(rows.messageRows, (row) => {
+        countWhere(rows.eventRows, (row) => {
           return row.runLifecycleEvent === "completed";
         }),
-      ).toBe(expected.completedLifecycleMessages);
+      ).toBe(expected.completedLifecycleEvents);
       expect(
-        countWhere(rows.messageRows, (row) => {
+        countWhere(rows.eventRows, (row) => {
           return row.runLifecycleEvent === "failed";
         }),
-      ).toBe(expected.failedLifecycleMessages);
+      ).toBe(expected.failedLifecycleEvents);
       expect(
-        countWhere(rows.messageRows, (row) => {
+        countWhere(rows.eventRows, (row) => {
           return (
             row.recommendedFollowups !== null &&
             row.recommendedFollowups !== undefined
           );
         }),
-      ).toBe(expected.recommendedFollowupMessages);
+      ).toBe(expected.recommendedFollowupEvents);
       expect(
-        countWhere(rows.messageRows, (row) => {
+        countWhere(rows.eventRows, (row) => {
           return row.usagePayload !== null && row.usagePayload !== undefined;
         }),
-      ).toBe(expected.usageMessages);
+      ).toBe(expected.usageEvents);
       expect(
         countWhere(rows.zeroRunRows, (row) => {
           return row.triggerSource === "workflow-schedule";
@@ -117,15 +117,15 @@ describe("dev bench seed profile rows", () => {
         }),
       ).toBe(expected.triggerBriefRuns);
       expect(
-        countWhere(rows.messageRows, (row) => {
+        countWhere(rows.eventRows, (row) => {
           return (
             row.revokesEventId !== null && row.revokesEventId !== undefined
           );
         }),
-      ).toBe(expected.revokeMessages);
+      ).toBe(expected.revokeEvents);
 
       const sequencesByRun = new Map<string, number[]>();
-      for (const row of rows.messageRows) {
+      for (const row of rows.eventRows) {
         if (row.runId && typeof row.sequenceNumber === "number") {
           const sequences = sequencesByRun.get(row.runId) ?? [];
           sequences.push(row.sequenceNumber);

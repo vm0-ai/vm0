@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  testCronMonitorChatMessageQueueStateContract,
-  type TestCronMonitorChatMessageQueueStateActionBody,
-} from "@vm0/api-contracts/contracts/test-cron-monitor-chat-message-queue-state";
+  testCronMonitorChatEventQueueStateContract,
+  type TestCronMonitorChatEventQueueStateActionBody,
+} from "@vm0/api-contracts/contracts/test-cron-monitor-chat-event-queue-state";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
@@ -27,11 +27,11 @@ import {
 } from "./test-oauth-provider-helpers";
 
 const actionBody$ = bodyResultOf(
-  testCronMonitorChatMessageQueueStateContract.action,
+  testCronMonitorChatEventQueueStateContract.action,
 );
 
 type FixtureKind = Extract<
-  TestCronMonitorChatMessageQueueStateActionBody,
+  TestCronMonitorChatEventQueueStateActionBody,
   { readonly action: "seed-fixture" }
 >["fixture_kind"];
 
@@ -117,7 +117,7 @@ async function seedFixture(
     throw new Error("Failed to seed orphan monitor thread");
   }
 
-  const message = await db.transaction(async (tx) => {
+  const event = await db.transaction(async (tx) => {
     const baseEvent = {
       chatThreadId: thread.id,
       userMessage: createUserMessageDocument({
@@ -138,13 +138,13 @@ async function seedFixture(
         });
   });
   signal.throwIfAborted();
-  if (!message) {
+  if (!event) {
     throw new Error("Failed to seed orphan monitor message");
   }
 
   if (fixtureKind === "revoked-message") {
     await db.transaction(async (tx) => {
-      await replaceChatEvent(tx, message.id, {
+      await replaceChatEvent(tx, event.id, {
         chatThreadId: thread.id,
         eventType: "input.prompt",
         userMessage: createUserMessageDocument({
@@ -165,7 +165,7 @@ async function seedFixture(
   return actionOk({ compose_id: compose.id });
 }
 
-const mutateTestCronMonitorChatMessageQueueState$ = command(
+const mutateTestCronMonitorChatEventQueueState$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
       return testEndpointNotFoundResponse();
@@ -189,10 +189,9 @@ const mutateTestCronMonitorChatMessageQueueState$ = command(
   },
 );
 
-export const testCronMonitorChatMessageQueueStateRoutes: readonly RouteEntry[] =
-  [
-    {
-      route: testCronMonitorChatMessageQueueStateContract.action,
-      handler: mutateTestCronMonitorChatMessageQueueState$,
-    },
-  ];
+export const testCronMonitorChatEventQueueStateRoutes: readonly RouteEntry[] = [
+  {
+    route: testCronMonitorChatEventQueueStateContract.action,
+    handler: mutateTestCronMonitorChatEventQueueState$,
+  },
+];

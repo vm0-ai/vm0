@@ -14,7 +14,7 @@ import {
   type ArtifactKind,
   type ArtifactThumbnail,
 } from "@vm0/db/schema/artifact";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { hostedDeployments, hostedSites } from "@vm0/db/schema/hosted-site";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
@@ -24,7 +24,7 @@ import { z } from "zod";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { publishArtifactCatalogChanged } from "./artifact-realtime.service";
-import { inferMimetype } from "./zero-chat-message-shared.service";
+import { inferMimetype } from "./zero-chat-event-shared.service";
 
 const ARTIFACT_CATALOG_DEFAULT_LIMIT = 60;
 
@@ -142,14 +142,14 @@ async function resolveChatThreadId(
     return run.chatThreadId;
   }
 
-  const [message] = await db
-    .select({ chatThreadId: chatMessages.chatThreadId })
-    .from(chatMessages)
-    .where(eq(chatMessages.runId, row.runId))
-    .orderBy(asc(chatMessages.seqId))
+  const [event] = await db
+    .select({ chatThreadId: chatEvents.chatThreadId })
+    .from(chatEvents)
+    .where(eq(chatEvents.runId, row.runId))
+    .orderBy(asc(chatEvents.seqId))
     .limit(1);
   signal.throwIfAborted();
-  return message?.chatThreadId ?? null;
+  return event?.chatThreadId ?? null;
 }
 
 async function resolveAuthorUserId(

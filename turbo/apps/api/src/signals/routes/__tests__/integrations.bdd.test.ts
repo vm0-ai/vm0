@@ -91,7 +91,7 @@ function sandboxOperationEventsForRun(
   });
 }
 
-function firstAssistantMessageEventsForRun(
+function firstAssistantEventsForRun(
   runId: string,
 ): readonly Record<string, unknown>[] {
   return sandboxOperationEventsForRun(runId).filter((event) => {
@@ -1649,7 +1649,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
         }),
       );
     });
-    expect(firstAssistantMessageEventsForRun(run1Id)).toHaveLength(1);
+    expect(firstAssistantEventsForRun(run1Id)).toHaveLength(1);
     await expect
       .poll(async () => {
         const callbacks = await callbackStore.set(
@@ -1834,7 +1834,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     ).toStrictEqual(["is thinking...", "is thinking...", "", "is thinking..."]);
     releaseTerminalStatusClear.resolve(undefined);
     await flushWaitUntilForTest();
-    expect(firstAssistantMessageEventsForRun(run2Id)).toHaveLength(1);
+    expect(firstAssistantEventsForRun(run2Id)).toHaveLength(1);
     expect(
       context.mocks.slack.assistant.threads.setStatus,
     ).toHaveBeenCalledTimes(5);

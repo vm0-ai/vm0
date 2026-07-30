@@ -4,13 +4,22 @@ import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import {
+  zeroCustomConnectorSecretContract,
+  zeroCustomConnectorsContract,
+  type CustomConnectorResponse,
+} from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import {
   zeroConnectorNoAuthGrantContract,
   zeroConnectorOauthStartContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import { beforeEach, describe, expect, it } from "vitest";
-import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  queryAllByRoleFast,
+} from "../../../__tests__/page-helper.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import {
   AGENT_ID,
@@ -62,6 +71,42 @@ function connectorStatus({
   };
 }
 
+function customConnector(
+  overrides: Partial<CustomConnectorResponse> = {},
+): CustomConnectorResponse {
+  return {
+    id: "33333333-3333-4333-8333-333333333333",
+    slug: "_acme-search",
+    displayName: "Acme Search",
+    prefixes: ["https://api.acme.test/v1/"],
+    headerName: "Authorization",
+    headerTemplate: "Bearer {{secret}}",
+    prefixTemplates: ["https://api.acme.test/v1/"],
+    fields: [
+      {
+        key: "secret",
+        label: "Secret",
+        kind: "secret",
+        required: true,
+      },
+    ],
+    headerInjections: [
+      {
+        name: "Authorization",
+        valueTemplate: "Bearer {{secrets.secret}}",
+      },
+    ],
+    queryInjections: [],
+    connected: false,
+    missingRequiredFields: ["secret"],
+    configuredFieldKeys: [],
+    hasSecret: false,
+    createdAt: "2026-07-30T00:00:00.000Z",
+    updatedAt: "2026-07-30T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
 function mockCatalog(
   connectors: readonly PublicConnectorCatalogStatusItem[],
 ): void {
@@ -101,6 +146,127 @@ beforeEach(() => {
 });
 
 describe("chat composer connector connection", () => {
+  it("shows connected custom connectors and toggles agent access", async () => {
+    const user = userEvent.setup({ delay: null });
+    const connector = customConnector({
+      connected: true,
+      missingRequiredFields: [],
+      configuredFieldKeys: ["secret"],
+      hasSecret: true,
+    });
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    let enabledIds: string[] = [];
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.get,
+      ({ params, respond }) => {
+        expect(params.id).toBe(AGENT_ID);
+        return respond(200, { enabledIds });
+      },
+    );
+    let updateCount = 0;
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ body, params, respond }) => {
+        updateCount += 1;
+        expect(params.id).toBe(AGENT_ID);
+        expect(body).toStrictEqual({
+          enabledIds: [connector.id],
+          operation: "add",
+        });
+        enabledIds = [connector.id];
+        return respond(200, { enabledIds });
+      },
+    );
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+    await user.click(within(composer).getByLabelText("Connectors"));
+    await user.click(await screen.findByLabelText("Add Acme Search"));
+
+    await waitFor(() => {
+      expect(updateCount).toBe(1);
+      expect(screen.getByLabelText("Remove Acme Search")).toBeInTheDocument();
+    });
+  });
+
+  it("connects a custom connector for only the active agent", async () => {
+    const user = userEvent.setup({ delay: null });
+    const connector = customConnector();
+    mockAgent({ includeOtherAgent: true });
+    mockCatalog([]);
+    let connected = false;
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, {
+        connectors: [
+          connected
+            ? {
+                ...connector,
+                connected: true,
+                missingRequiredFields: [],
+                configuredFieldKeys: ["secret"],
+                hasSecret: true,
+              }
+            : connector,
+        ],
+      });
+    });
+    context.mocks.api(
+      zeroCustomConnectorSecretContract.set,
+      ({ body, params, respond }) => {
+        expect(params.id).toBe(connector.id);
+        expect(body).toStrictEqual({ value: "acme-secret" });
+        connected = true;
+        return respond(204);
+      },
+    );
+    const updatedAgentIds: string[] = [];
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ body, params, respond }) => {
+        expect(body).toStrictEqual({
+          enabledIds: [connector.id],
+          operation: "add",
+        });
+        updatedAgentIds.push(params.id);
+        return respond(200, { enabledIds: [connector.id] });
+      },
+    );
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    const dialog = await openAddConnectorsDialog(user);
+    await user.click(
+      within(dialog).getByLabelText(`Connect ${connector.displayName}`),
+    );
+
+    const connectDialog = await screen.findByRole("dialog", {
+      name: `Connect ${connector.displayName}`,
+    });
+    expect(dialog).not.toBeInTheDocument();
+    await user.type(
+      within(connectDialog).getByLabelText("Secret"),
+      "acme-secret",
+    );
+    const saveButton = queryAllByRoleFast("button", connectDialog).find(
+      (button) => {
+        return button.textContent === "Save";
+      },
+    );
+    if (!saveButton) {
+      throw new Error("Save button not found");
+    }
+    await user.click(saveButton);
+
+    await waitFor(() => {
+      expect(updatedAgentIds).toStrictEqual([AGENT_ID]);
+      expect(connectDialog).not.toBeInTheDocument();
+    });
+  });
+
   it("starts a single OAuth connector without an intermediate modal", async () => {
     const user = userEvent.setup({ delay: null });
     mockCatalog([

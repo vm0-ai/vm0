@@ -219,6 +219,7 @@ jobs:
           )
           bash -n "${script_files[@]}"
           shellcheck \
+            e2e/helpers/storage-fixtures.bash \
             .github/scripts/check-release-please-component-releases.sh \
             .github/scripts/check-workflow-shell-compatibility.sh \
             .github/scripts/cloudflare-ssh-preconnect.sh \
@@ -231,7 +232,8 @@ jobs:
             .github/scripts/tests/cloudflare-ssh-proxy-test.sh \
             .github/scripts/tests/run-semgrep-test.sh \
             .github/scripts/tests/semgrep-results-test.sh \
-            .github/scripts/tests/runner-behavior-balloon-test.sh
+            .github/scripts/tests/runner-behavior-balloon-test.sh \
+            .github/scripts/tests/storage-fixtures-test.sh
           # actionlint assumes Bash when shell is omitted and does not model the
           # sh default used by container jobs.
           .github/scripts/check-workflow-shell-compatibility.sh

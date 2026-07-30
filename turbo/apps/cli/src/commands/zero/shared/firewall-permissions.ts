@@ -1,16 +1,21 @@
-import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { resolveFirewallMetadataPolicies } from "@vm0/connectors/firewall-metadata/policy";
+import {
+  findFirewallMetadataPermission,
+  permissionGrantsToFirewallPolicies,
+  resolveFirewallMetadataPolicies,
+} from "@vm0/connectors/firewall-metadata/policy";
 import type {
   FirewallPolicies,
   FirewallPolicyValue,
 } from "@vm0/connectors/firewall-types";
 import { getZeroConnectorCatalogPermissions } from "../../../lib/api";
+import type { ZeroUserPermissionGrant } from "../../../lib/api/domains/zero-agents";
+import type { ZeroConnectorCatalogPermissionDetail } from "../../../lib/api/domains/zero-connectors";
 
 export interface ConnectorPermissionInfo {
   readonly connectorSlug: string;
   readonly hasPermissions: boolean;
   readonly hasPolicyEntry: boolean;
-  readonly permissions: readonly PublicConnectorCatalogPermissionDetail["permissions"][number][];
+  readonly permissions: readonly ZeroConnectorCatalogPermissionDetail["permissions"][number][];
   readonly policies: Readonly<Record<string, FirewallPolicyValue>> | null;
   readonly unknownPolicy: FirewallPolicyValue;
   readonly allowed: number;
@@ -19,7 +24,7 @@ export interface ConnectorPermissionInfo {
 
 type PermissionMetadataBySlug = Map<
   string,
-  PublicConnectorCatalogPermissionDetail | null
+  ZeroConnectorCatalogPermissionDetail | null
 >;
 
 async function loadPermissionMetadataBySlug(
@@ -39,7 +44,7 @@ async function loadPermissionMetadataBySlug(
 
 function connectorPermissionInfo(args: {
   readonly connectorSlug: string;
-  readonly metadata: PublicConnectorCatalogPermissionDetail | null;
+  readonly metadata: ZeroConnectorCatalogPermissionDetail | null;
   readonly resolvedPolicies: FirewallPolicies | null;
 }): ConnectorPermissionInfo {
   if (!args.metadata) {
@@ -55,7 +60,7 @@ function connectorPermissionInfo(args: {
     };
   }
 
-  const connectorPolicy = args.resolvedPolicies?.[args.metadata.connectorRef];
+  const connectorPolicy = args.resolvedPolicies?.[args.metadata.connectorSlug];
   const policies =
     connectorPolicy && Object.keys(connectorPolicy.policies).length > 0
       ? connectorPolicy.policies
@@ -96,7 +101,9 @@ export async function loadConnectorPermissionInfos(args: {
   );
   const resolvedPolicies = resolveFirewallMetadataPolicies(
     args.storedPolicies,
-    defaultPolicyMetadata,
+    defaultPolicyMetadata.map(({ connectorSlug, ...metadata }) => {
+      return { ...metadata, connectorRef: connectorSlug };
+    }),
   );
 
   return args.displayConnectorSlugs.map((connectorSlug) => {
@@ -106,4 +113,26 @@ export async function loadConnectorPermissionInfos(args: {
       resolvedPolicies,
     });
   });
+}
+
+export function connectorPermissionGrantsToFirewallPolicies(
+  grants: readonly ZeroUserPermissionGrant[],
+): FirewallPolicies | null {
+  return permissionGrantsToFirewallPolicies(
+    grants.map(({ connectorSlug, ...grant }) => {
+      return { ...grant, connectorRef: connectorSlug };
+    }),
+  );
+}
+
+export function hasConnectorFirewallMetadataPermission(
+  metadata: ZeroConnectorCatalogPermissionDetail,
+  permission: string,
+): boolean {
+  return (
+    findFirewallMetadataPermission(
+      { ...metadata, connectorRef: metadata.connectorSlug },
+      permission,
+    ) !== null
+  );
 }

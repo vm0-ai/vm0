@@ -40,7 +40,7 @@ import {
   holdOrgAdmissionLockFixture,
   setQueuedUserMessageCreatedAtFixture,
   setWorkflowQueueEventCreatedAtFixture,
-} from "../../../test-fixtures/chat-messages";
+} from "../../../test-fixtures/chat-events";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -63,7 +63,7 @@ function automationsClient() {
   return setupApp({ context })(zeroWorkflowAutomationsContract);
 }
 
-function chatMessagesClient() {
+function chatEventsClient() {
   return setupApp({ context })(chatEventsContract);
 }
 
@@ -413,7 +413,7 @@ describe("workflow queue", () => {
       createdAt: new Date("2019-12-31T23:54:00.000Z"),
     });
 
-    const userRequest = chatMessagesClient().send({
+    const userRequest = chatEventsClient().send({
       headers: authHeaders(),
       body: {
         agentId: scenario.agentId,
@@ -497,7 +497,7 @@ describe("workflow queue", () => {
     );
     const messageId = randomUUID();
     const queued = await accept(
-      chatMessagesClient().send({
+      chatEventsClient().send({
         headers: authHeaders(),
         body: {
           agentId: scenario.agentId,
@@ -514,7 +514,7 @@ describe("workflow queue", () => {
     );
     expect(queued.body.runId).toBeNull();
     await setQueuedUserMessageCreatedAtFixture({
-      messageId,
+      eventId: messageId,
       createdAt: new Date("2019-12-31T23:54:00.000Z"),
     });
 
@@ -997,7 +997,7 @@ describe("workflow queue", () => {
     // A user message sent while the automation run is active joins the chat
     // message queue (no run yet).
     const queued = await accept(
-      chatMessagesClient().send({
+      chatEventsClient().send({
         headers: authHeaders(),
         body: {
           agentId: scenario.agentId,
@@ -1092,7 +1092,7 @@ describe("workflow queue", () => {
     const workflowRequest = postWorkflowWebhook(automation, "workflow first");
     await expect.poll(admissionLock.waiterCount).toBe(1);
 
-    const userRequest = chatMessagesClient().send({
+    const userRequest = chatEventsClient().send({
       headers: authHeaders(),
       body: {
         agentId: scenario.agentId,

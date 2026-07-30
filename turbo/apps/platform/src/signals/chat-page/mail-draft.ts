@@ -27,6 +27,7 @@ import {
   createTextPreviewComputedFromBlob,
   type TextPreviewComputed,
 } from "../text-preview.ts";
+import { i18n } from "../../i18n/index.ts";
 
 export type MailDraftFollowUpState =
   | "idle"
@@ -351,7 +352,11 @@ function createMailDraftMutationSignals(
           const draft = await get(resources.draft$);
           signal.throwIfAborted();
           if (!draft) {
-            throw new Error("Email is no longer available");
+            throw new Error(
+              i18n.t(($) => {
+                return $.chat.mail.unavailable;
+              }),
+            );
           }
           if (draft.followUp) {
             set(resources.followUpStateValue$, draft.followUp.status);

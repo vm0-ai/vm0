@@ -1,9 +1,9 @@
 import { command, computed, type Computed } from "ccstate";
 import type { ResolvedAttachFile } from "@vm0/api-contracts/contracts/chat-threads";
 import {
-  chatMessages,
-  type ChatMessageAttachFileMetadata,
-} from "@vm0/db/schema/chat-message";
+  chatEvents,
+  type ChatEventAttachFileMetadata,
+} from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq, isNotNull, isNull, not, notExists, or, sql } from "drizzle-orm";
@@ -22,10 +22,10 @@ import {
 } from "../external/realtime";
 import { listS3Objects } from "../external/s3";
 import { nowDate } from "../external/time";
-import { assistantMessageIdForRunEvent } from "./assistant-message-id";
+import { assistantEventIdForRunEvent } from "./assistant-event-id";
 import { insertChatEvents } from "./zero-chat-event.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
-import { publishFirstAssistantMessageCreatedSafely } from "./zero-chat-first-assistant-message-metric.service";
+import { publishFirstAssistantEventCreatedSafely } from "./zero-chat-first-assistant-event-metric.service";
 import {
   appendChatThreadEvent,
   type ChatThreadEventTransaction,
@@ -59,9 +59,9 @@ const EXT_MIMETYPE_MAP: Readonly<Record<string, string>> = {
   htm: "text/html",
   json: "application/json",
 };
-const revoker = alias(chatMessages, "revoker");
+const revoker = alias(chatEvents, "revoker");
 
-interface InsertAssistantEventMessagesInput {
+interface InsertAssistantEventsInput {
   readonly runId: string;
   readonly threadId: string;
   readonly userId: string;
@@ -125,19 +125,19 @@ export function visibleChatEventCondition(db: Pick<Db, "select">) {
         db
           .select({ id: revoker.id })
           .from(revoker)
-          .where(eq(revoker.revokesEventId, chatMessages.id)),
+          .where(eq(revoker.revokesEventId, chatEvents.id)),
       ),
       or(
         not(isCompatibilityUserEvent),
-        isNotNull(chatMessages.runId),
-        isNull(chatMessages.revokesEventId),
-        isNotNull(chatMessages.content),
-        isNotNull(chatMessages.error),
+        isNotNull(chatEvents.runId),
+        isNull(chatEvents.revokesEventId),
+        isNotNull(chatEvents.content),
+        isNotNull(chatEvents.error),
       ),
       or(
         not(isCompatibilityUserEvent),
-        isNotNull(chatMessages.runId),
-        isNull(chatMessages.interruptsRunId),
+        isNotNull(chatEvents.runId),
+        isNull(chatEvents.interruptsRunId),
       ),
     ],
     sql` AND `,
@@ -177,7 +177,7 @@ export function resolveAttachFileUrls(
 }
 
 export function resolveAttachFileMetadataUrls(
-  metadata: readonly ChatMessageAttachFileMetadata[],
+  metadata: readonly ChatEventAttachFileMetadata[],
 ): readonly ResolvedAttachFile[] {
   return metadata.map((file) => {
     return {
@@ -202,35 +202,35 @@ export async function runGroupIdForRun(
   return run?.runGroupId ?? undefined;
 }
 
-async function assistantMessageRunContextForRun(
+async function assistantEventRunContextForRun(
   db: Db,
   runId: string,
 ): Promise<{
   readonly runGroupId: string | undefined;
-  readonly shouldAttemptFirstAssistantMessageClaim: boolean;
+  readonly shouldAttemptFirstAssistantEventClaim: boolean;
 }> {
   const [run] = await db
     .select({
       runGroupId: zeroRuns.runGroupId,
       apiStartedAt: zeroRuns.apiStartedAt,
-      firstAssistantMessageAcknowledgedAt:
-        zeroRuns.firstAssistantMessageAcknowledgedAt,
+      firstAssistantEventAcknowledgedAt:
+        zeroRuns.firstAssistantEventAcknowledgedAt,
     })
     .from(zeroRuns)
     .where(eq(zeroRuns.id, runId))
     .limit(1);
   return {
     runGroupId: run?.runGroupId ?? undefined,
-    shouldAttemptFirstAssistantMessageClaim:
+    shouldAttemptFirstAssistantEventClaim:
       run !== undefined &&
       run.apiStartedAt !== null &&
-      run.firstAssistantMessageAcknowledgedAt === null,
+      run.firstAssistantEventAcknowledgedAt === null,
   };
 }
 
-export async function insertAssistantEventMessages(
+export async function insertAssistantEvents(
   writeDb: Db,
-  args: InsertAssistantEventMessagesInput,
+  args: InsertAssistantEventsInput,
   signal: AbortSignal,
 ): Promise<number> {
   if (args.items.length === 0) {
@@ -251,10 +251,7 @@ export async function insertAssistantEventMessages(
   const legacyItems = args.items.filter((item) => {
     return item.runEventId === undefined;
   });
-  const runContext = await assistantMessageRunContextForRun(
-    writeDb,
-    args.runId,
-  );
+  const runContext = await assistantEventRunContextForRun(writeDb, args.runId);
 
   const [deterministicRows, legacyRows] = await writeDb.transaction(
     async (tx) => {
@@ -265,10 +262,7 @@ export async function insertAssistantEventMessages(
               tx,
               itemsWithRunEventId.map((item) => {
                 return {
-                  id: assistantMessageIdForRunEvent(
-                    args.runId,
-                    item.runEventId,
-                  ),
+                  id: assistantEventIdForRunEvent(args.runId, item.runEventId),
                   chatThreadId: args.threadId,
                   runId: args.runId,
                   runGroupId: runContext.runGroupId,
@@ -308,8 +302,8 @@ export async function insertAssistantEventMessages(
   const insertedRowCount = deterministicRows.length + legacyRows.length;
 
   if (insertedRowCount > 0) {
-    if (runContext.shouldAttemptFirstAssistantMessageClaim) {
-      await publishFirstAssistantMessageCreatedSafely({
+    if (runContext.shouldAttemptFirstAssistantEventClaim) {
+      await publishFirstAssistantEventCreatedSafely({
         db: writeDb,
         userId: args.userId,
         threadId: args.threadId,
@@ -327,12 +321,12 @@ export async function insertAssistantEventMessages(
   return insertedRowCount;
 }
 
-export const insertAssistantEventMessages$ = command(
+export const insertAssistantEvents$ = command(
   async (
     { set },
-    args: InsertAssistantEventMessagesInput,
+    args: InsertAssistantEventsInput,
     signal: AbortSignal,
   ): Promise<number> => {
-    return await insertAssistantEventMessages(set(writeDb$), args, signal);
+    return await insertAssistantEvents(set(writeDb$), args, signal);
   },
 );

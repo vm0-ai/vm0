@@ -6,7 +6,7 @@ import type {
   ChatThreadArtifactRun,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { hostedDeployments } from "@vm0/db/schema/hosted-site";
 import {
@@ -593,12 +593,12 @@ async function loadArtifactFile(
           eq(zeroRuns.chatThreadId, args.threadId),
           exists(
             db
-              .select({ one: chatMessages.id })
-              .from(chatMessages)
+              .select({ one: chatEvents.id })
+              .from(chatEvents)
               .where(
                 and(
-                  eq(chatMessages.runId, runUploadedFiles.runId),
-                  eq(chatMessages.chatThreadId, args.threadId),
+                  eq(chatEvents.runId, runUploadedFiles.runId),
+                  eq(chatEvents.chatThreadId, args.threadId),
                 ),
               ),
           ),

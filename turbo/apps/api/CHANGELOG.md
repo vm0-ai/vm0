@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.346.1](https://github.com/vm0-ai/vm0/compare/api-v1.346.0...api-v1.346.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* **api:** enforce thread queue-claim admission ([#23820](https://github.com/vm0-ai/vm0/issues/23820)) ([e2478c4](https://github.com/vm0-ai/vm0/commit/e2478c4410dddd6b2bf76e9ad66172f8d0014cf1))
+
+
+### Refactoring
+
+* **api:** use stable grouping expressions ([#23843](https://github.com/vm0-ai/vm0/issues/23843)) ([af5ee1f](https://github.com/vm0-ai/vm0/commit/af5ee1fa2bb3bce43a579dd16965c2cacef0328c))
+* **telegram:** retire legacy thread session runtime ([#23864](https://github.com/vm0-ai/vm0/issues/23864)) ([83a947e](https://github.com/vm0-ai/vm0/commit/83a947e8c874d41245065fc9b9bfcbf49aecae20))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.248.1
+    * @vm0/core bumped to 8.486.3
+    * @vm0/db bumped to 1.153.3
+
 ## [1.346.0](https://github.com/vm0-ai/vm0/compare/api-v1.345.1...api-v1.346.0) (2026-07-30)
 
 

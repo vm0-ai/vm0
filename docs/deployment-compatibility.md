@@ -201,6 +201,14 @@ examples:
   User chat routes remained clean. Migration-before-promotion ordering, or
   explicitly tolerant new code, is still required for the other direction.
 
+Persisted database objects are also consumers of table names: PL/pgSQL
+functions, triggers, and column defaults can retain references that no source
+scan will find, so query the PostgreSQL catalogs before contracting a schema.
+[PR #23816](https://github.com/vm0-ai/vm0/pull/23816) had to retarget
+`queue_artifact_catalog_file()` in migration `0736`, while
+[PR #23858](https://github.com/vm0-ai/vm0/pull/23858) demonstrates the broader
+catalog audit required before removing a compatibility relation.
+
 Use one of the following proven schema-transition patterns. Keep each
 compatibility layer only until the release it protects has fully drained.
 

@@ -22,6 +22,7 @@ import { accept } from "../../lib/accept.ts";
 import { IN_VITEST } from "../../env.ts";
 import { now as currentTimeMs } from "../../lib/time.ts";
 import { resolveAudioConfig } from "../../lib/voice-io/audio-config.ts";
+import { i18n } from "../../i18n/index.ts";
 
 const L = logger("VoiceIO:STT");
 
@@ -112,9 +113,19 @@ const VOICE_ACTIVITY_RMS_THRESHOLD = 0.025;
 const VOICE_ACTIVITY_HOLD_MS = 500;
 const VOICE_ACTIVITY_AUTO_STOP_MS = IN_VITEST ? 50 : 10_000;
 const VOICE_ACTIVITY_START_GRACE_MS = 500;
-const AUDIO_INPUT_QUOTA_TOAST =
-  "Voice input limit reached. Upgrade to Pro or Team for higher limits.";
 const AUDIO_INPUT_QUOTA_TOAST_ID = "voice-input-quota-limit";
+
+function transcriptionFailedMessage(): string {
+  return i18n.t(($) => {
+    return $.chat.voice.transcriptionFailed;
+  });
+}
+
+function microphoneAccessDeniedMessage(): string {
+  return i18n.t(($) => {
+    return $.chat.voice.microphoneAccessDenied;
+  });
+}
 
 interface VoiceActivity {
   readonly detected: boolean;
@@ -398,7 +409,7 @@ function logSttFailure(
     message: failure.message,
     ...context,
   });
-  toast.error("Transcription failed");
+  toast.error(transcriptionFailedMessage());
 }
 
 // ---------------------------------------------------------------------------
@@ -443,9 +454,14 @@ const refreshAudioInputQuota$ = command(({ set }) => {
 export const openAudioInputQuotaRecovery$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     signal.throwIfAborted();
-    toast.error(AUDIO_INPUT_QUOTA_TOAST, {
-      id: AUDIO_INPUT_QUOTA_TOAST_ID,
-    });
+    toast.error(
+      i18n.t(($) => {
+        return $.chat.voice.inputLimitReached;
+      }),
+      {
+        id: AUDIO_INPUT_QUOTA_TOAST_ID,
+      },
+    );
     set(refreshAudioInputQuota$);
     set(setBillingSubPage$, true);
     await set(openSettingsDialogAt$, "billing", get(pageSignal$));
@@ -518,7 +534,7 @@ async function openMedia(signal: AbortSignal) {
     return stream;
   } catch (error) {
     L.error("Microphone access denied", error);
-    toast.error("Microphone access denied");
+    toast.error(microphoneAccessDeniedMessage());
     return;
   }
 }
@@ -590,7 +606,7 @@ const transcribeAudioBlob$ = command(
       }),
       (error) => {
         L.error("STT fetch failed", error);
-        toast.error("Transcription failed");
+        toast.error(transcriptionFailedMessage());
       },
     );
     signal.throwIfAborted();
@@ -721,7 +737,7 @@ function createVoiceSegmentTranscriber(
       const text =
         (await tapError(captureAndUploadSegment(reason, upload), (error) => {
           L.error("Voice segment transcription failed", error);
-          toast.error("Transcription failed");
+          toast.error(transcriptionFailedMessage());
         })) ?? "";
       if (deliver && text) {
         options.onSegmentTranscribed(text);
@@ -745,7 +761,7 @@ function createVoiceSegmentTranscriber(
       if (result.status === "rejected") {
         if (!options.signal.aborted) {
           L.error("Voice segment transcription failed", result.reason);
-          toast.error("Transcription failed");
+          toast.error(transcriptionFailedMessage());
         }
         return "";
       }
@@ -905,7 +921,7 @@ export const startRecording$ = command(
 
     const stream = await tapError(openMedia(signal), (error) => {
       L.error("Microphone start failed", error);
-      toast.error("Microphone access denied");
+      toast.error(microphoneAccessDeniedMessage());
     });
     if (stream === undefined) {
       set(internalStarting$, false);

@@ -10,7 +10,7 @@ import { nowDate } from "../external/time";
 import { logger } from "../../lib/log";
 import { usageUnderbillingFields } from "../usage-underbilling";
 import { tapError } from "../utils";
-import { maybeEmitRunUsageMessage$ } from "./zero-chat-usage-message.service";
+import { maybeEmitRunUsageEvent$ } from "./zero-chat-usage-event.service";
 import {
   enqueueCreditLowBalanceAlert$,
   LOW_CREDIT_EMAIL_ALERT_THRESHOLD_CREDITS,
@@ -416,7 +416,7 @@ export const processOrgUsageEvents$ = command(
     }
 
     for (const runId of runIds) {
-      await tapError(set(maybeEmitRunUsageMessage$, runId, signal), (error) => {
+      await tapError(set(maybeEmitRunUsageEvent$, runId, signal), (error) => {
         L.error("Failed to emit chat usage message after usage processing", {
           orgId,
           runId,
