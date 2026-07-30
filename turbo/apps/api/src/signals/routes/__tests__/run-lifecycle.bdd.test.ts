@@ -9180,7 +9180,6 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(appendSystemPrompt).toContain("Timezone: America/Los_Angeles");
 
     expect(claim.featureFlags).toMatchObject({
-      [FeatureSwitchKey.ZeroFinance]: true,
       [FeatureSwitchKey.ZeroChatMessaging]: false,
       [FeatureSwitchKey.CodexSessionPruning]: false,
       [FeatureSwitchKey.ClaudeSessionPruning]: false,
