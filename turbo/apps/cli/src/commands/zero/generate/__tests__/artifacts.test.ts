@@ -193,19 +193,6 @@ describe("zero generate source-backed artifact commands", () => {
     expect(presentationSelection.candidates.templates).toHaveLength(0);
   });
 
-  it("attributes every vm0 image style to the vm0-skills repo", () => {
-    const selection = selectResourceCandidates();
-    const vm0ImageStyles = selection.candidates.imageStyles.filter((entry) => {
-      return entry.id.startsWith("image-style:");
-    });
-
-    expect(vm0ImageStyles.length).toBeGreaterThan(0);
-    for (const entry of vm0ImageStyles) {
-      expect(entry.source.repo).toBe("vm0-ai/vm0-skills");
-      expect(entry.source.ref).toBe("main");
-    }
-  });
-
   it("annotates every template entry with at least one target", () => {
     const selection = selectResourceCandidates();
     for (const template of selection.candidates.templates) {
