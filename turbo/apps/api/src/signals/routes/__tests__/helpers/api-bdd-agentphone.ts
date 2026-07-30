@@ -28,7 +28,6 @@ import {
   createBddIntegrationApi,
 } from "./api-bdd-integrations";
 import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
-import { seedRunOutputTextFixture } from "../../../../test-fixtures/run-output";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 export const AGENTPHONE_BDD_AGENT_ID = "agt-bdd-agentphone";
@@ -251,10 +250,6 @@ export function createAgentPhoneBddApi(context: TestContext) {
         ),
       );
       return { messages, typing };
-    },
-
-    async mockCompletionRunOutput(runId: string, text: string): Promise<void> {
-      await seedRunOutputTextFixture({ runId, text });
     },
 
     async linkViaWebhookConnectPrompt(

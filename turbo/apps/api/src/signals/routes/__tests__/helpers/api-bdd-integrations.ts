@@ -65,7 +65,6 @@ import {
 import type { ApiTestUser, ApiTestUserOptions } from "./api-bdd";
 import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
 import { createZeroRouteMocks } from "./zero-route-test";
-import { seedRunOutputTextFixture } from "../../../../test-fixtures/run-output";
 
 interface AuthHeaders {
   readonly authorization?: string;
@@ -1127,17 +1126,6 @@ export function createBddIntegrationApi(context: TestContext) {
         }),
         [200],
       );
-    },
-
-    async mockSlackRunResultOutput(runId: string, text: string): Promise<void> {
-      await seedRunOutputTextFixture({ runId, text });
-    },
-
-    async mockSlackRunAgentMessageOutput(
-      runId: string,
-      text: string,
-    ): Promise<void> {
-      await seedRunOutputTextFixture({ runId, text });
     },
 
     async enableAuditLinkSwitch(actor: ApiTestUser): Promise<void> {
