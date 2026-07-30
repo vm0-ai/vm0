@@ -12,8 +12,10 @@ use super::workspaces::is_base_dir_lock_name;
 /// `open_lock_file` will recreate them on next use, and the inode recheck in
 /// `lock.rs` prevents stale-fd races. Service locks are intentionally retained
 /// because this GC pass runs before version GC, which relies on those lock paths
-/// to coordinate with concurrent service install/uninstall commands. Stale
-/// version service locks are cleaned by a post-version-GC pass.
+/// to coordinate with concurrent service install/uninstall commands. The
+/// systemd reload lock is also retained because non-runner lifecycle owners use
+/// the same stable path with plain `flock`. Stale version service locks are
+/// cleaned by a post-version-GC pass.
 pub(super) async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> RunnerResult<GcReport> {
     let locks_dir = home.locks_dir();
     let Some(mut entries) = read_dir_or_missing(&locks_dir).await? else {
@@ -34,7 +36,10 @@ pub(super) async fn gc_orphaned_locks(home: &HomePaths, dry_run: bool) -> Runner
         // deleting a version that another process is installing or uninstalling.
         // Workspace GC owns base-dir lock lifecycle because those locks carry
         // the base_dir metadata needed to rediscover dead-runner workspaces.
-        if name.starts_with("service-") || is_base_dir_lock_name(name) {
+        if name.starts_with("service-")
+            || entry.path() == home.systemd_daemon_reload_lock()
+            || is_base_dir_lock_name(name)
+        {
             continue;
         }
 
@@ -75,6 +80,31 @@ mod tests {
         assert!(
             service_lock.exists(),
             "service locks must survive orphaned lock cleanup"
+        );
+        assert!(
+            !stale_lock.exists(),
+            "ordinary free locks should still be cleaned"
+        );
+    }
+
+    #[tokio::test]
+    async fn gc_orphaned_locks_preserves_systemd_reload_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+        let reload_lock = home.systemd_daemon_reload_lock();
+        let stale_lock = locks_dir.join("workspace-image-cache-test.lock");
+        std::fs::write(&reload_lock, "").unwrap();
+        std::fs::write(&stale_lock, "").unwrap();
+
+        let report = gc_orphaned_locks(&home, false).await.unwrap();
+
+        assert_eq!(report.activity_count, 1);
+        assert_eq!(report.freed_bytes, 0);
+        assert!(
+            reload_lock.exists(),
+            "the shared systemd reload lock must keep a stable inode"
         );
         assert!(
             !stale_lock.exists(),

@@ -5381,8 +5381,15 @@
     {
       "idx": 768,
       "version": "7",
-      "when": 1785424384724,
-      "tag": "0768_easy_omega_flight",
+      "when": 1785421224125,
+      "tag": "0768_contract_chat_event_property_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 769,
+      "version": "7",
+      "when": 1785425635595,
+      "tag": "0769_nebulous_mojo",
       "breakpoints": true
     }
   ]

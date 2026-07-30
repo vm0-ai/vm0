@@ -5413,6 +5413,7 @@ const CHAT_EVENT_PROPERTY_COLUMNS_PREVIOUS_MIGRATION = 754;
 const REVOKES_EVENT_ID_EXPANSION_MIGRATION = 755;
 const LAST_CHAT_EVENT_SEQ_ID_EXPANSION_MIGRATION = 756;
 const FIRST_ASSISTANT_EVENT_ACK_EXPANSION_MIGRATION = 757;
+const CHAT_EVENT_PROPERTY_COLUMNS_CONTRACT_MIGRATION = 768;
 
 const chatEventPropertyColumnFixture = {
   composeId: "99000000-0000-4000-8000-000000000001",
@@ -5436,6 +5437,9 @@ const chatEventPropertyColumnFixture = {
   releaseTwoPreviousApiRevokerEventId: "99000000-0000-4000-8000-000000000019",
   releaseTwoCurrentApiTargetEventId: "99000000-0000-4000-8000-000000000020",
   releaseTwoCurrentApiRevokerEventId: "99000000-0000-4000-8000-000000000021",
+  contractRunId: "99000000-0000-4000-8000-000000000022",
+  contractTargetEventId: "99000000-0000-4000-8000-000000000023",
+  contractRevokerEventId: "99000000-0000-4000-8000-000000000024",
 } as const;
 
 async function assertChatEventsAppendOnlyProtection(
@@ -5547,6 +5551,14 @@ async function seedChatEventPropertyColumnFixture(
           'running',
           'release 2 current API acknowledgement',
           'chat-event-property-column-org'
+        ),
+        (
+          $7,
+          'chat-event-property-column-user',
+          $4,
+          'running',
+          'release 3 canonical acknowledgement',
+          'chat-event-property-column-org'
         )
     `,
     [
@@ -5556,6 +5568,7 @@ async function seedChatEventPropertyColumnFixture(
       fixture.sessionId,
       fixture.releaseTwoPreviousApiRunId,
       fixture.releaseTwoCurrentApiRunId,
+      fixture.contractRunId,
     ],
   );
   await client.query(
@@ -5591,7 +5604,8 @@ async function seedChatEventPropertyColumnFixture(
         ($2, 'web', $4, '2026-07-30 02:00:00', NULL),
         ($3, 'web', $4, '2026-07-30 03:00:00', NULL),
         ($5, 'web', $4, '2026-07-30 04:00:00', NULL),
-        ($6, 'web', $4, '2026-07-30 05:00:00', NULL)
+        ($6, 'web', $4, '2026-07-30 05:00:00', NULL),
+        ($7, 'web', $4, '2026-07-30 06:00:00', NULL)
     `,
     [
       fixture.historicalRunId,
@@ -5600,6 +5614,7 @@ async function seedChatEventPropertyColumnFixture(
       fixture.threadId,
       fixture.releaseTwoPreviousApiRunId,
       fixture.releaseTwoCurrentApiRunId,
+      fixture.contractRunId,
     ],
   );
   await client.query(
@@ -6296,6 +6311,285 @@ async function validateChatEventPropertyColumnRuntimeCutover(
   );
 }
 
+async function validateChatEventPropertyColumnContraction(
+  client: Client,
+): Promise<void> {
+  const fixture = chatEventPropertyColumnFixture;
+  await applyMigrationsUpToInTransaction(
+    client,
+    CHAT_EVENT_PROPERTY_COLUMNS_CONTRACT_MIGRATION,
+  );
+  const database = drizzle(client);
+
+  assert.deepEqual(
+    await database
+      .select({
+        id: chatEvents.id,
+        revokesEventId: chatEvents.revokesEventId,
+      })
+      .from(chatEvents)
+      .where(eq(chatEvents.id, fixture.historicalRevokerEventId)),
+    [
+      {
+        id: fixture.historicalRevokerEventId,
+        revokesEventId: fixture.historicalTargetEventId,
+      },
+    ],
+  );
+  const historicalAcknowledgement = await client.query<{
+    acknowledgedAt: string;
+    id: string;
+  }>(
+    `
+      SELECT
+        "id",
+        to_char(
+          "first_assistant_event_acknowledged_at",
+          'YYYY-MM-DD HH24:MI:SS'
+        ) AS "acknowledgedAt"
+      FROM "zero_runs"
+      WHERE "id" = $1
+    `,
+    [fixture.historicalRunId],
+  );
+  assert.deepEqual(historicalAcknowledgement.rows, [
+    {
+      acknowledgedAt: "2026-07-30 01:00:01",
+      id: fixture.historicalRunId,
+    },
+  ]);
+
+  const sequenceBefore = await client.query<{ lastSeqId: string }>(
+    `
+      SELECT "last_chat_event_seq_id" AS "lastSeqId"
+      FROM "chat_threads"
+      WHERE "id" = $1
+    `,
+    [fixture.threadId],
+  );
+  const previousLastSeqId = Number(sequenceBefore.rows[0]?.lastSeqId);
+  assert.ok(Number.isSafeInteger(previousLastSeqId));
+
+  const targetInsert = await client.query<{ id: string; seqId: string }>(
+    `
+      INSERT INTO "chat_events" (
+        "id",
+        "chat_thread_id",
+        "event_type",
+        "content"
+      )
+      VALUES ($1, $2, 'output.message', 'release 3 canonical target')
+      RETURNING "id", "seq_id" AS "seqId"
+    `,
+    [fixture.contractTargetEventId, fixture.threadId],
+  );
+  assert.deepEqual(targetInsert.rows, [
+    {
+      id: fixture.contractTargetEventId,
+      seqId: String(previousLastSeqId + 1),
+    },
+  ]);
+
+  const revokerInsert = await client.query<{
+    id: string;
+    revokesEventId: string;
+    seqId: string;
+  }>(
+    `
+      INSERT INTO "chat_events" (
+        "id",
+        "chat_thread_id",
+        "revokes_event_id",
+        "event_type"
+      )
+      VALUES ($1, $2, $3, 'control.revoke')
+      ON CONFLICT ("revokes_event_id") DO NOTHING
+      RETURNING
+        "id",
+        "revokes_event_id" AS "revokesEventId",
+        "seq_id" AS "seqId"
+    `,
+    [
+      fixture.contractRevokerEventId,
+      fixture.threadId,
+      fixture.contractTargetEventId,
+    ],
+  );
+  assert.deepEqual(revokerInsert.rows, [
+    {
+      id: fixture.contractRevokerEventId,
+      revokesEventId: fixture.contractTargetEventId,
+      seqId: String(previousLastSeqId + 2),
+    },
+  ]);
+
+  const revokeChain = await client.query<{
+    revokerId: string;
+    targetId: string;
+  }>(
+    `
+      SELECT
+        "revoker"."id" AS "revokerId",
+        "target"."id" AS "targetId"
+      FROM "chat_events" AS "revoker"
+      INNER JOIN "chat_events" AS "target"
+        ON "target"."id" = "revoker"."revokes_event_id"
+      WHERE "revoker"."id" = $1
+    `,
+    [fixture.contractRevokerEventId],
+  );
+  assert.deepEqual(revokeChain.rows, [
+    {
+      revokerId: fixture.contractRevokerEventId,
+      targetId: fixture.contractTargetEventId,
+    },
+  ]);
+
+  assert.deepEqual(
+    await database
+      .update(zeroRuns)
+      .set({
+        firstAssistantEventAcknowledgedAt: new Date("2026-07-30T06:00:01.000Z"),
+      })
+      .where(eq(zeroRuns.id, fixture.contractRunId))
+      .returning({
+        id: zeroRuns.id,
+      }),
+    [
+      {
+        id: fixture.contractRunId,
+      },
+    ],
+  );
+  const contractAcknowledgement = await client.query<{
+    acknowledgedAt: string;
+  }>(
+    `
+      SELECT to_char(
+        "first_assistant_event_acknowledged_at",
+        'YYYY-MM-DD HH24:MI:SS'
+      ) AS "acknowledgedAt"
+      FROM "zero_runs"
+      WHERE "id" = $1
+    `,
+    [fixture.contractRunId],
+  );
+  assert.deepEqual(contractAcknowledgement.rows, [
+    { acknowledgedAt: "2026-07-30 06:00:01" },
+  ]);
+
+  const canonicalSequence = await client.query<{ lastSeqId: string }>(
+    `
+      SELECT "last_chat_event_seq_id" AS "lastSeqId"
+      FROM "chat_threads"
+      WHERE "id" = $1
+    `,
+    [fixture.threadId],
+  );
+  assert.deepEqual(canonicalSequence.rows, [
+    { lastSeqId: String(previousLastSeqId + 2) },
+  ]);
+
+  const legacyColumns = await client.query<{
+    columnName: string;
+    tableName: string;
+  }>(`
+    SELECT
+      "table_name" AS "tableName",
+      "column_name" AS "columnName"
+    FROM "information_schema"."columns"
+    WHERE "table_schema" = 'public'
+      AND (
+        ("table_name" = 'chat_events' AND "column_name" = 'revokes_message_id')
+        OR (
+          "table_name" = 'chat_threads'
+          AND "column_name" = 'last_chat_message_seq_id'
+        )
+        OR (
+          "table_name" = 'zero_runs'
+          AND "column_name" = 'first_assistant_message_acknowledged_at'
+        )
+      )
+  `);
+  assert.deepEqual(legacyColumns.rows, []);
+
+  const legacyCompatibilityObjects = await client.query<{
+    objectName: string;
+    objectType: string;
+  }>(`
+    SELECT
+      'trigger' AS "objectType",
+      "tgname" AS "objectName"
+    FROM "pg_trigger"
+    WHERE NOT "tgisinternal"
+      AND "tgname" IN (
+        'bridge_chat_event_revokes_event_id_0755',
+        'bridge_chat_thread_last_chat_event_seq_id_0756',
+        'bridge_zero_run_first_assistant_event_ack_0757'
+      )
+    UNION ALL
+    SELECT
+      'function',
+      "proname"
+    FROM "pg_proc"
+    WHERE "proname" IN (
+      'bridge_chat_event_revokes_event_id_0755',
+      'bridge_chat_thread_last_chat_event_seq_id_0756',
+      'bridge_zero_run_first_assistant_event_ack_0757'
+    )
+    UNION ALL
+    SELECT
+      'index',
+      "indexname"
+    FROM "pg_indexes"
+    WHERE "schemaname" = 'public'
+      AND "indexname" = 'chat_events_revokes_message_id_unique'
+    UNION ALL
+    SELECT
+      'constraint',
+      "conname"
+    FROM "pg_constraint"
+    WHERE "conname" =
+      'chat_events_revokes_message_id_chat_events_id_fk'
+  `);
+  assert.deepEqual(legacyCompatibilityObjects.rows, []);
+
+  const persistedFunctions = await client.query<{
+    allocatorBody: string;
+    appendOnlyBody: string;
+  }>(`
+    SELECT
+      (
+        SELECT "prosrc"
+        FROM "pg_proc"
+        WHERE "proname" = 'allocate_legacy_chat_message_seq_id'
+      ) AS "allocatorBody",
+      (
+        SELECT "prosrc"
+        FROM "pg_proc"
+        WHERE "proname" = 'reject_chat_event_source_update'
+      ) AS "appendOnlyBody"
+  `);
+  assert.equal(persistedFunctions.rows.length, 1);
+  const persistedFunctionBodies = persistedFunctions.rows[0];
+  assert.ok(persistedFunctionBodies);
+  assert.match(persistedFunctionBodies.allocatorBody, /last_chat_event_seq_id/);
+  assert.doesNotMatch(
+    persistedFunctionBodies.allocatorBody,
+    /last_chat_message_seq_id/,
+  );
+  assert.match(persistedFunctionBodies.appendOnlyBody, /RAISE EXCEPTION/);
+  assert.doesNotMatch(
+    persistedFunctionBodies.appendOnlyBody,
+    /\bIF\b|\bRETURN\b/i,
+  );
+
+  await assertChatEventsAppendOnlyProtection(
+    client,
+    fixture.contractRevokerEventId,
+  );
+}
+
 async function validateChatEventPropertyColumnRollout(): Promise<void> {
   console.log(
     "=== Validate populated ChatEvent property column runtime cutover ===\n",
@@ -6321,6 +6615,7 @@ async function validateChatEventPropertyColumnRollout(): Promise<void> {
       await validateLastChatEventSeqIdExpansion(client);
       await validateFirstAssistantEventAckExpansion(client);
       await validateChatEventPropertyColumnRuntimeCutover(client);
+      await validateChatEventPropertyColumnContraction(client);
     } finally {
       await client.end();
     }
@@ -6329,7 +6624,7 @@ async function validateChatEventPropertyColumnRollout(): Promise<void> {
   }
 
   console.log(
-    "   ✅ Draining legacy and current canonical Drizzle statements coexist for all three columns, both revoke conflict targets stay indexed, persisted legacy sequence allocation remains bridged, and append-only protection remains enabled throughout\n",
+    "   ✅ The expanded legacy/current window remains compatible, historical values survive contraction, canonical sequence/revoke/acknowledgement paths stay healthy, legacy compatibility objects are gone, and strict append-only protection remains enabled\n",
   );
 }
 

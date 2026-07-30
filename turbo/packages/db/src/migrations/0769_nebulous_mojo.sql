@@ -6,24 +6,19 @@ CREATE TABLE "browser_session_tab_snapshots" (
 );
 --> statement-breakpoint
 ALTER TABLE "browser_profiles" DISABLE ROW LEVEL SECURITY;--> statement-breakpoint
-ALTER TABLE "browser_sessions" DROP CONSTRAINT "browser_sessions_browser_profile_id_browser_profiles_id_fk";
---> statement-breakpoint
 DROP TABLE "browser_profiles" CASCADE;--> statement-breakpoint
 ALTER TABLE "chat_events" DROP CONSTRAINT "chat_events_event_type_check";--> statement-breakpoint
 ALTER TABLE "browser_session_instances" DROP CONSTRAINT "browser_session_instances_browser_session_id_browser_sessions_id_fk";
 --> statement-breakpoint
 ALTER TABLE "browser_session_instances" DROP CONSTRAINT "browser_session_instances_usage_event_id_usage_event_id_fk";
 --> statement-breakpoint
+ALTER TABLE "browser_sessions" DROP CONSTRAINT "browser_sessions_browser_profile_id_browser_profiles_id_fk";
+--> statement-breakpoint
 ALTER TABLE "browser_sessions" DROP CONSTRAINT "browser_sessions_browser_thread_profile_id_browser_thread_profiles_id_fk";
 --> statement-breakpoint
-ALTER TABLE "chat_events" DROP CONSTRAINT "chat_events_revokes_message_id_chat_events_id_fk";
---> statement-breakpoint
-ALTER TABLE "browser_sessions" DROP CONSTRAINT "browser_sessions_pkey";--> statement-breakpoint
-ALTER TABLE "browser_thread_profiles" DROP CONSTRAINT "browser_thread_profiles_pkey";--> statement-breakpoint
 DROP INDEX "idx_browser_session_instances_session";--> statement-breakpoint
 DROP INDEX "uq_browser_sessions_thread_owned";--> statement-breakpoint
 DROP INDEX "uq_browser_thread_profiles_thread";--> statement-breakpoint
-DROP INDEX "chat_events_revokes_message_id_unique";--> statement-breakpoint
 ALTER TABLE "browser_sessions" ADD PRIMARY KEY ("chat_thread_id");--> statement-breakpoint
 ALTER TABLE "browser_thread_profiles" ADD PRIMARY KEY ("chat_thread_id");--> statement-breakpoint
 ALTER TABLE "browser_session_tab_snapshots" ADD CONSTRAINT "browser_session_tab_snapshots_chat_thread_id_chat_threads_id_fk" FOREIGN KEY ("chat_thread_id") REFERENCES "public"."chat_threads"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -46,15 +41,6 @@ ALTER TABLE "browser_sessions" DROP COLUMN "max_credits";--> statement-breakpoin
 ALTER TABLE "browser_sessions" DROP COLUMN "gross_credits";--> statement-breakpoint
 ALTER TABLE "browser_sessions" DROP COLUMN "credits_charged";--> statement-breakpoint
 ALTER TABLE "browser_thread_profiles" DROP COLUMN "id";--> statement-breakpoint
-DROP TRIGGER "bridge_chat_event_revokes_event_id_0755" ON "chat_events";--> statement-breakpoint
-DROP FUNCTION "bridge_chat_event_revokes_event_id_0755"();--> statement-breakpoint
-DROP TRIGGER "bridge_chat_thread_last_chat_event_seq_id_0756" ON "chat_threads";--> statement-breakpoint
-DROP FUNCTION "bridge_chat_thread_last_chat_event_seq_id_0756"();--> statement-breakpoint
-DROP TRIGGER "bridge_zero_run_first_assistant_event_ack_0757" ON "zero_runs";--> statement-breakpoint
-DROP FUNCTION "bridge_zero_run_first_assistant_event_ack_0757"();--> statement-breakpoint
-ALTER TABLE "chat_events" DROP COLUMN "revokes_message_id";--> statement-breakpoint
-ALTER TABLE "chat_threads" DROP COLUMN "last_chat_message_seq_id";--> statement-breakpoint
-ALTER TABLE "zero_runs" DROP COLUMN "first_assistant_message_acknowledged_at";--> statement-breakpoint
 ALTER TABLE "chat_events" ADD CONSTRAINT "chat_events_event_type_check" CHECK ("chat_events"."event_type" IN (
           'input.prompt',
           'input.automation',
