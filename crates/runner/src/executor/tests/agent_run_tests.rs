@@ -3700,6 +3700,8 @@ async fn codex_catalog_prefetch_skips_ineligible_runs() {
         name: "custom".into(),
         base_url: "https://provider.example".into(),
         env_key: "TOKEN".into(),
+        http_headers: None,
+        requires_openai_auth: None,
         wire_api: "responses".into(),
         supports_websockets: false,
         model_catalog: None,

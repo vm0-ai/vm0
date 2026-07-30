@@ -122,7 +122,11 @@ import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import {
+  featureSwitch$,
+  pwaChatKeyboardGesturesEnabled$,
+} from "../../signals/external/feature-switch.ts";
+import { isStandalonePwa } from "../../lib/keyboard-dismiss-gesture.ts";
 import {
   captureRecommendedFollowupSelected,
   captureRecommendedFollowupsShown,
@@ -245,6 +249,7 @@ import type {
   ChatEvent,
 } from "../../signals/chat-page/chat-event-types.ts";
 import type { AgentReferenceSignals } from "../../signals/chat-page/agent-reference-signals.ts";
+import type { AssistantErrorRecovery } from "../../signals/chat-page/assistant-error-recovery.ts";
 import type {
   ChatThreadSignals,
   QueuedChatEventItem,
@@ -286,7 +291,11 @@ import {
   visibleComputerUseHosts,
   ZERO_DESKTOP_DOWNLOAD_URL,
 } from "../../signals/zero-page/computer-use-hosts.ts";
-import type { ModelProviderSelection } from "./components/model-provider-picker.tsx";
+import {
+  ModelProviderPicker,
+  type ModelProviderSelection,
+} from "./components/model-provider-picker.tsx";
+import { formatSubscriptionUsageReset } from "./subscription-usage-format.ts";
 import { AgentAvatarImg, AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import { setBillingSubPage$ } from "../../signals/zero-page/settings/workspace-settings-state.ts";
 import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings-dialog.ts";
@@ -1016,11 +1025,13 @@ function ChatImagePreviewLink({
       )}
       aria-label={ariaLabel}
     >
+      {/* Preserve one flex item so the inline baseline cannot change on load. */}
+      <span aria-hidden="true" className="block h-full w-full" />
       {showPlaceholder && (
         <span
           data-testid="chat-image-preview-loading"
           className={cn(
-            "flex items-center justify-center bg-muted/70 text-muted-foreground",
+            "absolute inset-0 flex items-center justify-center bg-muted/70 text-muted-foreground",
             placeholderClassName,
           )}
         >
@@ -1045,8 +1056,9 @@ function ChatImagePreviewLink({
           setImageLoadStatus(imageLoadKey, "error");
         }}
         className={cn(
+          "absolute inset-0",
           imageClassName,
-          showPlaceholder && "absolute inset-0 opacity-0",
+          showPlaceholder && "opacity-0",
         )}
       />
     </a>
@@ -3468,6 +3480,8 @@ function ChatThreadEventsPane({ thread }: { thread: ChatThreadSignals }) {
   const setScrollContainer = useSet(thread.setScrollContainer$);
   const loadMoreRenderedChatGroups = useSet(thread.loadMoreRenderedChatGroups$);
   const pageSignal = useGet(pageSignal$);
+  const pwaChatKeyboardGesturesEnabled =
+    useGet(pwaChatKeyboardGesturesEnabled$) && isStandalonePwa();
 
   const handleScroll = (event: ReactUIEvent<HTMLDivElement>) => {
     if (
@@ -3485,7 +3499,10 @@ function ChatThreadEventsPane({ thread }: { thread: ChatThreadSignals }) {
         data-scroll-container
         tabIndex={-1}
         onScroll={handleScroll}
-        className="absolute inset-0 overflow-y-auto focus:outline-none [overflow-anchor:none] [scrollbar-gutter:stable]"
+        className={cn(
+          "absolute inset-0 overflow-y-auto focus:outline-none [overflow-anchor:none] [scrollbar-gutter:stable]",
+          pwaChatKeyboardGesturesEnabled && "overscroll-contain",
+        )}
       >
         <ChatThreadEventsMain
           key={`messages:${thread.threadId}`}
@@ -4216,6 +4233,8 @@ function ChatThreadComposer({
   const cancelRun = useSet(thread.cancelRun$);
   const queueDraftSync = useSet(thread.queueDraftSync$);
   const pageSignal = useGet(pageSignal$);
+  const pwaChatKeyboardGesturesEnabled =
+    useGet(pwaChatKeyboardGesturesEnabled$) && isStandalonePwa();
   const {
     computerUseHostIdForSend,
     cloudBrowserEnabledForSend,
@@ -4302,7 +4321,12 @@ function ChatThreadComposer({
       className="relative shrink-0 bg-[hsl(var(--background))] pb-2"
     >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-[21px] bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
-      <div className="overflow-y-auto [scrollbar-gutter:stable] pb-2 pl-4 pr-4 pt-3 sm:pl-6 sm:pr-6">
+      <div
+        className={cn(
+          "overflow-y-auto [scrollbar-gutter:stable] pb-2 pl-4 pr-4 pt-3 sm:pl-6 sm:pr-6",
+          pwaChatKeyboardGesturesEnabled && "overscroll-contain",
+        )}
+      >
         <div className="mx-auto max-w-[900px]">
           {composer}
           <ReplaceComposerDraftDialog
@@ -6085,7 +6109,181 @@ function isBillingRecoveryError(error: string): boolean {
   return normalized === "insufficient_credits" || normalized === "pro_required";
 }
 
-function AssistantErrorContent({ error }: { error: string }) {
+function assistantRecoveryResetText(
+  recovery: AssistantErrorRecovery,
+): string | null {
+  if (recovery.retryAt) {
+    const formatted = formatSubscriptionUsageReset(recovery.retryAt);
+    if (formatted && "fallbackText" in formatted) {
+      return formatted.fallbackText;
+    }
+    return formatted?.absoluteResetText ?? null;
+  }
+  if (!recovery.retryLabel) {
+    return null;
+  }
+  return i18n.t(
+    ($) => {
+      return $.chat.errors.recovery.resetsAt;
+    },
+    { time: recovery.retryLabel },
+  );
+}
+
+function AssistantRecoveryActionSpinner({ loading }: { loading: boolean }) {
+  return loading ? (
+    <IconLoader2 size={14} stroke={1.75} className="animate-spin" />
+  ) : null;
+}
+
+function AssistantRecoveryActions({
+  recovery,
+  thread,
+}: {
+  recovery: AssistantErrorRecovery;
+  thread: ChatThreadSignals;
+}) {
+  const { t } = useTranslation();
+  const pageSignal = useGet(pageSignal$);
+  const setModelSelection = useSet(thread.setModelSelection$);
+  const [retryLoadable, retry] = useLoadableSet(thread.retryAssistantError$);
+  const [resetLoadable, resetAndRetry] = useLoadableSet(
+    thread.resetCodexSubscriptionAndRetry$,
+  );
+  const retrying = retryLoadable.state === "loading";
+  const resetting = resetLoadable.state === "loading";
+  const hasResetAction = recovery.actions.resetAndTryAgain !== null;
+  const handleModelSelection = (
+    selection: ModelProviderSelection | null,
+  ): void => {
+    if (!selection) {
+      return;
+    }
+    detach(setModelSelection(selection, pageSignal), Reason.DomCallback);
+  };
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2">
+      {hasResetAction && (
+        <Button
+          type="button"
+          size="sm"
+          disabled={retrying || resetting}
+          onClick={() => {
+            detach(resetAndRetry(pageSignal), Reason.DomCallback);
+          }}
+        >
+          <AssistantRecoveryActionSpinner loading={resetting} />
+          {t(($) => {
+            return $.chat.errors.recovery.resetAndTryAgain;
+          })}
+        </Button>
+      )}
+      <ModelProviderPicker
+        value={null}
+        onChange={handleModelSelection}
+        placeholder={t(($) => {
+          return $.chat.errors.recovery.selectModel;
+        })}
+        triggerClassName="h-8 w-auto min-w-[9rem] bg-background text-sm"
+        compactTrigger
+        resolveDefaultSelection={false}
+        allowedFrameworks={recovery.actions.selectModel.allowedFrameworks}
+        excludedModel={recovery.actions.selectModel.excludedModel ?? undefined}
+      />
+      <Button
+        type="button"
+        size="sm"
+        variant={hasResetAction ? "outline" : "default"}
+        disabled={retrying || resetting}
+        onClick={() => {
+          detach(retry(pageSignal), Reason.DomCallback);
+        }}
+      >
+        <AssistantRecoveryActionSpinner loading={retrying} />
+        {t(($) => {
+          return $.chat.errors.recovery.tryAgain;
+        })}
+      </Button>
+    </div>
+  );
+}
+
+function AssistantErrorRecoveryCard({
+  recovery,
+  thread,
+}: {
+  recovery: AssistantErrorRecovery;
+  thread: ChatThreadSignals;
+}) {
+  const { t } = useTranslation();
+  const resetText = assistantRecoveryResetText(recovery);
+  const framework =
+    recovery.framework === "codex"
+      ? t(($) => {
+          return $.chat.errors.recovery.codex;
+        })
+      : t(($) => {
+          return $.chat.errors.recovery.claudeCode;
+        });
+
+  return (
+    <div
+      role="status"
+      data-testid="assistant-error-recovery"
+      className="rounded-xl border border-border/80 bg-muted/35 p-4 text-foreground"
+    >
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400">
+          {recovery.kind === "usage-limit" ? (
+            <IconClock size={17} stroke={1.75} />
+          ) : (
+            <IconAlertCircle size={17} stroke={1.75} />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="font-medium leading-6">
+            {recovery.kind === "usage-limit"
+              ? t(
+                  ($) => {
+                    return $.chat.errors.recovery.usageTitle;
+                  },
+                  { framework },
+                )
+              : t(
+                  ($) => {
+                    return $.chat.errors.recovery.capacityTitle;
+                  },
+                  { framework },
+                )}
+          </div>
+          <p className="mt-0.5 text-sm leading-5 text-muted-foreground">
+            {recovery.kind === "usage-limit"
+              ? t(($) => {
+                  return $.chat.errors.recovery.usageDescription;
+                })
+              : t(($) => {
+                  return $.chat.errors.recovery.capacityDescription;
+                })}
+          </p>
+          {resetText && (
+            <div className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-foreground">
+              <IconClock
+                size={14}
+                stroke={1.75}
+                className="text-muted-foreground"
+              />
+              {resetText}
+            </div>
+          )}
+          <AssistantRecoveryActions recovery={recovery} thread={thread} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AssistantErrorFallback({ error }: { error: string }) {
   const { t } = useTranslation();
   const openSettings = useSet(openSettingsDialogAt$);
   const pageSignal = useGet(pageSignal$);
@@ -6220,6 +6418,23 @@ function AssistantErrorContent({ error }: { error: string }) {
         style={{ fontSize: "inherit", lineHeight: "inherit" }}
       />
     </div>
+  );
+}
+
+function AssistantErrorContent({
+  error,
+  eventId,
+  thread,
+}: {
+  error: string;
+  eventId: string;
+  thread: ChatThreadSignals;
+}) {
+  const recovery = useLastResolved(thread.assistantErrorRecovery$);
+  return recovery?.sourceEventId === eventId ? (
+    <AssistantErrorRecoveryCard recovery={recovery} thread={thread} />
+  ) : (
+    <AssistantErrorFallback error={error} />
   );
 }
 
@@ -7593,7 +7808,9 @@ function PagedUserMessage({
   const bodyBlocks = event.blocks;
   const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
-  const openLightbox = openImageLightbox;
+  const openLightbox = (url: string) => {
+    openImageLightbox({ threadId: thread.threadId, url });
+  };
   const copiedId = useGet(thread.copiedEventId$);
   const copied = copiedId === event.id;
   const copyEvent = useSet(thread.copyEvent$);
@@ -7786,7 +8003,7 @@ function PagedAssistantEventItem({
 }) {
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const openLightbox = (url: string) => {
-    openImageLightbox(url);
+    openImageLightbox({ threadId: thread.threadId, url });
   };
   const attachments = resolveAttachments(
     event,
@@ -7803,7 +8020,11 @@ function PagedAssistantEventItem({
           compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
         )}
       >
-        <AssistantErrorContent error={error} />
+        <AssistantErrorContent
+          error={error}
+          eventId={event.id}
+          thread={thread}
+        />
       </div>
     );
   }

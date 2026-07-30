@@ -12,6 +12,8 @@ import {
   queueResponseSchema,
   unifiedRunRequestSchema,
   networkLogsResponseSchema,
+  systemLogResponseSchema,
+  metricsResponseSchema,
   logsSearchQuerySchema,
   logsSearchResponseSchema,
   createLogPaginationQuerySchema,
@@ -56,9 +58,12 @@ const zeroNetworkLogPaginationQuerySchema = createLogPaginationQuerySchema({
   defaultOrder: "asc",
 });
 
+const zeroTelemetryTimePaginationQuerySchema = createLogPaginationQuerySchema({
+  cursorKind: "time",
+});
+
 /**
  * Zero runs by ID contract (GET /api/zero/runs/:id)
- * Proxies to runsByIdContract
  */
 export const zeroRunsByIdContract = c.router({
   getById: {
@@ -81,7 +86,6 @@ export const zeroRunsByIdContract = c.router({
 
 /**
  * Zero runs cancel contract (POST /api/zero/runs/:id/cancel)
- * Proxies to runsCancelContract
  */
 export const zeroRunsCancelContract = c.router({
   cancel: {
@@ -141,6 +145,52 @@ export const zeroRunAgentEventsContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Get agent events with pagination (zero proxy)",
+  },
+});
+
+/**
+ * Zero run system log contract (GET /api/zero/runs/:id/telemetry/system-log)
+ */
+export const zeroRunSystemLogContract = c.router({
+  getSystemLog: {
+    method: "GET",
+    path: "/api/zero/runs/:id/telemetry/system-log",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      id: z.uuid("Run ID must be a valid UUID"),
+    }),
+    query: zeroTelemetryTimePaginationQuerySchema,
+    responses: {
+      200: systemLogResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get system log with pagination",
+  },
+});
+
+/**
+ * Zero run metrics contract (GET /api/zero/runs/:id/telemetry/metrics)
+ */
+export const zeroRunMetricsContract = c.router({
+  getMetrics: {
+    method: "GET",
+    path: "/api/zero/runs/:id/telemetry/metrics",
+    headers: authHeadersSchema,
+    pathParams: z.object({
+      id: z.uuid("Run ID must be a valid UUID"),
+    }),
+    query: zeroTelemetryTimePaginationQuerySchema,
+    responses: {
+      200: metricsResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get metrics with pagination",
   },
 });
 
@@ -308,6 +358,8 @@ export type ZeroRunsByIdContract = typeof zeroRunsByIdContract;
 export type ZeroRunsCancelContract = typeof zeroRunsCancelContract;
 export type ZeroRunsQueueContract = typeof zeroRunsQueueContract;
 export type ZeroRunAgentEventsContract = typeof zeroRunAgentEventsContract;
+export type ZeroRunSystemLogContract = typeof zeroRunSystemLogContract;
+export type ZeroRunMetricsContract = typeof zeroRunMetricsContract;
 export type ZeroRunContextContract = typeof zeroRunContextContract;
 export type ZeroRunNetworkLogsContract = typeof zeroRunNetworkLogsContract;
 export type ZeroRunRunnerContract = typeof zeroRunRunnerContract;

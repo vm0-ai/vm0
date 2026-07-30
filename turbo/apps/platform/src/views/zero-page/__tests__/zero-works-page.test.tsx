@@ -572,12 +572,21 @@ describe("works page", () => {
     expect(getRole("button", "Next")).toBeEnabled();
 
     click(getRole("button", "Next"));
-    expect(screen.getByText("Configure event delivery")).toBeInTheDocument();
-
-    click(getRole("button", "Next"));
     expect(
       screen.getByText("Configure the OAuth redirect URL"),
     ).toBeInTheDocument();
+
+    click(getRole("button", "Next"));
+    expect(
+      screen.getByText("Enable connector permissions"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("OAuth scopes")).toBeInTheDocument();
+    expect(document.body).toHaveTextContent("im:message.send_as_user");
+    expect(document.body).toHaveTextContent("drive:drive");
+    expect(document.body).toHaveTextContent("docx:document");
+
+    click(getRole("button", "Next"));
+    expect(screen.getByText("Configure event delivery")).toBeInTheDocument();
 
     click(getRole("button", "Next"));
     expect(screen.getByText("Publish the app")).toBeInTheDocument();
@@ -729,6 +738,14 @@ describe("works page", () => {
     click(getRole("button", "More options for Feishu bot"));
     click(getRole("button", "Manage"));
     expect(
+      screen.getByText("Configure the OAuth redirect URL"),
+    ).toBeInTheDocument();
+    click(getRole("button", "Next"));
+    expect(
+      screen.getByText("Enable connector permissions"),
+    ).toBeInTheDocument();
+    click(getRole("button", "Next"));
+    expect(
       screen.getByRole("img", {
         name: "Feishu Event Configuration screen with the subscription mode edit control highlighted",
       }),
@@ -759,14 +776,7 @@ describe("works page", () => {
     });
 
     click(getRole("button", "Next"));
-    expect(
-      screen.getByText("Configure the OAuth redirect URL"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByDisplayValue(
-        "https://app.vm0.test/connectors/feishu/callback",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Publish the app")).toBeInTheDocument();
   });
 
   it("shows the guided Feishu custom app setup for organization admins", async () => {

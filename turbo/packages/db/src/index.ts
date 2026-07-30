@@ -16,8 +16,11 @@ import * as runnerSchema from "./schema/runner-job-queue";
 import * as runnerStateSchema from "./schema/runner-state";
 import * as agentRunQueueSchema from "./schema/agent-run-queue";
 import * as chatEventInputParamsSchema from "./schema/chat-event-input-params";
+import * as chatFeishuContextSchema from "./schema/chat-feishu-context";
+import * as chatSlackContextSchema from "./schema/chat-slack-context";
 import * as secretSchema from "./schema/secret";
 import * as modelProviderSchema from "./schema/model-provider";
+import * as modelProviderGatewaySchema from "./schema/model-provider-gateway";
 import * as orgModelPolicySchema from "./schema/org-model-policy";
 import * as modelStatSchema from "./schema/model-stat";
 import * as modelUsageObservationSchema from "./schema/model-usage-observation";
@@ -34,7 +37,6 @@ import * as runBuiltInAdmissionSchema from "./schema/run-built-in-admission";
 import * as usageDailySchema from "./schema/usage-daily";
 import * as githubInstallationSchema from "./schema/github-installation";
 import * as githubUserLinkSchema from "./schema/github-user-link";
-import * as githubIssueSessionSchema from "./schema/github-issue-session";
 import * as githubChatThreadRouteSchema from "./schema/github-chat-thread-route";
 import * as telegramInstallationSchema from "./schema/telegram-installation";
 import * as telegramOfficialUserLinkSchema from "./schema/telegram-official-user-link";
@@ -134,8 +136,11 @@ export const schema = {
   ...runnerStateSchema,
   ...agentRunQueueSchema,
   ...chatEventInputParamsSchema,
+  ...chatFeishuContextSchema,
+  ...chatSlackContextSchema,
   ...secretSchema,
   ...modelProviderSchema,
+  ...modelProviderGatewaySchema,
   ...orgModelPolicySchema,
   ...modelStatSchema,
   ...modelUsageObservationSchema,
@@ -169,7 +174,6 @@ export const schema = {
   ...usageDailySchema,
   ...githubInstallationSchema,
   ...githubUserLinkSchema,
-  ...githubIssueSessionSchema,
   ...githubChatThreadRouteSchema,
   ...telegramInstallationSchema,
   ...telegramOfficialUserLinkSchema,

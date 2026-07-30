@@ -862,7 +862,7 @@ describe("AGENT-01 and AGENT-02", () => {
 });
 
 describe("COMPOSE-01", () => {
-  it("creates, reads, lists, rejects invalid input, and deletes composes through public APIs", async () => {
+  it("constructs compose state through services and verifies the Zero lifecycle", async () => {
     const admin = api.user();
     const composeName = slug("bdd-compose");
     const content = api.composeContent(composeName);

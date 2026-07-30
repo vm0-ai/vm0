@@ -7,9 +7,9 @@ import {
   desc,
   eq,
   inArray,
+  isNotNull,
   isNull,
   or,
-  sql,
   type SQL,
 } from "drizzle-orm";
 import {
@@ -1160,7 +1160,10 @@ export const startComputerUseHost$ = command(
                 computerUseHosts.userId,
                 computerUseHosts.installationId,
               ],
-              targetWhere: sql`installation_id IS NOT NULL AND revoked_at IS NULL`,
+              targetWhere: and(
+                isNotNull(computerUseHosts.installationId),
+                isNull(computerUseHosts.revokedAt),
+              ),
               set: {
                 displayName,
                 tokenHash,

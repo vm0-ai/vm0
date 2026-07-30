@@ -37,6 +37,11 @@ export interface FeatureSwitchContext {
   readonly overrides?: Partial<Record<FeatureSwitchKey, boolean>>;
 }
 
+const CUSTOM_MODEL_GATEWAY_ORG_ID_HASHES = [
+  ...STAFF_ORG_ID_HASHES,
+  "a6e60503", // geo rollout workspace
+] as const;
+
 /**
  * Registry of all feature switches
  */
@@ -248,6 +253,27 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     userOverridable: false,
   },
+  [FeatureSwitchKey.KoreanLocale]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Allow ko-KR preference writes after incompatible API readers and rollback candidates have drained.",
+    enabled: false,
+    userOverridable: false,
+  },
+  [FeatureSwitchKey.IndonesianLocale]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Allow id-ID preference writes after incompatible API readers and rollback candidates have drained.",
+    enabled: false,
+    userOverridable: false,
+  },
+  [FeatureSwitchKey.GermanLocale]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Allow de-DE preference writes after incompatible API readers and rollback candidates have drained.",
+    enabled: false,
+    userOverridable: false,
+  },
   [FeatureSwitchKey.Banking]: {
     maintainer: "linghan@vm0.ai",
     description:
@@ -355,6 +381,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
     userOverridable: true,
   },
+  [FeatureSwitchKey.CustomModelGateways]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Enable admin-defined Anthropic Messages and OpenAI Responses model gateway connections.",
+    enabled: false,
+    enabledOrgIdHashes: CUSTOM_MODEL_GATEWAY_ORG_ID_HASHES,
+    userOverridable: false,
+  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
     description:
@@ -375,6 +409,21 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatErrorRecovery]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Replace supported Codex and Claude Code limit errors with recovery actions in chat.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.PwaChatKeyboardGestures]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Keep the PWA chat composer pinned above the software keyboard and support swipe-to-dismiss gestures.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: false,
+  },
   [FeatureSwitchKey.ChatThreadSidebarAutoOpen]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -386,8 +435,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description:
       "Match chat composer slash skill suggestions by any slug substring instead of only prefixes.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ThreeColumnNav]: {
     maintainer: "ming@vm0.ai",
@@ -407,8 +455,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.SlackDmSessionRouting]: {
     maintainer: "yuma@vm0.ai",
     description:
-      "Reuse agent/model-scoped sessions for top-level Slack direct messages after compatible callback readers are deployed.",
-    enabled: false,
+      "Reuse agent/model-scoped sessions for top-level Slack direct messages.",
+    enabled: true,
   },
   [FeatureSwitchKey.TeamsIntegration]: {
     maintainer: "linghan@vm0.ai",
@@ -432,16 +480,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
     userOverridable: false,
   },
-  [FeatureSwitchKey.Artifacts]: {
+  [FeatureSwitchKey.ArtifactResourceRegistrySearch]: {
     maintainer: "bingjie@vm0.ai",
     description:
-      "Show the Artifacts manage page for generated artifacts in the current organization.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.ArtifactResourceCandidateSampling]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Sample target-compatible skills, design systems, and R2 website templates in HTML artifact generation prompts.",
+      "Let HTML artifact agents search the static resource registry before resolving authoring resources.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

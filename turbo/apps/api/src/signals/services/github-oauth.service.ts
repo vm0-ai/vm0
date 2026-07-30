@@ -17,9 +17,9 @@ import {
 import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connector-config";
 import type { ConnectorAuthMethodId } from "@vm0/api-contracts/contracts/connector-identity";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
-import { connectorSlugCanonicalInsertOauthStates } from "@vm0/db/compat/connector-slug-canonical-insert";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { connectors } from "@vm0/db/schema/connector";
+import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
 
@@ -433,7 +433,7 @@ export async function buildGithubUserConnectAuthorizationUrl(args: {
     }),
   );
 
-  await args.db.insert(connectorSlugCanonicalInsertOauthStates).values({
+  await args.db.insert(connectorOauthStates).values({
     state,
     connectorSlug: "github",
     authMethod: args.authMethodId,

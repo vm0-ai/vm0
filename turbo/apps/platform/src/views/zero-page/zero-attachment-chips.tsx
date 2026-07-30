@@ -919,6 +919,33 @@ function ArtifactPreviewDialog({
 }) {
   const leftThread = useLastResolved(currentLeftThread$);
   const rightThread = useLastResolved(currentRightThread$);
+  const previewThreadId =
+    (preview.kind === "image" ? preview.threadId : undefined) ??
+    preview.artifact?.threadId;
+  const previewThread =
+    leftThread?.threadId === previewThreadId
+      ? leftThread
+      : rightThread?.threadId === previewThreadId
+        ? rightThread
+        : undefined;
+
+  if (previewThread) {
+    return (
+      <ArtifactPreviewDialogThreadResolver
+        preview={preview}
+        thread={previewThread}
+      />
+    );
+  }
+
+  if (previewThreadId) {
+    return (
+      <ArtifactPreviewDialogContent
+        artifact={preview.artifact}
+        preview={preview}
+      />
+    );
+  }
 
   if (leftThread) {
     return (
@@ -971,13 +998,17 @@ function ArtifactPreviewDialogThreadResolver({
     loadable.state === "hasData"
       ? findArtifactDialogItemForUrl(loadable.data, preview.url)
       : undefined;
-  const imageNavigation =
-    preview.kind === "image" && loadable.state === "hasData"
+  const resolvedImageNavigation =
+    preview.kind === "image"
       ? currentEventImageArtifactNavigation(
-          loadable.data,
+          loadable.state === "hasData" ? loadable.data : [],
           eventGroups ?? [],
           preview.url,
         )
+      : {};
+  const imageNavigation =
+    resolvedImageNavigation.role === "assistant" || loadable.state === "hasData"
+      ? resolvedImageNavigation
       : {};
   const openImageNavigationItem = (
     navigationItem: ImageArtifactNavigationItem,
@@ -994,6 +1025,7 @@ function ArtifactPreviewDialogThreadResolver({
           })
         : undefined,
       filename: navigationItem.filename,
+      threadId: thread.threadId,
       url: navigationItem.url,
     });
   };

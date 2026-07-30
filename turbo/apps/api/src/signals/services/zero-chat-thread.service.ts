@@ -44,6 +44,8 @@ import {
   type ChatEventGoalEvent,
   type ChatEventGoalSnapshot,
 } from "@vm0/db/schema/chat-event";
+import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
+import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
@@ -121,7 +123,6 @@ const nullableTriggerSourceDecoder = nullableDriverValueDecoder(
 );
 const nullableTextDecoder = nullableDriverValueDecoder(pgTextDecoder);
 const matchedChatEvent = alias(chatEvents, "matched_chat_event");
-const revokedChatEvent = alias(chatEvents, "revoked_chat_event");
 const hostedRunUploadedFiles = alias(runUploadedFiles, "hosted_files");
 const HOSTED_ARTIFACT_KINDS = ["hosted-site", "presentation-html"] as const;
 
@@ -413,18 +414,8 @@ function selectChatEventsWithMetadata(db: Pick<Db, "select">) {
       )`
         .mapWith(nullableTriggerSourceDecoder)
         .as("trigger_source"),
-      slackMessagePermalink: sql`COALESCE(
-        ${chatEvents.slackMessagePermalink},
-        ${revokedChatEvent.slackMessagePermalink}
-      )`
-        .mapWith(nullableTextDecoder)
-        .as("slack_message_permalink"),
-      feishuChatOpenUrl: sql`COALESCE(
-        ${chatEvents.feishuChatOpenUrl},
-        ${revokedChatEvent.feishuChatOpenUrl}
-      )`
-        .mapWith(nullableTextDecoder)
-        .as("feishu_chat_open_url"),
+      slackMessagePermalink: chatSlackContext.messagePermalink,
+      feishuChatOpenUrl: chatFeishuContext.chatOpenUrl,
       workflowId: metadata.workflowId,
       workflowAgentId: metadata.workflowAgentId,
       workflowName: metadata.workflowName,
@@ -446,8 +437,18 @@ function selectChatEventsWithMetadata(db: Pick<Db, "select">) {
     .from(chatEvents)
     .leftJoinLateral(metadata, sql`true`)
     .leftJoin(
-      revokedChatEvent,
-      eq(revokedChatEvent.id, chatEvents.revokesEventId),
+      chatSlackContext,
+      and(
+        eq(chatEvents.contextType, "slack"),
+        eq(chatSlackContext.id, chatEvents.contextId),
+      ),
+    )
+    .leftJoin(
+      chatFeishuContext,
+      and(
+        eq(chatEvents.contextType, "feishu"),
+        eq(chatFeishuContext.id, chatEvents.contextId),
+      ),
     );
 }
 
@@ -579,7 +580,6 @@ export function zeroChatThreadDraft(args: {
     }
 
     return {
-      draftContent: null,
       draftUserMessage: thread.draftUserMessage,
       draftAttachments: thread.draftAttachments
         ? [...thread.draftAttachments]

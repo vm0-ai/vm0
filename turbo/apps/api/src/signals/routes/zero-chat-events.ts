@@ -1542,6 +1542,7 @@ async function resolveThread(params: {
         selectedModel: runConfiguration.modelPin.selectedModel,
         modelProvider:
           runConfiguration.providerAdmission.effectiveModelProvider ?? null,
+        modelProviderId: runConfiguration.modelPin.modelProviderId,
         cliAgentType: runConfiguration.providerAdmission.cliAgentType,
       },
     }),
@@ -3060,6 +3061,7 @@ function buildCreateZeroRunArgs(params: {
     threadSessionRoute: {
       selectedModel: modelPin.selectedModel,
       modelProvider: providerAdmission.effectiveModelProvider ?? null,
+      modelProviderId: modelPin.modelProviderId,
       cliAgentType: providerAdmission.cliAgentType,
     },
     codexServiceTier,

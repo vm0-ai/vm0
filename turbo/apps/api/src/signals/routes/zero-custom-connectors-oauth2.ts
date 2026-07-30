@@ -90,7 +90,18 @@ const startOAuth2Inner$ = command(async ({ get, set }, signal: AbortSignal) => {
     userFeatureSwitchContext(auth.orgId, auth.userId),
   );
   signal.throwIfAborted();
+  const connector = await get(
+    getCustomConnectorById({
+      orgId: auth.orgId,
+      connectorId: params.id,
+    }),
+  );
+  signal.throwIfAborted();
+  const managedFeishuOAuthEnabled =
+    connector?.oauthConfig?.providerAdapter === "feishu" &&
+    isFeatureEnabled(FeatureSwitchKey.FeishuIntegration, featureContext);
   if (
+    !managedFeishuOAuthEnabled &&
     !isFeatureEnabled(FeatureSwitchKey.CustomConnectorOAuth2, featureContext)
   ) {
     return {
@@ -259,6 +270,12 @@ const completeOAuth2Callback$ = command(
       );
     }
     const oauthConfig = connector.oauthConfig;
+    if (oauthConfig.providerAdapter !== "standard") {
+      return callbackError(
+        origin,
+        "OAuth callback was sent to the wrong connector endpoint",
+      );
+    }
     const featureContext = await get(
       userFeatureSwitchContext(claimed.state.orgId, claimed.state.userId),
     );

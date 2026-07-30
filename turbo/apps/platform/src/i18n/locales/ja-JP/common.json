@@ -339,6 +339,7 @@
       "slack": "Slack",
       "teams": "チーム",
       "telegram": "Telegram",
+      "test": "テスト",
       "web": "ウェブ",
       "webhook": "Webhook",
       "workflowEvent": "ワークフローイベント",
@@ -1286,6 +1287,18 @@
       "providerDeletedSuffix": "続けます。",
       "providerIncompatibleAction": "新しいセッションを開始する",
       "providerIncompatiblePrefix": "このセッションは別のモデル プロバイダーで開始されたため、現在のモデル プロバイダーでは続行できません。",
+      "recovery": {
+        "capacityDescription": "このモデルは一時的に混雑しています。数分後にもう一度試すか、今すぐ別のモデルに切り替えてください。",
+        "capacityTitle": "{{framework}} モデルは混雑しています",
+        "claudeCode": "Claude Code",
+        "codex": "Codex",
+        "resetAndTryAgain": "リセットして再試行",
+        "resetsAt": "{{time}} にリセット",
+        "selectModel": "モデルを切り替える",
+        "tryAgain": "もう一度試す",
+        "usageDescription": "使用制限がリセットされた後に続行するか、今すぐ別のモデルに切り替えられます。",
+        "usageTitle": "{{framework}} の使用制限に達しました"
+      },
       "runCancelled": "考えの途中で一時停止しました。いつでも元に戻してください。"
     },
     "feedback": {
@@ -2210,6 +2223,12 @@
         "manageDialogTitle": "Feishu ボットを管理する",
         "moreOptions": "{{bot}} のその他のオプション",
         "pageDescription": "このワークスペースのボット ルーティングを管理する",
+        "permissions": {
+          "description": "Feishu 開発者コンソールで「権限とスコープ」を開き、以下のすべてのスコープを「ユーザー ID」に追加します。これらのコラボレーション スコープにより、コネクタはメッセージ、ファイル、ドキュメント、スプレッドシート、Base、Wiki、Slides、ホワイトボード、検索、カレンダー、タスク、および基本的な連絡先を操作できます。",
+          "hint": "権限を変更した後、OAuth 同意画面で権限を付与できるように、アプリの新しいバージョンを作成して公開します。",
+          "label": "OAuth スコープ",
+          "title": "コネクタの権限を有効にする"
+        },
         "publish": {
           "allMembersAlt": "すべてのメンバーが選択された場合の Feishu 可用性設定",
           "allMembersLabel": "すべてのメンバーが利用できるようにする",
@@ -2242,6 +2261,7 @@
           "done": "完了",
           "events": "イベント",
           "next": "次へ",
+          "permissions": "権限",
           "publish": "発行する",
           "redirect": "リダイレクト",
           "tokens": "トークン",
@@ -4132,6 +4152,41 @@
           "signIn": "ChatGPT でサインインする"
         }
       },
+      "gateways": {
+        "actions": "ゲートウェイの操作",
+        "add": "プロバイダーを追加",
+        "addTitle": "モデルプロバイダーを追加",
+        "apiBaseUrl": "API ベース URL",
+        "apiBaseUrlPlaceholder": "https://gateway.example.com",
+        "apiKey": "API キー",
+        "deleteConfirm": "このモデルプロバイダー接続を削除しますか？これを使用しているモデルルートは利用できなくなります。",
+        "description": "Anthropic Messages、OpenAI Responses、またはその両方を介して、管理者が管理するゲートウェイに接続します。",
+        "dialogDescription": "Claude Code または Codex で使用する API ベース URL をプロトコルごとに設定します。",
+        "editTitle": "モデルプロバイダーを編集",
+        "empty": "カスタムモデルプロバイダーは設定されていません。",
+        "errors": {
+          "invalidMappings": "モデルマッピングは、値がアップストリームのモデル名である JSON オブジェクトである必要があります。",
+          "missingProtocol": "少なくとも 1 つのプロトコルを有効にしてください。",
+          "missingSecret": "API キーを入力してください。"
+        },
+        "headerName": "認証ヘッダー",
+        "headerValue": "ヘッダー値テンプレート",
+        "keepKey": "現在のキーを保持する場合は空欄にしてください",
+        "modelMappings": "モデルマッピング（JSON）",
+        "name": "名前",
+        "presets": {
+          "custom": "カスタム",
+          "fireworks": "Fireworks AI",
+          "openrouter": "OpenRouter",
+          "vercel": "Vercel AI Gateway"
+        },
+        "protocols": {
+          "anthropicMessages": "Anthropic Messages",
+          "openaiResponses": "OpenAI Responses"
+        },
+        "requestPreview": "リクエスト",
+        "title": "プロバイダー接続"
+      },
       "personal": {
         "actionForProvider": "{{action}} {{provider}}",
         "claudeDescription": "Claudeベースのモデルルートで使用するClaude Codeログインを接続します。",
@@ -4191,16 +4246,21 @@
         "defaultModel": "デフォルトモデル",
         "defaultModelDescription": "タスクが独自のモデルを選択しない場合に使用されます。",
         "dialogDescription": "メンバーがこのモデルにアクセスする方法を決定します。",
+        "gateway": "カスタムゲートウェイ",
+        "gatewayDescription": "管理者が定義したプロバイダー接続を経由してルーティングします。",
+        "gatewayProvider": "プロバイダー接続",
         "getKey": "鍵を入手する",
         "invalidRoute": "無効なルート",
         "missingProvider": "プロバイダーがありません",
         "model": "モデル",
         "noAvailableModels": "利用可能なモデルはありません",
+        "noMappedGateway": "このモデルにマッピングされたプロバイダー接続はありません。",
         "providedBy": "提供元",
         "provider": "プロバイダー",
         "providerApiKey": "{{provider}} API キー",
         "secretStored": "ワークスペースのシークレットに保存されます。",
         "selectDefaultModel": "デフォルトのモデルを選択してください",
+        "selectGateway": "プロバイダー接続を選択してください",
         "selectModel": "モデルを選択してください",
         "selectProvider": "プロバイダーを選択してください",
         "workspaceDescription": "このワークスペース内の全員が利用できます。",
@@ -4277,7 +4337,10 @@
         "label": "言語",
         "options": {
           "english": "English",
+          "german": "Deutsch",
+          "indonesian": "Bahasa Indonesia",
           "japanese": "日本語",
+          "korean": "한국어",
           "portugueseBrazil": "Português (Brasil)"
         },
         "title": "言語"
@@ -4347,6 +4410,7 @@
       "delete": "削除",
       "discard": "破棄",
       "disconnect": "切断する",
+      "edit": "編集",
       "loading": "読み込み中",
       "moreOptions": "その他のオプション",
       "reconnect": "再接続",

@@ -136,6 +136,7 @@ export const resetPersonalCodexSubscriptionUsage$ = command(
           break;
         }
       }
+      return result;
     })();
 
     set(internalPersonalActionPromise$, promise);
@@ -143,7 +144,8 @@ export const resetPersonalCodexSubscriptionUsage$ = command(
       set(internalPersonalActionPromise$, null);
     });
 
-    await promise;
+    const result = await promise;
     signal.throwIfAborted();
+    return result;
   },
 );

@@ -27,12 +27,17 @@ const storedOAuthStateSelection = Object.freeze({
 
 export type StoredOAuthState = Omit<
   typeof connectorOauthStates.$inferSelect,
-  "connectorSlug" | "legacyType"
+  "connectorSlug"
 > & {
   readonly type: typeof connectorOauthStates.$inferSelect.connectorSlug;
 };
 
 type ConnectorOAuthStateClaimResult =
+  | { readonly kind: "missing" }
+  | { readonly kind: "invalid" }
+  | { readonly kind: "usable"; readonly state: StoredOAuthState };
+
+type CustomConnectorOAuthStateReadResult =
   | { readonly kind: "missing" }
   | { readonly kind: "invalid" }
   | { readonly kind: "usable"; readonly state: StoredOAuthState };
@@ -191,4 +196,32 @@ export async function claimCustomConnectorOAuthState(
   signal.throwIfAborted();
 
   return existingState ? { kind: "invalid" } : { kind: "missing" };
+}
+
+export async function readCustomConnectorOAuthState(
+  db: ReadonlyDb,
+  args: {
+    readonly state: string;
+  },
+  signal: AbortSignal,
+): Promise<CustomConnectorOAuthStateReadResult> {
+  const [storedState] = await db
+    .select(storedOAuthStateSelection)
+    .from(connectorOauthStates)
+    .where(eq(connectorOauthStates.state, args.state))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!storedState) {
+    return { kind: "missing" };
+  }
+  if (
+    storedState.type !== null ||
+    !storedState.customConnectorId ||
+    storedState.authMethod !== "oauth2" ||
+    storedState.consumedAt ||
+    storedState.expiresAt <= nowDate()
+  ) {
+    return { kind: "invalid" };
+  }
+  return { kind: "usable", state: storedState };
 }

@@ -34,6 +34,27 @@ describe("/api/zero/feature-switches", () => {
     ).toBeTruthy();
   });
 
+  it("projects the Korean locale deployment switch", async () => {
+    createZeroRouteMocks(context).clerk.session(
+      "user_korean_locale_switch_test",
+      "org_korean_locale_switch_test",
+      "org:member",
+    );
+    const headers = { authorization: "Bearer clerk-session" };
+
+    mockOptionalEnv("KOREAN_LOCALE_ROLLOUT_ENABLED", undefined);
+    const disabled = await accept(client().get({ headers }), [200]);
+    expect(
+      disabled.body.effectiveSwitches[FeatureSwitchKey.KoreanLocale],
+    ).toBeFalsy();
+
+    mockOptionalEnv("KOREAN_LOCALE_ROLLOUT_ENABLED", "true");
+    const enabled = await accept(client().get({ headers }), [200]);
+    expect(
+      enabled.body.effectiveSwitches[FeatureSwitchKey.KoreanLocale],
+    ).toBeTruthy();
+  });
+
   it("persists and activates inline templates for a non-staff org", async () => {
     createZeroRouteMocks(context).clerk.session(
       "user_nonstaff_feature_switch_test",
@@ -68,6 +89,7 @@ describe("/api/zero/feature-switches", () => {
       [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
     });
     expect(current.body.supportsCustomConnectorOAuth2).toBeTruthy();
+    expect(current.body.supportsCustomModelGateways).toBeTruthy();
     expect(
       current.body.effectiveSwitches[
         FeatureSwitchKey.StructuredPromptInlineTemplates

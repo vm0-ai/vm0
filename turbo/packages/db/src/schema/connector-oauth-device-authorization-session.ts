@@ -1,6 +1,5 @@
 import {
   boolean,
-  check,
   index,
   integer,
   pgEnum,
@@ -11,7 +10,6 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 
 export const connectorOauthDeviceAuthorizationSessionStatusEnum = pgEnum(
   "connector_oauth_device_authorization_session_status",
@@ -33,10 +31,6 @@ export const connectorOauthDeviceAuthorizationSessions = pgTable(
     userId: text("user_id").notNull(),
     agentId: uuid("agent_id"),
     authorizeAgent: boolean("authorize_agent").default(false).notNull(),
-    // Compatibility bridge for pre-#23793 releases. Remove in #23794.
-    legacyConnectorType: varchar("connector_type", {
-      length: 64,
-    }).notNull(),
     connectorSlug: varchar("connector_slug", { length: 64 }).notNull(),
     authMethod: varchar("auth_method", { length: 50 }).notNull(),
     status: connectorOauthDeviceAuthorizationSessionStatusEnum("status")
@@ -60,15 +54,6 @@ export const connectorOauthDeviceAuthorizationSessions = pgTable(
       uniqueIndex("idx_connector_oauth_device_authorization_sessions_token").on(
         table.sessionTokenHash,
       ),
-      index(
-        "idx_connector_oauth_device_authorization_sessions_owner_status",
-      ).on(
-        table.orgId,
-        table.userId,
-        table.legacyConnectorType,
-        table.authMethod,
-        table.status,
-      ),
       index("idx_connector_oauth_device_sessions_owner_slug_status").on(
         table.orgId,
         table.userId,
@@ -79,11 +64,6 @@ export const connectorOauthDeviceAuthorizationSessions = pgTable(
       index("idx_connector_oauth_device_authorization_sessions_expiration").on(
         table.status,
         table.expiresAt,
-      ),
-      check(
-        "chk_connector_oauth_device_sessions_slug_matches_type",
-        sql`${table.connectorSlug} IS NOT NULL
-          AND ${table.connectorSlug} = ${table.legacyConnectorType}`,
       ),
     ];
   },

@@ -1,11 +1,7 @@
 import { Buffer } from "node:buffer";
 import { generateKeyPairSync, randomInt } from "node:crypto";
 
-import {
-  composesByIdContract,
-  composesMainContract,
-  agentComposeApiContentSchema,
-} from "@vm0/api-contracts/contracts/composes";
+import { agentComposeApiContentSchema } from "@vm0/api-contracts/contracts/composes";
 import {
   integrationsGithubContract,
   type GithubConnectUserBody,
@@ -24,6 +20,10 @@ import { z } from "zod";
 import { createApp } from "../../../../app-factory";
 import { mockOptionalEnv } from "../../../../lib/env";
 import { server } from "../../../../mocks/server";
+import {
+  createAgentComposeFixture,
+  readAgentComposeByIdFixture,
+} from "../../../../test-fixtures/agent-composes";
 import {
   accept,
   setupApp,
@@ -429,9 +429,15 @@ export function createGithubBddApi(context: TestContext) {
       actor: ApiTestUser,
       content: ComposeContent,
     ): Promise<{ readonly composeId: string; readonly name: string }> {
-      const client = setupApp({ context })(composesMainContract);
+      if (!actor.orgId) {
+        throw new Error("Compose fixtures require an org-scoped actor");
+      }
       const response = await accept(
-        client.create({ headers: authenticate(actor), body: { content } }),
+        createAgentComposeFixture({
+          actor: { userId: actor.userId, orgId: actor.orgId },
+          content,
+          signal: context.signal,
+        }),
         [200, 201],
       );
       return { composeId: response.body.composeId, name: response.body.name };
@@ -441,11 +447,13 @@ export function createGithubBddApi(context: TestContext) {
       actor: ApiTestUser,
       composeId: string,
     ): Promise<string> {
-      const client = setupApp({ context })(composesByIdContract);
+      if (!actor.orgId) {
+        throw new Error("Compose fixtures require an org-scoped actor");
+      }
       const response = await accept(
-        client.getById({
-          headers: authenticate(actor),
-          params: { id: composeId },
+        readAgentComposeByIdFixture({
+          actor: { userId: actor.userId, orgId: actor.orgId },
+          composeId,
         }),
         [200],
       );

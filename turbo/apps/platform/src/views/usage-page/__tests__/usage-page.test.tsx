@@ -273,4 +273,55 @@ describe("/usage page", () => {
       screen.getByRole("option", { name: "過去7日間" }),
     ).toBeInTheDocument();
   });
+
+  it("localizes usage copy, plurals, and numeric totals in German", async () => {
+    context.mocks.data.userPreferences({ locale: "de-DE" });
+    context.mocks.api(zeroUsageInsightContract.get, ({ query, respond }) => {
+      return respond(
+        200,
+        query.range === "7d"
+          ? usageInsightLast7DaysSourceFixture
+          : usageInsightTodayFixture,
+      );
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/usage",
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe("de-DE");
+      expect(
+        screen.getByRole("heading", { level: 1, name: "Nutzung" }),
+      ).toBeInTheDocument();
+      expect(
+        within(screen.getByRole("region", { name: "Credit-Summen" })).getByText(
+          "1300",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("1 Automatisierung hat 300 Credits verwendet"),
+      ).toBeVisible();
+      expect(
+        screen.getByText("1 Chat hat 200 Credits verwendet"),
+      ).toBeVisible();
+      expect(screen.getByText("Chat")).toBeVisible();
+    });
+
+    click(screen.getByLabelText("Datumsbereich"));
+    click(screen.getByRole("option", { name: "Letzte 7 Tage" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/^3 Automatisierungen haben /u),
+      ).toBeInTheDocument();
+      expect(screen.getByText("+1 weitere Automatisierung")).toBeVisible();
+      expect(screen.getByText(/^3 Chats haben /u)).toBeInTheDocument();
+      expect(screen.getByText("+1 weiterer Chat")).toBeVisible();
+    });
+  });
 });

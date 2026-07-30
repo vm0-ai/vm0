@@ -53,6 +53,7 @@ export const triggerSourceSchema = z.enum([
   "agentphone",
   "github",
   "cli",
+  "test",
   "agent",
   "webhook",
   "workflow-schedule",

@@ -15,6 +15,7 @@ import type {
   ConnectorAuthMethodId,
   ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
+import { modelProviderSurfaceProtocolSchema } from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
 import {
   getDefaultModel,
   getModelProviderFirewall,
@@ -97,6 +98,10 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { blobs } from "@vm0/db/schema/blob";
 import { conversations } from "@vm0/db/schema/conversation";
 import { modelProviders } from "@vm0/db/schema/model-provider";
+import {
+  modelProviderConnections,
+  modelProviderSurfaces,
+} from "@vm0/db/schema/model-provider-gateway";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { secrets as secretsTable } from "@vm0/db/schema/secret";
@@ -143,6 +148,11 @@ import {
   encryptPersistentSecretValue,
   encryptPersistentSecretsMap,
 } from "./crypto.utils";
+import {
+  compileModelProviderGatewayRuntime,
+  GATEWAY_RUNTIME_SECRET_NAME,
+} from "./model-provider-gateway-runtime";
+import { modelProviderGatewaySchemaAvailable } from "./model-provider-gateway-schema.service";
 import {
   CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
   CustomConnectorRuntimePrefixError,
@@ -1945,6 +1955,90 @@ interface ResolveModelProviderEnvironmentArgs {
   readonly featureSwitchContext: FeatureSwitchContext;
 }
 
+async function customGatewayModelProviderEnvironment(
+  db: Db,
+  args: ResolveModelProviderEnvironmentArgs,
+): Promise<ResolvedModelProviderEnvironment | null> {
+  if (!args.modelProviderId || !args.selectedModelOverride) {
+    return null;
+  }
+  if (!(await modelProviderGatewaySchemaAvailable(db))) {
+    return null;
+  }
+  const [row] = await db
+    .select({
+      id: modelProviderSurfaces.id,
+      protocol: modelProviderSurfaces.protocol,
+      apiBaseUrl: modelProviderSurfaces.apiBaseUrl,
+      authHeaderName: modelProviderSurfaces.authHeaderName,
+      authHeaderTemplate: modelProviderSurfaces.authHeaderTemplate,
+      modelMappings: modelProviderSurfaces.modelMappings,
+      displayName: modelProviderConnections.displayName,
+      encryptedValue: secretsTable.encryptedValue,
+    })
+    .from(modelProviderSurfaces)
+    .innerJoin(
+      modelProviderConnections,
+      eq(modelProviderSurfaces.connectionId, modelProviderConnections.id),
+    )
+    .innerJoin(
+      secretsTable,
+      eq(modelProviderConnections.secretId, secretsTable.id),
+    )
+    .where(
+      and(
+        eq(modelProviderSurfaces.id, args.modelProviderId),
+        eq(modelProviderConnections.orgId, args.orgId),
+      ),
+    )
+    .limit(1);
+  if (!row) {
+    return null;
+  }
+
+  const upstreamModel = row.modelMappings[args.selectedModelOverride];
+  const protocol = modelProviderSurfaceProtocolSchema.safeParse(row.protocol);
+  if (!protocol.success || !upstreamModel) {
+    return null;
+  }
+  const runtime = compileModelProviderGatewayRuntime({
+    surfaceId: row.id,
+    protocol: protocol.data,
+    apiBaseUrl: row.apiBaseUrl,
+    displayName: row.displayName,
+    authHeaderName: row.authHeaderName,
+    authHeaderTemplate: row.authHeaderTemplate,
+    upstreamModel,
+  });
+  if (
+    getFrameworkForType(runtime.type) !== args.framework ||
+    (args.modelProviderType !== undefined &&
+      args.modelProviderType !== runtime.type)
+  ) {
+    return null;
+  }
+
+  const secretValue = await decryptStoredSecretValue(
+    row.encryptedValue,
+    args.featureSwitchContext,
+  );
+  if (!hasUsableModelProviderSecretValue(secretValue)) {
+    return null;
+  }
+  return {
+    id: row.id,
+    type: runtime.type,
+    environment: runtime.environment,
+    secrets: { [GATEWAY_RUNTIME_SECRET_NAME]: secretValue },
+    selectedModel: args.selectedModelOverride,
+    firewall: runtime.firewall,
+    inlineFirewall: true,
+    ...(runtime.codexRuntimeConfig
+      ? { codexRuntimeConfig: runtime.codexRuntimeConfig }
+      : {}),
+  };
+}
+
 interface ModelProviderEnvironmentRow {
   readonly id: string;
   readonly type: string;
@@ -2061,6 +2155,11 @@ async function resolveModelProviderEnvironment(
       getFrameworkForType(provider.concreteType) === args.framework
       ? provider
       : null;
+  }
+
+  const customGateway = await customGatewayModelProviderEnvironment(db, args);
+  if (customGateway) {
+    return customGateway;
   }
 
   const rows = await db

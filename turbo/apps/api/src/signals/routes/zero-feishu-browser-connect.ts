@@ -1,12 +1,11 @@
 import { command } from "ccstate";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { zeroFeishuBrowserConnectContract } from "@vm0/api-contracts/contracts/zero-feishu-browser-connect";
 import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
 
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { env } from "../../lib/env";
-import { logger } from "../../lib/log";
 import {
   organizationAuthContext$,
   requiredAuthContext$,
@@ -14,19 +13,20 @@ import {
 import { authRoute } from "../auth/auth-route";
 import { request$ } from "../context/hono";
 import { bodyResultOf, queryOf } from "../context/request";
-import { waitUntil } from "../context/wait-until";
-import { writeDb$, type Db } from "../external/db";
-import { listFeishuChatMessages } from "../external/feishu-client";
-import { nowDate } from "../external/time";
+import { writeDb$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
-import { feishuBotOpenUrl } from "../services/feishu-config";
+import { startCustomConnectorOAuth2$ } from "../services/custom-connector-oauth2.service";
+import {
+  ensureFeishuCustomConnector$,
+  hasFeishuCustomConnectorOAuthConnection,
+} from "../services/feishu-custom-connector.service";
+import {
+  feishuBotOpenUrl,
+  feishuOAuthAppCallbackUrl,
+} from "../services/feishu-config";
 import { verifyFeishuConnectToken } from "../services/feishu-connect-token";
-import { publishFeishuOrgChanged } from "../services/zero-feishu-realtime.service";
-import { notifyFeishuConnect } from "../services/zero-feishu-welcome.service";
-import { tapError } from "../utils";
 
 const REDIRECT_STATUS = 307;
-const L = logger("FeishuBrowserConnect");
 
 function redirect(url: string): Response {
   return new Response(null, {
@@ -52,131 +52,27 @@ interface FeishuConnectArgs {
 type FeishuConnectResult =
   | { readonly kind: "invalid" }
   | { readonly kind: "installation_not_found" }
+  | { readonly kind: "setup_incomplete" }
   | { readonly kind: "wrong_organization" }
-  | { readonly kind: "account_in_use" }
   | {
       readonly kind: "success";
-      readonly appId: string;
+      readonly authorizationUrl: string;
       readonly botName: string | null;
     };
 
-async function loadFeishuUserName(args: {
-  readonly db: Db;
-  readonly installationId: string;
-  readonly chatId: string;
-  readonly openId: string;
-  readonly signal: AbortSignal;
-}): Promise<string | null> {
-  const messages = await tapError(
-    listFeishuChatMessages({
-      db: args.db,
-      installationId: args.installationId,
-      chatId: args.chatId,
-      pageSize: 20,
-      signal: args.signal,
-    }),
-    (error) => {
-      L.warn("Failed to resolve Feishu user name from chat history", {
-        error,
-        installationId: args.installationId,
-        openId: args.openId,
-      });
-    },
-  );
-  args.signal.throwIfAborted();
-  const name = messages?.find((message) => {
-    return message.sender?.id === args.openId;
-  })?.sender?.sender_name;
-  return name?.trim() || null;
-}
-
-async function findOrCreateFeishuConnection(args: {
-  readonly db: Db;
-  readonly installationId: string;
-  readonly openId: string;
-  readonly userId: string;
-  readonly userName: string | null;
-  readonly signal: AbortSignal;
-}): Promise<{
-  readonly connectionId: string;
-  readonly shouldNotify: boolean;
-} | null> {
-  const [inserted] = await args.db
-    .insert(feishuOrgConnections)
-    .values({
-      feishuOpenId: args.openId,
-      feishuUserName: args.userName,
-      installationId: args.installationId,
-      vm0UserId: args.userId,
-    })
-    .onConflictDoNothing({
-      target: [
-        feishuOrgConnections.feishuOpenId,
-        feishuOrgConnections.installationId,
-      ],
-    })
-    .returning({
-      id: feishuOrgConnections.id,
-      dmWelcomeSent: feishuOrgConnections.dmWelcomeSent,
-    });
-  args.signal.throwIfAborted();
-  if (inserted) {
-    return {
-      connectionId: inserted.id,
-      shouldNotify: !inserted.dmWelcomeSent,
-    };
-  }
-
-  const [existing] = await args.db
-    .select({
-      id: feishuOrgConnections.id,
-      vm0UserId: feishuOrgConnections.vm0UserId,
-      dmWelcomeSent: feishuOrgConnections.dmWelcomeSent,
-    })
-    .from(feishuOrgConnections)
-    .where(
-      and(
-        eq(feishuOrgConnections.installationId, args.installationId),
-        eq(feishuOrgConnections.feishuOpenId, args.openId),
-      ),
-    )
-    .limit(1);
-  args.signal.throwIfAborted();
-  if (!existing || existing.vm0UserId !== args.userId) {
-    return null;
-  }
-  if (args.userName) {
-    await args.db
-      .update(feishuOrgConnections)
-      .set({ feishuUserName: args.userName, updatedAt: nowDate() })
-      .where(
-        and(
-          eq(feishuOrgConnections.installationId, args.installationId),
-          eq(feishuOrgConnections.feishuOpenId, args.openId),
-        ),
-      );
-    args.signal.throwIfAborted();
-  }
-  return {
-    connectionId: existing.id,
-    shouldNotify: !existing.dmWelcomeSent,
-  };
-}
-
-const connectFeishuAccount$ = command(
+const startFeishuAccountOAuth$ = command(
   async (
     { set },
     args: FeishuConnectArgs,
     signal: AbortSignal,
   ): Promise<FeishuConnectResult> => {
-    const { installationId, openId, chatId, ts, sig } = args;
     if (
       !verifyFeishuConnectToken({
-        installationId,
-        openId,
-        chatId,
-        timestamp: ts,
-        signature: sig,
+        installationId: args.installationId,
+        openId: args.openId,
+        chatId: args.chatId,
+        timestamp: args.ts,
+        signature: args.sig,
       })
     ) {
       return { kind: "invalid" };
@@ -184,9 +80,13 @@ const connectFeishuAccount$ = command(
 
     const db = set(writeDb$);
     const [installation] = await db
-      .select()
+      .select({
+        orgId: feishuOrgInstallations.orgId,
+        botName: feishuOrgInstallations.botName,
+        setupCompletedAt: feishuOrgInstallations.setupCompletedAt,
+      })
       .from(feishuOrgInstallations)
-      .where(eq(feishuOrgInstallations.id, installationId))
+      .where(eq(feishuOrgInstallations.id, args.installationId))
       .limit(1);
     signal.throwIfAborted();
     if (!installation) {
@@ -195,67 +95,45 @@ const connectFeishuAccount$ = command(
     if (args.orgId !== installation.orgId) {
       return { kind: "wrong_organization" };
     }
-
-    const userName = await loadFeishuUserName({
-      db,
-      installationId,
-      chatId,
-      openId,
-      signal,
-    });
-    const connection = await findOrCreateFeishuConnection({
-      db,
-      installationId,
-      openId,
-      userId: args.userId,
-      userName,
-      signal,
-    });
-    signal.throwIfAborted();
-    if (!connection) {
-      return { kind: "account_in_use" };
+    if (!installation.setupCompletedAt) {
+      return { kind: "setup_incomplete" };
     }
-    await db
-      .delete(feishuOrgConnections)
-      .where(
-        and(
-          eq(feishuOrgConnections.installationId, installationId),
-          eq(feishuOrgConnections.vm0UserId, args.userId),
-          ne(feishuOrgConnections.feishuOpenId, openId),
-        ),
-      );
-    signal.throwIfAborted();
-    await publishFeishuOrgChanged(
-      db,
-      installation.orgId,
-      installation.ownerUserId,
-      [args.userId],
+
+    const connectorId = await set(
+      ensureFeishuCustomConnector$,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        installationId: args.installationId,
+      },
+      signal,
     );
     signal.throwIfAborted();
-    if (connection.shouldNotify) {
-      const backgroundSignal = new AbortController().signal;
-      waitUntil(
-        tapError(
-          notifyFeishuConnect({
-            db,
-            installationId,
-            connectionId: connection.connectionId,
-            openId,
-            signal: backgroundSignal,
-          }),
-          (error) => {
-            L.warn("Failed to send Feishu connect welcome", {
-              error,
-              installationId,
-              openId,
-            });
-          },
-        ),
-      );
+    if (!connectorId) {
+      return { kind: "installation_not_found" };
+    }
+    const oauth = await set(
+      startCustomConnectorOAuth2$,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        connectorId,
+        redirectUri: feishuOAuthAppCallbackUrl(),
+        feishuContext: {
+          completionTarget: "feishu",
+          installationId: args.installationId,
+          expectedOpenId: args.openId,
+        },
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+    if ("status" in oauth) {
+      return { kind: "installation_not_found" };
     }
     return {
       kind: "success",
-      appId: installation.appId,
+      authorizationUrl: oauth.authorizationUrl,
       botName: installation.botName,
     };
   },
@@ -269,19 +147,19 @@ function legacyConnectResult(result: FeishuConnectResult): Response {
     case "installation_not_found": {
       return worksRedirect({ feishuError: "Feishu installation not found" });
     }
+    case "setup_incomplete": {
+      return worksRedirect({
+        feishuError: "Finish setting up this Feishu bot before connecting",
+      });
+    }
     case "wrong_organization": {
       return worksRedirect({
         feishuError:
           "Switch to the organization connected to this Feishu tenant",
       });
     }
-    case "account_in_use": {
-      return worksRedirect({
-        feishuError: "This Feishu account is already connected",
-      });
-    }
     case "success": {
-      return worksRedirect({ feishu: "connected" });
+      return redirect(result.authorizationUrl);
     }
   }
 }
@@ -305,7 +183,7 @@ const connect$ = command(async ({ get, set }, signal: AbortSignal) => {
     });
   }
   const result = await set(
-    connectFeishuAccount$,
+    startFeishuAccountOAuth$,
     {
       orgId: auth.orgId,
       userId: auth.userId,
@@ -330,7 +208,7 @@ const connectFromApp$ = command(async ({ get, set }, signal: AbortSignal) => {
     return bodyResult.response;
   }
   const result = await set(
-    connectFeishuAccount$,
+    startFeishuAccountOAuth$,
     {
       orgId: auth.orgId,
       userId: auth.userId,
@@ -347,6 +225,11 @@ const connectFromApp$ = command(async ({ get, set }, signal: AbortSignal) => {
     case "installation_not_found": {
       return notFound("Feishu installation not found");
     }
+    case "setup_incomplete": {
+      return badRequestMessage(
+        "Finish setting up this Feishu bot before connecting",
+      );
+    }
     case "wrong_organization": {
       return {
         status: 403 as const,
@@ -359,16 +242,13 @@ const connectFromApp$ = command(async ({ get, set }, signal: AbortSignal) => {
         },
       };
     }
-    case "account_in_use": {
-      return conflict("This Feishu account is already connected");
-    }
     case "success": {
       return {
         status: 200 as const,
         body: {
           success: true as const,
           botName: result.botName,
-          openUrl: feishuBotOpenUrl(result.appId),
+          openUrl: result.authorizationUrl,
         },
       };
     }
@@ -429,10 +309,18 @@ const getStatus$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (connection && connection.vm0UserId !== auth.userId) {
     return conflict("This Feishu account is already connected");
   }
+  const isConnected =
+    connection?.vm0UserId === auth.userId &&
+    (await hasFeishuCustomConnectorOAuthConnection(db, {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      installationId: query.installationId,
+    }));
+  signal.throwIfAborted();
   return {
     status: 200 as const,
     body: {
-      isConnected: connection?.vm0UserId === auth.userId,
+      isConnected,
       botName: installation.botName,
       openUrl: feishuBotOpenUrl(installation.appId),
     },
