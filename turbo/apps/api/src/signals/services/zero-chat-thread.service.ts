@@ -1937,10 +1937,12 @@ function userMessageSearchText(): SQL {
     ' ',
     jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].text')::text,
     jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].titleSnapshot')::text,
+    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].nameSnapshot')::text,
     jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].filenameSnapshot')::text,
     jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].quote')::text,
     jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].note[*].text')::text,
-    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].note[*].titleSnapshot')::text
+    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].note[*].titleSnapshot')::text,
+    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].note[*].nameSnapshot')::text
   )`;
 }
 

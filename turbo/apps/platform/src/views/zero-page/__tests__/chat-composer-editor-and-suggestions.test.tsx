@@ -638,6 +638,16 @@ describe("chat composer models", () => {
       expect(draftPatches).toContainEqual(
         expect.objectContaining({
           draftContent: `[Zeta Agent](/agents/${zetaAgentId}/chat)`,
+          draftUserMessage: expect.objectContaining({
+            version: 1,
+            parts: expect.arrayContaining([
+              {
+                type: "agent",
+                agentId: zetaAgentId,
+                nameSnapshot: "Zeta Agent",
+              },
+            ]),
+          }),
         }),
       );
     });

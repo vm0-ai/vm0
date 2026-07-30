@@ -2316,6 +2316,30 @@ describe("CHAT-01 chat search", () => {
     const legacySearch = await chat.searchChat(owner, legacyKeyword);
     expect(legacySearch.results).toStrictEqual([]);
 
+    // Agent mention parts contribute their name snapshot to both keyword
+    // matching and the canonical display projection.
+    const mentionKeyword = `mention-${randomUUID()}`;
+    await sendNoCreditMessage(owner, {
+      agentId: agentA.agentId,
+      prompt: `legacy-${randomUUID()}`,
+      userMessage: {
+        version: 1,
+        parts: [
+          { type: "text", text: "Ask " },
+          {
+            type: "agent",
+            agentId: agentB.agentId,
+            nameSnapshot: `${mentionKeyword} agent`,
+          },
+        ],
+      },
+    });
+    const mentionSearch = await chat.searchChat(owner, mentionKeyword);
+    expect(mentionSearch.results).toHaveLength(1);
+    expect(mentionSearch.results[0]?.matchedMessage.content).toBe(
+      `Ask [Agent: ${mentionKeyword} agent]`,
+    );
+
     // Cross-org isolation for the same user.
     const sameUserOtherOrg = bdd.user({ userId: owner.userId });
     const otherOrgAgent = await bdd.createAgent(sameUserOtherOrg, {

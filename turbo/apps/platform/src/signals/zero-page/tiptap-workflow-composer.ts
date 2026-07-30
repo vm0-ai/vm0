@@ -2304,6 +2304,7 @@ function createInsertUserMessageCommand(
       return (
         part.type === "text" ||
         part.type === "chat_thread" ||
+        part.type === "agent" ||
         part.type === "feedback" ||
         (inlineTemplatesEnabled && part.type === "template")
       );
