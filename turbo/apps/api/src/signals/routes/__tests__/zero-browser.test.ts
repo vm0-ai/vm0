@@ -11,7 +11,7 @@ import {
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { HttpResponse, http } from "msw";
-import { aroundEach, describe, expect, it } from "vitest";
+import { describe, expect, it as vitestIt } from "vitest";
 import { z } from "zod";
 
 import { createApp } from "../../../app-factory";
@@ -42,6 +42,19 @@ const CRON_SECRET = "test-browser-reconcile-secret";
 // already in the past from the database's perspective.
 const STARTED_AT_MS = now();
 const MINUTE_MS = 60_000;
+
+const it = vitestIt.extend<{ mockClock: undefined }>({
+  mockClock: [
+    async ({}, use) => {
+      // Scope the auto fixture's test callback, rather than Vitest's runTest
+      // scheduler, so its worker continuation cannot inherit this clock.
+      await withMockNowForTest(STARTED_AT_MS, async () => {
+        await use(undefined);
+      });
+    },
+    { auto: true },
+  ],
+});
 
 function isoAt(offsetMs: number): string {
   return new Date(STARTED_AT_MS + offsetMs).toISOString();
@@ -228,10 +241,6 @@ async function reconcileBrowsers() {
 }
 
 describe("zero browser route", () => {
-  aroundEach(async (runTest) => {
-    await withMockNowForTest(STARTED_AT_MS, runTest);
-  });
-
   it("keeps managed browser access off for a default chat thread", async () => {
     const { runs, chat, actor, agent } = await setupBrowserScenario();
     const sent = await chat.requestSendEvent(
