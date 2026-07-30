@@ -1,6 +1,5 @@
 import { command, computed, type Computed } from "ccstate";
 import {
-  CHAT_EVENT_TYPES,
   chatEventCompatibilityRole,
   type ChatEventType,
 } from "@vm0/api-contracts/contracts/chat-events";
@@ -829,7 +828,7 @@ type ChatEventBuilder = (
   row: ChatEventRow,
   event: ChatEventBase,
   attachFiles: readonly ResolvedAttachFile[] | undefined,
-) => ChatEvent;
+) => ChatEventResponse;
 
 const chatEventBuilders = {
   "input.prompt": (row, event, attachFiles) => {
@@ -1028,7 +1027,25 @@ const chatEventBuilders = {
       ),
     };
   },
-} satisfies Record<ChatEvent["eventType"], ChatEventBuilder>;
+  // Historical rows from the retired queue pause/resume behavior. These have
+  // no writer anymore but still occupy seqIds, so the read path serves them
+  // as-is instead of filtering and leaving holes in the event stream.
+  "queue.automation_paused": (row, event) => {
+    return {
+      ...event,
+      eventType: "queue.automation_paused",
+      content: null,
+      pauseReason: row.error ?? null,
+    };
+  },
+  "queue.automation_resumed": (_row, event) => {
+    return {
+      ...event,
+      eventType: "queue.automation_resumed",
+      content: null,
+    };
+  },
+} satisfies Record<ChatEventResponse["eventType"], ChatEventBuilder>;
 
 function toChatEvent(
   userId: string,
@@ -2204,10 +2221,7 @@ export function zeroChatThreadEventsPage(args: {
       args.sinceSeqId ?? (args.sinceId ? legacyCursor?.seqId : undefined);
     const beforeSeqId =
       args.beforeSeqId ?? (args.beforeId ? legacyCursor?.seqId : undefined);
-    const threadFilter = and(
-      eq(chatMessages.chatThreadId, args.threadId),
-      chatEventTypeIn(CHAT_EVENT_TYPES),
-    );
+    const threadFilter = eq(chatMessages.chatThreadId, args.threadId);
     let rows: ChatEventRow[];
     let hasHistoryBefore = false;
 
@@ -2283,7 +2297,6 @@ export function zeroChatThreadEventById(args: {
         and(
           eq(chatMessages.id, args.eventId),
           eq(chatMessages.chatThreadId, args.threadId),
-          chatEventTypeIn(CHAT_EVENT_TYPES),
         ),
       )
       .limit(1);
