@@ -17,7 +17,7 @@ export function getClerkLocalization(
           ? koKR
           : locale === "id-ID"
             ? idID
-          : enUS;
+            : enUS;
   return {
     ...localization,
     unstable__errors: {

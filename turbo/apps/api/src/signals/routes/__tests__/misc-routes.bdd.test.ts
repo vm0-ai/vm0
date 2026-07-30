@@ -542,6 +542,7 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
     mockOptionalEnv("BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED", undefined);
     mockOptionalEnv("JAPANESE_LOCALE_ROLLOUT_ENABLED", undefined);
     mockOptionalEnv("KOREAN_LOCALE_ROLLOUT_ENABLED", undefined);
+    mockOptionalEnv("INDONESIAN_LOCALE_ROLLOUT_ENABLED", undefined);
 
     const guarded = await api.readPreferences(admin, KOREAN_CLIENT_VERSION);
     expect(guarded.body).toMatchObject({

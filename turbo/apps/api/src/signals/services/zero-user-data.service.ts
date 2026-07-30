@@ -200,10 +200,10 @@ function isUserPreferencesUpdateAllowed(
 ): boolean {
   const { locale, timezone } = args.preferences;
   return (
-      (locale !== "pt-BR" || args.allowBrazilianPortuguese === true) &&
-      (locale !== "ja-JP" || args.allowJapanese === true) &&
-      (locale !== "ko-KR" || args.allowKorean === true) &&
-      (locale !== "id-ID" || args.allowIndonesian === true) &&
+    (locale !== "pt-BR" || args.allowBrazilianPortuguese === true) &&
+    (locale !== "ja-JP" || args.allowJapanese === true) &&
+    (locale !== "ko-KR" || args.allowKorean === true) &&
+    (locale !== "id-ID" || args.allowIndonesian === true) &&
     (timezone === undefined || isValidTimeZone(timezone))
   );
 }
