@@ -586,6 +586,15 @@ describe("CLI-TEST: test-enable-connector", () => {
       });
     }
 
+    const malformedSlugs = await authDevice.requestTestEnableConnector(
+      {},
+      { composeId: ZERO_COMPOSE_ID, connectorSlugs: ["not a connector slug"] },
+      [400],
+    );
+    expect(malformedSlugs.body).toStrictEqual({
+      error: "Unknown connector slugs: not a connector slug",
+    });
+
     const unknownSlugs = await authDevice.requestTestEnableConnector(
       {},
       { composeId: ZERO_COMPOSE_ID, connectorSlugs: ["not-a-real-connector"] },
