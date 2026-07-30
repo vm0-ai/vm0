@@ -1,4 +1,4 @@
-//! Guest-agent process-control sink for active input.
+//! Guest-agent process-control sink for active input and user cancellation.
 //!
 //! The `process-control-ipc` crate owns the local wire protocol and transport
 //! framing. This module owns the guest-agent side of that channel: starting the
@@ -24,6 +24,20 @@ use tokio_util::sync::CancellationToken;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 const CONTROL_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
+const USER_CANCELLATION_PAYLOAD_TYPE: &str = "user-cancellation";
+
+#[derive(serde::Deserialize)]
+struct ControlPayloadType {
+    #[serde(rename = "type")]
+    payload_type: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UserCancellationPayload {
+    #[serde(rename = "type")]
+    _payload_type: String,
+}
 
 /// Handle for the guest-agent process-control worker.
 ///
@@ -70,25 +84,38 @@ impl ControlHandle {
     /// Incoming control requests are dispatched to the provided
     /// [`ActiveInputController`], and its outcome is mapped back to a local
     /// process-control response.
-    pub fn spawn(shutdown: CancellationToken, active_input: ActiveInputController) -> Option<Self> {
+    pub fn spawn(
+        shutdown: CancellationToken,
+        active_input: ActiveInputController,
+        cli_cancellation: CancellationToken,
+    ) -> Option<Self> {
         let endpoint = match std::env::var(process_control_ipc::BOOTSTRAP_ENV) {
             Ok(endpoint) if !endpoint.is_empty() => endpoint,
             _ => return None,
         };
-        Self::spawn_endpoint(endpoint, shutdown, active_input)
+        Self::spawn_endpoint(endpoint, shutdown, active_input, cli_cancellation)
     }
 
     fn spawn_endpoint(
         endpoint: String,
         shutdown: CancellationToken,
         active_input: ActiveInputController,
+        cli_cancellation: CancellationToken,
     ) -> Option<Self> {
         let stream = Arc::new(Mutex::new(None));
         let worker_stream = Arc::clone(&stream);
         let worker_shutdown = shutdown.clone();
         let join = thread::Builder::new()
             .name("guest-agent-process-control".to_owned())
-            .spawn(move || run(endpoint, worker_shutdown, worker_stream, active_input))
+            .spawn(move || {
+                run(
+                    endpoint,
+                    worker_shutdown,
+                    worker_stream,
+                    active_input,
+                    cli_cancellation,
+                );
+            })
             .map_err(|error| {
                 log_warn!(LOG_TAG, "Process control task failed to start: {error}");
             })
@@ -137,8 +164,15 @@ fn run(
     shutdown: CancellationToken,
     stream_slot: Arc<Mutex<Option<UnixStream>>>,
     active_input: ActiveInputController,
+    cli_cancellation: CancellationToken,
 ) {
-    match run_inner(&endpoint, shutdown, stream_slot, active_input) {
+    match run_inner(
+        &endpoint,
+        shutdown,
+        stream_slot,
+        active_input,
+        cli_cancellation,
+    ) {
         Ok(()) => log_info!(LOG_TAG, "Process control task stopped"),
         Err(error) => log_warn!(LOG_TAG, "Process control task stopped: {error}"),
     }
@@ -149,6 +183,7 @@ fn run_inner(
     shutdown: CancellationToken,
     stream_slot: Arc<Mutex<Option<UnixStream>>>,
     active_input: ActiveInputController,
+    cli_cancellation: CancellationToken,
 ) -> io::Result<()> {
     let mut stream = process_control_ipc::connect_abstract(endpoint)?;
     let shutdown_stream = stream.try_clone()?;
@@ -163,9 +198,12 @@ fn run_inner(
     while !shutdown.is_cancelled() {
         match process_control_ipc::read_request(&mut stream) {
             Ok(request) => {
-                let outcome =
-                    active_input.handle_control_payload(&request.message_id, &request.payload);
-                let (status, diagnostic) = control_response_from_active_input(outcome);
+                let (status, diagnostic) = handle_control_payload(
+                    &request.message_id,
+                    &request.payload,
+                    &active_input,
+                    &cli_cancellation,
+                );
                 process_control_ipc::write_response(
                     &mut stream,
                     &process_control_ipc::ControlResponse {
@@ -191,6 +229,34 @@ fn run_inner(
     }
 
     Ok(())
+}
+
+fn handle_control_payload(
+    message_id: &str,
+    payload: &[u8],
+    active_input: &ActiveInputController,
+    cli_cancellation: &CancellationToken,
+) -> (process_control_ipc::ControlResponseStatus, String) {
+    if serde_json::from_slice::<ControlPayloadType>(payload)
+        .is_ok_and(|payload| payload.payload_type == USER_CANCELLATION_PAYLOAD_TYPE)
+    {
+        return match serde_json::from_slice::<UserCancellationPayload>(payload) {
+            Ok(_) => {
+                active_input.close_terminal();
+                cli_cancellation.cancel();
+                (
+                    process_control_ipc::ControlResponseStatus::Accepted,
+                    String::new(),
+                )
+            }
+            Err(error) => (
+                process_control_ipc::ControlResponseStatus::Rejected,
+                format!("user cancellation payload is invalid: {error}"),
+            ),
+        };
+    }
+
+    control_response_from_active_input(active_input.handle_control_payload(message_id, payload))
 }
 
 fn control_response_from_active_input(
@@ -250,7 +316,15 @@ mod tests {
         let active_input = active_runtime.controller();
         let worker = thread::spawn({
             let endpoint = endpoint.clone();
-            move || run_inner(&endpoint, worker_shutdown, stream_slot, active_input)
+            move || {
+                run_inner(
+                    &endpoint,
+                    worker_shutdown,
+                    stream_slot,
+                    active_input,
+                    CancellationToken::new(),
+                )
+            }
         });
 
         let mut stream = accept_control_stream_and_read_hello(&listener);
@@ -276,6 +350,81 @@ mod tests {
     }
 
     #[test]
+    fn control_task_accepts_duplicate_user_cancellation_and_rejects_extra_fields() {
+        let nonce = *b"cancel-repeat-01";
+        let endpoint = process_control_ipc::endpoint_name(48, &nonce);
+        let listener = process_control_ipc::bind_abstract_listener(&endpoint).unwrap();
+        let shutdown = CancellationToken::new();
+        let worker_shutdown = shutdown.clone();
+        let stream_slot = Arc::new(Mutex::new(None));
+        let active_runtime = crate::active_input::ActiveInputRuntime::new_with_initial_prompt(
+            "control-test",
+            true,
+            "initial",
+        );
+        let active_input = active_runtime.controller();
+        let cli_cancellation = CancellationToken::new();
+        let worker_cli_cancellation = cli_cancellation.clone();
+        let worker = thread::spawn({
+            let endpoint = endpoint.clone();
+            move || {
+                run_inner(
+                    &endpoint,
+                    worker_shutdown,
+                    stream_slot,
+                    active_input,
+                    worker_cli_cancellation,
+                )
+            }
+        });
+
+        let mut stream = accept_control_stream_and_read_hello(&listener);
+        for message_id in ["cancel-1", "cancel-2"] {
+            process_control_ipc::write_request(
+                &mut stream,
+                &process_control_ipc::ControlRequest {
+                    message_id: message_id.to_string(),
+                    payload: br#"{"type":"user-cancellation"}"#.to_vec(),
+                },
+            )
+            .unwrap();
+            let response = process_control_ipc::read_response(&mut stream)
+                .expect("control task should send response");
+            assert_eq!(response.message_id, message_id);
+            assert_eq!(
+                response.status,
+                process_control_ipc::ControlResponseStatus::Accepted
+            );
+        }
+        assert!(cli_cancellation.is_cancelled());
+
+        process_control_ipc::write_request(
+            &mut stream,
+            &process_control_ipc::ControlRequest {
+                message_id: "cancel-invalid".to_string(),
+                payload: br#"{"type":"user-cancellation","extra":true}"#.to_vec(),
+            },
+        )
+        .unwrap();
+        let response = process_control_ipc::read_response(&mut stream)
+            .expect("control task should send response");
+        assert_eq!(response.message_id, "cancel-invalid");
+        assert_eq!(
+            response.status,
+            process_control_ipc::ControlResponseStatus::Rejected
+        );
+        assert!(
+            response
+                .diagnostic
+                .starts_with("user cancellation payload is invalid:")
+        );
+
+        shutdown.cancel();
+        drop(stream);
+        worker.join().unwrap().unwrap();
+    }
+
+    #[test]
     fn control_task_rejects_invalid_active_input_payload() {
         let nonce = *b"0123456789abcdee";
         let endpoint = process_control_ipc::endpoint_name(46, &nonce);
@@ -291,7 +440,15 @@ mod tests {
         let active_input = active_runtime.controller();
         let worker = thread::spawn({
             let endpoint = endpoint.clone();
-            move || run_inner(&endpoint, worker_shutdown, stream_slot, active_input)
+            move || {
+                run_inner(
+                    &endpoint,
+                    worker_shutdown,
+                    stream_slot,
+                    active_input,
+                    CancellationToken::new(),
+                )
+            }
         });
 
         let mut stream = accept_control_stream_and_read_hello(&listener);
@@ -336,7 +493,15 @@ mod tests {
         let active_input = active_runtime.controller();
         let worker = thread::spawn({
             let endpoint = endpoint.clone();
-            move || run_inner(&endpoint, worker_shutdown, stream_slot, active_input)
+            move || {
+                run_inner(
+                    &endpoint,
+                    worker_shutdown,
+                    stream_slot,
+                    active_input,
+                    CancellationToken::new(),
+                )
+            }
         });
 
         let mut stream = accept_control_stream_and_read_hello(&listener);
@@ -397,7 +562,13 @@ mod tests {
             "initial",
         );
         let active_input = active_runtime.controller();
-        let handle = ControlHandle::spawn_endpoint(endpoint, shutdown, active_input).unwrap();
+        let handle = ControlHandle::spawn_endpoint(
+            endpoint,
+            shutdown,
+            active_input,
+            CancellationToken::new(),
+        )
+        .unwrap();
 
         let stream = accept_control_stream_and_read_hello(&listener);
 
@@ -427,7 +598,13 @@ mod tests {
             "initial",
         );
         let active_input = active_runtime.controller();
-        let handle = ControlHandle::spawn_endpoint(endpoint, shutdown, active_input).unwrap();
+        let handle = ControlHandle::spawn_endpoint(
+            endpoint,
+            shutdown,
+            active_input,
+            CancellationToken::new(),
+        )
+        .unwrap();
 
         let stream = accept_control_stream_and_read_hello(&listener);
 
@@ -461,7 +638,15 @@ mod tests {
         let active_input = active_runtime.controller();
         let worker = thread::spawn({
             let endpoint = endpoint.clone();
-            move || run_inner(&endpoint, shutdown, worker_slot, active_input)
+            move || {
+                run_inner(
+                    &endpoint,
+                    shutdown,
+                    worker_slot,
+                    active_input,
+                    CancellationToken::new(),
+                )
+            }
         });
 
         let stream = accept_control_stream_and_read_hello(&listener);

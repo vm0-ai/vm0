@@ -328,6 +328,8 @@ impl CliTerminationInitiator {
 pub enum CliTerminationReason {
     /// The runner-owned agent execution budget elapsed.
     ExecutionTimeout,
+    /// The user explicitly cancelled the active run.
+    UserCancellation,
     /// The guest agent reaped the process after receiving a final result.
     PostResultReap,
     /// The stuck-tool watchdog terminated the process.
@@ -352,6 +354,7 @@ impl CliTerminationReason {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::ExecutionTimeout => "execution_timeout",
+            Self::UserCancellation => "user_cancellation",
             Self::PostResultReap => "post_result_reap",
             Self::StuckToolWatchdog => "stuck_tool_watchdog",
             Self::CodexResumeStartupTimeout => "codex_resume_startup_timeout",
@@ -731,6 +734,21 @@ mod tests {
         );
         assert_eq!(
             serde_json::from_value::<CliTerminationReason>(serde_json::json!("execution_timeout"))
+                .unwrap(),
+            reason
+        );
+    }
+
+    #[test]
+    fn user_cancellation_reason_has_stable_serialization() {
+        let reason = CliTerminationReason::UserCancellation;
+        assert_eq!(reason.as_str(), "user_cancellation");
+        assert_eq!(
+            serde_json::to_value(reason).unwrap(),
+            serde_json::json!("user_cancellation")
+        );
+        assert_eq!(
+            serde_json::from_value::<CliTerminationReason>(serde_json::json!("user_cancellation"))
                 .unwrap(),
             reason
         );
