@@ -4892,25 +4892,46 @@ function ArtifactBodyRenderBlockView({
   );
 }
 
+const CHAT_CONNECTOR_ACTION_CARD_HEIGHT_CLASS = "h-[136px] sm:h-[88px]";
+
+function ConnectorActionCardSkeleton() {
+  return (
+    <Skeleton
+      data-testid="connector-action-card-loading"
+      className={cn(
+        "w-full rounded-[var(--zero-card-radius)]",
+        CHAT_CONNECTOR_ACTION_CARD_HEIGHT_CLASS,
+      )}
+    />
+  );
+}
+
 function ConnectorActionCard({ signals }: { signals: ConnectorSignals }) {
   const pageSignal = useGet(pageSignal$);
-  const available = useLastResolved(signals.available$) ?? false;
+  const catalogItemLoadable = useLastLoadable(signals.catalogItem$);
+  const catalogItem = useLastResolved(signals.catalogItem$);
   const connected = useLastResolved(signals.connected$) ?? false;
   const completeLoadable = useLoadable(signals.complete$);
   const complete =
     completeLoadable.state === "hasData" && completeLoadable.data;
-  const catalogItem = useLastResolved(signals.catalogItem$);
   const [activateLoadable, activate] = useLoadableSet(signals.activate$);
   const loading =
     completeLoadable.state === "loading" ||
     activateLoadable.state === "loading";
-  if (!available || !catalogItem) {
+  if (!catalogItem && catalogItemLoadable.state === "loading") {
+    return <ConnectorActionCardSkeleton />;
+  }
+  if (!catalogItem) {
     return null;
   }
 
   return (
     <ConnectorCard
       variant="action"
+      className={cn(
+        "justify-between overflow-hidden",
+        CHAT_CONNECTOR_ACTION_CARD_HEIGHT_CLASS,
+      )}
       connector={catalogItem}
       connected={connected}
       complete={complete}
