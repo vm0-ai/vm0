@@ -839,6 +839,33 @@ function ArtifactPreviewDialog({
 }) {
   const leftThread = useLastResolved(currentLeftThread$);
   const rightThread = useLastResolved(currentRightThread$);
+  const previewThreadId =
+    (preview.kind === "image" ? preview.threadId : undefined) ??
+    preview.artifact?.threadId;
+  const previewThread =
+    leftThread?.threadId === previewThreadId
+      ? leftThread
+      : rightThread?.threadId === previewThreadId
+        ? rightThread
+        : undefined;
+
+  if (previewThread) {
+    return (
+      <ArtifactPreviewDialogThreadResolver
+        preview={preview}
+        thread={previewThread}
+      />
+    );
+  }
+
+  if (previewThreadId) {
+    return (
+      <ArtifactPreviewDialogContent
+        artifact={preview.artifact}
+        preview={preview}
+      />
+    );
+  }
 
   if (leftThread) {
     return (
@@ -918,6 +945,7 @@ function ArtifactPreviewDialogThreadResolver({
           })
         : undefined,
       filename: navigationItem.filename,
+      threadId: thread.threadId,
       url: navigationItem.url,
     });
   };
