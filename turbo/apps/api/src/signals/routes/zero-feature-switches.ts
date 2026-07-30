@@ -4,6 +4,7 @@ import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { isBrazilianPortugueseLocaleRolloutEnabled } from "../../lib/brazilian-portuguese-locale-rollout";
+import { isJapaneseLocaleRolloutEnabled } from "../../lib/japanese-locale-rollout";
 import { isZeroMailReplyFollowUpRolloutEnabled } from "../../lib/zero-mail-reply-follow-up-rollout";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -36,6 +37,8 @@ function featureSwitchResponseBody(params: {
     isZeroMailReplyFollowUpRolloutEnabled();
   effectiveSwitches[FeatureSwitchKey.BrazilianPortugueseLocale] =
     isBrazilianPortugueseLocaleRolloutEnabled();
+  effectiveSwitches[FeatureSwitchKey.JapaneseLocale] =
+    isJapaneseLocaleRolloutEnabled();
 
   return {
     switches: params.switches,

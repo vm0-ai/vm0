@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.149.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.149.2...runner-rs-v0.149.3) (2026-07-30)
+
+
+### Bug Fixes
+
+* **mitm-addon:** validate firewall auth success metadata ([#24025](https://github.com/vm0-ai/vm0/issues/24025)) ([099050f](https://github.com/vm0-ai/vm0/commit/099050f999b88a38c1a0e75e0108170542476788))
+
 ## [0.149.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.149.1...runner-rs-v0.149.2) (2026-07-30)
 
 
