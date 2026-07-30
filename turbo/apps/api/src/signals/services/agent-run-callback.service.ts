@@ -384,10 +384,12 @@ export const dispatchRunCallbacks$ = command(
           callbackId === undefined
             ? undefined
             : eq(agentRunCallbacks.id, callbackId),
-          or(
-            eq(agentRunCallbacks.status, "pending"),
-            eq(agentRunCallbacks.status, "failed"),
-          ),
+          callbackId === undefined
+            ? or(
+                eq(agentRunCallbacks.status, "pending"),
+                eq(agentRunCallbacks.status, "failed"),
+              )
+            : undefined,
           or(
             isNull(agentRunCallbacks.internalKind),
             notInArray(agentRunCallbacks.internalKind, [

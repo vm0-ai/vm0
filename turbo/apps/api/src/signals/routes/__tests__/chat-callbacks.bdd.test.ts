@@ -24,7 +24,10 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { accept, setupApp } from "../../../__tests__/test-helpers";
 import { readGoalQueueStateFixture } from "../../../test-fixtures/goal-queue";
-import { holdChatEventInsertTransactionFixture } from "../../../test-fixtures/chat-events";
+import {
+  holdChatEventInsertTransactionFixture,
+  removeAcknowledgedCancellationLifecycleFixture,
+} from "../../../test-fixtures/chat-events";
 import { testContext } from "../../../__tests__/test-context";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -2209,6 +2212,63 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
           event.revokesEventId === queuedEventId && event.runId !== undefined
         );
       }),
+    ).toHaveLength(1);
+
+    await api.requestCancelRun(actor, replacementRunId, [200]);
+    await waitForRunStatus(actor, replacementRunId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
+  it("redrives an acknowledged chat callback after terminal processing is lost", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "cancel before losing detached terminal processing",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId, [
+      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
+    ]);
+    const queuedEventId = await queueChatEvent(actor, {
+      agentId,
+      threadId: run.threadId,
+      prompt: "continue after acknowledged callback recovery",
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await flushWaitUntilForTest();
+    await removeAcknowledgedCancellationLifecycleFixture({
+      runId: run.runId,
+    });
+
+    await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 1, error: "Run cancelled" },
+      sandboxHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+    const beforeRedrive = await chat.listThreadEvents(actor, run.threadId);
+    expect(
+      lifecycleMarkers(beforeRedrive.events, run.runId, "cancelled"),
+    ).toHaveLength(0);
+    expect(
+      userMessages(beforeRedrive.events).filter((event) => {
+        return (
+          event.revokesEventId === queuedEventId && event.runId !== undefined
+        );
+      }),
+    ).toHaveLength(0);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await flushWaitUntilForTest();
+    const replacementRunId = await waitForQueuedEventReplacement(
+      actor,
+      run.threadId,
+      queuedEventId,
+    );
+    const afterRedrive = await chat.listThreadEvents(actor, run.threadId);
+    expect(
+      lifecycleMarkers(afterRedrive.events, run.runId, "cancelled"),
     ).toHaveLength(1);
 
     await api.requestCancelRun(actor, replacementRunId, [200]);
