@@ -37,6 +37,8 @@ interface EnabledMailDraftCardProps extends MailDraftCardProps {
   readonly followUpEnabled: boolean;
 }
 
+const MAIL_DRAFT_CARD_HEIGHT_CLASS = "h-[76px]";
+
 function statusLabel(status: ZeroMailDraftStatus): string {
   switch (status) {
     case "draft": {
@@ -59,7 +61,13 @@ function statusLabel(status: ZeroMailDraftStatus): string {
 
 function MailDraftCardSkeleton() {
   return (
-    <div className="flex min-h-[76px] w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/70 bg-card px-4 py-3">
+    <div
+      data-testid="mail-draft-card-loading"
+      className={cn(
+        "flex w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/70 bg-card px-4 py-3",
+        MAIL_DRAFT_CARD_HEIGHT_CLASS,
+      )}
+    >
       <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted/60">
         <IconLoader2 className="animate-spin text-muted-foreground" size={16} />
       </span>
@@ -236,7 +244,8 @@ function SentMailDraftCard({
       data-mail-draft-card
       data-mail-draft-status={draft.status}
       className={cn(
-        "w-full max-w-xl overflow-hidden rounded-[var(--zero-card-radius)] border bg-card",
+        "flex w-full max-w-xl overflow-hidden rounded-[var(--zero-card-radius)] border bg-card",
+        MAIL_DRAFT_CARD_HEIGHT_CLASS,
         selected ? "border-ring/60 bg-muted/20" : "border-border/70",
       )}
     >
@@ -254,7 +263,7 @@ function SentMailDraftCard({
           },
         )}
         onClick={onOpen}
-        className="flex min-h-[76px] w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50"
+        className="flex h-full min-w-0 flex-1 items-center gap-3 overflow-hidden px-4 py-3 pr-2 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/50"
       >
         <MailDraftCardContent
           draft={draft}
@@ -262,21 +271,55 @@ function SentMailDraftCard({
           reconnecting={false}
         />
       </button>
-      <div className="flex items-center justify-between gap-3 border-t border-border/60 px-3 py-2">
-        <p className="text-xs text-muted-foreground">
-          {followUpDescription(followUpState)}
-        </p>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          disabled={followUpState !== "idle"}
-          onClick={onFollowUp}
-        >
-          <FollowUpIcon state={followUpState} />
-          {followUpButtonLabel(followUpState)}
-        </Button>
-      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        title={followUpDescription(followUpState)}
+        disabled={followUpState !== "idle"}
+        onClick={onFollowUp}
+        className="mr-3 shrink-0"
+      >
+        <FollowUpIcon state={followUpState} />
+        {followUpButtonLabel(followUpState)}
+      </Button>
+    </div>
+  );
+}
+
+function DeletedMailDraftCard({
+  draft,
+  gmailIcon,
+  subject,
+}: {
+  readonly draft: ZeroMailDraft;
+  readonly gmailIcon: PublicConnectorCatalogIcon | undefined;
+  readonly subject: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div
+      aria-disabled="true"
+      aria-label={t(
+        ($) => {
+          return $.chat.mail.deletedEmail;
+        },
+        {
+          subject,
+        },
+      )}
+      data-mail-draft-card
+      data-mail-draft-status="deleted"
+      className={cn(
+        "flex w-full max-w-xl cursor-default items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/60 bg-card px-4 py-3 opacity-70",
+        MAIL_DRAFT_CARD_HEIGHT_CLASS,
+      )}
+    >
+      <MailDraftCardContent
+        draft={draft}
+        gmailIcon={gmailIcon}
+        reconnecting={false}
+      />
     </div>
   );
 }
@@ -332,22 +375,11 @@ function EnabledMailDraftCard({
 
   if (deleted) {
     return (
-      <div
-        aria-disabled="true"
-        aria-label={t(
-          ($) => {
-            return $.chat.mail.deletedEmail;
-          },
-          {
-            subject,
-          },
-        )}
-        data-mail-draft-card
-        data-mail-draft-status="deleted"
-        className="flex min-h-[76px] w-full max-w-xl cursor-default items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/60 bg-card px-4 py-3 opacity-70"
-      >
-        {content}
-      </div>
+      <DeletedMailDraftCard
+        draft={draft}
+        gmailIcon={connectorIcon}
+        subject={subject}
+      />
     );
   }
 
@@ -367,7 +399,10 @@ function EnabledMailDraftCard({
         )}
         data-mail-draft-card
         data-mail-draft-status={draft.status}
-        className="flex min-h-[76px] w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/70 bg-card px-4 py-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-wait disabled:opacity-70"
+        className={cn(
+          "flex w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border border-border/70 bg-card px-4 py-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-wait disabled:opacity-70",
+          MAIL_DRAFT_CARD_HEIGHT_CLASS,
+        )}
       >
         {content}
       </button>
@@ -407,7 +442,8 @@ function EnabledMailDraftCard({
       data-mail-draft-status={draft.status}
       onClick={openDraft}
       className={cn(
-        "flex min-h-[76px] w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border bg-card px-4 py-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+        "flex w-full max-w-xl items-center gap-3 rounded-[var(--zero-card-radius)] border bg-card px-4 py-3 text-left transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+        MAIL_DRAFT_CARD_HEIGHT_CLASS,
         selected ? "border-ring/60 bg-muted/20" : "border-border/70",
       )}
     >

@@ -2548,16 +2548,25 @@ function ChatThreadRenderedEventGroups({
     }) ?? [];
   const { activeGroups: renderedActiveGroups } =
     splitQueuedEventsForThinkingIndicator(renderedGroups);
+  const scrollTargetEventId =
+    useGet(thread.threadScrollPosition$)?.targetEventId ?? null;
   const runGroupExpansionOverrides = useGet(runGroupExpansionOverrides$);
   const toggleRunGroupExpanded = useSet(toggleRunGroupExpanded$);
   const runGroupFolding = buildRunGroupFolding(
     renderedActiveGroups,
     runGroupExpansionOverrides,
+    scrollTargetEventId,
   );
   const runGroupVisibleGroups =
     runGroupFolding?.visibleGroups ?? renderedActiveGroups;
   const completedWorkFolding = buildCompletedWorkFolding(runGroupVisibleGroups);
   const completedWorkExpandedKeys = useGet(completedWorkExpandedKeys$);
+  const effectiveCompletedWorkExpandedKeys =
+    completedWorkExpandedKeysForScrollTarget(
+      completedWorkFolding,
+      completedWorkExpandedKeys,
+      scrollTargetEventId,
+    );
   const toggleCompletedWorkExpanded = useSet(toggleCompletedWorkExpanded$);
   const visibleGroups =
     completedWorkFolding?.visibleGroups ?? runGroupVisibleGroups;
@@ -2569,7 +2578,7 @@ function ChatThreadRenderedEventGroups({
       runGroupFolding={runGroupFolding}
       onToggleRunGroup={toggleRunGroupExpanded}
       completedWorkFolding={completedWorkFolding}
-      completedWorkExpandedKeys={completedWorkExpandedKeys}
+      completedWorkExpandedKeys={effectiveCompletedWorkExpandedKeys}
       onToggleCompletedWork={toggleCompletedWorkExpanded}
     />
   );
@@ -2626,6 +2635,28 @@ function ChatThreadEmptyState({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
+function ChatThreadScrollCommitMarker({
+  thread,
+}: {
+  thread: ChatThreadSignals;
+}) {
+  const requestLoadable = useLoadable(thread.scrollRenderRequestReady$);
+  const commitScroll = useSet(thread.scrollCommitOnRef$);
+  if (requestLoadable.state !== "hasData" || !requestLoadable.data) {
+    return null;
+  }
+  const request = requestLoadable.data;
+  return (
+    <span
+      key={request.revision}
+      ref={commitScroll}
+      data-chat-scroll-commit-revision={request.revision}
+      aria-hidden
+      className="hidden"
+    />
+  );
+}
+
 function ChatThreadEventsMain({ thread }: { thread: ChatThreadSignals }) {
   const renderedGroupsReady =
     useLastResolved(thread.visibleRenderedChatGroupsReady$) ?? false;
@@ -2642,6 +2673,7 @@ function ChatThreadEventsMain({ thread }: { thread: ChatThreadSignals }) {
         <ChatHistoryBackfillSkeleton thread={thread} />
         <ChatThreadRenderedEventGroups thread={thread} />
         <ChatThreadThinkingIndicator thread={thread} />
+        <ChatThreadScrollCommitMarker thread={thread} />
       </div>
     </main>
   );
@@ -2877,6 +2909,31 @@ interface CompletedWorkFold {
 interface CompletedWorkFolding {
   visibleGroups: ChatEventGroup[];
   foldsByFinalEventId: Map<string, CompletedWorkFold>;
+}
+
+function completedWorkExpandedKeysForScrollTarget(
+  folding: CompletedWorkFolding | null,
+  expandedKeys: ReadonlySet<string>,
+  targetEventId: string | null,
+): ReadonlySet<string> {
+  if (folding === null || targetEventId === null) {
+    return expandedKeys;
+  }
+  const targetFold = Array.from(folding.foldsByFinalEventId.values()).find(
+    (fold) => {
+      return fold.hiddenGroups.some((group) => {
+        return group.events.some((event) => {
+          return event.id === targetEventId;
+        });
+      });
+    },
+  );
+  if (!targetFold || expandedKeys.has(targetFold.key)) {
+    return expandedKeys;
+  }
+  const next = new Set(expandedKeys);
+  next.add(targetFold.key);
+  return next;
 }
 
 function groupEventsForCompletedWorkDisplay(
@@ -3475,7 +3532,7 @@ function ChatThreadSkeletonOverlay({ thread }: { thread: ChatThreadSignals }) {
 }
 
 function ChatThreadEventsPane({ thread }: { thread: ChatThreadSignals }) {
-  const setScrollContainer = useSet(thread.setScrollContainer$);
+  const scrollContainerOnRef = useSet(thread.scrollContainerOnRef$);
   const loadMoreRenderedChatGroups = useSet(thread.loadMoreRenderedChatGroups$);
   const pageSignal = useGet(pageSignal$);
   const pwaChatKeyboardGesturesEnabled =
@@ -3493,7 +3550,7 @@ function ChatThreadEventsPane({ thread }: { thread: ChatThreadSignals }) {
   return (
     <div className="flex-1 min-h-0 relative isolate">
       <div
-        ref={setScrollContainer}
+        ref={scrollContainerOnRef}
         data-scroll-container
         tabIndex={-1}
         onScroll={handleScroll}
@@ -4915,25 +4972,46 @@ function ArtifactBodyRenderBlockView({
   );
 }
 
+const CHAT_CONNECTOR_ACTION_CARD_HEIGHT_CLASS = "h-[136px] sm:h-[88px]";
+
+function ConnectorActionCardSkeleton() {
+  return (
+    <Skeleton
+      data-testid="connector-action-card-loading"
+      className={cn(
+        "w-full rounded-[var(--zero-card-radius)]",
+        CHAT_CONNECTOR_ACTION_CARD_HEIGHT_CLASS,
+      )}
+    />
+  );
+}
+
 function ConnectorActionCard({ signals }: { signals: ConnectorSignals }) {
   const pageSignal = useGet(pageSignal$);
-  const available = useLastResolved(signals.available$) ?? false;
+  const catalogItemLoadable = useLastLoadable(signals.catalogItem$);
+  const catalogItem = useLastResolved(signals.catalogItem$);
   const connected = useLastResolved(signals.connected$) ?? false;
   const completeLoadable = useLoadable(signals.complete$);
   const complete =
     completeLoadable.state === "hasData" && completeLoadable.data;
-  const catalogItem = useLastResolved(signals.catalogItem$);
   const [activateLoadable, activate] = useLoadableSet(signals.activate$);
   const loading =
     completeLoadable.state === "loading" ||
     activateLoadable.state === "loading";
-  if (!available || !catalogItem) {
+  if (!catalogItem && catalogItemLoadable.state === "loading") {
+    return <ConnectorActionCardSkeleton />;
+  }
+  if (!catalogItem) {
     return null;
   }
 
   return (
     <ConnectorCard
       variant="action"
+      className={cn(
+        "justify-between overflow-hidden",
+        CHAT_CONNECTOR_ACTION_CARD_HEIGHT_CLASS,
+      )}
       connector={catalogItem}
       connected={connected}
       complete={complete}
@@ -7625,7 +7703,11 @@ function WorkflowUserMessage({
   const linked = workflowId !== undefined;
 
   return (
-    <div data-role="user" className="group">
+    <div
+      data-role="user"
+      data-chat-scroll-anchor-event-id={event.id}
+      className="group"
+    >
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex w-full flex-col items-end">
@@ -7685,7 +7767,11 @@ function GoalUserMessage({
   const { t } = useTranslation();
   const objectiveBrief = event.goalSnapshot?.objectiveBrief?.trim();
   return (
-    <div data-role="user" className="group">
+    <div
+      data-role="user"
+      data-chat-scroll-anchor-event-id={event.id}
+      className="group"
+    >
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex w-full flex-col items-end">
@@ -7852,7 +7938,11 @@ function PagedUserMessage({
   }
 
   return (
-    <div data-role="user" className="group">
+    <div
+      data-role="user"
+      data-chat-scroll-anchor-event-id={event.id}
+      className="group"
+    >
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
@@ -8013,6 +8103,7 @@ function PagedAssistantEventItem({
   if (error) {
     return (
       <div
+        data-chat-scroll-anchor-event-id={event.id}
         className={cn(
           "zero-chat-bubble-assistant px-0 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]",
           compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
@@ -8031,6 +8122,7 @@ function PagedAssistantEventItem({
     const { blocks } = event;
     return (
       <div
+        data-chat-scroll-anchor-event-id={event.id}
         className={cn(
           "zero-chat-bubble-assistant px-0 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]",
           compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
