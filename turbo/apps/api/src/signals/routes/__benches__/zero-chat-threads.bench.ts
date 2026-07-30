@@ -513,7 +513,7 @@ async function seedBackgroundLoad(): Promise<void> {
       });
       zRunRows.push({
         id: runId,
-        triggerSource: "cli",
+        triggerSource: "test",
         chatThreadId: threadIds[t]!,
       });
     }
@@ -629,7 +629,7 @@ async function seedTargetThreadRuns(
     });
     zRunRows.push({
       id: runId,
-      triggerSource: "cli",
+      triggerSource: "test",
       chatThreadId: fixture.threadId,
     });
     for (let m = 0; m < TARGET_MESSAGES_PER_RUN; m++) {
