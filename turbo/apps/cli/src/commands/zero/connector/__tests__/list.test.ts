@@ -17,6 +17,11 @@ import {
   catalogStatusItem,
   stubConnectorCatalogStatus,
 } from "../../__tests__/helpers/connector-catalog";
+import {
+  customConnector,
+  stubAgentCustomConnectors,
+  stubCustomConnectors,
+} from "../../__tests__/helpers/custom-connectors";
 
 const AGENT_UUID = "550e8400-e29b-41d4-a716-446655440000";
 const ALT_AGENT_UUID = "550e8400-e29b-41d4-a716-446655440099";
@@ -121,6 +126,7 @@ describe("zero connector list command", () => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("ZERO_TOKEN", "test-token");
+    server.use(stubCustomConnectors([]), stubAgentCustomConnectors([]));
   });
 
   afterEach(() => {
@@ -168,6 +174,37 @@ describe("zero connector list command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("@octocat (reconnect needed)");
+    });
+
+    it("renders custom connectors with their connection status", async () => {
+      server.use(
+        stubAvailableConnectors(["github"]),
+        stubCustomConnectors([
+          customConnector({
+            connected: true,
+            missingRequiredFields: [],
+            configuredFieldKeys: ["secret:apiKey"],
+            hasSecret: true,
+          }),
+          customConnector({
+            id: "44444444-4444-4444-8444-444444444444",
+            slug: "_weather-api",
+            displayName: "Weather API",
+          }),
+        ]),
+      );
+
+      await listCommand.parseAsync(["node", "cli"]);
+
+      const lines = mockConsoleLog.mock.calls.flat() as string[];
+      const connectedRow = lines.find((line) => {
+        return line.startsWith("_acme-search");
+      });
+      const missingRow = lines.find((line) => {
+        return line.startsWith("_weather-api");
+      });
+      expect(connectedRow).toContain("connected");
+      expect(missingRow).toContain("missing apiKey");
     });
   });
 
@@ -250,6 +287,26 @@ describe("zero connector list command", () => {
       expect(logCalls).toContain("AUTHORIZED FOR maya");
       expect(logCalls).not.toContain("✓");
       expect(logCalls).toContain("-");
+    });
+
+    it("renders custom connector authorization for the agent", async () => {
+      const connector = customConnector();
+      server.use(
+        stubAvailableConnectors(["github"]),
+        stubCustomConnectors([connector]),
+        stubAgent(AGENT_UUID, "maya"),
+        stubUserConnectors(AGENT_UUID, []),
+        stubAgentCustomConnectors([connector.id]),
+      );
+
+      await listCommand.parseAsync(["node", "cli", "--agent", AGENT_UUID]);
+
+      const customRow = (mockConsoleLog.mock.calls.flat() as string[]).find(
+        (line) => {
+          return line.startsWith(connector.slug);
+        },
+      );
+      expect(customRow).toMatch(/✓$/u);
     });
   });
 
