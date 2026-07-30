@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.666.0](https://github.com/vm0-ai/vm0/compare/app-v0.665.0...app-v0.666.0) (2026-07-30)
+
+
+### Features
+
+* **platform:** support italian locale ([#24056](https://github.com/vm0-ai/vm0/issues/24056)) ([21d5c14](https://github.com/vm0-ai/vm0/commit/21d5c1459b5a044d3973fa9431ea3ce80c4deacd))
+* **platform:** support spanish locale ([#24052](https://github.com/vm0-ai/vm0/issues/24052)) ([e6bb124](https://github.com/vm0-ai/vm0/commit/e6bb12414447aad1817787f4b3c1b01010a3102f))
+
+
+### Refactoring
+
+* **api:** remove legacy connector client schema aliases ([#24108](https://github.com/vm0-ai/vm0/issues/24108)) ([cfde606](https://github.com/vm0-ai/vm0/commit/cfde606e0e7dc755e8ff3e407b0b0cf79f19a3cc))
+* **insights:** remove legacy connector type ([#24101](https://github.com/vm0-ai/vm0/issues/24101)) ([e6de42c](https://github.com/vm0-ai/vm0/commit/e6de42c3e36d3bbe904b976dff3efd46b1152d9f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.255.0
+    * @vm0/core bumped to 8.495.0
+
 ## [0.665.0](https://github.com/vm0-ai/vm0/compare/app-v0.664.0...app-v0.665.0) (2026-07-30)
 
 
