@@ -4406,6 +4406,7 @@
         "label": "Lingua",
         "options": {
           "english": "English",
+          "french": "Français",
           "german": "Deutsch",
           "indonesian": "Bahasa Indonesia",
           "italian": "Italiano",

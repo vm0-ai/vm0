@@ -117,4 +117,44 @@ describe("/api/zero/feature-switches", () => {
       ],
     ).toBeTruthy();
   });
+
+  it("exposes French locale availability only through the server rollout gate", async () => {
+    createZeroRouteMocks(context).clerk.session(
+      "user_french_locale_feature_switch_test",
+      "org_french_locale_feature_switch_test",
+      "org:member",
+    );
+    const headers = { authorization: "Bearer clerk-session" };
+    mockOptionalEnv("FRENCH_LOCALE_ROLLOUT_ENABLED", undefined);
+
+    const guarded = await accept(client().get({ headers }), [200]);
+    expect(
+      guarded.body.effectiveSwitches[FeatureSwitchKey.FrenchLocale],
+    ).toBeFalsy();
+
+    const overrideAttempt = await accept(
+      client().update({
+        headers,
+        body: {
+          switches: {
+            [FeatureSwitchKey.FrenchLocale]: true,
+          },
+        },
+      }),
+      [200],
+    );
+    expect(overrideAttempt.body.switches).not.toHaveProperty(
+      FeatureSwitchKey.FrenchLocale,
+    );
+    expect(
+      overrideAttempt.body.effectiveSwitches[FeatureSwitchKey.FrenchLocale],
+    ).toBeFalsy();
+
+    mockOptionalEnv("FRENCH_LOCALE_ROLLOUT_ENABLED", "true");
+
+    const enabled = await accept(client().get({ headers }), [200]);
+    expect(
+      enabled.body.effectiveSwitches[FeatureSwitchKey.FrenchLocale],
+    ).toBeTruthy();
+  });
 });

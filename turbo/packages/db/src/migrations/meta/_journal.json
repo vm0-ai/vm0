@@ -5391,6 +5391,13 @@
       "when": 1785425635301,
       "tag": "0769_remove_insights_connector_type",
       "breakpoints": true
+    },
+    {
+      "idx": 770,
+      "version": "7",
+      "when": 1785426927542,
+      "tag": "0770_good_shape",
+      "breakpoints": true
     }
   ]
 }

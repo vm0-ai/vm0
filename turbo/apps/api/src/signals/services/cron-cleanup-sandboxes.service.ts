@@ -233,6 +233,7 @@ const dispatchMaintenanceTerminalSideEffects$ = command(
     await set(
       dispatchCompleteSideEffects$,
       {
+        kind: "terminal",
         runId: input.runId,
         orgId: input.orgId,
         status: "failed",

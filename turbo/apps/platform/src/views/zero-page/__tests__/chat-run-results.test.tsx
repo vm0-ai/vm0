@@ -1835,7 +1835,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("keeps same-framework alternatives for model capacity and retries", async () => {
+  it("keeps the current model and alternatives for model capacity and retries", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000792";
     let retriedPrompt: string | undefined;
     context.mocks.data.orgModelPolicies([
@@ -1900,8 +1900,8 @@ describe("chat lifecycle", () => {
       screen.getByRole("option", { name: /GPT 5\.6 Sol/u }),
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("option", { name: /Claude Sonnet 4\.6/u }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("option", { name: /Claude Sonnet 4\.6/u }),
+    ).toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: "Escape" });
     click(buttonByText("Try again", card));

@@ -5,6 +5,7 @@ export default defineConfig({
     globals: true,
     environment: "node",
     env: {
+      FRENCH_LOCALE_ROLLOUT_ENABLED: "true",
       INDONESIAN_LOCALE_ROLLOUT_ENABLED: "true",
       TZ: "UTC",
     },

@@ -61,6 +61,7 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.GermanLocale, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.SpanishLocale, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.ItalianLocale, {})).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.FrenchLocale, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.ZeroChatMessaging, {})).toBe(
       false,
     );
@@ -147,6 +148,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.GermanLocale]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.SpanishLocale]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ItalianLocale]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.FrenchLocale]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
@@ -189,6 +191,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.GermanLocale]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.SpanishLocale]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ItalianLocale]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.FrenchLocale]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
@@ -286,6 +289,9 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.ItalianLocale,
     );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.FrenchLocale,
+    );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ZeroBrowser,
     );
@@ -319,6 +325,7 @@ describe("user-overridable switches", () => {
         [FeatureSwitchKey.GermanLocale]: true,
         [FeatureSwitchKey.SpanishLocale]: true,
         [FeatureSwitchKey.ItalianLocale]: true,
+        [FeatureSwitchKey.FrenchLocale]: true,
         [FeatureSwitchKey.ZeroBrowser]: true,
         [FeatureSwitchKey.ComposerConnectorPermissions]: true,
         [FeatureSwitchKey.Dummy]: false,
