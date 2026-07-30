@@ -27,6 +27,16 @@ import {
   chatComposerTextarea,
 } from "./chat-lifecycle-test-helpers.ts";
 
+function computerUseRow(switchName: string): HTMLElement {
+  const row = screen
+    .getByRole("switch", { name: switchName })
+    .closest("div.cursor-pointer");
+  if (!(row instanceof HTMLElement)) {
+    throw new Error(`No computer use row found for switch: ${switchName}`);
+  }
+  return row;
+}
+
 describe("chat lifecycle", () => {
   it("keeps Cloud browser and Computer Use mutually exclusive", async () => {
     const user = userEvent.setup({ delay: null });
@@ -118,6 +128,72 @@ describe("chat lifecycle", () => {
         screen.getByRole("switch", { name: "Enable Cloud browser" }),
       ).toHaveAttribute("aria-checked", "false");
     });
+  });
+
+  it("keeps enabled Cloud browser and host rows untinted", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000720";
+    const hostId = "11111111-1111-4111-8111-111111111112";
+    const lifecycle = mockChatLifecycle(context, {
+      threadId,
+      computerUseHostId: hostId,
+    });
+    lifecycle.setThreadList([
+      {
+        id: threadId,
+        title: null,
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+        computerUseHostId: hostId,
+        cloudBrowserEnabled: false,
+      },
+    ]);
+    context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
+      return respond(200, {
+        hosts: [
+          {
+            id: hostId,
+            displayName: "Studio Mac",
+            appVersion: "1.0.0",
+            osVersion: "macOS 15.0",
+            supportedCapabilities: ["app.open"],
+            permissions: computerUsePermissions(),
+            status: "online",
+            lastSeenAt: "2026-06-10T12:00:00Z",
+            createdAt: "2026-06-10T11:00:00Z",
+          },
+        ],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
+    });
+
+    await waitFor(() => {
+      return chatComposerTextarea();
+    });
+    await user.click(await screen.findByLabelText("Connectors"));
+
+    expect(computerUseRow("Disconnect Studio Mac")).not.toHaveClass(
+      "bg-primary/5",
+    );
+
+    await user.click(
+      screen.getByRole("switch", { name: "Enable Cloud browser" }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole("switch", { name: "Disable Cloud browser" }),
+      ).toHaveAttribute("aria-checked", "true");
+    });
+
+    expect(computerUseRow("Disable Cloud browser")).not.toHaveClass(
+      "bg-primary/5",
+    );
   });
 
   it("creates a new chat thread with Cloud browser on by default", async () => {
