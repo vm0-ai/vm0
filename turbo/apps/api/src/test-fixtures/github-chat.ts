@@ -99,6 +99,7 @@ export async function readGitHubLegacySessionFixture(args: {
     .select({
       userId: githubIssueSessions.userId,
       sessionId: githubIssueSessions.agentSessionId,
+      lastCommentId: githubIssueSessions.lastCommentId,
     })
     .from(githubIssueSessions)
     .where(

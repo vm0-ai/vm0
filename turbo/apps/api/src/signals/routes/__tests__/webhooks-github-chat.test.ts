@@ -241,10 +241,11 @@ async function runState(
   return await findGitHubRunStateFixture(userId, prompt);
 }
 
-async function claimAndComplete(args: {
+async function claimAndFinish(args: {
   readonly fixture: GitHubChatFixture;
   readonly run: GitHubRunStateFixture;
   readonly expectedResumeSessionId?: string;
+  readonly exitCode?: number;
 }): Promise<string> {
   await runs.heartbeatRunner(args.fixture.runnerGroup);
   const claim = await runs.claimRunnerJob(args.run.id);
@@ -277,7 +278,11 @@ async function claimAndComplete(args: {
     [200],
   );
   await webhooks.requestAgentComplete(
-    { runId: args.run.id, exitCode: 0 },
+    {
+      runId: args.run.id,
+      exitCode: args.exitCode ?? 0,
+      ...(args.exitCode ? { error: "bdd GitHub run failure" } : {}),
+    },
     headers,
     [200],
   );
@@ -313,7 +318,7 @@ describe("GitHub canonical chat threads", () => {
       expect(run.chatThreadId).toBe(firstRun.chatThreadId);
       expect(run.sessionId).toBe(firstRun.sessionId);
       expect(run.triggerSource).toBe("github");
-      previousCliSession = await claimAndComplete({
+      previousCliSession = await claimAndFinish({
         fixture,
         run,
         expectedResumeSessionId: previousCliSession,
@@ -330,7 +335,7 @@ describe("GitHub canonical chat threads", () => {
     const bRun = await runState(fixture.actorB.userId, "B only turn");
     expect(bRun.chatThreadId).not.toBe(firstRun?.chatThreadId);
     expect(bRun.sessionId).not.toBe(firstRun?.sessionId);
-    await claimAndComplete({ fixture, run: bRun });
+    await claimAndFinish({ fixture, run: bRun });
 
     const legacyAfterB = await readGitHubLegacySessionFixture({
       installationId: fixture.installationId,
@@ -353,7 +358,7 @@ describe("GitHub canonical chat threads", () => {
     expect(aReturn.chatThreadId).toBe(firstRun?.chatThreadId);
     expect(aReturn.sessionId).toBe(firstRun?.sessionId);
     expect(aReturn.sessionId).not.toBe(bRun.sessionId);
-    await claimAndComplete({
+    const aReturnCliSession = await claimAndFinish({
       fixture,
       run: aReturn,
       expectedResumeSessionId: previousCliSession,
@@ -414,6 +419,36 @@ describe("GitHub canonical chat threads", () => {
     expect(firstRun?.appendSystemPrompt).toContain(
       `Issue URL: https://github.com/${REPO}/issues/${subjectNumber}`,
     );
+
+    await sendGitHubComment({
+      fixture,
+      githubUserId: fixture.githubUserA,
+      commentId: 10_005,
+      prompt: "A fails after checkpoint",
+      subjectNumber,
+    });
+    const failedRun = await runState(
+      fixture.actorA.userId,
+      "A fails after checkpoint",
+    );
+    expect(failedRun.sessionId).toBe(aReturn.sessionId);
+    await claimAndFinish({
+      fixture,
+      run: failedRun,
+      expectedResumeSessionId: aReturnCliSession,
+      exitCode: 1,
+    });
+    const legacyAfterFailure = await readGitHubLegacySessionFixture({
+      installationId: fixture.installationId,
+      repo: REPO,
+      subjectNumber,
+    });
+    expect(legacyAfterFailure).toMatchObject({
+      userId: fixture.actorA.userId,
+      sessionId: aReturn.sessionId,
+      lastCommentId: legacyAfterAReturns?.lastCommentId,
+    });
+    expect(fixture.postedComments).toHaveLength(6);
   }, 30_000);
 
   it("routes pull request mentions through the same canonical table and preserves PR context", async () => {
@@ -450,14 +485,14 @@ describe("GitHub canonical chat threads", () => {
       ),
     ).resolves.toBe(0);
 
-    const firstCliSession = await claimAndComplete({ fixture, run });
+    const firstCliSession = await claimAndFinish({ fixture, run });
     const followUp = await runState(
       fixture.actorA.userId,
       "follow up in FIFO order",
     );
     expect(followUp.chatThreadId).toBe(run.chatThreadId);
     expect(followUp.sessionId).toBe(run.sessionId);
-    await claimAndComplete({
+    await claimAndFinish({
       fixture,
       run: followUp,
       expectedResumeSessionId: firstCliSession,

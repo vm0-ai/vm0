@@ -286,6 +286,7 @@ async function dualWriteLegacyIssueSession(args: {
   readonly run: GitHubChatRunContext;
   readonly target: GitHubDeliveryTarget;
   readonly commentId: string;
+  readonly status: "completed" | "failed";
   readonly signal: AbortSignal;
 }): Promise<void> {
   const [session] = await args.db
@@ -304,6 +305,22 @@ async function dualWriteLegacyIssueSession(args: {
   if (!session) {
     return;
   }
+
+  const [existing] = await args.db
+    .select({ agentSessionId: githubIssueSessions.agentSessionId })
+    .from(githubIssueSessions)
+    .where(
+      and(
+        eq(githubIssueSessions.installationId, args.target.installationId),
+        eq(githubIssueSessions.repo, args.target.repo),
+        eq(githubIssueSessions.issueNumber, args.target.subjectNumber),
+      ),
+    )
+    .limit(1);
+  args.signal.throwIfAborted();
+  const advanceLastComment =
+    args.status === "completed" ||
+    existing?.agentSessionId !== args.run.sessionId;
 
   await args.db
     .insert(githubIssueSessions)
@@ -325,7 +342,7 @@ async function dualWriteLegacyIssueSession(args: {
       set: {
         userId: args.run.userId,
         agentSessionId: session.id,
-        lastCommentId: args.commentId,
+        ...(advanceLastComment ? { lastCommentId: args.commentId } : {}),
         updatedAt: nowDate(),
       },
     });
@@ -372,15 +389,14 @@ async function deliverClaimedGitHubChatCallback(args: {
     });
     args.signal.throwIfAborted();
   }
-  if (args.status === "completed") {
-    await dualWriteLegacyIssueSession({
-      db: args.db,
-      run: context.run,
-      target: context.payload,
-      commentId,
-      signal: args.signal,
-    });
-  }
+  await dualWriteLegacyIssueSession({
+    db: args.db,
+    run: context.run,
+    target: context.payload,
+    commentId,
+    status: args.status,
+    signal: args.signal,
+  });
   return "delivered";
 }
 
