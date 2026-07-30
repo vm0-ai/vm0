@@ -478,6 +478,7 @@ function buildFoldSection(
   runSegments: readonly GroupedRunSegment[],
   usageByRunId: ReadonlyMap<string, ChatEventUsagePayload>,
   expansionOverrides: ReadonlyMap<string, boolean> | undefined,
+  protectedEventId: string | null,
 ): {
   readonly fold: RunGroupFold;
   readonly expandedNextGroupId: string;
@@ -516,6 +517,13 @@ function buildFoldSection(
   }
 
   const key = `${latestSegment.runGroupId}:${firstHiddenRunId}:${latestSegment.runId}`;
+  const containsProtectedEvent =
+    protectedEventId !== null &&
+    hiddenGroups.some((group) => {
+      return group.events.some((event) => {
+        return event.id === protectedEventId;
+      });
+    });
 
   return {
     fold: {
@@ -524,7 +532,8 @@ function buildFoldSection(
       hiddenRunCount: hiddenSegments.length,
       hiddenGroups,
       labelGroups: expandedGroups,
-      expanded: expansionOverrides?.get(key) ?? false,
+      expanded:
+        containsProtectedEvent || (expansionOverrides?.get(key) ?? false),
     },
     expandedNextGroupId,
     collapsedNextGroupId,
@@ -536,6 +545,7 @@ function buildFoldSection(
 export function buildRunGroupFolding(
   groups: readonly ChatEventGroup[],
   expansionOverrides?: ReadonlyMap<string, boolean>,
+  protectedEventId: string | null = null,
 ): RunGroupFolding | null {
   const segments = eventSegmentsFromGroups(groups);
   const usageByRunId = usageByRunIdFromGroups(groups);
@@ -569,6 +579,7 @@ export function buildRunGroupFolding(
       runSegments,
       usageByRunId,
       expansionOverrides,
+      protectedEventId,
     );
     if (foldSection === null) {
       visibleGroups.push(
