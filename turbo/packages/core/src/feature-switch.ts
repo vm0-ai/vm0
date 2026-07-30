@@ -241,6 +241,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     userOverridable: false,
   },
+  [FeatureSwitchKey.JapaneseLocale]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Allow ja-JP preference writes after incompatible API readers and rollback candidates have drained.",
+    enabled: false,
+    userOverridable: false,
+  },
   [FeatureSwitchKey.Banking]: {
     maintainer: "linghan@vm0.ai",
     description:

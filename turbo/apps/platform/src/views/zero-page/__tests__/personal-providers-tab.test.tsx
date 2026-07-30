@@ -547,6 +547,52 @@ describe("personal model providers settings", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("localizes subscription reset dates and relative times in Japanese", async () => {
+    const timeZone = "Asia/Tokyo";
+    mockBrowserTimeZone(timeZone);
+    mockNow(new Date("2030-01-01T00:48:00.000Z"));
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "member",
+    });
+    context.mocks.data.personalModelProviders([
+      connectedPersonalClaudeCodeProvider(),
+    ]);
+    context.mocks.data.userPreferences({
+      locale: "ja-JP",
+      supportedLocales: ["en-US", "ja-JP"],
+    });
+
+    await openModelSettings("モデル", true);
+
+    const claudeCodeRow = await screen.findByTestId(
+      "oauth-card-claude-code-oauth-token",
+    );
+    expect(document.documentElement.lang).toBe("ja-JP");
+    expect(within(claudeCodeRow).getByText("5時間")).toBeInTheDocument();
+    expect(within(claudeCodeRow).getByText("88% 残り")).toBeInTheDocument();
+    expect(within(claudeCodeRow).getByText("4時間12分後")).toBeInTheDocument();
+    expect(within(claudeCodeRow).getByText("週")).toBeInTheDocument();
+    expect(within(claudeCodeRow).getByText("76% 残り")).toBeInTheDocument();
+    expect(within(claudeCodeRow).getByText("5日23時間後")).toBeInTheDocument();
+
+    const resetAt = "2030-01-01T05:00:00.000Z";
+    const absoluteReset = new Intl.DateTimeFormat("ja-JP", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone,
+      timeZoneName: "short",
+    }).format(new Date(resetAt));
+    expect(
+      within(claudeCodeRow).getByText(`${absoluteReset}にリセット`),
+    ).toBeInTheDocument();
+  });
+
   it("resets connected personal Codex usage from the row menu", async () => {
     context.mocks.data.org({
       id: "org_1",
