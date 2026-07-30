@@ -1,12 +1,15 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   chatEventResponse,
   chatThreadByIdContract,
   chatThreadMarkReadContract,
   chatThreadEventsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { click } from "../../../__tests__/page-helper.ts";
+import { initializeI18n } from "../../../i18n/index.ts";
+import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { mockChatLifecycle, mockSubagentThread } from "./chat-test-helpers.ts";
 import {
   context,
@@ -18,6 +21,11 @@ import {
   buttonByText,
   buttonByLabel,
 } from "./chat-lifecycle-test-helpers.ts";
+
+afterEach(async () => {
+  document.documentElement.lang = DEFAULT_LOCALE;
+  await initializeI18n(DEFAULT_LOCALE);
+});
 
 describe("chat lifecycle", () => {
   it("shows run credit usage with friendly popover details", async () => {
@@ -896,6 +904,67 @@ describe("chat lifecycle", () => {
       "bg-border/40",
     );
     expect(finishedLabelRow!.lastElementChild).not.toHaveClass("hidden");
+  });
+
+  it("formats completed-run timestamps with the selected Portuguese locale", async () => {
+    const completedAt = "2026-06-09T10:00:21Z";
+    const completedAtLabel = new Date(completedAt).toLocaleString("pt-BR", {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
+    mockChatLifecycle(context, {
+      threadId: "thread-localized-completed-run",
+      chatEvents: [
+        {
+          role: "user",
+          content: "Prepare o plano de lançamento",
+          runId: "run-localized-completed-run",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          role: "assistant",
+          content: "O plano de lançamento está pronto.",
+          runId: "run-localized-completed-run",
+          createdAt: "2026-06-09T10:00:20Z",
+        },
+        {
+          role: "assistant",
+          content: null,
+          runId: "run-localized-completed-run",
+          runLifecycleEvent: "completed",
+          createdAt: completedAt,
+        },
+        {
+          role: "assistant",
+          content: null,
+          runId: "run-localized-completed-run",
+          recommendedFollowups: [
+            {
+              prompt: "Transforme em uma apresentação",
+              kind: "generate",
+              generationType: "presentation",
+            },
+          ],
+          createdAt: "2026-06-09T10:00:30Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-localized-completed-run",
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
+    });
+
+    await expect(
+      screen.findByText(`Continuar · ${completedAtLabel}`),
+    ).resolves.toBeInTheDocument();
+    expect(document.documentElement.lang).toBe("pt-BR");
   });
 
   it("does not let an attached lifecycle marker hide the final answer", async () => {

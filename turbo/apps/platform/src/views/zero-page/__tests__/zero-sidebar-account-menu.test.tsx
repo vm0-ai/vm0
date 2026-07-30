@@ -16,6 +16,8 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { initializeI18n } from "../../../i18n/index.ts";
+import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import { clearMockNow, mockNow } from "../../../lib/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -24,8 +26,10 @@ const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
-afterEach(() => {
+afterEach(async () => {
   clearMockNow();
+  document.documentElement.lang = DEFAULT_LOCALE;
+  await initializeI18n(DEFAULT_LOCALE);
 });
 
 function connectedPersonalCodexProvider(
@@ -1103,6 +1107,9 @@ describe("zero sidebar account menu", () => {
 
   it("localizes account actions without changing account data or routes", async () => {
     mockAdminAccountSidebar();
+    context.mocks.data.personalModelProviders([
+      connectedPersonalCodexProvider(),
+    ]);
     context.mocks.data.userPreferences({
       locale: "pt-BR",
       supportedLocales: ["en-US", "pt-BR"],
@@ -1139,7 +1146,10 @@ describe("zero sidebar account menu", () => {
           },
         ],
       },
-      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: true },
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+        [FeatureSwitchKey.SidebarSubscriptionUsage]: true,
+      },
     });
 
     let menu = await openAccountMenu();
@@ -1149,6 +1159,19 @@ describe("zero sidebar account menu", () => {
     expect(within(menu).getByText("Trocar de conta")).toBeVisible();
     expect(within(menu).getByText("Exportar dados")).toBeVisible();
     expect(within(menu).getByText("Sair")).toBeVisible();
+    expect(within(menu).getByText("12.500 créditos")).toBeVisible();
+    const subscriptions = await within(menu).findByTestId(
+      "account-menu-subscriptions",
+    );
+    expect(
+      within(subscriptions).getByText("2 redefinições restantes"),
+    ).toBeVisible();
+    expect(
+      within(subscriptions).getByRole("progressbar", {
+        name: "Codex: 5h restante",
+      }),
+    ).toHaveAttribute("aria-valuenow", "82");
+    expect(within(subscriptions).getByText("Redefinir")).toBeInTheDocument();
 
     click(within(menu).getByText("Exportar dados"));
     await waitFor(() => {

@@ -6,6 +6,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 
 export function CustomConnectorUpdateConfirm({
   submitting,
@@ -16,6 +17,7 @@ export function CustomConnectorUpdateConfirm({
   readonly onCancel: () => void;
   readonly onConfirm: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Dialog
       open
@@ -23,24 +25,43 @@ export function CustomConnectorUpdateConfirm({
         return !open && onCancel();
       }}
     >
-      <DialogContent className="max-w-md" aria-describedby={undefined}>
+      <DialogContent
+        className="max-w-md"
+        aria-describedby={undefined}
+        closeLabel={t(($) => {
+          return $.connectors.actions.close;
+        })}
+      >
         <DialogHeader>
-          <DialogTitle>Disconnect existing OAuth connections?</DialogTitle>
+          <DialogTitle>
+            {t(($) => {
+              return $.connectors.custom.updateConfirm.title;
+            })}
+          </DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          These OAuth changes will disconnect every member currently connected
-          with OAuth. They&apos;ll need to connect this custom connector again.
+          {t(($) => {
+            return $.connectors.custom.updateConfirm.description;
+          })}
         </p>
         <DialogFooter>
           <Button variant="outline" onClick={onCancel} disabled={submitting}>
-            Cancel
+            {t(($) => {
+              return $.connectors.actions.cancel;
+            })}
           </Button>
           <Button
             variant="destructive"
             onClick={onConfirm}
             disabled={submitting}
           >
-            {submitting ? "Saving…" : "Save and disconnect"}
+            {submitting
+              ? t(($) => {
+                  return $.connectors.actions.savingEllipsis;
+                })
+              : t(($) => {
+                  return $.connectors.custom.updateConfirm.action;
+                })}
           </Button>
         </DialogFooter>
       </DialogContent>
