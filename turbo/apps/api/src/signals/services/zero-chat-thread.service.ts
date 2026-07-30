@@ -44,6 +44,8 @@ import {
   type ChatEventGoalEvent,
   type ChatEventGoalSnapshot,
 } from "@vm0/db/schema/chat-event";
+import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
+import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
@@ -414,12 +416,14 @@ function selectChatEventsWithMetadata(db: Pick<Db, "select">) {
         .mapWith(nullableTriggerSourceDecoder)
         .as("trigger_source"),
       slackMessagePermalink: sql`COALESCE(
+        ${chatSlackContext.messagePermalink},
         ${chatEvents.slackMessagePermalink},
         ${revokedChatEvent.slackMessagePermalink}
       )`
         .mapWith(nullableTextDecoder)
         .as("slack_message_permalink"),
       feishuChatOpenUrl: sql`COALESCE(
+        ${chatFeishuContext.chatOpenUrl},
         ${chatEvents.feishuChatOpenUrl},
         ${revokedChatEvent.feishuChatOpenUrl}
       )`
@@ -448,6 +452,20 @@ function selectChatEventsWithMetadata(db: Pick<Db, "select">) {
     .leftJoin(
       revokedChatEvent,
       eq(revokedChatEvent.id, chatEvents.revokesEventId),
+    )
+    .leftJoin(
+      chatSlackContext,
+      and(
+        eq(chatEvents.contextType, "slack"),
+        eq(chatSlackContext.id, chatEvents.contextId),
+      ),
+    )
+    .leftJoin(
+      chatFeishuContext,
+      and(
+        eq(chatEvents.contextType, "feishu"),
+        eq(chatFeishuContext.id, chatEvents.contextId),
+      ),
     );
 }
 
