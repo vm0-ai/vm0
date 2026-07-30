@@ -55,21 +55,20 @@ const TRANSITIONAL_BROWSER_BILLING_CONSTRAINTS = new Set([
   "browser_session_instances.browser_session_instances_usage_event_id_usage_event_id_fk",
 ]);
 
-// ChatEvent property columns are in release 1 of a three-release expansion.
-// The physical columns and canonical index/FK exist, but this release must not
-// declare them in Drizzle: an ORM-generated SELECT or RETURNING list would then
-// reference them if API promotion raced the migration. Remove these allowlists
-// in the property-cutover release, when the columns enter the runtime schema.
+// ChatEvent property columns are in release 2 of a three-release cutover.
+// Drizzle now declares the canonical columns and index/FK, while the legacy
+// objects must remain for the draining predecessor and rollback target. Remove
+// these allowlists with the physical objects in the release-3 contraction.
 const TRANSITIONAL_CHAT_EVENT_PROPERTY_COLUMNS = new Set([
-  "chat_events.revokes_event_id",
-  "chat_threads.last_chat_event_seq_id",
-  "zero_runs.first_assistant_event_acknowledged_at",
+  "chat_events.revokes_message_id",
+  "chat_threads.last_chat_message_seq_id",
+  "zero_runs.first_assistant_message_acknowledged_at",
 ]);
 const TRANSITIONAL_CHAT_EVENT_PROPERTY_INDEXES = new Set([
-  "chat_events_revokes_event_id_unique",
+  "chat_events_revokes_message_id_unique",
 ]);
 const TRANSITIONAL_CHAT_EVENT_PROPERTY_CONSTRAINTS = new Set([
-  "chat_events.chat_events_revokes_event_id_chat_events_id_fk",
+  "chat_events.chat_events_revokes_message_id_chat_events_id_fk",
 ]);
 
 // Get database URLs from command line args
