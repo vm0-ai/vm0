@@ -1213,6 +1213,31 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
     expect(context.mocks.ably.publish.mock.calls).toHaveLength(
       optionalPublishCount,
     );
+
+    const redirectTarget =
+      "https://api.axiom.co/v1/datasets/redirected-agent-run-events/ingest";
+    let redirectTargetRequests = 0;
+    server.use(
+      http.post(
+        "https://api.axiom.co/v1/datasets/agent-run-events/ingest",
+        () => {
+          return new HttpResponse(null, {
+            headers: { location: redirectTarget },
+            status: 307,
+          });
+        },
+      ),
+      http.post(redirectTarget, () => {
+        redirectTargetRequests += 1;
+        return HttpResponse.json(
+          successfulAxiomIngestStatus(body.events.length),
+        );
+      }),
+    );
+    const redirected = await api.requestAgentEvents(body, headers, [503]);
+    expectApiError(redirected.body);
+    expect(redirected.body.error.code).toBe("EVENT_DELIVERY_UNAVAILABLE");
+    expect(redirectTargetRequests).toBe(0);
   });
 
   it("rejects malformed and partial direct Axiom statuses", async () => {
