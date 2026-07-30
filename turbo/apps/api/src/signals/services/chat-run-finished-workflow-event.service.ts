@@ -156,7 +156,10 @@ export const dispatchChatRunFinishedWorkflowEvents$ = command(
           eq(zeroWorkflowAutomations.enabled, true),
           eq(zeroWorkflowAutomations.kind, "event"),
           eq(zeroWorkflowAutomations.eventType, CHAT_RUN_FINISHED_EVENT_TYPE),
-          sql`${zeroWorkflowAutomations.eventConfig}->>'chatThreadId' = ${event.chatThreadId}`,
+          eq(
+            sql`${zeroWorkflowAutomations.eventConfig}->>'chatThreadId'`,
+            event.chatThreadId,
+          ),
         ),
       );
     signal.throwIfAborted();
