@@ -5369,10 +5369,12 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       expiresIn: 3600,
     });
 
-    const run = await api.createRun(actor, {
-      agentId,
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: agentId,
       prompt: "codex oauth provider",
-      modelProvider: "codex-oauth-token",
+      modelProviderType: "codex-oauth-token",
+      vars: { ZERO_AGENT_ID: agentId },
+      secrets: { ZERO_TOKEN: "bdd-zero-direct-token" },
     });
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
@@ -5457,18 +5459,22 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       expiresIn: 3600,
     });
 
-    const codexWebRun = await api.createRun(actor, {
-      agentId,
+    const codexDirectRun = await api.createDirectRun(actor, {
+      agentComposeId: agentId,
       prompt: "generate an image with codex without a chat thread",
-      modelProvider: "codex-oauth-token",
+      modelProviderType: "codex-oauth-token",
+      vars: { ZERO_AGENT_ID: agentId },
+      secrets: { ZERO_TOKEN: "bdd-zero-direct-token" },
     });
     await api.heartbeatRunner(runnerGroup);
-    const codexWebClaim = await api.claimRunnerJob(codexWebRun.runId);
-    const codexWebPrompt = codexWebClaim.appendSystemPrompt ?? "";
-    expect(codexWebClaim.cliAgentType).toBe("codex");
-    expect(codexWebPrompt).not.toContain(CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET);
-    expect(codexWebPrompt).not.toContain("When running in Codex");
-    await api.requestCancelRun(actor, codexWebRun.runId, [200]);
+    const codexDirectClaim = await api.claimRunnerJob(codexDirectRun.runId);
+    const codexDirectPrompt = codexDirectClaim.appendSystemPrompt ?? "";
+    expect(codexDirectClaim.cliAgentType).toBe("codex");
+    expect(codexDirectPrompt).not.toContain(
+      CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET,
+    );
+    expect(codexDirectPrompt).not.toContain("When running in Codex");
+    await api.requestCancelRun(actor, codexDirectRun.runId, [200]);
 
     const claudeWebRun = await api.createRun(actor, {
       agentId,

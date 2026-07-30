@@ -25,7 +25,10 @@ import {
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
-import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
+import {
+  DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+  type ModelProviderResponse,
+} from "@vm0/api-contracts/contracts/model-providers";
 import {
   cronAggregateInsightsContract,
   cronAggregateUsageContract,
@@ -269,6 +272,10 @@ function runnerHeartbeatBody(
 function chatEventBodyFromRunRequest(body: ZeroRunRequest) {
   return {
     agentId: body.agentId ?? "",
+    model:
+      body.modelProvider === "vm0"
+        ? DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL
+        : "claude-sonnet-4-6",
     prompt: body.prompt,
     ...(body.threadId === undefined ? {} : { threadId: body.threadId }),
     ...(body.realAgentInPreview === undefined
