@@ -222,12 +222,10 @@ async fn main() -> ExitCode {
     // Disabled (zero overhead) when SENTRY_DSN is not set.
     let _sentry_guard = sentry::init((
         std::env::var("SENTRY_DSN").unwrap_or_default(),
-        sentry::ClientOptions {
-            release: Some(env!("CARGO_PKG_VERSION").into()),
-            default_integrations: false,
-            ..Default::default()
-        }
-        .add_integration(sentry::integrations::panic::PanicIntegration::default()),
+        sentry::ClientOptions::new()
+            .release(env!("CARGO_PKG_VERSION"))
+            .default_integrations(false)
+            .add_integration(sentry::integrations::panic::PanicIntegration::default()),
     ));
 
     if !nix::unistd::getuid().is_root() {
