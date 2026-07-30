@@ -28,10 +28,12 @@ import {
 import {
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
+  CANCELLATION_RECOVERY_STALE_AFTER_MS,
   NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX,
   NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
   RESUME_SESSION_HISTORY_MAX_BYTES,
   RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
+  RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
@@ -57,6 +59,14 @@ const canonicalWorkingDirDoc = [
 const resumeSessionHistoryMaxBytesDoc = [
   "Maximum resume session history blob size accepted by the API, runner, and guest verifier.",
   "Rust and TypeScript components use this shared contract value when validating resume history refs, downloads, and idle-reuse verification.",
+] as const;
+const runnerCancellationRecoveryGraceMsDoc = [
+  "Maximum cooperative user-cancellation recovery window enforced by capable runners.",
+  "The API stale barrier remains longer than this runner-owned deadline so delivery latency cannot release a healthy recovery early.",
+] as const;
+const cancellationRecoveryStaleAfterMsDoc = [
+  "Maximum API admission hold after public user cancellation when recovery completion is lost.",
+  "The stale queue sweep reconsiders expired recovery barriers independently of the generic queue-item age.",
 ] as const;
 const networkPolicyRefreshConnectorSlugsMaxDoc = [
   "Maximum connector slugs accepted by the runner network policy refresh endpoint.",
@@ -210,6 +220,18 @@ const expectedBindings = [
     rustConstName: "RUNNER_CANCELLATION_RECOVERY_CAPABILITY",
     value: rustString(RUNNER_CANCELLATION_RECOVERY_CAPABILITY),
     rustDoc: runnerCancellationRecoveryCapabilityDoc,
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "RUNNER_CANCELLATION_RECOVERY_GRACE_MS",
+    value: rustU64(RUNNER_CANCELLATION_RECOVERY_GRACE_MS),
+    rustDoc: runnerCancellationRecoveryGraceMsDoc,
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "CANCELLATION_RECOVERY_STALE_AFTER_MS",
+    value: rustU64(CANCELLATION_RECOVERY_STALE_AFTER_MS),
+    rustDoc: cancellationRecoveryStaleAfterMsDoc,
   },
   {
     rustModulePath: ["runners"],
@@ -431,6 +453,12 @@ describe("Rust constant bindings", () => {
     );
     expect(firstRender).toContain(
       `pub const RUNNER_CANCELLATION_RECOVERY_CAPABILITY: &str = "${RUNNER_CANCELLATION_RECOVERY_CAPABILITY}";`,
+    );
+    expect(firstRender).toContain(
+      `pub const RUNNER_CANCELLATION_RECOVERY_GRACE_MS: u64 = ${RUNNER_CANCELLATION_RECOVERY_GRACE_MS};`,
+    );
+    expect(firstRender).toContain(
+      `pub const CANCELLATION_RECOVERY_STALE_AFTER_MS: u64 = ${CANCELLATION_RECOVERY_STALE_AFTER_MS};`,
     );
     expect(firstRender).toContain(
       `pub const RUNNER_POLL_EXCLUDED_RUN_IDS_MAX: u64 = ${RUNNER_POLL_EXCLUDED_RUN_IDS_MAX};`,

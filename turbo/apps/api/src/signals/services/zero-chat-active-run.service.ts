@@ -1,3 +1,4 @@
+import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@vm0/api-contracts/contracts/runners";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatEvents } from "@vm0/db/schema/chat-event";
@@ -9,18 +10,45 @@ import {
   gt,
   inArray,
   isNotNull,
+  lte,
   ne,
   notExists,
   or,
   sql,
+  type SQL,
 } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { nowDate } from "../external/time";
+import { pendingChatQueueEventCondition } from "./chat-event-queue.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 
 const ACTIVE_CHAT_RUN_STATUSES = ["queued", "pending", "running"] as const;
-const CANCELLATION_RECOVERY_STALE_AFTER_MS = 10 * 60 * 1000;
+
+function unresolvedCancellationRecoveryCondition(
+  db: Pick<Db, "select">,
+  completedAtCondition: SQL,
+) {
+  return and(
+    eq(agentRuns.status, "cancelled"),
+    isNotNull(agentRuns.cancellationRecoveryCompleted),
+    completedAtCondition,
+    or(
+      eq(agentRuns.cancellationRecoveryCompleted, false),
+      notExists(
+        db
+          .select({ id: chatEvents.id })
+          .from(chatEvents)
+          .where(
+            and(
+              eq(chatEvents.runId, zeroRuns.id),
+              chatEventTypeIn(["run.cancelled"]),
+            ),
+          ),
+      ),
+    ),
+  );
+}
 
 async function activeChatRunExists(
   db: Pick<Db, "select">,
@@ -70,27 +98,12 @@ async function activeChatRunExists(
               ),
             ),
           ),
-          and(
-            eq(agentRuns.status, "cancelled"),
-            isNotNull(agentRuns.cancellationRecoveryCompleted),
+          unresolvedCancellationRecoveryCondition(
+            db,
             gt(
               agentRuns.completedAt,
               new Date(
                 nowDate().getTime() - CANCELLATION_RECOVERY_STALE_AFTER_MS,
-              ),
-            ),
-            or(
-              eq(agentRuns.cancellationRecoveryCompleted, false),
-              notExists(
-                db
-                  .select({ id: chatEvents.id })
-                  .from(chatEvents)
-                  .where(
-                    and(
-                      eq(chatEvents.runId, zeroRuns.id),
-                      chatEventTypeIn(["run.cancelled"]),
-                    ),
-                  ),
               ),
             ),
           ),
@@ -113,4 +126,41 @@ export async function chatThreadAdmissionBlocked(
   },
 ): Promise<boolean> {
   return await activeChatRunExists(db, args);
+}
+
+/** Pending queue threads whose cancellation recovery barrier has failed open. */
+export async function expiredCancellationRecoveryThreadIds(
+  db: Pick<Db, "select" | "selectDistinct">,
+  args: {
+    readonly expiredBefore: Date;
+    readonly limit: number;
+  },
+): Promise<readonly string[]> {
+  const rows = await db
+    .selectDistinct({ chatThreadId: chatEvents.chatThreadId })
+    .from(chatEvents)
+    .where(
+      and(
+        pendingChatQueueEventCondition(db),
+        exists(
+          db
+            .select({ id: zeroRuns.id })
+            .from(zeroRuns)
+            .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+            .where(
+              and(
+                eq(zeroRuns.chatThreadId, chatEvents.chatThreadId),
+                unresolvedCancellationRecoveryCondition(
+                  db,
+                  lte(agentRuns.completedAt, args.expiredBefore),
+                ),
+              ),
+            ),
+        ),
+      ),
+    )
+    .limit(args.limit);
+  return rows.map((row) => {
+    return row.chatThreadId;
+  });
 }

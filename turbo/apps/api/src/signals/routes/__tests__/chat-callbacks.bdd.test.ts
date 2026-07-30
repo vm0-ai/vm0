@@ -9,7 +9,10 @@ import type {
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { cronBrowserReconcileContract } from "@vm0/api-contracts/contracts/cron";
-import { RUNNER_CANCELLATION_RECOVERY_CAPABILITY } from "@vm0/api-contracts/contracts/runners";
+import {
+  CANCELLATION_RECOVERY_STALE_AFTER_MS,
+  RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
+} from "@vm0/api-contracts/contracts/runners";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
@@ -2332,7 +2335,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
     await flushWaitUntilForTest();
   }, 90_000);
 
-  it("releases a lost recovery completion through the existing stale sweep", async () => {
+  it("releases a lost recovery completion through the recovery-aware stale sweep", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const startedAt = now();
     mockNow(startedAt);
@@ -2368,7 +2371,25 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       }),
     ).toHaveLength(0);
 
-    mockNow(startedAt + 10 * 60 * 1000 + 1);
+    mockNow(startedAt + CANCELLATION_RECOVERY_STALE_AFTER_MS - 1);
+    await accept(
+      cancellationRecoveryCronClient().reconcile({
+        headers: {
+          authorization: `Bearer ${CANCELLATION_RECOVERY_CRON_SECRET}`,
+        },
+      }),
+      [200],
+    );
+    const beforeExpiry = await chat.listThreadEvents(actor, run.threadId);
+    expect(
+      userMessages(beforeExpiry.events).filter((event) => {
+        return (
+          event.revokesEventId === queuedEventId && event.runId !== undefined
+        );
+      }),
+    ).toHaveLength(0);
+
+    mockNow(startedAt + CANCELLATION_RECOVERY_STALE_AFTER_MS + 1);
     await accept(
       cancellationRecoveryCronClient().reconcile({
         headers: {
