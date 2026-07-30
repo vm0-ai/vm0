@@ -8,6 +8,7 @@ import {
   type CanonicalAssetMaterializationStatus,
   type RunUploadedFileSource,
 } from "@vm0/db/schema/run-uploaded-file";
+import type { ChatEventAttachFileMetadata } from "@vm0/db/schema/chat-event";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq, isNull, sql } from "drizzle-orm";
 
@@ -16,6 +17,7 @@ import { env } from "../../lib/env";
 import {
   buildArtifactKey,
   buildFileUrl,
+  buildFileUrlFromKey,
   sanitizeArtifactFilename,
 } from "../../lib/file-url";
 import { inferMimetype } from "../../lib/mimetype";
@@ -647,7 +649,10 @@ export const materializeCanonicalSlackInputAssets$ = command(
 export async function attachCanonicalAssetsToEvent(
   db: Db,
   eventId: string,
-  assets: readonly CanonicalSlackInputAsset[],
+  assets: readonly {
+    readonly assetId: string;
+    readonly position: number;
+  }[],
 ): Promise<void> {
   if (assets.length === 0) {
     return;
@@ -664,6 +669,57 @@ export async function attachCanonicalAssetsToEvent(
       }),
     )
     .onConflictDoNothing();
+}
+
+export async function attachCanonicalWebInputAssetsToEvent(
+  db: Db,
+  args: {
+    readonly eventId: string;
+    readonly chatThreadId: string;
+    readonly userId: string;
+    readonly orgId: string;
+    readonly files: readonly ChatEventAttachFileMetadata[];
+  },
+): Promise<void> {
+  const assets: { readonly assetId: string; readonly position: number }[] = [];
+  for (const [position, file] of args.files.entries()) {
+    const [inserted] = await db
+      .insert(runUploadedFiles)
+      .values({
+        runId: null,
+        chatThreadId: args.chatThreadId,
+        source: "web",
+        externalId: file.id,
+        userId: args.userId,
+        orgId: args.orgId,
+        filename: file.filename,
+        contentType: file.contentType,
+        sizeBytes: file.size,
+        url: buildFileUrlFromKey(file.objectKey),
+        metadata: {},
+        assetVersion: CANONICAL_ASSET_VERSION,
+        classification: "input",
+        accessLevel: "private",
+        materializationStatus: "ready",
+        storageKey: file.objectKey,
+        idempotencyScope: "web-input",
+        idempotencyKey: file.id,
+      })
+      .onConflictDoNothing()
+      .returning({ id: runUploadedFiles.id });
+    const asset =
+      inserted ??
+      (await canonicalAssetByIdentity(db, {
+        userId: args.userId,
+        scope: "web-input",
+        key: file.id,
+      }));
+    if (!asset) {
+      throw new Error("Canonical web input asset conflict is missing");
+    }
+    assets.push({ assetId: asset.id, position });
+  }
+  await attachCanonicalAssetsToEvent(db, args.eventId, assets);
 }
 
 interface PrepareCanonicalPublishedAssetArgs {

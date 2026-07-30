@@ -127,6 +127,7 @@ import {
 } from "../services/zero-chat-thread-event.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { resolveChatThreadSession } from "../services/chat-session-continuity.service";
+import { attachCanonicalWebInputAssetsToEvent } from "../services/canonical-asset.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import { chatEventTypeIn } from "../services/zero-chat-event-type.service";
 import { bestEffort, tapError } from "../utils";
@@ -1558,6 +1559,7 @@ function appendUnassociatedUserMessage(params: {
   readonly db: Db;
   readonly threadId: string;
   readonly userId: string;
+  readonly orgId: string;
   readonly prompt: string;
   readonly attachFiles: readonly AttachFile[] | undefined;
   readonly clientEventId: string | undefined;
@@ -1602,6 +1604,13 @@ function appendUnassociatedUserMessage(params: {
       ? await replaceChatEvent(tx, params.revokesEventId, event)
       : await insertChatEvent(tx, event, "id");
     if (inserted) {
+      await attachCanonicalWebInputAssetsToEvent(tx, {
+        eventId: inserted.id,
+        chatThreadId: params.threadId,
+        userId: params.userId,
+        orgId: params.orgId,
+        files: fileMetadata ?? [],
+      });
       if (params.touchThreadSort) {
         await touchChatThreadLastMessageAt(
           tx,
@@ -1679,6 +1688,7 @@ async function appendAssociatedUserMessage(params: {
   readonly db: Db;
   readonly threadId: string;
   readonly userId: string;
+  readonly orgId: string;
   readonly prompt: string;
   readonly runId: string;
   readonly attachFiles: readonly AttachFile[] | undefined;
@@ -1713,6 +1723,15 @@ async function appendAssociatedUserMessage(params: {
     const inserted = params.revokesEventId
       ? await replaceChatEvent(tx, params.revokesEventId, event)
       : await insertChatEvent(tx, event, "id");
+    if (inserted) {
+      await attachCanonicalWebInputAssetsToEvent(tx, {
+        eventId: inserted.id,
+        chatThreadId: params.threadId,
+        userId: params.userId,
+        orgId: params.orgId,
+        files: fileMetadata ?? [],
+      });
+    }
     if (inserted && params.touchThreadSort) {
       await touchChatThreadLastMessageAt(
         tx,
@@ -2469,6 +2488,7 @@ async function queueUnassociatedNormalEvent(params: {
     db: params.prepared.db,
     threadId: params.prepared.thread.threadId,
     userId: params.userId,
+    orgId: params.orgId,
     prompt: params.body.prompt,
     attachFiles: params.body.attachFiles,
     clientEventId: params.body.clientEventId,
@@ -2538,6 +2558,7 @@ function scheduleAssociatedUserMessage(params: {
   readonly body: RuntimeNormalSendBody;
   readonly threadId: string;
   readonly userId: string;
+  readonly orgId: string;
   readonly runId: string;
   readonly appendQueueMarker: boolean;
   readonly appendInitialThinking: boolean;
@@ -2549,6 +2570,7 @@ function scheduleAssociatedUserMessage(params: {
         db: params.db,
         threadId: params.threadId,
         userId: params.userId,
+        orgId: params.orgId,
         prompt: params.body.prompt,
         runId: params.runId,
         attachFiles: params.body.attachFiles,
@@ -2635,6 +2657,7 @@ function scheduleCreatedChatRunSideEffects(params: {
     body: params.body,
     threadId: params.thread.threadId,
     userId: params.userId,
+    orgId: params.orgId,
     runId: params.runId,
     appendQueueMarker: params.runStatus === "queued",
     appendInitialThinking,
@@ -2732,10 +2755,7 @@ async function appendQueueFirstInsufficientCreditsEvents(params: {
       .select({
         userMessage: chatEvents.userMessage,
         attachFiles: chatEvents.attachFiles,
-        attachFileMetadata: sql`COALESCE(
-          ${chatInputQueueParams.attachFileMetadata},
-          ${chatEvents.attachFileMetadata}
-        )`.mapWith(chatEvents.attachFileMetadata),
+        attachFileMetadata: chatInputQueueParams.attachFileMetadata,
         generationTemplate: chatEvents.generationTemplate,
         createdAt: chatEvents.createdAt,
       })

@@ -5223,6 +5223,13 @@
       "when": 1785388611589,
       "tag": "0745_spooky_nightcrawler",
       "breakpoints": true
+    },
+    {
+      "idx": 746,
+      "version": "7",
+      "when": 1785391854798,
+      "tag": "0746_same_vision",
+      "breakpoints": true
     }
   ]
 }

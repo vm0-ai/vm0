@@ -7,6 +7,7 @@ import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { chatInputQueueParams } from "@vm0/db/schema/chat-input-queue-params";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { chatEventAssetRefs } from "@vm0/db/schema/run-uploaded-file";
 import { eq, isNotNull, sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";
@@ -31,8 +32,9 @@ type ChatEventIdentity = Pick<
 
 type ChatEventInputPayload = Pick<
   ChatEventInsert,
-  "attachFiles" | "attachFileMetadata" | "generationTemplate" | "goalSnapshot"
+  "attachFiles" | "generationTemplate" | "goalSnapshot"
 > & {
+  readonly attachFileMetadata?: typeof chatInputQueueParams.$inferInsert.attachFileMetadata;
   readonly userMessage: NonNullable<ChatEventInsert["userMessage"]>;
 };
 
@@ -219,7 +221,7 @@ function inputQueueParams(values: NewChatEvent):
   | {
       readonly encryptedParams: string;
       readonly attachFileMetadata:
-        | ChatEventInsert["attachFileMetadata"]
+        | typeof chatInputQueueParams.$inferInsert.attachFileMetadata
         | undefined;
     }
   | undefined {
@@ -438,14 +440,8 @@ export async function replaceChatEvent(
       chatThreadId: chatEvents.chatThreadId,
       createdAt: chatEvents.createdAt,
       eventType: chatEvents.eventType,
-      encryptedParams: sql`COALESCE(
-        ${chatInputQueueParams.encryptedParams},
-        ${chatEvents.encryptedParams}
-      )`.mapWith(chatEvents.encryptedParams),
-      attachFileMetadata: sql`COALESCE(
-        ${chatInputQueueParams.attachFileMetadata},
-        ${chatEvents.attachFileMetadata}
-      )`.mapWith(chatEvents.attachFileMetadata),
+      encryptedParams: chatInputQueueParams.encryptedParams,
+      attachFileMetadata: chatInputQueueParams.attachFileMetadata,
     })
     .from(chatEvents)
     .leftJoin(
@@ -509,6 +505,29 @@ export async function replaceChatEvent(
   }
 
   await insertInputQueueParams(tx, inserted.id, replacementWithParams);
+  if (target.encryptedParams && !("encryptedParams" in replacement)) {
+    const assetRefs = await tx
+      .select({
+        assetId: chatEventAssetRefs.assetId,
+        position: chatEventAssetRefs.position,
+      })
+      .from(chatEventAssetRefs)
+      .where(eq(chatEventAssetRefs.chatEventId, eventId));
+    if (assetRefs.length > 0) {
+      await tx
+        .insert(chatEventAssetRefs)
+        .values(
+          assetRefs.map((assetRef) => {
+            return {
+              chatEventId: inserted.id,
+              assetId: assetRef.assetId,
+              position: assetRef.position,
+            };
+          }),
+        )
+        .onConflictDoNothing();
+    }
+  }
   await tx
     .delete(chatInputQueueParams)
     .where(eq(chatInputQueueParams.eventId, eventId));
