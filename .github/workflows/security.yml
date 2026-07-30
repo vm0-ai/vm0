@@ -222,6 +222,7 @@ jobs:
             e2e/helpers/storage-fixtures.bash \
             .github/scripts/check-release-please-component-releases.sh \
             .github/scripts/check-workflow-shell-compatibility.sh \
+            .github/scripts/cloudflare-ssh-diagnostics.sh \
             .github/scripts/cloudflare-ssh-preconnect.sh \
             .github/scripts/pass-release-pr-ci-gates.sh \
             .github/scripts/run-semgrep.sh \
