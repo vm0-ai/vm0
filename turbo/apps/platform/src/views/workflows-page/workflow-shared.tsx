@@ -1,5 +1,7 @@
 // Shared presentational helpers for the workflow list, index, and detail views.
 import type {
+  ChatRunFinishedEventConfig,
+  ChatRunFinishedRunStatus,
   GmailLabelAppliedEventConfig,
   GmailNewMessageEventConfig,
   GithubDeploymentState,
@@ -324,6 +326,41 @@ export function buildGmailLabelAppliedEventConfig(
   };
 }
 
+export function chatRunFinishedStatusLabel(
+  status: ChatRunFinishedRunStatus,
+): string {
+  switch (status) {
+    case "completed": {
+      return i18n.t(($) => {
+        return $.workflows.automations.chat.statusCompleted;
+      });
+    }
+    case "failed": {
+      return i18n.t(($) => {
+        return $.workflows.automations.chat.statusFailed;
+      });
+    }
+    case "cancelled": {
+      return i18n.t(($) => {
+        return $.workflows.automations.chat.statusCancelled;
+      });
+    }
+  }
+}
+
+export function chatRunFinishedAutomationSummary(
+  config: ChatRunFinishedEventConfig,
+): string {
+  const statusText = config.runStatuses
+    ? config.runStatuses.map(chatRunFinishedStatusLabel).join(", ")
+    : i18n.t(($) => {
+        return $.workflows.automations.chat.anyStatus;
+      });
+  return config.outputPattern
+    ? `${statusText} · ${quote(config.outputPattern)}`
+    : statusText;
+}
+
 function quote(value: string): string {
   return `"${value}"`;
 }
@@ -577,9 +614,7 @@ export function gmailAutomationSummary(
     return null;
   }
   if (automation.eventType === "chat-run-finished") {
-    return i18n.t(($) => {
-      return $.workflows.automations.chat.summary;
-    });
+    return chatRunFinishedAutomationSummary(automation.eventConfig);
   }
   if (automation.eventType === "gmail-label-applied") {
     return i18n.t(

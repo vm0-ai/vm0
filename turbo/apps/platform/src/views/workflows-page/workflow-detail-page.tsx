@@ -6,6 +6,8 @@ import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { StrapiIntegration } from "@vm0/api-contracts/contracts/zero-strapi-integrations";
 import type {
+  ChatRunFinishedEventConfig,
+  ChatRunFinishedRunStatus,
   GmailLabelAppliedEventConfig,
   GmailNewMessageEventConfig,
   GithubDeploymentState,
@@ -103,6 +105,7 @@ import {
   changeWorkflowVisibility$,
   checkWorkflowConnectorReadiness$,
   createNotionPageContentUpdatedScope$,
+  createWorkflowChatRunFinishedAutomation$,
   createWorkflowGithubLabelAppliedAutomation$,
   createWorkflowGithubWebhookAutomation$,
   createWorkflowGithubWorkflowRunCompletedAutomation$,
@@ -232,6 +235,8 @@ import {
 } from "@vm0/ui/components/ui/alert";
 import {
   agentLabel,
+  chatRunFinishedAutomationSummary,
+  chatRunFinishedStatusLabel,
   formatWorkflowIntervalSeconds,
   githubAutomationFilterValueLabel,
   getWorkflowIntervalSecondOptions,
@@ -1194,6 +1199,8 @@ function AutomationCreateAction() {
     features[FeatureSwitchKey.GithubWebhookAutomations] ?? false;
   const strapiIntegrationEnabled =
     features[FeatureSwitchKey.StrapiIntegration] ?? false;
+  const chatRunFinishedAutomationsEnabled =
+    features[FeatureSwitchKey.ZeroChatMessaging] ?? false;
 
   return (
     <AutomationCreateMenu
@@ -1204,6 +1211,7 @@ function AutomationCreateAction() {
         }
         setCreateDialog(kind);
       }}
+      chatRunFinishedAutomationsEnabled={chatRunFinishedAutomationsEnabled}
       githubLabelAutomationsEnabled
       githubWebhookAutomationsEnabled={githubWebhookAutomationsEnabled}
       googleCalendarAutomationsEnabled
@@ -4210,9 +4218,7 @@ function workflowAutomationSummary(
     });
   }
   if (automation.eventType === "chat-run-finished") {
-    return i18n.t(($) => {
-      return $.workflows.automations.chat.summary;
-    });
+    return chatRunFinishedAutomationSummary(automation.eventConfig);
   }
   if (automation.eventType === "notion-child-page-created") {
     const title = automation.eventConfig.parentPage.title;
@@ -4288,6 +4294,7 @@ function workflowAutomationSummary(
 }
 
 type AutomationCreateDialogKind =
+  | "chat-run-finished"
   | "interval"
   | "scheduled"
   | "once"
@@ -4332,17 +4339,31 @@ type AutomationCreateCategory = {
 };
 
 function buildIntegrationAutomationOptions({
+  chatRunFinishedAutomationsEnabled,
   githubLabelAutomationsEnabled,
   githubWebhookAutomationsEnabled,
   strapiIntegrationEnabled,
   webhookTierEligible,
 }: {
+  readonly chatRunFinishedAutomationsEnabled: boolean;
   readonly githubLabelAutomationsEnabled: boolean;
   readonly githubWebhookAutomationsEnabled: boolean;
   readonly strapiIntegrationEnabled: boolean;
   readonly webhookTierEligible: boolean;
 }): AutomationCreateOption[] {
   const integrationOptions: AutomationCreateOption[] = [];
+  if (chatRunFinishedAutomationsEnabled) {
+    integrationOptions.push({
+      kind: "chat-run-finished",
+      title: i18n.t(($) => {
+        return $.workflows.automations.chat.runFinishedTitle;
+      }),
+      description: i18n.t(($) => {
+        return $.workflows.automations.chat.runFinishedDescription;
+      }),
+      icon: IconMessageCircle,
+    });
+  }
   if (githubLabelAutomationsEnabled) {
     integrationOptions.push({
       kind: "github-label",
@@ -4608,6 +4629,7 @@ function buildEmailAutomationOptions(): AutomationCreateOption[] {
 }
 
 function buildAutomationCreateCategories({
+  chatRunFinishedAutomationsEnabled,
   githubLabelAutomationsEnabled,
   githubWebhookAutomationsEnabled,
   googleCalendarAutomationsEnabled,
@@ -4616,6 +4638,7 @@ function buildAutomationCreateCategories({
   strapiIntegrationEnabled,
   webhookTierEligible,
 }: {
+  readonly chatRunFinishedAutomationsEnabled: boolean;
   readonly githubLabelAutomationsEnabled: boolean;
   readonly githubWebhookAutomationsEnabled: boolean;
   readonly googleCalendarAutomationsEnabled: boolean;
@@ -4629,6 +4652,7 @@ function buildAutomationCreateCategories({
     googleMeetAutomationsEnabled,
   );
   const integrationOptions = buildIntegrationAutomationOptions({
+    chatRunFinishedAutomationsEnabled,
     githubLabelAutomationsEnabled,
     githubWebhookAutomationsEnabled,
     strapiIntegrationEnabled,
@@ -4757,6 +4781,7 @@ function AutomationCreateOptionCard({
 
 function AutomationCreateMenu({
   onSelect,
+  chatRunFinishedAutomationsEnabled,
   githubLabelAutomationsEnabled,
   githubWebhookAutomationsEnabled,
   googleCalendarAutomationsEnabled,
@@ -4766,6 +4791,7 @@ function AutomationCreateMenu({
   webhookTierEligible,
 }: {
   readonly onSelect: (kind: AutomationCreateDialogKind) => void;
+  readonly chatRunFinishedAutomationsEnabled: boolean;
   readonly githubLabelAutomationsEnabled: boolean;
   readonly githubWebhookAutomationsEnabled: boolean;
   readonly googleCalendarAutomationsEnabled: boolean;
@@ -4779,6 +4805,7 @@ function AutomationCreateMenu({
   const activeKey = useGet(workflowAutomationPickerCategory$);
   const setActiveKey = useSet(setWorkflowAutomationPickerCategory$);
   const categories = buildAutomationCreateCategories({
+    chatRunFinishedAutomationsEnabled,
     githubLabelAutomationsEnabled,
     githubWebhookAutomationsEnabled,
     googleCalendarAutomationsEnabled,
@@ -4980,6 +5007,163 @@ function CreateGoogleMeetTranscriptGeneratedAutomationDialog({
               )}
               {i18n.t(($) => {
                 return $.workflows.automations.meet.addAction;
+              })}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+const CHAT_RUN_FINISHED_STATUSES: readonly ChatRunFinishedRunStatus[] = [
+  "completed",
+  "failed",
+  "cancelled",
+];
+
+function CreateChatRunFinishedAutomationDialog({
+  workflowId,
+  open,
+  onOpenChange,
+}: {
+  readonly workflowId: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const actionCopy = automationActionCopy();
+  const pageSignal = useGet(pageSignal$);
+  const [createLoadable, createAutomation] = useLoadableSet(
+    createWorkflowChatRunFinishedAutomation$,
+  );
+  const creating = createLoadable.state === "loading";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {i18n.t(($) => {
+              return $.workflows.automations.chat.addTitle;
+            })}
+          </DialogTitle>
+          <DialogDescription>
+            {i18n.t(($) => {
+              return $.workflows.automations.chat.addDescription;
+            })}
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          aria-label={i18n.t(($) => {
+            return $.workflows.automations.chat.addAria;
+          })}
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = new FormData(event.currentTarget);
+            const chatThreadId = String(form.get("chatThreadId") ?? "").trim();
+            if (!chatThreadId) {
+              return;
+            }
+            const statuses = CHAT_RUN_FINISHED_STATUSES.filter((status) => {
+              return form.get(`status-${status}`) === "on";
+            });
+            if (statuses.length === 0) {
+              return;
+            }
+            const outputPattern = String(
+              form.get("outputPattern") ?? "",
+            ).trim();
+            const eventConfig: ChatRunFinishedEventConfig = {
+              provider: "chat",
+              event: "run_finished",
+              chatThreadId,
+              ...(statuses.length === CHAT_RUN_FINISHED_STATUSES.length
+                ? {}
+                : { runStatuses: [...statuses] }),
+              ...(outputPattern ? { outputPattern } : {}),
+            };
+            detach(
+              (async () => {
+                await createAutomation({ workflowId, eventConfig }, pageSignal);
+                onOpenChange(false);
+              })(),
+              Reason.DomCallback,
+            );
+          }}
+        >
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            {i18n.t(($) => {
+              return $.workflows.automations.chat.threadIdLabel;
+            })}
+            <Input
+              name="chatThreadId"
+              required
+              disabled={creating}
+              placeholder="00000000-0000-0000-0000-000000000000"
+            />
+          </label>
+          <p className="text-xs text-muted-foreground">
+            {i18n.t(($) => {
+              return $.workflows.automations.chat.threadIdHint;
+            })}
+          </p>
+          <fieldset className="flex flex-col gap-2">
+            <legend className="text-xs text-muted-foreground">
+              {i18n.t(($) => {
+                return $.workflows.automations.chat.statusesLabel;
+              })}
+            </legend>
+            <div className="flex flex-wrap gap-4">
+              {CHAT_RUN_FINISHED_STATUSES.map((status) => {
+                return (
+                  <label key={status} className="flex items-center gap-2">
+                    <Checkbox name={`status-${status}`} defaultChecked />
+                    <span className="text-sm text-foreground">
+                      {chatRunFinishedStatusLabel(status)}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          </fieldset>
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            {i18n.t(($) => {
+              return $.workflows.automations.chat.patternLabel;
+            })}
+            <Input
+              name="outputPattern"
+              disabled={creating}
+              placeholder="*deploy failed*"
+            />
+          </label>
+          <p className="text-xs text-muted-foreground">
+            {i18n.t(($) => {
+              return $.workflows.automations.chat.patternHint;
+            })}
+          </p>
+          <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+            {i18n.t(($) => {
+              return $.workflows.automations.chat.statusesHint;
+            })}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={creating}
+              onClick={() => {
+                onOpenChange(false);
+              }}
+            >
+              {actionCopy.cancel}
+            </Button>
+            <Button type="submit" disabled={creating}>
+              {creating && (
+                <IconLoader2 size={14} className="mr-1.5 animate-spin" />
+              )}
+              {i18n.t(($) => {
+                return $.workflows.automations.chat.addAction;
               })}
             </Button>
           </DialogFooter>
@@ -5347,6 +5531,13 @@ function WorkflowAutomationCreateDialogs({
         open={createDialog === "google-meet-transcript-generated"}
         onOpenChange={(open) => {
           setCreateDialog(open ? "google-meet-transcript-generated" : null);
+        }}
+      />
+      <CreateChatRunFinishedAutomationDialog
+        workflowId={workflowId}
+        open={createDialog === "chat-run-finished"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "chat-run-finished" : null);
         }}
       />
       <CreateNotionChildPageAutomationDialog
@@ -9052,7 +9243,9 @@ function canEditWorkflowAutomation(
   return (
     automation.kind === "schedule" ||
     isGmailWorkflowAutomation(automation) ||
-    isGithubWorkflowAutomation(automation)
+    isGithubWorkflowAutomation(automation) ||
+    (automation.kind === "event" &&
+      automation.eventType === "chat-run-finished")
   );
 }
 
@@ -9065,6 +9258,11 @@ function editWorkflowAutomationTitle(
     });
   }
 
+  if (automation.eventType === "chat-run-finished") {
+    return i18n.t(($) => {
+      return $.workflows.automations.chat.viewTitle;
+    });
+  }
   if (automation.eventType === "gmail-new-message") {
     return i18n.t(($) => {
       return $.workflows.automations.gmail.editMatch;
@@ -9122,11 +9320,23 @@ function EditWorkflowAutomationDialog({
         <DialogHeader>
           <DialogTitle>{editWorkflowAutomationTitle(automation)}</DialogTitle>
           <DialogDescription>
-            {i18n.t(($) => {
-              return $.workflows.automations.common.updateDescription;
-            })}
+            {automation.kind === "event" &&
+            automation.eventType === "chat-run-finished"
+              ? i18n.t(($) => {
+                  return $.workflows.automations.chat.viewDescription;
+                })
+              : i18n.t(($) => {
+                  return $.workflows.automations.common.updateDescription;
+                })}
           </DialogDescription>
         </DialogHeader>
+        {automation.kind === "event" &&
+        automation.eventType === "chat-run-finished" ? (
+          <ChatRunFinishedAutomationDetails
+            automation={automation}
+            onClose={close}
+          />
+        ) : null}
         {automation.kind === "schedule" ? (
           <UpdateScheduleAutomationForm
             automation={automation}
@@ -9170,6 +9380,67 @@ function EditWorkflowAutomationDialog({
         ) : null}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ChatRunFinishedAutomationDetails({
+  automation,
+  onClose,
+}: {
+  readonly automation: Extract<
+    ZeroWorkflowAutomationSummary,
+    { readonly kind: "event"; readonly eventType: "chat-run-finished" }
+  >;
+  readonly onClose: () => void;
+}) {
+  const actionCopy = automationActionCopy();
+  const config = automation.eventConfig;
+  const statuses = config.runStatuses ?? CHAT_RUN_FINISHED_STATUSES;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+        {i18n.t(($) => {
+          return $.workflows.automations.chat.watchedThreadLabel;
+        })}
+        <Link
+          pathname={ROUTES.chat}
+          options={{ pathParams: { threadId: config.chatThreadId } }}
+          className="w-fit rounded bg-muted/50 px-2 py-1 font-mono text-xs text-foreground underline-offset-2 hover:underline"
+        >
+          {config.chatThreadId}
+        </Link>
+      </div>
+      <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+        {i18n.t(($) => {
+          return $.workflows.automations.chat.statusesLabel;
+        })}
+        <span className="text-sm text-foreground">
+          {statuses.map(chatRunFinishedStatusLabel).join(", ")}
+        </span>
+      </div>
+      <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+        {i18n.t(($) => {
+          return $.workflows.automations.chat.patternLabel;
+        })}
+        {config.outputPattern ? (
+          <span className="w-fit rounded bg-muted/50 px-2 py-1 font-mono text-xs text-foreground">
+            {config.outputPattern}
+          </span>
+        ) : (
+          <span className="text-sm text-foreground">
+            {i18n.t(($) => {
+              return $.workflows.automations.chat.anyOutput;
+            })}
+          </span>
+        )}
+      </div>
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onClose}>
+          {actionCopy.done}
+        </Button>
+      </DialogFooter>
+    </div>
   );
 }
 

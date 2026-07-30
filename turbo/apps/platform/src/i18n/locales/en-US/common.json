@@ -4276,8 +4276,27 @@
         "updatedTitle": "Google Calendar event updated"
       },
       "chat": {
+        "addAction": "Add chat automation",
+        "addAria": "Add chat run finished automation",
+        "addDescription": "Run this workflow when a run in the watched chat thread finishes.",
+        "addTitle": "Add chat automation",
+        "anyOutput": "Any output",
+        "anyStatus": "Any finish status",
+        "patternHint": "Optional * wildcard matched against the run's final reply. Leave empty to match any output.",
+        "patternLabel": "Output pattern",
+        "runFinishedDescription": "Run when a run in one of your chat threads finishes.",
         "runFinishedTitle": "Chat run finished",
-        "summary": "Watched chat thread"
+        "statusCancelled": "Cancelled",
+        "statusCompleted": "Completed",
+        "statusFailed": "Failed",
+        "statusesHint": "Failed and cancelled runs have no reply text, so an output pattern never matches them.",
+        "statusesLabel": "Finish statuses",
+        "summary": "Watched chat thread",
+        "threadIdHint": "Open the chat and copy the thread ID from its URL. The thread must be one of your own chats.",
+        "threadIdLabel": "Chat thread ID",
+        "viewDescription": "This automation's filters are fixed after creation.",
+        "viewTitle": "Chat run finished automation",
+        "watchedThreadLabel": "Watched chat thread"
       },
       "common": {
         "addAutomation": "Add automation",
