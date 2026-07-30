@@ -40,6 +40,7 @@ function AuthenticationMethodChoice({
   readonly methods: readonly CustomConnectorAuthMethod[];
   readonly onSelect: (type: CustomConnectorAuthMethod["type"]) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       {methods.map((method) => {
@@ -54,12 +55,20 @@ function AuthenticationMethodChoice({
             }}
           >
             <span className="block text-sm font-medium text-foreground">
-              {oauth2 ? "OAuth 2.0" : "API authentication"}
+              {oauth2
+                ? "OAuth 2.0"
+                : t(($) => {
+                    return $.connectors.custom.connect.apiAuthentication;
+                  })}
             </span>
             <span className="mt-1 block text-xs text-muted-foreground">
               {oauth2
-                ? "Authorize access with the connector's OAuth app."
-                : "Enter the API secret issued by the provider."}
+                ? t(($) => {
+                    return $.connectors.custom.connect.oauthDescription;
+                  })
+                : t(($) => {
+                    return $.connectors.custom.connect.apiDescription;
+                  })}
             </span>
           </button>
         );
@@ -113,6 +122,7 @@ function CredentialFields({
     value: CustomConnectorAuthMethod["type"] | string | null,
   ) => void;
 }) {
+  const { t } = useTranslation();
   if (!selectedMethod) {
     return (
       <AuthenticationMethodChoice
@@ -135,19 +145,11 @@ function CredentialFields({
   }
   return (
     <p className="text-sm text-muted-foreground">
-      Continue to the provider to authorize access.
+      {t(($) => {
+        return $.connectors.custom.connect.continueToProvider;
+      })}
     </p>
   );
-}
-
-function submitButtonLabel(
-  selectedMethod: CustomConnectorAuthMethod,
-  submitting: boolean,
-) {
-  if (selectedMethod.type === "oauth2") {
-    return submitting ? "Connecting…" : "Continue";
-  }
-  return submitting ? "Saving…" : "Save";
 }
 
 function useCustomConnectorConnectionSubmitters(agentId: string | undefined) {
@@ -209,6 +211,23 @@ function ConnectDialogFooter({
   readonly onBack: () => void;
   readonly onClose: () => void;
 }) {
+  const { t } = useTranslation();
+  const submitLabel =
+    selectedMethod?.type === "oauth2"
+      ? submitting
+        ? t(($) => {
+            return $.connectors.custom.connect.connecting;
+          })
+        : t(($) => {
+            return $.connectors.custom.connect.continue;
+          })
+      : submitting
+        ? t(($) => {
+            return $.connectors.custom.connect.saving;
+          })
+        : t(($) => {
+            return $.connectors.custom.connect.save;
+          });
   return (
     <DialogFooter>
       {multipleMethods && selectedMethod && (
@@ -218,7 +237,9 @@ function ConnectDialogFooter({
           onClick={onBack}
           disabled={submitting}
         >
-          Back
+          {t(($) => {
+            return $.connectors.custom.connect.back;
+          })}
         </Button>
       )}
       <Button
@@ -227,11 +248,13 @@ function ConnectDialogFooter({
         onClick={onClose}
         disabled={submitting}
       >
-        Cancel
+        {t(($) => {
+          return $.connectors.actions.cancel;
+        })}
       </Button>
       {selectedMethod && (
         <Button type="submit" disabled={!canSubmit}>
-          {submitButtonLabel(selectedMethod, submitting)}
+          {submitLabel}
         </Button>
       )}
     </DialogFooter>
@@ -310,7 +333,13 @@ export function CustomConnectorConnectDialog({
         return !open && close();
       }}
     >
-      <DialogContent className="max-w-md" aria-describedby={undefined}>
+      <DialogContent
+        className="max-w-md"
+        aria-describedby={undefined}
+        closeLabel={t(($) => {
+          return $.connectors.actions.close;
+        })}
+      >
         <DialogHeader>
           <div className="flex items-center gap-3">
             <CustomConnectorIcon

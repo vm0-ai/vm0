@@ -1,6 +1,6 @@
 {
-  "id": "5a5e12ca-e028-4ecc-a3b2-6a78ef40b7bc",
-  "prevId": "c5725b6d-4db5-458c-82ef-73c252076251",
+  "id": "c5725b6d-4db5-458c-82ef-73c252076251",
+  "prevId": "f0fcae25-ecbe-4360-9ee6-5219b9453c9d",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4241,12 +4241,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "encrypted_params": {
-          "name": "encrypted_params",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "content": {
           "name": "content",
           "type": "text",
@@ -4309,12 +4303,6 @@
         },
         "attach_files": {
           "name": "attach_files",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "attach_file_metadata": {
-          "name": "attach_file_metadata",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false

@@ -38,7 +38,6 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatEvents,
   type ChatEventUsagePayload,
-  type ChatEventAttachFileMetadata,
   type ChatEventGenerationTemplate,
   type ChatEventRecommendedFollowups,
   type ChatEventUserMessage,
@@ -103,7 +102,6 @@ import { type Db, db$, type ReadonlyDb, writeDb$ } from "../external/db";
 import {
   inferMimetype,
   insertAssistantEvents$,
-  resolveAttachFileMetadataUrls,
   resolveAttachFileUrls,
   visibleChatEventCondition,
 } from "./zero-chat-event-shared.service";
@@ -155,7 +153,6 @@ type ChatEventRow = {
   readonly sequenceNumber: number | null;
   readonly createdAt: Date;
   readonly attachFiles: readonly string[] | null;
-  readonly attachFileMetadata: readonly ChatEventAttachFileMetadata[] | null;
   readonly generationTemplate: ChatEventGenerationTemplate | null;
   readonly recommendedFollowups: ChatEventRecommendedFollowups | null;
   readonly revokesEventId: string | null;
@@ -311,7 +308,6 @@ const eventColumns = {
   sequenceNumber: chatEvents.sequenceNumber,
   createdAt: chatEvents.createdAt,
   attachFiles: chatEvents.attachFiles,
-  attachFileMetadata: chatEvents.attachFileMetadata,
   generationTemplate: chatEvents.generationTemplate,
   recommendedFollowups: chatEvents.recommendedFollowups,
   revokesEventId: chatEvents.revokesEventId,
@@ -641,6 +637,8 @@ async function canonicalEventAttachments(
       status: runUploadedFiles.materializationStatus,
       error: runUploadedFiles.materializationError,
       provenance: runUploadedFiles.provenance,
+      source: runUploadedFiles.source,
+      externalId: runUploadedFiles.externalId,
       url: runUploadedFiles.url,
       classification: runUploadedFiles.classification,
       accessLevel: runUploadedFiles.accessLevel,
@@ -680,14 +678,19 @@ async function canonicalEventAttachments(
       row.accessLevel === "published";
     const attachments = byEvent.get(row.eventId) ?? [];
     attachments.push({
-      id: row.assetId,
+      id:
+        !isPublishedOutput && row.source === "web"
+          ? row.externalId
+          : row.assetId,
       filename,
       contentType: row.contentType ?? inferMimetype(filename),
       size: row.sizeBytes ?? 0,
       url:
         isPublishedOutput && row.url
           ? row.url
-          : privateCanonicalAssetUrl(row.assetId),
+          : row.source === "web" && row.url
+            ? row.url
+            : privateCanonicalAssetUrl(row.assetId),
       assetRef: {
         id: row.assetId,
         classification: isPublishedOutput ? "published-output" : "input",
@@ -711,9 +714,6 @@ function chatEventAttachFiles(
   return computed(async (get) => {
     if (canonicalAttachments.length > 0) {
       return canonicalAttachments;
-    }
-    if (row.attachFileMetadata && row.attachFileMetadata.length > 0) {
-      return resolveAttachFileMetadataUrls(row.attachFileMetadata);
     }
     if (row.attachFiles && row.attachFiles.length > 0) {
       return await get(resolveAttachFileUrls(userId, row.attachFiles));

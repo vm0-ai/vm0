@@ -1,5 +1,5 @@
 {
-  "id": "f0fcae25-ecbe-4360-9ee6-5219b9453c9d",
+  "id": "25d5e9e5-b991-4385-97fc-1883ec822054",
   "prevId": "d5310781-18f7-48b5-b3d2-42cb88fed494",
   "version": "7",
   "dialect": "postgresql",
@@ -4241,12 +4241,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "encrypted_params": {
-          "name": "encrypted_params",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "content": {
           "name": "content",
           "type": "text",
@@ -4309,12 +4303,6 @@
         },
         "attach_files": {
           "name": "attach_files",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "attach_file_metadata": {
-          "name": "attach_file_metadata",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
@@ -5106,6 +5094,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "draft_content": {
+          "name": "draft_content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "draft_user_message": {
           "name": "draft_user_message",
           "type": "jsonb",
@@ -5377,7 +5371,7 @@
         },
         "chat_threads_draft_user_message_check": {
           "name": "chat_threads_draft_user_message_check",
-          "value": "\"chat_threads\".\"draft_user_message\" IS NOT NULL\n          OR COALESCE(\"chat_threads\".\"draft_attachments\", '[]'::jsonb) = '[]'::jsonb"
+          "value": "\"chat_threads\".\"draft_user_message\" IS NOT NULL\n          OR (\n            COALESCE(\"chat_threads\".\"draft_content\", '') = ''\n            AND COALESCE(\"chat_threads\".\"draft_attachments\", '[]'::jsonb) = '[]'::jsonb\n          )"
         }
       },
       "isRLSEnabled": false
@@ -21913,6 +21907,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "draft_content": {
+          "name": "draft_content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "draft_user_message": {
           "name": "draft_user_message",
           "type": "jsonb",
@@ -21990,7 +21990,7 @@
       "checkConstraints": {
         "zero_agent_drafts_draft_user_message_check": {
           "name": "zero_agent_drafts_draft_user_message_check",
-          "value": "\"zero_agent_drafts\".\"draft_user_message\" IS NOT NULL\n          OR COALESCE(\"zero_agent_drafts\".\"draft_attachments\", '[]'::jsonb) = '[]'::jsonb"
+          "value": "\"zero_agent_drafts\".\"draft_user_message\" IS NOT NULL\n          OR (\n            COALESCE(\"zero_agent_drafts\".\"draft_content\", '') = ''\n            AND COALESCE(\"zero_agent_drafts\".\"draft_attachments\", '[]'::jsonb) = '[]'::jsonb\n          )"
         }
       },
       "isRLSEnabled": false

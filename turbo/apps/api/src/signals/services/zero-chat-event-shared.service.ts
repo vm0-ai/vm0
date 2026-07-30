@@ -1,20 +1,13 @@
 import { command, computed, type Computed } from "ccstate";
 import type { ResolvedAttachFile } from "@vm0/api-contracts/contracts/chat-threads";
-import {
-  chatEvents,
-  type ChatEventAttachFileMetadata,
-} from "@vm0/db/schema/chat-event";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq, isNotNull, isNull, not, notExists, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import { env } from "../../lib/env";
-import {
-  buildArtifactPrefix,
-  buildFileUrl,
-  buildFileUrlFromKey,
-} from "../../lib/file-url";
+import { buildArtifactPrefix, buildFileUrl } from "../../lib/file-url";
 import { writeDb$, type Db } from "../external/db";
 import {
   publishChatThreadMessageCreatedSafely,
@@ -173,20 +166,6 @@ export function resolveAttachFileUrls(
     return resolved.filter((file): file is ResolvedAttachFile => {
       return file !== null;
     });
-  });
-}
-
-export function resolveAttachFileMetadataUrls(
-  metadata: readonly ChatEventAttachFileMetadata[],
-): readonly ResolvedAttachFile[] {
-  return metadata.map((file) => {
-    return {
-      id: file.id,
-      filename: file.filename,
-      contentType: file.contentType,
-      size: file.size,
-      url: buildFileUrlFromKey(file.objectKey),
-    };
   });
 }
 

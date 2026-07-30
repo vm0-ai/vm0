@@ -114,14 +114,8 @@ type QueuedUserMessageRunParams = z.infer<
 
 const queuedChatEvent = alias(chatEvents, "queued_chat_event");
 const queuedChatEventRevoker = alias(chatEvents, "queued_chat_event_revoker");
-const queuedEncryptedParams = sql`COALESCE(
-  ${chatInputQueueParams.encryptedParams},
-  ${chatEvents.encryptedParams}
-)`.mapWith(chatEvents.encryptedParams);
-const queuedAttachFileMetadata = sql`COALESCE(
-  ${chatInputQueueParams.attachFileMetadata},
-  ${chatEvents.attachFileMetadata}
-)`.mapWith(chatEvents.attachFileMetadata);
+const queuedEncryptedParams = chatInputQueueParams.encryptedParams;
+const queuedAttachFileMetadata = chatInputQueueParams.attachFileMetadata;
 
 export interface QueuedUserMessage {
   readonly id: string;

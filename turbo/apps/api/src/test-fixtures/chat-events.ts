@@ -71,18 +71,6 @@ export async function findPendingChatInputQueueParamsByPromptFixture(
   return row ?? null;
 }
 
-export async function deleteChatInputQueueParamsFixture(
-  eventId: string,
-): Promise<void> {
-  const deleted = await db()
-    .delete(chatInputQueueParams)
-    .where(eq(chatInputQueueParams.eventId, eventId))
-    .returning({ eventId: chatInputQueueParams.eventId });
-  if (deleted.length !== 1) {
-    throw new Error("Expected one chat input queue params row");
-  }
-}
-
 export async function replayPendingChatInputQueueEventFixture(args: {
   readonly eventId: string;
   readonly replacementId: string;

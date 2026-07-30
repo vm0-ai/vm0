@@ -20,7 +20,7 @@ import { i18n } from "../../../i18n/index.ts";
 
 const context = testContext();
 const PT_BR_PLACEHOLDER =
-  "Peça para automatizar workflows, gerenciar tarefas...";
+  "Peça para automatizar fluxos de trabalho, gerenciar tarefas...";
 
 afterEach(async () => {
   await i18n.changeLanguage("en-US");

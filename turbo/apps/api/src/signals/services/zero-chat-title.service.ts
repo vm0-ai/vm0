@@ -18,7 +18,6 @@ import {
   inArray,
   isNotNull,
   isNull,
-  ne,
   not,
   or,
   type SQL,
@@ -26,6 +25,7 @@ import {
 
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
+import { waitUntil } from "../context/wait-until";
 import { publishThreadListChanged } from "../external/realtime";
 import type { Db } from "../external/db";
 import { nowDate } from "../external/time";
@@ -66,7 +66,6 @@ export interface ChatCompletionContextMessage {
 
 interface ChatTitleInput {
   readonly currentUserMessage: string;
-  readonly currentAssistantReply?: string;
   readonly priorRounds?: readonly ChatCompletionContextMessage[];
 }
 
@@ -91,7 +90,7 @@ interface ChatCompletionContextRow {
 
 type SelectDb = Pick<Db, "select">;
 
-export function isChatTitleGenerationConfigured(): boolean {
+function isChatTitleGenerationConfigured(): boolean {
   return Boolean(optionalEnv("OPENROUTER_API_KEY"));
 }
 
@@ -222,11 +221,6 @@ function generateChatTitle(input: ChatTitleInput): Promise<string | null> {
   sections.push(
     `Most recent user message:\n${input.currentUserMessage.slice(0, TITLE_CONTEXT_CHAR_CAP)}`,
   );
-  if (input.currentAssistantReply) {
-    sections.push(
-      `Most recent assistant reply:\n${input.currentAssistantReply.slice(0, TITLE_CONTEXT_CHAR_CAP)}`,
-    );
-  }
 
   return generateText([
     {
@@ -244,26 +238,7 @@ function generateChatTitle(input: ChatTitleInput): Promise<string | null> {
 async function getLatestTitleContextMessages(
   db: Db,
   threadId: string,
-  options?: { readonly excludeRunId?: string },
 ): Promise<ChatCompletionContextMessage[]> {
-  const filters = [
-    eq(chatEvents.chatThreadId, threadId),
-    contextMessageContentCondition(),
-    chatEventTypeIn(CHAT_EVENT_TYPES),
-    visibleChatEventCondition(db),
-    completedConversationContextMessageCondition(db),
-  ];
-  if (options?.excludeRunId !== undefined) {
-    filters.push(
-      // Keep prior context free of the current exchange. User rows have the run
-      // id too, so this excludes both sides of the just-completed round.
-      or(
-        isNull(chatEvents.runId),
-        ne(chatEvents.runId, options.excludeRunId),
-      ) as SQL,
-    );
-  }
-
   const rows = await db
     .select({
       eventType: chatEvents.eventType,
@@ -274,7 +249,15 @@ async function getLatestTitleContextMessages(
     })
     .from(chatEvents)
     .leftJoin(agentRuns, eq(agentRuns.id, chatEvents.runId))
-    .where(and(...filters))
+    .where(
+      and(
+        eq(chatEvents.chatThreadId, threadId),
+        contextMessageContentCondition(),
+        chatEventTypeIn(CHAT_EVENT_TYPES),
+        visibleChatEventCondition(db),
+        completedConversationContextMessageCondition(db),
+      ),
+    )
     .orderBy(desc(chatEvents.seqId))
     .limit(TITLE_PRIOR_MESSAGE_CAP);
 
@@ -339,7 +322,7 @@ async function shouldGenerateChatThreadTitle(
   return Boolean(thread && thread.title === null && thread.renamedAt === null);
 }
 
-export async function generateAndPersistChatThreadTitle(args: {
+async function generateAndPersistChatThreadTitle(args: {
   readonly db: Db;
   readonly threadId: string;
   readonly userId: string;
@@ -379,48 +362,24 @@ export async function generateAndPersistChatThreadTitle(args: {
   );
 }
 
-export async function generateAndPersistChatThreadTitleFromCallback(args: {
+/**
+ * Fire-and-forget eager title generation, shared by the inline web send route
+ * and the queue drain. Every chat-thread-bound run passes through one of the
+ * two, so the trigger source no longer decides whether a thread is titled
+ * before its run finishes.
+ */
+export function scheduleChatThreadTitleGeneration(args: {
   readonly db: Db;
   readonly threadId: string;
   readonly userId: string;
   readonly orgId: string | null;
-  readonly runId: string;
   readonly prompt: string;
-  readonly currentAssistantReply: string | undefined;
-}): Promise<void> {
-  await tapError(
-    (async () => {
-      if (!(await shouldGenerateChatThreadTitle(args.db, args.threadId))) {
-        return;
-      }
-
-      const priorRounds = await getLatestTitleContextMessages(
-        args.db,
-        args.threadId,
-        { excludeRunId: args.runId },
-      );
-      const title = await generateChatTitle({
-        currentUserMessage: args.prompt,
-        currentAssistantReply: args.currentAssistantReply,
-        priorRounds: priorRounds.length > 0 ? priorRounds : undefined,
-      });
-      if (title) {
-        await updateChatThreadTitle(
-          args.db,
-          args.threadId,
-          args.userId,
-          args.orgId,
-          title,
-        );
-      }
-    })(),
-    (err) => {
-      log.warn("Chat title generation failed", {
-        threadId: args.threadId,
-        err,
-      });
-    },
-  );
+  readonly includePriorRounds: boolean;
+}): void {
+  if (!isChatTitleGenerationConfigured() || args.prompt.trim().length === 0) {
+    return;
+  }
+  waitUntil(generateAndPersistChatThreadTitle(args));
 }
 
 export function generateChatNotificationSummary(
