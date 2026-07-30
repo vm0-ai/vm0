@@ -397,6 +397,36 @@ describe("bootstrap locale", () => {
       ),
     ).toBe("2 Agenten haben 12 Ausführungen abgeschlossen");
     expect(
+      i18n.t(
+        ($) => {
+          return $.activity.events.searches;
+        },
+        { count: 2, formattedCount: "2" },
+      ),
+    ).toBe("2 Suchen");
+    expect(
+      i18n.t(
+        ($) => {
+          return $.settings.models.reset.remaining;
+        },
+        { count: 2, value: "2" },
+      ),
+    ).toBe("2 Resets übrig");
+    expect(
+      i18n.t(
+        ($) => {
+          return $.insights.summary.highTraffic;
+        },
+        {
+          callCount: "101",
+          count: 1,
+          services: "1 Dienst",
+        },
+      ),
+    ).toBe(
+      "101 Serviceaufrufe über 1 Dienst. Tag mit hohem Verkehrsaufkommen.",
+    );
+    expect(
       i18n.t(($) => {
         return $.onboarding.workflows["auto-merge-github-prs"].steps.two.title;
       }),
