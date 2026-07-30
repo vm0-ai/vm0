@@ -139,9 +139,11 @@ describe("ZERO_CAPABILITIES", () => {
     expect(ZERO_CAPABILITIES).toContain("chat-thread:write");
   });
 
-  it("should include chat message read and write capabilities", () => {
-    expect(ZERO_CAPABILITIES).toContain("chat-message:read");
-    expect(ZERO_CAPABILITIES).toContain("chat-message:write");
+  it("should include chat event read and write capabilities", () => {
+    expect(ZERO_CAPABILITIES).toContain("chat-event:read");
+    expect(ZERO_CAPABILITIES).toContain("chat-event:write");
+    expect(ZERO_CAPABILITIES).not.toContain("chat-message:read");
+    expect(ZERO_CAPABILITIES).not.toContain("chat-message:write");
   });
 });
 

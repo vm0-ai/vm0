@@ -35,7 +35,7 @@ export const testCronMonitorChatEventQueueStateActionResponseSchema = z
 export const testCronMonitorChatEventQueueStateContract = c.router({
   action: {
     method: "POST",
-    path: "/api/test/cron-monitor-chat-message-queue-state/action",
+    path: "/api/test/cron-monitor-chat-event-queue-state/action",
     body: testCronMonitorChatEventQueueStateActionBodySchema,
     responses: {
       200: testCronMonitorChatEventQueueStateActionResponseSchema,

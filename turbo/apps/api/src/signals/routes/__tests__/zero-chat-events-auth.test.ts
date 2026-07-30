@@ -14,7 +14,7 @@ function client() {
 }
 
 describe("POST /api/zero/chat/events authorization", () => {
-  it("rejects a zero token without chat-message:write", async () => {
+  it("rejects a zero token without chat-event:write", async () => {
     const seconds = Math.floor(now() / 1000);
     const token = signSandboxJwtForTests({
       scope: "zero",
@@ -44,7 +44,7 @@ describe("POST /api/zero/chat/events authorization", () => {
 
     expect(response.body).toStrictEqual({
       error: {
-        message: "Missing required capability: chat-message:write",
+        message: "Missing required capability: chat-event:write",
         code: "FORBIDDEN",
       },
     });

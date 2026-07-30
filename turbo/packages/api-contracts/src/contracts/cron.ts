@@ -267,7 +267,7 @@ export const cronCompactUsageEventsContract = c.router({
 export const cronMonitorChatEventQueueContract = c.router({
   monitor: {
     method: "GET",
-    path: "/api/cron/monitor-chat-message-queue",
+    path: "/api/cron/monitor-chat-event-queue",
     headers: authHeadersSchema,
     responses: {
       200: cronMonitorChatEventQueueResponseSchema,
