@@ -5332,8 +5332,22 @@
     {
       "idx": 761,
       "version": "7",
-      "when": 1785411001042,
-      "tag": "0761_aberrant_may_parker",
+      "when": 1785409880174,
+      "tag": "0761_drop_github_issue_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 762,
+      "version": "7",
+      "when": 1785410977112,
+      "tag": "0762_remove_legacy_connector_identity_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 763,
+      "version": "7",
+      "when": 1785412815590,
+      "tag": "0763_peaceful_riptide",
       "breakpoints": true
     }
   ]

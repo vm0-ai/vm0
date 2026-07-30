@@ -1,6 +1,6 @@
 {
-  "id": "712867e2-f120-44df-9cc6-afb7eea0ce6e",
-  "prevId": "f03a69f1-e47c-4a3a-944f-b04481af3a20",
+  "id": "7755d723-3162-4cc6-9e0a-47e0b52e076e",
+  "prevId": "712867e2-f120-44df-9cc6-afb7eea0ce6e",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -6739,12 +6739,6 @@
           "notNull": true,
           "default": false
         },
-        "connector_type": {
-          "name": "connector_type",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true
-        },
         "connector_slug": {
           "name": "connector_slug",
           "type": "varchar(64)",
@@ -6838,45 +6832,6 @@
           "method": "btree",
           "with": {}
         },
-        "idx_connector_external_code_sessions_owner_status": {
-          "name": "idx_connector_external_code_sessions_owner_status",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "connector_type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "auth_method",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "idx_connector_external_code_sessions_owner_slug_status": {
           "name": "idx_connector_external_code_sessions_owner_slug_status",
           "columns": [
@@ -6942,12 +6897,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "chk_connector_external_code_sessions_slug_matches_type": {
-          "name": "chk_connector_external_code_sessions_slug_matches_type",
-          "value": "\"connector_external_code_sessions\".\"connector_slug\" IS NOT NULL\n          AND \"connector_external_code_sessions\".\"connector_slug\" = \"connector_external_code_sessions\".\"connector_type\""
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.connector_oauth_device_authorization_sessions": {
@@ -6985,12 +6935,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
-        },
-        "connector_type": {
-          "name": "connector_type",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true
         },
         "connector_slug": {
           "name": "connector_slug",
@@ -7103,45 +7047,6 @@
           "method": "btree",
           "with": {}
         },
-        "idx_connector_oauth_device_authorization_sessions_owner_status": {
-          "name": "idx_connector_oauth_device_authorization_sessions_owner_status",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "connector_type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "auth_method",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "idx_connector_oauth_device_sessions_owner_slug_status": {
           "name": "idx_connector_oauth_device_sessions_owner_slug_status",
           "columns": [
@@ -7207,12 +7112,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "chk_connector_oauth_device_sessions_slug_matches_type": {
-          "name": "chk_connector_oauth_device_sessions_slug_matches_type",
-          "value": "\"connector_oauth_device_authorization_sessions\".\"connector_slug\" IS NOT NULL\n          AND \"connector_oauth_device_authorization_sessions\".\"connector_slug\" = \"connector_oauth_device_authorization_sessions\".\"connector_type\""
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.connector_oauth_states": {
@@ -7231,12 +7131,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
-        },
-        "type": {
-          "name": "type",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": false
         },
         "connector_slug": {
           "name": "connector_slug",
@@ -7407,15 +7301,11 @@
       "checkConstraints": {
         "chk_connector_oauth_states_identity": {
           "name": "chk_connector_oauth_states_identity",
-          "value": "num_nonnulls(\"connector_oauth_states\".\"type\", \"connector_oauth_states\".\"custom_connector_id\") = 1"
+          "value": "num_nonnulls(\"connector_oauth_states\".\"connector_slug\", \"connector_oauth_states\".\"custom_connector_id\") = 1"
         },
         "chk_connector_oauth_states_custom_revision": {
           "name": "chk_connector_oauth_states_custom_revision",
           "value": "(\n          \"connector_oauth_states\".\"custom_connector_id\" IS NULL\n          AND \"connector_oauth_states\".\"connector_revision\" IS NULL\n        ) OR (\n          \"connector_oauth_states\".\"custom_connector_id\" IS NOT NULL\n          AND \"connector_oauth_states\".\"connector_revision\" IS NOT NULL\n        )"
-        },
-        "chk_connector_oauth_states_slug_matches_type": {
-          "name": "chk_connector_oauth_states_slug_matches_type",
-          "value": "\"connector_oauth_states\".\"connector_slug\" IS NOT DISTINCT FROM \"connector_oauth_states\".\"type\""
         }
       },
       "isRLSEnabled": false
@@ -7430,12 +7320,6 @@
           "primaryKey": true,
           "notNull": true,
           "default": "gen_random_uuid()"
-        },
-        "type": {
-          "name": "type",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": false
         },
         "connector_slug": {
           "name": "connector_slug",
@@ -7547,34 +7431,6 @@
           "method": "btree",
           "with": {}
         },
-        "idx_connectors_org_user_type": {
-          "name": "idx_connectors_org_user_type",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"connectors\".\"type\" IS NOT NULL",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "idx_connectors_org_user_custom_connector": {
           "name": "idx_connectors_org_user_custom_connector",
           "columns": [
@@ -7665,15 +7521,11 @@
       "checkConstraints": {
         "chk_connectors_identity": {
           "name": "chk_connectors_identity",
-          "value": "num_nonnulls(\"connectors\".\"type\", \"connectors\".\"custom_connector_id\") = 1"
+          "value": "num_nonnulls(\"connectors\".\"connector_slug\", \"connectors\".\"custom_connector_id\") = 1"
         },
         "chk_connectors_storage_version_positive": {
           "name": "chk_connectors_storage_version_positive",
           "value": "\"connectors\".\"storage_version\" > 0"
-        },
-        "chk_connectors_connector_slug_matches_type": {
-          "name": "chk_connectors_connector_slug_matches_type",
-          "value": "\"connectors\".\"connector_slug\" IS NOT DISTINCT FROM \"connectors\".\"type\""
         }
       },
       "isRLSEnabled": false
@@ -20883,12 +20735,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "connector_type": {
-          "name": "connector_type",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true
-        },
         "connector_slug": {
           "name": "connector_slug",
           "type": "varchar(64)",
@@ -20904,39 +20750,6 @@
         }
       },
       "indexes": {
-        "idx_user_connectors_unique": {
-          "name": "idx_user_connectors_unique",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "agent_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "connector_type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "idx_user_connectors_unique_slug": {
           "name": "idx_user_connectors_unique_slug",
           "columns": [
@@ -21010,12 +20823,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "chk_user_connectors_slug_matches_type": {
-          "name": "chk_user_connectors_slug_matches_type",
-          "value": "\"user_connectors\".\"connector_slug\" IS NOT NULL\n          AND \"user_connectors\".\"connector_slug\" = \"user_connectors\".\"connector_type\""
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.user_custom_connectors": {
@@ -21262,12 +21070,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "connector_ref": {
-          "name": "connector_ref",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true
-        },
         "connector_slug": {
           "name": "connector_slug",
           "type": "varchar(64)",
@@ -21308,45 +21110,6 @@
         }
       },
       "indexes": {
-        "uq_user_permission_grants_grant": {
-          "name": "uq_user_permission_grants_grant",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "agent_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "connector_ref",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "permission",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "uq_user_permission_grants_slug_permission": {
           "name": "uq_user_permission_grants_slug_permission",
           "columns": [
@@ -21466,10 +21229,6 @@
         "chk_user_permission_grants_action": {
           "name": "chk_user_permission_grants_action",
           "value": "\"user_permission_grants\".\"action\" IN ('allow', 'deny')"
-        },
-        "chk_user_permission_grants_slug_matches_ref": {
-          "name": "chk_user_permission_grants_slug_matches_ref",
-          "value": "\"user_permission_grants\".\"connector_slug\" IS NOT NULL\n          AND \"user_permission_grants\".\"connector_slug\" = \"user_permission_grants\".\"connector_ref\""
         }
       },
       "isRLSEnabled": false
