@@ -5,6 +5,7 @@ mod common;
 
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use guest_contracts::diagnostics::{CliTerminationReason, FailureDiagnostic};
@@ -77,6 +78,7 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
             ..guest_contracts::env::RunPayload::default()
         },
     )?;
+    let request_order = Arc::new(Mutex::new(Vec::new()));
 
     let _heartbeat = server.mock(|when, then| {
         when.method(POST)
@@ -116,25 +118,43 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
             .body(history.as_str());
         then.status(200);
     });
-    let checkpoint = server.mock(|when, then| {
+    let checkpoint_order = Arc::clone(&request_order);
+    let checkpoint = server.mock(move |when, then| {
         when.method(POST)
             .path("/api/webhooks/agent/checkpoints")
             .json_body_includes(format!(
                 r#"{{"cliAgentSessionId":"{}"}}"#,
                 scenario.thread_id
             ));
-        then.status(scenario.checkpoint_status)
-            .header("Content-Type", "application/json")
-            .json_body(json!({"checkpointId": "user-cancellation-recovery-checkpoint"}));
+        then.respond_with(move |_| {
+            checkpoint_order
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push("checkpoint");
+            HttpMockResponse::builder()
+                .status(scenario.checkpoint_status)
+                .header("Content-Type", "application/json")
+                .body(r#"{"checkpointId":"user-cancellation-recovery-checkpoint"}"#)
+                .build()
+        });
     });
-    let complete = server.mock(|when, then| {
+    let complete_order = Arc::clone(&request_order);
+    let complete = server.mock(move |when, then| {
         when.method(POST)
             .path("/api/webhooks/agent/complete")
             .header("Authorization", "Bearer test-token")
             .json_body_includes(format!(r#"{{"runId":"{}","exitCode":1}}"#, scenario.run_id));
-        then.status(200)
-            .header("Content-Type", "application/json")
-            .json_body(json!({"success": true, "status": "failed"}));
+        then.respond_with(move |_| {
+            complete_order
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push("complete");
+            HttpMockResponse::builder()
+                .status(200)
+                .header("Content-Type", "application/json")
+                .body(r#"{"success":true,"status":"failed"}"#)
+                .build()
+        });
     });
 
     let endpoint = endpoint_name(std::process::id(), scenario.endpoint_nonce);
@@ -221,6 +241,14 @@ async fn run_scenario(scenario: Scenario) -> Result<(), Box<dyn std::error::Erro
     upload.assert_calls_async(1).await;
     checkpoint.assert_calls_async(1).await;
     complete.assert_calls_async(1).await;
+    assert_eq!(
+        request_order
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_slice(),
+        ["checkpoint", "complete"],
+        "recovery checkpoint request must arrive before /complete"
+    );
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     let recovery_index = stderr
