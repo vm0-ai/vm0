@@ -293,14 +293,21 @@ function ephemeral(blocks: unknown[]): Response {
   return jsonResponse({ response_type: "ephemeral", blocks });
 }
 
-function parseCommandPayload(body: string): SlackCommandPayload {
+function parseCommandPayload(body: string): SlackCommandPayload | null {
   const params = new URLSearchParams(body);
+  const teamId = params.get("team_id");
+  const channelId = params.get("channel_id");
+  const userId = params.get("user_id");
+  const triggerId = params.get("trigger_id");
+  if (!teamId || !channelId || !userId || !triggerId) {
+    return null;
+  }
   return {
-    team_id: params.get("team_id") ?? "",
-    channel_id: params.get("channel_id") ?? "",
-    user_id: params.get("user_id") ?? "",
+    team_id: teamId,
+    channel_id: channelId,
+    user_id: userId,
     text: params.get("text") ?? "",
-    trigger_id: params.get("trigger_id") ?? "",
+    trigger_id: triggerId,
   };
 }
 
@@ -1279,6 +1286,12 @@ export const handleZeroSlackCommands$ = command(
     }
 
     const payload = parseCommandPayload(verified.body);
+    if (!payload) {
+      return jsonResponse(
+        { error: "Missing required Slack command fields" },
+        400,
+      );
+    }
     const db = set(writeDb$);
     const args = payload.text.trim().split(/\s+/);
     const subCommand = args[0]?.toLowerCase() ?? "";
