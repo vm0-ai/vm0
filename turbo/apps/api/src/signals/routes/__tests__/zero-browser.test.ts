@@ -11,14 +11,14 @@ import {
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { HttpResponse, http } from "msw";
-import { afterEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { createApp } from "../../../app-factory";
 import { browserUseCdpHandler } from "../../../__tests__/mocks";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
-import { clearMockNow, mockNow, now } from "../../../lib/time";
+import { mockNow, now, startNowScopeForTest } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
@@ -228,8 +228,8 @@ async function reconcileBrowsers() {
 }
 
 describe("zero browser route", () => {
-  afterEach(() => {
-    clearMockNow();
+  beforeEach(() => {
+    startNowScopeForTest(STARTED_AT_MS);
   });
 
   it("keeps managed browser access off for a default chat thread", async () => {
@@ -1312,7 +1312,9 @@ describe("zero browser route", () => {
             { status: 500 },
           );
         }
-        return HttpResponse.json(providerBrowser(providerId), { status: 201 });
+        return HttpResponse.json(providerBrowser(providerId), {
+          status: 201,
+        });
       }),
       http.get(`${BROWSER_USE_API_URL}/browsers/:id`, ({ params }) => {
         return HttpResponse.json(providerBrowser(String(params.id)));
