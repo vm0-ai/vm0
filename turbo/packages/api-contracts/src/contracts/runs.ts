@@ -868,7 +868,7 @@ const networkLogEntrySchema = networkLogEntryInputSchema
       });
     }
   })
-  .transform((entry) => {
+  .overwrite((entry) => {
     const connectorDiagnosticSlug =
       entry.connector_diagnostic_slug ?? entry.connector_diagnostic_type;
     if (connectorDiagnosticSlug === undefined) {
