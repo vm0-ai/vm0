@@ -11,7 +11,10 @@ import { server } from "../../../mocks/server";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
-import { createRunsApi } from "./helpers/api-bdd-runs";
+import {
+  createRunsApi,
+  zeroBackedDirectRunRequest,
+} from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
@@ -147,20 +150,20 @@ async function createSupportRun(
   const api = createRunsApi(context);
   const prompt = options.prompt ?? "Support precondition";
   if (options.sessionId === undefined) {
-    const run = await api.createRun(seed.actor, {
+    const run = await api.createDirectRun(
+      seed.actor,
+      zeroBackedDirectRunRequest({ agentId: seed.agentId, prompt }),
+    );
+    return { runId: run.runId, sessionId: run.sessionId };
+  }
+  const run = await api.createDirectRun(
+    seed.actor,
+    zeroBackedDirectRunRequest({
       agentId: seed.agentId,
       prompt,
-      modelProvider: "anthropic-api-key",
-    });
-    return {
-      runId: run.runId,
-      sessionId: await api.readRunSessionId(seed.actor, run.runId),
-    };
-  }
-  const run = await api.createDirectRun(seed.actor, {
-    sessionId: options.sessionId,
-    prompt,
-  });
+      sessionId: options.sessionId,
+    }),
+  );
   return { runId: run.runId, sessionId: run.sessionId };
 }
 
@@ -334,7 +337,17 @@ describe("POST /api/zero/developer-support", () => {
   it("uses the same consent code across runs in the same session", async () => {
     const seed = await seedSupportActor();
     const base = await createSupportRun(seed);
+    await createRunsApi(context).requestCancelRun(
+      seed.actor,
+      base.runId,
+      [200],
+    );
     const first = await createSupportRun(seed, { sessionId: base.sessionId });
+    await createRunsApi(context).requestCancelRun(
+      seed.actor,
+      first.runId,
+      [200],
+    );
     const second = await createSupportRun(seed, { sessionId: base.sessionId });
 
     const firstResponse = await accept(
@@ -358,7 +371,17 @@ describe("POST /api/zero/developer-support", () => {
   it("accepts a consent code from a different run in the same session", async () => {
     const seed = await seedSupportActor();
     const base = await createSupportRun(seed);
+    await createRunsApi(context).requestCancelRun(
+      seed.actor,
+      base.runId,
+      [200],
+    );
     const first = await createSupportRun(seed, { sessionId: base.sessionId });
+    await createRunsApi(context).requestCancelRun(
+      seed.actor,
+      first.runId,
+      [200],
+    );
     const second = await createSupportRun(seed, { sessionId: base.sessionId });
 
     const consent = await accept(

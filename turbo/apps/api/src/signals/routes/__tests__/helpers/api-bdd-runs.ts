@@ -288,6 +288,24 @@ function chatEventBodyFromRunRequest(body: ZeroRunRequest) {
   };
 }
 
+export function zeroBackedDirectRunRequest(args: {
+  readonly agentId: string;
+  readonly prompt: string;
+  readonly sessionId?: string;
+}): DirectRunRequest {
+  return {
+    ...(args.sessionId
+      ? { sessionId: args.sessionId }
+      : {
+          agentComposeId: args.agentId,
+          modelProviderType: "anthropic-api-key" as const,
+        }),
+    prompt: args.prompt,
+    vars: { ZERO_AGENT_ID: args.agentId },
+    secrets: { ZERO_TOKEN: "bdd-zero-direct-token" },
+  };
+}
+
 function requireCreatedChatRun(
   body: z.infer<(typeof chatEventsContract.send)["responses"][201]>,
 ) {

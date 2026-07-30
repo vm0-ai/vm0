@@ -17,7 +17,10 @@ import {
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createBddApi } from "./helpers/api-bdd";
 import { createComposesBddApi } from "./helpers/api-bdd-composes";
-import { createRunsApi } from "./helpers/api-bdd-runs";
+import {
+  createRunsApi,
+  zeroBackedDirectRunRequest,
+} from "./helpers/api-bdd-runs";
 
 const context = testContext();
 const store = createStore();
@@ -139,7 +142,15 @@ async function seedSendableContext(args: {
       },
     });
   }
-  const run = await api.createRun(actor, runRequest);
+  const run = args.withOrgModelProvider
+    ? await api.createRun(actor, runRequest)
+    : await api.createDirectRun(
+        actor,
+        zeroBackedDirectRunRequest({
+          agentId: agent.agentId,
+          prompt: runRequest.prompt,
+        }),
+      );
 
   // Product run creation authenticates through the Clerk session mocks;
   // restore the membership-list mock the zero-token auth path relies on.

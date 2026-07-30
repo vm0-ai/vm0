@@ -3154,7 +3154,7 @@ describe("connector catalog valid lifecycle", () => {
     };
     const expectRegistrationFailure = async () => {
       const failed = await createSkillRun();
-      expect(failed).toMatchObject({
+      await expect(runs.readRun(actor, failed.runId)).resolves.toMatchObject({
         status: "failed",
         error: "Connector skill registration is unavailable",
       });

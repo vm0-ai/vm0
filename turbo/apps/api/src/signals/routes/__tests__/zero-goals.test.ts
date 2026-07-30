@@ -13,7 +13,10 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../external/time";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
-import { createRunsApi } from "./helpers/api-bdd-runs";
+import {
+  createRunsApi,
+  zeroBackedDirectRunRequest,
+} from "./helpers/api-bdd-runs";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
 
@@ -212,11 +215,13 @@ describe("zero goals", () => {
       displayName: "Goal Bootstrap Agent",
       visibility: "private",
     });
-    const origin = await api.createRun(actor, {
-      agentId: agent.agentId,
-      prompt: "create a goal outside chat",
-      modelProvider: "anthropic-api-key",
-    });
+    const origin = await api.createDirectRun(
+      actor,
+      zeroBackedDirectRunRequest({
+        agentId: agent.agentId,
+        prompt: "create a goal outside chat",
+      }),
+    );
 
     const created = await accept(
       goalsClient().create({
