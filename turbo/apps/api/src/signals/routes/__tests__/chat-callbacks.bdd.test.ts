@@ -2174,6 +2174,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       status: "failed",
     });
     await flushWaitUntilForTest();
+    await waitForRunStatus(actor, run.runId, "cancelled");
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `chatThreadMessageCreated:${run.threadId}`,
       null,
