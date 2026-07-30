@@ -850,12 +850,14 @@ describe("GET /api/cron/aggregate-insights", () => {
     }
 
     const data = await findInsights(seeded.actor);
+    for (const permission of data?.permissions ?? []) {
+      expect(permission).not.toHaveProperty("connectorType");
+    }
     const githubDeny = data?.permissions.find((permission) => {
       return permission.label === "github" && permission.denied > 0;
     });
     expect(githubDeny).toMatchObject({
       connectorSlug: "github",
-      connectorType: "github",
       denied: 2,
     });
     const repoRead = data?.permissions.find((permission) => {
@@ -863,7 +865,6 @@ describe("GET /api/cron/aggregate-insights", () => {
     });
     expect(repoRead).toMatchObject({
       connectorSlug: "github",
-      connectorType: "github",
       allowed: 1,
     });
   });
@@ -924,7 +925,6 @@ describe("GET /api/cron/aggregate-insights", () => {
     });
     expect(repoRead).toMatchObject({
       connectorSlug: "github",
-      connectorType: "github",
       allowed: 1,
       denied: 0,
     });
@@ -1015,7 +1015,6 @@ describe("GET /api/cron/aggregate-insights", () => {
     });
     expect(githubDeny).toMatchObject({
       connectorSlug: "github",
-      connectorType: "github",
       allowed: 0,
       denied: 3,
     });
@@ -1024,7 +1023,6 @@ describe("GET /api/cron/aggregate-insights", () => {
     });
     expect(repoRead).toMatchObject({
       connectorSlug: "github",
-      connectorType: "github",
       allowed: 1,
       denied: 0,
     });

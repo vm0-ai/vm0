@@ -9518,6 +9518,279 @@ async function validateInsightsConnectorSlugExpansion(): Promise<void> {
   );
 }
 
+async function validateInsightsConnectorTypeCleanup(): Promise<void> {
+  console.log("=== Phase 1.62: Validate insights connector type cleanup ===\n");
+  const previousMigration = 768;
+  const targetMigration = 769;
+  const targetMigrationTag = "0769_remove_insights_connector_type";
+  const successDb = "migration_insights_connector_type_cleanup_test";
+  const rejectionDb =
+    "migration_insights_connector_type_cleanup_rejection_test";
+  const successDbUrl = createTestDbUrl(successDb);
+  const rejectionDbUrl = createTestDbUrl(rejectionDb);
+  const sourceData = {
+    permissions: [
+      {
+        label: "repo-read",
+        connectorType: "github",
+        allowed: 3,
+        denied: 0,
+        agentNames: ["Research agent"],
+        metadata: { retained: true },
+      },
+      {
+        label: "channels:read",
+        connectorSlug: "slack",
+        allowed: 2,
+        denied: 0,
+        agentNames: ["Support agent"],
+      },
+      {
+        label: "pages:read",
+        connectorSlug: "notion",
+        connectorType: "notion",
+        allowed: 1,
+        denied: 0,
+        agentNames: ["Knowledge agent"],
+      },
+      {
+        label: "unscoped",
+        allowed: 0,
+        denied: 1,
+        agentNames: [],
+      },
+      {
+        label: "malformed",
+        connectorType: 42,
+        allowed: 0,
+        denied: 1,
+        agentNames: [],
+      },
+      "preserve-non-object",
+    ],
+    unrelated: {
+      nested: ["preserve", 42],
+    },
+  };
+  const expectedData = {
+    ...sourceData,
+    permissions: [
+      {
+        label: "repo-read",
+        connectorSlug: "github",
+        allowed: 3,
+        denied: 0,
+        agentNames: ["Research agent"],
+        metadata: { retained: true },
+      },
+      sourceData.permissions[1],
+      {
+        label: "pages:read",
+        connectorSlug: "notion",
+        allowed: 1,
+        denied: 0,
+        agentNames: ["Knowledge agent"],
+      },
+      sourceData.permissions[3],
+      {
+        label: "malformed",
+        allowed: 0,
+        denied: 1,
+        agentNames: [],
+      },
+      sourceData.permissions[5],
+    ],
+  };
+  const nonArrayData = {
+    permissions: {
+      connectorType: "github",
+      marker: "preserve malformed container",
+    },
+    unrelated: true,
+  };
+
+  await createDatabase(successDb);
+  try {
+    await runMigrationsUpTo(successDbUrl, previousMigration);
+    const client = new Client({ connectionString: successDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "insights_daily" (
+            "id",
+            "org_id",
+            "user_id",
+            "date",
+            "data",
+            "updated_at"
+          )
+          VALUES
+            (
+              '00000000-0000-4000-8000-000000076701',
+              'insights-cleanup-org',
+              'insights-cleanup-user',
+              '2026-07-29',
+              $1::jsonb,
+              '2026-07-29T00:00:00.000Z'
+            ),
+            (
+              '00000000-0000-4000-8000-000000076702',
+              'insights-cleanup-org',
+              'insights-cleanup-user',
+              '2026-07-30',
+              $2::jsonb,
+              '2026-07-30T00:00:00.000Z'
+            )
+        `,
+        [JSON.stringify(sourceData), JSON.stringify(nonArrayData)],
+      );
+
+      await applyMigrationsUpTo(client, targetMigration);
+
+      const result = await client.query<{
+        readonly data: unknown;
+        readonly id: string;
+      }>(
+        `
+          SELECT "id", "data"
+          FROM "insights_daily"
+          WHERE "id" IN (
+            '00000000-0000-4000-8000-000000076701',
+            '00000000-0000-4000-8000-000000076702'
+          )
+          ORDER BY "id"
+        `,
+      );
+      assert.deepEqual(result.rows, [
+        {
+          id: "00000000-0000-4000-8000-000000076701",
+          data: expectedData,
+        },
+        {
+          id: "00000000-0000-4000-8000-000000076702",
+          data: nonArrayData,
+        },
+      ]);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(successDb);
+  }
+
+  const compatibleData = {
+    permissions: [
+      {
+        label: "repo-read",
+        connectorType: "github",
+        allowed: 1,
+        denied: 0,
+        agentNames: ["Research agent"],
+      },
+    ],
+    marker: "must remain unchanged",
+  };
+  const conflictingData = {
+    permissions: [
+      {
+        label: "channels:read",
+        connectorSlug: "slack",
+        connectorType: "github",
+        allowed: 1,
+        denied: 0,
+        agentNames: ["Support agent"],
+      },
+    ],
+  };
+
+  await createDatabase(rejectionDb);
+  try {
+    await runMigrationsUpTo(rejectionDbUrl, previousMigration);
+    const client = new Client({ connectionString: rejectionDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "insights_daily" (
+            "id",
+            "org_id",
+            "user_id",
+            "date",
+            "data"
+          )
+          VALUES
+            (
+              '00000000-0000-4000-8000-000000076703',
+              'insights-cleanup-org',
+              'insights-cleanup-user',
+              '2026-07-29',
+              $1::jsonb
+            ),
+            (
+              '00000000-0000-4000-8000-000000076704',
+              'insights-cleanup-org',
+              'insights-cleanup-user',
+              '2026-07-30',
+              $2::jsonb
+            )
+        `,
+        [JSON.stringify(compatibleData), JSON.stringify(conflictingData)],
+      );
+
+      await assert.rejects(
+        applyMigrationsUpTo(client, targetMigration),
+        /conflicting connectorSlug and connectorType identities/,
+      );
+
+      const rows = await client.query<{
+        readonly data: unknown;
+        readonly id: string;
+      }>(
+        `
+          SELECT "id", "data"
+          FROM "insights_daily"
+          WHERE "id" IN (
+            '00000000-0000-4000-8000-000000076703',
+            '00000000-0000-4000-8000-000000076704'
+          )
+          ORDER BY "id"
+        `,
+      );
+      assert.deepEqual(rows.rows, [
+        {
+          id: "00000000-0000-4000-8000-000000076703",
+          data: compatibleData,
+        },
+        {
+          id: "00000000-0000-4000-8000-000000076704",
+          data: conflictingData,
+        },
+      ]);
+
+      const migrationRecord = await client.query<{
+        readonly count: number;
+      }>(
+        `
+          SELECT COUNT(*)::int AS "count"
+          FROM "__drizzle_migrations"
+          WHERE "hash" = $1
+        `,
+        [targetMigrationTag],
+      );
+      assert.equal(migrationRecord.rows[0]?.count, 0);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(rejectionDb);
+  }
+
+  console.log(
+    "   ✅ Insights connector type cleanup preserves JSONB and rejects conflicts atomically\n",
+  );
+}
+
 async function extractSchemaFromDb(dbUrl: string): Promise<{
   tables: Set<string>;
   columns: Map<string, Set<string>>;
@@ -12172,6 +12445,7 @@ async function main(): Promise<void> {
     await validateConnectorCredentialOwnershipContraction();
     await validateConnectorSlugRollout();
     await validateInsightsConnectorSlugExpansion();
+    await validateInsightsConnectorTypeCleanup();
 
     await validateStorageArchiveSizeFinalization();
     await validateStorageLegacyTypeContraction();
