@@ -631,6 +631,46 @@ describe("POST /api/zero/mail/drafts/link", () => {
     expect(refreshCalls).toBe(0);
   });
 
+  it("logs canonical and legacy connector dimensions on refresh failure", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    await setConnectorCredentialStorageState(context, {
+      orgId: fixture.actor.orgId ?? "",
+      userId: fixture.actor.userId,
+      connectorSlug: "gmail",
+      storageVersion: 1,
+      tokenExpiresAt: "2020-01-01T00:00:00.000Z",
+    });
+    server.use(
+      http.post("https://oauth2.googleapis.com/token", () => {
+        return HttpResponse.error();
+      }),
+    );
+    context.mocks.axiomLogging.warn.mockClear();
+
+    const response = await accept(
+      client().linkDraft({
+        headers: authHeaders(),
+        body: {
+          threadId: fixture.thread.id,
+          agentId: fixture.agent.agentId,
+          gmailDraftId: GMAIL_DRAFT_ID,
+        },
+      }),
+      [409],
+    );
+
+    expect(response.body.error.message).toBe(
+      "Reconnect Gmail before continuing",
+    );
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      "Connector credential refresh failed",
+      expect.objectContaining({
+        connectorSlug: "gmail",
+        connectorRef: "gmail",
+      }),
+    );
+  });
+
   it("does not read Gmail credentials owned by another connector", async () => {
     const fixture = await seedGmailMailCardFixture();
     const foreignConnectorId = await seedConnectorStorageRow(context, {
