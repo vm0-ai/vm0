@@ -264,11 +264,12 @@ record_remote_authority() {
     parsed_user="${parsed_host%@*}"
     parsed_host="${parsed_host##*@}"
   fi
-  parsed_host="${parsed_host#[}"
-  parsed_host="${parsed_host%]}"
-  parsed_host="${parsed_host,,}"
 
   REMOTE_OPERAND_COUNT=$((REMOTE_OPERAND_COUNT + 1))
+  if [ "$parsed_host" != "${parsed_host,,}" ]; then
+    BYPASS=true
+    return
+  fi
   if [[ ! "$parsed_host" =~ ^[a-z0-9][a-z0-9.-]*\.vm3\.ai$ ]]; then
     BYPASS=true
     return
@@ -294,9 +295,12 @@ record_remote_authority() {
 record_uri_destination() {
   local destination=$1
   local authority="${destination#*://}"
+  local host
   authority="${authority%%/*}"
-  if [[ "$authority" == *:* ]]; then
-    authority="${authority%%:*}"
+  host="${authority##*@}"
+  if [[ "$host" == *:* ]]; then
+    BYPASS=true
+    return
   fi
   record_remote_authority "$authority"
 }

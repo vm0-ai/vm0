@@ -496,6 +496,14 @@ assert_line_count "$unsupported/ssh.log" 1 \
   "-J jump.example.com metal@dev-6.aws.vm3.ai touch /tmp/unsupported"
 assert_not_contains "$unsupported/ssh.log" " true"
 
+uri_port="${tmp}/uri-port"
+run_wrapper "$uri_port" stale-exhaustion ssh \
+  ssh://metal@dev-6.aws.vm3.ai:2222 touch /tmp/uri-port
+assert_contains "$uri_port/status" "0"
+assert_line_count "$uri_port/ssh.log" 1 \
+  "ssh://metal@dev-6.aws.vm3.ai:2222 touch /tmp/uri-port"
+assert_not_contains "$uri_port/ssh.log" " true"
+
 remote_copy="${tmp}/remote-copy"
 run_wrapper "$remote_copy" stale-exhaustion scp \
   metal@dev-6.aws.vm3.ai:/tmp/source \
