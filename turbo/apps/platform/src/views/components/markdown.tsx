@@ -253,11 +253,7 @@ function MediaImage({ src, alt }: { src: string; alt: string }) {
       className="relative my-1 inline-flex aspect-[10/9] w-[200px] max-w-full cursor-pointer items-center justify-center overflow-hidden rounded-lg border border-foreground/10 bg-muted/30"
     >
       {/* Preserve one flex item so the inline baseline cannot change on load. */}
-      <span
-        aria-hidden="true"
-        data-testid="markdown-image-preview-frame"
-        className="block h-full w-full"
-      />
+      <span aria-hidden="true" className="block h-full w-full" />
       {showPlaceholder && (
         <span
           data-testid="markdown-image-preview-loading"

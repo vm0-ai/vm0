@@ -1017,11 +1017,7 @@ function ChatImagePreviewLink({
       aria-label={ariaLabel}
     >
       {/* Preserve one flex item so the inline baseline cannot change on load. */}
-      <span
-        aria-hidden="true"
-        data-testid="chat-image-preview-frame"
-        className="block h-full w-full"
-      />
+      <span aria-hidden="true" className="block h-full w-full" />
       {showPlaceholder && (
         <span
           data-testid="chat-image-preview-loading"
