@@ -791,10 +791,7 @@ describe("workflow queue", () => {
     await expect.poll(admissionLock.directWaiterCount).toBe(1);
 
     const secondRequest = postWorkflowWebhook(automation, "second concurrent");
-    // The first admission holds the legacy key while waiting on the canonical
-    // key; the second admission must wait behind it on that same legacy key.
-    await expect.poll(admissionLock.transitiveWaiterCount).toBe(2);
-    await expect.poll(admissionLock.directWaiterCount).toBe(1);
+    await expect.poll(admissionLock.directWaiterCount).toBe(2);
     await expect(
       pendingWorkflowEvents(automation.threadId),
     ).resolves.toStrictEqual([]);
