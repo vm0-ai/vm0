@@ -27,7 +27,6 @@ import {
   resolveAgentPhoneAuditLogsUrl,
   resolveAgentPhoneReplyFooterText,
   resolveAgentPhoneUserLink,
-  saveAgentPhoneThreadSession,
   storeOutboundAgentPhoneMessage,
   type AgentPhoneChannel,
 } from "./agentphone-shared.service";
@@ -59,7 +58,6 @@ type AgentPhoneCallbackPayload = z.infer<
 interface RunContext {
   readonly userId: string;
   readonly orgId: string;
-  readonly sessionId: string;
   readonly lastEventSequence: number | null;
   readonly chatThreadId: string | null;
 }
@@ -154,7 +152,6 @@ async function loadRunContext(args: {
     .select({
       userId: agentRuns.userId,
       orgId: agentRuns.orgId,
-      sessionId: agentRuns.sessionId,
       lastEventSequence: agentRuns.lastEventSequence,
       chatThreadId: zeroRuns.chatThreadId,
     })
@@ -230,17 +227,6 @@ async function staleLinkDisconnected(args: {
   return currentUserLink?.id !== args.payload.userLinkId;
 }
 
-function agentPhoneCallbackRootMessageId(
-  payload: AgentPhoneCallbackPayload,
-): string {
-  return (
-    payload.rootMessageId ??
-    (payload.isGroup && payload.conversationId
-      ? `group:${payload.conversationId}`
-      : "dm")
-  );
-}
-
 async function sendAgentPhoneCompletionMessage(args: {
   readonly payload: AgentPhoneCallbackPayload;
   readonly body: string;
@@ -289,8 +275,6 @@ async function sendAgentPhoneCompletionMessage(args: {
 async function recordAgentPhoneCompletion(args: {
   readonly db: Db;
   readonly payload: AgentPhoneCallbackPayload;
-  readonly run: RunContext | undefined;
-  readonly status: "completed" | "failed";
   readonly body: string;
   readonly sent: SentAgentPhoneMessage;
   readonly userChannel: AgentPhoneChannel;
@@ -307,23 +291,6 @@ async function recordAgentPhoneCompletion(args: {
     body: args.body,
     channel: args.sent.channel,
     userChannel: args.userChannel,
-  });
-  args.signal.throwIfAborted();
-
-  if (!args.run) {
-    return;
-  }
-
-  await saveAgentPhoneThreadSession(args.db, {
-    userLinkId: args.payload.userLinkId,
-    conversationId: args.payload.conversationId,
-    rootMessageId: agentPhoneCallbackRootMessageId(args.payload),
-    existingSessionId: args.payload.existingSessionId ?? undefined,
-    newSessionId: args.payload.existingSessionId
-      ? undefined
-      : args.run.sessionId,
-    messageId: args.payload.messageId,
-    runStatus: args.status,
   });
   args.signal.throwIfAborted();
 }
@@ -419,8 +386,6 @@ async function handleCompletion(args: {
   await recordAgentPhoneCompletion({
     db: args.db,
     payload: args.payload,
-    run,
-    status: args.status,
     body,
     sent: sendResult.sent,
     userChannel,
