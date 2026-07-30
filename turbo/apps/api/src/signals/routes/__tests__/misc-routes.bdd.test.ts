@@ -10,6 +10,7 @@ import {
   ALL_LOCALES_CLIENT_VERSION,
   BRAZILIAN_PORTUGUESE_CLIENT_VERSION,
   createMiscRoutesApi,
+  GERMAN_CLIENT_VERSION,
   JAPANESE_CLIENT_VERSION,
   KOREAN_CLIENT_VERSION,
   INDONESIAN_CLIENT_VERSION,
@@ -673,6 +674,118 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
     expect(allLocales.body).toMatchObject({
       locale: "ko-KR",
       supportedLocales: ["en-US", "pt-BR", "ja-JP", "ko-KR"],
+    });
+  });
+
+  it("negotiates German across rollout states and legacy clients", async () => {
+    const { api, admin } = testActors();
+    mockOptionalEnv("BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED", undefined);
+    mockOptionalEnv("JAPANESE_LOCALE_ROLLOUT_ENABLED", undefined);
+    mockOptionalEnv("KOREAN_LOCALE_ROLLOUT_ENABLED", undefined);
+    mockOptionalEnv("INDONESIAN_LOCALE_ROLLOUT_ENABLED", undefined);
+    mockOptionalEnv("GERMAN_LOCALE_ROLLOUT_ENABLED", undefined);
+
+    const guarded = await api.readPreferences(admin, GERMAN_CLIENT_VERSION);
+    expect(guarded.body).toMatchObject({
+      locale: null,
+      supportedLocales: ["en-US"],
+    });
+
+    const rejected = await api.updatePreferences(
+      admin,
+      { locale: "de-DE" },
+      [400],
+      GERMAN_CLIENT_VERSION,
+    );
+    expectApiError(rejected.body);
+
+    const orgId = admin.orgId;
+    if (orgId === null) {
+      throw new Error("Expected an organization-scoped test actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      {
+        userId: admin.userId,
+        orgId,
+        ...(admin.orgRole && { orgRole: admin.orgRole }),
+      },
+      {
+        [FeatureSwitchKey.GermanLocale]: true,
+      },
+    );
+
+    const publicOverrideRejected = await api.updatePreferences(
+      admin,
+      { locale: "de-DE" },
+      [400],
+      GERMAN_CLIENT_VERSION,
+    );
+    expectApiError(publicOverrideRejected.body);
+
+    mockOptionalEnv("GERMAN_LOCALE_ROLLOUT_ENABLED", "true");
+
+    const unsupportedClient = await api.updatePreferences(
+      admin,
+      { locale: "de-DE" },
+      [400],
+    );
+    expectApiError(unsupportedClient.body);
+
+    const german = await api.updatePreferences(
+      admin,
+      { locale: "de-DE" },
+      [200],
+      GERMAN_CLIENT_VERSION,
+    );
+    expect(german.body).toMatchObject({
+      locale: "de-DE",
+      supportedLocales: ["en-US", "de-DE"],
+    });
+
+    const currentClientRead = await api.readPreferences(
+      admin,
+      ALL_LOCALES_CLIENT_VERSION,
+    );
+    expect(currentClientRead.body).toMatchObject({
+      locale: "de-DE",
+      supportedLocales: ["en-US", "de-DE"],
+    });
+
+    const legacyRead = await api.readPreferences(admin);
+    expect(legacyRead.body.locale).toBe("en-US");
+    expect(legacyRead.body.supportedLocales).toBeUndefined();
+
+    const portugueseOnlyRead = await api.readPreferences(
+      admin,
+      BRAZILIAN_PORTUGUESE_CLIENT_VERSION,
+    );
+    expect(portugueseOnlyRead.body).toMatchObject({
+      locale: "en-US",
+      supportedLocales: ["en-US"],
+    });
+
+    const japaneseClientRead = await api.readPreferences(
+      admin,
+      JAPANESE_CLIENT_VERSION,
+    );
+    expect(japaneseClientRead.body).toMatchObject({
+      locale: "en-US",
+      supportedLocales: ["en-US"],
+    });
+
+    await api.updatePreferences(admin, { timezone: "UTC" }, [200]);
+    const capableReread = await api.readPreferences(
+      admin,
+      GERMAN_CLIENT_VERSION,
+    );
+    expect(capableReread.body.locale).toBe("de-DE");
+
+    mockOptionalEnv("GERMAN_LOCALE_ROLLOUT_ENABLED", undefined);
+    const rolledBack = await api.readPreferences(admin, GERMAN_CLIENT_VERSION);
+    expect(rolledBack.body).toMatchObject({
+      locale: "en-US",
+      supportedLocales: ["en-US"],
     });
   });
 });

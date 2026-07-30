@@ -6,6 +6,7 @@ import {
   CLIENT_CAPABILITY_JA_JP_LOCALE,
   CLIENT_CAPABILITY_KO_KR_LOCALE,
   CLIENT_CAPABILITY_ID_ID_LOCALE,
+  CLIENT_CAPABILITY_DE_DE_LOCALE,
   CLIENT_CAPABILITY_PT_BR_LOCALE,
   CLIENT_FORCE_UPGRADE_STATUS,
   CLIENT_HEADER_NAMES,
@@ -69,19 +70,22 @@ describe("client header contract", () => {
         addClientCapabilityToVersion(
           addClientCapabilityToVersion(
             addClientCapabilityToVersion(
-              "0.636.1",
-              CLIENT_CAPABILITY_PT_BR_LOCALE,
+              addClientCapabilityToVersion(
+                "0.636.1",
+                CLIENT_CAPABILITY_PT_BR_LOCALE,
+              ),
+              CLIENT_CAPABILITY_JA_JP_LOCALE,
             ),
-            CLIENT_CAPABILITY_JA_JP_LOCALE,
+            CLIENT_CAPABILITY_KO_KR_LOCALE,
           ),
-          CLIENT_CAPABILITY_KO_KR_LOCALE,
+          CLIENT_CAPABILITY_ID_ID_LOCALE,
         ),
-        CLIENT_CAPABILITY_ID_ID_LOCALE,
+        CLIENT_CAPABILITY_DE_DE_LOCALE,
       ),
       CLIENT_CAPABILITY_CONNECTOR_SLUG_IDENTITIES,
     );
     expect(version).toBe(
-      "0.636.1+pt-br-locale-v1.ja-jp-locale-v1.ko-kr-locale-v1.id-id-locale-v1.connector-slug-identities-v1",
+      "0.636.1+pt-br-locale-v1.ja-jp-locale-v1.ko-kr-locale-v1.id-id-locale-v1.de-de-locale-v1.connector-slug-identities-v1",
     );
     expect(
       clientVersionSupportsCapability(version, CLIENT_CAPABILITY_PT_BR_LOCALE),
@@ -96,6 +100,9 @@ describe("client header contract", () => {
       clientVersionSupportsCapability(version, CLIENT_CAPABILITY_ID_ID_LOCALE),
     ).toBe(true);
     expect(
+      clientVersionSupportsCapability(version, CLIENT_CAPABILITY_DE_DE_LOCALE),
+    ).toBe(true);
+    expect(
       clientVersionSupportsCapability(
         version,
         CLIENT_CAPABILITY_CONNECTOR_SLUG_IDENTITIES,
@@ -104,7 +111,7 @@ describe("client header contract", () => {
     expect(
       clientVersionSupportsCapability(
         "0.631.1",
-        CLIENT_CAPABILITY_PT_BR_LOCALE,
+        CLIENT_CAPABILITY_DE_DE_LOCALE,
       ),
     ).toBe(false);
   });

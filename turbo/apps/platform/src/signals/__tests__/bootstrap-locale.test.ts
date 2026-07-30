@@ -249,6 +249,26 @@ describe("bootstrap locale", () => {
     expect(upgradeAction).toHaveTextContent("Update Chrome");
   });
 
+  it("detects German from the browser before a workspace is active", () => {
+    context.mocks.browser.language("de");
+
+    try {
+      executeLocaleEntrypoint();
+
+      expect(document.documentElement.lang).toBe("de-DE");
+      expect(window.__vm0PreBundleCopy).toMatchObject({
+        loading: {
+          ariaLabel: "Ihr Arbeitsbereich wird geladen",
+        },
+        metadata: {
+          title: "Zero — Ihr KI-Kollege von vm0",
+        },
+      });
+    } finally {
+      document.documentElement.lang = DEFAULT_LOCALE;
+    }
+  });
+
   it("uses the cached locale across pre-bundle UI and i18next", async () => {
     context.mocks.browser.language("en-US");
     sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
@@ -322,6 +342,126 @@ describe("bootstrap locale", () => {
       true,
       true,
     );
+
+    await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
+  });
+
+  it("loads German before bundle render and restores it from workspace cache", async () => {
+    context.mocks.browser.language("en-US");
+    sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);
+    context.store.set(testLocaleStorage.set$, "de-DE");
+
+    executeLocaleEntrypoint();
+
+    expect(document.documentElement.lang).toBe("de-DE");
+    expect(window.__vm0PreBundleCopy).toMatchObject({
+      loading: {
+        ariaLabel: "Ihr Arbeitsbereich wird geladen",
+        messages: expect.arrayContaining(["Neuronen werden aufgewärmt..."]),
+      },
+      metadata: {
+        title: "Zero — Ihr KI-Kollege von vm0",
+      },
+    });
+
+    await setupPage({
+      context,
+      path: "/error",
+      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: false },
+      withoutRender: true,
+    });
+
+    expect(context.store.get(locale$)).toBe("de-DE");
+    expect(i18n.language).toBe("de-DE");
+    expect(i18n.hasResourceBundle("de-DE", "common")).toBeTruthy();
+    expect(i18n.hasResourceBundle("de-DE", "agents")).toBeTruthy();
+    expect(document.documentElement.lang).toBe("de-DE");
+    expect(
+      i18n.t(
+        ($) => {
+          return $.insights.units.run;
+        },
+        { count: 2, value: "2" },
+      ),
+    ).toBe("2 Ausführungen");
+    expect(
+      i18n.t(
+        ($) => {
+          return $.insights.cards.agentsRan;
+        },
+        {
+          agents: "2 Agenten",
+          count: 2,
+          runs: "12 Ausführungen",
+        },
+      ),
+    ).toBe("2 Agenten haben 12 Ausführungen abgeschlossen");
+    expect(
+      i18n.t(
+        ($) => {
+          return $.activity.events.searches;
+        },
+        { count: 2, formattedCount: "2" },
+      ),
+    ).toBe("2 Suchen");
+    expect(
+      i18n.t(
+        ($) => {
+          return $.settings.models.reset.remaining;
+        },
+        { count: 2, value: "2" },
+      ),
+    ).toBe("2 Resets übrig");
+    expect(
+      i18n.t(
+        ($) => {
+          return $.insights.summary.highTraffic;
+        },
+        {
+          callCount: "101",
+          count: 1,
+          services: "1 Dienst",
+        },
+      ),
+    ).toBe(
+      "101 Serviceaufrufe über 1 Dienst. Tag mit hohem Verkehrsaufkommen.",
+    );
+    expect(
+      i18n.t(($) => {
+        return $.billing.usage.allowance.title;
+      }),
+    ).toBe("Nutzungskontingent");
+    expect(
+      i18n.t(($) => {
+        return $.workflows.automations.github.actors;
+      }),
+    ).toBe("Akteure");
+    expect(
+      i18n.t(($) => {
+        return $.workflows.automations.github.addWorkflowDescription;
+      }),
+    ).toContain("GitHub Actions");
+    expect(
+      i18n.t(($) => {
+        return $.settings.models.stale.claudeFailed;
+      }),
+    ).toContain("Claude Code");
+    expect(
+      i18n.t(($) => {
+        return $.workflows.automations.webhook.signedCurl;
+      }),
+    ).toBe("Signierter curl-Befehl");
+    expect(
+      i18n.t(($) => {
+        return $.onboarding.workflows["watch-brand-mentions"].steps.three
+          .description;
+      }),
+    ).toBe("Zero veröffentlicht jede Erwähnung mit Link und Kontext.");
+    expect(
+      i18n.t(($) => {
+        return $.onboarding.workflows["auto-merge-github-prs"].steps.two.title;
+      }),
+    ).toBe("Zero prüft und wartet auf CI");
 
     await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
   });
