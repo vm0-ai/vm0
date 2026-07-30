@@ -1,7 +1,6 @@
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { githubChatThreadRoutes } from "@vm0/db/schema/github-chat-thread-route";
-import { githubIssueSessions } from "@vm0/db/schema/github-issue-session";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, desc, eq } from "drizzle-orm";
 
@@ -88,29 +87,6 @@ export async function listGitHubChatRoutesFixture(args: {
         eq(githubChatThreadRoutes.subjectNumber, args.subjectNumber),
       ),
     );
-}
-
-export async function readGitHubLegacySessionFixture(args: {
-  readonly installationId: string;
-  readonly repo: string;
-  readonly subjectNumber: number;
-}) {
-  const [session] = await db()
-    .select({
-      userId: githubIssueSessions.userId,
-      sessionId: githubIssueSessions.agentSessionId,
-      lastCommentId: githubIssueSessions.lastCommentId,
-    })
-    .from(githubIssueSessions)
-    .where(
-      and(
-        eq(githubIssueSessions.installationId, args.installationId),
-        eq(githubIssueSessions.repo, args.repo),
-        eq(githubIssueSessions.issueNumber, args.subjectNumber),
-      ),
-    )
-    .limit(1);
-  return session;
 }
 
 export async function countGitHubRunsByPromptFixture(
