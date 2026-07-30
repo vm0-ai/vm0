@@ -30,6 +30,8 @@ import {
 } from "typescript";
 
 import {
+  drizzleCallName,
+  getDrizzleColumnDataType,
   getDrizzleColumnMetadata,
   isDrizzleDeclaration,
   isDrizzlePgCoreDeclaration,
@@ -80,6 +82,15 @@ const PREDICATE_HELPERS = new Set([
   "notInArray",
   "notLike",
   "or",
+]);
+
+const BINARY_COMPARISON_HELPERS = new Set([
+  "eq",
+  "ne",
+  "gt",
+  "gte",
+  "lt",
+  "lte",
 ]);
 
 const SELECTION_HELPERS = new Set([
@@ -135,6 +146,8 @@ export const preferDrizzleApis = createRule({
         "Use Drizzle crossJoin(...) for this equivalent inner join on true.",
       crossJoinLateral:
         "Use Drizzle crossJoinLateral(...) for this equivalent lateral join.",
+      columnEncodedValue:
+        "This empty SQL wrapper bypasses the schema column encoder; pass the value directly to {{helper}}(...).",
       directColumn:
         "Select the Drizzle column directly instead of using an identity SQL wrapper.",
       composedCteQueryBuilder:
@@ -1007,6 +1020,97 @@ export const preferDrizzleApis = createRule({
         leftMetadata.tableName === rightMetadata.tableName &&
         context.sourceCode.getText(left) === context.sourceCode.getText(right)
       );
+    }
+
+    function hasConcreteBoundValueType(type: Type, location: Node): boolean {
+      if (
+        (type.flags &
+          (TypeFlags.Any |
+            TypeFlags.Never |
+            TypeFlags.Null |
+            TypeFlags.TypeParameter |
+            TypeFlags.Undefined |
+            TypeFlags.Unknown |
+            TypeFlags.Void)) !==
+        0
+      ) {
+        return false;
+      }
+      if (type.isUnionOrIntersection()) {
+        return type.types.every((member) => {
+          return hasConcreteBoundValueType(member, location);
+        });
+      }
+      if (checker.isArrayType(type) || checker.isTupleType(type)) {
+        return false;
+      }
+      const getSql = checker.getPropertyOfType(type, "getSQL");
+      return (
+        getSql === undefined ||
+        checker.getTypeOfSymbolAtLocation(getSql, location).getCallSignatures()
+          .length === 0
+      );
+    }
+
+    function inspectColumnEncodedComparisonValue(
+      node: TSESTree.CallExpression,
+    ): void {
+      if (node.arguments.length !== 2) {
+        return;
+      }
+      const [left, right] = node.arguments;
+      if (
+        left === undefined ||
+        right === undefined ||
+        left.type === AST_NODE_TYPES.SpreadElement ||
+        right.type !== AST_NODE_TYPES.TaggedTemplateExpression ||
+        right.quasi.expressions.length !== 1 ||
+        right.quasi.quasis.length !== 2 ||
+        right.quasi.quasis.some((quasi) => {
+          return (quasi.value.cooked ?? quasi.value.raw) !== "";
+        }) ||
+        !isDrizzleSqlTag(checker, services, right.tag) ||
+        !isConventionalColumnExpression(left)
+      ) {
+        return;
+      }
+      const value = right.quasi.expressions[0];
+      const helper = drizzleCallName(
+        checker,
+        services.esTreeNodeToTSNodeMap.get(node),
+      );
+      if (
+        helper === undefined ||
+        !BINARY_COMPARISON_HELPERS.has(helper) ||
+        value === undefined ||
+        value.type === AST_NODE_TYPES.TSAsExpression ||
+        value.type === AST_NODE_TYPES.TSNonNullExpression ||
+        value.type === AST_NODE_TYPES.TSSatisfiesExpression ||
+        value.type === AST_NODE_TYPES.TSTypeAssertion
+      ) {
+        return;
+      }
+      const tsLeft = services.esTreeNodeToTSNodeMap.get(left);
+      const tsValue = services.esTreeNodeToTSNodeMap.get(value);
+      const columnDataType = getDrizzleColumnDataType(
+        checker,
+        checker.getTypeAtLocation(tsLeft),
+        tsLeft,
+      );
+      const valueType = checker.getTypeAtLocation(tsValue);
+      if (
+        columnDataType === undefined ||
+        !hasConcreteBoundValueType(columnDataType, tsLeft) ||
+        !hasConcreteBoundValueType(valueType, tsValue) ||
+        !checker.isTypeAssignableTo(valueType, columnDataType)
+      ) {
+        return;
+      }
+      context.report({
+        node: right,
+        messageId: "columnEncodedValue",
+        data: { helper },
+      });
     }
 
     function callReceiver(
@@ -2285,6 +2389,7 @@ export const preferDrizzleApis = createRule({
       CallExpression(node: TSESTree.CallExpression): void {
         inspectRawQueryCall(node);
         inspectPredicateCall(node);
+        inspectColumnEncodedComparisonValue(node);
         inspectSqlJoinCall(node);
         inspectUnstableGroupingCall(node);
         inspectAdditionalContextCall(node);

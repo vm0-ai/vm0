@@ -752,6 +752,24 @@ export function getDrizzleColumnMetadata(
   return drizzleColumnMetadata(checker, type, location);
 }
 
+export function getDrizzleColumnDataType(
+  checker: TypeChecker,
+  type: Type,
+  location: Node,
+): Type | undefined {
+  if (
+    type.isUnion() ||
+    (type.flags & TypeFlags.TypeParameter) !== 0 ||
+    concreteDrizzleColumnMetadata(checker, type, location) === undefined
+  ) {
+    return undefined;
+  }
+  const metadataType = propertyType(checker, type, "_", location);
+  return metadataType === undefined
+    ? undefined
+    : propertyType(checker, metadataType, "data", location);
+}
+
 export function isDrizzleArrayParameter(
   checker: TypeChecker,
   services: ParserServicesWithTypeInformation,
