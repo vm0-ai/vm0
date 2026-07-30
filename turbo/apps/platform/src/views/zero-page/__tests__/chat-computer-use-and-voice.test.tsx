@@ -178,6 +178,12 @@ describe("chat lifecycle", () => {
     });
     await user.click(await screen.findByLabelText("Connectors"));
 
+    // Declared exception to the "no CSS class assertions" rule in
+    // docs/testing/testing-external-behavior.md and AP-7 of
+    // docs/testing/anti-patterns.md. jsdom loads no Tailwind stylesheet, so row
+    // colour has no observable page surface and getComputedStyle cannot tell a
+    // tinted row from an untinted one. The class assertion is the only way to
+    // keep the selected-state tint from being reintroduced here.
     expect(computerUseRow("Disconnect Studio Mac")).not.toHaveClass(
       "bg-primary/5",
     );
