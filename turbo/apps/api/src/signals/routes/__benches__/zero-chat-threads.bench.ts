@@ -10,7 +10,7 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import {
   connectorCatalogActiveSnapshot,
@@ -67,7 +67,7 @@ import { createZeroRouteMocks } from "../__tests__/helpers/zero-route-test";
 // iterations would otherwise see an unseeded DB, error silently in
 // tinybench, and produce empty samples without failing the suite.
 //
-// The fixture bulks up zero_runs / agent_runs / chat_messages and the
+// The fixture bulks up zero_runs / agent_runs / chat_events and the
 // user-visible GET data sets well past planner cross-over so Postgres uses the
 // same index-driven paths production hits. With tiny fixtures the planner picks
 // seq scans and the per-query overhead this bench needs to measure disappears.
@@ -604,7 +604,7 @@ async function seedTargetThreadRuns(
     triggerSource: string;
     chatThreadId: string;
   }[] = [];
-  const messageRows: {
+  const eventRows: {
     chatThreadId: string;
     runId: string;
     eventType: "input.prompt" | "output.message";
@@ -639,7 +639,7 @@ async function seedTargetThreadRuns(
           ? targetAttachmentId(i - latestAttachmentStart)
           : undefined;
       const content = markdownLorem(i, m);
-      messageRows.push({
+      eventRows.push({
         chatThreadId: fixture.threadId,
         runId,
         eventType: m === 0 ? "input.prompt" : "output.message",
@@ -661,12 +661,12 @@ async function seedTargetThreadRuns(
   await chunkedInsert(zRunRows, (chunk) => {
     return db.insert(zeroRuns).values(chunk);
   });
-  await chunkedInsert(messageRows, (chunk) => {
-    return db.insert(chatMessages).values(chunk);
+  await chunkedInsert(eventRows, (chunk) => {
+    return db.insert(chatEvents).values(chunk);
   });
   await db
     .update(chatThreads)
-    .set({ lastChatMessageSeqId: messageRows.length })
+    .set({ lastChatEventSeqId: eventRows.length })
     .where(eq(chatThreads.id, fixture.threadId));
 }
 

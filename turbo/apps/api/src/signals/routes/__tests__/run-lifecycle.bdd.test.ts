@@ -116,7 +116,7 @@ import {
 const context = testContext();
 const callbackStore = createStore();
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
-const ASSISTANT_MESSAGE_ID_NAMESPACE = "bfec4fb6-d5b8-43e4-a72a-9f58f87d7e01";
+const ASSISTANT_EVENT_ID_NAMESPACE = "bfec4fb6-d5b8-43e4-a72a-9f58f87d7e01";
 const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 
 function sessionAffinityProtectedUntil(
@@ -176,11 +176,11 @@ const CLAIM_ROUTE_TIMING_ACTION_TYPES = [
   ...CLAIM_ROUTE_TRANSITION_TIMING_ACTION_TYPES,
 ] as const;
 
-function assistantMessageIdForRunEvent(
+function assistantEventIdForRunEvent(
   runId: string,
   runEventId: string,
 ): string {
-  return uuidv5(`${runId}:${runEventId}`, ASSISTANT_MESSAGE_ID_NAMESPACE);
+  return uuidv5(`${runId}:${runEventId}`, ASSISTANT_EVENT_ID_NAMESPACE);
 }
 
 const RUNNER_POLL_TIMING_ACTION_TYPES = [
@@ -10603,7 +10603,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       return message.eventType === "output.message" && message.runId === runId;
     });
     expect(firstAssistant?.id).toBe(
-      assistantMessageIdForRunEvent(runId, "msg_bdd_1"),
+      assistantEventIdForRunEvent(runId, "msg_bdd_1"),
     );
     expect(firstAssistant?.content).toBe("Hello from BDD events");
     expect(
@@ -10771,10 +10771,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       [200],
     );
     const afterDuplicate = await chat.listThreadEvents(actor, threadId);
-    const duplicatedMessageId = assistantMessageIdForRunEvent(
-      runId,
-      "msg_bdd_1",
-    );
+    const duplicatedMessageId = assistantEventIdForRunEvent(runId, "msg_bdd_1");
     const matchingDuplicateRows = afterDuplicate.events.filter((message) => {
       return (
         message.eventType === "output.message" &&

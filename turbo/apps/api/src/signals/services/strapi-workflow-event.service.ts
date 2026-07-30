@@ -25,7 +25,7 @@ import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../external/time";
 import { safeJsonParse, settle } from "../utils";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
-import type { WorkflowQueueAdmissionTransaction } from "./chat-message-queue.service";
+import type { WorkflowQueueAdmissionTransaction } from "./workflow-chat-event-queue.service";
 import {
   buildChatOnlyWorkflowAutomationCallbacks,
   runWorkflowAutomationNow$,

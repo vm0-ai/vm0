@@ -1,6 +1,6 @@
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { feishuChatThreadRoutes } from "@vm0/db/schema/feishu-chat-thread-route";
 import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
@@ -118,26 +118,26 @@ async function loadFeishuChatDeliveryContext(args: {
     throw new Error("Feishu chat delivery run context is unavailable");
   }
 
-  const [message] = await args.db
-    .select({ content: chatMessages.content })
-    .from(chatMessages)
+  const [event] = await args.db
+    .select({ content: chatEvents.content })
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.id, payload.chatMessageId),
-        eq(chatMessages.runId, args.callback.runId),
-        eq(chatMessages.chatThreadId, run.chatThreadId),
+        eq(chatEvents.id, payload.chatMessageId),
+        eq(chatEvents.runId, args.callback.runId),
+        eq(chatEvents.chatThreadId, run.chatThreadId),
         chatEventTypeIn([
           "output.message",
           "output.error",
           "run.failed",
           "run.cancelled",
         ]),
-        isNotNull(chatMessages.content),
+        isNotNull(chatEvents.content),
       ),
     )
     .limit(1);
   args.signal.throwIfAborted();
-  if (!message?.content) {
+  if (!event?.content) {
     throw new Error("Feishu chat delivery message is unavailable");
   }
 
@@ -169,7 +169,7 @@ async function loadFeishuChatDeliveryContext(args: {
     )
     .limit(1);
   args.signal.throwIfAborted();
-  return { payload, run, messageContent: message.content, binding };
+  return { payload, run, messageContent: event.content, binding };
 }
 
 async function countFeishuMentioners(args: {

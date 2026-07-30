@@ -1,15 +1,15 @@
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { command } from "ccstate";
 import { and, count, inArray, isNull, or } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
-import { visibleChatEventCondition } from "./zero-chat-message-shared.service";
+import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 
-const ORPHANED_CHAT_MESSAGE_ERROR_CODE = "ORPHANED_QUEUED_CHAT_MESSAGES";
+const ORPHANED_CHAT_EVENT_ERROR_CODE = "ORPHANED_QUEUED_CHAT_MESSAGES";
 
-class OrphanedQueuedChatMessagesError extends Error {
-  readonly code = ORPHANED_CHAT_MESSAGE_ERROR_CODE;
+class OrphanedQueuedChatEventsError extends Error {
+  readonly code = ORPHANED_CHAT_EVENT_ERROR_CODE;
 
   constructor(readonly orphanedMessages: number) {
     super("Orphaned queued chat messages detected");
@@ -17,34 +17,34 @@ class OrphanedQueuedChatMessagesError extends Error {
   }
 }
 
-export const monitorChatMessageQueue$ = command(
+export const monitorChatEventQueue$ = command(
   async ({ set }, signal: AbortSignal) => {
     const db = set(writeDb$);
     const [result] = await db
       .select({ orphanedMessages: count() })
-      .from(chatMessages)
+      .from(chatEvents)
       .where(
         and(
-          isNull(chatMessages.runId),
+          isNull(chatEvents.runId),
           visibleChatEventCondition(db),
           or(
             and(
               chatEventTypeIn(["input.automation"]),
               or(
-                isNull(chatMessages.automationId),
-                isNull(chatMessages.triggerSource),
-                isNull(chatMessages.encryptedParams),
+                isNull(chatEvents.automationId),
+                isNull(chatEvents.triggerSource),
+                isNull(chatEvents.encryptedParams),
               ),
             ),
             and(
               chatEventTypeIn(["input.prompt"]),
-              inArray(chatMessages.triggerSource, [
+              inArray(chatEvents.triggerSource, [
                 "slack",
                 "feishu",
                 "teams",
                 "telegram",
               ]),
-              isNull(chatMessages.encryptedParams),
+              isNull(chatEvents.encryptedParams),
             ),
           ),
         ),
@@ -53,7 +53,7 @@ export const monitorChatMessageQueue$ = command(
 
     const orphanedMessages = result?.orphanedMessages ?? 0;
     if (orphanedMessages > 0) {
-      throw new OrphanedQueuedChatMessagesError(orphanedMessages);
+      throw new OrphanedQueuedChatEventsError(orphanedMessages);
     }
 
     return {

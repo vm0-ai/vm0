@@ -13,7 +13,7 @@ import {
   chatEventCompatibilityRole,
 } from "@vm0/api-contracts/contracts/chat-events";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import {
   and,
@@ -616,29 +616,29 @@ async function collectUnreadChatThreads(args: {
   for (const row of rows) {
     const messages = await args.db
       .select({
-        eventType: chatMessages.eventType,
-        content: chatMessages.content,
-        userMessage: chatMessages.userMessage,
-        createdAt: chatMessages.createdAt,
+        eventType: chatEvents.eventType,
+        content: chatEvents.content,
+        userMessage: chatEvents.userMessage,
+        createdAt: chatEvents.createdAt,
       })
-      .from(chatMessages)
+      .from(chatEvents)
       .where(
         and(
-          eq(chatMessages.chatThreadId, row.id),
+          eq(chatEvents.chatThreadId, row.id),
           or(
             and(
               chatEventTypeIn(["input.prompt", "input.rejected"]),
-              isNotNull(chatMessages.userMessage),
+              isNotNull(chatEvents.userMessage),
             ),
             and(
               not(chatEventTypeIn(["input.prompt", "input.rejected"])),
-              isNotNull(chatMessages.content),
+              isNotNull(chatEvents.content),
             ),
           ),
           chatEventTypeIn(CHAT_EVENT_TYPES),
         ),
       )
-      .orderBy(desc(chatMessages.createdAt))
+      .orderBy(desc(chatEvents.createdAt))
       .limit(MAX_THREAD_MESSAGES);
     threads.push({
       threadId: row.id,

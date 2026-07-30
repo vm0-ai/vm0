@@ -21,10 +21,10 @@ import {
   seedUsagePricingRows,
 } from "../../../test-fixtures/system-config-seeds";
 import {
-  holdChatMessageInsertTransactionFixture,
-  insertChatMessageTransactionFixture,
+  holdChatEventInsertTransactionFixture,
+  insertChatEventTransactionFixture,
   insertOutputEventWithConflictingLegacyPayloadFixture,
-} from "../../../test-fixtures/chat-messages";
+} from "../../../test-fixtures/chat-events";
 import {
   holdChatThreadEventInsertTransactionFixture,
   insertChatThreadEventTransactionFixture,
@@ -1804,12 +1804,12 @@ describe("CHAT-01 chat thread read state", () => {
 
     const firstContent = `held sequence message ${randomUUID()}`;
     const secondContent = `blocked sequence message ${randomUUID()}`;
-    const held = await holdChatMessageInsertTransactionFixture({
+    const held = await holdChatEventInsertTransactionFixture({
       threadId,
       content: firstContent,
       signal: context.signal,
     });
-    const secondInsert = insertChatMessageTransactionFixture({
+    const secondInsert = insertChatEventTransactionFixture({
       threadId,
       content: secondContent,
     });
@@ -1834,14 +1834,14 @@ describe("CHAT-01 chat thread read state", () => {
     const second = await secondInsert;
     const committed = await chat.listThreadEvents(owner, threadId);
     const concurrentRows = committed.events.filter((message) => {
-      return message.id === held.message.id || message.id === second.id;
+      return message.id === held.event.id || message.id === second.id;
     });
     expect(
       concurrentRows.map((message) => {
         return message.id;
       }),
-    ).toStrictEqual([held.message.id, second.id]);
-    expect(held.message.seqId).toBeLessThan(second.seqId);
+    ).toStrictEqual([held.event.id, second.id]);
+    expect(held.event.seqId).toBeLessThan(second.seqId);
   }, 30_000);
 });
 

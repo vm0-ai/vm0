@@ -14,7 +14,7 @@ import {
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { e2eSlackMockCallLog } from "@vm0/db/schema/e2e-slack-mock-call-log";
 import { orgCache } from "@vm0/db/schema/org-cache";
@@ -73,7 +73,7 @@ const SLACK_E2E_FIXTURES = {
   botUserId: "U_E2E_BOT",
   botToken: "xoxb-e2e-test-bot-token",
 } as const;
-const slackStateQueueRevoker = alias(chatMessages, "slack_state_queue_revoker");
+const slackStateQueueRevoker = alias(chatEvents, "slack_state_queue_revoker");
 
 type StarterGrantTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -567,16 +567,16 @@ function slackChatIngressRows(db: ReadonlyDb, teamId: string) {
 function slackPendingChatEventRows(db: ReadonlyDb, teamId: string) {
   return db
     .select({
-      id: chatMessages.id,
-      chatThreadId: chatMessages.chatThreadId,
-      eventType: chatMessages.eventType,
-      triggerSource: chatMessages.triggerSource,
-      createdAt: chatMessages.createdAt,
+      id: chatEvents.id,
+      chatThreadId: chatEvents.chatThreadId,
+      eventType: chatEvents.eventType,
+      triggerSource: chatEvents.triggerSource,
+      createdAt: chatEvents.createdAt,
     })
-    .from(chatMessages)
+    .from(chatEvents)
     .innerJoin(
       slackChatThreadRoutes,
-      eq(chatMessages.chatThreadId, slackChatThreadRoutes.chatThreadId),
+      eq(chatEvents.chatThreadId, slackChatThreadRoutes.chatThreadId),
     )
     .innerJoin(
       slackOrgConnections,
@@ -586,12 +586,12 @@ function slackPendingChatEventRows(db: ReadonlyDb, teamId: string) {
       and(
         eq(slackOrgConnections.slackWorkspaceId, teamId),
         chatEventTypeIn(["input.prompt", "input.automation"]),
-        isNull(chatMessages.runId),
+        isNull(chatEvents.runId),
         notExists(
           db
             .select({ id: slackStateQueueRevoker.id })
             .from(slackStateQueueRevoker)
-            .where(eq(slackStateQueueRevoker.revokesEventId, chatMessages.id)),
+            .where(eq(slackStateQueueRevoker.revokesEventId, chatEvents.id)),
         ),
       ),
     );

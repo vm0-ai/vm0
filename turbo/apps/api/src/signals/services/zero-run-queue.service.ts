@@ -33,7 +33,7 @@ import {
   revokeQueuedRunAssistantMarkers,
   type QueueMarkerRevokeNotification,
 } from "./zero-chat-queue-marker.service";
-import { recordFirstAssistantMessageEligibility } from "./zero-chat-first-assistant-message-metric.service";
+import { recordFirstAssistantEventEligibility } from "./zero-chat-first-assistant-event-metric.service";
 import {
   activePaidConcurrencySlots,
   cappedBaseConcurrencyLimit,
@@ -84,7 +84,7 @@ interface RunnerNotification {
   readonly createdAt: Date;
 }
 
-interface FirstAssistantMessageEligibility {
+interface FirstAssistantEventEligibility {
   readonly runId: string;
   readonly apiStartedAt: number;
 }
@@ -99,7 +99,7 @@ type PromoteQueuedCandidateResult =
       readonly status: "promoted";
       readonly runnerNotification: RunnerNotification | null;
       readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
-      readonly firstAssistantMessageEligibility: FirstAssistantMessageEligibility | null;
+      readonly firstAssistantEventEligibility: FirstAssistantEventEligibility | null;
     }
   | { readonly status: "full" }
   | { readonly status: "removed-stale" }
@@ -342,7 +342,7 @@ async function promoteQueuedCandidate(
         status: "promoted",
         runnerNotification: null,
         queueMarkerNotification,
-        firstAssistantMessageEligibility: null,
+        firstAssistantEventEligibility: null,
       };
     }
 
@@ -355,7 +355,7 @@ async function promoteQueuedCandidate(
     return {
       status: "promoted",
       queueMarkerNotification,
-      firstAssistantMessageEligibility: args.row.chatThreadId
+      firstAssistantEventEligibility: args.row.chatThreadId
         ? {
             runId: args.row.runId,
             apiStartedAt: runnerJob.apiStartedAt,
@@ -458,10 +458,8 @@ async function promoteQueuedCandidateWithSideEffects(
     return "skipped";
   }
 
-  if (result.firstAssistantMessageEligibility) {
-    recordFirstAssistantMessageEligibility(
-      result.firstAssistantMessageEligibility,
-    );
+  if (result.firstAssistantEventEligibility) {
+    recordFirstAssistantEventEligibility(result.firstAssistantEventEligibility);
   }
 
   await publishPromotedQueueSideEffects(db, {

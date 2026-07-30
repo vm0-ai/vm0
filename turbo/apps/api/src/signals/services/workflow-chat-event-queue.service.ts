@@ -1,6 +1,6 @@
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
@@ -37,7 +37,7 @@ import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 
 const WORKFLOW_QUEUE_EVENT_PARAMS_KEY = "__workflow_queue_event_params__";
-const automationEventRevoker = alias(chatMessages, "automation_event_revoker");
+const automationEventRevoker = alias(chatEvents, "automation_event_revoker");
 
 const workflowQueueEventParamsWireSchema = z.object({
   version: z.literal(1),
@@ -131,18 +131,18 @@ async function pendingTickExistsForAutomation(
   automationId: string,
 ): Promise<boolean> {
   const [tick] = await db
-    .select({ id: chatMessages.id })
-    .from(chatMessages)
+    .select({ id: chatEvents.id })
+    .from(chatEvents)
     .where(
       and(
-        eq(chatMessages.automationId, automationId),
+        eq(chatEvents.automationId, automationId),
         chatEventTypeIn(["input.automation"]),
-        isNull(chatMessages.runId),
+        isNull(chatEvents.runId),
         notExists(
           db
             .select({ id: automationEventRevoker.id })
             .from(automationEventRevoker)
-            .where(eq(automationEventRevoker.revokesEventId, chatMessages.id)),
+            .where(eq(automationEventRevoker.revokesEventId, chatEvents.id)),
         ),
       ),
     )
@@ -305,18 +305,18 @@ export async function loadNextWorkflowQueueEvent(
     }
     const [event] = await tx
       .select({
-        id: chatMessages.id,
+        id: chatEvents.id,
         userId: chatThreads.userId,
-        automationId: chatMessages.automationId,
-        chatThreadId: chatMessages.chatThreadId,
-        triggerSource: chatMessages.triggerSource,
-        triggerBrief: chatMessages.triggerBrief,
-        encryptedParams: chatMessages.encryptedParams,
-        createdAt: chatMessages.createdAt,
+        automationId: chatEvents.automationId,
+        chatThreadId: chatEvents.chatThreadId,
+        triggerSource: chatEvents.triggerSource,
+        triggerBrief: chatEvents.triggerBrief,
+        encryptedParams: chatEvents.encryptedParams,
+        createdAt: chatEvents.createdAt,
       })
-      .from(chatMessages)
-      .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
-      .where(eq(chatMessages.id, head.id))
+      .from(chatEvents)
+      .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
+      .where(eq(chatEvents.id, head.id))
       .limit(1);
     if (!event) {
       return null;
@@ -341,12 +341,12 @@ async function loadAutomationRejectionPayload(
 ) {
   const [event] = await db
     .select({
-      automationId: chatMessages.automationId,
-      triggerSource: chatMessages.triggerSource,
-      triggerBrief: chatMessages.triggerBrief,
+      automationId: chatEvents.automationId,
+      triggerSource: chatEvents.triggerSource,
+      triggerBrief: chatEvents.triggerBrief,
     })
-    .from(chatMessages)
-    .where(eq(chatMessages.id, eventId))
+    .from(chatEvents)
+    .where(eq(chatEvents.id, eventId))
     .limit(1);
   return event ?? null;
 }
@@ -499,14 +499,14 @@ export async function listPendingWorkflowQueueEvents(
   }
   const rows = await db
     .select({
-      id: chatMessages.id,
-      automationId: chatMessages.automationId,
-      triggerSource: chatMessages.triggerSource,
-      triggerBrief: chatMessages.triggerBrief,
-      createdAt: chatMessages.createdAt,
+      id: chatEvents.id,
+      automationId: chatEvents.automationId,
+      triggerSource: chatEvents.triggerSource,
+      triggerBrief: chatEvents.triggerBrief,
+      createdAt: chatEvents.createdAt,
     })
-    .from(chatMessages)
-    .where(inArray(chatMessages.id, automationIds));
+    .from(chatEvents)
+    .where(inArray(chatEvents.id, automationIds));
   const byId = new Map(
     rows.flatMap((event) => {
       return event.automationId && event.triggerSource
@@ -540,18 +540,15 @@ export async function deleteWorkflowQueueEventById(
 ): Promise<{ readonly chatThreadId: string } | null> {
   return await db.transaction(async (tx) => {
     const [owned] = await tx
-      .select({ chatThreadId: chatMessages.chatThreadId })
-      .from(chatMessages)
+      .select({ chatThreadId: chatEvents.chatThreadId })
+      .from(chatEvents)
       .innerJoin(
         workflowUserAutomationThreads,
-        eq(
-          workflowUserAutomationThreads.chatThreadId,
-          chatMessages.chatThreadId,
-        ),
+        eq(workflowUserAutomationThreads.chatThreadId, chatEvents.chatThreadId),
       )
       .where(
         and(
-          eq(chatMessages.id, args.eventId),
+          eq(chatEvents.id, args.eventId),
           eq(workflowUserAutomationThreads.orgId, args.orgId),
           eq(workflowUserAutomationThreads.userId, args.userId),
         ),

@@ -21,7 +21,7 @@ import {
 } from "./agent-run-callback.service";
 import { drainChatThreadQueueForRun$ } from "./chat-thread-queue-drain.service";
 import { projectLegacyCheckpointStorage } from "./storage-legacy-projection.service";
-import { maybeEmitRunUsageMessage$ } from "./zero-chat-usage-message.service";
+import { maybeEmitRunUsageEvent$ } from "./zero-chat-usage-event.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import { drainOrgQueue$ } from "./zero-run-queue.service";
 
@@ -390,7 +390,7 @@ export const dispatchCompleteSideEffects$ = command(
     signal.throwIfAborted();
 
     await tapError(
-      set(maybeEmitRunUsageMessage$, input.runId, signal),
+      set(maybeEmitRunUsageEvent$, input.runId, signal),
       (error) => {
         L.error("Failed to emit chat usage message after run completion", {
           runId: input.runId,

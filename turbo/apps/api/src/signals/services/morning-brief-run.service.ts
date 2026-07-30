@@ -6,7 +6,7 @@ import {
   morningBriefDeliveries,
   morningBriefSchedules,
 } from "@vm0/db/schema/morning-brief";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { command } from "ccstate";
 import { and, asc, eq, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
@@ -39,11 +39,11 @@ import {
   nextMorningBriefRunAt,
 } from "./morning-brief-schedule.service";
 import { insertChatEvent } from "./zero-chat-event.service";
-import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
+import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import {
   decryptQueuedUserMessageRunParams,
   encryptQueuedUserMessageRunParams,
-} from "./zero-chat-queued-message.service";
+} from "./zero-chat-queued-event.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { resolveDefaultAgent } from "./zero-email-common.service";
 import { createAutomationChatThread } from "./zero-workflow-user-automation-thread.service";
@@ -614,12 +614,12 @@ async function hasPendingMorningBriefQueueEvent(
     return false;
   }
   const messages = await db
-    .select({ encryptedParams: chatMessages.encryptedParams })
-    .from(chatMessages)
+    .select({ encryptedParams: chatEvents.encryptedParams })
+    .from(chatEvents)
     .where(
       and(
-        inArray(chatMessages.id, pendingMessageIds),
-        eq(chatMessages.triggerSource, "workflow-schedule"),
+        inArray(chatEvents.id, pendingMessageIds),
+        eq(chatEvents.triggerSource, "workflow-schedule"),
       ),
     );
   for (const message of messages) {

@@ -91,7 +91,7 @@ import * as computerUseHostSchema from "./schema/computer-use-host";
 import * as insightsDailySchema from "./schema/insights-daily";
 import * as userFeatureSwitchesSchema from "./schema/user-feature-switches";
 import * as userBehaviorCountSchema from "./schema/user-behavior-count";
-import * as chatMessageSchema from "./schema/chat-message";
+import * as chatEventSchema from "./schema/chat-event";
 import * as chatThreadEventSchema from "./schema/chat-thread-event";
 import * as chatThreadSnapshotSchema from "./schema/chat-thread-snapshot";
 import * as chatOutputMaterializationSchema from "./schema/chat-output-materialization";
@@ -209,7 +209,7 @@ export const schema = {
   ...insightsDailySchema,
   ...userFeatureSwitchesSchema,
   ...userBehaviorCountSchema,
-  ...chatMessageSchema,
+  ...chatEventSchema,
   ...chatThreadEventSchema,
   ...chatThreadSnapshotSchema,
   ...chatOutputMaterializationSchema,
