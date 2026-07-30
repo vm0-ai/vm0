@@ -129,10 +129,10 @@ export const autoOpenInitialThreadSidebar$ = command(
   ): Promise<void> => {
     await get(thread.indexedDbEventsInitialized$);
     signal.throwIfAborted();
-    // IndexedDB is only a local-first rendering cache. Wait for the initial
-    // remote page to merge before deciding whether its lifecycle projection is
-    // authoritative enough to open browser chrome.
-    await get(thread.hasNewEvents$);
+    // IndexedDB is only a local-first rendering cache. The latest remote page
+    // is authoritative for lifecycle projection; older history keeps loading
+    // without blocking browser chrome.
+    await get(thread.initialRemoteEventsReady$);
     signal.throwIfAborted();
     const result = await settle(
       set(autoOpenThreadSidebarFromBrowserLifecycle$, thread, signal),
@@ -151,7 +151,7 @@ export const autoOpenThreadSidebar$ = command(
     thread: ChatThreadSignals,
     signal: AbortSignal,
   ): Promise<void> => {
-    await get(thread.hasNewEvents$);
+    await get(thread.initialRemoteEventsReady$);
     signal.throwIfAborted();
     await set(autoOpenThreadSidebarFromBrowserLifecycle$, thread, signal);
   },
