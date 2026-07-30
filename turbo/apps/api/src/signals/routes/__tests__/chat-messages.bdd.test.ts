@@ -75,6 +75,7 @@ import {
   holdThreadSessionBindingClearFixture,
   holdThreadSessionConversationChangesFixture,
   holdThreadSessionConversationClearFixture,
+  insertRetiredQueuePauseEventsFixture,
   replaceBddVm0ApiKeys,
   replaceThreadSessionBindingFixture,
 } from "../../../test-fixtures/chat-messages";
@@ -2555,11 +2556,9 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(
       (await readThreadProjection(actor, fast.threadId)).serviceTier,
     ).toBeNull();
-    const updatedFastThreadEvents = await chat.requestThreadEvents(
-      actor,
-      {},
-      [200],
-    );
+    const updatedFastThreadEvents = await chat.requestThreadEvents(actor, {}, [
+      200,
+    ]);
     expect(updatedFastThreadEvents.status).toBe(200);
     if (updatedFastThreadEvents.status !== 200) {
       throw new Error("Expected chat thread events to load");
@@ -6570,5 +6569,71 @@ describe("CHAT-02: shared user message queue", () => {
     const followUp = await api.readRun(actor, fired.runId);
     expect(followUp.prompt).toContain("queue-first fires after cancel");
     await cancelChatRun(actor, fired.runId);
+  }, 90_000);
+});
+
+describe("CHAT-02: complete event stream", () => {
+  it("serves retired queue pause markers instead of skipping their seqIds", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const prompt = "list the full historical event stream";
+    const model = await chat.getDefaultCreateThreadModel(actor);
+    const sent = await accept(
+      chatEventsClient().send({
+        headers: sessionHeaders(actor),
+        body: {
+          agentId,
+          prompt,
+          userMessage: {
+            version: 1,
+            parts: [{ type: "text", text: prompt }],
+          },
+          model,
+        },
+      }),
+      [201],
+    );
+    if (sent.status !== 201) {
+      throw new Error("Expected the chat send to create a thread");
+    }
+    const threadId = sent.body.threadId;
+
+    const { pausedSeqId, resumedSeqId } =
+      await insertRetiredQueuePauseEventsFixture({
+        threadId,
+        pauseReason: "historical pause fixture",
+      });
+
+    const page = await chat.listThreadEvents(actor, threadId);
+    const seqIds = page.events
+      .map((event) => {
+        return event.seqId;
+      })
+      .sort((left, right) => {
+        return left - right;
+      });
+    const lowest = seqIds[0];
+    const highest = seqIds.at(-1);
+    if (lowest === undefined || highest === undefined) {
+      throw new Error("Expected the thread to have events");
+    }
+    expect(highest - lowest + 1).toBe(seqIds.length);
+
+    const paused = page.events.find((event) => {
+      return event.seqId === pausedSeqId;
+    });
+    expect(paused).toMatchObject({
+      eventType: "queue.automation_paused",
+      content: null,
+      pauseReason: "historical pause fixture",
+    });
+    const resumed = page.events.find((event) => {
+      return event.seqId === resumedSeqId;
+    });
+    expect(resumed).toMatchObject({
+      eventType: "queue.automation_resumed",
+      content: null,
+    });
   }, 90_000);
 });
