@@ -857,7 +857,6 @@ export const startConnectorExternalCodeSession$ = command(
     const body: ConnectorExternalCodeSessionStartResponse = {
       sessionId: session.id,
       sessionToken,
-      type: resolved.connectorSlug,
       connectorSlug: resolved.connectorSlug,
       status: "pending",
       authorizationUrl: startResult.authorizationUrl,

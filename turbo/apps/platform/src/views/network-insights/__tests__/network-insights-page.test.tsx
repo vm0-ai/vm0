@@ -28,11 +28,11 @@ beforeEach(() => {
 
 function publicConnectorStatusItem(
   overrides: Partial<PublicConnectorCatalogStatusItem> &
-    Pick<PublicConnectorCatalogStatusItem, "connectorRef" | "label">,
+    Pick<PublicConnectorCatalogStatusItem, "slug" | "label">,
 ): PublicConnectorCatalogStatusItem {
-  const { connectorRef: connectorSlug, label, icon, ...rest } = overrides;
+  const { slug: connectorSlug, label, icon, ...rest } = overrides;
   return {
-    connectorRef: connectorSlug,
+    slug: connectorSlug,
     label,
     description: `${label} public help text`,
     icon: icon ?? {
@@ -529,15 +529,15 @@ describe("network insights page", () => {
   it("uses connector labels from public catalog metadata", async () => {
     mockConnectorCatalogStatus([
       publicConnectorStatusItem({
-        connectorRef: "slack",
+        slug: "slack",
         label: "Catalog Slack",
       }),
       publicConnectorStatusItem({
-        connectorRef: "github",
+        slug: "github",
         label: "Catalog GitHub",
       }),
       publicConnectorStatusItem({
-        connectorRef: "google-calendar",
+        slug: "google-calendar",
         label: "Catalog Calendar",
       }),
     ]);
@@ -561,7 +561,7 @@ describe("network insights page", () => {
     const day = data.days[0]!;
     mockConnectorCatalogStatus([
       publicConnectorStatusItem({
-        connectorRef: "github",
+        slug: "github",
         label: "Catalog GitHub",
       }),
     ]);

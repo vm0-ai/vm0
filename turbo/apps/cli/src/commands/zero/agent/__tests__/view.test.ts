@@ -46,12 +46,12 @@ const defaultPermissionDetails = [
 
 function mockConnectorListHandler(
   connectors: Record<string, unknown>[] = [],
-  configuredTypes: string[] = [],
+  configuredConnectorSlugs: string[] = [],
 ) {
   return http.get("http://localhost:3000/api/zero/connectors", () => {
     return HttpResponse.json({
       connectors,
-      configuredTypes,
+      configuredConnectorSlugs,
       connectorProvidedBindings: [],
     });
   });
@@ -71,7 +71,7 @@ function mockUserPermissionGrantsHandler(
 function makePermissionGrant(overrides: Record<string, unknown> = {}) {
   return {
     agentId: "comp_abc123",
-    connectorRef: "slack",
+    connectorSlug: "slack",
     permission: "conversations:read",
     action: "allow",
     expiresAt: null,
@@ -84,7 +84,7 @@ function makePermissionGrant(overrides: Record<string, unknown> = {}) {
 function makeConnector(overrides: Record<string, unknown> = {}) {
   return {
     id: "1",
-    type: "github",
+    slug: "github",
     authMethod: "oauth",
     externalId: "12345",
     externalUsername: "octocat",
@@ -129,7 +129,7 @@ describe("zero agent view command", () => {
         http.get(
           "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
           () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
+            return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
         ),
         mockConnectorListHandler(),
@@ -155,7 +155,7 @@ describe("zero agent view command", () => {
         http.get(
           "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
           () => {
-            return HttpResponse.json({ enabledTypes: [] });
+            return HttpResponse.json({ enabledConnectorSlugs: [] });
           },
         ),
         mockConnectorListHandler(),
@@ -181,7 +181,7 @@ describe("zero agent view command", () => {
         http.get(
           "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
           () => {
-            return HttpResponse.json({ enabledTypes: [] });
+            return HttpResponse.json({ enabledConnectorSlugs: [] });
           },
         ),
         mockConnectorListHandler(),
@@ -207,7 +207,7 @@ describe("zero agent view command", () => {
         http.get(
           "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
           () => {
-            return HttpResponse.json({ enabledTypes: [] });
+            return HttpResponse.json({ enabledConnectorSlugs: [] });
           },
         ),
         mockConnectorListHandler(),
@@ -227,7 +227,7 @@ describe("zero agent view command", () => {
         http.get(
           "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
           () => {
-            return HttpResponse.json({ enabledTypes: ["slack"] });
+            return HttpResponse.json({ enabledConnectorSlugs: ["slack"] });
           },
         ),
         mockConnectorListHandler(),
@@ -267,7 +267,9 @@ describe("zero agent view command", () => {
         http.get(
           "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
           () => {
-            return HttpResponse.json({ enabledTypes: ["server-only"] });
+            return HttpResponse.json({
+              enabledConnectorSlugs: ["server-only"],
+            });
           },
         ),
         mockConnectorListHandler(),
@@ -288,7 +290,7 @@ describe("zero agent view command", () => {
         http.get(
           "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
           () => {
-            return HttpResponse.json({ enabledTypes: [] });
+            return HttpResponse.json({ enabledConnectorSlugs: [] });
           },
         ),
         mockConnectorListHandler(),
@@ -322,7 +324,7 @@ describe("zero agent view command", () => {
         http.get(
           "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
           () => {
-            return HttpResponse.json({ enabledTypes: [] });
+            return HttpResponse.json({ enabledConnectorSlugs: [] });
           },
         ),
         mockConnectorListHandler(),
@@ -357,7 +359,7 @@ describe("zero agent view command", () => {
         http.get(
           "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
           () => {
-            return HttpResponse.json({ enabledTypes: ["slack"] });
+            return HttpResponse.json({ enabledConnectorSlugs: ["slack"] });
           },
         ),
         mockUserPermissionGrantsHandler([
@@ -398,7 +400,7 @@ describe("zero agent view command", () => {
         http.get(
           "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
           () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
+            return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
         ),
         mockConnectorListHandler(),
@@ -424,7 +426,7 @@ describe("zero agent view command", () => {
           "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
           () => {
             return HttpResponse.json({
-              enabledTypes: ["custom-connector"],
+              enabledConnectorSlugs: ["custom-connector"],
             });
           },
         ),
@@ -452,7 +454,7 @@ describe("zero agent view command", () => {
         http.get(
           "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
           () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
+            return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
         ),
         mockConnectorListHandler([makeConnector()], ["github"]),
@@ -472,7 +474,7 @@ describe("zero agent view command", () => {
         http.get(
           "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
           () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
+            return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
         ),
         mockConnectorListHandler([makeConnector()], ["github"]),
@@ -497,7 +499,7 @@ describe("zero agent view command", () => {
         http.get(
           "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
           () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
+            return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
         ),
         http.get("http://localhost:3000/api/zero/connectors", () => {
@@ -523,7 +525,7 @@ describe("zero agent view command", () => {
         http.get(
           "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
           () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
+            return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
         ),
         mockConnectorListHandler(
@@ -557,7 +559,7 @@ describe("zero agent view command", () => {
         http.get(
           "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
           () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
+            return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
         ),
         mockConnectorListHandler(
@@ -586,7 +588,7 @@ describe("zero agent view command", () => {
         http.get(
           "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
           () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
+            return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
         ),
         mockConnectorListHandler(
@@ -633,7 +635,7 @@ describe("zero agent view command", () => {
         http.get(
           "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
           () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
+            return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
         ),
         mockConnectorListHandler(),

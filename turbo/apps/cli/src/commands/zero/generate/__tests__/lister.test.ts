@@ -41,7 +41,7 @@ function connector(
 ) {
   return {
     id: "00000000-0000-4000-8000-000000000001",
-    type: connectorSlug,
+    slug: connectorSlug,
     authMethod: "api-token",
     externalId: `${connectorSlug}-external-id`,
     externalUsername,
@@ -70,7 +70,7 @@ function stubConnectorsWithConfiguredSlugs(
 ) {
   const connectedBySlug = new Map(
     connectors.map((item) => {
-      const connectorSlug = item.type as string;
+      const connectorSlug = item.slug as string;
       return [
         connectorSlug,
         catalogStatusItem({
@@ -115,7 +115,9 @@ function stubUserConnectors(enabledConnectorSlugs: string[]) {
   return http.get(
     `http://localhost:3000/api/zero/agents/${AGENT_ID}/user-connectors`,
     () => {
-      return HttpResponse.json({ enabledTypes: enabledConnectorSlugs });
+      return HttpResponse.json({
+        enabledConnectorSlugs: enabledConnectorSlugs,
+      });
     },
   );
 }

@@ -326,7 +326,6 @@ describe("zero workflows", () => {
 
     expect(response.body.connectors).toStrictEqual([
       {
-        connectorRef: "gmail",
         connectorSlug: "gmail",
         label: "Gmail",
         icon: {
@@ -337,7 +336,6 @@ describe("zero workflows", () => {
         status: "not-connected",
       },
       {
-        connectorRef: "runtime",
         connectorSlug: "runtime",
         label: "Runtime",
         icon: {
@@ -348,7 +346,6 @@ describe("zero workflows", () => {
         status: "not-enabled-for-agent",
       },
       {
-        connectorRef: "gitlab",
         connectorSlug: "gitlab",
         label: "GitLab",
         icon: {

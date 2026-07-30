@@ -233,7 +233,7 @@ function mockConnectors(
     connectors.map((connector) => {
       return {
         id: crypto.randomUUID(),
-        type: connector.connectorSlug,
+        slug: connector.connectorSlug,
         authMethod: connector.authMethod ?? "oauth",
         externalId: null,
         externalUsername: connector.externalUsername ?? null,
@@ -329,7 +329,7 @@ function publicStatusItem(args: {
   readonly connectNotice?: PublicConnectorCatalogStatusItem["connectNotice"];
 }): PublicConnectorCatalogStatusItem {
   return {
-    connectorRef: args.connectorSlug,
+    slug: args.connectorSlug,
     label: args.label,
     description: args.description ?? `${args.label} public description`,
     icon: args.icon ?? {
@@ -499,7 +499,7 @@ function setupConnectorStatusFilterPage(path = "/connectors"): void {
     teamAgent("c0000000-0000-4000-a000-000000000020", "Research", "preset:0"),
   ]);
   context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-    return respond(200, { enabledTypes: ["github"] });
+    return respond(200, { enabledConnectorSlugs: ["github"] });
   });
 
   detachedSetupPage({
@@ -612,7 +612,7 @@ describe("connectors page", () => {
     ]);
     context.mocks.data.team([teamAgent(researchAgentId, "Research Agent")]);
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledTypes: ["github"] });
+      return respond(200, { enabledConnectorSlugs: ["github"] });
     });
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, []);
@@ -1289,7 +1289,6 @@ describe("connectors page", () => {
     context.mocks.data.team([teamAgent(agentId, "Research Agent", "preset:0")]);
     context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
       return respond(200, {
-        enabledTypes: [],
         enabledConnectorSlugs: params.id === agentId ? ["github"] : [],
       });
     });
@@ -1430,7 +1429,7 @@ describe("connectors page", () => {
     ]);
     context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
       return respond(200, {
-        enabledTypes: enabledByAgent.get(params.id) ?? [],
+        enabledConnectorSlugs: enabledByAgent.get(params.id) ?? [],
       });
     });
     context.mocks.api(
@@ -1442,7 +1441,7 @@ describe("connectors page", () => {
         );
         enabledByAgent.set(params.id, nextEnabledConnectorSlugs);
         return respond(200, {
-          enabledTypes: nextEnabledConnectorSlugs,
+          enabledConnectorSlugs: nextEnabledConnectorSlugs,
         });
       },
     );
@@ -1501,7 +1500,7 @@ describe("connectors page", () => {
           error: { message: "Agent not found", code: "NOT_FOUND" },
         });
       }
-      return respond(200, { enabledTypes: ["github"] });
+      return respond(200, { enabledConnectorSlugs: ["github"] });
     });
 
     detachedSetupPage({ context, path: "/connectors" });
@@ -1534,7 +1533,7 @@ describe("connectors page", () => {
       teamAgent(staleAgentId, "Deleted Agent"),
     ]);
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledTypes: ["github"] });
+      return respond(200, { enabledConnectorSlugs: ["github"] });
     });
     context.mocks.api(
       zeroUserPermissionGrantsContract.list,
@@ -1591,7 +1590,7 @@ describe("connectors page", () => {
     ]);
     context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
       return respond(200, {
-        enabledTypes: enabledByAgent.get(params.id) ?? [],
+        enabledConnectorSlugs: enabledByAgent.get(params.id) ?? [],
       });
     });
 
@@ -1626,7 +1625,7 @@ describe("connectors page", () => {
     mockConnectors([{ connectorSlug: "github", externalUsername: "octocat" }]);
     context.mocks.data.team([teamAgent(agentId, "Research Agent", "preset:0")]);
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledTypes: [] });
+      return respond(200, { enabledConnectorSlugs: [] });
     });
 
     detachedSetupPage({
@@ -1664,7 +1663,7 @@ describe("connectors page", () => {
     context.mocks.data.team([teamAgent(mediaAgentId, "Media Agent")]);
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
       return respond(200, {
-        enabledTypes: ["cloudinary"],
+        enabledConnectorSlugs: ["cloudinary"],
       });
     });
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
@@ -2156,7 +2155,7 @@ describe("connectors page", () => {
       zeroUserConnectorsContract.update,
       ({ params, respond }) => {
         authorizedAgentIds.push(params.id);
-        return respond(200, { enabledTypes: ["stripe"] });
+        return respond(200, { enabledConnectorSlugs: ["stripe"] });
       },
     );
 
@@ -2186,13 +2185,13 @@ describe("connectors page", () => {
     });
 
     context.mocks.ably.trigger("connector:changed", {
-      connectorRef: "github",
+      connectorSlug: "github",
     });
     expect(authorizedAgentIds).toStrictEqual([]);
 
     mockConnectors([{ connectorSlug: "stripe", authMethod: "oauth" }]);
     context.mocks.ably.trigger("connector:changed", {
-      connectorRef: "stripe",
+      connectorSlug: "stripe",
     });
 
     await waitFor(() => {
@@ -2247,7 +2246,7 @@ describe("connectors page", () => {
         expect(body.agentId).toBeUndefined();
         return respond(200, {
           id: crypto.randomUUID(),
-          type: params.connectorSlug,
+          slug: params.connectorSlug,
           authMethod: body.authMethod,
           externalId: null,
           externalUsername: null,
@@ -2266,7 +2265,7 @@ describe("connectors page", () => {
       zeroUserConnectorsContract.update,
       ({ params, respond }) => {
         authorizedAgentIds.push(params.id);
-        return respond(200, { enabledTypes: ["stripe"] });
+        return respond(200, { enabledConnectorSlugs: ["stripe"] });
       },
     );
 
@@ -2333,7 +2332,7 @@ describe("connectors page", () => {
         expect(body.authMethod).toBe("api");
         return respond(200, {
           id: crypto.randomUUID(),
-          type: params.connectorSlug,
+          slug: params.connectorSlug,
           authMethod: body.authMethod,
           externalId: null,
           externalUsername: null,
@@ -2471,7 +2470,7 @@ describe("connectors page", () => {
         return respond(200, {
           sessionId: "00000000-0000-4000-8000-000000000010",
           sessionToken: "stripe-device-session-token",
-          type: "stripe",
+          connectorSlug: "stripe",
           status: "pending",
           userCode: "STRIPE-DEVICE",
           verificationUri: "https://oauth.test/stripe/device",
@@ -2598,7 +2597,7 @@ describe("connectors page", () => {
         submittedValues = body.values;
         return respond(200, {
           id: crypto.randomUUID(),
-          type: "axiom",
+          slug: "axiom",
           authMethod: body.authMethod,
           externalId: null,
           externalUsername: null,
@@ -2705,7 +2704,7 @@ describe("connectors page", () => {
         ];
         return respond(200, {
           id: crypto.randomUUID(),
-          type: "axiom",
+          slug: "axiom",
           authMethod: body.authMethod,
           externalId: null,
           externalUsername: null,
@@ -2829,7 +2828,7 @@ describe("connectors page", () => {
         submittedValues = body.values;
         return respond(200, {
           id: crypto.randomUUID(),
-          type: "axiom",
+          slug: "axiom",
           authMethod: body.authMethod,
           externalId: null,
           externalUsername: null,
@@ -2934,7 +2933,7 @@ describe("connectors page", () => {
         expect(body.agentId).toBeUndefined();
         return respond(200, {
           id: crypto.randomUUID(),
-          type: params.connectorSlug,
+          slug: params.connectorSlug,
           authMethod: body.authMethod,
           externalId: null,
           externalUsername: null,
@@ -2950,11 +2949,11 @@ describe("connectors page", () => {
     );
     let authorizationUpdateCount = 0;
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledTypes: [] });
+      return respond(200, { enabledConnectorSlugs: [] });
     });
     context.mocks.api(zeroUserConnectorsContract.update, ({ respond }) => {
       authorizationUpdateCount += 1;
-      return respond(200, { enabledTypes: [] });
+      return respond(200, { enabledConnectorSlugs: [] });
     });
 
     detachedSetupPage({ context, path: "/connectors" });
@@ -3047,7 +3046,7 @@ describe("connectors page", () => {
       ({ body, params, respond }) => {
         return respond(200, {
           id: crypto.randomUUID(),
-          type: params.connectorSlug,
+          slug: params.connectorSlug,
           authMethod: body.authMethod,
           externalId: null,
           externalUsername: null,
@@ -3062,7 +3061,7 @@ describe("connectors page", () => {
       },
     );
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledTypes: [] });
+      return respond(200, { enabledConnectorSlugs: [] });
     });
     const authorizedAgentIds: string[] = [];
     context.mocks.api(
@@ -3074,7 +3073,6 @@ describe("connectors page", () => {
           operation: "add",
         });
         return respond(200, {
-          enabledTypes: ["axiom"],
           enabledConnectorSlugs: ["axiom"],
         });
       },

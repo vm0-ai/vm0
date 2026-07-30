@@ -282,9 +282,7 @@ export const zeroConnectorExternalCodeSessionContract = c.router({
 });
 
 const connectorSearchItemSchema = z.object({
-  // TODO(#23821): Remove this legacy response field after clients migrate.
-  id: connectorSlugSchema,
-  slug: connectorSlugSchema.optional(),
+  slug: connectorSlugSchema,
   label: z.string(),
   description: z.string(),
   authMethods: z.array(connectorAuthMethodIdSchema),

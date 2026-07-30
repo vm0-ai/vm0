@@ -89,7 +89,7 @@ describe("api client headers", () => {
       zeroUserConnectorsContract.get,
       ({ request, respond }) => {
         observedHeaders.push(observedClientHeaders(request));
-        return respond(200, { enabledTypes: [] });
+        return respond(200, { enabledConnectorSlugs: [] });
       },
     );
 
@@ -253,7 +253,7 @@ describe("api client headers", () => {
         observedBypassHeaders.push(
           request.headers.get("x-vercel-protection-bypass"),
         );
-        return respond(200, { enabledTypes: [] });
+        return respond(200, { enabledConnectorSlugs: [] });
       },
     );
     context.mocks.http.get("*/api/zero/preview-bypass-test", ({ request }) => {

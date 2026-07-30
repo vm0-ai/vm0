@@ -832,7 +832,7 @@ const ensureSeeded: () => Promise<BenchChatThreadFixture> = (() => {
       }
       const listedConnectorSlugs = new Set(
         connectorSanity.body.connectors.map((connector) => {
-          return connector.type;
+          return connector.slug;
         }),
       );
       const missingConnectorSlugs = BENCH_CONNECTOR_CATALOG.connectors

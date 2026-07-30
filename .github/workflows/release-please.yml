@@ -943,7 +943,8 @@ jobs:
   # Run required production migrations and immediately promote the staged API
   # deployment in the same job, avoiding a second runner and toolchain setup.
   promote-api-production:
-    needs: [release-please, builds-complete, build-api-production]
+    needs:
+      [release-please, builds-complete, build-api-production, publish-npm]
     if: >-
       always() &&
       !failure() && !cancelled() &&

@@ -69,10 +69,10 @@ function customConnectorBody(slug: string) {
 
 function connectorBySlug(
   connectors: readonly ConnectorResponse[],
-  type: ConnectorResponse["type"],
+  type: ConnectorResponse["slug"],
 ): ConnectorResponse | undefined {
   return connectors.find((connector) => {
-    return connector.type === type;
+    return connector.slug === type;
   });
 }
 
@@ -106,7 +106,6 @@ function expectConnectorErrorRedirect(
 ): void {
   const url = redirectLocation(response);
   expect(url.pathname).toBe("/connector/error");
-  expect(url.searchParams.get("type")).toBe(args.connectorSlug);
   expect(url.searchParams.get("connectorSlug")).toBe(args.connectorSlug);
   expect(url.searchParams.get("message")).toBe(args.message);
 }
@@ -141,7 +140,7 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
       connectorsApi.readConnectorBySlug(actor, "openai"),
     ).resolves.toMatchObject({
       id: connected.id,
-      type: "openai",
+      slug: "openai",
       connectionStatus: "connected",
     });
     await expect(
@@ -187,12 +186,12 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
 
     const initialList = await connectorsApi.listConnectors(actor);
     expect(initialList.connectors).toStrictEqual([]);
-    expect(initialList.configuredTypes).toContain("openai");
+    expect(initialList.configuredConnectorSlugs).toContain("openai");
     expect(initialList.connectorProvidedBindings).toStrictEqual([]);
 
     const search = await connectorsApi.searchConnectors(actor, "OPENAI");
     const openaiSearch = search.connectors.find((connector) => {
-      return connector.id === "openai";
+      return connector.slug === "openai";
     });
     expect(openaiSearch?.authMethods).toStrictEqual(["api-token"]);
 
@@ -230,7 +229,7 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
 
     const readBack = await connectorsApi.readConnectorBySlug(actor, "openai");
     expect(readBack).toMatchObject({
-      type: "openai",
+      slug: "openai",
       authMethod: "api-token",
       connectionStatus: "connected",
       oauthScopes: null,
@@ -244,7 +243,7 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
     );
     expect(listAfterConnect.connectorProvidedBindings).toContainEqual(
       expect.objectContaining({
-        connectorType: "openai",
+        connectorSlug: "openai",
         authMethod: "api-token",
         namespace: "secrets",
         name: "OPENAI_TOKEN",
@@ -355,7 +354,7 @@ describe("CONN-02: OAuth start and callback", () => {
     await expect(
       connectorsApi.readConnectorBySlug(actor, "github"),
     ).resolves.toMatchObject({
-      type: "github",
+      slug: "github",
       externalUsername: "bdd-github-user",
       connectionStatus: "connected",
     });
@@ -424,7 +423,7 @@ describe("CONN-02: OAuth start and callback", () => {
 
     const connected = await connectorsApi.readConnectorBySlug(actor, "github");
     expect(connected).toMatchObject({
-      type: "github",
+      slug: "github",
       authMethod: "oauth",
       externalId: "42",
       externalUsername: "bdd-github-user",
@@ -506,7 +505,7 @@ describe("CONN-02: OAuth start and callback", () => {
 
     const connected = await connectorsApi.readConnectorBySlug(actor, "datadog");
     expect(connected).toMatchObject({
-      type: "datadog",
+      slug: "datadog",
       authMethod: "oauth",
       externalId: "us3.datadoghq.com",
       externalUsername: "us3.datadoghq.com",
@@ -580,7 +579,7 @@ describe("CONN-02: OAuth device authorization", () => {
     );
     expect(
       visible.connectors.find((connector) => {
-        return connector.id === "test-oauth-device";
+        return connector.slug === "test-oauth-device";
       })?.authMethods,
     ).toStrictEqual(["oauth", "api"]);
 
@@ -590,7 +589,6 @@ describe("CONN-02: OAuth device authorization", () => {
       "oauth",
     );
     expect(session).toMatchObject({
-      type: "test-oauth-device",
       connectorSlug: "test-oauth-device",
       status: "pending",
       userCode: "TEST-DEVICE",
@@ -619,7 +617,7 @@ describe("CONN-02: OAuth device authorization", () => {
       throw new Error(`Expected complete device auth, received ${poll.status}`);
     }
     expect(poll.connector).toMatchObject({
-      type: "test-oauth-device",
+      slug: "test-oauth-device",
       authMethod: "oauth",
       connectionStatus: "connected",
       oauthScopes: ["read"],
@@ -653,7 +651,7 @@ describe("CONN-02: OAuth device authorization", () => {
       { mode: "live" },
     );
     expect(session).toMatchObject({
-      type: "stripe",
+      connectorSlug: "stripe",
       status: "pending",
       userCode: "STRIPE-CLI",
       verificationUri:
@@ -682,7 +680,7 @@ describe("CONN-02: OAuth device authorization", () => {
       );
     }
     expect(poll.connector).toMatchObject({
-      type: "stripe",
+      slug: "stripe",
       authMethod: "cli",
       externalId: "acct_bdd",
       externalUsername: "BDD Stripe",
@@ -700,7 +698,7 @@ describe("CONN-02: OAuth device authorization", () => {
     );
     expect(listed.connectorProvidedBindings).toContainEqual(
       expect.objectContaining({
-        connectorType: "stripe",
+        connectorSlug: "stripe",
         authMethod: "cli",
         namespace: "secrets",
         name: "STRIPE_TOKEN",
@@ -834,7 +832,7 @@ describe("CONN-02: OAuth device authorization", () => {
       [200],
     );
     expect(switchlessStart.body).toMatchObject({
-      type: "test-oauth-device",
+      connectorSlug: "test-oauth-device",
       status: "pending",
     });
     expect(testOauthProvider.deviceCodeBodies).toHaveLength(1);
@@ -886,7 +884,7 @@ describe("CONN-02: OAuth device authorization", () => {
       "oauth",
     );
     expect(first).toMatchObject({
-      type: "test-oauth-device",
+      connectorSlug: "test-oauth-device",
       status: "pending",
       userCode: "TEST-DEVICE",
       verificationUri: "https://oauth-device.test/device",
@@ -950,7 +948,7 @@ describe("CONN-02: OAuth device authorization", () => {
       );
     }
     expect(completed.connector).toMatchObject({
-      type: "test-oauth-device",
+      slug: "test-oauth-device",
       authMethod: "oauth",
       connectionStatus: "connected",
       oauthScopes: ["read", "granted"],
@@ -1278,7 +1276,7 @@ describe("CONN-02: OAuth device authorization", () => {
       "oauth",
     );
     expect(base44Session).toMatchObject({
-      type: "base44",
+      connectorSlug: "base44",
       status: "pending",
       userCode: "BASE-44",
       verificationUri: "https://app.base44.com/device",
@@ -1320,7 +1318,7 @@ describe("CONN-02: OAuth device authorization", () => {
       "base44",
     );
     expect(base44Connector).toMatchObject({
-      type: "base44",
+      slug: "base44",
       authMethod: "oauth",
       externalId: "base44-user-id",
       externalUsername: "Base44 User",
@@ -1340,7 +1338,7 @@ describe("CONN-02: OAuth device authorization", () => {
       "oauth",
     );
     expect(slockSession).toMatchObject({
-      type: "slock",
+      connectorSlug: "slock",
       status: "pending",
       userCode: "SLOCK-1",
       verificationUri: "https://api.slock.ai/device",
@@ -1369,7 +1367,7 @@ describe("CONN-02: OAuth device authorization", () => {
       "slock",
     );
     expect(slockConnector).toMatchObject({
-      type: "slock",
+      slug: "slock",
       authMethod: "oauth",
       externalId: "slock-user-id",
       externalUsername: "Slock User",
@@ -1483,7 +1481,7 @@ describe("CONN-02: external-code authorization", () => {
       [200],
     );
     expect(switchlessStart.body).toMatchObject({
-      type: "aws",
+      connectorSlug: "aws",
       status: "pending",
     });
 
@@ -3189,13 +3187,13 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
     });
     const successUrl = redirectLocation(success);
     expect(successUrl.pathname).toBe("/connector/success");
-    expect(successUrl.searchParams.get("type")).toBe("github");
+    expect(successUrl.searchParams.get("connectorSlug")).toBe("github");
     expect(successUrl.searchParams.get("connectorSlug")).toBe("github");
     expect(successUrl.searchParams.get("username")).toBe("bdd-github-user");
 
     const connected = await connectorsApi.readConnectorBySlug(actor, "github");
     expect(connected).toMatchObject({
-      type: "github",
+      slug: "github",
       authMethod: "oauth",
       connectionStatus: "connected",
     });
@@ -3388,7 +3386,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
     });
     const successUrl = redirectLocation(success);
     expect(successUrl.pathname).toBe("/connector/success");
-    expect(successUrl.searchParams.get("type")).toBe("test-oauth");
+    expect(successUrl.searchParams.get("connectorSlug")).toBe("test-oauth");
     expect(successUrl.searchParams.get("connectorSlug")).toBe("test-oauth");
     expect(successUrl.searchParams.get("username")).toBe("bdd-test-oauth");
 
@@ -3407,7 +3405,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       "test-oauth",
     );
     expect(oauthConnector).toMatchObject({
-      type: "test-oauth",
+      slug: "test-oauth",
       authMethod: "oauth",
       externalId: "bdd-test-oauth-user",
       externalUsername: "bdd-test-oauth",
@@ -3423,7 +3421,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
     const listed = await connectorsApi.listConnectors(actor);
     expect(listed.connectorProvidedBindings).toContainEqual(
       expect.objectContaining({
-        connectorType: "test-oauth",
+        connectorSlug: "test-oauth",
         authMethod: "oauth",
         namespace: "secrets",
         name: "TEST_OAUTH_TOKEN",
@@ -3432,7 +3430,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
     );
     expect(listed.connectorProvidedBindings).toContainEqual(
       expect.objectContaining({
-        connectorType: "test-oauth",
+        connectorSlug: "test-oauth",
         authMethod: "oauth",
         namespace: "vars",
         name: "TEST_OAUTH_TENANT_ID",
@@ -3445,7 +3443,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
     expect(
       listed.connectorProvidedBindings.filter((binding) => {
         return (
-          binding.connectorType === "test-oauth" &&
+          binding.connectorSlug === "test-oauth" &&
           binding.authMethod === "api-token"
         );
       }),
@@ -3483,7 +3481,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
     const apiListed = await connectorsApi.listConnectors(actor);
     expect(apiListed.connectorProvidedBindings).toContainEqual(
       expect.objectContaining({
-        connectorType: "test-oauth",
+        connectorSlug: "test-oauth",
         authMethod: "api",
         namespace: "secrets",
         name: "TEST_OAUTH_TOKEN",
@@ -3573,7 +3571,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       "slack",
     );
     expect(slackConnector).toMatchObject({
-      type: "slack",
+      slug: "slack",
       authMethod: "oauth",
       externalId: "U012AB3CD",
       externalUsername: "BDD Slack User",
@@ -3669,7 +3667,7 @@ describe("CONN-02: device-auth method switching", () => {
     const apiListed = await connectorsApi.listConnectors(actor);
     expect(apiListed.connectorProvidedBindings).toContainEqual(
       expect.objectContaining({
-        connectorType: "test-oauth-device",
+        connectorSlug: "test-oauth-device",
         authMethod: "api",
         namespace: "secrets",
         name: "TEST_OAUTH_DEVICE_API_TOKEN",
@@ -3706,14 +3704,14 @@ describe("CONN-02: device-auth method switching", () => {
     expect(
       oauthListed.connectorProvidedBindings.filter((binding) => {
         return (
-          binding.connectorType === "test-oauth-device" &&
+          binding.connectorSlug === "test-oauth-device" &&
           binding.authMethod === "api"
         );
       }),
     ).toStrictEqual([]);
     expect(oauthListed.connectorProvidedBindings).toContainEqual(
       expect.objectContaining({
-        connectorType: "test-oauth-device",
+        connectorSlug: "test-oauth-device",
         authMethod: "oauth",
         namespace: "secrets",
         name: "TEST_OAUTH_DEVICE_TOKEN",

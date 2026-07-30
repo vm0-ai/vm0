@@ -1430,17 +1430,13 @@ export type ZeroWorkflowConnectorReadinessStatus = z.infer<
   typeof zeroWorkflowConnectorReadinessStatusSchema
 >;
 
-export const zeroWorkflowConnectorReadinessEntrySchema = z
-  .object({
-    // TODO(#23821): Remove this legacy response field after clients migrate.
-    connectorRef: connectorSlugSchema,
-    connectorSlug: connectorSlugSchema.optional(),
-    label: z.string().min(1),
-    icon: publicConnectorCatalogIconSchema,
-    reason: z.string().min(1),
-    status: zeroWorkflowConnectorReadinessStatusSchema,
-  })
-  .strict();
+export const zeroWorkflowConnectorReadinessEntrySchema = z.object({
+  connectorSlug: connectorSlugSchema,
+  label: z.string().min(1),
+  icon: publicConnectorCatalogIconSchema,
+  reason: z.string().min(1),
+  status: zeroWorkflowConnectorReadinessStatusSchema,
+});
 export type ZeroWorkflowConnectorReadinessEntry = z.infer<
   typeof zeroWorkflowConnectorReadinessEntrySchema
 >;

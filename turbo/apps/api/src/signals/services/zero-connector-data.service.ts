@@ -204,7 +204,6 @@ function storedConnectorRowToResponse(
       : "connected";
   return {
     id: row.id,
-    type: runtimeMethod.connectorSlug,
     slug: runtimeMethod.connectorSlug,
     authMethod: runtimeMethod.authMethodId,
     externalId: row.externalId,
@@ -475,13 +474,11 @@ export function zeroConnectorList(args: {
     const connectorProvidedBindings =
       connectorProvidedBindingsForStoredConnectors(connectorList);
 
-    const configuredConnectorSlugs = [...visibleSlugs];
     return {
       connectors: connectorList.map((connector) => {
         return connector.response;
       }),
-      configuredTypes: configuredConnectorSlugs,
-      configuredConnectorSlugs,
+      configuredConnectorSlugs: [...visibleSlugs],
       connectorProvidedBindings,
     };
   });
@@ -502,8 +499,7 @@ function connectorProvidedBindingsForStoredConnectors(
       switch (source.kind) {
         case "connector-secret": {
           provided.push({
-            connectorType: connector.response.type,
-            connectorSlug: connector.response.type,
+            connectorSlug: connector.response.slug,
             authMethod: connector.response.authMethod,
             namespace: "secrets",
             name: envName,
@@ -514,8 +510,7 @@ function connectorProvidedBindingsForStoredConnectors(
         }
         case "connector-variable": {
           provided.push({
-            connectorType: connector.response.type,
-            connectorSlug: connector.response.type,
+            connectorSlug: connector.response.slug,
             authMethod: connector.response.authMethod,
             namespace: "vars",
             name: envName,

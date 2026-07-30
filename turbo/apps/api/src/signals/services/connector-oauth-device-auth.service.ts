@@ -127,7 +127,6 @@ function deviceAuthStartResponse(args: {
   return {
     sessionId: args.sessionId,
     sessionToken: args.sessionToken,
-    type: args.connectorSlug,
     connectorSlug: args.connectorSlug,
     status: "pending",
     userCode: args.startResult.userCode,

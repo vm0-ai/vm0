@@ -3,10 +3,7 @@ import { connectorSlugSchema } from "@vm0/api-contracts/contracts/connector-iden
 import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { accept } from "../lib/accept.ts";
 import { zeroClient$ } from "./api-client.ts";
-import {
-  normalizeConnectorPermissionMetadata,
-  type PlatformConnectorPermissionMetadata,
-} from "./connector-domain.ts";
+import type { PlatformConnectorPermissionMetadata } from "./connector-domain.ts";
 import { connectorsReloadVersion$ } from "./external/connectors.ts";
 import { featureSwitch$ } from "./external/feature-switch.ts";
 
@@ -36,9 +33,7 @@ export function firewallPermissionMetadataByConnector(
     if (result.status === 404) {
       return null;
     }
-    const permissions = normalizeConnectorPermissionMetadata(
-      result.body.permissions,
-    );
+    const permissions = result.body.permissions;
     if (permissions.connectorSlug !== key) {
       throw new Error(
         `Permission metadata connector slug mismatch: expected ${key}, got ${permissions.connectorSlug}`,

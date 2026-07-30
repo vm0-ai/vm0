@@ -285,7 +285,7 @@ export function createRunsApi(context: TestContext) {
           };
     return {
       agentId: body.agentId,
-      connectorRef: body.connectorSlug,
+      connectorSlug: body.connectorSlug,
       mode: "patch",
       grants: [grant],
     };
@@ -775,7 +775,7 @@ export function createRunsApi(context: TestContext) {
           headers: authenticate(context, actor),
           body: {
             agentId: body.agentId,
-            connectorRef: body.connectorSlug,
+            connectorSlug: body.connectorSlug,
             mode: "replace",
             grants: [...body.grants],
           },
@@ -812,11 +812,11 @@ export function createRunsApi(context: TestContext) {
         runApp(context)(zeroUserConnectorsContract).update({
           headers: authenticate(context, actor),
           params: { id: agentId },
-          body: { enabledTypes: [...connectorSlugs] },
+          body: { enabledConnectorSlugs: [...connectorSlugs] },
         }),
         [200],
       );
-      return response.body.enabledTypes;
+      return response.body.enabledConnectorSlugs;
     },
 
     async listOrgModelProviders(
