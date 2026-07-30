@@ -6,18 +6,20 @@ CREATE TABLE "browser_session_tab_snapshots" (
 );
 --> statement-breakpoint
 ALTER TABLE "browser_profiles" DISABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "browser_sessions" DROP CONSTRAINT "browser_sessions_browser_profile_id_browser_profiles_id_fk";
+--> statement-breakpoint
 DROP TABLE "browser_profiles" CASCADE;--> statement-breakpoint
 ALTER TABLE "chat_events" DROP CONSTRAINT "chat_events_event_type_check";--> statement-breakpoint
 ALTER TABLE "browser_session_instances" DROP CONSTRAINT "browser_session_instances_browser_session_id_browser_sessions_id_fk";
 --> statement-breakpoint
 ALTER TABLE "browser_session_instances" DROP CONSTRAINT "browser_session_instances_usage_event_id_usage_event_id_fk";
 --> statement-breakpoint
-ALTER TABLE "browser_sessions" DROP CONSTRAINT "browser_sessions_browser_profile_id_browser_profiles_id_fk";
---> statement-breakpoint
 ALTER TABLE "browser_sessions" DROP CONSTRAINT "browser_sessions_browser_thread_profile_id_browser_thread_profiles_id_fk";
 --> statement-breakpoint
 ALTER TABLE "chat_events" DROP CONSTRAINT "chat_events_revokes_message_id_chat_events_id_fk";
 --> statement-breakpoint
+ALTER TABLE "browser_sessions" DROP CONSTRAINT "browser_sessions_pkey";--> statement-breakpoint
+ALTER TABLE "browser_thread_profiles" DROP CONSTRAINT "browser_thread_profiles_pkey";--> statement-breakpoint
 DROP INDEX "idx_browser_session_instances_session";--> statement-breakpoint
 DROP INDEX "uq_browser_sessions_thread_owned";--> statement-breakpoint
 DROP INDEX "uq_browser_thread_profiles_thread";--> statement-breakpoint
