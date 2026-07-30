@@ -1093,7 +1093,17 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
-  it("should hide connector when connector:read capability is missing", () => {
+  it("should show connector when connector:write capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["connector:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    expect(visibleCommandNames(buildProgram())).toContain("connector");
+  });
+
+  it("should hide connector when connector capabilities are missing", () => {
     const token = buildZeroToken({
       scope: "zero",
       capabilities: ["agent:read"],
