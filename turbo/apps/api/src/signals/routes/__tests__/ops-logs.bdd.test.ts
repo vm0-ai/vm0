@@ -29,10 +29,13 @@ import {
   deleteModelStatsFixture,
   deleteModelStatsObservations,
   holdModelStatsAggregationLock,
+  holdModelStatsObservationLock,
   insertZeroTokenModelStatsObservation,
   readModelStatsAggregationLockState,
+  readModelStatsObservationLockState,
   readModelStatsObservations,
   releaseModelStatsAggregationLock,
+  releaseModelStatsObservationLock,
 } from "./helpers/model-stats-state";
 import { commitMemoryVersion } from "./helpers/zero-memory";
 import { createFixtureTracker } from "./helpers/zero-route-test";
@@ -253,17 +256,28 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
   it("rejects the model-stats aggregation cron without the cron secret", async () => {
     const api = createOpsLogsApi(context);
 
-    const rejected = await api.requestAggregateModelStats(
-      "invalid",
-      undefined,
-      [401],
-    );
+    const rejected = await api.requestAggregateModelStats("invalid", [401]);
     expect(rejected.body).toStrictEqual({
       error: { message: "Invalid cron secret", code: "UNAUTHORIZED" },
     });
   });
 
-  it("prepares model observations atomically for public rankings", async () => {
+  it("rejects the obsolete model-stats rebuild window", async () => {
+    const aggregateApp = createAppWithRoutes({
+      signal: context.signal,
+      routes: modelStatsRoutes,
+    });
+    const rejected = await aggregateApp.request(
+      `${cronAggregateModelStatsContract.aggregate.path}?hours=24`,
+      {
+        headers: { authorization: "Bearer test-cron-secret" },
+      },
+    );
+
+    expect(rejected.status).toBe(400);
+  });
+
+  it("incrementally projects model observations into public rankings", async () => {
     const api = createOpsLogsApi(context);
     const runs = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
@@ -282,16 +296,20 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     const aggregateAt = dayStart + 4 * HOUR_MS;
     const mainObservedAt = dayStart + 2 * HOUR_MS + 10 * 60_000;
     const previousObservedAt = dayStart - DAY_MS + 22 * HOUR_MS + 30 * 60_000;
-    const windowStartIso = new Date(aggregateAt - DAY_MS).toISOString();
     const windowEndIso = new Date(aggregateAt).toISOString();
     const todayStartIso = new Date(dayStart).toISOString();
     const fixtureObservationKeys: string[] = [];
     let aggregationLockRequest: Promise<void> | null = null;
+    let observationLockRequest: Promise<void> | null = null;
 
     onTestFinished(async () => {
       await releaseModelStatsAggregationLock(context);
+      await releaseModelStatsObservationLock(context);
       if (aggregationLockRequest) {
         await aggregationLockRequest;
+      }
+      if (observationLockRequest) {
+        await observationLockRequest;
       }
       if (fixtureObservationKeys.length > 0) {
         await deleteModelStatsFixture(context, {
@@ -319,16 +337,17 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     mockNow(aggregateAt);
     const baselineAggregate = await api.requestAggregateModelStats(
       "valid",
-      undefined,
       [200],
     );
     expect(baselineAggregate.body).toMatchObject({
       success: true,
-      windowEnd: windowEndIso,
+      cutoff: windowEndIso,
     });
-    expect(
-      new Date(baselineAggregate.body.windowStart).getTime(),
-    ).toBeLessThanOrEqual(new Date(windowStartIso).getTime());
+    expect(baselineAggregate.body.processedHours).toBeGreaterThanOrEqual(0);
+    expect(baselineAggregate.body.processedObservations).toBeGreaterThanOrEqual(
+      0,
+    );
+    expect(baselineAggregate.body.updatedStats).toBeGreaterThanOrEqual(0);
 
     const baseline = await api.readModelRankings("today");
     expect(baseline.headers.get("cache-control")).toBe(
@@ -453,11 +472,14 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     );
 
     mockNow(aggregateAt);
-    const aggregated = await api.requestAggregateModelStats("valid", 24, [200]);
-    expect(aggregated.body.success).toBeTruthy();
-    expect(aggregated.body.windowStart).toBe(windowStartIso);
-    expect(aggregated.body.windowEnd).toBe(windowEndIso);
-    expect(aggregated.body.aggregated).toBeGreaterThanOrEqual(2);
+    const aggregated = await api.requestAggregateModelStats("valid", [200]);
+    expect(aggregated.body).toMatchObject({
+      success: true,
+      cutoff: windowEndIso,
+    });
+    expect(aggregated.body.processedHours).toBeGreaterThanOrEqual(2);
+    expect(aggregated.body.processedObservations).toBeGreaterThanOrEqual(3);
+    expect(aggregated.body.updatedStats).toBeGreaterThanOrEqual(2);
 
     const afterIngest = await api.readModelRankings("today");
     expect(
@@ -500,8 +522,8 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       ]),
     );
 
-    // Re-ingest into the already-aggregated hour: exact replacement must
-    // surface the additional output tokens on the next aggregation.
+    // A delayed delivery in an already-processed hour remains pending and is
+    // added exactly once by the next cron request.
     mockNow(mainObservedAt);
     const lateIdempotencyKey = randomUUID();
     fixtureObservationKeys.push(lateIdempotencyKey);
@@ -523,7 +545,14 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       [200],
     );
     mockNow(aggregateAt);
-    await api.requestAggregateModelStats("valid", 24, [200]);
+    const lateProcessing = await api.requestAggregateModelStats("valid", [200]);
+    expect(lateProcessing.body).toMatchObject({
+      success: true,
+      cutoff: windowEndIso,
+      processedHours: 1,
+      processedObservations: 1,
+      updatedStats: 1,
+    });
     const reprocessed = await api.readModelRankings("today");
     expect(
       reprocessed.body.rows.find((row) => {
@@ -554,12 +583,8 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     const fallback = await api.readModelRankings("unsupported");
     expect(fallback.body.period).toBe("week");
 
-    // Pending complete-hour observations extend the internal rebuild window
-    // even when they are older than the public route's maximum hours value.
+    // Pending work is recovered by lifecycle state regardless of age.
     const oldPendingAt = aggregateAt - 769 * HOUR_MS + 10 * 60_000;
-    const oldPendingHourIso = new Date(
-      aggregateAt - 769 * HOUR_MS,
-    ).toISOString();
     mockNow(oldPendingAt);
     const oldPendingIdempotencyKey = randomUUID();
     fixtureObservationKeys.push(oldPendingIdempotencyKey);
@@ -581,11 +606,13 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       [200],
     );
     mockNow(aggregateAt);
-    const extended = await api.requestAggregateModelStats("valid", 24, [200]);
+    const extended = await api.requestAggregateModelStats("valid", [200]);
     expect(extended.body).toMatchObject({
       success: true,
-      windowStart: oldPendingHourIso,
-      windowEnd: windowEndIso,
+      cutoff: windowEndIso,
+      processedHours: 1,
+      processedObservations: 1,
+      updatedStats: 1,
     });
     await expect(
       readModelStatsObservations(context, [oldPendingIdempotencyKey]),
@@ -600,8 +627,8 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     });
 
     // Both cron requests begin before this observation is committed. The
-    // transaction lock must serialize them without freezing a pre-lock
-    // REPEATABLE READ snapshot that would miss the newly committed row.
+    // transaction lock gives each processing statement a post-lock snapshot,
+    // and the two callers must claim the delivery only once.
     aggregationLockRequest = holdModelStatsAggregationLock(context);
     await expect
       .poll(
@@ -612,8 +639,8 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       )
       .toMatchObject({ held: true });
     const concurrentAggregations = [
-      api.requestAggregateModelStats("valid", 24, [200]),
-      api.requestAggregateModelStats("valid", 24, [200]),
+      api.requestAggregateModelStats("valid", [200]),
+      api.requestAggregateModelStats("valid", [200]),
     ];
     await expect
       .poll(
@@ -652,8 +679,26 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     aggregationLockRequest = null;
     const concurrentResults = await Promise.all(concurrentAggregations);
     for (const result of concurrentResults) {
-      expect(result.body.success).toBeTruthy();
+      expect(result.body).toMatchObject({
+        success: true,
+        cutoff: windowEndIso,
+      });
     }
+    expect(
+      concurrentResults.reduce((total, result) => {
+        return total + result.body.processedHours;
+      }, 0),
+    ).toBe(1);
+    expect(
+      concurrentResults.reduce((total, result) => {
+        return total + result.body.processedObservations;
+      }, 0),
+    ).toBe(1);
+    expect(
+      concurrentResults.reduce((total, result) => {
+        return total + result.body.updatedStats;
+      }, 0),
+    ).toBe(1);
 
     const afterConcurrent = await api.readModelRankings("today");
     expect(
@@ -677,9 +722,124 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       },
     ]);
 
-    // A failed rebuild must roll back every statistic mutation. 1,024 maximum
+    // Cancellation after one committed hour must preserve that progress and
+    // roll the later in-flight hour back for the next request.
+    const firstCancellationIdempotencyKey = randomUUID();
+    const secondCancellationIdempotencyKey = randomUUID();
+    fixtureObservationKeys.push(
+      firstCancellationIdempotencyKey,
+      secondCancellationIdempotencyKey,
+    );
+    await insertZeroTokenModelStatsObservation(context, {
+      idempotencyKey: firstCancellationIdempotencyKey,
+      model,
+      observedAt: new Date(dayStart - 5 * HOUR_MS + 10 * 60_000),
+    });
+    await insertZeroTokenModelStatsObservation(context, {
+      idempotencyKey: secondCancellationIdempotencyKey,
+      model,
+      observedAt: new Date(dayStart - 4 * HOUR_MS + 10 * 60_000),
+    });
+
+    observationLockRequest = holdModelStatsObservationLock(
+      context,
+      secondCancellationIdempotencyKey,
+    );
+    await expect
+      .poll(
+        async () => {
+          return await readModelStatsObservationLockState(context);
+        },
+        { timeout: 5000, interval: 20 },
+      )
+      .toStrictEqual({ held: true });
+
+    const cancellationController = new AbortController();
+    const cancelledAggregateApp = createAppWithRoutes({
+      signal: cancellationController.signal,
+      routes: modelStatsRoutes,
+    });
+    const cancelledAggregation = cancelledAggregateApp.request(
+      cronAggregateModelStatsContract.aggregate.path,
+      {
+        headers: { authorization: "Bearer test-cron-secret" },
+      },
+    );
+    await expect
+      .poll(
+        async () => {
+          return await readModelStatsObservations(context, [
+            firstCancellationIdempotencyKey,
+            secondCancellationIdempotencyKey,
+          ]);
+        },
+        { timeout: 5000, interval: 20 },
+      )
+      .toStrictEqual(
+        expect.arrayContaining([
+          {
+            idempotencyKey: firstCancellationIdempotencyKey,
+            aggregatedAt: windowEndIso,
+          },
+          {
+            idempotencyKey: secondCancellationIdempotencyKey,
+            aggregatedAt: null,
+          },
+        ]),
+      );
+
+    const cancellationError = new Error(
+      "abort model stats after one committed hour",
+    );
+    cancellationError.name = "AbortError";
+    cancellationController.abort(cancellationError);
+    await releaseModelStatsObservationLock(context);
+    await observationLockRequest;
+    observationLockRequest = null;
+    const cancelledResponse = await cancelledAggregation;
+    expect(cancelledResponse.status).toBe(500);
+    await expect(cancelledResponse.json()).resolves.toStrictEqual({
+      error: "Internal server error",
+    });
+    await expect(
+      readModelStatsObservations(context, [
+        firstCancellationIdempotencyKey,
+        secondCancellationIdempotencyKey,
+      ]),
+    ).resolves.toStrictEqual(
+      expect.arrayContaining([
+        {
+          idempotencyKey: firstCancellationIdempotencyKey,
+          aggregatedAt: windowEndIso,
+        },
+        {
+          idempotencyKey: secondCancellationIdempotencyKey,
+          aggregatedAt: null,
+        },
+      ]),
+    );
+
+    const resumed = await api.requestAggregateModelStats("valid", [200]);
+    expect(resumed.body).toStrictEqual({
+      success: true,
+      cutoff: windowEndIso,
+      processedHours: 1,
+      processedObservations: 1,
+      updatedStats: 0,
+    });
+    const resumedStates = await readModelStatsObservations(context, [
+      firstCancellationIdempotencyKey,
+      secondCancellationIdempotencyKey,
+    ]);
+    expect(
+      resumedStates.every((observation) => {
+        return observation.aggregatedAt === windowEndIso;
+      }),
+    ).toBeTruthy();
+
+    // A failed increment must roll back every statistic mutation. 1,024 maximum
     // safe integers still fit in PostgreSQL bigint; the 1,025th overflows SUM.
-    // The observation markers must roll back with the stats replacement.
+    // The observation markers must roll back with the additive upsert.
     mockNow(mainObservedAt);
     const overflowEvents = Array.from({ length: 1025 }, () => {
       return {
@@ -713,7 +873,7 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       routes: modelStatsRoutes,
     });
     const failedAggregate = await aggregateApp.request(
-      `${cronAggregateModelStatsContract.aggregate.path}?hours=24`,
+      cronAggregateModelStatsContract.aggregate.path,
       {
         headers: { authorization: "Bearer test-cron-secret" },
       },
@@ -722,8 +882,8 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     await expect(failedAggregate.json()).resolves.toStrictEqual({
       error: "Internal server error",
     });
-    const afterFailedRebuild = await api.readModelRankings("today");
-    expect(afterFailedRebuild.body).toStrictEqual(afterConcurrent.body);
+    const afterFailedIncrement = await api.readModelRankings("today");
+    expect(afterFailedIncrement.body).toStrictEqual(afterConcurrent.body);
     const firstOverflowEvent = overflowEvents[0];
     const lastOverflowEvent = overflowEvents.at(-1);
     if (!firstOverflowEvent || !lastOverflowEvent) {
@@ -746,20 +906,23 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       }),
     );
 
-    // The projection lifecycle marker replaces observation retention. A
-    // later run still retains old source rows and can rebuild their stats.
+    // Applied observations remain retained during the incremental soak. A
+    // later run processes the formerly current hour without deleting history.
     const laterAggregateAt = dayStart + 33 * DAY_MS + 4 * HOUR_MS;
     mockNow(laterAggregateAt);
-    const laterPreparation = await api.requestAggregateModelStats(
+    const laterProcessing = await api.requestAggregateModelStats(
       "valid",
-      undefined,
       [200],
     );
-    expect(laterPreparation.body).toMatchObject({
+    expect(laterProcessing.body).toMatchObject({
       success: true,
-      windowStart: windowEndIso,
-      windowEnd: new Date(laterAggregateAt).toISOString(),
+      cutoff: new Date(laterAggregateAt).toISOString(),
     });
+    expect(laterProcessing.body.processedHours).toBeGreaterThanOrEqual(1);
+    expect(laterProcessing.body.processedObservations).toBeGreaterThanOrEqual(
+      1,
+    );
+    expect(laterProcessing.body.updatedStats).toBeGreaterThanOrEqual(1);
     const retainedStates = await readModelStatsObservations(context, [
       compactIdempotencyKey,
       previousIdempotencyKey,
@@ -768,8 +931,10 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       lateIdempotencyKey,
       oldPendingIdempotencyKey,
       concurrentIdempotencyKey,
+      firstCancellationIdempotencyKey,
+      secondCancellationIdempotencyKey,
     ]);
-    expect(retainedStates).toHaveLength(7);
+    expect(retainedStates).toHaveLength(9);
     expect(
       retainedStates.every((observation) => {
         return observation.aggregatedAt !== null;
@@ -777,9 +942,16 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     ).toBeTruthy();
 
     mockNow(aggregateAt);
-    await api.requestAggregateModelStats("valid", 24, [200]);
-    const rebuilt = await api.readModelRankings("today");
-    expect(rebuilt.body).toStrictEqual(afterConcurrent.body);
+    const noOp = await api.requestAggregateModelStats("valid", [200]);
+    expect(noOp.body).toStrictEqual({
+      success: true,
+      cutoff: windowEndIso,
+      processedHours: 0,
+      processedObservations: 0,
+      updatedStats: 0,
+    });
+    const unchanged = await api.readModelRankings("today");
+    expect(unchanged.body).toStrictEqual(afterConcurrent.body);
   });
 });
 

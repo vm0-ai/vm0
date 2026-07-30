@@ -63,7 +63,6 @@ export function createOpsLogsApi(context: TestContext) {
   return {
     async requestAggregateModelStats<TStatus extends 200 | 401>(
       auth: "valid" | "invalid",
-      hours: number | undefined,
       statuses: readonly TStatus[],
     ) {
       return await accept(
@@ -72,7 +71,7 @@ export function createOpsLogsApi(context: TestContext) {
             authorization:
               auth === "valid" ? CRON_AUTHORIZATION : "Bearer wrong-secret",
           },
-          query: { hours },
+          query: {},
         }),
         statuses,
       );

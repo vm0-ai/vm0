@@ -445,7 +445,6 @@ export {
   cronAggregateModelStatsResponseSchema,
   cronAggregateUsageContract,
   cronAggregateUsageResponseSchema,
-  CRON_AGGREGATE_MODEL_STATS_MAX_HOURS,
   cronCompactChatThreadSnapshotsContract,
   cronCompactChatThreadSnapshotsResponseSchema,
   cronCleanupSandboxesContract,

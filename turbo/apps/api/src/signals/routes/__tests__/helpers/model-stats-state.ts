@@ -84,6 +84,36 @@ export async function releaseModelStatsAggregationLock(
   await postAction(context, { action: "release-aggregation-lock" });
 }
 
+export async function holdModelStatsObservationLock(
+  context: TestContext,
+  idempotencyKey: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "hold-observation-lock",
+    idempotency_key: idempotencyKey,
+  });
+}
+
+export async function readModelStatsObservationLockState(
+  context: TestContext,
+): Promise<{ readonly held: boolean }> {
+  const response = await postAction(context, {
+    action: "read-observation-lock-state",
+  });
+  if (response.observation_lock_held === undefined) {
+    throw new Error(
+      "Model stats observation lock state response is incomplete",
+    );
+  }
+  return { held: response.observation_lock_held };
+}
+
+export async function releaseModelStatsObservationLock(
+  context: TestContext,
+): Promise<void> {
+  await postAction(context, { action: "release-observation-lock" });
+}
+
 export async function readModelStatsObservations(
   context: TestContext,
   idempotencyKeys: readonly string[],
