@@ -1,7 +1,7 @@
 import { defineConfig } from "i18next-cli";
 
 export default defineConfig({
-  locales: ["en-US", "pt-BR"],
+  locales: ["en-US", "pt-BR", "ko-KR"],
   extract: {
     input: ["src/**/*.{ts,tsx}"],
     ignore: [

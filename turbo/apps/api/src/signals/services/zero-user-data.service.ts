@@ -60,7 +60,12 @@ function parseSendMode(value: unknown): SendMode {
 }
 
 function parseUserLocale(value: unknown): UserLocale | null {
-  if (value === null || value === "en-US" || value === "pt-BR") {
+  if (
+    value === null ||
+    value === "en-US" ||
+    value === "pt-BR" ||
+    value === "ko-KR"
+  ) {
     return value;
   }
   // TODO(#23508): remove after persisted legacy values are migrated.
@@ -178,12 +183,23 @@ export function userModelPreference({
 
 interface UpdateUserPreferencesArgs extends UserScopedQuery {
   readonly preferences: UpdateUserPreferencesRequest;
-  readonly allowBrazilianPortuguese?: boolean;
+  readonly writableLocales?: readonly UserLocale[];
 }
 
 type UpdateUserPreferencesResult =
   | { readonly ok: true; readonly data: UserPreferencesResponse }
   | { readonly ok: false; readonly message: string };
+
+function canWriteLocale(
+  locale: UserLocale | undefined,
+  writableLocales: readonly UserLocale[] | undefined,
+): boolean {
+  return (
+    locale === undefined ||
+    locale === "en-US" ||
+    writableLocales?.includes(locale) === true
+  );
+}
 
 export const updateUserPreferences$ = command(
   async (
@@ -192,10 +208,7 @@ export const updateUserPreferences$ = command(
     signal: AbortSignal,
   ): Promise<UpdateUserPreferencesResult> => {
     const preferences = args.preferences;
-    if (
-      preferences.locale === "pt-BR" &&
-      args.allowBrazilianPortuguese !== true
-    ) {
+    if (!canWriteLocale(preferences.locale, args.writableLocales)) {
       return {
         ok: false,
         message: "Invalid request",

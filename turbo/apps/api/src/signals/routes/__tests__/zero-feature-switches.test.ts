@@ -3,6 +3,7 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { mockOptionalEnv } from "../../../lib/env";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -50,6 +51,27 @@ describe("/api/zero/feature-switches", () => {
       current.body.effectiveSwitches[
         FeatureSwitchKey.StructuredPromptInlineTemplates
       ],
+    ).toBeTruthy();
+  });
+
+  it("projects the Korean locale deploy gate as an internal switch", async () => {
+    createZeroRouteMocks(context).clerk.session(
+      "user_korean_locale_switch_test",
+      "org_korean_locale_switch_test",
+      "org:member",
+    );
+    const headers = { authorization: "Bearer clerk-session" };
+
+    mockOptionalEnv("KOREAN_LOCALE_ROLLOUT_ENABLED", undefined);
+    const guarded = await accept(client().get({ headers }), [200]);
+    expect(
+      guarded.body.effectiveSwitches[FeatureSwitchKey.KoreanLocale],
+    ).toBeFalsy();
+
+    mockOptionalEnv("KOREAN_LOCALE_ROLLOUT_ENABLED", "true");
+    const enabled = await accept(client().get({ headers }), [200]);
+    expect(
+      enabled.body.effectiveSwitches[FeatureSwitchKey.KoreanLocale],
     ).toBeTruthy();
   });
 });

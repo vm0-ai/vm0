@@ -123,6 +123,7 @@ describe("bootstrap locale", () => {
     expect(document.documentElement.lang).toBe("pt-BR");
     expect(i18n.hasResourceBundle("en-US", "common")).toBeTruthy();
     expect(i18n.hasResourceBundle("pt-BR", "common")).toBeTruthy();
+    expect(i18n.hasResourceBundle("ko-KR", "common")).toBeTruthy();
 
     const metadata = document.createElement("meta");
     metadata.name = "description";
@@ -160,6 +161,43 @@ describe("bootstrap locale", () => {
       "Zero does not support your current browser version.",
     );
     expect(upgradeAction).toHaveTextContent("Update Chrome");
+  });
+
+  it("loads Korean pre-bundle copy and typed resources from the browser locale", async () => {
+    context.mocks.browser.language("ko-KR");
+    executeLocaleEntrypoint();
+
+    expect(document.documentElement.lang).toBe("ko-KR");
+    expect(window.__vm0PreBundleCopy).toMatchObject({
+      browserUpgrade: {
+        chrome: {
+          actionLabel: "Chrome 업데이트",
+          title: "계속하려면 Chrome을 업데이트하세요",
+        },
+      },
+      loading: {
+        ariaLabel: "워크스페이스를 불러오는 중",
+        messages: expect.arrayContaining(["뉴런을 예열하는 중..."]),
+      },
+      metadata: {
+        title: "Zero — vm0의 AI 팀원",
+      },
+    });
+
+    await setupPage({
+      context,
+      path: "/error",
+      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: false },
+      withoutRender: true,
+    });
+
+    expect(context.store.get(locale$)).toBe("ko-KR");
+    expect(i18n.language).toBe("ko-KR");
+    expect(document.documentElement.lang).toBe("ko-KR");
+    expect(i18n.hasResourceBundle("ko-KR", "common")).toBeTruthy();
+    expect(i18n.hasResourceBundle("ko-KR", "agents")).toBeTruthy();
+
+    await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
   });
 
   it("uses the cached locale across pre-bundle UI and i18next", async () => {

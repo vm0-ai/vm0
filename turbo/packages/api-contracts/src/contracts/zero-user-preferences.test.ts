@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { userPreferencesResponseSchema } from "./zero-user-preferences";
+import {
+  userLocaleSchema,
+  userPreferencesResponseSchema,
+} from "./zero-user-preferences";
 
 describe("user preferences contract", () => {
   it("normalizes the previous locale in an API response", () => {
@@ -15,5 +18,9 @@ describe("user preferences contract", () => {
     });
 
     expect(preferences.locale).toBe("en-US");
+  });
+
+  it("accepts the Korean application locale", () => {
+    expect(userLocaleSchema.parse("ko-KR")).toBe("ko-KR");
   });
 });

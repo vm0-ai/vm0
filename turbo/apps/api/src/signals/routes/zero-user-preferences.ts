@@ -1,17 +1,20 @@
 import { command, computed } from "ccstate";
 import {
   clientVersionSupportsCapability,
+  CLIENT_CAPABILITY_KO_KR_LOCALE,
   CLIENT_CAPABILITY_PT_BR_LOCALE,
   CLIENT_VERSION_HEADER,
 } from "@vm0/api-contracts/contracts/client-headers";
 import {
   SUPPORTED_USER_LOCALES,
+  type UserLocale,
   type UserPreferencesResponse,
   zeroUserPreferencesContract,
 } from "@vm0/api-contracts/contracts/zero-user-preferences";
 
 import { isBrazilianPortugueseLocaleRolloutEnabled } from "../../lib/brazilian-portuguese-locale-rollout";
 import { badRequestMessage } from "../../lib/error";
+import { isKoreanLocaleRolloutEnabled } from "../../lib/korean-locale-rollout";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { request$ } from "../context/hono";
@@ -28,44 +31,72 @@ const updateUserPreferencesBody$ = bodyResultOf(
 
 interface LocaleRollout {
   readonly clientSupportsBrazilianPortuguese: boolean;
+  readonly clientSupportsKorean: boolean;
   readonly brazilianPortugueseEnabled: boolean;
+  readonly koreanEnabled: boolean;
 }
 
 const localeRollout$ = computed((get): LocaleRollout => {
+  const clientVersion = get(request$).raw.headers.get(CLIENT_VERSION_HEADER);
   const clientSupportsBrazilianPortuguese = clientVersionSupportsCapability(
-    get(request$).raw.headers.get(CLIENT_VERSION_HEADER),
+    clientVersion,
     CLIENT_CAPABILITY_PT_BR_LOCALE,
   );
-  if (!clientSupportsBrazilianPortuguese) {
-    return {
-      clientSupportsBrazilianPortuguese: false,
-      brazilianPortugueseEnabled: false,
-    };
-  }
+  const clientSupportsKorean = clientVersionSupportsCapability(
+    clientVersion,
+    CLIENT_CAPABILITY_KO_KR_LOCALE,
+  );
 
   return {
-    clientSupportsBrazilianPortuguese: true,
-    brazilianPortugueseEnabled: isBrazilianPortugueseLocaleRolloutEnabled(),
+    clientSupportsBrazilianPortuguese,
+    clientSupportsKorean,
+    brazilianPortugueseEnabled:
+      clientSupportsBrazilianPortuguese &&
+      isBrazilianPortugueseLocaleRolloutEnabled(),
+    koreanEnabled: clientSupportsKorean && isKoreanLocaleRolloutEnabled(),
   };
 });
+
+function localeEnabled(locale: UserLocale, rollout: LocaleRollout): boolean {
+  switch (locale) {
+    case "en-US": {
+      return true;
+    }
+    case "pt-BR": {
+      return rollout.brazilianPortugueseEnabled;
+    }
+    case "ko-KR": {
+      return rollout.koreanEnabled;
+    }
+  }
+}
+
+function supportedLocalesForRollout(rollout: LocaleRollout): UserLocale[] {
+  return SUPPORTED_USER_LOCALES.filter((locale) => {
+    return localeEnabled(locale, rollout);
+  });
+}
 
 function projectUserPreferences(
   preferences: UserPreferencesResponse,
   rollout: LocaleRollout,
 ): UserPreferencesResponse {
-  // TODO(#23508): remove projection after legacy browser clients expire.
+  // Project stored locales that this client cannot safely render to English.
+  // TODO(#23508): remove the pt-BR projection after legacy clients expire.
   const locale =
-    rollout.brazilianPortugueseEnabled || preferences.locale !== "pt-BR"
+    preferences.locale === null ||
+    preferences.locale === undefined ||
+    localeEnabled(preferences.locale, rollout)
       ? preferences.locale
       : "en-US";
+  const clientSupportsLocalePreferences =
+    rollout.clientSupportsBrazilianPortuguese || rollout.clientSupportsKorean;
 
   return {
     ...preferences,
     locale,
-    ...(rollout.clientSupportsBrazilianPortuguese && {
-      supportedLocales: rollout.brazilianPortugueseEnabled
-        ? [...SUPPORTED_USER_LOCALES]
-        : ["en-US"],
+    ...(clientSupportsLocalePreferences && {
+      supportedLocales: supportedLocalesForRollout(rollout),
     }),
   };
 }
@@ -99,7 +130,7 @@ const updateUserPreferencesInner$ = command(
         orgId: auth.orgId,
         userId: auth.userId,
         preferences: body.data,
-        allowBrazilianPortuguese: rollout.brazilianPortugueseEnabled,
+        writableLocales: supportedLocalesForRollout(rollout),
       },
       signal,
     );

@@ -3,6 +3,7 @@ export const CLIENT_TYPE_HEADER = "X-Client-Type";
 export const CLIENT_SESSION_ID_HEADER = "X-Client-Session-Id";
 export const CLIENT_REQUEST_ID_HEADER = "X-Client-Request-Id";
 export const CLIENT_CAPABILITY_PT_BR_LOCALE = "pt-br-locale-v1";
+export const CLIENT_CAPABILITY_KO_KR_LOCALE = "ko-kr-locale-v1";
 export const CLIENT_CAPABILITY_CONNECTOR_SLUG_IDENTITIES =
   "connector-slug-identities-v1";
 export const ZERO_MAIL_CLIENT_VERSION_HEADER = "X-Zero-Mail-Client-Version";

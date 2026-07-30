@@ -1,4 +1,4 @@
-import { enUS, ptBR } from "@clerk/localizations";
+import { enUS, koKR, ptBR } from "@clerk/localizations";
 import type { TFunction } from "i18next";
 import type { SupportedLocale } from "../../i18n/resources.ts";
 import type { BrandName } from "../../signals/branding.ts";
@@ -8,7 +8,8 @@ export function getClerkLocalization(
   locale: SupportedLocale,
   t: TFunction<"common">,
 ) {
-  const localization = locale === "pt-BR" ? ptBR : enUS;
+  const localization =
+    locale === "pt-BR" ? ptBR : locale === "ko-KR" ? koKR : enUS;
   return {
     ...localization,
     unstable__errors: {

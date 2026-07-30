@@ -160,9 +160,13 @@
         // supported browser language, with English as the fallback.
         var browserLocale = /^pt(?:-|$)/i.test(navigator.language)
           ? "pt-BR"
-          : "en-US";
+          : /^ko(?:-|$)/i.test(navigator.language)
+            ? "ko-KR"
+            : "en-US";
         var locale =
-          cached === "en-US" || cached === "pt-BR" ? cached : browserLocale;
+          cached === "en-US" || cached === "pt-BR" || cached === "ko-KR"
+            ? cached
+            : browserLocale;
         var copyByLocale = {
           "en-US": {
             browserUpgrade: {
@@ -266,6 +270,58 @@
               description:
                 "Zero é seu colega de IA da vm0. Envie uma mensagem para o Zero ou converse pela web — pesquise, envie e-mails, crie documentos e use Slack, GitHub, Notion e mais de 100 ferramentas.",
               title: "Zero — Seu colega de IA da vm0",
+            },
+          },
+          "ko-KR": {
+            browserUpgrade: {
+              browser: {
+                actionLabel: "브라우저 업데이트",
+                description:
+                  "Zero는 현재 브라우저 버전을 지원하지 않습니다. 계속하려면 브라우저를 업데이트하세요.",
+                title: "계속하려면 브라우저를 업데이트하세요",
+              },
+              chrome: {
+                actionLabel: "Chrome 업데이트",
+                description:
+                  "Zero는 현재 Chrome 버전을 지원하지 않습니다. 계속하려면 Chrome을 업데이트하세요.",
+                title: "계속하려면 Chrome을 업데이트하세요",
+              },
+              chromium: {
+                actionLabel: "Chromium 업데이트",
+                description:
+                  "Zero는 현재 Chromium 버전을 지원하지 않습니다. 계속하려면 Chromium을 업데이트하세요.",
+                title: "계속하려면 Chromium을 업데이트하세요",
+              },
+              ios: {
+                actionLabel: "iOS 업데이트",
+                description:
+                  "Zero는 현재 iOS 버전을 지원하지 않습니다. 계속하려면 iOS를 업데이트하세요.",
+                title: "계속하려면 iOS를 업데이트하세요",
+              },
+              safari: {
+                actionLabel: "Safari 업데이트",
+                description:
+                  "Zero는 현재 Safari 버전을 지원하지 않습니다. 계속하려면 Safari를 업데이트하세요.",
+                title: "계속하려면 Safari를 업데이트하세요",
+              },
+            },
+            loading: {
+              ariaLabel: "워크스페이스를 불러오는 중",
+              messages: [
+                "뉴런을 예열하는 중...",
+                "아이디어를 구상 중...",
+                "준비 중...",
+                "거의 완료되었습니다...",
+                "워크스페이스를 불러오는 중...",
+                "도구를 조율하는 중...",
+                "연결 중...",
+                "팀을 구성하는 중...",
+              ],
+            },
+            metadata: {
+              description:
+                "Zero는 vm0의 AI 팀원입니다. Zero에 텍스트를 보내거나 웹에서 채팅하세요 — 리서치, 이메일, 문서, Slack, GitHub, Notion 및 100개 이상의 도구를 지원합니다.",
+              title: "Zero — vm0의 AI 팀원",
             },
           },
         };

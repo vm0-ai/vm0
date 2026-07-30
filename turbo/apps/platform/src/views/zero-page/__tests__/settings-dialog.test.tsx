@@ -63,7 +63,7 @@ function createPreferences(locale: UserLocale | null): UserPreferencesResponse {
   return {
     timezone: null,
     locale,
-    supportedLocales: ["en-US", "pt-BR"],
+    supportedLocales: ["en-US", "pt-BR", "ko-KR"],
     pinnedAgentIds: [],
     sendMode: "enter",
     morningBriefEnabled: false,
@@ -127,8 +127,8 @@ describe("settings dialog", () => {
 
   it("persists a cached locale when the workspace has no server preference", async () => {
     const submittedLocales: UserLocale[] = [];
-    document.documentElement.lang = "pt-BR";
-    context.store.set(setCachedLocale$, "pt-BR");
+    document.documentElement.lang = "ko-KR";
+    context.store.set(setCachedLocale$, "ko-KR");
     context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
       return respond(200, createPreferences(null));
     });
@@ -147,14 +147,14 @@ describe("settings dialog", () => {
     });
 
     const languageSelect = await screen.findByRole("combobox", {
-      name: "Idioma",
+      name: "언어",
     });
     await waitFor(() => {
-      expect(submittedLocales).toContain("pt-BR");
-      expect(languageSelect).toHaveTextContent("Português (Brasil)");
-      expect(languageSelect).toHaveAccessibleName("Idioma");
-      expect(document.documentElement.lang).toBe("pt-BR");
-      expect(cachedLocale()).toBe("pt-BR");
+      expect(submittedLocales).toContain("ko-KR");
+      expect(languageSelect).toHaveTextContent("한국어");
+      expect(languageSelect).toHaveAccessibleName("언어");
+      expect(document.documentElement.lang).toBe("ko-KR");
+      expect(cachedLocale()).toBe("ko-KR");
     });
 
     click(languageSelect);
@@ -162,6 +162,95 @@ describe("settings dialog", () => {
     await waitFor(() => {
       expect(document.documentElement.lang).toBe("en-US");
     });
+  });
+
+  it("selects Korean and persists it through the advertised API handshake", async () => {
+    const submittedLocales: UserLocale[] = [];
+    let serverLocale: UserLocale | null = "en-US";
+    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+      return respond(200, createPreferences(serverLocale));
+    });
+    context.mocks.api(
+      zeroUserPreferencesContract.update,
+      ({ body, respond }) => {
+        if (body.locale !== undefined) {
+          serverLocale = body.locale;
+          submittedLocales.push(body.locale);
+        }
+        return respond(200, createPreferences(serverLocale));
+      },
+    );
+
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: true,
+    });
+
+    const languageSelect = await screen.findByRole("combobox", {
+      name: "Language",
+    });
+    click(languageSelect);
+    click(screen.getByRole("option", { name: "한국어" }));
+
+    await waitFor(() => {
+      expect(submittedLocales).toContain("ko-KR");
+      expect(screen.getByRole("combobox", { name: "언어" })).toHaveTextContent(
+        "한국어",
+      );
+      expect(document.documentElement.lang).toBe("ko-KR");
+      expect(cachedLocale()).toBe("ko-KR");
+    });
+
+    click(screen.getByRole("combobox", { name: "언어" }));
+    click(screen.getByRole("option", { name: "English" }));
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe("en-US");
+    });
+  });
+
+  it("does not submit Korean to an API that does not advertise it", async () => {
+    const submittedLocales: UserLocale[] = [];
+    document.documentElement.lang = "ko-KR";
+    context.store.set(setCachedLocale$, "ko-KR");
+    const oldApiPreferences = createPreferences(null);
+    oldApiPreferences.supportedLocales = ["en-US", "pt-BR"];
+    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+      return respond(200, oldApiPreferences);
+    });
+    context.mocks.api(
+      zeroUserPreferencesContract.update,
+      ({ body, respond }) => {
+        if (body.locale !== undefined) {
+          submittedLocales.push(body.locale);
+        }
+        return respond(200, {
+          ...oldApiPreferences,
+          locale: body.locale ?? null,
+        });
+      },
+    );
+
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: true,
+    });
+
+    const languageSelect = await screen.findByRole("combobox", {
+      name: "Language",
+    });
+    await waitFor(() => {
+      expect(submittedLocales).toContain("en-US");
+      expect(submittedLocales).not.toContain("ko-KR");
+      expect(languageSelect).toHaveTextContent("English");
+      expect(document.documentElement.lang).toBe("en-US");
+      expect(cachedLocale()).toBe("en-US");
+    });
+
+    click(languageSelect);
+    expect(
+      screen.queryByRole("option", { name: "한국어" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: "Português (Brasil)" }),
+    ).toBeInTheDocument();
   });
 
   it("overrides a cached language with the workspace server preference", async () => {
@@ -227,7 +316,7 @@ describe("settings dialog", () => {
     });
   });
 
-  it("hides the language entry when the API does not advertise Brazilian Portuguese", async () => {
+  it("hides the language entry when the API does not advertise locale capabilities", async () => {
     const oldApiPreferences = createPreferences("en-US");
     delete oldApiPreferences.supportedLocales;
     context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {

@@ -4277,6 +4277,7 @@
         "label": "Language",
         "options": {
           "english": "English",
+          "korean": "한국어",
           "portugueseBrazil": "Português (Brasil)"
         },
         "title": "Language"

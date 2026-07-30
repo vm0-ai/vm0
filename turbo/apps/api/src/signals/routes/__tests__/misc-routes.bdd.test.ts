@@ -7,8 +7,10 @@ import { env, mockOptionalEnv } from "../../../lib/env";
 import { testContext } from "../../../__tests__/test-context";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import {
+  ALL_LOCALES_CLIENT_VERSION,
   BRAZILIAN_PORTUGUESE_CLIENT_VERSION,
   createMiscRoutesApi,
+  KOREAN_CLIENT_VERSION,
 } from "./helpers/api-bdd-misc";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
@@ -318,6 +320,111 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
       BRAZILIAN_PORTUGUESE_CLIENT_VERSION,
     );
     expect(capableReread.body.locale).toBe("pt-BR");
+  });
+
+  it("negotiates Korean across rollout gates and legacy clients", async () => {
+    const { api, admin } = testActors();
+    mockOptionalEnv("BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED", undefined);
+    mockOptionalEnv("KOREAN_LOCALE_ROLLOUT_ENABLED", undefined);
+
+    const guarded = await api.readPreferences(admin, KOREAN_CLIENT_VERSION);
+    expect(guarded.body).toMatchObject({
+      locale: null,
+      supportedLocales: ["en-US"],
+    });
+
+    const rejected = await api.updatePreferences(
+      admin,
+      { locale: "ko-KR" },
+      [400],
+      KOREAN_CLIENT_VERSION,
+    );
+    expectApiError(rejected.body);
+
+    const orgId = admin.orgId;
+    if (orgId === null) {
+      throw new Error("Expected an organization-scoped test actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      {
+        userId: admin.userId,
+        orgId,
+        ...(admin.orgRole && { orgRole: admin.orgRole }),
+      },
+      {
+        [FeatureSwitchKey.KoreanLocale]: true,
+      },
+    );
+
+    const publicOverrideRejected = await api.updatePreferences(
+      admin,
+      { locale: "ko-KR" },
+      [400],
+      KOREAN_CLIENT_VERSION,
+    );
+    expectApiError(publicOverrideRejected.body);
+
+    mockOptionalEnv("KOREAN_LOCALE_ROLLOUT_ENABLED", "true");
+
+    const unsupportedClient = await api.updatePreferences(
+      admin,
+      { locale: "ko-KR" },
+      [400],
+    );
+    expectApiError(unsupportedClient.body);
+
+    const english = await api.updatePreferences(
+      admin,
+      { locale: "en-US" },
+      [200],
+      KOREAN_CLIENT_VERSION,
+    );
+    expect(english.body).toMatchObject({
+      locale: "en-US",
+      supportedLocales: ["en-US", "ko-KR"],
+    });
+
+    const korean = await api.updatePreferences(
+      admin,
+      { locale: "ko-KR" },
+      [200],
+      KOREAN_CLIENT_VERSION,
+    );
+    expect(korean.body).toMatchObject({
+      locale: "ko-KR",
+      supportedLocales: ["en-US", "ko-KR"],
+    });
+
+    const portugueseOnlyRead = await api.readPreferences(
+      admin,
+      BRAZILIAN_PORTUGUESE_CLIENT_VERSION,
+    );
+    expect(portugueseOnlyRead.body).toMatchObject({
+      locale: "en-US",
+      supportedLocales: ["en-US"],
+    });
+
+    const legacyRead = await api.readPreferences(admin);
+    expect(legacyRead.body.locale).toBe("en-US");
+    expect(legacyRead.body.supportedLocales).toBeUndefined();
+
+    await api.updatePreferences(admin, { timezone: "UTC" }, [200]);
+    const capableReread = await api.readPreferences(
+      admin,
+      KOREAN_CLIENT_VERSION,
+    );
+    expect(capableReread.body.locale).toBe("ko-KR");
+
+    mockOptionalEnv("BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED", "true");
+    const allLocales = await api.readPreferences(
+      admin,
+      ALL_LOCALES_CLIENT_VERSION,
+    );
+    expect(allLocales.body).toMatchObject({
+      locale: "ko-KR",
+      supportedLocales: ["en-US", "pt-BR", "ko-KR"],
+    });
   });
 });
 
