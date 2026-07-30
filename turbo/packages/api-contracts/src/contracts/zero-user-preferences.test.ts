@@ -38,4 +38,23 @@ describe("user preferences contract", () => {
       supportedLocales: ["en-US", "pt-BR", "ja-JP"],
     });
   });
+
+  it("accepts the canonical Korean locale", () => {
+    expect(userLocaleSchema.parse("ko-KR")).toBe("ko-KR");
+    expect(
+      userPreferencesResponseSchema.parse({
+        timezone: null,
+        locale: "ko-KR",
+        supportedLocales: ["en-US", "pt-BR", "ja-JP", "ko-KR"],
+        pinnedAgentIds: [],
+        sendMode: "enter",
+        morningBriefEnabled: false,
+        morningBriefNextRunAt: null,
+        captureNetworkBodiesRemaining: 0,
+      }),
+    ).toMatchObject({
+      locale: "ko-KR",
+      supportedLocales: ["en-US", "pt-BR", "ja-JP", "ko-KR"],
+    });
+  });
 });

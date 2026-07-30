@@ -1,5 +1,25 @@
 # Changelog
 
+## [9.271.0](https://github.com/vm0-ai/vm0/compare/cli-v9.270.1...cli-v9.271.0) (2026-07-30)
+
+
+### Features
+
+* add short artifact keys ([#24005](https://github.com/vm0-ai/vm0/issues/24005)) ([663a97c](https://github.com/vm0-ai/vm0/commit/663a97c855dbfacff7169a71e1fd67dba6ba9a02))
+
+
+### Bug Fixes
+
+* remove unavailable chibi-hero image style ([#24034](https://github.com/vm0-ai/vm0/issues/24034)) ([c2cc338](https://github.com/vm0-ai/vm0/commit/c2cc338b17d8a9458c940bb3a95d37e7bbcb7f8c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.252.0
+    * @vm0/core bumped to 8.492.0
+
 ## [9.270.1](https://github.com/vm0-ai/vm0/compare/cli-v9.270.0...cli-v9.270.1) (2026-07-30)
 
 

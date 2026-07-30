@@ -23,6 +23,7 @@ const context = testContext();
 
 afterEach(() => {
   clearMockNow();
+  document.documentElement.lang = "en-US";
 });
 
 function stalePersonalCodexProvider(): ModelProviderResponse {
