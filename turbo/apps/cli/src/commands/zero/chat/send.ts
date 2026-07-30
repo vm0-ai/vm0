@@ -186,7 +186,7 @@ Notes:
   - file parts reference an uploaded web file id (zero web upload-file)
   - The API derives the agent prompt and title state from the document itself
   - Every normal message enters the thread queue first; an idle queue may dispatch it immediately
-  - Authenticates via ZERO_TOKEN (requires chat-thread:read and chat-message:write capabilities)`,
+  - Authenticates via ZERO_TOKEN (requires chat-thread:read and chat-event:write capabilities)`,
   )
   .action(
     withErrorHandler(async (options: SendOptions) => {

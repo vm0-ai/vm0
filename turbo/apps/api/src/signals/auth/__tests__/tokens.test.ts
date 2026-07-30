@@ -102,6 +102,26 @@ describe("auth tokens", () => {
     });
   });
 
+  it("normalizes legacy chat message capabilities to chat event capabilities", () => {
+    const nowSeconds = currentSecond();
+    const token = signSandboxJwtForTests({
+      scope: "zero",
+      userId: "user_zero",
+      orgId: "org_zero",
+      runId: "run_zero",
+      capabilities: ["chat-message:read", "chat-message:write"],
+      iat: nowSeconds,
+      exp: nowSeconds + 60,
+    });
+
+    expect(verifyZeroToken(token)).toStrictEqual({
+      userId: "user_zero",
+      orgId: "org_zero",
+      runId: "run_zero",
+      capabilities: ["chat-event:read", "chat-event:write"],
+    });
+  });
+
   it("rejects expired tokens and mismatched scopes", () => {
     const nowSeconds = currentSecond();
     const expiredToken = signPatJwtForTests({
@@ -147,15 +167,25 @@ describe("auth tokens", () => {
     expect(verifyZeroToken(token)?.capabilities).toContain("chat-thread:write");
   });
 
-  it("grants chat message read and write independently of prompt discovery", () => {
+  it("grants chat event read and write independently of prompt discovery", () => {
     const token = generateZeroToken("user_zero", "run_zero", "org_zero", {
       [FeatureSwitchKey.ZeroChatMessaging]: false,
     });
 
-    expect(verifyZeroToken(token)?.capabilities).toContain("chat-message:read");
-    expect(verifyZeroToken(token)?.capabilities).toContain(
-      "chat-message:write",
-    );
+    expect(decodeZeroTokenPayloadForTest(token)).toMatchObject({
+      capabilities: expect.arrayContaining([
+        "chat-event:read",
+        "chat-event:write",
+      ]),
+    });
+    expect(decodeZeroTokenPayloadForTest(token)).not.toMatchObject({
+      capabilities: expect.arrayContaining(["chat-message:read"]),
+    });
+    expect(decodeZeroTokenPayloadForTest(token)).not.toMatchObject({
+      capabilities: expect.arrayContaining(["chat-message:write"]),
+    });
+    expect(verifyZeroToken(token)?.capabilities).toContain("chat-event:read");
+    expect(verifyZeroToken(token)?.capabilities).toContain("chat-event:write");
   });
 
   it("gates banking capability behind the banking feature switch", () => {

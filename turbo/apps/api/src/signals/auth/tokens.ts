@@ -57,13 +57,30 @@ function isZeroCapability(value: string): value is ZeroCapability {
   });
 }
 
+function normalizeZeroCapability(capability: string): string {
+  switch (capability) {
+    case "chat-message:read": {
+      return "chat-event:read";
+    }
+    case "chat-message:write": {
+      return "chat-event:write";
+    }
+    default: {
+      return capability;
+    }
+  }
+}
+
 // Capability names are open-ended at the token boundary so tokens issued by a
 // newer API remain valid on an older API. The validated output remains closed
 // to known capabilities so unknown names cannot grant permissions.
 const zeroCapabilitiesSchema = z
   .array(z.string().min(1))
   .transform((capabilities) => {
-    return capabilities.filter(isZeroCapability);
+    return capabilities.flatMap((capability) => {
+      const normalized = normalizeZeroCapability(capability);
+      return isZeroCapability(normalized) ? [normalized] : [];
+    });
   })
   .readonly();
 

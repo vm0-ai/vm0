@@ -11,6 +11,20 @@ export interface ZeroTokenPayload {
   exp: number;
 }
 
+function normalizeZeroCapability(capability: string): string {
+  switch (capability) {
+    case "chat-message:read": {
+      return "chat-event:read";
+    }
+    case "chat-message:write": {
+      return "chat-event:write";
+    }
+    default: {
+      return capability;
+    }
+  }
+}
+
 /**
  * Decode a ZERO_TOKEN JWT payload.
  * Only decodes — does NOT verify signature (server does that).
@@ -35,7 +49,10 @@ export function decodeZeroTokenPayload(
       Buffer.from(parts[1]!, "base64url").toString(),
     ) as ZeroTokenPayload;
     if (payload.scope === "zero" && Array.isArray(payload.capabilities)) {
-      return payload;
+      return {
+        ...payload,
+        capabilities: payload.capabilities.map(normalizeZeroCapability),
+      };
     }
   } catch {
     // Malformed token — fall through
