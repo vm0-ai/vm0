@@ -1025,11 +1025,13 @@ function ChatImagePreviewLink({
       )}
       aria-label={ariaLabel}
     >
+      {/* Preserve one flex item so the inline baseline cannot change on load. */}
+      <span aria-hidden="true" className="block h-full w-full" />
       {showPlaceholder && (
         <span
           data-testid="chat-image-preview-loading"
           className={cn(
-            "flex items-center justify-center bg-muted/70 text-muted-foreground",
+            "absolute inset-0 flex items-center justify-center bg-muted/70 text-muted-foreground",
             placeholderClassName,
           )}
         >
@@ -1054,8 +1056,9 @@ function ChatImagePreviewLink({
           setImageLoadStatus(imageLoadKey, "error");
         }}
         className={cn(
+          "absolute inset-0",
           imageClassName,
-          showPlaceholder && "absolute inset-0 opacity-0",
+          showPlaceholder && "opacity-0",
         )}
       />
     </a>

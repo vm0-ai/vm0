@@ -20,6 +20,7 @@ import * as chatFeishuContextSchema from "./schema/chat-feishu-context";
 import * as chatSlackContextSchema from "./schema/chat-slack-context";
 import * as secretSchema from "./schema/secret";
 import * as modelProviderSchema from "./schema/model-provider";
+import * as modelProviderGatewaySchema from "./schema/model-provider-gateway";
 import * as orgModelPolicySchema from "./schema/org-model-policy";
 import * as modelStatSchema from "./schema/model-stat";
 import * as modelUsageObservationSchema from "./schema/model-usage-observation";
@@ -139,6 +140,7 @@ export const schema = {
   ...chatSlackContextSchema,
   ...secretSchema,
   ...modelProviderSchema,
+  ...modelProviderGatewaySchema,
   ...orgModelPolicySchema,
   ...modelStatSchema,
   ...modelUsageObservationSchema,

@@ -13,10 +13,7 @@ import {
   cliAuthTestEnableConnectorContract,
   cliAuthTestTokenContract,
 } from "@vm0/api-contracts/contracts/cli-auth-test";
-import {
-  agentComposeApiContentSchema,
-  composesMainContract,
-} from "@vm0/api-contracts/contracts/composes";
+import { agentComposeApiContentSchema } from "@vm0/api-contracts/contracts/composes";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import {
@@ -41,8 +38,8 @@ import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { createAppWithRoutes } from "../../../../app-factory-core";
 import { now } from "../../../../lib/time";
 import { server } from "../../../../mocks/server";
+import { createAgentComposeFixture } from "../../../../test-fixtures/agent-composes";
 import type { RouteEntry } from "../../../route-entry";
-import { agentComposesRoutes } from "../../agent-composes";
 import { authMeRoutes } from "../../auth-me";
 import { cliAuthRoutes } from "../../cli-auth";
 import { cliAuthTestRoutes } from "../../cli-auth-test";
@@ -81,7 +78,6 @@ type SeedTestCodexOauthBody = z.infer<
 type ComposeContent = z.infer<typeof agentComposeApiContentSchema>;
 
 const authDeviceRoutes: readonly RouteEntry[] = [
-  ...agentComposesRoutes,
   ...authMeRoutes,
   ...cliAuthRoutes,
   ...cliAuthTestRoutes,
@@ -558,9 +554,15 @@ export function createAuthDeviceApiActions(context: TestContext) {
     },
 
     async createCompose(actor: ApiTestUser, content: ComposeContent) {
-      const client = authDeviceApp(context)(composesMainContract);
+      if (!actor.orgId) {
+        throw new Error("Compose fixtures require an org-scoped actor");
+      }
       const response = await accept(
-        client.create({ headers: authenticate(actor), body: { content } }),
+        createAgentComposeFixture({
+          actor: { userId: actor.userId, orgId: actor.orgId },
+          content,
+          signal: context.signal,
+        }),
         [200, 201],
       );
       return response.body;

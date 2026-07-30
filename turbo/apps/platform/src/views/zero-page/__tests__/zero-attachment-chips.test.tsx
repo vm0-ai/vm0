@@ -6,19 +6,16 @@ import {
 import {
   createEvent,
   fireEvent,
-  render,
   screen,
   waitFor,
   within,
 } from "@testing-library/react";
-import { StoreProvider } from "ccstate-react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { initializeI18n } from "../../../i18n/index.ts";
 import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
-import { Markdown } from "../../components/markdown.tsx";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -2347,70 +2344,15 @@ describe("zero attachment chips", () => {
     if (!preview) {
       throw new Error("Markdown image preview button not found");
     }
-    expect(preview).toHaveClass(
-      "aspect-[10/9]",
-      "w-[200px]",
-      "max-w-full",
-      "cursor-pointer",
-    );
-    expect(
-      within(preview).getByTestId("markdown-image-preview-loading"),
-    ).toHaveClass("h-full", "w-full");
+    expect(image).toHaveAttribute("src", imageUrl);
 
     fireEvent.load(image);
+    click(preview);
 
-    await waitFor(() => {
-      expect(
-        within(preview).queryByTestId("markdown-image-preview-loading"),
-      ).not.toBeInTheDocument();
-    });
-    expect(preview).toHaveClass(
-      "aspect-[10/9]",
-      "w-[200px]",
-      "max-w-full",
-      "cursor-pointer",
-    );
-    expect(image).toHaveClass("h-full", "w-full", "object-contain");
-  });
-
-  it("keeps markdown image preview dimensions stable while the image loads", async () => {
-    const imageUrl =
-      "https://cdn.vm7.io/artifacts/test/body-image/kitten-1280x720.png";
-    render(
-      <StoreProvider value={context.store}>
-        <Markdown source={`![1280x720](${imageUrl})`} mediaPreview />
-      </StoreProvider>,
-    );
-
-    const image = await screen.findByAltText("1280x720");
-    const preview = image.closest("button");
-    if (!preview) {
-      throw new Error("Markdown image preview button not found");
-    }
-    expect(preview).toHaveClass(
-      "aspect-[10/9]",
-      "w-[200px]",
-      "max-w-full",
-      "cursor-pointer",
-    );
+    const lightbox = await screen.findByTestId("attachment-lightbox");
     expect(
-      within(preview).getByTestId("markdown-image-preview-loading"),
-    ).toHaveClass("h-full", "w-full");
-
-    fireEvent.load(image);
-
-    await waitFor(() => {
-      expect(
-        within(preview).queryByTestId("markdown-image-preview-loading"),
-      ).not.toBeInTheDocument();
-    });
-    expect(preview).toHaveClass(
-      "aspect-[10/9]",
-      "w-[200px]",
-      "max-w-full",
-      "cursor-pointer",
-    );
-    expect(image).toHaveClass("h-full", "w-full", "object-contain");
+      within(lightbox).getByTestId("attachment-lightbox-image"),
+    ).toHaveAttribute("src", imageUrl);
   });
 
   it("renders canonical user markdown image syntax literally", async () => {

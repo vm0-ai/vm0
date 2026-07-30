@@ -66,12 +66,6 @@ export {
   type DesktopAuthHandoffContract,
 } from "./desktop-auth";
 export {
-  composesMainContract,
-  composesByIdContract,
-  composesVersionsContract,
-  type ComposesMainContract,
-  type ComposesByIdContract,
-  type ComposesVersionsContract,
   AGENT_NAME_REGEX,
   agentNameSchema,
   volumeConfigSchema,
@@ -83,6 +77,7 @@ export {
   agentComposeContentSchema,
   agentComposeApiContentSchema,
   composeResponseSchema,
+  createComposeResponseSchema,
   composeListItemSchema,
   ZERO_CAPABILITIES,
   ZERO_CAPABILITY_META,
@@ -93,6 +88,10 @@ export {
   type ComposeListItem,
   type ArtifactConfig,
 } from "./composes";
+export {
+  testAgentComposesContract,
+  type TestAgentComposesContract,
+} from "./test-agent-composes";
 export {
   ALL_RUN_STATUSES,
   runStatusSchema,
@@ -149,6 +148,22 @@ export {
   zeroModelPoliciesMainContract,
   type ZeroModelPoliciesMainContract,
 } from "./zero-model-policies";
+export {
+  createModelProviderConnectionRequestSchema,
+  getModelProviderTypeForSurfaceProtocol,
+  modelProviderConnectionResponseSchema,
+  modelProviderConnectionsResponseSchema,
+  modelProviderSurfaceInputSchema,
+  modelProviderSurfaceProtocolSchema,
+  modelProviderSurfaceResponseSchema,
+  updateModelProviderConnectionRequestSchema,
+  zeroModelProviderConnectionsByIdContract,
+  zeroModelProviderConnectionsMainContract,
+  type CreateModelProviderConnectionRequest,
+  type ModelProviderConnectionResponse,
+  type ModelProviderSurfaceProtocol,
+  type UpdateModelProviderConnectionRequest,
+} from "./zero-model-provider-gateways";
 export {
   userModelPreferenceResponseSchema,
   updateUserModelPreferenceRequestSchema,

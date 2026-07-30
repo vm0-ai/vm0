@@ -8,14 +8,20 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { conversations } from "@vm0/db/schema/conversation";
+import {
+  modelProviderConnections,
+  modelProviderSurfaces,
+} from "@vm0/db/schema/model-provider-gateway";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import type { Db, ReadonlyDb } from "../external/db";
+import { modelProviderGatewaySchemaAvailable } from "./model-provider-gateway-schema.service";
 
 export interface ChatThreadSessionRoute {
   readonly selectedModel: string | null;
   readonly modelProvider: string | null;
+  readonly modelProviderId: string | null;
   readonly cliAgentType: string | null;
 }
 
@@ -42,11 +48,14 @@ interface HistoricalThreadSession {
   readonly sessionId: string;
   readonly conversationId: string | null;
   readonly route: ChatThreadSessionRoute;
+  readonly routeRunCreatedAt: Date;
 }
 
 interface SessionRunRoute {
   readonly selectedModel: string | null;
   readonly modelProvider: string | null;
+  readonly modelProviderId: string | null;
+  readonly createdAt: Date;
 }
 
 function isKnownModelProvider(
@@ -124,7 +133,9 @@ async function latestHistoricalThreadSession(args: {
       conversationId: agentSessions.conversationId,
       selectedModel: zeroRuns.selectedModel,
       modelProvider: zeroRuns.modelProvider,
+      modelProviderId: zeroRuns.modelProviderId,
       cliAgentType: conversations.cliAgentType,
+      routeRunCreatedAt: agentRuns.createdAt,
     })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
@@ -154,8 +165,10 @@ async function latestHistoricalThreadSession(args: {
     route: {
       selectedModel: row.selectedModel,
       modelProvider: row.modelProvider,
+      modelProviderId: row.modelProviderId,
       cliAgentType: row.cliAgentType,
     },
+    routeRunCreatedAt: row.routeRunCreatedAt,
   };
 }
 
@@ -167,6 +180,8 @@ async function latestSessionRunRoute(args: {
     .select({
       selectedModel: zeroRuns.selectedModel,
       modelProvider: zeroRuns.modelProvider,
+      modelProviderId: zeroRuns.modelProviderId,
+      createdAt: agentRuns.createdAt,
     })
     .from(agentRuns)
     .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
@@ -176,10 +191,71 @@ async function latestSessionRunRoute(args: {
   return row ?? null;
 }
 
+async function customSurfaceRouteChanged(args: {
+  readonly db: Db | ReadonlyDb;
+  readonly orgId: string;
+  readonly previousModelProviderId: string | null;
+  readonly nextModelProviderId: string | null;
+  readonly previousRunCreatedAt: Date | null;
+}): Promise<boolean> {
+  const candidateSurfaceIds = [
+    args.previousModelProviderId,
+    args.nextModelProviderId,
+  ].filter((id): id is string => {
+    return id !== null;
+  });
+  if (candidateSurfaceIds.length === 0) {
+    return false;
+  }
+  if (!(await modelProviderGatewaySchemaAvailable(args.db))) {
+    return false;
+  }
+  const surfaces = await args.db
+    .select({
+      surfaceUpdatedAt: modelProviderSurfaces.updatedAt,
+      connectionUpdatedAt: modelProviderConnections.updatedAt,
+    })
+    .from(modelProviderSurfaces)
+    .innerJoin(
+      modelProviderConnections,
+      eq(modelProviderSurfaces.connectionId, modelProviderConnections.id),
+    )
+    .where(
+      and(
+        inArray(modelProviderSurfaces.id, candidateSurfaceIds),
+        eq(modelProviderConnections.orgId, args.orgId),
+      ),
+    );
+  if (args.previousModelProviderId !== args.nextModelProviderId) {
+    return surfaces.length > 0;
+  }
+  const [surface] = surfaces;
+  return (
+    surface !== undefined &&
+    args.previousRunCreatedAt !== null &&
+    (surface.surfaceUpdatedAt > args.previousRunCreatedAt ||
+      surface.connectionUpdatedAt > args.previousRunCreatedAt)
+  );
+}
+
 function shouldRotateCanonicalSession(args: {
   readonly previousRoute: ChatThreadSessionRoute;
   readonly nextRoute: ChatThreadSessionRoute;
 }): boolean {
+  const providerIdChanged =
+    args.previousRoute.modelProviderId !== args.nextRoute.modelProviderId;
+  const gatewayAdapterInUse =
+    args.previousRoute.modelProvider === "vercel-ai-gateway" ||
+    args.previousRoute.modelProvider === "vercel-ai-gateway-codex" ||
+    args.nextRoute.modelProvider === "vercel-ai-gateway" ||
+    args.nextRoute.modelProvider === "vercel-ai-gateway-codex";
+  if (providerIdChanged && gatewayAdapterInUse) {
+    // A custom surface uses the same runtime adapter type as a legacy Vercel
+    // provider. Once its connection is deleted, the surface row can no longer
+    // prove that the previous route was custom, so the provider identity must
+    // remain part of the canonical continuity boundary.
+    return true;
+  }
   return shouldStartNewChatSession({
     latestModel: args.previousRoute.selectedModel,
     nextModel: args.nextRoute.selectedModel,
@@ -188,6 +264,28 @@ function shouldRotateCanonicalSession(args: {
     latestCliAgentType: args.previousRoute.cliAgentType,
     nextCliAgentType: args.nextRoute.cliAgentType,
   });
+}
+
+async function shouldRotateResolvedSession(args: {
+  readonly db: Db | ReadonlyDb;
+  readonly orgId: string;
+  readonly previousRoute: ChatThreadSessionRoute;
+  readonly nextRoute: ChatThreadSessionRoute;
+  readonly previousRunCreatedAt: Date | null;
+}): Promise<boolean> {
+  const routeConfigurationChanged = await customSurfaceRouteChanged({
+    db: args.db,
+    orgId: args.orgId,
+    previousModelProviderId: args.previousRoute.modelProviderId,
+    nextModelProviderId: args.nextRoute.modelProviderId,
+    previousRunCreatedAt: args.previousRunCreatedAt,
+  });
+  return routeConfigurationChanged
+    ? true
+    : shouldRotateCanonicalSession({
+        previousRoute: args.previousRoute,
+        nextRoute: args.nextRoute,
+      });
 }
 
 export async function resolveChatThreadSession(args: {
@@ -206,7 +304,9 @@ export async function resolveChatThreadSession(args: {
       conversationId: agentSessions.conversationId,
       selectedModel: zeroRuns.selectedModel,
       modelProvider: zeroRuns.modelProvider,
+      modelProviderId: zeroRuns.modelProviderId,
       routeRunId: zeroRuns.id,
+      routeRunCreatedAt: agentRuns.createdAt,
       cliAgentType: conversations.cliAgentType,
     })
     .from(chatThreads)
@@ -220,6 +320,7 @@ export async function resolveChatThreadSession(args: {
       ),
     )
     .leftJoin(conversations, eq(conversations.id, agentSessions.conversationId))
+    .leftJoin(agentRuns, eq(agentRuns.id, chatThreads.agentSessionRunId))
     .leftJoin(zeroRuns, eq(zeroRuns.id, chatThreads.agentSessionRunId))
     .where(
       and(
@@ -247,13 +348,19 @@ export async function resolveChatThreadSession(args: {
             sessionId: thread.sessionId,
           })
         : null;
-    const rotate = shouldRotateCanonicalSession({
-      previousRoute: {
-        selectedModel: latestRoute?.selectedModel ?? thread.selectedModel,
-        modelProvider: latestRoute?.modelProvider ?? thread.modelProvider,
-        cliAgentType: thread.cliAgentType,
-      },
+    const previousRoute = {
+      selectedModel: latestRoute?.selectedModel ?? thread.selectedModel,
+      modelProvider: latestRoute?.modelProvider ?? thread.modelProvider,
+      modelProviderId: latestRoute?.modelProviderId ?? thread.modelProviderId,
+      cliAgentType: thread.cliAgentType,
+    };
+    const rotate = await shouldRotateResolvedSession({
+      db: args.db,
+      orgId: args.orgId,
+      previousRoute,
       nextRoute: args.route,
+      previousRunCreatedAt:
+        latestRoute?.createdAt ?? thread.routeRunCreatedAt ?? null,
     });
     return {
       sessionId: rotate ? undefined : thread.sessionId,
@@ -276,9 +383,12 @@ export async function resolveChatThreadSession(args: {
     };
   }
 
-  const rotate = shouldRotateCanonicalSession({
+  const rotate = await shouldRotateResolvedSession({
+    db: args.db,
+    orgId: args.orgId,
     previousRoute: historical.route,
     nextRoute: args.route,
+    previousRunCreatedAt: historical.routeRunCreatedAt,
   });
   return {
     sessionId: rotate ? undefined : historical.sessionId,
