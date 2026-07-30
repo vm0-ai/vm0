@@ -48,8 +48,13 @@ const CUSTOM_CONNECTOR_AGENT_NAME_MAX_CHARS = 12;
 function connectsDirectlyWithOAuth(
   connector: CustomConnectorResponse,
   oauth2Enabled: boolean,
+  feishuEnabled: boolean,
 ): boolean {
-  return oauth2Enabled && connector.authMode === "oauth";
+  return (
+    connector.authMode === "oauth" &&
+    (oauth2Enabled ||
+      (feishuEnabled && connector.oauthConfig?.providerAdapter === "feishu"))
+  );
 }
 
 function customConnectorAgentName(
@@ -143,6 +148,7 @@ interface CustomConnectorRowProps {
   readonly onEdit: () => void;
   readonly onRename: () => void;
   readonly fullEditingEnabled: boolean;
+  readonly feishuEnabled: boolean;
   readonly onDelete: () => void;
 }
 
@@ -214,11 +220,18 @@ function CustomConnectorRow({
   onEdit,
   onRename,
   fullEditingEnabled,
+  feishuEnabled,
   onDelete,
 }: CustomConnectorRowProps) {
   const { t } = useTranslation();
-  const hasActions = connector.connected || isAdmin;
-  const directOAuth = connectsDirectlyWithOAuth(connector, fullEditingEnabled);
+  const adminCanManage =
+    isAdmin && connector.oauthConfig?.providerAdapter !== "feishu";
+  const hasActions = connector.connected || adminCanManage;
+  const directOAuth = connectsDirectlyWithOAuth(
+    connector,
+    fullEditingEnabled,
+    feishuEnabled,
+  );
   const cardContent = (
     <CustomConnectorCardContent
       connector={connector}
@@ -284,7 +297,7 @@ function CustomConnectorRow({
                   })}
                 </DropdownMenuItem>
               )}
-              {isAdmin && (
+              {adminCanManage && (
                 <>
                   <DropdownMenuModalItem
                     onModalSelect={fullEditingEnabled ? onEdit : onRename}
@@ -331,6 +344,8 @@ export function CustomConnectorsPanel() {
   const featureSwitches = useGet(featureSwitch$);
   const fullEditingEnabled =
     featureSwitches[FeatureSwitchKey.CustomConnectorOAuth2] ?? false;
+  const feishuEnabled =
+    featureSwitches[FeatureSwitchKey.FeishuIntegration] ?? false;
   const dialog = useGet(customConnectorDialog$);
   const openEdit = useSet(openCustomConnectorEditDialog$);
   const openRename = useSet(openCustomConnectorRenameDialog$);
@@ -351,7 +366,9 @@ export function CustomConnectorsPanel() {
   };
 
   const handleConnect = (connector: CustomConnectorResponse) => {
-    if (connectsDirectlyWithOAuth(connector, fullEditingEnabled)) {
+    if (
+      connectsDirectlyWithOAuth(connector, fullEditingEnabled, feishuEnabled)
+    ) {
       detach(connectOAuth2(connector.id, signal), Reason.DomCallback);
       return;
     }
@@ -404,6 +421,7 @@ export function CustomConnectorsPanel() {
                   return handleRename(c);
                 }}
                 fullEditingEnabled={fullEditingEnabled}
+                feishuEnabled={feishuEnabled}
                 onDelete={() => {
                   return openDelete(c);
                 }}

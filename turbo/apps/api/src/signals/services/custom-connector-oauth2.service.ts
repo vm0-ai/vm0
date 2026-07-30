@@ -31,9 +31,15 @@ import {
 import { createDeferredPromise, safeJsonParse, settle } from "../utils";
 import { writeDb$, type Db } from "../external/db";
 import {
+  exchangeFeishuOAuthCode,
+  FeishuOAuthTokenError,
+  refreshFeishuOAuthToken,
+} from "../external/feishu-client";
+import {
   decryptStoredSecretValue,
   encryptStoredSecretValue,
 } from "./crypto.utils";
+import { feishuOAuthAppCallbackUrl } from "./feishu-config";
 import {
   CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
   CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_SECRET_NAME,
@@ -53,9 +59,17 @@ const TOKEN_REFRESH_LEEWAY_MS = 60 * 1000;
 const customConnectorOAuthStateContextSchema = z.object({
   connectorId: z.string().uuid(),
   connectorRevision: z.number().int().positive(),
+  providerContext: z
+    .object({
+      provider: z.literal("feishu"),
+      completionTarget: z.enum(["custom", "feishu"]),
+      installationId: z.string().uuid().optional(),
+      expectedOpenId: z.string().min(1).optional(),
+    })
+    .optional(),
 });
 
-type CustomConnectorOAuthStateContext = z.infer<
+export type CustomConnectorOAuthStateContext = z.infer<
   typeof customConnectorOAuthStateContextSchema
 >;
 
@@ -72,7 +86,7 @@ const oauthTokenErrorResponseSchema = z.object({
   error_subtype: z.string().min(1).optional(),
 });
 
-interface OAuthTokenResult {
+export interface OAuthTokenResult {
   readonly accessToken: string;
   readonly refreshToken: string | null;
   readonly idToken: string | null;
@@ -296,6 +310,53 @@ async function requestToken(args: {
   return tokenResult(response);
 }
 
+function feishuOAuthTokenResult(token: {
+  readonly accessToken: string;
+  readonly refreshToken: string | null;
+  readonly expiresInSeconds: number;
+}): OAuthTokenResult {
+  if (hasHttpHeaderControlCharacter(token.accessToken)) {
+    throw new Error("OAuth token response contains an invalid access token");
+  }
+  if (!Number.isFinite(token.expiresInSeconds) || token.expiresInSeconds < 0) {
+    throw new Error("OAuth token response has an invalid expires_in value");
+  }
+  return {
+    accessToken: token.accessToken,
+    refreshToken: token.refreshToken,
+    idToken: null,
+    expiresAt: new Date(nowDate().getTime() + token.expiresInSeconds * 1000),
+  };
+}
+
+function isFeishuInvalidGrantCode(code: number): boolean {
+  return (
+    code === 20_008 ||
+    code === 20_009 ||
+    code === 20_010 ||
+    code === 20_024 ||
+    code === 20_026 ||
+    code === 20_037 ||
+    code === 20_048 ||
+    code === 20_064 ||
+    code === 20_066 ||
+    code === 20_069 ||
+    code === 20_073 ||
+    code === 20_074
+  );
+}
+
+function throwCustomConnectorFeishuOAuthError(error: unknown): never {
+  if (!(error instanceof FeishuOAuthTokenError)) {
+    throw error;
+  }
+  throw new OAuthProviderHttpError(
+    error.message,
+    error.routeStatus,
+    isFeishuInvalidGrantCode(error.code) ? "invalid_grant" : error.oauthError,
+  );
+}
+
 export async function exchangeCustomConnectorOAuth2Code(args: {
   readonly config: CustomConnectorOAuthConfigRow;
   readonly clientSecret: string;
@@ -304,6 +365,22 @@ export async function exchangeCustomConnectorOAuth2Code(args: {
   readonly redirectUri: string;
   readonly signal: AbortSignal;
 }): Promise<OAuthTokenResult> {
+  if (args.config.providerAdapter === "feishu") {
+    const result = await settle(
+      exchangeFeishuOAuthCode({
+        appId: args.config.clientId,
+        appSecret: args.clientSecret,
+        code: args.code,
+        redirectUri: args.redirectUri,
+        signal: args.signal,
+      }),
+      args.signal,
+    );
+    if (!result.ok) {
+      throwCustomConnectorFeishuOAuthError(result.error);
+    }
+    return feishuOAuthTokenResult(result.value);
+  }
   const form = new URLSearchParams({
     grant_type: "authorization_code",
     code: args.code,
@@ -321,6 +398,21 @@ async function refreshCustomConnectorOAuth2Token(args: {
   readonly refreshToken: string;
   readonly signal: AbortSignal;
 }): Promise<OAuthTokenResult> {
+  if (args.config.providerAdapter === "feishu") {
+    const result = await settle(
+      refreshFeishuOAuthToken({
+        appId: args.config.clientId,
+        appSecret: args.clientSecret,
+        refreshToken: args.refreshToken,
+        signal: args.signal,
+      }),
+      args.signal,
+    );
+    if (!result.ok) {
+      throwCustomConnectorFeishuOAuthError(result.error);
+    }
+    return feishuOAuthTokenResult(result.value);
+  }
   const form = new URLSearchParams({
     grant_type: "refresh_token",
     refresh_token: args.refreshToken,
@@ -371,6 +463,11 @@ export const startCustomConnectorOAuth2$ = command(
       readonly connectorId: string;
       readonly redirectUri: string;
       readonly agentId?: string;
+      readonly feishuContext?: {
+        readonly completionTarget: "custom" | "feishu";
+        readonly installationId?: string;
+        readonly expectedOpenId?: string;
+      };
     },
     signal: AbortSignal,
   ) => {
@@ -389,21 +486,38 @@ export const startCustomConnectorOAuth2$ = command(
         "Custom connector does not support OAuth 2.0 authentication",
       );
     }
-    if (connector.oauthConfig.providerAdapter !== "standard") {
-      return badRequestMessage("OAuth provider adapter is not supported");
-    }
+    const providerAdapter = connector.oauthConfig.providerAdapter;
+    const redirectUri =
+      providerAdapter === "feishu" && !args.feishuContext
+        ? feishuOAuthAppCallbackUrl()
+        : args.redirectUri;
     const state = generateConnectorOAuthState();
     const codeVerifier =
       connector.oauthConfig.pkceMethod === "S256" ? createPkceVerifier() : null;
     const authorizationUrl = buildCustomConnectorOAuth2AuthorizationUrl({
       config: connector.oauthConfig,
-      redirectUri: args.redirectUri,
+      redirectUri,
       state,
       codeVerifier,
     });
     const context: CustomConnectorOAuthStateContext = {
       connectorId: connector.id,
       connectorRevision: connector.revision,
+      ...(providerAdapter === "feishu"
+        ? {
+            providerContext: {
+              provider: "feishu" as const,
+              completionTarget:
+                args.feishuContext?.completionTarget ?? ("custom" as const),
+              ...(args.feishuContext?.installationId
+                ? { installationId: args.feishuContext.installationId }
+                : {}),
+              ...(args.feishuContext?.expectedOpenId
+                ? { expectedOpenId: args.feishuContext.expectedOpenId }
+                : {}),
+            },
+          }
+        : {}),
     };
     await set(writeDb$)
       .insert(connectorOauthStates)
@@ -416,7 +530,7 @@ export const startCustomConnectorOAuth2$ = command(
         orgId: args.orgId,
         agentId: args.agentId,
         authorizeAgent: args.agentId !== undefined,
-        redirectUri: args.redirectUri,
+        redirectUri,
         authorizationUrl,
         codeVerifier,
         oauthContext: JSON.stringify(context),

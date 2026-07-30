@@ -2253,6 +2253,12 @@
         "manageDialogTitle": "Gerenciar bot do Feishu",
         "moreOptions": "Mais opções para {{bot}}",
         "pageDescription": "Gerencie o encaminhamento dos bots neste workspace",
+        "permissions": {
+          "description": "Abra Permissions & Scopes no console de desenvolvedor do Feishu e adicione todos os escopos abaixo para User identity. Esses escopos de colaboração permitem que o conector trabalhe com mensagens, arquivos, documentos, planilhas, Base, Wiki, Slides, quadros brancos, pesquisa, calendários, tarefas e contatos básicos.",
+          "hint": "Depois de alterar as permissões, crie e publique uma nova versão do app para que a tela de consentimento OAuth possa concedê-las.",
+          "label": "Escopos OAuth",
+          "title": "Habilitar permissões do conector"
+        },
         "publish": {
           "allMembersAlt": "Configurações de disponibilidade do Feishu com All members selecionado",
           "allMembersLabel": "Disponibilizar o app para todos os membros",
@@ -2285,6 +2291,7 @@
           "done": "Concluído",
           "events": "Eventos",
           "next": "Avançar",
+          "permissions": "Permissões",
           "publish": "Publicar",
           "redirect": "Redirecionar",
           "tokens": "Tokens",

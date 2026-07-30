@@ -78,17 +78,3 @@ export function buildFeishuOAuthConnectUrl(args: {
 }): string {
   return feishuOAuthConnectUrl(createFeishuOAuthState(args));
 }
-
-export function createFeishuOAuthAuthorizationState(
-  state: FeishuOAuthState,
-  callbackTarget: "app" | undefined,
-): string {
-  return createFeishuOAuthState({
-    installationId: state.installationId,
-    orgId: state.orgId,
-    userId: state.userId,
-    callbackTarget,
-    oauthRedirectTarget: callbackTarget,
-    timestamp: state.timestamp,
-  });
-}
