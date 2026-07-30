@@ -6,6 +6,7 @@ import type {
 import { connectors } from "@vm0/db/schema/connector";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
+import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { and, eq } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -15,6 +16,7 @@ import { publishUserSignal } from "../external/realtime";
 import { env, optionalEnv } from "../../lib/env";
 import { getOAuthWebOrigin } from "../routes/oauth-web-origin";
 import {
+  buildGithubAppInstallUrl,
   buildGithubUserConnectAuthorizationUrl,
   findGithubInstallationByInstallationId,
   getGithubOAuthAuthMethod,
@@ -29,6 +31,31 @@ function errorResponse(status: 400 | 404 | 409, message: string, code: string) {
 
 function githubConnectStartUrl(origin: string): string {
   return `${origin}/api/zero/github/oauth/connect`;
+}
+
+async function githubInstallUrl(args: {
+  readonly db: ReadonlyDb;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly origin: string;
+  readonly signal: AbortSignal;
+}): Promise<string | null> {
+  const appSlug = optionalEnv("GITHUB_APP_SLUG");
+  if (!appSlug) {
+    return null;
+  }
+
+  const composeId = await loadOrgDefaultComposeId(args.db, args.orgId);
+  args.signal.throwIfAborted();
+
+  return await buildGithubAppInstallUrl({
+    appSlug,
+    vm0UserId: args.userId,
+    orgId: args.orgId,
+    composeId: composeId ?? undefined,
+    origin: args.origin,
+    secretsEncryptionKey: env("SECRETS_ENCRYPTION_KEY"),
+  });
 }
 
 async function publishGithubChanged(userIds: readonly string[]): Promise<void> {
@@ -50,6 +77,19 @@ function canManageInstallation(args: {
   readonly orgRole: string | undefined;
 }): boolean {
   return args.orgRole === "admin";
+}
+
+async function loadOrgDefaultComposeId(
+  db: ReadonlyDb,
+  orgId: string,
+): Promise<string | null> {
+  const [orgRow] = await db
+    .select({ defaultAgentId: orgMetadata.defaultAgentId })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+
+  return orgRow?.defaultAgentId ?? null;
 }
 
 async function loadOrgGithubInstallation(
@@ -185,6 +225,17 @@ export const getGithubInstallation$ = command(
     signal.throwIfAborted();
 
     if (!installation) {
+      const installUrl = canManageInstallation({ orgRole: auth.orgRole })
+        ? await githubInstallUrl({
+            db,
+            userId: auth.userId,
+            orgId: auth.orgId,
+            origin,
+            signal,
+          })
+        : null;
+      signal.throwIfAborted();
+
       return {
         status: 404 as const,
         body: {
@@ -192,6 +243,7 @@ export const getGithubInstallation$ = command(
             message: "No GitHub installation found",
             code: "NOT_FOUND",
           },
+          installUrl,
         },
       };
     }
