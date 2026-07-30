@@ -118,7 +118,7 @@ describe("chat history backfill loading", () => {
       }
       expect(skeleton.parentElement).toBe(messageContainer);
       expect(
-        skeleton.querySelectorAll("[data-chat-message-skeleton]"),
+        skeleton.querySelectorAll("[data-chat-event-skeleton]"),
       ).toHaveLength(2);
       expect(
         skeleton.compareDocumentPosition(firstMessage) &
