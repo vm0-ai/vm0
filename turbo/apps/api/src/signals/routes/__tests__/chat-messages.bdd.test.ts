@@ -66,6 +66,10 @@ import { overwriteModelProviderSecretForTests } from "./helpers/zero-model-provi
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
 import {
+  createUnassociatedThreadBoundAgentRunFixture,
+  createUnassociatedThreadBoundZeroRunFixture,
+} from "../../../test-fixtures/thread-bound-run-admission";
+import {
   deleteAgentRunFixture,
   deleteBddVm0ApiKeys,
   hasVm0ApiKeyLabel,
@@ -729,6 +733,28 @@ function chatEventsClient() {
 function chatThreadEventsClient() {
   return setupApp({ context })(chatThreadEventsContract);
 }
+
+describe("CHAT-02: thread run admission invariant", () => {
+  it("rejects thread-bound run creation without a queue association at both service boundaries", async () => {
+    await expect(createUnassociatedThreadBoundZeroRunFixture()).rejects.toThrow(
+      "Thread-bound Zero run requires a queue-first association",
+    );
+
+    await expect(
+      createUnassociatedThreadBoundAgentRunFixture(),
+    ).rejects.toThrow("Thread-bound run requires a queue-first association");
+
+    await expect(
+      createUnassociatedThreadBoundZeroRunFixture(""),
+    ).rejects.toThrow(
+      "Thread-bound Zero run requires a queue-first association",
+    );
+
+    await expect(
+      createUnassociatedThreadBoundAgentRunFixture(""),
+    ).rejects.toThrow("Thread-bound run requires a queue-first association");
+  });
+});
 
 function sessionHeaders(actor: ApiTestUser): {
   readonly authorization: string;
@@ -4117,6 +4143,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
     expect(titleRequests).toBe(1);
     await cancelChatRun(actor, third.runId);
 
+    const recommendedFollowupQueueEventId = randomUUID();
     const normalFollowup = await chat.requestSendEvent(
       actor,
       {
@@ -4124,6 +4151,7 @@ describe("CHAT-02: prior rounds and thread titles", () => {
         threadId: first.threadId,
         prompt: "use the recommended follow-up",
         revokesEventId: recommender.id,
+        clientEventId: recommendedFollowupQueueEventId,
       },
       [201],
     );
@@ -4140,17 +4168,26 @@ describe("CHAT-02: prior rounds and thread titles", () => {
       (messages) => {
         return userMessages(messages).some((message) => {
           return (
-            message.revokesEventId === recommender.id &&
+            message.revokesEventId === recommendedFollowupQueueEventId &&
             message.runId === normalFollowupRunId
           );
         });
       },
     );
-    expect(
-      userMessages(afterFollowup.events).some((message) => {
-        return message.revokesEventId === recommender.id;
+    expect(afterFollowup.events).toContainEqual(
+      expect.objectContaining({
+        id: recommendedFollowupQueueEventId,
+        eventType: "input.prompt",
+        revokesEventId: recommender.id,
       }),
-    ).toBeTruthy();
+    );
+    expect(afterFollowup.events).toContainEqual(
+      expect.objectContaining({
+        eventType: "input.prompt",
+        revokesEventId: recommendedFollowupQueueEventId,
+        runId: normalFollowupRunId,
+      }),
+    );
     await cancelChatRun(actor, normalFollowupRunId);
   }, 90_000);
 });

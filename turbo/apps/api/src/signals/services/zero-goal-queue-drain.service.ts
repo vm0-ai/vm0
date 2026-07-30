@@ -332,23 +332,26 @@ export const drainGoalQueueForThread$ = command(
         return;
       }
 
-      const paused = await pauseActiveGoalForThread(db, {
-        orgId: goal.orgId,
-        userId: goal.userId,
-        threadId: goal.threadId,
-      });
-      signal.throwIfAborted();
-      await rejectGoalEvent(
+      const rejected = await rejectGoalEvent(
         db,
         event,
         result.response.body.error.message,
         signal,
       );
-      log.warn("Goal queue event failed to create a run; goal paused", {
+      const paused = rejected
+        ? await pauseActiveGoalForThread(db, {
+            orgId: goal.orgId,
+            userId: goal.userId,
+            threadId: goal.threadId,
+          })
+        : null;
+      signal.throwIfAborted();
+      log.warn("Goal queue event failed to create a run", {
         eventId: event.id,
         goalId: goal.goalId,
         code: result.response.body.error.code,
-        pauseResult: paused.kind,
+        rejected,
+        pauseResult: paused?.kind ?? "not_paused",
       });
       return;
     }

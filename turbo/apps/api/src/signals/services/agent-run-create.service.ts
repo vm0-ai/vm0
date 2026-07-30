@@ -719,6 +719,14 @@ export interface CreateAgentRunArgs {
   readonly timingDimensions?: ApiDispatchTimingDimensions;
 }
 
+function assertThreadBoundRunHasQueueAssociation(
+  args: CreateAgentRunArgs,
+): void {
+  if (args.chatThreadId !== undefined && !args.queueFirstAssociation) {
+    throw new Error("Thread-bound run requires a queue-first association");
+  }
+}
+
 interface ConnectorRuntimeContext {
   readonly secrets: Record<string, string> | undefined;
   readonly vars: Record<string, string> | undefined;
@@ -7416,6 +7424,7 @@ export const prepareAgentRun$ = command(
     input: PrepareAgentRunArgs,
     signal: AbortSignal,
   ): Promise<PreparedAgentRun | CreateRunErrorResult> => {
+    assertThreadBoundRunHasQueueAssociation(input.args);
     // A preview request that passed the protection guard gives its sandbox CLI
     // the same bypass through the existing user-environment channel.
     const previewAutomationBypass = get(previewAutomationBypass$);
@@ -7476,6 +7485,7 @@ export const completeAgentRun$ = command(
     input: CompleteAgentRunArgs,
     signal: AbortSignal,
   ): Promise<QueueFirstAgentRunResult> => {
+    assertThreadBoundRunHasQueueAssociation(input.prepared.args);
     const db = set(writeDb$);
     const { args, timing } = input.prepared;
     const context = finalizePreparedRunContext(

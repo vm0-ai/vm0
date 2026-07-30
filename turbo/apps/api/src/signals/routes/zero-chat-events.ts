@@ -63,7 +63,6 @@ import { logger } from "../../lib/log";
 import type { AuthContext } from "../../types/auth";
 import {
   createQueueFirstZeroRun$,
-  createZeroRun$,
   type ZeroPreCreateSource,
 } from "../services/zero-runs-create.service";
 import {
@@ -1566,6 +1565,7 @@ function appendUnassociatedUserMessage(params: {
   readonly userMessage: UserMessageDocument;
   readonly generationTemplate: IncomingGenerationTemplate;
   readonly encryptedParams: string | undefined;
+  readonly revokesEventId: string | undefined;
 }): Promise<ClientEventIdResolution> {
   return params.db.transaction(async (tx) => {
     await tx
@@ -1585,22 +1585,21 @@ function appendUnassociatedUserMessage(params: {
     const explicitId = params.clientEventId ?? undefined;
     const fileIds = attachFileIds(params.attachFiles);
     const fileMetadata = attachFileMetadata(params.userId, params.attachFiles);
-    const inserted = await insertChatEvent(
-      tx,
-      {
-        ...(explicitId ? { id: explicitId } : {}),
-        chatThreadId: params.threadId,
-        eventType: "input.prompt",
-        userMessage: params.userMessage,
-        runId: null,
-        triggerSource: "web",
-        encryptedParams: params.encryptedParams,
-        attachFiles: fileIds,
-        attachFileMetadata: fileMetadata,
-        generationTemplate: params.generationTemplate,
-      },
-      "id",
-    );
+    const message: NewChatEvent = {
+      ...(explicitId ? { id: explicitId } : {}),
+      chatThreadId: params.threadId,
+      eventType: "input.prompt",
+      userMessage: params.userMessage,
+      runId: null,
+      triggerSource: "web",
+      encryptedParams: params.encryptedParams,
+      attachFiles: fileIds,
+      attachFileMetadata: fileMetadata,
+      generationTemplate: params.generationTemplate,
+    };
+    const inserted = params.revokesEventId
+      ? await replaceChatEvent(tx, params.revokesEventId, message)
+      : await insertChatEvent(tx, message, "id");
     if (inserted) {
       if (params.touchThreadSort) {
         await touchChatThreadLastMessageAt(
@@ -2477,6 +2476,7 @@ async function queueUnassociatedNormalMessage(params: {
     userMessage: params.body.userMessage,
     generationTemplate: params.body.generationTemplate,
     encryptedParams,
+    revokesEventId: params.body.revokesEventId,
   });
   if (message.kind === "queued" && message.inserted) {
     waitUntil(
@@ -3063,8 +3063,7 @@ function scheduleNormalChatRunSideEffects(params: {
   readonly prepared: PreparedNormalSend;
   readonly runId: string;
   readonly runStatus: string;
-  readonly queueFirstMessageId: string | undefined;
-  readonly queueFirstClaimedAt: Date | undefined;
+  readonly queueFirstClaimedAt: Date;
 }): void {
   scheduleCreatedChatRunSideEffects({
     db: params.prepared.db,
@@ -3079,12 +3078,9 @@ function scheduleNormalChatRunSideEffects(params: {
       params.args.zeroPreCreateSource,
       params.prepared.thread.isNewThread,
     ),
-    queueFirstClaim:
-      params.queueFirstMessageId && params.queueFirstClaimedAt
-        ? {
-            createdAt: params.queueFirstClaimedAt,
-          }
-        : undefined,
+    queueFirstClaim: {
+      createdAt: params.queueFirstClaimedAt,
+    },
   });
 }
 
@@ -3095,7 +3091,7 @@ const createNormalChatRun$ = command(
       readonly args: NormalSendArgs;
       readonly prepared: PreparedNormalSend;
       /** Queue-first sends replace this queued message at dispatch time. */
-      readonly queueFirstMessageId?: string;
+      readonly queueFirstMessageId: string;
     },
     signal: AbortSignal,
   ) => {
@@ -3134,25 +3130,20 @@ const createNormalChatRun$ = command(
         createNormalRunStartedAt,
       );
     }
-    const runResult = queueFirstMessageId
-      ? await set(
-          createQueueFirstZeroRun$,
-          {
-            ...createRunArgs,
-            queueFirstAssociation: {
-              kind: "user_message",
-              threadId: prepared.thread.threadId,
-              messageId: queueFirstMessageId,
-            },
-          },
-          signal,
-        )
-      : await set(createZeroRun$, createRunArgs, signal);
+    const runResult = await set(
+      createQueueFirstZeroRun$,
+      {
+        ...createRunArgs,
+        queueFirstAssociation: {
+          kind: "user_message",
+          threadId: prepared.thread.threadId,
+          messageId: queueFirstMessageId,
+        },
+      },
+      signal,
+    );
     signal.throwIfAborted();
     if (isQueueFirstRunClaimLost(runResult)) {
-      if (!queueFirstMessageId) {
-        throw new Error("Non-queue chat run lost a queue-first claim");
-      }
       return await resolveQueueFirstMessageAfterLostClaim({
         db: prepared.db,
         threadId: prepared.thread.threadId,
@@ -3169,17 +3160,13 @@ const createNormalChatRun$ = command(
       status: runResult.body.status,
       createdAt: runResult.body.createdAt,
     });
-    const queueFirstClaimedAt = runResult.queueFirstClaim?.createdAt;
-    if (queueFirstMessageId && !queueFirstClaimedAt) {
-      throw new Error("Queue-first chat run is missing claim metadata");
-    }
+    const queueFirstClaimedAt = runResult.queueFirstClaim.createdAt;
 
     scheduleNormalChatRunSideEffects({
       args,
       prepared,
       runId: runResult.body.runId,
       runStatus: runResult.body.status,
-      queueFirstMessageId,
       queueFirstClaimedAt,
     });
 
@@ -3265,34 +3252,26 @@ export const sendNormalMessage$ = command(
       return badRequestMessage("Client thread id is already in use");
     }
 
-    // Normal user messages always enter the shared thread queue first. An
-    // inline drain appends its run-associated replacement when the thread is
-    // idle and the message is the queue head.
-    if (!args.body.revokesEventId) {
-      return await set(
-        sendQueueFirstNormalMessage$,
-        { args, prepared },
-        signal,
+    if (args.body.revokesEventId) {
+      const hasActiveRun = await measureApiDispatchTiming(
+        args.timing,
+        "api_dispatch_pre_create_zero_web_chat_check_active_run",
+        "nested",
+        async () => {
+          return await chatThreadAdmissionBlocked(prepared.db, {
+            threadId: prepared.thread.threadId,
+          });
+        },
       );
+      signal.throwIfAborted();
+      if (hasActiveRun) {
+        return badRequestMessage("Recommended follow-up cannot be queued");
+      }
     }
 
-    const hasActiveRun = await measureApiDispatchTiming(
-      args.timing,
-      "api_dispatch_pre_create_zero_web_chat_check_active_run",
-      "nested",
-      async () => {
-        return await chatThreadAdmissionBlocked(prepared.db, {
-          threadId: prepared.thread.threadId,
-        });
-      },
-    );
-    signal.throwIfAborted();
-    if (hasActiveRun) {
-      return badRequestMessage("Recommended follow-up cannot be queued");
-    }
-    signal.throwIfAborted();
-
-    return await set(createNormalChatRun$, { args, prepared }, signal);
+    // Every web chat send persists its input before the inline drain attempts
+    // an atomic queue claim, including recommended follow-up replacements.
+    return await set(sendQueueFirstNormalMessage$, { args, prepared }, signal);
   },
 );
 

@@ -631,6 +631,34 @@ export async function recordQueueFirstFailedRun(
  * Discard a queue-first user message that never dispatched by appending a
  * tombstone. The revoke edge removes it from both queue and visible history.
  */
+export async function discardUnclaimedUserMessageInTransaction(
+  db: DbTransaction,
+  args: {
+    readonly threadId: string;
+    readonly messageId: string;
+  },
+): Promise<boolean> {
+  if (!(await lockUserMessageQueueThread(db, args.threadId))) {
+    return false;
+  }
+  const pending = await loadPendingChatQueueEvent(db, {
+    chatThreadId: args.threadId,
+    eventId: args.messageId,
+  });
+  if (pending?.eventType !== "input.prompt") {
+    return false;
+  }
+  const tombstone = await revokeChatEvent(db, args.messageId, {
+    chatThreadId: args.threadId,
+    eventType: "control.revoke",
+    runId: null,
+  });
+  if (!tombstone) {
+    throw new Error("Failed to append discarded user message tombstone");
+  }
+  return true;
+}
+
 export async function discardUnclaimedUserMessage(
   db: Db,
   args: {
@@ -639,24 +667,7 @@ export async function discardUnclaimedUserMessage(
   },
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    if (!(await lockUserMessageQueueThread(tx, args.threadId))) {
-      return;
-    }
-    const pending = await loadPendingChatQueueEvent(tx, {
-      chatThreadId: args.threadId,
-      eventId: args.messageId,
-    });
-    if (pending?.eventType !== "input.prompt") {
-      return;
-    }
-    const tombstone = await revokeChatEvent(tx, args.messageId, {
-      chatThreadId: args.threadId,
-      eventType: "control.revoke",
-      runId: null,
-    });
-    if (!tombstone) {
-      throw new Error("Failed to append discarded user message tombstone");
-    }
+    await discardUnclaimedUserMessageInTransaction(tx, args);
   });
 }
 

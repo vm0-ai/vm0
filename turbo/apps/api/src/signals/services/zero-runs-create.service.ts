@@ -194,6 +194,17 @@ type AnyCreateZeroRunCommandArgs =
   | CreateZeroRunCommandArgs
   | CreateQueueFirstZeroRunCommandArgs;
 
+function assertThreadBoundZeroRunHasQueueAssociation(
+  args: AnyCreateZeroRunCommandArgs,
+): void {
+  if (
+    args.chatThreadId !== undefined &&
+    (!("queueFirstAssociation" in args) || !args.queueFirstAssociation)
+  ) {
+    throw new Error("Thread-bound Zero run requires a queue-first association");
+  }
+}
+
 interface CreateZeroIntegrationRunCommandArgs {
   readonly userId: string;
   readonly orgId: string;
@@ -1229,6 +1240,7 @@ export const createZeroIntegrationRun$ = command(
 
 const createZeroRunInternal$ = command(
   async ({ set }, args: AnyCreateZeroRunCommandArgs, signal: AbortSignal) => {
+    assertThreadBoundZeroRunHasQueueAssociation(args);
     const timing = zeroServiceEntryTiming({
       apiStartTime: args.apiStartTime,
       timing: args.timing,
