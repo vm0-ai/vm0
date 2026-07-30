@@ -19,6 +19,7 @@ import type {
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import type { EditorDocumentSnapshot } from "./user-message-document-codec.ts";
+import { i18n } from "../../i18n/index.ts";
 
 // ---------------------------------------------------------------------------
 // Attachment types (moved from zero-chat.ts)
@@ -588,7 +589,14 @@ export function createDraftSignals(): DraftSignals {
             return a !== attachment;
           });
         });
-        toast.error(`Failed to upload ${file.name}`);
+        toast.error(
+          i18n.t(
+            ($) => {
+              return $.chat.attachments.uploadFailed;
+            },
+            { filename: file.name },
+          ),
+        );
       });
     },
   );

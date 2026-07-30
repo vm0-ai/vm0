@@ -1,19 +1,32 @@
 import type {
   PublicConnectorCatalogAuthMethodDetail,
-  PublicConnectorCatalogItem,
   PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 
 export type PublicConnectorStatus = PublicConnectorCatalogStatusItem;
 
-interface PublicConnectorSearchResult {
-  readonly connector: PublicConnectorStatus;
+interface ConnectorSearchItem {
+  readonly connectorRef: string;
+  readonly label: string;
+  readonly description: string;
+  readonly category: string;
+  readonly tags: readonly string[];
+  readonly generation: readonly string[];
+  readonly authMethods: readonly {
+    readonly id: string;
+    readonly label: string;
+    readonly description: string | null;
+  }[];
+}
+
+interface ConnectorSearchResult<T extends ConnectorSearchItem> {
+  readonly connector: T;
   readonly score: number;
   readonly matchedField: string;
 }
 
-interface PublicConnectorSearchOutput {
-  readonly results: readonly PublicConnectorSearchResult[];
+interface ConnectorSearchOutput<T extends ConnectorSearchItem> {
+  readonly results: readonly ConnectorSearchResult<T>[];
   readonly total: number;
 }
 
@@ -33,7 +46,7 @@ function tokenize(input: string): Set<string> {
   return tokens;
 }
 
-function publicStrings(connector: PublicConnectorCatalogItem): string[] {
+function publicStrings(connector: ConnectorSearchItem): string[] {
   return [
     connector.connectorRef,
     connector.label,
@@ -64,7 +77,7 @@ function best(candidates: readonly (ScoreHit | null)[]): ScoreHit | null {
 function scoreExact(
   keywordLower: string,
   skipPrivateIdentifierMatches: boolean,
-  connector: PublicConnectorStatus,
+  connector: ConnectorSearchItem,
 ): ScoreHit | null {
   if (connector.connectorRef.toLowerCase() === keywordLower) {
     return { score: 100, matchedField: "connectorRef" };
@@ -100,7 +113,7 @@ function scoreExact(
 function scoreSubstring(
   keywordLower: string,
   skipPrivateIdentifierMatches: boolean,
-  connector: PublicConnectorStatus,
+  connector: ConnectorSearchItem,
 ): ScoreHit | null {
   const candidates: ScoreHit[] = [];
   if (connector.connectorRef.toLowerCase().includes(keywordLower)) {
@@ -146,7 +159,7 @@ function scoreSubstring(
 
 function scoreTokens(
   keywordTokens: ReadonlySet<string>,
-  connector: PublicConnectorStatus,
+  connector: ConnectorSearchItem,
 ): ScoreHit | null {
   const candidateTokens = new Set<string>();
   for (const source of publicStrings(connector)) {
@@ -171,7 +184,7 @@ function scoreConnector(
   keywordLower: string,
   keyword: string,
   keywordTokens: ReadonlySet<string>,
-  connector: PublicConnectorStatus,
+  connector: ConnectorSearchItem,
 ): ScoreHit | null {
   const skipPrivateIdentifierMatches =
     /^[A-Za-z0-9_]+$/.test(keyword) && keyword.includes("_");
@@ -187,34 +200,27 @@ function scoreConnector(
   return hit;
 }
 
-export function searchPublicConnectorCatalog(
-  connectors: readonly PublicConnectorStatus[],
+export function searchConnectorCatalog<T extends ConnectorSearchItem>(
+  connectors: readonly T[],
   keyword: string,
   limit: number,
-): PublicConnectorSearchOutput {
+): ConnectorSearchOutput<T> {
   const trimmed = keyword.trim();
   if (!trimmed) return { results: [], total: 0 };
 
   const keywordLower = trimmed.toLowerCase();
   const keywordTokens = tokenize(trimmed);
-  const hits = connectors.flatMap(
-    (connector): PublicConnectorSearchResult[] => {
-      const hit = scoreConnector(
-        keywordLower,
-        trimmed,
-        keywordTokens,
+  const hits = connectors.flatMap((connector): ConnectorSearchResult<T>[] => {
+    const hit = scoreConnector(keywordLower, trimmed, keywordTokens, connector);
+    if (!hit) return [];
+    return [
+      {
         connector,
-      );
-      if (!hit) return [];
-      return [
-        {
-          connector,
-          score: hit.score,
-          matchedField: hit.matchedField,
-        },
-      ];
-    },
-  );
+        score: hit.score,
+        matchedField: hit.matchedField,
+      },
+    ];
+  });
 
   hits.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;

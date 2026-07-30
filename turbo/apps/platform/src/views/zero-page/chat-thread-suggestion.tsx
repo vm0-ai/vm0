@@ -1,4 +1,5 @@
 import { cn, PopoverContent } from "@vm0/ui";
+import { useTranslation } from "react-i18next";
 import type { ComposerAgentSuggestion } from "../../signals/zero-page/composer-agent-suggestion-domain.ts";
 import type { ComposerChatThreadSuggestion } from "../../signals/zero-page/chat-thread-suggestion-domain.ts";
 import { composerSuggestionCollisionPadding } from "./slash-workflow.tsx";
@@ -32,6 +33,7 @@ export function ComposerMentionSuggestionMenu({
     chatThread: ComposerChatThreadSuggestion,
   ) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <PopoverContent
       side="top"
@@ -49,7 +51,9 @@ export function ComposerMentionSuggestionMenu({
         {agents.length > 0 && (
           <>
             <div className="px-1 pt-2 pb-1 text-xs font-medium text-muted-foreground">
-              Agents
+              {t(($) => {
+                return $.chat.composer.agentSuggestions;
+              })}
             </div>
             {agents.map((agent, index) => {
               const selected = index === selectedIndex;
@@ -83,7 +87,9 @@ export function ComposerMentionSuggestionMenu({
         )}
         {chatThreads.length > 0 && (
           <div className="px-1 pt-2 pb-1 text-xs font-medium text-muted-foreground">
-            Chat threads
+            {t(($) => {
+              return $.chat.composer.threadSuggestions;
+            })}
           </div>
         )}
         {chatThreads.map((chatThread, index) => {

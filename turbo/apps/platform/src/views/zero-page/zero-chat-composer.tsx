@@ -19,6 +19,7 @@ import {
 } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { i18n } from "../../i18n/index.ts";
 import { equalArrays } from "../../lib/equality.ts";
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import {
@@ -167,11 +168,7 @@ import {
   composerConnectorPermissionsEnabled$,
   featureSwitch$,
 } from "../../signals/external/feature-switch.ts";
-import {
-  zeroDesktopDownloadSupportStatus$,
-  ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL,
-  ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL,
-} from "../../signals/zero-page/computer-use-hosts.ts";
+import { zeroDesktopDownloadSupportStatus$ } from "../../signals/zero-page/computer-use-hosts.ts";
 import type { ComposerConnectorSignals } from "../../signals/zero-page/zero-connectors.ts";
 import type { AgentConnectorAuthorizations } from "../../signals/zero-page/agent-connector-authorizations.ts";
 import { applyUserPermissionGrants$ } from "../../signals/permission-allow/permission-allow-signals.ts";
@@ -481,7 +478,14 @@ function showVisualAttachmentUnsupportedToast(
   state: VisualAttachmentUnsupportedState,
 ): void {
   toast.error(
-    `${state.currentModelName} cannot recognize images or videos. Switch to a vision-capable model to attach them.`,
+    i18n.t(
+      ($) => {
+        return $.chat.composer.visualAttachmentsUnsupported;
+      },
+      {
+        modelName: state.currentModelName,
+      },
+    ),
     { id: "visual-attachment-unsupported" },
   );
 }
@@ -548,28 +552,53 @@ function ComposerStripRow({
   onOpenDetail?: () => void;
   removeAriaLabel: string;
 }) {
+  const { t } = useTranslation();
   const isGoal = kind === "goal";
   const isWorkflowEvent = kind === "workflow-event";
   const itemAriaLabel = isGoal
-    ? "Active goal"
+    ? t(($) => {
+        return $.chat.queue.activeGoal;
+      })
     : isWorkflowEvent
-      ? "Pending automation event"
-      : "Queued message";
+      ? t(($) => {
+          return $.chat.queue.pendingAutomationEvent;
+        })
+      : t(($) => {
+          return $.chat.queue.queuedMessage;
+        });
   const aboutAriaLabel = isGoal
-    ? "About this goal"
+    ? t(($) => {
+        return $.chat.queue.aboutGoal;
+      })
     : isWorkflowEvent
-      ? "About this automation event"
-      : "About this queued message";
+      ? t(($) => {
+          return $.chat.queue.aboutAutomationEvent;
+        })
+      : t(($) => {
+          return $.chat.queue.aboutQueuedMessage;
+        });
   const itemTitle = isGoal
-    ? "Goal"
+    ? t(($) => {
+        return $.chat.queue.goal;
+      })
     : isWorkflowEvent
-      ? "Automation event"
-      : "Queued message";
+      ? t(($) => {
+          return $.chat.queue.automationEvent;
+        })
+      : t(($) => {
+          return $.chat.queue.queuedMessage;
+        });
   const itemDescription = isGoal
-    ? "Runs after the queue drains and keeps running until you cancel it."
+    ? t(($) => {
+        return $.chat.queue.goalDescription;
+      })
     : isWorkflowEvent
-      ? "Waits behind queued messages and runs once the current run finishes."
-      : "Waits in line and sends once the current run finishes.";
+      ? t(($) => {
+          return $.chat.queue.automationEventDescription;
+        })
+      : t(($) => {
+          return $.chat.queue.queuedMessageDescription;
+        });
   return (
     <div
       role="listitem"
@@ -581,7 +610,9 @@ function ComposerStripRow({
           type="button"
           className="-ml-1 flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 text-left transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground focus-visible:bg-[hsl(var(--gray-200))] focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           onClick={onOpenDetail}
-          aria-label="Open goal details"
+          aria-label={t(($) => {
+            return $.chat.queue.openGoalDetails;
+          })}
         >
           <IconTarget
             size={16}
@@ -643,6 +674,7 @@ function ComposerStripRow({
 }
 
 function ActiveGoalObjectiveDialog({ threadId }: { threadId?: string }) {
+  const { t } = useTranslation();
   const dialogThreadId = useGet(activeGoalDialogThreadId$);
   const goalLoadable = useLoadable(activeGoalDialogGoal$);
   const closeDialog = useSet(closeChatThreadGoalDialog$);
@@ -663,9 +695,15 @@ function ActiveGoalObjectiveDialog({ threadId }: { threadId?: string }) {
         aria-describedby={undefined}
       >
         <DialogHeader>
-          <DialogTitle className="text-base">Goal</DialogTitle>
+          <DialogTitle className="text-base">
+            {t(($) => {
+              return $.chat.queue.goal;
+            })}
+          </DialogTitle>
           <DialogDescription className="leading-6">
-            Runs after the queue drains and keeps running until you cancel it.
+            {t(($) => {
+              return $.chat.queue.goalDescription;
+            })}
           </DialogDescription>
         </DialogHeader>
         <div className="max-h-[min(60vh,520px)] overflow-y-auto rounded-lg bg-muted/40 px-3 py-3 text-sm text-foreground sm:px-4">
@@ -677,15 +715,23 @@ function ActiveGoalObjectiveDialog({ threadId }: { threadId?: string }) {
                 className="animate-spin"
                 aria-hidden="true"
               />
-              <span>Loading goal...</span>
+              <span>
+                {t(($) => {
+                  return $.chat.queue.loadingGoal;
+                })}
+              </span>
             </div>
           ) : goalLoadable.state === "hasError" ? (
             <div className="flex min-h-28 flex-col justify-center gap-1 text-muted-foreground">
               <p className="font-medium text-foreground">
-                Couldn&apos;t load this goal
+                {t(($) => {
+                  return $.chat.queue.goalLoadFailed;
+                })}
               </p>
               <p className="text-xs">
-                Close the dialog and open it again to retry.
+                {t(($) => {
+                  return $.chat.queue.goalRetry;
+                })}
               </p>
             </div>
           ) : goal ? (
@@ -697,7 +743,9 @@ function ActiveGoalObjectiveDialog({ threadId }: { threadId?: string }) {
             />
           ) : (
             <div className="flex min-h-28 items-center text-muted-foreground">
-              This goal is no longer available.
+              {t(($) => {
+                return $.chat.queue.goalUnavailable;
+              })}
             </div>
           )}
         </div>
@@ -733,15 +781,45 @@ function PendingItemsStrip({
   onCancelGoal?: () => void;
   onOpenGoal?: () => void;
 }) {
+  const { t } = useTranslation();
   const queued = items ?? [];
   const events = workflowEvents ?? [];
   const count = queued.length + events.length;
-  const messageLabel = `${queued.length} ${queued.length === 1 ? "message" : "messages"}`;
-  const eventLabel = `${events.length} ${events.length === 1 ? "event" : "events"}`;
+  const messageLabel = t(
+    ($) => {
+      return $.chat.queue.message;
+    },
+    {
+      count: queued.length,
+    },
+  );
+  const eventLabel = t(
+    ($) => {
+      return $.chat.queue.event;
+    },
+    {
+      count: events.length,
+    },
+  );
   const label =
     queued.length > 0 && events.length > 0
-      ? `${messageLabel} and ${eventLabel} waiting`
-      : `${queued.length > 0 ? messageLabel : eventLabel} waiting`;
+      ? t(
+          ($) => {
+            return $.chat.queue.itemsWaitingTogether;
+          },
+          {
+            messages: messageLabel,
+            events: eventLabel,
+          },
+        )
+      : t(
+          ($) => {
+            return $.chat.queue.itemsWaiting;
+          },
+          {
+            items: queued.length > 0 ? messageLabel : eventLabel,
+          },
+        );
   if (count === 0 && !activeGoal) {
     return null;
   }
@@ -758,7 +836,9 @@ function PendingItemsStrip({
               onRemove={() => {
                 onRemove?.(item.id);
               }}
-              removeAriaLabel="Remove queued message"
+              removeAriaLabel={t(($) => {
+                return $.chat.queue.removeQueuedMessage;
+              })}
             />
           );
         })}
@@ -771,7 +851,9 @@ function PendingItemsStrip({
               onRemove={() => {
                 onRemoveWorkflowEvent?.(event.id);
               }}
-              removeAriaLabel="Skip automation event"
+              removeAriaLabel={t(($) => {
+                return $.chat.queue.skipAutomationEvent;
+              })}
             />
           );
         })}
@@ -786,7 +868,9 @@ function PendingItemsStrip({
             onRemove={() => {
               onCancelGoal?.();
             }}
-            removeAriaLabel="Cancel goal"
+            removeAriaLabel={t(($) => {
+              return $.chat.queue.cancelGoal;
+            })}
           />
         ) : null}
       </div>
@@ -5590,6 +5674,7 @@ function CreateWorkflowPromptButton({
 }: {
   onCreateWorkflowPrompt: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <TooltipProvider delayDuration={300}>
       <Tooltip>
@@ -5600,14 +5685,18 @@ function CreateWorkflowPromptButton({
               "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 hover:bg-accent hover:text-foreground sm:h-9 sm:w-9",
               COMPOSER_CONTROL_FOCUS_CLASS,
             )}
-            aria-label="Create workflow"
+            aria-label={t(($) => {
+              return $.chat.composer.createWorkflow;
+            })}
             onClick={onCreateWorkflowPrompt}
           >
             <IconRoute size={18} stroke={1.5} aria-hidden="true" />
           </button>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
-          Create workflow
+          {t(($) => {
+            return $.chat.composer.createWorkflow;
+          })}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -5690,6 +5779,7 @@ function AddConnectorsDialog({
   ) => ConnectorConnectHandlers;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const search = useGet(signals.addDialogSearch$);
   const setSearch = useSet(signals.setAddDialogSearch$);
   const filtered = unconnected.filter((item) => {
@@ -5709,13 +5799,22 @@ function AddConnectorsDialog({
       >
         <DialogHeader className="shrink-0">
           <DialogTitle>
-            Available connectors to connect ({unconnected.length})
+            {t(
+              ($) => {
+                return $.chat.connectors.available;
+              },
+              {
+                count: unconnected.length,
+              },
+            )}
           </DialogTitle>
         </DialogHeader>
         <div className="shrink-0">
           <Input
             type="text"
-            placeholder="Find connectors..."
+            placeholder={t(($) => {
+              return $.chat.connectors.find;
+            })}
             value={search}
             onChange={(e) => {
               return setSearch(e.target.value);
@@ -5750,10 +5849,13 @@ function ComputerUseConnectorMenuSection({
   computerUse: ComposerComputerUse;
   onOpenDownloadDialog: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="shrink-0 border-t border-border/50 bg-gray-50 p-1 dark:bg-gray-100">
       <div className="px-2 pb-1 pt-1 text-xs text-muted-foreground">
-        Your computer
+        {t(($) => {
+          return $.chat.computerUse.yourComputer;
+        })}
       </div>
       {computerUse.cloudBrowserAvailable && (
         <div
@@ -5772,7 +5874,9 @@ function ComputerUseConnectorMenuSection({
           </span>
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm text-foreground">
-              Cloud browser
+              {t(($) => {
+                return $.chat.computerUse.cloudBrowser;
+              })}
             </span>
           </span>
           <span
@@ -5787,7 +5891,15 @@ function ComputerUseConnectorMenuSection({
                 computerUse.onCloudBrowserChange(enabled);
               })}
               loading={false}
-              ariaLabel={`${computerUse.cloudBrowserEnabled ? "Disable" : "Enable"} Cloud browser`}
+              ariaLabel={
+                computerUse.cloudBrowserEnabled
+                  ? t(($) => {
+                      return $.chat.computerUse.disableCloudBrowser;
+                    })
+                  : t(($) => {
+                      return $.chat.computerUse.enableCloudBrowser;
+                    })
+              }
               size="sm"
             />
           </span>
@@ -5809,7 +5921,9 @@ function ComputerUseConnectorMenuSection({
         <div
           className="flex max-h-[108px] flex-col overflow-y-auto"
           role="group"
-          aria-label="Computer Use hosts"
+          aria-label={t(($) => {
+            return $.chat.computerUse.hosts;
+          })}
         >
           {computerUse.hosts.map((host) => {
             const checked = computerUse.selectedHostId === host.id;
@@ -5835,7 +5949,9 @@ function ComputerUseConnectorMenuSection({
                   </span>
                   {host.status === "offline" && (
                     <span className="block text-[11px] leading-3 text-muted-foreground">
-                      Offline
+                      {t(($) => {
+                        return $.chat.computerUse.offline;
+                      })}
                     </span>
                   )}
                 </span>
@@ -5851,7 +5967,25 @@ function ComputerUseConnectorMenuSection({
                       computerUse.onChange(nextChecked ? host.id : null);
                     })}
                     loading={false}
-                    ariaLabel={`${checked ? "Disconnect" : "Connect"} ${host.displayName}`}
+                    ariaLabel={
+                      checked
+                        ? t(
+                            ($) => {
+                              return $.chat.computerUse.disconnectHost;
+                            },
+                            {
+                              hostName: host.displayName,
+                            },
+                          )
+                        : t(
+                            ($) => {
+                              return $.chat.computerUse.connectHost;
+                            },
+                            {
+                              hostName: host.displayName,
+                            },
+                          )
+                    }
                     size="sm"
                   />
                 </span>
@@ -5866,7 +6000,9 @@ function ComputerUseConnectorMenuSection({
             stroke={1.5}
             className="shrink-0 text-muted-foreground"
           />
-          No online computers
+          {t(($) => {
+            return $.chat.computerUse.noOnlineComputers;
+          })}
         </div>
       )}
       <PopoverClose asChild>
@@ -5880,7 +6016,9 @@ function ComputerUseConnectorMenuSection({
             stroke={1.5}
             className="shrink-0 text-muted-foreground"
           />
-          Connect my computer
+          {t(($) => {
+            return $.chat.computerUse.connectMyComputer;
+          })}
         </button>
       </PopoverClose>
     </div>
@@ -5900,6 +6038,7 @@ function ComposerConnectorPermissionDialog({
   connector: ComposerConnectorItem;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const grantsLoadable = useLastLoadable(signals.permissionGrants$);
   const pageSignal = useGet(pageSignal$);
   const [, applyGrantPolicies] = useLoadableSet(applyUserPermissionGrants$);
@@ -5936,7 +6075,11 @@ function ComposerConnectorPermissionDialog({
           pageSignal,
           applyGrantPolicies,
         });
-        toast.success("Permissions updated");
+        toast.success(
+          t(($) => {
+            return $.chat.permissions.updated;
+          }),
+        );
       }}
       onClose={onClose}
     />
@@ -5967,6 +6110,7 @@ function ConnectorsPopoverButton({
     checked: boolean,
   ) => void | Promise<void>;
 }) {
+  const { t } = useTranslation();
   const search = useGet(signals.popoverSearch$);
   const setSearch = useSet(signals.setPopoverSearch$);
   const sortOrder = useGet(signals.popoverSortOrder$);
@@ -6038,7 +6182,9 @@ function ConnectorsPopoverButton({
                   "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg px-1 transition-colors hover:bg-accent sm:h-9 sm:min-w-9 sm:px-1.5",
                   COMPOSER_CONTROL_FOCUS_CLASS,
                 )}
-                aria-label="Connectors"
+                aria-label={t(($) => {
+                  return $.chat.connectors.title;
+                })}
               >
                 <ConnectorTriggerIcons
                   connectors={agentConnectors}
@@ -6049,7 +6195,9 @@ function ConnectorsPopoverButton({
             </TooltipTrigger>
           </PopoverTrigger>
           <TooltipContent side="top" className="text-xs">
-            Connectors
+            {t(($) => {
+              return $.chat.connectors.title;
+            })}
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -6064,7 +6212,9 @@ function ConnectorsPopoverButton({
               <div className="px-3 py-1 border-b border-border/50">
                 <input
                   type="text"
-                  placeholder="Find connectors..."
+                  placeholder={t(($) => {
+                    return $.chat.connectors.find;
+                  })}
                   value={search}
                   onChange={(e) => {
                     return setSearch(e.target.value);
@@ -6110,7 +6260,12 @@ function ConnectorsPopoverButton({
                               event.stopPropagation();
                               setPermissionConnectorSlug(item.connectorRef);
                             }}
-                            aria-label={`Configure ${item.label} permissions`}
+                            aria-label={t(
+                              ($) => {
+                                return $.chat.connectors.configurePermissions;
+                              },
+                              { connectorName: item.label },
+                            )}
                             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                           >
                             <IconAdjustmentsHorizontal size={15} stroke={1.5} />
@@ -6122,7 +6277,25 @@ function ConnectorsPopoverButton({
                           await onToggle(item.connectorRef, checked);
                         })}
                         loading={savingConnectorSlug === item.connectorRef}
-                        ariaLabel={`${item.authorized ? "Remove" : "Add"} ${item.label}`}
+                        ariaLabel={
+                          item.authorized
+                            ? t(
+                                ($) => {
+                                  return $.chat.connectors.remove;
+                                },
+                                {
+                                  connectorName: item.label,
+                                },
+                              )
+                            : t(
+                                ($) => {
+                                  return $.chat.connectors.add;
+                                },
+                                {
+                                  connectorName: item.label,
+                                },
+                              )
+                        }
                         size="sm"
                       />
                     </label>
@@ -6146,7 +6319,9 @@ function ConnectorsPopoverButton({
             <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
               <IconPlus size={13} stroke={1.5} />
             </span>
-            Add connectors
+            {t(($) => {
+              return $.chat.connectors.addConnectors;
+            })}
           </button>
         </div>
         {computerUse && (
@@ -6189,6 +6364,7 @@ function ComputerUseDownloadDialog({
   onOpenChange: (open: boolean) => void;
   downloadUrl: string;
 }) {
+  const { t } = useTranslation();
   const downloadSupportLoadable = useLoadable(
     zeroDesktopDownloadSupportStatus$,
   );
@@ -6209,25 +6385,34 @@ function ComputerUseDownloadDialog({
         </div>
         <DialogHeader className="space-y-2 px-6 pt-5 text-left">
           <DialogTitle className="text-xl leading-7">
-            Let Zero use your computer
+            {t(($) => {
+              return $.chat.computerUse.dialogTitle;
+            })}
           </DialogTitle>
           <DialogDescription className="leading-6">
-            So Zero can work in your browser and apps for you, even ones with no
-            connector like LinkedIn or Reddit.
+            {t(($) => {
+              return $.chat.computerUse.dialogDescription;
+            })}
           </DialogDescription>
           <p className="text-sm leading-5 text-muted-foreground">
-            {ZERO_DESKTOP_MACOS_REQUIREMENT_LABEL}
+            {t(($) => {
+              return $.chat.computerUse.macosRequirement;
+            })}
           </p>
         </DialogHeader>
         <div className="px-6 pb-6 pt-4">
           {downloadSupportStatus === "unsupported-intel-mac" ? (
             <Button type="button" size="lg" className="w-full" disabled>
               <IconAlertTriangle size={16} stroke={1.5} />
-              {ZERO_DESKTOP_UNSUPPORTED_INTEL_MAC_LABEL}
+              {t(($) => {
+                return $.chat.computerUse.unsupportedIntelMac;
+              })}
             </Button>
           ) : downloadSupportStatus === "checking" ? (
             <Button type="button" size="lg" className="w-full" disabled>
-              Checking compatibility
+              {t(($) => {
+                return $.chat.computerUse.checkingCompatibility;
+              })}
             </Button>
           ) : (
             <Button asChild size="lg" className="w-full">
@@ -6240,7 +6425,9 @@ function ComputerUseDownloadDialog({
                 }}
               >
                 <IconDownload size={16} stroke={1.5} />
-                Download for macOS
+                {t(($) => {
+                  return $.chat.computerUse.downloadMacos;
+                })}
               </a>
             </Button>
           )}
@@ -6263,34 +6450,54 @@ interface MicButtonStatus {
 
 function micButtonAriaLabel(status: MicButtonStatus): string {
   if (status.recording) {
-    return "Stop recording";
+    return i18n.t(($) => {
+      return $.chat.voice.stopRecording;
+    });
   }
   if (status.starting) {
-    return "Starting voice input";
+    return i18n.t(($) => {
+      return $.chat.voice.starting;
+    });
   }
   if (status.transcribing) {
-    return "Transcribing";
+    return i18n.t(($) => {
+      return $.chat.voice.transcribing;
+    });
   }
   if (status.quotaLoading) {
-    return "Checking voice input limit";
+    return i18n.t(($) => {
+      return $.chat.voice.checkingLimit;
+    });
   }
-  return "Voice input";
+  return i18n.t(($) => {
+    return $.chat.voice.input;
+  });
 }
 
 function micButtonTooltip(status: MicButtonStatus): string {
   if (status.recording) {
-    return "Stop recording";
+    return i18n.t(($) => {
+      return $.chat.voice.stopRecording;
+    });
   }
   if (status.starting) {
-    return "Opening microphone...";
+    return i18n.t(($) => {
+      return $.chat.voice.openingMicrophone;
+    });
   }
   if (status.transcribing) {
-    return "Transcribing...";
+    return i18n.t(($) => {
+      return $.chat.voice.transcribingProgress;
+    });
   }
   if (status.quotaLoading) {
-    return "Checking voice input limit";
+    return i18n.t(($) => {
+      return $.chat.voice.checkingLimit;
+    });
   }
-  return "Voice input";
+  return i18n.t(($) => {
+    return $.chat.voice.input;
+  });
 }
 
 function MicButton({
@@ -6402,6 +6609,7 @@ function ComposerAttachButton({
 }: {
   readonly onSelectFile: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <TooltipProvider delayDuration={300}>
       <Tooltip>
@@ -6412,14 +6620,18 @@ function ComposerAttachButton({
               "rounded-lg p-2 transition-colors duration-200 hover:bg-accent hover:text-foreground sm:p-[9px]",
               COMPOSER_CONTROL_FOCUS_CLASS,
             )}
-            aria-label="Attach"
+            aria-label={t(($) => {
+              return $.chat.attachments.attach;
+            })}
             onClick={onSelectFile}
           >
             <IconPaperclip size={18} stroke={1.5} />
           </button>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
-          Attach
+          {t(($) => {
+            return $.chat.attachments.attach;
+          })}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -6435,6 +6647,7 @@ function ComposerUploadMenu({
   readonly onAppendText: (value: string) => void;
   readonly onSelectFile: () => void;
 }) {
+  const { t } = useTranslation();
   const uploadOpen = useGet(uploadPopoverOpen$);
   const setUploadOpen = useSet(setUploadPopoverOpen$);
   const addLink = (event: FormEvent<HTMLFormElement>) => {
@@ -6443,7 +6656,11 @@ function ComposerUploadMenu({
     const data = new FormData(form);
     const trimmed = String(data.get("uploadLink") ?? "").trim();
     if (!URL.canParse(trimmed)) {
-      toast.error("Enter a valid link");
+      toast.error(
+        t(($) => {
+          return $.chat.attachments.invalidLink;
+        }),
+      );
       return;
     }
     const normalized = new URL(trimmed).toString();
@@ -6462,10 +6679,14 @@ function ComposerUploadMenu({
           COMPOSER_CONTROL_FOCUS_CLASS,
           uploadOpen && "bg-accent text-foreground",
         )}
-        aria-label="Upload"
+        aria-label={t(($) => {
+          return $.chat.attachments.upload;
+        })}
         aria-expanded={uploadOpen}
         aria-haspopup="dialog"
-        title="Upload"
+        title={t(($) => {
+          return $.chat.attachments.upload;
+        })}
         data-testid="composer-upload"
         onClick={() => {
           setUploadOpen(!uploadOpen);
@@ -6476,7 +6697,9 @@ function ComposerUploadMenu({
       {uploadOpen && (
         <div
           role="dialog"
-          aria-label="Upload"
+          aria-label={t(($) => {
+            return $.chat.attachments.upload;
+          })}
           className="absolute bottom-full left-0 z-50 mb-2 w-72 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-2 text-foreground shadow-lg"
         >
           <button
@@ -6491,10 +6714,14 @@ function ComposerUploadMenu({
             <IconPaperclip size={16} stroke={1.6} />
             <span className="min-w-0">
               <span className="block text-sm font-medium text-foreground">
-                Upload from computer
+                {t(($) => {
+                  return $.chat.attachments.uploadFromComputer;
+                })}
               </span>
               <span className="block truncate text-xs text-muted-foreground">
-                Images, docs, audio, video and archives
+                {t(($) => {
+                  return $.chat.attachments.supportedTypes;
+                })}
               </span>
             </span>
           </button>
@@ -6504,7 +6731,9 @@ function ComposerUploadMenu({
           >
             <div className="flex items-center gap-2 text-sm font-medium text-foreground">
               <IconLink size={15} stroke={1.7} />
-              Upload from link
+              {t(($) => {
+                return $.chat.attachments.uploadFromLink;
+              })}
             </div>
             <Input
               className="mt-2 h-9 text-sm"
@@ -6519,7 +6748,9 @@ function ComposerUploadMenu({
               className="mt-2 h-8 w-full rounded-lg text-xs font-medium"
               data-testid="composer-upload-link-add"
             >
-              Add link
+              {t(($) => {
+                return $.chat.attachments.addLink;
+              })}
             </Button>
           </form>
         </div>
@@ -6755,6 +6986,7 @@ function ComposerSendButton({
   sendAction: KeyboardSendAction;
   onSend: () => void;
 }) {
+  const { t } = useTranslation();
   if (showStopButton) {
     return (
       <Button
@@ -6762,7 +6994,9 @@ function ComposerSendButton({
         variant="destructive"
         className="rounded-lg h-9 w-9 p-0 shrink-0"
         onClick={onCancel}
-        aria-label="Stop"
+        aria-label={t(($) => {
+          return $.chat.actions.stop;
+        })}
       >
         <IconPlayerStop size={16} />
       </Button>
@@ -6774,7 +7008,9 @@ function ComposerSendButton({
       className="rounded-lg h-9 w-9 p-0 shrink-0"
       onClick={onSend}
       disabled={sendAction === "none"}
-      aria-label="Send"
+      aria-label={t(($) => {
+        return $.chat.actions.send;
+      })}
     >
       <IconArrowUp size={18} stroke={2} />
     </Button>
@@ -6894,6 +7130,7 @@ function ComposerModelPickerSlot({
   submitBlocker: ZeroChatComposerProps["submitBlocker"];
   onModelPickerChange: (value: ModelProviderSelection | null) => void;
 }) {
+  const { t } = useTranslation();
   const codexFastModeEnabled = useGet(codexFastModeEnabled$);
   const modelPickerOpen = useGet(modelPickerOpen$);
   const setModelPickerOpen = useSet(setModelPickerOpen$);
@@ -6910,7 +7147,9 @@ function ComposerModelPickerSlot({
         <ModelProviderPicker
           value={modelPicker.value}
           onChange={onModelPickerChange}
-          placeholder="Select model"
+          placeholder={t(($) => {
+            return $.chat.composer.selectModel;
+          })}
           triggerClassName={cn(
             "h-9 w-9 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
             "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
@@ -7021,6 +7260,7 @@ export function useZeroChatComposer(
   }: ZeroChatComposerProps,
   connectorReadState: ComposerConnectorReadState,
 ) {
+  const { t } = useTranslation();
   const showAddDialog = useGet(composerConnectors.showAddDialog$);
   const setShowAddDialog = useSet(composerConnectors.setShowAddDialog$);
   const openGoalDialog = useSet(openChatThreadGoalDialog$);
@@ -7118,7 +7358,16 @@ export function useZeroChatComposer(
       }
       if (file.size > MAX_FILE_SIZE) {
         e.preventDefault();
-        toast.error(`${file.name} exceeds the 1 GB limit`);
+        toast.error(
+          t(
+            ($) => {
+              return $.chat.attachments.fileTooLarge;
+            },
+            {
+              filename: file.name,
+            },
+          ),
+        );
         continue;
       }
       e.preventDefault();
@@ -7143,7 +7392,16 @@ export function useZeroChatComposer(
       }
       if (file.size > MAX_FILE_SIZE) {
         e.preventDefault();
-        toast.error(`${file.name} exceeds the 1 GB limit`);
+        toast.error(
+          t(
+            ($) => {
+              return $.chat.attachments.fileTooLarge;
+            },
+            {
+              filename: file.name,
+            },
+          ),
+        );
         continue;
       }
       detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
@@ -7245,7 +7503,15 @@ export function useZeroChatComposer(
       })(),
       () => {
         toast.error(
-          `${label} connected but could not be authorized for ${displayName}`,
+          t(
+            ($) => {
+              return $.chat.connectors.authorizationFailed;
+            },
+            {
+              connectorName: label,
+              agentName: displayName,
+            },
+          ),
           {
             id: `connector-save-error-${connectorSlug}`,
           },
@@ -7255,9 +7521,20 @@ export function useZeroChatComposer(
     if (authorized !== true) {
       return false;
     }
-    toast.success(`${label} connected and authorized for ${displayName}`, {
-      id: `connector-connected-${connectorSlug}`,
-    });
+    toast.success(
+      t(
+        ($) => {
+          return $.chat.connectors.authorized;
+        },
+        {
+          connectorName: label,
+          agentName: displayName,
+        },
+      ),
+      {
+        id: `connector-connected-${connectorSlug}`,
+      },
+    );
     return true;
   };
 
@@ -7433,7 +7710,16 @@ export function useZeroChatComposer(
       }
       if (file.size > MAX_FILE_SIZE) {
         e.preventDefault();
-        toast.error(`${file.name} exceeds the 1 GB limit`);
+        toast.error(
+          t(
+            ($) => {
+              return $.chat.attachments.fileTooLarge;
+            },
+            {
+              filename: file.name,
+            },
+          ),
+        );
         continue;
       }
       detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
