@@ -498,7 +498,35 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
       supportedLocales: ["en-US", "fr-FR"],
     });
 
-    await api.updatePreferences(admin, { timezone: "UTC" }, [200]);
+    mockOptionalEnv("FRENCH_LOCALE_ROLLOUT_ENABLED", undefined);
+
+    const rollbackRead = await api.readPreferences(
+      admin,
+      ALL_LOCALES_CLIENT_VERSION,
+    );
+    expect(rollbackRead.body).toMatchObject({
+      locale: "en-US",
+      supportedLocales: ["en-US", "pt-BR"],
+    });
+
+    const rollbackWrite = await api.updatePreferences(
+      admin,
+      { locale: "fr-FR" },
+      [400],
+      ALL_LOCALES_CLIENT_VERSION,
+    );
+    expectApiError(rollbackWrite.body);
+
+    const rollbackUpdate = await api.updatePreferences(
+      admin,
+      { timezone: "UTC" },
+      [200],
+    );
+    expect(rollbackUpdate.body.locale).toBe("en-US");
+    expect(rollbackUpdate.body.supportedLocales).toBeUndefined();
+
+    mockOptionalEnv("FRENCH_LOCALE_ROLLOUT_ENABLED", "true");
+
     const capableReread = await api.readPreferences(
       admin,
       FRENCH_CLIENT_VERSION,
