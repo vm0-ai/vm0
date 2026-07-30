@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.346.0](https://github.com/vm0-ai/vm0/compare/api-v1.345.1...api-v1.346.0) (2026-07-30)
+
+
+### Features
+
+* **api:** add slug-named connector client contracts ([#23842](https://github.com/vm0-ai/vm0/issues/23842)) ([f81813a](https://github.com/vm0-ai/vm0/commit/f81813a6d3833f65dce8df63cd0e26f1249e8815))
+
+
+### Bug Fixes
+
+* **api:** stop seeding input content in the chat thread bench ([#23855](https://github.com/vm0-ai/vm0/issues/23855)) ([ef03088](https://github.com/vm0-ai/vm0/commit/ef030881c595e3acd7ccbd8fc85089a9c58d771b))
+* **chat:** return the complete per-thread event stream to the frontend ([#23851](https://github.com/vm0-ai/vm0/issues/23851)) ([93422b3](https://github.com/vm0-ai/vm0/commit/93422b35196da90f57648366144742f97800a308))
+
+
+### Refactoring
+
+* **observability:** add canonical connector slug dimensions ([#23846](https://github.com/vm0-ai/vm0/issues/23846)) ([4a6483a](https://github.com/vm0-ai/vm0/commit/4a6483aa21fb45b84ce7d05d72511ebd5d683558))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.248.0
+    * @vm0/core bumped to 8.486.2
+    * @vm0/db bumped to 1.153.2
+
 ## [1.345.1](https://github.com/vm0-ai/vm0/compare/api-v1.345.0...api-v1.345.1) (2026-07-30)
 
 

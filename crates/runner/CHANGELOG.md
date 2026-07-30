@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.148.36](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.35...runner-rs-v0.148.36) (2026-07-30)
+
+
+### Refactoring
+
+* **observability:** add canonical connector slug dimensions ([#23846](https://github.com/vm0-ai/vm0/issues/23846)) ([4a6483a](https://github.com/vm0-ai/vm0/commit/4a6483aa21fb45b84ce7d05d72511ebd5d683558))
+
 ## [0.148.35](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.34...runner-rs-v0.148.35) (2026-07-29)
 
 
