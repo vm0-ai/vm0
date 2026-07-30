@@ -1,5 +1,24 @@
 # Changelog
 
+## [8.487.0](https://github.com/vm0-ai/vm0/compare/core-v8.486.3...core-v8.487.0) (2026-07-30)
+
+
+### Features
+
+* rename presentation picker templates and palettes ([#23879](https://github.com/vm0-ai/vm0/issues/23879)) ([68e29a5](https://github.com/vm0-ai/vm0/commit/68e29a5f25798f10561afb25c217233c5381316d))
+
+
+### Refactoring
+
+* remove the fully rolled out zero-finance feature switch ([#23889](https://github.com/vm0-ai/vm0/issues/23889)) ([aa55c8f](https://github.com/vm0-ai/vm0/commit/aa55c8f6a90c5a1b3c6fa043b8852c71f1dbc009))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.249.0
+
 ## [8.486.3](https://github.com/vm0-ai/vm0/compare/core-v8.486.2...core-v8.486.3) (2026-07-30)
 
 

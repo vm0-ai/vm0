@@ -7,6 +7,7 @@ import {
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { chatInputQueueParams } from "@vm0/db/schema/chat-input-queue-params";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { command } from "ccstate";
@@ -134,7 +135,15 @@ async function seedFixture(
       : await insertChatEvent(tx, {
           ...baseEvent,
           eventType: "input.prompt",
-          triggerSource: fixtureKind === "orphan" ? "slack" : "web",
+          triggerSource:
+            fixtureKind === "orphan" ||
+            fixtureKind === "queued-integration" ||
+            fixtureKind === "legacy-queued-integration"
+              ? "slack"
+              : "web",
+          ...(fixtureKind === "legacy-queued-integration"
+            ? { encryptedParams: "encrypted-monitor-params" }
+            : {}),
         });
   });
   signal.throwIfAborted();
@@ -142,7 +151,16 @@ async function seedFixture(
     throw new Error("Failed to seed orphan monitor message");
   }
 
-  if (fixtureKind === "revoked-message") {
+  if (fixtureKind === "queued-integration") {
+    await db.insert(chatInputQueueParams).values({
+      eventId: event.id,
+      encryptedParams: "encrypted-monitor-params",
+    });
+  } else if (fixtureKind === "legacy-queued-integration") {
+    await db
+      .delete(chatInputQueueParams)
+      .where(eq(chatInputQueueParams.eventId, event.id));
+  } else if (fixtureKind === "revoked-message") {
     await db.transaction(async (tx) => {
       await replaceChatEvent(tx, event.id, {
         chatThreadId: thread.id,

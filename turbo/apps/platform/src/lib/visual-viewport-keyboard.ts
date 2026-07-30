@@ -81,6 +81,25 @@ function viewportHasKeyboardOcclusion(
   return occludedHeight > keyboardThreshold;
 }
 
+/**
+ * Reports whether a software keyboard currently occludes the visual viewport.
+ *
+ * WebKit reports `any-pointer: fine` and `any-hover: hover` on iPhones, so
+ * pointer media queries cannot tell a trackpad-and-keyboard tablet apart from
+ * a phone. A shrunk visual viewport over an unchanged layout viewport is the
+ * device's own evidence that the on-screen keyboard produced the keystroke.
+ */
+export function softwareKeyboardOccludesViewport(): boolean {
+  const viewport = window.visualViewport;
+  if (!viewport) {
+    return false;
+  }
+  return viewportHasKeyboardOcclusion(
+    readLayoutViewportHeight(viewport),
+    viewport,
+  );
+}
+
 function setKeyboardOpen(keyboardOcclusion: number): void {
   const root = document.documentElement;
   root.dataset.keyboardOpen = "true";

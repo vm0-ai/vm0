@@ -21,6 +21,10 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
+import {
+  findPendingChatInputQueueParamsByPromptFixture,
+  readChatInputQueueParamsFixture,
+} from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { now } from "../../external/time";
 import { createDeferredPromise } from "../../utils";
@@ -2419,7 +2423,6 @@ describe("Feishu integration", () => {
         },
       ),
     ).toBeFalsy();
-
     await connectFixtureUser(fixture, secondActor, secondOpenId);
     await postEvent(
       callbackUrl,
@@ -2495,7 +2498,15 @@ describe("Feishu integration", () => {
         },
       ),
     ).toBeFalsy();
-
+    const queuedFeishuParams =
+      await findPendingChatInputQueueParamsByPromptFixture(secondPrompt);
+    expect(queuedFeishuParams).toMatchObject({
+      eventId: expect.any(String),
+      encryptedParams: expect.any(String),
+    });
+    if (!queuedFeishuParams) {
+      throw new Error("Expected queued canonical Feishu transport params");
+    }
     await runsApi.heartbeatRunner(runnerGroup);
     const firstClaim = await runsApi.claimRunnerJob(firstRun.id);
     const firstCliSessionId = `bdd-feishu-canonical-group-${firstRun.id}`;
@@ -2508,6 +2519,9 @@ describe("Feishu integration", () => {
     });
 
     const secondRun = await findRun(secondActor, secondPrompt);
+    await expect(
+      readChatInputQueueParamsFixture(queuedFeishuParams.eventId),
+    ).resolves.toBeNull();
     await runsApi.heartbeatRunner(runnerGroup);
     const secondClaim = await runsApi.claimRunnerJob(secondRun.id);
     expect(secondClaim.resumeSession?.sessionId).toBe(firstCliSessionId);
