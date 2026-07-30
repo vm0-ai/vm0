@@ -62,7 +62,7 @@
   "delete": {
     "dangerZone": "Zona bahaya",
     "dangerZoneDescription": "Hapus agen ini dan semua datanya secara permanen. Tindakan ini tidak dapat dibatalkan.",
-    "description": "Menghapus agen ini, alur kerja, automasi, dan riwayat chat semua orang.",
+    "description": "Menghapus agen ini, alur kerja, otomatisasi, dan riwayat chat semua orang.",
     "irreversible": "Ini tidak bisa dibatalkan.",
     "success": "Agen dihapus",
     "title": "Hapus {{agentName}}?",
@@ -296,7 +296,7 @@
           },
           "marketing-automation-system": {
             "description": "Tiga agen untuk riset, pemantauan mingguan, dan pekerjaan ad hoc",
-            "title": "Sistem otomasi pemasaran"
+            "title": "Sistem otomatisasi pemasaran"
           },
           "marketing-content-planning": {
             "description": "Merencanakan cerita peluncuran dari Slack, wawancara, dan pesaing",

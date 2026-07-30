@@ -466,7 +466,7 @@
       "mobile": {
         "invite": "Undang",
         "openArtifacts": "Buka artifact mobile",
-        "openAutomations": "Buka automasi mobile",
+        "openAutomations": "Buka otomatisasi mobile",
         "openMenu": "Buka menu",
         "overlay": "Overlay sidebar"
       },
@@ -1672,8 +1672,8 @@
           "menu": "Komunikasi"
         },
         "dataAutomationInfrastructure": {
-          "label": "Data, Otomasi, dan Infrastruktur",
-          "menu": "Data dan Otomasi"
+          "label": "Data, Otomatisasi, dan Infrastruktur",
+          "menu": "Data dan Otomatisasi"
         },
         "docsFilesKnowledge": {
           "label": "Dokumen, File, dan Pengetahuan",
@@ -2270,7 +2270,7 @@
           "remove": "Hapus",
           "revealAuthorization": "Tampilkan authorization header"
         },
-        "addDescription": "Satu integrasi dapat digunakan untuk beberapa otomasi alur kerja.",
+        "addDescription": "Satu integrasi dapat digunakan untuk beberapa otomatisasi alur kerja.",
         "addTitle": "Tambahkan instance Strapi",
         "adminRequired": "Minta admin organisasi untuk menambahkan atau memperbarui integrasi Strapi.",
         "authorizationHeader": "Header otorisasi",
@@ -2287,7 +2287,7 @@
         "lastPublish": "Publikasi terakhir: {{date}}",
         "lastTest": "Tes terakhir: {{date}}",
         "notReceived": "Belum diterima",
-        "removeDescription": "Hapus dulu otomasi alur kerjanya. Permintaan webhook Strapi ke URL ini akan berhenti berfungsi.",
+        "removeDescription": "Hapus dulu otomatisasi alur kerjanya. Permintaan webhook Strapi ke URL ini akan berhenti berfungsi.",
         "removeTitle": "Hapus integrasi Strapi?",
         "tested": "Webhook dites",
         "title": "Strapi",
@@ -2442,7 +2442,7 @@
       "allowed": "Diizinkan",
       "allowedSummary_one": "{{calls}} dilakukan dalam {{permissions}} izin yang diberikan",
       "allowedSummary_other": "{{calls}} dilakukan dalam {{permissions}} izin yang diberikan",
-      "automations": "Automasi",
+      "automations": "Otomatisasi",
       "automationsUsed_one": "{{automations}} menggunakan {{credits}}",
       "automationsUsed_other": "{{automations}} menggunakan {{credits}}",
       "balance": "Saldo",
@@ -2452,8 +2452,8 @@
       "chatsUsed_other": "{{chats}} menggunakan {{credits}}",
       "clickToOpen": "Klik untuk membuka",
       "consumedToday": "dipakai hari ini",
-      "moreAutomations_one": "+{{value}} automasi lagi",
-      "moreAutomations_other": "+{{value}} automasi lagi",
+      "moreAutomations_one": "+{{value}} otomatisasi lagi",
+      "moreAutomations_other": "+{{value}} otomatisasi lagi",
       "moreChats_one": "+{{value}} obrolan lagi",
       "moreChats_other": "+{{value}} obrolan lagi",
       "protected": "Dilindungi",
@@ -4011,7 +4011,7 @@
         "usage": {
           "balanceDescription": "Saldo kredit dan penggunaan tim Anda.",
           "balanceTitle": "Saldo kredit",
-          "usageDescription": "Penggunaan kredit Anda di seluruh chat, automasi, dan channel.",
+          "usageDescription": "Penggunaan kredit Anda di seluruh chat, otomatisasi, dan channel.",
           "usageTitle": "Penggunaan kredit"
         }
       },
@@ -4601,10 +4601,10 @@
         "updatedTitle": "Acara Google Calendar diperbarui"
       },
       "chat": {
-        "addAction": "Tambahkan automasi chat",
-        "addAria": "Tambahkan automasi selesai eksekusi chat",
+        "addAction": "Tambahkan otomatisasi chat",
+        "addAria": "Tambahkan otomatisasi selesai eksekusi chat",
         "addDescription": "Jalankan alur kerja ini saat eksekusi di utas chat yang dipantau selesai.",
-        "addTitle": "Tambahkan automasi chat",
+        "addTitle": "Tambahkan otomatisasi chat",
         "anyOutput": "Output apa pun",
         "anyStatus": "Status selesai apa pun",
         "patternHint": "Opsional * wildcard yang dicocokkan dengan balasan akhir eksekusi. Kosongkan untuk mencocokkan output apa pun.",
@@ -4619,30 +4619,30 @@
         "statusFailed": "Gagal",
         "threadIdHint": "Buka chat dan salin ID utas dari URL-nya. Utas harus salah satu chat Anda sendiri.",
         "threadIdLabel": "ID utas chat",
-        "viewDescription": "Filter automasi ini tetap setelah dibuat.",
-        "viewTitle": "Automasi eksekusi chat selesai",
+        "viewDescription": "Filter otomatisasi ini tetap setelah dibuat.",
+        "viewTitle": "Otomatisasi eksekusi chat selesai",
         "watchedThreadLabel": "Utas chat yang dipantau"
       },
       "common": {
-        "addAutomation": "Tambahkan automasi",
-        "automation": "Automasi",
+        "addAutomation": "Tambahkan otomatisasi",
+        "automation": "Otomatisasi",
         "cancel": "Batal",
-        "chooseAutomation": "Pilih automasi untuk memulai alur kerja ini.",
-        "deleteAutomation": "Hapus automasi",
+        "chooseAutomation": "Pilih otomatisasi untuk memulai alur kerja ini.",
+        "deleteAutomation": "Hapus otomatisasi",
         "disable": "Nonaktifkan {{title}}",
         "disabledPaidPlan": "Dinonaktifkan — paket berbayar diperlukan",
         "done": "Selesai",
-        "editAutomation": "Edit automasi",
+        "editAutomation": "Edit otomatisasi",
         "enable": "Aktifkan {{title}}",
-        "eventAutomation": "Automasi acara",
+        "eventAutomation": "Otomatisasi acara",
         "moreActions": "Tindakan lainnya",
-        "noAutomations": "Tidak ada automasi",
-        "noAutomationsDescription": "Tambahkan automasi untuk menjalankan alur kerja ini setiap kali automasinya dipicu.",
+        "noAutomations": "Tidak ada otomatisasi",
+        "noAutomationsDescription": "Tambahkan otomatisasi untuk menjalankan alur kerja ini setiap kali otomatisasinya dipicu.",
         "runNow": "Jalankan sekarang",
         "schedule": "Jadwal",
-        "scheduleAutomation": "Automasi jadwal",
-        "updateDescription": "Perbarui automasi ini.",
-        "webhookAutomation": "Automasi webhook"
+        "scheduleAutomation": "Otomatisasi jadwal",
+        "updateDescription": "Perbarui otomatisasi ini.",
+        "webhookAutomation": "Otomatisasi webhook"
       },
       "duration": {
         "hour_one": "{{count}} jam",
@@ -4659,17 +4659,17 @@
         "actorMe": "Saya",
         "actors": "Aktor",
         "actorsPlaceholder": "octocat, dependabot[bot]",
-        "addLabelAction": "Tambahkan automasi label",
-        "addLabelAria": "Tambahkan automasi label GitHub",
+        "addLabelAction": "Tambahkan otomatisasi label",
+        "addLabelAria": "Tambahkan otomatisasi label GitHub",
         "addLabelDescription": "Jalankan alur kerja ini saat label GitHub diterapkan.",
-        "addLabelTitle": "Tambahkan automasi label GitHub",
-        "addWebhookAction": "Tambahkan automasi",
-        "addWebhookAria": "Tambahkan automasi {{title}}",
+        "addLabelTitle": "Tambahkan otomatisasi label GitHub",
+        "addWebhookAction": "Tambahkan otomatisasi",
+        "addWebhookAria": "Tambahkan otomatisasi {{title}}",
         "addWebhookDescription": "Jalankan alur kerja ini saat event webhook GitHub yang cocok diterima.",
-        "addWorkflowAction": "Tambahkan automasi alur kerja",
-        "addWorkflowAria": "Tambahkan automasi alur kerja GitHub",
+        "addWorkflowAction": "Tambahkan otomatisasi alur kerja",
+        "addWorkflowAria": "Tambahkan otomatisasi alur kerja GitHub",
         "addWorkflowDescription": "Jalankan alur kerja ini saat eksekusi workflow GitHub Actions yang cocok selesai.",
-        "addWorkflowTitle": "Tambahkan automasi alur kerja GitHub",
+        "addWorkflowTitle": "Tambahkan otomatisasi alur kerja GitHub",
         "aJob": "sebuah job workflow GitHub",
         "any": "Apa pun",
         "anyAuthor": "Penulis apa pun",
@@ -4775,9 +4775,9 @@
         "startedBy": "Dimulai oleh",
         "subject": "Subjek",
         "trustedAuthors": "Penulis tepercaya",
-        "updateLabelAria": "Perbarui otomasi label GitHub",
-        "updateWebhookAria": "Perbarui otomasi {{title}}",
-        "updateWorkflowAria": "Perbarui otomasi workflow GitHub",
+        "updateLabelAria": "Perbarui otomatisasi label GitHub",
+        "updateWebhookAria": "Perbarui otomatisasi {{title}}",
+        "updateWorkflowAria": "Perbarui otomatisasi workflow GitHub",
         "withConclusions": " dengan {{values}}",
         "workflowJobDescription": "Jalankan saat job Actions yang cocok selesai.",
         "workflowJobRule": "Saat {{jobs}} selesai",
@@ -4792,14 +4792,14 @@
       },
       "gmail": {
         "addCondition": "Tambahkan kondisi",
-        "addLabelAction": "Tambahkan otomasi label",
-        "addLabelAria": "Tambahkan otomasi label Gmail",
+        "addLabelAction": "Tambahkan otomatisasi label",
+        "addLabelAria": "Tambahkan otomatisasi label Gmail",
         "addLabelDescription": "Jalankan workflow ini saat label Gmail bernama diterapkan.",
-        "addLabelTitle": "Tambahkan otomasi label Gmail",
-        "addMessageAction": "Tambahkan otomasi Gmail",
-        "addMessageAria": "Tambahkan otomasi Gmail",
+        "addLabelTitle": "Tambahkan otomatisasi label Gmail",
+        "addMessageAction": "Tambahkan otomatisasi Gmail",
+        "addMessageAria": "Tambahkan otomatisasi Gmail",
         "addMessageDescription": "Jalankan workflow ini saat pesan yang cocok masuk.",
-        "addMessageTitle": "Tambahkan otomasi Gmail",
+        "addMessageTitle": "Tambahkan otomatisasi Gmail",
         "allInboundMessages": "semua pesan masuk",
         "anyMessageRule": "Saat ada pesan Gmail masuk",
         "conditionField": "Kolom kondisi {{number}}",
@@ -4839,23 +4839,23 @@
           "doesNotContainAny": "{{field}} tidak mengandung salah satu dari {{value}}",
           "threadId": "ID thread adalah {{value}}"
         },
-        "updateLabelAria": "Perbarui otomasi label Gmail",
-        "updateMessageAria": "Perbarui otomasi pesan baru Gmail"
+        "updateLabelAria": "Perbarui otomatisasi label Gmail",
+        "updateMessageAria": "Perbarui otomatisasi pesan baru Gmail"
       },
       "meet": {
-        "addAction": "Tambahkan otomasi Meet",
-        "addAria": "Tambahkan otomasi transkrip Google Meet",
+        "addAction": "Tambahkan otomatisasi Meet",
+        "addAria": "Tambahkan otomatisasi transkrip Google Meet",
         "addDescription": "Jalankan workflow ini saat Google Meet selesai membuat transkrip untuk rapat yang diselenggarakan oleh akun Google Meet yang terhubung.",
-        "addTitle": "Tambahkan otomasi Google Meet",
+        "addTitle": "Tambahkan otomatisasi Google Meet",
         "rule": "Saat Google Meet selesai membuat transkrip",
         "summary": "Rapat yang Anda selenggarakan",
-        "transcriptHint": "Transkripsi harus diaktifkan untuk rapat. Jika Meet tidak membuat transkrip, otomasi ini tidak akan dijalankan.",
+        "transcriptHint": "Transkripsi harus diaktifkan untuk rapat. Jika Meet tidak membuat transkrip, otomatisasi ini tidak akan dijalankan.",
         "transcriptReadyDescription": "Jalankan saat Meet selesai membuat transkrip.",
         "transcriptReadyTitle": "Transkrip Google Meet siap"
       },
       "notion": {
-        "addAction": "Tambahkan otomasi Notion",
-        "childPageAddAria": "Tambahkan otomasi halaman turunan Notion",
+        "addAction": "Tambahkan otomatisasi Notion",
+        "childPageAddAria": "Tambahkan otomatisasi halaman turunan Notion",
         "childPageDescription": "Jalankan saat halaman turunan langsung dibuat.",
         "childPageDialogDescription": "Jalankan alur kerja ini saat halaman anak langsung dibuat di bawah halaman Notion.",
         "childPageRule": "Saat halaman anak Notion dibuat di bawah {{title}}",
@@ -5144,7 +5144,7 @@
         "confirmTitle": "Jadikan alur kerja ini privat?",
         "makePrivate": "Jadikan privat",
         "publishAria": "Jadikan alur kerja publik",
-        "workflowHidden": "{{title}} akan disembunyikan dari anggota lain dan automasinya akan berhenti."
+        "workflowHidden": "{{title}} akan disembunyikan dari anggota lain dan otomatisasinya akan berhenti."
       }
     },
     "editor": {
@@ -5169,13 +5169,13 @@
       "all": "Semua",
       "allAgents": "Semua agen",
       "automated": "Otomatis",
-      "automations": "Automasi",
+      "automations": "Otomatisasi",
       "createdBy": "Dibuat oleh",
       "createInChat": "Buat di chat",
-      "description": "SOP yang dapat digunakan kembali untuk suatu tugas. Tulis dari awal atau ringkas dari pekerjaan harian Anda, lalu jalankan, edit, atau automasikan.",
+      "description": "SOP yang dapat digunakan kembali untuk suatu tugas. Tulis dari awal atau ringkas dari pekerjaan harian Anda, lalu jalankan, edit, atau otomatiskan.",
       "empty": {
         "all": "Buat alur kerja dari chat atau simpan dari eksekusi yang bermanfaat.",
-        "automated": "Tambahkan automasi ke alur kerja dan akan muncul di sini.",
+        "automated": "Tambahkan otomatisasi ke alur kerja dan akan muncul di sini.",
         "private": "Belum ada alur kerja privat.",
         "public": "Belum ada alur kerja publik.",
         "without": "Setiap alur kerja di sini berjalan sesuai jadwal atau peristiwa."
@@ -5185,7 +5185,7 @@
       "runsAs": "Dijalankan sebagai",
       "runsAsAria": "Dijalankan sebagai {{agent}}",
       "section": {
-        "event": "Saat automasi",
+        "event": "Saat otomatisasi",
         "later": "Nanti",
         "manual": "Manual",
         "today": "Dijalankan hari ini",
@@ -5198,7 +5198,7 @@
         "nextRun": "Eksekusi berikutnya"
       },
       "title": "Alur kerja",
-      "viewAutomations": "Lihat automasi"
+      "viewAutomations": "Lihat otomatisasi"
     }
   },
   "works": {
@@ -5231,7 +5231,7 @@
       "uninstallTitle": "Copot pemasangan integrasi Slack?"
     },
     "strapi": {
-      "description": "Automasikan pekerjaan saat entri dipublikasikan",
+      "description": "Otomatiskan pekerjaan saat entri dipublikasikan",
       "title": "Strapi"
     },
     "teams": {

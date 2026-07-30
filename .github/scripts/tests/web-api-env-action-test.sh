@@ -237,7 +237,7 @@ assert_env_value "$production_api_env_file" ZERO_BROWSER_USE_API_KEY "github-bro
 assert_env_value "$production_api_env_file" ZERO_SCRAPE_FIRECRAWL_TOKEN "github-firecrawl-token"
 assert_env_value "$production_api_env_file" ZERO_WEB_SEARCH_PERPLEXITY_TOKEN "github-perplexity-token"
 assert_env_value "$production_api_env_file" BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED "true"
-assert_env_value "$production_api_env_file" INDONESIAN_LOCALE_ROLLOUT_ENABLED "true"
+assert_env_absent_value "$production_api_env_file" "INDONESIAN_LOCALE_ROLLOUT_ENABLED="
 assert_env_absent_value "$production_api_env_file" "ONBOARDING_URL="
 assert_env_value "$production_api_env_file" CLOUDFLARE_BROWSER_RENDERING_API_TOKEN "github-cloudflare-browser-rendering-token"
 assert_env_value "$production_api_env_file" ARTIFACT_PREVIEW_WAF_SECRET "github-artifact-preview-waf-secret"
