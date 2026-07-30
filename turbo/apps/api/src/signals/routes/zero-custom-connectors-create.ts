@@ -56,7 +56,6 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       };
     }
   }
-
   const result = await set(
     createCustomConnector$,
     { orgId: auth.orgId, userId: auth.userId, input: bodyResult.data },

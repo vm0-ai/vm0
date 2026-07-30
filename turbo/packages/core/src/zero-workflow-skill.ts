@@ -1,14 +1,12 @@
 import { stringify as stringifyYaml } from "yaml";
 
 /**
- * Synthesize the SKILL.md written to a workflow's volume.
+ * Synthesize the SKILL.md written to a server-managed skill volume.
  *
- * The DB is the single source of truth for a workflow: its (name, description,
- * instruction) are composed into a SKILL.md whose frontmatter is generated, not
- * user-authored. Users never see or edit the frontmatter — they edit only the
- * instruction body and the supplementary files.
+ * The DB is the single source of truth: name, description, and instruction are
+ * composed into generated frontmatter plus the user-authored instruction body.
  */
-export function synthesizeWorkflowSkillMd(args: {
+export function synthesizeSkillMd(args: {
   readonly name: string;
   readonly description: string | null;
   readonly instruction: string | null;
@@ -22,6 +20,14 @@ export function synthesizeWorkflowSkillMd(args: {
   return body.length > 0
     ? `---\n${frontmatter}\n---\n\n${body}\n`
     : `---\n${frontmatter}\n---\n`;
+}
+
+export function synthesizeWorkflowSkillMd(args: {
+  readonly name: string;
+  readonly description: string | null;
+  readonly instruction: string | null;
+}): string {
+  return synthesizeSkillMd(args);
 }
 
 /**
