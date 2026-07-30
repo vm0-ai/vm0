@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.149.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.39...runner-rs-v0.149.0) (2026-07-30)
+
+
+### Features
+
+* **events:** report structured guest event delivery failures ([#23974](https://github.com/vm0-ai/vm0/issues/23974)) ([ebdf828](https://github.com/vm0-ai/vm0/commit/ebdf8280b7b961ebf8404790a15696a7338ecd6e))
+
 ## [0.148.39](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.148.38...runner-rs-v0.148.39) (2026-07-30)
 
 
