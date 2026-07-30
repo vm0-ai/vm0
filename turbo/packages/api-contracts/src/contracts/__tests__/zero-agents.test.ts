@@ -47,6 +47,20 @@ describe("zero agent draft contract", () => {
     );
   });
 
+  it("accepts agent draft responses without the legacy content projection", () => {
+    const response = {
+      draftUserMessage: {
+        version: 1 as const,
+        parts: [{ type: "text" as const, text: "Resume agent work" }],
+      },
+      draftAttachments: null,
+    };
+
+    expect(zeroAgentDraftResponseSchema.parse(response)).toStrictEqual(
+      response,
+    );
+  });
+
   it("requires userMessage for non-empty agent drafts", () => {
     expect(
       zeroAgentDraftRequestSchema.safeParse({
