@@ -1554,6 +1554,12 @@ describe("chat lifecycle", () => {
       title: "Claude Code limit reached",
     },
     {
+      name: "Claude usage limit",
+      error:
+        "Claude usage limit reached. Visit https://claude.ai/settings/usage or try again at 6:17 AM.",
+      title: "Claude Code limit reached",
+    },
+    {
       name: "Codex model capacity",
       error: "Selected model is at capacity. Please try a different model.",
       title: "Codex model is busy",
@@ -1564,8 +1570,8 @@ describe("chat lifecycle", () => {
         "Claude Sonnet 4.6 is overloaded. Please wait a few minutes and try again, or switch to another model.",
       title: "Claude Code model is busy",
     },
-  ])("recognizes the latest $name error", async ({ error, title }) => {
-    const threadId = `thread-recovery-${title.replaceAll(" ", "-")}`;
+  ])("recognizes the latest $name error", async ({ name, error, title }) => {
+    const threadId = `thread-recovery-${name.replaceAll(" ", "-")}`;
     mockChatLifecycle(context, {
       threadId,
       chatEvents: [

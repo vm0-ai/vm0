@@ -92,7 +92,7 @@ function isClaudeUsageLimit(error: string): boolean {
   return (
     /you(?:'|’)ve hit your (?:session|weekly|5[- ]hour|opus(?:\s+[\w.-]+)?|sonnet(?:\s+[\w.-]+)?|haiku(?:\s+[\w.-]+)?) limit\b/iu.test(
       error,
-    ) || /\bclaude code (?:rate|usage) limit reached\b/iu.test(error)
+    ) || /\bclaude(?: code)? (?:rate|usage) limit reached\b/iu.test(error)
   );
 }
 
