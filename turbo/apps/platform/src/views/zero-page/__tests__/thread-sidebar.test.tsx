@@ -164,6 +164,7 @@ function setupChatThread({
   artifactFiles = [],
   autoOpenEnabled = false,
   browserEnabled = true,
+  waitForHistoryResponse,
   messages = [
     {
       id: "msg-sidebar-user",
@@ -194,6 +195,7 @@ function setupChatThread({
   artifactFiles?: ChatThreadArtifactFile[];
   autoOpenEnabled?: boolean;
   browserEnabled?: boolean;
+  waitForHistoryResponse?: () => Promise<void>;
   messages?: MockChatEventInput[];
 } = {}) {
   let servedMessages = [...messages];
@@ -235,29 +237,33 @@ function setupChatThread({
       latestSeqId: 1,
     });
   });
-  context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
-    if (query.beforeSeqId !== undefined) {
-      return respond(200, { events: [] });
-    }
-    const events = normalizeMockChatEvents(
-      servedMessages.map((message) => {
-        return { ...message, threadId: message.threadId ?? THREAD_ID };
-      }),
-    );
-    const sinceSeqId = query.sinceSeqId;
-    if (sinceSeqId !== undefined) {
-      return respond(200, {
-        events: events.filter((event) => {
-          return event.seqId > sinceSeqId;
+  context.mocks.api(
+    chatThreadEventsContract.list,
+    async ({ query, respond }) => {
+      if (query.beforeSeqId !== undefined) {
+        await waitForHistoryResponse?.();
+        return respond(200, { events: [], hasHistoryBefore: false });
+      }
+      const events = normalizeMockChatEvents(
+        servedMessages.map((message) => {
+          return { ...message, threadId: message.threadId ?? THREAD_ID };
         }),
-        hasHistoryBefore: false,
+      );
+      const sinceSeqId = query.sinceSeqId;
+      if (sinceSeqId !== undefined) {
+        return respond(200, {
+          events: events.filter((event) => {
+            return event.seqId > sinceSeqId;
+          }),
+          hasHistoryBefore: false,
+        });
+      }
+      return respond(200, {
+        events,
+        hasHistoryBefore: waitForHistoryResponse !== undefined,
       });
-    }
-    return respond(200, {
-      events,
-      hasHistoryBefore: false,
-    });
-  });
+    },
+  );
   context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
     return respond(200, {
       runs: [{ runId: "run-sidebar", files: artifactFiles }],
@@ -834,6 +840,49 @@ describe("thread-owned utility sidebar", () => {
         screen.getByTitle("Live browser: Auto-open browser"),
       ).toHaveAttribute("src", liveUrl);
     });
+  });
+
+  it("auto-opens from the first remote page while older history is still loading", async () => {
+    const historyRequestStarted = context.mocks.deferred<void>();
+    const releaseHistoryResponse = context.mocks.deferred<void>();
+    context.mocks.browser.matchMedia((query) => {
+      return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
+    });
+    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+      return respond(200, { browser: browserSession() });
+    });
+    context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
+      return respond(200, {
+        browser: browserSession({ liveUrl: null }),
+      });
+    });
+
+    try {
+      setupChatThread({
+        autoOpenEnabled: true,
+        waitForHistoryResponse: async () => {
+          historyRequestStarted.resolve();
+          await releaseHistoryResponse.promise;
+        },
+        messages: [
+          {
+            id: "c0000000-0000-4000-a000-000000000054",
+            eventType: "browser.started",
+            content: null,
+            seqId: 51,
+            createdAt: "2026-03-10T00:00:00Z",
+          },
+        ],
+      });
+
+      await historyRequestStarted.promise;
+      await expect(
+        screen.findByTitle("Live browser: Thread browser"),
+      ).resolves.toBeInTheDocument();
+      expect(releaseHistoryResponse.settled()).toBeFalsy();
+    } finally {
+      releaseHistoryResponse.resolve();
+    }
   });
 
   it("does not auto-open when the latest browser lifecycle event is stopped", async () => {

@@ -2096,34 +2096,64 @@ function createEventSemanticSignals(
   };
 }
 
+interface EventSyncTracking {
+  readonly completion: Promise<void>;
+  readonly initialRemoteEventsReady: Promise<void>;
+}
+
 function createEventSyncSignals(hasEvents$: Computed<Promise<boolean>>) {
   const initialSyncStarted = Promise.withResolvers<void>();
-  const internalEventSyncPromise$ = state<Promise<void> | null>(null);
+  const internalEventSync$ = state<EventSyncTracking | null>(null);
   const hasNewEvents$ = computed(async (get): Promise<boolean> => {
     await initialSyncStarted.promise;
-    await get(internalEventSyncPromise$);
+    await get(internalEventSync$)?.completion;
     return await get(hasEvents$);
   });
-  const trackEventSync$ = command(({ set }, promise: Promise<void>): void => {
-    set(internalEventSyncPromise$, promise);
-    initialSyncStarted.resolve(undefined);
+  const initialRemoteEventsReady$ = computed(async (get): Promise<void> => {
+    await initialSyncStarted.promise;
+    await get(internalEventSync$)?.initialRemoteEventsReady;
   });
+  const trackEventSync$ = command(
+    ({ set }, tracking: EventSyncTracking): void => {
+      set(internalEventSync$, tracking);
+      initialSyncStarted.resolve(undefined);
+    },
+  );
   const settleEventSync$ = command(({ set }): Promise<void> => {
     const promise = Promise.resolve();
-    set(trackEventSync$, promise);
+    set(trackEventSync$, {
+      completion: promise,
+      initialRemoteEventsReady: promise,
+    });
     return promise;
   });
-  return { hasNewEvents$, trackEventSync$, settleEventSync$ };
+  return {
+    hasNewEvents$,
+    initialRemoteEventsReady$,
+    trackEventSync$,
+    settleEventSync$,
+  };
 }
 
 function createTrackedEventSyncCommand(
-  runSyncRemoteEvents$: Command<Promise<void>, [AbortSignal]>,
-  trackEventSync$: Command<void, [Promise<void>]>,
+  runSyncRemoteEvents$: Command<Promise<void>, [() => void, AbortSignal]>,
+  trackEventSync$: Command<void, [EventSyncTracking]>,
 ): Command<Promise<void>, [AbortSignal]> {
   return command(({ set }, signal: AbortSignal): Promise<void> => {
-    const promise = set(runSyncRemoteEvents$, signal);
-    set(trackEventSync$, promise);
-    return promise;
+    const initialRemoteEventsReady = Promise.withResolvers<void>();
+    const completion = set(
+      runSyncRemoteEvents$,
+      initialRemoteEventsReady.resolve,
+      signal,
+    );
+    set(trackEventSync$, {
+      completion,
+      initialRemoteEventsReady: Promise.race([
+        initialRemoteEventsReady.promise,
+        completion,
+      ]),
+    });
+    return completion;
   });
 }
 
@@ -2216,114 +2246,121 @@ function createSyncRemoteEventsCommand({
   hasReachedOldestEvent$: Computed<boolean>;
   mergePersistentEvents$: Command<void, [PersistedChatEvent[]]>;
   dataSource: ChatThreadRemote;
-}): Command<Promise<void>, [AbortSignal]> {
-  return command(async ({ get, set }, signal: AbortSignal) => {
-    const persistentEvents = get(persistentEvents$);
-    const accumulatedEvents: PersistedChatEvent[] = [];
-    let mergedEventCount = 0;
-    const latestPersistentEvent = persistentEvents.at(-1);
-    let sinceSeqId = latestPersistentEvent?.event.seqId;
-    let initialPageOldestEvent: PersistedChatEvent | undefined;
+}): Command<Promise<void>, [() => void, AbortSignal]> {
+  return command(
+    async (
+      { get, set },
+      markInitialRemoteEventsReady: () => void,
+      signal: AbortSignal,
+    ) => {
+      const persistentEvents = get(persistentEvents$);
+      const accumulatedEvents: PersistedChatEvent[] = [];
+      let mergedEventCount = 0;
+      const latestPersistentEvent = persistentEvents.at(-1);
+      let sinceSeqId = latestPersistentEvent?.event.seqId;
+      let initialPageOldestEvent: PersistedChatEvent | undefined;
 
-    async function syncEventsAfter(): Promise<void> {
-      const requestedSinceSeqId = sinceSeqId;
-      const isInitialPage = requestedSinceSeqId === undefined;
-      const result = await set(
-        dataSource.listEventsAfter$,
-        { threadId, sinceSeqId: requestedSinceSeqId },
-        signal,
-      );
+      async function syncEventsAfter(): Promise<void> {
+        const requestedSinceSeqId = sinceSeqId;
+        const isInitialPage = requestedSinceSeqId === undefined;
+        const result = await set(
+          dataSource.listEventsAfter$,
+          { threadId, sinceSeqId: requestedSinceSeqId },
+          signal,
+        );
+        signal.throwIfAborted();
+        L.debug("syncRemoteMessages$ listEventsAfter result", {
+          threadId,
+          sinceSeqId: requestedSinceSeqId ?? null,
+          gotCount: result.events.length,
+        });
+
+        if (result.events.length === 0) {
+          return;
+        }
+
+        await set(writeIndexedDbChatEvents$, threadId, result.events, signal);
+        signal.throwIfAborted();
+        if (isInitialPage) {
+          initialPageOldestEvent = result.events[0]!;
+          set(mergePersistentEvents$, result.events);
+        } else {
+          accumulatedEvents.push(...result.events);
+        }
+        sinceSeqId = result.events.at(-1)!.seqId;
+
+        if (
+          requestedSinceSeqId !== undefined &&
+          result.events.length < CHAT_EVENTS_PAGE_LIMIT
+        ) {
+          return;
+        }
+        return syncEventsAfter();
+      }
+      await syncEventsAfter();
       signal.throwIfAborted();
-      L.debug("syncRemoteMessages$ listEventsAfter result", {
-        threadId,
-        sinceSeqId: requestedSinceSeqId ?? null,
-        gotCount: result.events.length,
-      });
+      markInitialRemoteEventsReady();
 
-      if (result.events.length === 0) {
-        return;
-      }
-
-      await set(writeIndexedDbChatEvents$, threadId, result.events, signal);
-      signal.throwIfAborted();
-      if (isInitialPage) {
-        initialPageOldestEvent = result.events[0]!;
-        set(mergePersistentEvents$, result.events);
-      } else {
-        accumulatedEvents.push(...result.events);
-      }
-      sinceSeqId = result.events.at(-1)!.seqId;
-
-      if (
-        requestedSinceSeqId !== undefined &&
-        result.events.length < CHAT_EVENTS_PAGE_LIMIT
-      ) {
-        return;
-      }
-      return syncEventsAfter();
-    }
-    await syncEventsAfter();
-    signal.throwIfAborted();
-
-    if (!get(hasReachedOldestEvent$)) {
-      const oldestEvent =
-        persistentEvents[0]?.event ??
-        initialPageOldestEvent ??
-        accumulatedEvents[0];
-      if (oldestEvent !== undefined) {
-        let beforeSeqId = oldestEvent.seqId;
-        async function syncEventsBefore(): Promise<void> {
-          const result = await set(
-            dataSource.listEventsBefore$,
-            { threadId, beforeSeqId },
-            signal,
-          );
-          signal.throwIfAborted();
-          L.debug("syncRemoteMessages$ listEventsBefore result", {
-            threadId,
-            beforeSeqId,
-            gotCount: result.events.length,
-            hasHistoryBefore: result.hasHistoryBefore,
-          });
-
-          if (result.events.length > 0) {
-            accumulatedEvents.push(...result.events);
-            await set(
-              writeIndexedDbChatEvents$,
-              threadId,
-              result.events,
+      if (!get(hasReachedOldestEvent$)) {
+        const oldestEvent =
+          persistentEvents[0]?.event ??
+          initialPageOldestEvent ??
+          accumulatedEvents[0];
+        if (oldestEvent !== undefined) {
+          let beforeSeqId = oldestEvent.seqId;
+          async function syncEventsBefore(): Promise<void> {
+            const result = await set(
+              dataSource.listEventsBefore$,
+              { threadId, beforeSeqId },
               signal,
             );
             signal.throwIfAborted();
-            // Flush periodically so long backfills surface incrementally
-            // (e.g. the history backfill progress bar) instead of appearing
-            // only after every page has been fetched.
-            if (
-              accumulatedEvents.length - mergedEventCount >=
-              HISTORY_BACKFILL_MERGE_BATCH_SIZE
-            ) {
-              set(
-                mergePersistentEvents$,
-                accumulatedEvents.slice(mergedEventCount),
+            L.debug("syncRemoteMessages$ listEventsBefore result", {
+              threadId,
+              beforeSeqId,
+              gotCount: result.events.length,
+              hasHistoryBefore: result.hasHistoryBefore,
+            });
+
+            if (result.events.length > 0) {
+              accumulatedEvents.push(...result.events);
+              await set(
+                writeIndexedDbChatEvents$,
+                threadId,
+                result.events,
+                signal,
               );
-              mergedEventCount = accumulatedEvents.length;
+              signal.throwIfAborted();
+              // Flush periodically so long backfills surface incrementally
+              // (e.g. the history backfill progress bar) instead of appearing
+              // only after every page has been fetched.
+              if (
+                accumulatedEvents.length - mergedEventCount >=
+                HISTORY_BACKFILL_MERGE_BATCH_SIZE
+              ) {
+                set(
+                  mergePersistentEvents$,
+                  accumulatedEvents.slice(mergedEventCount),
+                );
+                mergedEventCount = accumulatedEvents.length;
+              }
             }
+
+            if (!result.hasHistoryBefore) {
+              return;
+            }
+
+            beforeSeqId = result.events[0]!.seqId;
+
+            return syncEventsBefore();
           }
-
-          if (!result.hasHistoryBefore) {
-            return;
-          }
-
-          beforeSeqId = result.events[0]!.seqId;
-
-          return syncEventsBefore();
+          await syncEventsBefore();
         }
-        await syncEventsBefore();
       }
-    }
-    signal.throwIfAborted();
-    set(mergePersistentEvents$, accumulatedEvents.slice(mergedEventCount));
-  });
+      signal.throwIfAborted();
+      set(mergePersistentEvents$, accumulatedEvents.slice(mergedEventCount));
+    },
+  );
 }
 
 function createActiveGoalObjectiveComputed(
@@ -4471,6 +4508,7 @@ function publicChatThreadEventSignals(
     browserSessionSignals: events.browserSessionSignals,
     hasEvents$: events.hasEvents$,
     hasNewEvents$: events.hasNewEvents$,
+    initialRemoteEventsReady$: events.initialRemoteEventsReady$,
     hasQueuedEvents$: events.hasQueuedEvents$,
     queuedEventItems$: events.queuedEventItems$,
     emptyQueuedEventItems$: events.emptyQueuedEventItems$,

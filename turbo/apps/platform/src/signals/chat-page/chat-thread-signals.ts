@@ -172,6 +172,7 @@ export interface ChatThreadSignals {
   browserSessionSignals: BrowserSessionSignals;
   hasEvents$: Computed<Promise<boolean>>;
   hasNewEvents$: Computed<Promise<boolean>>;
+  initialRemoteEventsReady$: Computed<Promise<void>>;
   hasQueuedEvents$: Computed<Promise<boolean>>;
   queuedEventItems$: Computed<Promise<readonly QueuedChatEventItem[]>>;
   emptyQueuedEventItems$: Computed<Promise<readonly QueuedChatEventItem[]>>;
