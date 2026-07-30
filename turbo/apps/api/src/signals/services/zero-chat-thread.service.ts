@@ -101,7 +101,6 @@ import {
 import { type Db, db$, type ReadonlyDb, writeDb$ } from "../external/db";
 import {
   inferMimetype,
-  insertAssistantEvents$,
   resolveAttachFileUrls,
   visibleChatEventCondition,
 } from "./zero-chat-event-shared.service";
@@ -116,8 +115,6 @@ import {
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
-
-export { insertAssistantEvents$ };
 
 const nullableTriggerSourceDecoder = nullableDriverValueDecoder(
   zodEnumDriverValueDecoder(triggerSourceSchema),
@@ -2359,28 +2356,24 @@ export const createChatThread$ = command(
   },
 );
 
-export function chatThreadForRun(
+export async function chatThreadForRunFromDb(
+  db: Pick<Db, "select">,
   runId: string,
-): Computed<
-  Promise<{ readonly chatThreadId: string; readonly userId: string } | null>
-> {
-  return computed(async (get) => {
-    const db = get(db$);
-    const [row] = await db
-      .select({
-        chatThreadId: zeroRuns.chatThreadId,
-        userId: chatThreads.userId,
-      })
-      .from(zeroRuns)
-      .innerJoin(chatThreads, eq(zeroRuns.chatThreadId, chatThreads.id))
-      .where(eq(zeroRuns.id, runId))
-      .limit(1);
+): Promise<{ readonly chatThreadId: string; readonly userId: string } | null> {
+  const [row] = await db
+    .select({
+      chatThreadId: zeroRuns.chatThreadId,
+      userId: chatThreads.userId,
+    })
+    .from(zeroRuns)
+    .innerJoin(chatThreads, eq(zeroRuns.chatThreadId, chatThreads.id))
+    .where(eq(zeroRuns.id, runId))
+    .limit(1);
 
-    if (!row?.chatThreadId) {
-      return null;
-    }
-    return { chatThreadId: row.chatThreadId, userId: row.userId };
-  });
+  if (!row?.chatThreadId) {
+    return null;
+  }
+  return { chatThreadId: row.chatThreadId, userId: row.userId };
 }
 
 interface ThreadRunToCancel {
