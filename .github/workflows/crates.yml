@@ -785,6 +785,12 @@ jobs:
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
         run: .github/scripts/runner-behavior-cancel.sh
 
+      - name: Test systemd reload coordination
+        timeout-minutes: 5
+        env:
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+        run: .github/scripts/runner-behavior-systemd-reload.sh
+
       - name: Run upgrade test
         timeout-minutes: 5
         env:
