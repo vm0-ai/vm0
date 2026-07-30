@@ -16,6 +16,10 @@
 //! against the requested active connector set, patches the proxy registry, and
 //! replaces the next schedule from the returned `nextRefreshAt`.
 //!
+//! A typed terminal-run response removes the entire run from refresh tracking,
+//! cancels its scheduled work, and fail-closes every still-matching connector
+//! policy. Ambiguous API failures retain the connector-scoped fail-closed path.
+//!
 //! The safety contract is to trigger fail-closed patching when freshness cannot
 //! be established for an active connector. Queue overflow, API refresh failure,
 //! omitted requested connectors, duplicate requested connectors, malformed
