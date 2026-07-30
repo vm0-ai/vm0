@@ -36,7 +36,6 @@ import {
   type ArtifactDetail,
   type ArtifactSummary,
 } from "@vm0/api-contracts/contracts/artifact-catalog";
-import { composesMainContract } from "@vm0/api-contracts/contracts/composes";
 import type { ApiErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
 import { CLIENT_VERSION_HEADER } from "@vm0/api-contracts/contracts/client-headers";
@@ -55,8 +54,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-uploads";
 import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
-import { agentComposesReadRoutes } from "../../agent-composes-read";
-import { agentComposesRoutes } from "../../agent-composes";
+import { createAgentComposeFixture } from "../../../../test-fixtures/agent-composes";
 import { zeroChatEventsRoutes } from "../../zero-chat-events";
 import { zeroArtifactCatalogRoutes } from "../../zero-artifact-catalog";
 import { zeroArtifactsRoutes } from "../../zero-artifacts";
@@ -171,8 +169,6 @@ function mockObjectStorageObjectsExist(context: TestContext): void {
 }
 
 const chatFilesRoutes = [
-  ...agentComposesRoutes,
-  ...agentComposesReadRoutes,
   ...zeroArtifactCatalogRoutes,
   ...zeroArtifactsRoutes,
   ...zeroChatThreadRoutes,
@@ -214,10 +210,6 @@ export function persistedAttachment(
 
 export function createChatFilesBddApi(context: TestContext) {
   const mocks = createZeroRouteMocks(context);
-
-  function composeClient() {
-    return chatFilesApp(context)(composesMainContract);
-  }
 
   function threadsClient() {
     return chatFilesApp(context)(chatThreadsContract);
@@ -351,19 +343,21 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
       agentName = `bdd-chat-${randomUUID().slice(0, 8)}`,
     ): Promise<BddCompose> {
+      if (!actor.orgId) {
+        throw new Error("Compose fixtures require an org-scoped actor");
+      }
       const response = await accept(
-        composeClient().create({
-          headers: authenticate(context, actor),
-          body: {
-            content: {
-              version: "1.0",
-              agents: {
-                [agentName]: {
-                  framework: "claude-code",
-                },
+        createAgentComposeFixture({
+          actor: { userId: actor.userId, orgId: actor.orgId },
+          content: {
+            version: "1.0",
+            agents: {
+              [agentName]: {
+                framework: "claude-code",
               },
             },
           },
+          signal: context.signal,
         }),
         [200, 201],
       );

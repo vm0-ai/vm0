@@ -48,20 +48,6 @@ function composeResponse(row: {
   };
 }
 
-export function agentComposeOrgId(
-  composeId: string,
-): Computed<Promise<string | null>> {
-  return computed(async (get): Promise<string | null> => {
-    const [row] = await get(db$)
-      .select({ orgId: agentComposes.orgId })
-      .from(agentComposes)
-      .where(eq(agentComposes.id, composeId))
-      .limit(1);
-
-    return row?.orgId ?? null;
-  });
-}
-
 export function agentComposeByName(args: {
   readonly orgId: string;
   readonly name: string;
