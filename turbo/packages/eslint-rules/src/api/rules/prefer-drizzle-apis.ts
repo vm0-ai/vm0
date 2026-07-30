@@ -33,6 +33,7 @@ import {
   isDrizzleDeclaration,
   isDrizzlePgCoreDeclaration,
   isDrizzleSqlTag,
+  isDrizzleSqlType,
   isDrizzleSymbol,
   isNamedDrizzleSignature,
   resolvedSymbol,
@@ -151,6 +152,8 @@ export const preferDrizzleApis = createRule({
         "Use a Drizzle select builder for this complete schema-backed query.",
       scalarCteQueryBuilder:
         "Use Drizzle $with(...), select(), and joins for this complete scalar CTE projection.",
+      unstableGrouping:
+        "Group by a reusable expression or real input field instead of a repeated expression, positional ordinal, or computed output alias.",
       structuredScalarQuery:
         "Use a Drizzle select builder for this complete raw scalar query.",
       typedApi: "Use Drizzle {{helper}}(...) for this equivalent SQL-tag leaf.",
@@ -930,6 +933,338 @@ export const preferDrizzleApis = createRule({
         leftMetadata.tableName === rightMetadata.tableName &&
         context.sourceCode.getText(left) === context.sourceCode.getText(right)
       );
+    }
+
+    function callReceiver(
+      node: TSESTree.CallExpression,
+    ): TSESTree.Expression | undefined {
+      if (
+        node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+        node.callee.object.type === AST_NODE_TYPES.Super
+      ) {
+        return undefined;
+      }
+      return node.callee.object;
+    }
+
+    function directDrizzleCall(
+      node: TSESTree.Expression,
+      method: string,
+    ): TSESTree.CallExpression | undefined {
+      return node.type === AST_NODE_TYPES.CallExpression &&
+        node.callee.type === AST_NODE_TYPES.MemberExpression &&
+        memberName(node.callee) === method &&
+        isDrizzleMethodCall(node, method)
+        ? node
+        : undefined;
+    }
+
+    function singleCallArgument(
+      node: TSESTree.CallExpression,
+    ): TSESTree.Expression | undefined {
+      const argument = node.arguments[0];
+      return node.arguments.length === 1 &&
+        argument !== undefined &&
+        argument.type !== AST_NODE_TYPES.SpreadElement
+        ? argument
+        : undefined;
+    }
+
+    interface DirectGroupingQuery {
+      readonly selection: TSESTree.ObjectExpression;
+    }
+
+    // Grouping lint intentionally follows only the normal direct query shape
+    // used in this repository. Query factories, joins, spreads, computed
+    // properties, and transformed callback results remain opaque.
+    function directGroupingQuery(
+      node: TSESTree.CallExpression,
+    ): DirectGroupingQuery | undefined {
+      let previous = callReceiver(node);
+      if (previous === undefined) {
+        return undefined;
+      }
+
+      if (
+        previous.type === AST_NODE_TYPES.CallExpression &&
+        previous.callee.type === AST_NODE_TYPES.MemberExpression &&
+        memberName(previous.callee) === "where"
+      ) {
+        const where = directDrizzleCall(previous, "where");
+        if (
+          where === undefined ||
+          singleCallArgument(where) === undefined ||
+          callReceiver(where) === undefined
+        ) {
+          return undefined;
+        }
+        previous = callReceiver(where);
+        if (previous === undefined) {
+          return undefined;
+        }
+      }
+
+      const from = directDrizzleCall(previous, "from");
+      const source = from === undefined ? undefined : singleCallArgument(from);
+      const beforeFrom = from === undefined ? undefined : callReceiver(from);
+      if (source === undefined || beforeFrom === undefined) {
+        return undefined;
+      }
+
+      const select = directDrizzleCall(beforeFrom, "select");
+      const selection =
+        select === undefined ? undefined : singleCallArgument(select);
+      const database = select === undefined ? undefined : callReceiver(select);
+      return selection?.type === AST_NODE_TYPES.ObjectExpression &&
+        database?.type === AST_NODE_TYPES.Identifier
+        ? { selection }
+        : undefined;
+    }
+
+    interface DirectSelectionField {
+      readonly isComputedSql: boolean;
+      readonly propertyName: string;
+      readonly sqlTemplate: TSESTree.TaggedTemplateExpression | undefined;
+    }
+
+    interface DirectSelectedSql {
+      readonly template: TSESTree.TaggedTemplateExpression | undefined;
+    }
+
+    function directSelectedSql(
+      node: TSESTree.Expression,
+    ): DirectSelectedSql | undefined {
+      const asCall = directDrizzleCall(node, "as");
+      const alias =
+        asCall === undefined ? undefined : singleCallArgument(asCall);
+      let source = asCall === undefined ? undefined : callReceiver(asCall);
+      if (
+        alias?.type !== AST_NODE_TYPES.Literal ||
+        typeof alias.value !== "string" ||
+        alias.value === "" ||
+        source === undefined
+      ) {
+        return undefined;
+      }
+
+      const tsSource = services.esTreeNodeToTSNodeMap.get(source);
+      if (
+        !isDrizzleSqlType(
+          checker,
+          checker.getTypeAtLocation(tsSource),
+          tsSource,
+        )
+      ) {
+        return undefined;
+      }
+
+      const mapWith = directDrizzleCall(source, "mapWith");
+      if (mapWith !== undefined) {
+        if (singleCallArgument(mapWith) === undefined) {
+          return undefined;
+        }
+        source = callReceiver(mapWith);
+      }
+      return {
+        template:
+          source?.type === AST_NODE_TYPES.TaggedTemplateExpression &&
+          isDrizzleSqlTag(checker, services, source.tag)
+            ? source
+            : undefined,
+      };
+    }
+
+    function directSelectionFields(
+      node: TSESTree.ObjectExpression,
+    ): readonly DirectSelectionField[] | undefined {
+      const fields: DirectSelectionField[] = [];
+      for (const property of node.properties) {
+        if (
+          property.type !== AST_NODE_TYPES.Property ||
+          property.kind !== "init" ||
+          property.computed ||
+          property.method ||
+          property.key.type !== AST_NODE_TYPES.Identifier
+        ) {
+          return undefined;
+        }
+
+        const selectedSql =
+          property.value.type === AST_NODE_TYPES.CallExpression
+            ? directSelectedSql(property.value)
+            : undefined;
+        fields.push({
+          isComputedSql: selectedSql !== undefined,
+          propertyName: property.key.name,
+          sqlTemplate: selectedSql?.template,
+        });
+      }
+      return fields;
+    }
+
+    function templateElementText(node: TSESTree.TemplateElement): string {
+      return node.value.cooked ?? node.value.raw;
+    }
+
+    function selectedGroupingOrdinal(
+      node: TSESTree.TaggedTemplateExpression,
+    ): number | undefined {
+      const quasi = node.quasi.quasis[0];
+      if (
+        node.quasi.expressions.length !== 0 ||
+        node.quasi.quasis.length !== 1 ||
+        quasi === undefined
+      ) {
+        return undefined;
+      }
+      const text = templateElementText(quasi).trim();
+      if (!/^[1-9]\d*$/u.test(text)) {
+        return undefined;
+      }
+      const ordinal = Number(text);
+      return Number.isSafeInteger(ordinal) ? ordinal : undefined;
+    }
+
+    function directGroupingCallbackFields(
+      node: TSESTree.Expression,
+    ): readonly string[] | undefined {
+      if (
+        (node.type !== AST_NODE_TYPES.ArrowFunctionExpression &&
+          node.type !== AST_NODE_TYPES.FunctionExpression) ||
+        node.params.length !== 1
+      ) {
+        return undefined;
+      }
+      const parameter = node.params[0];
+      if (parameter?.type !== AST_NODE_TYPES.ObjectPattern) {
+        return undefined;
+      }
+
+      const selectedFieldByLocalName = new Map<string, string>();
+      for (const property of parameter.properties) {
+        if (
+          property.type !== AST_NODE_TYPES.Property ||
+          property.kind !== "init" ||
+          property.computed ||
+          property.method ||
+          property.key.type !== AST_NODE_TYPES.Identifier ||
+          property.value.type !== AST_NODE_TYPES.Identifier
+        ) {
+          return undefined;
+        }
+        selectedFieldByLocalName.set(property.value.name, property.key.name);
+      }
+
+      const result =
+        node.body.type === AST_NODE_TYPES.BlockStatement
+          ? node.body.body.length === 1 &&
+            node.body.body[0]?.type === AST_NODE_TYPES.ReturnStatement
+            ? node.body.body[0].argument
+            : undefined
+          : node.body;
+      if (result === undefined || result === null) {
+        return undefined;
+      }
+      const returned =
+        result.type === AST_NODE_TYPES.Identifier
+          ? [result]
+          : result.type === AST_NODE_TYPES.ArrayExpression &&
+              result.elements.every((element) => {
+                return element?.type === AST_NODE_TYPES.Identifier;
+              })
+            ? result.elements
+            : undefined;
+      if (returned === undefined) {
+        return undefined;
+      }
+
+      const selectedFields = returned.map((identifier) => {
+        return identifier === null ||
+          identifier.type !== AST_NODE_TYPES.Identifier
+          ? undefined
+          : selectedFieldByLocalName.get(identifier.name);
+      });
+      return selectedFields.every(
+        (field): field is string => field !== undefined,
+      )
+        ? selectedFields
+        : undefined;
+    }
+
+    function isSameDirectSqlTemplate(
+      left: TSESTree.TaggedTemplateExpression,
+      right: TSESTree.TaggedTemplateExpression,
+    ): boolean {
+      return (
+        left.quasi.expressions.length > 0 &&
+        context.sourceCode.getText(left) === context.sourceCode.getText(right)
+      );
+    }
+
+    function inspectUnstableGroupingCall(node: TSESTree.CallExpression): void {
+      if (
+        node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+        memberName(node.callee) !== "groupBy" ||
+        node.arguments.length !== 1
+      ) {
+        return;
+      }
+      const grouping = node.arguments[0];
+      if (
+        grouping === undefined ||
+        grouping.type === AST_NODE_TYPES.SpreadElement
+      ) {
+        return;
+      }
+
+      structuralCallInspections.push(() => {
+        if (!isDrizzleMethodCall(node, "groupBy")) {
+          return;
+        }
+        const query = directGroupingQuery(node);
+        const fields =
+          query === undefined
+            ? undefined
+            : directSelectionFields(query.selection);
+        if (query === undefined || fields === undefined) {
+          return;
+        }
+
+        const callbackFields = directGroupingCallbackFields(grouping);
+        if (
+          callbackFields?.some((propertyName) => {
+            return fields.some((field) => {
+              return field.propertyName === propertyName && field.isComputedSql;
+            });
+          }) === true
+        ) {
+          context.report({ node: grouping, messageId: "unstableGrouping" });
+          return;
+        }
+
+        if (
+          grouping.type !== AST_NODE_TYPES.TaggedTemplateExpression ||
+          !isDrizzleSqlTag(checker, services, grouping.tag)
+        ) {
+          return;
+        }
+        const ordinal = selectedGroupingOrdinal(grouping);
+        const ordinalField =
+          ordinal === undefined ? undefined : fields[ordinal - 1];
+        const matchingFields =
+          ordinal === undefined
+            ? fields.filter((field) => {
+                return (
+                  field.sqlTemplate !== undefined &&
+                  isSameDirectSqlTemplate(grouping, field.sqlTemplate)
+                );
+              })
+            : [];
+        if (ordinalField === undefined && matchingFields.length !== 1) {
+          return;
+        }
+        context.report({ node: grouping, messageId: "unstableGrouping" });
+      });
     }
 
     function unwrapDirectColumnResult(node: TSESTree.Expression): {
@@ -1811,6 +2146,7 @@ export const preferDrizzleApis = createRule({
       CallExpression(node: TSESTree.CallExpression): void {
         inspectRawQueryCall(node);
         inspectPredicateCall(node);
+        inspectUnstableGroupingCall(node);
         inspectAdditionalContextCall(node);
         inspectConflictUpdateCall(node);
         inspectLateralJoin(node);
