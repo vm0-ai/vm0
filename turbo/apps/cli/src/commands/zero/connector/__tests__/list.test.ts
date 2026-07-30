@@ -245,6 +245,28 @@ describe("zero connector list command", () => {
       expect(logCalls).toContain("✓");
     });
 
+    it("prefers canonical enabled connector slugs", async () => {
+      server.use(
+        stubConnectors([connectedGithub]),
+        stubAgent(AGENT_UUID, "maya"),
+        http.get(
+          `http://localhost:3000/api/zero/agents/${AGENT_UUID}/user-connectors`,
+          () => {
+            return HttpResponse.json({
+              enabledTypes: [],
+              enabledConnectorSlugs: ["github"],
+            });
+          },
+        ),
+      );
+
+      await listCommand.parseAsync(["node", "cli", "--agent", AGENT_UUID]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("github");
+      expect(logCalls).toContain("✓");
+    });
+
     it("renders AUTHORIZED FOR column when $ZERO_AGENT_ID is set", async () => {
       vi.stubEnv("ZERO_AGENT_ID", AGENT_UUID);
       server.use(

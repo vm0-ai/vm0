@@ -522,6 +522,8 @@ describe("zero whoami command", () => {
             action: "allow",
           }),
           makePermissionGrant({
+            connectorRef: "legacy-slack",
+            connectorSlug: "slack",
             permission: "chat:write",
             action: "deny",
           }),
