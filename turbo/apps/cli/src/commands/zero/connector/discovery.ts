@@ -1,24 +1,24 @@
 import chalk from "chalk";
 import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { ZeroConnectorCatalogStatus } from "../../../lib/api/domains/zero-connectors";
 import type { ConnectorDiscoveryAgentContext } from "./agent-context";
 import { renderConnectedAsCell } from "./connected-as";
 
 interface CatalogConnectorDiscoveryItem {
   readonly kind: "catalog";
-  readonly connectorRef: string;
+  readonly slug: string;
   readonly label: string;
   readonly description: string;
   readonly category: string;
   readonly tags: readonly string[];
   readonly generation: readonly string[];
-  readonly authMethods: PublicConnectorCatalogStatusItem["authMethods"];
-  readonly catalogConnector: PublicConnectorCatalogStatusItem;
+  readonly authMethods: ZeroConnectorCatalogStatus["authMethods"];
+  readonly catalogConnector: ZeroConnectorCatalogStatus;
 }
 
 interface CustomConnectorDiscoveryItem {
   readonly kind: "custom";
-  readonly connectorRef: string;
+  readonly slug: string;
   readonly label: string;
   readonly description: string;
   readonly category: string;
@@ -33,14 +33,14 @@ type ConnectorDiscoveryItem =
   | CustomConnectorDiscoveryItem;
 
 export function connectorDiscoveryItems(
-  catalogConnectors: readonly PublicConnectorCatalogStatusItem[],
+  catalogConnectors: readonly ZeroConnectorCatalogStatus[],
   customConnectors: readonly CustomConnectorResponse[],
 ): readonly ConnectorDiscoveryItem[] {
   return [
     ...catalogConnectors.map((connector): CatalogConnectorDiscoveryItem => {
       return {
         kind: "catalog",
-        connectorRef: connector.connectorRef,
+        slug: connector.slug,
         label: connector.label,
         description: connector.description,
         category: connector.category,
@@ -53,7 +53,7 @@ export function connectorDiscoveryItems(
     ...customConnectors.map((connector): CustomConnectorDiscoveryItem => {
       return {
         kind: "custom",
-        connectorRef: connector.slug,
+        slug: connector.slug,
         label: connector.displayName,
         description: "",
         category: "custom",
@@ -88,7 +88,7 @@ export function isConnectorDiscoveryAuthorized(
   agentContext: ConnectorDiscoveryAgentContext,
 ): boolean {
   if (connector.kind === "catalog") {
-    return agentContext.authorizedConnectorSlugs.has(connector.connectorRef);
+    return agentContext.authorizedConnectorSlugs.has(connector.slug);
   }
   return agentContext.authorizedCustomConnectorIds.has(
     connector.customConnector.id,

@@ -1,5 +1,5 @@
-import type { PublicConnectorCatalogItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { listZeroConnectorCatalog } from "../../../../lib/api";
+import type { ZeroConnectorCatalogItem } from "../../../../lib/api/domains/zero-connectors";
 import type { GenerationType } from "./lister";
 
 function toConnectorGenerationType(
@@ -29,18 +29,18 @@ function toConnectorGenerationType(
 }
 
 function findConnector(
-  connectors: readonly PublicConnectorCatalogItem[],
+  connectors: readonly ZeroConnectorCatalogItem[],
   provider: string,
-): PublicConnectorCatalogItem | null {
+): ZeroConnectorCatalogItem | null {
   const exact = connectors.find((connector) => {
-    return connector.connectorRef === provider;
+    return connector.slug === provider;
   });
   if (exact) return exact;
 
   const lower = provider.toLowerCase();
   return (
     connectors.find((connector) => {
-      return connector.connectorRef.toLowerCase() === lower;
+      return connector.slug.toLowerCase() === lower;
     }) ?? null
   );
 }
@@ -66,7 +66,7 @@ async function resolveConnector(
       return entry === connectorGenerationType;
     });
   return {
-    connectorSlug: connector.connectorRef,
+    connectorSlug: connector.slug,
     label: connector.label,
     supportsGenerationType: supports,
   };

@@ -31,7 +31,7 @@ export const listCommand = new Command()
       );
 
       const connectorSlugs = discoveredConnectors.map((connector) => {
-        return connector.connectorRef;
+        return connector.slug;
       });
 
       const connectorSlugWidth = Math.max(
@@ -58,7 +58,7 @@ export const listCommand = new Command()
 
       // Print header
       const headerParts = [
-        "TYPE".padEnd(connectorSlugWidth),
+        "SLUG".padEnd(connectorSlugWidth),
         connectedAsHeader.padEnd(connectedAsWidth),
       ];
       if (authorizedHeader) headerParts.push(authorizedHeader);
