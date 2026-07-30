@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
 import type { EnrichedChatEvent, ChatEventGroup } from "./chat-event.ts";
-import type { ChatMessageUsagePayload } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatEventUsagePayload } from "@vm0/api-contracts/contracts/chat-threads";
 import { chatEventCompatibilityRole } from "@vm0/api-contracts/contracts/chat-events";
 
 interface RunSegment {
@@ -87,8 +87,8 @@ function firstRunIdForEvents(
 
 function usageByRunIdFromGroups(
   groups: readonly ChatEventGroup[],
-): Map<string, ChatMessageUsagePayload> {
-  const usageByRunId = new Map<string, ChatMessageUsagePayload>();
+): Map<string, ChatEventUsagePayload> {
+  const usageByRunId = new Map<string, ChatEventUsagePayload>();
   for (const group of groups) {
     if (group.role !== "assistant" || group.usage === undefined) {
       continue;
@@ -101,15 +101,15 @@ function usageByRunIdFromGroups(
   return usageByRunId;
 }
 
-function usageSettledAtMs(usage: ChatMessageUsagePayload): number {
+function usageSettledAtMs(usage: ChatEventUsagePayload): number {
   const timestamp = Date.parse(usage.settledAt);
   return Number.isNaN(timestamp) ? 0 : timestamp;
 }
 
 function setLatestUsageForRun(
-  usageByRunId: Map<string, ChatMessageUsagePayload>,
+  usageByRunId: Map<string, ChatEventUsagePayload>,
   runId: string,
-  usage: ChatMessageUsagePayload,
+  usage: ChatEventUsagePayload,
 ): void {
   const existing = usageByRunId.get(runId);
   if (
@@ -127,8 +127,8 @@ interface UsageBreakdownAccumulator {
 }
 
 function mergeUsagePayloads(
-  usages: readonly ChatMessageUsagePayload[],
-): ChatMessageUsagePayload | undefined {
+  usages: readonly ChatEventUsagePayload[],
+): ChatEventUsagePayload | undefined {
   if (usages.length === 0) {
     return undefined;
   }
@@ -184,9 +184,9 @@ function mergeUsagePayloads(
 
 function mergedUsageForRunSegments(
   runSegments: readonly GroupedRunSegment[],
-  usageByRunId: ReadonlyMap<string, ChatMessageUsagePayload>,
-): ChatMessageUsagePayload | undefined {
-  const usages: ChatMessageUsagePayload[] = [];
+  usageByRunId: ReadonlyMap<string, ChatEventUsagePayload>,
+): ChatEventUsagePayload | undefined {
+  const usages: ChatEventUsagePayload[] = [];
   for (const segment of runSegments) {
     const usage = usageByRunId.get(segment.runId);
     if (usage !== undefined) {
@@ -198,7 +198,7 @@ function mergedUsageForRunSegments(
 
 function attachUsageToGroups(
   groups: readonly ChatEventGroup[],
-  usageByRunId: ReadonlyMap<string, ChatMessageUsagePayload>,
+  usageByRunId: ReadonlyMap<string, ChatEventUsagePayload>,
 ): ChatEventGroup[] {
   return groups.map((group) => {
     if (group.role !== "assistant") {
@@ -212,7 +212,7 @@ function attachUsageToGroups(
 
 function segmentGroups(
   segment: EventSegment,
-  usageByRunId: ReadonlyMap<string, ChatMessageUsagePayload>,
+  usageByRunId: ReadonlyMap<string, ChatEventUsagePayload>,
 ): ChatEventGroup[] {
   return attachUsageToGroups(groupEventsByRole(segment.events), usageByRunId);
 }
@@ -476,7 +476,7 @@ export function previousRunGroupVisualWindowStartIndex(
 
 function buildFoldSection(
   runSegments: readonly GroupedRunSegment[],
-  usageByRunId: ReadonlyMap<string, ChatMessageUsagePayload>,
+  usageByRunId: ReadonlyMap<string, ChatEventUsagePayload>,
   expansionOverrides: ReadonlyMap<string, boolean> | undefined,
 ): {
   readonly fold: RunGroupFold;
