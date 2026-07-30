@@ -13,7 +13,7 @@ import { bodyResultOf } from "../context/request";
 import { now } from "../external/time";
 import type { RouteEntry } from "../route-entry";
 import { ApiDispatchTimingCollector } from "../services/api-dispatch-timing.service";
-import { createZeroRun$ } from "../services/zero-runs-create.service";
+import { createTestFixtureZeroRun$ } from "../services/zero-runs-create.service";
 
 const c = initContract();
 
@@ -63,7 +63,7 @@ const createZeroRunFixture$ = command(
       },
     );
     signal.throwIfAborted();
-    return await set(createZeroRun$, args, signal);
+    return await set(createTestFixtureZeroRun$, args, signal);
   },
 );
 

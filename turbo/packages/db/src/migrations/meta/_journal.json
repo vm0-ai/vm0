@@ -5381,8 +5381,15 @@
     {
       "idx": 768,
       "version": "7",
-      "when": 1785424690362,
-      "tag": "0768_black_thor",
+      "when": 1785421224125,
+      "tag": "0768_contract_chat_event_property_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 769,
+      "version": "7",
+      "when": 1785426016049,
+      "tag": "0769_rainy_umar",
       "breakpoints": true
     }
   ]

@@ -10,7 +10,10 @@ import {
   SelectValue,
 } from "@vm0/ui/components/ui/select";
 
-import { isSupportedLocale } from "../../../../i18n/resources.ts";
+import {
+  isSupportedLocale,
+  type SupportedLocale,
+} from "../../../../i18n/resources.ts";
 import { brandName$ } from "../../../../signals/branding.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
@@ -45,6 +48,10 @@ export function LanguageSettings() {
       throw new Error(`Unsupported locale: ${value}`);
     }
     detach(updateLocale(value, pageSignal), Reason.DomCallback);
+  };
+
+  const supports = (localeOption: SupportedLocale): boolean => {
+    return availableLocales.includes(localeOption);
   };
 
   return (
@@ -85,14 +92,14 @@ export function LanguageSettings() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {availableLocales.includes("en-US") && (
+              {supports("en-US") && (
                 <SelectItem value="en-US">
                   {t(($) => {
                     return $.settings.preferences.language.options.english;
                   })}
                 </SelectItem>
               )}
-              {availableLocales.includes("pt-BR") && (
+              {supports("pt-BR") && (
                 <SelectItem value="pt-BR">
                   {t(($) => {
                     return $.settings.preferences.language.options
@@ -100,38 +107,45 @@ export function LanguageSettings() {
                   })}
                 </SelectItem>
               )}
-              {availableLocales.includes("ja-JP") && (
+              {supports("ja-JP") && (
                 <SelectItem value="ja-JP">
                   {t(($) => {
                     return $.settings.preferences.language.options.japanese;
                   })}
                 </SelectItem>
               )}
-              {availableLocales.includes("ko-KR") && (
+              {supports("ko-KR") && (
                 <SelectItem value="ko-KR">
                   {t(($) => {
                     return $.settings.preferences.language.options.korean;
                   })}
                 </SelectItem>
               )}
-              {availableLocales.includes("id-ID") && (
+              {supports("id-ID") && (
                 <SelectItem value="id-ID">
                   {t(($) => {
                     return $.settings.preferences.language.options.indonesian;
                   })}
                 </SelectItem>
               )}
-              {availableLocales.includes("de-DE") && (
+              {supports("de-DE") && (
                 <SelectItem value="de-DE">
                   {t(($) => {
                     return $.settings.preferences.language.options.german;
                   })}
                 </SelectItem>
               )}
-              {availableLocales.includes("es-ES") && (
+              {supports("es-ES") && (
                 <SelectItem value="es-ES">
                   {t(($) => {
                     return $.settings.preferences.language.options.spanish;
+                  })}
+                </SelectItem>
+              )}
+              {supports("it-IT") && (
+                <SelectItem value="it-IT">
+                  {t(($) => {
+                    return $.settings.preferences.language.options.italian;
                   })}
                 </SelectItem>
               )}

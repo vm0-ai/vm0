@@ -12,23 +12,40 @@ use std::time::Duration;
 
 const RESUME_THREAD_ID: &str = "0199a213-81c0-7800-8aa1-bbab2a035a53";
 const FIXTURE_READY: &str = "codex-resume-fixture-ready";
+const FIXTURE_LIFECYCLE_READY: &str = "codex-resume-lifecycle-ready";
+const EMIT_LIFECYCLE_FILE: &str = "emit-lifecycle";
+const IMMEDIATELY_BEFORE_STARTUP_DEADLINE: Duration = Duration::from_millis(59_500);
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn resumed_codex_without_real_lifecycle_is_reaped_without_retry() -> TestResult {
     let root = tempfile::tempdir()?;
     common::ensure_canonical_workspace_for_test()?;
     let mock = executable_script(root.path(), "stalled-codex", &stalled_script())?;
     let runtime = build_runtime(root.path(), &mock, "stalled-resume", true)?;
     let agent_log = runtime.paths.agent_log_file().to_string();
+    let paused_at = tokio::time::Instant::now();
     let execution = spawn_execution(runtime);
 
-    common::wait_for_file_contains(Path::new(&agent_log), FIXTURE_READY, Duration::from_secs(5))
-        .await?;
+    wait_for_file_contains_while_time_is_paused(
+        Path::new(&agent_log),
+        FIXTURE_READY,
+        Duration::from_secs(5),
+    )
+    .await?;
+    assert_eq!(
+        tokio::time::Instant::now(),
+        paused_at,
+        "fixture readiness must not advance the startup timeout clock"
+    );
 
-    tokio::time::pause();
-    advance_until_finished(&execution, 70).await;
+    advance_to_immediately_before_startup_deadline().await;
+    assert!(
+        !execution.is_finished(),
+        "the stalled Codex resume must remain alive before the 60-second startup deadline"
+    );
+    advance_until_finished(&execution, 11).await;
     tokio::time::resume();
 
     let result = await_execution(execution).await?;
@@ -79,21 +96,39 @@ async fn resumed_codex_real_lifecycle_disarms_startup_timeout() -> TestResult {
         )?;
         let runtime = build_runtime(root.path(), &mock, name, true)?;
         let agent_log = runtime.paths.agent_log_file().to_string();
+        tokio::time::pause();
+        let paused_at = tokio::time::Instant::now();
         let execution = spawn_execution(runtime);
 
-        common::wait_for_file_contains(
+        wait_for_file_contains_while_time_is_paused(
             Path::new(&agent_log),
             FIXTURE_READY,
             Duration::from_secs(5),
         )
         .await?;
+        assert_eq!(
+            tokio::time::Instant::now(),
+            paused_at,
+            "fixture readiness must not advance the startup timeout clock"
+        );
 
-        tokio::time::pause();
-        tokio::time::advance(Duration::from_secs(61)).await;
+        advance_to_immediately_before_startup_deadline().await;
+        assert!(
+            !execution.is_finished(),
+            "the resumed Codex process should still accept lifecycle output before the deadline"
+        );
+        std::fs::write(root.path().join(EMIT_LIFECYCLE_FILE), "")?;
+        wait_for_file_contains_while_time_is_paused(
+            Path::new(&agent_log),
+            FIXTURE_LIFECYCLE_READY,
+            Duration::from_secs(5),
+        )
+        .await?;
+        tokio::time::advance(Duration::from_secs(2)).await;
         tokio::task::yield_now().await;
         assert!(
             !execution.is_finished(),
-            "real lifecycle event {name} should permanently disarm the startup timeout"
+            "real lifecycle event {name} should disarm the startup timeout immediately before its deadline"
         );
         std::fs::write(root.path().join("release"), "")?;
         tokio::time::resume();
@@ -218,6 +253,29 @@ async fn advance_until_finished<T>(execution: &tokio::task::JoinHandle<T>, secon
     }
 }
 
+async fn advance_to_immediately_before_startup_deadline() {
+    tokio::time::advance(IMMEDIATELY_BEFORE_STARTUP_DEADLINE).await;
+    tokio::task::yield_now().await;
+    tokio::task::yield_now().await;
+}
+
+async fn wait_for_file_contains_while_time_is_paused(
+    path: &Path,
+    needle: &str,
+    timeout: Duration,
+) -> std::io::Result<()> {
+    let (release_guard, guard_release) = std::sync::mpsc::channel::<()>();
+    // A live blocking task prevents Tokio from auto-advancing paused time
+    // while the external fixture and inotify wait make progress.
+    let auto_advance_guard = tokio::task::spawn_blocking(move || {
+        let _ = guard_release.recv_timeout(timeout);
+    });
+    let result = common::wait_for_file_contains(path, needle, timeout).await;
+    drop(release_guard);
+    auto_advance_guard.await.map_err(std::io::Error::other)?;
+    result
+}
+
 async fn await_execution(
     execution: tokio::task::JoinHandle<
         Result<guest_agent::cli::CliExecutionResult, guest_agent::error::AgentError>,
@@ -241,10 +299,14 @@ fn stalled_script() -> String {
 fn waiting_script(lifecycle_event: Option<&str>) -> String {
     let mut script = script_prelude();
     script.push_str("printf '%s\\n' '{\"type\":\"thread.started\",\"thread_id\":\"0199a213-81c0-7800-8aa1-bbab2a035a53\"}'\n");
-    if let Some(lifecycle_event) = lifecycle_event {
-        script.push_str(&format!("printf '%s\\n' '{lifecycle_event}'\n"));
-    }
     script.push_str(&format!("printf '%s\\n' '{FIXTURE_READY}'\n"));
+    if let Some(lifecycle_event) = lifecycle_event {
+        script.push_str(&format!(
+            "while [ ! -f \"$script_dir/{EMIT_LIFECYCLE_FILE}\" ]; do sleep 0.05; done\n"
+        ));
+        script.push_str(&format!("printf '%s\\n' '{lifecycle_event}'\n"));
+        script.push_str(&format!("printf '%s\\n' '{FIXTURE_LIFECYCLE_READY}'\n"));
+    }
     script.push_str("while [ ! -f \"$script_dir/release\" ]; do sleep 0.05; done\n");
     script
 }

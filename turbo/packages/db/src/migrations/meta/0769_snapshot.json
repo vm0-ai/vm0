@@ -1,6 +1,6 @@
 {
-  "id": "6dfde633-b94f-42da-8aca-75993dc88f3c",
-  "prevId": "d95aa15c-754a-49f0-95c4-75f639beabc3",
+  "id": "2d153fa3-f09c-4662-b09e-c8ef93f85e2c",
+  "prevId": "6dfde633-b94f-42da-8aca-75993dc88f3c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3231,72 +3231,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "billing_run_id": {
-          "name": "billing_run_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "browser_cost_microusd": {
-          "name": "browser_cost_microusd",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "proxy_cost_microusd": {
-          "name": "proxy_cost_microusd",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "proxy_used_mb": {
-          "name": "proxy_used_mb",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
-        },
-        "pricing_unit_price": {
-          "name": "pricing_unit_price",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "pricing_unit_size": {
-          "name": "pricing_unit_size",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "gross_credits": {
-          "name": "gross_credits",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "credits_charged": {
-          "name": "credits_charged",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "usage_event_id": {
-          "name": "usage_event_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "settled_at": {
-          "name": "settled_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
         "last_touched_at": {
           "name": "last_touched_at",
           "type": "timestamp",
@@ -3431,19 +3365,6 @@
             "id"
           ],
           "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "browser_session_instances_usage_event_id_usage_event_id_fk": {
-          "name": "browser_session_instances_usage_event_id_usage_event_id_fk",
-          "tableFrom": "browser_session_instances",
-          "tableTo": "usage_event",
-          "columnsFrom": [
-            "usage_event_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
@@ -3582,27 +3503,6 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true
-        },
-        "max_credits": {
-          "name": "max_credits",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "gross_credits": {
-          "name": "gross_credits",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "credits_charged": {
-          "name": "credits_charged",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
         },
         "suspended_at": {
           "name": "suspended_at",
@@ -4042,6 +3942,81 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.chat_automation_context": {
+      "name": "chat_automation_context",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "chat_thread_id": {
+          "name": "chat_thread_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "automation_id": {
+          "name": "automation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "trigger_brief": {
+          "name": "trigger_brief",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "chat_automation_context_automation_id_idx": {
+          "name": "chat_automation_context_automation_id_idx",
+          "columns": [
+            {
+              "expression": "automation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "chat_automation_context_chat_thread_id_chat_threads_id_fk": {
+          "name": "chat_automation_context_chat_thread_id_chat_threads_id_fk",
+          "tableFrom": "chat_automation_context",
+          "tableTo": "chat_threads",
+          "columnsFrom": [
+            "chat_thread_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.chat_event_input_params": {
       "name": "chat_event_input_params",
       "schema": "",
@@ -4400,6 +4375,22 @@
           "method": "btree",
           "with": {}
         },
+        "chat_events_input_automation_context_idx": {
+          "name": "chat_events_input_automation_context_idx",
+          "columns": [
+            {
+              "expression": "context_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"chat_events\".\"event_type\" = 'input.automation'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "chat_events_pending_queue_idx": {
           "name": "chat_events_pending_queue_idx",
           "columns": [
@@ -4523,22 +4514,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "chat_events_input_automation_context_idx": {
-          "name": "chat_events_input_automation_context_idx",
-          "columns": [
-            {
-              "expression": "context_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"chat_events\".\"event_type\" = 'input.automation'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -4635,59 +4610,6 @@
           "tableTo": "chat_threads",
           "columnsFrom": [
             "chat_thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.chat_output_materializations": {
-      "name": "chat_output_materializations",
-      "schema": "",
-      "columns": {
-        "run_id": {
-          "name": "run_id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "processed_through_sequence": {
-          "name": "processed_through_sequence",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": -1
-        },
-        "latest_result_sequence": {
-          "name": "latest_result_sequence",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "chat_output_materializations_run_id_agent_runs_id_fk": {
-          "name": "chat_output_materializations_run_id_agent_runs_id_fk",
-          "tableFrom": "chat_output_materializations",
-          "tableTo": "agent_runs",
-          "columnsFrom": [
-            "run_id"
           ],
           "columnsTo": [
             "id"
@@ -15714,6 +15636,84 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.chat_output_materializations": {
+      "name": "chat_output_materializations",
+      "schema": "",
+      "columns": {
+        "run_id": {
+          "name": "run_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "processed_through_sequence": {
+          "name": "processed_through_sequence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": -1
+        },
+        "pending_sequence_numbers": {
+          "name": "pending_sequence_numbers",
+          "type": "integer[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::integer[]"
+        },
+        "latest_result_sequence": {
+          "name": "latest_result_sequence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "latest_result_text": {
+          "name": "latest_result_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "latest_output_sequence": {
+          "name": "latest_output_sequence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "latest_output_text": {
+          "name": "latest_output_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "chat_output_materializations_run_id_agent_runs_id_fk": {
+          "name": "chat_output_materializations_run_id_agent_runs_id_fk",
+          "tableFrom": "chat_output_materializations",
+          "tableTo": "agent_runs",
+          "columnsFrom": [
+            "run_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.canonical_asset_deliveries": {
       "name": "canonical_asset_deliveries",
       "schema": "",
@@ -23271,81 +23271,6 @@
           "tableTo": "zero_agents",
           "columnsFrom": [
             "agent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.chat_automation_context": {
-      "name": "chat_automation_context",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "chat_thread_id": {
-          "name": "chat_thread_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "automation_id": {
-          "name": "automation_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "trigger_brief": {
-          "name": "trigger_brief",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "chat_automation_context_automation_id_idx": {
-          "name": "chat_automation_context_automation_id_idx",
-          "columns": [
-            {
-              "expression": "automation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "chat_automation_context_chat_thread_id_chat_threads_id_fk": {
-          "name": "chat_automation_context_chat_thread_id_chat_threads_id_fk",
-          "tableFrom": "chat_automation_context",
-          "tableTo": "chat_threads",
-          "columnsFrom": [
-            "chat_thread_id"
           ],
           "columnsTo": [
             "id"

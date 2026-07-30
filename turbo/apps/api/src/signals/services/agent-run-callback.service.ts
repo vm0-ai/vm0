@@ -15,10 +15,6 @@ import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { handleAgentInternalCallback$ } from "./internal-agent-run-callback.service";
 import {
-  handleAgentPhoneInternalCallback$,
-  handleAgentPhoneInternalCallbackWithoutCcstate,
-} from "./internal-agentphone-run-callback.service";
-import {
   handleChatInternalCallback$,
   handleChatInternalCallbackWithoutCcstate,
 } from "./internal-chat-run-callback.service";
@@ -30,10 +26,6 @@ import {
   handleFeishuOrgInternalCallback$,
   handleFeishuOrgInternalCallbackWithoutCcstate,
 } from "./internal-feishu-org-run-callback.service";
-import {
-  handleTelegramInternalCallback$,
-  handleTelegramInternalCallbackWithoutCcstate,
-} from "./internal-telegram-run-callback.service";
 import {
   internalRunCallbackKindForRecord,
   type InternalRunCallbackDispatchResult,
@@ -125,13 +117,6 @@ const dispatchInternalCallback$ = command(
         await set(handleAgentInternalCallback$, input.envelope, signal);
         return { success: true };
       }
-      case "agentphone": {
-        return await set(
-          handleAgentPhoneInternalCallback$,
-          input.envelope,
-          signal,
-        );
-      }
       case "agentphone:chat": {
         return {
           success: false,
@@ -201,13 +186,6 @@ const dispatchInternalCallback$ = command(
           success: false,
           error: "Telegram chat delivery callbacks are inline-only",
         };
-      }
-      case "telegram": {
-        return await set(
-          handleTelegramInternalCallback$,
-          input.envelope,
-          signal,
-        );
       }
       case "workflow-automation:cron":
       case "workflow-automation:loop": {
@@ -539,12 +517,6 @@ async function dispatchInternalCallbackWithoutCcstate(
     case "agent": {
       return { success: true };
     }
-    case "agentphone": {
-      return await handleAgentPhoneInternalCallbackWithoutCcstate(
-        input.db,
-        callbackEnvelope(input),
-      );
-    }
     case "agentphone:chat": {
       return {
         success: false,
@@ -598,12 +570,6 @@ async function dispatchInternalCallbackWithoutCcstate(
         success: false,
         error: "Telegram chat delivery callbacks are inline-only",
       };
-    }
-    case "telegram": {
-      return await handleTelegramInternalCallbackWithoutCcstate(
-        input.db,
-        callbackEnvelope(input),
-      );
     }
     case "workflow-automation:cron":
     case "workflow-automation:loop": {

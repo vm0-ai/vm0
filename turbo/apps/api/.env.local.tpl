@@ -136,6 +136,7 @@ ZERO_MAIL_REPLY_FOLLOW_UP_ROLLOUT_ENABLED=false
 # Brazilian Portuguese has not shipped yet. Enable it in development so the
 # capable Platform client can exercise the rollout path.
 BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED=true
+ITALIAN_LOCALE_ROLLOUT_ENABLED=true
 
 # Keep disabled until every rollback-eligible API version accepts stored
 # Korean locale preferences.

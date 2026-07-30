@@ -542,6 +542,49 @@ describe("bootstrap locale", () => {
     await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
   });
 
+  it("loads Italian before the bundle from the browser language", async () => {
+    context.mocks.browser.language("it-IT");
+    executeLocaleEntrypoint();
+
+    expect(document.documentElement.lang).toBe("it-IT");
+    expect(window.__vm0PreBundleCopy).toMatchObject({
+      loading: {
+        ariaLabel: "Caricamento dell'area di lavoro",
+        messages: expect.arrayContaining(["Riscaldamento dei neuroni..."]),
+      },
+      metadata: {
+        title: "Zero — Il tuo collega AI di vm0",
+      },
+    });
+
+    await setupPage({
+      context,
+      path: "/error",
+      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: false },
+      withoutRender: true,
+    });
+
+    expect(context.store.get(locale$)).toBe("it-IT");
+    expect(i18n.language).toBe("it-IT");
+    expect(document.documentElement.lang).toBe("it-IT");
+    expect(i18n.hasResourceBundle("it-IT", "common")).toBeTruthy();
+    expect(i18n.hasResourceBundle("it-IT", "agents")).toBeTruthy();
+
+    const italianCommon = structuredClone(resources["it-IT"].common);
+    i18n.removeResourceBundle("it-IT", "common");
+    try {
+      expect(
+        i18n.t(($) => {
+          return $.settings.shared.save;
+        }),
+      ).toBe("Save");
+    } finally {
+      i18n.addResourceBundle("it-IT", "common", italianCommon, true, true);
+    }
+
+    await context.store.set(setLocale$, DEFAULT_LOCALE, context.signal);
+  });
+
   it("falls back to English for unsupported browser and legacy cached locales", () => {
     context.mocks.browser.language("fr-FR");
     sessionStorage.setItem(ACTIVE_ORG_STORAGE_KEY, TEST_ORG_ID);

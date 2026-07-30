@@ -82,7 +82,7 @@ async def test_firewall_allow_current_server_binding_address_mismatch_blocks(
     assert diagnostics["direct_binding_present"] is True
     assert diagnostics["server_connected"] is False
     assert diagnostics["server_address"] == "203.0.113.99:443"
-    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+    assert flow.server_conn.id in upstream_destination_binding.binding_snapshot_for_tests()
 
 
 async def test_test_connector_bounded_requestheaders_uses_connector_binding(

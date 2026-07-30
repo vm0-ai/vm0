@@ -2,6 +2,7 @@ import { command, computed } from "ccstate";
 import {
   clientVersionSupportsCapability,
   CLIENT_CAPABILITY_ES_ES_LOCALE,
+  CLIENT_CAPABILITY_IT_IT_LOCALE,
   CLIENT_CAPABILITY_JA_JP_LOCALE,
   CLIENT_CAPABILITY_KO_KR_LOCALE,
   CLIENT_CAPABILITY_ID_ID_LOCALE,
@@ -19,6 +20,7 @@ import { isBrazilianPortugueseLocaleRolloutEnabled } from "../../lib/brazilian-p
 import { isGermanLocaleRolloutEnabled } from "../../lib/german-locale-rollout";
 import { isIndonesianLocaleRolloutEnabled } from "../../lib/indonesian-locale-rollout";
 import { badRequestMessage } from "../../lib/error";
+import { isItalianLocaleRolloutEnabled } from "../../lib/italian-locale-rollout";
 import { isJapaneseLocaleRolloutEnabled } from "../../lib/japanese-locale-rollout";
 import { isKoreanLocaleRolloutEnabled } from "../../lib/korean-locale-rollout";
 import { isSpanishLocaleRolloutEnabled } from "../../lib/spanish-locale-rollout";
@@ -37,18 +39,19 @@ const updateUserPreferencesBody$ = bodyResultOf(
 );
 
 interface LocaleRollout {
-  readonly clientSupportsBrazilianPortuguese: boolean;
-  readonly clientSupportsJapanese: boolean;
-  readonly clientSupportsKorean: boolean;
-  readonly clientSupportsIndonesian: boolean;
-  readonly clientSupportsGerman: boolean;
-  readonly clientSupportsSpanish: boolean;
-  readonly brazilianPortugueseEnabled: boolean;
-  readonly japaneseEnabled: boolean;
-  readonly koreanEnabled: boolean;
-  readonly indonesianEnabled: boolean;
-  readonly germanEnabled: boolean;
-  readonly spanishEnabled: boolean;
+  readonly clientSupportsLocaleNegotiation: boolean;
+  readonly supportedLocales: readonly UserLocale[];
+}
+
+function addSupportedLocale(
+  supportedLocales: UserLocale[],
+  locale: UserLocale,
+  clientSupportsLocale: boolean,
+  rolloutEnabled: boolean,
+): void {
+  if (clientSupportsLocale && rolloutEnabled) {
+    supportedLocales.push(locale);
+  }
 }
 
 const localeRollout$ = computed((get): LocaleRollout => {
@@ -77,73 +80,85 @@ const localeRollout$ = computed((get): LocaleRollout => {
     clientVersion,
     CLIENT_CAPABILITY_ES_ES_LOCALE,
   );
+  const clientSupportsItalian = clientVersionSupportsCapability(
+    clientVersion,
+    CLIENT_CAPABILITY_IT_IT_LOCALE,
+  );
+  const supportedLocales: UserLocale[] = ["en-US"];
+  addSupportedLocale(
+    supportedLocales,
+    "pt-BR",
+    clientSupportsBrazilianPortuguese,
+    isBrazilianPortugueseLocaleRolloutEnabled(),
+  );
+  addSupportedLocale(
+    supportedLocales,
+    "ja-JP",
+    clientSupportsJapanese,
+    isJapaneseLocaleRolloutEnabled(),
+  );
+  addSupportedLocale(
+    supportedLocales,
+    "ko-KR",
+    clientSupportsKorean,
+    isKoreanLocaleRolloutEnabled(),
+  );
+  addSupportedLocale(
+    supportedLocales,
+    "id-ID",
+    clientSupportsIndonesian,
+    isIndonesianLocaleRolloutEnabled(),
+  );
+  addSupportedLocale(
+    supportedLocales,
+    "de-DE",
+    clientSupportsGerman,
+    isGermanLocaleRolloutEnabled(),
+  );
+  addSupportedLocale(
+    supportedLocales,
+    "es-ES",
+    clientSupportsSpanish,
+    isSpanishLocaleRolloutEnabled(),
+  );
+  addSupportedLocale(
+    supportedLocales,
+    "it-IT",
+    clientSupportsItalian,
+    isItalianLocaleRolloutEnabled(),
+  );
 
   return {
-    clientSupportsBrazilianPortuguese,
-    clientSupportsJapanese,
-    clientSupportsKorean,
-    clientSupportsIndonesian,
-    clientSupportsGerman,
-    clientSupportsSpanish,
-    brazilianPortugueseEnabled:
-      clientSupportsBrazilianPortuguese &&
-      isBrazilianPortugueseLocaleRolloutEnabled(),
-    japaneseEnabled: clientSupportsJapanese && isJapaneseLocaleRolloutEnabled(),
-    koreanEnabled: clientSupportsKorean && isKoreanLocaleRolloutEnabled(),
-    indonesianEnabled:
-      clientSupportsIndonesian && isIndonesianLocaleRolloutEnabled(),
-    germanEnabled: clientSupportsGerman && isGermanLocaleRolloutEnabled(),
-    spanishEnabled: clientSupportsSpanish && isSpanishLocaleRolloutEnabled(),
+    clientSupportsLocaleNegotiation:
+      clientSupportsBrazilianPortuguese ||
+      clientSupportsJapanese ||
+      clientSupportsKorean ||
+      clientSupportsIndonesian ||
+      clientSupportsGerman ||
+      clientSupportsSpanish ||
+      clientSupportsItalian,
+    supportedLocales,
   };
 });
-
-function supportedLocalesForRollout(rollout: LocaleRollout): UserLocale[] {
-  const supportedLocales: UserLocale[] = ["en-US"];
-  if (rollout.brazilianPortugueseEnabled) {
-    supportedLocales.push("pt-BR");
-  }
-  if (rollout.japaneseEnabled) {
-    supportedLocales.push("ja-JP");
-  }
-  if (rollout.koreanEnabled) {
-    supportedLocales.push("ko-KR");
-  }
-  if (rollout.indonesianEnabled) {
-    supportedLocales.push("id-ID");
-  }
-  if (rollout.germanEnabled) {
-    supportedLocales.push("de-DE");
-  }
-  if (rollout.spanishEnabled) {
-    supportedLocales.push("es-ES");
-  }
-  return supportedLocales;
-}
 
 function projectUserPreferences(
   preferences: UserPreferencesResponse,
   rollout: LocaleRollout,
 ): UserPreferencesResponse {
-  const supportedLocales = supportedLocalesForRollout(rollout);
-  // Remove this projection after stale browser clients and rollback candidates
-  // that reject optional locales have expired.
+  // Keep projecting unsupported values while older clients and rollback API
+  // versions can still encounter locale values they cannot parse.
   const locale =
     preferences.locale === undefined ||
     preferences.locale === null ||
-    supportedLocales.includes(preferences.locale)
+    rollout.supportedLocales.includes(preferences.locale)
       ? preferences.locale
       : "en-US";
 
   return {
     ...preferences,
     locale,
-    ...((rollout.clientSupportsBrazilianPortuguese ||
-      rollout.clientSupportsJapanese ||
-      rollout.clientSupportsKorean ||
-      rollout.clientSupportsIndonesian ||
-      rollout.clientSupportsGerman ||
-      rollout.clientSupportsSpanish) && {
-      supportedLocales,
+    ...(rollout.clientSupportsLocaleNegotiation && {
+      supportedLocales: [...rollout.supportedLocales],
     }),
   };
 }
@@ -177,12 +192,7 @@ const updateUserPreferencesInner$ = command(
         orgId: auth.orgId,
         userId: auth.userId,
         preferences: body.data,
-        allowBrazilianPortuguese: rollout.brazilianPortugueseEnabled,
-        allowJapanese: rollout.japaneseEnabled,
-        allowKorean: rollout.koreanEnabled,
-        allowIndonesian: rollout.indonesianEnabled,
-        allowGerman: rollout.germanEnabled,
-        allowSpanish: rollout.spanishEnabled,
+        allowedLocales: rollout.supportedLocales,
       },
       signal,
     );

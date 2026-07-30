@@ -6,7 +6,6 @@ import type {
   ComputerUseAuthorizationSource,
   ComputerUseHostListResponse,
 } from "@vm0/api-contracts/contracts/zero-computer-use";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import {
@@ -22,8 +21,6 @@ import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
-import { teamsOrgCallbackPayloadSchema } from "./teams-org-callback-payload";
-import { ensureTeamsChatThreadRoute } from "./teams-chat-ingress.service";
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import {
   computerUseHostIsOnline,
@@ -37,17 +34,10 @@ const COMPUTER_USE_AUTHORIZATION_URL_PREFIX =
 type AuthorizationRequestRow =
   typeof computerUseAuthorizationRequests.$inferSelect;
 
-type AuthorizationRequestScope =
-  | {
-      readonly source: "chat";
-      readonly chatThreadId: string;
-    }
-  | {
-      readonly source: "teams";
-      readonly teamsConnectionId: string;
-      readonly teamsConversationId: string;
-      readonly teamsThreadId: string;
-    };
+type AuthorizationRequestScope = {
+  readonly source: "chat";
+  readonly chatThreadId: string;
+};
 
 type CreateComputerUseAuthorizationRequestResult =
   | {
@@ -111,34 +101,6 @@ function authorizationUrl(requestToken: string): string {
   )}`;
 }
 
-async function loadTeamsScope(args: {
-  readonly db: Db;
-  readonly runId: string;
-}): Promise<AuthorizationRequestScope | null> {
-  const [callback] = await args.db
-    .select({ payload: agentRunCallbacks.payload })
-    .from(agentRunCallbacks)
-    .where(
-      and(
-        eq(agentRunCallbacks.runId, args.runId),
-        eq(agentRunCallbacks.internalKind, "teams:org"),
-      ),
-    )
-    .limit(1);
-
-  const payload = teamsOrgCallbackPayloadSchema.safeParse(callback?.payload);
-  if (!payload.success) {
-    return null;
-  }
-
-  return {
-    source: "teams",
-    teamsConnectionId: payload.data.connectionId,
-    teamsConversationId: payload.data.conversationId,
-    teamsThreadId: payload.data.threadId,
-  };
-}
-
 async function resolveRequestScope(args: {
   readonly db: Db;
   readonly orgId: string;
@@ -153,7 +115,6 @@ async function resolveRequestScope(args: {
 
   const [run] = await args.db
     .select({
-      triggerSource: zeroRuns.triggerSource,
       chatThreadId: zeroRuns.chatThreadId,
     })
     .from(agentRuns)
@@ -173,13 +134,6 @@ async function resolveRequestScope(args: {
 
   if (run.chatThreadId) {
     return { source: "chat", chatThreadId: run.chatThreadId };
-  }
-
-  if (run.triggerSource === "teams") {
-    return (
-      (await loadTeamsScope({ db: args.db, runId: args.runId })) ??
-      "unsupported_context"
-    );
   }
 
   return "unsupported_context";
@@ -280,65 +234,6 @@ async function loadTeamsChatThread(args: {
     )
     .limit(1);
   return thread;
-}
-
-async function loadLegacyTeamsRouteSeed(args: {
-  readonly db: Pick<Db, "select">;
-  readonly request: AuthorizationRequestRow;
-}) {
-  const [callback] = await args.db
-    .select({
-      payload: agentRunCallbacks.payload,
-      selectedModel: zeroRuns.selectedModel,
-    })
-    .from(agentRunCallbacks)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRunCallbacks.runId))
-    .where(
-      and(
-        eq(agentRunCallbacks.runId, args.request.runId),
-        eq(agentRunCallbacks.internalKind, "teams:org"),
-      ),
-    )
-    .limit(1);
-  const payload = teamsOrgCallbackPayloadSchema.safeParse(callback?.payload);
-  if (
-    !payload.success ||
-    payload.data.connectionId !== args.request.teamsConnectionId ||
-    payload.data.conversationId !== args.request.teamsConversationId ||
-    payload.data.threadId !== args.request.teamsThreadId
-  ) {
-    return undefined;
-  }
-  return {
-    connectionId: payload.data.connectionId,
-    conversationId: payload.data.conversationId,
-    threadId: payload.data.threadId,
-    agentComposeId: payload.data.agentId,
-    selectedModel: callback?.selectedModel ?? null,
-  };
-}
-
-async function ensureLegacyTeamsAuthorizationRoute(args: {
-  readonly db: Db;
-  readonly request: AuthorizationRequestRow;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly now: Date;
-}): Promise<boolean> {
-  if (await loadTeamsChatThread(args)) {
-    return true;
-  }
-  const seed = await loadLegacyTeamsRouteSeed(args);
-  if (!seed) {
-    return false;
-  }
-  await ensureTeamsChatThreadRoute(args.db, {
-    ...seed,
-    orgId: args.orgId,
-    userId: args.userId,
-    currentTime: args.now,
-  });
-  return true;
 }
 
 async function loadAuthorizedComputerUseHostId(args: {
@@ -472,18 +367,6 @@ async function applyTeamsAuthorizationScope(args: {
     return false;
   }
 
-  if (
-    !(await ensureLegacyTeamsAuthorizationRoute({
-      db: args.db,
-      request: args.request,
-      orgId: args.orgId,
-      userId: args.userId,
-      now: args.now,
-    }))
-  ) {
-    return false;
-  }
-
   return await args.db.transaction(async (tx) => {
     const existing = await loadTeamsChatThread({
       db: tx,
@@ -560,12 +443,10 @@ export const createComputerUseAuthorizationRequest$ = command(
       userId: args.userId,
       runId: args.runId,
       source: scope.source,
-      chatThreadId: scope.source === "chat" ? scope.chatThreadId : null,
-      teamsConnectionId:
-        scope.source === "teams" ? scope.teamsConnectionId : null,
-      teamsConversationId:
-        scope.source === "teams" ? scope.teamsConversationId : null,
-      teamsThreadId: scope.source === "teams" ? scope.teamsThreadId : null,
+      chatThreadId: scope.chatThreadId,
+      teamsConnectionId: null,
+      teamsConversationId: null,
+      teamsThreadId: null,
       expiresAt,
       createdAt: now,
       updatedAt: now,

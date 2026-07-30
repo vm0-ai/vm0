@@ -16,6 +16,8 @@ import deDECommon from "./locales/de-DE/common.json";
 import deDEAgents from "./locales/de-DE/agents.json";
 import esESCommon from "./locales/es-ES/common.json";
 import esESAgents from "./locales/es-ES/agents.json";
+import itITCommon from "./locales/it-IT/common.json";
+import itITAgents from "./locales/it-IT/agents.json";
 
 export const DEFAULT_LOCALE = "en-US";
 export const DEFAULT_NAMESPACE = "common";
@@ -57,5 +59,9 @@ export const resources = {
   "es-ES": {
     agents: esESAgents,
     common: esESCommon,
+  },
+  "it-IT": {
+    agents: itITAgents,
+    common: itITCommon,
   },
 } as const;
