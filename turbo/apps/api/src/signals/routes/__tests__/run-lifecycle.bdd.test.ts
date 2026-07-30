@@ -11466,6 +11466,7 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
             model_catalog_cache_status: "model_catalog_cold_stored",
             model_catalog_cache_upstream_encoding: "br",
             model_catalog_cache_entry_age_ms: 4000,
+            connector_diagnostic_type: "github",
           },
           {
             timestamp: nowDate().toISOString(),
@@ -11481,6 +11482,8 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
             response_size: 128,
             firewall_name: "blocked-service",
             firewall_error: "connector_not_configured",
+            connector_diagnostic_slug: "slack",
+            connector_diagnostic_type: "slack",
           },
         ],
         sandboxOperations: [
@@ -11522,14 +11525,43 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
         model_catalog_cache_status: "model_catalog_cold_stored",
         model_catalog_cache_upstream_encoding: "br",
         model_catalog_cache_entry_age_ms: 4000,
+        connector_diagnostic_slug: "github",
+        connector_diagnostic_type: "github",
       }),
       expect.objectContaining({
         runId: created.runId,
         action: "BLOCK",
         host: "blocked.example.test",
         firewall_error: "connector_not_configured",
+        connector_diagnostic_slug: "slack",
+        connector_diagnostic_type: "slack",
       }),
     ]);
+    const networkIngestCallCount = context.mocks.axiom.ingest.mock.calls.filter(
+      ([dataset]) => {
+        return dataset === "sandbox-telemetry-network";
+      },
+    ).length;
+    const conflictingTelemetry = await webhooks.requestAgentTelemetryUnchecked(
+      {
+        runId: created.runId,
+        networkLogs: [
+          {
+            timestamp: nowDate().toISOString(),
+            connector_diagnostic_slug: "github",
+            connector_diagnostic_type: "gitlab",
+          },
+        ],
+      },
+      sandboxHeaders,
+      [400],
+    );
+    expectApiError(conflictingTelemetry.body);
+    expect(
+      context.mocks.axiom.ingest.mock.calls.filter(([dataset]) => {
+        return dataset === "sandbox-telemetry-network";
+      }),
+    ).toHaveLength(networkIngestCallCount);
     expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
       "vm0-sandbox-op-log-dev",
       [

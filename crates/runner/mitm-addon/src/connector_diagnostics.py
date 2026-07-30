@@ -127,7 +127,7 @@ def record_allow_context(
         return
     if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
         return
-    if metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE in flow.metadata:
+    if metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG in flow.metadata:
         return
 
     vm_info = classification.vm_info
@@ -429,7 +429,7 @@ def _candidate_from_flow(
     flow: http.HTTPFlow,
 ) -> builtin_connector_diagnostics.ConnectorDiagnosticCandidate | None:
     meta = flow.metadata
-    connector_slug = meta.get(metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE)
+    connector_slug = meta.get(metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG)
     reason = meta.get(metadata_keys.CONNECTOR_DIAGNOSTIC_REASON)
     base = meta.get(metadata_keys.CONNECTOR_DIAGNOSTIC_BASE)
     if not (
@@ -562,7 +562,7 @@ def _set_failure_metadata(
     flow.metadata[metadata_keys.FIREWALL_RULE_MATCH] = ""
     flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
     flow.metadata[metadata_keys.FIREWALL_ERROR] = "connector_not_configured_for_run"
-    flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE] = candidate.connector_slug
+    flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG] = candidate.connector_slug
     flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_REASON] = candidate.reason
     flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES] = list(candidate.env_names)
     flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_BASE] = candidate.base

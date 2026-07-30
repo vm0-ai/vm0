@@ -215,8 +215,8 @@ _NETWORK_LOG_JQ='.networkLogs[] |
     (.error // empty),
     (.firewall_error // empty),
     (if .dns_result then "-> \(.dns_result)" else empty end),
-    (if (.connector_diagnostic_type or .connector_diagnostic_reason) then
-      "[connector diagnostic: \([(.connector_diagnostic_type // empty), (.connector_diagnostic_reason // empty),
+    (if (.connector_diagnostic_slug or .connector_diagnostic_type or .connector_diagnostic_reason) then
+      "[connector diagnostic: \([(.connector_diagnostic_slug // .connector_diagnostic_type // empty), (.connector_diagnostic_reason // empty),
         (if ((.connector_diagnostic_env_names // []) | length) > 0 then "env: \(.connector_diagnostic_env_names | join(", "))" else empty end),
         (if .connector_diagnostic_base then "base: \(.connector_diagnostic_base)" else empty end)] | join("; "))]"
       else empty end),

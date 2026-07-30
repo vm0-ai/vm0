@@ -175,6 +175,10 @@ def add_firewall_metadata(flow: http.HTTPFlow, log_entry: dict) -> None:
     """Copy firewall and auth metadata from flow into a log entry."""
     # [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
     meta = flow.metadata
+    connector_diagnostic_slug = _metadata_optional_str(
+        meta,
+        metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG,
+    )
     log_entry["firewall_base"] = flow_metadata.firewall_base(meta)
     log_entry["firewall_name"] = flow_metadata.firewall_name(meta)
     log_entry["firewall_permission"] = flow_metadata.firewall_permission(meta)
@@ -185,8 +189,13 @@ def add_firewall_metadata(flow: http.HTTPFlow, log_entry: dict) -> None:
     for log_key, value in (
         ("firewall_params", _metadata_str_record(meta, metadata_keys.FIREWALL_PARAMS)),
         (
+            "connector_diagnostic_slug",
+            connector_diagnostic_slug,
+        ),
+        (
+            # TODO(#23838): Remove this legacy projection after the rollout gate.
             "connector_diagnostic_type",
-            _metadata_optional_str(meta, metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE),
+            connector_diagnostic_slug,
         ),
         (
             "connector_diagnostic_reason",

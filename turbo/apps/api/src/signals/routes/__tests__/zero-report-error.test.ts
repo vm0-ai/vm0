@@ -529,6 +529,7 @@ describe("POST /api/zero/report-error", () => {
       upstream_binding_reason: "connector_auth",
       upstream_binding_server_connected: false,
       upstream_binding_client_binding_count: 0,
+      connector_diagnostic_type: "github",
       connector_route_reason: "connector_intent_required",
       connector_route_candidates: ["auditor", "primary"],
       auth_resolved_secrets: ["GITHUB_TOKEN"],
@@ -545,6 +546,21 @@ describe("POST /api/zero/report-error", () => {
       response_body: '{"ok":true}',
       response_body_encoding: networkBodyUtf8Encoding,
       response_body_truncated: false,
+    } satisfies AxiomNetworkEvent;
+    const canonicalNetworkEntry = {
+      ...networkEntry,
+      _time: "2026-04-28T07:00:01.123Z",
+      host: "api.slack.com",
+      url: "https://api.slack.com/methods/auth.test",
+      connector_diagnostic_slug: "slack",
+      connector_diagnostic_type: undefined,
+    } satisfies AxiomNetworkEvent;
+    const conflictingNetworkEntry = {
+      ...networkEntry,
+      _time: "2026-04-28T07:00:02.123Z",
+      host: "conflict.example.com",
+      connector_diagnostic_slug: "github",
+      connector_diagnostic_type: "gitlab",
     } satisfies AxiomNetworkEvent;
 
     context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
@@ -567,7 +583,11 @@ describe("POST /api/zero/report-error", () => {
         ]);
       }
       if (apl.includes("sandbox-telemetry-network")) {
-        return Promise.resolve([networkEntry]);
+        return Promise.resolve([
+          networkEntry,
+          canonicalNetworkEntry,
+          conflictingNetworkEntry,
+        ]);
       }
       return Promise.resolve([]);
     });
@@ -576,11 +596,26 @@ describe("POST /api/zero/report-error", () => {
 
     const zip = uploadedZip();
     expect(zipText(zip, "system-log.txt")).toBe("booting sandbox\nready\n");
-    const networkLog = JSON.parse(zipText(zip, "network-log.jsonl")) as {
-      readonly method: string;
-      readonly firewall_action?: string;
-    };
-    expect(networkLog.method).toBe("POST");
+    const networkLogs = zipText(zip, "network-log.jsonl")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        return JSON.parse(line) as Record<string, unknown>;
+      });
+    expect(networkLogs).toStrictEqual([
+      expect.objectContaining({
+        _time: "2026-04-28T07:00:00.123Z",
+        method: "POST",
+        connector_diagnostic_slug: "github",
+        connector_diagnostic_type: "github",
+      }),
+      expect.objectContaining({
+        _time: "2026-04-28T07:00:01.123Z",
+        host: "api.slack.com",
+        connector_diagnostic_slug: "slack",
+        connector_diagnostic_type: "slack",
+      }),
+    ]);
 
     const activityLogEntry = zip.getEntries().find((entry) => {
       return entry.entryName.startsWith("activity-log-");
@@ -625,6 +660,8 @@ describe("POST /api/zero/report-error", () => {
       upstream_binding_reason: "connector_auth",
       upstream_binding_server_connected: false,
       upstream_binding_client_binding_count: 0,
+      connector_diagnostic_slug: "github",
+      connector_diagnostic_type: "github",
       connector_route_reason: "connector_intent_required",
       connector_route_candidates: ["auditor", "primary"],
       auth_resolved_secrets: ["GITHUB_TOKEN"],
@@ -641,6 +678,13 @@ describe("POST /api/zero/report-error", () => {
       response_body: '{"ok":true}',
       response_body_encoding: networkBodyUtf8Encoding,
       response_body_truncated: false,
+    });
+    expect(activityLog.networkLogs).toHaveLength(2);
+    expect(activityLog.networkLogs?.[1]).toMatchObject({
+      timestamp: "2026-04-28T07:00:01.123Z",
+      host: "api.slack.com",
+      connector_diagnostic_slug: "slack",
+      connector_diagnostic_type: "slack",
     });
   });
 
