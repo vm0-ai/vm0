@@ -3,15 +3,15 @@ import {
   zeroConnectorsMainContract,
   zeroConnectorsBySlugContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
-import {
-  zeroConnectorCatalogContract,
-  type PublicConnectorCatalogStatusResponse,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import type { ConnectorListResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { zeroClient$ } from "../api-client";
 import { accept } from "../../lib/accept.ts";
 import { featureSwitch$ } from "./feature-switch.ts";
+import {
+  normalizeConnectorCatalogStatusResponse,
+  normalizeConnectorListResponse,
+} from "../connector-domain.ts";
 
 /**
  * Reload trigger for connector signals.
@@ -33,7 +33,7 @@ export const connectors$ = computed(async (get) => {
   const createClient = get(zeroClient$);
   const client = createClient(zeroConnectorsMainContract);
   const result = await accept(client.list(), [200]);
-  return result.body as ConnectorListResponse;
+  return normalizeConnectorListResponse(result.body);
 });
 
 /**
@@ -46,14 +46,14 @@ export const connectorCatalogStatus$ = computed(async (get) => {
   const createClient = get(zeroClient$);
   const client = createClient(zeroConnectorCatalogContract);
   const result = await accept(client.status(), [200]);
-  return result.body as PublicConnectorCatalogStatusResponse;
+  return normalizeConnectorCatalogStatusResponse(result.body);
 });
 
 export const connectorCatalogStatusBySlug$ = computed(async (get) => {
   const { connectors } = await get(connectorCatalogStatus$);
   return new Map(
     connectors.map((connector) => {
-      return [connector.connectorRef, connector];
+      return [connector.slug, connector];
     }),
   );
 });

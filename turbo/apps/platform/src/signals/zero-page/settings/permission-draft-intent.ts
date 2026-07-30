@@ -1,8 +1,4 @@
-import type {
-  UserPermissionGrantExpiresIn,
-  UserPermissionGrantResponse,
-} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import {
   createFirewallMetadataPolicyResolver,
   type FirewallMetadataPolicyOverlay,
@@ -14,6 +10,10 @@ import {
   type FirewallPolicies,
   type FirewallPolicyValue,
 } from "@vm0/connectors/firewall-types";
+import type {
+  PlatformConnectorPermissionMetadata,
+  PlatformUserPermissionGrant,
+} from "../../connector-domain.ts";
 
 export interface PermissionDraftIntent {
   readonly connectorPolicy: FirewallPolicyValue | undefined;
@@ -34,7 +34,7 @@ export interface PermissionDraftIntent {
 }
 
 export interface PermissionDraftContext {
-  readonly metadata: PublicConnectorCatalogPermissionDetail;
+  readonly metadata: PlatformConnectorPermissionMetadata;
   readonly defaultResolver: FirewallMetadataPolicyResolver;
   readonly initialResolver: FirewallMetadataPolicyResolver;
 }
@@ -45,7 +45,7 @@ interface PermissionLike {
 
 interface PermissionGrantFingerprint {
   readonly permission: string;
-  readonly action: UserPermissionGrantResponse["action"];
+  readonly action: PlatformUserPermissionGrant["action"];
   readonly expiration: string;
 }
 
@@ -120,7 +120,7 @@ function omitKeys<T>(
 }
 
 function permissionCategory(
-  metadata: PublicConnectorCatalogPermissionDetail,
+  metadata: PlatformConnectorPermissionMetadata,
   permissionName: string,
 ): string | undefined {
   return metadata.categories?.categories[permissionName];
@@ -145,7 +145,7 @@ function resolveInitialPermissionPolicy(
 }
 
 function grantExpirationFingerprint(
-  grant: UserPermissionGrantResponse,
+  grant: PlatformUserPermissionGrant,
 ): string {
   return grant.action === "allow" && grant.expiresAt
     ? `at:${grant.expiresAt}`
@@ -153,7 +153,7 @@ function grantExpirationFingerprint(
 }
 
 function selectedExpirationFingerprint(
-  action: UserPermissionGrantResponse["action"],
+  action: PlatformUserPermissionGrant["action"],
   selected: UserPermissionGrantExpiresIn | undefined,
 ): string {
   return action === "allow" && selected !== undefined && selected !== "always"
@@ -163,7 +163,7 @@ function selectedExpirationFingerprint(
 
 function grantAction(
   policy: FirewallPolicyValue,
-): UserPermissionGrantResponse["action"] | null {
+): PlatformUserPermissionGrant["action"] | null {
   switch (policy) {
     case "allow":
     case "deny": {
@@ -222,7 +222,7 @@ function currentPermissionGrantFingerprint({
 }
 
 function explicitGrantFingerprints(
-  explicitGrants: ReadonlyMap<string, UserPermissionGrantResponse>,
+  explicitGrants: ReadonlyMap<string, PlatformUserPermissionGrant>,
 ): readonly PermissionGrantFingerprint[] {
   return [...explicitGrants.entries()]
     .map(([permission, grant]) => {
@@ -272,7 +272,7 @@ export function createPermissionDraftContext({
   metadata,
   initialPolicies,
 }: {
-  readonly metadata: PublicConnectorCatalogPermissionDetail;
+  readonly metadata: PlatformConnectorPermissionMetadata;
   readonly initialPolicies: FirewallPolicies;
 }): PermissionDraftContext {
   return {
@@ -280,16 +280,16 @@ export function createPermissionDraftContext({
     defaultResolver: createFirewallMetadataPolicyResolver(metadata),
     initialResolver: createFirewallMetadataPolicyResolver(
       metadata,
-      firewallPolicyToOverlay(initialPolicies[metadata.connectorRef]),
+      firewallPolicyToOverlay(initialPolicies[metadata.connectorSlug]),
     ),
   };
 }
 
 export function permissionDraftMetadataKey(
-  metadata: PublicConnectorCatalogPermissionDetail,
+  metadata: PlatformConnectorPermissionMetadata,
 ): string {
   return JSON.stringify({
-    connectorSlug: metadata.connectorRef,
+    connectorSlug: metadata.connectorSlug,
     permissions: metadata.permissions.map((permission) => {
       return permission.name;
     }),
@@ -314,7 +314,7 @@ export function permissionDraftInitialPolicyKey(
 }
 
 export function explicitGrantStateKey(
-  grants: Map<string, UserPermissionGrantResponse>,
+  grants: Map<string, PlatformUserPermissionGrant>,
 ): string {
   return JSON.stringify(
     [...grants.entries()]
@@ -441,7 +441,7 @@ function resolvePermissionDraftGroupAllowExpiration({
   readonly context: PermissionDraftContext;
   readonly draft: PermissionDraftIntent;
   readonly permissionName: string;
-  readonly grant: UserPermissionGrantResponse | undefined;
+  readonly grant: PlatformUserPermissionGrant | undefined;
 }): PermissionDraftGroupUniformAllowExpiration {
   const selected = resolvePermissionDraftExpiration({
     context,
@@ -491,7 +491,7 @@ export function resolvePermissionDraftGroupConfiguration({
   readonly context: PermissionDraftContext;
   readonly draft: PermissionDraftIntent;
   readonly permissions: readonly PermissionLike[];
-  readonly explicitGrants: ReadonlyMap<string, UserPermissionGrantResponse>;
+  readonly explicitGrants: ReadonlyMap<string, PlatformUserPermissionGrant>;
 }): PermissionDraftGroupConfiguration {
   if (permissions.length === 0) {
     return { policy: "allow", expiration: { kind: "always" } };
@@ -835,7 +835,7 @@ export function setPermissionDraftGroupAllowExpiration({
   readonly draft: PermissionDraftIntent;
   readonly category: string;
   readonly permissions: readonly PermissionLike[];
-  readonly explicitGrants: ReadonlyMap<string, UserPermissionGrantResponse>;
+  readonly explicitGrants: ReadonlyMap<string, PlatformUserPermissionGrant>;
   readonly expiresIn: UserPermissionGrantExpiresIn | null;
 }): PermissionDraftIntent {
   if (expiresIn !== "always") {
@@ -908,7 +908,7 @@ function hasPermissionDraftPermissionChange({
   readonly draft: PermissionDraftIntent;
   readonly permissionName: string;
   readonly selected: UserPermissionGrantExpiresIn | undefined;
-  readonly grant: UserPermissionGrantResponse | undefined;
+  readonly grant: PlatformUserPermissionGrant | undefined;
 }): boolean {
   const policy = resolvePermissionDraftPolicy({
     context,
@@ -936,7 +936,7 @@ function hasPermissionDraftUnknownChange({
   readonly context: PermissionDraftContext;
   readonly draft: PermissionDraftIntent;
   readonly selected: UserPermissionGrantExpiresIn | undefined;
-  readonly grant: UserPermissionGrantResponse | undefined;
+  readonly grant: PlatformUserPermissionGrant | undefined;
 }): boolean {
   const policy = resolvePermissionDraftUnknownPolicy({ context, draft });
   if (policy !== context.initialResolver.unknown()) {
@@ -960,7 +960,7 @@ function hasPermissionDraftGroupChange({
   readonly context: PermissionDraftContext;
   readonly draft: PermissionDraftIntent;
   readonly permissions: readonly PermissionLike[];
-  readonly explicitGrants: ReadonlyMap<string, UserPermissionGrantResponse>;
+  readonly explicitGrants: ReadonlyMap<string, PlatformUserPermissionGrant>;
 }): boolean {
   return permissions.some((permission) => {
     return hasPermissionDraftPermissionChange({
@@ -986,7 +986,7 @@ export function hasAnyPermissionDraftChange({
   readonly context: PermissionDraftContext;
   readonly draft: PermissionDraftIntent;
   readonly permissions: readonly PermissionLike[];
-  readonly explicitGrants: ReadonlyMap<string, UserPermissionGrantResponse>;
+  readonly explicitGrants: ReadonlyMap<string, PlatformUserPermissionGrant>;
 }): boolean {
   if (
     hasPermissionDraftUnknownChange({
@@ -1041,7 +1041,7 @@ export function hasPermissionDraftResetPersistedEffect({
   readonly context: PermissionDraftContext;
   readonly draft: PermissionDraftIntent;
   readonly permissions: readonly PermissionLike[];
-  readonly explicitGrants: ReadonlyMap<string, UserPermissionGrantResponse>;
+  readonly explicitGrants: ReadonlyMap<string, PlatformUserPermissionGrant>;
 }): boolean {
   if (!draft.resetPending) {
     return false;
@@ -1121,7 +1121,7 @@ export function materializePermissionDraftForLegacySave({
 
   return {
     policies: {
-      [context.metadata.connectorRef]: {
+      [context.metadata.connectorSlug]: {
         policies: connectorPolicies,
         unknownPolicy,
       },

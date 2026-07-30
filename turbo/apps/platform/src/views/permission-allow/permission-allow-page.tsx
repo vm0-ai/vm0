@@ -9,11 +9,11 @@ import {
   IconCheck,
   IconLoader2,
 } from "@tabler/icons-react";
+import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type {
-  UserPermissionGrantExpiresIn,
-  UserPermissionGrantResponse,
-} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+  PlatformConnectorPermissionMetadata,
+  PlatformUserPermissionGrant,
+} from "../../signals/connector-domain.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { user$ } from "../../signals/auth.ts";
 import {
@@ -109,7 +109,7 @@ function ConnectorPermissionCard({
   permission,
   action,
 }: {
-  icon: PublicConnectorCatalogPermissionDetail["icon"];
+  icon: PlatformConnectorPermissionMetadata["icon"];
   connectorLabel: string;
   permission: Permission;
   action: "allow" | "deny";
@@ -313,8 +313,8 @@ function resolveExistingPermissionGrantResult({
   action: "allow" | "deny";
   connectorSlug: string;
   focusedPermission: Permission;
-  grants: readonly UserPermissionGrantResponse[];
-  metadata: PublicConnectorCatalogPermissionDetail;
+  grants: readonly PlatformUserPermissionGrant[];
+  metadata: PlatformConnectorPermissionMetadata;
 }): { expiresAt?: string | null } | null {
   const effectivePolicy = resolveUserPermissionGrantPolicy(
     grants,
@@ -323,7 +323,7 @@ function resolveExistingPermissionGrantResult({
   );
   const explicitGrant = grants.find((grant) => {
     return (
-      grant.connectorRef === connectorSlug &&
+      grant.connectorSlug === connectorSlug &&
       grant.permission === focusedPermission.name &&
       grant.action === action
     );
@@ -342,7 +342,7 @@ function resolveExistingPermissionGrantResult({
 
 interface ConfirmGrantCardProps {
   target: PermissionGrantTarget;
-  icon: PublicConnectorCatalogPermissionDetail["icon"];
+  icon: PlatformConnectorPermissionMetadata["icon"];
   connectorSlug: string;
   connectorLabel: string;
   permission: Permission;
@@ -359,7 +359,7 @@ interface ConfirmGrantCardProps {
       expiresIn?: UserPermissionGrantExpiresIn;
     },
     signal: AbortSignal,
-  ) => Promise<UserPermissionGrantResponse>;
+  ) => Promise<PlatformUserPermissionGrant>;
   actionCallback: ChatActionCallback;
 }
 

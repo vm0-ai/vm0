@@ -23,7 +23,6 @@ import {
   zeroConnectorOpenIdStartContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
-import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { accept } from "../../lib/accept.ts";
@@ -55,6 +54,7 @@ import {
   getOnlyAvailableCatalogBrowserAuthMethodDetail,
   type ConnectorCatalogBrowserAuthMethodDetail,
 } from "../../signals/zero-page/settings/connectors.ts";
+import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import {
   copyAttachmentLinkToClipboard,
   downloadAttachmentUrl,
@@ -166,7 +166,7 @@ function runWhenGoogleDriveReady(params: {
 function startGoogleDriveConnectAndRun(params: {
   agentId: string | null | undefined;
   authMethod: ConnectorCatalogBrowserAuthMethodDetail;
-  connector: PublicConnectorCatalogStatusItem;
+  connector: PlatformConnectorCatalogStatusItem;
   createClient: ZeroClientFactory;
   pageSignal: AbortSignal;
   run: GoogleDriveReadyRun;
@@ -198,7 +198,7 @@ function startGoogleDriveConnectAndRun(params: {
   detach(
     (async () => {
       const request = {
-        params: { connectorSlug: params.connector.connectorRef },
+        params: { connectorSlug: params.connector.slug },
         body: {
           authMethod: params.authMethod.id,
           agentId,
@@ -226,7 +226,7 @@ function startGoogleDriveConnectAndRun(params: {
                   body: {
                     ...request.body,
                     ...(isConnectorAppOauthCallbackEnabled(
-                      params.connector.connectorRef,
+                      params.connector.slug,
                     )
                       ? { callbackTarget: "app" as const }
                       : {}),
@@ -383,7 +383,7 @@ function useGoogleDriveAvailability(
   const googleDriveConnected =
     connectorList?.connectors.some((connector) => {
       return (
-        connector.type === GOOGLE_DRIVE_CONNECTOR_SLUG &&
+        connector.slug === GOOGLE_DRIVE_CONNECTOR_SLUG &&
         connector.connectionStatus === "connected"
       );
     }) ?? false;

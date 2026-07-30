@@ -31,6 +31,7 @@ import type {
   ConnectorAuthMethodId,
   ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
+import { CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY } from "@vm0/connectors/app-oauth-callback";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { HttpResponse } from "msw";
@@ -46,6 +47,7 @@ import { initializeI18n } from "../../../i18n/index.ts";
 import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { search } from "../../../signals/location.ts";
 import { setFeatureSwitch$ } from "../../../signals/external/feature-switch.ts";
+import { localStorageSignals } from "../../../signals/external/local-storage.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { resetSignal } from "../../../signals/utils.ts";
@@ -55,6 +57,16 @@ import { customConnectorCreateForm$ } from "../../../signals/zero-page/settings/
 
 const context = testContext();
 const resetAfterManualGrantConnectSignal$ = resetSignal();
+const { get$: hiddenConnectorSlugs$ } = localStorageSignals(
+  "vm0.connections.hiddenConnectorSlugs",
+);
+const {
+  get$: legacyHiddenConnectorSlugs$,
+  set$: setLegacyHiddenConnectorSlugs$,
+} = localStorageSignals("vm0.connections.hiddenTypes");
+const { get$: connectorAppOauthCallbackMetadata$ } = localStorageSignals(
+  CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY,
+);
 
 afterEach(async () => {
   document.documentElement.lang = DEFAULT_LOCALE;
@@ -163,19 +175,19 @@ function connectorIconByLabel(label: string): HTMLImageElement {
 function applyUserConnectorUpdate(
   current: readonly string[],
   body: {
-    readonly enabledTypes: readonly string[];
+    readonly enabledConnectorSlugs: readonly string[];
     readonly operation?: "replace" | "add" | "remove";
   },
 ): string[] {
   if (body.operation === "add") {
-    return Array.from(new Set([...current, ...body.enabledTypes]));
+    return Array.from(new Set([...current, ...body.enabledConnectorSlugs]));
   }
   if (body.operation === "remove") {
     return current.filter((connectorSlug) => {
-      return !body.enabledTypes.includes(connectorSlug);
+      return !body.enabledConnectorSlugs.includes(connectorSlug);
     });
   }
-  return [...body.enabledTypes];
+  return [...body.enabledConnectorSlugs];
 }
 
 function reconnectReasonHelpButton(container: ParentNode): HTMLElement | null {
@@ -516,6 +528,21 @@ async function expectConnectorCardsVisible(expected: {
 }
 
 describe("connectors page", () => {
+  it("migrates legacy hidden connector storage to the canonical key", async () => {
+    const hiddenConnectorSlugs = JSON.stringify(["github"]);
+    context.store.set(setLegacyHiddenConnectorSlugs$, hiddenConnectorSlugs);
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await screen.findByPlaceholderText("Find connectors");
+    await waitFor(() => {
+      expect(context.store.get(hiddenConnectorSlugs$)).toBe(
+        hiddenConnectorSlugs,
+      );
+      expect(context.store.get(legacyHiddenConnectorSlugs$)).toBeNull();
+    });
+  });
+
   it("syncs the active connector tab with the URL query", async () => {
     mockCustomConnectorStory();
 
@@ -1262,7 +1289,8 @@ describe("connectors page", () => {
     context.mocks.data.team([teamAgent(agentId, "Research Agent", "preset:0")]);
     context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
       return respond(200, {
-        enabledTypes: params.id === agentId ? ["github"] : [],
+        enabledTypes: [],
+        enabledConnectorSlugs: params.id === agentId ? ["github"] : [],
       });
     });
 
@@ -1699,6 +1727,11 @@ describe("connectors page", () => {
         "https://oauth.test/google-maps/authorize",
       );
     });
+    const callbackMetadata = context.store.get(
+      connectorAppOauthCallbackMetadata$,
+    );
+    expect(callbackMetadata).toContain('"connectorSlug":"google-maps"');
+    expect(callbackMetadata).not.toContain("connectorRef");
     expect(
       screen.queryByRole("dialog", { name: "Google Maps" }),
     ).not.toBeInTheDocument();
@@ -3035,10 +3068,13 @@ describe("connectors page", () => {
       ({ body, params, respond }) => {
         authorizedAgentIds.push(params.id);
         expect(body).toStrictEqual({
-          enabledTypes: ["axiom"],
+          enabledConnectorSlugs: ["axiom"],
           operation: "add",
         });
-        return respond(200, { enabledTypes: ["axiom"] });
+        return respond(200, {
+          enabledTypes: ["axiom"],
+          enabledConnectorSlugs: ["axiom"],
+        });
       },
     );
 
