@@ -19,6 +19,7 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { accept, setupApp } from "../../../__tests__/test-helpers";
 import { readGoalQueueStateFixture } from "../../../test-fixtures/goal-queue";
+import { holdChatEventInsertTransactionFixture } from "../../../test-fixtures/chat-events";
 import { testContext } from "../../../__tests__/test-context";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -2143,6 +2144,273 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       ]),
     );
   }, 90_000);
+
+  it("repairs output after a duplicate-heavy full Axiom page", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "repair paginated output",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    const logicalEvents = Array.from({ length: 206 }, (_, sequenceNumber) => {
+      return assistantEvent(sequenceNumber, `answer ${sequenceNumber}`);
+    });
+    const rawEvents = [
+      ...Array.from({ length: 200 }, () => {
+        return assistantEvent(0, "answer 0");
+      }),
+      ...logicalEvents.slice(1),
+    ];
+    const runContextSnapshot =
+      context.mocks.axiom.ingest.mock.calls
+        .filter(([dataset]) => {
+          return dataset === "run-context";
+        })
+        .flatMap(([, events]) => {
+          return Array.isArray(events) ? events : [];
+        })
+        .find((event) => {
+          return isRecord(event) && event.runId === run.runId;
+        }) ?? null;
+    context.mocks.axiom.query.mockImplementation((apl: unknown) => {
+      const query = typeof apl === "string" ? apl : "";
+      if (query.includes("['run-context']")) {
+        return Promise.resolve(
+          runContextSnapshot === null ? [] : [runContextSnapshot],
+        );
+      }
+      if (!query.includes("['agent-run-events']")) {
+        return Promise.resolve([]);
+      }
+      if (!query.includes('eventType == "assistant"')) {
+        return Promise.resolve(rawEvents);
+      }
+
+      const lowerBound = Number(
+        /sequenceNumber > (-?\d+)/.exec(query)?.[1] ?? "-1",
+      );
+      return Promise.resolve(
+        rawEvents
+          .filter((event) => {
+            return (
+              typeof event.sequenceNumber === "number" &&
+              event.sequenceNumber > lowerBound &&
+              event.sequenceNumber <= 205
+            );
+          })
+          .slice(0, 200),
+      );
+    });
+
+    await completeChatRunOk(run.runId, sandboxHeaders, {
+      lastEventSequence: 205,
+    });
+    const latest = await waitForThreadMessages(
+      actor,
+      run.threadId,
+      (messages) => {
+        return eventBackedContents(messages, run.runId).some((message) => {
+          return message.sequenceNumber === 205;
+        });
+      },
+    );
+    expect(
+      eventBackedContents(latest.events, run.runId).find((message) => {
+        return message.sequenceNumber === 205;
+      })?.content,
+    ).toBe("answer 205");
+    expect(chatOutputAxiomQueryCalls()).toHaveLength(3);
+
+    const allMessages: ChatEventResponse[] = [];
+    let beforeSeqId: number | undefined;
+    while (true) {
+      const page = await chat.listThreadEvents(actor, run.threadId, {
+        ...(beforeSeqId === undefined ? {} : { beforeSeqId }),
+        limit: 50,
+      });
+      allMessages.push(...page.events);
+      if (!page.hasHistoryBefore) {
+        break;
+      }
+      beforeSeqId = page.events[0]?.seqId;
+      if (beforeSeqId === undefined) {
+        throw new Error("Expected a pagination cursor");
+      }
+    }
+
+    const repaired = eventBackedContents(allMessages, run.runId);
+    expect(repaired).toHaveLength(206);
+    expect(
+      repaired.filter((message) => {
+        return message.sequenceNumber === 0;
+      }),
+    ).toHaveLength(1);
+  }, 90_000);
+
+  it("returns the event ACK before a locked live projection times out", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "locked live projection",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    const held = await holdChatEventInsertTransactionFixture({
+      threadId: run.threadId,
+      content: "hold the chat sequence row",
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      held.release();
+      await held.done;
+    });
+
+    const response = await webhooks.requestAgentEvents(
+      {
+        runId: run.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 0,
+            message: {
+              id: "msg_locked_projection",
+              content: [{ type: "text", text: "must remain best effort" }],
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    expect(response.status).toBe(200);
+    await expect.poll(held.blockedWaiterCount).toBeGreaterThanOrEqual(1);
+
+    await flushWaitUntilForTest();
+    const messages = await chat.listThreadEvents(actor, run.threadId);
+    expect(eventBackedContents(messages.events, run.runId)).toHaveLength(0);
+    expect(
+      context.mocks.axiomLogging.error.mock.calls.some(([message, fields]) => {
+        return (
+          message === 'Optional event consumer "chat-assistant" failed' &&
+          isRecord(fields) &&
+          fields.runId === run.runId
+        );
+      }),
+    ).toBeTruthy();
+    held.release();
+    await held.done;
+  }, 30_000);
+
+  it("skips live projection instead of queueing past its pool budget", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "saturate live projection admission",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    const held = await holdChatEventInsertTransactionFixture({
+      threadId: run.threadId,
+      content: "hold every admitted projection",
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      held.release();
+      await held.done;
+    });
+    context.mocks.axiomLogging.warn.mockClear();
+
+    await Promise.all(
+      Array.from({ length: 6 }, (_, sequenceNumber) => {
+        return webhooks.requestAgentEvents(
+          {
+            runId: run.runId,
+            events: [
+              {
+                type: "assistant",
+                sequenceNumber,
+                message: {
+                  id: `msg_saturated_projection_${sequenceNumber}`,
+                  content: [
+                    {
+                      type: "text",
+                      text: `saturated output ${sequenceNumber}`,
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+          sandboxHeaders,
+          [200],
+        );
+      }),
+    );
+
+    await expect
+      .poll(() => {
+        return context.mocks.axiomLogging.warn.mock.calls.some(
+          ([message, fields]) => {
+            return (
+              message ===
+                "Skipping live chat projection at the concurrency limit" &&
+              isRecord(fields) &&
+              fields.runId === run.runId
+            );
+          },
+        );
+      })
+      .toBe(true);
+    await flushWaitUntilForTest();
+    held.release();
+    await held.done;
+  }, 30_000);
+
+  it("keeps repeated at-least-once event batches idempotent", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "repeat an accepted event batch",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await webhooks.requestAgentEvents(
+        {
+          runId: run.runId,
+          events: [
+            {
+              type: "assistant",
+              sequenceNumber: 0,
+              message: {
+                id: "msg_repeated_event_batch",
+                content: [{ type: "text", text: "Store this output once." }],
+              },
+            },
+          ],
+        },
+        sandboxHeaders,
+        [200],
+      );
+    }
+    await flushWaitUntilForTest();
+
+    const messages = await chat.listThreadEvents(actor, run.threadId);
+    expect(
+      eventBackedContents(messages.events, run.runId).map((message) => {
+        return {
+          content: message.content,
+          sequenceNumber: message.sequenceNumber,
+        };
+      }),
+    ).toStrictEqual([
+      {
+        content: "Store this output once.",
+        sequenceNumber: 0,
+      },
+    ]);
+    expect(firstAssistantEventsForRun(run.runId)).toHaveLength(1);
+  });
 
   it("skips Axiom for DB-complete no-output runs and falls back for result-only output", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
