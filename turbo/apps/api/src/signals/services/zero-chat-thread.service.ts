@@ -1003,6 +1003,20 @@ const chatEventBuilders = {
       ),
     };
   },
+  "browser.started": (_row, event) => {
+    return {
+      ...event,
+      eventType: "browser.started",
+      content: null,
+    };
+  },
+  "browser.stopped": (_row, event) => {
+    return {
+      ...event,
+      eventType: "browser.stopped",
+      content: null,
+    };
+  },
   "goal.changed": (row, event) => {
     return {
       ...event,

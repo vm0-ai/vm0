@@ -40,6 +40,7 @@ import {
   createOptimisticChatEventEntry,
   createOptimisticChatEventsForThread,
   reconcileOptimisticChatEvents$,
+  removeOptimisticChatEvent$,
   type OptimisticChatEventEntry,
   type OptimisticChatEventInput,
 } from "./optimistic-chat-events.ts";
@@ -58,6 +59,7 @@ import {
   chatEventCompatibilityRole,
   foldActiveChatGoalObjective,
   foldLatestChatUsageByRunId,
+  isBrowserLifecycleEventType,
   isChatRunTerminalEventType,
   revokedChatEventIds,
   terminatedChatRunIds,
@@ -156,8 +158,8 @@ import {
 } from "./mail-draft.ts";
 import {
   createBrowserSessionCardSignalsRegistry,
+  type BrowserLifecycleOptimisticEvents,
   type BrowserSessionCardSignalsRegistry,
-  type BrowserSessionSignals,
 } from "./browser-session-block.ts";
 import { createChatThreadContainerSignals } from "./chat-thread-container.ts";
 import {
@@ -1248,10 +1250,6 @@ function createRenderedChatGroups(
       return groupEventsForDisplay(events);
     },
   );
-  const sidebarAutoOpenCandidate$ = createThreadSidebarAutoOpenCandidate(
-    allRenderedChatGroups$,
-  );
-
   const eventImageGroups$ = computed(
     async (get): Promise<EventImageGroupProjection[]> => {
       return (await get(allRenderedChatGroups$)).map((group) => {
@@ -1269,7 +1267,6 @@ function createRenderedChatGroups(
 
   return {
     allRenderedChatGroups$,
-    sidebarAutoOpenCandidate$,
     eventImageGroups$,
   };
 }
@@ -1552,6 +1549,7 @@ function semanticTranscriptEventsFromRaw(
       isQueueMarkerEvent(event) ||
       isGoalQueueEvent(event) ||
       isGoalMarkerEvent(event) ||
+      isBrowserLifecycleEventType(event.eventType) ||
       isInterruptedAssistantCancellation(event, interruptedRunIds) ||
       recalledIds.has(event.id) ||
       replacedIds.has(event.id)
@@ -2111,29 +2109,9 @@ function createLatestEventSignals(
       );
     },
   );
-  const latestBrowserSessionSignals$ = computed(
-    (get): BrowserSessionSignals | null => {
-      const events = get(rawEvents$);
-      for (let eventIndex = events.length - 1; eventIndex >= 0; eventIndex--) {
-        const blocks = events[eventIndex]!.blocks;
-        for (
-          let blockIndex = blocks.length - 1;
-          blockIndex >= 0;
-          blockIndex--
-        ) {
-          const block = blocks[blockIndex]!;
-          if (block.type === "browser-session") {
-            return block.signals;
-          }
-        }
-      }
-      return null;
-    },
-  );
   return {
     latestRunFinishCreatedAt$,
     latestAssistantTextCreatedAt$,
-    latestBrowserSessionSignals$,
   };
 }
 
@@ -2461,16 +2439,6 @@ function createMailDraftCardSignalsById(
   });
 }
 
-function createBrowserSessionCardSignalsById(
-  rawEvents$: Computed<ChatEventProjectionEntry[]>,
-  browserSessionCardSignals: BrowserSessionCardSignalsRegistry,
-): Computed<ReadonlyMap<string, BrowserSessionSignals>> {
-  return computed((get) => {
-    get(rawEvents$);
-    return new Map(browserSessionCardSignals.entries());
-  });
-}
-
 function createEventHistoryBackfillProgress(
   hasReachedOldestEvent$: Computed<boolean>,
   persistentEvents$: PersistentChatEvents$,
@@ -2495,6 +2463,31 @@ function createEventHistoryBackfillProgress(
   });
 }
 
+function createBrowserLifecycleOptimisticEvents(
+  threadId: string,
+): BrowserLifecycleOptimisticEvents {
+  return {
+    append$: command(({ set }, { eventId, eventType }): void => {
+      set(
+        appendOptimisticChatEvent$,
+        createOptimisticChatEventEntry({
+          threadId,
+          event: {
+            id: eventId,
+            threadId,
+            eventType,
+            content: null,
+            createdAt: nowDate().toISOString(),
+          },
+        }),
+      );
+    }),
+    remove$: command(({ set }, eventId): void => {
+      set(removeOptimisticChatEvent$, { threadId, eventId });
+    }),
+  };
+}
+
 function createPagedEvents(
   threadId: string,
   dataSource: ChatThreadRemote,
@@ -2502,8 +2495,10 @@ function createPagedEvents(
   previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
 ) {
   const mailDraftCardSignals = createMailDraftCardSignalsRegistry(threadId);
-  const browserSessionCardSignals =
-    createBrowserSessionCardSignalsRegistry(threadId);
+  const browserSessionCardSignals = createBrowserSessionCardSignalsRegistry(
+    threadId,
+    createBrowserLifecycleOptimisticEvents(threadId),
+  );
   const artifactCardSignals = createArtifactCardSignalsRegistry(
     previewImageUrlsByUrl$,
   );
@@ -2549,6 +2544,8 @@ function createPagedEvents(
     optimisticEvents$,
     resolveBodyBlocks,
   });
+  const sidebarAutoOpenCandidate$ =
+    createThreadSidebarAutoOpenCandidate(rawEvents$);
   const historyBackfillProgress$ = createEventHistoryBackfillProgress(
     hasReachedOldestEvent$,
     persistentChatEvents$,
@@ -2574,11 +2571,6 @@ function createPagedEvents(
     rawEvents$,
     mailDraftCardSignals,
   );
-  const browserSessionCardSignalsById$ = createBrowserSessionCardSignalsById(
-    rawEvents$,
-    browserSessionCardSignals,
-  );
-
   const mergePersistentEvents$ = createMergePersistentEvents(
     threadId,
     persistentChatEvents$,
@@ -2615,12 +2607,13 @@ function createPagedEvents(
     ...eventSync,
     ...renderedGroups,
     rawEvents$,
+    sidebarAutoOpenCandidate$,
     historyBackfillProgress$,
     eventRunIndicatorState$,
     activeGoalObjective$,
     mailDraftCardSignalsById$,
     reloadMailDrafts$: mailDraftCardSignals.reload$,
-    browserSessionCardSignalsById$,
+    browserSessionSignals: browserSessionCardSignals.browser,
     subscribeBrowserSessions$: browserSessionCardSignals.subscribe$,
     artifactSignalsForUrl: (url: string): ArtifactSignals | undefined => {
       return artifactCardSignals.find(url);
@@ -4395,8 +4388,7 @@ function publicChatThreadEventSignals(
     eventImageGroups$: events.eventImageGroups$,
     artifactSignalsForUrl: events.artifactSignalsForUrl,
     mailDraftCardSignalsById$: events.mailDraftCardSignalsById$,
-    browserSessionCardSignalsById$: events.browserSessionCardSignalsById$,
-    latestBrowserSessionSignals$: events.latestBrowserSessionSignals$,
+    browserSessionSignals: events.browserSessionSignals,
     hasEvents$: events.hasEvents$,
     hasNewEvents$: events.hasNewEvents$,
     hasQueuedEvents$: events.hasQueuedEvents$,

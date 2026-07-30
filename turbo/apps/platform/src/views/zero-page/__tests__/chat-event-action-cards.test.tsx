@@ -3715,14 +3715,13 @@ describe("chat event action cards", () => {
   it("renders trusted browser universal links as compact cards with an open action", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "c0000000-0000-4000-a000-000000000080";
-    const browserId = "c0000000-0000-4000-a000-000000000081";
     const liveUrl =
       "https://live.browser-use.com/?wss=test-browser-session-token";
     let browser: ZeroBrowserSession = {
-      id: browserId,
+      threadId,
       name: "booking",
       status: "active",
-      viewerUrl: `https://app.vm0.ai/browsers/${browserId}`,
+      viewerUrl: `https://app.vm0.ai/browsers/${threadId}`,
       liveUrl,
       proxyCountryCode: null,
       timeoutMinutes: 240,
@@ -3736,19 +3735,18 @@ describe("chat event action cards", () => {
       updatedAt: "2026-07-24T10:00:00.000Z",
     };
     let browserRequests = 0;
-    context.mocks.api(zeroBrowserContract.get, ({ params, query, respond }) => {
-      expect(params.browserId).toBe(browserId);
-      expect(query.chatThreadId).toBe(threadId);
+    context.mocks.api(zeroBrowserContract.get, ({ params, respond }) => {
+      expect(params.threadId).toBe(threadId);
       browserRequests += 1;
       return respond(200, { browser });
     });
     let leaseRequests = 0;
-    context.mocks.api(zeroBrowserContract.leaseById, ({ respond }) => {
+    context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
       leaseRequests += 1;
       return respond(200, { browser });
     });
 
-    const untrustedUrl = `https://evil.example.test/browsers/${browserId}`;
+    const untrustedUrl = `https://evil.example.test/browsers/${threadId}`;
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Managed browser card",
@@ -3757,8 +3755,8 @@ describe("chat event action cards", () => {
           id: "c0000000-0000-4000-a000-000000000082",
           role: "assistant",
           content: [
-            `https://app.vm0.ai/browsers/${browserId}`,
-            `[Open browser](/browsers/${browserId})`,
+            `https://app.vm0.ai/browsers/${threadId}`,
+            `[Open browser](/browsers/${threadId})`,
             `[Untrusted browser](${untrustedUrl})`,
           ].join("\n"),
           runId: "c0000000-0000-4000-a000-000000000085",
@@ -3823,7 +3821,7 @@ describe("chat event action cards", () => {
       suspensionReason: "idle",
       updatedAt: "2026-07-24T10:12:00.000Z",
     };
-    triggerAblyEvent("browserSessionChanged", { browserId });
+    triggerAblyEvent("browserSessionChanged", { threadId });
 
     await waitFor(() => {
       for (const card of cards) {
@@ -3834,7 +3832,7 @@ describe("chat event action cards", () => {
         expect(card).toHaveTextContent("Stopped");
         expect(card).not.toHaveTextContent("credits charged");
       }
-      expect(screen.getByText("Browser suspended")).toBeInTheDocument();
+      expect(screen.getByText("Browser not live")).toBeInTheDocument();
       expect(
         document.querySelector('iframe[title="Live browser: booking"]'),
       ).toBeNull();
@@ -3851,7 +3849,7 @@ describe("chat event action cards", () => {
       suspensionReason: null,
       updatedAt: "2026-07-24T10:12:01.000Z",
     };
-    triggerAblyEvent("browserSessionChanged", { browserId });
+    triggerAblyEvent("browserSessionChanged", { threadId });
 
     await waitFor(() => {
       for (const card of cards) {

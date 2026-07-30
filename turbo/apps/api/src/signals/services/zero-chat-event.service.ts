@@ -149,6 +149,14 @@ type ControlRevokeEvent = ChatEventIdentity & {
   readonly content?: null;
 };
 
+type BrowserLifecycleEvent = Pick<
+  ChatEventIdentity,
+  "id" | "chatThreadId" | "createdAt"
+> & {
+  readonly eventType: "browser.started" | "browser.stopped";
+  readonly content?: null;
+};
+
 type GoalChangedEvent = ChatEventIdentity & {
   readonly eventType: "goal.changed";
   readonly content?: null;
@@ -179,6 +187,7 @@ export type NewChatEvent =
   | RunCancelledEvent
   | ControlInterruptEvent
   | ControlRevokeEvent
+  | BrowserLifecycleEvent
   | GoalChangedEvent
   | UsageRecordedEvent;
 

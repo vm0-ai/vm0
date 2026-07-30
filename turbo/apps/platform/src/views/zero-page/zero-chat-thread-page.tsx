@@ -448,17 +448,10 @@ export function AutomationMenuButton({
 }
 
 function BrowserMenuButton({ thread }: { thread: ChatThreadSignals }) {
-  const browserSession = useGet(thread.latestBrowserSessionSignals$);
   const sidebarTarget = useGet(thread.sidebar.target$);
   const openBrowserSidebar = useSet(openThreadBrowserSession$);
 
-  if (!browserSession) {
-    return null;
-  }
-
-  const open =
-    sidebarTarget?.type === "browser" &&
-    sidebarTarget.browserSessionId === browserSession.browserId;
+  const open = sidebarTarget?.type === "browser";
   return (
     <TooltipProvider delayDuration={300}>
       <Tooltip>
@@ -474,7 +467,7 @@ function BrowserMenuButton({ thread }: { thread: ChatThreadSignals }) {
             aria-label="Open browser"
             aria-pressed={open}
             onClick={() => {
-              openBrowserSidebar(browserSession.browserId);
+              openBrowserSidebar(thread.threadId);
             }}
           >
             <IconWorld size={18} stroke={1.5} />

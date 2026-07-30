@@ -200,6 +200,8 @@ export const chatMessages = pgTable(
           'queue.automation_resumed',
           'control.interrupt',
           'control.revoke',
+          'browser.started',
+          'browser.stopped',
           'goal.changed',
           'usage.recorded'
         )`,

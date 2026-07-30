@@ -8,6 +8,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-browser";
 import {
   chatThreadComputerUseHostContract,
+  chatThreadEventsContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { HttpResponse, http } from "msw";
@@ -27,11 +28,7 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import {
-  readBrowserProfileAsPreviousApi,
-  setBrowserInstanceAsPreviousApi,
-  setComputerUseHostAsPreviousApi,
-} from "./helpers/runtime-state";
+import { setComputerUseHostAsPreviousApi } from "./helpers/runtime-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -59,6 +56,10 @@ function chatThreadsClient() {
 
 function chatThreadComputerUseHostClient() {
   return setupApp({ context })(chatThreadComputerUseHostContract);
+}
+
+function chatThreadEventsClient() {
+  return setupApp({ context })(chatThreadEventsContract);
 }
 
 function cronClient() {
@@ -371,7 +372,6 @@ describe("zero browser route", () => {
     const events = await accept(
       chatThreadsClient().events({
         headers: { authorization: "Bearer clerk-session" },
-        query: {},
       }),
       [200],
     );
@@ -489,7 +489,7 @@ describe("zero browser route", () => {
       // reclamation through the idle lease instead.
       timeoutMinutes: 240,
       idleExpiresAt: isoAt(10 * MINUTE_MS),
-      viewerUrl: `https://app.vm0.ai/browsers/${created.body.browser.id}`,
+      viewerUrl: `https://app.vm0.ai/browsers/${created.body.browser.threadId}`,
       screen: {
         width: 1440,
         height: 900,
@@ -503,8 +503,8 @@ describe("zero browser route", () => {
       name: "research",
       status: "active",
     });
-    expect(createdInOtherThread.body.browser.id).not.toBe(
-      created.body.browser.id,
+    expect(createdInOtherThread.body.browser.threadId).not.toBe(
+      created.body.browser.threadId,
     );
     expect(profileCreates).toBe(2);
     expect(providerCreates).toBe(2);
@@ -524,32 +524,6 @@ describe("zero browser route", () => {
       }),
     ).toStrictEqual(expect.arrayContaining([...profileIds]));
     expect(deletedProfiles).toStrictEqual([]);
-
-    if (!actor.orgId) {
-      throw new Error("Expected a browser test actor with an organization");
-    }
-    const actorOrgId = actor.orgId;
-    // No current production endpoint can invoke the previous API binary. The
-    // guarded compatibility fixture uses only its old profile lookup shape.
-    const previousApiRows = await Promise.all(
-      [created.body.browser.id, createdInOtherThread.body.browser.id].map(
-        async (browserId) => {
-          return await readBrowserProfileAsPreviousApi(context, {
-            browserId,
-            orgId: actorOrgId,
-            userId: actor.userId,
-          });
-        },
-      ),
-    );
-    expect(
-      new Set(
-        previousApiRows.map((row) => {
-          return row.browserProfileId;
-        }),
-      ).size,
-    ).toBe(1);
-    expect([...profileIds]).toContain(previousApiRows[0]?.providerProfileId);
 
     const createdProviderId = new URL(created.body.cdpUrl).hostname.split(
       ".",
@@ -571,15 +545,15 @@ describe("zero browser route", () => {
     );
     routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const resized = await accept(
-      client().resizeById({
+      client().resizeByThread({
         headers: { authorization: "Bearer clerk-session" },
-        params: { browserId: created.body.browser.id },
+        params: { threadId: created.body.browser.threadId },
         body: { aspectRatio: 0.75 },
       }),
       [200],
     );
     expect(resized.body.browser).toMatchObject({
-      id: created.body.browser.id,
+      threadId: created.body.browser.threadId,
       screen: {
         width: 1440,
         height: 1920,
@@ -611,8 +585,7 @@ describe("zero browser route", () => {
     const restoredForAnotherViewer = await accept(
       client().get({
         headers: { authorization: "Bearer clerk-session" },
-        params: { browserId: created.body.browser.id },
-        query: {},
+        params: { threadId: created.body.browser.threadId },
       }),
       [200],
     );
@@ -622,56 +595,27 @@ describe("zero browser route", () => {
       resizable: true,
     });
 
-    await setBrowserInstanceAsPreviousApi(
-      context,
-      createdInOtherThread.body.browser.id,
-    );
-    const previousApiBrowser = await accept(
-      client().get({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { browserId: createdInOtherThread.body.browser.id },
-        query: {},
-      }),
-      [200],
-    );
-    expect(previousApiBrowser.body.browser.screen).toBeUndefined();
-    const unsupportedResize = await createApp({
-      signal: context.signal,
-    }).request(
-      `/api/zero/browsers/${createdInOtherThread.body.browser.id}/resize`,
-      {
-        method: "POST",
-        headers: {
-          authorization: "Bearer clerk-session",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ aspectRatio: 0.75 }),
-      },
-    );
-    expect(unsupportedResize.status).toBe(409);
-    await expect(unsupportedResize.json()).resolves.toMatchObject({
-      error: { code: "BROWSER_RESIZE_UNSUPPORTED" },
-    });
-    expect(context.mocks.browserUseCdp.connect).toHaveBeenCalledTimes(1);
-
     const copiedToAnotherThread = await createApp({
       signal: context.signal,
-    }).request(
-      `/api/zero/browsers/${created.body.browser.id}?chatThreadId=${randomUUID()}`,
-      { headers: first.claim.browserHeaders },
-    );
+    }).request(`/api/zero/chat-threads/${randomUUID()}/browser`, {
+      headers: first.claim.browserHeaders,
+    });
     expect(copiedToAnotherThread.status).toBe(404);
 
-    const duplicateNew = await requestBrowserCreate(
-      first.claim.browserHeaders,
-      {
-        name: "another",
-        proxyCountryCode: null,
-      },
+    const duplicateNew = await accept(
+      client().create({
+        headers: first.claim.browserHeaders,
+        body: {
+          name: "another",
+          proxyCountryCode: null,
+        },
+      }),
+      [201],
     );
-    expect(duplicateNew.status).toBe(409);
-    await expect(duplicateNew.json()).resolves.toMatchObject({
-      error: { code: "BROWSER_THREAD_ACTIVE" },
+    expect(duplicateNew.body.browser).toMatchObject({
+      threadId: created.body.browser.threadId,
+      name: "booking",
+      status: "active",
     });
     expect(providerCreates).toBe(2);
     expect(profileCreates).toBe(2);
@@ -702,8 +646,7 @@ describe("zero browser route", () => {
     const stillLive = await accept(
       client().get({
         headers: first.claim.browserHeaders,
-        params: { browserId: created.body.browser.id },
-        query: { chatThreadId: first.threadId },
+        params: { threadId: created.body.browser.threadId },
       }),
       [200],
     );
@@ -860,16 +803,15 @@ describe("zero browser route", () => {
       client().get({
         headers: first.claim.browserHeaders,
         params: {
-          browserId: (
+          threadId: (
             await accept(
               client().current({
                 headers: first.claim.browserHeaders,
               }),
               [200],
             )
-          ).body.browser.id,
+          ).body.browser.threadId,
         },
-        query: { chatThreadId: first.threadId },
       }),
       [200],
     );
@@ -965,7 +907,7 @@ describe("zero browser route", () => {
       client().use({ headers: first.claim.browserHeaders, body: {} }),
       [200],
     );
-    const browserId = opened.body.browser.id;
+    const threadId = opened.body.browser.threadId;
     expect(opened.body.browser).toMatchObject({
       status: "active",
       idleExpiresAt: isoAt(10 * MINUTE_MS),
@@ -985,8 +927,7 @@ describe("zero browser route", () => {
     const released = await accept(
       client().get({
         headers: first.claim.browserHeaders,
-        params: { browserId },
-        query: { chatThreadId: first.threadId },
+        params: { threadId },
       }),
       [200],
     );
@@ -1018,7 +959,7 @@ describe("zero browser route", () => {
       [200],
     );
     expect(reused.body.browser).toMatchObject({
-      id: browserId,
+      threadId: threadId,
       status: "active",
       idleExpiresAt: isoAt(15 * MINUTE_MS),
     });
@@ -1029,7 +970,7 @@ describe("zero browser route", () => {
       [200],
     );
     expect(leased.body.browser).toMatchObject({
-      id: browserId,
+      threadId: threadId,
       idleExpiresAt: isoAt(15 * MINUTE_MS),
     });
 
@@ -1053,7 +994,7 @@ describe("zero browser route", () => {
     });
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "browserSessionChanged",
-      { browserId },
+      { threadId },
     );
     await flushWaitUntilForTest();
     expect(firstStopFailures).toBe(1);
@@ -1082,8 +1023,7 @@ describe("zero browser route", () => {
     const agentRead = await accept(
       client().get({
         headers: followupClaim.browserHeaders,
-        params: { browserId },
-        query: { chatThreadId: first.threadId },
+        params: { threadId },
       }),
       [403],
     );
@@ -1094,13 +1034,12 @@ describe("zero browser route", () => {
     const suspended = await accept(
       client().get({
         headers: { authorization: "Bearer clerk-session" },
-        params: { browserId },
-        query: { chatThreadId: first.threadId },
+        params: { threadId },
       }),
       [200],
     );
     expect(suspended.body.browser).toMatchObject({
-      id: browserId,
+      threadId: threadId,
       status: "suspended",
       suspensionReason: "idle",
       idleExpiresAt: null,
@@ -1109,35 +1048,35 @@ describe("zero browser route", () => {
     // The viewer can restore a reclaimed browser without a live run.
     context.mocks.ably.publish.mockClear();
     const resumed = await accept(
-      client().resumeById({
+      client().start({
         headers: { authorization: "Bearer clerk-session" },
-        params: { browserId },
-        body: {},
+        params: { threadId },
+        body: { eventId: randomUUID() },
       }),
       [200],
     );
     expect(resumed.body.browser).toMatchObject({
-      id: browserId,
+      threadId: threadId,
       status: "active",
       idleExpiresAt: isoAt(26 * MINUTE_MS),
     });
     expect(providerCreates).toBe(2);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "browserSessionChanged",
-      { browserId },
+      { threadId },
     );
 
     mockNow(STARTED_AT_MS + 20 * MINUTE_MS);
     const viewerLease = await accept(
-      client().leaseById({
+      client().leaseByThread({
         headers: { authorization: "Bearer clerk-session" },
-        params: { browserId },
+        params: { threadId },
         body: {},
       }),
       [200],
     );
     expect(viewerLease.body.browser).toMatchObject({
-      id: browserId,
+      threadId: threadId,
       idleExpiresAt: isoAt(30 * MINUTE_MS),
     });
 
@@ -1153,7 +1092,7 @@ describe("zero browser route", () => {
     });
   }, 120_000);
 
-  it("refuses a viewer action aimed at a browser the thread already replaced", async () => {
+  it("reuses one thread browser and records start-stop lifecycle events", async () => {
     const { routeMocks, runs, chat, actor, agent } =
       await setupBrowserScenario();
     const first = await createClaimedChatRun(
@@ -1198,13 +1137,11 @@ describe("zero browser route", () => {
       }),
     );
 
-    const superseded = await accept(
+    const firstStart = await accept(
       client().use({ headers: first.claim.browserHeaders, body: {} }),
       [200],
     );
 
-    // Reclaim the first browser, then open a second one in the same thread so
-    // the older card points at a browser that is no longer the current one.
     mockNow(STARTED_AT_MS + 11 * MINUTE_MS);
     const reclaimed = await reconcileBrowsers();
     expect(reclaimed.body).toMatchObject({
@@ -1213,47 +1150,101 @@ describe("zero browser route", () => {
     });
     await flushWaitUntilForTest();
     expect(providerStops).toBe(1);
-    const replacement = await accept(
+    const resumed = await accept(
       client().create({
         headers: first.claim.browserHeaders,
         body: { name: "replacement", proxyCountryCode: null },
       }),
       [201],
     );
-    expect(replacement.body.browser.id).not.toBe(superseded.body.browser.id);
+    expect(resumed.body.browser).toMatchObject({
+      threadId: firstStart.body.browser.threadId,
+      status: "active",
+    });
     expect(providerCreates).toBe(2);
 
-    // Move the clock so a lease the refused request touched would be visible.
-    mockNow(STARTED_AT_MS + 13 * MINUTE_MS);
     routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
-    const staleResume = await createApp({ signal: context.signal }).request(
-      `/api/zero/browsers/${superseded.body.browser.id}/resume`,
-      {
-        method: "POST",
-        headers: {
-          authorization: "Bearer clerk-session",
-          "content-type": "application/json",
-        },
-        body: "{}",
-      },
-    );
-    expect(staleResume.status).toBe(409);
-    await expect(staleResume.json()).resolves.toMatchObject({
-      error: { code: "BROWSER_CHANGED" },
-    });
-    const liveAfterStaleResume = await accept(
-      client().get({
+    const noOpEventId = randomUUID();
+    const alreadyActive = await accept(
+      client().start({
         headers: { authorization: "Bearer clerk-session" },
-        params: { browserId: replacement.body.browser.id },
-        query: { chatThreadId: first.threadId },
+        params: { threadId: first.threadId },
+        body: { eventId: noOpEventId },
       }),
       [200],
     );
-    // The refused request must not have leased or re-owned the live browser.
-    expect(liveAfterStaleResume.body.browser.idleExpiresAt).toBe(
-      replacement.body.browser.idleExpiresAt,
+    expect(alreadyActive.body).toMatchObject({
+      lifecycleEventId: null,
+      browser: { threadId: first.threadId, status: "active" },
+    });
+
+    const stopEventId = randomUUID();
+    const stopped = await accept(
+      client().stop({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: first.threadId },
+        body: { eventId: stopEventId },
+      }),
+      [200],
     );
-    expect(providerCreates).toBe(2);
+    expect(stopped.body).toMatchObject({
+      lifecycleEventId: stopEventId,
+      browser: {
+        threadId: first.threadId,
+        status: "suspended",
+        suspensionReason: "user",
+      },
+    });
+    await flushWaitUntilForTest();
+    expect(providerStops).toBe(2);
+
+    const events = await accept(
+      chatThreadEventsClient().list({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: first.threadId },
+        query: { limit: 50 },
+      }),
+      [200],
+    );
+    expect(
+      events.body.events.flatMap((event) => {
+        return event.eventType === "browser.started" ||
+          event.eventType === "browser.stopped"
+          ? [
+              {
+                id: event.id,
+                eventType: event.eventType,
+                content: event.content,
+              },
+            ]
+          : [];
+      }),
+    ).toStrictEqual([
+      {
+        id: firstStart.body.lifecycleEventId,
+        eventType: "browser.started",
+        content: null,
+      },
+      expect.objectContaining({
+        eventType: "browser.stopped",
+        content: null,
+      }),
+      {
+        id: resumed.body.lifecycleEventId,
+        eventType: "browser.started",
+        content: null,
+      },
+      {
+        id: stopEventId,
+        eventType: "browser.stopped",
+        content: null,
+      },
+    ]);
+    expect(
+      events.body.events.some((event) => {
+        return event.id === noOpEventId;
+      }),
+    ).toBeFalsy();
 
     await chat.deleteThread(actor, first.threadId);
     await flushWaitUntilForTest();

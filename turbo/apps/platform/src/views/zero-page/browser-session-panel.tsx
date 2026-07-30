@@ -107,8 +107,8 @@ export function BrowserSessionPanel({
   const { t } = useTranslation();
   const sessionLoadable = useLastLoadable(signals.panelSession$);
   const keepAliveRef = useSet(signals.keepAliveRef$);
-  const resume = useSet(signals.resume$);
-  const resuming = useGet(signals.resuming$);
+  const start = useSet(signals.start$);
+  const starting = useGet(signals.starting$);
   const pageSignal = useGet(pageSignal$);
 
   if (sessionLoadable.state === "loading") {
@@ -128,7 +128,7 @@ export function BrowserSessionPanel({
       </PanelFrame>
     );
   }
-  if (sessionLoadable.state === "hasError" || sessionLoadable.data === null) {
+  if (sessionLoadable.state === "hasError") {
     return (
       <PanelFrame>
         <PanelMessage
@@ -145,48 +145,39 @@ export function BrowserSessionPanel({
   }
 
   const session = sessionLoadable.data;
-  const browserAspectRatio = session.screen
-    ? session.screen.width / session.screen.height
-    : ZERO_BROWSER_SCREEN_WIDTH / ZERO_BROWSER_INITIAL_SCREEN_HEIGHT;
-  const liveUrl = session.status === "active" ? session.liveUrl : null;
+  const liveUrl = session?.status === "active" ? session.liveUrl : null;
   if (liveUrl === null) {
     return (
       <PanelFrame>
         <PanelMessage
           icon={<IconBrowser size={26} className="text-muted-foreground" />}
-          title={
-            session.status === "suspended"
-              ? t(($) => {
-                  return $.browserSession.panel.suspended;
-                })
-              : t(($) => {
-                  return $.browserSession.panel.notLive;
-                })
-          }
+          title={t(($) => {
+            return $.browserSession.panel.notLive;
+          })}
           description={t(($) => {
-            return $.browserSession.panel.resumeDescription;
+            return $.browserSession.panel.startDescription;
           })}
           action={
             <button
               type="button"
-              disabled={resuming}
-              data-browser-session-resume
+              disabled={starting}
+              data-browser-session-start
               onClick={() => {
-                detach(resume(pageSignal), Reason.DomCallback);
+                detach(start(pageSignal), Reason.DomCallback);
               }}
               className="mt-1 inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-wait disabled:opacity-70"
             >
-              {resuming ? (
+              {starting ? (
                 <IconLoader2 className="animate-spin" size={14} />
               ) : (
                 <IconPlayerPlay size={14} />
               )}
-              {resuming
+              {starting
                 ? t(($) => {
-                    return $.browserSession.panel.resuming;
+                    return $.browserSession.panel.starting;
                   })
                 : t(($) => {
-                    return $.browserSession.panel.resume;
+                    return $.browserSession.panel.start;
                   })}
             </button>
           }
@@ -195,6 +186,12 @@ export function BrowserSessionPanel({
     );
   }
 
+  if (!session) {
+    throw new Error("Live managed browser session is unavailable");
+  }
+  const browserAspectRatio = session.screen
+    ? session.screen.width / session.screen.height
+    : ZERO_BROWSER_SCREEN_WIDTH / ZERO_BROWSER_INITIAL_SCREEN_HEIGHT;
   const liveFrame = (
     <LiveBrowserFrame
       liveUrl={liveUrl}

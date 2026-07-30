@@ -169,10 +169,7 @@ export interface ChatThreadSignals {
   eventImageGroups$: Computed<Promise<EventImageGroupProjection[]>>;
   artifactSignalsForUrl: (url: string) => ArtifactSignals | undefined;
   mailDraftCardSignalsById$: Computed<ReadonlyMap<string, MailDraftSignals>>;
-  browserSessionCardSignalsById$: Computed<
-    ReadonlyMap<string, BrowserSessionSignals>
-  >;
-  latestBrowserSessionSignals$: Computed<BrowserSessionSignals | null>;
+  browserSessionSignals: BrowserSessionSignals;
   hasEvents$: Computed<Promise<boolean>>;
   hasNewEvents$: Computed<Promise<boolean>>;
   hasQueuedEvents$: Computed<Promise<boolean>>;

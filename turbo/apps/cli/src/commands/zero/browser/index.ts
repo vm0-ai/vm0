@@ -93,7 +93,7 @@ function reclaimNotice(browser: ZeroBrowserSession): string {
 
 function renderBrowser(browser: ZeroBrowserSession): void {
   console.log(`${browser.name} · ${browser.status}`);
-  console.log(chalk.dim(`  ID: ${browser.id}`));
+  console.log(chalk.dim(`  Thread ID: ${browser.threadId}`));
   console.log(chalk.dim(`  ${reclaimNotice(browser)}`));
   console.log(`  ${browser.viewerUrl}`);
 }
