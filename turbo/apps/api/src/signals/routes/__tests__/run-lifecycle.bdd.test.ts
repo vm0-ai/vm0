@@ -8457,10 +8457,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     const actorRunnerKey = await api.createCliToken(actor);
     const memberRunnerKey = await api.createCliToken(member);
+    const bridgeRunnerRefreshRequest = {
+      connectorSlugs: ["slack"],
+      connectorRefs: ["slack"],
+    };
     const sameUserRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
       `Bearer ${actorRunnerKey.token}`,
       snapshotRun.runId,
-      { connectorRefs: ["slack"] },
+      bridgeRunnerRefreshRequest,
       [200],
     );
     if (sameUserRefresh.status !== 200) {
@@ -8471,12 +8475,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     expect(sameUserRefresh.body.refreshes[0]).toMatchObject({
       connectorSlug: "slack",
-      connectorRef: "slack",
     });
+    expect(sameUserRefresh.body.refreshes[0]).not.toHaveProperty(
+      "connectorRef",
+    );
     const canonicalRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
       `Bearer ${actorRunnerKey.token}`,
       snapshotRun.runId,
-      { connectorSlugs: ["slack"] },
+      { connectorSlugs: ["slack", "slack"] },
       [200],
     );
     if (canonicalRefresh.status !== 200) {
@@ -8484,50 +8490,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     }
     expect(canonicalRefresh.body.refreshes[0]).toMatchObject({
       connectorSlug: "slack",
-      connectorRef: "slack",
     });
-    const matchingDualRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
-      `Bearer ${actorRunnerKey.token}`,
-      snapshotRun.runId,
-      {
-        connectorSlugs: ["slack", "github", "slack"],
-        connectorRefs: ["github", "slack"],
-      },
-      [200],
-    );
-    if (matchingDualRefresh.status !== 200) {
-      throw new Error(
-        "Expected matching dual network policy refresh to succeed",
-      );
-    }
-    expect(matchingDualRefresh.body.refreshes[0]).toMatchObject({
-      connectorSlug: "slack",
-      connectorRef: "slack",
-    });
-    const conflictingRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
-      `Bearer ${actorRunnerKey.token}`,
-      snapshotRun.runId,
-      {
-        connectorSlugs: ["slack"],
-        connectorRefs: ["github"],
-      },
-      [400],
-    );
-    if (conflictingRefresh.status !== 400) {
-      throw new Error(
-        "Expected conflicting network policy refresh to be rejected",
-      );
-    }
-    expect(conflictingRefresh.body.error.message).toBe(
-      "connectorSlugs: must identify the same connectors as connectorRefs",
+    expect(canonicalRefresh.body.refreshes[0]).not.toHaveProperty(
+      "connectorRef",
     );
     const otherUserRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
       `Bearer ${memberRunnerKey.token}`,
       snapshotRun.runId,
-      {
-        connectorSlugs: ["slack"],
-        connectorRefs: ["slack"],
-      },
+      { connectorSlugs: ["slack"] },
       [403],
     );
     if (otherUserRefresh.status !== 403) {
@@ -8550,7 +8520,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       {
         runId: snapshotRun.runId,
         connectorSlug: "slack",
-        connectorRef: "slack",
       },
     );
     const refreshedPolicy = await api.refreshRunnerNetworkPolicy(
@@ -8563,8 +8532,8 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(refreshedPolicy.nextRefreshAt).toStrictEqual(expect.any(String));
     expect(refreshedPolicy).toMatchObject({
       connectorSlug: "slack",
-      connectorRef: "slack",
     });
+    expect(refreshedPolicy).not.toHaveProperty("connectorRef");
 
     context.mocks.ably.publish.mockRejectedValueOnce(
       new Error("network policy refresh publish failed"),
@@ -8798,7 +8767,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       {
         runId: parent.runId,
         connectorSlug: "slack",
-        connectorRef: "slack",
       },
     );
 

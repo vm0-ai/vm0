@@ -835,31 +835,14 @@ fn parse_network_policy_refresh_notification(
             return None;
         }
     };
-    let connector_slug =
-        match parse_network_policy_refresh_identity_field(&msg.data, "connectorSlug") {
-            Ok(value) => value,
-            Err(()) => {
-                warn!("ably: network-policy-refresh message has invalid connectorSlug");
-                return None;
-            }
-        };
-    let connector_ref = match parse_network_policy_refresh_identity_field(&msg.data, "connectorRef")
-    {
-        Ok(value) => value,
-        Err(()) => {
-            warn!("ably: network-policy-refresh message has invalid connectorRef");
+    let connector_slug = match msg.data.get("connectorSlug") {
+        Some(serde_json::Value::String(value)) if !value.is_empty() => value,
+        Some(_) => {
+            warn!("ably: network-policy-refresh message has invalid connectorSlug");
             return None;
         }
-    };
-    let connector_slug = match (connector_slug, connector_ref) {
-        (Some(connector_slug), Some(connector_ref)) if connector_slug != connector_ref => {
-            warn!("ably: network-policy-refresh connectorSlug and connectorRef do not match");
-            return None;
-        }
-        (Some(connector_slug), _) => connector_slug,
-        (None, Some(connector_ref)) => connector_ref,
-        (None, None) => {
-            warn!("ably: network-policy-refresh message missing connector identity");
+        None => {
+            warn!("ably: network-policy-refresh message missing connectorSlug");
             return None;
         }
     };
@@ -868,17 +851,6 @@ fn parse_network_policy_refresh_notification(
         run_id,
         connector_slug: connector_slug.to_string(),
     })
-}
-
-fn parse_network_policy_refresh_identity_field<'a>(
-    data: &'a serde_json::Value,
-    field: &str,
-) -> Result<Option<&'a str>, ()> {
-    match data.get(field) {
-        None => Ok(None),
-        Some(serde_json::Value::String(value)) if !value.is_empty() => Ok(Some(value)),
-        Some(_) => Err(()),
-    }
 }
 
 fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotification<'_>> {
@@ -1142,77 +1114,40 @@ mod tests {
 
     fn malformed_network_policy_refresh_messages(
         unrelated_name: &'static str,
-    ) -> [(&'static str, Option<&'static str>, serde_json::Value); 10] {
+    ) -> [(&'static str, Option<&'static str>, serde_json::Value); 6] {
         [
             (
                 "invalid runId",
                 Some("network-policy-refresh"),
                 serde_json::json!({
                     "runId": "not-a-uuid",
-                    "connectorRef": "github"
+                    "connectorSlug": "github"
                 }),
             ),
             (
                 "missing runId",
                 Some("network-policy-refresh"),
-                serde_json::json!({ "connectorRef": "github" }),
+                serde_json::json!({ "connectorSlug": "github" }),
             ),
             (
-                "missing connector identity",
+                "missing connectorSlug",
                 Some("network-policy-refresh"),
                 serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000003" }),
             ),
             (
-                "empty connectorRef",
+                "empty connectorSlug",
                 Some("network-policy-refresh"),
                 serde_json::json!({
                     "runId": "00000000-0000-0000-0000-000000000003",
-                    "connectorRef": ""
+                    "connectorSlug": ""
                 }),
             ),
             (
-                "empty connectorSlug with valid connectorRef",
+                "invalid connectorSlug",
                 Some("network-policy-refresh"),
                 serde_json::json!({
                     "runId": "00000000-0000-0000-0000-000000000003",
-                    "connectorSlug": "",
-                    "connectorRef": "github"
-                }),
-            ),
-            (
-                "invalid connectorSlug with valid connectorRef",
-                Some("network-policy-refresh"),
-                serde_json::json!({
-                    "runId": "00000000-0000-0000-0000-000000000003",
-                    "connectorSlug": 1,
-                    "connectorRef": "github"
-                }),
-            ),
-            (
-                "invalid connectorRef with valid connectorSlug",
-                Some("network-policy-refresh"),
-                serde_json::json!({
-                    "runId": "00000000-0000-0000-0000-000000000003",
-                    "connectorSlug": "github",
-                    "connectorRef": null
-                }),
-            ),
-            (
-                "conflicting connector identities",
-                Some("network-policy-refresh"),
-                serde_json::json!({
-                    "runId": "00000000-0000-0000-0000-000000000003",
-                    "connectorSlug": "github",
-                    "connectorRef": "slack"
-                }),
-            ),
-            (
-                "empty connectorRef with valid connectorSlug",
-                Some("network-policy-refresh"),
-                serde_json::json!({
-                    "runId": "00000000-0000-0000-0000-000000000003",
-                    "connectorSlug": "github",
-                    "connectorRef": ""
+                    "connectorSlug": 1
                 }),
             ),
             (
@@ -1220,7 +1155,7 @@ mod tests {
                 Some(unrelated_name),
                 serde_json::json!({
                     "runId": "00000000-0000-0000-0000-000000000003",
-                    "connectorRef": "github"
+                    "connectorSlug": "github"
                 }),
             ),
         ]
@@ -2176,24 +2111,17 @@ mod tests {
     }
 
     #[test]
-    fn parse_network_policy_refresh_notification_accepts_compatible_identities() {
+    fn parse_network_policy_refresh_notification_accepts_cleanup_and_bridge_messages() {
         for (case, data) in [
             (
-                "canonical only",
+                "cleanup message",
                 serde_json::json!({
                     "runId": "00000000-0000-0000-0000-000000000003",
                     "connectorSlug": "github"
                 }),
             ),
             (
-                "legacy only",
-                serde_json::json!({
-                    "runId": "00000000-0000-0000-0000-000000000003",
-                    "connectorRef": "github"
-                }),
-            ),
-            (
-                "matching dual identities",
+                "bridge message",
                 serde_json::json!({
                     "runId": "00000000-0000-0000-0000-000000000003",
                     "connectorSlug": "github",

@@ -1769,22 +1769,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn compatible_network_policy_refresh_identities_apply_policy() {
+    async fn cleanup_and_bridge_network_policy_refresh_responses_apply_policy() {
         for (case, identity) in [
             (
-                "canonical only",
+                "cleanup response",
                 json!({
                     "connectorSlug": "slack",
                 }),
             ),
             (
-                "legacy only",
-                json!({
-                    "connectorRef": "slack",
-                }),
-            ),
-            (
-                "matching dual identities",
+                "bridge response",
                 json!({
                     "connectorSlug": "slack",
                     "connectorRef": "slack",
@@ -1819,28 +1813,19 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn malformed_network_policy_refresh_identities_fail_closed() {
+    async fn malformed_canonical_network_policy_refresh_identities_fail_closed() {
         for (_, identity) in [
-            (
-                "conflicting identities",
-                json!({
-                    "connectorSlug": "slack",
-                    "connectorRef": "github",
-                }),
-            ),
             ("missing identity", json!({})),
             (
-                "invalid canonical identity with valid legacy identity",
+                "invalid canonical identity",
                 json!({
                     "connectorSlug": null,
-                    "connectorRef": "slack",
                 }),
             ),
             (
-                "empty legacy identity with valid canonical identity",
+                "empty canonical identity",
                 json!({
-                    "connectorSlug": "slack",
-                    "connectorRef": "",
+                    "connectorSlug": "",
                 }),
             ),
         ] {
@@ -1876,7 +1861,7 @@ mod tests {
                 .json_body(json!({
                     "refreshes": [
                         {
-                            "connectorRef": "slack",
+                            "connectorSlug": "slack",
                             "networkPolicy": {
                                 "allow": ["chat:write", "files:write"],
                                 "deny": [],
@@ -1886,7 +1871,7 @@ mod tests {
                             "nextRefreshAt": null,
                         },
                         {
-                            "connectorRef": "slack",
+                            "connectorSlug": "slack",
                             "networkPolicy": {
                                 "allow": ["channels:read"],
                                 "deny": ["files:write"],
@@ -1920,7 +1905,7 @@ mod tests {
                 .json_body(json!({
                     "refreshes": [
                         {
-                            "connectorRef": "slack",
+                            "connectorSlug": "slack",
                             "networkPolicy": {
                                 "allow": ["chat:write", "files:write"],
                                 "deny": [],
@@ -1982,10 +1967,7 @@ mod tests {
         let first_mock = server.mock(|when, then| {
             when.method(POST)
                 .path(format!("/api/runners/runs/{run_id}/network-policy-refresh"))
-                .json_body(json!({
-                    "connectorSlugs": first_batch,
-                    "connectorRefs": first_batch,
-                }));
+                .json_body(json!({ "connectorSlugs": first_batch }));
             then.status(500)
                 .header("content-type", "application/json")
                 .json_body(json!({
@@ -1998,10 +1980,7 @@ mod tests {
         let second_mock = server.mock(|when, then| {
             when.method(POST)
                 .path(format!("/api/runners/runs/{run_id}/network-policy-refresh"))
-                .json_body(json!({
-                    "connectorSlugs": second_batch,
-                    "connectorRefs": second_batch,
-                }));
+                .json_body(json!({ "connectorSlugs": second_batch }));
             then.status(500)
                 .header("content-type", "application/json")
                 .json_body(json!({
@@ -2065,7 +2044,7 @@ mod tests {
                 .json_body(json!({
                     "refreshes": [
                         {
-                            "connectorRef": "github",
+                            "connectorSlug": "github",
                             "networkPolicy": {
                                 "allow": ["repos:read"],
                                 "deny": [],

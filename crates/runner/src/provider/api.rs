@@ -1020,11 +1020,7 @@ impl ApiClient {
                 &self.token,
             )
             .timeout(NETWORK_POLICY_REFRESH_TIMEOUT)
-            .json(&serde_json::json!({
-                "connectorSlugs": connector_slugs,
-                // TODO(#23827): Remove after every pre-bridge API has retired.
-                "connectorRefs": connector_slugs,
-            }))
+            .json(&serde_json::json!({ "connectorSlugs": connector_slugs }))
     }
 
     pub(super) async fn resolve_builtin_firewall_catalog(
@@ -1477,7 +1473,7 @@ mod tests {
                 .body()
                 .and_then(reqwest::Body::as_bytes)
                 .expect("request should include JSON body"),
-            br#"{"connectorSlugs":["slack"],"connectorRefs":["slack"]}"#
+            br#"{"connectorSlugs":["slack"]}"#
         );
     }
 
