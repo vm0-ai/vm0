@@ -642,9 +642,7 @@ async function validateCanonicalDraftStorage(
   }>(
     `
       UPDATE "chat_threads"
-      SET
-        "draft_content" = 'canonical API draft',
-        "draft_user_message" = $2::jsonb
+      SET "draft_user_message" = $2::jsonb
       WHERE "id" = $1
       RETURNING
         "draft_user_message" AS "draftUserMessage"
@@ -2846,6 +2844,8 @@ const CANONICAL_USER_MESSAGE_PREVIOUS_MIGRATION = 727;
 const CANONICAL_USER_MESSAGE_CONTRACT_MIGRATION = 730;
 const CANONICAL_USER_MESSAGE_CLEANUP_PREVIOUS_MIGRATION = 738;
 const CANONICAL_USER_MESSAGE_CLEANUP_MIGRATION = 739;
+const DRAFT_CONTENT_CLEANUP_PREVIOUS_MIGRATION = 744;
+const DRAFT_CONTENT_CLEANUP_MIGRATION = 745;
 
 async function validateCanonicalUserMessageRolloutCompatibility(): Promise<void> {
   console.log("=== Validate canonical userMessage rollout compatibility ===\n");
@@ -3160,6 +3160,100 @@ async function validateCanonicalUserMessageContraction(): Promise<void> {
 
   console.log(
     "   ✅ Cleanup fails fast on lock contention and removes only legacy userMessage storage\n",
+  );
+}
+
+async function validateDraftContentContraction(): Promise<void> {
+  console.log("=== Validate draftContent contraction ===\n");
+
+  const testDb = "migration_draft_content_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  await createDatabase(testDb);
+
+  const blocker = new Client({ connectionString: testDbUrl });
+  const migrationClient = new Client({ connectionString: testDbUrl });
+  let blockerOpen = false;
+
+  try {
+    await runMigrationsUpTo(
+      testDbUrl,
+      DRAFT_CONTENT_CLEANUP_PREVIOUS_MIGRATION,
+    );
+    await blocker.connect();
+    await migrationClient.connect();
+
+    await blocker.query("BEGIN");
+    blockerOpen = true;
+    await blocker.query(`LOCK TABLE "chat_threads" IN ACCESS SHARE MODE`);
+
+    try {
+      await applyMigrationsUpToInTransaction(
+        migrationClient,
+        DRAFT_CONTENT_CLEANUP_MIGRATION,
+      );
+      assert.fail("draftContent cleanup waited for a table lock");
+    } catch (error) {
+      assert.equal(databaseErrorCode(error), "55P03");
+    }
+
+    await blocker.query("ROLLBACK");
+    blockerOpen = false;
+
+    await applyMigrationsUpToInTransaction(
+      migrationClient,
+      DRAFT_CONTENT_CLEANUP_MIGRATION,
+    );
+
+    const legacyColumns = await migrationClient.query<{
+      column_name: string;
+      table_name: string;
+    }>(`
+      SELECT table_name, column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name IN ('chat_threads', 'zero_agent_drafts')
+        AND column_name = 'draft_content'
+    `);
+    assert.deepEqual(legacyColumns.rows, []);
+
+    const constraints = await migrationClient.query<{
+      definition: string;
+      name: string;
+      validated: boolean;
+    }>(`
+      SELECT
+        constraint_record.conname AS "name",
+        constraint_record.convalidated AS "validated",
+        pg_get_constraintdef(constraint_record.oid) AS "definition"
+      FROM pg_constraint AS constraint_record
+      WHERE constraint_record.conname IN (
+        'chat_threads_draft_user_message_check',
+        'zero_agent_drafts_draft_user_message_check'
+      )
+      ORDER BY constraint_record.conname
+    `);
+    assert.equal(constraints.rows.length, 2);
+    assert.ok(
+      constraints.rows.every((constraint) => {
+        return (
+          constraint.validated &&
+          constraint.definition.includes("draft_user_message") &&
+          constraint.definition.includes("draft_attachments") &&
+          !constraint.definition.includes("draft_content")
+        );
+      }),
+    );
+  } finally {
+    if (blockerOpen) {
+      await blocker.query("ROLLBACK");
+    }
+    await blocker.end();
+    await migrationClient.end();
+    await dropDatabase(testDb);
+  }
+
+  console.log(
+    "   ✅ Cleanup validates without a blocking table scan, fails fast on lock contention, and removes both draftContent columns\n",
   );
 }
 
@@ -8966,6 +9060,7 @@ async function main(): Promise<void> {
     await validateUserMessageBackfillAndContract();
     await validateCanonicalUserMessageRolloutCompatibility();
     await validateCanonicalUserMessageContraction();
+    await validateDraftContentContraction();
     await validateChatEventQueueContraction();
     await validateChatMessageRoleContraction();
     await validateChatEventTableRename();

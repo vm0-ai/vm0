@@ -39,7 +39,6 @@ const getAgentDraftInner$ = computed(async (get) => {
 
   const [draft] = await get(db$)
     .select({
-      draftContent: zeroAgentDrafts.draftContent,
       draftUserMessage: zeroAgentDrafts.draftUserMessage,
       draftAttachments: zeroAgentDrafts.draftAttachments,
     })
@@ -56,7 +55,6 @@ const getAgentDraftInner$ = computed(async (get) => {
   return {
     status: 200 as const,
     body: {
-      draftContent: draft?.draftContent ?? null,
       draftUserMessage: draft?.draftUserMessage ?? null,
       draftAttachments: draft?.draftAttachments ?? null,
     },
@@ -86,13 +84,11 @@ const patchAgentDraftInner$ = command(
       return agentNotFound(params.id);
     }
 
-    const draftContent = bodyResult.data.draftContent ?? null;
     const draftAttachments = bodyResult.data.draftAttachments ?? null;
     const draftUserMessage = bodyResult.data.draftUserMessage;
     const writeDb = set(writeDb$);
 
     if (
-      !draftContent &&
       !draftUserMessage &&
       !(draftAttachments && draftAttachments.length > 0)
     ) {
@@ -116,7 +112,6 @@ const patchAgentDraftInner$ = command(
         userId: auth.userId,
         orgId: auth.orgId,
         agentId: params.id,
-        draftContent,
         draftUserMessage,
         draftAttachments,
         updatedAt,
@@ -128,7 +123,6 @@ const patchAgentDraftInner$ = command(
           zeroAgentDrafts.agentId,
         ],
         set: {
-          draftContent,
           draftUserMessage,
           draftAttachments,
           updatedAt,

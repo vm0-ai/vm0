@@ -76,7 +76,6 @@ import {
   isNotNull,
   isNull,
   lt,
-  ne,
   not,
   notExists,
   or,
@@ -115,7 +114,6 @@ import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
 import {
-  maybeCreateUserMessageDocument,
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
@@ -267,7 +265,6 @@ type ChatThreadRow = {
   readonly id: string;
   readonly title: string | null;
   readonly agentComposeId: string;
-  readonly draftContent: string | null;
   readonly draftUserMessage: UserMessageDocument | null;
   readonly draftAttachments: readonly PersistedAttachment[] | null;
   readonly modelProviderId: string | null;
@@ -523,7 +520,6 @@ function ownedChatThread(
         id: chatThreads.id,
         title: chatThreads.title,
         agentComposeId: chatThreads.agentComposeId,
-        draftContent: chatThreads.draftContent,
         draftUserMessage: chatThreads.draftUserMessage,
         draftAttachments: chatThreads.draftAttachments,
         computerUseHostId: chatThreads.computerUseHostId,
@@ -553,7 +549,6 @@ function ownedChatThread(
       id: thread.id,
       title: thread.title,
       agentComposeId: thread.agentComposeId,
-      draftContent: thread.draftContent ?? null,
       draftUserMessage: thread.draftUserMessage ?? null,
       draftAttachments: persistedAttachmentSchema
         .array()
@@ -591,7 +586,6 @@ export function zeroChatThreadDraft(args: {
     }
 
     return {
-      draftContent: thread.draftContent,
       draftUserMessage: thread.draftUserMessage,
       draftAttachments: thread.draftAttachments
         ? [...thread.draftAttachments]
@@ -1244,7 +1238,7 @@ export function zeroChatThreadActiveRunThreadIds(args: {
 
 /**
  * Thread ids owned by the user that currently hold an unsent composer draft
- * (non-empty `draftContent`, a user message, or one+ `draftAttachments`).
+ * (a canonical user message with optional `draftAttachments`).
  */
 export function zeroChatThreadDraftIds(args: {
   readonly userId: string;
@@ -1257,17 +1251,7 @@ export function zeroChatThreadDraftIds(args: {
       .where(
         and(
           eq(chatThreads.userId, args.userId),
-          or(
-            ne(sql`COALESCE(${chatThreads.draftContent}, '')`, sql`''`),
-            isNotNull(chatThreads.draftUserMessage),
-            and(
-              isNotNull(chatThreads.draftAttachments),
-              gt(
-                sql`jsonb_array_length(${chatThreads.draftAttachments})`,
-                sql`0`,
-              ),
-            ),
-          ),
+          isNotNull(chatThreads.draftUserMessage),
         ),
       );
     return rows.map((row) => {
@@ -2538,24 +2522,16 @@ export const updateChatThreadDraft$ = command(
     args: {
       readonly threadId: string;
       readonly userId: string;
-      readonly draftContent: string | null;
       readonly draftUserMessage: UserMessageDocument | null;
       readonly draftAttachments: readonly PersistedAttachment[] | null;
     },
     signal: AbortSignal,
   ): Promise<{ readonly updated: boolean }> => {
     const writeDb = set(writeDb$);
-    const draftUserMessage =
-      args.draftUserMessage ??
-      maybeCreateUserMessageDocument({
-        text: args.draftContent,
-        files: args.draftAttachments ?? undefined,
-      });
     const updated = await writeDb
       .update(chatThreads)
       .set({
-        draftContent: args.draftContent,
-        draftUserMessage,
+        draftUserMessage: args.draftUserMessage,
         draftAttachments: args.draftAttachments
           ? [...args.draftAttachments]
           : null,

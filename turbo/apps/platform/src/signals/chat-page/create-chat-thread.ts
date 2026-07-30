@@ -1164,7 +1164,6 @@ function createDraftSync(
         dataSource.patchDraft$,
         {
           threadId,
-          content: null,
           userMessage: null,
           attachments: null,
         },

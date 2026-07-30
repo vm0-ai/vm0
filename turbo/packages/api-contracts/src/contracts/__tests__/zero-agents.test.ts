@@ -14,7 +14,6 @@ describe("zero agent draft contract", () => {
 
     expect(
       zeroAgentDraftResponseSchema.safeParse({
-        draftContent: "Resume agent work",
         draftStructuredPrompt: userMessage,
         draftAttachments: null,
       }).success,
@@ -24,14 +23,12 @@ describe("zero agent draft contract", () => {
   it("requires userMessage for non-empty agent drafts", () => {
     expect(
       zeroAgentDraftRequestSchema.safeParse({
-        draftContent: null,
         draftUserMessage: null,
         draftAttachments: null,
       }),
     ).toMatchObject({ success: true });
     expect(
       zeroAgentDraftRequestSchema.safeParse({
-        draftContent: null,
         draftUserMessage: null,
         draftAttachments: [
           {

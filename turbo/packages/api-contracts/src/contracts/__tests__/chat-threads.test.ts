@@ -130,7 +130,6 @@ describe("chat message response contract", () => {
 
     expect(
       chatThreadDraftSchema.safeParse({
-        draftContent: "Resume the draft",
         draftStructuredPrompt: userMessage,
         draftAttachments: null,
       }).success,
@@ -140,16 +139,22 @@ describe("chat message response contract", () => {
   it("requires userMessage for non-empty thread drafts", () => {
     expect(
       chatThreadByIdContract.patch.body.safeParse({
-        draftContent: null,
         draftUserMessage: null,
         draftAttachments: null,
       }),
     ).toMatchObject({ success: true });
     expect(
       chatThreadByIdContract.patch.body.safeParse({
-        draftContent: "Resume the draft",
         draftUserMessage: null,
-        draftAttachments: null,
+        draftAttachments: [
+          {
+            id: "draft-file",
+            filename: "brief.md",
+            contentType: "text/markdown",
+            size: 42,
+            url: "https://example.com/brief.md",
+          },
+        ],
       }),
     ).toMatchObject({
       success: false,

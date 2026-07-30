@@ -843,7 +843,6 @@ describe("chat lifecycle", () => {
       });
       await waitFor(() => {
         expect(draftPatches).toContainEqual({
-          draftContent: "Summarize the standup",
           draftUserMessage: {
             version: 1,
             parts: [{ type: "text", text: "Summarize the standup" }],
@@ -913,7 +912,6 @@ describe("chat lifecycle", () => {
     expect(uploadedAudio).toStrictEqual(["voice-1"]);
     await waitFor(() => {
       expect(draftPatches).toContainEqual({
-        draftContent: "First sentence",
         draftUserMessage: {
           version: 1,
           parts: [{ type: "text", text: "First sentence" }],

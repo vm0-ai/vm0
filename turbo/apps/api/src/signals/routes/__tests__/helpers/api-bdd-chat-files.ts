@@ -608,15 +608,11 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
       threadId: string,
       body: {
-        readonly draftContent?: string | null;
         readonly draftUserMessage: UserMessageDocument | null;
         readonly draftAttachments?: readonly PersistedAttachment[] | null;
       },
     ): Promise<void> {
       const requestBody = {
-        ...(body.draftContent === undefined
-          ? {}
-          : { draftContent: body.draftContent }),
         draftUserMessage: body.draftUserMessage,
         ...(body.draftAttachments === undefined
           ? {}
@@ -641,7 +637,6 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       threadId: string,
       body: {
-        readonly draftContent?: string | null;
         readonly draftUserMessage: UserMessageDocument | null;
         readonly draftAttachments?: readonly PersistedAttachment[] | null;
       },
@@ -652,9 +647,6 @@ export function createChatFilesBddApi(context: TestContext) {
           headers: authenticate(context, actor),
           params: { id: threadId },
           body: {
-            ...(body.draftContent === undefined
-              ? {}
-              : { draftContent: body.draftContent }),
             draftUserMessage: body.draftUserMessage,
             ...(body.draftAttachments === undefined
               ? {}

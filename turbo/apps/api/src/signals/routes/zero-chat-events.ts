@@ -1572,7 +1572,6 @@ function appendUnassociatedUserMessage(params: {
     await tx
       .update(chatThreads)
       .set({
-        draftContent: null,
         draftUserMessage: null,
         draftAttachments: null,
       })
@@ -1668,7 +1667,6 @@ async function clearThreadDraft(
   await tx
     .update(chatThreads)
     .set({
-      draftContent: null,
       draftUserMessage: null,
       draftAttachments: null,
     })
@@ -2833,7 +2831,6 @@ async function appendInsufficientCreditsEvents(params: {
     await tx
       .update(chatThreads)
       .set({
-        draftContent: null,
         draftUserMessage: null,
         draftAttachments: null,
       })
