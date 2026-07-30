@@ -4,7 +4,7 @@ import contextlib
 import json
 import threading
 from collections import deque
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -29,6 +29,24 @@ class AuthEndpointResponse:
     body: bytes
     headers: tuple[tuple[str, str], ...] = ()
     release_event: threading.Event | None = None
+
+
+def firewall_auth_success_response(
+    headers: Mapping[str, str],
+    *,
+    expires_at: int | float | None = None,
+    resolved_secrets: Sequence[str] = (),
+    refreshed_connectors: Sequence[str] = (),
+    refreshed_secrets: Sequence[str] = (),
+) -> dict[str, object]:
+    """Build the canonical required shape for a successful firewall auth response."""
+    return {
+        "headers": dict(headers),
+        "expiresAt": expires_at,
+        "resolvedSecrets": list(resolved_secrets),
+        "refreshedConnectors": list(refreshed_connectors),
+        "refreshedSecrets": list(refreshed_secrets),
+    }
 
 
 class FakeAuthEndpoint:

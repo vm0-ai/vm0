@@ -5286,6 +5286,27 @@
       "when": 1785402433504,
       "tag": "0754_expand_insights_connector_slug",
       "breakpoints": true
+    },
+    {
+      "idx": 755,
+      "version": "7",
+      "when": 1785402433505,
+      "tag": "0755_expand_revokes_event_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 756,
+      "version": "7",
+      "when": 1785402433506,
+      "tag": "0756_expand_last_chat_event_seq_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 757,
+      "version": "7",
+      "when": 1785402433507,
+      "tag": "0757_expand_first_assistant_event_acknowledged_at",
+      "breakpoints": true
     }
   ]
 }
