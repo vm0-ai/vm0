@@ -70,6 +70,7 @@ async def test_replaces_unauthenticated_connector_401_body(tmp_path, real_flow, 
     assert entry["action"] == "ALLOW"
     assert entry["status"] == 401
     assert entry["firewall_error"] == "connector_not_configured_for_run"
+    assert entry["connector_diagnostic_slug"] == "fal"
     assert entry["connector_diagnostic_type"] == "fal"
     assert entry["connector_diagnostic_reason"] == "not_configured_for_run"
     assert entry["connector_diagnostic_env_names"] == ["FAL_TOKEN"]
@@ -326,6 +327,7 @@ def test_streamed_connector_401_before_request_gets_diagnostic(tmp_path, real_fl
     assert entry["status"] == 401
     assert entry["request_size"] == len(b"partial request")
     assert entry["firewall_error"] == "connector_not_configured_for_run"
+    assert entry["connector_diagnostic_slug"] == "fal"
     assert entry["connector_diagnostic_type"] == "fal"
     assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
     assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
@@ -666,7 +668,7 @@ async def test_preserves_connector_401_body_when_user_auth_is_present(
             content=b"upstream auth error",
         )
         mitm_addon.responseheaders(flow)
-        assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+        assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
         assert metadata_keys.CONNECTOR_DIAGNOSTIC_REASON not in flow.metadata
         assert metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES not in flow.metadata
         assert metadata_keys.CONNECTOR_DIAGNOSTIC_BASE not in flow.metadata
@@ -693,7 +695,7 @@ async def test_preserves_model_provider_401_body_without_connector_diagnostic(
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         await mitm_addon.request(flow)
-        assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+        assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
         flow.response = tutils.tresp(
             status_code=401,
             headers=header_map({"content-type": "application/json"}),
@@ -758,7 +760,7 @@ async def test_cached_connector_candidate_keeps_specific_query_auth_hint(
             content=b"upstream query auth error",
         )
         mitm_addon.responseheaders(flow)
-        flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE] = "openweather"
+        flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG] = "openweather"
         flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_REASON] = "not_configured_for_run"
         flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_ENV_NAMES] = ["OPENWEATHER_TOKEN"]
         flow.metadata[metadata_keys.CONNECTOR_DIAGNOSTIC_BASE] = "https://api.openweathermap.org"

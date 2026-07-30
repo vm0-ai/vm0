@@ -26,7 +26,10 @@ import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import { useTranslation } from "react-i18next";
 
+import { resolvedAppLocale } from "../../i18n/format.ts";
+import { i18n } from "../../i18n/index.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
@@ -48,7 +51,14 @@ function copyValue(value: string, label: string): void {
   detach(
     (async () => {
       if (await writeToClipboard(value)) {
-        toast.success(`${label} copied`);
+        toast.success(
+          i18n.t(
+            ($) => {
+              return $.connectors.providerSettings.strapi.copied;
+            },
+            { label },
+          ),
+        );
       }
     })(),
     Reason.DomCallback,
@@ -62,6 +72,7 @@ function CopyField({
   readonly label: string;
   readonly value: string;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="space-y-2">
       <div className="text-xs font-medium text-muted-foreground">{label}</div>
@@ -78,7 +89,9 @@ function CopyField({
           }}
         >
           <IconCopy size={14} />
-          Copy
+          {t(($) => {
+            return $.connectors.providerSettings.strapi.actions.copy;
+          })}
         </Button>
       </div>
     </div>
@@ -86,7 +99,11 @@ function CopyField({
 }
 
 function formatTimestamp(value: string | null): string {
-  return value ? new Date(value).toLocaleString() : "Not received";
+  return value
+    ? new Date(value).toLocaleString(resolvedAppLocale())
+    : i18n.t(($) => {
+        return $.connectors.providerSettings.strapi.notReceived;
+      });
 }
 
 function StrapiIntegrationHeader({
@@ -94,6 +111,7 @@ function StrapiIntegrationHeader({
 }: {
   readonly integration: StrapiIntegration;
 }) {
+  const { t } = useTranslation();
   return (
     <div className="flex items-start gap-4 p-4">
       <div className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#4945ff]/10 text-[#4945ff]">
@@ -108,9 +126,102 @@ function StrapiIntegrationHeader({
       {integration.lastTestedAt ? (
         <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-border px-2 py-1 text-xs font-medium">
           <IconCircleCheck size={14} className="text-green-600" />
-          Webhook tested
+          {t(($) => {
+            return $.connectors.providerSettings.strapi.tested;
+          })}
         </span>
       ) : null}
+    </div>
+  );
+}
+
+function StrapiAdminActions({
+  integrationId,
+}: {
+  readonly integrationId: string;
+}) {
+  const { t } = useTranslation();
+  const pageSignal = useGet(pageSignal$);
+  const [checkLoadable, checkTest] = useLoadableSet(
+    checkStrapiIntegrationTest$,
+  );
+  const [removeLoadable, remove] = useLoadableSet(removeStrapiIntegration$);
+  const checking = checkLoadable.state === "loading";
+  const removing = removeLoadable.state === "loading";
+
+  return (
+    <div className="flex items-center gap-2">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        disabled={checking}
+        onClick={() => {
+          return detach(
+            checkTest(integrationId, pageSignal),
+            Reason.DomCallback,
+          );
+        }}
+      >
+        {checking ? <IconLoader2 size={14} className="animate-spin" /> : null}
+        {t(($) => {
+          return $.connectors.providerSettings.strapi.actions.checkTest;
+        })}
+      </Button>
+      <Dialog>
+        <DialogTrigger asChild>
+          <Button type="button" variant="ghost" size="sm">
+            <IconTrash size={14} />
+            {t(($) => {
+              return $.connectors.providerSettings.strapi.actions.remove;
+            })}
+          </Button>
+        </DialogTrigger>
+        <DialogContent
+          closeLabel={t(($) => {
+            return $.connectors.actions.close;
+          })}
+        >
+          <DialogHeader>
+            <DialogTitle>
+              {t(($) => {
+                return $.connectors.providerSettings.strapi.removeTitle;
+              })}
+            </DialogTitle>
+            <DialogDescription>
+              {t(($) => {
+                return $.connectors.providerSettings.strapi.removeDescription;
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="outline">
+                {t(($) => {
+                  return $.connectors.providerSettings.strapi.actions.cancel;
+                })}
+              </Button>
+            </DialogClose>
+            <DialogClose asChild>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={removing}
+                onClick={() => {
+                  return detach(
+                    remove(integrationId, pageSignal),
+                    Reason.DomCallback,
+                  );
+                }}
+              >
+                {t(($) => {
+                  return $.connectors.providerSettings.strapi.actions.remove;
+                })}
+              </Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -122,29 +233,31 @@ function StrapiIntegrationCard({
   readonly integration: StrapiIntegration;
   readonly isAdmin: boolean;
 }) {
+  const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
   const revealed = useGet(strapiRevealedSecret$);
   const [revealLoadable, reveal] = useLoadableSet(
     revealStrapiIntegrationSecret$,
   );
-  const [checkLoadable, checkTest] = useLoadableSet(
-    checkStrapiIntegrationTest$,
-  );
-  const [removeLoadable, remove] = useLoadableSet(removeStrapiIntegration$);
   const showingSecret = revealed?.integrationId === integration.id;
   const revealing = revealLoadable.state === "loading";
-  const checking = checkLoadable.state === "loading";
-  const removing = removeLoadable.state === "loading";
 
   return (
     <div className="zero-card overflow-hidden">
       <StrapiIntegrationHeader integration={integration} />
 
       <div className="space-y-4 border-t border-border/60 p-4">
-        <CopyField label="Webhook URL" value={integration.webhookUrl} />
+        <CopyField
+          label={t(($) => {
+            return $.connectors.providerSettings.strapi.webhookUrl;
+          })}
+          value={integration.webhookUrl}
+        />
         {showingSecret && revealed ? (
           <CopyField
-            label="Authorization header"
+            label={t(($) => {
+              return $.connectors.providerSettings.strapi.authorizationHeader;
+            })}
             value={revealed.authorizationHeader}
           />
         ) : isAdmin ? (
@@ -163,84 +276,40 @@ function StrapiIntegrationCard({
             {revealing ? (
               <IconLoader2 size={14} className="animate-spin" />
             ) : null}
-            Reveal authorization header
+            {t(($) => {
+              return $.connectors.providerSettings.strapi.actions
+                .revealAuthorization;
+            })}
           </Button>
         ) : null}
 
         <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm text-muted-foreground">
-          In Strapi, open{" "}
-          <strong className="text-foreground">Settings → Webhooks</strong>, add
-          this URL and Authorization header, select <code>entry.publish</code>,
-          then click <strong className="text-foreground">Trigger</strong> to
-          send a Strapi test webhook.
+          {t(($) => {
+            return $.connectors.providerSettings.strapi.instructions;
+          })}
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-0.5 text-xs text-muted-foreground">
-            <div>Last test: {formatTimestamp(integration.lastTestedAt)}</div>
             <div>
-              Last publish: {formatTimestamp(integration.lastReceivedAt)}
+              {t(
+                ($) => {
+                  return $.connectors.providerSettings.strapi.lastTest;
+                },
+                { date: formatTimestamp(integration.lastTestedAt) },
+              )}
+            </div>
+            <div>
+              {t(
+                ($) => {
+                  return $.connectors.providerSettings.strapi.lastPublish;
+                },
+                { date: formatTimestamp(integration.lastReceivedAt) },
+              )}
             </div>
           </div>
           {isAdmin ? (
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={checking}
-                onClick={() => {
-                  return detach(
-                    checkTest(integration.id, pageSignal),
-                    Reason.DomCallback,
-                  );
-                }}
-              >
-                {checking ? (
-                  <IconLoader2 size={14} className="animate-spin" />
-                ) : null}
-                Check test
-              </Button>
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button type="button" variant="ghost" size="sm">
-                    <IconTrash size={14} />
-                    Remove
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Remove Strapi integration?</DialogTitle>
-                    <DialogDescription>
-                      Remove its workflow automations first. Strapi webhook
-                      requests to this URL will stop working.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <DialogFooter>
-                    <DialogClose asChild>
-                      <Button type="button" variant="outline">
-                        Cancel
-                      </Button>
-                    </DialogClose>
-                    <DialogClose asChild>
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        disabled={removing}
-                        onClick={() => {
-                          return detach(
-                            remove(integration.id, pageSignal),
-                            Reason.DomCallback,
-                          );
-                        }}
-                      >
-                        Remove
-                      </Button>
-                    </DialogClose>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            </div>
+            <StrapiAdminActions integrationId={integration.id} />
           ) : null}
         </div>
       </div>
@@ -249,6 +318,7 @@ function StrapiIntegrationCard({
 }
 
 function StrapiIntegrationForm() {
+  const { t } = useTranslation();
   const pageSignal = useGet(pageSignal$);
   const form = useGet(strapiIntegrationForm$);
   const updateForm = useSet(updateStrapiIntegrationForm$);
@@ -262,23 +332,31 @@ function StrapiIntegrationForm() {
     <form className="zero-card space-y-4 p-4" onSubmit={submit}>
       <div>
         <h2 className="text-sm font-medium text-foreground">
-          Add Strapi instance
+          {t(($) => {
+            return $.connectors.providerSettings.strapi.addTitle;
+          })}
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          One integration can serve multiple workflow automations.
+          {t(($) => {
+            return $.connectors.providerSettings.strapi.addDescription;
+          })}
         </p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <label htmlFor="strapi-name" className="text-sm font-medium">
-            Name
+            {t(($) => {
+              return $.connectors.providerSettings.strapi.form.name;
+            })}
           </label>
           <Input
             id="strapi-name"
             value={form.name}
             required
             maxLength={128}
-            placeholder="Company CMS"
+            placeholder={t(($) => {
+              return $.connectors.providerSettings.strapi.form.namePlaceholder;
+            })}
             disabled={creating}
             onChange={(event) => {
               updateForm({ name: event.target.value });
@@ -287,7 +365,9 @@ function StrapiIntegrationForm() {
         </div>
         <div className="space-y-2">
           <label htmlFor="strapi-url" className="text-sm font-medium">
-            Strapi URL
+            {t(($) => {
+              return $.connectors.providerSettings.strapi.form.url;
+            })}
           </label>
           <Input
             id="strapi-url"
@@ -308,13 +388,16 @@ function StrapiIntegrationForm() {
         ) : (
           <IconPlus size={16} />
         )}
-        Create integration
+        {t(($) => {
+          return $.connectors.providerSettings.strapi.actions.create;
+        })}
       </Button>
     </form>
   );
 }
 
 export function ZeroStrapiSettingsPage() {
+  const { t } = useTranslation();
   const integrationsLoadable = useLastLoadable(strapiIntegrations$);
   const adminLoadable = useLastLoadable(isOrgAdmin$);
   const isAdmin =
@@ -331,12 +414,19 @@ export function ZeroStrapiSettingsPage() {
             className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
           >
             <IconArrowLeft size={16} />
-            Where Zero works
+            {t(($) => {
+              return $.connectors.providerSettings.strapi.whereZeroWorks;
+            })}
           </Link>
-          <h1 className="text-lg font-semibold tracking-tight">Strapi</h1>
+          <h1 className="text-lg font-semibold tracking-tight">
+            {t(($) => {
+              return $.connectors.providerSettings.strapi.title;
+            })}
+          </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Let Zero react to published Strapi entries and automate downstream
-            work.
+            {t(($) => {
+              return $.connectors.providerSettings.strapi.description;
+            })}
           </p>
         </div>
       </header>
@@ -346,7 +436,9 @@ export function ZeroStrapiSettingsPage() {
             <StrapiIntegrationForm />
           ) : (
             <div className="zero-card p-4 text-sm text-muted-foreground">
-              Ask an organization admin to add or update Strapi integrations.
+              {t(($) => {
+                return $.connectors.providerSettings.strapi.adminRequired;
+              })}
             </div>
           )}
           {integrations === null ? (
@@ -357,7 +449,9 @@ export function ZeroStrapiSettingsPage() {
             </div>
           ) : integrations.length === 0 ? (
             <div className="zero-card p-6 text-center text-sm text-muted-foreground">
-              No Strapi instances connected yet.
+              {t(($) => {
+                return $.connectors.providerSettings.strapi.empty;
+              })}
             </div>
           ) : (
             integrations.map((integration) => {

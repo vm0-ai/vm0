@@ -95,7 +95,7 @@ describe("GitHub zero file integration routes", () => {
   }
 
   /**
-   * Creates a real run for the fixture agent through POST /api/zero/runs.
+   * Creates a real run for the fixture agent through the test-only adapter.
    * Run admission needs org credits, granted through the Stripe webhook
    * product path; the agent compose head is updated (through the product
    * compose upsert) to declare an inline ANTHROPIC_API_KEY so run creation

@@ -17,6 +17,7 @@ import { equalArrays } from "../../lib/equality.ts";
 import { now } from "../../lib/time.ts";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
+import { resolvedAppLocale } from "../../i18n/format.ts";
 import { i18n } from "../../i18n/index.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
@@ -403,7 +404,7 @@ function ArtifactsButtonInner({ thread }: { thread: ChatThreadSignals }) {
 // automation.
 export function AutomationMenuButton({
   thread,
-  ariaLabel = "Automations",
+  ariaLabel,
 }: {
   thread: ChatThreadSignals;
   ariaLabel?: string;
@@ -926,7 +927,7 @@ function ChatThreadEmojiGrid({
 }
 
 function formatChatTimestamp(value: string): string {
-  return new Date(value).toLocaleString("en-US", {
+  return new Date(value).toLocaleString(resolvedAppLocale(), {
     month: "short",
     day: "numeric",
     hour: "numeric",
@@ -4323,7 +4324,7 @@ function ChatEventSkeletonPair({ compact = false }: { compact?: boolean }) {
     <>
       {/* User bubble skeleton */}
       <div
-        data-chat-message-skeleton="user"
+        data-chat-event-skeleton="user"
         aria-hidden
         className="flex justify-end"
       >
@@ -4333,7 +4334,7 @@ function ChatEventSkeletonPair({ compact = false }: { compact?: boolean }) {
       </div>
       {/* Assistant bubble skeleton */}
       <div
-        data-chat-message-skeleton="assistant"
+        data-chat-event-skeleton="assistant"
         aria-hidden
         className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start"
       >
@@ -7626,7 +7627,7 @@ function PagedAssistantGroup({
     return null;
   }
 
-  const groupElementId = `chat-message-group-${group.beginEventId}`;
+  const groupElementId = `chat-event-group-${group.beginEventId}`;
   const fullContent = group.events
     .map((m) => {
       return m.content;
@@ -7916,7 +7917,7 @@ function PagedGroupPrimaryActions({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="flex items-center gap-1" data-testid="chat-message-actions">
+    <div className="flex items-center gap-1" data-testid="chat-event-actions">
       {firstRunId && (
         <TooltipProvider delayDuration={300}>
           <Tooltip>

@@ -88,7 +88,7 @@ async function workflowAutomationRuns(threadId: string, automationId: string) {
   return events.filter((event) => {
     return (
       event.eventType === "input.prompt" &&
-      chatEventDisplayText(event) === `/${WORKFLOW_NAME}` &&
+      chatEventDisplayText(event)?.startsWith(`/${WORKFLOW_NAME}`) === true &&
       event.workflowSnapshot?.automationId === automationId
     );
   });

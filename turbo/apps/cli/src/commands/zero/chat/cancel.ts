@@ -73,7 +73,7 @@ Examples:
 
 Notes:
   - --run-id and --event-id are mutually exclusive
-  - Authenticates via ZERO_TOKEN (requires chat-thread:read and chat-message:write capabilities)`,
+  - Authenticates via ZERO_TOKEN (requires chat-thread:read and chat-event:write capabilities)`,
   )
   .action(
     withErrorHandler(async (options: CancelOptions) => {

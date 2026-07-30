@@ -40,6 +40,10 @@ import { createUserMessageDocument } from "./zero-chat-user-message.service";
 const WORKFLOW_QUEUE_EVENT_PARAMS_KEY = "__workflow_queue_event_params__";
 const automationEventRevoker = alias(chatEvents, "automation_event_revoker");
 
+export type WorkflowQueueAdmissionTransaction = Parameters<
+  Parameters<Db["transaction"]>[0]
+>[0];
+
 const workflowQueueEventParamsWireSchema = z.object({
   version: z.literal(1),
   prompt: z.string().optional(),
@@ -101,11 +105,22 @@ export async function decryptWorkflowQueueEventParams(
   return workflowQueueEventParamsWireSchema.parse(JSON.parse(raw));
 }
 
-function chatEventQueueAdmissionLock(chatThreadId: string) {
-  // Keep the advisory namespace stable while API revisions overlap. This is
-  // only a lock identifier; the contracted queue table is never accessed.
+async function chatEventQueueAdmissionLock(
+  tx: WorkflowQueueAdmissionTransaction,
+  chatThreadId: string,
+): Promise<void> {
+  // Release 1 of the two-phase namespace migration: every admission acquires
+  // the legacy key before the canonical key while API revisions overlap.
+  // Release 2 may drop the legacy key only after Release 1 is fully rolled out
+  // and its rollback target has drained.
   const compatibilityKey = `chat_message_queue:${chatThreadId}`;
-  return sql`SELECT pg_advisory_xact_lock(hashtext(${compatibilityKey}))`;
+  const canonicalKey = `chat_event_queue:${chatThreadId}`;
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtext(${compatibilityKey}))`,
+  );
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtext(${canonicalKey}))`,
+  );
 }
 
 /** Any active thread-bound run preserves strict per-thread serialization. */
@@ -158,10 +173,6 @@ type WorkflowQueueAdmissionAttempt =
   | WorkflowQueueAdmission
   | { readonly kind: "payload-required" };
 
-export type WorkflowQueueAdmissionTransaction = Parameters<
-  Parameters<Db["transaction"]>[0]
->[0];
-
 export type PersistWorkflowQueueSourceTransition = (
   tx: WorkflowQueueAdmissionTransaction,
 ) => Promise<void>;
@@ -187,7 +198,7 @@ async function attemptWorkflowQueueAdmission(
 ): Promise<WorkflowQueueAdmissionAttempt> {
   const { automation } = args;
   return await db.transaction(async (tx) => {
-    await tx.execute(chatEventQueueAdmissionLock(args.chatThreadId));
+    await chatEventQueueAdmissionLock(tx, args.chatThreadId);
 
     if (
       args.coalescePendingScheduleRun &&
@@ -287,7 +298,7 @@ export async function loadNextWorkflowQueueEvent(
   queueItemCreatedBefore?: Date,
 ): Promise<PendingWorkflowQueueEvent | null> {
   return await db.transaction(async (tx) => {
-    await tx.execute(chatEventQueueAdmissionLock(chatThreadId));
+    await chatEventQueueAdmissionLock(tx, chatThreadId);
     if (await hasPendingUserChatQueueEvent(tx, chatThreadId)) {
       return null;
     }
@@ -312,10 +323,7 @@ export async function loadNextWorkflowQueueEvent(
         chatThreadId: chatEvents.chatThreadId,
         triggerSource: chatEvents.triggerSource,
         triggerBrief: chatEvents.triggerBrief,
-        encryptedParams: sql`COALESCE(
-          ${chatInputQueueParams.encryptedParams},
-          ${chatEvents.encryptedParams}
-        )`.mapWith(chatEvents.encryptedParams),
+        encryptedParams: chatInputQueueParams.encryptedParams,
         createdAt: chatEvents.createdAt,
       })
       .from(chatEvents)

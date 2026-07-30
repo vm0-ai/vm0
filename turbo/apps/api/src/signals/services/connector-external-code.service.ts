@@ -22,7 +22,7 @@ import {
   type ConnectorAuthProviderGrantResult,
 } from "@vm0/connectors/auth-providers";
 import { isOAuthProviderHttpError } from "@vm0/connectors/auth-providers/oauth/error";
-import { connectorSlugLegacyInsertExternalCodeSessions } from "@vm0/db/compat/connector-slug-legacy-insert";
+import { connectorSlugCanonicalInsertExternalCodeSessions } from "@vm0/db/compat/connector-slug-canonical-insert";
 import { connectorExternalCodeSessions } from "@vm0/db/schema/connector-external-code-session";
 import { command } from "ccstate";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
@@ -66,7 +66,7 @@ const externalCodeSessionSelection = Object.freeze({
   userId: connectorExternalCodeSessions.userId,
   agentId: connectorExternalCodeSessions.agentId,
   authorizeAgent: connectorExternalCodeSessions.authorizeAgent,
-  connectorType: connectorExternalCodeSessions.connectorType,
+  connectorType: connectorExternalCodeSessions.connectorSlug,
   authMethod: connectorExternalCodeSessions.authMethod,
   status: connectorExternalCodeSessions.status,
   sessionTokenHash: connectorExternalCodeSessions.sessionTokenHash,
@@ -82,8 +82,10 @@ const externalCodeSessionSelection = Object.freeze({
 
 type ExternalCodeSessionRow = Omit<
   typeof connectorExternalCodeSessions.$inferSelect,
-  "connectorSlug"
->;
+  "connectorSlug" | "legacyConnectorType"
+> & {
+  readonly connectorType: typeof connectorExternalCodeSessions.$inferSelect.connectorSlug;
+};
 
 type ExternalCodeSessionOwner = {
   readonly connectorSlug: ConnectorSlug;
@@ -256,7 +258,7 @@ async function markPendingSessionsSuperseded(
       and(
         eq(connectorExternalCodeSessions.orgId, args.orgId),
         eq(connectorExternalCodeSessions.userId, args.userId),
-        eq(connectorExternalCodeSessions.connectorType, args.connectorSlug),
+        eq(connectorExternalCodeSessions.connectorSlug, args.connectorSlug),
         eq(connectorExternalCodeSessions.authMethod, args.authMethod),
         inArray(connectorExternalCodeSessions.status, [
           ...SUPERSEDABLE_EXTERNAL_CODE_SESSION_STATUSES,
@@ -282,7 +284,7 @@ async function loadOwnedSession(args: {
         eq(connectorExternalCodeSessions.id, args.sessionId),
         eq(connectorExternalCodeSessions.orgId, args.orgId),
         eq(connectorExternalCodeSessions.userId, args.userId),
-        eq(connectorExternalCodeSessions.connectorType, args.connectorSlug),
+        eq(connectorExternalCodeSessions.connectorSlug, args.connectorSlug),
         eq(
           connectorExternalCodeSessions.sessionTokenHash,
           sessionTokenHash(args.sessionToken),
@@ -837,13 +839,13 @@ export const startConnectorExternalCodeSession$ = command(
         now,
       });
       return await tx
-        .insert(connectorSlugLegacyInsertExternalCodeSessions)
+        .insert(connectorSlugCanonicalInsertExternalCodeSessions)
         .values({
           orgId: args.orgId,
           userId: args.userId,
           agentId: args.agentId,
           authorizeAgent: connectorAgentAuthorizationRequested(args),
-          connectorType: resolved.connectorSlug,
+          connectorSlug: resolved.connectorSlug,
           authMethod: resolved.authMethodId,
           status: "pending",
           sessionTokenHash: sessionTokenHash(sessionToken),
@@ -853,7 +855,9 @@ export const startConnectorExternalCodeSession$ = command(
           updatedAt: now,
           expiresAt,
         })
-        .returning({ id: connectorSlugLegacyInsertExternalCodeSessions.id });
+        .returning({
+          id: connectorSlugCanonicalInsertExternalCodeSessions.id,
+        });
     });
     signal.throwIfAborted();
 

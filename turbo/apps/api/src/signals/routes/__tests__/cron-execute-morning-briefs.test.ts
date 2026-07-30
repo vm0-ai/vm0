@@ -666,28 +666,6 @@ describe("cron execute morning briefs", () => {
     if (!delivery) {
       throw new Error("Expected the admitted Morning Brief delivery");
     }
-    const queuedParams = await readMorningBriefQueuedParamsForDeliveryFixture({
-      deliveryId: delivery.id,
-      threadId,
-      orgId: scenario.actor.orgId,
-      userId: scenario.actor.userId,
-    });
-    expect(queuedParams).toStrictEqual(
-      expect.objectContaining({
-        version: 1,
-        prompt: expect.stringContaining("# Run facts"),
-        appendSystemPrompt: expect.stringContaining(
-          "Begin exactly with `Good morning.`",
-        ),
-        morningBriefDelivery: {
-          deliveryId: delivery.id,
-          internalKind: "morning-brief:email",
-          secret: expect.any(String),
-          payload: { deliveryId: delivery.id },
-        },
-      }),
-    );
-    expect(queuedParams).not.toHaveProperty("apiStartTime");
     const threadMessages = await readMorningBriefThreadEvents(
       scenario,
       threadId,

@@ -16,10 +16,15 @@ import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { calculateNextRun } from "./time-automation";
 import {
   runWorkflowAutomationNow$,
+  scheduleTriggerContext,
   type DueWorkflowAutomation,
   type RunFailure,
   type AutomationRow,
 } from "./zero-workflow-automation-run.service";
+import {
+  workflowAutomationAppendSystemPrompt,
+  workflowAutomationPrompt,
+} from "./workflow-automation-context.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
@@ -349,12 +354,22 @@ export const executeDueWorkflowAutomations$ = command(
         allowClaimedOnceScheduleAutomation: claimed.scheduleType === "once",
       };
 
+      // The tick owns the fire time, so it builds the trigger line here rather
+      // than letting a later drain guess it from its own clock.
+      const scheduleContext = scheduleTriggerContext({
+        automation: claimed,
+        workflowName: row.workflowName,
+        firedAt: currentTime,
+      });
       const result = await tapError(
         set(
           runWorkflowAutomationNow$,
           {
             due,
             apiStartTime: now(),
+            prompt: workflowAutomationPrompt(scheduleContext),
+            appendSystemPrompt:
+              workflowAutomationAppendSystemPrompt(scheduleContext),
             triggerBrief:
               buildWorkflowScheduleAutomationBrief({
                 createdAt: currentTime,

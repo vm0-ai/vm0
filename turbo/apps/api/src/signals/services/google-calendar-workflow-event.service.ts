@@ -42,6 +42,11 @@ import {
   runWorkflowAutomationNow$,
   type AutomationRow,
 } from "./zero-workflow-automation-run.service";
+import {
+  workflowAutomationAppendSystemPrompt,
+  workflowAutomationPrompt,
+  type WorkflowAutomationContext,
+} from "./workflow-automation-context.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 
@@ -195,6 +200,9 @@ type GoogleCalendarRunStarter = (args: {
   readonly state: GoogleCalendarWatchStateRow;
   readonly notification: GoogleCalendarWebhookNotification;
   readonly event: CalendarEventContext;
+  // Unique per change of the same calendar event; repeated updates of one event
+  // are otherwise indistinguishable.
+  readonly eventChangeKey: string;
   readonly timing: WorkflowEventRunTiming;
 }) => Promise<"ok" | "error">;
 
@@ -1230,50 +1238,47 @@ async function loadGoogleCalendarEventAutomations(args: {
   return automations;
 }
 
-function buildGoogleCalendarWorkflowEventSystemPrompt(args: {
+function googleCalendarTriggerContext(args: {
+  readonly workflowName: string;
   readonly automationId: string;
   readonly event: CalendarEventContext;
-}): string {
-  const automationDescription =
+  readonly eventChangeKey: string;
+}): WorkflowAutomationContext {
+  const changed =
     args.event.changeType === "created"
-      ? "a Google Calendar event-created workflow automation matched a newly created calendar event."
+      ? "was created"
       : args.event.changeType === "updated"
-        ? "a Google Calendar event-updated workflow automation matched an updated calendar event."
-        : "a Google Calendar event-cancelled workflow automation matched a cancelled calendar event.";
-  return [
-    "# Current context",
-    `You are running because ${automationDescription}`,
-    "The workflow's procedure is available as a skill - execute it now.",
-    "This run is linked to a web chat thread; everything you output is shown to the user there.",
-    "Use connected Google Calendar tools to inspect the calendar event if the workflow needs more detail.",
-    "",
-    "# Google Calendar event",
-    JSON.stringify(
-      {
-        automationId: args.automationId,
-        changeType: args.event.changeType,
-        calendarId: args.event.calendarId,
-        eventId: args.event.eventId,
-        summary: args.event.summary,
-        status: args.event.status,
-        eventType: args.event.eventType,
-        htmlLink: args.event.htmlLink,
-        start: args.event.start,
-        end: args.event.end,
-        organizer: args.event.organizer,
-        attendees: args.event.attendees.slice(0, ATTENDEE_PROMPT_LIMIT),
-        attendeeCount: args.event.attendees.length,
-        created: args.event.created,
-        updated: args.event.updated,
-        recurringEventId: args.event.recurringEventId,
-        originalStartTime: args.event.originalStartTime,
-        changedFields: args.event.changedFields,
-        previousSnapshot: args.event.previousSnapshot,
-      },
-      null,
-      2,
-    ),
-  ].join("\n");
+        ? "was updated"
+        : "was cancelled";
+  return {
+    workflowName: args.workflowName,
+    trigger: `Google Calendar event ${args.event.eventId} on calendar ${args.event.calendarId} ${changed} (change ${args.eventChangeKey}).`,
+    notes: [
+      "Connected Google Calendar tools return further calendar event detail.",
+    ],
+    event: {
+      automationId: args.automationId,
+      eventChangeKey: args.eventChangeKey,
+      changeType: args.event.changeType,
+      calendarId: args.event.calendarId,
+      eventId: args.event.eventId,
+      summary: args.event.summary,
+      status: args.event.status,
+      eventType: args.event.eventType,
+      htmlLink: args.event.htmlLink,
+      start: args.event.start,
+      end: args.event.end,
+      organizer: args.event.organizer,
+      attendees: args.event.attendees.slice(0, ATTENDEE_PROMPT_LIMIT),
+      attendeeCount: args.event.attendees.length,
+      created: args.event.created,
+      updated: args.event.updated,
+      recurringEventId: args.event.recurringEventId,
+      originalStartTime: args.event.originalStartTime,
+      changedFields: args.event.changedFields,
+      previousSnapshot: args.event.previousSnapshot,
+    },
+  };
 }
 
 async function insertGoogleCalendarProcessedEvent(args: {
@@ -1331,6 +1336,7 @@ async function dispatchGoogleCalendarAutomationEvent(args: {
     state: args.state,
     notification: args.notification,
     event: args.event,
+    eventChangeKey: args.eventChangeKey,
     timing: args.timing,
   });
   args.signal.throwIfAborted();
@@ -1649,16 +1655,20 @@ export const dispatchGoogleCalendarWebhook$ = command(
             summary: event.summary,
           });
         }
-      : async ({ automation, event, timing }) => {
+      : async ({ automation, event, eventChangeKey, timing }) => {
           const runInput = await timing.measure(
             "api_dispatch_pre_create_zero_workflow_event_build_run_input",
             () => {
+              const context = googleCalendarTriggerContext({
+                workflowName: automation.workflowName,
+                automationId: automation.automation.id,
+                event,
+                eventChangeKey,
+              });
               return {
+                prompt: workflowAutomationPrompt(context),
                 appendSystemPrompt:
-                  buildGoogleCalendarWorkflowEventSystemPrompt({
-                    automationId: automation.automation.id,
-                    event,
-                  }),
+                  workflowAutomationAppendSystemPrompt(context),
                 callbacks: buildChatOnlyWorkflowAutomationCallbacks(
                   automation.chatThreadId,
                   automation.agentId,
@@ -1677,6 +1687,7 @@ export const dispatchGoogleCalendarWebhook$ = command(
               },
               apiStartTime: args.apiStartTime,
               triggerSource: "workflow-event",
+              prompt: runInput.prompt,
               appendSystemPrompt: runInput.appendSystemPrompt,
               callbacks: runInput.callbacks,
               activePreviousRunPolicy: "allow",

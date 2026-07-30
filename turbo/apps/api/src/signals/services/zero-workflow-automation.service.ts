@@ -107,6 +107,11 @@ import {
   loadWorkflowUserAutomationThreadId,
 } from "./zero-workflow-user-automation-thread.service";
 import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
+import {
+  workflowAutomationAppendSystemPrompt,
+  workflowAutomationPrompt,
+  type WorkflowAutomationContext,
+} from "./workflow-automation-context.service";
 
 type AutomationRow = typeof zeroWorkflowAutomations.$inferSelect;
 type WorkflowRow = typeof zeroWorkflows.$inferSelect;
@@ -2589,14 +2594,25 @@ function manualTriggerSource(automation: AutomationRow) {
   return automation.kind === "event" ? "workflow-event" : "workflow-schedule";
 }
 
-function manualWorkflowAutomationSystemPrompt(workflowName: string): string {
-  return [
-    "# Current context",
-    `You are running a manual run for the "${workflowName}" workflow.`,
-    "The workflow's procedure is available as a skill - execute it now.",
-    "This run is linked to a web chat thread; everything you output is shown to the user there.",
-    "Connector permissions use the same agent-run permission settings as chat runs. If a connector request fails, do not retry blindly or assume an HTTP error came from Zero permission policy. Run `zero connector check --url <FAILED_URL> --method <METHOD> [--connector <connector-ref>]`; only when it reports a deny or ask outcome, request access with `zero connector permission-request <connector-ref> --permission <name>` and tell the user which permission this automation needs. The user chooses the grant duration in the confirmation UI. Omit query strings or fragments when they may contain secrets because permission matching does not need them.",
-  ].join("\n");
+/**
+ * Repeated "Run now" clicks are otherwise indistinguishable, so the request time
+ * is this run's unique identifier.
+ */
+function manualTriggerContext(args: {
+  readonly automation: AutomationRow;
+  readonly workflowName: string;
+  readonly requestedAt: Date;
+}): WorkflowAutomationContext {
+  const requestedAt = args.requestedAt.toISOString();
+  return {
+    workflowName: args.workflowName,
+    trigger: `manual run requested at ${requestedAt}.`,
+    event: {
+      automationId: args.automation.id,
+      trigger: "manual",
+      requestedAt,
+    },
+  };
 }
 
 export const runOwnedWorkflowAutomationNow$ = command(
@@ -2668,6 +2684,11 @@ export const runOwnedWorkflowAutomationNow$ = command(
     });
     signal.throwIfAborted();
 
+    const manualContext = manualTriggerContext({
+      automation,
+      workflowName: target.workflowName,
+      requestedAt: currentTime,
+    });
     const result = await set(
       runWorkflowAutomationNow$,
       {
@@ -2689,9 +2710,11 @@ export const runOwnedWorkflowAutomationNow$ = command(
             automationTimezone: automation.timezone,
             userTimezone: ownerTimezone,
           }) ?? undefined,
-        appendSystemPrompt: manualWorkflowAutomationSystemPrompt(
-          target.workflowName,
-        ),
+        prompt: workflowAutomationPrompt({
+          workflowName: target.workflowName,
+          trigger: manualContext.trigger,
+        }),
+        appendSystemPrompt: workflowAutomationAppendSystemPrompt(manualContext),
         callbacks: buildChatOnlyWorkflowAutomationCallbacks(
           chatThreadId,
           target.agentId,

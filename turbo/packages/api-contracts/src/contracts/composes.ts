@@ -42,7 +42,6 @@ export const ZERO_CAPABILITIES = [
   "agent:write",
   "agent:delete",
   "agent-run:read",
-  "agent-run:write",
   "goal:read",
   "goal:agent-result:write",
   "goal:user-control:write",
@@ -55,8 +54,8 @@ export const ZERO_CAPABILITIES = [
   "phone:write",
   "telegram:read",
   "telegram:write",
-  "chat-message:read",
-  "chat-message:write",
+  "chat-event:read",
+  "chat-event:write",
   "chat-thread:read",
   "chat-thread:write",
   "connector:read",
@@ -98,7 +97,6 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     "agent:write": { group: "Agent", label: "Create & update agents" },
     "agent:delete": { group: "Agent", label: "Delete agents" },
     "agent-run:read": { group: "Agent Runs", label: "View runs & telemetry" },
-    "agent-run:write": { group: "Agent Runs", label: "Create & cancel runs" },
     "goal:read": { group: "Goals", label: "Read thread goals" },
     "goal:agent-result:write": {
       group: "Goals",
@@ -141,11 +139,11 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
       group: "Integrations",
       label: "Send Telegram messages and files",
     },
-    "chat-message:read": {
+    "chat-event:read": {
       group: "Integrations",
       label: "Read chat messages",
     },
-    "chat-message:write": {
+    "chat-event:write": {
       group: "Integrations",
       label: "Send & cancel chat messages",
     },

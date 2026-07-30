@@ -1788,16 +1788,16 @@ async function persistTelegramChatMessage(args: {
   | {
       readonly inserted: true;
       readonly chatThreadId: string;
-      readonly chatMessageId: string;
+      readonly chatEventId: string;
     }
   | { readonly inserted: false }
 > {
   const currentTime = new Date(args.source.apiStartTime);
-  const chatMessageId = telegramChatMessageId(args);
+  const chatEventId = telegramChatMessageId(args);
   const [existingMessage] = await args.source.db
     .select({ id: chatEvents.id })
     .from(chatEvents)
-    .where(eq(chatEvents.id, chatMessageId))
+    .where(eq(chatEvents.id, chatEventId))
     .limit(1);
   args.signal.throwIfAborted();
   if (existingMessage) {
@@ -1854,7 +1854,7 @@ async function persistTelegramChatMessage(args: {
     const event = await insertChatEvent(
       tx,
       {
-        id: chatMessageId,
+        id: chatEventId,
         chatThreadId: binding.chatThreadId,
         eventType: "input.prompt",
         content: null,
@@ -1874,7 +1874,7 @@ async function persistTelegramChatMessage(args: {
       tx,
       binding.chatThreadId,
       currentTime,
-      chatMessageId,
+      chatEventId,
     );
     return true;
   });
@@ -1883,7 +1883,7 @@ async function persistTelegramChatMessage(args: {
     ? {
         inserted: true,
         chatThreadId: binding.chatThreadId,
-        chatMessageId,
+        chatEventId,
       }
     : { inserted: false };
 }
@@ -1892,7 +1892,7 @@ async function telegramMessageDispatchState(
   db: Db,
   args: {
     readonly chatThreadId: string;
-    readonly chatMessageId: string;
+    readonly chatEventId: string;
   },
 ): Promise<TelegramMessageDispatchResult> {
   const [[run], [queued]] = await Promise.all([
@@ -1904,8 +1904,8 @@ async function telegramMessageDispatchState(
         and(
           eq(chatEvents.chatThreadId, args.chatThreadId),
           or(
-            eq(chatEvents.id, args.chatMessageId),
-            eq(chatEvents.revokesEventId, args.chatMessageId),
+            eq(chatEvents.id, args.chatEventId),
+            eq(chatEvents.revokesEventId, args.chatEventId),
           ),
         ),
       )
@@ -1915,7 +1915,7 @@ async function telegramMessageDispatchState(
       .from(chatEvents)
       .where(
         and(
-          eq(chatEvents.id, args.chatMessageId),
+          eq(chatEvents.id, args.chatEventId),
           eq(chatEvents.chatThreadId, args.chatThreadId),
           chatEventTypeIn(["input.prompt"]),
           isNull(chatEvents.runId),

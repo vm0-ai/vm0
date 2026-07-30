@@ -72,7 +72,6 @@ import {
 import {
   deleteAgentRunFixture,
   deleteBddVm0ApiKeys,
-  deleteChatInputQueueParamsFixture,
   hasVm0ApiKeyLabel,
   holdChatEventFixture,
   holdChatEventQueueItemFixture,
@@ -5601,6 +5600,7 @@ describe("CHAT-02: shared user message queue", () => {
     const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
 
     const previewMessageId = randomUUID();
+    const previewFileId = randomUUID();
     const previewQueued = await chat.requestSendEvent(
       actor,
       {
@@ -5609,6 +5609,14 @@ describe("CHAT-02: shared user message queue", () => {
         prompt: "queued real-agent preview run",
         clientEventId: previewMessageId,
         realAgentInPreview: true,
+        attachFiles: [
+          {
+            id: previewFileId,
+            filename: "preview-notes.txt",
+            contentType: "text/plain",
+            size: 18,
+          },
+        ],
       },
       [201],
     );
@@ -5618,6 +5626,13 @@ describe("CHAT-02: shared user message queue", () => {
     expect(previewParams).toMatchObject({
       eventId: previewMessageId,
       encryptedParams: expect.any(String),
+      attachFileMetadata: [
+        expect.objectContaining({
+          id: previewFileId,
+          filename: "preview-notes.txt",
+          contentType: "text/plain",
+        }),
+      ],
     });
     if (!previewParams) {
       throw new Error("Expected the original preview queue params");
@@ -5653,21 +5668,6 @@ describe("CHAT-02: shared user message queue", () => {
       readChatInputQueueParamsFixture(mockMessageId),
     ).resolves.toBeNull();
 
-    const legacyPreviewMessageId = randomUUID();
-    const legacyPreview = await chat.requestSendEvent(
-      actor,
-      {
-        agentId,
-        threadId: anchor.threadId,
-        prompt: "queued legacy preview run",
-        clientEventId: legacyPreviewMessageId,
-        realAgentInPreview: true,
-      },
-      [201],
-    );
-    expect(legacyPreview.body).toMatchObject({ runId: null });
-    await deleteChatInputQueueParamsFixture(legacyPreviewMessageId);
-
     // Terminal callbacks and the cleanup safety sweep use the same queued
     // auto-send builder; finishing the anchor guarantees that builder owns both.
     chatCallbacks.mockChatOutputEvents([]);
@@ -5694,7 +5694,10 @@ describe("CHAT-02: shared user message queue", () => {
     }
 
     const previewClaim = await claimChatRun(runnerGroup, previewRunId);
-    expect(previewClaim.claim.prompt).toBe("queued real-agent preview run");
+    expect(previewClaim.claim.prompt).toContain(
+      "queued real-agent preview run",
+    );
+    expect(previewClaim.claim.prompt).toContain(`[ID] ${previewFileId}`);
     expect(previewClaim.claim.realAgentInPreview).toBeTruthy();
     await expect(
       readChatInputQueueParamsFixture(replayedPreviewMessageId),
@@ -5724,29 +5727,6 @@ describe("CHAT-02: shared user message queue", () => {
     expect(mockClaim.claim.prompt).toBe("queued preview mock run");
     expect(mockClaim.claim.realAgentInPreview).toBeUndefined();
     await cancelChatRun(actor, mockRunId);
-
-    const legacyMessages = await waitForThreadMessages(
-      actor,
-      anchor.threadId,
-      (items) => {
-        return userMessages(items).some((message) => {
-          return (
-            message.revokesEventId === legacyPreviewMessageId &&
-            typeof message.runId === "string"
-          );
-        });
-      },
-    );
-    const legacyRunId = userMessages(legacyMessages.events).find((message) => {
-      return message.revokesEventId === legacyPreviewMessageId;
-    })?.runId;
-    if (!legacyRunId) {
-      throw new Error("Expected the legacy preview message to auto-send");
-    }
-    const legacyClaim = await claimChatRun(runnerGroup, legacyRunId);
-    expect(legacyClaim.claim.prompt).toBe("queued legacy preview run");
-    expect(legacyClaim.claim.realAgentInPreview).toBeTruthy();
-    await cancelChatRun(actor, legacyRunId);
   }, 90_000);
 
   it("appends a claimed queued message after messages that are still queued", async () => {

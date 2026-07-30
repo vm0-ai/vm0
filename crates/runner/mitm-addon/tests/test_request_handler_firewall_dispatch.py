@@ -546,7 +546,7 @@ async def test_asterisk_form_policy_allow_preserves_target_without_connector_sid
     assert flow.metadata[metadata_keys.FIREWALL_RULE_MATCH] == ""
     assert flow.metadata[metadata_keys.FIREWALL_BILLABLE] is False
     assert metadata_keys.MODEL_USAGE_PROVIDER not in flow.metadata
-    assert metadata_keys.CONNECTOR_DIAGNOSTIC_TYPE not in flow.metadata
+    assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
 
 
 async def test_asterisk_form_policy_allow_still_enforces_public_destination(

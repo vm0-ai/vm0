@@ -342,7 +342,7 @@ async function loadMailConnections(args: {
   const rows = await args.db
     .select({
       connectorId: connectors.id,
-      connectorSlug: connectors.type,
+      connectorSlug: connectors.connectorSlug,
       authMethod: connectors.authMethod,
       externalEmail: connectors.externalEmail,
       externalUsername: connectors.externalUsername,
@@ -359,7 +359,7 @@ async function loadMailConnections(args: {
       and(
         eq(connectors.orgId, userConnectors.orgId),
         eq(connectors.userId, userConnectors.userId),
-        eq(connectors.type, userConnectors.connectorType),
+        eq(connectors.connectorSlug, userConnectors.connectorSlug),
       ),
     )
     .where(
@@ -367,7 +367,7 @@ async function loadMailConnections(args: {
         eq(userConnectors.orgId, args.orgId),
         eq(userConnectors.userId, args.userId),
         eq(userConnectors.agentId, args.agentId),
-        eq(userConnectors.connectorType, "gmail"),
+        eq(userConnectors.connectorSlug, "gmail"),
       ),
     );
 

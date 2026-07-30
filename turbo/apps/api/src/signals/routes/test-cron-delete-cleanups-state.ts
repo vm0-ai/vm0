@@ -1,5 +1,5 @@
 import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
-import { connectorSlugLegacyInsertOauthStates } from "@vm0/db/compat/connector-slug-legacy-insert";
+import { connectorSlugCanonicalInsertOauthStates } from "@vm0/db/compat/connector-slug-canonical-insert";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { telegramMessages } from "@vm0/db/schema/telegram-message";
 import { command } from "ccstate";
@@ -106,7 +106,7 @@ async function seedConnectorStates(
     (_, index) => {
       return {
         state: connectorState(body.marker, `expired-${index}`),
-        type: "github",
+        connectorSlug: "github",
         authMethod: "oauth",
         userId: body.marker,
         orgId: body.marker,
@@ -121,14 +121,14 @@ async function seedConnectorStates(
     offset += FIXTURE_INSERT_BATCH_SIZE
   ) {
     await db
-      .insert(connectorSlugLegacyInsertOauthStates)
+      .insert(connectorSlugCanonicalInsertOauthStates)
       .values(expiredStates.slice(offset, offset + FIXTURE_INSERT_BATCH_SIZE));
     signal.throwIfAborted();
   }
-  await db.insert(connectorSlugLegacyInsertOauthStates).values([
+  await db.insert(connectorSlugCanonicalInsertOauthStates).values([
     {
       state: connectorState(body.marker, "equal"),
-      type: "github",
+      connectorSlug: "github",
       authMethod: "oauth",
       userId: body.marker,
       orgId: body.marker,
@@ -137,7 +137,7 @@ async function seedConnectorStates(
     },
     {
       state: connectorState(body.marker, "future"),
-      type: "github",
+      connectorSlug: "github",
       authMethod: "oauth",
       userId: body.marker,
       orgId: body.marker,

@@ -16,7 +16,6 @@ import {
 } from "drizzle-orm/pg-core";
 import { chatThreads } from "./chat-thread";
 import type {
-  ChatEventAttachFileMetadataList,
   ChatEventAttachFiles,
   ChatEventGenerationTemplate,
   ChatEventGoalEvent,
@@ -101,9 +100,6 @@ export const chatEvents = pgTable(
     automationId: uuid("automation_id"),
     triggerSource: text("trigger_source").$type<TriggerSource>(),
     triggerBrief: text("trigger_brief"),
-    // Persistent-secret encrypted queue parameters. This field never leaves
-    // the API and remains only on the original pending input event.
-    encryptedParams: text("encrypted_params"),
     content: text("content"),
     /** Canonical rich user-message document for user input events. */
     userMessage: jsonb("user_message").$type<ChatEventUserMessage>(),
@@ -118,9 +114,6 @@ export const chatEvents = pgTable(
     goalEvent: jsonb("goal_event").$type<ChatEventGoalEvent>(),
     goalSnapshot: jsonb("goal_snapshot").$type<ChatEventGoalSnapshot>(),
     attachFiles: jsonb("attach_files").$type<ChatEventAttachFiles>(),
-    attachFileMetadata: jsonb(
-      "attach_file_metadata",
-    ).$type<ChatEventAttachFileMetadataList>(),
     generationTemplate: jsonb(
       "generation_template",
     ).$type<ChatEventGenerationTemplate>(),

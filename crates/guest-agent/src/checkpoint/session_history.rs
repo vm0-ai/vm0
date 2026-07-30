@@ -199,7 +199,6 @@ pub(super) struct CheckpointSessionHistoryInputs {
     mode: CheckpointMode,
     framework: env::Framework,
     claude_session_pruning_enabled: bool,
-    codex_session_pruning_enabled: bool,
     home_dir: String,
     session_id_file: String,
     session_history_path_file: String,
@@ -211,7 +210,6 @@ impl CheckpointSessionHistoryInputs {
             mode,
             framework: inputs.framework,
             claude_session_pruning_enabled: inputs.claude_session_pruning_enabled,
-            codex_session_pruning_enabled: inputs.codex_session_pruning_enabled,
             home_dir: inputs.home_dir.to_string(),
             session_id_file: inputs.session_id_file.to_string(),
             session_history_path_file: inputs.session_history_path_file.to_string(),
@@ -359,7 +357,6 @@ fn prepare_session_history(
     mode: CheckpointMode,
     framework: env::Framework,
     claude_session_pruning_enabled: bool,
-    codex_session_pruning_enabled: bool,
     cli_agent_session_id: &str,
     history_marker_payload: &str,
     history_read_start: std::time::Instant,
@@ -418,8 +415,7 @@ fn prepare_session_history(
     }
 
     let mut resolved_codex_history = None;
-    if codex_session_pruning_enabled
-        && mode.can_prune_history()
+    if mode.can_prune_history()
         && framework == env::Framework::Codex
         && history::is_codex_marker(history_marker_payload)
     {
@@ -774,7 +770,6 @@ fn prepare_checkpoint_session_history(
         mode,
         framework,
         claude_session_pruning_enabled,
-        codex_session_pruning_enabled,
         home_dir,
         session_id_file,
         session_history_path_file,
@@ -838,7 +833,6 @@ fn prepare_checkpoint_session_history(
         mode,
         framework,
         claude_session_pruning_enabled,
-        codex_session_pruning_enabled,
         &cli_agent_session_id,
         &history_marker_payload,
         history_read_start,

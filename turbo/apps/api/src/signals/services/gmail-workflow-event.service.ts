@@ -45,6 +45,11 @@ import {
   runWorkflowAutomationNow$,
   type AutomationRow,
 } from "./zero-workflow-automation-run.service";
+import {
+  workflowAutomationAppendSystemPrompt,
+  workflowAutomationPrompt,
+  type WorkflowAutomationContext,
+} from "./workflow-automation-context.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 
@@ -1158,45 +1163,40 @@ async function insertGmailProcessedEvent(args: {
   return processed?.id ?? null;
 }
 
-function buildGmailWorkflowEventSystemPrompt(args: {
+function gmailTriggerContext(args: {
+  readonly workflowName: string;
   readonly automationId: string;
   readonly automationConfig: GmailWorkflowEventConfig;
   readonly emailAddress: string;
   readonly message: GmailMessageContext;
-}): string {
-  const automationContext =
+}): WorkflowAutomationContext {
+  const matched =
     args.automationConfig.event === "label_applied"
-      ? `You are running because the Gmail label "${args.automationConfig.labelName}" was applied to a message.`
-      : "You are running because a Gmail new-message workflow event automation matched a new inbound email.";
-  return [
-    "# Current context",
-    automationContext,
-    "The workflow's procedure is available as a skill - execute it now.",
-    "This run is linked to a web chat thread; everything you output is shown to the user there.",
-    "This context intentionally includes only event metadata. It does not include the email body. Use connected Gmail tools to read the message or thread if the workflow needs the content.",
-    "Do not send email automatically. If the workflow involves email response work, draft or prepare the response unless a later explicit product permission model allows sending.",
-    "",
-    "# Gmail event",
-    JSON.stringify(
-      {
-        automationId: args.automationId,
-        event: args.automationConfig.event,
-        labelName:
-          args.automationConfig.event === "label_applied"
-            ? args.automationConfig.labelName
-            : undefined,
-        emailAddress: args.emailAddress,
-        messageId: args.message.messageId,
-        threadId: args.message.threadId,
-        from: args.message.from,
-        to: args.message.to,
-        cc: args.message.cc,
-        subject: args.message.subject,
-      },
-      null,
-      2,
-    ),
-  ].join("\n");
+      ? `Gmail label "${args.automationConfig.labelName}" was applied to a message`
+      : "a new inbound Gmail message arrived";
+  return {
+    workflowName: args.workflowName,
+    trigger: `${matched} on ${args.emailAddress} (Gmail message ${args.message.messageId}).`,
+    notes: [
+      "Not included below: the email body. Connected Gmail tools return the message and thread content.",
+      "Sending is a user action. This automation prepares drafts; the user sends them.",
+    ],
+    event: {
+      automationId: args.automationId,
+      event: args.automationConfig.event,
+      labelName:
+        args.automationConfig.event === "label_applied"
+          ? args.automationConfig.labelName
+          : undefined,
+      emailAddress: args.emailAddress,
+      messageId: args.message.messageId,
+      threadId: args.message.threadId,
+      from: args.message.from,
+      to: args.message.to,
+      cc: args.message.cc,
+      subject: args.message.subject,
+    },
+  };
 }
 
 function buildGmailWorkflowAutomationBrief(args: {
@@ -1677,13 +1677,16 @@ const startGmailWorkflowRun$ = command(
     const runInput = await args.timing.measure(
       "api_dispatch_pre_create_zero_workflow_event_build_run_input",
       () => {
+        const context = gmailTriggerContext({
+          workflowName: args.automation.workflowName,
+          automationId: args.automation.automation.id,
+          automationConfig: args.automation.config,
+          emailAddress: args.decoded.emailAddress,
+          message: args.message,
+        });
         return {
-          appendSystemPrompt: buildGmailWorkflowEventSystemPrompt({
-            automationId: args.automation.automation.id,
-            automationConfig: args.automation.config,
-            emailAddress: args.decoded.emailAddress,
-            message: args.message,
-          }),
+          prompt: workflowAutomationPrompt(context),
+          appendSystemPrompt: workflowAutomationAppendSystemPrompt(context),
           triggerBrief: buildGmailWorkflowAutomationBrief({
             automationConfig: args.automation.config,
             message: args.message,
@@ -1707,6 +1710,7 @@ const startGmailWorkflowRun$ = command(
         },
         apiStartTime: args.apiStartTime,
         triggerSource: "workflow-event",
+        prompt: runInput.prompt,
         appendSystemPrompt: runInput.appendSystemPrompt,
         triggerBrief: runInput.triggerBrief,
         callbacks: runInput.callbacks,

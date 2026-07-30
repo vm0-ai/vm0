@@ -14,7 +14,7 @@ class OrphanedQueuedChatEventsError extends Error {
 
   constructor(readonly orphanedMessages: number) {
     super("Orphaned queued chat messages detected");
-    this.name = "OrphanedQueuedChatMessagesError";
+    this.name = "OrphanedQueuedChatEventsError";
   }
 }
 
@@ -38,10 +38,7 @@ export const monitorChatEventQueue$ = command(
               or(
                 isNull(chatEvents.automationId),
                 isNull(chatEvents.triggerSource),
-                and(
-                  isNull(chatInputQueueParams.encryptedParams),
-                  isNull(chatEvents.encryptedParams),
-                ),
+                isNull(chatInputQueueParams.encryptedParams),
               ),
             ),
             and(
@@ -52,10 +49,7 @@ export const monitorChatEventQueue$ = command(
                 "teams",
                 "telegram",
               ]),
-              and(
-                isNull(chatInputQueueParams.encryptedParams),
-                isNull(chatEvents.encryptedParams),
-              ),
+              isNull(chatInputQueueParams.encryptedParams),
             ),
           ),
         ),

@@ -1701,7 +1701,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       payload: {
         channelId,
         threadTs,
-        chatMessageId: expect.any(String),
+        chatEventId: expect.any(String),
       },
     });
     const run1 = await runs.readRun(actor, run1Id);
@@ -2278,6 +2278,81 @@ describe("INT-01: Slack app deep webhook flows", () => {
       thread_ts: threadTs,
       status: "is thinking...",
     });
+  });
+
+  it("titles canonical Slack threads when their run is created", async () => {
+    const actor = bdd.user();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    const runnerGroup = runs.configureRunnerGroup();
+    integrations.configureSlackAppMocks();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+
+    const titlePrompts: string[] = [];
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    chatCallbacks.mockOpenRouterCompletions((body) => {
+      const systemContent = body.messages[0]?.content ?? "";
+      if (systemContent.includes("Generate a short, descriptive title")) {
+        titlePrompts.push(body.messages[1]?.content ?? "");
+        return "Canonical Slack Title";
+      }
+      return "Generated summary";
+    });
+
+    const slackUserId = uniqueSlackUserId();
+    const { teamId } = await integrations.installSlackWorkspace(actor, {
+      installerSlackUserId: slackUserId,
+    });
+    const channelId = "C_BDD_EAGER_TITLE";
+    const threadTs = "2960.000100";
+    const prompt = "title this canonical Slack thread";
+    await integrations.postSlackEvent(teamId, {
+      type: "app_mention",
+      user: slackUserId,
+      text: prompt,
+      ts: threadTs,
+      channel: channelId,
+      channel_type: "channel",
+    });
+    const runId = await pollSlackRun(runnerGroup);
+    const claim = await runs.claimRunnerJob(runId);
+    await flushWaitUntilForTest();
+
+    const state = await integrations.readSlackTestState(teamId);
+    const chatThreadId = state.chat_thread_routes.find((route) => {
+      return route.channelId === channelId && route.threadTs === threadTs;
+    })?.chatThreadId;
+    if (!chatThreadId) {
+      throw new Error("Expected the Slack event to create a canonical thread");
+    }
+    const beforeComplete = await chat.requestThreadEvents(actor, {}, [200]);
+    if (beforeComplete.status !== 200) {
+      throw new Error("Expected canonical Slack thread events to load");
+    }
+    // The title lands while the run is still in flight, so Slack threads no
+    // longer wait for the terminal callback to be named.
+    expect(beforeComplete.body.events).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "renamed",
+          chatThreadId,
+          title: "Canonical Slack Title",
+        }),
+      ]),
+    );
+    expect(titlePrompts).toHaveLength(1);
+    expect(titlePrompts[0]).toContain(prompt);
+
+    await completeSlackTriggeredRun({
+      runId,
+      sandboxToken: claim.sandboxToken,
+      cliAgentType: claim.cliAgentType,
+      assistantText: "Canonical Slack titled answer",
+    });
+    await flushWaitUntilForTest();
+
+    expect(titlePrompts).toHaveLength(1);
   });
 
   it("binds agent and model choices when canonical Slack threads are created", async () => {
@@ -4792,6 +4867,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
   });
 
   it("keeps GitHub no-install read and upload-init surfaces visible through APIs", async () => {
+    integrations.configureGithubAppInstallProvider();
     const actor = integrations.user();
 
     const installation = await integrations.readGithubInstallation(actor);
@@ -4802,6 +4878,33 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
         code: "NOT_FOUND",
       },
     });
+    const adminInstallUrl =
+      "installUrl" in installation.body ? installation.body.installUrl : null;
+    if (!adminInstallUrl) {
+      throw new Error("Expected an install URL for organization admins");
+    }
+    expect(adminInstallUrl).toContain(
+      "https://github.com/apps/bdd-github-app/installations/new",
+    );
+    expect(
+      new URL(adminInstallUrl).searchParams
+        .get("redirect_uri")
+        ?.endsWith("/api/github/app/setup/callback"),
+    ).toBeTruthy();
+
+    const orgId = actor.orgId;
+    if (!orgId) {
+      throw new Error("Expected GitHub admin test user to have an org");
+    }
+    const member = integrations.user({ orgId, orgRole: "org:member" });
+    const memberInstallation =
+      await integrations.readGithubInstallation(member);
+    expect(memberInstallation.status).toBe(404);
+    expect(
+      "installUrl" in memberInstallation.body
+        ? memberInstallation.body.installUrl
+        : "unset",
+    ).toBeNull();
 
     const upload = await integrations.requestGithubUploadInit(
       actor,

@@ -123,7 +123,7 @@ async function loadFeishuChatDeliveryContext(args: {
     .from(chatEvents)
     .where(
       and(
-        eq(chatEvents.id, payload.chatMessageId),
+        eq(chatEvents.id, payload.chatEventId),
         eq(chatEvents.runId, args.callback.runId),
         eq(chatEvents.chatThreadId, run.chatThreadId),
         chatEventTypeIn([

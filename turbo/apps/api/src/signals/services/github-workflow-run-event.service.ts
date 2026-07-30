@@ -24,6 +24,11 @@ import {
   runWorkflowAutomationNow$,
   type AutomationRow,
 } from "./zero-workflow-automation-run.service";
+import {
+  workflowAutomationAppendSystemPrompt,
+  workflowAutomationPrompt,
+  type WorkflowAutomationContext,
+} from "./workflow-automation-context.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 import {
   WorkflowEventSourceTiming,
@@ -290,58 +295,51 @@ async function recordProcessedDelivery(args: {
   return row?.id ?? null;
 }
 
-function buildGithubWorkflowRunSystemPrompt(args: {
+function githubWorkflowRunTriggerContext(args: {
   readonly automation: GithubWorkflowRunAutomationRow;
   readonly deliveryId: string;
   readonly payload: GithubWorkflowRunEventPayload;
-}): string {
+}): WorkflowAutomationContext {
   const run = args.payload.workflow_run;
   const workflowName = run.name ?? run.path;
-  return [
-    "# Current context",
-    `You are running because the GitHub Actions workflow "${workflowName}" completed with conclusion "${run.conclusion}".`,
-    "The workflow's procedure is available as a skill - execute it now.",
-    "This run is linked to a web chat thread; everything you output is shown to the user there.",
-    "This context intentionally includes only workflow run metadata. It does not include jobs, logs, or artifacts.",
-    "Use connected GitHub tools or the GitHub API if the workflow needs jobs, logs, artifacts, or related pull request details.",
-    "",
-    "# GitHub workflow run event",
-    JSON.stringify(
-      {
-        automationId: args.automation.automation.id,
-        deliveryId: args.deliveryId,
-        event: "workflow_run",
-        action: args.payload.action,
-        repository: {
-          id: args.payload.repository.id,
-          fullName: args.payload.repository.full_name,
-        },
-        workflow: {
-          id: run.workflow_id,
-          name: run.name,
-          path: run.path,
-        },
-        run: {
-          id: run.id,
-          number: run.run_number,
-          attempt: run.run_attempt,
-          status: run.status,
-          conclusion: run.conclusion,
-          url: run.html_url,
-        },
-        branch: run.head_branch,
-        commitSha: run.head_sha,
-        triggeringEvent: run.event,
-        actor: run.actor,
-        triggeringActor: run.triggering_actor,
-        pullRequests: run.pull_requests.map((pullRequest) => {
-          return { number: pullRequest.number };
-        }),
+  return {
+    workflowName: args.automation.workflowName,
+    trigger: `GitHub Actions workflow "${workflowName}" completed with conclusion "${run.conclusion}" (run ${run.id} attempt ${run.run_attempt}, GitHub webhook delivery ${args.deliveryId}).`,
+    notes: [
+      "Not included below: jobs, logs, artifacts, and pull request details. Connected GitHub tools and the GitHub API return them.",
+    ],
+    event: {
+      automationId: args.automation.automation.id,
+      deliveryId: args.deliveryId,
+      event: "workflow_run",
+      action: args.payload.action,
+      repository: {
+        id: args.payload.repository.id,
+        fullName: args.payload.repository.full_name,
       },
-      null,
-      2,
-    ),
-  ].join("\n");
+      workflow: {
+        id: run.workflow_id,
+        name: run.name,
+        path: run.path,
+      },
+      run: {
+        id: run.id,
+        number: run.run_number,
+        attempt: run.run_attempt,
+        status: run.status,
+        conclusion: run.conclusion,
+        url: run.html_url,
+      },
+      branch: run.head_branch,
+      commitSha: run.head_sha,
+      triggeringEvent: run.event,
+      actor: run.actor,
+      triggeringActor: run.triggering_actor,
+      pullRequests: run.pull_requests.map((pullRequest) => {
+        return { number: pullRequest.number };
+      }),
+    },
+  };
 }
 
 const startGithubWorkflowRunAutomation$ = command(
@@ -356,6 +354,7 @@ const startGithubWorkflowRunAutomation$ = command(
     },
     signal: AbortSignal,
   ): Promise<"ok" | "error"> => {
+    const context = githubWorkflowRunTriggerContext(args);
     const result = await set(
       runWorkflowAutomationNow$,
       {
@@ -367,7 +366,8 @@ const startGithubWorkflowRunAutomation$ = command(
         },
         apiStartTime: args.apiStartTime,
         triggerSource: "workflow-event",
-        appendSystemPrompt: buildGithubWorkflowRunSystemPrompt(args),
+        prompt: workflowAutomationPrompt(context),
+        appendSystemPrompt: workflowAutomationAppendSystemPrompt(context),
         callbacks: buildChatOnlyWorkflowAutomationCallbacks(
           args.automation.chatThreadId,
           args.automation.agentId,
