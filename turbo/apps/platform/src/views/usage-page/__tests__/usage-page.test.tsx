@@ -238,7 +238,10 @@ describe("/usage page", () => {
   });
 
   it("localizes usage copy, counts, and numeric totals in Japanese", async () => {
-    context.mocks.data.userPreferences({ locale: "ja-JP" });
+    context.mocks.data.userPreferences({
+      locale: "ja-JP",
+      supportedLocales: ["en-US", "ja-JP"],
+    });
     context.mocks.api(zeroUsageInsightContract.get, ({ respond }) => {
       return respond(200, usageInsightTodayFixture);
     });
