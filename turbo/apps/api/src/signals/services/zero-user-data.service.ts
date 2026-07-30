@@ -68,7 +68,8 @@ function parseUserLocale(value: unknown): UserLocale | null {
     value === "ko-KR" ||
     value === "id-ID" ||
     value === "de-DE" ||
-    value === "es-ES"
+    value === "es-ES" ||
+    value === "it-IT"
   ) {
     return value;
   }
@@ -187,31 +188,18 @@ export function userModelPreference({
 
 interface UpdateUserPreferencesArgs extends UserScopedQuery {
   readonly preferences: UpdateUserPreferencesRequest;
-  readonly allowBrazilianPortuguese?: boolean;
-  readonly allowJapanese?: boolean;
-  readonly allowKorean?: boolean;
-  readonly allowIndonesian?: boolean;
-  readonly allowGerman?: boolean;
-  readonly allowSpanish?: boolean;
+  readonly allowedLocales?: readonly UserLocale[];
 }
 
 type UpdateUserPreferencesResult =
   | { readonly ok: true; readonly data: UserPreferencesResponse }
   | { readonly ok: false; readonly message: string };
 
-function isUserPreferencesUpdateAllowed(
-  args: UpdateUserPreferencesArgs,
+function isPreferenceLocaleAllowed(
+  locale: UserLocale | undefined,
+  allowedLocales: readonly UserLocale[] | undefined,
 ): boolean {
-  const { locale, timezone } = args.preferences;
-  return (
-    (locale !== "pt-BR" || args.allowBrazilianPortuguese === true) &&
-    (locale !== "ja-JP" || args.allowJapanese === true) &&
-    (locale !== "ko-KR" || args.allowKorean === true) &&
-    (locale !== "id-ID" || args.allowIndonesian === true) &&
-    (locale !== "de-DE" || args.allowGerman === true) &&
-    (locale !== "es-ES" || args.allowSpanish === true) &&
-    (timezone === undefined || isValidTimeZone(timezone))
-  );
+  return locale === undefined || (allowedLocales ?? ["en-US"]).includes(locale);
 }
 
 export const updateUserPreferences$ = command(
@@ -221,7 +209,16 @@ export const updateUserPreferences$ = command(
     signal: AbortSignal,
   ): Promise<UpdateUserPreferencesResult> => {
     const preferences = args.preferences;
-    if (!isUserPreferencesUpdateAllowed(args)) {
+    if (!isPreferenceLocaleAllowed(preferences.locale, args.allowedLocales)) {
+      return {
+        ok: false,
+        message: "Invalid request",
+      };
+    }
+    if (
+      preferences.timezone !== undefined &&
+      !isValidTimeZone(preferences.timezone)
+    ) {
       return {
         ok: false,
         message: "Invalid request",

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  updateUserPreferencesRequestSchema,
   userLocaleSchema,
   userPreferencesResponseSchema,
 } from "./zero-user-preferences";
@@ -90,5 +91,25 @@ describe("user preferences contract", () => {
       locale: "es-ES",
       supportedLocales: ["en-US", "pt-BR", "ja-JP", "es-ES"],
     });
+  });
+
+  it("accepts Italian in preference requests and supported locale responses", () => {
+    expect(
+      updateUserPreferencesRequestSchema.parse({ locale: "it-IT" }),
+    ).toStrictEqual({ locale: "it-IT" });
+
+    const preferences = userPreferencesResponseSchema.parse({
+      timezone: null,
+      locale: "it-IT",
+      supportedLocales: ["en-US", "it-IT"],
+      pinnedAgentIds: [],
+      sendMode: "enter",
+      morningBriefEnabled: false,
+      morningBriefNextRunAt: null,
+      captureNetworkBodiesRemaining: 0,
+    });
+
+    expect(preferences.locale).toBe("it-IT");
+    expect(preferences.supportedLocales).toStrictEqual(["en-US", "it-IT"]);
   });
 });

@@ -268,6 +268,55 @@ describe("settings dialog", () => {
     });
   });
 
+  it("selects and persists Italian when the API advertises it", async () => {
+    const submittedLocales: UserLocale[] = [];
+    let serverLocale: UserLocale | null = "en-US";
+    const createItalianPreferences = (
+      locale: UserLocale | null,
+    ): UserPreferencesResponse => {
+      return {
+        ...createPreferences(locale),
+        supportedLocales: ["en-US", "it-IT"],
+      };
+    };
+    context.mocks.api(zeroUserPreferencesContract.get, ({ respond }) => {
+      return respond(200, createItalianPreferences(serverLocale));
+    });
+    context.mocks.api(
+      zeroUserPreferencesContract.update,
+      ({ body, respond }) => {
+        if (body.locale !== undefined) {
+          serverLocale = body.locale;
+          submittedLocales.push(body.locale);
+        }
+        return respond(200, createItalianPreferences(serverLocale));
+      },
+    );
+
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: true,
+    });
+
+    const languageSelect = await screen.findByRole("combobox", {
+      name: "Language",
+    });
+    click(languageSelect);
+    expect(
+      screen.queryByRole("option", { name: "Português (Brasil)" }),
+    ).not.toBeInTheDocument();
+    click(screen.getByRole("option", { name: "Italiano" }));
+
+    await waitFor(() => {
+      expect(submittedLocales).toContain("it-IT");
+      expect(
+        screen.getByRole("combobox", { name: "Lingua" }),
+      ).toHaveTextContent("Italiano");
+      expect(document.documentElement.lang).toBe("it-IT");
+      expect(cachedLocale()).toBe("it-IT");
+      expect(screen.getByText("Aspetto")).toBeInTheDocument();
+    });
+  });
+
   it("overrides a cached language with the workspace server preference", async () => {
     document.documentElement.lang = "en-US";
     context.store.set(setCachedLocale$, "en-US");

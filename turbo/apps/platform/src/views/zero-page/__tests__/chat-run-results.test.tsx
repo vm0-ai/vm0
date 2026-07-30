@@ -1001,7 +1001,10 @@ describe("chat lifecycle", () => {
       hour: "numeric",
       minute: "2-digit",
     });
-    context.mocks.data.userPreferences({ locale: "ja-JP" });
+    context.mocks.data.userPreferences({
+      locale: "ja-JP",
+      supportedLocales: ["en-US", "ja-JP"],
+    });
     mockChatLifecycle(context, {
       threadId: "thread-japanese-completed-run",
       chatEvents: [
