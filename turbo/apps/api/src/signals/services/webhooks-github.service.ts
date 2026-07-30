@@ -1,25 +1,27 @@
-import { randomBytes } from "node:crypto";
-
 import {
   githubDeploymentStateSchema,
   githubPullRequestReviewStateSchema,
   githubWorkflowRunConclusionSchema,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { agentSessions } from "@vm0/db/schema/agent-session";
+import { githubChatThreadRoutes } from "@vm0/db/schema/github-chat-thread-route";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
-import { githubIssueSessions } from "@vm0/db/schema/github-issue-session";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
+import { v5 as uuidv5 } from "uuid";
 import { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
-import { publishUserSignal } from "../external/realtime";
+import {
+  publishChatThreadMessageCreatedSafely,
+  publishThreadListChanged,
+  publishUserSignal,
+} from "../external/realtime";
 import { nowDate } from "../external/time";
 import {
   addGithubCommentReaction,
@@ -30,18 +32,17 @@ import {
 } from "./github-issues-api.service";
 import { getGithubInstallationAccessToken } from "./github-app.service";
 import { signGithubConnectParams } from "./github-oauth.service";
-import { canReuseIntegrationSessionForModelRoute } from "./integration-session-model-compatibility.service";
-import { formatIntegrationRunError$ } from "./integration-run-errors.service";
-import {
-  resolveIntegrationModelRouteForUser$,
-  type IntegrationModelRoutePin,
-} from "./integration-model-route.service";
+import { resolveIntegrationModelRouteForUser$ } from "./integration-model-route.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
-import { createZeroRun$ } from "./zero-runs-create.service";
+import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
 import {
-  githubIssuesCallbackPayloadSchema,
-  type GitHubIssuesCallbackPayload,
-} from "./github-issues-callback-payload";
+  ensureGitHubChatThreadRoute,
+  type GitHubChatThreadRouteBinding,
+} from "./github-chat-ingress.service";
+import { insertChatEvent } from "./zero-chat-event.service";
+import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
+import { createUserMessageDocument } from "./zero-chat-user-message.service";
+import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-event.service";
 import { dispatchGithubLabelWorkflowAutomations$ } from "./github-workflow-event.service";
 import {
   dispatchGithubWebhookAutomations$,
@@ -56,9 +57,8 @@ import {
 } from "./github-workflow-run-event.service";
 
 const L = logger("WebhookGithub");
-const RUN_START_FALLBACK_MESSAGE =
-  "An unexpected error occurred. Please try again later.";
 const GITHUB_ALIAS_MENTION_HANDLES = ["@Zero[bot]", "@Zero"] as const;
+const GITHUB_CHAT_MESSAGE_ID_NAMESPACE = "f9e495f0-f0e2-4e4d-b69f-6c8074630a90";
 
 const gitHubUserSchema = z.object({
   id: z.number(),
@@ -292,33 +292,14 @@ interface DispatchParams {
   readonly composeId: string;
   readonly prompt: string;
   readonly automationDescription?: string;
-  readonly sessionContinuityEnabled: boolean;
   readonly commentId?: string;
   readonly comment?: GitHubComment;
   readonly apiStartTime: number;
 }
 
-type ExistingSessionResult =
-  | { readonly kind: "duplicate" }
-  | {
-      readonly kind: "resolved";
-      readonly sessionId: string | undefined;
-    };
-
 interface GitHubRunTarget {
   readonly composeId: string;
   readonly orgId: string;
-  readonly zeroAgentId: string;
-}
-
-interface GitHubRunDispatchResult {
-  readonly status: "accepted" | "queued" | "failed";
-  readonly runId?: string;
-  readonly response?: string;
-}
-
-function generateCallbackSecret(): string {
-  return randomBytes(32).toString("hex");
 }
 
 function githubSubjectLabel(subjectKind: GitHubAutomationKind): string {
@@ -793,187 +774,6 @@ async function getGitHubTokenForInstallation(args: {
   return token;
 }
 
-async function validateSessionAgent(args: {
-  readonly db: Db;
-  readonly sessionId: string;
-  readonly vm0UserId: string;
-  readonly expectedComposeId: string;
-  readonly signal: AbortSignal;
-}): Promise<string | undefined> {
-  const [session] = await args.db
-    .select({ agentComposeId: agentSessions.agentComposeId })
-    .from(agentSessions)
-    .where(
-      and(
-        eq(agentSessions.id, args.sessionId),
-        eq(agentSessions.userId, args.vm0UserId),
-      ),
-    )
-    .limit(1);
-  args.signal.throwIfAborted();
-
-  if (session?.agentComposeId === args.expectedComposeId) {
-    return args.sessionId;
-  }
-  return undefined;
-}
-
-async function resolveExistingSession(args: {
-  readonly db: Db;
-  readonly installationDbId: string;
-  readonly repo: string;
-  readonly issueNumber: number;
-  readonly composeId: string;
-  readonly vm0UserId: string;
-  readonly commentId: string | undefined;
-  readonly modelRoute: IntegrationModelRoutePin | undefined;
-  readonly signal: AbortSignal;
-}): Promise<ExistingSessionResult> {
-  const [found] = await args.db
-    .select({
-      agentSessionId: githubIssueSessions.agentSessionId,
-      lastCommentId: githubIssueSessions.lastCommentId,
-    })
-    .from(githubIssueSessions)
-    .where(
-      and(
-        eq(githubIssueSessions.installationId, args.installationDbId),
-        eq(githubIssueSessions.repo, args.repo),
-        eq(githubIssueSessions.issueNumber, args.issueNumber),
-      ),
-    )
-    .limit(1);
-  args.signal.throwIfAborted();
-
-  if (!found) {
-    return { kind: "resolved", sessionId: undefined };
-  }
-
-  if (args.commentId && found.lastCommentId === args.commentId) {
-    return { kind: "duplicate" };
-  }
-
-  const sessionId = await validateSessionAgent({
-    db: args.db,
-    sessionId: found.agentSessionId,
-    vm0UserId: args.vm0UserId,
-    expectedComposeId: args.composeId,
-    signal: args.signal,
-  });
-  if (!sessionId) {
-    return {
-      kind: "resolved",
-      sessionId: undefined,
-    };
-  }
-
-  if (
-    !(await canReuseIntegrationSessionForModelRoute({
-      db: args.db,
-      sessionId,
-      modelRoute: args.modelRoute,
-    }))
-  ) {
-    return {
-      kind: "resolved",
-      sessionId: undefined,
-    };
-  }
-
-  return {
-    kind: "resolved",
-    sessionId,
-  };
-}
-
-const routeErrorMessage$ = command(
-  (
-    { set },
-    args: {
-      readonly body: unknown;
-      readonly orgId: string;
-      readonly userId: string;
-    },
-    signal: AbortSignal,
-  ): string | Promise<string> | undefined => {
-    const { body } = args;
-    if (typeof body !== "object" || body === null || !("error" in body)) {
-      return undefined;
-    }
-    const error = body.error;
-    if (typeof error !== "object" || error === null || !("message" in error)) {
-      return undefined;
-    }
-    const message = error.message;
-    if (typeof message !== "string") {
-      return undefined;
-    }
-    const code =
-      "code" in error && typeof error.code === "string"
-        ? error.code
-        : "INTERNAL_SERVER_ERROR";
-    return set(
-      formatIntegrationRunError$,
-      {
-        orgId: args.orgId,
-        userId: args.userId,
-        code,
-        message,
-      },
-      signal,
-    );
-  },
-);
-
-function stringField(body: unknown, key: string): string | undefined {
-  if (typeof body !== "object" || body === null || !(key in body)) {
-    return undefined;
-  }
-  const value = (body as Record<string, unknown>)[key];
-  return typeof value === "string" ? value : undefined;
-}
-
-async function handleDispatchError(args: {
-  readonly message: string | undefined;
-  readonly token: string | undefined;
-  readonly repo: string;
-  readonly issueNumber: number;
-  readonly commentId: string | undefined;
-  readonly reactionId: string | undefined;
-  readonly commentBody: string | undefined;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  if (args.token && args.commentId && args.reactionId) {
-    await removeGithubCommentReaction({
-      token: args.token,
-      repo: args.repo,
-      commentId: args.commentId,
-      reactionId: args.reactionId,
-      signal: args.signal,
-    });
-  }
-
-  const quotePrefix = args.commentBody
-    ? `${args.commentBody
-        .split("\n")
-        .map((line) => {
-          return `> ${line}`;
-        })
-        .join("\n")}\n\n`
-    : "";
-
-  if (args.token) {
-    const message = args.message ?? RUN_START_FALLBACK_MESSAGE;
-    await postGithubIssueCommentBestEffort({
-      token: args.token,
-      repo: args.repo,
-      issueNumber: args.issueNumber,
-      body: `${quotePrefix}${message}`,
-      signal: args.signal,
-    });
-  }
-}
-
 async function loadActiveInstallation(args: {
   readonly db: Db;
   readonly ghInstallationId: string;
@@ -1070,7 +870,6 @@ async function loadGitHubRunTarget(args: {
   return {
     composeId: compose.id,
     orgId: compose.orgId,
-    zeroAgentId: agent.id,
   };
 }
 
@@ -1116,153 +915,6 @@ async function buildIssueContextForRun(args: {
     currentCommentId: args.params.commentId,
   });
 }
-
-function buildCallbackPayload(args: {
-  readonly installationDbId: string;
-  readonly params: DispatchParams;
-  readonly issueNumber: number;
-  readonly composeId: string;
-  readonly existingSessionId: string | undefined;
-  readonly sessionContinuityEnabled: boolean;
-  readonly reactionId: string | undefined;
-}): GitHubIssuesCallbackPayload {
-  return githubIssuesCallbackPayloadSchema.parse({
-    installationId: args.installationDbId,
-    repo: args.params.repo,
-    issueNumber: args.issueNumber,
-    agentId: args.composeId,
-    existingSessionId: args.existingSessionId,
-    sessionContinuityEnabled: args.sessionContinuityEnabled,
-    triggerCommentId: args.params.commentId,
-    triggerCommentBody: args.params.commentId
-      ? args.params.comment?.body
-      : undefined,
-    triggerReactionId: args.reactionId,
-  });
-}
-
-async function updateExistingSessionComment(args: {
-  readonly db: Db;
-  readonly installationDbId: string;
-  readonly repo: string;
-  readonly issueNumber: number;
-  readonly existingSessionId: string | undefined;
-  readonly commentId: string | undefined;
-}): Promise<void> {
-  if (!args.existingSessionId || !args.commentId) {
-    return;
-  }
-
-  await args.db
-    .update(githubIssueSessions)
-    .set({ lastCommentId: args.commentId, updatedAt: nowDate() })
-    .where(
-      and(
-        eq(githubIssueSessions.installationId, args.installationDbId),
-        eq(githubIssueSessions.repo, args.repo),
-        eq(githubIssueSessions.issueNumber, args.issueNumber),
-      ),
-    );
-}
-
-async function finalizeSuccessfulGithubDispatch(args: {
-  readonly db: Db;
-  readonly installationDbId: string;
-  readonly repo: string;
-  readonly issueNumber: number;
-  readonly existingSessionId: string | undefined;
-  readonly commentId: string | undefined;
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  await updateExistingSessionComment(args);
-  args.signal.throwIfAborted();
-}
-
-const runAgentForGitHub$ = command(
-  async (
-    { set },
-    args: {
-      readonly userId: string;
-      readonly orgId: string;
-      readonly agentId: string;
-      readonly sessionId: string | undefined;
-      readonly prompt: string;
-      readonly appendSystemPrompt: string | undefined;
-      readonly modelRoute: IntegrationModelRoutePin | undefined;
-      readonly callbackPayload: GitHubIssuesCallbackPayload;
-      readonly apiStartTime: number;
-    },
-    signal: AbortSignal,
-  ): Promise<GitHubRunDispatchResult> => {
-    const result = await set(
-      createZeroRun$,
-      {
-        auth: {
-          tokenType: "session",
-          userId: args.userId,
-          orgId: args.orgId,
-          orgRole: "member",
-        },
-        body: {
-          prompt: args.prompt,
-          agentId: args.agentId,
-          sessionId: args.sessionId,
-          ...(args.modelRoute?.modelProviderType
-            ? { modelProvider: args.modelRoute.modelProviderType }
-            : {}),
-        },
-        apiStartTime: args.apiStartTime,
-        triggerSource: "github",
-        appendSystemPrompt: args.appendSystemPrompt,
-        modelProviderId: args.modelRoute?.modelProviderId ?? undefined,
-        modelProviderCredentialScope:
-          args.modelRoute?.modelProviderCredentialScope,
-        selectedModelOverride: args.modelRoute?.selectedModel,
-        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
-        callbacks: [
-          {
-            internalKind: "github:issues",
-            secret: generateCallbackSecret(),
-            payload: args.callbackPayload,
-          },
-        ],
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    if (result.status !== 201) {
-      return {
-        status: "failed",
-        response:
-          (await set(
-            routeErrorMessage$,
-            {
-              body: result.body,
-              orgId: args.orgId,
-              userId: args.userId,
-            },
-            signal,
-          )) ?? RUN_START_FALLBACK_MESSAGE,
-      };
-    }
-
-    const status = stringField(result.body, "status");
-    const runId = stringField(result.body, "runId");
-    if (status === "queued") {
-      return { status: "queued", runId };
-    }
-    if (status === "failed") {
-      return {
-        status: "failed",
-        runId,
-        response:
-          stringField(result.body, "error") ?? RUN_START_FALLBACK_MESSAGE,
-      };
-    }
-    return { status: "accepted", runId };
-  },
-);
 
 async function loadGithubUserLink(args: {
   readonly db: Db;
@@ -1576,7 +1228,6 @@ export const handleGithubIssueCommentEvent$ = command(
         composeId: installation.defaultComposeId,
         prompt,
         automationDescription: `${githubAppBotUsername() ?? "GitHub App"} mention`,
-        sessionContinuityEnabled: true,
         commentId: String(payload.comment.id),
         comment: payload.comment,
         apiStartTime: args.apiStartTime,
@@ -1585,6 +1236,83 @@ export const handleGithubIssueCommentEvent$ = command(
     );
   },
 );
+
+async function insertGitHubChatInput(args: {
+  readonly db: Db;
+  readonly route: GitHubChatThreadRouteBinding;
+  readonly params: DispatchParams;
+  readonly target: GitHubRunTarget;
+  readonly prompt: string;
+  readonly promptParts: ReturnType<typeof buildPromptParts>;
+  readonly reactionId: string | undefined;
+  readonly currentTime: Date;
+}): Promise<{ readonly chatMessageId: string; readonly inserted: boolean }> {
+  const issueNumber = args.params.issue.number;
+  const encryptedParams = await encryptQueuedUserMessageRunParams(
+    {
+      version: 1,
+      prompt: args.promptParts.prompt,
+      appendSystemPrompt: args.promptParts.appendSystemPrompt ?? "",
+      githubDelivery: {
+        installationId: args.route.installationId,
+        repo: args.params.repo,
+        subjectNumber: issueNumber,
+        subjectKind: args.params.subjectKind,
+        agentId: args.target.composeId,
+        triggerCommentId: args.params.commentId,
+        triggerReactionId: args.reactionId,
+        triggerCommentBody: args.params.comment?.body,
+      },
+      apiStartTime: args.params.apiStartTime,
+    },
+    { orgId: args.target.orgId, userId: args.params.vm0UserId },
+  );
+
+  const chatMessageId = uuidv5(
+    [
+      args.route.installationId,
+      args.params.repo,
+      issueNumber,
+      args.params.vm0UserId,
+      args.params.commentId ?? args.params.prompt,
+    ].join(":"),
+    GITHUB_CHAT_MESSAGE_ID_NAMESPACE,
+  );
+  const inserted = await args.db.transaction(async (tx) => {
+    const event = await insertChatEvent(
+      tx,
+      {
+        id: chatMessageId,
+        chatThreadId: args.route.chatThreadId,
+        eventType: "input.prompt",
+        userMessage: createUserMessageDocument({ text: args.prompt }),
+        runId: null,
+        triggerSource: "github",
+        encryptedParams,
+        createdAt: args.currentTime,
+      },
+      "id",
+    );
+    if (!event) {
+      return false;
+    }
+    await tx
+      .update(githubChatThreadRoutes)
+      .set({
+        lastCommentId: args.params.commentId ?? null,
+        updatedAt: args.currentTime,
+      })
+      .where(eq(githubChatThreadRoutes.id, args.route.id));
+    await touchChatThreadLastMessageAt(
+      tx,
+      args.route.chatThreadId,
+      args.currentTime,
+      chatMessageId,
+    );
+    return true;
+  });
+  return { chatMessageId, inserted };
+}
 
 const dispatchGithubAgentRun$ = command(
   async (
@@ -1603,14 +1331,6 @@ const dispatchGithubAgentRun$ = command(
     const token = await getGitHubTokenForInstallation({ installation, signal });
     signal.throwIfAborted();
 
-    const reactionId = await maybeAddCommentReaction({
-      token,
-      repo: params.repo,
-      commentId: params.commentId,
-      signal,
-    });
-    signal.throwIfAborted();
-
     const target = await loadGitHubRunTarget({
       db,
       composeId: params.composeId,
@@ -1626,23 +1346,20 @@ const dispatchGithubAgentRun$ = command(
     );
     signal.throwIfAborted();
 
-    let existingSessionId: string | undefined;
-    if (params.sessionContinuityEnabled) {
-      const sessionResult = await resolveExistingSession({
-        db,
-        installationDbId: installation.id,
-        repo: params.repo,
-        issueNumber,
-        composeId: target.composeId,
-        vm0UserId: params.vm0UserId,
-        commentId: params.commentId,
-        modelRoute,
-        signal,
-      });
-      if (sessionResult.kind === "duplicate") {
-        return;
-      }
-      existingSessionId = sessionResult.sessionId;
+    const currentTime = new Date(params.apiStartTime);
+    const route = await ensureGitHubChatThreadRoute(db, {
+      installationId: installation.id,
+      repo: params.repo,
+      subjectNumber: issueNumber,
+      userId: params.vm0UserId,
+      orgId: target.orgId,
+      agentComposeId: target.composeId,
+      selectedModel: modelRoute?.selectedModel ?? null,
+      currentTime,
+    });
+    signal.throwIfAborted();
+    if (params.commentId && route.lastCommentId === params.commentId) {
+      return;
     }
 
     const prompt = replaceGithubFileReferencesForContext(params.prompt);
@@ -1660,64 +1377,63 @@ const dispatchGithubAgentRun$ = command(
       subjectKind: params.subjectKind,
     });
 
-    const callbackPayload = buildCallbackPayload({
-      installationDbId: installation.id,
-      params,
-      issueNumber,
-      composeId: target.composeId,
-      existingSessionId,
-      sessionContinuityEnabled: params.sessionContinuityEnabled,
-      reactionId,
-    });
-
-    const dispatchResult = await set(
-      runAgentForGitHub$,
-      {
-        userId: params.vm0UserId,
-        orgId: target.orgId,
-        agentId: target.zeroAgentId,
-        sessionId: existingSessionId,
-        prompt: promptParts.prompt,
-        appendSystemPrompt: promptParts.appendSystemPrompt,
-        modelRoute,
-        callbackPayload,
-        apiStartTime: params.apiStartTime,
-      },
+    const reactionId = await maybeAddCommentReaction({
+      token,
+      repo: params.repo,
+      commentId: params.commentId,
       signal,
-    );
+    });
+    signal.throwIfAborted();
 
-    if (dispatchResult.status === "failed") {
-      if (!dispatchResult.runId) {
-        await handleDispatchError({
-          message: dispatchResult.response,
+    const { chatMessageId, inserted } = await insertGitHubChatInput({
+      db,
+      route,
+      params,
+      target,
+      prompt,
+      promptParts,
+      reactionId,
+      currentTime,
+    });
+    signal.throwIfAborted();
+
+    if (!inserted) {
+      if (token && params.commentId && reactionId) {
+        await removeGithubCommentReaction({
           token,
           repo: params.repo,
-          issueNumber,
           commentId: params.commentId,
           reactionId,
-          commentBody: params.comment?.body,
           signal,
         });
-        signal.throwIfAborted();
       }
       return;
     }
 
-    L.debug("Agent run dispatched for GitHub issue", {
-      runId: dispatchResult.runId,
-      status: dispatchResult.status,
-      repo: params.repo,
-      issueNumber,
-    });
-
-    await finalizeSuccessfulGithubDispatch({
-      db,
-      installationDbId: installation.id,
-      repo: params.repo,
-      issueNumber,
-      existingSessionId,
-      commentId: params.commentId,
+    await publishChatThreadMessageCreatedSafely(
+      params.vm0UserId,
+      route.chatThreadId,
+    );
+    signal.throwIfAborted();
+    await publishThreadListChanged(params.vm0UserId);
+    signal.throwIfAborted();
+    await set(
+      drainChatThreadQueueForThread$,
+      {
+        chatThreadId: route.chatThreadId,
+        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+      },
       signal,
+    );
+    signal.throwIfAborted();
+
+    L.debug("GitHub comment queued on canonical chat thread", {
+      chatThreadId: route.chatThreadId,
+      chatMessageId,
+      repo: params.repo,
+      issueNumber,
+      subjectKind: params.subjectKind,
+      userId: params.vm0UserId,
     });
   },
 );
