@@ -9,7 +9,7 @@ import { checkpoints } from "@vm0/db/schema/checkpoint";
 
 import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
-import { nowDate } from "../../lib/time";
+import { now, nowDate } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import { publishRunChangedForUserSafely } from "../external/realtime";
@@ -51,6 +51,10 @@ interface CancellationRecoverySideEffectsInput {
 type CompleteSideEffectsInput =
   | TerminalSideEffectsInput
   | CancellationRecoverySideEffectsInput;
+
+type DispatchCompleteSideEffectsInput = CompleteSideEffectsInput & {
+  readonly apiStartTime?: number;
+};
 
 interface CompletionResponse {
   readonly status: 200 | 404;
@@ -377,9 +381,10 @@ async function handleFailedCompletion(
 export const dispatchCompleteSideEffects$ = command(
   async (
     { set },
-    input: CompleteSideEffectsInput,
+    input: DispatchCompleteSideEffectsInput,
     signal: AbortSignal,
   ): Promise<void> => {
+    const apiStartTime = input.apiStartTime ?? now();
     if (input.kind === "cancellation-recovery") {
       await tapError(
         set(
@@ -387,6 +392,7 @@ export const dispatchCompleteSideEffects$ = command(
           {
             runId: input.runId,
             dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+            apiStartTime,
           },
           signal,
         ),
@@ -436,6 +442,7 @@ export const dispatchCompleteSideEffects$ = command(
           {
             runId: input.runId,
             dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+            apiStartTime,
           },
           signal,
         ),

@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import { writeDb$ } from "../external/db";
-import { nowDate } from "../external/time";
+import { now, nowDate } from "../external/time";
 import { tapError } from "../utils";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
 import { staleChatThreadQueueThreadIds } from "./workflow-chat-event-queue.service";
@@ -32,6 +32,7 @@ interface QueueDrainSweepCandidate {
 }
 
 interface DrainChatThreadQueueInput {
+  readonly apiStartTime?: number;
   readonly chatThreadId: string;
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
   readonly queueItemCreatedBefore?: Date;
@@ -60,10 +61,12 @@ export const drainChatThreadQueueForThread$ = command(
     input: DrainChatThreadQueueInput,
     signal: AbortSignal,
   ): Promise<WorkflowQueueDrainResult | null> => {
+    const apiStartTime = input.apiStartTime ?? now();
     await set(
       drainQueuedUserMessagesForThread$,
       {
         chatThreadId: input.chatThreadId,
+        apiStartTime,
         queueItemCreatedBefore: input.queueItemCreatedBefore,
         timing: input.timing,
       },
@@ -74,6 +77,7 @@ export const drainChatThreadQueueForThread$ = command(
       drainWorkflowQueueForThread$,
       {
         chatThreadId: input.chatThreadId,
+        apiStartTime,
         dispatchFailedCallbacks: input.dispatchFailedCallbacks,
         queueItemCreatedBefore: input.queueItemCreatedBefore,
         ...(input.workflowEventLaunch
@@ -90,6 +94,7 @@ export const drainChatThreadQueueForThread$ = command(
       drainGoalQueueForThread$,
       {
         chatThreadId: input.chatThreadId,
+        apiStartTime,
         dispatchFailedCallbacks: input.dispatchFailedCallbacks,
         queueItemCreatedBefore: input.queueItemCreatedBefore,
       },
@@ -106,6 +111,7 @@ export const drainChatThreadQueueForRun$ = command(
     input: {
       readonly runId: string;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
+      readonly apiStartTime?: number;
     },
     signal: AbortSignal,
   ): Promise<void> => {
@@ -123,6 +129,7 @@ export const drainChatThreadQueueForRun$ = command(
       drainChatThreadQueueForThread$,
       {
         chatThreadId: run.chatThreadId,
+        apiStartTime: input.apiStartTime,
         dispatchFailedCallbacks: input.dispatchFailedCallbacks,
       },
       signal,

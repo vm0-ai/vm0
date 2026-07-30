@@ -3478,6 +3478,7 @@ async function handleQueuedMessageAdmissionFailure(args: {
 }
 
 interface AutoSendQueuedMessageArgs {
+  readonly apiStartTime?: number;
   readonly createRun: (
     input: CreateQueuedChatRunInput,
   ) => Promise<CreatedQueuedRun | null>;
@@ -3494,6 +3495,16 @@ interface AutoSendQueuedMessageArgs {
   readonly deliverTelegramAdmissionFailure: ChatCallbackDependencies["deliverTelegramAdmissionFailure"];
   readonly deliverAgentPhoneAdmissionFailure: ChatCallbackDependencies["deliverAgentPhoneAdmissionFailure"];
   readonly deliverGitHubAdmissionFailure: ChatCallbackDependencies["deliverGitHubAdmissionFailure"];
+}
+
+function chatThreadAdmissionBlockedForAutoSend(
+  args: AutoSendQueuedMessageArgs,
+  threadId: string,
+): Promise<boolean> {
+  return chatThreadAdmissionBlocked(args.db, {
+    threadId,
+    apiStartTime: args.apiStartTime,
+  });
 }
 
 /**
@@ -3562,7 +3573,7 @@ async function autoSendQueuedMessageForThread(
     "api_dispatch_pre_create_zero_chat_callback_auto_send_check_active_run",
     "nested",
     () => {
-      return chatThreadAdmissionBlocked(args.db, { threadId });
+      return chatThreadAdmissionBlockedForAutoSend(args, threadId);
     },
   );
   if (activeRunExists) {
@@ -4769,6 +4780,7 @@ export const drainQueuedUserMessagesForThread$ = command(
     { set },
     args: {
       readonly chatThreadId: string;
+      readonly apiStartTime?: number;
       readonly queueItemCreatedBefore?: Date;
       readonly timing?: ChatCallbackPreCreateTimingCollector;
     },
@@ -4799,10 +4811,11 @@ export const drainQueuedUserMessagesForThread$ = command(
     if (!createQueuedRun) {
       return;
     }
-    const apiStartTime = now();
+    const apiStartTime = args.apiStartTime ?? now();
     await autoSendQueuedMessageForThread({
       db,
       chatThreadId: args.chatThreadId,
+      apiStartTime,
       userId: thread.userId,
       agentId: thread.agentId,
       queueItemCreatedBefore: args.queueItemCreatedBefore,

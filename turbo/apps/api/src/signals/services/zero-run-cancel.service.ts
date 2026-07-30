@@ -6,7 +6,6 @@ import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { and, eq } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../external/db";
-import { nowDate } from "../external/time";
 import {
   publishCancelToRunnerGroup,
   publishOrgSignal,
@@ -14,6 +13,7 @@ import {
 } from "../external/realtime";
 import { logger } from "../../lib/log";
 import { notFound, runNotCancellable } from "../../lib/error";
+import { now } from "../../lib/time";
 import { tapError } from "../utils";
 import {
   chatCallbackIdForRun,
@@ -27,6 +27,7 @@ import { drainOrgQueue$ } from "./zero-run-queue.service";
 const L = logger("ZeroRunCancel");
 
 export interface CancelRunResult {
+  readonly apiStartTime: number;
   readonly runId: string;
   readonly previousStatus: string;
   readonly userId: string;
@@ -66,11 +67,13 @@ export const cancelRun$ = command(
       readonly runId: string;
       readonly userId: string;
       readonly orgId: string;
+      readonly apiStartTime?: number;
     },
     signal: AbortSignal,
   ): Promise<
     NotFoundResponse | RunNotCancellableResponse | CancelRunResult
   > => {
+    const apiStartTime = args.apiStartTime ?? now();
     const writeDb = set(writeDb$);
 
     const result = await writeDb.transaction(async (tx) => {
@@ -100,6 +103,7 @@ export const cancelRun$ = command(
 
       if (run.status === "cancelled") {
         return {
+          apiStartTime,
           runId: args.runId,
           previousStatus: run.status,
           userId: run.userId,
@@ -119,7 +123,10 @@ export const cancelRun$ = command(
 
       const [updated] = await tx
         .update(agentRuns)
-        .set({ status: "cancelled", completedAt: nowDate() })
+        .set({
+          status: "cancelled",
+          completedAt: new Date(apiStartTime),
+        })
         .where(
           and(eq(agentRuns.id, args.runId), eq(agentRuns.status, run.status)),
         )
@@ -134,6 +141,7 @@ export const cancelRun$ = command(
         .where(eq(runnerJobQueue.runId, args.runId));
 
       return {
+        apiStartTime,
         runId: args.runId,
         previousStatus: run.status,
         userId: run.userId,
@@ -299,6 +307,7 @@ export const dispatchCancelSideEffects$ = command(
           {
             runId: result.runId,
             dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+            apiStartTime: result.apiStartTime,
           },
           signal,
         ),

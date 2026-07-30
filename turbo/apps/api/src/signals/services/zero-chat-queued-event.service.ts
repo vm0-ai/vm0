@@ -437,9 +437,20 @@ async function claimGoalQueueFirstRunAssociation(
  * transaction. Successful launches acquire the organization admission lock
  * first; failed launches do not acquire that lock or create active state.
  */
+function queueFirstRunAdmissionBlocked(
+  db: DbTransaction,
+  args: { readonly apiStartTime: number; readonly threadId: string },
+): Promise<boolean> {
+  return chatThreadAdmissionBlocked(db, {
+    threadId: args.threadId,
+    apiStartTime: args.apiStartTime,
+  });
+}
+
 export async function claimQueueFirstRunAssociation(
   db: DbTransaction,
   args: QueueFirstRunAssociation & {
+    readonly apiStartTime: number;
     readonly runId: string;
     readonly timing: ApiDispatchTimingCollector;
   },
@@ -461,7 +472,7 @@ export async function claimQueueFirstRunAssociation(
         return { kind: "lost" };
       }
 
-      if (await chatThreadAdmissionBlocked(db, { threadId: args.threadId })) {
+      if (await queueFirstRunAdmissionBlocked(db, args)) {
         outcome = "lost";
         return { kind: "lost" };
       }

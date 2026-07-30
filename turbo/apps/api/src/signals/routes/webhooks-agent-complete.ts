@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import { webhookCompleteContract } from "@vm0/api-contracts/contracts/webhooks";
 
 import { logger } from "../../lib/log";
-import { authorization$ } from "../context/hono";
+import { apiStartTime$, authorization$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import type { RouteEntry } from "../route-entry";
@@ -40,7 +40,14 @@ const completeAgentRunRoute$ = command(
     if (result.sideEffects) {
       waitUntil(
         tapError(
-          set(dispatchCompleteSideEffects$, result.sideEffects, signal),
+          set(
+            dispatchCompleteSideEffects$,
+            {
+              ...result.sideEffects,
+              apiStartTime: get(apiStartTime$),
+            },
+            signal,
+          ),
           (error) => {
             L.error("dispatchCompleteSideEffects failed", {
               runId: result.sideEffects?.runId,
