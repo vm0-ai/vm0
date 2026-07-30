@@ -136,14 +136,9 @@ async function seedFixture(
           ...baseEvent,
           eventType: "input.prompt",
           triggerSource:
-            fixtureKind === "orphan" ||
-            fixtureKind === "queued-integration" ||
-            fixtureKind === "legacy-queued-integration"
+            fixtureKind === "orphan" || fixtureKind === "queued-integration"
               ? "slack"
               : "web",
-          ...(fixtureKind === "legacy-queued-integration"
-            ? { encryptedParams: "encrypted-monitor-params" }
-            : {}),
         });
   });
   signal.throwIfAborted();
@@ -156,10 +151,6 @@ async function seedFixture(
       eventId: event.id,
       encryptedParams: "encrypted-monitor-params",
     });
-  } else if (fixtureKind === "legacy-queued-integration") {
-    await db
-      .delete(chatInputQueueParams)
-      .where(eq(chatInputQueueParams.eventId, event.id));
   } else if (fixtureKind === "revoked-message") {
     await db.transaction(async (tx) => {
       await replaceChatEvent(tx, event.id, {

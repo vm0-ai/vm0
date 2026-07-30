@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { chatInputQueueParams } from "@vm0/db/schema/chat-input-queue-params";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { morningBriefDeliveries } from "@vm0/db/schema/morning-brief";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { db } from "../lib/db";
 import {
@@ -51,10 +51,7 @@ export async function readMorningBriefQueuedParamsForDeliveryFixture(args: {
 }) {
   const messages = await db()
     .select({
-      encryptedParams: sql`COALESCE(
-        ${chatInputQueueParams.encryptedParams},
-        ${chatEvents.encryptedParams}
-      )`.mapWith(chatEvents.encryptedParams),
+      encryptedParams: chatInputQueueParams.encryptedParams,
     })
     .from(chatEvents)
     .leftJoin(
@@ -89,16 +86,10 @@ export async function replaceMorningBriefQueuedCallbackPayloadFixture(args: {
   const messages = await db()
     .select({
       id: chatEvents.id,
-      encryptedParams: sql`COALESCE(
-        ${chatInputQueueParams.encryptedParams},
-        ${chatEvents.encryptedParams}
-      )`.mapWith(chatEvents.encryptedParams),
+      encryptedParams: chatInputQueueParams.encryptedParams,
       userMessage: chatEvents.userMessage,
       attachFiles: chatEvents.attachFiles,
-      attachFileMetadata: sql`COALESCE(
-        ${chatInputQueueParams.attachFileMetadata},
-        ${chatEvents.attachFileMetadata}
-      )`.mapWith(chatEvents.attachFileMetadata),
+      attachFileMetadata: chatInputQueueParams.attachFileMetadata,
       generationTemplate: chatEvents.generationTemplate,
       triggerSource: chatEvents.triggerSource,
     })
@@ -162,10 +153,7 @@ export async function readMorningBriefQueuedParamsFixture(args: {
 }) {
   const [event] = await db()
     .select({
-      encryptedParams: sql`COALESCE(
-        ${chatInputQueueParams.encryptedParams},
-        ${chatEvents.encryptedParams}
-      )`.mapWith(chatEvents.encryptedParams),
+      encryptedParams: chatInputQueueParams.encryptedParams,
     })
     .from(chatEvents)
     .leftJoin(
