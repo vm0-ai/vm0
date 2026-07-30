@@ -36,11 +36,21 @@ interface CompleteAgentRunInput {
 }
 
 interface TerminalSideEffectsInput {
+  readonly kind: "terminal";
   readonly runId: string;
   readonly orgId: string;
   readonly status: TerminalStatus;
   readonly error?: string;
 }
+
+interface CancellationRecoverySideEffectsInput {
+  readonly kind: "cancellation-recovery";
+  readonly runId: string;
+}
+
+type CompleteSideEffectsInput =
+  | TerminalSideEffectsInput
+  | CancellationRecoverySideEffectsInput;
 
 interface CompletionResponse {
   readonly status: 200 | 404;
@@ -55,10 +65,11 @@ interface CompletionResponse {
           readonly code: "NOT_FOUND";
         };
       };
-  readonly sideEffects?: TerminalSideEffectsInput;
+  readonly sideEffects?: CompleteSideEffectsInput;
 }
 
 interface RunRecord {
+  readonly cancellationRecoveryCompleted: boolean | null;
   readonly orgId: string;
   readonly status: string;
   readonly userId: string;
@@ -161,6 +172,7 @@ function successResponse(
       status,
     },
     sideEffects: {
+      kind: "terminal",
       runId,
       orgId,
       status,
@@ -183,6 +195,44 @@ async function currentStatusResponse(
         input.auth.userId,
       ),
     },
+  };
+}
+
+async function handleCancelledCompletion(
+  db: Db,
+  input: CompleteAgentRunInput,
+  run: RunRecord,
+  signal: AbortSignal,
+): Promise<CompletionResponse> {
+  if (run.cancellationRecoveryCompleted === false) {
+    await db
+      .update(agentRuns)
+      .set({ cancellationRecoveryCompleted: true })
+      .where(
+        and(
+          eq(agentRuns.id, input.body.runId),
+          eq(agentRuns.userId, input.auth.userId),
+          eq(agentRuns.status, "cancelled"),
+          eq(agentRuns.cancellationRecoveryCompleted, false),
+        ),
+      );
+    signal.throwIfAborted();
+  }
+
+  return {
+    status: 200,
+    body: {
+      success: true,
+      status: "failed",
+    },
+    ...(run.cancellationRecoveryCompleted !== null
+      ? {
+          sideEffects: {
+            kind: "cancellation-recovery" as const,
+            runId: input.body.runId,
+          },
+        }
+      : {}),
   };
 }
 
@@ -323,9 +373,30 @@ async function handleFailedCompletion(
 export const dispatchCompleteSideEffects$ = command(
   async (
     { set },
-    input: TerminalSideEffectsInput,
+    input: CompleteSideEffectsInput,
     signal: AbortSignal,
   ): Promise<void> => {
+    if (input.kind === "cancellation-recovery") {
+      await tapError(
+        set(
+          drainChatThreadQueueForRun$,
+          {
+            runId: input.runId,
+            dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+          },
+          signal,
+        ),
+        (error) => {
+          L.error("Failed to drain chat thread queue after recovery", {
+            runId: input.runId,
+            error,
+          });
+        },
+      );
+      signal.throwIfAborted();
+      return;
+    }
+
     const db = set(writeDb$);
     const callbackStatus =
       input.status === "completed" ? "completed" : "failed";
@@ -416,6 +487,7 @@ export const completeAgentRun$ = command(
         orgId: agentRuns.orgId,
         status: agentRuns.status,
         userId: agentRuns.userId,
+        cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
       })
       .from(agentRuns)
       .where(
@@ -453,6 +525,10 @@ export const completeAgentRun$ = command(
           status: run.status === "completed" ? "completed" : "failed",
         },
       };
+    }
+
+    if (run.status === "cancelled") {
+      return await handleCancelledCompletion(db, input, run, signal);
     }
 
     if (input.body.exitCode === 0) {

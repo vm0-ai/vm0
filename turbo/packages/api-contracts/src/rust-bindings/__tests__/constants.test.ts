@@ -31,6 +31,7 @@ import {
   NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX,
   NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
   RESUME_SESSION_HISTORY_MAX_BYTES,
+  RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
   RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
   SESSION_HISTORY_DOWNLOAD_SOURCE_CONFIGURED_PUBLIC_ENDPOINT,
   SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT,
@@ -68,6 +69,10 @@ const networkPolicyRefreshRunTerminalErrorCodeDoc = [
 const runnerPollExcludedRunIdsMaxDoc = [
   "Maximum runner-local claim cooldown exclusions accepted by the poll endpoint.",
   "Rust runners use this shared contract value to bound local cooldown state and poll request size.",
+] as const;
+const runnerCancellationRecoveryCapabilityDoc = [
+  "Claim capability for cooperative user-cancellation recovery.",
+  "Supporting runners advertise this value so the API can activate the cancellation recovery barrier.",
 ] as const;
 const sessionHistoryEncodingGzipDoc = [
   "Wire and blob metadata value for gzip-compressed resume session history.",
@@ -199,6 +204,12 @@ const expectedBindings = [
     rustConstName: "RESUME_SESSION_HISTORY_MAX_BYTES",
     value: rustU64(RESUME_SESSION_HISTORY_MAX_BYTES),
     rustDoc: resumeSessionHistoryMaxBytesDoc,
+  },
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "RUNNER_CANCELLATION_RECOVERY_CAPABILITY",
+    value: rustString(RUNNER_CANCELLATION_RECOVERY_CAPABILITY),
+    rustDoc: runnerCancellationRecoveryCapabilityDoc,
   },
   {
     rustModulePath: ["runners"],
@@ -417,6 +428,9 @@ describe("Rust constant bindings", () => {
     );
     expect(firstRender).toContain(
       `pub const RESUME_SESSION_HISTORY_MAX_BYTES: u64 = ${RESUME_SESSION_HISTORY_MAX_BYTES};`,
+    );
+    expect(firstRender).toContain(
+      `pub const RUNNER_CANCELLATION_RECOVERY_CAPABILITY: &str = "${RUNNER_CANCELLATION_RECOVERY_CAPABILITY}";`,
     );
     expect(firstRender).toContain(
       `pub const RUNNER_POLL_EXCLUDED_RUN_IDS_MAX: u64 = ${RUNNER_POLL_EXCLUDED_RUN_IDS_MAX};`,

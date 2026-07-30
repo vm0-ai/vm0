@@ -32,6 +32,7 @@ export interface CancelRunResult {
   readonly orgId: string;
   readonly sandboxId: string | null;
   readonly runnerGroup: string | null;
+  readonly cancellationRecoveryCompleted: boolean | null;
   readonly alreadyCancelled: boolean;
 }
 
@@ -46,10 +47,12 @@ function isActiveStatus(status: string): status is ActiveStatus {
 }
 
 /**
- * Cancel a run. Idempotent for already-cancelled runs (returns success
- * without dispatching side effects). Returns notFound if the run doesn't
- * exist or is owned by another (org, user) tuple. Returns
- * runNotCancellable for non-cancellable terminal statuses.
+ * Cancel a run. Idempotent for already-cancelled runs. Recovery-capable
+ * cancellations may redrive only their retry-safe callback and thread-drain
+ * side effects; legacy cancellations return success without side effects.
+ * Returns notFound if the run doesn't exist or is owned by another (org,
+ * user) tuple. Returns runNotCancellable for non-cancellable terminal
+ * statuses.
  *
  * The transactional shape locks the run row first, classifies the
  * current status under that lock, then updates status and removes
@@ -78,6 +81,8 @@ export const cancelRun$ = command(
           orgId: agentRuns.orgId,
           sandboxId: agentRuns.sandboxId,
           runnerGroup: agentRuns.runnerGroup,
+          cancellationRecoveryCompleted:
+            agentRuns.cancellationRecoveryCompleted,
         })
         .from(agentRuns)
         .where(
@@ -100,6 +105,7 @@ export const cancelRun$ = command(
           orgId: run.orgId,
           sandboxId: run.sandboxId,
           runnerGroup: run.runnerGroup,
+          cancellationRecoveryCompleted: run.cancellationRecoveryCompleted,
           alreadyCancelled: true,
         };
       }
@@ -133,6 +139,7 @@ export const cancelRun$ = command(
         orgId: run.orgId,
         sandboxId: run.sandboxId,
         runnerGroup: run.runnerGroup,
+        cancellationRecoveryCompleted: run.cancellationRecoveryCompleted,
         alreadyCancelled: false,
       };
     });
@@ -141,6 +148,14 @@ export const cancelRun$ = command(
     return result;
   },
 );
+
+export function shouldDispatchCancelSideEffects(
+  result: CancelRunResult,
+): boolean {
+  return (
+    !result.alreadyCancelled || result.cancellationRecoveryCompleted !== null
+  );
+}
 
 /**
  * Post-cancel side effects:
@@ -168,11 +183,16 @@ export const dispatchCancelSideEffects$ = command(
     result: CancelRunResult,
     signal: AbortSignal,
   ): Promise<void> => {
-    if (result.alreadyCancelled) {
+    if (!shouldDispatchCancelSideEffects(result)) {
       return;
     }
+    const recoveryRedrive = result.alreadyCancelled;
     const db = set(writeDb$);
-    if (result.previousStatus === "running" && result.runnerGroup) {
+    if (
+      !recoveryRedrive &&
+      result.previousStatus === "running" &&
+      result.runnerGroup
+    ) {
       await tapError(
         publishCancelToRunnerGroup(result.runnerGroup, result.runId),
         (error) => {
@@ -185,27 +205,32 @@ export const dispatchCancelSideEffects$ = command(
       );
       signal.throwIfAborted();
     }
-    await tapError(publishOrgSignal(result.orgId, "queue:changed"), (error) => {
-      L.error("Failed to publish queue changed after run cancellation", {
-        runId: result.runId,
-        orgId: result.orgId,
-        error,
-      });
-    });
-    signal.throwIfAborted();
-    await tapError(
-      publishUserSignal([result.userId], `run:changed:${result.runId}`, {
-        status: "cancelled",
-      }),
-      (error) => {
-        L.error("Failed to publish cancelled run changed signal", {
-          runId: result.runId,
-          userId: result.userId,
-          error,
-        });
-      },
-    );
-    signal.throwIfAborted();
+    if (!recoveryRedrive) {
+      await tapError(
+        publishOrgSignal(result.orgId, "queue:changed"),
+        (error) => {
+          L.error("Failed to publish queue changed after run cancellation", {
+            runId: result.runId,
+            orgId: result.orgId,
+            error,
+          });
+        },
+      );
+      signal.throwIfAborted();
+      await tapError(
+        publishUserSignal([result.userId], `run:changed:${result.runId}`, {
+          status: "cancelled",
+        }),
+        (error) => {
+          L.error("Failed to publish cancelled run changed signal", {
+            runId: result.runId,
+            userId: result.userId,
+            error,
+          });
+        },
+      );
+      signal.throwIfAborted();
+    }
 
     const chatCallbackId = await chatCallbackIdForRun(db, result.runId);
     signal.throwIfAborted();
@@ -234,7 +259,7 @@ export const dispatchCancelSideEffects$ = command(
         callbackResult.callbackId === chatCallbackId && callbackResult.success
       );
     });
-    if (!chatCallbackDrained) {
+    if (result.cancellationRecoveryCompleted !== null || !chatCallbackDrained) {
       await tapError(
         set(
           drainChatThreadQueueForRun$,
@@ -252,6 +277,10 @@ export const dispatchCancelSideEffects$ = command(
         },
       );
       signal.throwIfAborted();
+    }
+
+    if (recoveryRedrive) {
+      return;
     }
 
     // Promote one queued run to pending; the runner picks it up on its

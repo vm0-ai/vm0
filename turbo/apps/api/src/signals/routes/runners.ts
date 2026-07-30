@@ -5,6 +5,7 @@ import {
   elapsedSinceApiStartMs,
   NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
   RESUME_SESSION_HISTORY_MAX_BYTES,
+  RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
   runnersNetworkPolicyRefreshContract,
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
@@ -925,9 +926,11 @@ async function lockRunnerJob(
   return row;
 }
 
+// Materialized outputs make the row locks depend on run, then queue.
 async function transitionClaimedJobToRunning(
   db: Db,
   runId: string,
+  cancellationRecoverySupported: boolean,
   signal: AbortSignal,
   timing: ClaimRouteTimingCollector,
 ): Promise<ClaimTransitionResult> {
@@ -936,7 +939,6 @@ async function transitionClaimedJobToRunning(
       "claim_route_transition_execute",
       "nested",
       async () => {
-        // Materialized outputs make the row locks depend on run, then queue.
         return await executeRawRows(
           tx,
           sql`
@@ -975,7 +977,8 @@ async function transitionClaimedJobToRunning(
             SET
               status = 'running',
               started_at = claim_clock."claimedAt",
-              last_heartbeat_at = claim_clock."claimedAt"
+              last_heartbeat_at = claim_clock."claimedAt",
+              cancellation_recovery_completed = ${cancellationRecoverySupported ? false : null}
             FROM locked_run
             INNER JOIN locked_job
               ON locked_job."runId" = locked_run."id"
@@ -984,9 +987,7 @@ async function transitionClaimedJobToRunning(
               eq(agentRuns.id, sql`locked_run."id"`),
               eq(agentRuns.status, sql`'pending'`),
             )}
-            RETURNING
-              ${agentRuns.id} AS "id",
-              ${agentRuns.startedAt} AS "claimedAt"
+            RETURNING ${agentRuns.id} AS "id", ${agentRuns.startedAt} AS "claimedAt"
           ),
           deleted_job AS (
             DELETE FROM ${runnerJobQueue}
@@ -2065,6 +2066,7 @@ const scheduleClaimFailedSideEffects$ = command(
         set(
           dispatchCompleteSideEffects$,
           {
+            kind: "terminal",
             runId: args.runId,
             orgId: args.orgId,
             status: "failed",
@@ -2176,6 +2178,7 @@ const claimAuthorizedJob$ = command(
       readonly runId: string;
       readonly authType: RunnerAuthContext["type"];
       readonly jobWithRun: ClaimableJob;
+      readonly cancellationRecoverySupported: boolean;
       readonly telemetry: ClaimTimingTelemetry | undefined;
       readonly claimRequestStartedAtMs: number;
       readonly claimRouteTiming: ClaimRouteTimingCollector;
@@ -2247,6 +2250,7 @@ const claimAuthorizedJob$ = command(
         return await transitionClaimedJobToRunning(
           db,
           runId,
+          args.cancellationRecoverySupported,
           signal,
           claimRouteTiming,
         );
@@ -2314,6 +2318,10 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     runId,
     authType: auth.type,
     jobWithRun,
+    cancellationRecoverySupported:
+      body.data.capabilities?.includes(
+        RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
+      ) === true,
     telemetry: body.data.telemetry,
     claimRequestStartedAtMs,
     claimRouteTiming,

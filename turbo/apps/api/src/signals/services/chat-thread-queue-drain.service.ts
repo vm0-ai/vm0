@@ -2,8 +2,10 @@ import { command } from "ccstate";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq } from "drizzle-orm";
 
+import { logger } from "../../lib/log";
 import { writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
+import { tapError } from "../utils";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
 import { staleChatThreadQueueThreadIds } from "./workflow-chat-event-queue.service";
 import {
@@ -19,6 +21,7 @@ import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 
 const DRAIN_SWEEP_LIMIT = 20;
 const STALE_QUEUE_ITEM_AGE_MS = 5 * 60 * 1000;
+const L = logger("ChatThreadQueueDrain");
 
 interface DrainChatThreadQueueInput {
   readonly chatThreadId: string;
@@ -134,14 +137,22 @@ export const drainStaleChatThreadQueues$ = command(
     });
     signal.throwIfAborted();
     for (const chatThreadId of threadIds) {
-      await set(
-        drainChatThreadQueueForThread$,
-        {
-          chatThreadId,
-          dispatchFailedCallbacks: input.dispatchFailedCallbacks,
-          queueItemCreatedBefore: staleBefore,
+      await tapError(
+        set(
+          drainChatThreadQueueForThread$,
+          {
+            chatThreadId,
+            dispatchFailedCallbacks: input.dispatchFailedCallbacks,
+            queueItemCreatedBefore: staleBefore,
+          },
+          signal,
+        ),
+        (error) => {
+          L.error("Failed to drain stale chat thread queue", {
+            chatThreadId,
+            error,
+          });
         },
-        signal,
       );
       signal.throwIfAborted();
     }
