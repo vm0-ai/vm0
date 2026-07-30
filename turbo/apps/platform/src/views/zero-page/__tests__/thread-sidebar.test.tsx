@@ -223,12 +223,10 @@ function setupChatThread({
         events: events.filter((event) => {
           return event.seqId > sinceSeqId;
         }),
-        hasHistoryBefore: false,
       });
     }
     return respond(200, {
       events,
-      hasHistoryBefore: false,
     });
   });
   context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {

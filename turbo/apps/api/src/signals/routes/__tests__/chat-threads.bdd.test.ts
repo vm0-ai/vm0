@@ -1660,7 +1660,9 @@ describe("CHAT-01 chat thread read state", () => {
     });
 
     const full = await chat.listThreadEvents(owner, threadId);
-    expect(full.hasHistoryBefore).toBeFalsy();
+    // The thread's first event owns seqId 1, which is how clients detect that
+    // no history remains behind the page.
+    expect(full.events[0]?.seqId).toBe(1);
     expect(
       full.events.map((event) => {
         return [event.eventType, event.content] as const;
@@ -1737,7 +1739,7 @@ describe("CHAT-01 chat thread read state", () => {
         return message.id;
       }),
     ).toStrictEqual([secondReplacement, secondAssistant]);
-    expect(latest.hasHistoryBefore).toBeTruthy();
+    expect(latest.events[0]?.seqId).toBeGreaterThan(1);
 
     // Forward pagination strictly after the cursor.
     const since = await chat.listThreadEvents(owner, threadId, {
@@ -1767,7 +1769,7 @@ describe("CHAT-01 chat thread read state", () => {
         return message.id;
       }),
     ).toStrictEqual([firstQueuedUser, firstReplacement, firstAssistant]);
-    expect(before.hasHistoryBefore).toBeFalsy();
+    expect(before.events[0]?.seqId).toBe(1);
     const legacyBefore = await chat.listThreadEvents(owner, threadId, {
       beforeId: secondQueuedUser,
       limit: 3,
@@ -1777,7 +1779,7 @@ describe("CHAT-01 chat thread read state", () => {
         return message.id;
       }),
     ).toStrictEqual([firstQueuedUser, firstReplacement, firstAssistant]);
-    expect(legacyBefore.hasHistoryBefore).toBeFalsy();
+    expect(legacyBefore.events[0]?.seqId).toBe(1);
 
     const beforeOverflow = await chat.listThreadEvents(owner, threadId, {
       beforeSeqId: secondAssistantSeqId,
@@ -1788,7 +1790,7 @@ describe("CHAT-01 chat thread read state", () => {
         return message.id;
       }),
     ).toStrictEqual([secondQueuedUser, secondReplacement]);
-    expect(beforeOverflow.hasHistoryBefore).toBeTruthy();
+    expect(beforeOverflow.events[0]?.seqId).toBeGreaterThan(1);
   }, 30_000);
 
   it("serializes concurrent message sequence writes through commit", async () => {

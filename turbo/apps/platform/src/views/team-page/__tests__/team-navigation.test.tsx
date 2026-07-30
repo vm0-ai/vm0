@@ -837,7 +837,6 @@ describe("team page navigation", () => {
                   },
                 ]
               : [],
-          hasHistoryBefore: false,
         });
       },
     );
