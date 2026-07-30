@@ -198,6 +198,7 @@ describe("model-first canonical catalog", () => {
   });
 
   it("deduplicates retired GPT policy requests onto Luna", () => {
+    const openRouterProviderId = "00000000-0000-4000-8000-000000000001";
     expect(
       updateOrgModelPoliciesRequestSchema.parse({
         policies: [
@@ -206,7 +207,7 @@ describe("model-first canonical catalog", () => {
             isDefault: true,
             defaultProviderType: "openrouter-codex",
             credentialScope: "org",
-            modelProviderId: null,
+            modelProviderId: openRouterProviderId,
           },
           {
             model: "gpt-5.4-mini",
@@ -237,9 +238,9 @@ describe("model-first canonical catalog", () => {
         {
           model: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
           isDefault: true,
-          defaultProviderType: "vm0",
+          defaultProviderType: "openrouter-codex",
           credentialScope: "org",
-          modelProviderId: null,
+          modelProviderId: openRouterProviderId,
           modelProviderSurfaceId: null,
         },
       ],
@@ -409,16 +410,22 @@ describe("model-first canonical catalog", () => {
       "vm0",
       "openai-api-key",
       "codex-oauth-token",
+      "openrouter-codex",
+      "vercel-ai-gateway-codex",
     ]);
     expect(getProvidersForModel("gpt-5.6-terra")).toEqual([
       "vm0",
       "openai-api-key",
       "codex-oauth-token",
+      "openrouter-codex",
+      "vercel-ai-gateway-codex",
     ]);
     expect(getProvidersForModel("gpt-5.6-luna")).toEqual([
       "vm0",
       "openai-api-key",
       "codex-oauth-token",
+      "openrouter-codex",
+      "vercel-ai-gateway-codex",
     ]);
     expect(getProvidersForModel("openai/gpt-5.6-sol")).toEqual([]);
     expect(getProvidersForModel("deepseek/deepseek-v4-pro")).toContain(
@@ -476,11 +483,11 @@ describe("model-first canonical catalog", () => {
       true,
     );
     expect(isModelSupportedByProvider("gpt-5.6-sol", "openrouter-codex")).toBe(
-      false,
+      true,
     );
     expect(
       isModelSupportedByProvider("gpt-5.6-sol", "vercel-ai-gateway-codex"),
-    ).toBe(false);
+    ).toBe(true);
     expect(isModelSupportedByProvider("gpt-5.5", "openai-api-key")).toBe(true);
     expect(isModelSupportedByProvider("gpt-5.5", "anthropic-api-key")).toBe(
       false,
@@ -1426,11 +1433,15 @@ describe("codex-framework gateway providers (openrouter-codex, vercel-ai-gateway
   );
 
   it.each(["openrouter-codex", "vercel-ai-gateway-codex"] as const)(
-    "%s offers GPT models with gpt-5.5 default",
+    "%s offers current GPT models with gpt-5.6-luna default",
     (type) => {
-      expect(getModels(type)).toEqual(["openai/gpt-5.5"]);
-      expect(getModels(type)).not.toContain("openai/gpt-5.6-sol");
-      expect(getDefaultModel(type)).toBe("openai/gpt-5.5");
+      expect(getModels(type)).toEqual([
+        "openai/gpt-5.6-sol",
+        "openai/gpt-5.6-terra",
+        "openai/gpt-5.6-luna",
+        "openai/gpt-5.5",
+      ]);
+      expect(getDefaultModel(type)).toBe("openai/gpt-5.6-luna");
     },
   );
 

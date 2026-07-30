@@ -384,6 +384,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   it("normalizes retired GPT policy writes to Luna", async () => {
     const fixture = await seedFixture();
     useSession(fixture);
+    const providerId = await createOrgProvider(fixture, "openrouter-codex");
 
     const response = await accept(
       apiClient().update({
@@ -395,7 +396,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
               isDefault: true,
               defaultProviderType: "openrouter-codex",
               credentialScope: "org",
-              modelProviderId: null,
+              modelProviderId: providerId,
             },
             {
               model: "gpt-5.4-mini",
@@ -419,9 +420,9 @@ describe("GET/PUT /api/zero/model-policies", () => {
       expect.objectContaining({
         model: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "openrouter-codex",
         credentialScope: "org",
-        modelProviderId: null,
+        modelProviderId: providerId,
       }),
     );
   });
@@ -869,7 +870,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it.each(["openrouter-codex", "vercel-ai-gateway-codex"] as const)(
-    "rejects unsupported GPT 5.6 %s provider routes",
+    "allows current GPT 5.6 %s provider routes",
     async (providerType) => {
       const fixture = await seedFixture();
       useSession(fixture);
@@ -891,17 +892,22 @@ describe("GET/PUT /api/zero/model-policies", () => {
         };
       });
 
-      const response = await client.update({
-        headers: authHeaders(),
-        body: { policies: updates },
+      const response = await accept(
+        client.update({
+          headers: authHeaders(),
+          body: { policies: updates },
+        }),
+        [200],
+      );
+      const policy = response.body.policies.find(({ model }) => {
+        return model === "gpt-5.6-sol";
       });
 
-      expect(response.status).toBe(400);
-      expect(response.body).toStrictEqual({
-        error: {
-          message: `Model "gpt-5.6-sol" is not supported by provider "${providerType}"`,
-          code: "BAD_REQUEST",
-        },
+      expect(policy).toMatchObject({
+        defaultProviderType: providerType,
+        credentialScope: "org",
+        modelProviderId: providerId,
+        routeStatus: "valid",
       });
     },
   );

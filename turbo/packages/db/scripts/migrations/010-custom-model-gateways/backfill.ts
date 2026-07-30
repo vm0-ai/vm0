@@ -76,6 +76,9 @@ const VERCEL_MESSAGES_MAPPINGS = {
 } as const;
 
 const VERCEL_RESPONSES_MAPPINGS = {
+  "gpt-5.6-sol": "openai/gpt-5.6-sol",
+  "gpt-5.6-terra": "openai/gpt-5.6-terra",
+  "gpt-5.6-luna": "openai/gpt-5.6-luna",
   "gpt-5.5": "openai/gpt-5.5",
 } as const;
 

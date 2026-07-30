@@ -720,8 +720,13 @@ export const MODEL_PROVIDER_TYPES = {
       OPENAI_BASE_URL: "https://openrouter.ai/api/v1",
       OPENAI_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
-    models: ["openai/gpt-5.5"] as string[],
-    defaultModel: "openai/gpt-5.5",
+    models: [
+      "openai/gpt-5.6-sol",
+      "openai/gpt-5.6-terra",
+      "openai/gpt-5.6-luna",
+      "openai/gpt-5.5",
+    ] as string[],
+    defaultModel: "openai/gpt-5.6-luna",
   },
   // Codex-framework twin of vercel-ai-gateway. Vercel exposes both
   // Anthropic Messages and OpenAI Chat Completions / Responses on the same
@@ -739,8 +744,13 @@ export const MODEL_PROVIDER_TYPES = {
       OPENAI_BASE_URL: "https://ai-gateway.vercel.sh/v1",
       OPENAI_MODEL: "$model",
     } satisfies ModelProviderEnvBindings,
-    models: ["openai/gpt-5.5"] as string[],
-    defaultModel: "openai/gpt-5.5",
+    models: [
+      "openai/gpt-5.6-sol",
+      "openai/gpt-5.6-terra",
+      "openai/gpt-5.6-luna",
+      "openai/gpt-5.5",
+    ] as string[],
+    defaultModel: "openai/gpt-5.6-luna",
   },
   "openai-api-key": {
     framework: "codex" as const,
@@ -994,9 +1004,27 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "openrouter-api-key",
     "vercel-ai-gateway",
   ],
-  "gpt-5.6-sol": ["vm0", "openai-api-key", "codex-oauth-token"],
-  "gpt-5.6-terra": ["vm0", "openai-api-key", "codex-oauth-token"],
-  "gpt-5.6-luna": ["vm0", "openai-api-key", "codex-oauth-token"],
+  "gpt-5.6-sol": [
+    "vm0",
+    "openai-api-key",
+    "codex-oauth-token",
+    "openrouter-codex",
+    "vercel-ai-gateway-codex",
+  ],
+  "gpt-5.6-terra": [
+    "vm0",
+    "openai-api-key",
+    "codex-oauth-token",
+    "openrouter-codex",
+    "vercel-ai-gateway-codex",
+  ],
+  "gpt-5.6-luna": [
+    "vm0",
+    "openai-api-key",
+    "codex-oauth-token",
+    "openrouter-codex",
+    "vercel-ai-gateway-codex",
+  ],
   "gpt-5.5": [
     "vm0",
     "openai-api-key",
@@ -1041,9 +1069,15 @@ const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
     "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
   },
   "openrouter-codex": {
+    "gpt-5.6-sol": "openai/gpt-5.6-sol",
+    "gpt-5.6-terra": "openai/gpt-5.6-terra",
+    "gpt-5.6-luna": "openai/gpt-5.6-luna",
     "gpt-5.5": "openai/gpt-5.5",
   },
   "vercel-ai-gateway-codex": {
+    "gpt-5.6-sol": "openai/gpt-5.6-sol",
+    "gpt-5.6-terra": "openai/gpt-5.6-terra",
+    "gpt-5.6-luna": "openai/gpt-5.6-luna",
     "gpt-5.5": "openai/gpt-5.5",
   },
 };
