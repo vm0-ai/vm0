@@ -23,7 +23,9 @@ export type GithubInstallationResponse = z.infer<
   typeof githubInstallationResponseSchema
 >;
 
-export const githubInstallationNotFoundResponseSchema = apiErrorSchema;
+export const githubInstallationNotFoundResponseSchema = apiErrorSchema.extend({
+  installUrl: z.string().nullable(),
+});
 
 export type GithubInstallationNotFoundResponse = z.infer<
   typeof githubInstallationNotFoundResponseSchema

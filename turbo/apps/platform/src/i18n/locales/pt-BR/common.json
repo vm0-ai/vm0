@@ -4452,6 +4452,8 @@
         "events": "Eventos de acionamento",
         "filterHelp": "Deixe um filtro vazio para corresponder a qualquer valor. Separe vários valores com vírgulas.",
         "headBranches": "Branches de origem",
+        "installAdminRequired": "Peça a um administrador da organização para instalá-lo.",
+        "installApp": "Instalar o GitHub App",
         "installedRequired": "O GitHub não está instalado neste espaço de trabalho.",
         "issueCommentDescription": "Execute quando um comentário correspondente em issue ou PR for criado.",
         "issueCommentRule": "Quando um comentário correspondente em issue ou pull request for criado no GitHub",

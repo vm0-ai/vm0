@@ -2534,6 +2534,32 @@ describe("workflow detail page", () => {
     });
   });
 
+  it("offers a GitHub App install link when GitHub is not installed", async () => {
+    mockWorkflowApis([salesResearch()]);
+    setMockGithubIntegration(null);
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
+
+    await waitFor(() => {
+      expect(buttonByText("Add automation")).toBeInTheDocument();
+    });
+    click(buttonByText("Add automation"));
+    await waitFor(() => {
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+    pickAutomation("Integrations", /^GitHub workflow completed/);
+
+    const form = await screen.findByRole("form", {
+      name: "Add GitHub workflow automation",
+    });
+    await waitFor(() => {
+      expect(linkByText("Install GitHub App", form)).toHaveAttribute(
+        "href",
+        "https://github.com/apps/vm0-test/installations/new?state=abc",
+      );
+    });
+  });
+
   it("hides new GitHub webhook creation entries when the feature is disabled", async () => {
     mockWorkflowApis([salesResearch()]);
     detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
