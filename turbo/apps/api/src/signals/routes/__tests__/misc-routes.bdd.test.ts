@@ -236,6 +236,7 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
     const { api, admin } = testActors();
     mockOptionalEnv("BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED", undefined);
     mockOptionalEnv("INDONESIAN_LOCALE_ROLLOUT_ENABLED", undefined);
+    mockOptionalEnv("FRENCH_LOCALE_ROLLOUT_ENABLED", undefined);
 
     const guardedPortuguese = await api.readPreferences(
       admin,
@@ -539,6 +540,7 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
     const { api, admin } = testActors();
     mockOptionalEnv("BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED", undefined);
     mockOptionalEnv("JAPANESE_LOCALE_ROLLOUT_ENABLED", undefined);
+    mockOptionalEnv("FRENCH_LOCALE_ROLLOUT_ENABLED", undefined);
 
     const guarded = await api.readPreferences(admin, JAPANESE_CLIENT_VERSION);
     expect(guarded.body).toMatchObject({
@@ -677,6 +679,7 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
     mockOptionalEnv("JAPANESE_LOCALE_ROLLOUT_ENABLED", undefined);
     mockOptionalEnv("KOREAN_LOCALE_ROLLOUT_ENABLED", undefined);
     mockOptionalEnv("INDONESIAN_LOCALE_ROLLOUT_ENABLED", undefined);
+    mockOptionalEnv("FRENCH_LOCALE_ROLLOUT_ENABLED", undefined);
 
     const guarded = await api.readPreferences(admin, KOREAN_CLIENT_VERSION);
     expect(guarded.body).toMatchObject({
@@ -816,6 +819,7 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
     mockOptionalEnv("KOREAN_LOCALE_ROLLOUT_ENABLED", undefined);
     mockOptionalEnv("INDONESIAN_LOCALE_ROLLOUT_ENABLED", undefined);
     mockOptionalEnv("GERMAN_LOCALE_ROLLOUT_ENABLED", undefined);
+    mockOptionalEnv("FRENCH_LOCALE_ROLLOUT_ENABLED", undefined);
 
     const guarded = await api.readPreferences(admin, GERMAN_CLIENT_VERSION);
     expect(guarded.body).toMatchObject({
@@ -928,6 +932,7 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
     mockOptionalEnv("INDONESIAN_LOCALE_ROLLOUT_ENABLED", undefined);
     mockOptionalEnv("GERMAN_LOCALE_ROLLOUT_ENABLED", undefined);
     mockOptionalEnv("SPANISH_LOCALE_ROLLOUT_ENABLED", undefined);
+    mockOptionalEnv("FRENCH_LOCALE_ROLLOUT_ENABLED", undefined);
 
     const guarded = await api.readPreferences(admin, SPANISH_CLIENT_VERSION);
     expect(guarded.body).toMatchObject({
@@ -1070,6 +1075,7 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
     mockOptionalEnv("GERMAN_LOCALE_ROLLOUT_ENABLED", undefined);
     mockOptionalEnv("SPANISH_LOCALE_ROLLOUT_ENABLED", undefined);
     mockOptionalEnv("ITALIAN_LOCALE_ROLLOUT_ENABLED", undefined);
+    mockOptionalEnv("FRENCH_LOCALE_ROLLOUT_ENABLED", undefined);
 
     const guarded = await api.readPreferences(admin, ITALIAN_CLIENT_VERSION);
     expect(guarded.body).toMatchObject({
