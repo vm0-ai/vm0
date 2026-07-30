@@ -8692,9 +8692,11 @@ async function validateBrowserTabSnapshotRolloutCompatibility(): Promise<void> {
   console.log("=== Validate browser tab snapshot rollout compatibility ===\n");
   const testDb = "migration_browser_tab_snapshot_rollout_test";
   const testDbUrl = createTestDbUrl(testDb);
+  const composeId = "99000000-0000-4000-8000-000000000000";
   const profileId = "99000000-0000-4000-8000-000000000001";
   const providerProfileId = "99000000-0000-4000-8000-000000000002";
   const browserSessionId = "99000000-0000-4000-8000-000000000003";
+  const chatThreadId = "99000000-0000-4000-8000-000000000004";
 
   await createDatabase(testDb);
   try {
@@ -8710,6 +8712,20 @@ async function validateBrowserTabSnapshotRolloutCompatibility(): Promise<void> {
       assert.equal(await browserTabSnapshotTableAvailable(client), true);
 
       await client.query(
+        `INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+         VALUES (
+           $1, 'tab-rollout-user', 'tab-rollout', 'tab-rollout-org'
+         )`,
+        [composeId],
+      );
+      await client.query(
+        `INSERT INTO "chat_threads" (
+           "id", "user_id", "agent_compose_id", "title"
+         )
+         VALUES ($1, 'tab-rollout-user', $2, 'tab rollout')`,
+        [chatThreadId, composeId],
+      );
+      await client.query(
         `INSERT INTO "browser_profiles" (
            "id", "org_id", "user_id", "provider_profile_id"
          )
@@ -8722,36 +8738,36 @@ async function validateBrowserTabSnapshotRolloutCompatibility(): Promise<void> {
            "browser_profile_id", "status", "timeout_minutes", "max_credits"
          )
          VALUES (
-           $1, gen_random_uuid(), 'tab-rollout-org', 'tab-rollout-user',
+           $1, $3, 'tab-rollout-org', 'tab-rollout-user',
            'tab-rollout', $2, 'suspended', 240, 1
          )`,
-        [browserSessionId, profileId],
+        [browserSessionId, profileId, chatThreadId],
       );
       await client.query(
         `INSERT INTO "browser_session_tab_snapshots" (
-           "browser_session_id", "encrypted_tab_urls"
+           "chat_thread_id", "encrypted_tab_urls"
          )
          VALUES ($1, 'encrypted-tab-urls')`,
-        [browserSessionId],
+        [chatThreadId],
       );
       const snapshot = await client.query<{ encryptedTabUrls: string }>(
         `SELECT "encrypted_tab_urls" AS "encryptedTabUrls"
          FROM "browser_session_tab_snapshots"
-         WHERE "browser_session_id" = $1`,
-        [browserSessionId],
+         WHERE "chat_thread_id" = $1`,
+        [chatThreadId],
       );
       assert.deepEqual(snapshot.rows, [
         { encryptedTabUrls: "encrypted-tab-urls" },
       ]);
 
-      await client.query(`DELETE FROM "browser_sessions" WHERE "id" = $1`, [
-        browserSessionId,
+      await client.query(`DELETE FROM "chat_threads" WHERE "id" = $1`, [
+        chatThreadId,
       ]);
       const afterDelete = await client.query<{ count: string }>(
         `SELECT count(*)::text AS "count"
          FROM "browser_session_tab_snapshots"
-         WHERE "browser_session_id" = $1`,
-        [browserSessionId],
+         WHERE "chat_thread_id" = $1`,
+        [chatThreadId],
       );
       assert.deepEqual(afterDelete.rows, [{ count: "0" }]);
     } finally {
@@ -8761,7 +8777,7 @@ async function validateBrowserTabSnapshotRolloutCompatibility(): Promise<void> {
     await dropDatabase(testDb);
   }
   console.log(
-    "   ✅ Current API skips snapshots before 0740, previous browser writes remain compatible, and snapshots cascade with logical browsers\n",
+    "   ✅ Current API skips snapshots before 0740, previous browser writes remain compatible, and snapshots follow stable thread identity\n",
   );
 }
 

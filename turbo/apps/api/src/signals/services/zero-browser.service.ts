@@ -467,11 +467,11 @@ async function saveBrowserTabSnapshot(
       await db
         .insert(browserSessionTabSnapshots)
         .values({
-          browserSessionId: target.browserId,
+          chatThreadId: target.chatThreadId,
           encryptedTabUrls,
         })
         .onConflictDoUpdate({
-          target: browserSessionTabSnapshots.browserSessionId,
+          target: browserSessionTabSnapshots.chatThreadId,
           set: {
             encryptedTabUrls,
             updatedAt: nowDate(),
@@ -483,7 +483,7 @@ async function saveBrowserTabSnapshot(
   signal.throwIfAborted();
   if (!saved.ok) {
     L.warn("Managed browser tab snapshot failed", {
-      browserId: target.browserId,
+      chatThreadId: target.chatThreadId,
     });
   }
 }
@@ -505,7 +505,9 @@ async function restoreBrowserTabSnapshot(
           encryptedTabUrls: browserSessionTabSnapshots.encryptedTabUrls,
         })
         .from(browserSessionTabSnapshots)
-        .where(eq(browserSessionTabSnapshots.browserSessionId, browser.id))
+        .where(
+          eq(browserSessionTabSnapshots.chatThreadId, browser.chatThreadId),
+        )
         .limit(1);
       signal.throwIfAborted();
       if (!snapshot) {
@@ -525,7 +527,7 @@ async function restoreBrowserTabSnapshot(
   signal.throwIfAborted();
   if (!restored.ok) {
     L.warn("Managed browser tab restoration failed", {
-      browserId: browser.id,
+      chatThreadId: browser.chatThreadId,
     });
   }
 }
@@ -2330,22 +2332,10 @@ export const stopThreadZeroBrowsers$ = command(
     }
 
     if (await browserTabSnapshotTableAvailable(db, signal)) {
-      const browserIds = await db
-        .select({ id: browserSessions.id })
-        .from(browserSessions)
-        .where(eq(browserSessions.chatThreadId, args.chatThreadId));
+      await db
+        .delete(browserSessionTabSnapshots)
+        .where(eq(browserSessionTabSnapshots.chatThreadId, args.chatThreadId));
       signal.throwIfAborted();
-      if (browserIds.length > 0) {
-        await db.delete(browserSessionTabSnapshots).where(
-          inArray(
-            browserSessionTabSnapshots.browserSessionId,
-            browserIds.map((browser) => {
-              return browser.id;
-            }),
-          ),
-        );
-        signal.throwIfAborted();
-      }
     }
 
     await db

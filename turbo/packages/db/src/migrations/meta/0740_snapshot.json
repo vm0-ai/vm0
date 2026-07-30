@@ -1,5 +1,5 @@
 {
-  "id": "f63bee57-ab1c-4e50-b74c-a4ff63e51d3c",
+  "id": "db418cf2-d008-461e-a551-84d982636a2f",
   "prevId": "a5a6bc34-127f-4d49-a007-8c2f24768380",
   "version": "7",
   "dialect": "postgresql",
@@ -3211,71 +3211,11 @@
           "primaryKey": false,
           "notNull": true
         },
-        "billing_run_id": {
-          "name": "billing_run_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "status": {
           "name": "status",
           "type": "varchar(20)",
           "primaryKey": false,
           "notNull": true
-        },
-        "browser_cost_microusd": {
-          "name": "browser_cost_microusd",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "proxy_cost_microusd": {
-          "name": "proxy_cost_microusd",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "proxy_used_mb": {
-          "name": "proxy_used_mb",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'0'"
-        },
-        "pricing_unit_price": {
-          "name": "pricing_unit_price",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "pricing_unit_size": {
-          "name": "pricing_unit_size",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 1
-        },
-        "gross_credits": {
-          "name": "gross_credits",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "credits_charged": {
-          "name": "credits_charged",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "usage_event_id": {
-          "name": "usage_event_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
         },
         "timeout_at": {
           "name": "timeout_at",
@@ -3303,6 +3243,72 @@
           "notNull": true,
           "default": "now() + interval '10 minutes'"
         },
+        "billing_run_id": {
+          "name": "billing_run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "browser_cost_microusd": {
+          "name": "browser_cost_microusd",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "proxy_cost_microusd": {
+          "name": "proxy_cost_microusd",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "proxy_used_mb": {
+          "name": "proxy_used_mb",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "gross_credits": {
+          "name": "gross_credits",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "credits_charged": {
+          "name": "credits_charged",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "usage_event_id": {
+          "name": "usage_event_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "settled_at": {
+          "name": "settled_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "pricing_unit_price": {
+          "name": "pricing_unit_price",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "pricing_unit_size": {
+          "name": "pricing_unit_size",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
         "stop_requested_at": {
           "name": "stop_requested_at",
           "type": "timestamp",
@@ -3311,12 +3317,6 @@
         },
         "finished_at": {
           "name": "finished_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "settled_at": {
-          "name": "settled_at",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": false
@@ -3514,8 +3514,8 @@
       "name": "browser_session_tab_snapshots",
       "schema": "",
       "columns": {
-        "browser_session_id": {
-          "name": "browser_session_id",
+        "chat_thread_id": {
+          "name": "chat_thread_id",
           "type": "uuid",
           "primaryKey": true,
           "notNull": true
@@ -3543,12 +3543,12 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "browser_session_tab_snapshots_browser_session_id_browser_sessions_id_fk": {
-          "name": "browser_session_tab_snapshots_browser_session_id_browser_sessions_id_fk",
+        "browser_session_tab_snapshots_chat_thread_id_chat_threads_id_fk": {
+          "name": "browser_session_tab_snapshots_chat_thread_id_chat_threads_id_fk",
           "tableFrom": "browser_session_tab_snapshots",
-          "tableTo": "browser_sessions",
+          "tableTo": "chat_threads",
           "columnsFrom": [
-            "browser_session_id"
+            "chat_thread_id"
           ],
           "columnsTo": [
             "id"
