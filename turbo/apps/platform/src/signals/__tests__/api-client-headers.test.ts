@@ -4,6 +4,7 @@ import {
   addClientCapabilityToVersion,
   CLIENT_CAPABILITY_JA_JP_LOCALE,
   CLIENT_CAPABILITY_KO_KR_LOCALE,
+  CLIENT_CAPABILITY_ID_ID_LOCALE,
   CLIENT_CAPABILITY_PT_BR_LOCALE,
   CLIENT_FORCE_UPGRADE_STATUS,
 } from "@vm0/api-contracts/contracts/client-headers";
@@ -30,10 +31,13 @@ const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 const EXPECTED_CLIENT_VERSION = addClientCapabilityToVersion(
   addClientCapabilityToVersion(
-    addClientCapabilityToVersion("0.540.0", CLIENT_CAPABILITY_PT_BR_LOCALE),
-    CLIENT_CAPABILITY_JA_JP_LOCALE,
+    addClientCapabilityToVersion(
+      addClientCapabilityToVersion("0.540.0", CLIENT_CAPABILITY_PT_BR_LOCALE),
+      CLIENT_CAPABILITY_JA_JP_LOCALE,
+    ),
+    CLIENT_CAPABILITY_KO_KR_LOCALE,
   ),
-  CLIENT_CAPABILITY_KO_KR_LOCALE,
+  CLIENT_CAPABILITY_ID_ID_LOCALE,
 );
 
 interface ObservedClientHeaders {
