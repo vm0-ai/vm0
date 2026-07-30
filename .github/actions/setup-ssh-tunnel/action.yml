@@ -141,5 +141,6 @@ runs:
           echo "VM0_CLOUDFLARE_SSH_SCRIPTS_DIR=$GITHUB_WORKSPACE/.github/scripts"
           echo "VM0_CLOUDFLARE_SSH_STATE_DIR=${state_dir}"
           echo "VM0_CLOUDFLARE_SSH_USER=${SSH_USER}"
+          echo "VM0_CLOUDFLARE_SSH_DEFAULT_CONTROL_PATH=$HOME/.ssh/vm0-ssh-%C"
         } >> "$GITHUB_ENV"
         echo "$wrapper_bin" >> "$GITHUB_PATH"

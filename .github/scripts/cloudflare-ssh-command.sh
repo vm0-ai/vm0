@@ -65,7 +65,8 @@ parse_supported_ssh_option() {
       ;;
     controlpath)
       normalized_value=$(strip_wrapping_quotes "$value")
-      if [ "${normalized_value,,}" = "none" ]; then
+      if [ "$normalized_value" != \
+        "${VM0_CLOUDFLARE_SSH_DEFAULT_CONTROL_PATH:-}" ]; then
         BYPASS=true
       fi
       ;;

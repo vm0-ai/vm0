@@ -258,6 +258,7 @@ invoke_wrapper() {
   VM0_CLOUDFLARE_SSH_SCRIPTS_DIR="${REPO_ROOT}/.github/scripts" \
   VM0_CLOUDFLARE_SSH_STATE_DIR="$case_dir/state" \
   VM0_CLOUDFLARE_SSH_USER=metal \
+  VM0_CLOUDFLARE_SSH_DEFAULT_CONTROL_PATH=/tmp/default-control \
     "${wrapper_bin}/${tool}" "$@"
 }
 
@@ -480,6 +481,15 @@ assert_line_count "$disabled_master/ssh.log" 1 \
   "-o ControlMaster=no metal@dev-5.aws.vm3.ai touch /tmp/disabled-master"
 assert_not_contains "$disabled_master/ssh.log" " true"
 
+mismatched_control_path="${tmp}/mismatched-control-path"
+run_wrapper "$mismatched_control_path" stale-exhaustion ssh \
+  -o ControlPath=/tmp/other-control \
+  metal@dev-5.aws.vm3.ai touch /tmp/mismatched-control-path
+assert_contains "$mismatched_control_path/status" "0"
+assert_line_count "$mismatched_control_path/ssh.log" 1 \
+  "-o ControlPath=/tmp/other-control metal@dev-5.aws.vm3.ai touch /tmp/mismatched-control-path"
+assert_not_contains "$mismatched_control_path/ssh.log" " true"
+
 control="${tmp}/control"
 run_wrapper "$control" stale-exhaustion ssh \
   -O check metal@dev-5.aws.vm3.ai
@@ -551,6 +561,8 @@ assert_contains "$SSH_ACTION" \
 assert_contains "$SSH_ACTION" \
   "echo \"\$wrapper_bin\" >> \"\$GITHUB_PATH\""
 assert_contains "$SSH_ACTION" "VM0_CLOUDFLARE_SSH_STATE_DIR="
+assert_contains "$SSH_ACTION" \
+  "VM0_CLOUDFLARE_SSH_DEFAULT_CONTROL_PATH=\$HOME/.ssh/vm0-ssh-%C"
 assert_contains "$SECURITY_WORKFLOW" \
   ".github/scripts/cloudflare-ssh-command.sh"
 assert_contains "$SECURITY_WORKFLOW" \
