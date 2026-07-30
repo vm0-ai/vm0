@@ -26,6 +26,7 @@ import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { hostedSites } from "@vm0/db/schema/hosted-site";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
+import { runOutputMaterializations } from "@vm0/db/schema/run-output-materialization";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -750,6 +751,40 @@ type PreviousApiHostedDeploymentAction = Extract<
   { action: "insert-hosted-deployment-as-previous-api" }
 >;
 
+type PreviousApiRunOutputAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "insert-run-output-as-previous-api" }
+>;
+
+async function insertRunOutputAsPreviousApi(
+  db: Db,
+  body: PreviousApiRunOutputAction,
+  signal: AbortSignal,
+) {
+  // The previous writer knew only these three projection columns. Keeping the
+  // new text columns null reproduces the mixed-version row that a new terminal
+  // callback must bridge during deployment.
+  await db
+    .insert(runOutputMaterializations)
+    .values({
+      runId: body.run_id,
+      processedThroughSequence: body.processed_through_sequence,
+      latestResultSequence: body.latest_result_sequence,
+    })
+    .onConflictDoUpdate({
+      target: runOutputMaterializations.runId,
+      set: {
+        processedThroughSequence: body.processed_through_sequence,
+        latestResultSequence: body.latest_result_sequence,
+        latestResultText: null,
+        latestOutputSequence: null,
+        latestOutputText: null,
+      },
+    });
+  signal.throwIfAborted();
+  return { status: 200 as const, body: { ok: true as const } };
+}
+
 function isHostedDeploymentScopeConflict(error: unknown): boolean {
   const databaseError =
     error instanceof Error && error.cause instanceof Error
@@ -923,6 +958,7 @@ type CompatibilityFixtureAction =
   | LegacyArtifactCatalogFileAction
   | PreviousApiHostedSiteAction
   | PreviousApiHostedDeploymentAction
+  | PreviousApiRunOutputAction
   | PreviousApiComputerAccessAction
   | PreviousApiBrowserTabSnapshotAction
   | PreviousApiRunnerJobContextProfileAction
@@ -935,6 +971,7 @@ function isCompatibilityFixtureAction(
     "insert-legacy-artifact-catalog-file",
     "insert-hosted-site-as-previous-api",
     "insert-hosted-deployment-as-previous-api",
+    "insert-run-output-as-previous-api",
     "set-computer-use-host-as-previous-api",
     "set-browser-tab-snapshot-as-previous-api",
     "set-runner-job-context-profile-as-previous-api",
@@ -956,6 +993,9 @@ async function compatibilityFixtureActionResponse(
     }
     case "insert-hosted-deployment-as-previous-api": {
       return await insertHostedDeploymentAsPreviousApi(db, body, signal);
+    }
+    case "insert-run-output-as-previous-api": {
+      return await insertRunOutputAsPreviousApi(db, body, signal);
     }
     case "set-computer-use-host-as-previous-api": {
       return await setComputerUseHostAsPreviousApi(db, body, signal);

@@ -1112,17 +1112,6 @@ async function sendChatRunMessage(
   return { runId: sent.body.runId, threadId: sent.body.threadId };
 }
 
-function assistantOutputEvent(
-  sequenceNumber: number,
-  text: string,
-): Record<string, unknown> {
-  return {
-    eventType: "assistant",
-    sequenceNumber,
-    eventData: { message: { content: [{ type: "text", text }] } },
-  };
-}
-
 describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks", () => {
   it("emits api dispatch timing for direct dispatch runs", async () => {
     const api = createRunsApi(context);
@@ -10508,7 +10497,7 @@ describe("HOOK-01: callback authentication failures", () => {
 });
 
 describe("HOOK-02: event-consumer dispatch failures", () => {
-  it("surfaces required event-consumer failures and recovers on retry", async () => {
+  it("keeps Axiom trace failures outside the required event ACK", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -10547,16 +10536,16 @@ describe("HOOK-02: event-consumer dispatch failures", () => {
         },
       ),
     );
-    const failed = await webhooks.requestAgentEvents(
+    const acceptedWithTraceFailure = await webhooks.requestAgentEvents(
       {
         runId: run.runId,
         events: [{ type: "system", sequenceNumber: 0 }],
       },
       sandboxHeaders,
-      [503],
+      [200],
     );
-    expectApiError(failed.body);
-    expect(failed.body.error.code).toBe("EVENT_DELIVERY_UNAVAILABLE");
+    expect(acceptedWithTraceFailure.status).toBe(200);
+    await flushWaitUntilForTest();
     expect(ingestRequests).toBe(1);
 
     const recovered = await webhooks.requestAgentEvents(
@@ -10568,12 +10557,13 @@ describe("HOOK-02: event-consumer dispatch failures", () => {
       [200],
     );
     expect(recovered.status).toBe(200);
+    await flushWaitUntilForTest();
     expect(ingestRequests).toBe(2);
   });
 });
 
 describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () => {
-  it("acknowledges late assistant events when completion cleanup already wrote the run sequence", async () => {
+  it("uses DB output acknowledged before completion and ignores a late duplicate", async () => {
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
     const webhooks = createWebhookCallbackApi(context);
@@ -10591,9 +10581,23 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     const sandboxHeaders = {
       authorization: `Bearer ${claim.sandboxToken}`,
     };
-    chatCallbacks.mockChatOutputEvents([
-      assistantOutputEvent(0, "cleanup-first assistant text"),
-    ]);
+    await webhooks.requestAgentEvents(
+      {
+        runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 0,
+            message: {
+              id: "msg_bdd_cleanup_first",
+              content: [{ type: "text", text: "cleanup-first assistant text" }],
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
 
     const historyHash = createHash("sha256")
       .update(`bdd cleanup-first session history ${runId}`)

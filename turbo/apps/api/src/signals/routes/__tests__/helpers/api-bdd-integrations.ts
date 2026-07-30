@@ -1128,26 +1128,6 @@ export function createBddIntegrationApi(context: TestContext) {
       );
     },
 
-    mockSlackRunResultOutput(text: string): void {
-      context.mocks.axiom.query.mockResolvedValueOnce([
-        {
-          eventType: "result",
-          sequenceNumber: 0,
-          eventData: { result: text },
-        },
-      ]);
-    },
-
-    mockSlackRunAgentMessageOutput(text: string): void {
-      context.mocks.axiom.query.mockResolvedValueOnce([
-        {
-          eventType: "item.completed",
-          sequenceNumber: 0,
-          eventData: { item: { type: "agent_message", text } },
-        },
-      ]);
-    },
-
     async enableAuditLinkSwitch(actor: ApiTestUser): Promise<void> {
       await accept(
         setupApp({ context })(zeroFeatureSwitchesContract).update({
