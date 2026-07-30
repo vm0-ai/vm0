@@ -137,6 +137,10 @@ ZERO_MAIL_REPLY_FOLLOW_UP_ROLLOUT_ENABLED=false
 # capable Platform client can exercise the rollout path.
 BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED=true
 
+# Keep disabled until every rollback-eligible API version accepts stored
+# Korean locale preferences.
+KOREAN_LOCALE_ROLLOUT_ENABLED=false
+
 # Optional: Google Ads API (developer token + login customer ID for MCC)
 GOOGLE_ADS_DEVELOPER_TOKEN=op://Development/google/GOOGLE_ADS_DEVELOPER_TOKEN
 GOOGLE_ADS_LOGIN_CUSTOMER_ID=op://Development/google/GOOGLE_ADS_LOGIN_CUSTOMER_ID

@@ -914,66 +914,84 @@ describe("chat lifecycle", () => {
     expect(finishedLabelRow!.lastElementChild).not.toHaveClass("hidden");
   });
 
-  it("formats completed-run timestamps with the selected Portuguese locale", async () => {
-    const completedAt = "2026-06-09T10:00:21Z";
-    const completedAtLabel = new Date(completedAt).toLocaleString("pt-BR", {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-    context.mocks.data.userPreferences({ locale: "pt-BR" });
-    mockChatLifecycle(context, {
-      threadId: "thread-localized-completed-run",
-      chatEvents: [
-        {
-          role: "user",
-          content: "Prepare o plano de lançamento",
-          runId: "run-localized-completed-run",
-          createdAt: "2026-06-09T10:00:00Z",
-        },
-        {
-          role: "assistant",
-          content: "O plano de lançamento está pronto.",
-          runId: "run-localized-completed-run",
-          createdAt: "2026-06-09T10:00:20Z",
-        },
-        {
-          role: "assistant",
-          content: null,
-          runId: "run-localized-completed-run",
-          runLifecycleEvent: "completed",
-          createdAt: completedAt,
-        },
-        {
-          role: "assistant",
-          content: null,
-          runId: "run-localized-completed-run",
-          recommendedFollowups: [
-            {
-              prompt: "Transforme em uma apresentação",
-              kind: "generate",
-              generationType: "presentation",
-            },
-          ],
-          createdAt: "2026-06-09T10:00:30Z",
-        },
-      ],
-    });
+  it.each([
+    {
+      locale: "pt-BR",
+      userMessage: "Prepare o plano de lançamento",
+      assistantMessage: "O plano de lançamento está pronto.",
+      followup: "Transforme em uma apresentação",
+      keepGoing: "Continuar",
+    },
+    {
+      locale: "ko-KR",
+      userMessage: "출시 계획을 준비해 주세요",
+      assistantMessage: "출시 계획이 준비되었습니다.",
+      followup: "프레젠테이션으로 만들어 주세요",
+      keepGoing: "계속 진행",
+    },
+  ] as const)(
+    "formats completed-run timestamps with the selected $locale locale",
+    async ({ locale, userMessage, assistantMessage, followup, keepGoing }) => {
+      const completedAt = "2026-06-09T10:00:21Z";
+      const completedAtLabel = new Date(completedAt).toLocaleString(locale, {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      context.mocks.data.userPreferences({ locale });
+      mockChatLifecycle(context, {
+        threadId: "thread-localized-completed-run",
+        chatEvents: [
+          {
+            role: "user",
+            content: userMessage,
+            runId: "run-localized-completed-run",
+            createdAt: "2026-06-09T10:00:00Z",
+          },
+          {
+            role: "assistant",
+            content: assistantMessage,
+            runId: "run-localized-completed-run",
+            createdAt: "2026-06-09T10:00:20Z",
+          },
+          {
+            role: "assistant",
+            content: null,
+            runId: "run-localized-completed-run",
+            runLifecycleEvent: "completed",
+            createdAt: completedAt,
+          },
+          {
+            role: "assistant",
+            content: null,
+            runId: "run-localized-completed-run",
+            recommendedFollowups: [
+              {
+                prompt: followup,
+                kind: "generate",
+                generationType: "presentation",
+              },
+            ],
+            createdAt: "2026-06-09T10:00:30Z",
+          },
+        ],
+      });
 
-    detachedSetupPage({
-      context,
-      path: "/chats/thread-localized-completed-run",
-      featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
-      },
-    });
+      detachedSetupPage({
+        context,
+        path: "/chats/thread-localized-completed-run",
+        featureSwitches: {
+          [FeatureSwitchKey.LanguagePreference]: true,
+        },
+      });
 
-    await expect(
-      screen.findByText(`Continuar · ${completedAtLabel}`),
-    ).resolves.toBeInTheDocument();
-    expect(document.documentElement.lang).toBe("pt-BR");
-  });
+      await expect(
+        screen.findByText(`${keepGoing} · ${completedAtLabel}`),
+      ).resolves.toBeInTheDocument();
+      expect(document.documentElement.lang).toBe(locale);
+    },
+  );
 
   it("formats completed-run timestamps with the selected Japanese locale", async () => {
     const completedAt = "2026-06-09T10:00:21Z";

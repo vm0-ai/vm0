@@ -4367,6 +4367,7 @@
         "options": {
           "english": "English",
           "japanese": "日本語",
+          "korean": "한국어",
           "portugueseBrazil": "Português (Brasil)"
         },
         "title": "Idioma"
