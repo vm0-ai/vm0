@@ -718,6 +718,25 @@ describe("INT-01: Slack integration and Slack app routes", () => {
     expectSlackEphemeral(unknown.body);
     expect(unknown.body.blocks.length).toBeGreaterThan(0);
 
+    for (const requiredField of [
+      "team_id",
+      "channel_id",
+      "user_id",
+      "trigger_id",
+    ]) {
+      const missingFieldParams = new URLSearchParams(commandBody("help"));
+      missingFieldParams.delete(requiredField);
+      const missingFieldBody = missingFieldParams.toString();
+      const missingField = await integrations.requestSlackCommand(
+        missingFieldBody,
+        integrations.signedSlackIngressHeaders(missingFieldBody),
+        [400],
+      );
+      expect(missingField.body).toStrictEqual({
+        error: "Missing required Slack command fields",
+      });
+    }
+
     const emptyActionPayload = new URLSearchParams({
       payload: JSON.stringify({
         type: "block_actions",
