@@ -5356,6 +5356,13 @@
       "when": 1785413569071,
       "tag": "0764_real_quicksilver",
       "breakpoints": true
+    },
+    {
+      "idx": 765,
+      "version": "7",
+      "when": 1785416430642,
+      "tag": "0765_drop_chat_event_display_links",
+      "breakpoints": true
     }
   ]
 }

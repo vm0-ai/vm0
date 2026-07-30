@@ -9858,12 +9858,19 @@ async function validateChatDisplayContextBackfill(): Promise<void> {
   const threadId = "00000000-0000-4000-8000-000000076302";
   const slackContextId = "00000000-0000-4000-8000-000000076310";
   const feishuContextId = "00000000-0000-4000-8000-000000076320";
+  const deploymentSlackContextId = "00000000-0000-4000-8000-000000076340";
+  const deploymentFeishuContextId = "00000000-0000-4000-8000-000000076350";
 
   const migrationSql = await fs.readFile(
     path.join(MIGRATIONS_DIR, "0763_add_chat_display_contexts.sql"),
     "utf8",
   );
   assert.doesNotMatch(migrationSql, /\bLOCK TABLE\b/u);
+  const dropMigrationSql = await fs.readFile(
+    path.join(MIGRATIONS_DIR, "0765_drop_chat_event_display_links.sql"),
+    "utf8",
+  );
+  assert.doesNotMatch(dropMigrationSql, /\bLOCK TABLE\b/u);
 
   await createDatabase(testDb);
   try {
@@ -10091,6 +10098,213 @@ async function validateChatDisplayContextBackfill(): Promise<void> {
         rowId: slackContextId,
       });
 
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "event_type",
+            "user_message",
+            "revokes_message_id",
+            "slack_message_permalink",
+            "feishu_chat_open_url",
+            "created_at"
+          )
+          VALUES
+            (
+              $2,
+              $1,
+              'input.prompt',
+              '{"version":1,"parts":[{"type":"text","text":"Deployment Slack carrier"}]}'::jsonb,
+              NULL,
+              'https://example.slack.com/archives/C2/p2',
+              NULL,
+              '2026-07-30 12:00:00'
+            ),
+            (
+              '00000000-0000-4000-8000-000000076341',
+              $1,
+              'input.prompt',
+              '{"version":1,"parts":[{"type":"text","text":"Deployment Slack claim"}]}'::jsonb,
+              $2,
+              NULL,
+              NULL,
+              '2026-07-30 12:00:01'
+            ),
+            (
+              $3,
+              $1,
+              'input.prompt',
+              '{"version":1,"parts":[{"type":"text","text":"Deployment Feishu carrier"}]}'::jsonb,
+              NULL,
+              NULL,
+              'https://applink.feishu.cn/client/chat/open?openChatId=oc_deploy',
+              '2026-07-30 12:00:02'
+            ),
+            (
+              '00000000-0000-4000-8000-000000076351',
+              $1,
+              'input.rejected',
+              '{"version":1,"parts":[{"type":"text","text":"Deployment Feishu rejection"}]}'::jsonb,
+              $3,
+              NULL,
+              NULL,
+              '2026-07-30 12:00:03'
+            )
+        `,
+        [threadId, deploymentSlackContextId, deploymentFeishuContextId],
+      );
+
+      const deploymentWindowPointers = await client.query<{
+        contextId: string | null;
+        contextType: string | null;
+        id: string;
+      }>(
+        `
+          SELECT
+            "id",
+            "context_type" AS "contextType",
+            "context_id" AS "contextId"
+          FROM "chat_events"
+          WHERE "id" IN (
+            $1,
+            '00000000-0000-4000-8000-000000076341',
+            $2,
+            '00000000-0000-4000-8000-000000076351'
+          )
+          ORDER BY "id"
+        `,
+        [deploymentSlackContextId, deploymentFeishuContextId],
+      );
+      assert.deepEqual(deploymentWindowPointers.rows, [
+        {
+          id: deploymentSlackContextId,
+          contextType: null,
+          contextId: null,
+        },
+        {
+          id: "00000000-0000-4000-8000-000000076341",
+          contextType: null,
+          contextId: null,
+        },
+        {
+          id: deploymentFeishuContextId,
+          contextType: null,
+          contextId: null,
+        },
+        {
+          id: "00000000-0000-4000-8000-000000076351",
+          contextType: null,
+          contextId: null,
+        },
+      ]);
+
+      await applyMigrationsUpTo(client, 765);
+
+      const caughtUpContexts = await client.query<{
+        contextId: string;
+        contextType: string;
+        id: string;
+      }>(
+        `
+          SELECT
+            "id",
+            "context_type" AS "contextType",
+            "context_id" AS "contextId"
+          FROM "chat_events"
+          WHERE "id" IN (
+            $1,
+            '00000000-0000-4000-8000-000000076341',
+            $2,
+            '00000000-0000-4000-8000-000000076351'
+          )
+          ORDER BY "id"
+        `,
+        [deploymentSlackContextId, deploymentFeishuContextId],
+      );
+      assert.deepEqual(caughtUpContexts.rows, [
+        {
+          id: deploymentSlackContextId,
+          contextType: "slack",
+          contextId: deploymentSlackContextId,
+        },
+        {
+          id: "00000000-0000-4000-8000-000000076341",
+          contextType: "slack",
+          contextId: deploymentSlackContextId,
+        },
+        {
+          id: deploymentFeishuContextId,
+          contextType: "feishu",
+          contextId: deploymentFeishuContextId,
+        },
+        {
+          id: "00000000-0000-4000-8000-000000076351",
+          contextType: "feishu",
+          contextId: deploymentFeishuContextId,
+        },
+      ]);
+
+      const caughtUpDisplayContexts = await client.query<{
+        contextType: string;
+        displayUrl: string;
+        id: string;
+      }>(
+        `
+          SELECT
+            "id",
+            'slack' AS "contextType",
+            "message_permalink" AS "displayUrl"
+          FROM "chat_slack_context"
+          WHERE "id" = $1
+          UNION ALL
+          SELECT
+            "id",
+            'feishu' AS "contextType",
+            "chat_open_url" AS "displayUrl"
+          FROM "chat_feishu_context"
+          WHERE "id" = $2
+          ORDER BY "contextType"
+        `,
+        [deploymentSlackContextId, deploymentFeishuContextId],
+      );
+      assert.deepEqual(caughtUpDisplayContexts.rows, [
+        {
+          id: deploymentFeishuContextId,
+          contextType: "feishu",
+          displayUrl:
+            "https://applink.feishu.cn/client/chat/open?openChatId=oc_deploy",
+        },
+        {
+          id: deploymentSlackContextId,
+          contextType: "slack",
+          displayUrl: "https://example.slack.com/archives/C2/p2",
+        },
+      ]);
+
+      const removedDisplayColumns = await client.query<{ columnName: string }>(`
+        SELECT "column_name" AS "columnName"
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'chat_events'
+          AND column_name IN (
+            'slack_message_permalink',
+            'feishu_chat_open_url'
+          )
+        ORDER BY "column_name"
+      `);
+      assert.deepEqual(removedDisplayColumns.rows, []);
+
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_events",
+        query: `
+          UPDATE "chat_events"
+          SET "context_id" = NULL
+          WHERE "id" = $1
+        `,
+        rowId: deploymentSlackContextId,
+      });
+
       await client.query(`DELETE FROM "chat_threads" WHERE "id" = $1`, [
         threadId,
       ]);
@@ -10109,6 +10323,9 @@ async function validateChatDisplayContextBackfill(): Promise<void> {
       );
       console.log(
         "   ✅ Null Slack permalinks create no context and context rows cascade with threads\n",
+      );
+      console.log(
+        "   ✅ Deployment-window links are caught up before legacy display columns are removed\n",
       );
     } finally {
       await client.end();
