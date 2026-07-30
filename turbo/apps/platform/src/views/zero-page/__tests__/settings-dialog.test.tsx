@@ -200,7 +200,9 @@ describe("settings dialog", () => {
   it("hides the language entry when the feature switch is off", async () => {
     context.mocks.data.userPreferences(createPreferences("en-US"));
 
-    await openDialog("admin", "preference");
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: false,
+    });
 
     await waitFor(() => {
       expect(screen.getByText("Theme")).toBeInTheDocument();

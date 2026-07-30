@@ -156,10 +156,13 @@
         var orgId = sessionStorage.getItem("clerk-active-org-id");
         var cacheKey = orgId ? "vm0:locale:" + orgId : null;
         var cached = cacheKey ? localStorage.getItem(cacheKey) : null;
-        // Browser-language auto-selection stays disabled during rollout.
-        // Locale changes come from the workspace cache or gated preference UI.
+        // Prefer the workspace cache. Signed-out and first-time visitors use a
+        // supported browser language, with English as the fallback.
+        var browserLocale = /^pt(?:-|$)/i.test(navigator.language)
+          ? "pt-BR"
+          : "en-US";
         var locale =
-          cached === "en-US" || cached === "pt-BR" ? cached : "en-US";
+          cached === "en-US" || cached === "pt-BR" ? cached : browserLocale;
         var copyByLocale = {
           "en-US": {
             browserUpgrade: {

@@ -232,7 +232,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description:
       "Enable workspace language bootstrap, persistence, and the Settings preference entry.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.BrazilianPortugueseLocale]: {
     maintainer: "yuma@vm0.ai",

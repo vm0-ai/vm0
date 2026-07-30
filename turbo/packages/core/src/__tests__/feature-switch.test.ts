@@ -16,6 +16,9 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.VideoArtifactPosters, {})).toBe(
       true,
     );
+    expect(isFeatureEnabled(FeatureSwitchKey.LanguagePreference, {})).toBe(
+      true,
+    );
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -41,9 +44,6 @@ describe("isFeatureEnabled", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.StructuredPromptInlineTemplates, {}),
     ).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.LanguagePreference, {})).toBe(
-      false,
-    );
     expect(
       isFeatureEnabled(FeatureSwitchKey.ChatThreadSidebarAutoOpen, {}),
     ).toBe(false);
@@ -126,7 +126,7 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ZeroChatMessaging]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.LanguagePreference]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.LanguagePreference]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.BrazilianPortugueseLocale]).toBe(
       false,
     );
@@ -159,7 +159,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroBrowser]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ZeroChatMessaging]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.LanguagePreference]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.LanguagePreference]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.BrazilianPortugueseLocale]).toBe(
       false,
     );
