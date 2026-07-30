@@ -89,7 +89,7 @@ describe("chat lifecycle", () => {
   });
 
   it("stops backward history when a page holds only retired queue markers", async () => {
-    const threadId = "b0000000-0000-4000-a000-000000000731";
+    const threadId = "b0000000-0000-4000-a000-000000000734";
     const initialEvent = {
       id: "00000000-0000-4000-8000-000000000731",
       threadId,
