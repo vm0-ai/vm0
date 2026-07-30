@@ -25,20 +25,18 @@ import {
   DropdownMenuItem,
 } from "@vm0/ui";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import type {
-  PublicConnectorCatalogIcon,
-  PublicConnectorCatalogPermissionDetail,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { groupFirewallMetadataPermissionsByCategory } from "@vm0/connectors/firewall-metadata/policy";
 import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicies,
   type FirewallPolicyValue,
 } from "@vm0/connectors/firewall-types";
+import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type {
-  UserPermissionGrantExpiresIn,
-  UserPermissionGrantResponse,
-} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+  PlatformConnectorPermissionMetadata,
+  PlatformUserPermissionGrant,
+} from "../../../../signals/connector-domain.ts";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import {
   clearPermissionDraftInheritedExpiration,
@@ -108,10 +106,10 @@ interface PermissionsDrawerProps {
   targetKind?: "agent" | "workflow";
   connectorSlug: ConnectorSlug;
   connectorLabel: string;
-  metadata$: Computed<Promise<PublicConnectorCatalogPermissionDetail | null>>;
+  metadata$: Computed<Promise<PlatformConnectorPermissionMetadata | null>>;
   displayName: string;
   initialPolicies: FirewallPolicies;
-  initialGrants: readonly UserPermissionGrantResponse[];
+  initialGrants: readonly PlatformUserPermissionGrant[];
   initialIntent?: PermissionDraftIntent;
   initialSearch?: string;
   initialContextKey?: string;
@@ -125,7 +123,7 @@ interface PermissionsDrawerProps {
 }
 
 interface PermissionDrawerApplyOptions {
-  readonly metadata: PublicConnectorCatalogPermissionDetail;
+  readonly metadata: PlatformConnectorPermissionMetadata;
 }
 
 type PermissionsSurface = "sheet" | "dialog";
@@ -144,7 +142,7 @@ interface PermissionsDrawerFooterProps {
 }
 
 interface InitialPermissionDrawerState {
-  readonly explicitGrants: Map<string, UserPermissionGrantResponse>;
+  readonly explicitGrants: Map<string, PlatformUserPermissionGrant>;
   readonly initialPolicyKey: string;
 }
 
@@ -160,7 +158,7 @@ type LoadedPermissionsDrawerContentProps = Pick<
   | "onClose"
 > & {
   readonly surface: PermissionsSurface;
-  readonly metadata: PublicConnectorCatalogPermissionDetail;
+  readonly metadata: PlatformConnectorPermissionMetadata;
   readonly initialState: InitialPermissionDrawerState;
 };
 
@@ -174,7 +172,7 @@ function buildInitialPermissionDrawerState({
   PermissionsDrawerProps,
   "agentId" | "connectorSlug" | "initialPolicies" | "initialGrants"
 > & {
-  readonly metadata: PublicConnectorCatalogPermissionDetail;
+  readonly metadata: PlatformConnectorPermissionMetadata;
 }): InitialPermissionDrawerState {
   const explicitGrants = buildExplicitGrantMap(connectorSlug, initialGrants);
   const grantStateKey = explicitGrantStateKey(explicitGrants);
@@ -354,20 +352,20 @@ function PolicyPill({
 }
 
 function buildSortedGroups(
-  metadata: PublicConnectorCatalogPermissionDetail,
+  metadata: PlatformConnectorPermissionMetadata,
 ): { category: string; permissions: ConnectorPermission[] }[] | null {
   return (
-    groupFirewallMetadataPermissionsByCategory(
-      metadata.permissions,
-      metadata,
-    )?.map((group) => {
+    groupFirewallMetadataPermissionsByCategory(metadata.permissions, {
+      ...metadata,
+      connectorRef: metadata.connectorSlug,
+    })?.map((group) => {
       return { ...group, permissions: sortPermissions(group.permissions) };
     }) ?? null
   );
 }
 
 function sortedPermissionsForMetadata(
-  metadata: PublicConnectorCatalogPermissionDetail,
+  metadata: PlatformConnectorPermissionMetadata,
 ): ConnectorPermission[] {
   return sortPermissions(metadata.permissions);
 }
@@ -390,11 +388,11 @@ function filterPermissionsForSearch(
 
 function buildExplicitGrantMap(
   connectorSlug: string,
-  grants: readonly UserPermissionGrantResponse[],
-): Map<string, UserPermissionGrantResponse> {
-  const result = new Map<string, UserPermissionGrantResponse>();
+  grants: readonly PlatformUserPermissionGrant[],
+): Map<string, PlatformUserPermissionGrant> {
+  const result = new Map<string, PlatformUserPermissionGrant>();
   for (const grant of grants) {
-    if (grant.connectorRef === connectorSlug) {
+    if (grant.connectorSlug === connectorSlug) {
       result.set(grant.permission, grant);
     }
   }
@@ -432,7 +430,7 @@ function canApplyPermissionPolicies({
   saving,
   hasChanges,
 }: {
-  metadata: PublicConnectorCatalogPermissionDetail;
+  metadata: PlatformConnectorPermissionMetadata;
   saving: boolean;
   hasChanges: boolean;
 }): boolean {
@@ -562,7 +560,7 @@ function MenuItemCheck({ active }: { active: boolean }) {
 
 function menuOptionExpiresIn(
   value: UserPermissionGrantExpiresIn,
-  allowGrant: UserPermissionGrantResponse | undefined,
+  allowGrant: PlatformUserPermissionGrant | undefined,
 ): UserPermissionGrantExpiresIn | null {
   if (value === "always" && !allowGrant?.expiresAt) {
     return null;
@@ -683,7 +681,7 @@ function PermissionGrantPolicyControl({
 }: {
   permission: string;
   policy: FirewallPolicyValue | "mixed";
-  grant: UserPermissionGrantResponse | undefined;
+  grant: PlatformUserPermissionGrant | undefined;
   selected: UserPermissionGrantExpiresIn | undefined;
   allowAlwaysActive: boolean;
   allowDurationMixed?: boolean;
@@ -764,7 +762,7 @@ function PermissionGrantPolicyControl({
 }
 
 function hasAllowAlwaysPolicy(
-  grant: UserPermissionGrantResponse | undefined,
+  grant: PlatformUserPermissionGrant | undefined,
   policy: FirewallPolicyValue,
 ): boolean {
   return policy === "allow" && !(grant?.action === "allow" && grant.expiresAt);
@@ -810,7 +808,7 @@ function PermissionGroupHeader({
   draft: PermissionDraftIntent;
   category: string;
   permissions: ConnectorPermission[];
-  explicitGrants: ReadonlyMap<string, UserPermissionGrantResponse>;
+  explicitGrants: ReadonlyMap<string, PlatformUserPermissionGrant>;
   expanded: boolean;
   readOnly?: boolean;
   saving: boolean;
@@ -903,7 +901,7 @@ function PermissionRows({
   permissions: ConnectorPermission[];
   expandedGroups: ReadonlySet<string>;
   visibleCounts: Readonly<Record<string, number>>;
-  explicitGrants: Map<string, UserPermissionGrantResponse>;
+  explicitGrants: Map<string, PlatformUserPermissionGrant>;
   readOnly?: boolean;
   saving: boolean;
   onToggleGroup: (category: string) => void;
@@ -1044,7 +1042,7 @@ function PermissionRow({
   permission: ConnectorPermission;
   showSeparator: boolean;
   indent?: boolean;
-  explicitGrants: Map<string, UserPermissionGrantResponse>;
+  explicitGrants: Map<string, PlatformUserPermissionGrant>;
   readOnly?: boolean;
   saving: boolean;
   onPolicyChange: (name: string, policy: PermissionPolicy) => void;
@@ -1267,7 +1265,7 @@ function LoadedPermissionsDrawerContent({
   const saving = applyLoadable.state === "loading";
 
   const effectiveExplicitGrants = draft.resetPending
-    ? new Map<string, UserPermissionGrantResponse>()
+    ? new Map<string, PlatformUserPermissionGrant>()
     : explicitGrants;
   const permissions = sortedPermissionsForMetadata(metadata);
   const groups = buildSortedGroups(metadata);

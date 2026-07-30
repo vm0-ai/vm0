@@ -14,7 +14,8 @@ export const setupDirectedConnectPage$ = command(
     }
 
     const params = get(pathParams$);
-    const connectorSlug = typeof params?.type === "string" ? params.type : "";
+    const connectorSlug =
+      typeof params?.connectorSlug === "string" ? params.connectorSlug : "";
 
     set(updatePage$, createElement(ZeroDirectedConnectPage), "minimal");
     set(updateDocumentTitle$, `Connect ${connectorSlug}`);

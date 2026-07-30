@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { PlatformConnectorPermissionMetadata } from "../../connector-domain.ts";
 
 import {
   createEmptyPermissionDraftIntent,
@@ -21,7 +21,7 @@ interface InitialPermissionDrawerUiState {
 }
 
 interface PermissionDrawerApplyOptions {
-  readonly metadata: PublicConnectorCatalogPermissionDetail;
+  readonly metadata: PlatformConnectorPermissionMetadata;
 }
 
 type PermissionDrawerApply = (
@@ -31,7 +31,7 @@ type PermissionDrawerApply = (
 
 interface ApplyPermissionDrawerParams {
   readonly intent: PermissionDraftIntent;
-  readonly metadata: PublicConnectorCatalogPermissionDetail;
+  readonly metadata: PlatformConnectorPermissionMetadata;
   readonly onApply: PermissionDrawerApply;
   readonly onClose: () => void;
 }

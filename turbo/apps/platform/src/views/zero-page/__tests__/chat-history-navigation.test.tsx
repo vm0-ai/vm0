@@ -11,6 +11,7 @@ import {
   chatThreadsContract,
   type ChatThreadEvent,
   type ChatEvent,
+  type ChatEventResponse,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { triggerAblyEvent } from "../../../mocks/ably.ts";
 import { chatIdb$ } from "../../../signals/external/chat-idb-store.ts";
@@ -66,7 +67,7 @@ describe("chat lifecycle", () => {
     context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
       if (query.beforeSeqId !== undefined) {
         beforeSeqIds.push(query.beforeSeqId);
-        return respond(200, { events: [], hasHistoryBefore: false });
+        return respond(200, { events: [] });
       }
       if (query.sinceSeqId === initialEvent.seqId) {
         return respond(200, { events: [] });
@@ -74,7 +75,6 @@ describe("chat lifecycle", () => {
       if (query.sinceSeqId === undefined) {
         return respond(200, {
           events: [chatEventResponse(initialEvent)],
-          hasHistoryBefore: true,
         });
       }
       throw new Error(`Unexpected message cursor: ${JSON.stringify(query)}`);
@@ -86,6 +86,73 @@ describe("chat lifecycle", () => {
       screen.findByText(initialEvent.content),
     ).resolves.toBeInTheDocument();
     expect(beforeSeqIds).toStrictEqual([]);
+  });
+
+  it("stops backward history when a page holds only retired queue markers", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000734";
+    const initialEvent = {
+      id: "00000000-0000-4000-8000-000000000731",
+      threadId,
+      eventType: "output.message",
+      content: "History sits behind retired queue markers",
+      createdAt: "2026-06-09T10:02:00.000Z",
+      seqId: 3,
+    } satisfies ChatEvent;
+    // Retired pause/resume leaves are stripped client-side, so this page
+    // reaches the backfill walk as an empty batch carrying no usable cursor
+    // even though the API answered with rows.
+    const retiredQueueEvents = [
+      {
+        id: "00000000-0000-4000-8000-000000000732",
+        threadId,
+        eventType: "queue.automation_paused",
+        content: null,
+        pauseReason: null,
+        createdAt: "2026-06-09T10:00:00.000Z",
+        seqId: 1,
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000733",
+        threadId,
+        eventType: "queue.automation_resumed",
+        content: null,
+        createdAt: "2026-06-09T10:01:00.000Z",
+        seqId: 2,
+      },
+    ] satisfies ChatEventResponse[];
+    const beforeSeqIds: number[] = [];
+    const historyPageServed = context.mocks.deferred<void>();
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Retired queue markers",
+    });
+    context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
+      if (query.beforeSeqId !== undefined) {
+        beforeSeqIds.push(query.beforeSeqId);
+        if (!historyPageServed.settled()) {
+          historyPageServed.resolve();
+        }
+        return respond(200, {
+          events: retiredQueueEvents.map(chatEventResponse),
+        });
+      }
+      if (query.sinceSeqId === initialEvent.seqId) {
+        return respond(200, { events: [] });
+      }
+      if (query.sinceSeqId === undefined) {
+        return respond(200, { events: [chatEventResponse(initialEvent)] });
+      }
+      throw new Error(`Unexpected message cursor: ${JSON.stringify(query)}`);
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await historyPageServed.promise;
+    await expect(
+      screen.findByText(initialEvent.content),
+    ).resolves.toBeInTheDocument();
+    expect(beforeSeqIds).toStrictEqual([initialEvent.seqId]);
   });
 
   it("publishes the initial page before batching the remaining history", async () => {
@@ -125,12 +192,10 @@ describe("chat lifecycle", () => {
             await beforePageGate.promise;
             return respond(200, {
               events: messages.slice(0, 10).map(chatEventResponse),
-              hasHistoryBefore: false,
             });
           }
           return respond(200, {
             events: messages.slice(10, 20).map(chatEventResponse),
-            hasHistoryBefore: true,
           });
         }
         if (query.sinceSeqId) {
@@ -142,7 +207,6 @@ describe("chat lifecycle", () => {
         await initialPageGate.promise;
         return respond(200, {
           events: messages.slice(20).map(chatEventResponse),
-          hasHistoryBefore: true,
         });
       },
     );
@@ -243,21 +307,19 @@ describe("chat lifecycle", () => {
       if (query.sinceSeqId === undefined) {
         return respond(200, {
           events: [chatEventResponse(initialMessage)],
-          hasHistoryBefore: false,
         });
       }
       if (query.sinceSeqId === initialMessage.seqId) {
         if (!exposeNewMessage) {
           emptyForwardRequests += 1;
-          return respond(200, { events: [], hasHistoryBefore: false });
+          return respond(200, { events: [] });
         }
         return respond(200, {
           events: [chatEventResponse(newMessage)],
-          hasHistoryBefore: false,
         });
       }
       if (query.sinceSeqId === newMessage.seqId) {
-        return respond(200, { events: [], hasHistoryBefore: false });
+        return respond(200, { events: [] });
       }
       throw new Error(`Unexpected message cursor: ${JSON.stringify(query)}`);
     });
@@ -329,24 +391,22 @@ describe("chat lifecycle", () => {
       if (query.sinceSeqId === undefined) {
         return respond(200, {
           events: [chatEventResponse(initialMessage)],
-          hasHistoryBefore: false,
         });
       }
       if (query.sinceSeqId === initialMessage.seqId) {
         if (!exposePersistedMessage || persistedMessage === null) {
           initialMessagesCaughtUp.resolve();
-          return respond(200, { events: [], hasHistoryBefore: false });
+          return respond(200, { events: [] });
         }
         return respond(200, {
           events: [
             chatEventResponse(persistedMessage),
             chatEventResponse(acknowledgement),
           ],
-          hasHistoryBefore: false,
         });
       }
       if (query.sinceSeqId === acknowledgement.seqId) {
-        return respond(200, { events: [], hasHistoryBefore: false });
+        return respond(200, { events: [] });
       }
       throw new Error(`Unexpected message cursor: ${JSON.stringify(query)}`);
     });
@@ -440,21 +500,19 @@ describe("chat lifecycle", () => {
             ? [initialMessage, newMessage]
             : [initialMessage]
           ).map(chatEventResponse),
-          hasHistoryBefore: false,
         });
       }
       if (query.sinceSeqId === initialMessage.seqId) {
         if (!exposeNewMessage) {
           initialMessagesCaughtUp.resolve();
-          return respond(200, { events: [], hasHistoryBefore: false });
+          return respond(200, { events: [] });
         }
         return respond(200, {
           events: [chatEventResponse(newMessage)],
-          hasHistoryBefore: false,
         });
       }
       if (query.sinceSeqId === newMessage.seqId) {
-        return respond(200, { events: [], hasHistoryBefore: false });
+        return respond(200, { events: [] });
       }
       throw new Error(`Unexpected message cursor: ${JSON.stringify(query)}`);
     });
@@ -530,27 +588,25 @@ describe("chat lifecycle", () => {
         if (query.sinceSeqId === undefined) {
           return respond(200, {
             events: [chatEventResponse(initialMessage)],
-            hasHistoryBefore: false,
           });
         }
         if (query.sinceSeqId === initialMessage.seqId) {
           if (params.threadId !== KEYBOARD_NEXT_THREAD_ID) {
-            return respond(200, { events: [], hasHistoryBefore: false });
+            return respond(200, { events: [] });
           }
           if (!exposeSidebarMessage) {
             sidebarMessagesCaughtUp.resolve();
-            return respond(200, { events: [], hasHistoryBefore: false });
+            return respond(200, { events: [] });
           }
           return respond(200, {
             events: [chatEventResponse(sidebarNewMessage)],
-            hasHistoryBefore: false,
           });
         }
         if (
           params.threadId === KEYBOARD_NEXT_THREAD_ID &&
           query.sinceSeqId === sidebarNewMessage.seqId
         ) {
-          return respond(200, { events: [], hasHistoryBefore: false });
+          return respond(200, { events: [] });
         }
         throw new Error(
           `Unexpected message cursor: ${JSON.stringify({

@@ -75,7 +75,6 @@ import {
   isNotNull,
   isNull,
   lt,
-  ne,
   not,
   notExists,
   or,
@@ -113,7 +112,6 @@ import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
 import {
-  maybeCreateUserMessageDocument,
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
@@ -264,7 +262,6 @@ type ChatThreadRow = {
   readonly id: string;
   readonly title: string | null;
   readonly agentComposeId: string;
-  readonly draftContent: string | null;
   readonly draftUserMessage: UserMessageDocument | null;
   readonly draftAttachments: readonly PersistedAttachment[] | null;
   readonly modelProviderId: string | null;
@@ -519,7 +516,6 @@ function ownedChatThread(
         id: chatThreads.id,
         title: chatThreads.title,
         agentComposeId: chatThreads.agentComposeId,
-        draftContent: chatThreads.draftContent,
         draftUserMessage: chatThreads.draftUserMessage,
         draftAttachments: chatThreads.draftAttachments,
         computerUseHostId: chatThreads.computerUseHostId,
@@ -549,7 +545,6 @@ function ownedChatThread(
       id: thread.id,
       title: thread.title,
       agentComposeId: thread.agentComposeId,
-      draftContent: thread.draftContent ?? null,
       draftUserMessage: thread.draftUserMessage ?? null,
       draftAttachments: persistedAttachmentSchema
         .array()
@@ -587,7 +582,7 @@ export function zeroChatThreadDraft(args: {
     }
 
     return {
-      draftContent: thread.draftContent,
+      draftContent: null,
       draftUserMessage: thread.draftUserMessage,
       draftAttachments: thread.draftAttachments
         ? [...thread.draftAttachments]
@@ -1244,7 +1239,7 @@ export function zeroChatThreadActiveRunThreadIds(args: {
 
 /**
  * Thread ids owned by the user that currently hold an unsent composer draft
- * (non-empty `draftContent`, a user message, or one+ `draftAttachments`).
+ * (a canonical user message with optional `draftAttachments`).
  */
 export function zeroChatThreadDraftIds(args: {
   readonly userId: string;
@@ -1257,17 +1252,7 @@ export function zeroChatThreadDraftIds(args: {
       .where(
         and(
           eq(chatThreads.userId, args.userId),
-          or(
-            ne(sql`COALESCE(${chatThreads.draftContent}, '')`, sql`''`),
-            isNotNull(chatThreads.draftUserMessage),
-            and(
-              isNotNull(chatThreads.draftAttachments),
-              gt(
-                sql`jsonb_array_length(${chatThreads.draftAttachments})`,
-                sql`0`,
-              ),
-            ),
-          ),
+          isNotNull(chatThreads.draftUserMessage),
         ),
       );
     return rows.map((row) => {
@@ -1937,10 +1922,12 @@ function userMessageSearchText(): SQL {
     ' ',
     jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].text')::text,
     jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].titleSnapshot')::text,
+    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].nameSnapshot')::text,
     jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].filenameSnapshot')::text,
     jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].quote')::text,
     jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].note[*].text')::text,
-    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].note[*].titleSnapshot')::text
+    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].note[*].titleSnapshot')::text,
+    jsonb_path_query_array(${chatEvents.userMessage}, '$.parts[*].note[*].nameSnapshot')::text
   )`;
 }
 
@@ -2166,12 +2153,7 @@ export function zeroChatThreadEventsPage(args: {
   readonly sinceId: string | undefined;
   readonly beforeId: string | undefined;
   readonly limit: number;
-}): Computed<
-  Promise<{
-    readonly events: readonly ChatEventResponse[];
-    readonly hasHistoryBefore: boolean;
-  } | null>
-> {
+}): Computed<Promise<readonly ChatEventResponse[] | null>> {
   return computed(async (get) => {
     const db = get(db$);
     const [owned] = await db
@@ -2217,7 +2199,7 @@ export function zeroChatThreadEventsPage(args: {
             )
             .limit(1);
     if (legacyCursorId !== undefined && !legacyCursor) {
-      return { events: [], hasHistoryBefore: false };
+      return [];
     }
 
     const sinceSeqId =
@@ -2226,7 +2208,6 @@ export function zeroChatThreadEventsPage(args: {
       args.beforeSeqId ?? (args.beforeId ? legacyCursor?.seqId : undefined);
     const threadFilter = eq(chatEvents.chatThreadId, args.threadId);
     let rows: ChatEventRow[];
-    let hasHistoryBefore = false;
 
     if (sinceSeqId !== undefined) {
       rows = await selectChatEventsWithMetadata(db)
@@ -2234,30 +2215,27 @@ export function zeroChatThreadEventsPage(args: {
         .orderBy(asc(chatEvents.seqId))
         .limit(args.limit);
     } else if (beforeSeqId !== undefined) {
-      const previousRows = await selectChatEventsWithMetadata(db)
-        .where(and(threadFilter, lt(chatEvents.seqId, beforeSeqId)))
-        .orderBy(desc(chatEvents.seqId))
-        .limit(args.limit + 1);
-      hasHistoryBefore = previousRows.length > args.limit;
-      rows = previousRows.slice(0, args.limit).reverse();
+      rows = (
+        await selectChatEventsWithMetadata(db)
+          .where(and(threadFilter, lt(chatEvents.seqId, beforeSeqId)))
+          .orderBy(desc(chatEvents.seqId))
+          .limit(args.limit)
+      ).reverse();
     } else {
-      const latestRows = await selectChatEventsWithMetadata(db)
-        .where(threadFilter)
-        .orderBy(desc(chatEvents.seqId))
-        .limit(args.limit + 1);
-      hasHistoryBefore = latestRows.length > args.limit;
-      rows = latestRows.slice(0, args.limit).reverse();
+      rows = (
+        await selectChatEventsWithMetadata(db)
+          .where(threadFilter)
+          .orderBy(desc(chatEvents.seqId))
+          .limit(args.limit)
+      ).reverse();
     }
 
-    return {
-      events: await get(
-        chatEventsWithAssets({
-          userId: args.userId,
-          rows,
-        }),
-      ),
-      hasHistoryBefore,
-    };
+    return await get(
+      chatEventsWithAssets({
+        userId: args.userId,
+        rows,
+      }),
+    );
   });
 }
 
@@ -2537,24 +2515,16 @@ export const updateChatThreadDraft$ = command(
     args: {
       readonly threadId: string;
       readonly userId: string;
-      readonly draftContent: string | null;
       readonly draftUserMessage: UserMessageDocument | null;
       readonly draftAttachments: readonly PersistedAttachment[] | null;
     },
     signal: AbortSignal,
   ): Promise<{ readonly updated: boolean }> => {
     const writeDb = set(writeDb$);
-    const draftUserMessage =
-      args.draftUserMessage ??
-      maybeCreateUserMessageDocument({
-        text: args.draftContent,
-        files: args.draftAttachments ?? undefined,
-      });
     const updated = await writeDb
       .update(chatThreads)
       .set({
-        draftContent: args.draftContent,
-        draftUserMessage,
+        draftUserMessage: args.draftUserMessage,
         draftAttachments: args.draftAttachments
           ? [...args.draftAttachments]
           : null,

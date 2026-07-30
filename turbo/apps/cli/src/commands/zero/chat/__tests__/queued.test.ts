@@ -87,7 +87,6 @@ describe("zero chat queued command", () => {
                 createdAt: "2026-07-29T10:03:00.000Z",
               },
             ],
-            hasHistoryBefore: true,
           });
         }
 
@@ -101,7 +100,6 @@ describe("zero chat queued command", () => {
               createdAt: "2026-07-29T10:00:00.000Z",
             }),
           ],
-          hasHistoryBefore: false,
         });
       }),
     );
@@ -136,7 +134,6 @@ describe("zero chat queued command", () => {
       http.get(EVENTS_URL, () => {
         return HttpResponse.json({
           events: [],
-          hasHistoryBefore: false,
         });
       }),
     );

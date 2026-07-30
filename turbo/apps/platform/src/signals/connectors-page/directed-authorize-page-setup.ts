@@ -14,7 +14,8 @@ export const setupDirectedAuthorizePage$ = command(
     }
 
     const params = get(pathParams$);
-    const connectorSlug = typeof params?.type === "string" ? params.type : "";
+    const connectorSlug =
+      typeof params?.connectorSlug === "string" ? params.connectorSlug : "";
 
     set(updatePage$, createElement(ZeroDirectedAuthorizePage), "minimal");
     set(updateDocumentTitle$, `Authorize ${connectorSlug}`);

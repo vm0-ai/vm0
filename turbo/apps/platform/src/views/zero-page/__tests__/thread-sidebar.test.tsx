@@ -223,12 +223,10 @@ function setupChatThread({
         events: events.filter((event) => {
           return event.seqId > sinceSeqId;
         }),
-        hasHistoryBefore: false,
       });
     }
     return respond(200, {
       events,
-      hasHistoryBefore: false,
     });
   });
   context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
@@ -486,12 +484,15 @@ describe("thread-owned utility sidebar", () => {
       ({ body, params, respond }) => {
         expect(params.id).toBe(AGENT_ID);
         expect(body).toStrictEqual({
-          enabledTypes: ["google-drive"],
+          enabledConnectorSlugs: ["google-drive"],
           operation: "add",
         });
-        enabledConnectorSlugs = [...body.enabledTypes];
+        enabledConnectorSlugs = [...body.enabledConnectorSlugs];
         agentAuthorized = true;
-        return respond(200, { enabledTypes: enabledConnectorSlugs });
+        return respond(200, {
+          enabledTypes: enabledConnectorSlugs,
+          enabledConnectorSlugs,
+        });
       },
     );
     context.mocks.api(

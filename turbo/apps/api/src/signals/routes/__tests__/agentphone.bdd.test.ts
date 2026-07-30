@@ -877,6 +877,46 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
         (send.body?.includes("Only the linked sender") ?? false)
       );
     });
+
+    // Resetting the canonical route makes prior message history insufficient
+    // to resolve the group owner.
+    const beforeSessionReset = sends.messages.length;
+    await ap.postAgentPhoneInboundMessage({
+      channel: "imessage",
+      from: phone,
+      body: "/new_session @Zero",
+      conversationId,
+      isGroup: true,
+    });
+    await waitForSendMatching(sends, beforeSessionReset, (send) => {
+      return (
+        send.conversationId === conversationId &&
+        send.body === "New session started."
+      );
+    });
+
+    const beforeColdCutoverPrompt = sends.messages.length;
+    await ap.postAgentPhoneInboundMessage({
+      channel: "imessage",
+      from: stranger,
+      body: "@Zero resume the old group",
+      conversationId,
+      isGroup: true,
+    });
+    const coldCutoverPrompt = await waitForSendMatching(
+      sends,
+      beforeColdCutoverPrompt,
+      (send) => {
+        return (
+          send.conversationId === conversationId &&
+          (send.body?.includes("message Zero directly") ?? false)
+        );
+      },
+    );
+    expect(coldCutoverPrompt.body).not.toContain("/agentphone/connect?");
+    await runs.heartbeatRunner(runnerGroup);
+    const coldCutoverIdle = await runs.pollRunner(runnerGroup);
+    expect(coldCutoverIdle.body.job).toBeNull();
   });
 
   it("skips completion delivery for runs whose phone link was disconnected mid-flight", async () => {

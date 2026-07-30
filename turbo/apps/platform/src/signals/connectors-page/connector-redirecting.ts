@@ -41,7 +41,7 @@ export function connectorRedirectingPath(args: {
   readonly status?: ConnectorRedirectingStatus;
 }): string {
   const pathname = generateRouterPath(ROUTES.connectorRedirecting, {
-    type: args.connectorSlug,
+    connectorSlug: args.connectorSlug,
   });
   const searchParams = new URLSearchParams({
     label: args.label,

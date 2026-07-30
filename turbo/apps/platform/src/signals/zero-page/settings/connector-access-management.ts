@@ -2,7 +2,6 @@ import { command, computed, state } from "ccstate";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
-import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { zeroClient$ } from "../../api-client.ts";
 import { agents$ } from "../../agent.ts";
 import { accept } from "../../../lib/accept.ts";
@@ -13,11 +12,12 @@ import {
 } from "../agent-connector-authorizations.ts";
 import { withCleanup } from "../../utils.ts";
 import { firewallPermissionMetadataByConnector } from "../../firewall-permission-metadata.ts";
+import type { PlatformUserPermissionGrant } from "../../connector-domain.ts";
 
 export interface ConnectorAgentAccessRow {
   readonly agent: TeamComposeItem;
   readonly authorized: boolean;
-  readonly grants: readonly UserPermissionGrantResponse[];
+  readonly grants: readonly PlatformUserPermissionGrant[];
 }
 
 interface ConnectorAgentAuthorizationRow {
@@ -144,7 +144,7 @@ export const managedConnectorAgentAccessRows$ = computed(
           enabledConnectorSlugs,
         }): Promise<ConnectorAgentAccessRow | null> => {
           const authorized = enabledConnectorSlugs.includes(connectorSlug);
-          let grants: readonly UserPermissionGrantResponse[] = [];
+          let grants: readonly PlatformUserPermissionGrant[] = [];
           if (authorized) {
             const loadedGrants = await get(
               userPermissionGrantsByAgentIfExists({ agentId: agent.id }),
@@ -190,7 +190,7 @@ export const setConnectorAgentAuthorization$ = command(
         client.update({
           params: { id: params.agentId },
           body: {
-            enabledTypes: [params.connectorSlug],
+            enabledConnectorSlugs: [params.connectorSlug],
             operation: params.authorized ? "add" : "remove",
           },
           fetchOptions: { signal },

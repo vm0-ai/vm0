@@ -23,13 +23,13 @@ import type {
   NotionPageContentUpdatedEventCreateConfig,
   WorkflowFileEntry,
   WorkflowFileMetadata,
-  ZeroWorkflowConnectorReadinessEntry,
   ZeroWorkflowDetailResponse,
   ZeroWorkflowSchedule,
   ZeroWorkflowScheduleType,
   ZeroWorkflowAutomationSummary,
   ZeroWorkflowUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
+import type { PlatformWorkflowConnectorReadinessEntry } from "../../signals/connector-domain.ts";
 import {
   IconAlertTriangle,
   IconBrandGithub,
@@ -1436,7 +1436,7 @@ function hasUnsavedConnectorReadinessInputs(
 }
 
 const CONNECTOR_READINESS_STATUS_GROUP: Readonly<
-  Record<ZeroWorkflowConnectorReadinessEntry["status"], number>
+  Record<PlatformWorkflowConnectorReadinessEntry["status"], number>
 > = Object.freeze({
   "reconnect-required": 0,
   "scope-mismatch": 0,
@@ -1447,8 +1447,8 @@ const CONNECTOR_READINESS_STATUS_GROUP: Readonly<
 });
 
 function sortConnectorReadinessEntries(
-  entries: readonly ZeroWorkflowConnectorReadinessEntry[],
-): ZeroWorkflowConnectorReadinessEntry[] {
+  entries: readonly PlatformWorkflowConnectorReadinessEntry[],
+): PlatformWorkflowConnectorReadinessEntry[] {
   return [...entries].sort((left, right) => {
     const groupOrder =
       CONNECTOR_READINESS_STATUS_GROUP[left.status] -
@@ -1461,7 +1461,7 @@ function sortConnectorReadinessEntries(
 }
 
 function connectorReadinessStatus(
-  status: ZeroWorkflowConnectorReadinessEntry["status"],
+  status: PlatformWorkflowConnectorReadinessEntry["status"],
 ): {
   readonly label: string;
   readonly dotClassName: string;
@@ -1526,7 +1526,7 @@ function connectorReadinessStatus(
 }
 
 function connectorReadinessAction(
-  entry: ZeroWorkflowConnectorReadinessEntry,
+  entry: PlatformWorkflowConnectorReadinessEntry,
   agentId: string,
 ): { readonly label: string; readonly href: string } | null {
   const query = new URLSearchParams({ agentId }).toString();
@@ -1537,7 +1537,7 @@ function connectorReadinessAction(
           return $.workflows.detail.connectors.action.reconnect;
         }),
         href: `${generateRouterPath(ROUTES.directedConnect, {
-          type: entry.connectorRef,
+          connectorSlug: entry.connectorSlug,
         })}?${query}`,
       };
     }
@@ -1547,7 +1547,7 @@ function connectorReadinessAction(
           return $.workflows.detail.connectors.action.reviewPermissions;
         }),
         href: `${generateRouterPath(ROUTES.directedConnect, {
-          type: entry.connectorRef,
+          connectorSlug: entry.connectorSlug,
         })}?${query}`,
       };
     }
@@ -1557,7 +1557,7 @@ function connectorReadinessAction(
           return $.workflows.detail.connectors.action.connect;
         }),
         href: `${generateRouterPath(ROUTES.directedConnect, {
-          type: entry.connectorRef,
+          connectorSlug: entry.connectorSlug,
         })}?${query}`,
       };
     }
@@ -1567,7 +1567,7 @@ function connectorReadinessAction(
           return $.workflows.detail.connectors.action.enable;
         }),
         href: `${generateRouterPath(ROUTES.directedAuthorize, {
-          type: entry.connectorRef,
+          connectorSlug: entry.connectorSlug,
         })}?${query}`,
       };
     }
@@ -1690,7 +1690,7 @@ function WorkflowConnectorReadiness({
             {entries.map((entry) => {
               return (
                 <WorkflowConnectorReadinessRow
-                  key={entry.connectorRef}
+                  key={entry.connectorSlug}
                   entry={entry}
                   agentId={detail.agentId}
                 />
@@ -1719,7 +1719,7 @@ function WorkflowConnectorReadinessRow({
   entry,
   agentId,
 }: {
-  readonly entry: ZeroWorkflowConnectorReadinessEntry;
+  readonly entry: PlatformWorkflowConnectorReadinessEntry;
   readonly agentId: string;
 }) {
   const status = connectorReadinessStatus(entry.status);

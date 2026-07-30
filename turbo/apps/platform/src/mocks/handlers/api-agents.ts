@@ -105,8 +105,11 @@ export const apiAgentsHandlers = [
 
   // GET /api/zero/agents/:id/user-connectors
   mockApi(zeroUserConnectorsContract.get, ({ params, respond }) => {
+    const enabledConnectorSlugs =
+      mockEnabledConnectorSlugsByAgent.get(params.id) ?? [];
     return respond(200, {
-      enabledTypes: mockEnabledConnectorSlugsByAgent.get(params.id) ?? [],
+      enabledTypes: enabledConnectorSlugs,
+      enabledConnectorSlugs,
     });
   }),
 
@@ -121,12 +124,13 @@ export const apiAgentsHandlers = [
   mockApi(zeroUserConnectorsContract.update, ({ body, params, respond }) => {
     const enabledConnectorSlugs = mockConnectorUpdateResponse(
       mockEnabledConnectorSlugsByAgent.get(params.id) ?? [],
-      body.enabledTypes,
+      body.enabledConnectorSlugs,
       body.operation,
     );
     mockEnabledConnectorSlugsByAgent.set(params.id, enabledConnectorSlugs);
     return respond(200, {
       enabledTypes: enabledConnectorSlugs,
+      enabledConnectorSlugs,
     });
   }),
 

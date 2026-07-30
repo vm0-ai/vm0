@@ -1,7 +1,5 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { accept } from "../../lib/accept.ts";
@@ -15,6 +13,10 @@ import {
   type AgentConnectorAuthorizations,
 } from "./agent-connector-authorizations.ts";
 import { reloadOnboardingStatus$ } from "./zero-onboarding.ts";
+import type {
+  PlatformConnectorPermissionMetadata,
+  PlatformUserPermissionGrant,
+} from "../connector-domain.ts";
 import {
   customConnectorAuthorizationReloadVersion$,
   reloadCustomConnectorAuthorizedAgents$,
@@ -75,10 +77,10 @@ export interface ComposerConnectorSignals extends ComposerConnectorAuthorization
   readonly permissionConnectorSlug$: Computed<ConnectorSlug | null>;
   readonly setPermissionConnectorSlug$: Command<void, [ConnectorSlug | null]>;
   readonly permissionMetadata$: Computed<
-    Promise<PublicConnectorCatalogPermissionDetail | null>
+    Promise<PlatformConnectorPermissionMetadata | null>
   >;
   readonly permissionGrants$: Computed<
-    Promise<readonly UserPermissionGrantResponse[]>
+    Promise<readonly PlatformUserPermissionGrant[]>
   >;
 }
 
@@ -186,7 +188,7 @@ function createConnectorAuthorizationCommands(
         accept(
           client.update({
             params: { id: agentId },
-            body: { enabledTypes: [connectorSlug], operation },
+            body: { enabledConnectorSlugs: [connectorSlug], operation },
             fetchOptions: { signal },
           }),
           [200],
@@ -340,7 +342,7 @@ export function createComposerConnectorSignals<T extends AgentIdValue>(
     return await get(firewallPermissionMetadataByConnector({ connectorSlug }));
   });
   const permissionGrants$ = computed(
-    async (get): Promise<readonly UserPermissionGrantResponse[]> => {
+    async (get): Promise<readonly PlatformUserPermissionGrant[]> => {
       const agentId = await get(localAgentId$);
       if (!agentId) {
         return [];

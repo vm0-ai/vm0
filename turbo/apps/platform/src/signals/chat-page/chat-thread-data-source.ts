@@ -16,7 +16,6 @@ export interface ChatThreadRealtimeHandlers {
 
 export interface PatchDraftArgs {
   threadId: string;
-  content: string | null;
   userMessage: UserMessageDocument | null;
   attachments: PersistedAttachment[] | null;
 }

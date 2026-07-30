@@ -167,9 +167,10 @@ jobs:
           canonical_dist=$(mktemp -d)
           pages_dist=$(mktemp -d)
 
-          aws s3 cp "$artifact_uri/" "$canonical_dist/" \
-            --endpoint-url "$r2_endpoint" \
-            --recursive
+          bash .github/scripts/fetch-okou-app-artifact.sh \
+            "$r2_endpoint" \
+            "$artifact_uri" \
+            "$canonical_dist"
           bash .github/scripts/verify-okou-app-artifact.sh \
             "$canonical_dist" \
             "$TARGET_COMMIT"

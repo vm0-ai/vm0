@@ -1,5 +1,31 @@
 # Changelog
 
+## [9.269.3](https://github.com/vm0-ai/vm0/compare/cli-v9.269.2...cli-v9.269.3) (2026-07-30)
+
+
+### Refactoring
+
+* **chat:** stop backward history paging at seq id one ([#23966](https://github.com/vm0-ai/vm0/issues/23966)) ([5d48c32](https://github.com/vm0-ai/vm0/commit/5d48c32163d609e48b8ec156547cf219bf283bdf))
+* **cli:** remove unnecessary resource candidate groups ([#23961](https://github.com/vm0-ai/vm0/issues/23961)) ([6c46502](https://github.com/vm0-ai/vm0/commit/6c46502cc34dc59fcd6b612cb72c7c21659178da))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.250.0
+    * @vm0/core bumped to 8.488.2
+
+## [9.269.2](https://github.com/vm0-ai/vm0/compare/cli-v9.269.1...cli-v9.269.2) (2026-07-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.249.2
+    * @vm0/core bumped to 8.488.1
+
 ## [9.269.1](https://github.com/vm0-ai/vm0/compare/cli-v9.269.0...cli-v9.269.1) (2026-07-30)
 
 

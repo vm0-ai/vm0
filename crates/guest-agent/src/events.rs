@@ -10,7 +10,7 @@ use crate::failure_patterns::{
     has_exact_codex_oauth_connector, is_codex_context_window_exceeded_message,
     is_codex_model_capacity_message, is_generic_codex_failure_diagnostic,
 };
-use crate::http::HttpClient;
+use crate::http::{HttpAttemptObserver, HttpClient};
 use crate::masker::SecretMasker;
 use crate::paths;
 use crate::session_metadata;
@@ -64,7 +64,7 @@ pub async fn send_event_for_config(
     }
 
     let payload = prepare_event_payload_for_run_id(event, seq, masker, &config.run_id);
-    post_event_with_error_flag(http, &payload, paths.event_error_flag()).await
+    post_event(http, &payload).await
 }
 
 pub fn prepare_event_payload_for_run_id(
@@ -432,42 +432,21 @@ fn truncate_diagnostic_message(message: &str) -> String {
     format!("{}{}", &message[..end], FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX)
 }
 
-pub async fn post_event_with_error_flag(
-    http: &HttpClient,
-    payload: &Value,
-    event_error_flag: &str,
-) -> Result<(), AgentError> {
+pub async fn post_event(http: &HttpClient, payload: &Value) -> Result<(), AgentError> {
     let url = http.events_url()?;
-    let result = http
-        .post_json(url, payload, constants::HTTP_MAX_ATTEMPTS)
-        .await;
-    handle_event_post_result(result, event_error_flag)
+    let payload = Bytes::from(serde_json::to_vec(payload)?);
+    http.post_event_bytes(url, payload, constants::HTTP_MAX_ATTEMPTS, None)
+        .await
 }
 
-pub(crate) async fn post_serialized_event_with_error_flag(
+pub(crate) async fn post_serialized_event(
     http: &HttpClient,
     payload: Bytes,
-    event_error_flag: &str,
+    observer: &dyn HttpAttemptObserver,
 ) -> Result<(), AgentError> {
     let url = http.events_url()?;
-    let result = http
-        .post_json_bytes(url, payload, constants::HTTP_MAX_ATTEMPTS)
-        .await;
-    handle_event_post_result(result, event_error_flag)
-}
-
-fn handle_event_post_result(
-    result: Result<Option<Value>, AgentError>,
-    event_error_flag: &str,
-) -> Result<(), AgentError> {
-    match result {
-        Ok(_) => Ok(()),
-        Err(e) => {
-            log_error!(LOG_TAG, "Failed to send event after retries");
-            let _ = paths::write_private(event_error_flag, "1");
-            Err(e)
-        }
-    }
+    http.post_event_bytes(url, payload, constants::HTTP_MAX_ATTEMPTS, Some(observer))
+        .await
 }
 
 /// Tool event extracted from a Claude Code JSONL line.

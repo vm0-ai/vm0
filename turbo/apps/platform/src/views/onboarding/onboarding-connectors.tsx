@@ -76,7 +76,7 @@ export function OnboardingConnectorSetup({
       >
         {connectorSlugs.map((connectorSlug) => {
           const item = connectorCatalogItems.find((candidate) => {
-            return candidate.connectorRef === connectorSlug;
+            return candidate.slug === connectorSlug;
           });
           const connected =
             item?.connected === true || justConnectedSlugs.has(connectorSlug);

@@ -36,6 +36,7 @@ export const SESSION_HISTORY_DOWNLOAD_SOURCE_DEFAULT_R2_ENDPOINT =
   "default_r2_endpoint";
 export const SESSION_HISTORY_GZIP_MIN_BYTES = 64 * 1024;
 export const NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX = 256;
+export const NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE = "RUN_TERMINAL";
 export const RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX = 512;
 export const sessionHistoryEncodingSchema = z.enum([
   SESSION_HISTORY_ENCODING_IDENTITY,
@@ -738,6 +739,11 @@ export const runnersNetworkPolicyRefreshContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema.extend({
+        error: apiErrorSchema.shape.error.extend({
+          code: z.literal(NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE),
+        }),
+      }),
       500: apiErrorSchema,
     },
     summary: "Refresh active run network policies",

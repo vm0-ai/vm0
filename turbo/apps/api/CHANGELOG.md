@@ -1,5 +1,49 @@
 # Changelog
 
+## [1.349.0](https://github.com/vm0-ai/vm0/compare/api-v1.348.1...api-v1.349.0) (2026-07-30)
+
+
+### Features
+
+* **chat:** render composer agent mentions as structured agent parts ([#23943](https://github.com/vm0-ai/vm0/issues/23943)) ([ae861b8](https://github.com/vm0-ai/vm0/commit/ae861b86e7873f6d8811f00c877af6e0483f888c))
+* **github:** route issue and pr chats through canonical threads ([#23953](https://github.com/vm0-ai/vm0/issues/23953)) ([1aac828](https://github.com/vm0-ai/vm0/commit/1aac828435bd7da57eabd2b25db098e78b3b5411))
+
+
+### Refactoring
+
+* **agentphone:** remove legacy thread session access ([#23970](https://github.com/vm0-ai/vm0/issues/23970)) ([331ab52](https://github.com/vm0-ai/vm0/commit/331ab5292d6e95f13831750f75ae1ad10ed808d5))
+* **chat:** stop backward history paging at seq id one ([#23966](https://github.com/vm0-ai/vm0/issues/23966)) ([5d48c32](https://github.com/vm0-ai/vm0/commit/5d48c32163d609e48b8ec156547cf219bf283bdf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.250.0
+    * @vm0/core bumped to 8.488.2
+    * @vm0/db bumped to 1.156.0
+
+## [1.348.1](https://github.com/vm0-ai/vm0/compare/api-v1.348.0...api-v1.348.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* title ingress chat threads when their run is created ([#23947](https://github.com/vm0-ai/vm0/issues/23947)) ([93860c8](https://github.com/vm0-ai/vm0/commit/93860c8f4439f374b048128236ba1a6da343dd57))
+
+
+### Refactoring
+
+* drop legacy chat event transport columns ([#23931](https://github.com/vm0-ai/vm0/issues/23931)) ([09cf8b2](https://github.com/vm0-ai/vm0/commit/09cf8b215260e801d331356fefc66cfea81bbb3f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.249.2
+    * @vm0/core bumped to 8.488.1
+    * @vm0/db bumped to 1.155.1
+
 ## [1.348.0](https://github.com/vm0-ai/vm0/compare/api-v1.347.0...api-v1.348.0) (2026-07-30)
 
 

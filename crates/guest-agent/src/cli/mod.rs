@@ -51,7 +51,8 @@ use framework::CliFrameworkBehavior;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
 use guest_contracts::diagnostics::{
-    CliObservedExitDiagnostic, CliTerminationDiagnostic, FailureDetailSource, FailureReason,
+    CliObservedExitDiagnostic, CliTerminationDiagnostic, EventDeliveryDiagnostic,
+    FailureDetailSource, FailureReason,
 };
 use process_group::ChildProcessGroup;
 use std::borrow::Cow;
@@ -248,6 +249,9 @@ pub struct CliExecutionResult {
     /// was successfully posted.
     pub last_event_sequence: Option<u32>,
 
+    /// Bounded event-delivery failure details, when delivery was terminally incomplete.
+    pub event_delivery: Option<EventDeliveryDiagnostic>,
+
     /// Claude Code's final result metadata, when a terminal result event was
     /// observed. Codex uses its own event schema and leaves this unset.
     pub claude_result: Option<ClaudeResultSummary>,
@@ -344,7 +348,6 @@ pub(super) struct CliRuntimeConfig<'a> {
     agent_log_file: Cow<'a, str>,
     session_id_file: Cow<'a, str>,
     session_history_path_file: Cow<'a, str>,
-    event_error_flag: Cow<'a, str>,
     user_env: &'a HashMap<String, String>,
 }
 
@@ -419,7 +422,6 @@ impl<'a> CliRuntimeConfig<'a> {
             agent_log_file: Cow::Borrowed(paths.agent_log_file()),
             session_id_file: Cow::Borrowed(paths.session_id_file()),
             session_history_path_file: Cow::Borrowed(paths.session_history_path_file()),
-            event_error_flag: Cow::Borrowed(paths.event_error_flag()),
             user_env: &config.user_env,
         })
     }
@@ -930,11 +932,7 @@ async fn execute_cli_inner(
     // no collection delay or concurrent POST path. Overload enters controlled
     // CLI termination rather than blocking stdout.
     let mut should_send_events = http.has_api();
-    let event_delivery = EventDeliveryRuntime::start(
-        http.clone(),
-        runtime.event_error_flag.to_string(),
-        &runtime.run_id,
-    )?;
+    let event_delivery = EventDeliveryRuntime::start(http.clone(), &runtime.run_id)?;
 
     let mut heartbeat_done = false;
     let mut user_cancellation_handled = false;
@@ -1515,12 +1513,11 @@ async fn execute_cli_inner(
 
     // On success, boundedly drain accepted events. On any execution or
     // control error, abort unsent delivery rather than stalling on retries.
-    let delivery_result = if event_error.is_none() && !has_control_error {
+    let delivery_report = if event_error.is_none() && !has_control_error {
         event_delivery.finish().await
     } else {
-        event_delivery.abort().await;
-        Ok(None)
-    };
+        Ok(event_delivery.abort().await)
+    }?;
     let status = match cli_status {
         Some(s) => s,
         None => {
@@ -1573,13 +1570,13 @@ async fn execute_cli_inner(
     if let Some(err) = event_error {
         return Err(err);
     }
-    let last_event_sequence = delivery_result?;
 
     Ok(CliExecutionResult {
         exit_code,
         cli_observed_exit,
         stderr_lines: masked_stderr_lines,
-        last_event_sequence,
+        last_event_sequence: delivery_report.last_acknowledged_sequence,
+        event_delivery: delivery_report.diagnostic,
         claude_result,
         post_result_cleanup_result,
         failure_diagnostic: event_ingestor.failure_diagnostic(),
@@ -1796,7 +1793,6 @@ mod tests {
             agent_log_file: Cow::Borrowed("/tmp/agent.log"),
             session_id_file: Cow::Borrowed("/tmp/session-id"),
             session_history_path_file: Cow::Borrowed("/tmp/session-history-path"),
-            event_error_flag: Cow::Borrowed("/tmp/event-error"),
             user_env,
         }
     }

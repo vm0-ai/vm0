@@ -460,12 +460,9 @@ async fn send_event_skips_session_id_for_non_init() {
 // =========================================================================
 
 #[tokio::test]
-async fn send_event_failure_writes_error_flag() {
+async fn send_event_failure_returns_error() {
     let api = SharedApiMock::new().await;
     let server = api.server();
-    let tmp = tempfile::tempdir().unwrap();
-    let paths = guest_agent::paths::GuestPaths::from_runtime_dir(tmp.path().join("runtime"));
-    let flag_path = paths.event_error_flag();
 
     let _mock = server.mock(|when, then| {
         when.method(POST).path("/api/webhooks/agent/events");
@@ -476,12 +473,27 @@ async fn send_event_failure_writes_error_flag() {
         "runId": "test-run-001",
         "events": [{"type": "test", "sequenceNumber": 1}]
     });
-    let result =
-        guest_agent::events::post_event_with_error_flag(&http_client!(), &payload, flag_path).await;
+    let result = guest_agent::events::post_event(&http_client!(), &payload).await;
 
     assert!(result.is_err());
-    assert!(
-        std::path::Path::new(flag_path).exists(),
-        "event error flag should be written on failure"
-    );
+}
+
+#[tokio::test]
+async fn send_event_accepts_success_without_parsing_response_body() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/events");
+        then.status(204).body("not valid JSON");
+    });
+
+    let payload = json!({
+        "runId": "test-run-001",
+        "events": [{"type": "test", "sequenceNumber": 1}]
+    });
+    let result = guest_agent::events::post_event(&http_client!(), &payload).await;
+
+    assert!(result.is_ok());
+    mock.assert_calls_async(1).await;
 }

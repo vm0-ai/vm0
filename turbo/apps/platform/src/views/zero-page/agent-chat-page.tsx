@@ -14,7 +14,7 @@ import { user$ } from "../../signals/auth.ts";
 import { IconArrowUpRight, IconPin, IconUserPlus } from "@tabler/icons-react";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
-import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import {
   Button,
   Tooltip,
@@ -423,7 +423,7 @@ function SuggestedPromptButton({
 }: {
   item: SuggestedPrompt;
   connectorStatusBySlug:
-    | ReadonlyMap<string, PublicConnectorCatalogStatusItem>
+    | ReadonlyMap<string, PlatformConnectorCatalogStatusItem>
     | undefined;
   onSelectPrompt: (prompt: string) => void;
 }) {

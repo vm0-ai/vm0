@@ -16,6 +16,10 @@
 //! against the requested active connector set, patches the proxy registry, and
 //! replaces the next schedule from the returned `nextRefreshAt`.
 //!
+//! A typed terminal-run response removes the entire run from refresh tracking,
+//! cancels its scheduled work, and fail-closes every still-matching connector
+//! policy. Ambiguous API failures retain the connector-scoped fail-closed path.
+//!
 //! The safety contract is to trigger fail-closed patching when freshness cannot
 //! be established for an active connector. Queue overflow, API refresh failure,
 //! omitted requested connectors, duplicate requested connectors, malformed
@@ -54,7 +58,7 @@ use tokio::sync::{
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use super::api::ApiClient;
+use super::api::{ApiClient, NetworkPolicyRefreshOutcome};
 use crate::ids::RunId;
 use crate::proxy::ProxyRegistryHandle;
 use crate::types::{NetworkPolicy, NetworkPolicyRefresh};
@@ -271,11 +275,18 @@ impl NetworkPolicyRefreshCore {
     }
 
     async fn unregister_run(&self, run_id: RunId) {
-        let old = self.inner.active_runs.lock().await.remove(&run_id);
-        if let Some(old) = old {
-            old.cancel.cancel();
-            abort_tasks(old.refresh_tasks.into_values().map(|task| task.handle));
-        }
+        let _ = self.take_active_run(run_id).await;
+    }
+
+    async fn take_active_run(&self, run_id: RunId) -> Option<ActiveRunNetworkPolicyState> {
+        let mut old = self.inner.active_runs.lock().await.remove(&run_id)?;
+        old.cancel.cancel();
+        abort_tasks(
+            std::mem::take(&mut old.refresh_tasks)
+                .into_values()
+                .map(|task| task.handle),
+        );
+        Some(old)
     }
 
     async fn notify_network_policy_refresh(&self, run_id: RunId, connector_slug: String) {
@@ -313,7 +324,7 @@ impl NetworkPolicyRefreshCore {
             connector_slugs: vec![connector_slug],
         };
         if let Err(error) = self.request_tx.try_send(request) {
-            self.handle_notification_enqueue_error(error).await;
+            self.handle_notification_enqueue_error(error, cancel).await;
         }
     }
 
@@ -330,7 +341,11 @@ impl NetworkPolicyRefreshCore {
             .then(|| active.cancel.clone())
     }
 
-    async fn handle_notification_enqueue_error(&self, error: TrySendError<RefreshRequest>) {
+    async fn handle_notification_enqueue_error(
+        &self,
+        error: TrySendError<RefreshRequest>,
+        cancel: Option<&CancellationToken>,
+    ) {
         match error {
             Full(request) => {
                 warn!(
@@ -340,8 +355,17 @@ impl NetworkPolicyRefreshCore {
                     connector_refs = ?request.connector_slugs,
                     "network policy refresh queue full; failing closed after network policy refresh notification"
                 );
-                self.fail_closed_active_connectors(request.run_id, &request.connector_slugs)
+                if let Some(cancel) = cancel {
+                    self.fail_closed_active_connectors_until_cancelled(
+                        request.run_id,
+                        &request.connector_slugs,
+                        cancel,
+                    )
                     .await;
+                } else {
+                    self.fail_closed_active_connectors(request.run_id, &request.connector_slugs)
+                        .await;
+                }
             }
             Closed(error) => {
                 warn!(
@@ -419,7 +443,11 @@ impl NetworkPolicyRefreshCore {
             .refresh_network_policies(run_id, active_connector_slugs)
             .await
         {
-            Ok(response) => response,
+            Ok(NetworkPolicyRefreshOutcome::Refreshed(response)) => response,
+            Ok(NetworkPolicyRefreshOutcome::RunTerminal) => {
+                self.reconcile_terminal_run(run_id).await;
+                return false;
+            }
             Err(error) => {
                 warn!(
                     run_id = %run_id,
@@ -534,6 +562,41 @@ impl NetworkPolicyRefreshCore {
         true
     }
 
+    async fn reconcile_terminal_run(&self, run_id: RunId) {
+        let Some(active) = self.take_active_run(run_id).await else {
+            return;
+        };
+        let connector_count = active.connector_slugs.len();
+        let snapshot = ActiveRunNetworkPolicySnapshot {
+            source_ip: active.source_ip,
+            registry: active.registry,
+        };
+        for connector_slug in active.connector_slugs {
+            if let Err(error) = snapshot
+                .registry
+                .fail_closed_network_policy_if_run_matches(
+                    &snapshot.source_ip,
+                    &run_id.to_string(),
+                    &connector_slug,
+                )
+                .await
+            {
+                warn!(
+                    run_id = %run_id,
+                    connector_slug = connector_slug,
+                    connector_ref = connector_slug,
+                    error = %error,
+                    "failed to close terminal run network policy"
+                );
+            }
+        }
+        info!(
+            run_id = %run_id,
+            connector_count,
+            "reconciled terminal run network policies"
+        );
+    }
+
     async fn active_connector_slugs(
         &self,
         run_id: RunId,
@@ -553,6 +616,39 @@ impl NetworkPolicyRefreshCore {
         for connector_slug in connector_slugs {
             if let Some(snapshot) = self.active_snapshot(run_id, connector_slug).await {
                 fail_closed_network_policy(run_id, connector_slug, snapshot).await;
+            }
+        }
+    }
+
+    async fn fail_closed_active_connectors_until_cancelled(
+        &self,
+        run_id: RunId,
+        connector_slugs: &[String],
+        cancel: &CancellationToken,
+    ) {
+        for connector_slug in connector_slugs {
+            if cancel.is_cancelled() {
+                return;
+            }
+            if let Some(snapshot) = self.active_snapshot(run_id, connector_slug).await {
+                match snapshot
+                    .registry
+                    .fail_closed_network_policy_if_run_matches_until_cancelled(
+                        &snapshot.source_ip,
+                        &run_id.to_string(),
+                        connector_slug,
+                        cancel,
+                    )
+                    .await
+                {
+                    Ok(Some(result)) => {
+                        log_fail_closed_network_policy_result(run_id, connector_slug, Ok(result));
+                    }
+                    Ok(None) => return,
+                    Err(error) => {
+                        log_fail_closed_network_policy_result(run_id, connector_slug, Err(error));
+                    }
+                }
             }
         }
     }
@@ -748,15 +844,23 @@ async fn fail_closed_network_policy(
     connector_slug: &str,
     snapshot: ActiveRunNetworkPolicySnapshot,
 ) {
-    match snapshot
+    let result = snapshot
         .registry
         .fail_closed_network_policy_if_run_matches(
             &snapshot.source_ip,
             &run_id.to_string(),
             connector_slug,
         )
-        .await
-    {
+        .await;
+    log_fail_closed_network_policy_result(run_id, connector_slug, result);
+}
+
+fn log_fail_closed_network_policy_result(
+    run_id: RunId,
+    connector_slug: &str,
+    result: crate::error::RunnerResult<bool>,
+) {
+    match result {
         Ok(true) => {
             warn!(
                 run_id = %run_id,
@@ -834,16 +938,20 @@ mod tests {
     use crate::proxy::{ProxyRegistryHandle, VmRegistration};
     use crate::types::FirewallEntry;
 
-    fn api_client_for_server(server: &MockServer) -> ApiClient {
+    fn api_client_for_url(api_url: String) -> ApiClient {
         ApiClient::new(
             HttpClient::new(HttpClientConfig {
-                api_url: server.base_url(),
+                api_url,
                 vercel_bypass: None,
                 client_session_id: "runner-session-test".to_string(),
             })
             .expect("test API URL should be valid"),
             "runner-token".to_string(),
         )
+    }
+
+    fn api_client_for_server(server: &MockServer) -> ApiClient {
+        api_client_for_url(server.base_url())
     }
 
     fn core_without_worker(
@@ -908,6 +1016,18 @@ mod tests {
 
     impl NetworkPolicyRefreshHarness {
         async fn new(server: &MockServer, run_id: RunId) -> Self {
+            Self::new_with_connectors(server, run_id, &["slack"]).await
+        }
+
+        async fn new_with_connectors(
+            server: &MockServer,
+            run_id: RunId,
+            connector_slugs: &[&str],
+        ) -> Self {
+            Self::new_with_api(api_client_for_server(server), run_id, connector_slugs).await
+        }
+
+        async fn new_with_api(api: ApiClient, run_id: RunId, connector_slugs: &[&str]) -> Self {
             let dir = tempfile::tempdir().expect("tempdir should be created");
             let registry_path = dir.path().join("proxy-registry.json");
             tokio::fs::write(&registry_path, br#"{"vms":{},"updatedAt":0}"#)
@@ -916,20 +1036,31 @@ mod tests {
             let registry =
                 ProxyRegistryHandle::new(registry_path.clone(), dir.path().join("registry.lock"));
             let source_ip = "10.200.0.2";
-            let firewalls = vec![FirewallEntry::Builtin {
-                name: "slack".to_string(),
-                base_url_vars: None,
-            }];
-            let mut network_policies = HashMap::new();
-            network_policies.insert(
-                "slack".to_string(),
-                NetworkPolicy {
-                    allow: vec!["chat:write".to_string()],
-                    deny: vec!["files:write".to_string()],
-                    ask: vec!["channels:read".to_string()],
-                    unknown_policy: "allow".to_string(),
-                },
-            );
+            let connector_slugs = connector_slugs
+                .iter()
+                .map(|connector_slug| (*connector_slug).to_string())
+                .collect::<HashSet<_>>();
+            let firewalls = connector_slugs
+                .iter()
+                .map(|connector_slug| FirewallEntry::Builtin {
+                    name: connector_slug.clone(),
+                    base_url_vars: None,
+                })
+                .collect::<Vec<_>>();
+            let network_policies = connector_slugs
+                .iter()
+                .map(|connector_slug| {
+                    (
+                        connector_slug.clone(),
+                        NetworkPolicy {
+                            allow: vec!["chat:write".to_string()],
+                            deny: vec!["files:write".to_string()],
+                            ask: vec!["channels:read".to_string()],
+                            unknown_policy: "allow".to_string(),
+                        },
+                    )
+                })
+                .collect::<HashMap<_, _>>();
             let billable_firewalls = Vec::new();
             let run_id_string = run_id.to_string();
             let network_log_path = dir.path().join("network.jsonl");
@@ -957,14 +1088,14 @@ mod tests {
                 .await
                 .expect("vm should be registered");
 
-            let handle = NetworkPolicyRefreshHandle::new(api_client_for_server(server));
+            let handle = NetworkPolicyRefreshHandle::new(api);
             handle
                 .core
                 .register_run(NetworkPolicyRefreshRegistration {
                     run_id,
                     source_ip,
                     registry: registry.clone(),
-                    connector_slugs: HashSet::from(["slack".to_string()]),
+                    connector_slugs,
                     refreshes: None,
                 })
                 .await;
@@ -986,13 +1117,17 @@ mod tests {
         }
 
         async fn slack_policy(&self) -> serde_json::Value {
+            self.policy("slack").await
+        }
+
+        async fn policy(&self, connector_slug: &str) -> serde_json::Value {
             let registry_json: serde_json::Value = serde_json::from_str(
                 &tokio::fs::read_to_string(&self.registry_path)
                     .await
                     .expect("registry should be readable"),
             )
             .expect("registry should be valid JSON");
-            registry_json["vms"][&self.source_ip]["networkPolicies"]["slack"].clone()
+            registry_json["vms"][&self.source_ip]["networkPolicies"][connector_slug].clone()
         }
 
         async fn shutdown(self) {
@@ -1437,6 +1572,54 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cancelled_full_queue_notification_does_not_wait_for_busy_registry_lock() {
+        let server = MockServer::start();
+        let (core, mut requests) = core_without_worker(&server);
+        let run_id = RunId::nil();
+        let (_dir, registry, _registry_path, lock_path) = registered_slack_registry(run_id).await;
+        core.inner
+            .active_runs
+            .lock()
+            .await
+            .insert(run_id, active_run_network_policy_state(registry));
+        for _ in 0..REFRESH_REQUEST_QUEUE_CAPACITY {
+            core.request_tx
+                .try_send(refresh_request(run_id, "slack"))
+                .expect("refresh queue should accept request");
+        }
+        let lock_guard = crate::lock::acquire(lock_path)
+            .await
+            .expect("registry lock should be acquired");
+        let cancel = CancellationToken::new();
+
+        let notify = core.notify_network_policy_refresh_until_cancelled(
+            run_id,
+            "slack".to_string(),
+            &cancel,
+        );
+        tokio::pin!(notify);
+        tokio::select! {
+            biased;
+            () = &mut notify => {
+                panic!("full queue notification should wait for the registry lock");
+            }
+            () = tokio::task::yield_now() => {}
+        }
+
+        cancel.cancel();
+        tokio::time::timeout(Duration::from_secs(1), &mut notify)
+            .await
+            .expect("cancelled notification should finish before registry lock release");
+
+        let mut queued = 0;
+        while requests.try_recv().is_ok() {
+            queued += 1;
+        }
+        assert_eq!(queued, REFRESH_REQUEST_QUEUE_CAPACITY);
+        drop(lock_guard);
+    }
+
+    #[tokio::test]
     async fn full_queue_notification_waits_for_busy_registry_lock_to_fail_closed() {
         let server = MockServer::start();
         let (core, mut requests) = core_without_worker(&server);
@@ -1721,6 +1904,185 @@ mod tests {
             "connector_ref",
             "slack",
         );
+    }
+
+    #[tokio::test]
+    async fn terminal_network_policy_refresh_reconciles_entire_run() {
+        let server = MockServer::start();
+        let run_id = RunId::nil();
+        let refresh_mock = server.mock(|when, then| {
+            when.method(POST)
+                .path(format!("/api/runners/runs/{run_id}/network-policy-refresh"))
+                .json_body(json!({ "connectorSlugs": ["slack"] }));
+            then.status(409)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "error": {
+                        "code": "RUN_TERMINAL",
+                        "message": "Run is terminal",
+                    },
+                }));
+        });
+        let harness =
+            NetworkPolicyRefreshHarness::new_with_connectors(&server, run_id, &["slack", "github"])
+                .await;
+        harness
+            .handle
+            .core
+            .replace_schedule(
+                run_id,
+                "github",
+                Some("2999-01-01T00:00:00.000Z".to_string()),
+            )
+            .await
+            .expect("valid refresh deadline should schedule");
+        let scheduled_task = {
+            let active_runs = harness.handle.core.inner.active_runs.lock().await;
+            active_runs[&run_id].refresh_tasks["github"]
+                .handle
+                .abort_handle()
+        };
+
+        let (_, events) = capture_network_policy_events(harness.refresh_slack()).await;
+
+        refresh_mock.assert_calls(1);
+        assert_fail_closed_policy(&harness.policy("slack").await);
+        assert_fail_closed_policy(&harness.policy("github").await);
+        assert!(
+            harness
+                .handle
+                .core
+                .inner
+                .active_runs
+                .lock()
+                .await
+                .get(&run_id)
+                .is_none()
+        );
+        assert!(
+            events.iter().all(|event| {
+                event
+                    .fields
+                    .get("message")
+                    .is_none_or(|message| message != "network policy refresh failed")
+            }),
+            "terminal reconciliation should not emit the generic failure warning"
+        );
+        assert_eq!(
+            captured_event(&events, "reconciled terminal run network policies").level,
+            tracing::Level::INFO
+        );
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while !scheduled_task.is_finished() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("terminal reconciliation should stop scheduled refresh tasks");
+
+        harness
+            .handle
+            .notify_network_policy_refresh(run_id, "slack".to_string())
+            .await;
+        tokio::task::yield_now().await;
+        refresh_mock.assert_calls(1);
+        harness.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn ambiguous_network_policy_refresh_errors_remain_failures() {
+        for (status, body) in [
+            (
+                404_u16,
+                json!({
+                    "error": {
+                        "code": "RUN_TERMINAL",
+                        "message": "Run is terminal",
+                    },
+                }),
+            ),
+            (
+                403_u16,
+                json!({
+                    "error": {
+                        "code": "FORBIDDEN",
+                        "message": "Run does not belong to user",
+                    },
+                }),
+            ),
+            (
+                409_u16,
+                json!({
+                    "error": {
+                        "code": "CONFLICT",
+                        "message": "unrelated conflict",
+                    },
+                }),
+            ),
+            (
+                409_u16,
+                json!({
+                    "error": {
+                        "code": "RUN_TERMINAL",
+                    },
+                }),
+            ),
+        ] {
+            let server = MockServer::start();
+            let run_id = RunId::nil();
+            let refresh_mock = server.mock(|when, then| {
+                when.method(POST)
+                    .path(format!("/api/runners/runs/{run_id}/network-policy-refresh"));
+                then.status(status)
+                    .header("content-type", "application/json")
+                    .json_body(body);
+            });
+            let harness = NetworkPolicyRefreshHarness::new(&server, run_id).await;
+
+            let (_, events) = capture_network_policy_events(harness.refresh_slack()).await;
+
+            refresh_mock.assert_calls(1);
+            assert_fail_closed_policy(&harness.slack_policy().await);
+            captured_event(&events, "network policy refresh failed");
+            assert!(
+                harness
+                    .handle
+                    .core
+                    .inner
+                    .active_runs
+                    .lock()
+                    .await
+                    .contains_key(&run_id)
+            );
+            harness.shutdown().await;
+        }
+    }
+
+    #[tokio::test]
+    async fn transport_network_policy_refresh_error_remains_failure() {
+        let run_id = RunId::nil();
+        let harness = NetworkPolicyRefreshHarness::new_with_api(
+            api_client_for_url("http://127.0.0.1:0".to_string()),
+            run_id,
+            &["slack"],
+        )
+        .await;
+
+        let (_, events) = capture_network_policy_events(harness.refresh_slack()).await;
+
+        assert_fail_closed_policy(&harness.slack_policy().await);
+        captured_event(&events, "network policy refresh failed");
+        assert!(
+            harness
+                .handle
+                .core
+                .inner
+                .active_runs
+                .lock()
+                .await
+                .contains_key(&run_id)
+        );
+        harness.shutdown().await;
     }
 
     #[tokio::test]

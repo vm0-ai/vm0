@@ -12,7 +12,10 @@ import {
   getVm0ConcreteProviderType,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
-import type { Job as RunnerJob } from "@vm0/api-contracts/contracts/runners";
+import {
+  NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+  type Job as RunnerJob,
+} from "@vm0/api-contracts/contracts/runners";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   getCustomConnectorSkillStorageName,
@@ -8552,8 +8555,155 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(failedRefreshNotification.status).toBe(500);
 
     await api.requestCancelRun(actor, snapshotRun.runId, [200]);
+    const cancelledRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
+      `Bearer ${actorRunnerKey.token}`,
+      snapshotRun.runId,
+      { connectorSlugs: ["slack"] },
+      [409],
+    );
+    expect(cancelledRefresh.body.error.code).toBe(
+      NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+    );
     const drained = await api.readRunQueue(actor);
     expect(drained.body.concurrency.active).toBe(0);
+  });
+
+  it("distinguishes a terminal policy refresh from missing runs", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const member = createBddApi(context).user({
+      orgId: actor.orgId,
+      orgRole: "org:member",
+    });
+    await api.heartbeatRunner(runnerGroup);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "complete before runner policy cleanup",
+      modelProvider: "anthropic-api-key",
+    });
+    const claim = await api.claimRunnerJob(run.runId);
+    const history = `terminal refresh history ${run.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    mockSessionHistoryBlob(historyHash, history);
+    const sandboxHeaders = {
+      authorization: `Bearer ${claim.sandboxToken}`,
+    };
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: run.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `terminal-refresh-${run.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      sandboxHeaders,
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
+      sandboxHeaders,
+      [200],
+    );
+    expect((await api.readRun(actor, run.runId)).status).toBe("completed");
+
+    const actorRunnerKey = await api.createCliToken(actor);
+    const memberRunnerKey = await api.createCliToken(member);
+    const body = { connectorSlugs: ["slack"] };
+    const sameUserRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
+      `Bearer ${actorRunnerKey.token}`,
+      run.runId,
+      body,
+      [409],
+    );
+    expect(sameUserRefresh.body.error).toStrictEqual({
+      code: NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+      message: "Run is terminal",
+    });
+    const officialRefresh = await api.requestRefreshRunnerNetworkPolicy(
+      run.runId,
+      body,
+      [409],
+    );
+    expect(officialRefresh.body.error.code).toBe(
+      NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+    );
+
+    const foreignRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
+      `Bearer ${memberRunnerKey.token}`,
+      run.runId,
+      body,
+      [404],
+    );
+    expect(foreignRefresh.body.error.code).toBe("NOT_FOUND");
+    const missingRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
+      `Bearer ${actorRunnerKey.token}`,
+      randomUUID(),
+      body,
+      [404],
+    );
+    expect(missingRefresh.body.error.code).toBe("NOT_FOUND");
+
+    const failedRun = await api.createRun(actor, {
+      agentId,
+      prompt: "fail before runner policy cleanup",
+      modelProvider: "anthropic-api-key",
+    });
+    const failedClaim = await api.claimRunnerJob(failedRun.runId);
+    await webhooks.requestAgentComplete(
+      {
+        runId: failedRun.runId,
+        exitCode: 1,
+        error: "terminal refresh failure fixture",
+        lastEventSequence: 0,
+      },
+      { authorization: `Bearer ${failedClaim.sandboxToken}` },
+      [200],
+    );
+    expect((await api.readRun(actor, failedRun.runId)).status).toBe("failed");
+    const failedRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
+      `Bearer ${actorRunnerKey.token}`,
+      failedRun.runId,
+      body,
+      [409],
+    );
+    expect(failedRefresh.body.error.code).toBe(
+      NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+    );
+  });
+
+  it("does not classify queued or pending runs as terminal", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const runnerKey = await api.createCliToken(actor);
+    const createNonTerminalRun = async (prompt: string) => {
+      return await api.createRun(actor, {
+        agentId,
+        prompt,
+        modelProvider: "anthropic-api-key",
+      });
+    };
+
+    const firstPending = await createNonTerminalRun("pending refresh one");
+    const secondPending = await createNonTerminalRun("pending refresh two");
+    const queued = await createNonTerminalRun("queued refresh");
+    expect(firstPending.status).toBe("pending");
+    expect(secondPending.status).toBe("pending");
+    expect(queued.status).toBe("queued");
+
+    for (const run of [firstPending, secondPending, queued]) {
+      const refresh = await api.requestRefreshRunnerNetworkPolicyAs(
+        `Bearer ${runnerKey.token}`,
+        run.runId,
+        { connectorSlugs: ["slack"] },
+        [404],
+      );
+      expect(refresh.body.error.code).toBe("NOT_FOUND");
+    }
+
+    await api.requestCancelRun(actor, queued.runId, [200]);
+    await api.requestCancelRun(actor, secondPending.runId, [200]);
+    await api.requestCancelRun(actor, firstPending.runId, [200]);
   });
 
   it("records co-occurring resume and policy response timing", async () => {
