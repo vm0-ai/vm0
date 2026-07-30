@@ -15,7 +15,6 @@ use std::borrow::Cow;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 const CLAUDE_SESSION_PRUNING_FEATURE_FLAG: &str = "claudeSessionPruning";
-const CODEX_SESSION_PRUNING_FEATURE_FLAG: &str = "codexSessionPruning";
 
 #[derive(Clone, Copy)]
 enum CheckpointMode {
@@ -73,7 +72,6 @@ struct CheckpointInputs<'a> {
     run_id: &'a str,
     framework: env::Framework,
     claude_session_pruning_enabled: bool,
-    codex_session_pruning_enabled: bool,
     home_dir: &'a str,
     artifact_entries: &'a [env::ArtifactEnv],
     session_id_file: Cow<'a, str>,
@@ -90,12 +88,6 @@ impl<'a> CheckpointInputs<'a> {
                 .config
                 .feature_flags
                 .get(CLAUDE_SESSION_PRUNING_FEATURE_FLAG)
-                .copied()
-                .unwrap_or(false),
-            codex_session_pruning_enabled: runtime
-                .config
-                .feature_flags
-                .get(CODEX_SESSION_PRUNING_FEATURE_FLAG)
                 .copied()
                 .unwrap_or(false),
             home_dir: &runtime.config.home_dir,
@@ -354,7 +346,6 @@ mod tests {
             run_id: "checkpoint-missing-mount",
             framework: env::Framework::ClaudeCode,
             claude_session_pruning_enabled: false,
-            codex_session_pruning_enabled: false,
             home_dir: &home_dir,
             artifact_entries: &entries,
             session_id_file: guest_paths.session_id_file().into(),
@@ -378,7 +369,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn checkpoint_reuses_codex_zstd_session_history_when_pruning_enabled() {
+    async fn checkpoint_reuses_codex_zstd_session_history() {
         let server = MockServer::start();
         let dir = tempfile::tempdir().unwrap();
         let guest_paths = crate::paths::GuestPaths::from_runtime_dir(dir.path().join("runtime"));
@@ -449,7 +440,6 @@ mod tests {
             run_id: "checkpoint-codex-zstd-reuse",
             framework: env::Framework::Codex,
             claude_session_pruning_enabled: false,
-            codex_session_pruning_enabled: true,
             home_dir: &home_dir,
             artifact_entries: &[],
             session_id_file: guest_paths.session_id_file().into(),
