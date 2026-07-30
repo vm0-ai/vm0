@@ -18,6 +18,7 @@
   vars:
     base_dir: /var/lib/vm0-runner
     bin_dir: "{{ base_dir }}/bin/{{ job_ref }}"
+    reload_lock: "{{ base_dir }}/locks/systemd-daemon-reload.lock"
 
   tasks:
     - name: Check required variables
@@ -26,12 +27,30 @@
           - job_ref is defined
         fail_msg: "Required variable: job_ref"
 
+    - name: Ensure runner lock directory exists
+      file:
+        path: "{{ base_dir }}/locks"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Ensure systemd reload lock exists
+      file:
+        path: "{{ reload_lock }}"
+        state: touch
+        owner: root
+        group: root
+        mode: "0600"
+        access_time: preserve
+        modification_time: preserve
+
     - name: Stop persistent service upgrade-a
       command: systemctl stop vm0-runner-{{ job_ref }}-upgrade-a.service
       ignore_errors: true
 
     - name: Disable persistent service upgrade-a
-      command: systemctl disable vm0-runner-{{ job_ref }}-upgrade-a.service
+      command: systemctl disable --no-reload vm0-runner-{{ job_ref }}-upgrade-a.service
       ignore_errors: true
 
     - name: Remove unit file upgrade-a
@@ -44,7 +63,7 @@
       ignore_errors: true
 
     - name: Disable persistent service upgrade-b
-      command: systemctl disable vm0-runner-{{ job_ref }}-upgrade-b.service
+      command: systemctl disable --no-reload vm0-runner-{{ job_ref }}-upgrade-b.service
       ignore_errors: true
 
     - name: Remove unit file upgrade-b
@@ -73,7 +92,7 @@
       ignore_errors: true
 
     - name: Reload systemd daemon
-      command: systemctl daemon-reload
+      command: flock --exclusive {{ reload_lock }} systemctl daemon-reload
       ignore_errors: true
 
     - name: Remove directories
