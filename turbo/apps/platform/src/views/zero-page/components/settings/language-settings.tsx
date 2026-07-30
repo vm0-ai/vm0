@@ -31,8 +31,7 @@ export function LanguageSettings() {
 
   if (
     availableLocalesLoadable.state !== "hasData" ||
-    (!availableLocalesLoadable.data.includes("pt-BR") &&
-      !availableLocalesLoadable.data.includes("ja-JP"))
+    availableLocalesLoadable.data.length <= 1
   ) {
     return null;
   }
@@ -41,7 +40,12 @@ export function LanguageSettings() {
   const saving = updateLoadable.state === "loading";
 
   const handleChange = (value: string) => {
-    if (value !== "en-US" && value !== "pt-BR" && value !== "ja-JP") {
+    if (
+      value !== "en-US" &&
+      value !== "pt-BR" &&
+      value !== "ja-JP" &&
+      value !== "ko-KR"
+    ) {
       throw new Error(`Unsupported locale: ${value}`);
     }
     detach(updateLocale(value, pageSignal), Reason.DomCallback);
@@ -102,6 +106,13 @@ export function LanguageSettings() {
                 <SelectItem value="ja-JP">
                   {t(($) => {
                     return $.settings.preferences.language.options.japanese;
+                  })}
+                </SelectItem>
+              )}
+              {availableLocales.includes("ko-KR") && (
+                <SelectItem value="ko-KR">
+                  {t(($) => {
+                    return $.settings.preferences.language.options.korean;
                   })}
                 </SelectItem>
               )}

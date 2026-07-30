@@ -56,6 +56,7 @@ describe("isFeatureEnabled", () => {
       isFeatureEnabled(FeatureSwitchKey.BrazilianPortugueseLocale, {}),
     ).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.JapaneseLocale, {})).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.KoreanLocale, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.ZeroChatMessaging, {})).toBe(
       false,
     );
@@ -137,6 +138,7 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(staffOrgStates[FeatureSwitchKey.JapaneseLocale]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.KoreanLocale]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
@@ -173,6 +175,7 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.JapaneseLocale]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.KoreanLocale]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
@@ -249,6 +252,9 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.JapaneseLocale,
     );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.KoreanLocale,
+    );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ZeroBrowser,
     );
@@ -276,6 +282,7 @@ describe("user-overridable switches", () => {
         [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
         [FeatureSwitchKey.BrazilianPortugueseLocale]: true,
         [FeatureSwitchKey.JapaneseLocale]: true,
+        [FeatureSwitchKey.KoreanLocale]: true,
         [FeatureSwitchKey.ZeroBrowser]: true,
         [FeatureSwitchKey.ComposerConnectorPermissions]: true,
         [FeatureSwitchKey.Dummy]: false,

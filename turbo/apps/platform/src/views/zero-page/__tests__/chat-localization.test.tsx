@@ -30,6 +30,12 @@ const localeCases = [
     attach: "Anexar",
     send: "Enviar",
   },
+  {
+    locale: "ko-KR",
+    placeholder: "워크플로 자동화, 작업 관리 등을 요청하세요...",
+    attach: "첨부",
+    send: "전송",
+  },
 ] as const;
 
 beforeEach(() => {
