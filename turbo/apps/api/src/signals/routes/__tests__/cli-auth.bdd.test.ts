@@ -653,7 +653,7 @@ describe("CLI-TEST: test-enable-connector", () => {
       actor,
       compose.composeId,
     );
-    expect([...userConnectors.enabledTypes].sort()).toStrictEqual([
+    expect([...userConnectors.enabledConnectorSlugs].sort()).toStrictEqual([
       "github",
       "slack",
     ]);

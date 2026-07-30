@@ -500,7 +500,7 @@ export function mockConnectors(
     connectors.map((connector): ConnectorResponse => {
       return {
         id: crypto.randomUUID(),
-        type: connector.connectorSlug,
+        slug: connector.connectorSlug,
         authMethod: connector.authMethod ?? "oauth",
         externalId: null,
         externalUsername: connector.externalUsername ?? null,
@@ -531,14 +531,14 @@ export function mockAgentConnectorAuthorizations(
 ): void {
   let enabledConnectorSlugs: string[] = [...initialConnectorSlugs];
   context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-    return respond(200, { enabledTypes: enabledConnectorSlugs });
+    return respond(200, { enabledConnectorSlugs: enabledConnectorSlugs });
   });
   context.mocks.api(zeroUserConnectorsContract.update, ({ body, respond }) => {
     enabledConnectorSlugs = applyUserConnectorUpdate(
       enabledConnectorSlugs,
       body,
     );
-    return respond(200, { enabledTypes: enabledConnectorSlugs });
+    return respond(200, { enabledConnectorSlugs: enabledConnectorSlugs });
   });
 }
 

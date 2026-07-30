@@ -203,10 +203,9 @@ describe("GET /api/zero/connector-catalog", () => {
     assertPublicConnectorCatalogHasNoPrivateFields(response.body);
     expect(response.body.connectors.length).toBeGreaterThan(0);
     const openai = response.body.connectors.find((connector) => {
-      return connector.connectorRef === "openai";
+      return connector.slug === "openai";
     });
     expect(openai).toBeDefined();
-    expect(openai?.slug).toBe(openai?.connectorRef);
     expect(openai?.label).toBe("OpenAI");
     expect(openai?.generation).toContain("text");
     expect(openai?.tags).toContain("llm");
@@ -242,10 +241,10 @@ describe("GET /api/zero/connector-catalog", () => {
     );
 
     const openai = listResponse.body.connectors.find((connector) => {
-      return connector.connectorRef === "openai";
+      return connector.slug === "openai";
     });
     const openaiStatus = statusResponse.body.connectors.find((connector) => {
-      return connector.connectorRef === "openai";
+      return connector.slug === "openai";
     });
     expect(openai?.icon).toStrictEqual({
       url: "https://static.vm0.io/test-fixtures/connectors/openai.svg",
@@ -255,7 +254,7 @@ describe("GET /api/zero/connector-catalog", () => {
     expect(detailResponse.body.connector.icon).toStrictEqual(openai?.icon);
 
     const slack = listResponse.body.connectors.find((connector) => {
-      return connector.connectorRef === "slack";
+      return connector.slug === "slack";
     });
     expect(slack?.icon).toStrictEqual({
       url: "https://static.vm0.io/test-fixtures/connectors/slack.svg",
@@ -499,10 +498,10 @@ describe("GET /api/zero/connector-catalog", () => {
     assertPublicConnectorCatalogHasNoPrivateFields(response.body);
     assertCategoryMetadataMatchesVisibleConnectors(response.body);
     const openai = response.body.connectors.find((connector) => {
-      return connector.connectorRef === "openai";
+      return connector.slug === "openai";
     });
     expect(openai).toMatchObject({
-      connectorRef: "openai",
+      slug: "openai",
       label: "OpenAI",
       connected: false,
       connection: null,
@@ -532,7 +531,7 @@ describe("GET /api/zero/connector-catalog", () => {
       },
     ]);
     const neon = response.body.connectors.find((connector) => {
-      return connector.connectorRef === "neon";
+      return connector.slug === "neon";
     });
     expect(
       neon?.authMethods.map((authMethod) => {
@@ -556,10 +555,10 @@ describe("GET /api/zero/connector-catalog", () => {
 
     assertPublicConnectorCatalogHasNoPrivateFields(response.body);
     const openai = response.body.connectors.find((connector) => {
-      return connector.connectorRef === "openai";
+      return connector.slug === "openai";
     });
     expect(openai).toMatchObject({
-      connectorRef: "openai",
+      slug: "openai",
       connected: true,
       connectionStatus: "connected",
       scopeMismatch: false,
@@ -596,10 +595,10 @@ describe("GET /api/zero/connector-catalog", () => {
 
     assertPublicConnectorCatalogHasNoPrivateFields(response.body);
     const github = response.body.connectors.find((connector) => {
-      return connector.connectorRef === "github";
+      return connector.slug === "github";
     });
     expect(github).toMatchObject({
-      connectorRef: "github",
+      slug: "github",
       connected: true,
       connectionStatus: "connected",
       scopeMismatch: false,
@@ -635,10 +634,10 @@ describe("GET /api/zero/connector-catalog", () => {
 
     assertPublicConnectorCatalogHasNoPrivateFields(response.body);
     const github = response.body.connectors.find((connector) => {
-      return connector.connectorRef === "github";
+      return connector.slug === "github";
     });
     expect(github).toMatchObject({
-      connectorRef: "github",
+      slug: "github",
       connected: true,
       connectionStatus: "scope-mismatch",
       scopeMismatch: true,
@@ -674,10 +673,10 @@ describe("GET /api/zero/connector-catalog", () => {
 
     assertPublicConnectorCatalogHasNoPrivateFields(response.body);
     const github = response.body.connectors.find((connector) => {
-      return connector.connectorRef === "github";
+      return connector.slug === "github";
     });
     expect(github).toMatchObject({
-      connectorRef: "github",
+      slug: "github",
       connected: true,
       connectionStatus: "reconnect-required",
       scopeMismatch: true,
@@ -768,7 +767,7 @@ describe("GET /api/zero/connector-catalog", () => {
     for (const connector of listResponse.body.connectors) {
       const detailResponse = await accept(
         client.get({
-          params: { connectorSlug: connector.connectorRef },
+          params: { connectorSlug: connector.slug },
           headers: { authorization: "Bearer clerk-session" },
         }),
         [200],
@@ -927,10 +926,7 @@ describe("GET /api/zero/connector-catalog", () => {
     );
 
     assertPublicConnectorCatalogHasNoPrivateFields(response.body);
-    expect(response.body.permissions.connectorRef).toBe("notion");
-    expect(response.body.permissions.connectorSlug).toBe(
-      response.body.permissions.connectorRef,
-    );
+    expect(response.body.permissions.connectorSlug).toBe("notion");
     expect(response.body.permissions.icon).toStrictEqual(
       detailResponse.body.connector.icon,
     );

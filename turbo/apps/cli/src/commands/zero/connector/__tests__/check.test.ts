@@ -58,11 +58,8 @@ function buildZeroToken(
 function connectorIdentity(
   overrides: Partial<ConnectorIdentity> = {},
 ): ConnectorIdentity {
-  const connectorSlug =
-    overrides.connectorSlug ?? overrides.connectorRef ?? "github";
   return {
-    connectorRef: connectorSlug,
-    connectorSlug,
+    connectorSlug: "github",
     label: "GitHub",
     visibility: "available",
     credentialResolution: "network-boundary",
@@ -135,7 +132,6 @@ function connectorResponse(
 ): ConnectorResponse {
   return {
     id: "00000000-0000-4000-8000-000000000002",
-    type: connectorSlug,
     slug: connectorSlug,
     authMethod: "oauth",
     externalId: "external-1",
@@ -200,7 +196,7 @@ function stubAgentConnectors(
     http.get(`${baseUrl}/api/zero/agents/${AGENT_ID}/user-connectors`, () => {
       onRequest?.();
       return HttpResponse.json({
-        enabledTypes: enabledConnectorSlugs,
+        enabledConnectorSlugs: enabledConnectorSlugs,
       });
     }),
   );
@@ -377,29 +373,6 @@ describe("zero connector check command", () => {
         "zero connector permission-request github --permission contents:write",
       );
       expect(getOutput()).not.toContain("--callback-prompt");
-    });
-
-    it("normalizes a legacy-only diagnostic connector identity", async () => {
-      stubDiagnostic(
-        resolvedEnvironment({
-          connector: {
-            ...connectorIdentity(),
-            connectorSlug: undefined,
-          },
-        }),
-      );
-      stubResolvedDependencies();
-
-      await checkConnectorCommand.parseAsync([
-        "node",
-        "cli",
-        "--env-name",
-        "GH_TOKEN",
-      ]);
-
-      expect(getOutput()).toContain(
-        "GH_TOKEN is managed by the GitHub connector (slug: github).",
-      );
     });
 
     it("prints a callback permission command example in the current web chat", async () => {
@@ -1161,8 +1134,8 @@ describe("zero connector check command", () => {
       stubDiagnostic({
         outcome: "ambiguous",
         candidates: [
-          { connectorRef: "zeta", connectorSlug: "zeta", label: "Zeta" },
-          { connectorRef: "alpha", connectorSlug: "alpha", label: "Alpha" },
+          { connectorSlug: "zeta", label: "Zeta" },
+          { connectorSlug: "alpha", label: "Alpha" },
         ],
       });
 

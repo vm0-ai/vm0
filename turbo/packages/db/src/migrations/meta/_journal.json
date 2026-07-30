@@ -5374,8 +5374,15 @@
     {
       "idx": 767,
       "version": "7",
-      "when": 1785420545628,
-      "tag": "0767_easy_omega_flight",
+      "when": 1785420940243,
+      "tag": "0767_add_chat_automation_context",
+      "breakpoints": true
+    },
+    {
+      "idx": 768,
+      "version": "7",
+      "when": 1785424384724,
+      "tag": "0768_easy_omega_flight",
       "breakpoints": true
     }
   ]

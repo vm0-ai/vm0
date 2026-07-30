@@ -50,15 +50,15 @@ function mockPublicConnectorStatuses(
 }
 
 function publicManualTokenConnectorStatus(args: {
-  readonly connectorRef: PublicConnectorCatalogStatusItem["connectorRef"];
+  readonly slug: PublicConnectorCatalogStatusItem["slug"];
   readonly label: string;
   readonly placeholder: string;
 }): PublicConnectorCatalogStatusItem {
   return {
-    connectorRef: args.connectorRef,
+    slug: args.slug,
     label: args.label,
     description: `${args.label} description`,
-    icon: connectorIcon(args.connectorRef),
+    icon: connectorIcon(args.slug),
     category: "data-automation-infrastructure",
     generation: [],
     tags: [],
@@ -98,15 +98,15 @@ function publicManualTokenConnectorStatus(args: {
 }
 
 function publicOAuthConnectorStatus(args: {
-  readonly connectorRef: PublicConnectorCatalogStatusItem["connectorRef"];
+  readonly slug: PublicConnectorCatalogStatusItem["slug"];
   readonly label: string;
   readonly singleAuthCodeAuthMethodId: string | null;
 }): PublicConnectorCatalogStatusItem {
   return {
-    connectorRef: args.connectorRef,
+    slug: args.slug,
     label: args.label,
     description: `${args.label} description`,
-    icon: connectorIcon(args.connectorRef),
+    icon: connectorIcon(args.slug),
     category: "engineering-team-execution",
     generation: [],
     tags: [],
@@ -138,14 +138,14 @@ function publicOAuthConnectorStatus(args: {
 }
 
 function publicNoAuthConnectorStatus(args: {
-  readonly connectorRef: PublicConnectorCatalogStatusItem["connectorRef"];
+  readonly slug: PublicConnectorCatalogStatusItem["slug"];
   readonly label: string;
 }): PublicConnectorCatalogStatusItem {
   return {
-    connectorRef: args.connectorRef,
+    slug: args.slug,
     label: args.label,
     description: `${args.label} description`,
-    icon: connectorIcon(args.connectorRef),
+    icon: connectorIcon(args.slug),
     category: "data-automation-infrastructure",
     generation: [],
     tags: [],
@@ -177,13 +177,13 @@ function publicNoAuthConnectorStatus(args: {
 }
 
 function connectedConnectorResponse(args: {
-  readonly type: ConnectorResponse["type"];
+  readonly slug: ConnectorResponse["slug"];
   readonly authMethod: string;
   readonly updatedAt: string;
 }): ConnectorResponse {
   return {
     id: "00000000-0000-4000-8000-000000000001",
-    type: args.type,
+    slug: args.slug,
     authMethod: args.authMethod,
     externalId: "mock-connected-account",
     externalUsername: "mock-connected-account",
@@ -199,7 +199,7 @@ function connectedConnectorResponse(args: {
 
 function steamOpenIdConnectorStatus(): PublicConnectorCatalogStatusItem {
   return {
-    connectorRef: "steam",
+    slug: "steam",
     label: "Public Steam",
     description: "Public Steam description",
     icon: connectorIcon("steam"),
@@ -311,7 +311,7 @@ describe("directed connector connect page", () => {
       },
     });
     mockPublicConnectorStatus({
-      connectorRef: "github",
+      slug: "github",
       label: "Public GitHub",
       description: "Public GitHub description",
       icon: connectorIcon("github"),
@@ -388,7 +388,7 @@ describe("directed connector connect page", () => {
   it("connects and authorizes a no-auth connector before continuing the callback", async () => {
     mockPublicConnectorStatus(
       publicNoAuthConnectorStatus({
-        connectorRef: "stripe",
+        slug: "stripe",
         label: "Public Stripe",
       }),
     );
@@ -408,7 +408,7 @@ describe("directed connector connect page", () => {
         });
         return respond(200, {
           id: crypto.randomUUID(),
-          type: "stripe",
+          slug: "stripe",
           authMethod: body.authMethod,
           externalId: null,
           externalUsername: null,
@@ -463,7 +463,7 @@ describe("directed connector connect page", () => {
       onStart: () => {
         context.mocks.data.connectors([
           connectedConnectorResponse({
-            type: "steam",
+            slug: "steam",
             authMethod: "openid",
             updatedAt: "2026-01-01T00:00:01Z",
           }),
@@ -472,7 +472,7 @@ describe("directed connector connect page", () => {
     });
     mockPublicConnectorStatus(steamOpenIdConnectorStatus());
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledTypes: ["steam"] });
+      return respond(200, { enabledConnectorSlugs: ["steam"] });
     });
     context.mocks.api(chatEventsContract.send, ({ body, respond }) => {
       continuationPrompt = body.prompt ?? null;
@@ -506,7 +506,7 @@ describe("directed connector connect page", () => {
   it("does not reuse an open provider connect dialog across routed agent ids", async () => {
     mockPublicConnectorStatus(
       publicOAuthConnectorStatus({
-        connectorRef: "github",
+        slug: "github",
         label: "Public GitHub",
         singleAuthCodeAuthMethodId: null,
       }),
@@ -544,7 +544,7 @@ describe("directed connector connect page", () => {
   it("asks the server to connect and authorize a manual grant", async () => {
     mockPublicConnectorStatus(
       publicManualTokenConnectorStatus({
-        connectorRef: "axiom",
+        slug: "axiom",
         label: "Public Axiom",
         placeholder: "public-xaat",
       }),
@@ -561,7 +561,7 @@ describe("directed connector connect page", () => {
         submittedValues = body.values;
         return respond(200, {
           id: crypto.randomUUID(),
-          type: "axiom",
+          slug: "axiom",
           authMethod: body.authMethod,
           externalId: null,
           externalUsername: null,
@@ -617,12 +617,12 @@ describe("directed connector connect page", () => {
   it("does not reuse an open manual grant dialog across routed connector slugs", async () => {
     mockPublicConnectorStatuses([
       publicManualTokenConnectorStatus({
-        connectorRef: "axiom",
+        slug: "axiom",
         label: "Public Axiom",
         placeholder: "public-xaat",
       }),
       publicManualTokenConnectorStatus({
-        connectorRef: "stripe",
+        slug: "stripe",
         label: "Public Stripe",
         placeholder: "public-stripe-key",
       }),
@@ -665,7 +665,7 @@ describe("directed connector connect page", () => {
   it("does not reuse an open manual grant dialog across routed agent ids", async () => {
     mockPublicConnectorStatus(
       publicManualTokenConnectorStatus({
-        connectorRef: "axiom",
+        slug: "axiom",
         label: "Public Axiom",
         placeholder: "public-xaat",
       }),

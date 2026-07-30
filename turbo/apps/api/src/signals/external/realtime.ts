@@ -98,7 +98,6 @@ export async function publishConnectorChangedForUserSafely(
 ): Promise<void> {
   await tapError(
     publishUserSignal([userId], "connector:changed", {
-      connectorRef: connectorSlug,
       connectorSlug,
     } satisfies ConnectorChangedPayload),
     (error) => {

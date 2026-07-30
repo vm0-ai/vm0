@@ -64,11 +64,9 @@ import { IN_VITEST } from "../../../env.ts";
 import { connectorRedirectingPath } from "../../connectors-page/connector-redirecting.ts";
 import { isConnectorChangedPayloadFor } from "../../connector-change.ts";
 import { i18n } from "../../../i18n/index.ts";
-import {
-  normalizeConnectorListResponse,
-  normalizeEnabledConnectorSlugs,
-  type PlatformConnector,
-  type PlatformConnectorCatalogStatusItem,
+import type {
+  PlatformConnector,
+  PlatformConnectorCatalogStatusItem,
 } from "../../connector-domain.ts";
 
 const HIDDEN_CONNECTOR_SLUGS_STORAGE_KEY =
@@ -2129,7 +2127,7 @@ function createConnectorOAuthAuthCodeChangedCommand(
       client.list({ fetchOptions: { signal: sig } }),
       [200],
     );
-    const polled = normalizeConnectorListResponse(result.body).connectors;
+    const polled = result.body.connectors;
     const current = polled.find((c) => {
       return connectorMatchesAuthMethod(c, connectorSlug, authMethod);
     });
@@ -2155,9 +2153,7 @@ function createConnectorOAuthAuthCodeChangedCommand(
       );
       return (
         authorization.status === 200 &&
-        normalizeEnabledConnectorSlugs(authorization.body).includes(
-          connectorSlug,
-        )
+        authorization.body.enabledConnectorSlugs.includes(connectorSlug)
       );
     }
     return false;

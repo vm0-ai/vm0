@@ -10305,6 +10305,350 @@ async function validateChatDisplayContextBackfill(): Promise<void> {
   }
 }
 
+async function validateChatAutomationContextBackfill(): Promise<void> {
+  console.log("=== Validate chat automation context backfill ===\n");
+  const testDb = "migration_chat_automation_context_backfill_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const agentComposeId = "00000000-0000-4000-8000-000000076701";
+  const threadId = "00000000-0000-4000-8000-000000076702";
+  const automationId = "00000000-0000-4000-8000-000000076703";
+  const contextId = "00000000-0000-4000-8000-000000076710";
+  const claimedEventId = "00000000-0000-4000-8000-000000076711";
+  const planAutomationId = "00000000-0000-4000-8000-000000076720";
+  const planContextId = "00000000-0000-4000-8000-000000076721";
+  const triggerBrief =
+    "GitHub issue #24111 updated (GitHub webhook delivery exact-0767).";
+
+  const migrationSql = await fs.readFile(
+    path.join(MIGRATIONS_DIR, "0767_add_chat_automation_context.sql"),
+    "utf8",
+  );
+  assert.doesNotMatch(migrationSql, /\bLOCK TABLE\b/u);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 766);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES (
+            $1,
+            'automation-context-test-user',
+            'automation-context-test',
+            'automation-context-test-org'
+          )
+        `,
+        [agentComposeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id",
+            "user_id",
+            "agent_compose_id",
+            "title"
+          )
+          VALUES (
+            $1,
+            'automation-context-test-user',
+            $2,
+            'automation context test'
+          )
+        `,
+        [threadId, agentComposeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "event_type",
+            "automation_id",
+            "trigger_source",
+            "trigger_brief",
+            "created_at"
+          )
+          VALUES (
+            $2,
+            $1,
+            'input.automation',
+            $3,
+            'workflow-event',
+            $4,
+            '2026-07-30 00:00:00'
+          )
+        `,
+        [threadId, contextId, automationId, triggerBrief],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "event_type",
+            "user_message",
+            "run_id",
+            "revokes_message_id",
+            "created_at"
+          )
+          VALUES (
+            $2,
+            $1,
+            'input.prompt',
+            '{"version":1,"parts":[{"type":"text","text":"Claimed automation"}]}'::jsonb,
+            '00000000-0000-4000-8000-000000076712',
+            $3,
+            '2026-07-30 00:00:01'
+          )
+        `,
+        [threadId, claimedEventId, contextId],
+      );
+
+      await applyMigrationsUpTo(client, 767);
+
+      const contexts = await client.query<{
+        automationId: string;
+        chatThreadId: string;
+        id: string;
+        triggerBrief: string | null;
+      }>(`
+        SELECT
+          "id",
+          "chat_thread_id" AS "chatThreadId",
+          "automation_id" AS "automationId",
+          "trigger_brief" AS "triggerBrief"
+        FROM "chat_automation_context"
+        ORDER BY "id"
+      `);
+      assert.deepEqual(contexts.rows, [
+        {
+          id: contextId,
+          chatThreadId: threadId,
+          automationId,
+          triggerBrief,
+        },
+      ]);
+
+      const pointers = await client.query<{
+        contextId: string | null;
+        contextType: string | null;
+        id: string;
+      }>(
+        `
+          SELECT
+            "id",
+            "context_type" AS "contextType",
+            "context_id" AS "contextId"
+          FROM "chat_events"
+          WHERE "id" IN ($1, $2)
+          ORDER BY "id"
+        `,
+        [contextId, claimedEventId],
+      );
+      assert.deepEqual(pointers.rows, [
+        {
+          id: contextId,
+          contextType: "automation",
+          contextId,
+        },
+        {
+          id: claimedEventId,
+          contextType: "automation",
+          contextId,
+        },
+      ]);
+
+      const foreignKeys = await client.query<{
+        columnName: string;
+        deleteRule: string;
+        referencedTable: string;
+      }>(`
+        SELECT
+          "kcu"."column_name" AS "columnName",
+          "rc"."delete_rule" AS "deleteRule",
+          "ccu"."table_name" AS "referencedTable"
+        FROM "information_schema"."table_constraints" AS "tc"
+        INNER JOIN "information_schema"."key_column_usage" AS "kcu"
+          ON "tc"."constraint_name" = "kcu"."constraint_name"
+          AND "tc"."constraint_schema" = "kcu"."constraint_schema"
+        INNER JOIN "information_schema"."referential_constraints" AS "rc"
+          ON "tc"."constraint_name" = "rc"."constraint_name"
+          AND "tc"."constraint_schema" = "rc"."constraint_schema"
+        INNER JOIN "information_schema"."constraint_column_usage" AS "ccu"
+          ON "rc"."unique_constraint_name" = "ccu"."constraint_name"
+          AND "rc"."unique_constraint_schema" = "ccu"."constraint_schema"
+        WHERE "tc"."table_schema" = 'public'
+          AND "tc"."table_name" = 'chat_automation_context'
+          AND "tc"."constraint_type" = 'FOREIGN KEY'
+        ORDER BY "kcu"."column_name"
+      `);
+      assert.deepEqual(foreignKeys.rows, [
+        {
+          columnName: "chat_thread_id",
+          deleteRule: "CASCADE",
+          referencedTable: "chat_threads",
+        },
+      ]);
+
+      await client.query(
+        `
+          INSERT INTO "chat_automation_context" (
+            "id",
+            "chat_thread_id",
+            "automation_id",
+            "trigger_brief"
+          )
+          VALUES ($1, $2, $3, 'execution plan target')
+        `,
+        [planContextId, threadId, planAutomationId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "event_type",
+            "context_type",
+            "context_id",
+            "trigger_source"
+          )
+          VALUES (
+            '00000000-0000-4000-8000-000000076722',
+            $1,
+            'input.automation',
+            'automation',
+            $2,
+            'workflow-event'
+          )
+        `,
+        [threadId, planContextId],
+      );
+      await client.query(
+        `
+          WITH "contexts" AS (
+            INSERT INTO "chat_automation_context" (
+              "id",
+              "chat_thread_id",
+              "automation_id",
+              "trigger_brief"
+            )
+            SELECT
+              gen_random_uuid(),
+              $1,
+              gen_random_uuid(),
+              'execution plan filler'
+            FROM generate_series(1, 2000)
+            RETURNING "id"
+          )
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "event_type",
+            "context_type",
+            "context_id",
+            "trigger_source"
+          )
+          SELECT
+            gen_random_uuid(),
+            $1,
+            'input.automation',
+            'automation',
+            "id",
+            'workflow-event'
+          FROM "contexts"
+        `,
+        [threadId],
+      );
+      await client.query(`ANALYZE "chat_automation_context", "chat_events"`);
+
+      const explanation = await client.query<{ "QUERY PLAN": unknown }>(
+        `
+          EXPLAIN (ANALYZE, FORMAT JSON)
+          SELECT "event"."id"
+          FROM "chat_automation_context" AS "context"
+          INNER JOIN "chat_events" AS "event"
+            ON "event"."context_type" = 'automation'
+            AND "event"."context_id" = "context"."id"
+          WHERE "context"."automation_id" = $1
+            AND "event"."event_type" = 'input.automation'
+            AND "event"."run_id" IS NULL
+            AND NOT EXISTS (
+              SELECT 1
+              FROM "chat_events" AS "revoker"
+              WHERE "revoker"."revokes_event_id" = "event"."id"
+            )
+          LIMIT 1
+        `,
+        [planAutomationId],
+      );
+      function collectIndexNames(value: unknown): readonly string[] {
+        if (Array.isArray(value)) {
+          return value.flatMap((item) => {
+            return collectIndexNames(item);
+          });
+        }
+        if (typeof value !== "object" || value === null) {
+          return [];
+        }
+        const record = value as Record<string, unknown>;
+        return [
+          ...(typeof record["Index Name"] === "string"
+            ? [record["Index Name"]]
+            : []),
+          ...Object.values(record).flatMap((item) => {
+            return collectIndexNames(item);
+          }),
+        ];
+      }
+      const indexNames = collectIndexNames(explanation.rows[0]?.["QUERY PLAN"]);
+      assert.ok(
+        indexNames.includes("chat_automation_context_automation_id_idx"),
+        `Expected automation context lookup index in plan, got ${indexNames.join(", ")}`,
+      );
+      assert.ok(
+        indexNames.includes("chat_events_input_automation_context_idx"),
+        `Expected chat event context partial index in plan, got ${indexNames.join(", ")}`,
+      );
+
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_events",
+        query: `
+          UPDATE "chat_events"
+          SET "context_id" = NULL
+          WHERE "id" = $1
+        `,
+        rowId: contextId,
+      });
+
+      await client.query(`DELETE FROM "chat_threads" WHERE "id" = $1`, [
+        threadId,
+      ]);
+      const remainingContexts = await client.query<{ count: string }>(`
+        SELECT count(*)::text AS "count"
+        FROM "chat_automation_context"
+      `);
+      assert.deepEqual(remainingContexts.rows, [{ count: "0" }]);
+
+      console.log(
+        "   ✅ Automation identity backfills through revoke chains without table locks",
+      );
+      console.log(
+        "   ✅ Automation ids have no FK and context rows cascade only with threads",
+      );
+      console.log(
+        "   ✅ Coalescing plan uses both automation context indexes\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateGithubIssueSessionContraction(): Promise<void> {
   console.log("=== Validate legacy GitHub issue session contraction ===\n");
   const testDb = "migration_github_issue_session_contraction_test";
@@ -11516,6 +11860,7 @@ async function main(): Promise<void> {
     await validateFeishuThreadSessionContraction();
     await validateGithubIssueSessionContraction();
     await validateChatDisplayContextBackfill();
+    await validateChatAutomationContextBackfill();
     await validateOrgPlanEntitlementBackfill();
     await validateModelObservationContractCleanup();
     await validateChatEventTypeBackfillAndContract();

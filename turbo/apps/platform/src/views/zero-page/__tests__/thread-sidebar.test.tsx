@@ -124,7 +124,7 @@ function threadArtifactFile(
 function googleDriveConnector(): ConnectorResponse {
   return {
     id: "11111111-1111-4111-8111-111111111111",
-    type: "google-drive",
+    slug: "google-drive",
     authMethod: "oauth",
     externalId: "google-drive-external-id",
     externalUsername: "drive-user",
@@ -502,7 +502,7 @@ describe("thread-owned utility sidebar", () => {
     let agentAuthorized = false;
     let artifactSynced = false;
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledTypes: enabledConnectorSlugs });
+      return respond(200, { enabledConnectorSlugs: enabledConnectorSlugs });
     });
     context.mocks.api(
       zeroUserConnectorsContract.update,
@@ -515,7 +515,6 @@ describe("thread-owned utility sidebar", () => {
         enabledConnectorSlugs = [...body.enabledConnectorSlugs];
         agentAuthorized = true;
         return respond(200, {
-          enabledTypes: enabledConnectorSlugs,
           enabledConnectorSlugs,
         });
       },

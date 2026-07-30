@@ -76,7 +76,6 @@ export function catalogItem(
   },
 ): PublicConnectorCatalogItem {
   return {
-    connectorRef: overrides.connectorSlug,
     slug: overrides.connectorSlug,
     label: overrides.label ?? overrides.connectorSlug,
     description:
@@ -102,7 +101,6 @@ export function catalogStatusItem(
   const connectionStatus =
     overrides.connectionStatus ?? (connection ? "connected" : "not-connected");
   return {
-    connectorRef: overrides.connectorSlug,
     slug: overrides.connectorSlug,
     label: overrides.label ?? overrides.connectorSlug,
     description:
@@ -135,7 +133,6 @@ export function catalogPermissionDetail(
 ): PublicConnectorCatalogPermissionDetail {
   const permissions = overrides.permissions ?? [];
   return {
-    connectorRef: overrides.connectorSlug,
     connectorSlug: overrides.connectorSlug,
     label: overrides.label ?? overrides.connectorSlug,
     icon: overrides.icon ?? {
@@ -175,7 +172,7 @@ export function stubConnectorCatalogPermissions(
 ) {
   const detailsBySlug = new Map(
     details.map((detail) => {
-      return [detail.connectorSlug ?? detail.connectorRef, detail] as const;
+      return [detail.connectorSlug, detail] as const;
     }),
   );
   return http.get(

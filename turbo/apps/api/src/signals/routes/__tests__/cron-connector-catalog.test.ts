@@ -1619,7 +1619,7 @@ describe("connector catalog valid lifecycle", () => {
     );
     expect(
       publicCatalog.body.connectors.some((connector) => {
-        return connector.connectorRef === first.connectorSlug;
+        return connector.slug === first.connectorSlug;
       }),
     ).toBeTruthy();
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(
@@ -1649,7 +1649,7 @@ describe("connector catalog valid lifecycle", () => {
     const list = await accept(catalogClient.list({ headers }), [200]);
     expect(list.body.connectors).toHaveLength(1);
     expect(list.body.connectors[0]).toMatchObject({
-      connectorRef: release.connectorSlug,
+      slug: release.connectorSlug,
       label: "External Test",
       description: "An external connector used only by the sync fixture",
       category: "testing",
@@ -1716,7 +1716,7 @@ describe("connector catalog valid lifecycle", () => {
       [200],
     );
     expect(permissions.body.permissions).toMatchObject({
-      connectorRef: release.connectorSlug,
+      connectorSlug: release.connectorSlug,
       permissionCount: 1,
       permissions: [{ name: "items.read", description: "Read items" }],
       categories: {
@@ -1732,7 +1732,7 @@ describe("connector catalog valid lifecycle", () => {
     const status = await accept(catalogClient.status({ headers }), [200]);
     expect(status.body.connectors).toHaveLength(1);
     expect(status.body.connectors[0]).toMatchObject({
-      connectorRef: release.connectorSlug,
+      slug: release.connectorSlug,
       connected: false,
       connection: null,
       connectionStatus: "not-connected",
@@ -1753,7 +1753,6 @@ describe("connector catalog valid lifecycle", () => {
     );
     expect(search.body.connectors).toStrictEqual([
       {
-        id: release.connectorSlug,
         slug: release.connectorSlug,
         label: "External Test",
         description: "An external connector used only by the sync fixture",
@@ -1836,7 +1835,7 @@ describe("connector catalog valid lifecycle", () => {
       ),
     ]);
     expect(list.body.connectors).toHaveLength(1);
-    expect(detail.body.connector.connectorRef).toBe(release.connectorSlug);
+    expect(detail.body.connector.slug).toBe(release.connectorSlug);
 
     await accept(catalogClient.list({ headers }), [200]);
     expect(context.mocks.s3.send).toHaveBeenCalledTimes(callsBeforePublicReads);
@@ -2186,7 +2185,7 @@ describe("connector catalog valid lifecycle", () => {
       { credential: "catalog-manual-secret" },
     );
     expect(connected).toMatchObject({
-      type: "agora",
+      slug: "agora",
       authMethod: "api-token",
       connectionStatus: "connected",
     });
@@ -2194,7 +2193,7 @@ describe("connector catalog valid lifecycle", () => {
     const listed = await connectorsApi.listConnectors(actor);
     expect(listed.connectorProvidedBindings).toContainEqual(
       expect.objectContaining({
-        connectorType: "agora",
+        connectorSlug: "agora",
         authMethod: "api-token",
         namespace: "secrets",
         name: "SERVICE_TOKEN",
@@ -2257,7 +2256,7 @@ describe("connector catalog valid lifecycle", () => {
     await expect(
       connectorsApi.readConnectorBySlug(actor, "test-oauth-device"),
     ).resolves.toMatchObject({
-      type: "test-oauth-device",
+      slug: "test-oauth-device",
       authMethod: "oauth",
       connectionStatus: "connected",
     });
@@ -2360,7 +2359,7 @@ describe("connector catalog valid lifecycle", () => {
       { credential: "current-catalog-secret" },
     );
     expect(connected).toMatchObject({
-      type: "agora",
+      slug: "agora",
       authMethod: "current",
       connectionStatus: "connected",
     });
@@ -2644,7 +2643,7 @@ describe("connector catalog valid lifecycle", () => {
           mode: "url",
           method: "GET",
           url: "https://api.example.test/v1/items",
-          connectorRef: connectorSlug,
+          connectorSlug,
         },
       }),
       [200],
@@ -2653,7 +2652,7 @@ describe("connector catalog valid lifecycle", () => {
       outcome: "resolved",
       mode: "url",
       connector: {
-        connectorRef: connectorSlug,
+        connectorSlug,
         label: "External Runtime",
       },
       base: "https://api.example.test/v1",
@@ -2678,7 +2677,7 @@ describe("connector catalog valid lifecycle", () => {
         headers: { authorization: "Bearer clerk-session" },
         body: {
           agentId: agent.agentId,
-          connectorRef: connectorSlug,
+          connectorSlug,
           mode: "replace",
           grants: [{ permission: "items.read", action: "deny" }],
         },
@@ -2686,7 +2685,7 @@ describe("connector catalog valid lifecycle", () => {
       [200],
     );
     expect(grants.body).toMatchObject([
-      { connectorRef: connectorSlug, permission: "items.read", action: "deny" },
+      { connectorSlug, permission: "items.read", action: "deny" },
     ]);
     const run = await runs.createRun(actor, {
       agentId: agent.agentId,
@@ -3337,7 +3336,7 @@ describe("connector catalog valid lifecycle", () => {
       );
     }
     expect(completed.connector).toMatchObject({
-      type: "test-oauth-device",
+      slug: "test-oauth-device",
       authMethod: "api",
       oauthScopes: ["read"],
     });
@@ -3470,7 +3469,7 @@ describe("connector catalog valid lifecycle", () => {
       code: awsVerificationCode(session.authorizationUrl),
     });
     expect(completed.connector).toMatchObject({
-      type: "aws",
+      slug: "aws",
       authMethod: "cli",
       externalId: "123456789012",
       oauthScopes: ["openid"],
@@ -3929,7 +3928,6 @@ describe("connector catalog valid lifecycle", () => {
     );
     expect(readiness.body.connectors).toStrictEqual([
       {
-        connectorRef: "gmail",
         connectorSlug: "gmail",
         label: "Catalog Gmail",
         icon: {
@@ -4187,13 +4185,15 @@ describe("connector catalog valid lifecycle", () => {
       new URL(callbackLocation ?? "https://invalid.example").pathname,
     ).toBe("/connector/success");
     const hiddenConnectedList = await connectorsApi.listConnectors(actor);
-    expect(hiddenConnectedList.configuredTypes).not.toContain("datadog");
+    expect(hiddenConnectedList.configuredConnectorSlugs).not.toContain(
+      "datadog",
+    );
     expect(hiddenConnectedList.connectors).toContainEqual(
-      expect.objectContaining({ type: "datadog", authMethod: "oauth" }),
+      expect.objectContaining({ slug: "datadog", authMethod: "oauth" }),
     );
     expect(hiddenConnectedList.connectorProvidedBindings).toContainEqual(
       expect.objectContaining({
-        connectorType: "datadog",
+        connectorSlug: "datadog",
         authMethod: "oauth",
         name: "DATADOG_TOKEN",
       }),
@@ -4207,7 +4207,7 @@ describe("connector catalog valid lifecycle", () => {
     const catalogClient = setupApp({ context })(zeroConnectorCatalogContract);
     const connected = await accept(catalogClient.status({ headers }), [200]);
     expect(connected.body.connectors[0]).toMatchObject({
-      connectorRef: "datadog",
+      slug: "datadog",
       connected: true,
       connectionStatus: "connected",
       scopeMismatch: false,
@@ -4251,7 +4251,7 @@ describe("connector catalog valid lifecycle", () => {
     await syncCatalog();
     const mismatched = await accept(catalogClient.status({ headers }), [200]);
     expect(mismatched.body.connectors[0]).toMatchObject({
-      connectorRef: "datadog",
+      slug: "datadog",
       connected: true,
       connectionStatus: "scope-mismatch",
       scopeMismatch: true,
@@ -4334,7 +4334,7 @@ describe("connector catalog valid lifecycle", () => {
           mode: "url",
           method: "GET",
           url: "https://tenant.example.test/v1/items",
-          connectorRef: "dynamic-firewall",
+          connectorSlug: "dynamic-firewall",
         },
       }),
       [200],
@@ -4342,7 +4342,7 @@ describe("connector catalog valid lifecycle", () => {
     expect(diagnostic.body).toMatchObject({
       outcome: "resolved",
       connector: {
-        connectorRef: "dynamic-firewall",
+        connectorSlug: "dynamic-firewall",
         label: "Dynamic Firewall",
       },
       permission: {
@@ -5188,7 +5188,7 @@ describe("connector catalog executable compatibility", () => {
     const enabled = await accept(catalogClient.list({ headers }), [200]);
     expect(enabled.body.connectors).toMatchObject([
       {
-        connectorRef: "test-oauth",
+        slug: "test-oauth",
         authMethods: [{ id: "oauth", grantKind: "auth-code" }],
       },
     ]);
@@ -5505,7 +5505,7 @@ describe("connector catalog executable compatibility", () => {
     expect(configured.body.filtering.capabilityDigest).not.toBe(firstDigest);
     expect(
       (await accept(catalogClient.list({ headers }), [200])).body.connectors,
-    ).toStrictEqual([expect.objectContaining({ connectorRef: "steam" })]);
+    ).toStrictEqual([expect.objectContaining({ slug: "steam" })]);
 
     mockOptionalEnv("STEAM_WEB_API_KEY", undefined);
     expect((await readStatus()).body.filtering).toStrictEqual(
@@ -5759,7 +5759,7 @@ describe("connector catalog rejection and latest-valid retention", () => {
     );
     expect(diagnostic.body).toMatchObject({
       outcome: "resolved",
-      connector: { connectorRef: "collision-a" },
+      connector: { connectorSlug: "collision-a" },
     });
   });
 

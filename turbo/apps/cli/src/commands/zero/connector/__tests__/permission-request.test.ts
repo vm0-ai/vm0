@@ -461,7 +461,6 @@ describe("zero connector permission-request command", () => {
                 label: "GitHub",
                 permissions: [{ name: SLACK_READ_PERMISSION }],
               }),
-              connectorRef: "legacy-github",
             },
           });
         },

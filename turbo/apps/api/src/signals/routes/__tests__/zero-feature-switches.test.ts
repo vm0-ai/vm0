@@ -55,6 +55,27 @@ describe("/api/zero/feature-switches", () => {
     ).toBeTruthy();
   });
 
+  it("projects the Spanish locale deployment switch", async () => {
+    createZeroRouteMocks(context).clerk.session(
+      "user_spanish_locale_switch_test",
+      "org_spanish_locale_switch_test",
+      "org:member",
+    );
+    const headers = { authorization: "Bearer clerk-session" };
+
+    mockOptionalEnv("SPANISH_LOCALE_ROLLOUT_ENABLED", undefined);
+    const disabled = await accept(client().get({ headers }), [200]);
+    expect(
+      disabled.body.effectiveSwitches[FeatureSwitchKey.SpanishLocale],
+    ).toBeFalsy();
+
+    mockOptionalEnv("SPANISH_LOCALE_ROLLOUT_ENABLED", "true");
+    const enabled = await accept(client().get({ headers }), [200]);
+    expect(
+      enabled.body.effectiveSwitches[FeatureSwitchKey.SpanishLocale],
+    ).toBeTruthy();
+  });
+
   it("persists and activates inline templates for a non-staff org", async () => {
     createZeroRouteMocks(context).clerk.session(
       "user_nonstaff_feature_switch_test",

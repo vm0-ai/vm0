@@ -32,7 +32,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import type {
-  NormalizedApplyUserPermissionGrantsRequest,
+  ApplyUserPermissionGrantsRequest,
   UserPermissionGrantExpiresIn,
   UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
@@ -122,7 +122,7 @@ interface ApplyUserPermissionGrantsArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly role?: string;
-  readonly apply: NormalizedApplyUserPermissionGrantsRequest;
+  readonly apply: ApplyUserPermissionGrantsRequest;
 }
 
 type NotFoundResponse = ReturnType<typeof notFound>;
@@ -598,7 +598,6 @@ function formatUserPermissionGrant(
 ): UserPermissionGrantResponse {
   return {
     ...scope,
-    connectorRef: row.connectorRef,
     connectorSlug: row.connectorRef,
     permission: row.permission,
     action: row.action,
@@ -683,7 +682,7 @@ async function lockVisibleAgentForUpdate(
 }
 
 async function validateApplyUserPermissionGrants(
-  apply: NormalizedApplyUserPermissionGrantsRequest,
+  apply: ApplyUserPermissionGrantsRequest,
   catalog: ConnectorServerFirewallCatalog,
 ): Promise<ValidationErrorResponse | null> {
   const index = await catalog.loadPermissionIndex(apply.connectorSlug);

@@ -6,6 +6,7 @@ import {
   isValidChatEventRevocation,
 } from "@vm0/api-contracts/contracts/chat-events";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
@@ -254,6 +255,13 @@ type NewDisplayContext =
       readonly id: string;
       readonly chatThreadId: string;
       readonly chatOpenUrl: string;
+    }
+  | {
+      readonly type: "automation";
+      readonly id: string;
+      readonly chatThreadId: string;
+      readonly automationId: string;
+      readonly triggerBrief: string | null;
     };
 
 function isPendingInputEvent(values: NewChatEvent): boolean {
@@ -331,6 +339,19 @@ function newDisplayContext(
     };
   }
 
+  const automationId =
+    "automationId" in values ? values.automationId : undefined;
+  if (automationId !== undefined) {
+    return {
+      type: "automation",
+      id: eventId,
+      chatThreadId: values.chatThreadId,
+      automationId,
+      triggerBrief:
+        "triggerBrief" in values ? (values.triggerBrief ?? null) : null,
+    };
+  }
+
   return undefined;
 }
 
@@ -384,10 +405,20 @@ async function insertDisplayContext(
     });
     return;
   }
-  await tx.insert(chatFeishuContext).values({
+  if (context.type === "feishu") {
+    await tx.insert(chatFeishuContext).values({
+      id: context.id,
+      chatThreadId: context.chatThreadId,
+      chatOpenUrl: context.chatOpenUrl,
+      createdAt,
+    });
+    return;
+  }
+  await tx.insert(chatAutomationContext).values({
     id: context.id,
     chatThreadId: context.chatThreadId,
-    chatOpenUrl: context.chatOpenUrl,
+    automationId: context.automationId,
+    triggerBrief: context.triggerBrief,
     createdAt,
   });
 }
