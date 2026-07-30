@@ -151,6 +151,8 @@ probe_host_architecture() {
   local stdout_file stderr_file status remote_arch attempt
   local -a control_args=()
 
+  # This read-only query is the only replay-safe SSH operation in this script.
+  # Keep every later remote mutation single-shot.
   for attempt in 1 2; do
     stdout_file="${LOG_DIR}/${host}.probe.${attempt}.stdout"
     stderr_file="${LOG_DIR}/${host}.probe.${attempt}.stderr"
@@ -190,6 +192,8 @@ probe_host_architecture() {
       return "$status"
     fi
 
+    # Isolate the replacement from a stalled default master so its delayed
+    # shutdown cannot unlink the recovery socket.
     control_path="${LOG_DIR}/recovery-${host_index}.sock"
     if ! "${SCRIPT_DIR}/cloudflare-ssh-preconnect.sh" \
       --control-path "$control_path" "$METAL_USER" "$host"; then
