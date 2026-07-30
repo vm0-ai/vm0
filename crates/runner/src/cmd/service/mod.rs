@@ -31,7 +31,10 @@ pub(crate) use unit_config::read_unit_config_path;
 use drain_override::{remove_drain_restart_override, write_drain_restart_override};
 use gate::check_active_jobs_gate;
 use reload::{SystemdReloadRequirement, coordinate_systemd_reload};
-use systemctl::{journalctl_logs_status, run_systemctl};
+use systemctl::{
+    SystemdUnitEnablement, journalctl_logs_status, read_unit_enablement, restore_unit_enablement,
+    run_systemctl,
+};
 use unit_file::{
     RUNNER_SERVICE_NOFILE_LIMIT_DIRECTIVE, cleanup_unit_staging_files, generate_unit_file,
     remove_unit_file_if_exists, resolve_config_path, validate_current_exe_path, validate_env_vars,
@@ -240,7 +243,7 @@ async fn reload_systemd_if_drain_restart_override_removed(
 
 async fn restore_service_state_after_reload_failure(
     unit: &RunnerServiceUnit,
-    was_enabled: bool,
+    prior_enablement: SystemdUnitEnablement,
     restore_drain_override: bool,
 ) -> RunnerResult<()> {
     let mut failures = Vec::new();
@@ -249,8 +252,7 @@ async fn restore_service_state_after_reload_failure(
         failures.push(format!("restore drain restart override: {error}"));
     }
 
-    let command = if was_enabled { "enable" } else { "disable" };
-    if let Err(error) = run_systemctl(&[command, "--no-reload", unit.service_name()]).await {
+    if let Err(error) = restore_unit_enablement(unit, prior_enablement).await {
         failures.push(format!("restore boot enablement: {error}"));
     }
 
@@ -424,7 +426,7 @@ async fn install(args: ServiceRunArgs) -> RunnerResult<()> {
 
     let unit_for_activation = unit.clone();
     let upath = unit.unit_file_path().to_path_buf();
-    let was_enabled = is_unit_enabled(&unit).await?;
+    let prior_enablement = read_unit_enablement(&unit).await?;
 
     with_service_activation_image_artifacts(
         &unit,
@@ -472,7 +474,7 @@ async fn install(args: ServiceRunArgs) -> RunnerResult<()> {
                 };
                 return match restore_service_state_after_reload_failure(
                     &unit_for_activation,
-                    was_enabled,
+                    prior_enablement,
                     drain_override_removed,
                 )
                 .await

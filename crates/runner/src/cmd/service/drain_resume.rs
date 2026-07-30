@@ -9,7 +9,8 @@ use super::gate::{read_runner_status, runner_base_dir};
 use super::reload::{SystemdReloadRequirement, coordinate_systemd_reload};
 use super::signal::{ServiceSignalOutcome, signal_service_main};
 use super::systemctl::{
-    get_service_restart_policy, is_unit_active, is_unit_enabled, run_systemctl,
+    SystemdUnitEnablement, get_service_restart_policy, is_unit_active, read_unit_enablement,
+    restore_unit_enablement, run_systemctl,
 };
 use super::{RunnerServiceUnit, ServiceFuture, acquire_service_lock};
 
@@ -42,7 +43,10 @@ fn ensure_drain_restart_policy_applied(
 
 trait ServiceDrainOps {
     fn is_active<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool>;
-    fn is_enabled<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool>;
+    fn enablement<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+    ) -> ServiceFuture<'a, SystemdUnitEnablement>;
     fn write_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<()>;
     fn remove_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<bool>;
     fn daemon_reload<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()>;
@@ -52,11 +56,18 @@ trait ServiceDrainOps {
         unit: &'a RunnerServiceUnit,
     ) -> ServiceFuture<'a, ServiceSignalOutcome>;
     fn disable<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()>;
-    fn enable<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()>;
+    fn restore_enablement<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+        enablement: SystemdUnitEnablement,
+    ) -> ServiceFuture<'a, ()>;
 }
 
 trait ServiceResumeOps {
-    fn is_enabled<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool>;
+    fn enablement<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+    ) -> ServiceFuture<'a, SystemdUnitEnablement>;
     fn write_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<()>;
     fn remove_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<bool>;
     fn daemon_reload<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()>;
@@ -65,7 +76,11 @@ trait ServiceResumeOps {
         unit: &'a RunnerServiceUnit,
     ) -> ServiceFuture<'a, ServiceSignalOutcome>;
     fn enable<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()>;
-    fn disable<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()>;
+    fn restore_enablement<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+        enablement: SystemdUnitEnablement,
+    ) -> ServiceFuture<'a, ()>;
 }
 
 struct RealServiceDrainOps;
@@ -76,8 +91,11 @@ impl ServiceDrainOps for RealServiceDrainOps {
         Box::pin(async move { is_unit_active(unit).await })
     }
 
-    fn is_enabled<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
-        Box::pin(async move { is_unit_enabled(unit).await })
+    fn enablement<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+    ) -> ServiceFuture<'a, SystemdUnitEnablement> {
+        Box::pin(async move { read_unit_enablement(unit).await })
     }
 
     fn write_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<()> {
@@ -113,16 +131,21 @@ impl ServiceDrainOps for RealServiceDrainOps {
         )
     }
 
-    fn enable<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
-        Box::pin(
-            async move { run_systemctl(&["enable", "--no-reload", unit.service_name()]).await },
-        )
+    fn restore_enablement<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+        enablement: SystemdUnitEnablement,
+    ) -> ServiceFuture<'a, ()> {
+        Box::pin(async move { restore_unit_enablement(unit, enablement).await })
     }
 }
 
 impl ServiceResumeOps for RealServiceResumeOps {
-    fn is_enabled<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
-        Box::pin(async move { is_unit_enabled(unit).await })
+    fn enablement<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+    ) -> ServiceFuture<'a, SystemdUnitEnablement> {
+        Box::pin(async move { read_unit_enablement(unit).await })
     }
 
     fn write_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<()> {
@@ -154,10 +177,12 @@ impl ServiceResumeOps for RealServiceResumeOps {
         )
     }
 
-    fn disable<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
-        Box::pin(
-            async move { run_systemctl(&["disable", "--no-reload", unit.service_name()]).await },
-        )
+    fn restore_enablement<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+        enablement: SystemdUnitEnablement,
+    ) -> ServiceFuture<'a, ()> {
+        Box::pin(async move { restore_unit_enablement(unit, enablement).await })
     }
 }
 
@@ -176,7 +201,7 @@ fn transition_error_with_rollback_failure(
 async fn rollback_drain_transition(
     unit: &RunnerServiceUnit,
     restart_override_written: bool,
-    was_enabled: Option<bool>,
+    prior_enablement: Option<SystemdUnitEnablement>,
     ops: &mut impl ServiceDrainOps,
     context: &str,
 ) -> RunnerResult<()> {
@@ -189,14 +214,9 @@ async fn rollback_drain_transition(
         }
     }
 
-    match was_enabled {
-        Some(was_enabled) => {
-            let result = if was_enabled {
-                ops.enable(unit).await
-            } else {
-                ops.disable(unit).await
-            };
-            if let Err(error) = result {
+    match prior_enablement {
+        Some(enablement) => {
+            if let Err(error) = ops.restore_enablement(unit, enablement).await {
                 failures.push(format!("restore boot enablement: {error}"));
             }
         }
@@ -221,7 +241,7 @@ async fn rollback_drain_transition(
 async fn rollback_resume_transition(
     unit: &RunnerServiceUnit,
     drain_override_removed: bool,
-    was_enabled: Option<bool>,
+    prior_enablement: Option<SystemdUnitEnablement>,
     ops: &mut impl ServiceResumeOps,
     context: &str,
 ) -> RunnerResult<()> {
@@ -231,14 +251,9 @@ async fn rollback_resume_transition(
         failures.push(format!("restore drain restart override: {error}"));
     }
 
-    match was_enabled {
-        Some(was_enabled) => {
-            let result = if was_enabled {
-                ops.enable(unit).await
-            } else {
-                ops.disable(unit).await
-            };
-            if let Err(error) = result {
+    match prior_enablement {
+        Some(enablement) => {
+            if let Err(error) = ops.restore_enablement(unit, enablement).await {
                 failures.push(format!("restore boot enablement: {error}"));
             }
         }
@@ -263,12 +278,19 @@ async fn rollback_resume_transition(
 async fn drain_error_after_rollback(
     unit: &RunnerServiceUnit,
     restart_override_written: bool,
-    was_enabled: Option<bool>,
+    prior_enablement: Option<SystemdUnitEnablement>,
     ops: &mut impl ServiceDrainOps,
     context: &str,
     error: RunnerError,
 ) -> RunnerError {
-    match rollback_drain_transition(unit, restart_override_written, was_enabled, ops, context).await
+    match rollback_drain_transition(
+        unit,
+        restart_override_written,
+        prior_enablement,
+        ops,
+        context,
+    )
+    .await
     {
         Ok(()) => error,
         Err(rollback_error) => {
@@ -280,12 +302,13 @@ async fn drain_error_after_rollback(
 async fn resume_error_after_rollback(
     unit: &RunnerServiceUnit,
     drain_override_removed: bool,
-    was_enabled: Option<bool>,
+    prior_enablement: Option<SystemdUnitEnablement>,
     ops: &mut impl ServiceResumeOps,
     context: &str,
     error: RunnerError,
 ) -> RunnerError {
-    match rollback_resume_transition(unit, drain_override_removed, was_enabled, ops, context).await
+    match rollback_resume_transition(unit, drain_override_removed, prior_enablement, ops, context)
+        .await
     {
         Ok(()) => error,
         Err(rollback_error) => {
@@ -319,9 +342,9 @@ fn ensure_resume_mode_is_draining(unit: &RunnerServiceUnit, mode: &str) -> Runne
 async fn drain_enablement_before_transition(
     unit: &RunnerServiceUnit,
     ops: &mut impl ServiceDrainOps,
-) -> Option<bool> {
-    match ops.is_enabled(unit).await {
-        Ok(enabled) => Some(enabled),
+) -> Option<SystemdUnitEnablement> {
+    match ops.enablement(unit).await {
+        Ok(enablement) => Some(enablement),
         Err(error) => {
             warn!(
                 unit = %unit.unit_name(),
@@ -336,9 +359,9 @@ async fn drain_enablement_before_transition(
 async fn resume_enablement_before_transition(
     unit: &RunnerServiceUnit,
     ops: &mut impl ServiceResumeOps,
-) -> Option<bool> {
-    match ops.is_enabled(unit).await {
-        Ok(enabled) => Some(enabled),
+) -> Option<SystemdUnitEnablement> {
+    match ops.enablement(unit).await {
+        Ok(enablement) => Some(enablement),
         Err(error) => {
             warn!(
                 unit = %unit.unit_name(),
@@ -355,7 +378,7 @@ async fn drain_with_ops(
     ops: &mut impl ServiceDrainOps,
 ) -> RunnerResult<()> {
     let mut should_signal = ops.is_active(unit).await?;
-    let was_enabled = drain_enablement_before_transition(unit, ops).await;
+    let prior_enablement = drain_enablement_before_transition(unit, ops).await;
     if !should_signal {
         info!(unit = %unit.unit_name(), "no active service found; drain signal not needed");
     }
@@ -380,7 +403,7 @@ async fn drain_with_ops(
         return Err(drain_error_after_rollback(
             unit,
             restart_override_written,
-            was_enabled,
+            prior_enablement,
             ops,
             "daemon_reload",
             error,
@@ -395,7 +418,7 @@ async fn drain_with_ops(
                     return Err(drain_error_after_rollback(
                         unit,
                         restart_override_written,
-                        was_enabled,
+                        prior_enablement,
                         ops,
                         "restart_policy",
                         error,
@@ -409,7 +432,7 @@ async fn drain_with_ops(
                         return Err(drain_error_after_rollback(
                             unit,
                             restart_override_written,
-                            was_enabled,
+                            prior_enablement,
                             ops,
                             "restart_policy",
                             error,
@@ -421,7 +444,7 @@ async fn drain_with_ops(
                         return Err(drain_error_after_rollback(
                             unit,
                             restart_override_written,
-                            was_enabled,
+                            prior_enablement,
                             ops,
                             "restart_policy_active_check",
                             active_err,
@@ -447,7 +470,7 @@ async fn drain_with_ops(
                 return Err(drain_error_after_rollback(
                     unit,
                     restart_override_written,
-                    was_enabled,
+                    prior_enablement,
                     ops,
                     "signal_drain",
                     error,
@@ -470,7 +493,7 @@ async fn resume_after_preflight_with_ops(
     unit: &RunnerServiceUnit,
     ops: &mut impl ServiceResumeOps,
 ) -> RunnerResult<()> {
-    let was_enabled = resume_enablement_before_transition(unit, ops).await;
+    let prior_enablement = resume_enablement_before_transition(unit, ops).await;
     let drain_override_removed = ops.remove_restart_override(unit)?;
 
     if let Err(error) = ops.enable(unit).await {
@@ -488,7 +511,7 @@ async fn resume_after_preflight_with_ops(
         return Err(resume_error_after_rollback(
             unit,
             drain_override_removed,
-            was_enabled,
+            prior_enablement,
             ops,
             "daemon_reload",
             error,
@@ -517,7 +540,7 @@ async fn resume_after_preflight_with_ops(
     Err(resume_error_after_rollback(
         unit,
         drain_override_removed,
-        was_enabled,
+        prior_enablement,
         ops,
         "signal_resume",
         signal_result,
@@ -588,7 +611,7 @@ mod tests {
     struct FakeDrainOps {
         events: Vec<&'static str>,
         active_results: VecDeque<RunnerResult<bool>>,
-        enabled_results: VecDeque<RunnerResult<bool>>,
+        enablement_results: VecDeque<RunnerResult<SystemdUnitEnablement>>,
         write_error: bool,
         remove_error: bool,
         reload_errors: VecDeque<bool>,
@@ -597,12 +620,12 @@ mod tests {
         signal_error: bool,
         signal_outcome: ServiceSignalOutcome,
         disable_error: bool,
-        enable_error: bool,
+        restore_enablement_error: bool,
     }
 
     struct FakeResumeOps {
         events: Vec<&'static str>,
-        enabled_results: VecDeque<RunnerResult<bool>>,
+        enablement_results: VecDeque<RunnerResult<SystemdUnitEnablement>>,
         write_error: bool,
         remove_error: bool,
         removed_restart_override: bool,
@@ -610,7 +633,7 @@ mod tests {
         signal_error: bool,
         signal_outcome: ServiceSignalOutcome,
         enable_error: bool,
-        disable_error: bool,
+        restore_enablement_error: bool,
     }
 
     impl Default for FakeDrainOps {
@@ -618,7 +641,7 @@ mod tests {
             Self {
                 events: Vec::new(),
                 active_results: VecDeque::from([Ok(true)]),
-                enabled_results: VecDeque::from([Ok(true)]),
+                enablement_results: VecDeque::from([Ok(SystemdUnitEnablement::Enabled)]),
                 write_error: false,
                 remove_error: false,
                 reload_errors: VecDeque::new(),
@@ -627,7 +650,7 @@ mod tests {
                 signal_error: false,
                 signal_outcome: ServiceSignalOutcome::Sent,
                 disable_error: false,
-                enable_error: false,
+                restore_enablement_error: false,
             }
         }
     }
@@ -636,7 +659,7 @@ mod tests {
         fn default() -> Self {
             Self {
                 events: Vec::new(),
-                enabled_results: VecDeque::from([Ok(false)]),
+                enablement_results: VecDeque::from([Ok(SystemdUnitEnablement::NotEnabled)]),
                 write_error: false,
                 remove_error: false,
                 removed_restart_override: true,
@@ -644,7 +667,7 @@ mod tests {
                 signal_error: false,
                 signal_outcome: ServiceSignalOutcome::Sent,
                 enable_error: false,
-                disable_error: false,
+                restore_enablement_error: false,
             }
         }
     }
@@ -661,10 +684,15 @@ mod tests {
             ))
         }
 
-        fn is_enabled<'a>(&'a mut self, _unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
+        fn enablement<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+        ) -> ServiceFuture<'a, SystemdUnitEnablement> {
             self.events.push("is_enabled");
             Box::pin(std::future::ready(
-                self.enabled_results.pop_front().unwrap_or(Ok(false)),
+                self.enablement_results
+                    .pop_front()
+                    .unwrap_or(Ok(SystemdUnitEnablement::NotEnabled)),
             ))
         }
 
@@ -729,10 +757,18 @@ mod tests {
             }))
         }
 
-        fn enable<'a>(&'a mut self, _unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
-            self.events.push("enable");
-            Box::pin(std::future::ready(if self.enable_error {
-                Err(fake_error("enable failed"))
+        fn restore_enablement<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+            enablement: SystemdUnitEnablement,
+        ) -> ServiceFuture<'a, ()> {
+            self.events.push(match enablement {
+                SystemdUnitEnablement::Enabled => "restore_enabled",
+                SystemdUnitEnablement::EnabledRuntime => "restore_enabled_runtime",
+                SystemdUnitEnablement::NotEnabled => "restore_not_enabled",
+            });
+            Box::pin(std::future::ready(if self.restore_enablement_error {
+                Err(fake_error("restore enablement failed"))
             } else {
                 Ok(())
             }))
@@ -740,10 +776,15 @@ mod tests {
     }
 
     impl ServiceResumeOps for FakeResumeOps {
-        fn is_enabled<'a>(&'a mut self, _unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, bool> {
+        fn enablement<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+        ) -> ServiceFuture<'a, SystemdUnitEnablement> {
             self.events.push("is_enabled");
             Box::pin(std::future::ready(
-                self.enabled_results.pop_front().unwrap_or(Ok(false)),
+                self.enablement_results
+                    .pop_front()
+                    .unwrap_or(Ok(SystemdUnitEnablement::NotEnabled)),
             ))
         }
 
@@ -796,10 +837,18 @@ mod tests {
             }))
         }
 
-        fn disable<'a>(&'a mut self, _unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
-            self.events.push("disable");
-            Box::pin(std::future::ready(if self.disable_error {
-                Err(fake_error("disable failed"))
+        fn restore_enablement<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+            enablement: SystemdUnitEnablement,
+        ) -> ServiceFuture<'a, ()> {
+            self.events.push(match enablement {
+                SystemdUnitEnablement::Enabled => "restore_enabled",
+                SystemdUnitEnablement::EnabledRuntime => "restore_enabled_runtime",
+                SystemdUnitEnablement::NotEnabled => "restore_not_enabled",
+            });
+            Box::pin(std::future::ready(if self.restore_enablement_error {
+                Err(fake_error("restore enablement failed"))
             } else {
                 Ok(())
             }))
@@ -904,10 +953,26 @@ mod tests {
                 "disable",
                 "daemon_reload",
                 "remove_restart_override",
-                "enable",
+                "restore_enabled",
                 "daemon_reload",
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn drain_failure_restores_runtime_only_enablement() {
+        let unit = service_unit();
+        let mut ops = FakeDrainOps {
+            enablement_results: VecDeque::from([Ok(SystemdUnitEnablement::EnabledRuntime)]),
+            reload_errors: VecDeque::from([true, false]),
+            ..FakeDrainOps::default()
+        };
+
+        let error = drain_with_ops(&unit, &mut ops).await.unwrap_err();
+
+        assert!(error.to_string().contains("reload failed"));
+        assert!(ops.events.contains(&"restore_enabled_runtime"));
+        assert!(!ops.events.contains(&"restore_enabled"));
     }
 
     #[tokio::test]
@@ -931,7 +996,7 @@ mod tests {
                 "daemon_reload",
                 "restart_policy",
                 "remove_restart_override",
-                "enable",
+                "restore_enabled",
                 "daemon_reload",
             ]
         );
@@ -960,7 +1025,7 @@ mod tests {
                 "restart_policy",
                 "is_active",
                 "remove_restart_override",
-                "enable",
+                "restore_enabled",
                 "daemon_reload",
             ]
         );
@@ -989,7 +1054,7 @@ mod tests {
                 "restart_policy",
                 "is_active",
                 "remove_restart_override",
-                "enable",
+                "restore_enabled",
                 "daemon_reload",
             ]
         );
@@ -1042,7 +1107,7 @@ mod tests {
                 "restart_policy",
                 "signal_drain",
                 "remove_restart_override",
-                "enable",
+                "restore_enabled",
                 "daemon_reload",
             ]
         );
@@ -1138,7 +1203,7 @@ mod tests {
                 "enable",
                 "daemon_reload",
                 "write_restart_override",
-                "disable",
+                "restore_not_enabled",
                 "daemon_reload",
             ]
         );
@@ -1166,7 +1231,7 @@ mod tests {
                 "daemon_reload",
                 "signal_resume",
                 "write_restart_override",
-                "disable",
+                "restore_not_enabled",
                 "daemon_reload",
             ]
         );
@@ -1177,7 +1242,7 @@ mod tests {
         let unit = service_unit();
         let mut ops = FakeResumeOps {
             write_error: true,
-            disable_error: true,
+            restore_enablement_error: true,
             reload_errors: VecDeque::from([false, true]),
             signal_error: true,
             ..FakeResumeOps::default()
@@ -1191,7 +1256,7 @@ mod tests {
         assert!(message.contains("signal failed"));
         assert!(message.contains("additionally rollback failed"));
         assert!(message.contains("write failed"));
-        assert!(message.contains("disable failed"));
+        assert!(message.contains("restore enablement failed"));
         assert!(message.contains("reload failed"));
     }
 
@@ -1221,7 +1286,7 @@ mod tests {
                 "daemon_reload",
                 "signal_resume",
                 "write_restart_override",
-                "disable",
+                "restore_not_enabled",
                 "daemon_reload",
             ]
         );
@@ -1249,7 +1314,7 @@ mod tests {
                 "enable",
                 "daemon_reload",
                 "signal_resume",
-                "disable",
+                "restore_not_enabled",
                 "daemon_reload",
             ]
         );

@@ -488,13 +488,52 @@ fn cleanup_unit_active_state_from_output(
     )
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum SystemdUnitEnablement {
+    Enabled,
+    EnabledRuntime,
+    NotEnabled,
+}
+
+impl SystemdUnitEnablement {
+    fn is_enabled(self) -> bool {
+        matches!(self, Self::Enabled | Self::EnabledRuntime)
+    }
+}
+
+/// Read the unit-file enablement state needed for exact lifecycle rollback.
+pub(super) async fn read_unit_enablement(
+    unit: &RunnerServiceUnit,
+) -> RunnerResult<SystemdUnitEnablement> {
+    read_unit_enablement_bounded(unit, SYSTEMCTL_QUERY_TIMEOUT).await
+}
+
+pub(super) async fn restore_unit_enablement(
+    unit: &RunnerServiceUnit,
+    enablement: SystemdUnitEnablement,
+) -> RunnerResult<()> {
+    match enablement {
+        SystemdUnitEnablement::Enabled => {
+            run_systemctl(&["enable", "--no-reload", unit.service_name()]).await
+        }
+        SystemdUnitEnablement::EnabledRuntime => {
+            run_systemctl(&["enable", "--runtime", "--no-reload", unit.service_name()]).await
+        }
+        SystemdUnitEnablement::NotEnabled => {
+            run_systemctl(&["disable", "--no-reload", unit.service_name()]).await
+        }
+    }
+}
+
 /// Check whether systemd reports a unit file as enabled.
 ///
 /// Returns `true` for both the persistent `enabled` state and the transient
 /// `enabled-runtime` state. This does not indicate whether the unit is active
 /// or whether it will remain enabled after a reboot.
 pub(crate) async fn is_unit_enabled(unit: &RunnerServiceUnit) -> RunnerResult<bool> {
-    is_unit_enabled_bounded(unit, SYSTEMCTL_QUERY_TIMEOUT).await
+    read_unit_enablement(unit)
+        .await
+        .map(SystemdUnitEnablement::is_enabled)
 }
 
 /// Check whether systemd reports a unit file as enabled.
@@ -506,9 +545,18 @@ pub(super) async fn is_unit_enabled_bounded(
     unit: &RunnerServiceUnit,
     duration: Duration,
 ) -> RunnerResult<bool> {
+    read_unit_enablement_bounded(unit, duration)
+        .await
+        .map(SystemdUnitEnablement::is_enabled)
+}
+
+async fn read_unit_enablement_bounded(
+    unit: &RunnerServiceUnit,
+    duration: Duration,
+) -> RunnerResult<SystemdUnitEnablement> {
     let svc = unit.service_name();
     let output = run_command_output_bounded("systemctl", &["is-enabled", svc], duration).await?;
-    unit_enabled_from_systemctl_is_enabled(svc, &output.status, &output.stdout, &output.stderr)
+    unit_enablement_from_systemctl_is_enabled(svc, &output.status, &output.stdout, &output.stderr)
 }
 
 /// Check whether systemd currently reports a main process for a unit.
@@ -869,12 +917,12 @@ fn systemctl_cat_status_error(svc: &str, status: &ExitStatus, stderr: &str) -> R
     }
 }
 
-fn unit_enabled_from_systemctl_is_enabled(
+fn unit_enablement_from_systemctl_is_enabled(
     svc: &str,
     status: &ExitStatus,
     stdout: &[u8],
     stderr: &[u8],
-) -> RunnerResult<bool> {
+) -> RunnerResult<SystemdUnitEnablement> {
     let state = std::str::from_utf8(stdout).map_err(|e| {
         RunnerError::Internal(format!(
             "systemctl is-enabled {svc} returned non-UTF-8 output: {e}"
@@ -882,9 +930,12 @@ fn unit_enabled_from_systemctl_is_enabled(
     })?;
     let state = state.trim();
     match state {
-        "enabled" | "enabled-runtime" => Ok(true),
+        "enabled" => Ok(SystemdUnitEnablement::Enabled),
+        "enabled-runtime" => Ok(SystemdUnitEnablement::EnabledRuntime),
         "alias" | "disabled" | "generated" | "indirect" | "linked" | "linked-runtime"
-        | "masked" | "masked-runtime" | "not-found" | "static" | "transient" => Ok(false),
+        | "masked" | "masked-runtime" | "not-found" | "static" | "transient" => {
+            Ok(SystemdUnitEnablement::NotEnabled)
+        }
         "" if !status.success() => Err(systemctl_is_enabled_status_error(svc, status, stderr)),
         other if !status.success() => Err(RunnerError::Internal(format!(
             "unknown UnitFileState for {svc}: {other:?}; {}",
@@ -894,6 +945,17 @@ fn unit_enabled_from_systemctl_is_enabled(
             "unknown UnitFileState for {svc}: {other:?}"
         ))),
     }
+}
+
+#[cfg(test)]
+fn unit_enabled_from_systemctl_is_enabled(
+    svc: &str,
+    status: &ExitStatus,
+    stdout: &[u8],
+    stderr: &[u8],
+) -> RunnerResult<bool> {
+    unit_enablement_from_systemctl_is_enabled(svc, status, stdout, stderr)
+        .map(SystemdUnitEnablement::is_enabled)
 }
 
 fn systemctl_is_enabled_status_error(svc: &str, status: &ExitStatus, stderr: &[u8]) -> RunnerError {
@@ -1667,6 +1729,22 @@ mod tests {
                 .unwrap()
             );
         }
+    }
+
+    #[test]
+    fn unit_enablement_preserves_runtime_only_state() {
+        use std::os::unix::process::ExitStatusExt;
+
+        let status = ExitStatus::from_raw(0);
+        let enablement = unit_enablement_from_systemctl_is_enabled(
+            "vm0-runner-test.service",
+            &status,
+            b"enabled-runtime\n",
+            b"",
+        )
+        .unwrap();
+
+        assert_eq!(enablement, SystemdUnitEnablement::EnabledRuntime);
     }
 
     #[test]
