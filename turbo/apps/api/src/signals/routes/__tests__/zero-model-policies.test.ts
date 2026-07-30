@@ -9,6 +9,7 @@ import {
   type UpdateOrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
+import { zeroModelProviderConnectionsMainContract } from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
 import { zeroUserModelPreferenceContract } from "@vm0/api-contracts/contracts/zero-user-model-preference";
 
 import { createApp } from "../../../app-factory";
@@ -42,6 +43,7 @@ function toUpdate(data: OrgModelPoliciesResponse): UpdateOrgModelPolicy[] {
       defaultProviderType: policy.defaultProviderType,
       credentialScope: policy.credentialScope,
       modelProviderId: policy.modelProviderId,
+      modelProviderSurfaceId: policy.modelProviderSurfaceId ?? null,
     };
   });
 }
@@ -382,6 +384,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   it("normalizes retired GPT policy writes to Luna", async () => {
     const fixture = await seedFixture();
     useSession(fixture);
+    const providerId = await createOrgProvider(fixture, "openrouter-codex");
 
     const response = await accept(
       apiClient().update({
@@ -393,7 +396,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
               isDefault: true,
               defaultProviderType: "openrouter-codex",
               credentialScope: "org",
-              modelProviderId: null,
+              modelProviderId: providerId,
             },
             {
               model: "gpt-5.4-mini",
@@ -417,9 +420,9 @@ describe("GET/PUT /api/zero/model-policies", () => {
       expect.objectContaining({
         model: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
         isDefault: true,
-        defaultProviderType: "vm0",
+        defaultProviderType: "openrouter-codex",
         credentialScope: "org",
-        modelProviderId: null,
+        modelProviderId: providerId,
       }),
     );
   });
@@ -800,8 +803,132 @@ describe("GET/PUT /api/zero/model-policies", () => {
     });
   });
 
+  it("preserves an omitted custom gateway surface and clears an explicit null", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const gatewayClient = setupApp({ context })(
+      zeroModelProviderConnectionsMainContract,
+    );
+    const created = await accept(
+      gatewayClient.create({
+        headers: authHeaders(),
+        body: {
+          displayName: "Company Gateway",
+          secret: "gateway-secret",
+          surfaces: [
+            {
+              protocol: "anthropic-messages",
+              apiBaseUrl: "https://gateway.example.com/anthropic",
+              authHeaderName: "Authorization",
+              authHeaderTemplate: "Bearer {{secret}}",
+              modelMappings: {
+                "claude-sonnet-5": "company-sonnet-production",
+              },
+            },
+          ],
+        },
+      }),
+      [201],
+    );
+    const surfaceId = created.body.surfaces[0]?.id;
+    if (!surfaceId) {
+      throw new Error("Expected custom gateway surface");
+    }
+
+    const client = apiClient();
+    const listed = await accept(client.list({ headers: authHeaders() }), [200]);
+    const updates = toUpdate(listed.body).map((policy) => {
+      return policy.model === "claude-sonnet-5"
+        ? {
+            ...policy,
+            defaultProviderType: "vercel-ai-gateway" as const,
+            credentialScope: "org" as const,
+            modelProviderId: null,
+            modelProviderSurfaceId: surfaceId,
+          }
+        : policy;
+    });
+
+    const updated = await accept(
+      client.update({
+        headers: authHeaders(),
+        body: { policies: updates },
+      }),
+      [200],
+    );
+    const sonnet = updated.body.policies.find((policy) => {
+      return policy.model === "claude-sonnet-5";
+    });
+
+    expect(sonnet).toMatchObject({
+      defaultProviderType: "vercel-ai-gateway",
+      credentialScope: "org",
+      modelProviderId: null,
+      modelProviderSurfaceId: surfaceId,
+      routeStatus: "valid",
+    });
+
+    const previousClientPolicies = updated.body.policies.map((policy) => {
+      return {
+        model: policy.model,
+        isDefault: policy.isDefault,
+        defaultProviderType: policy.defaultProviderType,
+        credentialScope: policy.credentialScope,
+        modelProviderId: policy.modelProviderId,
+      };
+    });
+    const roundTripped = await accept(
+      client.update({
+        headers: authHeaders(),
+        body: { policies: previousClientPolicies },
+      }),
+      [200],
+    );
+    expect(
+      roundTripped.body.policies.find((policy) => {
+        return policy.model === "claude-sonnet-5";
+      }),
+    ).toMatchObject({
+      defaultProviderType: "vercel-ai-gateway",
+      credentialScope: "org",
+      modelProviderId: null,
+      modelProviderSurfaceId: surfaceId,
+      routeStatus: "valid",
+    });
+
+    const clearedPolicies = toUpdate(roundTripped.body).map((policy) => {
+      return policy.model === "claude-sonnet-5"
+        ? {
+            ...policy,
+            defaultProviderType: "vm0" as const,
+            credentialScope: "org" as const,
+            modelProviderId: null,
+            modelProviderSurfaceId: null,
+          }
+        : policy;
+    });
+    const cleared = await accept(
+      client.update({
+        headers: authHeaders(),
+        body: { policies: clearedPolicies },
+      }),
+      [200],
+    );
+    expect(
+      cleared.body.policies.find((policy) => {
+        return policy.model === "claude-sonnet-5";
+      }),
+    ).toMatchObject({
+      defaultProviderType: "vm0",
+      credentialScope: "org",
+      modelProviderId: null,
+      modelProviderSurfaceId: null,
+      routeStatus: "valid",
+    });
+  });
+
   it.each(["openrouter-codex", "vercel-ai-gateway-codex"] as const)(
-    "rejects unsupported GPT 5.6 %s provider routes",
+    "allows current GPT 5.6 %s provider routes",
     async (providerType) => {
       const fixture = await seedFixture();
       useSession(fixture);
@@ -823,17 +950,22 @@ describe("GET/PUT /api/zero/model-policies", () => {
         };
       });
 
-      const response = await client.update({
-        headers: authHeaders(),
-        body: { policies: updates },
+      const response = await accept(
+        client.update({
+          headers: authHeaders(),
+          body: { policies: updates },
+        }),
+        [200],
+      );
+      const policy = response.body.policies.find(({ model }) => {
+        return model === "gpt-5.6-sol";
       });
 
-      expect(response.status).toBe(400);
-      expect(response.body).toStrictEqual({
-        error: {
-          message: `Model "gpt-5.6-sol" is not supported by provider "${providerType}"`,
-          code: "BAD_REQUEST",
-        },
+      expect(policy).toMatchObject({
+        defaultProviderType: providerType,
+        credentialScope: "org",
+        modelProviderId: providerId,
+        routeStatus: "valid",
       });
     },
   );

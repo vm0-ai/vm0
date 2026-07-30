@@ -15,6 +15,7 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { modelProviders } from "@vm0/db/schema/model-provider";
+import { modelProviderConnections } from "@vm0/db/schema/model-provider-gateway";
 import { secrets } from "@vm0/db/schema/secret";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 
@@ -25,6 +26,7 @@ import { nowDate } from "../external/time";
 import { encryptStoredSecretValue } from "./crypto.utils";
 import { lockModelProviderState } from "./auth-state-lock.service";
 import { userFeatureSwitchContext } from "./feature-switches.service";
+import { modelProviderGatewaySchemaAvailable } from "./model-provider-gateway-schema.service";
 
 const L = logger("zero-model-provider.service");
 
@@ -139,8 +141,10 @@ type NotFoundResponse = ReturnType<typeof notFound>;
  * Delete a user-level model provider and cascade-delete its secrets.
  *
  * Delete behavior:
- *   - Legacy single-secret providers: deleting the secret cascades the
- *     model_provider row via FK (`onDelete: "cascade"` at the schema).
+ *   - Legacy single-secret providers: deleting an unshared secret cascades the
+ *     model_provider row via FK (`onDelete: "cascade"` at the schema). During
+ *     gateway migration, a shared secret is retained and only the old provider
+ *     row is deleted.
  *   - Multi-auth providers: deletes the per-auth-method secrets by name,
  *     then deletes the model_provider row explicitly.
  *
@@ -158,6 +162,9 @@ export const deleteUserModelProvider$ = command(
     signal: AbortSignal,
   ): Promise<NotFoundResponse | undefined> => {
     const writeDb = set(writeDb$);
+    const gatewaySchemaAvailable =
+      await modelProviderGatewaySchemaAvailable(writeDb);
+    signal.throwIfAborted();
 
     return await writeDb.transaction(async (tx) => {
       await lockModelProviderState(tx, {
@@ -190,7 +197,20 @@ export const deleteUserModelProvider$ = command(
       }
 
       if (provider.secretId) {
-        await tx.delete(secrets).where(eq(secrets.id, provider.secretId));
+        const [gatewayReference] = gatewaySchemaAvailable
+          ? await tx
+              .select({ id: modelProviderConnections.id })
+              .from(modelProviderConnections)
+              .where(eq(modelProviderConnections.secretId, provider.secretId))
+              .limit(1)
+          : [];
+        if (gatewayReference) {
+          await tx
+            .delete(modelProviders)
+            .where(eq(modelProviders.id, provider.id));
+        } else {
+          await tx.delete(secrets).where(eq(secrets.id, provider.secretId));
+        }
         signal.throwIfAborted();
       } else {
         if (provider.authMethod) {

@@ -109,6 +109,7 @@ import { zeroMailRoutes } from "./routes/zero-mail";
 import { zeroMapsRoutes } from "./routes/zero-maps";
 import { zeroWeatherRoutes } from "./routes/zero-weather";
 import { zeroModelPoliciesRoutes } from "./routes/zero-model-policies";
+import { zeroModelProviderGatewayRoutes } from "./routes/zero-model-provider-gateways";
 import { zeroModelProvidersRoutes } from "./routes/zero-model-providers";
 import { zeroOnboardingCompleteRoutes } from "./routes/zero-onboarding-complete";
 import { zeroOnboardingStatusRoutes } from "./routes/zero-onboarding-status";
@@ -313,6 +314,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroBrowserRoutes,
   ...zeroBrowserAuthorizationRoutes,
   ...zeroModelPoliciesRoutes,
+  ...zeroModelProviderGatewayRoutes,
   ...zeroModelProvidersRoutes,
   ...zeroMeModelProvidersDeleteRoutes,
   ...zeroMeModelProvidersListRoutes,

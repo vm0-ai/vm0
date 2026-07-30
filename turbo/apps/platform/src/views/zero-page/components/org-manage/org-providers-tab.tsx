@@ -3,6 +3,7 @@
 import { useGet, useLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { orgConfiguredProviders$ } from "../../../../signals/zero-page/settings/org-model-providers.ts";
 import { openClaudeCodeDeviceAuthDialog$ } from "../../../../signals/zero-page/settings/claude-code-device-auth.ts";
 import { openCodexDeviceAuthDialog$ } from "../../../../signals/zero-page/settings/codex-device-auth.ts";
@@ -18,14 +19,21 @@ import {
   PersonalCodexDeviceAuthDialog,
 } from "../settings/codex-device-auth-dialog.tsx";
 import { OrgModelPoliciesSection } from "./org-model-policies-section.tsx";
+import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
+import { ModelProviderConnectionsSection } from "./model-provider-connections-section.tsx";
 
 export function OrgProvidersTab() {
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
+  const customModelGatewaysEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.CustomModelGateways] ?? false;
 
   return (
     <div className="flex flex-col gap-8">
+      {isAdmin && customModelGatewaysEnabled && (
+        <ModelProviderConnectionsSection />
+      )}
       {isAdmin && <OrgModelPoliciesSection />}
       <StaleBannerSection />
       <ClaudeCodeDeviceAuthDialog />
