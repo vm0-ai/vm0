@@ -607,10 +607,10 @@ describe("network insights page", () => {
             services: [],
             permissions: [
               {
-                label: "repo-read",
+                label: "github",
                 connectorType: "github",
-                allowed: 1,
-                denied: 0,
+                allowed: 0,
+                denied: 1,
                 agentNames: ["Research Bot"],
               },
             ],
