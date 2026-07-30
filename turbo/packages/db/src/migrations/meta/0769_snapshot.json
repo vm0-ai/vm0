@@ -3231,6 +3231,72 @@
           "primaryKey": false,
           "notNull": true
         },
+        "billing_run_id": {
+          "name": "billing_run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "browser_cost_microusd": {
+          "name": "browser_cost_microusd",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "proxy_cost_microusd": {
+          "name": "proxy_cost_microusd",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "proxy_used_mb": {
+          "name": "proxy_used_mb",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'0'"
+        },
+        "pricing_unit_price": {
+          "name": "pricing_unit_price",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "pricing_unit_size": {
+          "name": "pricing_unit_size",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "gross_credits": {
+          "name": "gross_credits",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "credits_charged": {
+          "name": "credits_charged",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "usage_event_id": {
+          "name": "usage_event_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "settled_at": {
+          "name": "settled_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
         "last_touched_at": {
           "name": "last_touched_at",
           "type": "timestamp",
@@ -3365,6 +3431,19 @@
             "id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "browser_session_instances_usage_event_id_usage_event_id_fk": {
+          "name": "browser_session_instances_usage_event_id_usage_event_id_fk",
+          "tableFrom": "browser_session_instances",
+          "tableTo": "usage_event",
+          "columnsFrom": [
+            "usage_event_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
@@ -3503,6 +3582,27 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true
+        },
+        "max_credits": {
+          "name": "max_credits",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "gross_credits": {
+          "name": "gross_credits",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "credits_charged": {
+          "name": "credits_charged",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         },
         "suspended_at": {
           "name": "suspended_at",
