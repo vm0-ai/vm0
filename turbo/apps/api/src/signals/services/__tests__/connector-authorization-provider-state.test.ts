@@ -97,7 +97,7 @@ describe("connector OAuth device provider state", () => {
     }).toThrow("OAuth device provider state connector type mismatch");
   });
 
-  it("serializes the exact legacy-only state with poll state", () => {
+  it("serializes and parses the exact canonical-only state with poll state", () => {
     const serializedState = serializeConnectorOauthDeviceProviderState({
       connectorSlug,
       deviceCode: "device-code",
@@ -105,19 +105,42 @@ describe("connector OAuth device provider state", () => {
     });
 
     expect(serializedState).toBe(
-      '{"connectorType":"slack","deviceCode":"device-code","pollState":"poll-state"}',
+      '{"connectorSlug":"slack","deviceCode":"device-code","pollState":"poll-state"}',
     );
-    expect(serializedState).not.toContain("connectorSlug");
+    expect(serializedState).not.toContain("connectorType");
+    expect(
+      parseConnectorOauthDeviceProviderState({
+        serializedState,
+        connectorSlug,
+      }),
+    ).toStrictEqual({
+      connectorSlug,
+      deviceCode: "device-code",
+      pollState: "poll-state",
+    });
   });
 
-  it("omits absent poll state from the legacy-only state", () => {
+  it("omits absent poll state from the canonical-only state", () => {
+    const serializedState = serializeConnectorOauthDeviceProviderState({
+      connectorSlug,
+      deviceCode: "device-code",
+      pollState: undefined,
+    });
+
+    expect(serializedState).toBe(
+      '{"connectorSlug":"slack","deviceCode":"device-code"}',
+    );
+    expect(serializedState).not.toContain("connectorType");
     expect(
-      serializeConnectorOauthDeviceProviderState({
+      parseConnectorOauthDeviceProviderState({
+        serializedState,
         connectorSlug,
-        deviceCode: "device-code",
-        pollState: undefined,
       }),
-    ).toBe('{"connectorType":"slack","deviceCode":"device-code"}');
+    ).toStrictEqual({
+      connectorSlug,
+      deviceCode: "device-code",
+      pollState: undefined,
+    });
   });
 });
 
@@ -212,7 +235,7 @@ describe("connector external-code provider state", () => {
     }).toThrow("External-code provider state connector method mismatch");
   });
 
-  it("serializes the exact legacy-only state", () => {
+  it("serializes and parses the exact canonical-only state", () => {
     const serializedState = serializeConnectorExternalCodeProviderState({
       connectorSlug,
       authMethod,
@@ -220,8 +243,19 @@ describe("connector external-code provider state", () => {
     });
 
     expect(serializedState).toBe(
-      '{"connectorType":"slack","authMethod":"oauth","providerState":"provider-state"}',
+      '{"connectorSlug":"slack","authMethod":"oauth","providerState":"provider-state"}',
     );
-    expect(serializedState).not.toContain("connectorSlug");
+    expect(serializedState).not.toContain("connectorType");
+    expect(
+      parseConnectorExternalCodeProviderState({
+        serializedState,
+        connectorSlug,
+        authMethod,
+      }),
+    ).toStrictEqual({
+      connectorSlug,
+      authMethod,
+      providerState: "provider-state",
+    });
   });
 });

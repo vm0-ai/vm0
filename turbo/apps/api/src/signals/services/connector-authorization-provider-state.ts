@@ -96,9 +96,8 @@ export function serializeConnectorOauthDeviceProviderState(args: {
   readonly deviceCode: string;
   readonly pollState: string | undefined;
 }): string {
-  // #24075 switches this legacy-only writer after the prepared reader deploys.
   return JSON.stringify({
-    connectorType: args.connectorSlug,
+    connectorSlug: args.connectorSlug,
     deviceCode: args.deviceCode,
     ...(args.pollState === undefined ? {} : { pollState: args.pollState }),
   });
@@ -126,9 +125,8 @@ export function serializeConnectorExternalCodeProviderState(args: {
   readonly authMethod: ConnectorAuthMethodId;
   readonly providerState: string;
 }): string {
-  // #24075 switches this legacy-only writer after the prepared reader deploys.
   return JSON.stringify({
-    connectorType: args.connectorSlug,
+    connectorSlug: args.connectorSlug,
     authMethod: args.authMethod,
     providerState: args.providerState,
   });
