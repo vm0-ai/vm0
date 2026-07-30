@@ -1,6 +1,6 @@
 {
-  "id": "f7869862-4392-4b2c-b26f-5279e3731ed6",
-  "prevId": "287bcd78-4532-496e-939f-88f0bacff51f",
+  "id": "579dee19-3859-4d09-a547-cbceb62db281",
+  "prevId": "f7869862-4392-4b2c-b26f-5279e3731ed6",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3213,17 +3213,29 @@
           "primaryKey": false,
           "notNull": true
         },
-        "billing_run_id": {
-          "name": "billing_run_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "status": {
           "name": "status",
           "type": "varchar(20)",
           "primaryKey": false,
           "notNull": true
+        },
+        "timeout_at": {
+          "name": "timeout_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "billing_run_id": {
+          "name": "billing_run_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
         },
         "browser_cost_microusd": {
           "name": "browser_cost_microusd",
@@ -3279,17 +3291,11 @@
           "primaryKey": false,
           "notNull": false
         },
-        "timeout_at": {
-          "name": "timeout_at",
+        "settled_at": {
+          "name": "settled_at",
           "type": "timestamp",
           "primaryKey": false,
-          "notNull": true
-        },
-        "started_at": {
-          "name": "started_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "last_touched_at": {
           "name": "last_touched_at",
@@ -3313,12 +3319,6 @@
         },
         "finished_at": {
           "name": "finished_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "settled_at": {
-          "name": "settled_at",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": false
@@ -4344,11 +4344,11 @@
           "method": "btree",
           "with": {}
         },
-        "chat_events_revokes_message_id_unique": {
-          "name": "chat_events_revokes_message_id_unique",
+        "chat_events_revokes_event_id_unique": {
+          "name": "chat_events_revokes_event_id_unique",
           "columns": [
             {
-              "expression": "revokes_message_id",
+              "expression": "revokes_event_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4359,11 +4359,11 @@
           "method": "btree",
           "with": {}
         },
-        "chat_events_revokes_event_id_unique": {
-          "name": "chat_events_revokes_event_id_unique",
+        "chat_events_revokes_message_id_unique": {
+          "name": "chat_events_revokes_message_id_unique",
           "columns": [
             {
-              "expression": "revokes_event_id",
+              "expression": "revokes_message_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -5200,15 +5200,15 @@
           "notNull": true,
           "default": "now()"
         },
-        "last_chat_message_seq_id": {
-          "name": "last_chat_message_seq_id",
+        "last_chat_event_seq_id": {
+          "name": "last_chat_event_seq_id",
           "type": "bigint",
           "primaryKey": false,
           "notNull": true,
           "default": 0
         },
-        "last_chat_event_seq_id": {
-          "name": "last_chat_event_seq_id",
+        "last_chat_message_seq_id": {
+          "name": "last_chat_message_seq_id",
           "type": "bigint",
           "primaryKey": false,
           "notNull": true,
@@ -12481,6 +12481,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "aggregated_at": {
+          "name": "aggregated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {

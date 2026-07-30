@@ -162,14 +162,17 @@
           ? "ja-JP"
           : /^ko(?:-|$)/i.test(navigator.language)
             ? "ko-KR"
-            : /^pt(?:-|$)/i.test(navigator.language)
-              ? "pt-BR"
-              : "en-US";
+            : /^id(?:-|$)/i.test(navigator.language)
+              ? "id-ID"
+              : /^pt(?:-|$)/i.test(navigator.language)
+                ? "pt-BR"
+                : "en-US";
         var locale =
           cached === "en-US" ||
           cached === "pt-BR" ||
           cached === "ja-JP" ||
-          cached === "ko-KR"
+          cached === "ko-KR" ||
+          cached === "id-ID"
             ? cached
             : browserLocale;
         var copyByLocale = {
@@ -379,6 +382,58 @@
               description:
                 "Zero는 vm0의 AI 팀원입니다. Zero에 텍스트를 보내거나 웹에서 채팅하세요 — 리서치, 이메일, 문서, Slack, GitHub, Notion 및 100개 이상의 도구를 지원합니다.",
               title: "Zero — vm0의 AI 팀원",
+            },
+          },
+          "id-ID": {
+            browserUpgrade: {
+              browser: {
+                actionLabel: "Perbarui browser",
+                description:
+                  "Zero tidak mendukung versi browser Anda saat ini. Perbarui browser Anda untuk melanjutkan.",
+                title: "Perbarui browser Anda untuk melanjutkan",
+              },
+              chrome: {
+                actionLabel: "Perbarui Chrome",
+                description:
+                  "Zero tidak mendukung versi Chrome Anda saat ini. Perbarui Chrome untuk melanjutkan.",
+                title: "Perbarui Chrome untuk melanjutkan",
+              },
+              chromium: {
+                actionLabel: "Perbarui Chromium",
+                description:
+                  "Zero tidak mendukung versi Chromium Anda saat ini. Perbarui Chromium untuk melanjutkan.",
+                title: "Perbarui Chromium untuk melanjutkan",
+              },
+              ios: {
+                actionLabel: "Perbarui iOS",
+                description:
+                  "Zero tidak mendukung versi iOS Anda saat ini. Perbarui iOS untuk melanjutkan.",
+                title: "Perbarui iOS untuk melanjutkan",
+              },
+              safari: {
+                actionLabel: "Perbarui Safari",
+                description:
+                  "Zero tidak mendukung versi Safari Anda saat ini. Perbarui Safari untuk melanjutkan.",
+                title: "Perbarui Safari untuk melanjutkan",
+              },
+            },
+            loading: {
+              ariaLabel: "Memuat ruang kerja Anda",
+              messages: [
+                "Sedang memanaskan neuron...",
+                "Sedang meracik ide...",
+                "Sedang menyiapkan semuanya...",
+                "Hampir sampai...",
+                "Memuat ruang kerja Anda...",
+                "Sedang menyetel instrumen...",
+                "Sedang menghubungkan titik-titik...",
+                "Sedang menyiapkan tim...",
+              ],
+            },
+            metadata: {
+              description:
+                "Zero adalah rekan kerja AI Anda dari vm0. Kirim pesan ke Zero atau chat di web — riset, email, dokumen, Slack, GitHub, Notion, dan 100+ alat.",
+              title: "Zero — Rekan kerja AI Anda dari vm0",
             },
           },
         };

@@ -5,6 +5,7 @@ export default defineConfig({
     globals: true,
     environment: "node",
     env: {
+      INDONESIAN_LOCALE_ROLLOUT_ENABLED: "true",
       TZ: "UTC",
     },
     setupFiles: ["./src/__tests__/env-stub.ts", "./src/__tests__/setup.ts"],

@@ -1,5 +1,31 @@
 # Changelog
 
+## [8.493.0](https://github.com/vm0-ai/vm0/compare/core-v8.492.0...core-v8.493.0) (2026-07-30)
+
+
+### Features
+
+* add admin-defined model gateway connections ([#23807](https://github.com/vm0-ai/vm0/issues/23807)) ([0632cb4](https://github.com/vm0-ai/vm0/commit/0632cb4e4dfda2c844a2531d6c13a3dd74b86e29))
+* **platform:** support indonesian locale ([#24046](https://github.com/vm0-ai/vm0/issues/24046)) ([3b13623](https://github.com/vm0-ai/vm0/commit/3b13623006743c44d874e51ed0b482084ccbe704))
+* **platform:** support korean locale ([#24054](https://github.com/vm0-ai/vm0/issues/24054)) ([244943c](https://github.com/vm0-ai/vm0/commit/244943cd45119c7a4975234e657ff9a7fbe5d963))
+
+
+### Bug Fixes
+
+* **platform:** keep pwa chat composer pinned above the keyboard ([#23986](https://github.com/vm0-ai/vm0/issues/23986)) ([28259bd](https://github.com/vm0-ai/vm0/commit/28259bd1e653e6bac02aa27d6eda17576a09fa67))
+
+
+### Refactoring
+
+* **api:** retire agent compose endpoints ([#24102](https://github.com/vm0-ai/vm0/issues/24102)) ([1d5211f](https://github.com/vm0-ai/vm0/commit/1d5211f68e541f99c1d7af3206ccc3f6909492df))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.253.0
+
 ## [8.492.0](https://github.com/vm0-ai/vm0/compare/core-v8.491.0...core-v8.492.0) (2026-07-30)
 
 
