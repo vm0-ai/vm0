@@ -57,7 +57,7 @@ start_server() {
   REQUEST_LOG="$scenario_dir/requests.log"
 
   coproc FIXTURE_SERVER {
-    python3 - "$scenario" "$REQUEST_LOG" <<'PY'
+    exec python3 - "$scenario" "$REQUEST_LOG" <<'PY'
 import json
 import sys
 import threading
