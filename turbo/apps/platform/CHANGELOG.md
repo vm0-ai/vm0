@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.657.1](https://github.com/vm0-ai/vm0/compare/app-v0.657.0...app-v0.657.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* **platform:** suppress safari outline on chat sidebar viewport ([#23824](https://github.com/vm0-ai/vm0/issues/23824)) ([b1fcb47](https://github.com/vm0-ai/vm0/commit/b1fcb47cca3dddf067f8f90ae36c58fc3d34c862))
+
 ## [0.657.0](https://github.com/vm0-ai/vm0/compare/app-v0.656.0...app-v0.657.0) (2026-07-29)
 
 
