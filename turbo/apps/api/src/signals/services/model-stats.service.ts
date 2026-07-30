@@ -142,12 +142,17 @@ function modelStatModelExpression() {
   )} ELSE ${sql`${modelColumn}`} END`.mapWith(pgTextDecoder);
 }
 
-function modelStatWindowSum(value: SQLWrapper, start: string, end: string) {
+function modelStatWindowSum(
+  value: SQLWrapper,
+  hourStart: SQLWrapper,
+  start: string,
+  end: string,
+) {
   return sql`COALESCE(
     ${sum(value)} FILTER (
       WHERE ${and(
-        gte(modelStat.hourStart, sql`${start}::timestamp`),
-        lt(modelStat.hourStart, sql`${end}::timestamp`),
+        gte(hourStart, sql`${start}::timestamp`),
+        lt(hourStart, sql`${end}::timestamp`),
       )}
     ),
     0
@@ -278,42 +283,57 @@ async function selectModelRankings(
   const previousStartParam = utcTimestampParam(previousStart);
   const previousEndParam = utcTimestampParam(previousEnd);
 
+  const normalizedModelStats = db
+    .select({
+      model: modelExpr.as("normalized_model"),
+      hourStart: modelStat.hourStart,
+      inputTokens: modelStat.inputTokens,
+      outputTokens: modelStat.outputTokens,
+      cacheReadInputTokens: modelStat.cacheReadInputTokens,
+      cacheCreationInputTokens: modelStat.cacheCreationInputTokens,
+      totalTokens: modelStat.totalTokens,
+    })
+    .from(modelStat)
+    .where(
+      and(
+        gte(modelStat.hourStart, sql`${previousStartParam}::timestamp`),
+        lt(modelStat.hourStart, sql`${windowEndParam}::timestamp`),
+        inArray(modelStat.model, modelStatsModelIds),
+      ),
+    )
+    .as("normalized_model_stats");
+
   const rankingPeriods = db.$with("ranking_periods").as(
     db
       .select({
-        model: modelExpr.as("ranking_model"),
+        model: normalizedModelStats.model,
         inputTokens: modelStatWindowSum(
-          sql`${modelStat.inputTokens} + ${modelStat.cacheReadInputTokens} + ${modelStat.cacheCreationInputTokens}`,
+          sql`${normalizedModelStats.inputTokens} + ${normalizedModelStats.cacheReadInputTokens} + ${normalizedModelStats.cacheCreationInputTokens}`,
+          normalizedModelStats.hourStart,
           windowStartParam,
           windowEndParam,
         ).as("input_tokens"),
         outputTokens: modelStatWindowSum(
-          modelStat.outputTokens,
+          normalizedModelStats.outputTokens,
+          normalizedModelStats.hourStart,
           windowStartParam,
           windowEndParam,
         ).as("output_tokens"),
         totalTokens: modelStatWindowSum(
-          modelStat.totalTokens,
+          normalizedModelStats.totalTokens,
+          normalizedModelStats.hourStart,
           windowStartParam,
           windowEndParam,
         ).as("total_tokens"),
         previousTotalTokens: modelStatWindowSum(
-          modelStat.totalTokens,
+          normalizedModelStats.totalTokens,
+          normalizedModelStats.hourStart,
           previousStartParam,
           previousEndParam,
         ).as("previous_total_tokens"),
       })
-      .from(modelStat)
-      .where(
-        and(
-          gte(modelStat.hourStart, sql`${previousStartParam}::timestamp`),
-          lt(modelStat.hourStart, sql`${windowEndParam}::timestamp`),
-          inArray(modelStat.model, modelStatsModelIds),
-        ),
-      )
-      .groupBy(({ model }) => {
-        return model;
-      }),
+      .from(normalizedModelStats)
+      .groupBy(normalizedModelStats.model),
   );
 
   const rows: ModelRankingRow[] = await db

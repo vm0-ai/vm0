@@ -568,22 +568,15 @@ function getDrizzleTableMetadata(
   return concreteDrizzleTableMetadata(checker, type, location);
 }
 
-export function getDrizzleTableMetadataForRead(
-  checker: TypeChecker,
-  node: Node,
-): DrizzleTableMetadata | undefined {
-  return getDrizzleTableMetadata(
-    checker,
-    checker.getTypeAtLocation(node),
-    node,
-  );
-}
-
 export function getDrizzleTableMetadataForWrite(
   checker: TypeChecker,
   node: Node,
 ): DrizzleTableMetadata | undefined {
-  const metadata = getDrizzleTableMetadataForRead(checker, node);
+  const metadata = getDrizzleTableMetadata(
+    checker,
+    checker.getTypeAtLocation(node),
+    node,
+  );
   if (metadata === undefined) {
     return undefined;
   }

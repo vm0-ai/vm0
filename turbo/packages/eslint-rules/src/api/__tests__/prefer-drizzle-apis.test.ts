@@ -770,76 +770,39 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
       `,
     },
     {
-      name: "selected grouping keeps ambiguous selections opaque",
+      name: "stable grouping expressions and input fields stay valid",
       code: `${drizzlePreamble}
         import { sql } from "drizzle-orm";
-        const fields = {
-          bucket: sql\`DATE(\${users.deletedAt})\`
-            .mapWith(String)
-            .as("bucket"),
-        };
-        const bucket = sql\`DATE(\${users.deletedAt})\`
-          .mapWith(String)
-          .as("bucket");
+        const bucket = sql\`DATE(\${users.deletedAt})\`.mapWith(String);
+        const selectedUsers = db
+          .select({ name: users.name })
+          .from(users)
+          .as("selected_users");
 
         db.select({
-          bucket: sql\`DATE(\${users.deletedAt})\`
-            .mapWith(String)
-            .as("id"),
-          normalized: sql\`LOWER(\${users.name})\`
-            .mapWith(String)
-            .as("normalized"),
-        }).from(users).groupBy(sql\`1\`);
+          bucket: bucket.as("bucket"),
+        }).from(users).groupBy(bucket);
         db.select({
-          bucket: sql\`DATE(\${users.deletedAt})\`
-            .mapWith(String)
-            .as("ctid"),
-        }).from(users).groupBy(sql\`1\`);
-        db.select({
-          first: sql\`DATE(\${users.deletedAt})\`
-            .mapWith(String)
-            .as("bucket"),
-          second: sql\`LOWER(\${users.name})\`
-            .mapWith(String)
-            .as("bucket"),
-        }).from(users).groupBy(sql\`1\`);
-        db.select({
-          bucket: sql\`DATE(\${users.deletedAt})\`.mapWith(String),
-        }).from(users).groupBy(sql\`1\`);
-        db.select({ ...fields }).from(users).groupBy(sql\`1\`);
-        db.select({ bucket }).from(users).groupBy(sql\`1\`);
-        db.select({
-          ["bucket"]: sql\`DATE(\${users.deletedAt})\`
-            .mapWith(String)
-            .as("bucket"),
-        }).from(users).groupBy(sql\`1\`);
+          name: selectedUsers.name,
+        }).from(selectedUsers).groupBy(({ name }) => name);
       `,
     },
     {
-      name: "selected grouping keeps indirect and multi-source chains opaque",
+      name: "unusual grouping shapes stay opaque",
       code: `${drizzlePreamble}
         import { eq, sql, type SQL } from "drizzle-orm";
         import { alias } from "drizzle-orm/pg-core";
         const otherUsers = alias(users, "other_users");
-        const rawSource: SQL = sql\`users\`;
-        const selectedUsers = db
-          .select({ id: users.id })
-          .from(users)
-          .as("selected_users");
-        const query = db
-          .select({
-            bucket: sql\`DATE(\${users.deletedAt})\`
-              .mapWith(String)
-              .as("bucket"),
-          })
-          .from(users);
-
-        query.groupBy(sql\`1\`);
-        db.select({
+        const selection = {
           bucket: sql\`DATE(\${users.deletedAt})\`
             .mapWith(String)
             .as("bucket"),
-        }).from(rawSource).groupBy(sql\`1\`);
+        };
+        const query = db.select(selection).from(users);
+        const rawSource: SQL = sql\`users\`;
+
+        query.groupBy(sql\`1\`);
+        db.select(selection).from(rawSource).groupBy(sql\`1\`);
         db.select({
           bucket: sql\`DATE(\${users.deletedAt})\`
             .mapWith(String)
@@ -852,40 +815,18 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           bucket: sql\`DATE(\${users.deletedAt})\`
             .mapWith(String)
             .as("bucket"),
-        }).from(selectedUsers).groupBy(sql\`1\`);
+        }).from(users).groupBy(({ bucket }) => sql\`LOWER(\${bucket})\`);
       `,
     },
     {
-      name: "selected grouping keeps non-equivalent and invalid forms opaque",
+      name: "non-equivalent and invalid grouping tags stay valid",
       code: `${drizzlePreamble}
         import { sql } from "drizzle-orm";
-        const selection = {
-          bucket: sql\`DATE(\${users.deletedAt})\`
-            .mapWith(String)
-            .as("bucket"),
-        };
-
-        db.select(selection).from(users).groupBy(sql\`1\`);
-        db.select({
-          bucket: sql\`DATE(\${users.deletedAt})\`
-            .mapWith(String)
-            .as("bucket"),
-        }).from(users).groupBy(({ bucket }) => bucket);
         db.select({
           bucket: sql\`DATE(\${users.deletedAt})\`
             .mapWith(String)
             .as("bucket"),
         }).from(users).groupBy(sql\`0\`);
-        db.select({
-          bucket: sql\`DATE(\${users.deletedAt})\`
-            .mapWith(String)
-            .as("bucket"),
-        }).from(users).groupBy(sql\`-1\`);
-        db.select({
-          bucket: sql\`DATE(\${users.deletedAt})\`
-            .mapWith(String)
-            .as("bucket"),
-        }).from(users).groupBy(sql\`1.5\`);
         db.select({
           bucket: sql\`DATE(\${users.deletedAt})\`
             .mapWith(String)
@@ -902,19 +843,6 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
             .as("bucket"),
         }).from(users).groupBy(sql\`UPPER(\${users.name})\`);
         db.select().from(users).orderBy(sql\`random()\`);
-
-        function fakeSql(
-          strings: TemplateStringsArray,
-          ...values: unknown[]
-        ): unknown {
-          return { strings, values };
-        }
-        const builder = {
-          groupBy(value: unknown): unknown {
-            return value;
-          },
-        };
-        builder.groupBy(fakeSql\`1\`);
       `,
     },
   ],
@@ -935,7 +863,7 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           .where(isNotNull(users.deletedAt))
           .groupBy(sql\`DATE(\${users.deletedAt})\`);
       `,
-      errors: [{ messageId: "selectedGrouping" }],
+      errors: [{ messageId: "unstableGrouping" }],
     },
     {
       name: "positional selected grouping with renamed sql import",
@@ -948,7 +876,7 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           id: users.id,
         }).from(users).groupBy(query\`1\`);
       `,
-      errors: [{ messageId: "selectedGrouping" }],
+      errors: [{ messageId: "unstableGrouping" }],
     },
     {
       name: "positional selected grouping with namespace sql import",
@@ -963,7 +891,37 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
             .as("weight"),
         }).from(users).groupBy(drizzle.sql\`1\`);
       `,
-      errors: [{ messageId: "selectedGrouping" }],
+      errors: [{ messageId: "unstableGrouping" }],
+    },
+    {
+      name: "computed output alias grouping",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select({
+          bucket: sql\`DATE(\${users.deletedAt})\`
+            .mapWith(String)
+            .as("bucket"),
+          normalized: sql\`LOWER(\${users.name})\`
+            .mapWith(String)
+            .as("normalized"),
+        })
+          .from(users)
+          .groupBy(({ bucket: selectedBucket, normalized }) => {
+            return [selectedBucket, normalized];
+          });
+      `,
+      errors: [{ messageId: "unstableGrouping" }],
+    },
+    {
+      name: "positional grouping of a direct column",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select({
+          id: users.id,
+          name: users.name,
+        }).from(users).groupBy(sql\`1\`);
+      `,
+      errors: [{ messageId: "unstableGrouping" }],
     },
     {
       name: "identity column wrappers use direct structured fields",
