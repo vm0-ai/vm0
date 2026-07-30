@@ -13,7 +13,6 @@ import { basename, join } from "path";
 import { tmpdir } from "os";
 import { http, HttpResponse } from "msw";
 import {
-  CLIENT_CAPABILITY_CONNECTOR_SLUG_IDENTITIES,
   CLIENT_REQUEST_ID_HEADER,
   CLIENT_SESSION_ID_HEADER,
   CLIENT_TYPE_CLI,
@@ -27,7 +26,7 @@ import chalk from "chalk";
 const PREPARE_URL = "http://localhost:3000/api/zero/uploads/prepare";
 const COMPLETE_URL = "http://localhost:3000/api/zero/uploads/complete";
 const PUT_URL = "https://mock-r2.test/upload-target";
-const CLI_VERSION = `0.0.0-test+${CLIENT_CAPABILITY_CONNECTOR_SLUG_IDENTITIES}`;
+const CLI_VERSION = "0.0.0-test";
 
 function requiredHeader(headers: Headers, name: string): string {
   const value = headers.get(name);
