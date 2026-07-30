@@ -279,6 +279,25 @@ describe("chat run queue", () => {
     });
   });
 
+  it("catches recovery changes after the initial detail read", async () => {
+    let detailReads = 0;
+    mockCancellationRecoveryQueue();
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
+      detailReads += 1;
+      return respond(200, {
+        lastReadAt: null,
+        cancellationRecoveryPending: detailReads > 1,
+      });
+    });
+
+    detachedSetupPage({ context, path: CHAT_PATH });
+
+    await expect(
+      screen.findByText(CANCELLATION_RECOVERY_COPY),
+    ).resolves.toBeInTheDocument();
+    expect(detailReads).toBeGreaterThanOrEqual(2);
+  });
+
   it("reloads recovery state on detail events and reconnect", async () => {
     let cancellationRecoveryPending = false;
     let detailReads = 0;
