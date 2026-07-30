@@ -25,7 +25,7 @@ function preMigrationDatabaseUrl(): string {
 }
 
 describe("custom model provider gateway rollout compatibility", () => {
-  it("keeps the real routes safe before migration 0755", async () => {
+  it("keeps the real routes safe before migration 0759", async () => {
     // This historical schema state cannot be created through the production
     // API. PostgreSQL's empty template database gives the real Hono route a
     // database where the additive gateway tables and policy column are absent.
