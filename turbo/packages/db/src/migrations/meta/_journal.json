@@ -5223,6 +5223,20 @@
       "when": 1785388482297,
       "tag": "0745_loving_greymalkin",
       "breakpoints": true
+    },
+    {
+      "idx": 746,
+      "version": "7",
+      "when": 1785391318185,
+      "tag": "0746_validate_draft_user_message_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 747,
+      "version": "7",
+      "when": 1785391344581,
+      "tag": "0747_retire_draft_content_columns",
+      "breakpoints": true
     }
   ]
 }

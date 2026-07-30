@@ -2845,7 +2845,9 @@ const CANONICAL_USER_MESSAGE_CONTRACT_MIGRATION = 730;
 const CANONICAL_USER_MESSAGE_CLEANUP_PREVIOUS_MIGRATION = 738;
 const CANONICAL_USER_MESSAGE_CLEANUP_MIGRATION = 739;
 const DRAFT_CONTENT_CLEANUP_PREVIOUS_MIGRATION = 744;
-const DRAFT_CONTENT_CLEANUP_MIGRATION = 745;
+const DRAFT_CONTENT_CONSTRAINT_ADD_MIGRATION = 745;
+const DRAFT_CONTENT_CONSTRAINT_VALIDATION_MIGRATION = 746;
+const DRAFT_CONTENT_CLEANUP_MIGRATION = 747;
 
 async function validateCanonicalUserMessageRolloutCompatibility(): Promise<void> {
   console.log("=== Validate canonical userMessage rollout compatibility ===\n");
@@ -3168,11 +3170,25 @@ async function validateDraftContentContraction(): Promise<void> {
 
   const testDb = "migration_draft_content_contraction_test";
   const testDbUrl = createTestDbUrl(testDb);
+  const fixture = {
+    agentId: "96000000-0000-4000-8000-000000000001",
+    existingThreadId: "97000000-0000-4000-8000-000000000001",
+    insertedThreadId: "97000000-0000-4000-8000-000000000002",
+    orgId: "draft-content-contraction-org",
+    userId: "draft-content-contraction-user",
+    insertedDraftUserId: "draft-content-contraction-insert-user",
+  } as const;
+  const canonicalDocument = JSON.stringify({
+    version: 1,
+    parts: [{ type: "text", text: "canonical draft" }],
+  });
   await createDatabase(testDb);
 
   const blocker = new Client({ connectionString: testDbUrl });
   const migrationClient = new Client({ connectionString: testDbUrl });
+  const trafficClient = new Client({ connectionString: testDbUrl });
   let blockerOpen = false;
+  let validationOpen = false;
 
   try {
     await runMigrationsUpTo(
@@ -3181,6 +3197,154 @@ async function validateDraftContentContraction(): Promise<void> {
     );
     await blocker.connect();
     await migrationClient.connect();
+    await trafficClient.connect();
+
+    await migrationClient.query(
+      `INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+       VALUES ($1, $2, 'draft-content-contraction', $3)`,
+      [fixture.agentId, fixture.userId, fixture.orgId],
+    );
+    await migrationClient.query(
+      `INSERT INTO "zero_agents" ("id", "org_id", "owner", "name")
+       VALUES ($1, $2, $3, 'draft-content-contraction')`,
+      [fixture.agentId, fixture.orgId, fixture.userId],
+    );
+    await migrationClient.query(
+      `INSERT INTO "chat_threads" (
+         "id",
+         "user_id",
+         "agent_compose_id",
+         "title"
+       )
+       VALUES ($1, $2, $3, 'existing draft thread')`,
+      [fixture.existingThreadId, fixture.userId, fixture.agentId],
+    );
+    await migrationClient.query(
+      `INSERT INTO "zero_agent_drafts" ("user_id", "org_id", "agent_id")
+       VALUES ($1, $2, $3)`,
+      [fixture.userId, fixture.orgId, fixture.agentId],
+    );
+
+    await applyMigrationsUpToInTransaction(
+      migrationClient,
+      DRAFT_CONTENT_CONSTRAINT_ADD_MIGRATION,
+    );
+
+    const migrationPidResult = await migrationClient.query<{
+      pid: number;
+    }>(`SELECT pg_backend_pid() AS pid`);
+    const migrationPid = migrationPidResult.rows[0]?.pid;
+    assert.ok(migrationPid);
+
+    await migrationClient.query("BEGIN");
+    validationOpen = true;
+    await applyMigrationsUpTo(
+      migrationClient,
+      DRAFT_CONTENT_CONSTRAINT_VALIDATION_MIGRATION,
+    );
+
+    const validationLocks = await trafficClient.query<{
+      mode: string;
+      relation: string;
+    }>(
+      `
+        SELECT
+          relation::regclass::text AS relation,
+          mode
+        FROM pg_locks
+        WHERE pid = $1
+          AND granted
+          AND relation IN (
+            'chat_threads'::regclass,
+            'zero_agent_drafts'::regclass
+          )
+          AND mode IN (
+            'ShareUpdateExclusiveLock',
+            'AccessExclusiveLock'
+          )
+        ORDER BY relation, mode
+      `,
+      [migrationPid],
+    );
+    assert.deepEqual(validationLocks.rows, [
+      {
+        mode: "ShareUpdateExclusiveLock",
+        relation: "chat_threads",
+      },
+      {
+        mode: "ShareUpdateExclusiveLock",
+        relation: "zero_agent_drafts",
+      },
+    ]);
+
+    // VALIDATE has completed its scans, but its transaction still holds the
+    // exact table locks until commit. Ordinary traffic must remain compatible
+    // with those locks without relying on validation scan timing.
+    await trafficClient.query(`SET statement_timeout = '2s'`);
+    const selectedThread = await trafficClient.query<{ id: string }>(
+      `SELECT "id" FROM "chat_threads" WHERE "id" = $1`,
+      [fixture.existingThreadId],
+    );
+    assert.deepEqual(selectedThread.rows, [{ id: fixture.existingThreadId }]);
+
+    const insertedThread = await trafficClient.query<{ id: string }>(
+      `INSERT INTO "chat_threads" (
+         "id",
+         "user_id",
+         "agent_compose_id",
+         "title",
+         "draft_user_message"
+       )
+       VALUES ($1, $2, $3, 'inserted during validation', $4::jsonb)
+       RETURNING "id"`,
+      [
+        fixture.insertedThreadId,
+        fixture.userId,
+        fixture.agentId,
+        canonicalDocument,
+      ],
+    );
+    assert.deepEqual(insertedThread.rows, [{ id: fixture.insertedThreadId }]);
+
+    const insertedDraft = await trafficClient.query<{ userId: string }>(
+      `INSERT INTO "zero_agent_drafts" (
+         "user_id",
+         "org_id",
+         "agent_id",
+         "draft_user_message"
+       )
+       VALUES ($1, $2, $3, $4::jsonb)
+       RETURNING "user_id" AS "userId"`,
+      [
+        fixture.insertedDraftUserId,
+        fixture.orgId,
+        fixture.agentId,
+        canonicalDocument,
+      ],
+    );
+    assert.deepEqual(insertedDraft.rows, [
+      { userId: fixture.insertedDraftUserId },
+    ]);
+
+    const updatedThread = await trafficClient.query(
+      `UPDATE "chat_threads"
+       SET "draft_user_message" = $2::jsonb
+       WHERE "id" = $1`,
+      [fixture.existingThreadId, canonicalDocument],
+    );
+    assert.equal(updatedThread.rowCount, 1);
+    const updatedDraft = await trafficClient.query(
+      `UPDATE "zero_agent_drafts"
+       SET "draft_user_message" = $4::jsonb
+       WHERE "user_id" = $1
+         AND "org_id" = $2
+         AND "agent_id" = $3`,
+      [fixture.userId, fixture.orgId, fixture.agentId, canonicalDocument],
+    );
+    assert.equal(updatedDraft.rowCount, 1);
+
+    await migrationClient.query("COMMIT");
+    validationOpen = false;
 
     await blocker.query("BEGIN");
     blockerOpen = true;
@@ -3244,16 +3408,20 @@ async function validateDraftContentContraction(): Promise<void> {
       }),
     );
   } finally {
+    if (validationOpen) {
+      await migrationClient.query("ROLLBACK");
+    }
     if (blockerOpen) {
       await blocker.query("ROLLBACK");
     }
     await blocker.end();
     await migrationClient.end();
+    await trafficClient.end();
     await dropDatabase(testDb);
   }
 
   console.log(
-    "   ✅ Cleanup validates without a blocking table scan, fails fast on lock contention, and removes both draftContent columns\n",
+    "   ✅ Validation permits live reads and writes, cleanup fails fast on lock contention, and both draftContent columns are removed\n",
   );
 }
 
