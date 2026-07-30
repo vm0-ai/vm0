@@ -1,10 +1,11 @@
 import { command } from "ccstate";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { and, eq } from "drizzle-orm";
 
-import { writeDb$ } from "../external/db";
+import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../external/time";
 import {
   publishCancelToRunnerGroup,
@@ -157,6 +158,23 @@ export function shouldDispatchCancelSideEffects(
   );
 }
 
+async function cancellationLifecyclePublished(
+  db: Db,
+  runId: string,
+): Promise<boolean> {
+  const [event] = await db
+    .select({ id: chatEvents.id })
+    .from(chatEvents)
+    .where(
+      and(
+        eq(chatEvents.runId, runId),
+        eq(chatEvents.runLifecycleEvent, "cancelled"),
+      ),
+    )
+    .limit(1);
+  return event !== undefined;
+}
+
 /**
  * Post-cancel side effects:
  *  - Notify the runner group to halt the cancelled run (if it was
@@ -234,8 +252,17 @@ export const dispatchCancelSideEffects$ = command(
 
     const chatCallbackId = await chatCallbackIdForRun(db, result.runId);
     signal.throwIfAborted();
+    // Once the callback's durable lifecycle marker exists, replay would only
+    // repeat its pre-marker work. The direct scheduler redrive below is enough.
+    const redriveCallbackId =
+      recoveryRedrive &&
+      chatCallbackId !== undefined &&
+      !(await cancellationLifecyclePublished(db, result.runId))
+        ? chatCallbackId
+        : undefined;
+    signal.throwIfAborted();
     const callbackResults =
-      recoveryRedrive && chatCallbackId === undefined
+      recoveryRedrive && redriveCallbackId === undefined
         ? []
         : await tapError(
             set(
@@ -245,7 +272,9 @@ export const dispatchCancelSideEffects$ = command(
                 runId: result.runId,
                 status: "failed",
                 error: "Run cancelled",
-                ...(recoveryRedrive ? { callbackId: chatCallbackId } : {}),
+                ...(redriveCallbackId !== undefined
+                  ? { redriveCallbackId }
+                  : {}),
               },
               signal,
             ),

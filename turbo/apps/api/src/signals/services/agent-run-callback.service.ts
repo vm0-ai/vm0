@@ -62,7 +62,7 @@ interface DispatchRunCallbacksInput {
   readonly status: TerminalCallbackStatus;
   readonly result?: Record<string, unknown>;
   readonly error?: string;
-  readonly callbackId?: string;
+  readonly redriveCallbackId?: string;
 }
 
 interface DispatchSingleCallbackInput {
@@ -350,7 +350,7 @@ export const dispatchRunCallbacks$ = command(
     input: DispatchRunCallbacksInput,
     signal: AbortSignal,
   ): Promise<DispatchResult[]> => {
-    const { db, runId, status, result, error, callbackId } = input;
+    const { db, runId, status, result, error, redriveCallbackId } = input;
     const [run] = await db
       .select({
         orgId: agentRuns.orgId,
@@ -381,10 +381,10 @@ export const dispatchRunCallbacks$ = command(
       .where(
         and(
           eq(agentRunCallbacks.runId, runId),
-          callbackId === undefined
+          redriveCallbackId === undefined
             ? undefined
-            : eq(agentRunCallbacks.id, callbackId),
-          callbackId === undefined
+            : eq(agentRunCallbacks.id, redriveCallbackId),
+          redriveCallbackId === undefined
             ? or(
                 eq(agentRunCallbacks.status, "pending"),
                 eq(agentRunCallbacks.status, "failed"),
@@ -434,7 +434,7 @@ export const dispatchRunCallbacks$ = command(
       signal.throwIfAborted();
       results.push(dispatchResult);
     }
-    if (callbackId === undefined) {
+    if (redriveCallbackId === undefined) {
       await tapError(
         set(
           continueGoalIfIdle$,
