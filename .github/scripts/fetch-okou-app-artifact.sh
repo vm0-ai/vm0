@@ -25,8 +25,6 @@ error_log="${work_dir}/aws-error.log"
 
 # R2 occasionally breaks a transfer mid-stream (IncompleteRead), which fails the
 # whole copy. Every copy here is idempotent, so retry before giving up.
-# Returns 0 on success, 2 when the object does not exist, 1 when the transfer
-# keeps failing.
 copy_with_retry() {
   local attempt=1
   while true; do
@@ -36,7 +34,8 @@ copy_with_retry() {
       return 0
     fi
     if grep -Eq '404|NotFound|Not Found|NoSuchKey' "$error_log"; then
-      return 2
+      cat "$error_log" >&2
+      return 1
     fi
     if (( attempt >= max_attempts )); then
       cat "$error_log" >&2
@@ -50,22 +49,9 @@ copy_with_retry() {
   done
 }
 
-archive_status=0
-copy_with_retry "$archive_uri" "$archive_path" || archive_status=$?
-
-if (( archive_status == 1 )); then
+if ! copy_with_retry "$archive_uri" "$archive_path"; then
   echo "app artifact archive download failed: $archive_uri" >&2
   exit 1
-fi
-
-if (( archive_status == 2 )); then
-  # Artifacts published before dist.tar.gz existed only have per-file objects.
-  echo "No archive at ${archive_uri}, downloading per-file artifact"
-  if ! copy_with_retry "${artifact_uri}/" "${destination}/" --recursive; then
-    echo "app artifact download failed: ${artifact_uri}/" >&2
-    exit 1
-  fi
-  exit 0
 fi
 
 tar -xzf "$archive_path" -C "$destination"
