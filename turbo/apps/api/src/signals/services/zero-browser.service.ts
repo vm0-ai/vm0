@@ -15,6 +15,7 @@ import {
   browserProfiles,
   browserSessionInstances,
   browserSessionResizeStates,
+  browserSessionTabSnapshots,
   browserSessions,
   browserThreadProfiles,
 } from "@vm0/db/schema/browser-session";
@@ -52,10 +53,16 @@ import {
   createBrowserUseSession,
   deleteBrowserUseProfile,
   getBrowserUseSession,
+  listBrowserUseTabUrls,
   resizeBrowserUseSession,
+  restoreBrowserUseTabUrls,
   stopBrowserUseSession,
   type BrowserUseSession,
 } from "./browser-use.service";
+import {
+  decryptPersistentSecretValue,
+  encryptPersistentSecretValue,
+} from "./crypto.utils";
 import {
   activePaidConcurrencySlots,
   cappedBaseConcurrencyLimit,
@@ -67,6 +74,7 @@ import { insertChatEvent } from "./zero-chat-event.service";
 const RECONCILE_BATCH_SIZE = 20;
 const PROVIDER_CLEANUP_TIMEOUT_MS = 30_000;
 const PROVIDER_START_LIFECYCLE_TIMEOUT_MS = 90_000;
+const BROWSER_TAB_SNAPSHOT_TIMEOUT_MS = 10_000;
 const STRANDED_START_GRACE_MS = 60_000;
 const MAX_PROVIDER_VALIDATION_ISSUES_TO_LOG = 10;
 const IDLE_LEASE_MS = ZERO_BROWSER_IDLE_LEASE_MINUTES * 60_000;
@@ -86,9 +94,10 @@ const TERMINAL_RUN_STATUSES = [
   "cancelled",
 ] as const;
 const L = logger("ZeroBrowser");
-const browserResizeStateAvailabilitySchema = z.object({
+const browserCompanionTableAvailabilitySchema = z.object({
   available: z.boolean(),
 });
+const browserTabSnapshotSchema = z.array(z.string().max(8192)).max(50);
 
 type BrowserSessionRow = typeof browserSessions.$inferSelect;
 type BrowserInstanceRow = typeof browserSessionInstances.$inferSelect;
@@ -308,7 +317,25 @@ async function browserResizeStateTableAvailable(
       SELECT to_regclass('public.browser_session_resize_states') IS NOT NULL
         AS "available"
     `,
-    browserResizeStateAvailabilitySchema,
+    browserCompanionTableAvailabilitySchema,
+  );
+  signal.throwIfAborted();
+  return state?.available ?? false;
+}
+
+async function browserTabSnapshotTableAvailable(
+  db: Db,
+  signal: AbortSignal,
+): Promise<boolean> {
+  // This probe keeps the current API safe when it deploys before migration
+  // 0749. Remove it after 0749 is guaranteed everywhere and rollback closes.
+  const [state] = await executeRawRows(
+    db,
+    sql`
+      SELECT to_regclass('public.browser_session_tab_snapshots') IS NOT NULL
+        AS "available"
+    `,
+    browserCompanionTableAvailabilitySchema,
   );
   signal.throwIfAborted();
   return state?.available ?? false;
@@ -441,6 +468,103 @@ interface ActiveBrowserInstance {
   readonly userId: string;
 }
 
+async function saveBrowserTabSnapshot(
+  db: Db,
+  target: ActiveBrowserInstance,
+  signal: AbortSignal,
+): Promise<void> {
+  const snapshotSignal = AbortSignal.any([
+    signal,
+    AbortSignal.timeout(BROWSER_TAB_SNAPSHOT_TIMEOUT_MS),
+  ]);
+  const saved = await settle(
+    (async () => {
+      if (!(await browserTabSnapshotTableAvailable(db, snapshotSignal))) {
+        return;
+      }
+      const provider = await getBrowserUseSession(
+        target.providerSessionId,
+        snapshotSignal,
+      );
+      snapshotSignal.throwIfAborted();
+      if (provider.status !== "active" || !provider.cdpUrl) {
+        return;
+      }
+      const urls = await listBrowserUseTabUrls(provider.cdpUrl, snapshotSignal);
+      snapshotSignal.throwIfAborted();
+      const encryptedTabUrls = await encryptPersistentSecretValue(
+        JSON.stringify(urls),
+        { userId: target.userId },
+      );
+      snapshotSignal.throwIfAborted();
+      await db
+        .insert(browserSessionTabSnapshots)
+        .values({
+          chatThreadId: target.chatThreadId,
+          encryptedTabUrls,
+        })
+        .onConflictDoUpdate({
+          target: browserSessionTabSnapshots.chatThreadId,
+          set: {
+            encryptedTabUrls,
+            updatedAt: nowDate(),
+          },
+        });
+      snapshotSignal.throwIfAborted();
+    })(),
+  );
+  signal.throwIfAborted();
+  if (!saved.ok) {
+    L.warn("Managed browser tab snapshot failed", {
+      chatThreadId: target.chatThreadId,
+    });
+  }
+}
+
+async function restoreBrowserTabSnapshot(
+  db: Db,
+  browser: BrowserSessionRow,
+  cdpUrl: string,
+  tableAvailable: boolean,
+  signal: AbortSignal,
+): Promise<void> {
+  if (!tableAvailable) {
+    return;
+  }
+  const restored = await settle(
+    (async () => {
+      const [snapshot] = await db
+        .select({
+          encryptedTabUrls: browserSessionTabSnapshots.encryptedTabUrls,
+        })
+        .from(browserSessionTabSnapshots)
+        .where(
+          eq(browserSessionTabSnapshots.chatThreadId, browser.chatThreadId),
+        )
+        .limit(1);
+      signal.throwIfAborted();
+      if (!snapshot) {
+        return;
+      }
+      const urls = browserTabSnapshotSchema.parse(
+        JSON.parse(
+          await decryptPersistentSecretValue(snapshot.encryptedTabUrls, {
+            userId: browser.userId,
+          }),
+        ) as unknown,
+      );
+      signal.throwIfAborted();
+      await restoreBrowserUseTabUrls(cdpUrl, urls, signal);
+    })(),
+  );
+  signal.throwIfAborted();
+  if (!restored.ok) {
+    L.warn("Managed browser tab restoration failed", {
+      chatThreadId: browser.chatThreadId,
+    });
+  }
+}
+
 function stopProviderSessionLater(providerSessionId: string): void {
   waitUntil(
     (async () => {
@@ -469,8 +593,12 @@ async function stopActiveBrowserInstance(
     readonly stopProvider: boolean;
     readonly lifecycleEventId?: string;
     readonly emitLifecycleEvent?: boolean;
+    readonly saveTabSnapshot?: boolean;
   } = { stopProvider: true },
 ): Promise<{ readonly lifecycleEventId: string | null } | null> {
+  if (options.saveTabSnapshot ?? options.stopProvider) {
+    await saveBrowserTabSnapshot(db, target, signal);
+  }
   const stopped = await db.transaction(async (tx) => {
     await lockBrowserThread(tx, target.chatThreadId);
     const [instance] = await tx
@@ -1431,10 +1559,12 @@ const startProviderInstance$ = command(
     if (capacityError) {
       return capacityError;
     }
-    const [profile, resizeStateTableAvailable] = await Promise.all([
-      loadBrowserProfileForBrowser(db, args.browser),
-      browserResizeStateTableAvailable(db, signal),
-    ]);
+    const [profile, resizeStateTableAvailable, tabSnapshotTableAvailable] =
+      await Promise.all([
+        loadBrowserProfileForBrowser(db, args.browser),
+        browserResizeStateTableAvailable(db, signal),
+        browserTabSnapshotTableAvailable(db, signal),
+      ]);
     signal.throwIfAborted();
 
     const started = await createAndClaimProviderInstance(db, {
@@ -1467,6 +1597,14 @@ const startProviderInstance$ = command(
         "BROWSER_RUN_ENDED",
       );
     }
+
+    await restoreBrowserTabSnapshot(
+      db,
+      claimed.browser,
+      started.cdpUrl,
+      tabSnapshotTableAvailable,
+      signal,
+    );
 
     return {
       kind: "ok",
@@ -1948,7 +2086,8 @@ const resumeSuspendedBrowser$ = command(
 
 // Create, reuse, or resume the thread's browser. A live provider instance is
 // reused across runs and its lease restarts; a suspended one is restarted from
-// the saved profile, which restores cookies and storage but not the old tabs.
+// the saved profile and its last captured HTTP(S) tab URLs are reopened on a
+// best-effort basis.
 const openBrowserForContext$ = command(
   async (
     { set },
@@ -2581,10 +2720,18 @@ export const stopThreadZeroBrowsers$ = command(
         await stopActiveBrowserInstance(db, target, "reconcile", signal, {
           stopProvider: true,
           emitLifecycleEvent: false,
+          saveTabSnapshot: false,
         })
       ) {
         released += 1;
       }
+    }
+
+    if (await browserTabSnapshotTableAvailable(db, signal)) {
+      await db
+        .delete(browserSessionTabSnapshots)
+        .where(eq(browserSessionTabSnapshots.chatThreadId, args.chatThreadId));
+      signal.throwIfAborted();
     }
 
     await db

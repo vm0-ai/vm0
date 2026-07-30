@@ -15,6 +15,7 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-browser";
 
 import { agentRuns } from "./agent-run";
+import { chatThreads } from "./chat-thread";
 
 export const browserProfiles = pgTable(
   "browser_profiles",
@@ -243,6 +244,33 @@ export const browserSessionResizeStates = pgTable(
       ),
     screenWidth: integer("screen_width").notNull(),
     screenHeight: integer("screen_height").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+);
+
+/**
+ * The last restorable page URLs captured for a chat thread before its browser
+ * is reclaimed. URL snapshots are encrypted because query strings and
+ * fragments may contain credentials or other sensitive state.
+ *
+ * Thread identity remains stable across browser lifecycle changes and does not
+ * depend on the legacy browser_sessions.id key. Keeping this state in a
+ * companion table also preserves the statement shape of browser_sessions while
+ * the API and migration may deploy in either order.
+ */
+export const browserSessionTabSnapshots = pgTable(
+  "browser_session_tab_snapshots",
+  {
+    chatThreadId: uuid("chat_thread_id")
+      .primaryKey()
+      .references(
+        () => {
+          return chatThreads.id;
+        },
+        { onDelete: "cascade" },
+      ),
+    encryptedTabUrls: text("encrypted_tab_urls").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

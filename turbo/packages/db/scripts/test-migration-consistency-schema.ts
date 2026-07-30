@@ -9369,6 +9369,112 @@ async function validateBrowserResizeStateRolloutCompatibility(): Promise<void> {
   );
 }
 
+const BROWSER_TAB_SNAPSHOT_PREVIOUS_MIGRATION = 748;
+const BROWSER_TAB_SNAPSHOT_MIGRATION = 749;
+
+async function browserTabSnapshotTableAvailable(
+  client: Client,
+): Promise<boolean> {
+  const result = await client.query<{ available: boolean }>(
+    `SELECT to_regclass('public.browser_session_tab_snapshots') IS NOT NULL
+       AS "available"`,
+  );
+  return result.rows[0]?.available ?? false;
+}
+
+async function validateBrowserTabSnapshotRolloutCompatibility(): Promise<void> {
+  console.log("=== Validate browser tab snapshot rollout compatibility ===\n");
+  const testDb = "migration_browser_tab_snapshot_rollout_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const composeId = "99000000-0000-4000-8000-000000000000";
+  const profileId = "99000000-0000-4000-8000-000000000001";
+  const providerProfileId = "99000000-0000-4000-8000-000000000002";
+  const browserSessionId = "99000000-0000-4000-8000-000000000003";
+  const chatThreadId = "99000000-0000-4000-8000-000000000004";
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, BROWSER_TAB_SNAPSHOT_PREVIOUS_MIGRATION);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      assert.equal(await browserTabSnapshotTableAvailable(client), false);
+      await applyMigrationsUpToInTransaction(
+        client,
+        BROWSER_TAB_SNAPSHOT_MIGRATION,
+      );
+      assert.equal(await browserTabSnapshotTableAvailable(client), true);
+
+      await client.query(
+        `INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+         VALUES (
+           $1, 'tab-rollout-user', 'tab-rollout', 'tab-rollout-org'
+         )`,
+        [composeId],
+      );
+      await client.query(
+        `INSERT INTO "chat_threads" (
+           "id", "user_id", "agent_compose_id", "title"
+         )
+         VALUES ($1, 'tab-rollout-user', $2, 'tab rollout')`,
+        [chatThreadId, composeId],
+      );
+      await client.query(
+        `INSERT INTO "browser_profiles" (
+           "id", "org_id", "user_id", "provider_profile_id"
+         )
+         VALUES ($1, 'tab-rollout-org', 'tab-rollout-user', $2)`,
+        [profileId, providerProfileId],
+      );
+      await client.query(
+        `INSERT INTO "browser_sessions" (
+           "id", "chat_thread_id", "org_id", "user_id", "name",
+           "browser_profile_id", "status", "timeout_minutes", "max_credits"
+         )
+         VALUES (
+           $1, $3, 'tab-rollout-org', 'tab-rollout-user',
+           'tab-rollout', $2, 'suspended', 240, 1
+         )`,
+        [browserSessionId, profileId, chatThreadId],
+      );
+      await client.query(
+        `INSERT INTO "browser_session_tab_snapshots" (
+           "chat_thread_id", "encrypted_tab_urls"
+         )
+         VALUES ($1, 'encrypted-tab-urls')`,
+        [chatThreadId],
+      );
+      const snapshot = await client.query<{ encryptedTabUrls: string }>(
+        `SELECT "encrypted_tab_urls" AS "encryptedTabUrls"
+         FROM "browser_session_tab_snapshots"
+         WHERE "chat_thread_id" = $1`,
+        [chatThreadId],
+      );
+      assert.deepEqual(snapshot.rows, [
+        { encryptedTabUrls: "encrypted-tab-urls" },
+      ]);
+
+      await client.query(`DELETE FROM "chat_threads" WHERE "id" = $1`, [
+        chatThreadId,
+      ]);
+      const afterDelete = await client.query<{ count: string }>(
+        `SELECT count(*)::text AS "count"
+         FROM "browser_session_tab_snapshots"
+         WHERE "chat_thread_id" = $1`,
+        [chatThreadId],
+      );
+      assert.deepEqual(afterDelete.rows, [{ count: "0" }]);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+  console.log(
+    "   ✅ Current API skips snapshots before 0749, previous browser writes remain compatible, and snapshots follow stable thread identity\n",
+  );
+}
+
 async function validateTimestampOrdering(): Promise<void> {
   console.log("=== Phase 0.5: Validate Journal Timestamp Ordering ===\n");
 
@@ -9563,6 +9669,7 @@ async function main(): Promise<void> {
     await validateChatInputGoalEvent();
     await validateChatEventAssetRefTableRename();
     await validateBrowserResizeStateRolloutCompatibility();
+    await validateBrowserTabSnapshotRolloutCompatibility();
     await validateCurrentBrowserApiBeforeBillingMigration();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
