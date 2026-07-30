@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.356.0](https://github.com/vm0-ai/vm0/compare/api-v1.355.1...api-v1.356.0) (2026-07-30)
+
+
+### Features
+
+* **platform:** support hindi locale ([#24081](https://github.com/vm0-ai/vm0/issues/24081)) ([fad755d](https://github.com/vm0-ai/vm0/commit/fad755d3d47c8af94f19355c9673149fcf8e1c37)), closes [#24000](https://github.com/vm0-ai/vm0/issues/24000)
+
+
+### Bug Fixes
+
+* **platform:** enable japanese locale rollout controls ([#24072](https://github.com/vm0-ai/vm0/issues/24072)) ([9242716](https://github.com/vm0-ai/vm0/commit/9242716f2afd37a318d3b89493b8af370c7dfe8e))
+
+
+### Refactoring
+
+* **api:** make run output database-backed ([#24099](https://github.com/vm0-ai/vm0/issues/24099)) ([8030d56](https://github.com/vm0-ai/vm0/commit/8030d565109ec3bb36741f3f8871302d313853d5))
+* **db:** drop legacy chat event automation context ([#24126](https://github.com/vm0-ai/vm0/issues/24126)) ([be06c50](https://github.com/vm0-ai/vm0/commit/be06c5088f1fa5f4a5a32130bbf4417235417e42))
+* reduce fallback slop in slack commands ([#24140](https://github.com/vm0-ai/vm0/issues/24140)) ([cb72494](https://github.com/vm0-ai/vm0/commit/cb72494cd8408d534c270455d30b22b8fbf564f0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.256.0
+    * @vm0/core bumped to 8.496.0
+    * @vm0/db bumped to 1.157.4
+
 ## [1.355.1](https://github.com/vm0-ai/vm0/compare/api-v1.355.0...api-v1.355.1) (2026-07-30)
 
 
