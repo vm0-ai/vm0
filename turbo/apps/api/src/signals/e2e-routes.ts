@@ -10,7 +10,6 @@ import { testOAuthProviderUserinfoRoutes } from "./routes/test-oauth-provider-us
 import { testSlackMockRoutes } from "./routes/test-slack-mock";
 import { testSlackStateRoutes } from "./routes/test-slack-state";
 import { testStorageFixtureRoutes } from "./routes/test-storage-fixture";
-import { testTelegramDispatchProbeRoutes } from "./routes/test-telegram-dispatch-probe";
 import { testTelegramMockRoutes } from "./routes/test-telegram-mock";
 import { testTelegramStateRoutes } from "./routes/test-telegram-state";
 import { testTeamsDispatchProbeRoutes } from "./routes/test-teams-dispatch-probe";
@@ -36,9 +35,9 @@ import { testZeroAgentStateRoutes } from "./routes/test-zero-agent-state";
  *   stand-ins that integration API traffic is redirected to on previews via
  *   `E2E_SLACK_MOCK_ENABLED` / `E2E_TELEGRAM_MOCK_ENABLED` /
  *   `E2E_TEAMS_MOCK_ENABLED`.
- * - state/probe routes: fixture seeding and dispatch probes used by
- *   `e2e/helpers/slack.bash`, `e2e/helpers/telegram.bash`, and
- *   `e2e/helpers/teams.bash`.
+ * - state routes and the Teams dispatch probe: fixture seeding and provider
+ *   ingress used by `e2e/helpers/slack.bash`, `e2e/helpers/telegram.bash`,
+ *   and `e2e/helpers/teams.bash`.
  *
  * Every route here is gated by `isTestEndpointAllowed` (development or
  * preview-with-bypass only) and returns 404 in production.
@@ -59,7 +58,6 @@ export const E2E_ROUTES: readonly RouteEntry[] = [
   ...testSlackMockRoutes,
   ...testSlackStateRoutes,
   ...testStorageFixtureRoutes,
-  ...testTelegramDispatchProbeRoutes,
   ...testTelegramMockRoutes,
   ...testTelegramStateRoutes,
   ...testTeamsDispatchProbeRoutes,

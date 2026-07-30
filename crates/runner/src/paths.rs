@@ -289,6 +289,11 @@ impl HomePaths {
         self.locks_dir().join(format!("service-{unit}.lock"))
     }
 
+    /// Host-global lock for systemd manager reload coordination.
+    pub fn systemd_daemon_reload_lock(&self) -> PathBuf {
+        self.locks_dir().join("systemd-daemon-reload.lock")
+    }
+
     pub fn base_dir_lock(&self, base_dir: &Path) -> PathBuf {
         self.locks_dir().join(base_dir_lock_name(base_dir))
     }
@@ -643,6 +648,16 @@ mod tests {
             PathBuf::from("/test/locks/service-vm0-runner-v1.2.3.lock")
         );
         assert_eq!(service_lock.parent(), Some(home.locks_dir().as_path()));
+    }
+
+    #[test]
+    fn systemd_daemon_reload_lock_path() {
+        let home = HomePaths::with_root(PathBuf::from("/test"));
+
+        assert_eq!(
+            home.systemd_daemon_reload_lock(),
+            PathBuf::from("/test/locks/systemd-daemon-reload.lock")
+        );
     }
 
     #[test]

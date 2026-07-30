@@ -411,7 +411,7 @@ describe("chat event action cards", () => {
         return respond(200, {
           connectors: [
             publicConnectorStatusItem({
-              connectorRef: "slack",
+              slug: "slack",
               label: "Slack",
             }),
           ],
@@ -460,7 +460,7 @@ describe("chat event action cards", () => {
       throw new Error("Draft request did not start");
     };
     mockConnectorCatalogStatus([
-      publicConnectorStatusItem({ connectorRef: "gmail", label: "Gmail" }),
+      publicConnectorStatusItem({ slug: "gmail", label: "Gmail" }),
     ]);
     context.mocks.api(
       zeroMailContract.getDraft,

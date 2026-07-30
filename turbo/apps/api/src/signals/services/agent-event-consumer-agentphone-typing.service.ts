@@ -70,7 +70,7 @@ export const refreshAgentPhoneTypingForRun$ = command(
       const target =
         kind === "chat"
           ? parseCanonicalAgentPhoneTypingTarget(callback.payload)
-          : kind === "agentphone" || kind === "agentphone:chat"
+          : kind === "agentphone:chat"
             ? parseAgentPhoneTypingTarget(callback.payload)
             : undefined;
       if (target) {

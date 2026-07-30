@@ -15,16 +15,16 @@ import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { testContext } from "../../../__tests__/test-context";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { testSlackStateRoutes } from "../test-slack-state";
-import { testTelegramDispatchProbeRoutes } from "../test-telegram-dispatch-probe";
 import { testTelegramStateRoutes } from "../test-telegram-state";
+import { zeroIntegrationsTelegramRoutes } from "../zero-integrations-telegram";
 import { seedRun$ } from "./helpers/zero-usage-insight";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
 const context = testContext();
 const store = createStore();
 const TELEGRAM_STATE_ROUTE = "/api/test/telegram-state";
-const TELEGRAM_DISPATCH_PROBE_ROUTE = "/api/test/telegram-dispatch-probe";
 const SLACK_STATE_ROUTE = "/api/test/slack-state";
 const TELEGRAM_TEST_BOT_TOKEN = "123456:e2e-test-bot-token";
 const TELEGRAM_TEST_API_BASE_URL = "https://telegram.test/bot";
@@ -35,6 +35,7 @@ interface TelegramFixture {
   readonly orgId: string;
   readonly telegramUserId: string;
   readonly defaultAgentId: string;
+  readonly webhookSecret: string;
 }
 
 interface SlackFixture {
@@ -56,7 +57,7 @@ function requestApp(path: string, init?: RequestInit): Promise<Response> {
     signal: context.signal,
     routes: [
       ...testTelegramStateRoutes,
-      ...testTelegramDispatchProbeRoutes,
+      ...zeroIntegrationsTelegramRoutes,
       ...testSlackStateRoutes,
     ],
   });
@@ -111,7 +112,7 @@ function mockClerkTestUser(args: {
   });
 }
 
-function mockTelegramTyping(): void {
+function mockTelegramApi(): void {
   server.use(
     ...[
       `https://api.telegram.org/bot${TELEGRAM_TEST_BOT_TOKEN}/sendChatAction`,
@@ -121,11 +122,36 @@ function mockTelegramTyping(): void {
         return HttpResponse.json({ ok: true, result: true });
       });
     }),
+    ...[
+      `https://api.telegram.org/bot${TELEGRAM_TEST_BOT_TOKEN}/sendMessage`,
+      `${TELEGRAM_TEST_API_BASE_URL}${TELEGRAM_TEST_BOT_TOKEN}/sendMessage`,
+    ].map((url) => {
+      return http.post(url, () => {
+        return HttpResponse.json({
+          ok: true,
+          result: {
+            message_id: 700,
+            chat: { id: 123, type: "private" },
+            text: "queued",
+          },
+        });
+      });
+    }),
   );
 }
 
 function postTelegramState(body: Record<string, unknown>): Promise<Response> {
   return requestApp(TELEGRAM_STATE_ROUTE, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+function postTelegramStateAction(
+  body: Record<string, unknown>,
+): Promise<Response> {
+  return requestApp(`${TELEGRAM_STATE_ROUTE}/action`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -158,7 +184,9 @@ async function readSlackState(teamId: string): Promise<TestSlackStateResponse> {
   return await readJson<TestSlackStateResponse>(response);
 }
 
-async function deleteTelegramFixture(fixture: TelegramFixture): Promise<void> {
+async function deleteTelegramFixture(
+  fixture: Pick<TelegramFixture, "botId">,
+): Promise<void> {
   mockEnv("ENV", "development");
   await requestApp(
     `${TELEGRAM_STATE_ROUTE}?bot_id=${encodeURIComponent(fixture.botId)}`,
@@ -191,13 +219,14 @@ async function seedTelegramFixture(
   const orgId = args.orgId ?? uniqueId("org");
   const botId = args.botId ?? uniqueId("bot");
   const telegramUserId = args.telegramUserId ?? uniqueNumericId();
+  const webhookSecret = "custom-webhook-secret";
   mockClerkTestUser({ userId, orgId });
 
   const response = await postTelegramState({
     bot_id: botId,
     telegram_user_id: telegramUserId,
     bot_username: "custom_test_bot",
-    webhook_secret: "custom-webhook-secret",
+    webhook_secret: webhookSecret,
     email: args.email ?? `${userId}@example.test`,
     seed_link: args.seedLink ?? true,
   });
@@ -209,6 +238,7 @@ async function seedTelegramFixture(
     orgId: body.org_id,
     telegramUserId,
     defaultAgentId: body.default_agent_id,
+    webhookSecret,
   };
   await trackTelegramFixture(Promise.resolve(fixture));
   return fixture;
@@ -257,22 +287,33 @@ async function dispatchTelegramMessage(args: {
   mockOptionalEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
   mockOptionalEnv("VM0_WEB_URL", "http://localhost:3000");
   mockEnv("APP_URL", "http://localhost:3002");
-  mockTelegramTyping();
-  const response = await requestApp(TELEGRAM_DISPATCH_PROBE_ROUTE, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      bot_id: args.fixture.botId,
-      chat_id: args.chatId ?? "900100200",
-      telegram_user_id: args.fixture.telegramUserId,
-      message_text: args.text,
-      message_id: args.messageId ?? 501,
-    }),
-  });
+  mockTelegramApi();
+  const chatId = args.chatId ?? "900100200";
+  const response = await requestApp(
+    `/api/telegram/webhook/${encodeURIComponent(args.fixture.botId)}`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-telegram-bot-api-secret-token": args.fixture.webhookSecret,
+      },
+      body: JSON.stringify({
+        update_id: args.messageId ?? 501,
+        message: {
+          message_id: args.messageId ?? 501,
+          chat: { id: Number(chatId), type: "private" },
+          from: {
+            id: Number(args.fixture.telegramUserId),
+            first_name: "Telegram",
+          },
+          text: args.text,
+        },
+      }),
+    },
+  );
   expect(response.status).toBe(200);
-  await expect(
-    readJson<{ readonly ok: true }>(response),
-  ).resolves.toStrictEqual({ ok: true });
+  await expect(response.text()).resolves.toBe("OK");
+  await flushWaitUntilForTest();
 }
 
 async function dispatchSlackMessage(args: {
@@ -337,6 +378,13 @@ describe("GET /api/test/telegram-state", () => {
     mockEnv("ENV", "development");
     mockOptionalEnv("TELEGRAM_API_URL", TELEGRAM_TEST_API_BASE_URL);
     const fixture = await seedTelegramFixture();
+    const modelSeedResponse = await postTelegramStateAction({
+      action: "seed-model-policies",
+      org_id: fixture.orgId,
+      user_id: fixture.userId,
+      compose_id: fixture.defaultAgentId,
+    });
+    expect(modelSeedResponse.status).toBe(200);
     const chatId = uniqueNumericId();
     await dispatchTelegramMessage({
       fixture,
