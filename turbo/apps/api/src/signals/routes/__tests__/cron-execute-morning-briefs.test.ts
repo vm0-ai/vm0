@@ -40,7 +40,7 @@ import { mockGoogleCalendarConnectorOAuth } from "./helpers/api-bdd-workflows";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { holdOrgAdmissionLockFixture } from "../../../test-fixtures/chat-messages";
+import { holdOrgAdmissionLockFixture } from "../../../test-fixtures/chat-events";
 import {
   insertOldFormatQueuedUserMessageFixture,
   insertQueuedWebUserMessageFixture,

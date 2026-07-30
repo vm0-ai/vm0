@@ -5192,8 +5192,15 @@
     {
       "idx": 741,
       "version": "7",
-      "when": 1785376274587,
-      "tag": "0741_chat_run_finished_trigger",
+      "when": 1785381995195,
+      "tag": "0741_drop_telegram_thread_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 742,
+      "version": "7",
+      "when": 1785381995196,
+      "tag": "0742_chat_run_finished_trigger",
       "breakpoints": true
     }
   ]

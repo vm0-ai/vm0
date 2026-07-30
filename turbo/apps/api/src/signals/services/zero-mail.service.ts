@@ -35,7 +35,7 @@ import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
 import { settle } from "../utils";
 import { insertChatEvent } from "./zero-chat-event.service";
-import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
+import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import {
   loadConnectorRuntimeSnapshot,
   type ConnectorRuntimeSnapshot,

@@ -12,7 +12,7 @@ const fixtureKindSchema = z.enum([
   "revoked-message",
 ]);
 
-export const testCronMonitorChatMessageQueueStateActionBodySchema =
+export const testCronMonitorChatEventQueueStateActionBodySchema =
   z.discriminatedUnion("action", [
     z.object({
       action: z.literal("seed-fixture"),
@@ -24,30 +24,30 @@ export const testCronMonitorChatMessageQueueStateActionBodySchema =
     }),
   ]);
 
-export const testCronMonitorChatMessageQueueStateActionResponseSchema = z
+export const testCronMonitorChatEventQueueStateActionResponseSchema = z
   .object({
     ok: z.literal(true),
   })
   .passthrough();
 
-export const testCronMonitorChatMessageQueueStateContract = c.router({
+export const testCronMonitorChatEventQueueStateContract = c.router({
   action: {
     method: "POST",
     path: "/api/test/cron-monitor-chat-message-queue-state/action",
-    body: testCronMonitorChatMessageQueueStateActionBodySchema,
+    body: testCronMonitorChatEventQueueStateActionBodySchema,
     responses: {
-      200: testCronMonitorChatMessageQueueStateActionResponseSchema,
+      200: testCronMonitorChatEventQueueStateActionResponseSchema,
       404: z.string(),
     },
     summary: "Mutate orphaned queued chat message monitor test state",
   },
 });
 
-export type TestCronMonitorChatMessageQueueStateActionBody = z.infer<
-  typeof testCronMonitorChatMessageQueueStateActionBodySchema
+export type TestCronMonitorChatEventQueueStateActionBody = z.infer<
+  typeof testCronMonitorChatEventQueueStateActionBodySchema
 >;
-export type TestCronMonitorChatMessageQueueStateActionResponse = z.infer<
-  typeof testCronMonitorChatMessageQueueStateActionResponseSchema
+export type TestCronMonitorChatEventQueueStateActionResponse = z.infer<
+  typeof testCronMonitorChatEventQueueStateActionResponseSchema
 >;
-export type TestCronMonitorChatMessageQueueStateContract =
-  typeof testCronMonitorChatMessageQueueStateContract;
+export type TestCronMonitorChatEventQueueStateContract =
+  typeof testCronMonitorChatEventQueueStateContract;

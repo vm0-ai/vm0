@@ -8,7 +8,7 @@ import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
 import {
   chatThreadForRun,
-  insertAssistantEventMessages$,
+  insertAssistantEvents$,
 } from "../services/zero-chat-thread.service";
 
 const INITIAL_PROCESSED_THROUGH_SEQUENCE = -1;
@@ -178,7 +178,7 @@ export const processChatAssistantEvents$ = command(
       items.length === 0
         ? 0
         : await set(
-            insertAssistantEventMessages$,
+            insertAssistantEvents$,
             {
               runId: payload.runId,
               threadId: thread.chatThreadId,

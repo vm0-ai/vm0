@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import { and, eq, exists, or, sql, type SQL } from "drizzle-orm";
 import { artifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { imageArtifactEditSnapshots } from "@vm0/db/schema/image-artifact-edit-snapshot";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
@@ -76,14 +76,14 @@ function attachedArtifactAccessCondition(
   }
 
   const attachedFile = sql`jsonb_array_elements(
-    COALESCE(${chatMessages.attachFileMetadata}, '[]'::jsonb)
+    COALESCE(${chatEvents.attachFileMetadata}, '[]'::jsonb)
   ) AS attached_file`;
   const attachedFileObjectKey = sql`attached_file->>'objectKey'`;
   return exists(
     db
-      .select({ id: chatMessages.id })
-      .from(chatMessages)
-      .innerJoin(chatThreads, eq(chatThreads.id, chatMessages.chatThreadId))
+      .select({ id: chatEvents.id })
+      .from(chatEvents)
+      .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
       .innerJoin(
         agentComposes,
         eq(agentComposes.id, chatThreads.agentComposeId),

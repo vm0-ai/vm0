@@ -139,6 +139,7 @@ import {
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { getModelImageInputSupport } from "@vm0/api-contracts/contracts/model-providers";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
@@ -147,6 +148,8 @@ import {
 } from "./components/model-provider-picker.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ConnectorCard } from "./components/settings/connector-card.tsx";
+import { CustomConnectorIcon } from "./components/settings/custom-connector-icon.tsx";
+import { CustomConnectorConnectDialog } from "./components/settings/custom-connector-connect-dialog.tsx";
 import type { ConnectorConnectHandlers } from "./components/settings/launch-connector-connect.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
@@ -159,6 +162,7 @@ import {
   pollingOAuthAuthCodeConnectorSlug$,
   pollingOAuthDeviceAuthConnectorSlug$,
 } from "../../signals/zero-page/settings/connectors.ts";
+import { customConnectors$ } from "../../signals/zero-page/settings/custom-connectors.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
@@ -169,7 +173,10 @@ import {
   featureSwitch$,
 } from "../../signals/external/feature-switch.ts";
 import { zeroDesktopDownloadSupportStatus$ } from "../../signals/zero-page/computer-use-hosts.ts";
-import type { ComposerConnectorSignals } from "../../signals/zero-page/zero-connectors.ts";
+import type {
+  AgentCustomConnectorAuthorizations,
+  ComposerConnectorSignals,
+} from "../../signals/zero-page/zero-connectors.ts";
 import type { AgentConnectorAuthorizations } from "../../signals/zero-page/agent-connector-authorizations.ts";
 import { applyUserPermissionGrants$ } from "../../signals/permission-allow/permission-allow-signals.ts";
 import { activeUserPermissionGrantSnapshot } from "../../signals/user-permission-grants.ts";
@@ -355,8 +362,10 @@ export interface ZeroChatComposerProps {
 
 export interface ComposerConnectorReadState {
   readonly catalogItems: Loadable<readonly PublicConnectorCatalogStatusItem[]>;
+  readonly customConnectors: Loadable<readonly CustomConnectorResponse[]>;
   readonly agentId: Loadable<string | null>;
   readonly authorizations: Loadable<AgentConnectorAuthorizations | null>;
+  readonly customAuthorizations: Loadable<AgentCustomConnectorAuthorizations | null>;
 }
 
 export interface QueuedComposerItem {
@@ -426,6 +435,10 @@ type TemplatePreviewImageSize = Parameters<typeof r2ImageTransformUrl>[1];
 // ---------------------------------------------------------------------------
 
 type ComposerConnectorItem = PublicConnectorCatalogStatusItem & {
+  readonly authorized: boolean;
+};
+
+type ComposerCustomConnectorItem = CustomConnectorResponse & {
   readonly authorized: boolean;
 };
 
@@ -1968,9 +1981,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
   [
     {
       id: "prism",
-      name: "Prism",
+      name: "Candy party",
       group: "multi-accent",
-      paletteName: "Prism",
+      paletteName: "Candy party",
       colors: [
         "#FFFFFF",
         "#F7F7FA",
@@ -1985,9 +1998,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "carnival",
-      name: "Carnival",
+      name: "Funfair",
       group: "multi-accent",
-      paletteName: "Carnival",
+      paletteName: "Funfair",
       colors: [
         "#FFFDF7",
         "#FFFFFF",
@@ -2002,9 +2015,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "pop-art",
-      name: "Pop Art",
+      name: "Neon arcade",
       group: "multi-accent",
-      paletteName: "Pop Art",
+      paletteName: "Neon arcade",
       colors: [
         "#111016",
         "#1B1A22",
@@ -2019,9 +2032,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "warm-sand",
-      name: "Warm Sand",
+      name: "Morning paper",
       group: "single-accent",
-      paletteName: "Warm Sand",
+      paletteName: "Morning paper",
       colors: [
         "#FFFDF8",
         "#FFFFFF",
@@ -2036,9 +2049,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "bauhaus-primary",
-      name: "Bauhaus Primary",
+      name: "Toy bricks",
       group: "single-accent",
-      paletteName: "Bauhaus Primary",
+      paletteName: "Toy bricks",
       colors: [
         "#F5F1E6",
         "#FFFFFF",
@@ -2053,9 +2066,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "nordic-frost",
-      name: "Nordic Frost",
+      name: "Ice lake",
       group: "single-accent",
-      paletteName: "Nordic Frost",
+      paletteName: "Ice lake",
       colors: [
         "#FBFCFD",
         "#FFFFFF",
@@ -2070,9 +2083,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "forest-editorial",
-      name: "Forest Editorial",
+      name: "Moss library",
       group: "single-accent",
-      paletteName: "Forest Editorial",
+      paletteName: "Moss library",
       colors: [
         "#F7F6F1",
         "#FFFFFF",
@@ -2087,9 +2100,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "coral-studio",
-      name: "Coral Studio",
+      name: "Peach studio",
       group: "single-accent",
-      paletteName: "Coral Studio",
+      paletteName: "Peach studio",
       colors: [
         "#FFF9F6",
         "#FFFFFF",
@@ -2104,9 +2117,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "slate-corporate",
-      name: "Slate Corporate",
+      name: "Boardroom blue",
       group: "single-accent",
-      paletteName: "Slate Corporate",
+      paletteName: "Boardroom blue",
       colors: [
         "#FFFFFF",
         "#F6F8FB",
@@ -2121,9 +2134,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "terracotta-clay",
-      name: "Terracotta Clay",
+      name: "Clay pot",
       group: "single-accent",
-      paletteName: "Terracotta Clay",
+      paletteName: "Clay pot",
       colors: [
         "#FBF4EC",
         "#FFFFFF",
@@ -2138,9 +2151,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "berry-pop",
-      name: "Berry Pop",
+      name: "Raspberry soda",
       group: "single-accent",
-      paletteName: "Berry Pop",
+      paletteName: "Raspberry soda",
       colors: [
         "#FFFAFC",
         "#FFFFFF",
@@ -2155,9 +2168,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "citrus-fresh",
-      name: "Citrus Fresh",
+      name: "Orange juice",
       group: "single-accent",
-      paletteName: "Citrus Fresh",
+      paletteName: "Orange juice",
       colors: [
         "#FFFFFB",
         "#FFFFFF",
@@ -2172,9 +2185,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "mauve-dusk",
-      name: "Mauve Dusk",
+      name: "Lavender dusk",
       group: "single-accent",
-      paletteName: "Mauve Dusk",
+      paletteName: "Lavender dusk",
       colors: [
         "#FAF7FB",
         "#FFFFFF",
@@ -2189,9 +2202,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "mono-ink",
-      name: "Mono Ink",
+      name: "Newsprint red",
       group: "single-accent",
-      paletteName: "Mono Ink",
+      paletteName: "Newsprint red",
       colors: [
         "#FFFFFF",
         "#FAFAFA",
@@ -2206,9 +2219,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "sunset-maroon",
-      name: "Sunset Maroon",
+      name: "Sunset glow",
       group: "single-accent",
-      paletteName: "Sunset Maroon",
+      paletteName: "Sunset glow",
       colors: [
         "#FFF7F2",
         "#FFFFFF",
@@ -2223,9 +2236,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "mint-tech",
-      name: "Mint Tech",
+      name: "Mint lab",
       group: "single-accent",
-      paletteName: "Mint Tech",
+      paletteName: "Mint lab",
       colors: [
         "#FBFFFD",
         "#FFFFFF",
@@ -2240,9 +2253,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "midnight-mono",
-      name: "Midnight Mono",
+      name: "Night run",
       group: "single-accent",
-      paletteName: "Midnight Mono",
+      paletteName: "Night run",
       colors: [
         "#121316",
         "#1C1E22",
@@ -2257,9 +2270,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "ocean-deep",
-      name: "Ocean Deep",
+      name: "Deep dive",
       group: "single-accent",
-      paletteName: "Ocean Deep",
+      paletteName: "Deep dive",
       colors: [
         "#0E2A33",
         "#143840",
@@ -2274,9 +2287,9 @@ const PRESENTATION_TEMPLATE_THEME_OPTIONS: readonly PresentationTemplateThemeOpt
     },
     {
       id: "gold-luxe",
-      name: "Gold Luxe",
+      name: "Award night",
       group: "single-accent",
-      paletteName: "Gold Luxe",
+      paletteName: "Award night",
       colors: [
         "#16140F",
         "#211E16",
@@ -5720,28 +5733,51 @@ function ComposerWorkflowPromptSlot({
 
 function ConnectorTriggerIcons({
   connectors,
+  customConnectors,
   hasComputerUse,
   hasCloudBrowser,
 }: {
   connectors: ComposerConnectorItem[];
+  customConnectors: ComposerCustomConnectorItem[];
   hasComputerUse: boolean;
   hasCloudBrowser: boolean;
 }) {
-  const enabled = connectors
-    .filter((c) => {
-      return c.authorized;
-    })
-    .slice(0, 3);
+  const enabledConnectors = connectors.filter((connector) => {
+    return connector.authorized;
+  });
+  const enabledCustomConnectors = customConnectors.filter((connector) => {
+    return connector.authorized;
+  });
+  const enabled = [
+    ...enabledConnectors.map((connector) => {
+      return { kind: "builtin" as const, connector };
+    }),
+    ...enabledCustomConnectors.map((connector) => {
+      return { kind: "custom" as const, connector };
+    }),
+  ].slice(0, 3);
   if (enabled.length === 0 && !hasComputerUse && !hasCloudBrowser) {
     return <IconPlug size={18} stroke={1.5} />;
   }
   return (
     <span className="flex items-center -space-x-2 sm:-space-x-1.5">
-      {enabled.map((c) => {
+      {enabled.map((item) => {
+        const key =
+          item.kind === "builtin"
+            ? item.connector.connectorRef
+            : item.connector.id;
         return (
-          <span key={c.connectorRef} className="relative shrink-0">
+          <span key={key} className="relative shrink-0">
             <span className="flex h-6 w-6 items-center justify-center overflow-hidden rounded-full bg-background zero-border sm:h-7 sm:w-7">
-              <ConnectorIcon icon={c.icon} size={16} />
+              {item.kind === "builtin" ? (
+                <ConnectorIcon icon={item.connector.icon} size={16} />
+              ) : (
+                <CustomConnectorIcon
+                  id={item.connector.id}
+                  displayName={item.connector.displayName}
+                  size={16}
+                />
+              )}
             </span>
           </span>
         );
@@ -5764,19 +5800,85 @@ function ConnectorTriggerIcons({
   );
 }
 
+function matchesCustomConnectorSearch(
+  search: string,
+  connector: CustomConnectorResponse,
+): boolean {
+  const normalizedSearch = search.trim().toLowerCase();
+  if (!normalizedSearch) {
+    return true;
+  }
+  return [connector.displayName, connector.slug, ...connector.prefixes].some(
+    (value) => {
+      return value.toLowerCase().includes(normalizedSearch);
+    },
+  );
+}
+
+function CustomConnectorCatalogCard({
+  connector,
+  onConnect,
+}: {
+  connector: CustomConnectorResponse;
+  onConnect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={`Connect ${connector.displayName}`}
+      className="zero-card cursor-pointer overflow-hidden text-left"
+      onClick={onConnect}
+    >
+      <span className="flex items-center gap-2.5 px-5 pb-1 pt-4">
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+          <CustomConnectorIcon
+            id={connector.id}
+            displayName={connector.displayName}
+            size={20}
+          />
+        </span>
+        <span
+          data-testid="connector-card-label"
+          className="min-w-0 flex-1 truncate text-sm font-medium text-foreground"
+        >
+          {connector.displayName}
+        </span>
+        <span
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-border/60 text-muted-foreground"
+          aria-hidden="true"
+        >
+          <IconPlus size={14} stroke={1.5} />
+        </span>
+      </span>
+      <span className="block px-5 pb-4 pt-1">
+        <span
+          data-testid="connector-help-text"
+          className="line-clamp-2 text-xs text-muted-foreground"
+        >
+          {connector.prefixes[0]}
+        </span>
+      </span>
+    </button>
+  );
+}
+
 function AddConnectorsDialog({
   signals,
   unconnected,
+  unconnectedCustom,
   busyConnectorSlug,
   connectHandlers,
+  onConnectCustom,
   onClose,
 }: {
   signals: ComposerConnectorSignals;
   unconnected: PublicConnectorCatalogStatusItem[];
+  unconnectedCustom: CustomConnectorResponse[];
   busyConnectorSlug: ConnectorSlug | null;
   connectHandlers: (
     connector: PublicConnectorCatalogStatusItem,
   ) => ConnectorConnectHandlers;
+  onConnectCustom: (connector: CustomConnectorResponse) => void;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -5785,6 +5887,10 @@ function AddConnectorsDialog({
   const filtered = unconnected.filter((item) => {
     return matchesConnectorSearch(search, item);
   });
+  const filteredCustom = unconnectedCustom.filter((item) => {
+    return matchesCustomConnectorSearch(search, item);
+  });
+  const connectorCount = unconnected.length + unconnectedCustom.length;
 
   return (
     <Dialog
@@ -5804,7 +5910,7 @@ function AddConnectorsDialog({
                 return $.chat.connectors.available;
               },
               {
-                count: unconnected.length,
+                count: connectorCount,
               },
             )}
           </DialogTitle>
@@ -5832,6 +5938,17 @@ function AddConnectorsDialog({
                   connector={item}
                   busy={busyConnectorSlug === item.connectorRef}
                   connect={connectHandlers(item)}
+                />
+              );
+            })}
+            {filteredCustom.map((item) => {
+              return (
+                <CustomConnectorCatalogCard
+                  key={item.id}
+                  connector={item}
+                  onConnect={() => {
+                    onConnectCustom(item);
+                  }}
                 />
               );
             })}
@@ -6086,27 +6203,63 @@ function ComposerConnectorPermissionDialog({
   );
 }
 
+type ComposerPopoverConnectorItem =
+  | {
+      readonly kind: "builtin";
+      readonly connector: ComposerConnectorItem;
+    }
+  | {
+      readonly kind: "custom";
+      readonly connector: ComposerCustomConnectorItem;
+    };
+
+function composerPopoverConnectorId(
+  item: ComposerPopoverConnectorItem,
+): string {
+  return item.kind === "builtin"
+    ? item.connector.connectorRef
+    : item.connector.id;
+}
+
+function matchesComposerPopoverConnectorSearch(
+  search: string,
+  item: ComposerPopoverConnectorItem,
+): boolean {
+  return item.kind === "builtin"
+    ? matchesConnectorSearch(search, item.connector)
+    : matchesCustomConnectorSearch(search, item.connector);
+}
+
 function ConnectorsPopoverButton({
   signals,
   agentId,
   agentDisplayName,
   agentConnectors,
+  agentCustomConnectors,
   connectorsLoading,
   savingConnectorSlug,
+  savingCustomConnectorId,
   computerUse,
   onOpenAddDialog,
   onToggle,
+  onToggleCustom,
 }: {
   signals: ComposerConnectorSignals;
   agentId: string | null;
   agentDisplayName: string;
   agentConnectors: ComposerConnectorItem[];
+  agentCustomConnectors: ComposerCustomConnectorItem[];
   connectorsLoading: boolean;
   savingConnectorSlug: ConnectorSlug | null;
+  savingCustomConnectorId: string | null;
   computerUse: ComposerComputerUse | undefined;
   onOpenAddDialog: () => void;
   onToggle: (
     connectorSlug: ConnectorSlug,
+    checked: boolean,
+  ) => void | Promise<void>;
+  onToggleCustom: (
+    connectorId: string,
     checked: boolean,
   ) => void | Promise<void>;
 }) {
@@ -6124,7 +6277,15 @@ function ConnectorsPopoverButton({
   const setPermissionConnectorSlug = useSet(
     signals.setPermissionConnectorSlug$,
   );
-  const showSearch = agentConnectors.length > 20;
+  const connectorItems: ComposerPopoverConnectorItem[] = [
+    ...agentConnectors.map((connector) => {
+      return { kind: "builtin" as const, connector };
+    }),
+    ...agentCustomConnectors.map((connector) => {
+      return { kind: "custom" as const, connector };
+    }),
+  ];
+  const showSearch = connectorItems.length > 20;
   const permissionConnector =
     permissionEntryEnabled && permissionConnectorSlug
       ? agentConnectors.find((c) => {
@@ -6134,9 +6295,9 @@ function ConnectorsPopoverButton({
 
   // Use snapshot order if available, otherwise preserve catalog order.
   const sorted = sortOrder
-    ? [...agentConnectors].sort((a, b) => {
-        const ai = sortOrder.indexOf(a.connectorRef);
-        const bi = sortOrder.indexOf(b.connectorRef);
+    ? [...connectorItems].sort((a, b) => {
+        const ai = sortOrder.indexOf(composerPopoverConnectorId(a));
+        const bi = sortOrder.indexOf(composerPopoverConnectorId(b));
         if (ai === -1 && bi === -1) {
           return 0;
         }
@@ -6148,21 +6309,19 @@ function ConnectorsPopoverButton({
         }
         return ai - bi;
       })
-    : agentConnectors;
+    : connectorItems;
 
   const visibleConnectors =
     showSearch && search.trim()
-      ? sorted.filter((c) => {
-          return matchesConnectorSearch(search, c);
+      ? sorted.filter((item) => {
+          return matchesComposerPopoverConnectorSearch(search, item);
         })
       : sorted;
 
   const handleOpenChange = (open: boolean) => {
     if (open) {
       // Snapshot the sort order when popover opens
-      const freshSort = agentConnectors.map((c) => {
-        return c.connectorRef;
-      });
+      const freshSort = connectorItems.map(composerPopoverConnectorId);
       setSortOrder(freshSort);
     } else {
       setSortOrder(null);
@@ -6188,6 +6347,7 @@ function ConnectorsPopoverButton({
               >
                 <ConnectorTriggerIcons
                   connectors={agentConnectors}
+                  customConnectors={agentCustomConnectors}
                   hasComputerUse={Boolean(computerUse?.selectedHostId)}
                   hasCloudBrowser={Boolean(computerUse?.cloudBrowserEnabled)}
                 />
@@ -6206,7 +6366,7 @@ function ConnectorsPopoverButton({
         align="start"
         className="flex max-h-[var(--radix-popover-content-available-height)] w-72 flex-col overflow-hidden rounded-lg p-0"
       >
-        {(agentConnectors.length > 0 || connectorsLoading) && (
+        {(connectorItems.length > 0 || connectorsLoading) && (
           <div className="flex min-h-0 flex-col py-1">
             {showSearch && (
               <div className="px-3 py-1 border-b border-border/50">
@@ -6238,33 +6398,83 @@ function ConnectorsPopoverButton({
             ) : (
               <div className="flex max-h-64 min-h-0 flex-col overflow-y-auto">
                 {visibleConnectors.map((item) => {
+                  if (item.kind === "custom") {
+                    const connector = item.connector;
+                    return (
+                      <label
+                        key={connector.id}
+                        className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
+                      >
+                        <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                          <CustomConnectorIcon
+                            id={connector.id}
+                            displayName={connector.displayName}
+                            size={16}
+                          />
+                        </span>
+                        <span className="text-sm flex-1 truncate text-foreground">
+                          {connector.displayName}
+                        </span>
+                        <LoadingSwitch
+                          checked={connector.authorized}
+                          onCheckedChange={onDomEventFn(async (checked) => {
+                            await onToggleCustom(connector.id, checked);
+                          })}
+                          loading={savingCustomConnectorId === connector.id}
+                          ariaLabel={
+                            connector.authorized
+                              ? t(
+                                  ($) => {
+                                    return $.chat.connectors.remove;
+                                  },
+                                  {
+                                    connectorName: connector.displayName,
+                                  },
+                                )
+                              : t(
+                                  ($) => {
+                                    return $.chat.connectors.add;
+                                  },
+                                  {
+                                    connectorName: connector.displayName,
+                                  },
+                                )
+                          }
+                          size="sm"
+                        />
+                      </label>
+                    );
+                  }
+                  const connector = item.connector;
                   return (
                     <label
-                      key={item.connectorRef}
+                      key={connector.connectorRef}
                       className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
                     >
                       <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-                        <ConnectorIcon icon={item.icon} size={16} />
+                        <ConnectorIcon icon={connector.icon} size={16} />
                       </span>
                       <span className="text-sm flex-1 truncate text-foreground">
-                        {item.label}
+                        {connector.label}
                       </span>
                       {permissionEntryEnabled &&
                         agentId &&
-                        item.authorized &&
-                        item.permissionSummary.hasPermissions && (
+                        connector.authorized &&
+                        connector.permissionSummary.hasPermissions && (
                           <button
                             type="button"
                             onClick={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
-                              setPermissionConnectorSlug(item.connectorRef);
+                              setPermissionConnectorSlug(
+                                connector.connectorRef,
+                              );
                             }}
                             aria-label={t(
                               ($) => {
                                 return $.chat.connectors.configurePermissions;
                               },
-                              { connectorName: item.label },
+                              { connectorName: connector.label },
                             )}
                             className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                           >
@@ -6272,19 +6482,19 @@ function ConnectorsPopoverButton({
                           </button>
                         )}
                       <LoadingSwitch
-                        checked={item.authorized}
+                        checked={connector.authorized}
                         onCheckedChange={onDomEventFn(async (checked) => {
-                          await onToggle(item.connectorRef, checked);
+                          await onToggle(connector.connectorRef, checked);
                         })}
-                        loading={savingConnectorSlug === item.connectorRef}
+                        loading={savingConnectorSlug === connector.connectorRef}
                         ariaLabel={
-                          item.authorized
+                          connector.authorized
                             ? t(
                                 ($) => {
                                   return $.chat.connectors.remove;
                                 },
                                 {
-                                  connectorName: item.label,
+                                  connectorName: connector.label,
                                 },
                               )
                             : t(
@@ -6292,7 +6502,7 @@ function ConnectorsPopoverButton({
                                   return $.chat.connectors.add;
                                 },
                                 {
-                                  connectorName: item.label,
+                                  connectorName: connector.label,
                                 },
                               )
                         }
@@ -6306,7 +6516,7 @@ function ConnectorsPopoverButton({
           </div>
         )}
         <div className="flex shrink-0 flex-col p-1">
-          {(agentConnectors.length > 0 || connectorsLoading) && (
+          {(connectorItems.length > 0 || connectorsLoading) && (
             <div className="mx-2 mb-1 border-t border-border/50" />
           )}
           <button
@@ -7194,15 +7404,35 @@ function equalAgentConnectorAuthorizations(
   );
 }
 
+function equalAgentCustomConnectorAuthorizations(
+  left: AgentCustomConnectorAuthorizations | null,
+  right: AgentCustomConnectorAuthorizations | null,
+): boolean {
+  if (left === null || right === null) {
+    return left === right;
+  }
+  return (
+    left.agentId === right.agentId &&
+    equalArrays(left.enabledIds, right.enabledIds)
+  );
+}
+
 export function useComposerConnectorReadState(
   composerConnectors: ComposerConnectorSignals,
 ): ComposerConnectorReadState {
   return {
     catalogItems: useLastLoadable(allConnectorCatalogItems$),
+    customConnectors: useLastLoadable(customConnectors$),
     agentId: useLoadable(composerConnectors.agentId$),
     authorizations: useLastLoadable(composerConnectors.authorizations$, {
       equalityFn: equalAgentConnectorAuthorizations,
     }),
+    customAuthorizations: useLastLoadable(
+      composerConnectors.customAuthorizations$,
+      {
+        equalityFn: equalAgentCustomConnectorAuthorizations,
+      },
+    ),
   };
 }
 
@@ -7220,6 +7450,109 @@ function matchingAuthorizedConnectorSlugs(
     return null;
   }
   return authorizations.data.enabledConnectorSlugs;
+}
+
+function matchingAuthorizedCustomConnectorIds(
+  agentId: Loadable<string | null>,
+  authorizations: Loadable<AgentCustomConnectorAuthorizations | null>,
+): readonly string[] | null {
+  if (agentId.state !== "hasData" || authorizations.state !== "hasData") {
+    return null;
+  }
+  if (agentId.data === null) {
+    return authorizations.data === null ? [] : null;
+  }
+  if (authorizations.data?.agentId !== agentId.data) {
+    return null;
+  }
+  return authorizations.data.enabledIds;
+}
+
+interface ResolvedComposerConnectorCollections {
+  readonly authorizedSet: ReadonlySet<ConnectorSlug>;
+  readonly connectorMap: ReadonlyMap<
+    ConnectorSlug,
+    PublicConnectorCatalogStatusItem
+  >;
+  readonly unconnectedConnectors: PublicConnectorCatalogStatusItem[];
+  readonly unconnectedCustomConnectors: CustomConnectorResponse[];
+  readonly agentConnectors: ComposerConnectorItem[];
+  readonly agentCustomConnectors: ComposerCustomConnectorItem[];
+  readonly selectedCustomConnector: CustomConnectorResponse | undefined;
+}
+
+function resolveComposerConnectorCollections({
+  catalogItems,
+  customConnectors,
+  authorizedConnectorSlugs,
+  authorizedCustomConnectorIds,
+  optimisticConnected,
+  selectedCustomConnectorId,
+}: {
+  catalogItems: Loadable<readonly PublicConnectorCatalogStatusItem[]>;
+  customConnectors: Loadable<readonly CustomConnectorResponse[]>;
+  authorizedConnectorSlugs: readonly ConnectorSlug[] | null;
+  authorizedCustomConnectorIds: readonly string[] | null;
+  optimisticConnected: ReadonlySet<ConnectorSlug>;
+  selectedCustomConnectorId: string | null;
+}): ResolvedComposerConnectorCollections {
+  const resolvedCatalogItems =
+    catalogItems.state === "hasData" ? catalogItems.data : [];
+  const resolvedCustomConnectors =
+    customConnectors.state === "hasData" ? customConnectors.data : [];
+  const authorizedSet = new Set(authorizedConnectorSlugs ?? []);
+  const authorizedCustomSet = new Set(authorizedCustomConnectorIds ?? []);
+  const connectorMap = new Map(
+    resolvedCatalogItems.map((connector) => {
+      return [connector.connectorRef, connector];
+    }),
+  );
+  const unconnectedConnectors = resolvedCatalogItems.filter((connector) => {
+    return (
+      !connector.connected && !optimisticConnected.has(connector.connectorRef)
+    );
+  });
+  const unconnectedCustomConnectors = resolvedCustomConnectors.filter(
+    (connector) => {
+      return !connector.connected;
+    },
+  );
+  const agentConnectors = resolvedCatalogItems
+    .filter((connector) => {
+      return (
+        connector.connected || optimisticConnected.has(connector.connectorRef)
+      );
+    })
+    .map((connector) => {
+      return {
+        ...connector,
+        authorized: authorizedSet.has(connector.connectorRef),
+      };
+    });
+  const agentCustomConnectors = resolvedCustomConnectors
+    .filter((connector) => {
+      return connector.connected;
+    })
+    .map((connector) => {
+      return {
+        ...connector,
+        authorized: authorizedCustomSet.has(connector.id),
+      };
+    });
+  const selectedCustomConnector = selectedCustomConnectorId
+    ? resolvedCustomConnectors.find((connector) => {
+        return connector.id === selectedCustomConnectorId;
+      })
+    : undefined;
+  return {
+    authorizedSet,
+    connectorMap,
+    unconnectedConnectors,
+    unconnectedCustomConnectors,
+    agentConnectors,
+    agentCustomConnectors,
+    selectedCustomConnector,
+  };
 }
 
 // The thread route invokes this hook from its ccstate-connected composer so
@@ -7425,8 +7758,10 @@ export function useZeroChatComposer(
 
   // Connectors: connected (org-level) + authorized (agent-level) → available
   const connectorCatalogItemsLoadable = connectorReadState.catalogItems;
+  const customConnectorsLoadable = connectorReadState.customConnectors;
   const agentIdLoadable = connectorReadState.agentId;
   const authorizationsLoadable = connectorReadState.authorizations;
+  const customAuthorizationsLoadable = connectorReadState.customAuthorizations;
   const pageSignal = useGet(pageSignal$);
   const selectedConnectorSlug = useGet(
     composerConnectors.selectedConnectorSlug$,
@@ -7438,6 +7773,12 @@ export function useZeroChatComposer(
   const setSelectedConnectorSlug = useSet(
     composerConnectors.setSelectedConnectorSlug$,
   );
+  const selectedCustomConnectorId = useGet(
+    composerConnectors.selectedCustomConnectorId$,
+  );
+  const setSelectedCustomConnectorId = useSet(
+    composerConnectors.setSelectedCustomConnectorId$,
+  );
   const pollingAuthCodeSlug = useGet(pollingOAuthAuthCodeConnectorSlug$);
   const pollingDeviceAuthSlug = useGet(pollingOAuthDeviceAuthConnectorSlug$);
   const connectFlowSlug = useGet(connectFlowConnectorSlug$);
@@ -7447,11 +7788,23 @@ export function useZeroChatComposer(
   const connectNoAuth = useSet(connectConnectorNoAuth$);
   const authorizeFn = useSet(composerConnectors.authorizeConnector$);
   const deauthorizeFn = useSet(composerConnectors.deauthorizeConnector$);
+  const authorizeCustomFn = useSet(
+    composerConnectors.authorizeCustomConnector$,
+  );
+  const deauthorizeCustomFn = useSet(
+    composerConnectors.deauthorizeCustomConnector$,
+  );
   const optimisticConnected = useGet(justConnectedSlugs$);
 
   const savingConnectorSlug = useGet(composerConnectors.savingConnectorSlug$);
   const setSavingConnectorSlug = useSet(
     composerConnectors.setSavingConnectorSlug$,
+  );
+  const savingCustomConnectorId = useGet(
+    composerConnectors.savingCustomConnectorId$,
+  );
+  const setSavingCustomConnectorId = useSet(
+    composerConnectors.setSavingCustomConnectorId$,
   );
   const agentRecordId = loadableDataOrNull(agentIdLoadable);
 
@@ -7459,40 +7812,33 @@ export function useZeroChatComposer(
     agentIdLoadable,
     authorizationsLoadable,
   );
+  const authorizedCustomConnectors = matchingAuthorizedCustomConnectorIds(
+    agentIdLoadable,
+    customAuthorizationsLoadable,
+  );
 
   const connectorsLoading =
     connectorCatalogItemsLoadable.state !== "hasData" ||
-    authorizedConnectors === null;
+    customConnectorsLoadable.state !== "hasData" ||
+    authorizedConnectors === null ||
+    authorizedCustomConnectors === null;
 
-  const connectorCatalogItems =
-    connectorCatalogItemsLoadable.state === "hasData"
-      ? connectorCatalogItemsLoadable.data
-      : [];
-  const connectorMap = new Map(
-    connectorCatalogItems.map((connector) => {
-      return [connector.connectorRef, connector];
-    }),
-  );
-  const authorizedSet = new Set(authorizedConnectors ?? []);
-
-  const unconnectedConnectors = connectorCatalogItems.filter((connector) => {
-    return (
-      !connector.connected && !optimisticConnected.has(connector.connectorRef)
-    );
+  const {
+    authorizedSet,
+    connectorMap,
+    unconnectedConnectors,
+    unconnectedCustomConnectors,
+    agentConnectors,
+    agentCustomConnectors,
+    selectedCustomConnector,
+  } = resolveComposerConnectorCollections({
+    catalogItems: connectorCatalogItemsLoadable,
+    customConnectors: customConnectorsLoadable,
+    authorizedConnectorSlugs: authorizedConnectors,
+    authorizedCustomConnectorIds: authorizedCustomConnectors,
+    optimisticConnected,
+    selectedCustomConnectorId,
   });
-
-  // Show all org-connected services so user can toggle authorization on/off per agent.
-  const connectedCatalogItems = connectorCatalogItems.filter((connector) => {
-    return (
-      connector.connected || optimisticConnected.has(connector.connectorRef)
-    );
-  });
-  const agentConnectors: ComposerConnectorItem[] = connectedCatalogItems.map(
-    (connector) => {
-      const authorized = authorizedSet.has(connector.connectorRef);
-      return { ...connector, authorized };
-    },
-  );
 
   const handleConnectSuccess = async (connectorSlug: ConnectorSlug) => {
     const label = connectorMap.get(connectorSlug)?.label ?? connectorSlug;
@@ -7614,6 +7960,16 @@ export function useZeroChatComposer(
         : deauthorizeFn(connectorSlug, pageSignal),
     );
     setSavingConnectorSlug(null);
+  };
+
+  const handleCustomToggle = async (connectorId: string, checked: boolean) => {
+    setSavingCustomConnectorId(connectorId);
+    await bestEffort(
+      checked
+        ? authorizeCustomFn(connectorId, pageSignal)
+        : deauthorizeCustomFn(connectorId, pageSignal),
+    );
+    setSavingCustomConnectorId(null);
   };
 
   const handleSend = () => {
@@ -7829,13 +8185,16 @@ export function useZeroChatComposer(
                     agentId={agentRecordId}
                     agentDisplayName={displayName}
                     agentConnectors={agentConnectors}
+                    agentCustomConnectors={agentCustomConnectors}
                     connectorsLoading={connectorsLoading}
                     savingConnectorSlug={savingConnectorSlug}
+                    savingCustomConnectorId={savingCustomConnectorId}
                     computerUse={computerUse}
                     onOpenAddDialog={() => {
                       return setShowAddDialog(true);
                     }}
                     onToggle={handleToggle}
+                    onToggleCustom={handleCustomToggle}
                   />
                 </div>
                 <div className="flex items-center gap-1 sm:gap-2">
@@ -7891,12 +8250,26 @@ export function useZeroChatComposer(
           }}
         />
       )}
+      {selectedCustomConnector && agentRecordId && (
+        <CustomConnectorConnectDialog
+          connector={selectedCustomConnector}
+          agentId={agentRecordId}
+          onClose={() => {
+            setSelectedCustomConnectorId(null);
+          }}
+        />
+      )}
       {showAddDialog && (
         <AddConnectorsDialog
           signals={composerConnectors}
           unconnected={unconnectedConnectors}
+          unconnectedCustom={unconnectedCustomConnectors}
           busyConnectorSlug={busyConnectorSlug}
           connectHandlers={connectorConnectHandlers}
+          onConnectCustom={(connector) => {
+            setShowAddDialog(false);
+            setSelectedCustomConnectorId(connector.id);
+          }}
           onClose={() => {
             setPendingConnectorSlug(null);
             return setShowAddDialog(false);

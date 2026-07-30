@@ -12,12 +12,12 @@ import {
   isQueueFirstRunClaimLost,
   type DispatchFailedRunCallbacks,
 } from "./agent-run-create.service";
-import type { PersistWorkflowQueueSourceTransition } from "./chat-message-queue.service";
+import type { PersistWorkflowQueueSourceTransition } from "./workflow-chat-event-queue.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import {
   finalizeClaimedRunUserMessage,
   resolveRunChatThreadModelContext,
-} from "./zero-chat-run-message.service";
+} from "./zero-chat-run-event.service";
 import type { ModelFirstPin } from "./zero-model-selection.service";
 import {
   ApiDispatchTimingCollector,
@@ -419,7 +419,7 @@ async function recordWorkflowAutomationRunStart(input: {
   readonly args: RunWorkflowAutomationNowArgs;
   readonly runId: string;
   readonly runStatus: string;
-  readonly claimedMessageCreatedAt: Date;
+  readonly claimedEventCreatedAt: Date;
   readonly signal: AbortSignal;
 }): Promise<void> {
   const { db, args, runId, signal } = input;
@@ -431,7 +431,7 @@ async function recordWorkflowAutomationRunStart(input: {
     runId,
     runStatus: input.runStatus,
     runGroupId: automation.id,
-    createdAt: input.claimedMessageCreatedAt,
+    createdAt: input.claimedEventCreatedAt,
   });
   signal.throwIfAborted();
 
@@ -579,7 +579,7 @@ export const launchQueuedWorkflowAutomation$ = command(
       args,
       runId: result.body.runId,
       runStatus: result.body.status,
-      claimedMessageCreatedAt: result.queueFirstClaim.createdAt,
+      claimedEventCreatedAt: result.queueFirstClaim.createdAt,
       signal,
     });
 

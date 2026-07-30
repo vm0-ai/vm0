@@ -1,4 +1,4 @@
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -24,17 +24,17 @@ async function getFirstRunSelectedModel(
 ): Promise<string | null> {
   const [run] = await db
     .select({ selectedModel: zeroRuns.selectedModel })
-    .from(chatMessages)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, chatMessages.runId))
+    .from(chatEvents)
+    .innerJoin(zeroRuns, eq(zeroRuns.id, chatEvents.runId))
     .where(
       and(
-        eq(chatMessages.chatThreadId, threadId),
+        eq(chatEvents.chatThreadId, threadId),
         chatEventTypeIn(["input.prompt"]),
-        isNotNull(chatMessages.runId),
+        isNotNull(chatEvents.runId),
         isNotNull(zeroRuns.selectedModel),
       ),
     )
-    .orderBy(asc(chatMessages.seqId))
+    .orderBy(asc(chatEvents.seqId))
     .limit(1);
   return run?.selectedModel ?? null;
 }

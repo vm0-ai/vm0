@@ -25,6 +25,7 @@ import {
   zeroConnectorScopeDiffContract,
   zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
+import { zeroCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { FEATURE_SWITCH_CACHE_KEY } from "../../signals/external/feature-switch.ts";
 import { mockApi } from "../msw-contract.ts";
@@ -320,6 +321,10 @@ export const apiConnectorsHandlers = [
       connectors,
       categoryMetadata: testConnectorCatalogCategoryMetadata,
     });
+  }),
+
+  mockApi(zeroCustomConnectorsContract.list, ({ respond }) => {
+    return respond(200, { connectors: [] });
   }),
 
   mockApi(zeroConnectorCatalogContract.diagnostics, ({ respond }) => {

@@ -20,10 +20,12 @@ import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   closeCustomConnectorDialog$,
   connectCustomConnectorOAuth2$,
+  connectCustomConnectorOAuth2ForAgent$,
   customConnectorConnectForm$,
   resetCustomConnectorConnectInput$,
   setCustomConnectorConnectField$,
   setCustomConnectorSecret$,
+  setCustomConnectorSecretForAgent$,
 } from "../../../../signals/zero-page/settings/custom-connectors.ts";
 import { hasTokenInputValue } from "../../../../signals/zero-page/settings/token-input.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
@@ -148,6 +150,50 @@ function submitButtonLabel(
   return submitting ? "Saving…" : "Save";
 }
 
+function useCustomConnectorConnectionSubmitters(agentId: string | undefined) {
+  const [apiLoadable, submitApi] = useLoadableSet(setCustomConnectorSecret$);
+  const [agentApiLoadable, submitAgentApi] = useLoadableSet(
+    setCustomConnectorSecretForAgent$,
+  );
+  const [oauthLoadable, submitOAuth2] = useLoadableSet(
+    connectCustomConnectorOAuth2$,
+  );
+  const [agentOAuthLoadable, submitAgentOAuth2] = useLoadableSet(
+    connectCustomConnectorOAuth2ForAgent$,
+  );
+
+  const submitSecret = async (
+    args: { readonly id: string; readonly value: string },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    if (agentId) {
+      await submitAgentApi({ ...args, agentId }, signal);
+    } else {
+      await submitApi(args, signal);
+    }
+  };
+  const submitOAuth = async (
+    connectorId: string,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    if (agentId) {
+      await submitAgentOAuth2({ id: connectorId, agentId }, signal);
+    } else {
+      await submitOAuth2(connectorId, signal);
+    }
+  };
+
+  return {
+    submitting:
+      apiLoadable.state === "loading" ||
+      agentApiLoadable.state === "loading" ||
+      oauthLoadable.state === "loading" ||
+      agentOAuthLoadable.state === "loading",
+    submitSecret,
+    submitOAuth,
+  };
+}
+
 function ConnectDialogFooter({
   selectedMethod,
   multipleMethods,
@@ -194,8 +240,12 @@ function ConnectDialogFooter({
 
 export function CustomConnectorConnectDialog({
   connector,
+  agentId,
+  onClose,
 }: {
   readonly connector: CustomConnectorResponse;
+  readonly agentId?: string;
+  readonly onClose?: () => void;
 }) {
   const { t } = useTranslation();
   const form = useGet(customConnectorConnectForm$);
@@ -213,14 +263,10 @@ export function CustomConnectorConnectDialog({
   const setField = useSet(setCustomConnectorConnectField$);
   const resetForm = useSet(resetCustomConnectorConnectInput$);
   const closeDialog = useSet(closeCustomConnectorDialog$);
-  const [apiLoadable, submitApi] = useLoadableSet(setCustomConnectorSecret$);
-  const [oauthLoadable, submitOAuth2] = useLoadableSet(
-    connectCustomConnectorOAuth2$,
-  );
+  const { submitting, submitSecret, submitOAuth } =
+    useCustomConnectorConnectionSubmitters(agentId);
   const signal = useGet(pageSignal$);
 
-  const submitting =
-    apiLoadable.state === "loading" || oauthLoadable.state === "loading";
   const canSubmit =
     !submitting &&
     (selectedMethod?.type === "api"
@@ -229,7 +275,11 @@ export function CustomConnectorConnectDialog({
 
   const close = () => {
     resetForm();
-    closeDialog();
+    if (onClose) {
+      onClose();
+    } else {
+      closeDialog();
+    }
   };
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -240,9 +290,12 @@ export function CustomConnectorConnectDialog({
     detach(
       (async () => {
         if (selectedMethod.type === "api") {
-          await submitApi({ id: connector.id, value: form.apiSecret }, signal);
+          await submitSecret(
+            { id: connector.id, value: form.apiSecret },
+            signal,
+          );
         } else {
-          await submitOAuth2(connector.id, signal);
+          await submitOAuth(connector.id, signal);
         }
         close();
       })(),

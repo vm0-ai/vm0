@@ -15,7 +15,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import {
   telegramMessages,
@@ -75,11 +75,11 @@ import {
   type TelegramOwnerLink,
 } from "./telegram-chat-ingress.service";
 import type { TelegramDeliveryTarget } from "./telegram-chat-callback-payload";
-import { touchChatThreadLastMessageAt } from "./zero-chat-message-shared.service";
+import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
-import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-message.service";
+import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-event.service";
 import { telegramIntegrationBotStatus } from "./zero-telegram-data.service";
 import {
   formatTelegramUserDisplayName,
@@ -101,7 +101,7 @@ const QUEUED_MESSAGE =
 const TELEGRAM_CHAT_MESSAGE_ID_NAMESPACE =
   "f2233eb8-9b2f-41b2-9240-b34983f595af";
 const telegramQueueEventRevoker = alias(
-  chatMessages,
+  chatEvents,
   "telegram_queue_event_revoker",
 );
 
@@ -1795,9 +1795,9 @@ async function persistTelegramChatMessage(args: {
   const currentTime = new Date(args.source.apiStartTime);
   const chatMessageId = telegramChatMessageId(args);
   const [existingMessage] = await args.source.db
-    .select({ id: chatMessages.id })
-    .from(chatMessages)
-    .where(eq(chatMessages.id, chatMessageId))
+    .select({ id: chatEvents.id })
+    .from(chatEvents)
+    .where(eq(chatEvents.id, chatMessageId))
     .limit(1);
   args.signal.throwIfAborted();
   if (existingMessage) {
@@ -1851,7 +1851,7 @@ async function persistTelegramChatMessage(args: {
   args.signal.throwIfAborted();
 
   const inserted = await args.source.db.transaction(async (tx) => {
-    const message = await insertChatEvent(
+    const event = await insertChatEvent(
       tx,
       {
         id: chatMessageId,
@@ -1867,7 +1867,7 @@ async function persistTelegramChatMessage(args: {
       "id",
     );
     args.signal.throwIfAborted();
-    if (!message) {
+    if (!event) {
       return false;
     }
     await touchChatThreadLastMessageAt(
@@ -1898,33 +1898,33 @@ async function telegramMessageDispatchState(
   const [[run], [queued]] = await Promise.all([
     db
       .select({ runId: agentRuns.id, status: agentRuns.status })
-      .from(chatMessages)
-      .innerJoin(agentRuns, eq(agentRuns.id, chatMessages.runId))
+      .from(chatEvents)
+      .innerJoin(agentRuns, eq(agentRuns.id, chatEvents.runId))
       .where(
         and(
-          eq(chatMessages.chatThreadId, args.chatThreadId),
+          eq(chatEvents.chatThreadId, args.chatThreadId),
           or(
-            eq(chatMessages.id, args.chatMessageId),
-            eq(chatMessages.revokesEventId, args.chatMessageId),
+            eq(chatEvents.id, args.chatMessageId),
+            eq(chatEvents.revokesEventId, args.chatMessageId),
           ),
         ),
       )
       .limit(1),
     db
-      .select({ id: chatMessages.id })
-      .from(chatMessages)
+      .select({ id: chatEvents.id })
+      .from(chatEvents)
       .where(
         and(
-          eq(chatMessages.id, args.chatMessageId),
-          eq(chatMessages.chatThreadId, args.chatThreadId),
+          eq(chatEvents.id, args.chatMessageId),
+          eq(chatEvents.chatThreadId, args.chatThreadId),
           chatEventTypeIn(["input.prompt"]),
-          isNull(chatMessages.runId),
+          isNull(chatEvents.runId),
           notExists(
             db
               .select({ id: telegramQueueEventRevoker.id })
               .from(telegramQueueEventRevoker)
               .where(
-                eq(telegramQueueEventRevoker.revokesEventId, chatMessages.id),
+                eq(telegramQueueEventRevoker.revokesEventId, chatEvents.id),
               ),
           ),
         ),

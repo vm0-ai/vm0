@@ -16,36 +16,36 @@ import {
 } from "drizzle-orm/pg-core";
 import { chatThreads } from "./chat-thread";
 import type {
-  ChatMessageAttachFileMetadataList,
-  ChatMessageAttachFiles,
-  ChatMessageGenerationTemplate,
-  ChatMessageGoalEvent,
-  ChatMessageGoalSnapshot,
-  ChatMessageRecommendedFollowups,
-  ChatMessageUserMessage,
-  ChatMessageUsagePayload,
-} from "@vm0/db/jsonb-contracts/chat-message";
+  ChatEventAttachFileMetadataList,
+  ChatEventAttachFiles,
+  ChatEventGenerationTemplate,
+  ChatEventGoalEvent,
+  ChatEventGoalSnapshot,
+  ChatEventRecommendedFollowups,
+  ChatEventUserMessage,
+  ChatEventUsagePayload,
+} from "@vm0/db/jsonb-contracts/chat-event";
 export type {
-  ChatMessageAttachFileMetadata,
-  ChatMessageAttachFileMetadataList,
-  ChatMessageAttachFiles,
-  ChatMessageGenerationTemplate,
-  ChatMessageGoalEvent,
-  ChatMessageGoalSnapshot,
-  ChatMessageIllustrationGenerationTemplate,
-  ChatMessagePresentationGenerationTemplate,
-  ChatMessageRecommendedFollowup,
-  ChatMessageRecommendedFollowupGenerationType,
-  ChatMessageRecommendedFollowupKind,
-  ChatMessageRecommendedFollowups,
-  ChatMessageUserMessage,
-  ChatMessageUsageKindBreakdown,
-  ChatMessageUsagePayload,
-  ChatMessageUsageProviderBreakdown,
-  ChatMessageVideoGenerationTemplate,
-  ChatMessageWebsiteGenerationTemplate,
-  ChatMessageWorkflowGenerationTemplate,
-} from "@vm0/db/jsonb-contracts/chat-message";
+  ChatEventAttachFileMetadata,
+  ChatEventAttachFileMetadataList,
+  ChatEventAttachFiles,
+  ChatEventGenerationTemplate,
+  ChatEventGoalEvent,
+  ChatEventGoalSnapshot,
+  ChatEventIllustrationGenerationTemplate,
+  ChatEventPresentationGenerationTemplate,
+  ChatEventRecommendedFollowup,
+  ChatEventRecommendedFollowupGenerationType,
+  ChatEventRecommendedFollowupKind,
+  ChatEventRecommendedFollowups,
+  ChatEventUserMessage,
+  ChatEventUsageKindBreakdown,
+  ChatEventUsagePayload,
+  ChatEventUsageProviderBreakdown,
+  ChatEventVideoGenerationTemplate,
+  ChatEventWebsiteGenerationTemplate,
+  ChatEventWorkflowGenerationTemplate,
+} from "@vm0/db/jsonb-contracts/chat-event";
 
 /**
  * Physical storage for the immutable ChatEvent stream.
@@ -71,7 +71,7 @@ export type {
  * Summaries (tool-use activity) are NOT stored here — the client fetches
  * them in real-time from the telemetry/logs endpoint for active runs.
  */
-export const chatMessages = pgTable(
+export const chatEvents = pgTable(
   "chat_events",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -86,10 +86,10 @@ export const chatMessages = pgTable(
     // Attribution only: identifies the run that consumed or produced this row.
     // A null value on an unrevoked input.prompt/input.automation/input.goal is pending.
     runId: uuid("run_id"),
-    usagePayload: jsonb("usage_payload").$type<ChatMessageUsagePayload>(),
+    usagePayload: jsonb("usage_payload").$type<ChatEventUsagePayload>(),
     revokesEventId: uuid("revokes_message_id").references(
       (): AnyPgColumn => {
-        return chatMessages.id;
+        return chatEvents.id;
       },
       { onDelete: "no action" },
     ),
@@ -106,7 +106,7 @@ export const chatMessages = pgTable(
     encryptedParams: text("encrypted_params"),
     content: text("content"),
     /** Canonical rich user-message document for user input events. */
-    userMessage: jsonb("user_message").$type<ChatMessageUserMessage>(),
+    userMessage: jsonb("user_message").$type<ChatEventUserMessage>(),
     thinking: text("thinking"),
     error: text("error"),
     /** "completed" | "failed" | "cancelled"; null for non-terminal rows. */
@@ -115,20 +115,20 @@ export const chatMessages = pgTable(
     runEventId: text("run_event_id"), // Anthropic message ID from event.message.id (e.g. "msg_01abc...")
     /** Strictly increasing position within the owning chat thread. */
     seqId: bigint("seq_id", { mode: "number" }).notNull(),
-    goalEvent: jsonb("goal_event").$type<ChatMessageGoalEvent>(),
-    goalSnapshot: jsonb("goal_snapshot").$type<ChatMessageGoalSnapshot>(),
-    attachFiles: jsonb("attach_files").$type<ChatMessageAttachFiles>(),
+    goalEvent: jsonb("goal_event").$type<ChatEventGoalEvent>(),
+    goalSnapshot: jsonb("goal_snapshot").$type<ChatEventGoalSnapshot>(),
+    attachFiles: jsonb("attach_files").$type<ChatEventAttachFiles>(),
     attachFileMetadata: jsonb(
       "attach_file_metadata",
-    ).$type<ChatMessageAttachFileMetadataList>(),
+    ).$type<ChatEventAttachFileMetadataList>(),
     generationTemplate: jsonb(
       "generation_template",
-    ).$type<ChatMessageGenerationTemplate>(),
+    ).$type<ChatEventGenerationTemplate>(),
     slackMessagePermalink: text("slack_message_permalink"),
     feishuChatOpenUrl: text("feishu_chat_open_url"),
     recommendedFollowups: jsonb(
       "recommended_followups",
-    ).$type<ChatMessageRecommendedFollowups>(),
+    ).$type<ChatEventRecommendedFollowups>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {

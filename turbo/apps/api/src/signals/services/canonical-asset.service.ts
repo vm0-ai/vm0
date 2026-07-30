@@ -3,7 +3,7 @@ import { command } from "ccstate";
 import {
   CANONICAL_ASSET_VERSION,
   canonicalAssetDeliveries,
-  chatMessageAssetRefs,
+  chatEventAssetRefs,
   runUploadedFiles,
   type CanonicalAssetMaterializationStatus,
   type RunUploadedFileSource,
@@ -644,20 +644,20 @@ export const materializeCanonicalSlackInputAssets$ = command(
   },
 );
 
-export async function attachCanonicalAssetsToMessage(
+export async function attachCanonicalAssetsToEvent(
   db: Db,
-  messageId: string,
+  eventId: string,
   assets: readonly CanonicalSlackInputAsset[],
 ): Promise<void> {
   if (assets.length === 0) {
     return;
   }
   await db
-    .insert(chatMessageAssetRefs)
+    .insert(chatEventAssetRefs)
     .values(
       assets.map((asset) => {
         return {
-          chatMessageId: messageId,
+          chatEventId: eventId,
           assetId: asset.assetId,
           position: asset.position,
         };

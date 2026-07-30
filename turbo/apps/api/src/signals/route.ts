@@ -24,7 +24,7 @@ import { cronConnectorOauthStateCleanupRoutes } from "./routes/cron-connector-oa
 import { cronDrainEmailOutboxRoutes } from "./routes/cron-drain-email-outbox";
 import { cronExecuteMorningBriefsRoutes } from "./routes/cron-execute-morning-briefs";
 import { cronExecuteWorkflowAutomationsRoutes } from "./routes/cron-execute-workflow-automations";
-import { cronMonitorChatMessageQueueRoutes } from "./routes/cron-monitor-chat-message-queue";
+import { cronMonitorChatEventQueueRoutes } from "./routes/cron-monitor-chat-event-queue";
 import { cronRenewGmailWatchesRoutes } from "./routes/cron-renew-gmail-watches";
 import { cronRenewGoogleCalendarWatchesRoutes } from "./routes/cron-renew-google-calendar-watches";
 import { cronRenewGoogleWorkspaceEventSubscriptionsRoutes } from "./routes/cron-renew-google-workspace-event-subscriptions";
@@ -253,7 +253,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronDrainEmailOutboxRoutes,
   ...cronExecuteMorningBriefsRoutes,
   ...cronExecuteWorkflowAutomationsRoutes,
-  ...cronMonitorChatMessageQueueRoutes,
+  ...cronMonitorChatEventQueueRoutes,
   ...cronRenewGmailWatchesRoutes,
   ...cronRenewGoogleCalendarWatchesRoutes,
   ...cronRenewGoogleWorkspaceEventSubscriptionsRoutes,

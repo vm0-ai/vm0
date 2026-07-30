@@ -187,21 +187,10 @@ describe("auth tokens", () => {
     expect(verifyZeroToken(token)?.capabilities).toContain("web-search:read");
   });
 
-  it("grants finance capability by default and respects explicit opt-out", () => {
-    const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
-    const disabledToken = generateZeroToken(
-      "user_zero",
-      "run_zero",
-      "org_zero",
-      { [FeatureSwitchKey.ZeroFinance]: false },
-    );
+  it("grants finance capability by default", () => {
+    const token = generateZeroToken("user_zero", "run_zero", "org_zero");
 
-    expect(verifyZeroToken(defaultToken)?.capabilities).toContain(
-      "finance:read",
-    );
-    expect(verifyZeroToken(disabledToken)?.capabilities).not.toContain(
-      "finance:read",
-    );
+    expect(verifyZeroToken(token)?.capabilities).toContain("finance:read");
   });
 
   it("includes people-search capability in zero-scoped tokens", () => {
