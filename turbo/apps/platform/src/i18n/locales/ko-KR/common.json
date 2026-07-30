@@ -339,6 +339,7 @@
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
+      "test": "테스트",
       "web": "웹",
       "webhook": "Webhook",
       "workflowEvent": "워크플로 이벤트",
@@ -1286,6 +1287,18 @@
       "providerDeletedSuffix": "계속하려면",
       "providerIncompatibleAction": "새 세션 시작",
       "providerIncompatiblePrefix": "이 세션은 다른 모델 공급자로 시작되어 현재 공급자로 계속할 수 없습니다.",
+      "recovery": {
+        "capacityDescription": "이 모델은 일시적으로 사용량이 많습니다. 몇 분 후 다시 시도하거나 지금 다른 모델로 전환하세요.",
+        "capacityTitle": "{{framework}} 모델이 혼잡합니다",
+        "claudeCode": "Claude Code",
+        "codex": "Codex",
+        "resetAndTryAgain": "재설정하고 다시 시도",
+        "resetsAt": "{{time}}에 재설정",
+        "selectModel": "모델 전환",
+        "tryAgain": "다시 시도",
+        "usageDescription": "사용량 한도가 재설정되면 계속하거나 지금 다른 모델로 전환할 수 있습니다.",
+        "usageTitle": "{{framework}} 한도에 도달했습니다"
+      },
       "runCancelled": "중간에 일시 중지됨 — 언제든 다시 시작하세요."
     },
     "feedback": {
@@ -2210,6 +2223,12 @@
         "manageDialogTitle": "Feishu 봇 관리",
         "moreOptions": "{{bot}}에 대한 추가 옵션",
         "pageDescription": "이 워크스페이스의 봇 라우팅 관리",
+        "permissions": {
+          "description": "Feishu 개발자 콘솔에서 '권한 및 범위'를 열고 아래의 모든 범위를 '사용자 ID'에 추가하세요. 이러한 협업 범위를 통해 커넥터에서 메시지, 파일, 문서, 스프레드시트, Base, Wiki, Slides, 화이트보드, 검색, 캘린더, 작업 및 기본 연락처를 사용할 수 있습니다.",
+          "hint": "권한을 변경한 후 OAuth 동의 화면에서 해당 권한을 부여할 수 있도록 새 앱 버전을 생성하고 게시하세요.",
+          "label": "OAuth 범위",
+          "title": "커넥터 권한 활성화"
+        },
         "publish": {
           "allMembersAlt": "모든 구성원이 선택된 Feishu 사용 가능 설정",
           "allMembersLabel": "앱을 모든 구성원이 사용할 수 있도록 설정",
@@ -2242,6 +2261,7 @@
           "done": "완료",
           "events": "이벤트",
           "next": "다음",
+          "permissions": "권한",
           "publish": "게시",
           "redirect": "리디렉션",
           "tokens": "토큰",
