@@ -884,16 +884,20 @@ mod tests {
     use crate::proxy::{ProxyRegistryHandle, VmRegistration};
     use crate::types::FirewallEntry;
 
-    fn api_client_for_server(server: &MockServer) -> ApiClient {
+    fn api_client_for_url(api_url: String) -> ApiClient {
         ApiClient::new(
             HttpClient::new(HttpClientConfig {
-                api_url: server.base_url(),
+                api_url,
                 vercel_bypass: None,
                 client_session_id: "runner-session-test".to_string(),
             })
             .expect("test API URL should be valid"),
             "runner-token".to_string(),
         )
+    }
+
+    fn api_client_for_server(server: &MockServer) -> ApiClient {
+        api_client_for_url(server.base_url())
     }
 
     fn core_without_worker(
@@ -966,6 +970,10 @@ mod tests {
             run_id: RunId,
             connector_slugs: &[&str],
         ) -> Self {
+            Self::new_with_api(api_client_for_server(server), run_id, connector_slugs).await
+        }
+
+        async fn new_with_api(api: ApiClient, run_id: RunId, connector_slugs: &[&str]) -> Self {
             let dir = tempfile::tempdir().expect("tempdir should be created");
             let registry_path = dir.path().join("proxy-registry.json");
             tokio::fs::write(&registry_path, br#"{"vms":{},"updatedAt":0}"#)
@@ -1026,7 +1034,7 @@ mod tests {
                 .await
                 .expect("vm should be registered");
 
-            let handle = NetworkPolicyRefreshHandle::new(api_client_for_server(server));
+            let handle = NetworkPolicyRefreshHandle::new(api);
             handle
                 .core
                 .register_run(NetworkPolicyRefreshRegistration {
@@ -1930,6 +1938,33 @@ mod tests {
             );
             harness.shutdown().await;
         }
+    }
+
+    #[tokio::test]
+    async fn transport_network_policy_refresh_error_remains_failure() {
+        let run_id = RunId::nil();
+        let harness = NetworkPolicyRefreshHarness::new_with_api(
+            api_client_for_url("http://127.0.0.1:0".to_string()),
+            run_id,
+            &["slack"],
+        )
+        .await;
+
+        let (_, events) = capture_network_policy_events(harness.refresh_slack()).await;
+
+        assert_fail_closed_policy(&harness.slack_policy().await);
+        captured_event(&events, "network policy refresh failed");
+        assert!(
+            harness
+                .handle
+                .core
+                .inner
+                .active_runs
+                .lock()
+                .await
+                .contains_key(&run_id)
+        );
+        harness.shutdown().await;
     }
 
     #[tokio::test]
