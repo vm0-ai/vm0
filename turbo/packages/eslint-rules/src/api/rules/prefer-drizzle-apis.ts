@@ -1717,11 +1717,44 @@ export const preferDrizzleApis = createRule({
         | "selection"
         | "write-expression";
       readonly node: TSESTree.Expression;
+      readonly unqualifiedSchemaTarget?: TSESTree.Expression;
+    }
+
+    // Conflict predicate lint intentionally follows only the normal direct
+    // insert chain. Builder aliases and dynamic construction remain opaque.
+    function conflictInsertTarget(
+      node: TSESTree.CallExpression,
+    ): TSESTree.Expression | undefined {
+      const valuesReceiver = callReceiver(node);
+      const values =
+        valuesReceiver === undefined
+          ? undefined
+          : directDrizzleCall(valuesReceiver, "values");
+      const insertReceiver =
+        values === undefined || values.optional
+          ? undefined
+          : callReceiver(values);
+      const insert =
+        insertReceiver === undefined
+          ? undefined
+          : directDrizzleCall(insertReceiver, "insert");
+      return insert === undefined || insert.optional
+        ? undefined
+        : singleCallArgument(insert);
     }
 
     function conflictUpdateRoots(
       options: TSESTree.ObjectExpression,
+      insertTarget: TSESTree.Expression | undefined,
     ): readonly ContextualRoot[] {
+      const unqualifiedSchemaTarget = options.properties.some((property) => {
+        return (
+          property.type === AST_NODE_TYPES.SpreadElement ||
+          (property.type === AST_NODE_TYPES.Property && property.computed)
+        );
+      })
+        ? undefined
+        : insertTarget;
       return options.properties.flatMap<ContextualRoot>((property) => {
         if (
           property.type !== AST_NODE_TYPES.Property ||
@@ -1746,7 +1779,12 @@ export const preferDrizzleApis = createRule({
         }
         return name === "setWhere" || name === "targetWhere"
           ? contextRoots(property.value).map((root) => {
-              return { context: "optional-predicate", node: root };
+              return {
+                context: "optional-predicate",
+                node: root,
+                unqualifiedSchemaTarget:
+                  name === "targetWhere" ? unqualifiedSchemaTarget : undefined,
+              };
             })
           : [];
       });
@@ -1767,7 +1805,7 @@ export const preferDrizzleApis = createRule({
       ) {
         return;
       }
-      const roots = conflictUpdateRoots(options);
+      const roots = conflictUpdateRoots(options, conflictInsertTarget(node));
       if (roots.length === 0) {
         return;
       }
@@ -1780,6 +1818,7 @@ export const preferDrizzleApis = createRule({
             services,
             sqlSourceComposer,
             sqlCapabilityChecks,
+            root.unqualifiedSchemaTarget,
           );
         });
         if (
