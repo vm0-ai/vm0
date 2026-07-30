@@ -389,6 +389,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.PwaChatKeyboardGestures]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Keep the PWA chat composer pinned above the software keyboard and support swipe-to-dismiss gestures.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: false,
+  },
   [FeatureSwitchKey.ChatThreadSidebarAutoOpen]: {
     maintainer: "ethan@vm0.ai",
     description:
