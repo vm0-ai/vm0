@@ -8,7 +8,7 @@ import {
   cliAuthTokenContract,
 } from "@vm0/api-contracts/contracts/cli-auth";
 import {
-  composesMainContract,
+  agentComposeApiContentSchema,
   type ZeroCapability,
 } from "@vm0/api-contracts/contracts/composes";
 import { webhookStripeContract } from "@vm0/api-contracts/contracts/webhooks";
@@ -53,6 +53,7 @@ import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { now } from "../../../../lib/time";
+import { createAgentComposeFixture } from "../../../../test-fixtures/agent-composes";
 import {
   createDirectRunFixture,
   listAgentRunsFixture,
@@ -63,8 +64,6 @@ import {
   signSandboxJwtForTests,
 } from "../../../auth/tokens";
 import { mockStripeClient } from "../../../external/stripe-client";
-import { agentComposesReadRoutes } from "../../agent-composes-read";
-import { agentComposesRoutes } from "../../agent-composes";
 import { cliAuthRoutes } from "../../cli-auth";
 import { cronAggregateInsightsRoutes } from "../../cron-aggregate-insights";
 import { cronAggregateUsageRoutes } from "../../cron-aggregate-usage";
@@ -105,9 +104,7 @@ type RunnerNetworkPolicyRefreshRequest = z.input<
   (typeof runnersNetworkPolicyRefreshContract.refresh)["body"]
 >;
 type RunnerNetworkPolicyRefreshStatus = 200 | 400 | 401 | 403 | 404 | 409 | 500;
-type ComposeContent = z.infer<
-  (typeof composesMainContract.create)["body"]
->["content"];
+type ComposeContent = z.infer<typeof agentComposeApiContentSchema>;
 type OrgModelPolicyRequest = z.infer<
   (typeof zeroModelPoliciesMainContract.update)["body"]
 >;
@@ -157,8 +154,6 @@ const CRON_AUTHORIZATION = "Bearer test-cron-secret";
 
 const runRoutes = [
   ...cliAuthRoutes,
-  ...agentComposesRoutes,
-  ...agentComposesReadRoutes,
   ...cronAggregateInsightsRoutes,
   ...cronAggregateUsageRoutes,
   ...cronProcessUsageEventsRoutes,
@@ -676,10 +671,14 @@ export function createRunsApi(context: TestContext) {
       readonly name: string;
       readonly versionId: string;
     }> {
+      if (!actor.orgId) {
+        throw new Error("Compose fixtures require an org-scoped actor");
+      }
       const response = await accept(
-        runApp(context)(composesMainContract).create({
-          headers: authenticate(context, actor),
-          body: { content },
+        createAgentComposeFixture({
+          actor: { userId: actor.userId, orgId: actor.orgId },
+          content,
+          signal: context.signal,
         }),
         [200, 201],
       );
