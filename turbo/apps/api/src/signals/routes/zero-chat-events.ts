@@ -82,10 +82,7 @@ import {
   dispatchCancelSideEffects$,
   type CancelRunResult,
 } from "../services/zero-run-cancel.service";
-import {
-  generateAndPersistChatThreadTitle,
-  isChatTitleGenerationConfigured,
-} from "../services/zero-chat-title.service";
+import { scheduleChatThreadTitleGeneration } from "../services/zero-chat-title.service";
 import { generateAndPersistInitialThinkingMessage } from "../services/zero-chat-initial-thinking.service";
 import {
   isCodexFastServiceTierSupported,
@@ -2514,23 +2511,18 @@ function scheduleChatTitleGeneration(params: {
   readonly userId: string;
   readonly orgId: string;
 }): void {
-  if (
-    params.body.hasTextContent === false ||
-    !isChatTitleGenerationConfigured()
-  ) {
+  if (params.body.hasTextContent === false) {
     return;
   }
 
-  waitUntil(
-    generateAndPersistChatThreadTitle({
-      db: params.db,
-      threadId: params.thread.threadId,
-      userId: params.userId,
-      orgId: params.orgId,
-      prompt: params.body.agentPrompt,
-      includePriorRounds: !params.thread.isNewThread,
-    }),
-  );
+  scheduleChatThreadTitleGeneration({
+    db: params.db,
+    threadId: params.thread.threadId,
+    userId: params.userId,
+    orgId: params.orgId,
+    prompt: params.body.agentPrompt,
+    includePriorRounds: !params.thread.isNewThread,
+  });
 }
 
 function scheduleAssociatedUserMessage(params: {
