@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.271.5](https://github.com/vm0-ai/vm0/compare/cli-v9.271.4...cli-v9.271.5) (2026-07-30)
+
+
+### Refactoring
+
+* **cli:** retire connector slug capability ([#24133](https://github.com/vm0-ai/vm0/issues/24133)) ([3917dd7](https://github.com/vm0-ai/vm0/commit/3917dd73cbe361e5dd155b57021a1f105c2f6372))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.256.0
+    * @vm0/core bumped to 8.496.0
+
 ## [9.271.4](https://github.com/vm0-ai/vm0/compare/cli-v9.271.3...cli-v9.271.4) (2026-07-30)
 
 
