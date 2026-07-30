@@ -162,6 +162,29 @@ export async function findPendingChatEventInputParamsByPromptFixture(
   return row ?? null;
 }
 
+/**
+ * Makes one pending queue item fail while loading its private run parameters.
+ * Product APIs cannot persist malformed encrypted state.
+ */
+export async function invalidatePendingChatEventInputParamsFixture(
+  eventId: string,
+): Promise<void> {
+  const rows = await db()
+    .insert(chatEventInputParams)
+    .values({
+      eventId,
+      encryptedParams: "invalid-encrypted-queue-params",
+    })
+    .onConflictDoUpdate({
+      target: chatEventInputParams.eventId,
+      set: { encryptedParams: "invalid-encrypted-queue-params" },
+    })
+    .returning({ eventId: chatEventInputParams.eventId });
+  if (rows.length !== 1) {
+    throw new Error("Expected one pending queue item to become invalid");
+  }
+}
+
 export async function replayPendingChatInputQueueEventFixture(args: {
   readonly eventId: string;
   readonly replacementId: string;

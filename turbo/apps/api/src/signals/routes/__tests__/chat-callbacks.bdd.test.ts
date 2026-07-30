@@ -27,6 +27,7 @@ import { readGoalQueueStateFixture } from "../../../test-fixtures/goal-queue";
 import {
   holdCheckpointReadsFixture,
   holdChatEventInsertTransactionFixture,
+  invalidatePendingChatEventInputParamsFixture,
   removeAcknowledgedCancellationLifecycleFixture,
 } from "../../../test-fixtures/chat-events";
 import { testContext } from "../../../__tests__/test-context";
@@ -2474,6 +2475,78 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       run.threadId,
       queuedEventId,
     );
+
+    await api.requestCancelRun(actor, replacementRunId, [200]);
+    await waitForRunStatus(actor, replacementRunId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
+  it("continues the recovery stale sweep after one thread drain fails", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const startedAt = now();
+    mockNow(startedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    mockEnv("CRON_SECRET", CANCELLATION_RECOVERY_CRON_SECRET);
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const poisonedRun = await startChatRun(actor, {
+      agentId,
+      prompt: "cancel before a poisoned recovery drain",
+    });
+    const healthyRun = await startChatRun(actor, {
+      agentId,
+      prompt: "cancel before a healthy recovery drain",
+    });
+    await claimChatRun(runnerGroup, poisonedRun.runId, [
+      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
+    ]);
+    await claimChatRun(runnerGroup, healthyRun.runId, [
+      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
+    ]);
+    const poisonedEventId = await queueChatEvent(actor, {
+      agentId,
+      threadId: poisonedRun.threadId,
+      prompt: "fail this expired recovery drain",
+    });
+    const healthyEventId = await queueChatEvent(actor, {
+      agentId,
+      threadId: healthyRun.threadId,
+      prompt: "continue despite the other drain failure",
+    });
+
+    await api.requestCancelRun(actor, poisonedRun.runId, [200]);
+    await api.requestCancelRun(actor, healthyRun.runId, [200]);
+    await flushWaitUntilForTest();
+    await invalidatePendingChatEventInputParamsFixture(poisonedEventId);
+
+    mockNow(startedAt + CANCELLATION_RECOVERY_STALE_AFTER_MS + 1);
+    await accept(
+      cancellationRecoveryCronClient().reconcile({
+        headers: {
+          authorization: `Bearer ${CANCELLATION_RECOVERY_CRON_SECRET}`,
+        },
+      }),
+      [200],
+    );
+
+    const replacementRunId = await waitForQueuedEventReplacement(
+      actor,
+      healthyRun.threadId,
+      healthyEventId,
+    );
+    const poisonedThread = await chat.listThreadEvents(
+      actor,
+      poisonedRun.threadId,
+    );
+    expect(
+      userMessages(poisonedThread.events).filter((event) => {
+        return (
+          event.revokesEventId === poisonedEventId && event.runId !== undefined
+        );
+      }),
+    ).toHaveLength(0);
 
     await api.requestCancelRun(actor, replacementRunId, [200]);
     await waitForRunStatus(actor, replacementRunId, "cancelled");
