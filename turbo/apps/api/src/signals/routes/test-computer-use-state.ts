@@ -3,21 +3,16 @@ import { randomUUID } from "node:crypto";
 import { command } from "ccstate";
 import { testComputerUseStateContract } from "@vm0/api-contracts/contracts/test-computer-use-state";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { teamsChatThreadRoutes } from "@vm0/db/schema/teams-chat-thread-route";
-import { teamsOrgConnections } from "@vm0/db/schema/teams-org-connection";
-import { teamsOrgInstallations } from "@vm0/db/schema/teams-org-installation";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { bodyResultOf, queryOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route-entry";
-import { teamsOrgCallbackPayloadSchema } from "../services/teams-org-callback-payload";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -29,8 +24,6 @@ const deleteQuery$ = queryOf(testComputerUseStateContract.delete);
 
 interface RunState {
   readonly id: string;
-  readonly orgId: string;
-  readonly userId: string;
   readonly sessionId: string;
   readonly agentComposeId: string;
   readonly triggerSource: string | null;
@@ -44,20 +37,12 @@ interface BaseComputerUseRunSeed {
   readonly threadId: string | null;
 }
 
-interface TeamsComputerUseSeed {
-  readonly connection_id: string;
-  readonly conversation_id: string;
-  readonly thread_id: string;
-}
-
 type ComputerUseTriggerSource = "web" | "slack" | "teams";
 
 async function loadRunState(db: Db, runId: string): Promise<RunState | null> {
   const [run] = await db
     .select({
       id: agentRuns.id,
-      orgId: agentRuns.orgId,
-      userId: agentRuns.userId,
       sessionId: agentRuns.sessionId,
       agentComposeId: agentSessions.agentComposeId,
       triggerSource: zeroRuns.triggerSource,
@@ -71,59 +56,20 @@ async function loadRunState(db: Db, runId: string): Promise<RunState | null> {
   return run ?? null;
 }
 
-async function teamsCallbackPayload(db: Db, runId: string) {
-  const [callback] = await db
-    .select({ payload: agentRunCallbacks.payload })
-    .from(agentRunCallbacks)
-    .where(
-      and(
-        eq(agentRunCallbacks.runId, runId),
-        eq(agentRunCallbacks.internalKind, "teams:org"),
-      ),
-    )
-    .limit(1);
-  const parsed = teamsOrgCallbackPayloadSchema.safeParse(callback?.payload);
-  return parsed.success ? parsed.data : null;
-}
-
 async function sourceComputerUseHostId(
   db: Db,
   run: RunState,
 ): Promise<string | null> {
-  if (run.chatThreadId) {
-    const [thread] = await db
-      .select({ computerUseHostId: chatThreads.computerUseHostId })
-      .from(chatThreads)
-      .where(eq(chatThreads.id, run.chatThreadId))
-      .limit(1);
-    return thread?.computerUseHostId ?? null;
+  if (!run.chatThreadId) {
+    return null;
   }
 
-  if (run.triggerSource === "teams") {
-    const payload = await teamsCallbackPayload(db, run.id);
-    if (!payload) {
-      return null;
-    }
-    const [thread] = await db
-      .select({ computerUseHostId: chatThreads.computerUseHostId })
-      .from(teamsChatThreadRoutes)
-      .innerJoin(
-        chatThreads,
-        eq(chatThreads.id, teamsChatThreadRoutes.chatThreadId),
-      )
-      .where(
-        and(
-          eq(teamsChatThreadRoutes.connectionId, payload.connectionId),
-          eq(teamsChatThreadRoutes.conversationId, payload.conversationId),
-          eq(teamsChatThreadRoutes.threadId, payload.threadId),
-          eq(teamsChatThreadRoutes.userId, run.userId),
-        ),
-      )
-      .limit(1);
-    return thread?.computerUseHostId ?? null;
-  }
-
-  return null;
+  const [thread] = await db
+    .select({ computerUseHostId: chatThreads.computerUseHostId })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, run.chatThreadId))
+    .limit(1);
+  return thread?.computerUseHostId ?? null;
 }
 
 async function seedBaseComputerUseRun(args: {
@@ -186,72 +132,6 @@ async function seedBaseComputerUseRun(args: {
   return { composeId, sessionId, runId, threadId };
 }
 
-async function seedTeamsComputerUseCallback(args: {
-  readonly db: Db;
-  readonly userId: string;
-  readonly orgId: string;
-  readonly runId: string;
-  readonly composeId: string;
-  readonly signal: AbortSignal;
-}): Promise<TeamsComputerUseSeed> {
-  const tenantId = `tenant-${randomUUID()}`;
-  const conversationId = `19:${randomUUID()}@thread.tacv2`;
-  const threadId = `root-${randomUUID()}`;
-  const connectionId = randomUUID();
-  const teamsUserId = `29:${randomUUID()}`;
-
-  await args.db.insert(teamsOrgInstallations).values({
-    teamsTenantId: tenantId,
-    teamsTenantName: "Computer Use Auth Tenant",
-    orgId: args.orgId,
-    botId: "28:bot-test",
-    botName: "Zero",
-    serviceUrl: "https://smba.trafficmanager.net/amer/",
-  });
-  args.signal.throwIfAborted();
-
-  await args.db.insert(teamsOrgConnections).values({
-    id: connectionId,
-    teamsTenantId: tenantId,
-    teamsUserId,
-    vm0UserId: args.userId,
-  });
-  args.signal.throwIfAborted();
-
-  await args.db.insert(agentRunCallbacks).values({
-    runId: args.runId,
-    internalKind: "teams:org",
-    encryptedSecret: "encrypted-callback-secret",
-    payload: {
-      tenantId,
-      tenantName: "Computer Use Auth Tenant",
-      teamId: null,
-      teamName: null,
-      channelId: null,
-      conversationId,
-      conversationType: "personal",
-      threadId,
-      activityId: threadId,
-      serviceUrl: "https://smba.trafficmanager.net/amer/",
-      connectionId,
-      teamsUserId,
-      teamsUserDisplayName: "Computer Use Tester",
-      teamsUserPrincipalName: "tester@example.com",
-      botId: "28:bot-test",
-      botName: "Zero",
-      agentId: args.composeId,
-      existingSessionId: null,
-    },
-  });
-  args.signal.throwIfAborted();
-
-  return {
-    connection_id: connectionId,
-    conversation_id: conversationId,
-    thread_id: threadId,
-  };
-}
-
 const postComputerUseState$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
@@ -287,18 +167,6 @@ const postComputerUseState$ = command(
       canonicalThread: body.canonical_thread === true,
       signal,
     });
-    const teams =
-      body.trigger_source === "teams"
-        ? await seedTeamsComputerUseCallback({
-            db,
-            userId: body.user_id,
-            orgId: body.org_id,
-            runId: seed.runId,
-            composeId: seed.composeId,
-            signal,
-          })
-        : null;
-
     return {
       status: 200 as const,
       body: {
@@ -307,7 +175,6 @@ const postComputerUseState$ = command(
         run_id: seed.runId,
         session_id: seed.sessionId,
         thread_id: seed.threadId,
-        teams,
       },
     };
   },
@@ -375,45 +242,6 @@ const deleteComputerUseState$ = command(
       return { status: 200 as const, body: { ok: true as const } };
     }
 
-    const teamsPayload = await teamsCallbackPayload(db, run.id);
-    signal.throwIfAborted();
-    if (teamsPayload) {
-      const [route] = await db
-        .select({ chatThreadId: teamsChatThreadRoutes.chatThreadId })
-        .from(teamsChatThreadRoutes)
-        .where(
-          and(
-            eq(teamsChatThreadRoutes.connectionId, teamsPayload.connectionId),
-            eq(
-              teamsChatThreadRoutes.conversationId,
-              teamsPayload.conversationId,
-            ),
-            eq(teamsChatThreadRoutes.threadId, teamsPayload.threadId),
-            eq(teamsChatThreadRoutes.userId, run.userId),
-          ),
-        )
-        .limit(1);
-      signal.throwIfAborted();
-      await db
-        .delete(teamsOrgConnections)
-        .where(eq(teamsOrgConnections.id, teamsPayload.connectionId));
-      signal.throwIfAborted();
-      await db
-        .delete(teamsOrgInstallations)
-        .where(eq(teamsOrgInstallations.teamsTenantId, teamsPayload.tenantId));
-      signal.throwIfAborted();
-      if (route) {
-        await db
-          .delete(chatThreads)
-          .where(eq(chatThreads.id, route.chatThreadId));
-        signal.throwIfAborted();
-      }
-    }
-
-    await db
-      .delete(agentRunCallbacks)
-      .where(eq(agentRunCallbacks.runId, run.id));
-    signal.throwIfAborted();
     await db.delete(zeroRuns).where(eq(zeroRuns.id, run.id));
     signal.throwIfAborted();
     await db.delete(agentRuns).where(eq(agentRuns.id, run.id));

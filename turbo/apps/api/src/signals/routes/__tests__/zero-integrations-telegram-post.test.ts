@@ -15,9 +15,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { clearMockedEnv, mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
   findPendingChatEventInputParamsByPromptFixture,
@@ -47,10 +45,8 @@ const NEW_BOT_TOKEN = "123456:new-test-bot-token";
 const OFFICIAL_BOT_TOKEN = "987654:official-bot-token";
 const OFFICIAL_BOT_USERNAME = "official_zero_bot";
 const OFFICIAL_WEBHOOK_SECRET = "official-webhook-secret";
-const CALLBACK_SECRET = "test-callback-secret";
 const TELEGRAM_STATE_ACTION_ROUTE = "/api/test/telegram-state/action";
 const TELEGRAM_STATE_ROUTE = "/api/test/telegram-state";
-const TELEGRAM_CALLBACK_ROUTE = "/api/internal/callbacks/telegram";
 
 interface TelegramPostFixture {
   readonly orgId: string;
@@ -182,33 +178,6 @@ async function readTelegramState(
   }).request(`${TELEGRAM_STATE_ROUTE}?bot_id=${encodeURIComponent(botId)}`);
   await expectOk(response, "read telegram state");
   return await readJson<TestTelegramStateResponse>(response);
-}
-
-function signedHeaders(rawBody: string): Record<string, string> {
-  const timestamp = Math.floor(now() / 1000);
-  return {
-    "content-type": "application/json",
-    "x-vm0-signature": computeHmacSignature(
-      rawBody,
-      CALLBACK_SECRET,
-      timestamp,
-    ),
-    "x-vm0-timestamp": String(timestamp),
-  };
-}
-
-async function postTelegramCallback(body: Record<string, unknown>) {
-  const rawBody = JSON.stringify(body);
-  const response = await createApp({ signal: context.signal }).request(
-    TELEGRAM_CALLBACK_ROUTE,
-    {
-      method: "POST",
-      headers: signedHeaders(rawBody),
-      body: rawBody,
-    },
-  );
-  await expectOk(response, "telegram callback");
-  return await readJson<{ readonly success: true }>(response);
 }
 
 async function seedTelegramPostFixture(
@@ -1723,69 +1692,6 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       url: null,
       internalKind: "chat",
     });
-  });
-
-  it("formats generic failed callback errors for Telegram replies", async () => {
-    const fixture = await trackFixture(
-      seedTelegramPostFixture({ linkTelegramUser: true }),
-    );
-    const telegramMocks = telegramApiMocks();
-
-    const webhookResponse = await postWebhook({
-      telegramBotId: fixture.telegramBotId,
-      secret: fixture.webhookSecret,
-      body: {
-        update_id: 2,
-        message: {
-          message_id: 43,
-          chat: { id: 77_002, type: "private" },
-          from: {
-            id: Number(fixture.telegramUserId),
-            username: "alice",
-            first_name: "Alice",
-          },
-          text: "trigger failed callback",
-        },
-      },
-    });
-    expect(webhookResponse.status).toBe(200);
-    await flushWaitUntilForTest();
-
-    const run = await latestRunForFixture(fixture);
-    expect(run?.id).toBeDefined();
-    const payload = {
-      installationId: fixture.telegramBotId,
-      chatId: "77002",
-      messageId: "43",
-      userLinkId: await linkedTelegramUserLinkId(fixture),
-      agentId: fixture.composeId,
-      isDM: true,
-    };
-    const callback = await postTelegramStateAction({
-      action: "update-run-callback",
-      run_id: run!.id,
-      url: null,
-      internal_kind: "telegram",
-      payload,
-      secret: CALLBACK_SECRET,
-    });
-    if (typeof callback.callback_id !== "string") {
-      throw new Error("Expected Telegram callback row");
-    }
-
-    await expect(
-      postTelegramCallback({
-        callbackId: callback.callback_id,
-        runId: run!.id,
-        status: "failed",
-        error: "thread/resume failed: rollout is empty",
-        payload,
-      }),
-    ).resolves.toStrictEqual({ success: true });
-    await flushWaitUntilForTest();
-    expect(telegramMocks.sentMessages.at(-1)?.text).toContain(
-      "Oops, something went wrong. Please try again later.",
-    );
   });
 
   it("stores non-addressed group messages without creating a run", async () => {
