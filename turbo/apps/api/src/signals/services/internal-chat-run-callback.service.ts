@@ -80,6 +80,10 @@ import {
   dispatchFeishuChatDeliveryOnce,
 } from "./internal-feishu-chat-run-callback.service";
 import {
+  deliverGitHubChatAdmissionFailure,
+  dispatchGitHubChatDeliveryOnce,
+} from "./internal-github-chat-run-callback.service";
+import {
   deliverTeamsChatAdmissionFailure,
   dispatchTeamsChatDeliveryOnce,
 } from "./internal-teams-chat-run-callback.service";
@@ -91,6 +95,10 @@ import {
   agentphoneDeliveryTargetSchema,
   type AgentPhoneDeliveryTarget,
 } from "./agentphone-chat-callback-payload";
+import {
+  githubDeliveryTargetSchema,
+  type GitHubDeliveryTarget,
+} from "./github-chat-callback-payload";
 import {
   teamsDeliveryTargetSchema,
   type TeamsDeliveryTarget,
@@ -325,6 +333,7 @@ const chatCallbackPayloadSchema = z
     teamsDelivery: teamsDeliveryTargetSchema.optional(),
     telegramDelivery: telegramDeliveryTargetSchema.optional(),
     agentphoneDelivery: agentphoneDeliveryTargetSchema.optional(),
+    githubDelivery: githubDeliveryTargetSchema.optional(),
     // Retain while callbacks created by this version can be dispatched by
     // rollback-eligible API versions that still gate pushes by run origin.
     isGoalRun: z.boolean().optional(),
@@ -546,6 +555,22 @@ interface ChatCallbackDependencies {
     },
     signal: AbortSignal,
   ) => Promise<void>;
+  readonly dispatchGitHubDelivery: (
+    callbackId: string,
+    status: "completed" | "failed",
+    signal: AbortSignal,
+  ) => Promise<void>;
+  readonly deliverGitHubAdmissionFailure: (
+    args: {
+      readonly chatThreadId: string;
+      readonly userId: string;
+      readonly orgId: string;
+      readonly agentId: string;
+      readonly target: GitHubDeliveryTarget;
+      readonly chatMessageId: string;
+    },
+    signal: AbortSignal,
+  ) => Promise<void>;
   readonly createQueuedRun?: CreateQueuedRun;
   readonly drainThreadQueue?: (
     chatThreadId: string,
@@ -593,6 +618,7 @@ interface CreateQueuedChatRunInput {
   readonly teamsDelivery?: TeamsDeliveryTarget;
   readonly telegramDelivery?: TelegramDeliveryTarget;
   readonly agentphoneDelivery?: AgentPhoneDeliveryTarget;
+  readonly githubDelivery?: GitHubDeliveryTarget;
   readonly morningBriefDelivery?: {
     readonly deliveryId: string;
     readonly internalKind: "morning-brief:email";
@@ -674,11 +700,23 @@ interface AgentPhoneQueuedMessageAdmissionFailure {
   readonly error: QueuedMessageModelRouteError;
 }
 
+interface GitHubQueuedMessageAdmissionFailure {
+  readonly kind: "github_admission_failure";
+  readonly orgId: string;
+  readonly userId: string;
+  readonly agentId: string;
+  readonly threadId: string;
+  readonly queuedMessage: QueuedUserMessage;
+  readonly githubDelivery: GitHubDeliveryTarget;
+  readonly error: QueuedMessageModelRouteError;
+}
+
 type QueuedMessageAdmissionFailure =
   | SlackQueuedMessageAdmissionFailure
   | TeamsQueuedMessageAdmissionFailure
   | TelegramQueuedMessageAdmissionFailure
   | AgentPhoneQueuedMessageAdmissionFailure
+  | GitHubQueuedMessageAdmissionFailure
   | MorningBriefQueuedMessageAdmissionFailure;
 
 type CompletedChatCallbackResult =
@@ -691,6 +729,7 @@ type CompletedChatCallbackResult =
       readonly teamsDeliveryCallbackId?: string;
       readonly telegramDeliveryCallbackId?: string;
       readonly agentphoneDeliveryCallbackId?: string;
+      readonly githubDeliveryCallbackId?: string;
     }
   | { readonly inserted: false };
 
@@ -703,6 +742,7 @@ type FailedChatCallbackResult =
       readonly teamsDeliveryCallbackId?: string;
       readonly telegramDeliveryCallbackId?: string;
       readonly agentphoneDeliveryCallbackId?: string;
+      readonly githubDeliveryCallbackId?: string;
     }
   | { readonly inserted: false };
 
@@ -713,6 +753,7 @@ interface TerminalChatCallbackWork {
   readonly teamsDeliveryCallbackId?: string;
   readonly telegramDeliveryCallbackId?: string;
   readonly agentphoneDeliveryCallbackId?: string;
+  readonly githubDeliveryCallbackId?: string;
   readonly deferredSideEffects?: () => Promise<void>;
 }
 
@@ -772,6 +813,7 @@ function buildQueuedCreateZeroRunArgs(
           teamsDelivery: input.teamsDelivery,
           telegramDelivery: input.telegramDelivery,
           agentphoneDelivery: input.agentphoneDelivery,
+          githubDelivery: input.githubDelivery,
         },
       },
       ...(input.feishuDelivery
@@ -1361,6 +1403,50 @@ async function insertAgentPhoneChatDeliveryCallback(args: {
   return callback.id;
 }
 
+async function insertGitHubChatDeliveryCallback(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly sourceCallbackId?: string;
+  readonly target: GitHubDeliveryTarget;
+  readonly chatMessageId: string;
+}): Promise<string> {
+  const callbackCondition = args.sourceCallbackId
+    ? and(
+        eq(agentRunCallbacks.id, args.sourceCallbackId),
+        eq(agentRunCallbacks.runId, args.runId),
+        eq(agentRunCallbacks.internalKind, "chat"),
+      )
+    : and(
+        eq(agentRunCallbacks.runId, args.runId),
+        eq(agentRunCallbacks.internalKind, "chat"),
+      );
+  const [sourceCallback] = await args.db
+    .select({ encryptedSecret: agentRunCallbacks.encryptedSecret })
+    .from(agentRunCallbacks)
+    .where(callbackCondition)
+    .limit(1);
+  if (!sourceCallback) {
+    throw new Error("Canonical GitHub run is missing its chat callback");
+  }
+
+  const [callback] = await args.db
+    .insert(agentRunCallbacks)
+    .values({
+      runId: args.runId,
+      internalKind: "github:chat",
+      encryptedSecret: sourceCallback.encryptedSecret,
+      payload: {
+        ...args.target,
+        chatMessageId: args.chatMessageId,
+      },
+    })
+    .returning({ id: agentRunCallbacks.id });
+  if (!callback) {
+    throw new Error("Failed to persist canonical GitHub delivery callback");
+  }
+  return callback.id;
+}
+
 async function insertAssistantErrorEvent(args: {
   readonly db: Db;
   readonly runId: string;
@@ -1373,6 +1459,7 @@ async function insertAssistantErrorEvent(args: {
   readonly teamsDelivery?: TeamsDeliveryTarget;
   readonly telegramDelivery?: TelegramDeliveryTarget;
   readonly agentphoneDelivery?: AgentPhoneDeliveryTarget;
+  readonly githubDelivery?: GitHubDeliveryTarget;
   readonly sourceCallbackId?: string;
 }): Promise<FailedChatCallbackResult> {
   const displayErrorMessage = await args.getFormattedError();
@@ -1439,6 +1526,15 @@ async function insertAssistantErrorEvent(args: {
           chatEventId: event.id,
         })
       : undefined;
+    const githubDeliveryCallbackId = args.githubDelivery
+      ? await insertGitHubChatDeliveryCallback({
+          db: tx,
+          runId: args.runId,
+          sourceCallbackId: args.sourceCallbackId,
+          target: args.githubDelivery,
+          chatMessageId: event.id,
+        })
+      : undefined;
     await touchChatThreadLastMessageAt(tx, args.threadId, event.createdAt);
     return {
       slackDeliveryCallbackId,
@@ -1446,6 +1542,7 @@ async function insertAssistantErrorEvent(args: {
       teamsDeliveryCallbackId,
       telegramDeliveryCallbackId,
       agentphoneDeliveryCallbackId,
+      githubDeliveryCallbackId,
     };
   });
   if (!inserted) {
@@ -1462,6 +1559,7 @@ async function insertAssistantErrorEvent(args: {
     teamsDeliveryCallbackId: inserted.teamsDeliveryCallbackId,
     telegramDeliveryCallbackId: inserted.telegramDeliveryCallbackId,
     agentphoneDeliveryCallbackId: inserted.agentphoneDeliveryCallbackId,
+    githubDeliveryCallbackId: inserted.githubDeliveryCallbackId,
   };
 }
 
@@ -1555,6 +1653,7 @@ interface RunLifecycleMarkerArgs {
   readonly teamsDelivery?: TeamsDeliveryTarget;
   readonly telegramDelivery?: TelegramDeliveryTarget;
   readonly agentphoneDelivery?: AgentPhoneDeliveryTarget;
+  readonly githubDelivery?: GitHubDeliveryTarget;
   readonly sourceCallbackId?: string;
 }
 
@@ -1564,6 +1663,7 @@ interface RunLifecycleDeliveryCallbacks {
   readonly teamsDeliveryCallbackId?: string;
   readonly telegramDeliveryCallbackId?: string;
   readonly agentphoneDeliveryCallbackId?: string;
+  readonly githubDeliveryCallbackId?: string;
 }
 
 function hasCanonicalIntegrationDelivery(
@@ -1574,7 +1674,8 @@ function hasCanonicalIntegrationDelivery(
     args.feishuDelivery ||
     args.teamsDelivery ||
     args.telegramDelivery ||
-    args.agentphoneDelivery,
+    args.agentphoneDelivery ||
+    args.githubDelivery,
   );
 }
 
@@ -1584,7 +1685,10 @@ function requiresIntegrationCompletionFallback(
   return (
     args.event === "completed" &&
     Boolean(
-      args.teamsDelivery || args.telegramDelivery || args.agentphoneDelivery,
+      args.teamsDelivery ||
+      args.telegramDelivery ||
+      args.agentphoneDelivery ||
+      args.githubDelivery,
     )
   );
 }
@@ -1689,6 +1793,16 @@ async function insertRunLifecycleMarkerTransaction(args: {
           chatEventId: deliveryEvent.id,
         })
       : undefined;
+  const githubDeliveryCallbackId =
+    deliveryEvent && input.githubDelivery
+      ? await insertGitHubChatDeliveryCallback({
+          db: args.tx,
+          runId: input.runId,
+          sourceCallbackId: input.sourceCallbackId,
+          target: input.githubDelivery,
+          chatMessageId: deliveryEvent.id,
+        })
+      : undefined;
   await touchChatThreadLastMessageAt(
     args.tx,
     input.threadId,
@@ -1700,6 +1814,7 @@ async function insertRunLifecycleMarkerTransaction(args: {
     teamsDeliveryCallbackId,
     telegramDeliveryCallbackId,
     agentphoneDeliveryCallbackId,
+    githubDeliveryCallbackId,
   };
 }
 
@@ -1731,6 +1846,7 @@ async function insertRunLifecycleMarker(
     teamsDeliveryCallbackId: inserted.teamsDeliveryCallbackId,
     telegramDeliveryCallbackId: inserted.telegramDeliveryCallbackId,
     agentphoneDeliveryCallbackId: inserted.agentphoneDeliveryCallbackId,
+    githubDeliveryCallbackId: inserted.githubDeliveryCallbackId,
   };
 }
 
@@ -1891,6 +2007,7 @@ async function handleCompletedChatCallback(args: {
   readonly teamsDelivery?: TeamsDeliveryTarget;
   readonly telegramDelivery?: TelegramDeliveryTarget;
   readonly agentphoneDelivery?: AgentPhoneDeliveryTarget;
+  readonly githubDelivery?: GitHubDeliveryTarget;
   readonly sourceCallbackId?: string;
   readonly insertAssistantItems: (
     items: readonly AssistantEventItem[],
@@ -1904,7 +2021,8 @@ async function handleCompletedChatCallback(args: {
       args.slackDelivery !== undefined ||
       args.teamsDelivery !== undefined ||
       args.telegramDelivery !== undefined ||
-      args.agentphoneDelivery !== undefined,
+      args.agentphoneDelivery !== undefined ||
+      args.githubDelivery !== undefined,
     timing: args.timing,
     signal: args.signal,
   });
@@ -1919,7 +2037,8 @@ async function handleCompletedChatCallback(args: {
       args.slackDelivery !== undefined ||
       args.teamsDelivery !== undefined ||
       args.telegramDelivery !== undefined ||
-      args.agentphoneDelivery !== undefined,
+      args.agentphoneDelivery !== undefined ||
+      args.githubDelivery !== undefined,
     timing: args.timing,
     signal: args.signal,
     insertAssistantItems: args.insertAssistantItems,
@@ -1951,6 +2070,7 @@ async function handleCompletedChatCallback(args: {
         teamsDelivery: args.teamsDelivery,
         telegramDelivery: args.telegramDelivery,
         agentphoneDelivery: args.agentphoneDelivery,
+        githubDelivery: args.githubDelivery,
         sourceCallbackId: args.sourceCallbackId,
       });
     },
@@ -1983,6 +2103,7 @@ async function handleCompletedChatCallback(args: {
     teamsDeliveryCallbackId: inserted.teamsDeliveryCallbackId,
     telegramDeliveryCallbackId: inserted.telegramDeliveryCallbackId,
     agentphoneDeliveryCallbackId: inserted.agentphoneDeliveryCallbackId,
+    githubDeliveryCallbackId: inserted.githubDeliveryCallbackId,
   };
 }
 
@@ -2092,6 +2213,7 @@ async function handleFailedChatCallback(args: {
   readonly teamsDelivery?: TeamsDeliveryTarget;
   readonly telegramDelivery?: TelegramDeliveryTarget;
   readonly agentphoneDelivery?: AgentPhoneDeliveryTarget;
+  readonly githubDelivery?: GitHubDeliveryTarget;
   readonly sourceCallbackId?: string;
 }): Promise<FailedChatCallbackResult> {
   const lifecycleEvent =
@@ -2110,6 +2232,7 @@ async function handleFailedChatCallback(args: {
     teamsDelivery: args.teamsDelivery,
     telegramDelivery: args.telegramDelivery,
     agentphoneDelivery: args.agentphoneDelivery,
+    githubDelivery: args.githubDelivery,
     sourceCallbackId: args.sourceCallbackId,
   });
 }
@@ -2264,6 +2387,9 @@ function priorRunsContextLabel(
     }
     case "telegram": {
       return "Telegram";
+    }
+    case "github": {
+      return "GitHub";
     }
     case "workflow-schedule": {
       return "Workflow Automation";
@@ -2799,6 +2925,29 @@ function agentPhoneQueuedMessageAdmissionFailure(
   };
 }
 
+function githubQueuedMessageAdmissionFailure(
+  args: CreateQueuedChatRunInputArgs,
+  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
+  error: QueuedMessageModelRouteError,
+): GitHubQueuedMessageAdmissionFailure | null {
+  if (
+    args.queuedMessage.triggerSource !== "github" ||
+    !sourceParams?.githubDelivery
+  ) {
+    return null;
+  }
+  return {
+    kind: "github_admission_failure",
+    orgId: args.agent.orgId,
+    userId: args.userId,
+    agentId: args.agent.id,
+    threadId: args.threadId,
+    queuedMessage: args.queuedMessage,
+    githubDelivery: sourceParams.githubDelivery,
+    error,
+  };
+}
+
 function queuedMessageAdmissionFailure(
   args: CreateQueuedChatRunInputArgs,
   sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
@@ -2809,6 +2958,7 @@ function queuedMessageAdmissionFailure(
     teamsQueuedMessageAdmissionFailure(args, sourceParams, error) ??
     telegramQueuedMessageAdmissionFailure(args, sourceParams, error) ??
     agentPhoneQueuedMessageAdmissionFailure(args, sourceParams, error) ??
+    githubQueuedMessageAdmissionFailure(args, sourceParams, error) ??
     morningBriefQueuedMessageAdmissionFailure(args, sourceParams, error)
   );
 }
@@ -2832,6 +2982,7 @@ function queuedIntegrationDeliveries(
   | "teamsDelivery"
   | "telegramDelivery"
   | "agentphoneDelivery"
+  | "githubDelivery"
   | "morningBriefDelivery"
 > {
   return {
@@ -2840,6 +2991,7 @@ function queuedIntegrationDeliveries(
     teamsDelivery: sourceParams?.teamsDelivery,
     telegramDelivery: sourceParams?.telegramDelivery,
     agentphoneDelivery: sourceParams?.agentphoneDelivery,
+    githubDelivery: sourceParams?.githubDelivery,
     morningBriefDelivery: sourceParams?.morningBriefDelivery,
   };
 }
@@ -3308,6 +3460,62 @@ async function handleAgentPhoneQueuedMessageAdmissionFailure(args: {
   );
 }
 
+async function handleGitHubQueuedMessageAdmissionFailure(args: {
+  readonly db: Db;
+  readonly failure: GitHubQueuedMessageAdmissionFailure;
+  readonly signal: AbortSignal;
+  readonly formatError: ChatCallbackDependencies["formatIntegrationRunError"];
+  readonly deliver: ChatCallbackDependencies["deliverGitHubAdmissionFailure"];
+}): Promise<void> {
+  const displayError = await args.formatError(
+    {
+      orgId: args.failure.orgId,
+      userId: args.failure.userId,
+      code: args.failure.error.code,
+      message: args.failure.error.message,
+    },
+    args.signal,
+  );
+  args.signal.throwIfAborted();
+  const failed = await failQueuedUserMessage(args.db, {
+    threadId: args.failure.threadId,
+    eventId: args.failure.queuedMessage.id,
+    assistantContent: displayError,
+    errorMarker: args.failure.error.code.toLowerCase(),
+    currentTime: nowDate(),
+  });
+  args.signal.throwIfAborted();
+  if (!failed) {
+    return;
+  }
+
+  await publishUserSignal(
+    [args.failure.userId],
+    `chatThreadMessageCreated:${args.failure.threadId}`,
+  );
+  await publishThreadListChanged(args.failure.userId);
+  args.signal.throwIfAborted();
+  await tapError(
+    args.deliver(
+      {
+        chatThreadId: args.failure.threadId,
+        userId: args.failure.userId,
+        orgId: args.failure.orgId,
+        agentId: args.failure.agentId,
+        target: args.failure.githubDelivery,
+        chatMessageId: failed.assistantEventId,
+      },
+      args.signal,
+    ),
+    (error) => {
+      log.warn("Failed to deliver canonical GitHub admission error", {
+        threadId: args.failure.threadId,
+        error,
+      });
+    },
+  );
+}
+
 async function handleQueuedMessageAdmissionFailure(args: {
   readonly db: Db;
   readonly failure: QueuedMessageAdmissionFailure;
@@ -3317,6 +3525,7 @@ async function handleQueuedMessageAdmissionFailure(args: {
   readonly deliverTeams: ChatCallbackDependencies["deliverTeamsAdmissionFailure"];
   readonly deliverTelegram: ChatCallbackDependencies["deliverTelegramAdmissionFailure"];
   readonly deliverAgentPhone: ChatCallbackDependencies["deliverAgentPhoneAdmissionFailure"];
+  readonly deliverGitHub: ChatCallbackDependencies["deliverGitHubAdmissionFailure"];
   readonly continueDrain: () => Promise<void>;
 }): Promise<void> {
   if (args.failure.kind === "slack_admission_failure") {
@@ -3336,6 +3545,16 @@ async function handleQueuedMessageAdmissionFailure(args: {
       signal: args.signal,
       formatError: args.formatError,
       deliver: args.deliverTelegram,
+    });
+    return;
+  }
+  if (args.failure.kind === "github_admission_failure") {
+    await handleGitHubQueuedMessageAdmissionFailure({
+      db: args.db,
+      failure: args.failure,
+      signal: args.signal,
+      formatError: args.formatError,
+      deliver: args.deliverGitHub,
     });
     return;
   }
@@ -3403,6 +3622,7 @@ interface AutoSendQueuedMessageArgs {
   readonly deliverTeamsAdmissionFailure: ChatCallbackDependencies["deliverTeamsAdmissionFailure"];
   readonly deliverTelegramAdmissionFailure: ChatCallbackDependencies["deliverTelegramAdmissionFailure"];
   readonly deliverAgentPhoneAdmissionFailure: ChatCallbackDependencies["deliverAgentPhoneAdmissionFailure"];
+  readonly deliverGitHubAdmissionFailure: ChatCallbackDependencies["deliverGitHubAdmissionFailure"];
 }
 
 /**
@@ -3487,6 +3707,7 @@ async function autoSendQueuedMessageForThread(
       deliverTeams: args.deliverTeamsAdmissionFailure,
       deliverTelegram: args.deliverTelegramAdmissionFailure,
       deliverAgentPhone: args.deliverAgentPhoneAdmissionFailure,
+      deliverGitHub: args.deliverGitHubAdmissionFailure,
       continueDrain: async () => {
         await autoSendQueuedMessageForThread(args);
       },
@@ -3621,6 +3842,7 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
   readonly teamsDelivery?: TeamsDeliveryTarget;
   readonly telegramDelivery?: TelegramDeliveryTarget;
   readonly agentphoneDelivery?: AgentPhoneDeliveryTarget;
+  readonly githubDelivery?: GitHubDeliveryTarget;
   readonly sourceCallbackId?: string;
 }): Promise<TerminalChatCallbackWork> {
   const prepared = await measureChatCallbackPreCreateTiming(
@@ -3640,6 +3862,7 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
         teamsDelivery: args.teamsDelivery,
         telegramDelivery: args.telegramDelivery,
         agentphoneDelivery: args.agentphoneDelivery,
+        githubDelivery: args.githubDelivery,
         sourceCallbackId: args.sourceCallbackId,
         insertAssistantItems: async (items) => {
           await args.dependencies.insertAssistantItems(
@@ -3668,6 +3891,7 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
     teamsDeliveryCallbackId: completed.teamsDeliveryCallbackId,
     telegramDeliveryCallbackId: completed.telegramDeliveryCallbackId,
     agentphoneDeliveryCallbackId: completed.agentphoneDeliveryCallbackId,
+    githubDeliveryCallbackId: completed.githubDeliveryCallbackId,
     deferredSideEffects: () => {
       return runCompletedChatCallbackSideEffects({
         db: args.db,
@@ -3708,6 +3932,7 @@ async function prepareFailedTerminalChatCallbackWork(args: {
   readonly teamsDelivery?: TeamsDeliveryTarget;
   readonly telegramDelivery?: TelegramDeliveryTarget;
   readonly agentphoneDelivery?: AgentPhoneDeliveryTarget;
+  readonly githubDelivery?: GitHubDeliveryTarget;
   readonly sourceCallbackId?: string;
 }): Promise<TerminalChatCallbackWork> {
   const failed = await measureChatCallbackPreCreateTiming(
@@ -3735,6 +3960,7 @@ async function prepareFailedTerminalChatCallbackWork(args: {
         teamsDelivery: args.teamsDelivery,
         telegramDelivery: args.telegramDelivery,
         agentphoneDelivery: args.agentphoneDelivery,
+        githubDelivery: args.githubDelivery,
         sourceCallbackId: args.sourceCallbackId,
       });
     },
@@ -3750,6 +3976,7 @@ async function prepareFailedTerminalChatCallbackWork(args: {
     teamsDeliveryCallbackId: failed.teamsDeliveryCallbackId,
     telegramDeliveryCallbackId: failed.telegramDeliveryCallbackId,
     agentphoneDeliveryCallbackId: failed.agentphoneDeliveryCallbackId,
+    githubDeliveryCallbackId: failed.githubDeliveryCallbackId,
     deferredSideEffects: () => {
       return runFailedChatCallbackSideEffects({
         db: args.db,
@@ -3891,6 +4118,7 @@ async function dispatchCanonicalDeliveryCallbacks(args: {
   readonly teamsDeliveryCallbackId: string | undefined;
   readonly telegramDeliveryCallbackId: string | undefined;
   readonly agentphoneDeliveryCallbackId: string | undefined;
+  readonly githubDeliveryCallbackId: string | undefined;
   readonly dependencies: ChatCallbackDependencies;
   readonly signal: AbortSignal;
 }): Promise<void> {
@@ -3976,6 +4204,23 @@ async function dispatchCanonicalDeliveryCallbacks(args: {
       });
     }
   }
+  if (args.githubDeliveryCallbackId) {
+    const delivery = await settle(
+      args.dependencies.dispatchGitHubDelivery(
+        args.githubDeliveryCallbackId,
+        args.status,
+        args.signal,
+      ),
+      args.signal,
+    );
+    if (!delivery.ok) {
+      log.error("Failed to finalize canonical GitHub delivery callback", {
+        runId: args.runId,
+        callbackId: args.githubDeliveryCallbackId,
+        error: delivery.error,
+      });
+    }
+  }
 }
 
 interface TerminalChatCallbackArgs {
@@ -3996,6 +4241,7 @@ function terminalIntegrationDeliveries(
   | "teamsDelivery"
   | "telegramDelivery"
   | "agentphoneDelivery"
+  | "githubDelivery"
 > {
   return {
     slackDelivery: payload.slackDelivery,
@@ -4003,6 +4249,7 @@ function terminalIntegrationDeliveries(
     teamsDelivery: payload.teamsDelivery,
     telegramDelivery: payload.telegramDelivery,
     agentphoneDelivery: payload.agentphoneDelivery,
+    githubDelivery: payload.githubDelivery,
   };
 }
 
@@ -4125,6 +4372,7 @@ async function processTerminalChatCallback(
     teamsDeliveryCallbackId: work.teamsDeliveryCallbackId,
     telegramDeliveryCallbackId: work.telegramDeliveryCallbackId,
     agentphoneDeliveryCallbackId: work.agentphoneDeliveryCallbackId,
+    githubDeliveryCallbackId: work.githubDeliveryCallbackId,
     dependencies: args.dependencies,
     signal: args.signal,
   });
@@ -4185,6 +4433,8 @@ function withoutQueuedRunDependency(
     dispatchTeamsDelivery: dependencies.dispatchTeamsDelivery,
     dispatchTelegramDelivery: dependencies.dispatchTelegramDelivery,
     dispatchAgentPhoneDelivery: dependencies.dispatchAgentPhoneDelivery,
+    deliverGitHubAdmissionFailure: dependencies.deliverGitHubAdmissionFailure,
+    dispatchGitHubDelivery: dependencies.dispatchGitHubDelivery,
     clearFeishuThinkingReaction: dependencies.clearFeishuThinkingReaction,
     drainThreadQueue: dependencies.drainThreadQueue,
   };
@@ -4225,6 +4475,7 @@ function buildQueuedChatDispatchFailedCallbacks(args: {
       teamsDelivery: args.runInput.teamsDelivery,
       telegramDelivery: args.runInput.telegramDelivery,
       agentphoneDelivery: args.runInput.agentphoneDelivery,
+      githubDelivery: args.runInput.githubDelivery,
       morningBriefDelivery: args.runInput.morningBriefDelivery,
     };
     const suppressWebPushForActiveGoal = await runHasActiveGoal(db, runId);
@@ -4403,6 +4654,26 @@ function agentPhoneChatDeliveryDependencies(
   };
 }
 
+function githubChatDeliveryDependencies(
+  db: Db,
+): Pick<
+  ChatCallbackDependencies,
+  "deliverGitHubAdmissionFailure" | "dispatchGitHubDelivery"
+> {
+  return {
+    deliverGitHubAdmissionFailure: (params, signal) => {
+      return deliverGitHubChatAdmissionFailure({
+        db,
+        ...params,
+        signal,
+      });
+    },
+    dispatchGitHubDelivery: (callbackId, status, signal) => {
+      return dispatchGitHubChatDeliveryOnce(db, callbackId, status, signal);
+    },
+  };
+}
+
 export async function handleChatInternalCallbackWithoutCcstate(
   db: Db,
   callback: InternalRunCallbackEnvelope,
@@ -4480,6 +4751,7 @@ export async function handleChatInternalCallbackWithoutCcstate(
       ...teamsChatDeliveryDependencies(db),
       ...telegramChatDeliveryDependencies(db),
       ...agentPhoneChatDeliveryDependencies(db),
+      ...githubChatDeliveryDependencies(db),
       clearFeishuThinkingReaction: (target, inputSignal) => {
         return clearCanonicalFeishuThinkingReaction(db, target, inputSignal);
       },
@@ -4550,6 +4822,7 @@ const buildChatCallbackDependencies$ = command(
       ...teamsChatDeliveryDependencies(db),
       ...telegramChatDeliveryDependencies(db),
       ...agentPhoneChatDeliveryDependencies(db),
+      ...githubChatDeliveryDependencies(db),
       clearFeishuThinkingReaction: (target, inputSignal) => {
         return clearCanonicalFeishuThinkingReaction(db, target, inputSignal);
       },
@@ -4671,6 +4944,7 @@ export const drainQueuedUserMessagesForThread$ = command(
         dependencies.deliverTelegramAdmissionFailure,
       deliverAgentPhoneAdmissionFailure:
         dependencies.deliverAgentPhoneAdmissionFailure,
+      deliverGitHubAdmissionFailure: dependencies.deliverGitHubAdmissionFailure,
       createRun: (input) => {
         return createQueuedChatRun({
           input,

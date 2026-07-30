@@ -5237,6 +5237,13 @@
       "when": 1785391854799,
       "tag": "0747_groovy_ultragirl",
       "breakpoints": true
+    },
+    {
+      "idx": 748,
+      "version": "7",
+      "when": 1785395016610,
+      "tag": "0748_secret_alex_power",
+      "breakpoints": true
     }
   ]
 }
