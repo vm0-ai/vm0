@@ -11,7 +11,7 @@ import {
   zeroConnectorsSearchContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import type { PublicConnectorCatalogDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { connectorSlugLegacyInsertOauthStates } from "@vm0/db/compat/connector-slug-legacy-insert";
+import { connectorSlugCanonicalInsertOauthStates } from "@vm0/db/compat/connector-slug-canonical-insert";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -538,9 +538,9 @@ const startConnectorOauthInner$ = command(
     signal.throwIfAborted();
 
     const writeDb = set(writeDb$);
-    await writeDb.insert(connectorSlugLegacyInsertOauthStates).values({
+    await writeDb.insert(connectorSlugCanonicalInsertOauthStates).values({
       state: prepared.state,
-      type: resolved.connectorSlug,
+      connectorSlug: resolved.connectorSlug,
       authMethod: resolved.authMethodId,
       userId: auth.userId,
       orgId: auth.orgId,
@@ -678,9 +678,9 @@ const startConnectorOpenIdInner$ = command(
     signal.throwIfAborted();
 
     const writeDb = set(writeDb$);
-    await writeDb.insert(connectorSlugLegacyInsertOauthStates).values({
+    await writeDb.insert(connectorSlugCanonicalInsertOauthStates).values({
       state: prepared.state,
-      type: resolved.connectorSlug,
+      connectorSlug: resolved.connectorSlug,
       authMethod: resolved.authMethodId,
       userId: auth.userId,
       orgId: auth.orgId,

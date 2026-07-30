@@ -170,7 +170,7 @@ export function zeroAgentEnabledConnectorSlugs(args: {
 }): Computed<Promise<readonly ConnectorSlug[]>> {
   return computed(async (get): Promise<readonly ConnectorSlug[]> => {
     const rows = await get(db$)
-      .select({ connectorSlug: userConnectors.connectorType })
+      .select({ connectorSlug: userConnectors.connectorSlug })
       .from(userConnectors)
       .where(
         and(
@@ -179,7 +179,7 @@ export function zeroAgentEnabledConnectorSlugs(args: {
           eq(userConnectors.agentId, args.agentId),
         ),
       )
-      .orderBy(asc(userConnectors.connectorType));
+      .orderBy(asc(userConnectors.connectorSlug));
 
     return rows.map((row) => {
       return connectorSlugSchema.parse(row.connectorSlug);

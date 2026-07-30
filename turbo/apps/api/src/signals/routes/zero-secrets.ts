@@ -41,7 +41,7 @@ const listSecretsInner$ = computed(async (get): Promise<unknown> => {
       .select({
         authMethod: connectors.authMethod,
         connectorId: connectors.id,
-        connectorSlug: connectors.type,
+        connectorSlug: connectors.connectorSlug,
         storageVersion: connectors.storageVersion,
       })
       .from(connectors)
@@ -49,7 +49,7 @@ const listSecretsInner$ = computed(async (get): Promise<unknown> => {
         and(
           eq(connectors.orgId, auth.orgId),
           eq(connectors.userId, auth.userId),
-          isNotNull(connectors.type),
+          isNotNull(connectors.connectorSlug),
         ),
       ),
   ]);

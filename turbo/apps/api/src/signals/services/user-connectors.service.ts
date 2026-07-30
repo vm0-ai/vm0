@@ -1,6 +1,6 @@
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import { connectorSlugLegacyInsertUserConnectors } from "@vm0/db/compat/connector-slug-legacy-insert";
+import { connectorSlugCanonicalInsertUserConnectors } from "@vm0/db/compat/connector-slug-canonical-insert";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import {
   orgCustomConnectors,
@@ -567,21 +567,21 @@ export async function updateUserConnectors(
         .where(
           and(
             connectorScope,
-            inArray(userConnectors.connectorType, enabledConnectorSlugs),
+            inArray(userConnectors.connectorSlug, enabledConnectorSlugs),
           ),
         );
     }
 
     if (operation !== "remove" && enabledConnectorSlugs.length > 0) {
       await tx
-        .insert(connectorSlugLegacyInsertUserConnectors)
+        .insert(connectorSlugCanonicalInsertUserConnectors)
         .values(
           enabledConnectorSlugs.map((connectorSlug) => {
             return {
               orgId: args.orgId,
               userId: args.userId,
               agentId: args.agentId,
-              connectorType: connectorSlug,
+              connectorSlug,
             };
           }),
         )
@@ -593,7 +593,7 @@ export async function updateUserConnectors(
     }
 
     const rows = await tx
-      .select({ connectorSlug: userConnectors.connectorType })
+      .select({ connectorSlug: userConnectors.connectorSlug })
       .from(userConnectors)
       .where(connectorScope);
     return {

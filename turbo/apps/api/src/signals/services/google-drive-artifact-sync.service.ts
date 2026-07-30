@@ -106,7 +106,7 @@ async function threadAllowsGoogleDriveArtifactSync(
         eq(userConnectors.orgId, args.orgId),
         eq(userConnectors.userId, args.userId),
         eq(userConnectors.agentId, chatThreads.agentComposeId),
-        eq(userConnectors.connectorType, "google-drive"),
+        eq(userConnectors.connectorSlug, "google-drive"),
       ),
     )
     .where(

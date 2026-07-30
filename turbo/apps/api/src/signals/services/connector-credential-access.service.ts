@@ -145,7 +145,7 @@ function connectorIdentityExists(
           eq(credentialAccessConnector.id, access.connectorId),
           eq(credentialAccessConnector.orgId, access.orgId),
           eq(credentialAccessConnector.userId, access.userId),
-          eq(credentialAccessConnector.type, access.connectorSlug),
+          eq(credentialAccessConnector.connectorSlug, access.connectorSlug),
           eq(credentialAccessConnector.authMethod, access.authMethodId),
           eq(credentialAccessConnector.storageVersion, access.storageVersion),
           connectorStateRevision === undefined

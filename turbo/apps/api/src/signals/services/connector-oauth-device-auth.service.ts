@@ -24,7 +24,7 @@ import type {
   OAuthDeviceAuthCompleteResultBase,
   OAuthDeviceAuthPollResultBase,
 } from "@vm0/connectors/auth-providers/provider-flow-types";
-import { connectorSlugLegacyInsertOauthDeviceSessions } from "@vm0/db/compat/connector-slug-legacy-insert";
+import { connectorSlugCanonicalInsertOauthDeviceSessions } from "@vm0/db/compat/connector-slug-canonical-insert";
 import { connectorOauthDeviceAuthorizationSessions } from "@vm0/db/schema/connector-oauth-device-authorization-session";
 import { command } from "ccstate";
 import { and, eq, inArray, lt, or, sql } from "drizzle-orm";
@@ -73,7 +73,7 @@ const deviceAuthSessionSelection = Object.freeze({
   userId: connectorOauthDeviceAuthorizationSessions.userId,
   agentId: connectorOauthDeviceAuthorizationSessions.agentId,
   authorizeAgent: connectorOauthDeviceAuthorizationSessions.authorizeAgent,
-  connectorType: connectorOauthDeviceAuthorizationSessions.connectorType,
+  connectorType: connectorOauthDeviceAuthorizationSessions.connectorSlug,
   authMethod: connectorOauthDeviceAuthorizationSessions.authMethod,
   status: connectorOauthDeviceAuthorizationSessions.status,
   sessionTokenHash: connectorOauthDeviceAuthorizationSessions.sessionTokenHash,
@@ -94,8 +94,10 @@ const deviceAuthSessionSelection = Object.freeze({
 
 type DeviceAuthSessionRow = Omit<
   typeof connectorOauthDeviceAuthorizationSessions.$inferSelect,
-  "connectorSlug"
->;
+  "connectorSlug" | "legacyConnectorType"
+> & {
+  readonly connectorType: typeof connectorOauthDeviceAuthorizationSessions.$inferSelect.connectorSlug;
+};
 
 type PendingPollBody = Extract<
   ConnectorOauthDeviceAuthSessionPollResponse,
@@ -404,7 +406,7 @@ async function markActiveSessionsSuperseded(
         eq(connectorOauthDeviceAuthorizationSessions.orgId, args.orgId),
         eq(connectorOauthDeviceAuthorizationSessions.userId, args.userId),
         eq(
-          connectorOauthDeviceAuthorizationSessions.connectorType,
+          connectorOauthDeviceAuthorizationSessions.connectorSlug,
           args.connectorSlug,
         ),
         eq(
@@ -465,7 +467,7 @@ async function loadOwnedSession(args: {
         eq(connectorOauthDeviceAuthorizationSessions.orgId, args.orgId),
         eq(connectorOauthDeviceAuthorizationSessions.userId, args.userId),
         eq(
-          connectorOauthDeviceAuthorizationSessions.connectorType,
+          connectorOauthDeviceAuthorizationSessions.connectorSlug,
           args.connectorSlug,
         ),
         eq(
@@ -1008,13 +1010,13 @@ export const startConnectorOauthDeviceAuthSession$ = command(
         now,
       });
       return await tx
-        .insert(connectorSlugLegacyInsertOauthDeviceSessions)
+        .insert(connectorSlugCanonicalInsertOauthDeviceSessions)
         .values({
           orgId: args.orgId,
           userId: args.userId,
           agentId: args.agentId,
           authorizeAgent: connectorAgentAuthorizationRequested(args),
-          connectorType: resolvedMethod.connectorSlug,
+          connectorSlug: resolvedMethod.connectorSlug,
           authMethod: resolvedMethod.authMethodId,
           status: "awaiting_user_authorization",
           sessionTokenHash: sessionTokenHash(sessionToken),
@@ -1028,7 +1030,7 @@ export const startConnectorOauthDeviceAuthSession$ = command(
           expiresAt,
         })
         .returning({
-          id: connectorSlugLegacyInsertOauthDeviceSessions.id,
+          id: connectorSlugCanonicalInsertOauthDeviceSessions.id,
         });
     });
     signal.throwIfAborted();

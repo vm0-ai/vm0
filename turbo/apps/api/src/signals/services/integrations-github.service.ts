@@ -141,7 +141,7 @@ async function loadUserGithubConnectorUsername(args: {
       and(
         eq(connectors.orgId, args.orgId),
         eq(connectors.userId, args.userId),
-        eq(connectors.type, "github"),
+        eq(connectors.connectorSlug, "github"),
       ),
     )
     .limit(1);
