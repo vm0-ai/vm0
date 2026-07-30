@@ -171,19 +171,19 @@ async function createOAuthCustomConnector(
   definition: Extract<CustomConnectorCreateInput, { authMode: "oauth" }>,
   agentId: string | undefined,
 ): Promise<CreateResult> {
-  validateValues(definition);
   const { values, ...body } = definition;
+  if (body.fields.length > 0 || values.length > 0) {
+    throw new Error(
+      "OAuth custom connectors require empty fields and values arrays",
+    );
+  }
   const created = await createZeroCustomConnector(body);
-  const connector =
-    values.length > 0
-      ? await setZeroCustomConnectorValues(created.id, values)
-      : created;
   const authorizationUrl = await startZeroCustomConnectorOAuth2(
-    connector.id,
+    created.id,
     agentId,
   );
   return {
-    connector,
+    connector: created,
     authorizationUrl,
     ...(agentId ? { agentId } : {}),
   };
@@ -255,9 +255,9 @@ Manual mode:
 
 OAuth mode:
   Use {{oauth.access_token}} in an injection and provide the complete OAuth
-  client configuration. Add values for required non-OAuth fields such as a
-  tenant subdomain. The command stores them and prints an authorization link.
-  If --agent is set, completing OAuth also authorizes that agent.
+  client configuration. OAuth mode requires empty fields and values arrays.
+  The command prints an authorization link. If --agent is set, completing
+  OAuth also authorizes that agent.
 
   {
     "displayName": "Acme OAuth API",

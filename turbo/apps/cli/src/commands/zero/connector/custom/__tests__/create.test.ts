@@ -189,15 +189,8 @@ describe("zero connector custom create", () => {
   it("creates an OAuth connector and prints its user authorization link", async () => {
     const definitionPath = writeDefinition({
       displayName: "Acme OAuth API",
-      prefixTemplates: ["https://{{variables.tenant}}.api.acme.example/v1/"],
-      fields: [
-        {
-          key: "tenant",
-          label: "Tenant",
-          kind: "variable",
-          required: true,
-        },
-      ],
+      prefixTemplates: ["https://api.acme.example/v1/"],
+      fields: [],
       headerInjections: [
         {
           name: "Authorization",
@@ -206,7 +199,7 @@ describe("zero connector custom create", () => {
       ],
       queryInjections: [],
       authMode: "oauth",
-      values: [{ key: "tenant", kind: "variable", value: "team-a" }],
+      values: [],
       oauthConfig: {
         providerAdapter: "standard",
         clientId: "oauth-client-id",
@@ -222,28 +215,20 @@ describe("zero connector custom create", () => {
     const authorizationUrl =
       "https://acme.example/oauth/authorize?state=oauth-state";
     let createBody: unknown;
-    let valuesBody: unknown;
     let startBody: unknown;
     const created = customConnector({
       id: CONNECTOR_ID,
       displayName: "Acme OAuth API",
       authMode: "oauth",
-      prefixTemplates: ["https://{{variables.tenant}}.api.acme.example/v1/"],
-      fields: [
-        {
-          key: "tenant",
-          label: "Tenant",
-          kind: "variable",
-          required: true,
-        },
-      ],
+      prefixTemplates: ["https://api.acme.example/v1/"],
+      fields: [],
       headerInjections: [
         {
           name: "Authorization",
           valueTemplate: "Bearer {{oauth.access_token}}",
         },
       ],
-      missingRequiredFields: ["tenant", "oauth"],
+      missingRequiredFields: ["oauth"],
       oauthConfig: {
         providerAdapter: "standard",
         clientId: "oauth-client-id",
@@ -255,11 +240,6 @@ describe("zero connector custom create", () => {
         authorizationParams: {},
       },
     });
-    const configured = {
-      ...created,
-      configuredFieldKeys: ["tenant"],
-      missingRequiredFields: ["oauth"],
-    };
     server.use(
       http.get(`http://localhost:3000/api/zero/agents/${AGENT_ID}`, () => {
         return HttpResponse.json(agentResponse());
@@ -269,13 +249,6 @@ describe("zero connector custom create", () => {
         async ({ request }) => {
           createBody = await request.json();
           return HttpResponse.json(created, { status: 201 });
-        },
-      ),
-      http.put(
-        `http://localhost:3000/api/zero/custom-connectors/${CONNECTOR_ID}/values`,
-        async ({ request }) => {
-          valuesBody = await request.json();
-          return HttpResponse.json(configured);
         },
       ),
       http.post(
@@ -306,9 +279,6 @@ describe("zero connector custom create", () => {
       },
     });
     expect(createBody).not.toHaveProperty("values");
-    expect(valuesBody).toStrictEqual({
-      values: [{ key: "tenant", kind: "variable", value: "team-a" }],
-    });
     expect(startBody).toStrictEqual({ agentId: AGENT_ID });
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(output).toContain('Custom connector "Acme OAuth API" created');
@@ -316,6 +286,65 @@ describe("zero connector custom create", () => {
     expect(output).toContain(`[Authorize Acme OAuth API](${authorizationUrl})`);
     expect(output).toContain(`authorize this connector for agent ${AGENT_ID}`);
     expect(output).not.toContain("oauth-client-secret");
+  });
+
+  it("rejects custom fields for an OAuth connector before creation", async () => {
+    const definitionPath = writeDefinition({
+      displayName: "Acme OAuth API",
+      prefixTemplates: ["https://{{variables.tenant}}.api.acme.example/v1/"],
+      fields: [
+        {
+          key: "tenant",
+          label: "Tenant",
+          kind: "variable",
+          required: true,
+        },
+      ],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "oauth",
+      values: [{ key: "tenant", kind: "variable", value: "team-a" }],
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "oauth-client-id",
+        clientSecret: "oauth-client-secret",
+        authorizationUrl: "https://acme.example/oauth/authorize",
+        tokenUrl: "https://acme.example/oauth/token",
+        tokenEndpointAuthMethod: "client_secret_post",
+        pkceMethod: "S256",
+        scopes: ["read"],
+        authorizationParams: {},
+      },
+    });
+    const mockConsoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
+      return undefined as never;
+    });
+
+    try {
+      await customConnectorCommand.parseAsync([
+        "node",
+        "zero",
+        "create",
+        "--file",
+        definitionPath,
+      ]);
+
+      expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
+        "OAuth custom connectors require empty fields and values arrays",
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    } finally {
+      mockConsoleError.mockRestore();
+      mockExit.mockRestore();
+    }
   });
 
   it("rejects an agent run without custom connector write access", async () => {
@@ -366,6 +395,9 @@ describe("zero connector custom create", () => {
     expect(help).toContain('"authMode": "oauth"');
     expect(help).toContain('"values": []');
     expect(help).toContain("{{oauth.access_token}}");
+    expect(help).toContain(
+      "OAuth mode requires empty fields and values arrays.",
+    );
     expect(help).toContain("customConnectorCliCreate");
     expect(help).toContain("plaintext credentials");
     expect(
