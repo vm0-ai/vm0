@@ -54,9 +54,20 @@ const conflictPreamble = `
     installationId: text("installation_id"),
     revokedAt: timestamp("revoked_at"),
   });
+  const archivedHosts = pgTable("archived_hosts", {
+    id: text("id").notNull(),
+    installationId: text("installation_id"),
+    revokedAt: timestamp("revoked_at"),
+  });
+  const retiredHosts = pgTable("retired_hosts", {
+    id: text("id").notNull(),
+    retiredAt: timestamp("retired_at"),
+  });
   type DrizzleDatabase =
     import("drizzle-orm/node-postgres").NodePgDatabase<{
+      archivedHosts: typeof archivedHosts;
       hosts: typeof hosts;
+      retiredHosts: typeof retiredHosts;
     }>;
   declare const db: DrizzleDatabase;
 `;
@@ -2964,12 +2975,6 @@ ruleTester.run("prefer-drizzle-apis source-local analysis", preferDrizzleApis, {
       name: "dynamic conflict table remains opaque",
       code: `${conflictPreamble}
         import { sql } from "drizzle-orm";
-        import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
-        const archivedHosts = pgTable("archived_hosts", {
-          id: text("id").notNull(),
-          installationId: text("installation_id"),
-          revokedAt: timestamp("revoked_at"),
-        });
         declare const useArchive: boolean;
         const targetTable = useArchive ? archivedHosts : hosts;
         await db
@@ -3330,17 +3335,12 @@ ruleTester.run("prefer-drizzle-apis source-local analysis", preferDrizzleApis, {
       name: "shared conflict predicate keeps target-aware analysis",
       code: `${conflictPreamble}
         import { sql } from "drizzle-orm";
-        import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
-        const archivedHosts = pgTable("archived_hosts", {
-          id: text("id").notNull(),
-          retiredAt: timestamp("retired_at"),
-        });
         const predicate = sql\`revoked_at IS NULL\`;
         await db
-          .insert(archivedHosts)
+          .insert(retiredHosts)
           .values({ id: "archived" })
           .onConflictDoUpdate({
-            target: archivedHosts.id,
+            target: retiredHosts.id,
             set: { retiredAt: null },
             targetWhere: predicate,
           });
