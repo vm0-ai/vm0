@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { testAgentRunsContract } from "@vm0/api-contracts/contracts/test-agent-runs";
 
+import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { generateSandboxToken } from "../../auth/tokens";
@@ -51,6 +52,25 @@ async function seedDirectRunActor(): Promise<{
 }
 
 describe("POST /api/test/agent-runs", () => {
+  it("rejects a malformed request body", async () => {
+    mockEnv("ENV", "development");
+    const actor = bdd.user();
+    const app = createApp({ signal: context.signal });
+    const response = await app.request("/api/test/agent-runs", {
+      method: "POST",
+      headers: {
+        ...authenticate(actor),
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ agentComposeId: randomUUID() }),
+    });
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
+  });
+
   it("creates a direct run when the test endpoint is allowed", async () => {
     mockEnv("ENV", "development");
     const { actor, composeId } = await seedDirectRunActor();

@@ -256,8 +256,8 @@ _paginate_run_log() {
 # Fetch run logs (replacement for the retired `vm0 logs` command).
 # Usage: fetch_run_log <run_id> [agent|system|metrics|network]
 # - agent:   structured agent event payloads from the API
-# - system:  sandbox system log (legacy telemetry route; zero equivalent pending)
-# - metrics: resource metrics (legacy telemetry route; zero equivalent pending)
+# - system:  sandbox system log via /api/zero/runs/:id/telemetry/system-log
+# - metrics: resource metrics via /api/zero/runs/:id/telemetry/metrics
 # - network: mitmproxy network log via /api/zero/runs/:id/network
 fetch_run_log() {
     local run_id="$1" mode="${2:-agent}"
@@ -270,10 +270,10 @@ fetch_run_log() {
                     end'
             ;;
         system)
-            _paginate_run_log "/api/agent/runs/$run_id/telemetry/system-log" '.systemLog'
+            _paginate_run_log "/api/zero/runs/$run_id/telemetry/system-log" '.systemLog'
             ;;
         metrics)
-            _paginate_run_log "/api/agent/runs/$run_id/telemetry/metrics" \
+            _paginate_run_log "/api/zero/runs/$run_id/telemetry/metrics" \
                 '.metrics[] | "[\(.ts)] CPU: \(.cpu)% | Mem: \(.mem_used)/\(.mem_total) | Disk: \(.disk_used)/\(.disk_total)"'
             ;;
         network)
