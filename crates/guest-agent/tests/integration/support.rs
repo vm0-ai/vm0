@@ -280,7 +280,6 @@ fn cleanup_session_checkpoint_files() {
     let _ = std::fs::remove_file(paths.final_session_history_identity_file());
     let _ = std::fs::remove_file(paths.checkpoint_error_file());
     let _ = std::fs::remove_file(paths.failure_diagnostic_file());
-    let _ = std::fs::remove_file(paths.event_error_flag());
 }
 
 pub(crate) struct SessionCheckpointFilesGuard;

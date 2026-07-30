@@ -10,8 +10,8 @@ use std::time::{Duration, Instant};
 
 use futures_util::FutureExt;
 use guest_contracts::diagnostics::{
-    CliObservedExitDiagnostic, CliObservedExitKind, CliTerminationDiagnostic, FailureClass,
-    FailureDiagnostic, FailureReason,
+    CliObservedExitDiagnostic, CliObservedExitKind, CliTerminationDiagnostic,
+    EventDeliveryDiagnostic, FailureClass, FailureDiagnostic, FailureReason,
 };
 use sandbox::SandboxId;
 use tokio::sync::mpsc;
@@ -737,6 +737,9 @@ fn log_job_execution_failed(
     let cli_observed_exit_fields = JobCliObservedExitLogFields::from(
         diagnostic.and_then(|diagnostic| diagnostic.cli_observed_exit.as_ref()),
     );
+    let event_delivery_fields = JobEventDeliveryLogFields::from(
+        diagnostic.and_then(|diagnostic| diagnostic.event_delivery.as_ref()),
+    );
     let resource_fields = JobResourceLogFields::from(failure.resource_diagnostics);
     let (timeout_ms, elapsed_ms, guest_duration_ms) = match failure.kind {
         ExecutionFailureKind::Generic => (None, None, None),
@@ -787,6 +790,59 @@ fn log_job_execution_failed(
                 prompt_shape = diagnostic.map(|diagnostic| diagnostic.prompt_shape.as_str()),
                 prompt_bytes = diagnostic.map(|diagnostic| diagnostic.prompt_bytes),
                 first_line_bytes = diagnostic.map(|diagnostic| diagnostic.first_line_bytes),
+                event_delivery_total_events = event_delivery_fields.total_events,
+                event_delivery_total_batches = event_delivery_fields.total_batches,
+                event_delivery_failed_batches = event_delivery_fields.failed_batches,
+                event_delivery_last_acknowledged_sequence =
+                    event_delivery_fields.last_acknowledged_sequence,
+                event_delivery_first_failure_first_sequence =
+                    event_delivery_fields.first_failure_first_sequence,
+                event_delivery_first_failure_last_sequence =
+                    event_delivery_fields.first_failure_last_sequence,
+                event_delivery_first_failure_event_count =
+                    event_delivery_fields.first_failure_event_count,
+                event_delivery_first_failure_conservative_bytes =
+                    event_delivery_fields.first_failure_conservative_bytes,
+                event_delivery_first_failure_outcome =
+                    event_delivery_fields.first_failure_outcome,
+                event_delivery_first_failure_attempt_count =
+                    event_delivery_fields.first_failure_attempt_count,
+                event_delivery_first_failure_final_attempt_number =
+                    event_delivery_fields.first_failure_final_attempt_number,
+                event_delivery_first_failure_final_attempt_kind =
+                    event_delivery_fields.first_failure_final_attempt_kind,
+                event_delivery_first_failure_final_attempt_http_status =
+                    event_delivery_fields.first_failure_final_attempt_http_status,
+                event_delivery_first_failure_final_attempt_request_id =
+                    event_delivery_fields.first_failure_final_attempt_request_id,
+                event_delivery_first_failure_final_attempt_elapsed_ms =
+                    event_delivery_fields.first_failure_final_attempt_elapsed_ms,
+                event_delivery_drain_timeout = event_delivery_fields.drain_timeout,
+                event_delivery_drain_queued_events =
+                    event_delivery_fields.drain_queued_events,
+                event_delivery_drain_queued_bytes = event_delivery_fields.drain_queued_bytes,
+                event_delivery_drain_carried_events =
+                    event_delivery_fields.drain_carried_events,
+                event_delivery_drain_carried_bytes =
+                    event_delivery_fields.drain_carried_bytes,
+                event_delivery_drain_active_first_sequence =
+                    event_delivery_fields.drain_active_first_sequence,
+                event_delivery_drain_active_last_sequence =
+                    event_delivery_fields.drain_active_last_sequence,
+                event_delivery_drain_active_event_count =
+                    event_delivery_fields.drain_active_event_count,
+                event_delivery_drain_active_conservative_bytes =
+                    event_delivery_fields.drain_active_conservative_bytes,
+                event_delivery_drain_active_completed_attempt_count =
+                    event_delivery_fields.drain_active_completed_attempt_count,
+                event_delivery_drain_active_attempt_number =
+                    event_delivery_fields.drain_active_attempt_number,
+                event_delivery_drain_active_attempt_request_id =
+                    event_delivery_fields.drain_active_attempt_request_id,
+                event_delivery_drain_active_attempt_elapsed_ms =
+                    event_delivery_fields.drain_active_attempt_elapsed_ms,
+                event_delivery_drain_active_outcome =
+                    event_delivery_fields.drain_active_outcome,
                 resource_failure_kind = resource_fields.resource_failure_kind,
                 guest_root_fs_used_percent = resource_fields.guest_root_fs_used_percent,
                 guest_root_fs_available_kb = resource_fields.guest_root_fs_available_kb,
@@ -841,6 +897,38 @@ struct JobCliObservedExitLogFields {
     mapped_exit_code: Option<i32>,
 }
 
+struct JobEventDeliveryLogFields<'a> {
+    total_events: Option<u64>,
+    total_batches: Option<u64>,
+    failed_batches: Option<u64>,
+    last_acknowledged_sequence: Option<u32>,
+    first_failure_first_sequence: Option<u32>,
+    first_failure_last_sequence: Option<u32>,
+    first_failure_event_count: Option<u32>,
+    first_failure_conservative_bytes: Option<u64>,
+    first_failure_outcome: Option<&'static str>,
+    first_failure_attempt_count: Option<u64>,
+    first_failure_final_attempt_number: Option<u32>,
+    first_failure_final_attempt_kind: Option<&'static str>,
+    first_failure_final_attempt_http_status: Option<u16>,
+    first_failure_final_attempt_request_id: Option<&'a str>,
+    first_failure_final_attempt_elapsed_ms: Option<u64>,
+    drain_timeout: Option<bool>,
+    drain_queued_events: Option<u32>,
+    drain_queued_bytes: Option<u64>,
+    drain_carried_events: Option<u32>,
+    drain_carried_bytes: Option<u64>,
+    drain_active_first_sequence: Option<u32>,
+    drain_active_last_sequence: Option<u32>,
+    drain_active_event_count: Option<u32>,
+    drain_active_conservative_bytes: Option<u64>,
+    drain_active_completed_attempt_count: Option<u64>,
+    drain_active_attempt_number: Option<u32>,
+    drain_active_attempt_request_id: Option<&'a str>,
+    drain_active_attempt_elapsed_ms: Option<u64>,
+    drain_active_outcome: Option<&'static str>,
+}
+
 impl From<Option<&CliTerminationDiagnostic>> for JobCliTerminationLogFields {
     fn from(diagnostic: Option<&CliTerminationDiagnostic>) -> Self {
         Self {
@@ -874,6 +962,59 @@ impl From<Option<&CliObservedExitDiagnostic>> for JobCliObservedExitLogFields {
                 .then(|| diagnostic.and_then(CliObservedExitDiagnostic::known_signal_name))
                 .flatten(),
             mapped_exit_code: diagnostic.map(|diagnostic| diagnostic.mapped_exit_code),
+        }
+    }
+}
+
+impl<'a> From<Option<&'a EventDeliveryDiagnostic>> for JobEventDeliveryLogFields<'a> {
+    fn from(diagnostic: Option<&'a EventDeliveryDiagnostic>) -> Self {
+        let first_failure =
+            diagnostic.and_then(|diagnostic| diagnostic.first_failed_batch.as_ref());
+        let first_failure_final_attempt = first_failure.and_then(|failure| failure.attempts.last());
+        let drain = diagnostic.and_then(|diagnostic| diagnostic.drain_timeout.as_ref());
+        let drain_active = drain.and_then(|drain| drain.active_batch.as_ref());
+        let drain_active_attempt = drain_active.and_then(|active| active.active_attempt.as_ref());
+
+        Self {
+            total_events: diagnostic.map(|diagnostic| diagnostic.total_events),
+            total_batches: diagnostic.map(|diagnostic| diagnostic.total_batches),
+            failed_batches: diagnostic.map(|diagnostic| diagnostic.failed_batches),
+            last_acknowledged_sequence: diagnostic
+                .and_then(|diagnostic| diagnostic.last_acknowledged_sequence),
+            first_failure_first_sequence: first_failure.map(|failure| failure.first_sequence),
+            first_failure_last_sequence: first_failure.map(|failure| failure.last_sequence),
+            first_failure_event_count: first_failure.map(|failure| failure.event_count),
+            first_failure_conservative_bytes: first_failure
+                .map(|failure| failure.conservative_bytes),
+            first_failure_outcome: first_failure.map(|failure| failure.outcome.as_str()),
+            first_failure_attempt_count: first_failure
+                .map(|failure| u64::try_from(failure.attempts.len()).unwrap_or(u64::MAX)),
+            first_failure_final_attempt_number: first_failure_final_attempt
+                .map(|attempt| attempt.attempt),
+            first_failure_final_attempt_kind: first_failure_final_attempt
+                .map(|attempt| attempt.failure_kind.as_str()),
+            first_failure_final_attempt_http_status: first_failure_final_attempt
+                .and_then(|attempt| attempt.http_status),
+            first_failure_final_attempt_request_id: first_failure_final_attempt
+                .map(|attempt| attempt.client_request_id.as_str()),
+            first_failure_final_attempt_elapsed_ms: first_failure_final_attempt
+                .map(|attempt| attempt.elapsed_ms),
+            drain_timeout: drain.map(|_| true),
+            drain_queued_events: drain.map(|drain| drain.queued_events),
+            drain_queued_bytes: drain.map(|drain| drain.queued_bytes),
+            drain_carried_events: drain.map(|drain| drain.carried_events),
+            drain_carried_bytes: drain.map(|drain| drain.carried_bytes),
+            drain_active_first_sequence: drain_active.map(|active| active.first_sequence),
+            drain_active_last_sequence: drain_active.map(|active| active.last_sequence),
+            drain_active_event_count: drain_active.map(|active| active.event_count),
+            drain_active_conservative_bytes: drain_active.map(|active| active.conservative_bytes),
+            drain_active_completed_attempt_count: drain_active
+                .map(|active| u64::try_from(active.completed_attempts.len()).unwrap_or(u64::MAX)),
+            drain_active_attempt_number: drain_active_attempt.map(|attempt| attempt.attempt),
+            drain_active_attempt_request_id: drain_active_attempt
+                .map(|attempt| attempt.client_request_id.as_str()),
+            drain_active_attempt_elapsed_ms: drain_active_attempt.map(|attempt| attempt.elapsed_ms),
+            drain_active_outcome: drain_active.map(|active| active.outcome.as_str()),
         }
     }
 }
@@ -982,8 +1123,11 @@ mod tests {
 
     use guest_contracts::diagnostics::{
         AgentFramework, CliObservedExitKind, CliTerminationDiagnostic, CliTerminationReason,
-        CliTerminationSignal, FailureClass, FailureDetailSource, PromptMetadata,
-        SessionHistoryStatus,
+        CliTerminationSignal, EventDeliveryAcceptanceOutcome, EventDeliveryActiveAttemptDiagnostic,
+        EventDeliveryActiveBatchDiagnostic, EventDeliveryAttemptFailureKind,
+        EventDeliveryCompletedAttemptDiagnostic, EventDeliveryDiagnostic,
+        EventDeliveryDrainTimeoutDiagnostic, EventDeliveryFailedBatchDiagnostic, FailureClass,
+        FailureDetailSource, PromptMetadata, SessionHistoryStatus,
     };
     use sandbox::SandboxId;
     use tracing::Level;
@@ -1582,6 +1726,7 @@ mod tests {
         assert!(!event.fields.contains_key("timeout_ms"));
         assert!(!event.fields.contains_key("cli_termination_reason"));
         assert!(!event.fields.contains_key("cli_observed_exit_kind"));
+        assert!(!event.fields.contains_key("event_delivery_total_batches"));
     }
 
     #[test]
@@ -1645,6 +1790,112 @@ mod tests {
         assert!(!event.fields.contains_key("cli_observed_signal_number"));
         assert!(!event.fields.contains_key("cli_observed_signal_name"));
         assert_field_eq(&event, "cli_observed_mapped_exit_code", "2");
+    }
+
+    #[test]
+    fn diagnostic_failure_logs_bounded_event_delivery_fields() {
+        let failed_attempt = EventDeliveryCompletedAttemptDiagnostic {
+            attempt: 3,
+            client_request_id: "11111111-1111-4111-8111-111111111111".to_string(),
+            elapsed_ms: 30_000,
+            failure_kind: EventDeliveryAttemptFailureKind::HttpStatus,
+            http_status: Some(500),
+        };
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::EventUploadFailed,
+            AgentFramework::ClaudeCode,
+            PromptMetadata::from_prompt("continue"),
+        )
+        .with_cli_exit_code(0)
+        .with_event_delivery(EventDeliveryDiagnostic {
+            total_events: 40,
+            total_batches: 2,
+            failed_batches: 1,
+            last_acknowledged_sequence: Some(7),
+            first_failed_batch: Some(EventDeliveryFailedBatchDiagnostic {
+                first_sequence: 8,
+                last_sequence: 15,
+                event_count: 8,
+                conservative_bytes: 2_048,
+                outcome: EventDeliveryAcceptanceOutcome::ConfirmedRejection,
+                attempts: vec![failed_attempt.clone()],
+            }),
+            drain_timeout: Some(EventDeliveryDrainTimeoutDiagnostic {
+                queued_events: 0,
+                queued_bytes: 0,
+                carried_events: 1,
+                carried_bytes: 128,
+                active_batch: Some(EventDeliveryActiveBatchDiagnostic {
+                    first_sequence: 16,
+                    last_sequence: 39,
+                    event_count: 24,
+                    conservative_bytes: 8_192,
+                    completed_attempts: vec![failed_attempt],
+                    active_attempt: Some(EventDeliveryActiveAttemptDiagnostic {
+                        attempt: 2,
+                        client_request_id: "22222222-2222-4222-8222-222222222222".to_string(),
+                        elapsed_ms: 4_000,
+                    }),
+                    outcome: EventDeliveryAcceptanceOutcome::OutcomeUnknown,
+                }),
+            }),
+        });
+        let failure = executor::ExecutionFailure::new(1, "event delivery failed", Some(diagnostic));
+
+        let event = capture_job_failure_log(&failure);
+
+        assert_field_eq(&event, "event_delivery_total_events", "40");
+        assert_field_eq(&event, "event_delivery_total_batches", "2");
+        assert_field_eq(&event, "event_delivery_failed_batches", "1");
+        assert_field_eq(&event, "event_delivery_last_acknowledged_sequence", "7");
+        assert_field_eq(&event, "event_delivery_first_failure_first_sequence", "8");
+        assert_field_eq(&event, "event_delivery_first_failure_last_sequence", "15");
+        assert_field_eq(
+            &event,
+            "event_delivery_first_failure_conservative_bytes",
+            "2048",
+        );
+        assert_field_eq(
+            &event,
+            "event_delivery_first_failure_outcome",
+            "confirmed_rejection",
+        );
+        assert_field_eq(
+            &event,
+            "event_delivery_first_failure_final_attempt_kind",
+            "http_status",
+        );
+        assert_field_eq(
+            &event,
+            "event_delivery_first_failure_final_attempt_http_status",
+            "500",
+        );
+        assert_field_eq(
+            &event,
+            "event_delivery_first_failure_final_attempt_request_id",
+            "11111111-1111-4111-8111-111111111111",
+        );
+        assert_field_eq(&event, "event_delivery_drain_timeout", "true");
+        assert_field_eq(&event, "event_delivery_drain_queued_events", "0");
+        assert_field_eq(&event, "event_delivery_drain_carried_events", "1");
+        assert_field_eq(&event, "event_delivery_drain_active_first_sequence", "16");
+        assert_field_eq(
+            &event,
+            "event_delivery_drain_active_attempt_request_id",
+            "22222222-2222-4222-8222-222222222222",
+        );
+        assert_field_eq(
+            &event,
+            "event_delivery_drain_active_attempt_elapsed_ms",
+            "4000",
+        );
+        assert_field_eq(
+            &event,
+            "event_delivery_drain_active_outcome",
+            "outcome_unknown",
+        );
+        assert!(!event.fields.contains_key("event_delivery_attempts"));
+        assert!(!event.fields.contains_key("event_delivery_body"));
     }
 
     #[test]

@@ -1,4 +1,9 @@
 use super::*;
+use guest_contracts::diagnostics::{
+    EventDeliveryAcceptanceOutcome, EventDeliveryAttemptFailureKind,
+    EventDeliveryCompletedAttemptDiagnostic, EventDeliveryDiagnostic,
+    EventDeliveryFailedBatchDiagnostic,
+};
 
 #[tokio::test]
 async fn execute_inner_appends_stream_overflow_marker() {
@@ -911,18 +916,40 @@ async fn execute_inner_nonzero_with_failure_diagnostic_skips_abnormal_exit_diagn
         FailureClass::CliNonzero,
         AgentFramework::ClaudeCode,
         PromptMetadata::from_prompt("/help"),
-    );
+    )
+    .with_event_delivery(EventDeliveryDiagnostic {
+        total_events: 1,
+        total_batches: 1,
+        failed_batches: 1,
+        last_acknowledged_sequence: None,
+        first_failed_batch: Some(EventDeliveryFailedBatchDiagnostic {
+            first_sequence: 0,
+            last_sequence: 0,
+            event_count: 1,
+            conservative_bytes: 128,
+            outcome: EventDeliveryAcceptanceOutcome::OutcomeUnknown,
+            attempts: vec![EventDeliveryCompletedAttemptDiagnostic {
+                attempt: 1,
+                client_request_id: "11111111-1111-4111-8111-111111111111".to_string(),
+                elapsed_ms: 10_000,
+                failure_kind: EventDeliveryAttemptFailureKind::Timeout,
+                http_status: None,
+            }],
+        }),
+        drain_timeout: None,
+    });
     overrides.push_read_file_result(Ok(Some(serde_json::to_vec(&diagnostic).unwrap())));
     overrides.push_read_file_result(Ok(None));
     let factory = sandbox_mock::MockSandboxFactory::with_overrides(Arc::clone(&overrides));
 
-    let (exit_code, error) =
-        run_new_sandbox_status(&factory, &minimal_context(), &config, &default_params())
-            .await
-            .unwrap();
+    let outcome = run_new_sandbox_outcome(&factory, &minimal_context(), &config, &default_params())
+        .await
+        .unwrap();
 
-    assert_eq!(exit_code, 126);
-    assert_eq!(error.as_deref(), Some("Agent exited with code 126"));
+    let failure = outcome.failure.expect("expected execution failure");
+    assert_eq!(failure.exit_code, 126);
+    assert_eq!(failure.error, "Agent exited with code 126");
+    assert_eq!(failure.diagnostic, Some(diagnostic));
     assert!(
         overrides
             .exec_calls()
