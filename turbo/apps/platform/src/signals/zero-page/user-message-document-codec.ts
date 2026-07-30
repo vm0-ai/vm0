@@ -13,7 +13,12 @@ import {
 
 import { formatFeedbackPrompt, type FeedbackSource } from "./chat-feedback.ts";
 import { serializeChatThreadMention } from "./chat-thread-suggestion-domain.ts";
+import {
+  serializeAgentMention,
+  splitAgentMentionSegments,
+} from "./composer-agent-suggestion-domain.ts";
 
+export const AGENT_MENTION_NODE_NAME = "agentMention";
 export const CHAT_THREAD_MENTION_NODE_NAME = "chatThreadMention";
 export const TEMPLATE_ATTACHMENT_NODE_NAME = "templateAttachment";
 export const INLINE_TEMPLATE_NODE_NAME = "inlineTemplate";
@@ -72,6 +77,15 @@ function chatThreadPart(
   };
 }
 
+function agentMentionText(node: ProseMirrorNode): string | null {
+  const agentId: unknown = node.attrs.agentId;
+  const name: unknown = node.attrs.name;
+  if (typeof agentId !== "string" || typeof name !== "string") {
+    return null;
+  }
+  return serializeAgentMention(agentId, name);
+}
+
 function legacyTemplatePart(
   node: ProseMirrorNode,
   generationTemplate: GenerationTemplateRequest | undefined,
@@ -124,6 +138,14 @@ function appendParagraphParts(
     }
     if (node.type.name === "hardBreak") {
       appendTextPart(parts, "\n");
+      continue;
+    }
+    if (node.type.name === AGENT_MENTION_NODE_NAME) {
+      const text = agentMentionText(node);
+      if (!text) {
+        return false;
+      }
+      appendTextPart(parts, text);
       continue;
     }
     if (node.type.name === CHAT_THREAD_MENTION_NODE_NAME) {
@@ -413,6 +435,21 @@ function legacyTemplateNode(
   } satisfies JSONContent;
 }
 
+function agentMentionInlineContent(line: string): JSONContent[] {
+  return splitAgentMentionSegments(line).map((segment): JSONContent => {
+    return segment.type === "text"
+      ? { type: "text", text: segment.text }
+      : {
+          type: AGENT_MENTION_NODE_NAME,
+          attrs: {
+            agentId: segment.agentId,
+            name: segment.name,
+            avatarUrl: null,
+          },
+        };
+  });
+}
+
 function feedbackNoteToPrompt(note: readonly FeedbackNotePart[]): string {
   return note
     .map((part) => {
@@ -461,7 +498,7 @@ function feedbackNoteContent(note: readonly FeedbackNotePart[]): JSONContent[] {
     const lines = part.text.split("\n");
     for (const [index, line] of lines.entries()) {
       if (line.length > 0) {
-        paragraphContent.push({ type: "text", text: line });
+        paragraphContent.push(...agentMentionInlineContent(line));
         trailingParagraph = false;
       }
       if (index < lines.length - 1) {
@@ -511,7 +548,7 @@ function appendRestoredText(state: RestoredEditorState, text: string): void {
   const lines = text.split("\n");
   for (const [index, line] of lines.entries()) {
     if (line.length > 0) {
-      state.paragraphContent.push({ type: "text", text: line });
+      state.paragraphContent.push(...agentMentionInlineContent(line));
       state.trailingParagraph = false;
     }
     if (index < lines.length - 1) {
