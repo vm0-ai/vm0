@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.354.0](https://github.com/vm0-ai/vm0/compare/api-v1.353.0...api-v1.354.0) (2026-07-30)
+
+
+### Features
+
+* **platform:** support german locale ([#24048](https://github.com/vm0-ai/vm0/issues/24048)) ([260d04f](https://github.com/vm0-ai/vm0/commit/260d04fbdaf377e81b5e5cbe64d5d7809abd42f7))
+
+
+### CI
+
+* prewarm API deployment before migrations ([#24113](https://github.com/vm0-ai/vm0/issues/24113)) ([2b14300](https://github.com/vm0-ai/vm0/commit/2b14300cd60fa04b7a15056f4347cc979e21a278))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.254.0
+    * @vm0/core bumped to 8.494.0
+    * @vm0/db bumped to 1.157.1
+
 ## [1.353.0](https://github.com/vm0-ai/vm0/compare/api-v1.352.0...api-v1.353.0) (2026-07-30)
 
 

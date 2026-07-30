@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.665.0](https://github.com/vm0-ai/vm0/compare/app-v0.664.0...app-v0.665.0) (2026-07-30)
+
+
+### Features
+
+* **platform:** support german locale ([#24048](https://github.com/vm0-ai/vm0/issues/24048)) ([260d04f](https://github.com/vm0-ai/vm0/commit/260d04fbdaf377e81b5e5cbe64d5d7809abd42f7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.254.0
+    * @vm0/core bumped to 8.494.0
+
 ## [0.664.0](https://github.com/vm0-ai/vm0/compare/app-v0.663.0...app-v0.664.0) (2026-07-30)
 
 
