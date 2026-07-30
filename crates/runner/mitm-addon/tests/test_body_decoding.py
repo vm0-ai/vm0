@@ -134,6 +134,24 @@ class TestStreamDecodeSession:
         assert session.finish_error() == "incomplete compressed body"
 
     @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
+    def test_zlib_session_reports_corrupt_member_after_decoded_payload(self, headers, encoding):
+        plaintext = b'{"model":"claude-sonnet-4-6","usage":{"input_tokens":42}}'
+        trailing_member = bytearray(_compress_one_shot_body(encoding, b""))
+        checksum_offset = -8 if encoding == "gzip" else -1
+        trailing_member[checksum_offset] ^= 0xFF
+        compressed = _compress_one_shot_body(encoding, plaintext) + bytes(trailing_member)
+        chunks: list[bytes] = []
+        session = create_stream_decode_session(
+            headers(("Content-Encoding", encoding)), chunks.append
+        )
+        assert session is not None
+
+        session.feed(compressed)
+
+        assert b"".join(chunks) == plaintext
+        assert session.finish_error() == "invalid compressed body"
+
+    @pytest.mark.parametrize("encoding", ["gzip", "deflate"])
     def test_concatenated_zlib_members_same_callback(self, headers, encoding):
         plaintext = b'{"model":"claude-sonnet-4-6","usage":{"input_tokens":42}}'
         if encoding == "gzip":
