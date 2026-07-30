@@ -442,7 +442,7 @@ describe("custom model provider gateway routes", () => {
         name: responsesFirewallName,
         apis: [
           {
-            base: "https://gateway.example.com/openai/v1",
+            base: "https://gateway.example.com/openai/v1/responses",
             auth: {
               headers: {
                 "x-api-key": `\${{ secrets.VM0_MODEL_PROVIDER_API_KEY }}`,

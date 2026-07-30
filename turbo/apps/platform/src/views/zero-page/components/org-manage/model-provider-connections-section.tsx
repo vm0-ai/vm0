@@ -363,11 +363,56 @@ function SurfaceEditor({
   );
 }
 
+function ConnectionDialogFields({ error }: { error: string | null }) {
+  const { t } = useTranslation();
+  const draft = useGet(modelProviderConnectionDraft$);
+  const update = useSet(updateModelProviderConnectionField$);
+  return (
+    <div className="grid gap-5">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="grid gap-1.5 text-sm font-medium text-foreground">
+          {t(($) => {
+            return $.settings.models.gateways.name;
+          })}
+          <Input
+            value={draft.displayName}
+            onChange={(event) => {
+              update({ field: "displayName", value: event.target.value });
+            }}
+          />
+        </label>
+        <label className="grid gap-1.5 text-sm font-medium text-foreground">
+          {t(($) => {
+            return $.settings.models.gateways.apiKey;
+          })}
+          <Input
+            type="password"
+            autoComplete="off"
+            value={draft.secret}
+            placeholder={
+              draft.editingId
+                ? t(($) => {
+                    return $.settings.models.gateways.keepKey;
+                  })
+                : undefined
+            }
+            onChange={(event) => {
+              update({ field: "secret", value: event.target.value });
+            }}
+          />
+        </label>
+      </div>
+      <SurfaceEditor protocol="anthropic-messages" />
+      <SurfaceEditor protocol="openai-responses" />
+      {error && <p className="text-sm text-destructive">{error}</p>}
+    </div>
+  );
+}
+
 function ConnectionDialog() {
   const { t } = useTranslation();
   const draft = useGet(modelProviderConnectionDraft$);
   const close = useSet(closeModelProviderConnection$);
-  const update = useSet(updateModelProviderConnectionField$);
   const pageSignal = useGet(pageSignal$);
   const [saveLoadable, save] = useLoadableSet(saveModelProviderConnection$);
   const saving = saveLoadable.state === "loading";
@@ -412,44 +457,7 @@ function ConnectionDialog() {
             })}
           </DialogDescription>
         </DialogHeader>
-        <div className="grid gap-5">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="grid gap-1.5 text-sm font-medium text-foreground">
-              {t(($) => {
-                return $.settings.models.gateways.name;
-              })}
-              <Input
-                value={draft.displayName}
-                onChange={(event) => {
-                  update({ field: "displayName", value: event.target.value });
-                }}
-              />
-            </label>
-            <label className="grid gap-1.5 text-sm font-medium text-foreground">
-              {t(($) => {
-                return $.settings.models.gateways.apiKey;
-              })}
-              <Input
-                type="password"
-                autoComplete="off"
-                value={draft.secret}
-                placeholder={
-                  draft.editingId
-                    ? t(($) => {
-                        return $.settings.models.gateways.keepKey;
-                      })
-                    : undefined
-                }
-                onChange={(event) => {
-                  update({ field: "secret", value: event.target.value });
-                }}
-              />
-            </label>
-          </div>
-          <SurfaceEditor protocol="anthropic-messages" />
-          <SurfaceEditor protocol="openai-responses" />
-          {error && <p className="text-sm text-destructive">{error}</p>}
-        </div>
+        <ConnectionDialogFields error={error} />
         <DialogFooter>
           <Button variant="outline" disabled={saving} onClick={close}>
             {t(($) => {

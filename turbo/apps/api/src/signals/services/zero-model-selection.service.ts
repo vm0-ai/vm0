@@ -22,11 +22,13 @@ import {
 } from "@vm0/db/schema/model-provider-gateway";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 
+import { nullableDriverValueDecoder } from "../../lib/db-structured-result";
 import { badRequestMessage, insufficientCredits } from "../../lib/error";
 import type { Db } from "../external/db";
 import { ensureOrgModelPolicies } from "./zero-model-policy.service";
+import { modelProviderGatewaySchemaAvailable } from "./model-provider-gateway-schema.service";
 import { checkOrgCreditsForRunAdmission } from "./zero-run-admission.service";
 import {
   loadOrgPlanCapabilities,
@@ -230,13 +232,20 @@ async function resolveValidPolicyRoute(params: {
     return null;
   }
 
+  const gatewaySchemaAvailable = await modelProviderGatewaySchemaAvailable(
+    params.db,
+  );
   const [policy] = await params.db
     .select({
       model: orgModelPolicies.model,
       defaultProviderType: orgModelPolicies.defaultProviderType,
       credentialScope: orgModelPolicies.credentialScope,
       modelProviderId: orgModelPolicies.modelProviderId,
-      modelProviderSurfaceId: orgModelPolicies.modelProviderSurfaceId,
+      modelProviderSurfaceId: gatewaySchemaAvailable
+        ? orgModelPolicies.modelProviderSurfaceId
+        : sql`NULL::uuid`.mapWith(
+            nullableDriverValueDecoder(orgModelPolicies.modelProviderSurfaceId),
+          ),
     })
     .from(orgModelPolicies)
     .where(
@@ -572,8 +581,11 @@ export async function resolveModelFirstProviderAdmission(params: {
   const effectiveModelProvider =
     await resolveEffectiveModelProviderType(params);
   const selectedModel = params.modelPin.selectedModel;
+  const gatewaySchemaAvailable = await modelProviderGatewaySchemaAvailable(
+    params.db,
+  );
   const [customSurface] =
-    params.modelPin.modelProviderId === null
+    !gatewaySchemaAvailable || params.modelPin.modelProviderId === null
       ? []
       : await params.db
           .select({

@@ -16,6 +16,7 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
 import type { Db, ReadonlyDb } from "../external/db";
+import { modelProviderGatewaySchemaAvailable } from "./model-provider-gateway-schema.service";
 
 export interface ChatThreadSessionRoute {
   readonly selectedModel: string | null;
@@ -204,6 +205,9 @@ async function customSurfaceRouteChanged(args: {
     return id !== null;
   });
   if (candidateSurfaceIds.length === 0) {
+    return false;
+  }
+  if (!(await modelProviderGatewaySchemaAvailable(args.db))) {
     return false;
   }
   const surfaces = await args.db

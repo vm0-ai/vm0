@@ -45,7 +45,7 @@ export function compileModelProviderGatewayRuntime(
         base:
           args.protocol === "anthropic-messages"
             ? `${args.apiBaseUrl}/v1/messages`
-            : args.apiBaseUrl,
+            : `${args.apiBaseUrl}/responses`,
         hostPolicy: { kind: "publicDestination" },
         auth: {
           headers: {

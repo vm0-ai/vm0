@@ -149,6 +149,7 @@ import {
   compileModelProviderGatewayRuntime,
   GATEWAY_RUNTIME_SECRET_NAME,
 } from "./model-provider-gateway-runtime";
+import { modelProviderGatewaySchemaAvailable } from "./model-provider-gateway-schema.service";
 import {
   CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
   CustomConnectorRuntimePrefixError,
@@ -1917,6 +1918,9 @@ async function customGatewayModelProviderEnvironment(
   args: ResolveModelProviderEnvironmentArgs,
 ): Promise<ResolvedModelProviderEnvironment | null> {
   if (!args.modelProviderId || !args.selectedModelOverride) {
+    return null;
+  }
+  if (!(await modelProviderGatewaySchemaAvailable(db))) {
     return null;
   }
   const [row] = await db

@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { and, eq, inArray, notInArray } from "drizzle-orm";
+import { and, eq, inArray, notInArray, sql } from "drizzle-orm";
 import {
   DEFAULT_ORG_MODEL_POLICY_MODELS,
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
@@ -32,15 +32,22 @@ import {
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 
+import { nullableDriverValueDecoder } from "../../lib/db-structured-result";
 import { insufficientCredits } from "../../lib/error";
 import { nowDate } from "../external/time";
 import { writeDb$, type Db } from "../external/db";
+import { modelProviderGatewaySchemaAvailable } from "./model-provider-gateway-schema.service";
 import {
   loadOrgPlanCapabilities,
   type OrgPlanCapabilities,
 } from "./org-plan-entitlement-read.service";
 
-type OrgModelPolicyRow = typeof orgModelPolicies.$inferSelect;
+type OrgModelPolicyRow = Omit<
+  typeof orgModelPolicies.$inferSelect,
+  "modelProviderSurfaceId"
+> & {
+  readonly modelProviderSurfaceId: string | null;
+};
 
 interface ProviderRouteInfo {
   readonly id: string;
@@ -116,9 +123,30 @@ function parseCredentialScope(
   return value === "org" || value === "member" ? value : null;
 }
 
-function loadRows(db: Db, orgId: string): Promise<OrgModelPolicyRow[]> {
+function loadRows(
+  db: Db,
+  orgId: string,
+  gatewaySchemaAvailable: boolean,
+): Promise<OrgModelPolicyRow[]> {
   return db
-    .select()
+    .select({
+      id: orgModelPolicies.id,
+      orgId: orgModelPolicies.orgId,
+      model: orgModelPolicies.model,
+      isDefault: orgModelPolicies.isDefault,
+      defaultProviderType: orgModelPolicies.defaultProviderType,
+      credentialScope: orgModelPolicies.credentialScope,
+      modelProviderId: orgModelPolicies.modelProviderId,
+      modelProviderSurfaceId: gatewaySchemaAvailable
+        ? orgModelPolicies.modelProviderSurfaceId
+        : sql`NULL::uuid`.mapWith(
+            nullableDriverValueDecoder(orgModelPolicies.modelProviderSurfaceId),
+          ),
+      createdByUserId: orgModelPolicies.createdByUserId,
+      updatedByUserId: orgModelPolicies.updatedByUserId,
+      createdAt: orgModelPolicies.createdAt,
+      updatedAt: orgModelPolicies.updatedAt,
+    })
     .from(orgModelPolicies)
     .where(
       and(
@@ -256,7 +284,10 @@ async function setDefaultModelPolicy(
   orgId: string,
   userId: string,
   model: SupportedRunModel,
-  options?: { readonly resetRouteToBuiltIn?: boolean },
+  options: {
+    readonly gatewaySchemaAvailable: boolean;
+    readonly resetRouteToBuiltIn?: boolean;
+  },
 ): Promise<void> {
   await ensureModelPolicy(db, orgId, userId, model);
   const now = nowDate();
@@ -282,7 +313,9 @@ async function setDefaultModelPolicy(
             defaultProviderType: "vm0",
             credentialScope: "org",
             modelProviderId: null,
-            modelProviderSurfaceId: null,
+            ...(options.gatewaySchemaAvailable
+              ? { modelProviderSurfaceId: null }
+              : {}),
           }
         : {}),
       updatedByUserId: userId,
@@ -293,14 +326,15 @@ async function setDefaultModelPolicy(
     );
 }
 
-export async function ensureOrgModelPolicies(
+async function ensureOrgModelPoliciesForSchema(
   db: Db,
   orgId: string,
   userId: string,
+  gatewaySchemaAvailable: boolean,
 ): Promise<OrgModelPolicyRow[]> {
   const capabilities = await orgModelCapabilities(db, orgId);
   const seedDefaultModel = getSeedDefaultModelForPlan(capabilities);
-  const existing = await loadRows(db, orgId);
+  const existing = await loadRows(db, orgId, gatewaySchemaAvailable);
   if (existing.length > 0) {
     const existingDefault = existing.find((policy) => {
       return policy.isDefault;
@@ -311,9 +345,12 @@ export async function ensureOrgModelPolicies(
 
     if (!capabilities.supportByok || capabilities.restrictedVm0Models) {
       await setDefaultModelPolicy(db, orgId, userId, seedDefaultModel, {
+        gatewaySchemaAvailable,
         resetRouteToBuiltIn: !capabilities.supportByok,
       });
-      return sortRowsByCatalog(await loadRows(db, orgId));
+      return sortRowsByCatalog(
+        await loadRows(db, orgId, gatewaySchemaAvailable),
+      );
     }
 
     const fallbackDefault =
@@ -326,8 +363,11 @@ export async function ensureOrgModelPolicies(
         orgId,
         userId,
         parseSupportedModel(fallbackDefault.model) ?? seedDefaultModel,
+        { gatewaySchemaAvailable },
       );
-      return sortRowsByCatalog(await loadRows(db, orgId));
+      return sortRowsByCatalog(
+        await loadRows(db, orgId, gatewaySchemaAvailable),
+      );
     }
     return sortRowsByCatalog(existing);
   }
@@ -361,7 +401,20 @@ export async function ensureOrgModelPolicies(
       target: [orgModelPolicies.orgId, orgModelPolicies.model],
     });
 
-  return sortRowsByCatalog(await loadRows(db, orgId));
+  return sortRowsByCatalog(await loadRows(db, orgId, gatewaySchemaAvailable));
+}
+
+export async function ensureOrgModelPolicies(
+  db: Db,
+  orgId: string,
+  userId: string,
+): Promise<OrgModelPolicyRow[]> {
+  return await ensureOrgModelPoliciesForSchema(
+    db,
+    orgId,
+    userId,
+    await modelProviderGatewaySchemaAvailable(db),
+  );
 }
 
 async function listOrgProviderRoutes(
@@ -410,9 +463,13 @@ async function validateOrgProviderRoute(
   db: Db,
   orgId: string,
   policy: UpdateOrgModelPolicy,
+  gatewaySchemaAvailable: boolean,
 ): Promise<string | null> {
   const surfaceId = policy.modelProviderSurfaceId ?? null;
   if (surfaceId) {
+    if (!gatewaySchemaAvailable) {
+      return "Custom model gateways are unavailable until the database migration is applied";
+    }
     if (policy.credentialScope !== "org") {
       return "Custom gateway routes require workspace credentials";
     }
@@ -513,6 +570,7 @@ async function validateUpdatePolicies(
     OrgPlanCapabilities,
     "restrictedVm0Models" | "supportByok"
   >,
+  gatewaySchemaAvailable: boolean,
 ): Promise<ServiceResult<UpdateOrgModelPolicy[]>> {
   if (policies.length === 0) {
     return bad("Request must include at least one model");
@@ -548,7 +606,12 @@ async function validateUpdatePolicies(
       defaultCount += 1;
     }
 
-    const routeError = await validateOrgProviderRoute(db, orgId, policy);
+    const routeError = await validateOrgProviderRoute(
+      db,
+      orgId,
+      policy,
+      gatewaySchemaAvailable,
+    );
     if (routeError) {
       return bad(routeError);
     }
@@ -684,10 +747,18 @@ async function listOrgModelPolicies(
   db: Db,
   orgId: string,
   userId: string,
+  gatewaySchemaAvailable: boolean,
 ): Promise<OrgModelPoliciesResponse> {
-  const rows = await ensureOrgModelPolicies(db, orgId, userId);
+  const rows = await ensureOrgModelPoliciesForSchema(
+    db,
+    orgId,
+    userId,
+    gatewaySchemaAvailable,
+  );
   const providers = await listOrgProviderRoutes(db, orgId);
-  const surfaces = await listOrgSurfaceRoutes(db, orgId);
+  const surfaces = gatewaySchemaAvailable
+    ? await listOrgSurfaceRoutes(db, orgId)
+    : [];
   const providersById = new Map(
     providers.map((provider) => {
       return [provider.id, provider];
@@ -710,6 +781,107 @@ async function listOrgModelPolicies(
   };
 }
 
+async function persistOrgModelPolicyUpdates(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly policies: UpdateOrgModelPolicy[];
+  readonly gatewaySchemaAvailable: boolean;
+  readonly now: Date;
+}): Promise<void> {
+  await params.db.transaction(async (tx) => {
+    await tx
+      .insert(orgModelPolicies)
+      .values(
+        params.policies.map((policy) => {
+          return {
+            orgId: params.orgId,
+            model: policy.model,
+            isDefault: false,
+            defaultProviderType: policy.defaultProviderType,
+            credentialScope: policy.credentialScope,
+            modelProviderId: policy.modelProviderId,
+            ...(params.gatewaySchemaAvailable
+              ? {
+                  modelProviderSurfaceId: policy.modelProviderSurfaceId ?? null,
+                }
+              : {}),
+            createdByUserId: params.userId,
+            updatedByUserId: params.userId,
+            createdAt: params.now,
+            updatedAt: params.now,
+          };
+        }),
+      )
+      .onConflictDoNothing({
+        target: [orgModelPolicies.orgId, orgModelPolicies.model],
+      });
+
+    const removedRows = await tx
+      .delete(orgModelPolicies)
+      .where(
+        and(
+          eq(orgModelPolicies.orgId, params.orgId),
+          inArray(orgModelPolicies.model, [...SUPPORTED_RUN_MODELS]),
+          notInArray(
+            orgModelPolicies.model,
+            params.policies.map((policy) => {
+              return policy.model;
+            }),
+          ),
+        ),
+      )
+      .returning({ model: orgModelPolicies.model });
+
+    const removedModels = removedRows.map((row) => {
+      return row.model;
+    });
+    const defaultPolicy = params.policies.find((policy) => {
+      return policy.isDefault;
+    });
+    if (removedModels.length > 0 && defaultPolicy) {
+      await tx
+        .update(orgMembersMetadata)
+        .set({ selectedModel: defaultPolicy.model, updatedAt: params.now })
+        .where(
+          and(
+            eq(orgMembersMetadata.orgId, params.orgId),
+            inArray(orgMembersMetadata.selectedModel, removedModels),
+          ),
+        );
+    }
+
+    await tx
+      .update(orgModelPolicies)
+      .set({ isDefault: false })
+      .where(eq(orgModelPolicies.orgId, params.orgId));
+
+    for (const policy of params.policies) {
+      await tx
+        .update(orgModelPolicies)
+        .set({
+          isDefault: policy.isDefault,
+          defaultProviderType: policy.defaultProviderType,
+          credentialScope: policy.credentialScope,
+          modelProviderId: policy.modelProviderId,
+          ...(params.gatewaySchemaAvailable
+            ? {
+                modelProviderSurfaceId: policy.modelProviderSurfaceId ?? null,
+              }
+            : {}),
+          updatedAt: params.now,
+          updatedByUserId: params.userId,
+        })
+        .where(
+          and(
+            eq(orgModelPolicies.orgId, params.orgId),
+            eq(orgModelPolicies.model, policy.model),
+          ),
+        );
+    }
+  });
+}
+
 export const listOrgModelPolicies$ = command(
   async (
     { set },
@@ -717,10 +889,14 @@ export const listOrgModelPolicies$ = command(
     signal: AbortSignal,
   ): Promise<OrgModelPoliciesResponse> => {
     const db = set(writeDb$);
+    const gatewaySchemaAvailable =
+      await modelProviderGatewaySchemaAvailable(db);
+    signal.throwIfAborted();
     const response = await listOrgModelPolicies(
       db,
       params.orgId,
       params.userId,
+      gatewaySchemaAvailable,
     );
     signal.throwIfAborted();
     return response;
@@ -738,6 +914,9 @@ export const updateOrgModelPolicies$ = command(
     signal: AbortSignal,
   ): Promise<ServiceResult<OrgModelPoliciesResponse>> => {
     const db = set(writeDb$);
+    const gatewaySchemaAvailable =
+      await modelProviderGatewaySchemaAvailable(db);
+    signal.throwIfAborted();
     const capabilities = await orgModelCapabilities(db, params.orgId);
     signal.throwIfAborted();
     const validation = await validateUpdatePolicies(
@@ -745,98 +924,28 @@ export const updateOrgModelPolicies$ = command(
       params.orgId,
       params.policies,
       capabilities,
+      gatewaySchemaAvailable,
     );
     signal.throwIfAborted();
     if (!validation.ok) {
       return validation;
     }
 
-    await ensureOrgModelPolicies(db, params.orgId, params.userId);
+    await ensureOrgModelPoliciesForSchema(
+      db,
+      params.orgId,
+      params.userId,
+      gatewaySchemaAvailable,
+    );
     signal.throwIfAborted();
 
-    const now = nowDate();
-    await db.transaction(async (tx) => {
-      await tx
-        .insert(orgModelPolicies)
-        .values(
-          validation.data.map((policy) => {
-            return {
-              orgId: params.orgId,
-              model: policy.model,
-              isDefault: false,
-              defaultProviderType: policy.defaultProviderType,
-              credentialScope: policy.credentialScope,
-              modelProviderId: policy.modelProviderId,
-              modelProviderSurfaceId: policy.modelProviderSurfaceId ?? null,
-              createdByUserId: params.userId,
-              updatedByUserId: params.userId,
-              createdAt: now,
-              updatedAt: now,
-            };
-          }),
-        )
-        .onConflictDoNothing({
-          target: [orgModelPolicies.orgId, orgModelPolicies.model],
-        });
-
-      const removedRows = await tx
-        .delete(orgModelPolicies)
-        .where(
-          and(
-            eq(orgModelPolicies.orgId, params.orgId),
-            inArray(orgModelPolicies.model, [...SUPPORTED_RUN_MODELS]),
-            notInArray(
-              orgModelPolicies.model,
-              validation.data.map((policy) => {
-                return policy.model;
-              }),
-            ),
-          ),
-        )
-        .returning({ model: orgModelPolicies.model });
-
-      const removedModels = removedRows.map((row) => {
-        return row.model;
-      });
-      const defaultPolicy = validation.data.find((policy) => {
-        return policy.isDefault;
-      });
-      if (removedModels.length > 0 && defaultPolicy) {
-        await tx
-          .update(orgMembersMetadata)
-          .set({ selectedModel: defaultPolicy.model, updatedAt: now })
-          .where(
-            and(
-              eq(orgMembersMetadata.orgId, params.orgId),
-              inArray(orgMembersMetadata.selectedModel, removedModels),
-            ),
-          );
-      }
-
-      await tx
-        .update(orgModelPolicies)
-        .set({ isDefault: false })
-        .where(eq(orgModelPolicies.orgId, params.orgId));
-
-      for (const policy of validation.data) {
-        await tx
-          .update(orgModelPolicies)
-          .set({
-            isDefault: policy.isDefault,
-            defaultProviderType: policy.defaultProviderType,
-            credentialScope: policy.credentialScope,
-            modelProviderId: policy.modelProviderId,
-            modelProviderSurfaceId: policy.modelProviderSurfaceId ?? null,
-            updatedAt: now,
-            updatedByUserId: params.userId,
-          })
-          .where(
-            and(
-              eq(orgModelPolicies.orgId, params.orgId),
-              eq(orgModelPolicies.model, policy.model),
-            ),
-          );
-      }
+    await persistOrgModelPolicyUpdates({
+      db,
+      orgId: params.orgId,
+      userId: params.userId,
+      policies: validation.data,
+      gatewaySchemaAvailable,
+      now: nowDate(),
     });
     signal.throwIfAborted();
 
@@ -844,6 +953,7 @@ export const updateOrgModelPolicies$ = command(
       db,
       params.orgId,
       params.userId,
+      gatewaySchemaAvailable,
     );
     signal.throwIfAborted();
     return ok(response);

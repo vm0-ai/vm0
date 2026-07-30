@@ -26,6 +26,7 @@ import { nowDate } from "../external/time";
 import { encryptStoredSecretValue } from "./crypto.utils";
 import { lockModelProviderState } from "./auth-state-lock.service";
 import { userFeatureSwitchContext } from "./feature-switches.service";
+import { modelProviderGatewaySchemaAvailable } from "./model-provider-gateway-schema.service";
 
 const L = logger("zero-model-provider.service");
 
@@ -161,6 +162,9 @@ export const deleteUserModelProvider$ = command(
     signal: AbortSignal,
   ): Promise<NotFoundResponse | undefined> => {
     const writeDb = set(writeDb$);
+    const gatewaySchemaAvailable =
+      await modelProviderGatewaySchemaAvailable(writeDb);
+    signal.throwIfAborted();
 
     return await writeDb.transaction(async (tx) => {
       await lockModelProviderState(tx, {
@@ -193,11 +197,13 @@ export const deleteUserModelProvider$ = command(
       }
 
       if (provider.secretId) {
-        const [gatewayReference] = await tx
-          .select({ id: modelProviderConnections.id })
-          .from(modelProviderConnections)
-          .where(eq(modelProviderConnections.secretId, provider.secretId))
-          .limit(1);
+        const [gatewayReference] = gatewaySchemaAvailable
+          ? await tx
+              .select({ id: modelProviderConnections.id })
+              .from(modelProviderConnections)
+              .where(eq(modelProviderConnections.secretId, provider.secretId))
+              .limit(1)
+          : [];
         if (gatewayReference) {
           await tx
             .delete(modelProviders)

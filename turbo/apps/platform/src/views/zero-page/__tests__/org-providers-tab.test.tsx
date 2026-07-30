@@ -9,6 +9,13 @@ import type {
   ModelProviderResponse,
   OrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
+import {
+  zeroModelProviderConnectionsByIdContract,
+  zeroModelProviderConnectionsMainContract,
+  type CreateModelProviderConnectionRequest,
+  type ModelProviderConnectionResponse,
+} from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -217,10 +224,98 @@ function mockProCheckout(): void {
   });
 }
 
-async function openProvidersTab(): Promise<void> {
+type GatewayConnectionInput = Pick<
+  CreateModelProviderConnectionRequest,
+  "displayName" | "surfaces"
+>;
+
+function gatewayConnectionResponse(
+  input: GatewayConnectionInput,
+): ModelProviderConnectionResponse {
+  const now = "2026-07-30T00:00:00.000Z";
+  return {
+    id: "00000000-0000-4000-a000-000000000300",
+    displayName: input.displayName,
+    surfaces: input.surfaces.map((surface) => {
+      return {
+        ...surface,
+        id:
+          surface.protocol === "anthropic-messages"
+            ? "00000000-0000-4000-a000-000000000301"
+            : "00000000-0000-4000-a000-000000000302",
+        createdAt: now,
+        updatedAt: now,
+      };
+    }),
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function mockGatewayConnectionLifecycle() {
+  let connections: ModelProviderConnectionResponse[] = [];
+  let createSecret: string | null = null;
+  let updateSecret: string | undefined;
+  let updateCount = 0;
+  let deleteCount = 0;
+
+  context.mocks.api(
+    zeroModelProviderConnectionsMainContract.list,
+    ({ respond }) => {
+      return respond(200, { connections });
+    },
+  );
+  context.mocks.api(
+    zeroModelProviderConnectionsMainContract.create,
+    ({ body, respond }) => {
+      createSecret = body.secret;
+      const connection = gatewayConnectionResponse(body);
+      connections = [connection];
+      return respond(201, connection);
+    },
+  );
+  context.mocks.api(
+    zeroModelProviderConnectionsByIdContract.update,
+    ({ body, respond }) => {
+      updateCount += 1;
+      updateSecret = body.secret;
+      const connection = gatewayConnectionResponse(body);
+      connections = [connection];
+      return respond(200, connection);
+    },
+  );
+  context.mocks.api(
+    zeroModelProviderConnectionsByIdContract.delete,
+    ({ respond }) => {
+      deleteCount += 1;
+      connections = [];
+      return respond(204);
+    },
+  );
+
+  return {
+    createSecret: () => {
+      return createSecret;
+    },
+    deleteCount: () => {
+      return deleteCount;
+    },
+    updateCount: () => {
+      return updateCount;
+    },
+    updateSecret: () => {
+      return updateSecret;
+    },
+  };
+}
+
+async function openProvidersTab(customModelGateways = false): Promise<void> {
   detachedSetupPage({
     context,
     path: "/?settings=model",
+    featureSwitches: {
+      [FeatureSwitchKey.CustomModelGateways]: customModelGateways,
+    },
   });
   await waitFor(() => {
     expect(
@@ -293,6 +388,145 @@ function dialogContaining(element: HTMLElement): HTMLElement {
 }
 
 describe("organization model providers settings", () => {
+  it("hides provider connections when the feature switch is disabled", async () => {
+    mockAdminOrg();
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([]);
+
+    await openProvidersTab();
+
+    expect(
+      screen.queryByRole("heading", { name: "Provider connections" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("hides provider connections from non-admin members", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "member",
+    });
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([]);
+
+    await openProvidersTab(true);
+
+    expect(
+      screen.queryByRole("heading", { name: "Provider connections" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("manages a gateway lifecycle and assigns it to a model route", async () => {
+    mockAdminOrg();
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([
+      builtInPolicy(
+        "00000000-0000-4000-a000-000000000211",
+        "gpt-5.6-luna",
+        "GPT 5.6 Luna",
+        true,
+      ),
+    ]);
+    const lifecycle = mockGatewayConnectionLifecycle();
+
+    await openProvidersTab(true);
+
+    const connectionsHeading = await screen.findByRole("heading", {
+      name: "Provider connections",
+    });
+    const connectionsSection = connectionsHeading.closest("section");
+    if (!(connectionsSection instanceof HTMLElement)) {
+      throw new Error("Provider connections section not found");
+    }
+
+    click(within(connectionsSection).getByText("Add provider"));
+    click(menuItemByText("Vercel AI Gateway"));
+    const addDialog = await screen.findByRole("dialog", {
+      name: "Add model provider",
+    });
+    expect(
+      within(addDialog).getByText(
+        "Requests: https://ai-gateway.vercel.sh/v1/messages",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(addDialog).getByText(
+        "Requests: https://ai-gateway.vercel.sh/v1/responses",
+      ),
+    ).toBeInTheDocument();
+    await fill(within(addDialog).getByLabelText("API key"), "vck-test");
+    click(buttonByText("Save changes", addDialog));
+
+    await expect(
+      within(connectionsSection).findByText("Vercel AI Gateway"),
+    ).resolves.toBeInTheDocument();
+    expect(lifecycle.createSecret()).toBe("vck-test");
+
+    click(within(connectionsSection).getByLabelText("Gateway actions"));
+    click(menuItemByText("Edit"));
+    const editDialog = await screen.findByRole("dialog", {
+      name: "Edit model provider",
+    });
+    expect(
+      within(editDialog).getByPlaceholderText(
+        "Leave blank to keep the current key",
+      ),
+    ).toHaveValue("");
+    await fill(
+      within(editDialog).getByLabelText("Name"),
+      "Vercel Edge Gateway",
+    );
+    click(buttonByText("Save changes", editDialog));
+
+    await expect(
+      within(connectionsSection).findByText("Vercel Edge Gateway"),
+    ).resolves.toBeInTheDocument();
+    expect(lifecycle.updateCount()).toBe(1);
+    expect(lifecycle.updateSecret()).toBeUndefined();
+
+    click(buttonByText("Add model"));
+    await selectDialogModel("Claude Sonnet 5");
+    const policyDialog = screen.getByRole("dialog", { name: "Add model" });
+    click(
+      within(policyDialog).getByRole("radio", {
+        name: /Custom gateway/u,
+      }),
+    );
+    expect(
+      within(policyDialog).getByText("Vercel Edge Gateway"),
+    ).toBeInTheDocument();
+    click(buttonByText("Add model", policyDialog));
+
+    const policyRow = await screen.findByTestId(
+      "org-model-policy-row-claude-sonnet-5",
+    );
+    await waitFor(() => {
+      expect(
+        within(policyRow).getByText("Vercel Edge Gateway"),
+      ).toBeInTheDocument();
+    });
+
+    click(within(connectionsSection).getByLabelText("Gateway actions"));
+    click(menuItemByText("Delete"));
+    const deleteDialog = await screen.findByRole("dialog", {
+      name: "Delete Vercel Edge Gateway?",
+    });
+    click(buttonByText("Delete", deleteDialog));
+
+    await waitFor(() => {
+      expect(
+        within(connectionsSection).queryByText("Vercel Edge Gateway"),
+      ).not.toBeInTheDocument();
+      expect(
+        within(connectionsSection).getByText(
+          "No custom model providers configured.",
+        ),
+      ).toBeInTheDocument();
+    });
+    expect(lifecycle.deleteCount()).toBe(1);
+  });
+
   it("only offers OpenAI and Anthropic models when adding a model", async () => {
     mockAdminOrg();
     context.mocks.data.orgModelProviders([]);
