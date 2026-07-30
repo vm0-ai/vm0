@@ -42,7 +42,7 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   holdOrgAdmissionLockFixture,
-  readChatInputQueueParamsFixture,
+  readChatEventInputParamsFixture,
 } from "../../../test-fixtures/chat-events";
 import {
   insertOldFormatQueuedUserMessageFixture,
@@ -1361,7 +1361,7 @@ describe("cron execute morning briefs", () => {
       throw new Error("Expected the pending Morning Brief queue event");
     }
     await expect(
-      readChatInputQueueParamsFixture(strandedEvent.id),
+      readChatEventInputParamsFixture(strandedEvent.id),
     ).resolves.toMatchObject({
       eventId: strandedEvent.id,
       encryptedParams: expect.any(String),
@@ -1377,7 +1377,7 @@ describe("cron execute morning briefs", () => {
       [201],
     );
     await expect(
-      readChatInputQueueParamsFixture(strandedEvent.id),
+      readChatEventInputParamsFixture(strandedEvent.id),
     ).resolves.toBeNull();
 
     routeMocks.clerk.session(scenario.actor.userId, scenario.actor.orgId);
@@ -1422,7 +1422,7 @@ describe("cron execute morning briefs", () => {
       throw new Error("Expected the readmitted Morning Brief queue event");
     }
     await expect(
-      readChatInputQueueParamsFixture(readmittedEvent.id),
+      readChatEventInputParamsFixture(readmittedEvent.id),
     ).resolves.toMatchObject({
       eventId: readmittedEvent.id,
       encryptedParams: expect.any(String),
@@ -1448,7 +1448,7 @@ describe("cron execute morning briefs", () => {
       throw new Error("Expected the queued Morning Brief to drain");
     }
     await expect(
-      readChatInputQueueParamsFixture(readmittedEvent.id),
+      readChatEventInputParamsFixture(readmittedEvent.id),
     ).resolves.toBeNull();
     expect(previousBriefDate).not.toBe(BRIEF_DATE);
     await completeMorningBriefRun(scenario, queuedRunId, 0);

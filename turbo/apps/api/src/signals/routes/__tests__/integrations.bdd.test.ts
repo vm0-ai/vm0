@@ -12,8 +12,8 @@ import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
 import {
-  findPendingChatInputQueueParamsByPromptFixture,
-  readChatInputQueueParamsFixture,
+  findPendingChatEventInputParamsByPromptFixture,
+  readChatEventInputParamsFixture,
 } from "../../../test-fixtures/chat-events";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -1636,7 +1636,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       ]),
     );
     const queuedSlackParams =
-      await findPendingChatInputQueueParamsByPromptFixture(
+      await findPendingChatEventInputParamsByPromptFixture(
         "stay canonical on the same route",
       );
     expect(queuedSlackParams).toMatchObject({
@@ -1745,7 +1745,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       claim2,
     }));
     await expect(
-      readChatInputQueueParamsFixture(queuedSlackParams.eventId),
+      readChatEventInputParamsFixture(queuedSlackParams.eventId),
     ).resolves.toBeNull();
     expect(claim2.resumeSession?.sessionId).toBe(`bdd-slack-cli-${webRunId}`);
     state = await integrations.readSlackTestState(teamId);
@@ -1899,7 +1899,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
   it("forks Slack DM threads without replacing the main session", async () => {
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
-    await integrations.enableSlackDmSessionRoutingSwitch(actor);
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
     integrations.configureSlackAppMocks();

@@ -262,9 +262,6 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.ComposerSkillSubstringSearch]: true,
-      },
     });
 
     const editor = await findComposerEditor();

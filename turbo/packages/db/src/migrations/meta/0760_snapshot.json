@@ -1,6 +1,6 @@
 {
-  "id": "93ee7ddf-e736-481c-ad25-1b1429a2c227",
-  "prevId": "b85f9e60-ee84-497f-ae69-17b63e011754",
+  "id": "f03a69f1-e47c-4a3a-944f-b04481af3a20",
+  "prevId": "93ee7ddf-e736-481c-ad25-1b1429a2c227",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4574,8 +4574,8 @@
       },
       "isRLSEnabled": false
     },
-    "public.chat_input_queue_params": {
-      "name": "chat_input_queue_params",
+    "public.chat_event_input_params": {
+      "name": "chat_event_input_params",
       "schema": "",
       "columns": {
         "event_id": {
@@ -4606,9 +4606,9 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "chat_input_queue_params_event_id_chat_events_id_fk": {
-          "name": "chat_input_queue_params_event_id_chat_events_id_fk",
-          "tableFrom": "chat_input_queue_params",
+        "chat_event_input_params_event_id_chat_events_id_fk": {
+          "name": "chat_event_input_params_event_id_chat_events_id_fk",
+          "tableFrom": "chat_event_input_params",
           "columnsFrom": [
             "event_id"
           ],

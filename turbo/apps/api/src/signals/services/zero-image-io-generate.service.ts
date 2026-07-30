@@ -1,17 +1,15 @@
 import { Buffer } from "node:buffer";
-import { randomUUID } from "node:crypto";
 
 import { command, computed, type Computed } from "ccstate";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { and, eq, inArray } from "drizzle-orm";
 
-import { buildArtifactKey, buildFileUrl } from "../../lib/file-url";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { db$, writeDb$ } from "../external/db";
 import { checkBillableOperationCredits$ } from "./billable-operation-admission.service";
-import { putS3Object } from "../external/s3";
+import { storeGeneratedArtifactObject$ } from "./artifact-storage.service";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 import {
@@ -1608,7 +1606,7 @@ export async function downloadFalImage(
 
 export const recordGeneratedImage$ = command(
   async (
-    { get, set },
+    { set },
     params: {
       readonly orgId: string;
       readonly userId: string;
@@ -1621,23 +1619,21 @@ export const recordGeneratedImage$ = command(
     signal: AbortSignal,
   ): Promise<RecordedImage> => {
     const writeDb = set(writeDb$);
-    const fileId = randomUUID();
-    const filename = `image-${fileId.slice(0, 8)}.${extensionForFormat(
-      params.generation.outputFormat,
-    )}`;
-    const s3Key = buildArtifactKey(params.userId, fileId, filename);
-    const contentType = contentTypeForFormat(params.generation.outputFormat);
-    await get(
-      putS3Object(
-        env("R2_USER_ARTIFACTS_BUCKET_NAME"),
-        s3Key,
-        params.generation.imageBytes,
-        contentType,
-      ),
+    const artifact = await set(
+      storeGeneratedArtifactObject$,
+      {
+        userId: params.userId,
+        orgId: params.orgId,
+        filenamePrefix: "image",
+        extension: extensionForFormat(params.generation.outputFormat),
+        body: params.generation.imageBytes,
+        contentType: contentTypeForFormat(params.generation.outputFormat),
+      },
+      signal,
     );
-    signal.throwIfAborted();
+    const { id: fileId, filename, key: s3Key, url } = artifact;
+    const contentType = contentTypeForFormat(params.generation.outputFormat);
 
-    const url = buildFileUrl(params.userId, fileId, filename);
     if (params.recordArtifact !== false) {
       await set(
         recordWebUploadedFile$,

@@ -22,8 +22,8 @@ import { createAppWithRoutes } from "../../../app-factory-core";
 import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import {
-  findPendingChatInputQueueParamsByPromptFixture,
-  readChatInputQueueParamsFixture,
+  findPendingChatEventInputParamsByPromptFixture,
+  readChatEventInputParamsFixture,
 } from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { now } from "../../external/time";
@@ -2505,7 +2505,7 @@ describe("Feishu integration", () => {
       ),
     ).toBeFalsy();
     const queuedFeishuParams =
-      await findPendingChatInputQueueParamsByPromptFixture(secondPrompt);
+      await findPendingChatEventInputParamsByPromptFixture(secondPrompt);
     expect(queuedFeishuParams).toMatchObject({
       eventId: expect.any(String),
       encryptedParams: expect.any(String),
@@ -2526,7 +2526,7 @@ describe("Feishu integration", () => {
 
     const secondRun = await findRun(secondActor, secondPrompt);
     await expect(
-      readChatInputQueueParamsFixture(queuedFeishuParams.eventId),
+      readChatEventInputParamsFixture(queuedFeishuParams.eventId),
     ).resolves.toBeNull();
     await runsApi.heartbeatRunner(runnerGroup);
     const secondClaim = await runsApi.claimRunnerJob(secondRun.id);

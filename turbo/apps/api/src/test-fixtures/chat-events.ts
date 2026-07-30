@@ -1,7 +1,7 @@
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatInputQueueParams } from "@vm0/db/schema/chat-input-queue-params";
+import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { and, count, eq, isNull, like, or, sql } from "drizzle-orm";
@@ -29,39 +29,39 @@ const databasePidRowSchema = z.object({ pid: z.int() });
 const waiterCountRowSchema = z.object({ waiterCount: z.int() });
 const blockedByPidRowSchema = z.object({ blocked: z.boolean() });
 
-interface ChatInputQueueParamsFixture {
+interface ChatEventInputParamsFixture {
   readonly eventId: string;
   readonly encryptedParams: string;
-  readonly attachFileMetadata: typeof chatInputQueueParams.$inferSelect.attachFileMetadata;
+  readonly attachFileMetadata: typeof chatEventInputParams.$inferSelect.attachFileMetadata;
 }
 
-export async function readChatInputQueueParamsFixture(
+export async function readChatEventInputParamsFixture(
   eventId: string,
-): Promise<ChatInputQueueParamsFixture | null> {
+): Promise<ChatEventInputParamsFixture | null> {
   const [row] = await db()
     .select({
-      eventId: chatInputQueueParams.eventId,
-      encryptedParams: chatInputQueueParams.encryptedParams,
-      attachFileMetadata: chatInputQueueParams.attachFileMetadata,
+      eventId: chatEventInputParams.eventId,
+      encryptedParams: chatEventInputParams.encryptedParams,
+      attachFileMetadata: chatEventInputParams.attachFileMetadata,
     })
-    .from(chatInputQueueParams)
-    .where(eq(chatInputQueueParams.eventId, eventId))
+    .from(chatEventInputParams)
+    .where(eq(chatEventInputParams.eventId, eventId))
     .limit(1);
   return row ?? null;
 }
 
-export async function findPendingChatInputQueueParamsByPromptFixture(
+export async function findPendingChatEventInputParamsByPromptFixture(
   prompt: string,
-): Promise<ChatInputQueueParamsFixture | null> {
+): Promise<ChatEventInputParamsFixture | null> {
   const rows = await db()
     .select({
-      eventId: chatInputQueueParams.eventId,
-      encryptedParams: chatInputQueueParams.encryptedParams,
-      attachFileMetadata: chatInputQueueParams.attachFileMetadata,
+      eventId: chatEventInputParams.eventId,
+      encryptedParams: chatEventInputParams.encryptedParams,
+      attachFileMetadata: chatEventInputParams.attachFileMetadata,
       userMessage: chatEvents.userMessage,
     })
-    .from(chatInputQueueParams)
-    .innerJoin(chatEvents, eq(chatEvents.id, chatInputQueueParams.eventId))
+    .from(chatEventInputParams)
+    .innerJoin(chatEvents, eq(chatEvents.id, chatEventInputParams.eventId))
     .where(isNull(chatEvents.runId));
   const row = rows.find((candidate) => {
     return candidate.userMessage?.parts.some((part) => {
@@ -392,9 +392,8 @@ export async function holdOrgAdmissionLockFixture(args: {
 }
 
 /**
- * Holds the canonical workflow queue admission key so tests can observe the
- * Release 1 lock chain: the first request holds the legacy key while waiting
- * here, and a concurrent request for the same thread waits behind it.
+ * Holds the workflow queue admission key so tests can observe concurrent
+ * requests waiting on the per-thread lock.
  */
 export async function holdChatEventQueueAdmissionLockFixture(args: {
   readonly threadId: string;
@@ -403,7 +402,6 @@ export async function holdChatEventQueueAdmissionLockFixture(args: {
   readonly release: () => void;
   readonly done: Promise<void>;
   readonly directWaiterCount: () => Promise<number>;
-  readonly transitiveWaiterCount: () => Promise<number>;
 }> {
   const started = createDeferredPromise<number>(args.signal);
   const released = createDeferredPromise<void>(args.signal);
@@ -436,9 +434,6 @@ export async function holdChatEventQueueAdmissionLockFixture(args: {
     done,
     directWaiterCount: async () => {
       return await directBlockedWaiterCount(holderPid);
-    },
-    transitiveWaiterCount: async () => {
-      return await transitiveBlockedWaiterCount(holderPid);
     },
   };
 }

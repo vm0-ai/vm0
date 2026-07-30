@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.662.2](https://github.com/vm0-ai/vm0/compare/app-v0.662.1...app-v0.662.2) (2026-07-30)
+
+
+### Bug Fixes
+
+* remove orange selected tint from computer use menu rows ([#24031](https://github.com/vm0-ai/vm0/issues/24031)) ([2f7f660](https://github.com/vm0-ai/vm0/commit/2f7f66032be922106a06d46a77a4aca8045c5c3a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.251.1
+    * @vm0/core bumped to 8.491.0
+
 ## [0.662.1](https://github.com/vm0-ai/vm0/compare/app-v0.662.0...app-v0.662.1) (2026-07-30)
 
 

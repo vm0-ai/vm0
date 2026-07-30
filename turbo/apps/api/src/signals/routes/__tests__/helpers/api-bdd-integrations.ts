@@ -1158,18 +1158,6 @@ export function createBddIntegrationApi(context: TestContext) {
       );
     },
 
-    async enableSlackDmSessionRoutingSwitch(actor: ApiTestUser): Promise<void> {
-      await accept(
-        setupApp({ context })(zeroFeatureSwitchesContract).update({
-          headers: authenticate(context, routeMocks, actor),
-          body: {
-            switches: { [FeatureSwitchKey.SlackDmSessionRouting]: true },
-          },
-        }),
-        [200],
-      );
-    },
-
     async configureUnpinnedSlackModelRoute(actor: ApiTestUser): Promise<void> {
       const providers = setupApp({ context })(zeroModelProvidersMainContract);
       // openrouter-api-key is a claude-code provider whose catalog entry has

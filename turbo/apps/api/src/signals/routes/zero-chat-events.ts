@@ -16,7 +16,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatInputQueueParams } from "@vm0/db/schema/chat-input-queue-params";
+import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import {
   chatEvents,
   type ChatEventAttachFileMetadata,
@@ -59,7 +59,11 @@ import {
   notFound,
 } from "../../lib/error";
 import { env } from "../../lib/env";
-import { buildArtifactKey, sanitizeArtifactFilename } from "../../lib/file-url";
+import {
+  buildArtifactKey,
+  buildArtifactKeyV2,
+  sanitizeArtifactFilename,
+} from "../../lib/file-url";
 import { logger } from "../../lib/log";
 import type { AuthContext } from "../../types/auth";
 import {
@@ -125,6 +129,7 @@ import {
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { resolveChatThreadSession } from "../services/chat-session-continuity.service";
 import { attachCanonicalWebInputAssetsToEvent } from "../services/canonical-asset.service";
+import { resolveArtifactObject$ } from "../services/artifact-storage.service";
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import { chatEventTypeIn } from "../services/zero-chat-event-type.service";
 import { bestEffort, tapError } from "../utils";
@@ -251,6 +256,7 @@ interface PreparedNormalSend {
   readonly computerUseHostGrant: ResolvedComputerUseHostGrant | null;
   readonly persistedExplicitSelection: boolean;
   readonly initialThinkingEnabled: boolean;
+  readonly attachFileMetadata: ChatEventAttachFileMetadata[] | null;
   readonly runConfiguration: ResolvedRunConfiguration;
   readonly clientEventPrechecked: boolean;
   readonly preflightClientEventConflict:
@@ -270,6 +276,7 @@ function shouldTouchThreadSortFromNormalSend(
 }
 
 interface NormalSendFeatureSwitches {
+  readonly artifactKeyV2Enabled: boolean;
   readonly codexFastModeEnabled: boolean;
   readonly userMessageInlineTemplatesEnabled: boolean;
   readonly imageStyleR2Enabled: boolean;
@@ -653,22 +660,45 @@ function attachFileIds(
   return ids && ids.length > 0 ? ids : null;
 }
 
-function attachFileMetadata(
-  userId: string,
-  attachFiles: readonly AttachFile[] | undefined,
-): ChatEventAttachFileMetadata[] | null {
-  const metadata = attachFiles?.map((file) => {
-    const sanitized = sanitizeArtifactFilename(file.filename);
-    return {
-      id: file.id,
-      filename: file.filename,
-      contentType: file.contentType,
-      size: file.size,
-      objectKey: buildArtifactKey(userId, file.id, sanitized),
-    };
-  });
-  return metadata && metadata.length > 0 ? metadata : null;
-}
+const resolveAttachFileMetadata$ = command(
+  async (
+    { set },
+    args: {
+      readonly userId: string;
+      readonly attachFiles: readonly AttachFile[] | undefined;
+      readonly artifactKeyV2Enabled: boolean;
+    },
+    signal: AbortSignal,
+  ): Promise<ChatEventAttachFileMetadata[] | null> => {
+    if (!args.attachFiles || args.attachFiles.length === 0) {
+      return null;
+    }
+    const metadata: ChatEventAttachFileMetadata[] = [];
+    for (const file of args.attachFiles) {
+      const object = args.artifactKeyV2Enabled
+        ? await set(
+            resolveArtifactObject$,
+            { userId: args.userId, id: file.id },
+            signal,
+          )
+        : null;
+      signal.throwIfAborted();
+      const sanitized = sanitizeArtifactFilename(file.filename);
+      metadata.push({
+        id: file.id,
+        filename: file.filename,
+        contentType: file.contentType,
+        size: file.size,
+        objectKey:
+          object?.key ??
+          (args.artifactKeyV2Enabled
+            ? buildArtifactKeyV2(file.id, file.filename)
+            : buildArtifactKey(args.userId, file.id, sanitized)),
+      });
+    }
+    return metadata;
+  },
+);
 
 function truncatePrior(value: string): string {
   if (value.length <= WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP) {
@@ -1013,6 +1043,10 @@ async function resolveNormalSendFeatureSwitches(
 ): Promise<NormalSendFeatureSwitches> {
   const context = await loadUserFeatureSwitchContext(db, orgId, userId);
   return {
+    artifactKeyV2Enabled: isFeatureEnabled(
+      FeatureSwitchKey.ArtifactKeyV2,
+      context,
+    ),
     codexFastModeEnabled: isFeatureEnabled(
       FeatureSwitchKey.CodexFastMode,
       context,
@@ -1560,6 +1594,7 @@ function appendUnassociatedUserMessage(params: {
   readonly orgId: string;
   readonly prompt: string;
   readonly attachFiles: readonly AttachFile[] | undefined;
+  readonly attachFileMetadata: ChatEventAttachFileMetadata[] | null;
   readonly clientEventId: string | undefined;
   readonly chatThreadSortEventId: string | undefined;
   readonly touchThreadSort: boolean;
@@ -1584,7 +1619,7 @@ function appendUnassociatedUserMessage(params: {
 
     const explicitId = params.clientEventId ?? undefined;
     const fileIds = attachFileIds(params.attachFiles);
-    const fileMetadata = attachFileMetadata(params.userId, params.attachFiles);
+    const fileMetadata = params.attachFileMetadata;
     const event: NewChatEvent = {
       ...(explicitId ? { id: explicitId } : {}),
       chatThreadId: params.threadId,
@@ -1690,6 +1725,7 @@ async function appendAssociatedUserMessage(params: {
   readonly prompt: string;
   readonly runId: string;
   readonly attachFiles: readonly AttachFile[] | undefined;
+  readonly attachFileMetadata: ChatEventAttachFileMetadata[] | null;
   readonly clientEventId: string | undefined;
   readonly chatThreadSortEventId: string | undefined;
   readonly touchThreadSort: boolean;
@@ -1707,7 +1743,7 @@ async function appendAssociatedUserMessage(params: {
     }
     const explicitId = params.clientEventId ?? undefined;
     const fileIds = attachFileIds(params.attachFiles);
-    const fileMetadata = attachFileMetadata(params.userId, params.attachFiles);
+    const fileMetadata = params.attachFileMetadata;
     const event: NewChatEvent = {
       ...(explicitId ? { id: explicitId } : {}),
       chatThreadId: params.threadId,
@@ -2329,6 +2365,33 @@ function resolveTimedComputerAccess(
   );
 }
 
+async function resolveTimedPreflightClientEvent(
+  args: NormalSendArgs,
+  db: Db,
+): Promise<{
+  readonly prechecked: boolean;
+  readonly response: ClientSendResolution | undefined;
+}> {
+  const threadId = args.body.threadId ?? args.body.clientThreadId;
+  const prechecked = Boolean(threadId && args.body.clientEventId);
+  const response = threadId
+    ? await measureApiDispatchTiming(
+        args.timing,
+        "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
+        "nested",
+        () => {
+          return resolveClientEventSend({
+            db,
+            userId: args.userId,
+            threadId,
+            clientEventId: args.body.clientEventId,
+          });
+        },
+      )
+    : undefined;
+  return { prechecked, response };
+}
+
 const prepareNormalSend$ = command(
   async (
     { set },
@@ -2343,25 +2406,10 @@ const prepareNormalSend$ = command(
       return agent;
     }
 
-    const preflightThreadId = args.body.threadId ?? args.body.clientThreadId;
-    const clientEventPrechecked = Boolean(
-      preflightThreadId && args.body.clientEventId,
-    );
-    const preflightClientEventResponse = preflightThreadId
-      ? await measureApiDispatchTiming(
-          args.timing,
-          "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
-          "nested",
-          () => {
-            return resolveClientEventSend({
-              db,
-              userId: args.userId,
-              threadId: preflightThreadId,
-              clientEventId: args.body.clientEventId,
-            });
-          },
-        )
-      : undefined;
+    const {
+      prechecked: clientEventPrechecked,
+      response: preflightClientEventResponse,
+    } = await resolveTimedPreflightClientEvent(args, db);
     signal.throwIfAborted();
     if (preflightClientEventResponse?.status === 201) {
       return preflightClientEventResponse;
@@ -2442,6 +2490,15 @@ const prepareNormalSend$ = command(
     if ("status" in computerAccess) {
       return computerAccess;
     }
+    const attachFileMetadata = await set(
+      resolveAttachFileMetadata$,
+      {
+        userId: args.userId,
+        attachFiles: runtimeBody.attachFiles,
+        artifactKeyV2Enabled: featureSwitches.artifactKeyV2Enabled,
+      },
+      signal,
+    );
 
     return {
       db,
@@ -2453,6 +2510,7 @@ const prepareNormalSend$ = command(
       computerUseHostGrant: computerAccess.computerUseHostGrant,
       persistedExplicitSelection,
       initialThinkingEnabled: args.zeroPreCreateSource === undefined,
+      attachFileMetadata,
       runConfiguration,
       clientEventPrechecked,
       preflightClientEventConflict: preflightClientEventResponse,
@@ -2491,6 +2549,7 @@ async function queueUnassociatedNormalEvent(params: {
     orgId: params.orgId,
     prompt: params.body.prompt,
     attachFiles: params.body.attachFiles,
+    attachFileMetadata: params.prepared.attachFileMetadata,
     clientEventId: params.body.clientEventId,
     chatThreadSortEventId: params.body.chatThreadSortEventId,
     touchThreadSort: params.touchThreadSort,
@@ -2558,6 +2617,7 @@ function scheduleAssociatedUserMessage(params: {
   readonly appendQueueMarker: boolean;
   readonly appendInitialThinking: boolean;
   readonly touchThreadSort: boolean;
+  readonly attachFileMetadata: ChatEventAttachFileMetadata[] | null;
 }): void {
   waitUntil(
     (async () => {
@@ -2569,6 +2629,7 @@ function scheduleAssociatedUserMessage(params: {
         prompt: params.body.prompt,
         runId: params.runId,
         attachFiles: params.body.attachFiles,
+        attachFileMetadata: params.attachFileMetadata,
         clientEventId: params.body.clientEventId,
         chatThreadSortEventId: params.body.chatThreadSortEventId,
         touchThreadSort: params.touchThreadSort,
@@ -2615,6 +2676,7 @@ function scheduleCreatedChatRunSideEffects(params: {
   readonly runId: string;
   readonly runStatus: string;
   readonly initialThinkingEnabled: boolean;
+  readonly attachFileMetadata: ChatEventAttachFileMetadata[] | null;
   readonly touchThreadSort: boolean;
   readonly queueFirstClaim:
     | {
@@ -2657,6 +2719,7 @@ function scheduleCreatedChatRunSideEffects(params: {
     appendQueueMarker: params.runStatus === "queued",
     appendInitialThinking,
     touchThreadSort: params.touchThreadSort,
+    attachFileMetadata: params.attachFileMetadata,
   });
 }
 
@@ -2750,14 +2813,14 @@ async function appendQueueFirstInsufficientCreditsEvents(params: {
       .select({
         userMessage: chatEvents.userMessage,
         attachFiles: chatEvents.attachFiles,
-        attachFileMetadata: chatInputQueueParams.attachFileMetadata,
+        attachFileMetadata: chatEventInputParams.attachFileMetadata,
         generationTemplate: chatEvents.generationTemplate,
         createdAt: chatEvents.createdAt,
       })
       .from(chatEvents)
       .leftJoin(
-        chatInputQueueParams,
-        eq(chatInputQueueParams.eventId, chatEvents.id),
+        chatEventInputParams,
+        eq(chatEventInputParams.eventId, chatEvents.id),
       )
       .where(
         and(
@@ -2860,10 +2923,7 @@ async function appendInsufficientCreditsEvents(params: {
 
     const explicitId = params.body.clientEventId ?? undefined;
     const fileIds = attachFileIds(params.body.attachFiles);
-    const fileMetadata = attachFileMetadata(
-      params.userId,
-      params.body.attachFiles,
-    );
+    const fileMetadata = params.prepared.attachFileMetadata;
     const userValues: NewChatEvent = {
       ...(explicitId ? { id: explicitId } : {}),
       chatThreadId: params.prepared.thread.threadId,
@@ -3103,6 +3163,7 @@ function scheduleNormalChatRunSideEffects(params: {
     runId: params.runId,
     runStatus: params.runStatus,
     initialThinkingEnabled: params.prepared.initialThinkingEnabled,
+    attachFileMetadata: params.prepared.attachFileMetadata,
     touchThreadSort: shouldTouchThreadSortFromNormalSend(
       params.args.zeroPreCreateSource,
       params.prepared.thread.isNewThread,

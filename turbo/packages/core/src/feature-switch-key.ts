@@ -75,6 +75,7 @@ export enum FeatureSwitchKey {
   FeishuIntegration = "feishuIntegration",
   StrapiIntegration = "strapiIntegration",
   Artifacts = "artifacts",
+  ArtifactKeyV2 = "artifactKeyV2",
   HostedArtifactVersions = "hostedArtifactVersions",
   VideoArtifactPosters = "videoArtifactPosters",
   ImageStyleR2 = "imageStyleR2",

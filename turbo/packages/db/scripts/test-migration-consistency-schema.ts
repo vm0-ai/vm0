@@ -10068,6 +10068,47 @@ async function validateAgentPhoneThreadSessionContraction(): Promise<void> {
   }
 }
 
+async function validateFeishuThreadSessionContraction(): Promise<void> {
+  console.log("=== Validate legacy Feishu thread session contraction ===\n");
+  const testDb = "migration_feishu_thread_session_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 758);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      const beforeDrop = await client.query<{
+        legacy_session_table: string | null;
+      }>(`
+        SELECT to_regclass(
+          'public.feishu_org_thread_sessions'
+        )::text AS "legacy_session_table"
+      `);
+      assert.deepEqual(beforeDrop.rows, [
+        { legacy_session_table: "feishu_org_thread_sessions" },
+      ]);
+
+      await applyMigrationsUpTo(client, 759);
+
+      const afterDrop = await client.query<{
+        legacy_session_table: string | null;
+      }>(`
+        SELECT to_regclass(
+          'public.feishu_org_thread_sessions'
+        )::text AS "legacy_session_table"
+      `);
+      assert.deepEqual(afterDrop.rows, [{ legacy_session_table: null }]);
+      console.log("   ✅ Legacy Feishu thread session table is removed\n");
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateOrgPlanEntitlementBackfill(): Promise<void> {
   console.log(
     "=== Phase 1.8: Validate existing org plan entitlement backfill ===\n",
@@ -10567,8 +10608,8 @@ async function validateBrowserResizeStateRolloutCompatibility(): Promise<void> {
   );
 }
 
-const CUSTOM_MODEL_GATEWAY_PREVIOUS_MIGRATION = 758;
-const CUSTOM_MODEL_GATEWAY_MIGRATION = 759;
+const CUSTOM_MODEL_GATEWAY_PREVIOUS_MIGRATION = 760;
+const CUSTOM_MODEL_GATEWAY_MIGRATION = 761;
 
 async function customModelGatewaySchemaAvailable(
   client: Client,
@@ -10682,7 +10723,7 @@ async function validateCustomModelGatewayRolloutCompatibility(): Promise<void> {
     await dropDatabase(testDb);
   }
   console.log(
-    "   ✅ Current API reads the pre-0759 policy shape and previous API writes remain valid after 0759\n",
+    "   ✅ Current API reads the pre-0761 policy shape and previous API writes remain valid after 0761\n",
   );
 }
 
@@ -11235,6 +11276,7 @@ async function main(): Promise<void> {
     await validateTeamsThreadSessionContraction();
     await validateTelegramThreadSessionContraction();
     await validateAgentPhoneThreadSessionContraction();
+    await validateFeishuThreadSessionContraction();
     await validateOrgPlanEntitlementBackfill();
     await validateModelObservationContractCleanup();
     await validateChatEventTypeBackfillAndContract();
