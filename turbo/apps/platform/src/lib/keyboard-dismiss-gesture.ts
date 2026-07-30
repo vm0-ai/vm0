@@ -36,7 +36,10 @@ function isVerticalScrollContainer(element: HTMLElement): boolean {
   return element.scrollHeight > element.clientHeight;
 }
 
-function canConsumeVerticalSwipe(element: HTMLElement, deltaY: number): boolean {
+function canConsumeVerticalSwipe(
+  element: HTMLElement,
+  deltaY: number,
+): boolean {
   // A downward swipe (positive deltaY) scrolls content toward its start; an
   // upward swipe scrolls toward its end.
   if (deltaY > 0) {

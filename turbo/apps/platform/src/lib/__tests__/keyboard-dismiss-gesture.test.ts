@@ -101,7 +101,7 @@ describe("keyboard dismiss gesture", () => {
 
     expect(document.activeElement).not.toBe(composerEditor);
     // History swipes keep scrolling natively while the keyboard closes.
-    expect(move.defaultPrevented).toBe(false);
+    expect(move.defaultPrevented).toBeFalsy();
   });
 
   it("closes the keyboard on a downward swipe over the composer", () => {
@@ -127,7 +127,7 @@ describe("keyboard dismiss gesture", () => {
       { x: 100, y: 460 },
     ]);
 
-    expect(move.defaultPrevented).toBe(true);
+    expect(move.defaultPrevented).toBeTruthy();
     expect(document.activeElement).toBe(composerEditor);
   });
 
@@ -147,7 +147,7 @@ describe("keyboard dismiss gesture", () => {
       { x: 100, y: 460 },
     ]);
 
-    expect(move.defaultPrevented).toBe(false);
+    expect(move.defaultPrevented).toBeFalsy();
     expect(document.activeElement).toBe(composerEditor);
   });
 
@@ -168,7 +168,7 @@ describe("keyboard dismiss gesture", () => {
       { x: 100, y: 400 },
     ]);
 
-    expect(laterMove.defaultPrevented).toBe(false);
+    expect(laterMove.defaultPrevented).toBeFalsy();
   });
 
   it("ignores horizontal swipes over the composer", () => {
@@ -182,7 +182,7 @@ describe("keyboard dismiss gesture", () => {
       { x: 160, y: 510 },
     ]);
 
-    expect(move.defaultPrevented).toBe(false);
+    expect(move.defaultPrevented).toBeFalsy();
     expect(document.activeElement).toBe(composerEditor);
   });
 
@@ -202,8 +202,8 @@ describe("keyboard dismiss gesture", () => {
     ]);
 
     expect(document.activeElement).toBe(composerEditor);
-    expect(historyMove.defaultPrevented).toBe(false);
-    expect(composerMove.defaultPrevented).toBe(false);
+    expect(historyMove.defaultPrevented).toBeFalsy();
+    expect(composerMove.defaultPrevented).toBeFalsy();
   });
 
   it("ignores swipes outside the chat surfaces", () => {
@@ -232,7 +232,7 @@ describe("keyboard dismiss gesture", () => {
       { x: 140, y: 540 },
     ]);
 
-    expect(move.defaultPrevented).toBe(false);
+    expect(move.defaultPrevented).toBeFalsy();
     expect(document.activeElement).toBe(composerEditor);
   });
 
@@ -248,7 +248,7 @@ describe("keyboard dismiss gesture", () => {
       { x: 100, y: 460 },
     ]);
 
-    expect(move.defaultPrevented).toBe(false);
+    expect(move.defaultPrevented).toBeFalsy();
     expect(document.activeElement).toBe(composerEditor);
   });
 });
