@@ -11,9 +11,17 @@ import {
   zeroUserPermissionGrantsContract,
   type UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { getClientConfig, handleError } from "../core/client-factory";
+
+export type ZeroUserPermissionGrant = Omit<
+  UserPermissionGrantResponse,
+  "connectorRef" | "connectorSlug"
+> & {
+  readonly connectorSlug: ConnectorSlug;
+};
 
 export async function createZeroAgent(
   body: ZeroAgentRequest,
@@ -72,11 +80,13 @@ export async function getZeroAgentInstructions(
 
 export async function getZeroAgentUserConnectors(
   id: string,
-): Promise<string[]> {
+): Promise<ConnectorSlug[]> {
   const config = await getClientConfig();
   const client = initClient(zeroUserConnectorsContract, config);
   const result = await client.get({ params: { id } });
-  if (result.status === 200) return result.body.enabledTypes;
+  if (result.status === 200) {
+    return result.body.enabledConnectorSlugs ?? result.body.enabledTypes;
+  }
   handleError(
     result,
     `Failed to get connector permissions for zero agent "${id}"`,
@@ -98,11 +108,18 @@ export async function getZeroAgentCustomConnectors(
 
 export async function listZeroUserPermissionGrants(
   agentId: string,
-): Promise<UserPermissionGrantResponse[]> {
+): Promise<ZeroUserPermissionGrant[]> {
   const config = await getClientConfig();
   const client = initClient(zeroUserPermissionGrantsContract, config);
   const result = await client.list({ query: { agentId } });
-  if (result.status === 200) return result.body;
+  if (result.status === 200) {
+    return result.body.map(({ connectorRef, connectorSlug, ...grant }) => {
+      return {
+        ...grant,
+        connectorSlug: connectorSlug ?? connectorRef,
+      };
+    });
+  }
   handleError(
     result,
     `Failed to get permission grants for zero agent "${agentId}"`,

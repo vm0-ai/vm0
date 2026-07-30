@@ -452,7 +452,6 @@ export function createRunsApi(context: TestContext) {
           params: { runId },
           body: {
             connectorSlugs: [connectorSlug],
-            connectorRefs: [connectorSlug],
           },
         }),
         [200],

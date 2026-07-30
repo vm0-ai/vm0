@@ -66,7 +66,7 @@ describe("zero agent create command", () => {
         "zero connector search <keyword> --agent comp_xyz789",
       );
       expect(logCalls).toContain(
-        "zero connector status <type> --agent comp_xyz789",
+        "zero connector status <slug> --agent comp_xyz789",
       );
     });
 

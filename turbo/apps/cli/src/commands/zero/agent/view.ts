@@ -8,12 +8,12 @@ import {
   listZeroConnectors,
 } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
-import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata/policy";
-import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+import type { ZeroConnector } from "../../../lib/api/domains/zero-connectors";
 import { policyIcon } from "../../../lib/utils/format-utils";
 import { formatAvatar } from "./avatar";
 import {
   loadConnectorPermissionInfos,
+  connectorPermissionGrantsToFirewallPolicies,
   type ConnectorPermissionInfo,
 } from "../shared/firewall-permissions";
 
@@ -45,9 +45,7 @@ function printDetailedPermissions(info: ConnectorPermissionInfo): void {
   );
 }
 
-function formatConnectorIdentity(
-  connector: ConnectorResponse | undefined,
-): string {
+function formatConnectorIdentity(connector: ZeroConnector | undefined): string {
   if (!connector) return "";
   if (connector.externalUsername) return `@${connector.externalUsername}`;
   if (connector.externalEmail) return connector.externalEmail;
@@ -56,7 +54,7 @@ function formatConnectorIdentity(
 
 function formatConnectorSummary(
   info: ConnectorPermissionInfo,
-  identity?: ConnectorResponse,
+  identity?: ZeroConnector,
 ): string {
   const id = formatConnectorIdentity(identity);
   const idStr = id ? ` ${id}` : "";
@@ -65,9 +63,7 @@ function formatConnectorSummary(
   return `${info.connectorSlug}${idStr} (${info.allowed}/${info.total} allowed)`;
 }
 
-function formatDetailIdentity(
-  connector: ConnectorResponse | undefined,
-): string {
+function formatDetailIdentity(connector: ZeroConnector | undefined): string {
   if (!connector) return "";
   let identity = "";
   if (connector.externalUsername && connector.externalEmail) {
@@ -109,13 +105,13 @@ Examples:
           getZeroAgent(agentId),
           getZeroAgentUserConnectors(agentId),
           listZeroConnectors().catch(() => {
-            return { connectors: [] as ConnectorResponse[] };
+            return { connectors: [] as ZeroConnector[] };
           }),
         ]);
 
-        const identityMap = new Map<string, ConnectorResponse>(
+        const identityMap = new Map<string, ZeroConnector>(
           connectorIdentities.connectors.map((c) => {
-            return [c.type, c];
+            return [c.slug, c];
           }),
         );
 
@@ -125,7 +121,7 @@ Examples:
         console.log(`Agent ID:     ${agent.agentId}`);
 
         const storedPolicies = options.permissions
-          ? permissionGrantsToFirewallPolicies(
+          ? connectorPermissionGrantsToFirewallPolicies(
               await listZeroUserPermissionGrants(agent.agentId),
             )
           : null;

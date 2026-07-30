@@ -494,7 +494,7 @@ describe("chat composer models", () => {
     expect(chip).toHaveTextContent("Project Alpha");
   });
 
-  it("keeps public agent suggestions behind zero chat messaging", async () => {
+  it("keeps agent suggestions behind zero chat messaging", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.7-code");
     mockAgent();
@@ -529,7 +529,7 @@ describe("chat composer models", () => {
     expect(within(menu).queryByText("Other Agent")).not.toBeInTheDocument();
   });
 
-  it("suggests public agents above chat threads and inserts an agent item", async () => {
+  it("suggests agents above chat threads and inserts an agent item", async () => {
     const alphaAgentId = "a1000000-0000-4000-a000-000000000001";
     const betaAgentId = "a1000000-0000-4000-a000-000000000002";
     const gammaAgentId = "a1000000-0000-4000-a000-000000000003";
@@ -549,6 +549,11 @@ describe("chat composer models", () => {
         avatarUrl: "preset:0",
       }),
       suggestionAgent({
+        id: privateAgentId,
+        displayName: "Private Agent",
+        visibility: "private",
+      }),
+      suggestionAgent({
         id: betaAgentId,
         displayName: "Beta Agent",
         avatarUrl: "preset:1",
@@ -562,11 +567,6 @@ describe("chat composer models", () => {
         id: zetaAgentId,
         displayName: "Zeta Agent",
         avatarUrl: zetaAvatarUrl,
-      }),
-      suggestionAgent({
-        id: privateAgentId,
-        displayName: "Private Agent",
-        visibility: "private",
       }),
     ]);
     mockComposerThreadSnapshot([
@@ -601,15 +601,25 @@ describe("chat composer models", () => {
       }),
     ).toStrictEqual([
       "Alpha Agent",
+      "Private Agent",
       "Beta Agent",
-      "Gamma Agent",
       "Project Alpha",
     ]);
     expect(within(menu).queryByText("Scout")).not.toBeInTheDocument();
+    expect(within(menu).queryByText("Gamma Agent")).not.toBeInTheDocument();
     expect(within(menu).queryByText("Zeta Agent")).not.toBeInTheDocument();
-    expect(within(menu).queryByText("Private Agent")).not.toBeInTheDocument();
 
-    await user.keyboard("zeta");
+    await user.keyboard("private");
+    await waitFor(() => {
+      const filteredMenu = screen.getByTestId("chat-thread-suggestion-menu");
+      expect(
+        within(filteredMenu).getByText("Private Agent"),
+      ).toBeInTheDocument();
+      expect(
+        within(filteredMenu).queryByText("Project Alpha"),
+      ).not.toBeInTheDocument();
+    });
+    await user.keyboard("{Backspace>7/}zeta");
     await waitFor(() => {
       const filteredMenu = screen.getByTestId("chat-thread-suggestion-menu");
       expect(within(filteredMenu).getByText("Zeta Agent")).toBeInTheDocument();

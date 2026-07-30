@@ -1,12 +1,10 @@
-import type {
-  PublicConnectorCatalogAuthMethodDetail,
-  PublicConnectorCatalogStatusItem,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { PublicConnectorCatalogAuthMethodDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { ZeroConnectorCatalogStatus } from "../../../lib/api/domains/zero-connectors";
 
-export type PublicConnectorStatus = PublicConnectorCatalogStatusItem;
+export type PublicConnectorStatus = ZeroConnectorCatalogStatus;
 
 interface ConnectorSearchItem {
-  readonly connectorRef: string;
+  readonly slug: string;
   readonly label: string;
   readonly description: string;
   readonly category: string;
@@ -48,7 +46,7 @@ function tokenize(input: string): Set<string> {
 
 function publicStrings(connector: ConnectorSearchItem): string[] {
   return [
-    connector.connectorRef,
+    connector.slug,
     connector.label,
     connector.description,
     connector.category,
@@ -79,8 +77,8 @@ function scoreExact(
   skipPrivateIdentifierMatches: boolean,
   connector: ConnectorSearchItem,
 ): ScoreHit | null {
-  if (connector.connectorRef.toLowerCase() === keywordLower) {
-    return { score: 100, matchedField: "connectorRef" };
+  if (connector.slug.toLowerCase() === keywordLower) {
+    return { score: 100, matchedField: "slug" };
   }
   if (connector.label.toLowerCase() === keywordLower) {
     return { score: 80, matchedField: "label" };
@@ -116,8 +114,8 @@ function scoreSubstring(
   connector: ConnectorSearchItem,
 ): ScoreHit | null {
   const candidates: ScoreHit[] = [];
-  if (connector.connectorRef.toLowerCase().includes(keywordLower)) {
-    candidates.push({ score: 50, matchedField: "connectorRef" });
+  if (connector.slug.toLowerCase().includes(keywordLower)) {
+    candidates.push({ score: 50, matchedField: "slug" });
   }
   if (connector.label.toLowerCase().includes(keywordLower)) {
     candidates.push({ score: 50, matchedField: "label" });
@@ -224,7 +222,7 @@ export function searchConnectorCatalog<T extends ConnectorSearchItem>(
 
   hits.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
-    return a.connector.connectorRef.localeCompare(b.connector.connectorRef);
+    return a.connector.slug.localeCompare(b.connector.slug);
   });
 
   return {
@@ -238,14 +236,14 @@ export function findConnectorStatusItem(
   connectorSlug: string,
 ): PublicConnectorStatus | null {
   const exact = connectors.find((connector) => {
-    return connector.connectorRef === connectorSlug;
+    return connector.slug === connectorSlug;
   });
   if (exact) return exact;
 
   const lower = connectorSlug.toLowerCase();
   return (
     connectors.find((connector) => {
-      return connector.connectorRef.toLowerCase() === lower;
+      return connector.slug.toLowerCase() === lower;
     }) ?? null
   );
 }
@@ -255,7 +253,7 @@ export function availableConnectorSlugs(
 ): string {
   return connectors
     .map((connector) => {
-      return connector.connectorRef;
+      return connector.slug;
     })
     .join(", ");
 }
@@ -270,7 +268,7 @@ export function resolveManualGrantAuthMethod(
     });
     if (!authMethod) {
       throw new Error(
-        `${connector.connectorRef} connector does not have ${rawAuthMethod} auth method`,
+        `${connector.slug} connector does not have ${rawAuthMethod} auth method`,
         {
           cause: new Error(
             `Available auth methods: ${connector.authMethods
@@ -288,7 +286,7 @@ export function resolveManualGrantAuthMethod(
     }
 
     throw new Error(
-      `${connector.connectorRef} ${authMethod.id} auth method does not use a manual grant`,
+      `${connector.slug} ${authMethod.id} auth method does not use a manual grant`,
     );
   }
 
@@ -300,13 +298,11 @@ export function resolveManualGrantAuthMethod(
     return authMethod;
   }
   if (manualAuthMethods.length === 0) {
-    throw new Error(
-      `${connector.connectorRef} connector does not use a manual grant`,
-    );
+    throw new Error(`${connector.slug} connector does not use a manual grant`);
   }
 
   throw new Error(
-    `${connector.connectorRef} connector has multiple manual grant auth methods`,
+    `${connector.slug} connector has multiple manual grant auth methods`,
     {
       cause: new Error(
         `Pass --auth-method ${manualAuthMethods

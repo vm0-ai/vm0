@@ -29,7 +29,7 @@ function parseLimit(raw: string): number {
 export const searchCommand = new Command()
   .name("search")
   .description(
-    "Search connectors by type, label, category, generation type, or tag",
+    "Search connectors by slug, label, category, generation type, or tag",
   )
   .argument("<keyword>", "Search keyword (case-insensitive)")
   .option("--agent <id>", "Show per-agent authorization column")
@@ -71,7 +71,7 @@ export const searchCommand = new Command()
           console.log(`Too many results (top ${options.limit} of ${total}):`);
         }
 
-        const connectorSlugHeader = "TYPE";
+        const connectorSlugHeader = "SLUG";
         const connectedAsHeader = "CONNECTED AS";
 
         const connectedCells = results.map((r) => {
@@ -81,7 +81,7 @@ export const searchCommand = new Command()
         const connectorSlugWidth = Math.max(
           connectorSlugHeader.length,
           ...results.map((r) => {
-            return r.connector.connectorRef.length;
+            return r.connector.slug.length;
           }),
         );
         const connectedAsWidth = Math.max(
@@ -103,7 +103,7 @@ export const searchCommand = new Command()
         for (let i = 0; i < results.length; i++) {
           const result = results[i]!;
           const parts = [
-            result.connector.connectorRef.padEnd(connectorSlugWidth),
+            result.connector.slug.padEnd(connectorSlugWidth),
             padEndAnsi(connectedCells[i]!, connectedAsWidth),
           ];
           if (agentCtx) {

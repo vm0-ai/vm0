@@ -341,8 +341,6 @@ export async function publishNetworkPolicyRefreshToRunnerGroup(
   await channel.publish("network-policy-refresh", {
     runId,
     connectorSlug,
-    // TODO(#23827): Remove after every pre-bridge runner has drained.
-    connectorRef: connectorSlug,
   });
   L.debug(
     `Published network policy refresh ${runId}/${connectorSlug} to runner-group:${group}`,

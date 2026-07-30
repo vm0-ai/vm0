@@ -345,6 +345,10 @@ function chatEventMetadataSubquery(db: Pick<Db, "select">) {
             WHEN ${eq(zeroWorkflowAutomations.kind, "event")} THEN CASE
               WHEN ${eq(
                 zeroWorkflowAutomations.eventType,
+                "chat-run-finished",
+              )} THEN 'Chat run finished'
+              WHEN ${eq(
+                zeroWorkflowAutomations.eventType,
                 "gmail-label-applied",
               )} THEN 'Gmail label applied'
               WHEN ${eq(

@@ -23,6 +23,7 @@ function connectorResponse(connectorSlug: string, authMethod = "api-token") {
   return {
     id: "00000000-0000-4000-8000-000000000001",
     type: connectorSlug,
+    slug: connectorSlug,
     authMethod,
     externalId: null,
     externalUsername: null,
@@ -191,7 +192,7 @@ describe("zero connector connect command", () => {
 
     const output = mockConsoleLog.mock.calls.flat().join("\n");
     expect(JSON.parse(output)).toMatchObject({
-      type: "openai",
+      slug: "openai",
       authMethod: "api-token",
     });
   });
