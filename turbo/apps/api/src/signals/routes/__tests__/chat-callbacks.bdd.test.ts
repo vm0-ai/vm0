@@ -2231,7 +2231,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
         limit: 50,
       });
       allMessages.push(...page.events);
-      if (!page.hasHistoryBefore) {
+      if (page.events[0]?.seqId === 1) {
         break;
       }
       beforeSeqId = page.events[0]?.seqId;
