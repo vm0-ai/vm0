@@ -106,7 +106,10 @@ async function publishFirstAssistantEventCreated(args: {
   readonly userId: string;
   readonly runId: string;
 }): Promise<void> {
-  await publishFirstAssistantEventCreatedSignalSafely(args);
+  await publishUserSignal(
+    [args.userId],
+    `chatThreadMessageCreated:${args.threadId}`,
+  );
   const acknowledgedAt = now();
   waitUntil(
     tapError(
