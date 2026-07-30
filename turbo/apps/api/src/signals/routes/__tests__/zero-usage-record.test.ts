@@ -956,7 +956,7 @@ describe("GET /api/zero/usage/record", () => {
     expect(response.body.pagination.total).toBe(1);
     expect(response.body.totalCredits).toBe(6);
     expect(response.body.rows[0]).toMatchObject({
-      source: "test",
+      source: "other",
       runId: run.runId,
       credits: 6,
       tokens: 0,
