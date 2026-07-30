@@ -29,7 +29,7 @@ const databasePidRowSchema = z.object({ pid: z.int() });
 const waiterCountRowSchema = z.object({ waiterCount: z.int() });
 const blockedByPidRowSchema = z.object({ blocked: z.boolean() });
 
-export interface ChatInputQueueParamsFixture {
+interface ChatInputQueueParamsFixture {
   readonly eventId: string;
   readonly encryptedParams: string;
   readonly attachFileMetadata: typeof chatInputQueueParams.$inferSelect.attachFileMetadata;
