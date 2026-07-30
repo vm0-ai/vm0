@@ -4,14 +4,6 @@
  * Feature-switched connectors are enabled per test actor through
  * POST /api/zero/feature-switches. External provider endpoints are mocked with
  * MSW at the HTTP boundary.
- *
- * Not rebuilt here:
- * - The legacy corrupted-provider-state trigger (direct ciphertext UPDATE) is
- *   not API-constructible; the same markClaimError/terminal-error statements
- *   are reached through an STS identity-lookup failure instead.
- * - The legacy abort-after-provider-success commit race drove the service
- *   command directly with a custom aborting KMS client; its persistence path
- *   is statement-identical to the happy-path completion covered here.
  */
 
 import { Buffer } from "node:buffer";

@@ -74,7 +74,7 @@ const deviceAuthSessionSelection = Object.freeze({
   userId: connectorOauthDeviceAuthorizationSessions.userId,
   agentId: connectorOauthDeviceAuthorizationSessions.agentId,
   authorizeAgent: connectorOauthDeviceAuthorizationSessions.authorizeAgent,
-  connectorType: connectorOauthDeviceAuthorizationSessions.connectorSlug,
+  connectorSlug: connectorOauthDeviceAuthorizationSessions.connectorSlug,
   authMethod: connectorOauthDeviceAuthorizationSessions.authMethod,
   status: connectorOauthDeviceAuthorizationSessions.status,
   sessionTokenHash: connectorOauthDeviceAuthorizationSessions.sessionTokenHash,
@@ -93,12 +93,8 @@ const deviceAuthSessionSelection = Object.freeze({
   completedAt: connectorOauthDeviceAuthorizationSessions.completedAt,
 });
 
-type DeviceAuthSessionRow = Omit<
-  typeof connectorOauthDeviceAuthorizationSessions.$inferSelect,
-  "connectorSlug"
-> & {
-  readonly connectorType: typeof connectorOauthDeviceAuthorizationSessions.$inferSelect.connectorSlug;
-};
+type DeviceAuthSessionRow =
+  typeof connectorOauthDeviceAuthorizationSessions.$inferSelect;
 
 type PendingPollBody = Extract<
   ConnectorOauthDeviceAuthSessionPollResponse,
