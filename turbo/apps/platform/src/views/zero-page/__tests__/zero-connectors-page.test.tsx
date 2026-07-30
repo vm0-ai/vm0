@@ -2191,7 +2191,9 @@ describe("connectors page", () => {
     expect(authorizedAgentIds).toStrictEqual([]);
 
     mockConnectors([{ connectorSlug: "stripe", authMethod: "oauth" }]);
-    context.mocks.ably.trigger("connector:changed", null);
+    context.mocks.ably.trigger("connector:changed", {
+      connectorRef: "stripe",
+    });
 
     await waitFor(() => {
       expect(authorizedAgentIds).toStrictEqual([researchAgentId]);
