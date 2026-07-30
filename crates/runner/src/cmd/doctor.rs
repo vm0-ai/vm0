@@ -797,8 +797,8 @@ fn find_stopped_services(
 struct ActiveRun {
     run_id: String,
     sandbox_id: String,
-    phase: Option<String>,
-    phase_started_at: Option<String>,
+    phase: String,
+    phase_started_at: String,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -809,10 +809,9 @@ enum ActiveRunPhase {
 
 impl ActiveRun {
     fn phase(&self) -> ActiveRunPhase {
-        match self.phase.as_deref() {
-            Some("preparing") => ActiveRunPhase::Preparing,
-            Some("running") | None => ActiveRunPhase::Running,
-            Some(_) => ActiveRunPhase::Running,
+        match self.phase.as_str() {
+            "preparing" => ActiveRunPhase::Preparing,
+            _ => ActiveRunPhase::Running,
         }
     }
 }
@@ -903,10 +902,7 @@ async fn probe_api(client: &Client, server_url: &str, server_token: &str) -> boo
 // ---------------------------------------------------------------------------
 
 fn preparing_run_is_stale(active: &ActiveRun, now: DateTime<Utc>) -> bool {
-    let Some(phase_started_at) = active.phase_started_at.as_deref() else {
-        return true;
-    };
-    let Ok(started_at) = DateTime::parse_from_rfc3339(phase_started_at) else {
+    let Ok(started_at) = DateTime::parse_from_rfc3339(&active.phase_started_at) else {
         return true;
     };
     let elapsed = now.signed_duration_since(started_at.with_timezone(&Utc));
@@ -1416,12 +1412,56 @@ mod tests {
             r#"{
                 "mode":"running",
                 "started_at":"2026-01-01T00:00:00.000Z",
-                "active_runs":[{"run_id":"R1"}]
+                "active_runs":[{
+                    "run_id":"R1",
+                    "phase":"running",
+                    "phase_started_at":"2026-01-01T00:00:00.000Z"
+                }]
             }"#,
         )
         .unwrap();
 
         assert!(read_status(dir.path()).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_status_missing_active_run_lifecycle_field_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let cases = [
+            (
+                "phase",
+                r#"{
+                    "mode":"running",
+                    "started_at":"2026-01-01T00:00:00.000Z",
+                    "active_runs":[{
+                        "run_id":"R1",
+                        "sandbox_id":"S1",
+                        "phase_started_at":"2026-01-01T00:00:00.000Z"
+                    }]
+                }"#,
+            ),
+            (
+                "phase_started_at",
+                r#"{
+                    "mode":"running",
+                    "started_at":"2026-01-01T00:00:00.000Z",
+                    "active_runs":[{
+                        "run_id":"R1",
+                        "sandbox_id":"S1",
+                        "phase":"running"
+                    }]
+                }"#,
+            ),
+        ];
+
+        for (field, content) in cases {
+            std::fs::write(dir.path().join("status.json"), content).unwrap();
+
+            assert!(
+                read_status(dir.path()).await.is_none(),
+                "status missing {field} must be rejected"
+            );
+        }
     }
 
     #[tokio::test]
@@ -1445,19 +1485,19 @@ mod tests {
         let active = ActiveRun {
             run_id: "R1".into(),
             sandbox_id: "S1".into(),
-            phase: Some("future-phase".into()),
-            phase_started_at: None,
+            phase: "future-phase".into(),
+            phase_started_at: "2026-01-01T00:00:00.000Z".into(),
         };
 
         assert_eq!(active.phase(), ActiveRunPhase::Running);
     }
 
-    fn legacy_active_run(run_id: &str, sandbox_id: &str) -> ActiveRun {
+    fn running_active_run(run_id: &str, sandbox_id: &str) -> ActiveRun {
         ActiveRun {
             run_id: run_id.into(),
             sandbox_id: sandbox_id.into(),
-            phase: None,
-            phase_started_at: None,
+            phase: "running".into(),
+            phase_started_at: "2026-01-01T00:00:00.000Z".into(),
         }
     }
 
@@ -1465,12 +1505,12 @@ mod tests {
         run_id: &str,
         sandbox_id: &str,
         phase: &str,
-        phase_started_at: Option<String>,
+        phase_started_at: String,
     ) -> ActiveRun {
         ActiveRun {
             run_id: run_id.into(),
             sandbox_id: sandbox_id.into(),
-            phase: Some(phase.into()),
+            phase: phase.into(),
             phase_started_at,
         }
     }
@@ -1486,7 +1526,7 @@ mod tests {
         status_info_with_active_runs(
             active
                 .into_iter()
-                .map(|(run_id, sandbox_id)| legacy_active_run(run_id, sandbox_id))
+                .map(|(run_id, sandbox_id)| running_active_run(run_id, sandbox_id))
                 .collect(),
             idle_sandboxes,
         )
@@ -1598,7 +1638,7 @@ mod tests {
                 "run-prep",
                 "sandbox-prep",
                 "preparing",
-                Some(phase_started_at_ago(Duration::from_secs(5))),
+                phase_started_at_ago(Duration::from_secs(5)),
             )],
             vec![],
         );
@@ -1621,9 +1661,7 @@ mod tests {
                 "run-stale",
                 "sandbox-stale",
                 "preparing",
-                Some(phase_started_at_ago(
-                    PREPARING_NO_PROCESS_GRACE + Duration::from_secs(1),
-                )),
+                phase_started_at_ago(PREPARING_NO_PROCESS_GRACE + Duration::from_secs(1)),
             )],
             vec![],
         );
@@ -1650,7 +1688,7 @@ mod tests {
                 "run-prep",
                 "sandbox-prep",
                 "preparing",
-                Some(phase_started_at_ago(Duration::from_secs(5))),
+                phase_started_at_ago(Duration::from_secs(5)),
             )],
             vec![],
         );
@@ -1674,9 +1712,7 @@ mod tests {
                 "run-stale-with-fc",
                 "sandbox-stale-with-fc",
                 "preparing",
-                Some(phase_started_at_ago(
-                    PREPARING_NO_PROCESS_GRACE + Duration::from_secs(1),
-                )),
+                phase_started_at_ago(PREPARING_NO_PROCESS_GRACE + Duration::from_secs(1)),
             )],
             vec![],
         );
@@ -1698,13 +1734,13 @@ mod tests {
     }
 
     #[test]
-    fn correlate_preparing_active_without_timestamp_warns() {
+    fn correlate_preparing_active_with_malformed_timestamp_warns() {
         let status = status_info_with_active_runs(
             vec![phased_active_run(
-                "run-missing-ts",
-                "sandbox-missing-ts",
+                "run-malformed-ts",
+                "sandbox-malformed-ts",
                 "preparing",
-                None,
+                "not-a-timestamp".into(),
             )],
             vec![],
         );
@@ -1825,7 +1861,12 @@ mod tests {
                 "mode": "running",
                 "max_concurrent": 4,
                 "active_runs": [
-                    {"run_id": "R2", "sandbox_id": "S1"}
+                    {
+                        "run_id": "R2",
+                        "sandbox_id": "S1",
+                        "phase": "running",
+                        "phase_started_at": "2026-01-01T00:00:00.000Z"
+                    }
                 ],
                 "started_at": "2026-01-01T00:00:00.000Z",
                 "updated_at": "2026-01-01T00:00:00.000Z"
@@ -1853,7 +1894,12 @@ mod tests {
                 "mode": "running",
                 "max_concurrent": 4,
                 "active_runs": [
-                    {"run_id": "R1", "sandbox_id": "S1"}
+                    {
+                        "run_id": "R1",
+                        "sandbox_id": "S1",
+                        "phase": "running",
+                        "phase_started_at": "2026-01-01T00:00:00.000Z"
+                    }
                 ],
                 "started_at": "2026-01-01T00:00:00.000Z",
                 "updated_at": "2026-01-01T00:00:00.000Z"
@@ -2044,7 +2090,12 @@ mod tests {
                 "mode": "running",
                 "max_concurrent": 4,
                 "active_runs": [
-                    {"run_id": "R1", "sandbox_id": "S2"}
+                    {
+                        "run_id": "R1",
+                        "sandbox_id": "S2",
+                        "phase": "running",
+                        "phase_started_at": "2026-01-01T00:00:00.000Z"
+                    }
                 ],
                 "started_at": "2026-01-01T00:00:00.000Z",
                 "updated_at": "2026-01-01T00:00:00.000Z"
@@ -2103,7 +2154,12 @@ mod tests {
                 "mode": "running",
                 "max_concurrent": 4,
                 "active_runs": [
-                    {"run_id": "R1", "sandbox_id": "S1"}
+                    {
+                        "run_id": "R1",
+                        "sandbox_id": "S1",
+                        "phase": "running",
+                        "phase_started_at": "2026-01-01T00:00:00.000Z"
+                    }
                 ],
                 "started_at": "2026-01-01T00:00:00.000Z",
                 "updated_at": "2026-01-01T00:00:00.000Z"

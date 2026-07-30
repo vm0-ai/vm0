@@ -504,7 +504,9 @@ if [ "$probe_status" -ne 0 ]; then
   emit_probe_failure \
     1 "$probe_status" "$first_probe_stderr" warning \
     "${current_control_path:+${current_control_path}.stderr}"
-  recovery_dir=$(mktemp -d "${STATE_DIR}/${target_key}.recovery.XXXXXX")
+  # OpenSSH appends a temporary suffix while binding a control socket. Keep
+  # this directory name short enough for Linux's Unix socket path limit.
+  recovery_dir=$(mktemp -d "${STATE_DIR}/r.XXXXXX")
   recovery_control_path="${recovery_dir}/master.sock"
   recovery_status=0
   CLOUDFLARE_SSH_BIN="$REAL_SSH" \

@@ -14,6 +14,7 @@ import {
   isIdentifier,
   isNonNullExpression,
   isParenthesizedExpression,
+  isPropertyAccessExpression,
   isReturnStatement,
   isSatisfiesExpression,
   isTemplateSpan,
@@ -35,6 +36,7 @@ import {
   isDrizzleSqlType,
   isDrizzleSqlTag,
   isDrizzleSymbol,
+  isDrizzleWrapperType,
   resolvedSymbol,
 } from "../drizzle.ts";
 
@@ -413,6 +415,20 @@ export function createSqlSourceComposer(
         current.parent.expression === current
       ) {
         current = current.parent;
+      }
+      let hasPropertyAccess = false;
+      while (
+        isPropertyAccessExpression(current.parent) &&
+        current.parent.expression === current
+      ) {
+        hasPropertyAccess = true;
+        current = current.parent;
+      }
+      if (
+        hasPropertyAccess &&
+        isDrizzleWrapperType(checker, checker.getTypeAtLocation(current))
+      ) {
+        return false;
       }
       const parent = current.parent;
       return (
