@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
@@ -16,6 +17,10 @@ import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import {
+  deleteFeatureSwitchesForUser,
+  updateFeatureSwitchesForUser,
+} from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -162,6 +167,45 @@ describe("POST /api/zero/uploads/complete", () => {
       id: fileId,
       filename: "plain.txt",
       size: 5,
+    });
+  });
+
+  it("recovers a v2 original filename after the org switch is disabled", async () => {
+    const fixture = await createRunUploadFixture();
+    await updateFeatureSwitchesForUser(context, fixture.actor, {
+      [FeatureSwitchKey.ArtifactKeyV2]: true,
+    });
+    const prepared = await chat.prepareUpload(fixture.actor, {
+      filename: "财务 报告.pdf",
+      contentType: "application/pdf",
+      size: 17,
+    });
+    const key = new URL(prepared.url).pathname.replace(/^\/+/u, "");
+    fixture.objectStore.addObject({
+      bucket: "test-user-artifacts",
+      key,
+      size: 17,
+      contentType: "application/pdf",
+      metadata: {
+        "artifact-id": prepared.id,
+        filename: encodeURIComponent("财务 报告.pdf"),
+        "user-id": encodeURIComponent(fixture.actor.userId),
+      },
+    });
+    await deleteFeatureSwitchesForUser(context, fixture.actor);
+
+    const response = await chat.completeUploadWithBearer(
+      fixture.bearer,
+      { id: prepared.id },
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      id: prepared.id,
+      filename: "财务 报告.pdf",
+      contentType: "application/pdf",
+      size: 17,
+      url: prepared.url,
     });
   });
 

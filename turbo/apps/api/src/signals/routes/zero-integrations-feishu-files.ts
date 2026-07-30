@@ -13,12 +13,7 @@ import { feishuOrgConnections } from "@vm0/db/schema/feishu-org-connection";
 import { feishuOrgInstallations } from "@vm0/db/schema/feishu-org-installation";
 
 import { env } from "../../lib/env";
-import {
-  buildArtifactKey,
-  buildArtifactPrefix,
-  buildFileUrl,
-  sanitizeArtifactFilename,
-} from "../../lib/file-url";
+import { sanitizeArtifactFilename } from "../../lib/file-url";
 import { inferMimetype } from "../../lib/mimetype";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -32,11 +27,11 @@ import {
   type FeishuOutboundMessage,
 } from "../external/feishu-client";
 import { writeDb$, type Db } from "../external/db";
+import { downloadS3Buffer, generatePresignedPutUrl } from "../external/s3";
 import {
-  downloadS3Buffer,
-  generatePresignedPutUrl,
-  listS3Objects,
-} from "../external/s3";
+  allocateArtifactObject$,
+  resolveArtifactObject$,
+} from "../services/artifact-storage.service";
 import { feishuOrgCallbackPayloadSchema } from "../services/feishu-org-callback-payload";
 import { recordFeishuUploadedFile$ } from "../services/run-uploaded-files.service";
 import type { RouteEntry } from "../route-entry";
@@ -72,6 +67,16 @@ function apiError(
     status,
     body: { error: { code, message } },
   } as const;
+}
+
+function feishuUploadSizeError(size: number) {
+  return size > FEISHU_FILE_UPLOAD_MAX_BYTES
+    ? apiError(
+        413,
+        "PAYLOAD_TOO_LARGE",
+        `File exceeds maximum size of ${FEISHU_FILE_UPLOAD_MAX_BYTES} bytes`,
+      )
+    : undefined;
 }
 
 async function resolveInstallation(args: {
@@ -367,7 +372,7 @@ const download$ = command(async ({ get, set }, signal: AbortSignal) => {
   return new Response(downloaded.value.body, { status: 200, headers });
 });
 
-const initUpload$ = command(async ({ get }, signal: AbortSignal) => {
+const initUpload$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const bodyResult = await get(
     bodyResultOf(integrationsFeishuUploadInitContract.init),
@@ -377,26 +382,33 @@ const initUpload$ = command(async ({ get }, signal: AbortSignal) => {
     return bodyResult.response;
   }
 
-  const uploadId = crypto.randomUUID();
   const filename = sanitizeArtifactFilename(bodyResult.data.filename);
+  const artifact = await set(
+    allocateArtifactObject$,
+    {
+      userId: auth.userId,
+      orgId: auth.orgId,
+      filename: bodyResult.data.filename,
+    },
+    signal,
+  );
   const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
-  const key = buildArtifactKey(auth.userId, uploadId, filename);
   const uploadUrl = await get(
     generatePresignedPutUrl(
       bucket,
-      key,
+      artifact.key,
       bodyResult.data.contentType,
       PUT_URL_TTL_SECONDS,
-      true,
+      { usePublicEndpoint: true, metadata: artifact.metadata },
     ),
   );
   signal.throwIfAborted();
   return {
     status: 200 as const,
     body: {
-      uploadId,
+      uploadId: artifact.id,
       uploadUrl,
-      fileUrl: buildFileUrl(auth.userId, uploadId, filename),
+      fileUrl: artifact.url,
       filename,
       contentType: bodyResult.data.contentType,
       size: bodyResult.data.length,
@@ -442,25 +454,23 @@ const completeUpload$ = command(async ({ get, set }, signal: AbortSignal) => {
     );
   }
 
-  const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
-  const prefix = buildArtifactPrefix(auth.userId, body.uploadId);
-  const objects = await get(listS3Objects(bucket, prefix));
-  signal.throwIfAborted();
-  const object = objects[0];
+  const object = await set(
+    resolveArtifactObject$,
+    { userId: auth.userId, id: body.uploadId },
+    signal,
+  );
   if (!object) {
     return apiError(404, "NOT_FOUND", "Uploaded file not found");
   }
-  if (object.size > FEISHU_FILE_UPLOAD_MAX_BYTES) {
-    return apiError(
-      413,
-      "PAYLOAD_TOO_LARGE",
-      `File exceeds maximum size of ${FEISHU_FILE_UPLOAD_MAX_BYTES} bytes`,
-    );
+  const sizeError = feishuUploadSizeError(object.size);
+  if (sizeError) {
+    return sizeError;
   }
 
-  const filename = object.key.split("/").pop() ?? body.uploadId;
-  const contentType = body.contentType ?? inferMimetype(filename);
-  const fileUrl = buildFileUrl(auth.userId, body.uploadId, filename);
+  const filename = object.filename;
+  const contentType = body.contentType ?? object.contentType;
+  const fileUrl = object.url;
+  const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
   const content = await get(downloadS3Buffer(bucket, object.key));
   signal.throwIfAborted();
   const uploaded = await settle(

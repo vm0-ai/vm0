@@ -3,10 +3,11 @@ import { createStore } from "ccstate";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
-import { now } from "../../../lib/time";
+import { now, nowDate } from "../../../lib/time";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import {
   deleteOrgPlanEntitlementFixture,
@@ -15,6 +16,7 @@ import {
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createBddApi } from "./helpers/api-bdd";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 
 const context = testContext();
@@ -155,6 +157,101 @@ describe("POST /api/zero/uploads/prepare", () => {
       `https://cdn.vm7.io/artifacts/${userId}/${response.body.id}/hello.txt`,
     );
     expect(response.body.id).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("uses flat 10-character keys and signed filename metadata for an enabled org", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const owner = { userId: `user_${randomUUID()}`, orgId };
+    const peer = { userId: `user_${randomUUID()}`, orgId };
+    await updateFeatureSwitchesForUser(context, owner, {
+      [FeatureSwitchKey.ArtifactKeyV2]: true,
+    });
+    mocks.clerk.session(peer.userId, peer.orgId);
+
+    const client = setupApp({ context })(zeroUploadsContract);
+    const response = await client.prepare({
+      body: {
+        filename: "财务 报告.PDF",
+        contentType: "application/pdf",
+        size: 13,
+      },
+      headers: { authorization: "Bearer clerk-session" },
+    });
+    expect(response.status).toBe(200);
+    if (response.status !== 200) {
+      return;
+    }
+
+    expect(response.body.url).toMatch(
+      /^https:\/\/cdn\.vm7\.io\/artifacts\/[0-9a-z]{10}\.pdf$/,
+    );
+    expect(response.body.url).not.toContain(peer.userId);
+    const signedCommand = context.mocks.s3.getSignedUrl.mock.calls[0]?.[1] as {
+      input: {
+        Key: string;
+        Metadata: Readonly<Record<string, string>>;
+      };
+    };
+    expect(signedCommand.input).toMatchObject({
+      Key: expect.stringMatching(/^artifacts\/[0-9a-z]{10}\.pdf$/),
+      Metadata: {
+        "artifact-id": response.body.id,
+        filename: encodeURIComponent("财务 报告.PDF"),
+        "user-id": encodeURIComponent(peer.userId),
+      },
+    });
+    expect(context.mocks.s3.getSignedUrl.mock.calls[0]?.[2]).toMatchObject({
+      hoistableHeaders: new Set([
+        "x-amz-meta-artifact-id",
+        "x-amz-meta-filename",
+        "x-amz-meta-user-id",
+      ]),
+    });
+  });
+
+  it("retries with a new artifact id when a flat hash is occupied", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const actor = { userId: `user_${randomUUID()}`, orgId };
+    await updateFeatureSwitchesForUser(context, actor, {
+      [FeatureSwitchKey.ArtifactKeyV2]: true,
+    });
+    mocks.clerk.session(actor.userId, actor.orgId);
+    const prefixes: string[] = [];
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (command?.constructor.name !== "ListObjectsV2Command") {
+        return Promise.resolve({});
+      }
+      const input = (command as { input: { Prefix?: string } }).input;
+      const prefix = input.Prefix ?? "";
+      prefixes.push(prefix);
+      if (prefixes.length === 1) {
+        return Promise.resolve({
+          Contents: [
+            {
+              Key: `${prefix}txt`,
+              Size: 1,
+              LastModified: nowDate(),
+            },
+          ],
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    const response = await setupApp({ context })(zeroUploadsContract).prepare({
+      body: validBody(),
+      headers: { authorization: "Bearer clerk-session" },
+    });
+
+    expect(response.status).toBe(200);
+    if (response.status !== 200) {
+      throw new Error("Expected flat artifact upload preparation to succeed");
+    }
+    expect(prefixes).toHaveLength(2);
+    expect(prefixes[1]).not.toBe(prefixes[0]);
+    expect(response.body.url).toMatch(
+      /^https:\/\/cdn\.vm7\.io\/artifacts\/[0-9a-z]{10}\.txt$/,
+    );
   });
 
   it("rejects suspended orgs with insufficient credits", async () => {

@@ -59,7 +59,11 @@ import {
   notFound,
 } from "../../lib/error";
 import { env } from "../../lib/env";
-import { buildArtifactKey, sanitizeArtifactFilename } from "../../lib/file-url";
+import {
+  buildArtifactKey,
+  buildArtifactKeyV2,
+  sanitizeArtifactFilename,
+} from "../../lib/file-url";
 import { logger } from "../../lib/log";
 import type { AuthContext } from "../../types/auth";
 import {
@@ -251,6 +255,7 @@ interface PreparedNormalSend {
   readonly computerUseHostGrant: ResolvedComputerUseHostGrant | null;
   readonly persistedExplicitSelection: boolean;
   readonly initialThinkingEnabled: boolean;
+  readonly artifactKeyV2Enabled: boolean;
   readonly runConfiguration: ResolvedRunConfiguration;
   readonly clientEventPrechecked: boolean;
   readonly preflightClientEventConflict:
@@ -270,6 +275,7 @@ function shouldTouchThreadSortFromNormalSend(
 }
 
 interface NormalSendFeatureSwitches {
+  readonly artifactKeyV2Enabled: boolean;
   readonly codexFastModeEnabled: boolean;
   readonly userMessageInlineTemplatesEnabled: boolean;
   readonly imageStyleR2Enabled: boolean;
@@ -656,6 +662,7 @@ function attachFileIds(
 function attachFileMetadata(
   userId: string,
   attachFiles: readonly AttachFile[] | undefined,
+  artifactKeyV2Enabled: boolean,
 ): ChatEventAttachFileMetadata[] | null {
   const metadata = attachFiles?.map((file) => {
     const sanitized = sanitizeArtifactFilename(file.filename);
@@ -664,7 +671,9 @@ function attachFileMetadata(
       filename: file.filename,
       contentType: file.contentType,
       size: file.size,
-      objectKey: buildArtifactKey(userId, file.id, sanitized),
+      objectKey: artifactKeyV2Enabled
+        ? buildArtifactKeyV2(file.id, file.filename)
+        : buildArtifactKey(userId, file.id, sanitized),
     };
   });
   return metadata && metadata.length > 0 ? metadata : null;
@@ -1013,6 +1022,10 @@ async function resolveNormalSendFeatureSwitches(
 ): Promise<NormalSendFeatureSwitches> {
   const context = await loadUserFeatureSwitchContext(db, orgId, userId);
   return {
+    artifactKeyV2Enabled: isFeatureEnabled(
+      FeatureSwitchKey.ArtifactKeyV2,
+      context,
+    ),
     codexFastModeEnabled: isFeatureEnabled(
       FeatureSwitchKey.CodexFastMode,
       context,
@@ -1559,6 +1572,7 @@ function appendUnassociatedUserMessage(params: {
   readonly orgId: string;
   readonly prompt: string;
   readonly attachFiles: readonly AttachFile[] | undefined;
+  readonly artifactKeyV2Enabled: boolean;
   readonly clientEventId: string | undefined;
   readonly chatThreadSortEventId: string | undefined;
   readonly touchThreadSort: boolean;
@@ -1583,7 +1597,11 @@ function appendUnassociatedUserMessage(params: {
 
     const explicitId = params.clientEventId ?? undefined;
     const fileIds = attachFileIds(params.attachFiles);
-    const fileMetadata = attachFileMetadata(params.userId, params.attachFiles);
+    const fileMetadata = attachFileMetadata(
+      params.userId,
+      params.attachFiles,
+      params.artifactKeyV2Enabled,
+    );
     const event: NewChatEvent = {
       ...(explicitId ? { id: explicitId } : {}),
       chatThreadId: params.threadId,
@@ -1689,6 +1707,7 @@ async function appendAssociatedUserMessage(params: {
   readonly prompt: string;
   readonly runId: string;
   readonly attachFiles: readonly AttachFile[] | undefined;
+  readonly artifactKeyV2Enabled: boolean;
   readonly clientEventId: string | undefined;
   readonly chatThreadSortEventId: string | undefined;
   readonly touchThreadSort: boolean;
@@ -1706,7 +1725,11 @@ async function appendAssociatedUserMessage(params: {
     }
     const explicitId = params.clientEventId ?? undefined;
     const fileIds = attachFileIds(params.attachFiles);
-    const fileMetadata = attachFileMetadata(params.userId, params.attachFiles);
+    const fileMetadata = attachFileMetadata(
+      params.userId,
+      params.attachFiles,
+      params.artifactKeyV2Enabled,
+    );
     const event: NewChatEvent = {
       ...(explicitId ? { id: explicitId } : {}),
       chatThreadId: params.threadId,
@@ -2452,6 +2475,7 @@ const prepareNormalSend$ = command(
       computerUseHostGrant: computerAccess.computerUseHostGrant,
       persistedExplicitSelection,
       initialThinkingEnabled: args.zeroPreCreateSource === undefined,
+      artifactKeyV2Enabled: featureSwitches.artifactKeyV2Enabled,
       runConfiguration,
       clientEventPrechecked,
       preflightClientEventConflict: preflightClientEventResponse,
@@ -2490,6 +2514,7 @@ async function queueUnassociatedNormalEvent(params: {
     orgId: params.orgId,
     prompt: params.body.prompt,
     attachFiles: params.body.attachFiles,
+    artifactKeyV2Enabled: params.prepared.artifactKeyV2Enabled,
     clientEventId: params.body.clientEventId,
     chatThreadSortEventId: params.body.chatThreadSortEventId,
     touchThreadSort: params.touchThreadSort,
@@ -2557,6 +2582,7 @@ function scheduleAssociatedUserMessage(params: {
   readonly appendQueueMarker: boolean;
   readonly appendInitialThinking: boolean;
   readonly touchThreadSort: boolean;
+  readonly artifactKeyV2Enabled: boolean;
 }): void {
   waitUntil(
     (async () => {
@@ -2568,6 +2594,7 @@ function scheduleAssociatedUserMessage(params: {
         prompt: params.body.prompt,
         runId: params.runId,
         attachFiles: params.body.attachFiles,
+        artifactKeyV2Enabled: params.artifactKeyV2Enabled,
         clientEventId: params.body.clientEventId,
         chatThreadSortEventId: params.body.chatThreadSortEventId,
         touchThreadSort: params.touchThreadSort,
@@ -2614,6 +2641,7 @@ function scheduleCreatedChatRunSideEffects(params: {
   readonly runId: string;
   readonly runStatus: string;
   readonly initialThinkingEnabled: boolean;
+  readonly artifactKeyV2Enabled: boolean;
   readonly touchThreadSort: boolean;
   readonly queueFirstClaim:
     | {
@@ -2656,6 +2684,7 @@ function scheduleCreatedChatRunSideEffects(params: {
     appendQueueMarker: params.runStatus === "queued",
     appendInitialThinking,
     touchThreadSort: params.touchThreadSort,
+    artifactKeyV2Enabled: params.artifactKeyV2Enabled,
   });
 }
 
@@ -2862,6 +2891,7 @@ async function appendInsufficientCreditsEvents(params: {
     const fileMetadata = attachFileMetadata(
       params.userId,
       params.body.attachFiles,
+      params.prepared.artifactKeyV2Enabled,
     );
     const userValues: NewChatEvent = {
       ...(explicitId ? { id: explicitId } : {}),
@@ -3101,6 +3131,7 @@ function scheduleNormalChatRunSideEffects(params: {
     runId: params.runId,
     runStatus: params.runStatus,
     initialThinkingEnabled: params.prepared.initialThinkingEnabled,
+    artifactKeyV2Enabled: params.prepared.artifactKeyV2Enabled,
     touchThreadSort: shouldTouchThreadSortFromNormalSend(
       params.args.zeroPreCreateSource,
       params.prepared.thread.isNewThread,

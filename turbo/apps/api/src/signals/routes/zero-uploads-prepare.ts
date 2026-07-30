@@ -4,11 +4,6 @@ import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 import { env } from "../../lib/env";
 import { badRequestMessage } from "../../lib/error";
 import {
-  buildArtifactKey,
-  buildFileUrl,
-  sanitizeArtifactFilename,
-} from "../../lib/file-url";
-import {
   isAllowedUploadType,
   MAX_UPLOAD_SIZE_BYTES,
   MAX_UPLOAD_SIZE_LABEL,
@@ -22,6 +17,7 @@ import {
   generatePresignedPutUrl,
   generatePresignedUploadPartUrl,
 } from "../external/s3";
+import { allocateArtifactObject$ } from "../services/artifact-storage.service";
 import { rejectSuspendedOrg$ } from "../services/zero-org-suspension.service";
 import type { RouteEntry } from "../route-entry";
 import { onRejection, tapError } from "../utils";
@@ -57,11 +53,17 @@ const prepareUploadInner$ = command(
       }
     }
 
-    const id = crypto.randomUUID();
-    const sanitizedName = sanitizeArtifactFilename(filename);
-    const s3Key = buildArtifactKey(auth.userId, id, sanitizedName);
     const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
-    const url = buildFileUrl(auth.userId, id, sanitizedName);
+    const artifact = await set(
+      allocateArtifactObject$,
+      {
+        userId: auth.userId,
+        orgId: auth.orgId,
+        filename,
+      },
+      signal,
+    );
+    const { id, key: s3Key, url, metadata } = artifact;
 
     if (
       bodyResult.data.multipart === true &&
@@ -71,7 +73,7 @@ const prepareUploadInner$ = command(
       return await onRejection(
         (async () => {
           uploadId = await get(
-            createMultipartS3Upload(bucket, s3Key, contentType),
+            createMultipartS3Upload(bucket, s3Key, contentType, metadata),
           );
           signal.throwIfAborted();
           const partCount = Math.ceil(size / MULTIPART_PART_SIZE_BYTES);
@@ -119,13 +121,10 @@ const prepareUploadInner$ = command(
     }
 
     const uploadUrl = await get(
-      generatePresignedPutUrl(
-        bucket,
-        s3Key,
-        contentType,
-        PUT_URL_TTL_SECONDS,
-        true,
-      ),
+      generatePresignedPutUrl(bucket, s3Key, contentType, PUT_URL_TTL_SECONDS, {
+        usePublicEndpoint: true,
+        metadata,
+      }),
     );
     signal.throwIfAborted();
 

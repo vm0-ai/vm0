@@ -16,15 +16,13 @@ import {
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
-import { env } from "../../lib/env";
-import { buildArtifactPrefix, buildFileUrl } from "../../lib/file-url";
 import { writeDb$, type Db } from "../external/db";
 import {
   publishChatThreadMessageCreatedSafely,
   publishThreadListChangedSafely,
 } from "../external/realtime";
-import { listS3Objects } from "../external/s3";
 import { nowDate } from "../external/time";
+import { resolvedArtifactObject } from "./artifact-storage.service";
 import { assistantEventIdForRunEvent } from "./assistant-event-id";
 import { insertChatEvents } from "./zero-chat-event.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
@@ -151,23 +149,19 @@ export function resolveAttachFileUrls(
   fileIds: readonly string[],
 ): Computed<Promise<readonly ResolvedAttachFile[]>> {
   return computed(async (get): Promise<readonly ResolvedAttachFile[]> => {
-    const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
     const resolved = await Promise.all(
       fileIds.map(async (fileId): Promise<ResolvedAttachFile | null> => {
-        const prefix = buildArtifactPrefix(userId, fileId);
-        const objects = await get(listS3Objects(bucket, prefix));
-        const object = objects[0];
+        const object = await get(resolvedArtifactObject(userId, fileId));
         if (!object) {
           return null;
         }
 
-        const filename = object.key.split("/").pop() ?? fileId;
         return {
           id: fileId,
-          filename,
-          contentType: inferMimetype(filename),
+          filename: object.filename,
+          contentType: object.contentType,
           size: object.size,
-          url: buildFileUrl(userId, fileId, filename),
+          url: object.url,
         };
       }),
     );

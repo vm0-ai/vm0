@@ -2,20 +2,17 @@ import { command } from "ccstate";
 import { integrationsGithubUploadInitContract } from "@vm0/api-contracts/contracts/integrations";
 
 import { env } from "../../lib/env";
-import {
-  buildArtifactKey,
-  buildFileUrl,
-  sanitizeArtifactFilename,
-} from "../../lib/file-url";
+import { sanitizeArtifactFilename } from "../../lib/file-url";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { generatePresignedPutUrl } from "../external/s3";
+import { allocateArtifactObject$ } from "../services/artifact-storage.service";
 import type { RouteEntry } from "../route-entry";
 
 const PUT_URL_TTL_SECONDS = 3600;
 
-const init$ = command(async ({ get }, signal: AbortSignal) => {
+const init$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const bodyResult = await get(
     bodyResultOf(integrationsGithubUploadInitContract.init),
@@ -26,17 +23,20 @@ const init$ = command(async ({ get }, signal: AbortSignal) => {
   }
 
   const body = bodyResult.data;
-  const uploadId = crypto.randomUUID();
   const filename = sanitizeArtifactFilename(body.filename);
-  const s3Key = buildArtifactKey(auth.userId, uploadId, filename);
+  const artifact = await set(
+    allocateArtifactObject$,
+    { userId: auth.userId, orgId: auth.orgId, filename: body.filename },
+    signal,
+  );
   const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
   const uploadUrl = await get(
     generatePresignedPutUrl(
       bucket,
-      s3Key,
+      artifact.key,
       body.contentType,
       PUT_URL_TTL_SECONDS,
-      true,
+      { usePublicEndpoint: true, metadata: artifact.metadata },
     ),
   );
   signal.throwIfAborted();
@@ -44,9 +44,9 @@ const init$ = command(async ({ get }, signal: AbortSignal) => {
   return {
     status: 200 as const,
     body: {
-      uploadId,
+      uploadId: artifact.id,
       uploadUrl,
-      fileUrl: buildFileUrl(auth.userId, uploadId, filename),
+      fileUrl: artifact.url,
       filename,
       contentType: body.contentType,
       size: body.length,

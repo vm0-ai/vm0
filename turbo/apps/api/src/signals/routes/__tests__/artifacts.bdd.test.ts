@@ -343,7 +343,20 @@ describe("video Artifact previews", () => {
 
   it("generates a poster immediately for an ordinary video upload", async () => {
     const owner = await artifactActor("Artifacts API video preview agent");
+    if (!owner.actor.orgId) {
+      throw new Error("Expected video preview test actor to have an org");
+    }
     await setVideoArtifactPosters(owner.actor, true);
+    await updateFeatureSwitchesForUser(
+      context,
+      {
+        ...owner.actor,
+        orgId: owner.actor.orgId,
+      },
+      {
+        [FeatureSwitchKey.ArtifactKeyV2]: true,
+      },
+    );
     const frameRequests = mockCloudflareVideoFrame(owner.actor.userId);
 
     const videoArtifact = await createRunUploadedFile({
@@ -359,7 +372,7 @@ describe("video Artifact previews", () => {
       `https://cdn.vm7.io/cdn-cgi/media/mode=frame,time=1s,width=640,format=jpg/${videoArtifact.url}`,
     );
     const posterPuts = owner.objectStore.puts.filter((put) => {
-      return put.key.endsWith("/poster-v2.jpg");
+      return /^artifacts\/[0-9a-z]{10}\.jpg$/u.test(put.key);
     });
     expect(posterPuts).toHaveLength(1);
     expect(posterPuts[0]).toMatchObject({
@@ -373,7 +386,9 @@ describe("video Artifact previews", () => {
     const previewedArtifact = response.artifacts.find((item) => {
       return item.fileId === videoArtifact.fileId;
     });
-    expect(previewedArtifact?.previewImageUrl).toMatch(/\/poster-v2\.jpg$/);
+    expect(previewedArtifact?.previewImageUrl).toMatch(
+      /\/artifacts\/[0-9a-z]{10}\.jpg$/u,
+    );
   }, 180_000);
 
   it("reuses an existing write-once poster after a concurrent upload", async () => {
@@ -648,6 +663,16 @@ describe("GET /api/zero/artifacts", () => {
     }
     mockEnv("CLOUDFLARE_BROWSER_RENDERING_API_TOKEN", "preview-token");
     mockEnv("ARTIFACT_PREVIEW_WAF_SECRET", ARTIFACT_PREVIEW_WAF_SECRET);
+    await updateFeatureSwitchesForUser(
+      context,
+      {
+        ...owner.actor,
+        orgId: owner.actor.orgId,
+      },
+      {
+        [FeatureSwitchKey.ArtifactKeyV2]: true,
+      },
+    );
     const snapshotRequests = mockCloudflareSnapshot();
 
     const artifact = await createHostedArtifact({
@@ -662,8 +687,8 @@ describe("GET /api/zero/artifacts", () => {
     const firstArtifact = firstResponse.artifacts.find((item) => {
       return item.fileId === artifact.fileId;
     });
-    expect(firstArtifact?.previewImageUrl).toContain(
-      `/preview-v3-${artifact.deploymentId}.webp`,
+    expect(firstArtifact?.previewImageUrl).toMatch(
+      /\/artifacts\/[0-9a-z]{10}\.webp$/u,
     );
     const threadArtifacts = await chat.listThreadArtifacts(
       owner.actor,
@@ -705,7 +730,7 @@ describe("GET /api/zero/artifacts", () => {
     });
     expect(
       owner.objectStore.puts.find((put) => {
-        return put.key.endsWith(`/preview-v3-${artifact.deploymentId}.webp`);
+        return /^artifacts\/[0-9a-z]{10}\.webp$/u.test(put.key);
       }),
     ).toMatchObject({
       bucket: "test-user-artifacts",
