@@ -5868,7 +5868,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     await fw.seedTestConnector(actor, {
-      connectorName: "x",
+      connectorSlug: "x",
       authMethod: "oauth",
       accessToken: "x-bdd-unallowed-access",
       refreshToken: "x-bdd-unallowed-refresh",
@@ -5908,7 +5908,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
 
     await fw.seedTestConnector(actor, {
-      connectorName: "x",
+      connectorSlug: "x",
       authMethod: "oauth",
       accessToken: "x-bdd-direct-unallowed-access",
       refreshToken: "x-bdd-direct-unallowed-refresh",
@@ -5959,7 +5959,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     }
 
     await fw.seedTestConnector(actor, {
-      connectorName: "x",
+      connectorSlug: "x",
       authMethod: "oauth",
       accessToken: "x-bdd-version-unallowed-access",
       refreshToken: "x-bdd-version-unallowed-refresh",
@@ -6019,7 +6019,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
 
     await fw.seedTestConnector(actor, {
-      connectorName: "x",
+      connectorSlug: "x",
       authMethod: "oauth",
       accessToken: "x-bdd-public-owner-access",
       refreshToken: "x-bdd-public-owner-refresh",
@@ -6052,13 +6052,13 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     await fw.seedTestConnector(actor, {
-      connectorName: "x",
+      connectorSlug: "x",
       authMethod: "oauth",
       accessToken: "x-bdd-access",
       refreshToken: "x-bdd-refresh",
     });
     await fw.seedTestConnector(actor, {
-      connectorName: "slack",
+      connectorSlug: "slack",
       authMethod: "oauth",
       accessToken: "xoxb-bdd-unenabled-access",
     });
@@ -6175,7 +6175,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     await api.grantProEntitlement(actor);
 
     await fw.seedTestConnector(actor, {
-      connectorName: "x",
+      connectorSlug: "x",
       authMethod: "oauth",
       accessToken: "x-bdd-overridden-access",
       refreshToken: "x-bdd-overridden-refresh",
@@ -6331,7 +6331,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     await api.grantProEntitlement(actor);
 
     await fw.seedTestConnector(actor, {
-      connectorName: "test-oauth",
+      connectorSlug: "test-oauth",
       authMethod: "oauth",
       accessToken: "test-oauth-bdd-access",
       refreshToken: "test-oauth-bdd-refresh",
@@ -6380,7 +6380,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     await api.grantProEntitlement(actor);
 
     await fw.seedTestConnector(actor, {
-      connectorName: "test-oauth",
+      connectorSlug: "test-oauth",
       authMethod: "oauth",
       accessToken: "incompatible-access",
       refreshToken: "incompatible-refresh",
@@ -6474,13 +6474,13 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
 
     await fw.seedTestConnector(actor, {
-      connectorName: "x",
+      connectorSlug: "x",
       authMethod: "oauth",
       accessToken: "x-bdd-direct-access",
       refreshToken: "x-bdd-direct-refresh",
     });
     await fw.seedTestConnector(actor, {
-      connectorName: "slack",
+      connectorSlug: "slack",
       authMethod: "oauth",
       accessToken: "xoxb-bdd-direct-unenabled-access",
     });
@@ -6586,7 +6586,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     const { actor, agentId } = await entitledRunActor();
 
     await fw.seedTestConnector(actor, {
-      connectorName: "x",
+      connectorSlug: "x",
       authMethod: "oauth",
       accessToken: "x-bdd-lazy-access",
       refreshToken: "x-bdd-lazy-refresh",
@@ -6719,7 +6719,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     );
 
     await fw.seedTestConnector(actor, {
-      connectorName: "google-ads",
+      connectorSlug: "google-ads",
       authMethod: "oauth",
       accessToken: "google-ads-bdd-access",
       refreshToken: "google-ads-bdd-refresh",
@@ -6810,7 +6810,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     mockOptionalEnv("GOOGLE_ADS_DEVELOPER_TOKEN", "platform-developer-token");
 
     await fw.seedTestConnector(actor, {
-      connectorName: "google-ads",
+      connectorSlug: "google-ads",
       authMethod: "oauth",
       accessToken: "google-ads-bdd-access",
       refreshToken: "google-ads-bdd-refresh",
@@ -8161,7 +8161,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     const agentId = agent.agentId;
     await fw.seedTestConnector(actor, {
-      connectorName: "slack",
+      connectorSlug: "slack",
       authMethod: "oauth",
       accessToken: "xoxb-bdd-baseline",
     });
@@ -8250,7 +8250,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       displayName: "BDD permission baseline fallback agent",
     });
     await fw.seedTestConnector(actor, {
-      connectorName: "slack",
+      connectorSlug: "slack",
       authMethod: "oauth",
       accessToken: "xoxb-bdd-baseline-fallback",
     });
@@ -8320,7 +8320,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     const agentId = agent.agentId;
     await fw.seedTestConnector(actor, {
-      connectorName: "slack",
+      connectorSlug: "slack",
       authMethod: "oauth",
       accessToken: "xoxb-bdd-grants",
     });
@@ -8713,7 +8713,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     await fw.seedTestConnector(actor, {
-      connectorName: "slack",
+      connectorSlug: "slack",
       authMethod: "oauth",
       accessToken: "xoxb-bdd-claim-response-timing",
     });
@@ -8857,7 +8857,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.grantProEntitlement(actor);
     await api.ensureOrgModelProvider(actor);
     await fw.seedTestConnector(actor, {
-      connectorName: "slack",
+      connectorSlug: "slack",
       authMethod: "oauth",
       accessToken: "xoxb-bdd-shared-version",
     });
@@ -8944,7 +8944,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     const agentId = agent.agentId;
     await fw.seedTestConnector(actor, {
-      connectorName: "cloudflare",
+      connectorSlug: "cloudflare",
       authMethod: "oauth",
       accessToken: "cloudflare-bdd-token",
     });
@@ -9000,7 +9000,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.grantProEntitlement(actor);
 
     await fw.seedTestConnector(actor, {
-      connectorName: "cloudflare",
+      connectorSlug: "cloudflare",
       authMethod: "oauth",
       accessToken: "cloudflare-direct-bdd-token",
     });
@@ -9086,7 +9086,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       visibility: "private",
     });
     await fw.seedTestConnector(actor, {
-      connectorName: "slack",
+      connectorSlug: "slack",
       authMethod: "oauth",
       accessToken: "xoxb-bdd-context",
     });
