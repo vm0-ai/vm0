@@ -378,9 +378,23 @@ async function validateCurrentBrowserApiBeforeBillingMigration(): Promise<void> 
 async function validateThreadBrowserIdentityAfterMigration(
   dbUrl: string,
 ): Promise<void> {
-  console.log("=== Phase 2.4: Validate thread-keyed browser identity ===\n");
+  console.log(
+    "=== Phase 2.4: Validate thread browser rollout compatibility ===\n",
+  );
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
+
+  const legacyBrowserProfileId = "00000000-0000-4000-8000-000000073501";
+  const legacyProviderProfileId = "00000000-0000-4000-8000-000000073502";
+  const legacyBrowserSessionId = "00000000-0000-4000-8000-000000073503";
+  const legacyProviderSessionId = "00000000-0000-4000-8000-000000073504";
+  const legacyChatThreadId = "00000000-0000-4000-8000-000000073505";
+  const legacyRunId = "00000000-0000-4000-8000-000000073506";
+  const threadProviderProfileId = "00000000-0000-4000-8000-000000077201";
+  const threadChatThreadId = "00000000-0000-4000-8000-000000077202";
+  const threadProviderSessionId = "00000000-0000-4000-8000-000000077203";
+  const threadRunId = "00000000-0000-4000-8000-000000077204";
+
   try {
     const tables = await client.query<{
       browserProfiles: string | null;
@@ -395,47 +409,42 @@ async function validateThreadBrowserIdentityAfterMigration(
     );
     assert.deepEqual(tables.rows, [
       {
-        browserProfiles: null,
+        browserProfiles: "browser_profiles",
         tabSnapshots: "browser_session_tab_snapshots",
       },
     ]);
 
     const columns = await client.query<{
       columnName: string;
+      isNullable: string;
       tableName: string;
     }>(
       `
         SELECT
           "table_name" AS "tableName",
-          "column_name" AS "columnName"
+          "column_name" AS "columnName",
+          "is_nullable" AS "isNullable"
         FROM "information_schema"."columns"
         WHERE "table_schema" = 'public'
-          AND "table_name" IN (
-            'browser_sessions',
-            'browser_thread_profiles',
-            'browser_session_instances'
+          AND ("table_name", "column_name") IN (
+            ('browser_sessions', 'browser_profile_id'),
+            ('browser_session_instances', 'browser_session_id')
           )
-        ORDER BY "table_name", "ordinal_position"
+        ORDER BY "table_name", "column_name"
       `,
     );
-    const forbiddenColumns = new Set([
-      "id",
-      "browser_profile_id",
-      "browser_thread_profile_id",
-      "browser_session_id",
-      "max_credits",
-      "gross_credits",
-      "credits_charged",
-      "pricing_unit_price",
-      "pricing_unit_size",
+    assert.deepEqual(columns.rows, [
+      {
+        tableName: "browser_session_instances",
+        columnName: "browser_session_id",
+        isNullable: "YES",
+      },
+      {
+        tableName: "browser_sessions",
+        columnName: "browser_profile_id",
+        isNullable: "YES",
+      },
     ]);
-    for (const column of columns.rows) {
-      assert.equal(
-        forbiddenColumns.has(column.columnName),
-        false,
-        `${column.tableName}.${column.columnName} is a legacy browser column`,
-      );
-    }
 
     const primaryKeys = await client.query<{
       columnName: string;
@@ -459,9 +468,187 @@ async function validateThreadBrowserIdentityAfterMigration(
       `,
     );
     assert.deepEqual(primaryKeys.rows, [
-      { tableName: "browser_sessions", columnName: "chat_thread_id" },
-      { tableName: "browser_thread_profiles", columnName: "chat_thread_id" },
+      { tableName: "browser_sessions", columnName: "id" },
+      { tableName: "browser_thread_profiles", columnName: "id" },
     ]);
+
+    const pricing = await client.query<{
+      unitPrice: string;
+      unitSize: string;
+    }>(
+      `
+        SELECT
+          "unit_price"::text AS "unitPrice",
+          "unit_size"::text AS "unitSize"
+        FROM "usage_pricing"
+        WHERE "kind" = 'browser'
+          AND "provider" = 'browser-use'
+          AND "category" = 'provider_cost_usd_micros'
+        LIMIT 1
+      `,
+    );
+    assert.deepEqual(pricing.rows, [{ unitPrice: "0", unitSize: "1" }]);
+    const pricingRow = pricing.rows[0];
+    if (!pricingRow) {
+      throw new Error("Previous browser API pricing lookup returned no row");
+    }
+
+    // Previous-API statement shapes must remain legal after the migration.
+    await client.query(
+      `
+        INSERT INTO "browser_profiles" (
+          "id",
+          "org_id",
+          "user_id",
+          "provider_profile_id"
+        )
+        VALUES ($1, 'browser-drain-org', 'browser-drain-user', $2)
+      `,
+      [legacyBrowserProfileId, legacyProviderProfileId],
+    );
+    await client.query(
+      `
+        INSERT INTO "browser_sessions" (
+          "id",
+          "chat_thread_id",
+          "run_id",
+          "org_id",
+          "user_id",
+          "name",
+          "browser_profile_id",
+          "status",
+          "proxy_country_code",
+          "timeout_minutes",
+          "max_credits"
+        )
+        VALUES (
+          $1,
+          $2,
+          NULL,
+          'browser-drain-org',
+          'browser-drain-user',
+          'previous-api-start',
+          $3,
+          'creating',
+          NULL,
+          240,
+          500
+        )
+      `,
+      [legacyBrowserSessionId, legacyChatThreadId, legacyBrowserProfileId],
+    );
+    const legacyInstance = await client.query<{
+      pricingUnitPrice: string;
+      pricingUnitSize: string;
+    }>(
+      `
+        INSERT INTO "browser_session_instances" (
+          "provider_session_id",
+          "browser_session_id",
+          "chat_thread_id",
+          "run_id",
+          "status",
+          "pricing_unit_price",
+          "pricing_unit_size",
+          "timeout_at",
+          "started_at",
+          "last_touched_at",
+          "idle_expires_at"
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          $4,
+          'active',
+          $5::bigint,
+          $6::bigint,
+          now() + interval '240 minutes',
+          now(),
+          now(),
+          now() + interval '10 minutes'
+        )
+        RETURNING
+          "pricing_unit_price"::text AS "pricingUnitPrice",
+          "pricing_unit_size"::text AS "pricingUnitSize"
+      `,
+      [
+        legacyProviderSessionId,
+        legacyBrowserSessionId,
+        legacyChatThreadId,
+        legacyRunId,
+        pricingRow.unitPrice,
+        pricingRow.unitSize,
+      ],
+    );
+    assert.deepEqual(legacyInstance.rows, [
+      { pricingUnitPrice: "0", pricingUnitSize: "1" },
+    ]);
+
+    // Current-API inserts intentionally omit every legacy identity and billing
+    // field while the physical compatibility columns remain.
+    await client.query(
+      `
+        INSERT INTO "browser_thread_profiles" (
+          "chat_thread_id",
+          "org_id",
+          "user_id",
+          "provider_profile_id"
+        )
+        VALUES ($1, 'thread-browser-org', 'thread-browser-user', $2)
+      `,
+      [threadChatThreadId, threadProviderProfileId],
+    );
+    await client.query(
+      `
+        INSERT INTO "browser_sessions" (
+          "chat_thread_id",
+          "run_id",
+          "org_id",
+          "user_id",
+          "name",
+          "status",
+          "proxy_country_code",
+          "timeout_minutes"
+        )
+        VALUES (
+          $1,
+          NULL,
+          'thread-browser-org',
+          'thread-browser-user',
+          'thread-browser-start',
+          'creating',
+          NULL,
+          240
+        )
+      `,
+      [threadChatThreadId],
+    );
+    await client.query(
+      `
+        INSERT INTO "browser_session_instances" (
+          "provider_session_id",
+          "chat_thread_id",
+          "run_id",
+          "status",
+          "timeout_at",
+          "started_at",
+          "last_touched_at",
+          "idle_expires_at"
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          'active',
+          now() + interval '240 minutes',
+          now(),
+          now(),
+          now() + interval '10 minutes'
+        )
+      `,
+      [threadProviderSessionId, threadChatThreadId, threadRunId],
+    );
 
     const lifecycleConstraint = await client.query<{ definition: string }>(
       `
@@ -479,11 +666,27 @@ async function validateThreadBrowserIdentityAfterMigration(
       lifecycleConstraint.rows[0]?.definition ?? "",
       /browser\.stopped/u,
     );
-    console.log("   ✅ browser identity is thread-keyed with no legacy UUID");
+    console.log("   ✅ previous browser API statements remain valid");
+    console.log("   ✅ current thread-keyed browser inserts omit legacy IDs");
     console.log(
       "   ✅ browser lifecycle events and tab snapshots are available\n",
     );
   } finally {
+    await client.query(
+      `DELETE FROM "browser_session_instances" WHERE "provider_session_id" IN ($1, $2)`,
+      [legacyProviderSessionId, threadProviderSessionId],
+    );
+    await client.query(
+      `DELETE FROM "browser_sessions" WHERE "chat_thread_id" IN ($1, $2)`,
+      [legacyChatThreadId, threadChatThreadId],
+    );
+    await client.query(
+      `DELETE FROM "browser_thread_profiles" WHERE "chat_thread_id" = $1`,
+      [threadChatThreadId],
+    );
+    await client.query(`DELETE FROM "browser_profiles" WHERE "id" = $1`, [
+      legacyBrowserProfileId,
+    ]);
     await client.end();
   }
 }
@@ -12497,7 +12700,9 @@ async function main(): Promise<void> {
       console.log("   ✅ Snapshot chain is intact (id/prevId references)");
       console.log("   ✅ Journal timestamps are strictly increasing");
       console.log("   ✅ Latest snapshot accurately reflects final DB state");
-      console.log("   ✅ Browser identity is thread-keyed with no legacy UUID");
+      console.log(
+        "   ✅ Thread browser identity keeps previous-API rollout compatibility",
+      );
       console.log(
         "   ✅ Current browser API can start before billing migration",
       );

@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   index,
   integer,
   pgTable,
@@ -16,11 +17,17 @@ import type {
 
 import { agentRuns } from "./agent-run";
 import { chatThreads } from "./chat-thread";
+import { usageEvent } from "./usage-event";
 
-export const browserThreadProfiles = pgTable(
-  "browser_thread_profiles",
+/**
+ * Compatibility store for the API version that predates thread-scoped browser
+ * profiles. The current API does not read or write this table; keep it in the
+ * expand release so the previous API can drain before a later contraction.
+ */
+export const browserProfiles = pgTable(
+  "browser_profiles",
   {
-    chatThreadId: uuid("chat_thread_id").primaryKey(),
+    id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
     providerProfileId: uuid("provider_profile_id").notNull(),
@@ -29,6 +36,29 @@ export const browserThreadProfiles = pgTable(
   },
   (table) => {
     return [
+      uniqueIndex("uq_browser_profiles_owner").on(table.orgId, table.userId),
+      uniqueIndex("uq_browser_profiles_provider_profile").on(
+        table.providerProfileId,
+      ),
+    ];
+  },
+);
+
+export const browserThreadProfiles = pgTable(
+  "browser_thread_profiles",
+  {
+    // id remains the physical primary key until the previous API drains.
+    id: uuid("id").defaultRandom().primaryKey(),
+    chatThreadId: uuid("chat_thread_id").notNull(),
+    orgId: text("org_id").notNull(),
+    userId: text("user_id").notNull(),
+    providerProfileId: uuid("provider_profile_id").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      uniqueIndex("uq_browser_thread_profiles_thread").on(table.chatThreadId),
       uniqueIndex("uq_browser_thread_profiles_provider_profile").on(
         table.providerProfileId,
       ),
@@ -40,9 +70,12 @@ export const browserThreadProfiles = pgTable(
 export const browserSessions = pgTable(
   "browser_sessions",
   {
+    // Compatibility identity for the previous API. Current code keys every
+    // lookup by chatThreadId and can remove this in the contraction release.
+    id: uuid("id").defaultRandom().primaryKey(),
     // External browser cleanup must survive chat-thread deletion. The delete
     // path and reconciler use this durable key after the parent thread is gone.
-    chatThreadId: uuid("chat_thread_id").primaryKey(),
+    chatThreadId: uuid("chat_thread_id").notNull(),
     runId: uuid("run_id").references(
       () => {
         return agentRuns.id;
@@ -52,11 +85,29 @@ export const browserSessions = pgTable(
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
     name: varchar("name", { length: 64 }).notNull(),
+    // Nullable compatibility references let the current API omit legacy
+    // profile identity while preserving the previous API's statement shapes.
+    browserProfileId: uuid("browser_profile_id").references(() => {
+      return browserProfiles.id;
+    }),
+    browserThreadProfileId: uuid("browser_thread_profile_id").references(() => {
+      return browserThreadProfiles.id;
+    }),
     status: varchar("status", { length: 20 })
       .$type<ZeroBrowserStatus>()
       .notNull(),
     proxyCountryCode: varchar("proxy_country_code", { length: 2 }),
     timeoutMinutes: integer("timeout_minutes").notNull(),
+    // Browser billing was removed from current code in an earlier expand
+    // release. Keep these defaulted columns modeled until both that API and the
+    // browser-ID API have drained.
+    maxCredits: integer("max_credits").default(1).notNull(),
+    grossCredits: bigint("gross_credits", { mode: "number" })
+      .default(0)
+      .notNull(),
+    creditsCharged: bigint("credits_charged", { mode: "number" })
+      .default(0)
+      .notNull(),
     suspendedAt: timestamp("suspended_at"),
     suspensionReason: varchar("suspension_reason", {
       length: 20,
@@ -76,6 +127,11 @@ export const browserSessions = pgTable(
         table.createdAt.desc(),
       ),
       index("idx_browser_sessions_reconcile").on(table.status, table.updatedAt),
+      uniqueIndex("uq_browser_sessions_thread_owned")
+        .on(table.chatThreadId)
+        .where(
+          sql`${table.status} IN ('creating', 'active', 'resuming', 'stopping')`,
+        ),
     ];
   },
 );
@@ -112,6 +168,13 @@ export const browserSessionInstances = pgTable(
   "browser_session_instances",
   {
     providerSessionId: uuid("provider_session_id").primaryKey(),
+    // Nullable compatibility reference for the previous browser-ID API.
+    browserSessionId: uuid("browser_session_id").references(
+      () => {
+        return browserSessions.id;
+      },
+      { onDelete: "cascade" },
+    ),
     // These IDs are immutable attribution keys rather than ownership FKs.
     // Provider cleanup must outlive deletion of either parent.
     chatThreadId: uuid("chat_thread_id").notNull(),
@@ -121,6 +184,32 @@ export const browserSessionInstances = pgTable(
       .notNull(),
     timeoutAt: timestamp("timeout_at").notNull(),
     startedAt: timestamp("started_at").notNull(),
+    // Transitional billing columns retained for the previous API.
+    billingRunId: uuid("billing_run_id"),
+    browserCostMicrousd: bigint("browser_cost_microusd", { mode: "number" })
+      .default(0)
+      .notNull(),
+    proxyCostMicrousd: bigint("proxy_cost_microusd", { mode: "number" })
+      .default(0)
+      .notNull(),
+    proxyUsedMb: text("proxy_used_mb").default("0").notNull(),
+    pricingUnitPrice: bigint("pricing_unit_price", { mode: "number" })
+      .default(0)
+      .notNull(),
+    pricingUnitSize: bigint("pricing_unit_size", { mode: "number" })
+      .default(1)
+      .notNull(),
+    grossCredits: bigint("gross_credits", { mode: "number" })
+      .default(0)
+      .notNull(),
+    creditsCharged: bigint("credits_charged", { mode: "number" }),
+    usageEventId: uuid("usage_event_id").references(
+      () => {
+        return usageEvent.id;
+      },
+      { onDelete: "set null" },
+    ),
+    settledAt: timestamp("settled_at"),
     // Idle lease. Any run or open viewer touches the instance, and the
     // reconciler reclaims it once the lease expires. updatedAt cannot carry
     // this because the reconciler bumps updatedAt on every healthy pass.
@@ -137,6 +226,10 @@ export const browserSessionInstances = pgTable(
   },
   (table) => {
     return [
+      index("idx_browser_session_instances_session").on(
+        table.browserSessionId,
+        table.createdAt.desc(),
+      ),
       index("idx_browser_session_instances_thread").on(
         table.chatThreadId,
         table.createdAt.desc(),

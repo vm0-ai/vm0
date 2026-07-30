@@ -129,10 +129,18 @@ export const autoOpenInitialThreadSidebar$ = command(
   ): Promise<void> => {
     await get(thread.indexedDbEventsInitialized$);
     signal.throwIfAborted();
-    // IndexedDB is only a local-first rendering cache. The latest remote page
-    // is authoritative for lifecycle projection; older history keeps loading
-    // without blocking browser chrome.
-    await get(thread.initialRemoteEventsReady$);
+    // A lifecycle event in the locally cached/forward-synced window is
+    // authoritative because every newer remote event has already been merged.
+    // When that window has no lifecycle event and does not reach seqId 1,
+    // older history may still contain an unmatched browser.started, so finish
+    // the backfill before deciding that the browser is inactive.
+    const browserLifecycleAuthoritative = await get(
+      thread.initialBrowserLifecycleAuthoritative$,
+    );
+    signal.throwIfAborted();
+    if (!browserLifecycleAuthoritative) {
+      await get(thread.initialRemoteEventsComplete$);
+    }
     signal.throwIfAborted();
     const result = await settle(
       set(autoOpenThreadSidebarFromBrowserLifecycle$, thread, signal),

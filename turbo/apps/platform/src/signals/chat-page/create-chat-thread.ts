@@ -2129,20 +2129,51 @@ function createEventSemanticSignals(
 
 interface EventSyncTracking {
   readonly completion: Promise<void>;
-  readonly initialRemoteEventsReady: Promise<void>;
+  readonly initialRemoteEventsReady: Promise<boolean>;
+}
+
+type MarkInitialRemoteEventsReady = (
+  browserLifecycleAuthoritative: boolean,
+) => void;
+
+async function eventSyncCompletionAsAuthoritative(
+  completion: Promise<void>,
+): Promise<boolean> {
+  await completion;
+  return true;
 }
 
 function createEventSyncSignals(hasEvents$: Computed<Promise<boolean>>) {
   const initialSyncStarted = Promise.withResolvers<void>();
   const internalEventSync$ = state<EventSyncTracking | null>(null);
+  const eventSyncTracking$ = computed(
+    async (get): Promise<EventSyncTracking> => {
+      await initialSyncStarted.promise;
+      const tracking = get(internalEventSync$);
+      if (!tracking) {
+        throw new Error("Initial chat event sync tracking is missing");
+      }
+      return tracking;
+    },
+  );
+  const initialRemoteEventsComplete$ = computed(async (get): Promise<void> => {
+    await (
+      await get(eventSyncTracking$)
+    ).completion;
+  });
   const hasNewEvents$ = computed(async (get): Promise<boolean> => {
-    await initialSyncStarted.promise;
-    await get(internalEventSync$)?.completion;
+    await get(initialRemoteEventsComplete$);
     return await get(hasEvents$);
   });
+  const initialBrowserLifecycleAuthoritative$ = computed(
+    async (get): Promise<boolean> => {
+      return await (
+        await get(eventSyncTracking$)
+      ).initialRemoteEventsReady;
+    },
+  );
   const initialRemoteEventsReady$ = computed(async (get): Promise<void> => {
-    await initialSyncStarted.promise;
-    await get(internalEventSync$)?.initialRemoteEventsReady;
+    await get(initialBrowserLifecycleAuthoritative$);
   });
   const trackEventSync$ = command(
     ({ set }, tracking: EventSyncTracking): void => {
@@ -2154,24 +2185,29 @@ function createEventSyncSignals(hasEvents$: Computed<Promise<boolean>>) {
     const promise = Promise.resolve();
     set(trackEventSync$, {
       completion: promise,
-      initialRemoteEventsReady: promise,
+      initialRemoteEventsReady: Promise.resolve(true),
     });
     return promise;
   });
   return {
     hasNewEvents$,
     initialRemoteEventsReady$,
+    initialBrowserLifecycleAuthoritative$,
+    initialRemoteEventsComplete$,
     trackEventSync$,
     settleEventSync$,
   };
 }
 
 function createTrackedEventSyncCommand(
-  runSyncRemoteEvents$: Command<Promise<void>, [() => void, AbortSignal]>,
+  runSyncRemoteEvents$: Command<
+    Promise<void>,
+    [MarkInitialRemoteEventsReady, AbortSignal]
+  >,
   trackEventSync$: Command<void, [EventSyncTracking]>,
 ): Command<Promise<void>, [AbortSignal]> {
   return command(({ set }, signal: AbortSignal): Promise<void> => {
-    const initialRemoteEventsReady = Promise.withResolvers<void>();
+    const initialRemoteEventsReady = Promise.withResolvers<boolean>();
     const completion = set(
       runSyncRemoteEvents$,
       initialRemoteEventsReady.resolve,
@@ -2181,7 +2217,7 @@ function createTrackedEventSyncCommand(
       completion,
       initialRemoteEventsReady: Promise.race([
         initialRemoteEventsReady.promise,
-        completion,
+        eventSyncCompletionAsAuthoritative(completion),
       ]),
     });
     return completion;
@@ -2268,6 +2304,13 @@ const HISTORY_BACKFILL_MERGE_BATCH_SIZE = 300;
 /** Per-thread chat event sequences start at 1, so this marks the oldest event. */
 const FIRST_CHAT_EVENT_SEQ_ID = 1;
 
+function isBrowserLifecycleEvent(event: PersistedChatEvent): boolean {
+  return (
+    event.eventType === "browser.started" ||
+    event.eventType === "browser.stopped"
+  );
+}
+
 function createSyncRemoteEventsCommand({
   threadId,
   persistentEvents$,
@@ -2284,11 +2327,11 @@ function createSyncRemoteEventsCommand({
   threadScrollPosition$: Computed<ThreadScrollPosition | null>;
   requestScrollAfterRender$: Command<void, [ThreadScrollPosition | null]>;
   dataSource: ChatThreadRemote;
-}): Command<Promise<void>, [() => void, AbortSignal]> {
+}): Command<Promise<void>, [MarkInitialRemoteEventsReady, AbortSignal]> {
   return command(
     async (
       { get, set },
-      markInitialRemoteEventsReady: () => void,
+      markInitialRemoteEventsReady: MarkInitialRemoteEventsReady,
       signal: AbortSignal,
     ) => {
       const mergeEvents = (events: PersistedChatEvent[]): void => {
@@ -2302,6 +2345,9 @@ function createSyncRemoteEventsCommand({
       const latestPersistentEvent = persistentEvents.at(-1);
       let sinceSeqId = latestPersistentEvent?.event.seqId;
       let initialPageOldestEvent: PersistedChatEvent | undefined;
+      let browserLifecycleObserved = persistentEvents.some(({ event }) => {
+        return isBrowserLifecycleEvent(event);
+      });
 
       async function syncEventsAfter(): Promise<void> {
         const requestedSinceSeqId = sinceSeqId;
@@ -2321,6 +2367,7 @@ function createSyncRemoteEventsCommand({
         if (events.length === 0) {
           return;
         }
+        browserLifecycleObserved ||= events.some(isBrowserLifecycleEvent);
 
         await set(writeIndexedDbChatEvents$, threadId, events, signal);
         signal.throwIfAborted();
@@ -2342,7 +2389,15 @@ function createSyncRemoteEventsCommand({
       }
       await syncEventsAfter();
       signal.throwIfAborted();
-      markInitialRemoteEventsReady();
+      // When IndexedDB supplied the starting cursor, forward catch-up events
+      // were accumulated rather than merged. Apply them before the sidebar
+      // reads the lifecycle projection so cached state cannot win over remote
+      // events that happened later.
+      mergeEvents(accumulatedEvents.slice(mergedEventCount));
+      mergedEventCount = accumulatedEvents.length;
+      markInitialRemoteEventsReady(
+        browserLifecycleObserved || get(hasReachedOldestEvent$),
+      );
 
       if (!get(hasReachedOldestEvent$)) {
         const oldestEvent =
@@ -4632,6 +4687,9 @@ function publicChatThreadEventSignals(
     hasEvents$: events.hasEvents$,
     hasNewEvents$: events.hasNewEvents$,
     initialRemoteEventsReady$: events.initialRemoteEventsReady$,
+    initialBrowserLifecycleAuthoritative$:
+      events.initialBrowserLifecycleAuthoritative$,
+    initialRemoteEventsComplete$: events.initialRemoteEventsComplete$,
     hasQueuedEvents$: events.hasQueuedEvents$,
     queuedEventItems$: events.queuedEventItems$,
     emptyQueuedEventItems$: events.emptyQueuedEventItems$,
