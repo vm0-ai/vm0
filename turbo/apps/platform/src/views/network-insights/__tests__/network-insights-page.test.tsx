@@ -146,7 +146,6 @@ function insightsResponse(): InsightsResponse & NetworkInsightsData {
           {
             label: "admin.analytics:read",
             connectorSlug: "slack",
-            connectorType: "slack",
             allowed: 7,
             denied: 0,
             agentNames: ["Research Bot"],
@@ -154,7 +153,6 @@ function insightsResponse(): InsightsResponse & NetworkInsightsData {
           {
             label: "channels:read",
             connectorSlug: "slack",
-            connectorType: "slack",
             allowed: 5,
             denied: 0,
             agentNames: ["Research Bot"],
@@ -162,7 +160,6 @@ function insightsResponse(): InsightsResponse & NetworkInsightsData {
           {
             label: "chat:write",
             connectorSlug: "slack",
-            connectorType: "slack",
             allowed: 4,
             denied: 0,
             agentNames: ["Research Bot"],
@@ -170,7 +167,6 @@ function insightsResponse(): InsightsResponse & NetworkInsightsData {
           {
             label: "repo-read",
             connectorSlug: "github",
-            connectorType: "github",
             allowed: 3,
             denied: 0,
             agentNames: ["Ops Bot"],
@@ -178,7 +174,6 @@ function insightsResponse(): InsightsResponse & NetworkInsightsData {
           {
             label: "issues:read",
             connectorSlug: "github",
-            connectorType: "github",
             allowed: 2,
             denied: 0,
             agentNames: ["Ops Bot"],
@@ -186,7 +181,6 @@ function insightsResponse(): InsightsResponse & NetworkInsightsData {
           {
             label: "pull-requests:read",
             connectorSlug: "github",
-            connectorType: "github",
             allowed: 1,
             denied: 0,
             agentNames: ["Ops Bot"],
@@ -194,7 +188,6 @@ function insightsResponse(): InsightsResponse & NetworkInsightsData {
           {
             label: "admin.apps:write",
             connectorSlug: "slack",
-            connectorType: "slack",
             allowed: 0,
             denied: 3,
             agentNames: ["Research Bot"],
@@ -303,7 +296,6 @@ function insightsResponse(): InsightsResponse & NetworkInsightsData {
           {
             label: "events:read",
             connectorSlug: "google-calendar",
-            connectorType: "google-calendar",
             allowed: 2,
             denied: 0,
             agentNames: ["Archive Bot"],
@@ -592,42 +584,6 @@ describe("network insights page", () => {
       expect(screen.getByText("Catalog GitHub")).toBeInTheDocument();
       expect(screen.getByText("repo-read")).toBeInTheDocument();
     });
-  });
-
-  it("renders legacy-only permissions from an old API response", async () => {
-    const data = insightsResponse();
-    const day = data.days[0]!;
-    mockConnectorCatalogStatus([]);
-    context.mocks.api(zeroInsightsContract.get, ({ respond }) => {
-      return respond(200, {
-        ...data,
-        days: [
-          {
-            ...day,
-            services: [],
-            permissions: [
-              {
-                label: "github",
-                connectorType: "github",
-                allowed: 0,
-                denied: 1,
-                agentNames: ["Research Bot"],
-              },
-            ],
-          },
-        ],
-      });
-    });
-
-    detachedSetupPage({ context, path: "/insights" });
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Insights" }),
-      ).toBeInTheDocument();
-      expect(screen.getAllByText("Github").length).toBeGreaterThan(0);
-    });
-    expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
   });
 
   it("shows a no-activity message when the selected range excludes older data", async () => {
