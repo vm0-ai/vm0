@@ -575,10 +575,10 @@ const runCancelledEventSchema = chatEventBaseSchema
   })
   .strict();
 
-// Read-only rollout compatibility for browser bundles that may reach the
-// previous API while historical queue pause markers still exist. These leaves
-// deliberately stay outside CHAT_EVENT_TYPES and chatEventSchema so no current
-// writer or fold can recreate the retired pause/resume behavior.
+// Read-only leaves for historical queue pause markers, which the API serves
+// as part of the complete per-thread event stream. These deliberately stay
+// outside CHAT_EVENT_TYPES and chatEventSchema so no current writer or fold
+// can recreate the retired pause/resume behavior.
 const legacyQueueAutomationPausedEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("queue.automation_paused"),
@@ -1618,7 +1618,7 @@ export function isCanonicalChatEventResponse(
   );
 }
 
-export function chatEventResponse(event: ChatEvent): ChatEventResponse {
+export function chatEventResponse(event: ChatEventResponse): ChatEventResponse {
   return chatEventResponseSchema.parse(event);
 }
 
