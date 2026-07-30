@@ -21,6 +21,7 @@ import { ZipArchive } from "archiver";
 
 import { env, optionalEnv } from "../../lib/env";
 import { badRequestMessage, notFound } from "../../lib/error";
+import { isArtifactKeyV2 } from "../../lib/file-url";
 import { db$, type ReadonlyDb } from "../external/db";
 import { downloadHostedSitesS3Buffer, downloadS3Buffer } from "../external/s3";
 import {
@@ -616,7 +617,10 @@ function resolveArtifactS3ObjectFromKey(
   value: string,
   userId: string,
 ): ArtifactS3Object | null {
-  if (value.startsWith(`artifacts/${encodeURIComponent(userId)}/`)) {
+  if (
+    value.startsWith(`artifacts/${encodeURIComponent(userId)}/`) ||
+    isArtifactKeyV2(value)
+  ) {
     return {
       bucketName: env("R2_USER_ARTIFACTS_BUCKET_NAME"),
       key: value,

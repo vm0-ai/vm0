@@ -205,12 +205,16 @@ describe("zero slack upload-file command", () => {
               assetId,
               operationId,
               uploadUrl: CANONICAL_PRESIGNED_URL,
+              uploadHeaders: {
+                "x-amz-meta-artifact-id": assetId,
+              },
               url: "https://cdn.vm7.io/artifacts/user/asset/test-report.pdf",
             },
             { status: 200 },
           );
         }),
-        http.put(CANONICAL_PRESIGNED_URL, () => {
+        http.put(CANONICAL_PRESIGNED_URL, ({ request }) => {
+          expect(request.headers.get("x-amz-meta-artifact-id")).toBe(assetId);
           sequence.push("canonical-upload");
           return new HttpResponse(null, { status: 200 });
         }),
@@ -270,6 +274,7 @@ describe("zero slack upload-file command", () => {
       ]);
       expect(capturedInitBody).toMatchObject({
         filename: "test-report.pdf",
+        supportsUploadHeaders: true,
         canonical: {
           operationId,
           contentType: "application/pdf",

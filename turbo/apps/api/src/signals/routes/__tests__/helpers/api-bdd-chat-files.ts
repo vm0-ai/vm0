@@ -1233,6 +1233,7 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly filename: string;
         readonly contentType: string;
         readonly size: number;
+        readonly supportsUploadHeaders?: true;
       },
     ): Promise<UploadPrepareResponse> {
       const response = await accept(

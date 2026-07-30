@@ -1899,7 +1899,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
   it("forks Slack DM threads without replacing the main session", async () => {
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
-    await integrations.enableSlackDmSessionRoutingSwitch(actor);
     runs.acceptStorageDownloads();
     runs.acceptTelemetryIngest();
     integrations.configureSlackAppMocks();
