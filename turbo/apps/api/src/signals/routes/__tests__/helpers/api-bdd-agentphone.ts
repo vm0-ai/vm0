@@ -263,7 +263,13 @@ export function createAgentPhoneBddApi(context: TestContext) {
         const apl = typeof args[0] === "string" ? args[0] : "";
         return Promise.resolve(
           apl.includes("agent-run-events")
-            ? [{ eventType: "result", eventData: { result: text } }]
+            ? [
+                {
+                  eventType: "result",
+                  sequenceNumber: 1,
+                  eventData: { result: text },
+                },
+              ]
             : [],
         );
       });

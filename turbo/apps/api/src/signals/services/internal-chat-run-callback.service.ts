@@ -68,6 +68,10 @@ import {
 } from "./feishu-chat-callback-payload";
 import { formatRunErrorForRunOwner$ } from "./run-error-format.service";
 import {
+  deliverAgentPhoneChatAdmissionFailure,
+  dispatchAgentPhoneChatDeliveryOnce,
+} from "./internal-agentphone-chat-run-callback.service";
+import {
   deliverSlackChatAdmissionFailure,
   dispatchSlackChatDeliveryOnce,
 } from "./internal-slack-chat-run-callback.service";
@@ -83,6 +87,10 @@ import {
   deliverTelegramChatAdmissionFailure,
   dispatchTelegramChatDeliveryOnce,
 } from "./internal-telegram-chat-run-callback.service";
+import {
+  agentphoneDeliveryTargetSchema,
+  type AgentPhoneDeliveryTarget,
+} from "./agentphone-chat-callback-payload";
 import {
   teamsDeliveryTargetSchema,
   type TeamsDeliveryTarget,
@@ -316,6 +324,7 @@ const chatCallbackPayloadSchema = z
     feishuDelivery: feishuDeliveryTargetSchema.optional(),
     teamsDelivery: teamsDeliveryTargetSchema.optional(),
     telegramDelivery: telegramDeliveryTargetSchema.optional(),
+    agentphoneDelivery: agentphoneDeliveryTargetSchema.optional(),
     // Retain while callbacks created by this version can be dispatched by
     // rollback-eligible API versions that still gate pushes by run origin.
     isGoalRun: z.boolean().optional(),
@@ -521,6 +530,22 @@ interface ChatCallbackDependencies {
     },
     signal: AbortSignal,
   ) => Promise<void>;
+  readonly dispatchAgentPhoneDelivery: (
+    callbackId: string,
+    status: "completed" | "failed",
+    signal: AbortSignal,
+  ) => Promise<void>;
+  readonly deliverAgentPhoneAdmissionFailure: (
+    args: {
+      readonly chatThreadId: string;
+      readonly userId: string;
+      readonly orgId: string;
+      readonly agentId: string;
+      readonly target: AgentPhoneDeliveryTarget;
+      readonly chatMessageId: string;
+    },
+    signal: AbortSignal,
+  ) => Promise<void>;
   readonly createQueuedRun?: CreateQueuedRun;
   readonly drainThreadQueue?: (
     chatThreadId: string,
@@ -567,6 +592,7 @@ interface CreateQueuedChatRunInput {
   readonly feishuDelivery?: FeishuDeliveryTarget;
   readonly teamsDelivery?: TeamsDeliveryTarget;
   readonly telegramDelivery?: TelegramDeliveryTarget;
+  readonly agentphoneDelivery?: AgentPhoneDeliveryTarget;
   readonly morningBriefDelivery?: {
     readonly deliveryId: string;
     readonly internalKind: "morning-brief:email";
@@ -586,6 +612,7 @@ interface CreateQueuedChatRunInput {
     readonly telegramUsername?: string;
     readonly telegramUserId?: string;
     readonly telegramLanguage?: string;
+    readonly agentphoneHandle?: string;
   };
 }
 
@@ -636,10 +663,22 @@ interface TelegramQueuedMessageAdmissionFailure {
   readonly error: QueuedMessageModelRouteError;
 }
 
+interface AgentPhoneQueuedMessageAdmissionFailure {
+  readonly kind: "agentphone_admission_failure";
+  readonly orgId: string;
+  readonly userId: string;
+  readonly agentId: string;
+  readonly threadId: string;
+  readonly queuedMessage: QueuedUserMessage;
+  readonly agentphoneDelivery: AgentPhoneDeliveryTarget;
+  readonly error: QueuedMessageModelRouteError;
+}
+
 type QueuedMessageAdmissionFailure =
   | SlackQueuedMessageAdmissionFailure
   | TeamsQueuedMessageAdmissionFailure
   | TelegramQueuedMessageAdmissionFailure
+  | AgentPhoneQueuedMessageAdmissionFailure
   | MorningBriefQueuedMessageAdmissionFailure;
 
 type CompletedChatCallbackResult =
@@ -651,6 +690,7 @@ type CompletedChatCallbackResult =
       readonly feishuDeliveryCallbackId?: string;
       readonly teamsDeliveryCallbackId?: string;
       readonly telegramDeliveryCallbackId?: string;
+      readonly agentphoneDeliveryCallbackId?: string;
     }
   | { readonly inserted: false };
 
@@ -662,6 +702,7 @@ type FailedChatCallbackResult =
       readonly feishuDeliveryCallbackId?: string;
       readonly teamsDeliveryCallbackId?: string;
       readonly telegramDeliveryCallbackId?: string;
+      readonly agentphoneDeliveryCallbackId?: string;
     }
   | { readonly inserted: false };
 
@@ -671,6 +712,7 @@ interface TerminalChatCallbackWork {
   readonly feishuDeliveryCallbackId?: string;
   readonly teamsDeliveryCallbackId?: string;
   readonly telegramDeliveryCallbackId?: string;
+  readonly agentphoneDeliveryCallbackId?: string;
   readonly deferredSideEffects?: () => Promise<void>;
 }
 
@@ -729,6 +771,7 @@ function buildQueuedCreateZeroRunArgs(
           feishuDelivery: input.feishuDelivery,
           teamsDelivery: input.teamsDelivery,
           telegramDelivery: input.telegramDelivery,
+          agentphoneDelivery: input.agentphoneDelivery,
         },
       },
       ...(input.feishuDelivery
@@ -1274,6 +1317,50 @@ async function insertTelegramChatDeliveryCallback(args: {
   return callback.id;
 }
 
+async function insertAgentPhoneChatDeliveryCallback(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly sourceCallbackId?: string;
+  readonly target: AgentPhoneDeliveryTarget;
+  readonly chatMessageId: string;
+}): Promise<string> {
+  const callbackCondition = args.sourceCallbackId
+    ? and(
+        eq(agentRunCallbacks.id, args.sourceCallbackId),
+        eq(agentRunCallbacks.runId, args.runId),
+        eq(agentRunCallbacks.internalKind, "chat"),
+      )
+    : and(
+        eq(agentRunCallbacks.runId, args.runId),
+        eq(agentRunCallbacks.internalKind, "chat"),
+      );
+  const [sourceCallback] = await args.db
+    .select({ encryptedSecret: agentRunCallbacks.encryptedSecret })
+    .from(agentRunCallbacks)
+    .where(callbackCondition)
+    .limit(1);
+  if (!sourceCallback) {
+    throw new Error("Canonical AgentPhone run is missing its chat callback");
+  }
+
+  const [callback] = await args.db
+    .insert(agentRunCallbacks)
+    .values({
+      runId: args.runId,
+      internalKind: "agentphone:chat",
+      encryptedSecret: sourceCallback.encryptedSecret,
+      payload: {
+        ...args.target,
+        chatMessageId: args.chatMessageId,
+      },
+    })
+    .returning({ id: agentRunCallbacks.id });
+  if (!callback) {
+    throw new Error("Failed to persist canonical AgentPhone delivery callback");
+  }
+  return callback.id;
+}
+
 async function insertAssistantErrorEvent(args: {
   readonly db: Db;
   readonly runId: string;
@@ -1285,6 +1372,7 @@ async function insertAssistantErrorEvent(args: {
   readonly feishuDelivery?: FeishuDeliveryTarget;
   readonly teamsDelivery?: TeamsDeliveryTarget;
   readonly telegramDelivery?: TelegramDeliveryTarget;
+  readonly agentphoneDelivery?: AgentPhoneDeliveryTarget;
   readonly sourceCallbackId?: string;
 }): Promise<FailedChatCallbackResult> {
   const displayErrorMessage = await args.getFormattedError();
@@ -1342,12 +1430,22 @@ async function insertAssistantErrorEvent(args: {
           chatMessageId: event.id,
         })
       : undefined;
+    const agentphoneDeliveryCallbackId = args.agentphoneDelivery
+      ? await insertAgentPhoneChatDeliveryCallback({
+          db: tx,
+          runId: args.runId,
+          sourceCallbackId: args.sourceCallbackId,
+          target: args.agentphoneDelivery,
+          chatMessageId: event.id,
+        })
+      : undefined;
     await touchChatThreadLastMessageAt(tx, args.threadId, event.createdAt);
     return {
       slackDeliveryCallbackId,
       feishuDeliveryCallbackId,
       teamsDeliveryCallbackId,
       telegramDeliveryCallbackId,
+      agentphoneDeliveryCallbackId,
     };
   });
   if (!inserted) {
@@ -1363,6 +1461,7 @@ async function insertAssistantErrorEvent(args: {
     feishuDeliveryCallbackId: inserted.feishuDeliveryCallbackId,
     teamsDeliveryCallbackId: inserted.teamsDeliveryCallbackId,
     telegramDeliveryCallbackId: inserted.telegramDeliveryCallbackId,
+    agentphoneDeliveryCallbackId: inserted.agentphoneDeliveryCallbackId,
   };
 }
 
@@ -1455,6 +1554,7 @@ interface RunLifecycleMarkerArgs {
   readonly feishuDelivery?: FeishuDeliveryTarget;
   readonly teamsDelivery?: TeamsDeliveryTarget;
   readonly telegramDelivery?: TelegramDeliveryTarget;
+  readonly agentphoneDelivery?: AgentPhoneDeliveryTarget;
   readonly sourceCallbackId?: string;
 }
 
@@ -1463,6 +1563,7 @@ interface RunLifecycleDeliveryCallbacks {
   readonly feishuDeliveryCallbackId?: string;
   readonly teamsDeliveryCallbackId?: string;
   readonly telegramDeliveryCallbackId?: string;
+  readonly agentphoneDeliveryCallbackId?: string;
 }
 
 function hasCanonicalIntegrationDelivery(
@@ -1472,7 +1573,19 @@ function hasCanonicalIntegrationDelivery(
     args.slackDelivery ||
     args.feishuDelivery ||
     args.teamsDelivery ||
-    args.telegramDelivery,
+    args.telegramDelivery ||
+    args.agentphoneDelivery,
+  );
+}
+
+function requiresIntegrationCompletionFallback(
+  args: RunLifecycleMarkerArgs,
+): boolean {
+  return (
+    args.event === "completed" &&
+    Boolean(
+      args.teamsDelivery || args.telegramDelivery || args.agentphoneDelivery,
+    )
   );
 }
 
@@ -1494,11 +1607,7 @@ async function insertRunLifecycleMarkerTransaction(args: {
     input.runId,
     hasCanonicalIntegrationDelivery(input),
   );
-  if (
-    !deliveryEvent &&
-    input.event === "completed" &&
-    (input.teamsDelivery || input.telegramDelivery)
-  ) {
+  if (!deliveryEvent && requiresIntegrationCompletionFallback(input)) {
     deliveryEvent = await insertIntegrationCompletionFallback({
       db: args.tx,
       runId: input.runId,
@@ -1570,6 +1679,16 @@ async function insertRunLifecycleMarkerTransaction(args: {
           chatMessageId: deliveryEvent.id,
         })
       : undefined;
+  const agentphoneDeliveryCallbackId =
+    deliveryEvent && input.agentphoneDelivery
+      ? await insertAgentPhoneChatDeliveryCallback({
+          db: args.tx,
+          runId: input.runId,
+          sourceCallbackId: input.sourceCallbackId,
+          target: input.agentphoneDelivery,
+          chatMessageId: deliveryEvent.id,
+        })
+      : undefined;
   await touchChatThreadLastMessageAt(
     args.tx,
     input.threadId,
@@ -1580,6 +1699,7 @@ async function insertRunLifecycleMarkerTransaction(args: {
     feishuDeliveryCallbackId,
     teamsDeliveryCallbackId,
     telegramDeliveryCallbackId,
+    agentphoneDeliveryCallbackId,
   };
 }
 
@@ -1610,6 +1730,7 @@ async function insertRunLifecycleMarker(
     feishuDeliveryCallbackId: inserted.feishuDeliveryCallbackId,
     teamsDeliveryCallbackId: inserted.teamsDeliveryCallbackId,
     telegramDeliveryCallbackId: inserted.telegramDeliveryCallbackId,
+    agentphoneDeliveryCallbackId: inserted.agentphoneDeliveryCallbackId,
   };
 }
 
@@ -1769,6 +1890,7 @@ async function handleCompletedChatCallback(args: {
   readonly feishuDelivery?: FeishuDeliveryTarget;
   readonly teamsDelivery?: TeamsDeliveryTarget;
   readonly telegramDelivery?: TelegramDeliveryTarget;
+  readonly agentphoneDelivery?: AgentPhoneDeliveryTarget;
   readonly sourceCallbackId?: string;
   readonly insertAssistantItems: (
     items: readonly AssistantEventItem[],
@@ -1781,7 +1903,8 @@ async function handleCompletedChatCallback(args: {
     preferResultFallback:
       args.slackDelivery !== undefined ||
       args.teamsDelivery !== undefined ||
-      args.telegramDelivery !== undefined,
+      args.telegramDelivery !== undefined ||
+      args.agentphoneDelivery !== undefined,
     timing: args.timing,
     signal: args.signal,
   });
@@ -1795,7 +1918,8 @@ async function handleCompletedChatCallback(args: {
     preferResultFallback:
       args.slackDelivery !== undefined ||
       args.teamsDelivery !== undefined ||
-      args.telegramDelivery !== undefined,
+      args.telegramDelivery !== undefined ||
+      args.agentphoneDelivery !== undefined,
     timing: args.timing,
     signal: args.signal,
     insertAssistantItems: args.insertAssistantItems,
@@ -1826,6 +1950,7 @@ async function handleCompletedChatCallback(args: {
         feishuDelivery: args.feishuDelivery,
         teamsDelivery: args.teamsDelivery,
         telegramDelivery: args.telegramDelivery,
+        agentphoneDelivery: args.agentphoneDelivery,
         sourceCallbackId: args.sourceCallbackId,
       });
     },
@@ -1857,6 +1982,7 @@ async function handleCompletedChatCallback(args: {
     feishuDeliveryCallbackId: inserted.feishuDeliveryCallbackId,
     teamsDeliveryCallbackId: inserted.teamsDeliveryCallbackId,
     telegramDeliveryCallbackId: inserted.telegramDeliveryCallbackId,
+    agentphoneDeliveryCallbackId: inserted.agentphoneDeliveryCallbackId,
   };
 }
 
@@ -1976,6 +2102,7 @@ async function handleFailedChatCallback(args: {
   readonly feishuDelivery?: FeishuDeliveryTarget;
   readonly teamsDelivery?: TeamsDeliveryTarget;
   readonly telegramDelivery?: TelegramDeliveryTarget;
+  readonly agentphoneDelivery?: AgentPhoneDeliveryTarget;
   readonly sourceCallbackId?: string;
 }): Promise<FailedChatCallbackResult> {
   const lifecycleEvent =
@@ -1993,6 +2120,7 @@ async function handleFailedChatCallback(args: {
     feishuDelivery: args.feishuDelivery,
     teamsDelivery: args.teamsDelivery,
     telegramDelivery: args.telegramDelivery,
+    agentphoneDelivery: args.agentphoneDelivery,
     sourceCallbackId: args.sourceCallbackId,
   });
 }
@@ -2647,6 +2775,29 @@ function telegramQueuedMessageAdmissionFailure(
   };
 }
 
+function agentPhoneQueuedMessageAdmissionFailure(
+  args: CreateQueuedChatRunInputArgs,
+  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
+  error: QueuedMessageModelRouteError,
+): AgentPhoneQueuedMessageAdmissionFailure | null {
+  if (
+    args.queuedMessage.triggerSource !== "agentphone" ||
+    !sourceParams?.agentphoneDelivery
+  ) {
+    return null;
+  }
+  return {
+    kind: "agentphone_admission_failure",
+    orgId: args.agent.orgId,
+    userId: args.userId,
+    agentId: args.agent.id,
+    threadId: args.threadId,
+    queuedMessage: args.queuedMessage,
+    agentphoneDelivery: sourceParams.agentphoneDelivery,
+    error,
+  };
+}
+
 function queuedMessageAdmissionFailure(
   args: CreateQueuedChatRunInputArgs,
   sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
@@ -2656,6 +2807,7 @@ function queuedMessageAdmissionFailure(
     slackQueuedMessageAdmissionFailure(args, sourceParams, error) ??
     teamsQueuedMessageAdmissionFailure(args, sourceParams, error) ??
     telegramQueuedMessageAdmissionFailure(args, sourceParams, error) ??
+    agentPhoneQueuedMessageAdmissionFailure(args, sourceParams, error) ??
     morningBriefQueuedMessageAdmissionFailure(args, sourceParams, error)
   );
 }
@@ -2678,6 +2830,7 @@ function queuedIntegrationDeliveries(
   | "feishuDelivery"
   | "teamsDelivery"
   | "telegramDelivery"
+  | "agentphoneDelivery"
   | "morningBriefDelivery"
 > {
   return {
@@ -2685,6 +2838,7 @@ function queuedIntegrationDeliveries(
     feishuDelivery: sourceParams?.feishuDelivery,
     teamsDelivery: sourceParams?.teamsDelivery,
     telegramDelivery: sourceParams?.telegramDelivery,
+    agentphoneDelivery: sourceParams?.agentphoneDelivery,
     morningBriefDelivery: sourceParams?.morningBriefDelivery,
   };
 }
@@ -3097,6 +3251,62 @@ async function handleTelegramQueuedMessageAdmissionFailure(args: {
   );
 }
 
+async function handleAgentPhoneQueuedMessageAdmissionFailure(args: {
+  readonly db: Db;
+  readonly failure: AgentPhoneQueuedMessageAdmissionFailure;
+  readonly signal: AbortSignal;
+  readonly formatError: ChatCallbackDependencies["formatIntegrationRunError"];
+  readonly deliver: ChatCallbackDependencies["deliverAgentPhoneAdmissionFailure"];
+}): Promise<void> {
+  const displayError = await args.formatError(
+    {
+      orgId: args.failure.orgId,
+      userId: args.failure.userId,
+      code: args.failure.error.code,
+      message: args.failure.error.message,
+    },
+    args.signal,
+  );
+  args.signal.throwIfAborted();
+  const failed = await failQueuedUserMessage(args.db, {
+    threadId: args.failure.threadId,
+    eventId: args.failure.queuedMessage.id,
+    assistantContent: displayError,
+    errorMarker: args.failure.error.code.toLowerCase(),
+    currentTime: nowDate(),
+  });
+  args.signal.throwIfAborted();
+  if (!failed) {
+    return;
+  }
+
+  await publishUserSignal(
+    [args.failure.userId],
+    `chatThreadMessageCreated:${args.failure.threadId}`,
+  );
+  await publishThreadListChanged(args.failure.userId);
+  args.signal.throwIfAborted();
+  await tapError(
+    args.deliver(
+      {
+        chatThreadId: args.failure.threadId,
+        userId: args.failure.userId,
+        orgId: args.failure.orgId,
+        agentId: args.failure.agentId,
+        target: args.failure.agentphoneDelivery,
+        chatMessageId: failed.assistantEventId,
+      },
+      args.signal,
+    ),
+    (error) => {
+      log.warn("Failed to deliver canonical AgentPhone admission error", {
+        threadId: args.failure.threadId,
+        error,
+      });
+    },
+  );
+}
+
 async function handleQueuedMessageAdmissionFailure(args: {
   readonly db: Db;
   readonly failure: QueuedMessageAdmissionFailure;
@@ -3105,6 +3315,7 @@ async function handleQueuedMessageAdmissionFailure(args: {
   readonly deliverSlack: ChatCallbackDependencies["deliverSlackAdmissionFailure"];
   readonly deliverTeams: ChatCallbackDependencies["deliverTeamsAdmissionFailure"];
   readonly deliverTelegram: ChatCallbackDependencies["deliverTelegramAdmissionFailure"];
+  readonly deliverAgentPhone: ChatCallbackDependencies["deliverAgentPhoneAdmissionFailure"];
   readonly continueDrain: () => Promise<void>;
 }): Promise<void> {
   if (args.failure.kind === "slack_admission_failure") {
@@ -3134,6 +3345,16 @@ async function handleQueuedMessageAdmissionFailure(args: {
       signal: args.signal,
       formatError: args.formatError,
       deliver: args.deliverTeams,
+    });
+    return;
+  }
+  if (args.failure.kind === "agentphone_admission_failure") {
+    await handleAgentPhoneQueuedMessageAdmissionFailure({
+      db: args.db,
+      failure: args.failure,
+      signal: args.signal,
+      formatError: args.formatError,
+      deliver: args.deliverAgentPhone,
     });
     return;
   }
@@ -3180,6 +3401,7 @@ interface AutoSendQueuedMessageArgs {
   readonly deliverSlackAdmissionFailure: ChatCallbackDependencies["deliverSlackAdmissionFailure"];
   readonly deliverTeamsAdmissionFailure: ChatCallbackDependencies["deliverTeamsAdmissionFailure"];
   readonly deliverTelegramAdmissionFailure: ChatCallbackDependencies["deliverTelegramAdmissionFailure"];
+  readonly deliverAgentPhoneAdmissionFailure: ChatCallbackDependencies["deliverAgentPhoneAdmissionFailure"];
 }
 
 /**
@@ -3263,6 +3485,7 @@ async function autoSendQueuedMessageForThread(
       deliverSlack: args.deliverSlackAdmissionFailure,
       deliverTeams: args.deliverTeamsAdmissionFailure,
       deliverTelegram: args.deliverTelegramAdmissionFailure,
+      deliverAgentPhone: args.deliverAgentPhoneAdmissionFailure,
       continueDrain: async () => {
         await autoSendQueuedMessageForThread(args);
       },
@@ -3386,6 +3609,7 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
   readonly feishuDelivery?: FeishuDeliveryTarget;
   readonly teamsDelivery?: TeamsDeliveryTarget;
   readonly telegramDelivery?: TelegramDeliveryTarget;
+  readonly agentphoneDelivery?: AgentPhoneDeliveryTarget;
   readonly sourceCallbackId?: string;
 }): Promise<TerminalChatCallbackWork> {
   const prepared = await measureChatCallbackPreCreateTiming(
@@ -3404,6 +3628,7 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
         feishuDelivery: args.feishuDelivery,
         teamsDelivery: args.teamsDelivery,
         telegramDelivery: args.telegramDelivery,
+        agentphoneDelivery: args.agentphoneDelivery,
         sourceCallbackId: args.sourceCallbackId,
         insertAssistantItems: async (items) => {
           await args.dependencies.insertAssistantItems(
@@ -3431,6 +3656,7 @@ async function prepareCompletedTerminalChatCallbackWork(args: {
     feishuDeliveryCallbackId: completed.feishuDeliveryCallbackId,
     teamsDeliveryCallbackId: completed.teamsDeliveryCallbackId,
     telegramDeliveryCallbackId: completed.telegramDeliveryCallbackId,
+    agentphoneDeliveryCallbackId: completed.agentphoneDeliveryCallbackId,
     deferredSideEffects: () => {
       return runCompletedChatCallbackSideEffects({
         db: args.db,
@@ -3470,6 +3696,7 @@ async function prepareFailedTerminalChatCallbackWork(args: {
   readonly feishuDelivery?: FeishuDeliveryTarget;
   readonly teamsDelivery?: TeamsDeliveryTarget;
   readonly telegramDelivery?: TelegramDeliveryTarget;
+  readonly agentphoneDelivery?: AgentPhoneDeliveryTarget;
   readonly sourceCallbackId?: string;
 }): Promise<TerminalChatCallbackWork> {
   const failed = await measureChatCallbackPreCreateTiming(
@@ -3496,6 +3723,7 @@ async function prepareFailedTerminalChatCallbackWork(args: {
         feishuDelivery: args.feishuDelivery,
         teamsDelivery: args.teamsDelivery,
         telegramDelivery: args.telegramDelivery,
+        agentphoneDelivery: args.agentphoneDelivery,
         sourceCallbackId: args.sourceCallbackId,
       });
     },
@@ -3510,6 +3738,7 @@ async function prepareFailedTerminalChatCallbackWork(args: {
     feishuDeliveryCallbackId: failed.feishuDeliveryCallbackId,
     teamsDeliveryCallbackId: failed.teamsDeliveryCallbackId,
     telegramDeliveryCallbackId: failed.telegramDeliveryCallbackId,
+    agentphoneDeliveryCallbackId: failed.agentphoneDeliveryCallbackId,
     deferredSideEffects: () => {
       return runFailedChatCallbackSideEffects({
         db: args.db,
@@ -3650,6 +3879,7 @@ async function dispatchCanonicalDeliveryCallbacks(args: {
   readonly feishuDeliveryCallbackId: string | undefined;
   readonly teamsDeliveryCallbackId: string | undefined;
   readonly telegramDeliveryCallbackId: string | undefined;
+  readonly agentphoneDeliveryCallbackId: string | undefined;
   readonly dependencies: ChatCallbackDependencies;
   readonly signal: AbortSignal;
 }): Promise<void> {
@@ -3718,6 +3948,23 @@ async function dispatchCanonicalDeliveryCallbacks(args: {
       });
     }
   }
+  if (args.agentphoneDeliveryCallbackId) {
+    const delivery = await settle(
+      args.dependencies.dispatchAgentPhoneDelivery(
+        args.agentphoneDeliveryCallbackId,
+        args.status,
+        args.signal,
+      ),
+      args.signal,
+    );
+    if (!delivery.ok) {
+      log.error("Failed to finalize canonical AgentPhone delivery callback", {
+        runId: args.runId,
+        callbackId: args.agentphoneDeliveryCallbackId,
+        error: delivery.error,
+      });
+    }
+  }
 }
 
 interface TerminalChatCallbackArgs {
@@ -3733,13 +3980,18 @@ function terminalIntegrationDeliveries(
   payload: ChatCallbackPayload,
 ): Pick<
   ChatCallbackPayload,
-  "slackDelivery" | "feishuDelivery" | "teamsDelivery" | "telegramDelivery"
+  | "slackDelivery"
+  | "feishuDelivery"
+  | "teamsDelivery"
+  | "telegramDelivery"
+  | "agentphoneDelivery"
 > {
   return {
     slackDelivery: payload.slackDelivery,
     feishuDelivery: payload.feishuDelivery,
     teamsDelivery: payload.teamsDelivery,
     telegramDelivery: payload.telegramDelivery,
+    agentphoneDelivery: payload.agentphoneDelivery,
   };
 }
 
@@ -3861,6 +4113,7 @@ async function processTerminalChatCallback(
     feishuDeliveryCallbackId: work.feishuDeliveryCallbackId,
     teamsDeliveryCallbackId: work.teamsDeliveryCallbackId,
     telegramDeliveryCallbackId: work.telegramDeliveryCallbackId,
+    agentphoneDeliveryCallbackId: work.agentphoneDeliveryCallbackId,
     dependencies: args.dependencies,
     signal: args.signal,
   });
@@ -3915,9 +4168,12 @@ function withoutQueuedRunDependency(
     deliverTeamsAdmissionFailure: dependencies.deliverTeamsAdmissionFailure,
     deliverTelegramAdmissionFailure:
       dependencies.deliverTelegramAdmissionFailure,
+    deliverAgentPhoneAdmissionFailure:
+      dependencies.deliverAgentPhoneAdmissionFailure,
     dispatchFeishuDelivery: dependencies.dispatchFeishuDelivery,
     dispatchTeamsDelivery: dependencies.dispatchTeamsDelivery,
     dispatchTelegramDelivery: dependencies.dispatchTelegramDelivery,
+    dispatchAgentPhoneDelivery: dependencies.dispatchAgentPhoneDelivery,
     clearFeishuThinkingReaction: dependencies.clearFeishuThinkingReaction,
     drainThreadQueue: dependencies.drainThreadQueue,
   };
@@ -3957,6 +4213,7 @@ function buildQueuedChatDispatchFailedCallbacks(args: {
       feishuDelivery: args.runInput.feishuDelivery,
       teamsDelivery: args.runInput.teamsDelivery,
       telegramDelivery: args.runInput.telegramDelivery,
+      agentphoneDelivery: args.runInput.agentphoneDelivery,
       morningBriefDelivery: args.runInput.morningBriefDelivery,
     };
     const suppressWebPushForActiveGoal = await runHasActiveGoal(db, runId);
@@ -4115,6 +4372,26 @@ function telegramChatDeliveryDependencies(
   };
 }
 
+function agentPhoneChatDeliveryDependencies(
+  db: Db,
+): Pick<
+  ChatCallbackDependencies,
+  "deliverAgentPhoneAdmissionFailure" | "dispatchAgentPhoneDelivery"
+> {
+  return {
+    deliverAgentPhoneAdmissionFailure: (params, signal) => {
+      return deliverAgentPhoneChatAdmissionFailure({
+        db,
+        ...params,
+        signal,
+      });
+    },
+    dispatchAgentPhoneDelivery: (callbackId, status, signal) => {
+      return dispatchAgentPhoneChatDeliveryOnce(db, callbackId, status, signal);
+    },
+  };
+}
+
 export async function handleChatInternalCallbackWithoutCcstate(
   db: Db,
   callback: InternalRunCallbackEnvelope,
@@ -4191,6 +4468,7 @@ export async function handleChatInternalCallbackWithoutCcstate(
       },
       ...teamsChatDeliveryDependencies(db),
       ...telegramChatDeliveryDependencies(db),
+      ...agentPhoneChatDeliveryDependencies(db),
       clearFeishuThinkingReaction: (target, inputSignal) => {
         return clearCanonicalFeishuThinkingReaction(db, target, inputSignal);
       },
@@ -4260,6 +4538,7 @@ const buildChatCallbackDependencies$ = command(
       },
       ...teamsChatDeliveryDependencies(db),
       ...telegramChatDeliveryDependencies(db),
+      ...agentPhoneChatDeliveryDependencies(db),
       clearFeishuThinkingReaction: (target, inputSignal) => {
         return clearCanonicalFeishuThinkingReaction(db, target, inputSignal);
       },
@@ -4379,6 +4658,8 @@ export const drainQueuedUserMessagesForThread$ = command(
       deliverTeamsAdmissionFailure: dependencies.deliverTeamsAdmissionFailure,
       deliverTelegramAdmissionFailure:
         dependencies.deliverTelegramAdmissionFailure,
+      deliverAgentPhoneAdmissionFailure:
+        dependencies.deliverAgentPhoneAdmissionFailure,
       createRun: (input) => {
         return createQueuedChatRun({
           input,
