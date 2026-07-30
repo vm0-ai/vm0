@@ -251,13 +251,9 @@ function createInterruptedAssistantProjection(
   return {
     ...rest,
     eventType: "run.cancelled" as const,
-    content: i18n.t(($) => {
-      return $.chat.run.cancelled;
-    }),
+    content: "Run cancelled",
     runId,
-    error: i18n.t(($) => {
-      return $.chat.run.cancelled;
-    }),
+    error: "Run cancelled",
     runLifecycleEvent: "cancelled",
   };
 }

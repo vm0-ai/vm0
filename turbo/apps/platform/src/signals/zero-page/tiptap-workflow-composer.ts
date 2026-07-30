@@ -1852,6 +1852,20 @@ function mountCompositionListeners(
   );
 }
 
+function mountLocalizationListener(
+  editor: Editor,
+  runtime: WorkflowComposerRuntime,
+  signal: AbortSignal,
+): void {
+  const refreshLocalizedUi = () => {
+    refreshWorkflowComposerLocalization(editor, runtime);
+  };
+  i18n.on("languageChanged", refreshLocalizedUi);
+  signal.addEventListener("abort", () => {
+    i18n.off("languageChanged", refreshLocalizedUi);
+  });
+}
+
 interface MountEditorOptions {
   editor: Editor;
   draft: DraftSignals;
@@ -1930,10 +1944,7 @@ function createMountEditorCommand({
         createEditorDocumentSnapshot(editor.state.doc),
       );
       editor.mount(element);
-      const refreshLocalizedUi = () => {
-        refreshWorkflowComposerLocalization(editor, runtime);
-      };
-      i18n.on("languageChanged", refreshLocalizedUi);
+      mountLocalizationListener(editor, runtime, signal);
       mountCompositionListeners(editor, compositionGate, signal);
       set(draft.setInputSyncTarget$, {
         syncInput(value: string) {
@@ -1985,7 +1996,6 @@ function createMountEditorCommand({
         editor.commands.focus("end");
       }
       signal.addEventListener("abort", () => {
-        i18n.off("languageChanged", refreshLocalizedUi);
         set(unregisterMountedWorkflowNamesSync$, mountedWorkflowNamesSync);
         compositionGate.cancel(signal.reason);
         resetMountedWorkflowRuntime(runtime);

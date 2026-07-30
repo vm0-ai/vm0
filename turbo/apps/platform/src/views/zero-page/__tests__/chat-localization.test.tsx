@@ -128,4 +128,56 @@ describe("chat localization", () => {
     expect(pathname()).toBe(pathBeforeSwitch);
     expect(document.documentElement.lang).toBe("pt-BR");
   });
+
+  it("keeps cancellation state semantic while its presentation follows the locale", async () => {
+    const user = userEvent.setup({ delay: null });
+    const runId = "run-localized-cancellation";
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      activeRunIds: [runId],
+      chatEvents: [
+        {
+          id: "msg-localized-cancellation-user",
+          role: "user",
+          content: "Interrompa esta execução",
+          runId,
+          createdAt: "2026-07-30T00:00:00Z",
+        },
+        {
+          id: "msg-localized-cancellation-assistant",
+          role: "assistant",
+          content: null,
+          runId,
+          createdAt: "2026-07-30T00:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await user.click(await screen.findByLabelText("Parar"));
+
+    await expect(
+      screen.findByText(
+        "Pausado no meio do raciocínio — retome quando quiser.",
+      ),
+    ).resolves.toBeInTheDocument();
+
+    await act(async () => {
+      await context.store.set(setLocale$, "en-US", context.signal);
+    });
+
+    await expect(
+      screen.findByText("Paused mid-thought — pick it back up whenever."),
+    ).resolves.toBeInTheDocument();
+  });
 });
