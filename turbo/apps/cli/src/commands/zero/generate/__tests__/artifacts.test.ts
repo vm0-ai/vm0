@@ -155,13 +155,26 @@ describe("zero generate source-backed artifact commands", () => {
     );
   });
 
-  it("omits unnecessary candidate groups", () => {
-    const selection = selectResourceCandidates();
+  it("omits unnecessary candidate groups from the generated packet", async () => {
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "report",
+      "--prompt",
+      "Q2 generation usage report",
+      "--site-slug",
+      "report-demo",
+    ]);
 
-    expect(selection.candidates).not.toHaveProperty("imageStyles");
-    expect(selection.candidates).not.toHaveProperty("audioStyles");
-    expect(selection.candidates).not.toHaveProperty("videoTemplates");
-    expect(selection.candidates).not.toHaveProperty("bundleTemplates");
+    const stdout = output();
+    expect(stdout).not.toContain('"imageStyles"');
+    expect(stdout).not.toContain('"audioStyles"');
+    expect(stdout).not.toContain('"videoTemplates"');
+    expect(stdout).not.toContain('"bundleTemplates"');
+    expect(stdout).not.toContain('"imageStyle"');
+    expect(stdout).not.toContain('"audioStyle"');
+    expect(stdout).not.toContain('"videoTemplate"');
+    expect(stdout).not.toContain('"bundleTemplate"');
   });
 
   it("filters template candidates by target when requested", () => {

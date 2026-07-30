@@ -155,7 +155,7 @@ export function createHtmlArtifactAuthoringPacket(
     "",
     "## Stage 1: Resource Selection",
     "- Choose generation resources from the bundled federated registry slice below.",
-    "- Select one template, one or more skills, zero or one design system, and optional media/style resources when relevant.",
+    "- Select one template, one or more skills, and zero or one design system.",
     "- Choose only IDs present in this packet; do not invent registry IDs.",
     "- Prefer compatible resources, but the user prompt is the highest-priority signal.",
     "- Treat the selection JSON as internal working state, then continue to authoring.",
