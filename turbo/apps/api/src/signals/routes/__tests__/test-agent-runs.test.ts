@@ -1,14 +1,20 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
+import { createStore } from "ccstate";
 import { testAgentRunsContract } from "@vm0/api-contracts/contracts/test-agent-runs";
+import { HttpResponse, http } from "msw";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { mockEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { server } from "../../../mocks/server";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { generateSandboxToken } from "../../auth/tokens";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunReadsApi } from "./helpers/api-bdd-run-reads";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -16,6 +22,10 @@ const bdd = createBddApi(context);
 const reads = createRunReadsApi(context);
 const runs = createRunsApi(context);
 const mocks = createZeroRouteMocks(context);
+const webhooks = createWebhookCallbackApi(context);
+const callbackStore = createStore();
+const OPENROUTER_COMPLETIONS_URL =
+  "https://openrouter.ai/api/v1/chat/completions";
 
 function client() {
   return setupApp({ context })(testAgentRunsContract);
@@ -112,6 +122,98 @@ describe("POST /api/test/agent-runs", () => {
     );
 
     await runs.requestCancelRun(actor, response.body.runId, [200]);
+  });
+
+  it("preserves result-only output acknowledged by a previous non-chat writer", async () => {
+    mockEnv("ENV", "development");
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    const { actor, composeId } = await seedDirectRunActor();
+    const summaryRequests: unknown[] = [];
+    server.use(
+      http.post(OPENROUTER_COMPLETIONS_URL, async ({ request }) => {
+        summaryRequests.push(await request.json());
+        return HttpResponse.json({
+          choices: [{ message: { content: "Legacy output summarized" } }],
+        });
+      }),
+    );
+
+    const response = await accept(
+      client().create({
+        headers: authenticate(actor),
+        body: {
+          agentComposeId: composeId,
+          prompt: "complete through a rolling API deploy",
+        },
+      }),
+      [201],
+    );
+    await callbackStore.set(
+      seedAgentRunCallback$,
+      {
+        runId: response.body.runId,
+        internalKind: "agent",
+        payload: {},
+      },
+      context.signal,
+    );
+    const claim = await runs.claimRunnerJob(response.body.runId);
+    const sandboxHeaders = {
+      authorization: `Bearer ${claim.sandboxToken}`,
+    };
+    context.mocks.axiom.query.mockImplementation((apl: unknown) => {
+      return Promise.resolve(
+        typeof apl === "string" && apl.includes("agent-run-events")
+          ? [
+              {
+                eventType: "result",
+                sequenceNumber: 0,
+                eventData: {
+                  result: "Previous non-chat writer result",
+                },
+              },
+            ]
+          : [],
+      );
+    });
+
+    const historyHash = createHash("sha256")
+      .update(`previous non-chat writer ${response.body.runId}`)
+      .digest("hex");
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: response.body.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `legacy-${response.body.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      sandboxHeaders,
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      {
+        runId: response.body.runId,
+        exitCode: 0,
+        lastEventSequence: 0,
+      },
+      sandboxHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    expect(JSON.stringify(summaryRequests)).toContain(
+      "Previous non-chat writer result",
+    );
+    expect(
+      context.mocks.axiom.query.mock.calls.some((call) => {
+        const apl = call[0];
+        return (
+          typeof apl === "string" &&
+          apl.includes("agent-run-events") &&
+          apl.includes('eventType == "result"')
+        );
+      }),
+    ).toBeTruthy();
   });
 
   it("returns 404 when the test endpoint is not allowed", async () => {

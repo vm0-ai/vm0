@@ -61,6 +61,34 @@ function successfulAxiomIngestStatus(ingested: number) {
   };
 }
 
+async function createEventWebhookRun(prompt: string) {
+  const bdd = createBddApi(context);
+  const runs = createRunsApi(context);
+  const actor = bdd.user();
+  bdd.acceptAgentStorageWrites();
+  runs.acceptStorageDownloads();
+  runs.acceptTelemetryIngest();
+  runs.configureRunnerGroup();
+  await runs.grantProEntitlement(actor);
+  await runs.ensureOrgModelProvider(actor);
+  const agent = await bdd.createAgent(actor, {
+    displayName: `BDD Event Consumer ${randomUUID()}`,
+    visibility: "private",
+  });
+  const run = await runs.createRun(actor, {
+    agentId: agent.agentId,
+    prompt,
+    modelProvider: "anthropic-api-key",
+  });
+  return {
+    actor,
+    runId: run.runId,
+    headers: {
+      authorization: `Bearer ${runs.sandboxTokenForRun(actor, run.runId)}`,
+    },
+  };
+}
+
 function orgOf(actor: ApiTestUser): string {
   if (!actor.orgId) {
     throw new Error("Expected an org-scoped actor");
@@ -1078,7 +1106,7 @@ describe("WHCB-03: email inbound webhook boundaries", () => {
 });
 
 describe("WHCB-04: internal callback and event-consumer boundaries", () => {
-  it("acknowledges only complete direct Axiom event ingestion", async () => {
+  it("acknowledges DB projection while Axiom remains a best-effort trace", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsApi(context);
     const actor = bdd.user();
@@ -1134,6 +1162,7 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
       firstSequence: 1,
       lastSequence: 2,
     });
+    await flushWaitUntilForTest();
     expect(requests).toStrictEqual([
       {
         authorization: "Bearer xaat-test-sessions",
@@ -1179,16 +1208,14 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
         );
       }),
     ).toHaveLength(0);
-    await flushWaitUntilForTest();
-    const optionalPublishCount = context.mocks.ably.publish.mock.calls.length;
-
     mockOptionalEnv("AXIOM_TOKEN_SESSIONS", undefined);
-    const unconfigured = await api.requestAgentEvents(body, headers, [503]);
-    expectApiError(unconfigured.body);
-    expect(unconfigured.body.error).toStrictEqual({
-      code: "EVENT_DELIVERY_UNAVAILABLE",
-      message: "Agent event delivery is temporarily unavailable",
+    const unconfigured = await api.requestAgentEvents(body, headers, [200]);
+    expect(unconfigured.body).toStrictEqual({
+      received: 2,
+      firstSequence: 1,
+      lastSequence: 2,
     });
+    await flushWaitUntilForTest();
     expect(requests).toHaveLength(1);
 
     mockOptionalEnv("AXIOM_TOKEN_SESSIONS", "xaat-test-sessions");
@@ -1202,17 +1229,14 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
         },
       ),
     );
-    const unavailable = await api.requestAgentEvents(body, headers, [503]);
-    expectApiError(unavailable.body);
-    expect(unavailable.body.error).toStrictEqual({
-      code: "EVENT_DELIVERY_UNAVAILABLE",
-      message: "Agent event delivery is temporarily unavailable",
+    const unavailable = await api.requestAgentEvents(body, headers, [200]);
+    expect(unavailable.body).toStrictEqual({
+      received: 2,
+      firstSequence: 1,
+      lastSequence: 2,
     });
-    expect(failedRequestCount).toBe(1);
     await flushWaitUntilForTest();
-    expect(context.mocks.ably.publish.mock.calls).toHaveLength(
-      optionalPublishCount,
-    );
+    expect(failedRequestCount).toBe(1);
 
     const redirectTarget =
       "https://api.axiom.co/v1/datasets/redirected-agent-run-events/ingest";
@@ -1234,69 +1258,50 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
         );
       }),
     );
-    const redirected = await api.requestAgentEvents(body, headers, [503]);
-    expectApiError(redirected.body);
-    expect(redirected.body.error.code).toBe("EVENT_DELIVERY_UNAVAILABLE");
+    const redirected = await api.requestAgentEvents(body, headers, [200]);
+    expect(redirected.body).toStrictEqual({
+      received: 2,
+      firstSequence: 1,
+      lastSequence: 2,
+    });
+    await flushWaitUntilForTest();
     expect(redirectTargetRequests).toBe(0);
   });
 
-  it("rejects malformed and partial direct Axiom statuses", async () => {
+  it("rejects an event batch when its required DB run is missing", async () => {
     const runId = randomUUID();
     const headers = api.sandboxWebhookHeaders({ runId });
-    const statuses = [
-      { ingested: 1, failed: 0 },
-      {
-        ...successfulAxiomIngestStatus(0),
-        failed: 1,
-        failures: [{ timestamp: "2026-07-30T00:00:00Z", error: "bad row" }],
-      },
-      {
-        ...successfulAxiomIngestStatus(1),
-        failures: [
-          {
-            timestamp: "2026-07-30T00:00:00Z",
-            error: "inconsistent failed row",
-          },
-        ],
-      },
-      successfulAxiomIngestStatus(0),
-    ];
     let requestCount = 0;
-    const publishCount = context.mocks.ably.publish.mock.calls.length;
-
-    for (const status of statuses) {
-      server.use(
-        http.post(
-          "https://api.axiom.co/v1/datasets/agent-run-events/ingest",
-          () => {
-            requestCount += 1;
-            return HttpResponse.json(status);
-          },
-        ),
-      );
-      const response = await api.requestAgentEvents(
-        {
-          runId,
-          events: [{ type: "system", sequenceNumber: 0 }],
+    server.use(
+      http.post(
+        "https://api.axiom.co/v1/datasets/agent-run-events/ingest",
+        () => {
+          requestCount += 1;
+          return HttpResponse.json(successfulAxiomIngestStatus(1));
         },
-        headers,
-        [503],
-      );
-      expectApiError(response.body);
-      expect(response.body.error).toStrictEqual({
-        code: "EVENT_DELIVERY_UNAVAILABLE",
-        message: "Agent event delivery is temporarily unavailable",
-      });
-    }
-
-    expect(requestCount).toBe(statuses.length);
+      ),
+    );
+    const response = await api.requestAgentEvents(
+      {
+        runId,
+        events: [{ type: "system", sequenceNumber: 0 }],
+      },
+      headers,
+      [503],
+    );
+    expectApiError(response.body);
+    expect(response.body.error).toStrictEqual({
+      code: "EVENT_DELIVERY_UNAVAILABLE",
+      message: "Agent event delivery is temporarily unavailable",
+    });
     await flushWaitUntilForTest();
-    expect(context.mocks.ably.publish.mock.calls).toHaveLength(publishCount);
+    expect(requestCount).toBe(0);
   });
 
-  it("returns 503 when the Axiom sub-deadline wins", async () => {
-    const runId = randomUUID();
-    const headers = api.sandboxWebhookHeaders({ runId });
+  it("keeps the Axiom sub-deadline outside the event ACK", async () => {
+    const { runId, headers } = await createEventWebhookRun(
+      "best-effort Axiom deadline",
+    );
     const ingestStarted = createDeferredPromise<void>(context.signal);
     const releaseIngest = createDeferredPromise<void>(context.signal);
     const axiomDeadline = new AbortController();
@@ -1318,80 +1323,89 @@ describe("WHCB-04: internal callback and event-consumer boundaries", () => {
         },
       ),
     );
-    const publishCount = context.mocks.ably.publish.mock.calls.length;
-
-    const pending = api.requestAgentEvents(
+    const response = await api.requestAgentEvents(
       {
         runId,
-        events: [{ type: "system", sequenceNumber: 0 }],
+        events: [
+          {
+            type: "result",
+            sequenceNumber: 0,
+            result: "DB-backed callback output",
+          },
+        ],
       },
       headers,
-      [503],
+      [200],
     );
+    expect(response.body).toStrictEqual({
+      received: 1,
+      firstSequence: 0,
+      lastSequence: 0,
+    });
     await ingestStarted.promise;
     axiomDeadline.abort(
       new DOMException("Axiom ingest deadline", "TimeoutError"),
     );
 
-    const response = await pending;
-    expectApiError(response.body);
-    expect(response.body.error).toStrictEqual({
-      code: "EVENT_DELIVERY_UNAVAILABLE",
-      message: "Agent event delivery is temporarily unavailable",
-    });
     releaseIngest.resolve(undefined);
     await flushWaitUntilForTest();
-    expect(context.mocks.ably.publish.mock.calls).toHaveLength(publishCount);
+    expect(
+      context.mocks.axiomLogging.error.mock.calls.some(([message, fields]) => {
+        return (
+          message === "Optional Axiom trace delivery failed" &&
+          typeof fields === "object" &&
+          fields !== null &&
+          "runId" in fields &&
+          fields.runId === runId
+        );
+      }),
+    ).toBeTruthy();
   });
 
-  it("returns 503 when the whole event route deadline wins", async () => {
-    const runId = randomUUID();
-    const headers = api.sandboxWebhookHeaders({ runId });
-    const ingestStarted = createDeferredPromise<void>(context.signal);
-    const releaseIngest = createDeferredPromise<void>(context.signal);
-    const routeDeadline = new AbortController();
-    context.mocks.abortSignal.timeout.mockImplementation((milliseconds) => {
-      return milliseconds === 20_000 ? routeDeadline.signal : undefined;
-    });
-    onTestFinished(() => {
-      if (!releaseIngest.settled()) {
-        releaseIngest.resolve(undefined);
-      }
-    });
+  it("acknowledges events when the optional Axiom status is malformed", async () => {
+    const { runId, headers } = await createEventWebhookRun(
+      "malformed optional Axiom status",
+    );
     server.use(
       http.post(
         "https://api.axiom.co/v1/datasets/agent-run-events/ingest",
-        async () => {
-          ingestStarted.resolve(undefined);
-          await releaseIngest.promise;
-          return HttpResponse.json(successfulAxiomIngestStatus(1));
+        () => {
+          return HttpResponse.json({ ingested: 0, failed: 1 });
         },
       ),
     );
-    const publishCount = context.mocks.ably.publish.mock.calls.length;
 
-    const pending = api.requestAgentEvents(
+    const response = await api.requestAgentEvents(
       {
         runId,
-        events: [{ type: "system", sequenceNumber: 0 }],
+        events: [
+          {
+            type: "result",
+            sequenceNumber: 0,
+            result: "DB-backed callback output",
+          },
+        ],
       },
       headers,
-      [503],
+      [200],
     );
-    await ingestStarted.promise;
-    routeDeadline.abort(
-      new DOMException("event route deadline", "TimeoutError"),
-    );
-
-    const response = await pending;
-    expectApiError(response.body);
-    expect(response.body.error).toStrictEqual({
-      code: "EVENT_DELIVERY_UNAVAILABLE",
-      message: "Agent event delivery exceeded its response deadline",
+    expect(response.body).toStrictEqual({
+      received: 1,
+      firstSequence: 0,
+      lastSequence: 0,
     });
     await flushWaitUntilForTest();
-    expect(context.mocks.ably.publish.mock.calls).toHaveLength(publishCount);
-    releaseIngest.resolve(undefined);
+    expect(
+      context.mocks.axiomLogging.error.mock.calls.some(([message, fields]) => {
+        return (
+          message === "Optional Axiom trace delivery failed" &&
+          typeof fields === "object" &&
+          fields !== null &&
+          "runId" in fields &&
+          fields.runId === runId
+        );
+      }),
+    ).toBeTruthy();
   });
 });
 
@@ -1724,14 +1738,10 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
         events: [{ type: "system", sequenceNumber: 0 }],
       },
       headers,
-      [200],
+      [503],
     );
-    expect(missingEventsRun.body).toStrictEqual({
-      received: 1,
-      firstSequence: 0,
-      lastSequence: 0,
-    });
-    await flushWaitUntilForTest();
+    expectApiError(missingEventsRun.body);
+    expect(missingEventsRun.body.error.code).toBe("EVENT_DELIVERY_UNAVAILABLE");
 
     const malformedComplete = await api.requestAgentCompleteUnchecked(
       { runId },

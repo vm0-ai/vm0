@@ -256,6 +256,14 @@ async function completeChatRunOk(
   runId: string,
   sandboxHeaders: { readonly authorization: string },
 ): Promise<void> {
+  const stagedOutputEvents = chatCallbacks.consumeMockChatOutputEvents();
+  if (stagedOutputEvents.length > 0) {
+    await webhooks.requestAgentEvents(
+      { runId, events: stagedOutputEvents },
+      sandboxHeaders,
+      [200],
+    );
+  }
   const historyHash = createHash("sha256")
     .update(`bdd chat thread history ${runId}`)
     .digest("hex");
@@ -270,7 +278,19 @@ async function completeChatRunOk(
     [200],
   );
   await webhooks.requestAgentComplete(
-    { runId, exitCode: 0 },
+    {
+      runId,
+      exitCode: 0,
+      ...(stagedOutputEvents.length === 0
+        ? {}
+        : {
+            lastEventSequence: Math.max(
+              ...stagedOutputEvents.map((event) => {
+                return event.sequenceNumber;
+              }),
+            ),
+          }),
+    },
     sandboxHeaders,
     [200],
   );

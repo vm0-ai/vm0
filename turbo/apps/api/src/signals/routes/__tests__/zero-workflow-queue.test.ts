@@ -267,6 +267,14 @@ async function completeRunThroughSandbox(scenario: Scenario, runId: string) {
   await runsApi.heartbeatRunner(scenario.runnerGroup);
   const claim = await runsApi.claimRunnerJob(runId);
   const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
+  const stagedOutputEvents = chatCallbacks.consumeMockChatOutputEvents();
+  if (stagedOutputEvents.length > 0) {
+    await webhooksApi.requestAgentEvents(
+      { runId, events: stagedOutputEvents },
+      sandboxHeaders,
+      [200],
+    );
+  }
   await webhooksApi.requestAgentCheckpoint(
     {
       runId,
@@ -280,7 +288,19 @@ async function completeRunThroughSandbox(scenario: Scenario, runId: string) {
     [200],
   );
   await webhooksApi.requestAgentComplete(
-    { runId, exitCode: 0 },
+    {
+      runId,
+      exitCode: 0,
+      ...(stagedOutputEvents.length === 0
+        ? {}
+        : {
+            lastEventSequence: Math.max(
+              ...stagedOutputEvents.map((event) => {
+                return event.sequenceNumber;
+              }),
+            ),
+          }),
+    },
     sandboxHeaders,
     [200],
   );

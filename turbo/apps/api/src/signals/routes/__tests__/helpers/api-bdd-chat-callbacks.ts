@@ -15,6 +15,7 @@ import { zeroPushSubscriptionsRoutes } from "../../zero-push-subscriptions";
 import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
+import type { AgentEvent } from "../../../../lib/event-consumer/verify";
 
 const CHAT_CALLBACK_URL = "http://localhost:3000/api/internal/callbacks/chat";
 const OPENROUTER_COMPLETIONS_URL =
@@ -82,6 +83,26 @@ function isStringRecord(value: unknown): value is Record<string, string> {
       return typeof entry === "string";
     })
   );
+}
+
+function webhookEventFromAxiomFixture(
+  event: Readonly<Record<string, unknown>>,
+): AgentEvent {
+  const type =
+    typeof event.type === "string"
+      ? event.type
+      : typeof event.eventType === "string"
+        ? event.eventType
+        : null;
+  const sequenceNumber = event.sequenceNumber;
+  if (type === null || typeof sequenceNumber !== "number") {
+    throw new Error("Chat output fixture requires an event type and sequence");
+  }
+  return {
+    ...(isRecord(event.eventData) ? event.eventData : event),
+    type,
+    sequenceNumber,
+  };
 }
 
 function commandInput(command: unknown): Record<string, unknown> {
@@ -178,6 +199,24 @@ function capturedRunContextSnapshot(
 }
 
 export function createChatCallbacksApi(context: TestContext) {
+  let stagedOutputEvents: AgentEvent[] = [];
+
+  function mockOutputEventQuery(
+    events: readonly Record<string, unknown>[],
+  ): void {
+    const snapshot = [...events];
+    context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
+      const apl = typeof args[0] === "string" ? args[0] : "";
+      if (apl.includes("['run-context']")) {
+        const runId = /runId == "([^"]+)"/.exec(apl)?.[1];
+        return Promise.resolve(
+          runId ? capturedRunContextSnapshot(context, runId) : [],
+        );
+      }
+      return Promise.resolve(snapshot);
+    });
+  }
+
   function pushSubscriptionsClient() {
     return setupAppWithRoutes({
       context,
@@ -279,24 +318,32 @@ export function createChatCallbacksApi(context: TestContext) {
     },
 
     /**
-     * Persistent Axiom query fake: agent-run-event queries (the visibility
-     * barrier and the chat output read) resolve to `events`; run-context
-     * queries replay the snapshot the API itself ingested at run creation.
-     * Give events top-level contiguous `sequenceNumber` 0..lastEventSequence
-     * or the barrier burns its 2s poll window per callback.
+     * Stages output for the current /events DB projection and keeps the Axiom
+     * query fake available for the temporary previous-writer compatibility
+     * path. Run-context queries replay the snapshot the API itself ingested at
+     * run creation.
      */
     mockChatOutputEvents(events: readonly Record<string, unknown>[]): void {
-      const snapshot = [...events];
-      context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
-        const apl = typeof args[0] === "string" ? args[0] : "";
-        if (apl.includes("['run-context']")) {
-          const runId = /runId == "([^"]+)"/.exec(apl)?.[1];
-          return Promise.resolve(
-            runId ? capturedRunContextSnapshot(context, runId) : [],
-          );
-        }
-        return Promise.resolve(snapshot);
-      });
+      stagedOutputEvents = events.map(webhookEventFromAxiomFixture);
+      mockOutputEventQuery(events);
+    },
+
+    /**
+     * Reproduces output already acknowledged by the previous API writer:
+     * queryable from its required Axiom ingest, but not staged for the current
+     * /events route and therefore absent from the new DB text projection.
+     */
+    mockPreviousApiChatOutputEvents(
+      events: readonly Record<string, unknown>[],
+    ): void {
+      stagedOutputEvents = [];
+      mockOutputEventQuery(events);
+    },
+
+    consumeMockChatOutputEvents(): AgentEvent[] {
+      const events = stagedOutputEvents;
+      stagedOutputEvents = [];
+      return events;
     },
 
     /**

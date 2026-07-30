@@ -117,6 +117,12 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     hosted_site_id: z.uuid(),
   }),
   z.object({
+    action: z.literal("insert-run-output-as-previous-api"),
+    run_id: z.uuid(),
+    processed_through_sequence: z.number().int().nonnegative(),
+    latest_result_sequence: z.number().int().nonnegative(),
+  }),
+  z.object({
     action: z.literal("set-computer-use-host-as-previous-api"),
     thread_id: z.uuid(),
     computer_use_host_id: z.uuid(),
