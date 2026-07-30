@@ -11,8 +11,6 @@ import {
   composesMainContract,
   type ZeroCapability,
 } from "@vm0/api-contracts/contracts/composes";
-import { runsMainContract } from "@vm0/api-contracts/contracts/runs";
-import { testAgentRunsContract } from "@vm0/api-contracts/contracts/test-agent-runs";
 import { webhookStripeContract } from "@vm0/api-contracts/contracts/webhooks";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import {
@@ -56,13 +54,17 @@ import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { now } from "../../../../lib/time";
 import {
+  createDirectRunFixture,
+  listAgentRunsFixture,
+  type DirectRunFixtureRequest,
+} from "../../../../test-fixtures/agent-runs";
+import {
   generateSandboxToken,
   signSandboxJwtForTests,
 } from "../../../auth/tokens";
 import { mockStripeClient } from "../../../external/stripe-client";
 import { agentComposesReadRoutes } from "../../agent-composes-read";
 import { agentComposesRoutes } from "../../agent-composes";
-import { agentRunsReadRoutes } from "../../agent-runs-read";
 import { cliAuthRoutes } from "../../cli-auth";
 import { cronAggregateInsightsRoutes } from "../../cron-aggregate-insights";
 import { cronAggregateUsageRoutes } from "../../cron-aggregate-usage";
@@ -83,14 +85,19 @@ import {
   zeroRunFixtureRoutes,
 } from "../../test-zero-run-fixture";
 import { zeroUserPermissionGrantsRoutes } from "../../zero-user-permission-grants";
-import { testAgentRunsRoutes } from "../../test-agent-runs";
 import { createBddApi, type ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 type AuthHeaders = { readonly authorization?: string };
 type ZeroRunRequest = z.infer<typeof zeroRunCreateBodySchema>;
-type DirectRunRequest = z.infer<(typeof testAgentRunsContract.create)["body"]>;
-type RunsListQuery = z.input<(typeof runsMainContract.list)["query"]>;
+type DirectRunRequest = DirectRunFixtureRequest;
+interface RunsListQuery {
+  readonly status?: string;
+  readonly agent?: string;
+  readonly since?: string;
+  readonly until?: string;
+  readonly limit?: number;
+}
 type RunnerJobClaimRequest = z.infer<
   (typeof runnersJobClaimContract.claim)["body"]
 >;
@@ -158,8 +165,6 @@ const runRoutes = [
   ...cronReconcileBillingEntitlementsRoutes,
   ...cronTelegramCleanupRoutes,
   ...runnersRoutes,
-  ...testAgentRunsRoutes,
-  ...agentRunsReadRoutes,
   ...webhooksStripeRoutes,
   ...zeroBillingStatusRoutes,
   ...zeroModelPoliciesRoutes,
@@ -290,6 +295,29 @@ export function createRunsApi(context: TestContext) {
       grants: [grant],
     };
   };
+
+  async function createDirectRunThroughService(
+    actor: ApiTestUser | null,
+    body: DirectRunRequest,
+  ) {
+    if (!actor?.orgId) {
+      return {
+        status: 401 as const,
+        body: {
+          error: {
+            message: "Not authenticated",
+            code: "UNAUTHORIZED" as const,
+          },
+        },
+      };
+    }
+    return await createDirectRunFixture({
+      userId: actor.userId,
+      orgId: actor.orgId,
+      body,
+      signal: context.signal,
+    });
+  }
 
   return {
     async requestRemovedZeroRunCreation(actor: ApiTestUser): Promise<number> {
@@ -664,10 +692,7 @@ export function createRunsApi(context: TestContext) {
 
     async createDirectRun(actor: ApiTestUser, body: DirectRunRequest) {
       const response = await accept(
-        runApp(context)(testAgentRunsContract).create({
-          headers: authenticate(context, actor),
-          body,
-        }),
+        createDirectRunThroughService(actor, body),
         [201],
       );
       return response.body;
@@ -678,24 +703,26 @@ export function createRunsApi(context: TestContext) {
       body: DirectRunRequest,
       statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
     ) {
-      return await accept(
-        runApp(context)(testAgentRunsContract).create({
-          headers: authenticate(context, actor),
-          body,
-        }),
-        statuses,
-      );
+      return await accept(createDirectRunThroughService(actor, body), statuses);
     },
 
     async listAgentRuns(actor: ApiTestUser, query: RunsListQuery) {
-      const response = await accept(
-        runApp(context)(runsMainContract).list({
-          headers: authenticate(context, actor),
-          query,
-        }),
-        [200],
-      );
-      return response.body;
+      if (!actor.orgId) {
+        throw new Error("Agent run list service requires an organization");
+      }
+      const result = await listAgentRunsFixture({
+        userId: actor.userId,
+        orgId: actor.orgId,
+        status: query.status,
+        agent: query.agent,
+        since: query.since,
+        until: query.until,
+        limit: query.limit,
+      });
+      if (result.kind === "bad-request") {
+        throw new Error(result.message);
+      }
+      return result.body;
     },
 
     async applyUserPermissionGrant(
