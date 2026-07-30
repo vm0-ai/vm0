@@ -106,6 +106,14 @@ describe("app auth pages", () => {
       actionLink: "S'inscrire",
       accessNotAllowed: "L'accès n'est pas autorisé.",
     },
+    {
+      locale: "hi-IN",
+      loading: "प्रमाणीकरण लोड हो रहा है",
+      toggleTheme: "थीम टॉगल करें",
+      documentTitle: "साइन अप करें | VM0",
+      actionLink: "साइन अप करें",
+      accessNotAllowed: "प्रवेश की अनुमति नहीं है।",
+    },
   ] as const;
 
   it.each(localeCases)(

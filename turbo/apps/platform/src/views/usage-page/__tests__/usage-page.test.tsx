@@ -364,4 +364,43 @@ describe("/usage page", () => {
       screen.getByRole("option", { name: "Últimos 7 días" }),
     ).toBeInTheDocument();
   });
+
+  it("localizes usage copy, plurals, and numeric totals in Hindi", async () => {
+    context.mocks.data.userPreferences({ locale: "hi-IN" });
+    context.mocks.api(zeroUsageInsightContract.get, ({ respond }) => {
+      return respond(200, usageInsightTodayFixture);
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/usage",
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe("hi-IN");
+      expect(
+        screen.getByRole("heading", { level: 1, name: "उपयोग" }),
+      ).toBeInTheDocument();
+      expect(
+        within(screen.getByRole("region", { name: "कुल क्रेडिट" })).getByText(
+          /1\.3\s+हज़ार/u,
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("1 ऑटोमेशन ने 300 क्रेडिट का उपयोग किया"),
+      ).toBeVisible();
+      expect(
+        screen.getByText("1 चैट ने 200 क्रेडिट का उपयोग किया"),
+      ).toBeVisible();
+      expect(screen.getAllByText("चैट")).not.toHaveLength(0);
+    });
+
+    click(screen.getByLabelText("तिथि सीमा"));
+    expect(
+      screen.getByRole("option", { name: "पिछले 7 दिन" }),
+    ).toBeInTheDocument();
+  });
 });

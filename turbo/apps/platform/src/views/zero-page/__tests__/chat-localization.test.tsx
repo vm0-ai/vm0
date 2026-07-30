@@ -56,6 +56,13 @@ const localeCases = [
     attach: "Joindre",
     send: "Envoyer",
   },
+  {
+    locale: "hi-IN",
+    placeholder:
+      "मुझसे वर्कफ़्लो ऑटोमेट करने और टास्क मैनेज करने के लिए कहें...",
+    attach: "अटैच करें",
+    send: "भेजें",
+  },
 ] as const;
 
 beforeEach(() => {

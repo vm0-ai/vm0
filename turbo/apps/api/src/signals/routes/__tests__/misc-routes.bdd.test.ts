@@ -1,6 +1,6 @@
 import { createHmac, randomUUID } from "node:crypto";
 
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { env, mockOptionalEnv } from "../../../lib/env";
@@ -12,6 +12,7 @@ import {
   createMiscRoutesApi,
   FRENCH_CLIENT_VERSION,
   GERMAN_CLIENT_VERSION,
+  HINDI_CLIENT_VERSION,
   JAPANESE_CLIENT_VERSION,
   KOREAN_CLIENT_VERSION,
   INDONESIAN_CLIENT_VERSION,
@@ -88,6 +89,10 @@ describe("MISC-01: organization logo and profile-adjacent API boundaries", () =>
 });
 
 describe("MISC-02: preferences, push subscription, user export, and empty logs", () => {
+  beforeEach(() => {
+    mockOptionalEnv("HINDI_LOCALE_ROLLOUT_ENABLED", undefined);
+  });
+
   it("chains visible user-scoped reads and writes without hidden fixtures", async () => {
     const { api, admin } = testActors();
 
@@ -1155,6 +1160,69 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
       locale: "it-IT",
       supportedLocales: ["en-US", "pt-BR", "it-IT"],
     });
+  });
+
+  it("negotiates Hindi across rollout and legacy clients", async () => {
+    const { api, admin } = testActors();
+    mockOptionalEnv("HINDI_LOCALE_ROLLOUT_ENABLED", undefined);
+
+    const guarded = await api.readPreferences(admin, HINDI_CLIENT_VERSION);
+    expect(guarded.body).toMatchObject({
+      locale: null,
+      supportedLocales: ["en-US"],
+    });
+
+    const guardedWrite = await api.updatePreferences(
+      admin,
+      { locale: "hi-IN" },
+      [400],
+      HINDI_CLIENT_VERSION,
+    );
+    expectApiError(guardedWrite.body);
+
+    mockOptionalEnv("HINDI_LOCALE_ROLLOUT_ENABLED", "true");
+
+    const legacyWrite = await api.updatePreferences(
+      admin,
+      { locale: "hi-IN" },
+      [400],
+    );
+    expectApiError(legacyWrite.body);
+
+    const hindi = await api.updatePreferences(
+      admin,
+      { locale: "hi-IN" },
+      [200],
+      HINDI_CLIENT_VERSION,
+    );
+    expect(hindi.body).toMatchObject({
+      locale: "hi-IN",
+      supportedLocales: ["en-US", "hi-IN"],
+    });
+
+    const legacyRead = await api.readPreferences(admin);
+    expect(legacyRead.body.locale).toBe("en-US");
+    expect(legacyRead.body.supportedLocales).toBeUndefined();
+
+    mockOptionalEnv("HINDI_LOCALE_ROLLOUT_ENABLED", undefined);
+    const rollbackRead = await api.readPreferences(admin, HINDI_CLIENT_VERSION);
+    expect(rollbackRead.body).toMatchObject({
+      locale: "en-US",
+      supportedLocales: ["en-US"],
+    });
+    await api.updatePreferences(
+      admin,
+      { timezone: "Asia/Kolkata" },
+      [200],
+      HINDI_CLIENT_VERSION,
+    );
+
+    mockOptionalEnv("HINDI_LOCALE_ROLLOUT_ENABLED", "true");
+    const capableReread = await api.readPreferences(
+      admin,
+      HINDI_CLIENT_VERSION,
+    );
+    expect(capableReread.body.locale).toBe("hi-IN");
   });
 });
 

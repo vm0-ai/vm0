@@ -125,11 +125,12 @@ describe("user preferences contract", () => {
       "es-ES",
       "it-IT",
       "fr-FR",
+      "hi-IN",
     ]);
 
     const preferences = userPreferencesResponseSchema.parse({
       timezone: null,
-      locale: "fr-FR",
+      locale: "hi-IN",
       supportedLocales: [...SUPPORTED_USER_LOCALES],
       pinnedAgentIds: [],
       sendMode: "enter",
@@ -138,7 +139,7 @@ describe("user preferences contract", () => {
       captureNetworkBodiesRemaining: 0,
     });
 
-    expect(preferences.locale).toBe("fr-FR");
+    expect(preferences.locale).toBe("hi-IN");
     expect(preferences.supportedLocales).toStrictEqual([
       ...SUPPORTED_USER_LOCALES,
     ]);
