@@ -562,6 +562,13 @@ describe("POST /api/zero/report-error", () => {
       connector_diagnostic_slug: "github",
       connector_diagnostic_type: "gitlab",
     } satisfies AxiomNetworkEvent;
+    const identityFreeNetworkEntry = {
+      ...networkEntry,
+      _time: "2026-04-28T07:00:03.123Z",
+      host: "example.com",
+      url: "https://example.com/health",
+      connector_diagnostic_type: undefined,
+    } satisfies AxiomNetworkEvent;
 
     context.mocks.axiom.query.mockImplementation((...args: unknown[]) => {
       const apl = String(args[0]);
@@ -587,6 +594,7 @@ describe("POST /api/zero/report-error", () => {
           networkEntry,
           canonicalNetworkEntry,
           conflictingNetworkEntry,
+          identityFreeNetworkEntry,
         ]);
       }
       return Promise.resolve([]);
@@ -615,7 +623,13 @@ describe("POST /api/zero/report-error", () => {
         connector_diagnostic_slug: "slack",
         connector_diagnostic_type: "slack",
       }),
+      expect.objectContaining({
+        _time: "2026-04-28T07:00:03.123Z",
+        host: "example.com",
+      }),
     ]);
+    expect(networkLogs[2]).not.toHaveProperty("connector_diagnostic_slug");
+    expect(networkLogs[2]).not.toHaveProperty("connector_diagnostic_type");
 
     const activityLogEntry = zip.getEntries().find((entry) => {
       return entry.entryName.startsWith("activity-log-");
@@ -679,13 +693,23 @@ describe("POST /api/zero/report-error", () => {
       response_body_encoding: networkBodyUtf8Encoding,
       response_body_truncated: false,
     });
-    expect(activityLog.networkLogs).toHaveLength(2);
+    expect(activityLog.networkLogs).toHaveLength(3);
     expect(activityLog.networkLogs?.[1]).toMatchObject({
       timestamp: "2026-04-28T07:00:01.123Z",
       host: "api.slack.com",
       connector_diagnostic_slug: "slack",
       connector_diagnostic_type: "slack",
     });
+    expect(activityLog.networkLogs?.[2]).toMatchObject({
+      timestamp: "2026-04-28T07:00:03.123Z",
+      host: "example.com",
+    });
+    expect(activityLog.networkLogs?.[2]).not.toHaveProperty(
+      "connector_diagnostic_slug",
+    );
+    expect(activityLog.networkLogs?.[2]).not.toHaveProperty(
+      "connector_diagnostic_type",
+    );
   });
 
   it("includes run context when a same-org non-owner submits the report", async () => {
