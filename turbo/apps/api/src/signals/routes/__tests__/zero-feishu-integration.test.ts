@@ -23,6 +23,7 @@ import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import {
   findPendingChatEventInputParamsByPromptFixture,
+  readChatEventContextFixture,
   readChatEventInputParamsFixture,
 } from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -2048,6 +2049,45 @@ describe("Feishu integration", () => {
       sessionId: cliAgentSessionId,
       history: `bdd feishu history ${run.id}`,
       assistantText: "Canonical Feishu answer",
+    });
+    const claimedThreadMessages = await accept(
+      setupApp({ context })(chatThreadEventsContract).list({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: chatThreadCreated.chatThreadId },
+        query: {},
+      }),
+      [200],
+    );
+    const claimedFeishuMessage = claimedThreadMessages.body.events.find(
+      (event) => {
+        return (
+          event.eventType === "input.prompt" &&
+          event.revokesEventId !== undefined &&
+          event.feishuChatOpenUrl ===
+            "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_dm"
+        );
+      },
+    );
+    if (!claimedFeishuMessage?.revokesEventId) {
+      throw new Error("Expected the claimed Feishu message");
+    }
+    const claimedFeishuContext = await readChatEventContextFixture(
+      claimedFeishuMessage.id,
+    );
+    const pendingFeishuContext = await readChatEventContextFixture(
+      claimedFeishuMessage.revokesEventId,
+    );
+    expect(claimedFeishuContext).toMatchObject({
+      contextType: "feishu",
+      contextId: expect.any(String),
+      feishuChatOpenUrl:
+        "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_dm",
+    });
+    expect(pendingFeishuContext).toMatchObject({
+      contextType: "feishu",
+      contextId: claimedFeishuContext?.contextId,
+      feishuChatOpenUrl:
+        "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_dm",
     });
     const completedReply = [...outboundMessages].reverse().find((message) => {
       return (
