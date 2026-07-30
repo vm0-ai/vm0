@@ -2280,6 +2280,81 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
   });
 
+  it("titles canonical Slack threads when their run is created", async () => {
+    const actor = bdd.user();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    const runnerGroup = runs.configureRunnerGroup();
+    integrations.configureSlackAppMocks();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+
+    const titlePrompts: string[] = [];
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    chatCallbacks.mockOpenRouterCompletions((body) => {
+      const systemContent = body.messages[0]?.content ?? "";
+      if (systemContent.includes("Generate a short, descriptive title")) {
+        titlePrompts.push(body.messages[1]?.content ?? "");
+        return "Canonical Slack Title";
+      }
+      return "Generated summary";
+    });
+
+    const slackUserId = uniqueSlackUserId();
+    const { teamId } = await integrations.installSlackWorkspace(actor, {
+      installerSlackUserId: slackUserId,
+    });
+    const channelId = "C_BDD_EAGER_TITLE";
+    const threadTs = "2960.000100";
+    const prompt = "title this canonical Slack thread";
+    await integrations.postSlackEvent(teamId, {
+      type: "app_mention",
+      user: slackUserId,
+      text: prompt,
+      ts: threadTs,
+      channel: channelId,
+      channel_type: "channel",
+    });
+    const runId = await pollSlackRun(runnerGroup);
+    const claim = await runs.claimRunnerJob(runId);
+    await flushWaitUntilForTest();
+
+    const state = await integrations.readSlackTestState(teamId);
+    const chatThreadId = state.chat_thread_routes.find((route) => {
+      return route.channelId === channelId && route.threadTs === threadTs;
+    })?.chatThreadId;
+    if (!chatThreadId) {
+      throw new Error("Expected the Slack event to create a canonical thread");
+    }
+    const beforeComplete = await chat.requestThreadEvents(actor, {}, [200]);
+    if (beforeComplete.status !== 200) {
+      throw new Error("Expected canonical Slack thread events to load");
+    }
+    // The title lands while the run is still in flight, so Slack threads no
+    // longer wait for the terminal callback to be named.
+    expect(beforeComplete.body.events).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "renamed",
+          chatThreadId,
+          title: "Canonical Slack Title",
+        }),
+      ]),
+    );
+    expect(titlePrompts).toHaveLength(1);
+    expect(titlePrompts[0]).toContain(prompt);
+
+    await completeSlackTriggeredRun({
+      runId,
+      sandboxToken: claim.sandboxToken,
+      cliAgentType: claim.cliAgentType,
+      assistantText: "Canonical Slack titled answer",
+    });
+    await flushWaitUntilForTest();
+
+    expect(titlePrompts).toHaveLength(1);
+  });
+
   it("binds agent and model choices when canonical Slack threads are created", async () => {
     const actor = bdd.user();
     runs.acceptStorageDownloads();
