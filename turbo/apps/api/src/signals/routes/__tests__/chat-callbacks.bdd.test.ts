@@ -2302,6 +2302,70 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     await held.done;
   }, 30_000);
 
+  it("keeps accepted projection independent of the route deadline", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "keep accepted projection alive",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    const routeDeadline = new AbortController();
+    context.mocks.abortSignal.timeout.mockImplementation((milliseconds) => {
+      return milliseconds === 20_000 ? routeDeadline.signal : undefined;
+    });
+    const held = await holdChatEventInsertTransactionFixture({
+      threadId: run.threadId,
+      content: "hold the accepted projection",
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      held.release();
+      await held.done;
+    });
+
+    const response = await webhooks.requestAgentEvents(
+      {
+        runId: run.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 0,
+            message: {
+              id: "msg_independent_projection",
+              content: [{ type: "text", text: "Persist after the ACK." }],
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    expect(response.status).toBe(200);
+    await expect.poll(held.blockedWaiterCount).toBeGreaterThanOrEqual(1);
+
+    routeDeadline.abort(
+      new DOMException("event route deadline", "TimeoutError"),
+    );
+    held.release();
+    await held.done;
+    await flushWaitUntilForTest();
+
+    const messages = await chat.listThreadEvents(actor, run.threadId);
+    expect(
+      eventBackedContents(messages.events, run.runId).map((message) => {
+        return {
+          content: message.content,
+          sequenceNumber: message.sequenceNumber,
+        };
+      }),
+    ).toStrictEqual([
+      {
+        content: "Persist after the ACK.",
+        sequenceNumber: 0,
+      },
+    ]);
+  }, 30_000);
+
   it("skips live projection instead of queueing past its pool budget", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const run = await startChatRun(actor, {

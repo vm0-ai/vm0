@@ -1,12 +1,14 @@
 import { computed, type Computed } from "ccstate";
 import { Axiom } from "@axiomhq/js";
+
 import { env, optionalEnv } from "../../lib/env";
+import { logger } from "../../lib/log";
 import { singleton } from "../../lib/singleton";
+import { startUntrackedBestEffortCleanup } from "../utils";
 import {
   getAxiomTokenEnvNameForApl,
   getAxiomTokenEnvNameForDataset,
 } from "./axiom-datasets";
-import { logger } from "../../lib/log";
 
 const AXIOM_API_ORIGIN = "https://api.axiom.co";
 const AXIOM_QUERY_TIMEOUT_MS = 120_000;
@@ -86,10 +88,7 @@ interface AxiomIngestStatus {
 
 type DirectAxiomIngestResult =
   | { readonly configured: false }
-  | {
-      readonly configured: true;
-      readonly status: AxiomIngestStatus;
-    };
+  | { readonly configured: true };
 
 class DirectAxiomIngestError extends Error {
   readonly reason: "http_status" | "invalid_response" | "partial_ingest";
@@ -168,6 +167,9 @@ export async function ingestAxiomDirect(
   });
 
   if (!response.ok) {
+    if (response.body) {
+      startUntrackedBestEffortCleanup(response.body.cancel());
+    }
     throw new DirectAxiomIngestError(
       `Axiom ingest failed with status ${response.status}`,
       {
@@ -195,7 +197,7 @@ export async function ingestAxiomDirect(
     );
   }
 
-  return { configured: true, status: payload };
+  return { configured: true };
 }
 
 interface FlushAxiomOptions {
