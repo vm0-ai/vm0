@@ -36,6 +36,7 @@ import {
 } from "./crypto.utils";
 import { goalQueueEventMatchesActiveGoal } from "./chat-goal-queue.service";
 import { feishuOrgCallbackFileSchema } from "./feishu-org-callback-payload";
+import { agentphoneDeliveryTargetSchema } from "./agentphone-chat-callback-payload";
 import { teamsDeliveryTargetSchema } from "./teams-chat-callback-payload";
 import { telegramDeliveryTargetSchema } from "./telegram-chat-callback-payload";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
@@ -49,6 +50,7 @@ const queuedUserMessageTriggerSourceSchema = z.enum([
   "feishu",
   "teams",
   "telegram",
+  "agentphone",
   "workflow-schedule",
 ]);
 
@@ -78,6 +80,7 @@ const queuedUserMessageRunParamsSchema = z.object({
     .optional(),
   teamsDelivery: teamsDeliveryTargetSchema.optional(),
   telegramDelivery: telegramDeliveryTargetSchema.optional(),
+  agentphoneDelivery: agentphoneDeliveryTargetSchema.optional(),
   morningBriefDelivery: z
     .object({
       deliveryId: z.string(),
@@ -100,6 +103,7 @@ const queuedUserMessageRunParamsSchema = z.object({
       telegramUsername: z.string().optional(),
       telegramUserId: z.string().optional(),
       telegramLanguage: z.string().optional(),
+      agentphoneHandle: z.string().optional(),
     })
     .optional(),
 });
@@ -135,6 +139,7 @@ export interface QueuedUserMessage {
     | "feishu"
     | "teams"
     | "telegram"
+    | "agentphone"
     | "workflow-schedule";
   readonly encryptedParams: string | null;
 }
