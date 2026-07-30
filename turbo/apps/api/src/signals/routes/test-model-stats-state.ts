@@ -5,7 +5,7 @@ import {
 } from "@vm0/api-contracts/contracts/test-model-stats-state";
 import { modelStat } from "@vm0/db/schema/model-stat";
 import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
-import { and, asc, gte, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, count, gte, inArray, lt, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { executeRawRows } from "../../lib/db-raw-rows";
@@ -113,7 +113,7 @@ async function readAggregationLockState(
             AND held.granted
         ) AS "held",
         (
-          SELECT COUNT(*)::int
+          SELECT ${count()}::int
           FROM pg_locks held
           INNER JOIN pg_locks waiting
             ON waiting.locktype = held.locktype
