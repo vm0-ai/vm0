@@ -254,6 +254,7 @@ const resizeBrowserByThreadInner$ = command(
         userId: auth.userId,
         chatThreadId: get(resizeByThreadParams$).threadId,
         aspectRatio: body.data.aspectRatio,
+        ...("runId" in auth ? { runId: auth.runId } : {}),
       },
       signal,
     );

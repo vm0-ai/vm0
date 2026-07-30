@@ -513,6 +513,25 @@ describe("zero browser route", () => {
     expect(created.body.browser.id).not.toBe(created.body.browser.threadId);
     expect(profileCreates).toBe(2);
     expect(providerCreates).toBe(2);
+
+    const crossThreadResize = await createApp({
+      signal: context.signal,
+    }).request(
+      `/api/zero/chat-threads/${createdInOtherThread.body.browser.threadId}/browser/resize`,
+      {
+        method: "POST",
+        headers: {
+          ...first.claim.browserHeaders,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ aspectRatio: 0.75 }),
+      },
+    );
+    expect(crossThreadResize.status).toBe(404);
+    await expect(crossThreadResize.json()).resolves.toMatchObject({
+      error: { code: "BROWSER_NOT_FOUND" },
+    });
+
     expect(
       providerCreateBodies.map((body) => {
         return z
