@@ -50,6 +50,7 @@ describe("zero feishu upload-file command", () => {
           filename: "report.pdf",
           contentType: "application/pdf",
           length: Buffer.byteLength(FILE_CONTENT),
+          supportsUploadHeaders: true,
         });
         return HttpResponse.json({
           uploadId: "00000000-0000-4000-8000-000000000001",
@@ -59,10 +60,16 @@ describe("zero feishu upload-file command", () => {
           filename: "report.pdf",
           contentType: "application/pdf",
           size: Buffer.byteLength(FILE_CONTENT),
+          uploadHeaders: {
+            "x-amz-meta-artifact-id": "00000000-0000-4000-8000-000000000001",
+          },
         });
       }),
       http.put(STORAGE_UPLOAD_URL, async ({ request }) => {
         expect(request.headers.get("content-type")).toBe("application/pdf");
+        expect(request.headers.get("x-amz-meta-artifact-id")).toBe(
+          "00000000-0000-4000-8000-000000000001",
+        );
         await expect(request.text()).resolves.toBe(FILE_CONTENT);
         return new HttpResponse(null, { status: 200 });
       }),

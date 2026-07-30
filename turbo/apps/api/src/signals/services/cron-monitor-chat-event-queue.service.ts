@@ -1,4 +1,4 @@
-import { chatInputQueueParams } from "@vm0/db/schema/chat-input-queue-params";
+import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { command } from "ccstate";
 import { and, count, eq, inArray, isNull, or } from "drizzle-orm";
@@ -25,8 +25,8 @@ export const monitorChatEventQueue$ = command(
       .select({ orphanedMessages: count() })
       .from(chatEvents)
       .leftJoin(
-        chatInputQueueParams,
-        eq(chatInputQueueParams.eventId, chatEvents.id),
+        chatEventInputParams,
+        eq(chatEventInputParams.eventId, chatEvents.id),
       )
       .where(
         and(
@@ -38,7 +38,7 @@ export const monitorChatEventQueue$ = command(
               or(
                 isNull(chatEvents.automationId),
                 isNull(chatEvents.triggerSource),
-                isNull(chatInputQueueParams.encryptedParams),
+                isNull(chatEventInputParams.encryptedParams),
               ),
             ),
             and(
@@ -49,7 +49,7 @@ export const monitorChatEventQueue$ = command(
                 "teams",
                 "telegram",
               ]),
-              isNull(chatInputQueueParams.encryptedParams),
+              isNull(chatEventInputParams.encryptedParams),
             ),
           ),
         ),

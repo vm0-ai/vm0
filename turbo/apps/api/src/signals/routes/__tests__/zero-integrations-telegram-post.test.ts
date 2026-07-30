@@ -20,8 +20,8 @@ import { clearMockedEnv, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
-  findPendingChatInputQueueParamsByPromptFixture,
-  readChatInputQueueParamsFixture,
+  findPendingChatEventInputParamsByPromptFixture,
+  readChatEventInputParamsFixture,
 } from "../../../test-fixtures/chat-events";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
@@ -1321,7 +1321,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     ).toBe(200);
     await flushWaitUntilForTest();
     const queuedParams =
-      await findPendingChatInputQueueParamsByPromptFixture(queuedPrompt);
+      await findPendingChatEventInputParamsByPromptFixture(queuedPrompt);
     expect(queuedParams).toMatchObject({
       eventId: expect.any(String),
       encryptedParams: expect.any(String),
@@ -1345,7 +1345,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       throw new Error("Expected the queued Telegram run");
     }
     await expect(
-      readChatInputQueueParamsFixture(queuedParams.eventId),
+      readChatEventInputParamsFixture(queuedParams.eventId),
     ).resolves.toBeNull();
     const queuedClaim = await claimTelegramRun(queuedRunId, runnerGroup);
     expect(queuedClaim.prompt).toBe(queuedPrompt);

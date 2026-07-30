@@ -15,7 +15,9 @@ import * as sandboxTelemetrySchema from "./schema/sandbox-telemetry";
 import * as runnerSchema from "./schema/runner-job-queue";
 import * as runnerStateSchema from "./schema/runner-state";
 import * as agentRunQueueSchema from "./schema/agent-run-queue";
-import * as chatInputQueueParamsSchema from "./schema/chat-input-queue-params";
+import * as chatEventInputParamsSchema from "./schema/chat-event-input-params";
+import * as chatFeishuContextSchema from "./schema/chat-feishu-context";
+import * as chatSlackContextSchema from "./schema/chat-slack-context";
 import * as secretSchema from "./schema/secret";
 import * as modelProviderSchema from "./schema/model-provider";
 import * as orgModelPolicySchema from "./schema/org-model-policy";
@@ -34,7 +36,6 @@ import * as runBuiltInAdmissionSchema from "./schema/run-built-in-admission";
 import * as usageDailySchema from "./schema/usage-daily";
 import * as githubInstallationSchema from "./schema/github-installation";
 import * as githubUserLinkSchema from "./schema/github-user-link";
-import * as githubIssueSessionSchema from "./schema/github-issue-session";
 import * as githubChatThreadRouteSchema from "./schema/github-chat-thread-route";
 import * as telegramInstallationSchema from "./schema/telegram-installation";
 import * as telegramOfficialUserLinkSchema from "./schema/telegram-official-user-link";
@@ -58,7 +59,6 @@ import * as teamsChatThreadRouteSchema from "./schema/teams-chat-thread-route";
 import * as teamsUserAgentPreferenceSchema from "./schema/teams-user-agent-preference";
 import * as feishuOrgInstallationSchema from "./schema/feishu-org-installation";
 import * as feishuOrgConnectionSchema from "./schema/feishu-org-connection";
-import * as feishuOrgThreadSessionSchema from "./schema/feishu-org-thread-session";
 import * as feishuOrgEventSchema from "./schema/feishu-org-event";
 import * as feishuChatThreadRouteSchema from "./schema/feishu-chat-thread-route";
 import * as feishuChatIngressSchema from "./schema/feishu-chat-ingress";
@@ -134,7 +134,9 @@ export const schema = {
   ...runnerSchema,
   ...runnerStateSchema,
   ...agentRunQueueSchema,
-  ...chatInputQueueParamsSchema,
+  ...chatEventInputParamsSchema,
+  ...chatFeishuContextSchema,
+  ...chatSlackContextSchema,
   ...secretSchema,
   ...modelProviderSchema,
   ...orgModelPolicySchema,
@@ -151,7 +153,6 @@ export const schema = {
   ...teamsUserAgentPreferenceSchema,
   ...feishuOrgInstallationSchema,
   ...feishuOrgConnectionSchema,
-  ...feishuOrgThreadSessionSchema,
   ...feishuOrgEventSchema,
   ...feishuChatThreadRouteSchema,
   ...feishuChatIngressSchema,
@@ -171,7 +172,6 @@ export const schema = {
   ...usageDailySchema,
   ...githubInstallationSchema,
   ...githubUserLinkSchema,
-  ...githubIssueSessionSchema,
   ...githubChatThreadRouteSchema,
   ...telegramInstallationSchema,
   ...telegramOfficialUserLinkSchema,

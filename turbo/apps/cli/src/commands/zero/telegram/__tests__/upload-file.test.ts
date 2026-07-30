@@ -58,6 +58,7 @@ describe("zero telegram upload-file command", () => {
           filename: "report.pdf",
           contentType: "application/pdf",
           length: 20,
+          supportsUploadHeaders: true,
         });
         return HttpResponse.json({
           uploadId: "00000000-0000-4000-8000-000000000001",
@@ -67,10 +68,16 @@ describe("zero telegram upload-file command", () => {
           filename: "report.pdf",
           contentType: "application/pdf",
           size: 20,
+          uploadHeaders: {
+            "x-amz-meta-artifact-id": "00000000-0000-4000-8000-000000000001",
+          },
         });
       }),
       http.put(R2_UPLOAD_URL, async ({ request }) => {
         putReceivedContentType = request.headers.get("content-type");
+        expect(request.headers.get("x-amz-meta-artifact-id")).toBe(
+          "00000000-0000-4000-8000-000000000001",
+        );
         const bytes = Buffer.from(await request.arrayBuffer());
         expect(bytes.toString()).toBe("telegram pdf content");
         return new HttpResponse(null, { status: 200 });

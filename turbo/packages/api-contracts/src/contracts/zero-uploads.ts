@@ -13,6 +13,12 @@ const prepareRequestSchema = z.object({
   contentType: z.string().min(1).max(200),
   size: z.number().int().nonnegative(),
   /**
+   * New clients opt in to applying headers returned with a presigned upload.
+   * Older API deployments ignore this field, while newer APIs keep returning
+   * legacy object keys to clients that omit it.
+   */
+  supportsUploadHeaders: z.literal(true).optional(),
+  /**
    * New clients request multipart uploads for large files. Older API
    * deployments ignore this unknown field and return the legacy single PUT
    * response, which keeps frontend/backend rolling deploys compatible.
@@ -36,6 +42,8 @@ const uploadMetadataSchema = z.object({
 const prepareResponseSchema = uploadMetadataSchema.extend({
   /** Presigned PUT URL — browser uploads the file body here directly. */
   uploadUrl: z.string().url(),
+  /** Headers the client must include with the presigned PUT request. */
+  uploadHeaders: z.record(z.string(), z.string()).optional(),
 });
 
 const multipartUploadPartSchema = z.object({

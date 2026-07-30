@@ -863,26 +863,39 @@ describe("chat drafts", () => {
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
-    context.mocks.http.post("*/api/zero/uploads/prepare", () => {
-      return HttpResponse.json({
-        id: "upload-photo",
-        filename: "photo.png",
-        contentType: "image/png",
-        size: 1024,
-        uploadUrl: "https://mock-upload.example.com/photo.png",
-        url: "https://example.com/photo.png",
-      });
-    });
+    context.mocks.http.post(
+      "*/api/zero/uploads/prepare",
+      async ({ request }) => {
+        await expect(request.json()).resolves.toMatchObject({
+          filename: "photo.png",
+          supportsUploadHeaders: true,
+        });
+        return HttpResponse.json({
+          id: "upload-photo",
+          filename: "photo.png",
+          contentType: "image/png",
+          size: 1024,
+          uploadUrl: "https://mock-upload.example.com/photo.png",
+          uploadHeaders: {
+            "x-amz-meta-artifact-id": "upload-photo",
+          },
+          url: "https://example.com/photo.png",
+        });
+      },
+    );
     context.mocks.http.put(
       "https://mock-upload.example.com/photo.png",
-      ({ deferred }) => {
+      ({ deferred, request }) => {
+        expect(request.headers.get("x-amz-meta-artifact-id")).toBe(
+          "upload-photo",
+        );
         uploadStarted.resolve();
-        const request = deferred<Response>();
+        const pendingResponse = deferred<Response>();
         uploadRequest = {
-          promise: request.promise,
-          resolve: request.resolve,
+          promise: pendingResponse.promise,
+          resolve: pendingResponse.resolve,
         };
-        return request.promise;
+        return pendingResponse.promise;
       },
     );
 
@@ -1072,6 +1085,7 @@ describe("chat drafts", () => {
           contentType: "video/mp4",
           size: 5 * 1024 * 1024 + 1,
           multipart: true,
+          supportsUploadHeaders: true,
         },
       ]);
       expect(firstPartAttempts).toBe(2);

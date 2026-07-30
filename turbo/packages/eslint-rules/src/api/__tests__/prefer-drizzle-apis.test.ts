@@ -46,6 +46,32 @@ const drizzlePreamble = `
   declare const db: DrizzleDatabase;
 `;
 
+const conflictPreamble = `
+  import { pgTable, text, timestamp } from "drizzle-orm/pg-core";
+
+  const hosts = pgTable("hosts", {
+    id: text("id").notNull(),
+    installationId: text("installation_id"),
+    revokedAt: timestamp("revoked_at"),
+  });
+  const archivedHosts = pgTable("archived_hosts", {
+    id: text("id").notNull(),
+    installationId: text("installation_id"),
+    revokedAt: timestamp("revoked_at"),
+  });
+  const retiredHosts = pgTable("retired_hosts", {
+    id: text("id").notNull(),
+    retiredAt: timestamp("retired_at"),
+  });
+  type DrizzleDatabase =
+    import("drizzle-orm/node-postgres").NodePgDatabase<{
+      archivedHosts: typeof archivedHosts;
+      hosts: typeof hosts;
+      retiredHosts: typeof retiredHosts;
+    }>;
+  declare const db: DrizzleDatabase;
+`;
+
 const readQueryPreamble = `
   import { executeRawRows } from "./lib/db-raw-rows";
   import { integer, jsonb, pgTable, text } from "drizzle-orm/pg-core";
@@ -2917,6 +2943,129 @@ ruleTester.run("prefer-drizzle-apis source-local analysis", preferDrizzleApis, {
       `,
     },
     {
+      name: "typed conflict target remains valid",
+      code: `${conflictPreamble}
+        import { and, isNotNull, isNull } from "drizzle-orm";
+        await db
+          .insert(hosts)
+          .values({ id: "host" })
+          .onConflictDoUpdate({
+            target: hosts.id,
+            set: { revokedAt: null },
+            targetWhere: and(
+              isNotNull(hosts.installationId),
+              isNull(hosts.revokedAt),
+            ),
+          });
+      `,
+    },
+    {
+      name: "indirect conflict builder remains opaque",
+      code: `${conflictPreamble}
+        import { sql } from "drizzle-orm";
+        const builder = db.insert(hosts).values({ id: "host" });
+        await builder.onConflictDoUpdate({
+          target: hosts.id,
+          set: { revokedAt: null },
+          targetWhere: sql\`installation_id IS NOT NULL AND revoked_at IS NULL\`,
+        });
+      `,
+    },
+    {
+      name: "dynamic conflict table remains opaque",
+      code: `${conflictPreamble}
+        import { sql } from "drizzle-orm";
+        declare const useArchive: boolean;
+        const targetTable = useArchive ? archivedHosts : hosts;
+        await db
+          .insert(targetTable)
+          .values({ id: "host" })
+          .onConflictDoUpdate({
+            target: targetTable.id,
+            set: { revokedAt: null },
+            targetWhere: sql\`installation_id IS NOT NULL AND revoked_at IS NULL\`,
+          });
+      `,
+    },
+    {
+      name: "lookalike conflict API remains opaque",
+      code: `${conflictPreamble}
+        import { sql } from "drizzle-orm";
+        const fakeDb = {
+          insert(_table: unknown) {
+            return {
+              values(_value: unknown) {
+                return {
+                  onConflictDoUpdate(options: unknown) {
+                    return options;
+                  },
+                };
+              },
+            };
+          },
+        };
+        fakeDb
+          .insert(hosts)
+          .values({ id: "host" })
+          .onConflictDoUpdate({
+            target: hosts.id,
+            set: { revokedAt: null },
+            targetWhere: sql\`installation_id IS NOT NULL AND revoked_at IS NULL\`,
+          });
+      `,
+    },
+    {
+      name: "computed conflict predicate property remains opaque",
+      code: `${conflictPreamble}
+        import { sql } from "drizzle-orm";
+        const targetWhere = "targetWhere";
+        await db
+          .insert(hosts)
+          .values({ id: "host" })
+          .onConflictDoUpdate({
+            target: hosts.id,
+            set: { revokedAt: null },
+            [targetWhere]: sql\`installation_id IS NOT NULL AND revoked_at IS NULL\`,
+          });
+      `,
+    },
+    {
+      name: "spread conflict options remain opaque",
+      code: `${conflictPreamble}
+        import { sql, type SQL } from "drizzle-orm";
+        declare const extraOptions: { readonly setWhere?: SQL };
+        await db
+          .insert(hosts)
+          .values({ id: "host" })
+          .onConflictDoUpdate({
+            ...extraOptions,
+            target: hosts.id,
+            set: { revokedAt: null },
+            targetWhere: sql\`installation_id IS NOT NULL AND revoked_at IS NULL\`,
+          });
+      `,
+    },
+    {
+      name: "nested conflict relation remains opaque",
+      code: `${conflictPreamble}
+        import { sql } from "drizzle-orm";
+        await db
+          .insert(hosts)
+          .values({ id: "host" })
+          .onConflictDoUpdate({
+            target: hosts.id,
+            set: { revokedAt: null },
+            targetWhere: sql\`
+              EXISTS (
+                SELECT 1
+                FROM archived_hosts
+                WHERE revoked_at IS NULL
+              )
+            \`,
+          });
+      `,
+    },
+    {
       name: "dynamic predicate spread remains opaque",
       code: `${drizzlePreamble}
         import { and, type SQL } from "drizzle-orm";
@@ -3151,6 +3300,60 @@ ruleTester.run("prefer-drizzle-apis source-local analysis", preferDrizzleApis, {
         void rank();
       `,
       errors: [{ messageId: "typedApi", data: { helper: "gt" } }],
+    },
+    {
+      name: "conflict target resolves one known insert column",
+      code: `${conflictPreamble}
+        import { sql } from "drizzle-orm";
+        await db
+          .insert(hosts)
+          .values({ id: "host" })
+          .onConflictDoUpdate({
+            target: hosts.id,
+            set: { revokedAt: null },
+            targetWhere: sql\`revoked_at IS NULL\`,
+          });
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "isNull" } }],
+    },
+    {
+      name: "conflict target resolves multiple known insert columns",
+      code: `${conflictPreamble}
+        import { sql } from "drizzle-orm";
+        await db
+          .insert(hosts)
+          .values({ id: "host" })
+          .onConflictDoUpdate({
+            target: hosts.id,
+            set: { revokedAt: null },
+            targetWhere: sql\`installation_id IS NOT NULL AND revoked_at IS NULL\`,
+          });
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "and" } }],
+    },
+    {
+      name: "shared conflict predicate keeps target-aware analysis",
+      code: `${conflictPreamble}
+        import { sql } from "drizzle-orm";
+        const predicate = sql\`revoked_at IS NULL\`;
+        await db
+          .insert(retiredHosts)
+          .values({ id: "archived" })
+          .onConflictDoUpdate({
+            target: retiredHosts.id,
+            set: { retiredAt: null },
+            targetWhere: predicate,
+          });
+        await db
+          .insert(hosts)
+          .values({ id: "host" })
+          .onConflictDoUpdate({
+            target: hosts.id,
+            set: { revokedAt: null },
+            targetWhere: predicate,
+          });
+      `,
+      errors: [{ messageId: "typedApi", data: { helper: "isNull" } }],
     },
     {
       name: "conflict update fields use write and predicate contexts",

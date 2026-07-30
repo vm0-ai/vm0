@@ -235,10 +235,23 @@ interface SqlSourceRange {
 }
 
 interface SqlSchemaColumn {
-  readonly alias: string;
+  readonly binding:
+    | {
+        readonly kind: "external";
+        readonly tableNode: TSESTree.Expression;
+      }
+    | {
+        readonly alias: string;
+        readonly kind: "marker";
+        readonly relationMarker: SqlMarker;
+        readonly tableMarker: SqlMarker;
+      };
   readonly column: DrizzleTableColumnMetadata;
-  readonly relationMarker: SqlMarker;
-  readonly tableMarker: SqlMarker;
+}
+
+interface SqlSchemaTarget {
+  readonly metadata: DrizzleTableMetadata;
+  readonly node: TSESTree.Expression;
 }
 
 interface SqlTableAlias {
@@ -386,6 +399,7 @@ interface ClassificationContext {
   readonly ownsResultMapping: boolean;
   readonly root: TSESTree.Expression;
   readonly services: ParserServicesWithTypeInformation;
+  readonly schemaTarget: SqlSchemaTarget | undefined;
   readonly variant: SqlSourceVariant;
 }
 
@@ -422,6 +436,13 @@ interface RangeVarMatch {
 const ANALYSIS_CACHE = new WeakMap<
   SqlSourceComposer,
   WeakMap<TSESTree.Expression, Map<SqlAnalysisContext, SqlAnalysis>>
+>();
+const TARGET_ANALYSIS_CACHE = new WeakMap<
+  SqlSourceComposer,
+  WeakMap<
+    TSESTree.Expression,
+    WeakMap<TSESTree.Expression, Map<SqlAnalysisContext, SqlAnalysis>>
+  >
 >();
 
 const COMPARISON_HELPERS = new Map<
@@ -1113,6 +1134,7 @@ function parseSqlVariant(
   trackSourceRanges: boolean,
   checker: TypeChecker,
   services: ParserServicesWithTypeInformation,
+  schemaTarget: SqlSchemaTarget | undefined,
 ): ParsedSql | null {
   const literals = variant.chunks.flatMap((chunk) => {
     return chunk.kind === "literal" ? [chunk.text] : [];
@@ -1321,7 +1343,7 @@ function parseSqlVariant(
   }
   return {
     markers,
-    schemaColumns: resolveSchemaColumns(statement, markers),
+    schemaColumns: resolveSchemaColumns(statement, markers, schemaTarget),
     sourceRanges: rendered.sourceRanges,
     statement,
   };
@@ -1562,9 +1584,13 @@ function hasPotentialSchemaAlias(
 function resolveSchemaColumns(
   statement: unknown,
   markers: ReadonlyMap<string, SqlMarker>,
+  schemaTarget: SqlSchemaTarget | undefined,
 ): ReadonlyMap<Record<string, unknown>, SqlSchemaColumn> {
   const columns = new Map<Record<string, unknown>, SqlSchemaColumn>();
-  if (!hasPotentialSchemaAlias(statement, markers)) {
+  if (
+    schemaTarget === undefined &&
+    !hasPotentialSchemaAlias(statement, markers)
+  ) {
     return columns;
   }
 
@@ -1583,6 +1609,33 @@ function resolveSchemaColumns(
     columnRef: Record<string, unknown>,
     scope: RelationScope | undefined,
   ): void {
+    // The external relation belongs only to the synthetic host's outer
+    // predicate. Nested or explicit SQL relation scopes stay opaque.
+    if (
+      schemaTarget !== undefined &&
+      scope !== undefined &&
+      scope.parent === undefined &&
+      scope.bindings.size === 0 &&
+      Array.isArray(columnRef.fields) &&
+      columnRef.fields.length === 1 &&
+      hasOnlyKeys(columnRef, new Set(["fields", "location"]))
+    ) {
+      const databaseName = stringNodeValue(columnRef.fields[0]);
+      const column =
+        databaseName === undefined
+          ? undefined
+          : schemaTarget.metadata.columns.get(databaseName);
+      if (column !== undefined) {
+        columns.set(columnRef, {
+          binding: {
+            kind: "external",
+            tableNode: schemaTarget.node,
+          },
+          column,
+        });
+      }
+      return;
+    }
     if (
       !Array.isArray(columnRef.fields) ||
       columnRef.fields.length !== 2 ||
@@ -1603,10 +1656,13 @@ function resolveSchemaColumns(
           const column = binding.metadata.columns.get(databaseName);
           if (column !== undefined) {
             columns.set(columnRef, {
-              alias,
+              binding: {
+                alias,
+                kind: "marker",
+                relationMarker: binding.relationMarker,
+                tableMarker: binding.tableMarker,
+              },
               column,
-              relationMarker: binding.relationMarker,
-              tableMarker: binding.tableMarker,
             });
           }
         }
@@ -1946,13 +2002,19 @@ function structuralExpression(
   const schemaColumn =
     columnRef === undefined ? undefined : schemaColumns.get(columnRef);
   if (schemaColumn !== undefined) {
+    const bindingChunks =
+      schemaColumn.binding.kind === "marker"
+        ? [
+            schemaColumn.binding.relationMarker.chunk,
+            schemaColumn.binding.tableMarker.chunk,
+          ]
+        : [];
     return {
       kind: "schema-column",
       schemaColumn,
       sourceChunks: new Set([
         ...ownSourceChunks(value, sourceRanges),
-        schemaColumn.relationMarker.chunk,
-        schemaColumn.tableMarker.chunk,
+        ...bindingChunks,
       ]),
     };
   }
@@ -2448,9 +2510,11 @@ function schemaColumnMatchesRole(
   checker: TypeChecker,
   services: ParserServicesWithTypeInformation,
 ): boolean {
-  const tableNode = services.esTreeNodeToTSNodeMap.get(
-    schemaColumn.tableMarker.node,
-  );
+  const tableExpression =
+    schemaColumn.binding.kind === "external"
+      ? schemaColumn.binding.tableNode
+      : schemaColumn.binding.tableMarker.node;
+  const tableNode = services.esTreeNodeToTSNodeMap.get(tableExpression);
   const type = checker.getTypeOfSymbolAtLocation(
     schemaColumn.column.propertySymbol,
     tableNode,
@@ -2627,6 +2691,7 @@ function operandAnchor(
     classificationContext.root,
     classificationContext.checker,
     classificationContext.services,
+    classificationContext.schemaTarget,
   );
   return boundary !== undefined &&
     nodeMatchesRole(
@@ -5261,12 +5326,19 @@ function sameStructuralExpression(
     return left.marker.chunk === right.marker.chunk;
   }
   if (left.kind === "schema-column" && right.kind === "schema-column") {
+    const leftBinding = left.schemaColumn.binding;
+    const rightBinding = right.schemaColumn.binding;
+    const sameBinding =
+      leftBinding.kind === "external" && rightBinding.kind === "external"
+        ? leftBinding.tableNode === rightBinding.tableNode
+        : leftBinding.kind === "marker" && rightBinding.kind === "marker"
+          ? leftBinding.relationMarker.chunk ===
+              rightBinding.relationMarker.chunk &&
+            leftBinding.tableMarker.chunk === rightBinding.tableMarker.chunk &&
+            leftBinding.alias === rightBinding.alias
+          : false;
     return (
-      left.schemaColumn.relationMarker.chunk ===
-        right.schemaColumn.relationMarker.chunk &&
-      left.schemaColumn.tableMarker.chunk ===
-        right.schemaColumn.tableMarker.chunk &&
-      left.schemaColumn.alias === right.schemaColumn.alias &&
+      sameBinding &&
       left.schemaColumn.column.databaseName ===
         right.schemaColumn.column.databaseName
     );
@@ -5470,6 +5542,7 @@ function exactExpressionBoundary(
   root: TSESTree.Expression,
   checker: TypeChecker,
   services: ParserServicesWithTypeInformation,
+  schemaTarget: SqlSchemaTarget | undefined,
 ): TSESTree.Expression | undefined {
   const candidates = commonCompositionBoundaries(
     [...expression.sourceChunks],
@@ -5487,6 +5560,7 @@ function exactExpressionBoundary(
       true,
       checker,
       services,
+      schemaTarget,
     );
     if (parsed === null) {
       continue;
@@ -5684,6 +5758,7 @@ function replacementBoundaryForFinding(
   capabilities: SqlCapabilityChecks,
   allowsRetainedSqlWrapper: boolean,
   allowsScalarQuery: boolean,
+  schemaTarget: SqlSchemaTarget | undefined,
 ): TSESTree.Expression | undefined {
   // A parsed descendant can cross template boundaries because Drizzle inserts
   // nested SQL without parentheses. Reparse each editable boundary in
@@ -5727,6 +5802,7 @@ function replacementBoundaryForFinding(
         true,
         checker,
         services,
+        schemaTarget,
       );
       if (
         parsed === null ||
@@ -5746,6 +5822,7 @@ function replacementBoundaryForFinding(
         checker,
         ownsResultMapping: false,
         root: candidate,
+        schemaTarget,
         services,
         variant: candidateVariant,
       };
@@ -5834,6 +5911,7 @@ function analyzeParsed(
   checker: TypeChecker,
   services: ParserServicesWithTypeInformation,
   capabilities: SqlCapabilityChecks,
+  schemaTarget: SqlSchemaTarget | undefined,
 ): SqlAnalysis {
   const queryCapability =
     readQueryCapability(context, hasLocalExpansion, parsed) ??
@@ -5916,6 +5994,7 @@ function analyzeParsed(
     checker,
     ownsResultMapping,
     root: node,
+    schemaTarget,
     services,
     variant,
   };
@@ -6038,6 +6117,7 @@ function analyzeParsed(
           capabilities,
           classificationContext.allowsRetainedSqlWrapper,
           classificationContext.allowsScalarQuery,
+          classificationContext.schemaTarget,
         );
         if (boundary === undefined) {
           return [];
@@ -6185,6 +6265,58 @@ function variantMightContainWriteCapability(
   });
 }
 
+function resolveSchemaTarget(
+  node: TSESTree.Expression | undefined,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+): SqlSchemaTarget | undefined {
+  if (node === undefined) {
+    return undefined;
+  }
+  const metadata = getDrizzleTableMetadataForWrite(
+    checker,
+    services.esTreeNodeToTSNodeMap.get(node),
+  );
+  return metadata === undefined ? undefined : { metadata, node };
+}
+
+function analysisContextCache(
+  composer: SqlSourceComposer,
+  node: TSESTree.Expression,
+  schemaTarget: TSESTree.Expression | undefined,
+): Map<SqlAnalysisContext, SqlAnalysis> {
+  if (schemaTarget === undefined) {
+    let composerCache = ANALYSIS_CACHE.get(composer);
+    if (composerCache === undefined) {
+      composerCache = new WeakMap();
+      ANALYSIS_CACHE.set(composer, composerCache);
+    }
+    let contextCache = composerCache.get(node);
+    if (contextCache === undefined) {
+      contextCache = new Map();
+      composerCache.set(node, contextCache);
+    }
+    return contextCache;
+  }
+
+  let composerCache = TARGET_ANALYSIS_CACHE.get(composer);
+  if (composerCache === undefined) {
+    composerCache = new WeakMap();
+    TARGET_ANALYSIS_CACHE.set(composer, composerCache);
+  }
+  let nodeCache = composerCache.get(node);
+  if (nodeCache === undefined) {
+    nodeCache = new WeakMap();
+    composerCache.set(node, nodeCache);
+  }
+  let contextCache = nodeCache.get(schemaTarget);
+  if (contextCache === undefined) {
+    contextCache = new Map();
+    nodeCache.set(schemaTarget, contextCache);
+  }
+  return contextCache;
+}
+
 export function analyzeSql(
   node: TSESTree.Expression,
   context: SqlAnalysisContext,
@@ -6192,16 +6324,22 @@ export function analyzeSql(
   services: ParserServicesWithTypeInformation,
   composer: SqlSourceComposer,
   capabilities: SqlCapabilityChecks = NO_CAPABILITY_CHECKS,
+  unqualifiedSchemaTarget?: TSESTree.Expression,
 ): SqlAnalysis {
-  let composerCache = ANALYSIS_CACHE.get(composer);
-  if (composerCache === undefined) {
-    composerCache = new WeakMap();
-    ANALYSIS_CACHE.set(composer, composerCache);
-  }
-  const cached = composerCache.get(node)?.get(context);
+  const contextCache = analysisContextCache(
+    composer,
+    node,
+    unqualifiedSchemaTarget,
+  );
+  const cached = contextCache.get(context);
   if (cached !== undefined) {
     return cached;
   }
+  const schemaTarget = resolveSchemaTarget(
+    unqualifiedSchemaTarget,
+    checker,
+    services,
+  );
   const source = composer.compose(node);
   let analysis: SqlAnalysis;
   if (source === null) {
@@ -6249,6 +6387,7 @@ export function analyzeSql(
           source.hasLocalExpansion,
           checker,
           services,
+          schemaTarget,
         );
         if (parsed === null) {
           variants.length = 0;
@@ -6265,6 +6404,7 @@ export function analyzeSql(
             checker,
             services,
             capabilities,
+            schemaTarget,
           ),
         );
       }
@@ -6291,12 +6431,7 @@ export function analyzeSql(
       }
     }
   }
-  const nodeCache = composerCache.get(node);
-  if (nodeCache === undefined) {
-    composerCache.set(node, new Map([[context, analysis]]));
-  } else {
-    nodeCache.set(context, analysis);
-  }
+  contextCache.set(context, analysis);
   return analysis;
 }
 

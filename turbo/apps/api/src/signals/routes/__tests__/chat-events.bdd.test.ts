@@ -80,7 +80,7 @@ import {
   holdThreadSessionConversationChangesFixture,
   holdThreadSessionConversationClearFixture,
   insertRetiredQueuePauseEventsFixture,
-  readChatInputQueueParamsFixture,
+  readChatEventInputParamsFixture,
   replayPendingChatInputQueueEventFixture,
   replaceBddVm0ApiKeys,
   replaceThreadSessionBindingFixture,
@@ -4695,23 +4695,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(githubPrompt).not.toContain("private R2 registry resource");
     expect(githubPrompt).not.toContain("--style-source r2");
     await cancelChatRun(actor, githubRun.runId);
-
-    const githubOnlyRun = await sendChatRun(actor, {
-      agentId,
-      prompt: "draw a chibi hero",
-      generationTemplate: {
-        type: "illustration",
-        selection: { illustrationStyleId: "image-style:chibi-hero" },
-      },
-    });
-    const githubOnlyPrompt =
-      (await api.readRun(actor, githubOnlyRun.runId)).appendSystemPrompt ?? "";
-    expect(githubOnlyPrompt).toContain(
-      "Style source: vm0-ai/vm0-skills@main:illustration-template/chibi-hero",
-    );
-    expect(githubOnlyPrompt).not.toContain("private R2 registry resource");
-    expect(githubOnlyPrompt).not.toContain("--style-source r2");
-    await cancelChatRun(actor, githubOnlyRun.runId);
   }, 90_000);
 
   it("is one-shot: a follow-up without re-attaching the style gets no template context", async () => {
@@ -5157,7 +5140,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     );
     expect(queued.body).toMatchObject({ runId: null });
     await expect(
-      readChatInputQueueParamsFixture(queuedId),
+      readChatEventInputParamsFixture(queuedId),
     ).resolves.toMatchObject({
       eventId: queuedId,
       encryptedParams: expect.any(String),
@@ -5195,7 +5178,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     if (!promoted?.runId) {
       throw new Error("Expected the queued message to auto-send into a run");
     }
-    await expect(readChatInputQueueParamsFixture(queuedId)).resolves.toBeNull();
+    await expect(readChatEventInputParamsFixture(queuedId)).resolves.toBeNull();
     expect(promoted.content).toBeNull();
     expect(chatEventDisplayText(promoted)).toBe("queued with attachment");
     expect(promoted.attachFiles?.[0]).toMatchObject({
@@ -5622,7 +5605,7 @@ describe("CHAT-02: shared user message queue", () => {
     );
     expect(previewQueued.body).toMatchObject({ runId: null });
     const previewParams =
-      await readChatInputQueueParamsFixture(previewMessageId);
+      await readChatEventInputParamsFixture(previewMessageId);
     expect(previewParams).toMatchObject({
       eventId: previewMessageId,
       encryptedParams: expect.any(String),
@@ -5644,10 +5627,10 @@ describe("CHAT-02: shared user message queue", () => {
       replacementId: replayedPreviewMessageId,
     });
     await expect(
-      readChatInputQueueParamsFixture(previewMessageId),
+      readChatEventInputParamsFixture(previewMessageId),
     ).resolves.toBeNull();
     await expect(
-      readChatInputQueueParamsFixture(replayedPreviewMessageId),
+      readChatEventInputParamsFixture(replayedPreviewMessageId),
     ).resolves.toStrictEqual({
       ...previewParams,
       eventId: replayedPreviewMessageId,
@@ -5665,7 +5648,7 @@ describe("CHAT-02: shared user message queue", () => {
     );
     expect(mockQueued.body).toMatchObject({ runId: null });
     await expect(
-      readChatInputQueueParamsFixture(mockMessageId),
+      readChatEventInputParamsFixture(mockMessageId),
     ).resolves.toBeNull();
 
     // Terminal callbacks and the cleanup safety sweep use the same queued
@@ -5700,7 +5683,7 @@ describe("CHAT-02: shared user message queue", () => {
     expect(previewClaim.claim.prompt).toContain(`[ID] ${previewFileId}`);
     expect(previewClaim.claim.realAgentInPreview).toBeTruthy();
     await expect(
-      readChatInputQueueParamsFixture(replayedPreviewMessageId),
+      readChatEventInputParamsFixture(replayedPreviewMessageId),
     ).resolves.toBeNull();
     await cancelChatRun(actor, previewRunId);
 

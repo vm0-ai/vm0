@@ -393,8 +393,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description:
       "Match chat composer slash skill suggestions by any slug substring instead of only prefixes.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ThreeColumnNav]: {
     maintainer: "ming@vm0.ai",
@@ -414,8 +413,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.SlackDmSessionRouting]: {
     maintainer: "yuma@vm0.ai",
     description:
-      "Reuse agent/model-scoped sessions for top-level Slack direct messages after compatible callback readers are deployed.",
-    enabled: false,
+      "Reuse agent/model-scoped sessions for top-level Slack direct messages.",
+    enabled: true,
   },
   [FeatureSwitchKey.TeamsIntegration]: {
     maintainer: "linghan@vm0.ai",
@@ -443,8 +442,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Show the Artifacts manage page for generated artifacts in the current organization.",
+    enabled: true,
+  },
+  [FeatureSwitchKey.ArtifactKeyV2]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Store new user artifacts under flat, ten-character hashed public keys.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.HostedArtifactVersions]: {
     maintainer: "yuma@vm0.ai",

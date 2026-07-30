@@ -82,16 +82,18 @@ class FakeResponseFile(io.BytesIO):
 
 
 class FakeSocket:
-    """Socket-like test double that records forwarded auth.base requests.
+    """Socket-like test double for the auth.base forwarding lifecycle.
 
-    The forwarder writes to ``sent``, calls ``setsockopt``/``makefile``/``close``,
-    and reads the provided response bytes from the file object returned by
-    ``makefile``. ``closed``, ``close_count``, ``setsockopt_calls``, and
-    ``response_file`` are stable assertion state for tests that need to verify
-    cleanup and TCP option behavior.
+    The real forwarder assigns the remaining deadline, connects to a validated
+    numeric address, configures TCP, defers TLS negotiation until an explicit
+    handshake, sends request bytes, reads response bytes through ``makefile()``,
+    and shuts down or closes the active socket during cleanup.
 
-    Side-effect arguments raise at the matching boundary so tests can exercise
-    send, read, and TCP option failures.
+    Stable assertion state includes ``timeout_calls``, ``connect_calls``,
+    ``setsockopt_calls``, ``handshake_count``, ``sent``, ``response_file``,
+    ``shutdown_calls``, ``closed``, and ``close_count``. Side-effect arguments
+    raise at the matching send, read, TCP option, or manual TLS handshake
+    boundary; ``handshake_side_effect`` specifically targets ``do_handshake()``.
 
     Use ``request_text``, ``request_lines``, and ``request_header_values`` for
     assertions about the HTTP request that the real forwarder serialized.
@@ -206,9 +208,12 @@ _SocketFactory = Callable[[], FakeSocket]
 class FakeTLSContext:
     """TLS context test double created by ``fake_forwarder_upstream``.
 
-    Tests use ``server_hostnames`` to assert SNI behavior. ``alpn_protocols`` and
-    ``post_handshake_auth`` reflect how the real forwarder configures the TLS
-    context before wrapping sockets.
+    Tests use ``server_hostnames`` to assert SNI behavior and
+    ``do_handshake_on_connect`` to assert whether socket wrapping requested an
+    immediate TLS handshake. The real forwarder passes ``False``, deferring
+    negotiation to an explicit ``FakeSocket.do_handshake()`` call.
+    ``alpn_protocols`` and ``post_handshake_auth`` reflect how the forwarder
+    configures the TLS context before wrapping sockets.
     """
 
     def __init__(

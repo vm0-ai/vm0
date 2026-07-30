@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.351.1](https://github.com/vm0-ai/vm0/compare/api-v1.351.0...api-v1.351.1) (2026-07-30)
+
+
+### CI
+
+* promote API immediately after database migration ([#24059](https://github.com/vm0-ai/vm0/issues/24059)) ([57aa089](https://github.com/vm0-ai/vm0/commit/57aa089eec747234b987412d81ca8d947e4efc24))
+
+
+### Refactoring
+
+* **api:** contract chat queue admission lock ([#24060](https://github.com/vm0-ai/vm0/issues/24060)) ([8fac17f](https://github.com/vm0-ai/vm0/commit/8fac17f6da7d19cdfe9d19b9c247b1a57adb471e))
+* **insights:** stop writing legacy connector type ([#24068](https://github.com/vm0-ai/vm0/issues/24068)) ([4892216](https://github.com/vm0-ai/vm0/commit/48922167a34ea2025c73effdb0479a454440eb74))
+* remove legacy chat message capability aliases ([#24063](https://github.com/vm0-ai/vm0/issues/24063)) ([9ecc474](https://github.com/vm0-ai/vm0/commit/9ecc4744be290710c473f47a06460cd49a158a52))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.251.1
+    * @vm0/core bumped to 8.491.0
+    * @vm0/db bumped to 1.156.4
+
 ## [1.351.0](https://github.com/vm0-ai/vm0/compare/api-v1.350.0...api-v1.351.0) (2026-07-30)
 
 

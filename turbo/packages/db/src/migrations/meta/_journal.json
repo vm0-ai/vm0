@@ -5314,6 +5314,41 @@
       "when": 1785405505957,
       "tag": "0758_drop_agentphone_thread_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 759,
+      "version": "7",
+      "when": 1785406871736,
+      "tag": "0759_drop_feishu_org_thread_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 760,
+      "version": "7",
+      "when": 1785408754076,
+      "tag": "0760_rename_chat_event_input_params",
+      "breakpoints": true
+    },
+    {
+      "idx": 761,
+      "version": "7",
+      "when": 1785409880174,
+      "tag": "0761_drop_github_issue_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 762,
+      "version": "7",
+      "when": 1785410977112,
+      "tag": "0762_remove_legacy_connector_identity_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 763,
+      "version": "7",
+      "when": 1785412068303,
+      "tag": "0763_add_chat_display_contexts",
+      "breakpoints": true
     }
   ]
 }
