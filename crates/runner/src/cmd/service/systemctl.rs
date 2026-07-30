@@ -495,9 +495,26 @@ pub(super) enum SystemdUnitEnablement {
     NotEnabled,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SystemdEnablementRestoreAction {
+    Disable,
+    Enable,
+    EnableRuntime,
+}
+
 impl SystemdUnitEnablement {
     fn is_enabled(self) -> bool {
         matches!(self, Self::Enabled | Self::EnabledRuntime)
+    }
+
+    fn restore_actions(self) -> &'static [SystemdEnablementRestoreAction] {
+        use SystemdEnablementRestoreAction::{Disable, Enable, EnableRuntime};
+
+        match self {
+            Self::Enabled => &[Enable],
+            Self::EnabledRuntime => &[Disable, EnableRuntime],
+            Self::NotEnabled => &[Disable],
+        }
     }
 }
 
@@ -512,17 +529,20 @@ pub(super) async fn restore_unit_enablement(
     unit: &RunnerServiceUnit,
     enablement: SystemdUnitEnablement,
 ) -> RunnerResult<()> {
-    match enablement {
-        SystemdUnitEnablement::Enabled => {
-            run_systemctl(&["enable", "--no-reload", unit.service_name()]).await
-        }
-        SystemdUnitEnablement::EnabledRuntime => {
-            run_systemctl(&["enable", "--runtime", "--no-reload", unit.service_name()]).await
-        }
-        SystemdUnitEnablement::NotEnabled => {
-            run_systemctl(&["disable", "--no-reload", unit.service_name()]).await
+    for action in enablement.restore_actions() {
+        match action {
+            SystemdEnablementRestoreAction::Disable => {
+                run_systemctl(&["disable", "--no-reload", unit.service_name()]).await?;
+            }
+            SystemdEnablementRestoreAction::Enable => {
+                run_systemctl(&["enable", "--no-reload", unit.service_name()]).await?;
+            }
+            SystemdEnablementRestoreAction::EnableRuntime => {
+                run_systemctl(&["enable", "--runtime", "--no-reload", unit.service_name()]).await?;
+            }
         }
     }
+    Ok(())
 }
 
 /// Check whether systemd reports a unit file as enabled.
@@ -1745,6 +1765,13 @@ mod tests {
         .unwrap();
 
         assert_eq!(enablement, SystemdUnitEnablement::EnabledRuntime);
+        assert_eq!(
+            enablement.restore_actions(),
+            [
+                SystemdEnablementRestoreAction::Disable,
+                SystemdEnablementRestoreAction::EnableRuntime,
+            ]
+        );
     }
 
     #[test]
