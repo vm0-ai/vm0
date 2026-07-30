@@ -12,7 +12,10 @@ import {
   getVm0ConcreteProviderType,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
-import type { Job as RunnerJob } from "@vm0/api-contracts/contracts/runners";
+import {
+  NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+  type Job as RunnerJob,
+} from "@vm0/api-contracts/contracts/runners";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   getCustomConnectorSkillStorageName,
@@ -8552,8 +8555,155 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(failedRefreshNotification.status).toBe(500);
 
     await api.requestCancelRun(actor, snapshotRun.runId, [200]);
+    const cancelledRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
+      `Bearer ${actorRunnerKey.token}`,
+      snapshotRun.runId,
+      { connectorSlugs: ["slack"] },
+      [409],
+    );
+    expect(cancelledRefresh.body.error.code).toBe(
+      NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+    );
     const drained = await api.readRunQueue(actor);
     expect(drained.body.concurrency.active).toBe(0);
+  });
+
+  it("distinguishes a terminal policy refresh from missing runs", async () => {
+    const api = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const member = createBddApi(context).user({
+      orgId: actor.orgId,
+      orgRole: "org:member",
+    });
+    await api.heartbeatRunner(runnerGroup);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "complete before runner policy cleanup",
+      modelProvider: "anthropic-api-key",
+    });
+    const claim = await api.claimRunnerJob(run.runId);
+    const history = `terminal refresh history ${run.runId}`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    mockSessionHistoryBlob(historyHash, history);
+    const sandboxHeaders = {
+      authorization: `Bearer ${claim.sandboxToken}`,
+    };
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: run.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `terminal-refresh-${run.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      sandboxHeaders,
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0, lastEventSequence: 0 },
+      sandboxHeaders,
+      [200],
+    );
+    expect((await api.readRun(actor, run.runId)).status).toBe("completed");
+
+    const actorRunnerKey = await api.createCliToken(actor);
+    const memberRunnerKey = await api.createCliToken(member);
+    const body = { connectorSlugs: ["slack"] };
+    const sameUserRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
+      `Bearer ${actorRunnerKey.token}`,
+      run.runId,
+      body,
+      [409],
+    );
+    expect(sameUserRefresh.body.error).toStrictEqual({
+      code: NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+      message: "Run is terminal",
+    });
+    const officialRefresh = await api.requestRefreshRunnerNetworkPolicy(
+      run.runId,
+      body,
+      [409],
+    );
+    expect(officialRefresh.body.error.code).toBe(
+      NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+    );
+
+    const foreignRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
+      `Bearer ${memberRunnerKey.token}`,
+      run.runId,
+      body,
+      [404],
+    );
+    expect(foreignRefresh.body.error.code).toBe("NOT_FOUND");
+    const missingRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
+      `Bearer ${actorRunnerKey.token}`,
+      randomUUID(),
+      body,
+      [404],
+    );
+    expect(missingRefresh.body.error.code).toBe("NOT_FOUND");
+
+    const failedRun = await api.createRun(actor, {
+      agentId,
+      prompt: "fail before runner policy cleanup",
+      modelProvider: "anthropic-api-key",
+    });
+    const failedClaim = await api.claimRunnerJob(failedRun.runId);
+    await webhooks.requestAgentComplete(
+      {
+        runId: failedRun.runId,
+        exitCode: 1,
+        error: "terminal refresh failure fixture",
+        lastEventSequence: 0,
+      },
+      { authorization: `Bearer ${failedClaim.sandboxToken}` },
+      [200],
+    );
+    expect((await api.readRun(actor, failedRun.runId)).status).toBe("failed");
+    const failedRefresh = await api.requestRefreshRunnerNetworkPolicyAs(
+      `Bearer ${actorRunnerKey.token}`,
+      failedRun.runId,
+      body,
+      [409],
+    );
+    expect(failedRefresh.body.error.code).toBe(
+      NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+    );
+  });
+
+  it("does not classify queued or pending runs as terminal", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const runnerKey = await api.createCliToken(actor);
+    const createNonTerminalRun = async (prompt: string) => {
+      return await api.createRun(actor, {
+        agentId,
+        prompt,
+        modelProvider: "anthropic-api-key",
+      });
+    };
+
+    const firstPending = await createNonTerminalRun("pending refresh one");
+    const secondPending = await createNonTerminalRun("pending refresh two");
+    const queued = await createNonTerminalRun("queued refresh");
+    expect(firstPending.status).toBe("pending");
+    expect(secondPending.status).toBe("pending");
+    expect(queued.status).toBe("queued");
+
+    for (const run of [firstPending, secondPending, queued]) {
+      const refresh = await api.requestRefreshRunnerNetworkPolicyAs(
+        `Bearer ${runnerKey.token}`,
+        run.runId,
+        { connectorSlugs: ["slack"] },
+        [404],
+      );
+      expect(refresh.body.error.code).toBe("NOT_FOUND");
+    }
+
+    await api.requestCancelRun(actor, queued.runId, [200]);
+    await api.requestCancelRun(actor, secondPending.runId, [200]);
+    await api.requestCancelRun(actor, firstPending.runId, [200]);
   });
 
   it("records co-occurring resume and policy response timing", async () => {
@@ -10338,20 +10488,40 @@ describe("HOOK-02: event-consumer dispatch failures", () => {
       authorization: `Bearer ${claim.sandboxToken}`,
     };
 
-    context.mocks.axiom.flush.mockResolvedValue(undefined);
-    context.mocks.axiom.flush.mockRejectedValueOnce(new Error("axiom down"));
+    let ingestRequests = 0;
+    server.use(
+      http.post(
+        "https://api.axiom.co/v1/datasets/agent-run-events/ingest",
+        async ({ request }) => {
+          ingestRequests += 1;
+          const events: unknown = await request.json();
+          if (!Array.isArray(events)) {
+            throw new Error("Expected an Axiom event array");
+          }
+          if (ingestRequests === 1) {
+            return HttpResponse.text("axiom down", { status: 503 });
+          }
+          return HttpResponse.json({
+            ingested: events.length,
+            failed: 0,
+            processedBytes: 123,
+            blocksCreated: 1,
+            walLength: 456,
+          });
+        },
+      ),
+    );
     const failed = await webhooks.requestAgentEvents(
       {
         runId: run.runId,
         events: [{ type: "system", sequenceNumber: 0 }],
       },
       sandboxHeaders,
-      [500],
+      [503],
     );
     expectApiError(failed.body);
-    expect(failed.body.error.message).toContain(
-      "Required event consumer dispatch failed",
-    );
+    expect(failed.body.error.code).toBe("EVENT_DELIVERY_UNAVAILABLE");
+    expect(ingestRequests).toBe(1);
 
     const recovered = await webhooks.requestAgentEvents(
       {
@@ -10362,6 +10532,7 @@ describe("HOOK-02: event-consumer dispatch failures", () => {
       [200],
     );
     expect(recovered.status).toBe(200);
+    expect(ingestRequests).toBe(2);
   });
 });
 
@@ -10546,7 +10717,17 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
         runId,
         "api_to_first_assistant_message",
       ),
-    ).toStrictEqual([]);
+    ).toStrictEqual([
+      {
+        _time: new Date(apiStartedAt).toISOString(),
+        source: "api",
+        op_type: "api_to_first_assistant_message",
+        sandbox_type: "runner",
+        duration_ms: 0,
+        success: true,
+        run_id: runId,
+      },
+    ]);
 
     mockNow(acknowledgedAt);
     const swallowed = await webhooks.requestAgentEvents(
@@ -10595,11 +10776,11 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       ),
     ).toStrictEqual([
       {
-        _time: new Date(acknowledgedAt).toISOString(),
+        _time: new Date(apiStartedAt).toISOString(),
         source: "api",
         op_type: "api_to_first_assistant_message",
         sandbox_type: "runner",
-        duration_ms: acknowledgedAt - apiStartedAt,
+        duration_ms: 0,
         success: true,
         run_id: runId,
       },
@@ -10640,6 +10821,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       sandboxHeaders,
       [200],
     );
+    await flushWaitUntilForTest();
     const afterCodex = await chat.listThreadEvents(actor, threadId);
     const codexPersisted = afterCodex.events.filter((message) => {
       return message.eventType === "output.message" && message.runId === runId;
@@ -10679,6 +10861,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       sandboxHeaders,
       [200],
     );
+    await flushWaitUntilForTest();
     const afterSilent = await chat.listThreadEvents(actor, threadId);
     expect(
       afterSilent.events.filter((message) => {
@@ -10705,6 +10888,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       sandboxHeaders,
       [200],
     );
+    await flushWaitUntilForTest();
     const afterDuplicate = await chat.listThreadEvents(actor, threadId);
     const duplicatedMessageId = assistantEventIdForRunEvent(runId, "msg_bdd_1");
     const matchingDuplicateRows = afterDuplicate.events.filter((message) => {
@@ -10745,6 +10929,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       { authorization: `Bearer ${detachedClaim.sandboxToken}` },
       [200],
     );
+    await flushWaitUntilForTest();
     const eventsAfter = await chat.requestThreadEvents(actor, {}, [200]);
     expect(eventsAfter.status).toBe(200);
     if (eventsAfter.status !== 200) {
@@ -11442,6 +11627,32 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
       throw new Error("Expected the run to mount memory");
     }
     const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
+    const telemetryIngests: {
+      readonly dataset: string;
+      readonly events: readonly unknown[];
+    }[] = [];
+    server.use(
+      http.post(
+        "https://api.axiom.co/v1/datasets/:dataset/ingest",
+        async ({ params, request }) => {
+          const events: unknown = await request.json();
+          if (!Array.isArray(events)) {
+            throw new Error("Expected an Axiom telemetry event array");
+          }
+          telemetryIngests.push({
+            dataset: String(params.dataset),
+            events,
+          });
+          return HttpResponse.json({
+            ingested: events.length,
+            failed: 0,
+            processedBytes: 123,
+            blocksCreated: 1,
+            walLength: 456,
+          });
+        },
+      ),
+    );
 
     await webhooks.requestAgentTelemetryUnchecked(
       {
@@ -11504,14 +11715,12 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
       sandboxHeaders,
       [200],
     );
-    const networkIngestCall = context.mocks.axiom.ingest.mock.calls.find(
-      ([dataset]) => {
-        return dataset === "sandbox-telemetry-network";
-      },
-    );
+    const networkIngestCall = telemetryIngests.find((call) => {
+      return call.dataset === "sandbox-telemetry-network";
+    });
     expect(networkIngestCall).toBeDefined();
-    expect(networkIngestCall?.[1]).toHaveLength(2);
-    expect(networkIngestCall?.[1]).toStrictEqual([
+    expect(networkIngestCall?.events).toHaveLength(2);
+    expect(networkIngestCall?.events).toStrictEqual([
       expect.objectContaining({
         runId: created.runId,
         host: "api.example.test",
@@ -11531,11 +11740,9 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
         connector_diagnostic_type: "slack",
       }),
     ]);
-    const networkIngestCallCount = context.mocks.axiom.ingest.mock.calls.filter(
-      ([dataset]) => {
-        return dataset === "sandbox-telemetry-network";
-      },
-    ).length;
+    const networkIngestCallCount = telemetryIngests.filter((call) => {
+      return call.dataset === "sandbox-telemetry-network";
+    }).length;
     const conflictingTelemetry = await webhooks.requestAgentTelemetryUnchecked(
       {
         runId: created.runId,
@@ -11552,10 +11759,55 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
     );
     expectApiError(conflictingTelemetry.body);
     expect(
-      context.mocks.axiom.ingest.mock.calls.filter(([dataset]) => {
-        return dataset === "sandbox-telemetry-network";
+      telemetryIngests.filter((call) => {
+        return call.dataset === "sandbox-telemetry-network";
       }),
     ).toHaveLength(networkIngestCallCount);
+
+    let failedTelemetryRequests = 0;
+    server.use(
+      http.post(
+        "https://api.axiom.co/v1/datasets/sandbox-telemetry-network/ingest",
+        () => {
+          failedTelemetryRequests += 1;
+          return HttpResponse.text("unavailable", { status: 503 });
+        },
+      ),
+    );
+    const failedTelemetry = await webhooks.requestAgentTelemetry(
+      {
+        runId: created.runId,
+        networkLogs: [
+          {
+            timestamp: nowDate().toISOString(),
+            host: "failed.example.test",
+          },
+        ],
+      },
+      sandboxHeaders,
+      [500],
+    );
+    expect(failedTelemetry.status).toBe(500);
+    expect(failedTelemetryRequests).toBe(1);
+
+    mockOptionalEnv("AXIOM_TOKEN_TELEMETRY", undefined);
+    const unconfiguredTelemetry = await webhooks.requestAgentTelemetry(
+      {
+        runId: created.runId,
+        networkLogs: [
+          {
+            timestamp: nowDate().toISOString(),
+            host: "unconfigured.example.test",
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    expect(unconfiguredTelemetry.status).toBe(200);
+    expect(failedTelemetryRequests).toBe(1);
+    mockOptionalEnv("AXIOM_TOKEN_TELEMETRY", "xaat-test-telemetry");
+
     expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
       "vm0-sandbox-op-log-dev",
       [

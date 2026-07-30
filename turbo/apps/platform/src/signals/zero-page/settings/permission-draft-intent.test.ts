@@ -1,10 +1,12 @@
-import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicies,
 } from "@vm0/connectors/firewall-types";
 import { describe, expect, it } from "vitest";
+import type {
+  PlatformConnectorPermissionMetadata,
+  PlatformUserPermissionGrant,
+} from "../../connector-domain.ts";
 
 import {
   clearPermissionDraftInheritedExpiration,
@@ -33,9 +35,9 @@ const READ_PERMISSIONS = [
   { name: "channels:history" },
 ] as const;
 
-function createMetadata(): PublicConnectorCatalogPermissionDetail {
+function createMetadata(): PlatformConnectorPermissionMetadata {
   return {
-    connectorRef: "slack",
+    connectorSlug: "slack",
     label: "Slack",
     icon: {
       url: "https://icons.example.test/slack.svg",
@@ -62,12 +64,12 @@ const INITIAL_POLICIES = {} satisfies FirewallPolicies;
 
 function createGrant(
   permission: string,
-  action: UserPermissionGrantResponse["action"],
+  action: PlatformUserPermissionGrant["action"],
   expiresAt: string | null = null,
-): UserPermissionGrantResponse {
+): PlatformUserPermissionGrant {
   return {
     agentId: "agent",
-    connectorRef: "slack",
+    connectorSlug: "slack",
     permission,
     action,
     expiresAt,

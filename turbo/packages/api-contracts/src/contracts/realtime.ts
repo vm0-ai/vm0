@@ -17,36 +17,10 @@ export type ConnectorChangedPayload = z.infer<
 >;
 
 export const browserSessionChangedPayloadSchema = z
-  .union([
-    z.object({
-      browserId: z.uuid(),
-      threadId: z.uuid().optional(),
-    }),
-    z.object({
-      browserId: z.uuid().optional(),
-      threadId: z.uuid(),
-    }),
-  ])
-  .transform((payload) => {
-    if (payload.browserId) {
-      return {
-        // Keep both identifiers during the one-release rollout. A previous
-        // frontend reads browserId, while the thread-keyed frontend reads
-        // threadId. Parsing either legacy shape normalizes both fields.
-        browserId: payload.browserId,
-        threadId: payload.threadId ?? payload.browserId,
-      };
-    }
-    if (payload.threadId) {
-      return {
-        browserId: payload.threadId,
-        threadId: payload.threadId,
-      };
-    }
-    throw new Error(
-      "Browser session changed payload must include a browser or thread ID",
-    );
-  });
+  .object({
+    threadId: z.uuid(),
+  })
+  .strict();
 
 export type BrowserSessionChangedPayload = z.infer<
   typeof browserSessionChangedPayloadSchema

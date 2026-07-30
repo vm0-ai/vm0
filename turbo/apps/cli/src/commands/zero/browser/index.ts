@@ -53,17 +53,8 @@ function parseAgentSession(value: string): string {
 
 function browserJson(
   browser: ZeroBrowserSession,
-): Omit<
-  ZeroBrowserSession,
-  "creditsCharged" | "grossCredits" | "liveUrl" | "maxCredits"
-> {
-  const {
-    creditsCharged: _creditsCharged,
-    grossCredits: _grossCredits,
-    liveUrl: _liveUrl,
-    maxCredits: _maxCredits,
-    ...safeBrowser
-  } = browser;
+): Omit<ZeroBrowserSession, "liveUrl"> {
+  const { liveUrl: _liveUrl, ...safeBrowser } = browser;
   return safeBrowser;
 }
 
@@ -140,22 +131,6 @@ const useCommand = new Command()
     }),
   );
 
-const resumeCommand = new Command()
-  .name("resume")
-  .description("Deprecated alias of use")
-  .addOption(
-    new Option(
-      "--agent-session <name>",
-      "Named agent-browser session",
-    ).argParser(parseAgentSession),
-  )
-  .option("--json", "Print machine-readable output without connection secrets")
-  .action(
-    withErrorHandler(async (options: ConnectionOptions) => {
-      await connectResponse(await useZeroBrowser(), options);
-    }),
-  );
-
 const leaseCommand = new Command()
   .name("lease")
   .description(
@@ -177,7 +152,7 @@ const leaseCommand = new Command()
 const newCommand = new Command()
   .name("new")
   .description(
-    "Create another thread browser with the shared user profile and attach it to agent-browser",
+    "Create another thread browser with an isolated profile and attach it to agent-browser",
   )
   .addOption(new Option("--name <name>", "Browser name").default("browser"))
   .addOption(
@@ -232,7 +207,6 @@ export const zeroBrowserCommand = new Command()
   .description("Use a managed remote browser through agent-browser")
   .addCommand(useCommand)
   .addCommand(leaseCommand)
-  .addCommand(resumeCommand)
   .addCommand(newCommand)
   .addCommand(statusCommand)
   .addCommand(viewCommand)
@@ -251,6 +225,6 @@ Notes:
   - Zero reclaims it after ${ZERO_BROWSER_IDLE_LEASE_MINUTES} idle minutes
   - \`zero browser use\` restores a reclaimed browser's login profile and reopens saved tab URLs when possible
   - Browser Use credentials and connection URLs are never printed
-  - Threads for the same user and organization share one login profile
-  - Threads can use the shared profile in parallel`,
+  - Each thread keeps an isolated login profile
+  - Threads can run their browsers in parallel`,
   );

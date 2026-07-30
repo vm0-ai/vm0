@@ -388,117 +388,115 @@ async function validateCurrentBrowserApiBeforeBillingMigration(): Promise<void> 
   }
 }
 
-async function validatePreviousBrowserApiAfterThreadLifecycleMigration(
+async function validateThreadBrowserIdentityAfterMigration(
   dbUrl: string,
 ): Promise<void> {
-  console.log(
-    "=== Phase 2.4: Validate previous browser API after thread lifecycle migration ===\n",
-  );
+  console.log("=== Phase 2.4: Validate thread-keyed browser identity ===\n");
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
-
-  const browserProfileId = "00000000-0000-4000-8000-000000074101";
-  const providerProfileId = "00000000-0000-4000-8000-000000074102";
-  const browserSessionId = "00000000-0000-4000-8000-000000074103";
-  const providerSessionId = "00000000-0000-4000-8000-000000074104";
-  const chatThreadId = "00000000-0000-4000-8000-000000074105";
-  const runId = "00000000-0000-4000-8000-000000074106";
-
   try {
-    // Execute the previous API's real browser session and provider-instance
-    // insert shapes after every migration, including the thread-key rollout.
-    await client.query(
-      `
-        INSERT INTO "browser_profiles" (
-          "id",
-          "org_id",
-          "user_id",
-          "provider_profile_id"
-        )
-        VALUES ($1, 'browser-drain-org', 'browser-drain-user', $2)
-      `,
-      [browserProfileId, providerProfileId],
-    );
-    await client.query(
-      `
-        INSERT INTO "browser_sessions" (
-          "id",
-          "chat_thread_id",
-          "run_id",
-          "org_id",
-          "user_id",
-          "name",
-          "browser_profile_id",
-          "status",
-          "proxy_country_code",
-          "timeout_minutes",
-          "max_credits"
-        )
-        VALUES (
-          $1,
-          $2,
-          NULL,
-          'browser-drain-org',
-          'browser-drain-user',
-          'previous-api-start',
-          $3,
-          'creating',
-          NULL,
-          240,
-          500
-        )
-      `,
-      [browserSessionId, chatThreadId, browserProfileId],
-    );
-    const started = await client.query<{
-      pricingUnitPrice: string;
-      pricingUnitSize: string;
+    const tables = await client.query<{
+      browserProfiles: string | null;
+      tabSnapshots: string | null;
     }>(
       `
-        INSERT INTO "browser_session_instances" (
-          "provider_session_id",
-          "browser_session_id",
-          "chat_thread_id",
-          "run_id",
-          "status",
-          "pricing_unit_price",
-          "pricing_unit_size",
-          "timeout_at",
-          "started_at",
-          "last_touched_at",
-          "idle_expires_at"
-        )
-        VALUES (
-          $1,
-          $2,
-          $3,
-          $4,
-          'active',
-          0,
-          1,
-          now() + interval '240 minutes',
-          now(),
-          now(),
-          now() + interval '10 minutes'
-        )
-        RETURNING
-          "pricing_unit_price"::text AS "pricingUnitPrice",
-          "pricing_unit_size"::text AS "pricingUnitSize"
+        SELECT
+          to_regclass('public.browser_profiles')::text AS "browserProfiles",
+          to_regclass('public.browser_session_tab_snapshots')::text
+            AS "tabSnapshots"
       `,
-      [providerSessionId, browserSessionId, chatThreadId, runId],
     );
-    assert.deepEqual(started.rows, [
-      { pricingUnitPrice: "0", pricingUnitSize: "1" },
+    assert.deepEqual(tables.rows, [
+      {
+        browserProfiles: null,
+        tabSnapshots: "browser_session_tab_snapshots",
+      },
     ]);
-    console.log("   ✅ previous API browser session insert remains valid");
-    console.log("   ✅ previous API provider-instance insert remains valid\n");
+
+    const columns = await client.query<{
+      columnName: string;
+      tableName: string;
+    }>(
+      `
+        SELECT
+          "table_name" AS "tableName",
+          "column_name" AS "columnName"
+        FROM "information_schema"."columns"
+        WHERE "table_schema" = 'public'
+          AND "table_name" IN (
+            'browser_sessions',
+            'browser_thread_profiles',
+            'browser_session_instances'
+          )
+        ORDER BY "table_name", "ordinal_position"
+      `,
+    );
+    const forbiddenColumns = new Set([
+      "id",
+      "browser_profile_id",
+      "browser_thread_profile_id",
+      "browser_session_id",
+      "max_credits",
+      "gross_credits",
+      "credits_charged",
+      "pricing_unit_price",
+      "pricing_unit_size",
+    ]);
+    for (const column of columns.rows) {
+      assert.equal(
+        forbiddenColumns.has(column.columnName),
+        false,
+        `${column.tableName}.${column.columnName} is a legacy browser column`,
+      );
+    }
+
+    const primaryKeys = await client.query<{
+      columnName: string;
+      tableName: string;
+    }>(
+      `
+        SELECT
+          "tc"."table_name" AS "tableName",
+          "kcu"."column_name" AS "columnName"
+        FROM "information_schema"."table_constraints" AS "tc"
+        INNER JOIN "information_schema"."key_column_usage" AS "kcu"
+          ON "tc"."constraint_name" = "kcu"."constraint_name"
+          AND "tc"."table_schema" = "kcu"."table_schema"
+        WHERE "tc"."table_schema" = 'public'
+          AND "tc"."constraint_type" = 'PRIMARY KEY'
+          AND "tc"."table_name" IN (
+            'browser_sessions',
+            'browser_thread_profiles'
+          )
+        ORDER BY "tc"."table_name", "kcu"."ordinal_position"
+      `,
+    );
+    assert.deepEqual(primaryKeys.rows, [
+      { tableName: "browser_sessions", columnName: "chat_thread_id" },
+      { tableName: "browser_thread_profiles", columnName: "chat_thread_id" },
+    ]);
+
+    const lifecycleConstraint = await client.query<{ definition: string }>(
+      `
+        SELECT pg_get_constraintdef("oid") AS "definition"
+        FROM "pg_constraint"
+        WHERE "conname" = 'chat_events_event_type_check'
+      `,
+    );
+    assert.equal(lifecycleConstraint.rows.length, 1);
+    assert.match(
+      lifecycleConstraint.rows[0]?.definition ?? "",
+      /browser\.started/u,
+    );
+    assert.match(
+      lifecycleConstraint.rows[0]?.definition ?? "",
+      /browser\.stopped/u,
+    );
+    console.log("   ✅ browser identity is thread-keyed with no legacy UUID");
+    console.log(
+      "   ✅ browser lifecycle events and tab snapshots are available\n",
+    );
   } finally {
-    await client.query(`DELETE FROM "browser_sessions" WHERE "id" = $1`, [
-      browserSessionId,
-    ]);
-    await client.query(`DELETE FROM "browser_profiles" WHERE "id" = $1`, [
-      browserProfileId,
-    ]);
     await client.end();
   }
 }
@@ -622,9 +620,7 @@ async function validateCanonicalDraftStorage(
   }>(
     `
       UPDATE "chat_threads"
-      SET
-        "draft_content" = 'canonical API draft',
-        "draft_user_message" = $2::jsonb
+      SET "draft_user_message" = $2::jsonb
       WHERE "id" = $1
       RETURNING
         "draft_user_message" AS "draftUserMessage"
@@ -2963,6 +2959,10 @@ const CANONICAL_USER_MESSAGE_PREVIOUS_MIGRATION = 727;
 const CANONICAL_USER_MESSAGE_CONTRACT_MIGRATION = 730;
 const CANONICAL_USER_MESSAGE_CLEANUP_PREVIOUS_MIGRATION = 738;
 const CANONICAL_USER_MESSAGE_CLEANUP_MIGRATION = 739;
+const DRAFT_CONTENT_CLEANUP_PREVIOUS_MIGRATION = 748;
+const DRAFT_CONTENT_CONSTRAINT_ADD_MIGRATION = 749;
+const DRAFT_CONTENT_CONSTRAINT_VALIDATION_MIGRATION = 750;
+const DRAFT_CONTENT_CLEANUP_MIGRATION = 751;
 
 async function validateCanonicalUserMessageRolloutCompatibility(): Promise<void> {
   console.log("=== Validate canonical userMessage rollout compatibility ===\n");
@@ -3277,6 +3277,266 @@ async function validateCanonicalUserMessageContraction(): Promise<void> {
 
   console.log(
     "   ✅ Cleanup fails fast on lock contention and removes only legacy userMessage storage\n",
+  );
+}
+
+async function validateDraftContentContraction(): Promise<void> {
+  console.log("=== Validate draftContent contraction ===\n");
+
+  const testDb = "migration_draft_content_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const fixture = {
+    agentId: "96000000-0000-4000-8000-000000000001",
+    existingThreadId: "97000000-0000-4000-8000-000000000001",
+    insertedThreadId: "97000000-0000-4000-8000-000000000002",
+    orgId: "draft-content-contraction-org",
+    userId: "draft-content-contraction-user",
+    insertedDraftUserId: "draft-content-contraction-insert-user",
+  } as const;
+  const canonicalDocument = JSON.stringify({
+    version: 1,
+    parts: [{ type: "text", text: "canonical draft" }],
+  });
+  await createDatabase(testDb);
+
+  const blocker = new Client({ connectionString: testDbUrl });
+  const migrationClient = new Client({ connectionString: testDbUrl });
+  const trafficClient = new Client({ connectionString: testDbUrl });
+  let blockerOpen = false;
+  let validationOpen = false;
+
+  try {
+    await runMigrationsUpTo(
+      testDbUrl,
+      DRAFT_CONTENT_CLEANUP_PREVIOUS_MIGRATION,
+    );
+    await blocker.connect();
+    await migrationClient.connect();
+    await trafficClient.connect();
+
+    await migrationClient.query(
+      `INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+       VALUES ($1, $2, 'draft-content-contraction', $3)`,
+      [fixture.agentId, fixture.userId, fixture.orgId],
+    );
+    await migrationClient.query(
+      `INSERT INTO "zero_agents" ("id", "org_id", "owner", "name")
+       VALUES ($1, $2, $3, 'draft-content-contraction')`,
+      [fixture.agentId, fixture.orgId, fixture.userId],
+    );
+    await migrationClient.query(
+      `INSERT INTO "chat_threads" (
+         "id",
+         "user_id",
+         "agent_compose_id",
+         "title"
+       )
+       VALUES ($1, $2, $3, 'existing draft thread')`,
+      [fixture.existingThreadId, fixture.userId, fixture.agentId],
+    );
+    await migrationClient.query(
+      `INSERT INTO "zero_agent_drafts" ("user_id", "org_id", "agent_id")
+       VALUES ($1, $2, $3)`,
+      [fixture.userId, fixture.orgId, fixture.agentId],
+    );
+
+    await applyMigrationsUpToInTransaction(
+      migrationClient,
+      DRAFT_CONTENT_CONSTRAINT_ADD_MIGRATION,
+    );
+
+    const migrationPidResult = await migrationClient.query<{
+      pid: number;
+    }>(`SELECT pg_backend_pid() AS pid`);
+    const migrationPid = migrationPidResult.rows[0]?.pid;
+    assert.ok(migrationPid);
+
+    await migrationClient.query("BEGIN");
+    validationOpen = true;
+    await applyMigrationsUpTo(
+      migrationClient,
+      DRAFT_CONTENT_CONSTRAINT_VALIDATION_MIGRATION,
+    );
+
+    const validationLocks = await trafficClient.query<{
+      mode: string;
+      relation: string;
+    }>(
+      `
+        SELECT
+          relation::regclass::text AS relation,
+          mode
+        FROM pg_locks
+        WHERE pid = $1
+          AND granted
+          AND relation IN (
+            'chat_threads'::regclass,
+            'zero_agent_drafts'::regclass
+          )
+          AND mode IN (
+            'ShareUpdateExclusiveLock',
+            'AccessExclusiveLock'
+          )
+        ORDER BY relation, mode
+      `,
+      [migrationPid],
+    );
+    assert.deepEqual(validationLocks.rows, [
+      {
+        mode: "ShareUpdateExclusiveLock",
+        relation: "chat_threads",
+      },
+      {
+        mode: "ShareUpdateExclusiveLock",
+        relation: "zero_agent_drafts",
+      },
+    ]);
+
+    // VALIDATE has completed its scans, but its transaction still holds the
+    // exact table locks until commit. Ordinary traffic must remain compatible
+    // with those locks without relying on validation scan timing.
+    await trafficClient.query(`SET statement_timeout = '2s'`);
+    const selectedThread = await trafficClient.query<{ id: string }>(
+      `SELECT "id" FROM "chat_threads" WHERE "id" = $1`,
+      [fixture.existingThreadId],
+    );
+    assert.deepEqual(selectedThread.rows, [{ id: fixture.existingThreadId }]);
+
+    const insertedThread = await trafficClient.query<{ id: string }>(
+      `INSERT INTO "chat_threads" (
+         "id",
+         "user_id",
+         "agent_compose_id",
+         "title",
+         "draft_user_message"
+       )
+       VALUES ($1, $2, $3, 'inserted during validation', $4::jsonb)
+       RETURNING "id"`,
+      [
+        fixture.insertedThreadId,
+        fixture.userId,
+        fixture.agentId,
+        canonicalDocument,
+      ],
+    );
+    assert.deepEqual(insertedThread.rows, [{ id: fixture.insertedThreadId }]);
+
+    const insertedDraft = await trafficClient.query<{ userId: string }>(
+      `INSERT INTO "zero_agent_drafts" (
+         "user_id",
+         "org_id",
+         "agent_id",
+         "draft_user_message"
+       )
+       VALUES ($1, $2, $3, $4::jsonb)
+       RETURNING "user_id" AS "userId"`,
+      [
+        fixture.insertedDraftUserId,
+        fixture.orgId,
+        fixture.agentId,
+        canonicalDocument,
+      ],
+    );
+    assert.deepEqual(insertedDraft.rows, [
+      { userId: fixture.insertedDraftUserId },
+    ]);
+
+    const updatedThread = await trafficClient.query(
+      `UPDATE "chat_threads"
+       SET "draft_user_message" = $2::jsonb
+       WHERE "id" = $1`,
+      [fixture.existingThreadId, canonicalDocument],
+    );
+    assert.equal(updatedThread.rowCount, 1);
+    const updatedDraft = await trafficClient.query(
+      `UPDATE "zero_agent_drafts"
+       SET "draft_user_message" = $4::jsonb
+       WHERE "user_id" = $1
+         AND "org_id" = $2
+         AND "agent_id" = $3`,
+      [fixture.userId, fixture.orgId, fixture.agentId, canonicalDocument],
+    );
+    assert.equal(updatedDraft.rowCount, 1);
+
+    await migrationClient.query("COMMIT");
+    validationOpen = false;
+
+    await blocker.query("BEGIN");
+    blockerOpen = true;
+    await blocker.query(`LOCK TABLE "chat_threads" IN ACCESS SHARE MODE`);
+
+    try {
+      await applyMigrationsUpToInTransaction(
+        migrationClient,
+        DRAFT_CONTENT_CLEANUP_MIGRATION,
+      );
+      assert.fail("draftContent cleanup waited for a table lock");
+    } catch (error) {
+      assert.equal(databaseErrorCode(error), "55P03");
+    }
+
+    await blocker.query("ROLLBACK");
+    blockerOpen = false;
+
+    await applyMigrationsUpToInTransaction(
+      migrationClient,
+      DRAFT_CONTENT_CLEANUP_MIGRATION,
+    );
+
+    const legacyColumns = await migrationClient.query<{
+      column_name: string;
+      table_name: string;
+    }>(`
+      SELECT table_name, column_name
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name IN ('chat_threads', 'zero_agent_drafts')
+        AND column_name = 'draft_content'
+    `);
+    assert.deepEqual(legacyColumns.rows, []);
+
+    const constraints = await migrationClient.query<{
+      definition: string;
+      name: string;
+      validated: boolean;
+    }>(`
+      SELECT
+        constraint_record.conname AS "name",
+        constraint_record.convalidated AS "validated",
+        pg_get_constraintdef(constraint_record.oid) AS "definition"
+      FROM pg_constraint AS constraint_record
+      WHERE constraint_record.conname IN (
+        'chat_threads_draft_user_message_check',
+        'zero_agent_drafts_draft_user_message_check'
+      )
+      ORDER BY constraint_record.conname
+    `);
+    assert.equal(constraints.rows.length, 2);
+    assert.ok(
+      constraints.rows.every((constraint) => {
+        return (
+          constraint.validated &&
+          constraint.definition.includes("draft_user_message") &&
+          constraint.definition.includes("draft_attachments") &&
+          !constraint.definition.includes("draft_content")
+        );
+      }),
+    );
+  } finally {
+    if (validationOpen) {
+      await migrationClient.query("ROLLBACK");
+    }
+    if (blockerOpen) {
+      await blocker.query("ROLLBACK");
+    }
+    await blocker.end();
+    await migrationClient.end();
+    await trafficClient.end();
+    await dropDatabase(testDb);
+  }
+
+  console.log(
+    "   ✅ Validation permits live reads and writes, cleanup fails fast on lock contention, and both draftContent columns are removed\n",
   );
 }
 
@@ -8327,6 +8587,224 @@ async function validateConnectorSlugRollout(): Promise<void> {
   );
 }
 
+async function validateInsightsConnectorSlugExpansion(): Promise<void> {
+  console.log(
+    "=== Phase 1.61: Validate insights connector slug expansion ===\n",
+  );
+  const previousMigration = 753;
+  const targetMigration = 754;
+  const targetMigrationTag = "0754_expand_insights_connector_slug";
+  const successDb = "migration_insights_connector_slug_expansion_test";
+  const rejectionDb =
+    "migration_insights_connector_slug_expansion_rejection_test";
+  const successDbUrl = createTestDbUrl(successDb);
+  const rejectionDbUrl = createTestDbUrl(rejectionDb);
+  const legacyData = {
+    permissions: [
+      {
+        label: "repo-read",
+        connectorType: "github",
+        allowed: 3,
+        denied: 0,
+        agentNames: ["Research agent"],
+        metadata: { retained: true },
+      },
+      {
+        label: "channels:read",
+        connectorSlug: "slack",
+        allowed: 2,
+        denied: 0,
+        agentNames: ["Support agent"],
+      },
+      {
+        label: "pages:read",
+        connectorSlug: "notion",
+        connectorType: "notion",
+        allowed: 1,
+        denied: 0,
+        agentNames: ["Knowledge agent"],
+      },
+      {
+        label: "unscoped",
+        allowed: 0,
+        denied: 1,
+        agentNames: [],
+      },
+    ],
+    unrelated: {
+      nested: ["preserve", 42],
+    },
+  };
+  const expandedData = {
+    ...legacyData,
+    permissions: [
+      {
+        ...legacyData.permissions[0],
+        connectorSlug: "github",
+      },
+      legacyData.permissions[1],
+      legacyData.permissions[2],
+      legacyData.permissions[3],
+    ],
+  };
+
+  await createDatabase(successDb);
+  try {
+    await runMigrationsUpTo(successDbUrl, previousMigration);
+    const client = new Client({ connectionString: successDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "insights_daily" (
+            "id",
+            "org_id",
+            "user_id",
+            "date",
+            "data",
+            "updated_at"
+          )
+          VALUES (
+            '00000000-0000-4000-8000-000000075301',
+            'insights-slug-org',
+            'insights-slug-user',
+            '2026-07-30',
+            $1::jsonb,
+            '2026-07-30T00:00:00.000Z'
+          )
+        `,
+        [JSON.stringify(legacyData)],
+      );
+
+      await applyMigrationsUpTo(client, targetMigration);
+
+      const result = await client.query<{ readonly data: unknown }>(
+        `
+          SELECT "data"
+          FROM "insights_daily"
+          WHERE "id" = '00000000-0000-4000-8000-000000075301'
+        `,
+      );
+      assert.deepEqual(result.rows[0]?.data, expandedData);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(successDb);
+  }
+
+  const compatibleData = {
+    permissions: [
+      {
+        label: "repo-read",
+        connectorType: "github",
+        allowed: 1,
+        denied: 0,
+        agentNames: ["Research agent"],
+      },
+    ],
+    marker: "must remain unchanged",
+  };
+  const conflictingData = {
+    permissions: [
+      {
+        label: "channels:read",
+        connectorSlug: "slack",
+        connectorType: "github",
+        allowed: 1,
+        denied: 0,
+        agentNames: ["Support agent"],
+      },
+    ],
+  };
+
+  await createDatabase(rejectionDb);
+  try {
+    await runMigrationsUpTo(rejectionDbUrl, previousMigration);
+    const client = new Client({ connectionString: rejectionDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "insights_daily" (
+            "id",
+            "org_id",
+            "user_id",
+            "date",
+            "data"
+          )
+          VALUES
+            (
+              '00000000-0000-4000-8000-000000075302',
+              'insights-slug-org',
+              'insights-slug-user',
+              '2026-07-29',
+              $1::jsonb
+            ),
+            (
+              '00000000-0000-4000-8000-000000075303',
+              'insights-slug-org',
+              'insights-slug-user',
+              '2026-07-30',
+              $2::jsonb
+            )
+        `,
+        [JSON.stringify(compatibleData), JSON.stringify(conflictingData)],
+      );
+
+      await assert.rejects(
+        applyMigrationsUpTo(client, targetMigration),
+        /conflicting connectorSlug and connectorType identities/,
+      );
+
+      const rows = await client.query<{
+        readonly data: unknown;
+        readonly id: string;
+      }>(
+        `
+          SELECT "id", "data"
+          FROM "insights_daily"
+          WHERE "id" IN (
+            '00000000-0000-4000-8000-000000075302',
+            '00000000-0000-4000-8000-000000075303'
+          )
+          ORDER BY "id"
+        `,
+      );
+      assert.deepEqual(rows.rows, [
+        {
+          id: "00000000-0000-4000-8000-000000075302",
+          data: compatibleData,
+        },
+        {
+          id: "00000000-0000-4000-8000-000000075303",
+          data: conflictingData,
+        },
+      ]);
+
+      const migrationRecord = await client.query<{
+        readonly count: number;
+      }>(
+        `
+          SELECT COUNT(*)::int AS "count"
+          FROM "__drizzle_migrations"
+          WHERE "hash" = $1
+        `,
+        [targetMigrationTag],
+      );
+      assert.equal(migrationRecord.rows[0]?.count, 0);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(rejectionDb);
+  }
+
+  console.log(
+    "   ✅ Insights connector slug expansion preserves JSONB and rejects conflicts atomically\n",
+  );
+}
+
 async function extractSchemaFromDb(dbUrl: string): Promise<{
   tables: Set<string>;
   columns: Map<string, Set<string>>;
@@ -9369,101 +9847,361 @@ async function validateBrowserResizeStateRolloutCompatibility(): Promise<void> {
   );
 }
 
-const BROWSER_TAB_SNAPSHOT_PREVIOUS_MIGRATION = 749;
-const BROWSER_TAB_SNAPSHOT_MIGRATION = 750;
+type HostedSiteScopeMigrationWrite = {
+  readonly chatThreadId: string | null;
+  readonly requestedSlug: string | null;
+};
 
-async function browserTabSnapshotTableAvailable(
-  client: Client,
-): Promise<boolean> {
-  const result = await client.query<{ available: boolean }>(
-    `SELECT to_regclass('public.browser_session_tab_snapshots') IS NOT NULL
-       AS "available"`,
+type HostedSiteScopeMigrationWriteOutcome =
+  | { readonly kind: "success"; readonly row: HostedSiteScopeMigrationWrite }
+  | { readonly kind: "failure"; readonly error: unknown };
+
+async function applyHostedSiteScopeMigrationWithConcurrentWriter(args: {
+  readonly dbUrl: string;
+  readonly observer: Client;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly runId: string;
+}): Promise<HostedSiteScopeMigrationWrite> {
+  const migration = new Client({ connectionString: args.dbUrl });
+  const previousApi = new Client({ connectionString: args.dbUrl });
+  await migration.connect();
+  await previousApi.connect();
+
+  const migrationSql = await fs.readFile(
+    path.join(MIGRATIONS_DIR, "0753_backfill_chat_scoped_hosted_sites.sql"),
+    "utf-8",
   );
-  return result.rows[0]?.available ?? false;
+  const statements = migrationSql
+    .split("--> statement-breakpoint")
+    .map((statement) => {
+      return statement.trim();
+    })
+    .filter((statement) => {
+      return statement.length > 0;
+    });
+  const [lockStatement, ...remainingStatements] = statements;
+  if (!lockStatement) {
+    throw new Error("Hosted-site scope migration has no statements");
+  }
+  assert.match(lockStatement, /^LOCK TABLE "hosted_sites"/u);
+
+  let migrationOpen = false;
+  let writerTask: Promise<HostedSiteScopeMigrationWriteOutcome> | undefined;
+  try {
+    const migrationPidResult = await migration.query<{ pid: number }>(
+      `SELECT pg_backend_pid() AS "pid"`,
+    );
+    const previousApiPidResult = await previousApi.query<{ pid: number }>(
+      `SELECT pg_backend_pid() AS "pid"`,
+    );
+    const migrationPid = migrationPidResult.rows[0]?.pid;
+    const previousApiPid = previousApiPidResult.rows[0]?.pid;
+    assert.ok(migrationPid);
+    assert.ok(previousApiPid);
+
+    await migration.query("BEGIN");
+    migrationOpen = true;
+    await migration.query(lockStatement);
+
+    writerTask = previousApi
+      .query<HostedSiteScopeMigrationWrite>(
+        `INSERT INTO "hosted_sites" (
+           "org_id", "user_id", "slug", "public_slug", "created_from_run_id"
+         )
+         VALUES (
+           $1, $2, 'concurrent-previous-api-site',
+           'concurrent-previous-api-site', $3
+         )
+         RETURNING
+           "requested_slug" AS "requestedSlug",
+           "chat_thread_id" AS "chatThreadId"`,
+        [args.orgId, args.userId, args.runId],
+      )
+      .then(
+        (result) => {
+          const row = result.rows[0];
+          if (!row) {
+            throw new Error("Concurrent previous API insert returned no row");
+          }
+          return { kind: "success", row } as const;
+        },
+        (error: unknown) => {
+          return { kind: "failure", error } as const;
+        },
+      );
+
+    await waitForMigrationBlockedBy(args.observer, {
+      blockerPid: migrationPid,
+      migrationPid: previousApiPid,
+    });
+
+    for (const statement of remainingStatements) {
+      await migration.query(statement);
+    }
+    await migration.query("COMMIT");
+    migrationOpen = false;
+
+    const outcome = await writerTask;
+    if (outcome.kind === "failure") {
+      throw outcome.error;
+    }
+    return outcome.row;
+  } finally {
+    if (migrationOpen) {
+      await migration.query("ROLLBACK");
+    }
+    if (writerTask !== undefined) {
+      await writerTask;
+    }
+    await migration.end();
+    await previousApi.end();
+  }
 }
 
-async function validateBrowserTabSnapshotRolloutCompatibility(): Promise<void> {
-  console.log("=== Validate browser tab snapshot rollout compatibility ===\n");
-  const testDb = "migration_browser_tab_snapshot_rollout_test";
+async function validateHostedSiteChatScopeRollout(): Promise<void> {
+  console.log("=== Validate hosted-site chat scope rollout ===\n");
+  const testDb = "migration_hosted_site_chat_scope_rollout_test";
   const testDbUrl = createTestDbUrl(testDb);
-  const composeId = "99000000-0000-4000-8000-000000000000";
-  const profileId = "99000000-0000-4000-8000-000000000001";
-  const providerProfileId = "99000000-0000-4000-8000-000000000002";
-  const browserSessionId = "99000000-0000-4000-8000-000000000003";
-  const chatThreadId = "99000000-0000-4000-8000-000000000004";
+  const fixture = {
+    composeId: "00000000-0000-4000-8000-000000074201",
+    sessionId: "00000000-0000-4000-8000-000000074202",
+    firstRunId: "00000000-0000-4000-8000-000000074203",
+    secondRunId: "00000000-0000-4000-8000-000000074204",
+    firstThreadId: "00000000-0000-4000-8000-000000074205",
+    secondThreadId: "00000000-0000-4000-8000-000000074206",
+    chatSiteId: "00000000-0000-4000-8000-000000074207",
+    legacySiteId: "00000000-0000-4000-8000-000000074208",
+    orgId: "hosted-site-chat-scope-org",
+    userId: "hosted-site-chat-scope-user",
+  } as const;
 
   await createDatabase(testDb);
   try {
-    await runMigrationsUpTo(testDbUrl, BROWSER_TAB_SNAPSHOT_PREVIOUS_MIGRATION);
+    await runMigrationsUpTo(testDbUrl, 751);
     const client = new Client({ connectionString: testDbUrl });
     await client.connect();
     try {
-      assert.equal(await browserTabSnapshotTableAvailable(client), false);
-      await applyMigrationsUpToInTransaction(
-        client,
-        BROWSER_TAB_SNAPSHOT_MIGRATION,
-      );
-      assert.equal(await browserTabSnapshotTableAvailable(client), true);
-
       await client.query(
         `INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
-         VALUES (
-           $1, 'tab-rollout-user', 'tab-rollout', 'tab-rollout-org'
-         )`,
-        [composeId],
+         VALUES ($1, $2, 'hosted-site-chat-scope', $3)`,
+        [fixture.composeId, fixture.userId, fixture.orgId],
+      );
+      await client.query(
+        `INSERT INTO "agent_sessions" (
+           "id", "user_id", "org_id", "agent_compose_id"
+         )
+         VALUES ($1, $2, $3, $4)`,
+        [fixture.sessionId, fixture.userId, fixture.orgId, fixture.composeId],
+      );
+      await client.query(
+        `INSERT INTO "agent_runs" (
+           "id", "user_id", "session_id", "status", "prompt", "org_id"
+         )
+         VALUES
+           ($1, $3, $4, 'running', 'first chat publish', $5),
+           ($2, $3, $4, 'running', 'second chat publish', $5)`,
+        [
+          fixture.firstRunId,
+          fixture.secondRunId,
+          fixture.userId,
+          fixture.sessionId,
+          fixture.orgId,
+        ],
       );
       await client.query(
         `INSERT INTO "chat_threads" (
            "id", "user_id", "agent_compose_id", "title"
          )
-         VALUES ($1, 'tab-rollout-user', $2, 'tab rollout')`,
-        [chatThreadId, composeId],
+         VALUES
+           ($1, $3, $4, 'First hosted-site chat'),
+           ($2, $3, $4, 'Second hosted-site chat')`,
+        [
+          fixture.firstThreadId,
+          fixture.secondThreadId,
+          fixture.userId,
+          fixture.composeId,
+        ],
       );
       await client.query(
-        `INSERT INTO "browser_profiles" (
-           "id", "org_id", "user_id", "provider_profile_id"
-         )
-         VALUES ($1, 'tab-rollout-org', 'tab-rollout-user', $2)`,
-        [profileId, providerProfileId],
+        `INSERT INTO "zero_runs" ("id", "trigger_source", "chat_thread_id")
+         VALUES
+           ($1, 'chat', $3),
+           ($2, 'chat', $4)`,
+        [
+          fixture.firstRunId,
+          fixture.secondRunId,
+          fixture.firstThreadId,
+          fixture.secondThreadId,
+        ],
       );
       await client.query(
-        `INSERT INTO "browser_sessions" (
-           "id", "chat_thread_id", "org_id", "user_id", "name",
-           "browser_profile_id", "status", "timeout_minutes", "max_credits"
+        `INSERT INTO "hosted_sites" (
+           "id", "org_id", "user_id", "slug", "public_slug",
+           "created_from_run_id"
          )
-         VALUES (
-           $1, $3, 'tab-rollout-org', 'tab-rollout-user',
-           'tab-rollout', $2, 'suspended', 240, 1
-         )`,
-        [browserSessionId, profileId, chatThreadId],
+         VALUES
+           ($1, $3, $4, 'shared-site', 'shared-site', $5),
+           ($2, $3, $4, 'legacy-site', 'legacy-site', NULL)`,
+        [
+          fixture.chatSiteId,
+          fixture.legacySiteId,
+          fixture.orgId,
+          fixture.userId,
+          fixture.firstRunId,
+        ],
       );
-      await client.query(
-        `INSERT INTO "browser_session_tab_snapshots" (
-           "chat_thread_id", "encrypted_tab_urls"
-         )
-         VALUES ($1, 'encrypted-tab-urls')`,
-        [chatThreadId],
+
+      await applyMigrationsUpToInTransaction(client, 752);
+      const concurrentPreviousApiInsert =
+        await applyHostedSiteScopeMigrationWithConcurrentWriter({
+          dbUrl: testDbUrl,
+          observer: client,
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          runId: fixture.firstRunId,
+        });
+      assert.deepEqual(concurrentPreviousApiInsert, {
+        requestedSlug: "concurrent-previous-api-site",
+        chatThreadId: fixture.firstThreadId,
+      });
+
+      const backfilled = await client.query<{
+        chatThreadId: string | null;
+        id: string;
+        requestedSlug: string | null;
+      }>(
+        `SELECT
+           "id",
+           "requested_slug" AS "requestedSlug",
+           "chat_thread_id" AS "chatThreadId"
+         FROM "hosted_sites"
+         WHERE "id" IN ($1, $2)
+         ORDER BY "id"`,
+        [fixture.chatSiteId, fixture.legacySiteId],
       );
-      const snapshot = await client.query<{ encryptedTabUrls: string }>(
-        `SELECT "encrypted_tab_urls" AS "encryptedTabUrls"
-         FROM "browser_session_tab_snapshots"
-         WHERE "chat_thread_id" = $1`,
-        [chatThreadId],
-      );
-      assert.deepEqual(snapshot.rows, [
-        { encryptedTabUrls: "encrypted-tab-urls" },
+      assert.deepEqual(backfilled.rows, [
+        {
+          id: fixture.chatSiteId,
+          requestedSlug: "shared-site",
+          chatThreadId: fixture.firstThreadId,
+        },
+        {
+          id: fixture.legacySiteId,
+          requestedSlug: "legacy-site",
+          chatThreadId: null,
+        },
       ]);
 
-      await client.query(`DELETE FROM "chat_threads" WHERE "id" = $1`, [
-        chatThreadId,
-      ]);
-      const afterDelete = await client.query<{ count: string }>(
-        `SELECT count(*)::text AS "count"
-         FROM "browser_session_tab_snapshots"
-         WHERE "chat_thread_id" = $1`,
-        [chatThreadId],
+      const previousApiInsert = await client.query<{
+        chatThreadId: string | null;
+        requestedSlug: string | null;
+      }>(
+        `INSERT INTO "hosted_sites" (
+           "org_id", "user_id", "slug", "public_slug", "created_from_run_id"
+         )
+         VALUES ($1, $2, 'previous-api-site', 'previous-api-site', $3)
+         RETURNING
+           "requested_slug" AS "requestedSlug",
+           "chat_thread_id" AS "chatThreadId"`,
+        [fixture.orgId, fixture.userId, fixture.firstRunId],
       );
-      assert.deepEqual(afterDelete.rows, [{ count: "0" }]);
+      assert.deepEqual(previousApiInsert.rows, [
+        {
+          requestedSlug: "previous-api-site",
+          chatThreadId: fixture.firstThreadId,
+        },
+      ]);
+
+      await client.query(
+        `INSERT INTO "hosted_sites" (
+           "org_id", "user_id", "slug", "requested_slug", "chat_thread_id",
+           "public_slug"
+         )
+         VALUES (
+           $1, $2, 'shared-site-second-chat', 'shared-site', $3,
+           'shared-site-second-chat'
+         )`,
+        [fixture.orgId, fixture.userId, fixture.secondThreadId],
+      );
+      await expectDatabaseError(client, {
+        code: "23505",
+        query: `INSERT INTO "hosted_sites" (
+          "org_id", "user_id", "slug", "requested_slug", "chat_thread_id",
+          "public_slug"
+        )
+        VALUES (
+          $1, $2, 'shared-site-first-chat-duplicate', 'shared-site', $3,
+          'shared-site-first-chat-duplicate'
+        )`,
+        values: [fixture.orgId, fixture.userId, fixture.firstThreadId],
+      });
+      await client.query(
+        `INSERT INTO "hosted_sites" (
+           "org_id", "user_id", "slug", "requested_slug", "public_slug"
+         )
+         VALUES (
+           $1, $2, 'shared-site-organization', 'shared-site',
+           'shared-site-organization'
+         )`,
+        [fixture.orgId, fixture.userId],
+      );
+
+      await expectDatabaseError(client, {
+        code: "23514",
+        messageIncludes: "Hosted site chat ownership is immutable",
+        query: `UPDATE "hosted_sites"
+                SET "chat_thread_id" = $1
+                WHERE "id" = $2`,
+        values: [fixture.secondThreadId, fixture.chatSiteId],
+      });
+
+      await client.query(
+        `INSERT INTO "hosted_deployments" (
+           "site_id", "org_id", "user_id", "run_id", "status", "r2_prefix",
+           "manifest", "manifest_hash", "content_hash", "file_count",
+           "size_bytes", "url"
+         )
+         VALUES (
+           $1, $2, $3, $4, 'uploading', 'matching-chat', '{}'::jsonb,
+           repeat('0', 64), repeat('0', 64), 0, 0,
+           'https://matching-chat.invalid'
+         )`,
+        [fixture.chatSiteId, fixture.orgId, fixture.userId, fixture.firstRunId],
+      );
+      await expectDatabaseError(client, {
+        code: "23514",
+        messageIncludes: "Hosted site belongs to a different chat",
+        query: `INSERT INTO "hosted_deployments" (
+          "site_id", "org_id", "user_id", "run_id", "status", "r2_prefix",
+          "manifest", "manifest_hash", "content_hash", "file_count",
+          "size_bytes", "url"
+        )
+        VALUES (
+          $1, $2, $3, $4, 'uploading', 'different-chat', '{}'::jsonb,
+          repeat('0', 64), repeat('0', 64), 0, 0,
+          'https://different-chat.invalid'
+        )`,
+        values: [
+          fixture.chatSiteId,
+          fixture.orgId,
+          fixture.userId,
+          fixture.secondRunId,
+        ],
+      });
+
+      await client.query(`DELETE FROM "chat_threads" WHERE "id" = $1`, [
+        fixture.firstThreadId,
+      ]);
+      const stableOwner = await client.query<{ chatThreadId: string | null }>(
+        `SELECT "chat_thread_id" AS "chatThreadId"
+         FROM "hosted_sites"
+         WHERE "id" = $1`,
+        [fixture.chatSiteId],
+      );
+      assert.deepEqual(stableOwner.rows, [
+        { chatThreadId: fixture.firstThreadId },
+      ]);
     } finally {
       await client.end();
     }
@@ -9471,7 +10209,7 @@ async function validateBrowserTabSnapshotRolloutCompatibility(): Promise<void> {
     await dropDatabase(testDb);
   }
   console.log(
-    "   ✅ Current API skips snapshots before 0750, previous browser writes remain compatible, and snapshots follow stable thread identity\n",
+    "   ✅ Existing and previous-API sites gain stable chat ownership, scoped uniqueness allows cross-chat reuse, and deployment writes fail closed across chats\n",
   );
 }
 
@@ -9647,6 +10385,7 @@ async function main(): Promise<void> {
     await validateConnectorCredentialOwnershipBackfill();
     await validateConnectorCredentialOwnershipContraction();
     await validateConnectorSlugRollout();
+    await validateInsightsConnectorSlugExpansion();
 
     await validateStorageArchiveSizeFinalization();
     await validateStorageLegacyTypeContraction();
@@ -9663,13 +10402,14 @@ async function main(): Promise<void> {
     await validateUserMessageBackfillAndContract();
     await validateCanonicalUserMessageRolloutCompatibility();
     await validateCanonicalUserMessageContraction();
+    await validateDraftContentContraction();
     await validateChatEventQueueContraction();
     await validateChatMessageRoleContraction();
     await validateChatEventTableRename();
     await validateChatInputGoalEvent();
     await validateChatEventAssetRefTableRename();
     await validateBrowserResizeStateRolloutCompatibility();
-    await validateBrowserTabSnapshotRolloutCompatibility();
+    await validateHostedSiteChatScopeRollout();
     await validateCurrentBrowserApiBeforeBillingMigration();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
@@ -9688,7 +10428,7 @@ async function main(): Promise<void> {
     await runMigrations(dbUrl1);
     console.log("   ✅ Consecutive database resets completed successfully\n");
 
-    await validatePreviousBrowserApiAfterThreadLifecycleMigration(dbUrl1);
+    await validateThreadBrowserIdentityAfterMigration(dbUrl1);
     await validateChatEventSourcesAreAppendOnly(dbUrl1);
     await validateChatEventContextPointerConstraints(dbUrl1);
     await validateConnectorCatalogFinalConstraints(dbUrl1);
@@ -9720,9 +10460,7 @@ async function main(): Promise<void> {
       console.log("   ✅ Snapshot chain is intact (id/prevId references)");
       console.log("   ✅ Journal timestamps are strictly increasing");
       console.log("   ✅ Latest snapshot accurately reflects final DB state");
-      console.log(
-        "   ✅ Previous browser API can start after billing migration",
-      );
+      console.log("   ✅ Browser identity is thread-keyed with no legacy UUID");
       console.log(
         "   ✅ Current browser API can start before billing migration",
       );

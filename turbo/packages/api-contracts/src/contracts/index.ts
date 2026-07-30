@@ -156,6 +156,10 @@ export {
   type QueueResponse,
 } from "./runs";
 export {
+  testAgentRunsContract,
+  type TestAgentRunsContract,
+} from "./test-agent-runs";
+export {
   zeroModelPoliciesMainContract,
   type ZeroModelPoliciesMainContract,
 } from "./zero-model-policies";
@@ -1167,11 +1171,13 @@ export {
   zeroCustomConnectorsContract,
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorSecretContract,
+  zeroCustomConnectorValuesContract,
   zeroCustomConnectorOAuth2Contract,
   customConnectorResponseSchema,
   customConnectorListResponseSchema,
   createCustomConnectorBodySchema,
   setCustomConnectorSecretBodySchema,
+  setCustomConnectorValuesBodySchema,
   startCustomConnectorOAuth2BodySchema,
   startCustomConnectorOAuth2ResponseSchema,
   patchCustomConnectorBodySchema,
@@ -1181,12 +1187,15 @@ export {
   type ZeroCustomConnectorsContract,
   type ZeroCustomConnectorByIdContract,
   type ZeroCustomConnectorSecretContract,
+  type ZeroCustomConnectorValuesContract,
   type ZeroCustomConnectorOAuth2Contract,
   type CustomConnectorResponse,
   type CustomConnectorAuthMode,
   type CustomConnectorOAuthConfig,
   type CustomConnectorOAuthConfigInput,
   type CreateCustomConnectorBody,
+  type CustomConnectorValueInput,
+  type SetCustomConnectorValuesBody,
   type UpdateCustomConnectorBody,
   type PatchCustomConnectorBody,
 } from "./zero-custom-connectors";

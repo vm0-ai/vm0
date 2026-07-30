@@ -1,5 +1,3 @@
-import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import {
   UNKNOWN_PERMISSION_GRANT,
   type FirewallPolicies,
@@ -10,9 +8,13 @@ import {
   resolveFirewallMetadataPolicies,
 } from "@vm0/connectors/firewall-metadata/policy";
 import { now } from "../lib/time.ts";
+import type {
+  PlatformConnectorPermissionMetadata,
+  PlatformUserPermissionGrant,
+} from "./connector-domain.ts";
 
 export function isActiveUserPermissionGrant(
-  grant: Pick<UserPermissionGrantResponse, "expiresAt">,
+  grant: Pick<PlatformUserPermissionGrant, "expiresAt">,
   checkedAtMs = now(),
 ): boolean {
   if (grant.expiresAt === null) {
@@ -23,47 +25,60 @@ export function isActiveUserPermissionGrant(
 }
 
 function activeUserPermissionGrants(
-  grants: readonly UserPermissionGrantResponse[],
+  grants: readonly PlatformUserPermissionGrant[],
   checkedAtMs = now(),
-): readonly UserPermissionGrantResponse[] {
+): readonly PlatformUserPermissionGrant[] {
   return grants.filter((grant) => {
     return isActiveUserPermissionGrant(grant, checkedAtMs);
   });
 }
 
 function userPermissionGrantsToActiveFirewallPolicies(
-  grants: readonly UserPermissionGrantResponse[],
+  grants: readonly PlatformUserPermissionGrant[],
   checkedAtMs = now(),
 ): FirewallPolicies | null {
   return permissionGrantsToFirewallPolicies(
-    activeUserPermissionGrants(grants, checkedAtMs),
+    activeUserPermissionGrants(grants, checkedAtMs).map(
+      ({ connectorSlug, ...grant }) => {
+        return { ...grant, connectorRef: connectorSlug };
+      },
+    ),
   );
 }
 
 export function activeUserPermissionGrantSnapshot(
-  grants: readonly UserPermissionGrantResponse[],
+  grants: readonly PlatformUserPermissionGrant[],
   checkedAtMs = now(),
 ): {
-  readonly grants: readonly UserPermissionGrantResponse[];
+  readonly grants: readonly PlatformUserPermissionGrant[];
   readonly policies: FirewallPolicies | null;
 } {
   const activeGrants = activeUserPermissionGrants(grants, checkedAtMs);
   return {
     grants: activeGrants,
-    policies: permissionGrantsToFirewallPolicies(activeGrants),
+    policies: permissionGrantsToFirewallPolicies(
+      activeGrants.map(({ connectorSlug, ...grant }) => {
+        return { ...grant, connectorRef: connectorSlug };
+      }),
+    ),
   };
 }
 
 export function resolveActiveUserPermissionGrantPolicy(
-  grants: readonly UserPermissionGrantResponse[],
-  metadata: PublicConnectorCatalogPermissionDetail,
+  grants: readonly PlatformUserPermissionGrant[],
+  metadata: PlatformConnectorPermissionMetadata,
   permission: string,
   checkedAtMs = now(),
 ): FirewallPolicyValue | undefined {
   const policies = resolveFirewallMetadataPolicies(
     userPermissionGrantsToActiveFirewallPolicies(grants, checkedAtMs),
-    [metadata],
-  )?.[metadata.connectorRef];
+    [
+      {
+        ...metadata,
+        connectorRef: metadata.connectorSlug,
+      },
+    ],
+  )?.[metadata.connectorSlug];
   return permission === UNKNOWN_PERMISSION_GRANT
     ? policies?.unknownPolicy
     : policies?.policies[permission];

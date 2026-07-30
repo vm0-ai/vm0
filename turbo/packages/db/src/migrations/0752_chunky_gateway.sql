@@ -1,0 +1,4 @@
+ALTER TABLE "hosted_sites" ADD COLUMN "requested_slug" varchar(64);--> statement-breakpoint
+ALTER TABLE "hosted_sites" ADD COLUMN "chat_thread_id" uuid;--> statement-breakpoint
+CREATE UNIQUE INDEX "idx_hosted_sites_org_chat_thread_requested_slug" ON "hosted_sites" USING btree ("org_id","chat_thread_id","requested_slug") WHERE "hosted_sites"."chat_thread_id" IS NOT NULL AND "hosted_sites"."requested_slug" IS NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "idx_hosted_sites_org_requested_slug_non_chat" ON "hosted_sites" USING btree ("org_id","requested_slug") WHERE "hosted_sites"."chat_thread_id" IS NULL AND "hosted_sites"."requested_slug" IS NOT NULL;

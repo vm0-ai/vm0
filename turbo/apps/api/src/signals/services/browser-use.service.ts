@@ -550,7 +550,7 @@ async function browserUseRequest(
 }
 
 export async function createBrowserUseProfile(
-  browserProfileId: string,
+  chatThreadId: string,
   signal: AbortSignal,
 ): Promise<string> {
   const body = await browserUseRequest(
@@ -558,7 +558,7 @@ export async function createBrowserUseProfile(
     {
       method: "POST",
       body: JSON.stringify({
-        name: `vm0-browser-profile-${browserProfileId}`,
+        name: `vm0-browser-profile-${chatThreadId}`,
       }),
     },
     signal,

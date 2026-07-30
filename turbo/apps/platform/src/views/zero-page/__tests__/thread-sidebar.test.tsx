@@ -47,7 +47,6 @@ function browserSession(
   overrides: Partial<ZeroBrowserSession> = {},
 ): ZeroBrowserSession {
   return {
-    id: THREAD_ID,
     threadId: THREAD_ID,
     name: "Thread browser",
     status: "active",
@@ -55,9 +54,6 @@ function browserSession(
     liveUrl: "https://live.browser-use.com/?wss=thread-browser",
     proxyCountryCode: null,
     timeoutMinutes: 240,
-    maxCredits: 1,
-    grossCredits: 0,
-    creditsCharged: 0,
     screen: { width: 1440, height: 900, resizable: true },
     idleExpiresAt: "2026-03-10T00:10:00.000Z",
     suspendedAt: null,
@@ -513,12 +509,15 @@ describe("thread-owned utility sidebar", () => {
       ({ body, params, respond }) => {
         expect(params.id).toBe(AGENT_ID);
         expect(body).toStrictEqual({
-          enabledTypes: ["google-drive"],
+          enabledConnectorSlugs: ["google-drive"],
           operation: "add",
         });
-        enabledConnectorSlugs = [...body.enabledTypes];
+        enabledConnectorSlugs = [...body.enabledConnectorSlugs];
         agentAuthorized = true;
-        return respond(200, { enabledTypes: enabledConnectorSlugs });
+        return respond(200, {
+          enabledTypes: enabledConnectorSlugs,
+          enabledConnectorSlugs,
+        });
       },
     );
     context.mocks.api(

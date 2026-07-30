@@ -4,7 +4,6 @@ import { cronBrowserReconcileContract } from "@vm0/api-contracts/contracts/cron"
 import {
   zeroBrowserAuthorizationRequestsContract,
   zeroBrowserContract,
-  type ZeroBrowserCreateRequest,
 } from "@vm0/api-contracts/contracts/zero-browser";
 import {
   chatThreadComputerUseHostContract,
@@ -28,11 +27,7 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import {
-  readBrowserProfileAsPreviousApi,
-  setBrowserInstanceAsPreviousApi,
-  setComputerUseHostAsPreviousApi,
-} from "./helpers/runtime-state";
+import { setComputerUseHostAsPreviousApi } from "./helpers/runtime-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -68,25 +63,6 @@ function chatThreadEventsClient() {
 
 function cronClient() {
   return setupApp({ context })(cronBrowserReconcileContract);
-}
-
-async function requestBrowserCreate(
-  headers: Readonly<Record<string, string>>,
-  // The previous CLI sends maxCredits. The current request schema must keep
-  // accepting that extra field throughout the client drain window.
-  body: ZeroBrowserCreateRequest & { readonly maxCredits?: number },
-): Promise<Response> {
-  return await createApp({ signal: context.signal }).request(
-    "/api/zero/browsers",
-    {
-      method: "POST",
-      headers: {
-        ...headers,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify(body),
-    },
-  );
 }
 
 async function requestBrowserUse(
@@ -510,7 +486,6 @@ describe("zero browser route", () => {
     expect(createdInOtherThread.body.browser.threadId).not.toBe(
       created.body.browser.threadId,
     );
-    expect(created.body.browser.id).not.toBe(created.body.browser.threadId);
     expect(profileCreates).toBe(2);
     expect(providerCreates).toBe(2);
 
@@ -548,30 +523,6 @@ describe("zero browser route", () => {
       }),
     ).toStrictEqual(expect.arrayContaining([...profileIds]));
     expect(deletedProfiles).toStrictEqual([]);
-
-    if (!actor.orgId) {
-      throw new Error("Expected a browser test actor with an organization");
-    }
-    const actorOrgId = actor.orgId;
-    const previousApiRows = await Promise.all(
-      [created.body.browser.id, createdInOtherThread.body.browser.id].map(
-        async (browserId) => {
-          return await readBrowserProfileAsPreviousApi(context, {
-            browserId,
-            orgId: actorOrgId,
-            userId: actor.userId,
-          });
-        },
-      ),
-    );
-    expect(
-      new Set(
-        previousApiRows.map((row) => {
-          return row.browserProfileId;
-        }),
-      ).size,
-    ).toBe(1);
-    expect([...profileIds]).toContain(previousApiRows[0]?.providerProfileId);
 
     const createdProviderId = new URL(created.body.cdpUrl).hostname.split(
       ".",
@@ -642,36 +593,6 @@ describe("zero browser route", () => {
       height: 1920,
       resizable: true,
     });
-    const restoredForPreviousViewer = await accept(
-      client().getById({
-        headers: { authorization: "Bearer clerk-session" },
-        // The new API's viewer URL is thread-keyed, while the previous
-        // frontend still sends its path segment through the browser-ID route.
-        params: { browserId: created.body.browser.threadId },
-        query: { chatThreadId: created.body.browser.threadId },
-      }),
-      [200],
-    );
-    expect(restoredForPreviousViewer.body.browser).toMatchObject({
-      id: created.body.browser.id,
-      threadId: created.body.browser.threadId,
-      status: "active",
-    });
-
-    await setBrowserInstanceAsPreviousApi(
-      context,
-      createdInOtherThread.body.browser.id,
-    );
-    const previousApiBrowser = await accept(
-      client().getById({
-        headers: { authorization: "Bearer clerk-session" },
-        params: { browserId: createdInOtherThread.body.browser.id },
-        query: {},
-      }),
-      [200],
-    );
-    expect(previousApiBrowser.body.browser.screen).toBeUndefined();
-
     const copiedToAnotherThread = await createApp({
       signal: context.signal,
     }).request(`/api/zero/chat-threads/${randomUUID()}/browser`, {
@@ -859,19 +780,16 @@ describe("zero browser route", () => {
     const candidate = await createCandidate(
       "Start past the managed browser concurrency limit",
     );
-    const admitted = await requestBrowserCreate(candidate.browserHeaders, {
-      name: "concurrency-replacement",
-      proxyCountryCode: null,
-      maxCredits: 500,
-    });
-    expect(admitted.status).toBe(201);
-    await expect(admitted.json()).resolves.toMatchObject({
-      browser: {
-        maxCredits: 1,
-        grossCredits: 0,
-        creditsCharged: 0,
-      },
-    });
+    await accept(
+      client().create({
+        headers: candidate.browserHeaders,
+        body: {
+          name: "concurrency-replacement",
+          proxyCountryCode: null,
+        },
+      }),
+      [201],
+    );
     await flushWaitUntilForTest();
     expect(providerCreates).toBe(3);
     expect(providerStopAttempts).toStrictEqual([providerIds[0]]);
@@ -1062,7 +980,6 @@ describe("zero browser route", () => {
       [200],
     );
     const threadId = opened.body.browser.threadId;
-    const browserId = opened.body.browser.id;
     expect(opened.body.browser).toMatchObject({
       status: "active",
       idleExpiresAt: isoAt(10 * MINUTE_MS),
@@ -1149,7 +1066,7 @@ describe("zero browser route", () => {
     });
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "browserSessionChanged",
-      { browserId, threadId },
+      { threadId },
     );
     await flushWaitUntilForTest();
     expect(firstStopFailures).toBe(1);
@@ -1218,7 +1135,7 @@ describe("zero browser route", () => {
     expect(providerCreates).toBe(2);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "browserSessionChanged",
-      { browserId, threadId },
+      { threadId },
     );
     expect(context.mocks.browserUseCdp.connect.mock.calls).toStrictEqual([
       [cdpWebSocketUrls[0]],

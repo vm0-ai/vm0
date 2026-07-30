@@ -21,6 +21,7 @@ import type { MailDraftSignals } from "./mail-draft.ts";
 import type { BrowserSessionSignals } from "./browser-session-block.ts";
 import type { ComposerConnectorSignals } from "../zero-page/zero-connectors.ts";
 import type { EditorDocumentSnapshot } from "../zero-page/user-message-document-codec.ts";
+import type { AgentReferenceSignals } from "./agent-reference-signals.ts";
 import type { ArtifactSignals } from "./artifact-card-signals.ts";
 import type { ThreadSidebarAutoOpenCandidate } from "./thread-sidebar-auto-open.ts";
 
@@ -168,6 +169,7 @@ export interface ChatThreadSignals {
   >;
   eventImageGroups$: Computed<Promise<EventImageGroupProjection[]>>;
   artifactSignalsForUrl: (url: string) => ArtifactSignals | undefined;
+  agentReferenceSignalsForId: (agentId: string) => AgentReferenceSignals;
   mailDraftCardSignalsById$: Computed<ReadonlyMap<string, MailDraftSignals>>;
   browserSessionSignals: BrowserSessionSignals;
   hasEvents$: Computed<Promise<boolean>>;

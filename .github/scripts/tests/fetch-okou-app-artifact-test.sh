@@ -26,12 +26,6 @@ printf '\n' >>"$MOCK_AWS_LOG"
 
 source_uri="$3"
 destination="$4"
-recursive=false
-for argument in "$@"; do
-  if [[ "$argument" == "--recursive" ]]; then
-    recursive=true
-  fi
-done
 
 if [[ -n "${MOCK_AWS_TRANSIENT_FAILURES:-}" ]]; then
   failure_count="$(<"$MOCK_AWS_STATE_FILE")"
@@ -59,15 +53,8 @@ case "$source_uri" in
     printf '{"version":1}\n' >"$destination"
     ;;
   *)
-    if [[ "$recursive" != "true" ]]; then
-      echo "unexpected non-recursive copy of ${source_uri}" >&2
-      exit 1
-    fi
-    mkdir -p "${destination}assets"
-    printf '<!doctype html>\n' >"${destination}index.html"
-    printf 'console.log("app");\n' >"${destination}assets/app-123.js"
-    printf '{"version":1,"files":[]}\n' >"${destination}manifest.json"
-    printf '{"version":1}\n' >"${destination}ready.json"
+    echo "unexpected object copy: ${source_uri}" >&2
+    exit 1
     ;;
 esac
 EOF
@@ -88,7 +75,7 @@ test -f "${archive_destination}/.gitkeep"
 test -f "${archive_destination}/manifest.json"
 test -f "${archive_destination}/ready.json"
 if grep -q -- '--recursive' "${tmp_dir}/archive.log"; then
-  echo "expected the archive to replace the per-file download" >&2
+  echo "expected only individual archive and metadata object copies" >&2
   exit 1
 fi
 if (( "$(grep -c 's3 cp' "${tmp_dir}/archive.log")" != 3 )); then
@@ -96,17 +83,26 @@ if (( "$(grep -c 's3 cp' "${tmp_dir}/archive.log")" != 3 )); then
   exit 1
 fi
 
-legacy_destination="${tmp_dir}/legacy-destination"
-mkdir -p "$legacy_destination"
-MOCK_AWS_ARCHIVE_PRESENT=false \
-  MOCK_AWS_LOG="${tmp_dir}/legacy.log" \
-  bash "$script" "$r2_endpoint" "$artifact_uri" "$legacy_destination" \
-  >/dev/null
-test -f "${legacy_destination}/index.html"
-test -f "${legacy_destination}/assets/app-123.js"
-test -f "${legacy_destination}/manifest.json"
-test -f "${legacy_destination}/ready.json"
-grep -q -- '--recursive' "${tmp_dir}/legacy.log"
+missing_archive_destination="${tmp_dir}/missing-archive-destination"
+mkdir -p "$missing_archive_destination"
+if MOCK_AWS_ARCHIVE_PRESENT=false \
+  MOCK_AWS_LOG="${tmp_dir}/missing-archive.log" \
+  bash "$script" \
+    "$r2_endpoint" \
+    "$artifact_uri" \
+    "$missing_archive_destination" \
+    >/dev/null 2>&1; then
+  echo "expected an artifact without an archive to fail" >&2
+  exit 1
+fi
+if (( "$(grep -c 's3 cp' "${tmp_dir}/missing-archive.log")" != 1 )); then
+  echo "expected a missing archive to fail without retrying" >&2
+  exit 1
+fi
+if grep -q -- '--recursive' "${tmp_dir}/missing-archive.log"; then
+  echo "expected no per-file artifact fallback" >&2
+  exit 1
+fi
 
 retry_destination="${tmp_dir}/retry-destination"
 mkdir -p "$retry_destination"

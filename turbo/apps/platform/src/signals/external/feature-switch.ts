@@ -10,7 +10,7 @@ import { unauthorizedRedirectSuppressionUntil$ } from "../auth-retry.ts";
 import { rootSignal$ } from "../root-signal.ts";
 import { localStorageSignals } from "./local-storage.ts";
 
-export const FEATURE_SWITCH_CACHE_KEY = "vm0:feature-switch-cache:v4";
+export const FEATURE_SWITCH_CACHE_KEY = "vm0:feature-switch-cache:v3";
 
 const { set$: setFeatureSwitchLocalStorage$, get$: featureSwitchCache$ } =
   localStorageSignals(FEATURE_SWITCH_CACHE_KEY);
@@ -112,9 +112,6 @@ export const reloadFeatureSwitch$ = command(
     }
     if (result.body.supportsCustomConnectorOAuth2 !== true) {
       combined[FeatureSwitchKey.CustomConnectorOAuth2] = false;
-    }
-    if (result.body.supportsThreadKeyedBrowserLifecycle !== true) {
-      combined[FeatureSwitchKey.ZeroBrowser] = false;
     }
 
     set(setFeatureSwitchLocalStorage$, JSON.stringify(combined));

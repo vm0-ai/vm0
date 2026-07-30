@@ -11,6 +11,7 @@ import {
   type UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
+import { i18n } from "../../i18n/index.ts";
 import { formatFeedbackPrompt, type FeedbackSource } from "./chat-feedback.ts";
 import { serializeChatThreadMention } from "./chat-thread-suggestion-domain.ts";
 import {
@@ -770,25 +771,48 @@ export function messageDocumentToDisplayText(
       continue;
     }
     if (part.type === "chat_thread") {
-      inlineText += `[Chat thread: ${part.titleSnapshot}]`;
+      inlineText += i18n.t(
+        ($) => {
+          return $.chat.messageDocument.chatThread;
+        },
+        { title: part.titleSnapshot },
+      );
       continue;
     }
     if (part.type === "agent") {
-      inlineText += `[Agent: ${part.nameSnapshot}]`;
+      inlineText += i18n.t(
+        ($) => {
+          return $.chat.messageDocument.agent;
+        },
+        { name: part.nameSnapshot },
+      );
       continue;
     }
     if (part.type === "template") {
+      const templateLabel = i18n.t(
+        ($) => {
+          return $.chat.messageDocument.template;
+        },
+        { title: part.titleSnapshot },
+      );
       if (options.inlineTemplates === true) {
-        inlineText += `[Template: ${part.titleSnapshot}]`;
+        inlineText += templateLabel;
       } else {
         flushInlineText();
-        blocks.push(`[Template: ${part.titleSnapshot}]`);
+        blocks.push(templateLabel);
       }
       continue;
     }
 
     flushInlineText();
-    blocks.push(`[File: ${part.filenameSnapshot}]`);
+    blocks.push(
+      i18n.t(
+        ($) => {
+          return $.chat.messageDocument.file;
+        },
+        { filename: part.filenameSnapshot },
+      ),
+    );
   }
   flushFeedback();
   flushInlineText();

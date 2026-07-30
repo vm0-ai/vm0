@@ -107,6 +107,10 @@ import {
   type ArtifactSignals,
 } from "./artifact-card-signals.ts";
 import {
+  createAgentReferenceSignalsRegistry,
+  type AgentReferenceSignalsRegistry,
+} from "./agent-reference-signals.ts";
+import {
   createConnectorCardSignalsRegistry,
   createCustomConnectorCardSignalsRegistry,
   type ConnectorCardSignalsRegistry,
@@ -1166,7 +1170,6 @@ function createDraftSync(
         dataSource.patchDraft$,
         {
           threadId,
-          content: null,
           userMessage: null,
           attachments: null,
         },
@@ -1427,12 +1430,37 @@ function registerEventAttachments(
   }
 }
 
+function registerEventAgentReferences(
+  event: ChatEvent,
+  agentReferenceSignals: AgentReferenceSignalsRegistry,
+): void {
+  if (!isInputChatEvent(event)) {
+    return;
+  }
+  for (const part of event.userMessage.parts) {
+    if (part.type === "agent") {
+      agentReferenceSignals.register(part.agentId);
+      continue;
+    }
+    if (part.type !== "feedback") {
+      continue;
+    }
+    for (const notePart of part.note) {
+      if (notePart.type === "agent") {
+        agentReferenceSignals.register(notePart.agentId);
+      }
+    }
+  }
+}
+
 function registerChatEvent(
   event: PersistedChatEvent,
   registerBodyBlocks: BodyBlocksRenderer,
   artifactCardSignals: ArtifactCardSignalsRegistry,
+  agentReferenceSignals: AgentReferenceSignalsRegistry,
 ): RegisteredChatEvent {
   registerEventAttachments(event, artifactCardSignals);
+  registerEventAgentReferences(event, agentReferenceSignals);
   const blocks = skipsEventBodyRendering(event)
     ? []
     : registerBodyBlocks(parseChatEventBodyBlocks(event));
@@ -1444,6 +1472,7 @@ function createMergePersistentEvents(
   persistentEvents$: PersistentChatEvents$,
   registerBodyBlocks: BodyBlocksRenderer,
   artifactCardSignals: ArtifactCardSignalsRegistry,
+  agentReferenceSignals: AgentReferenceSignalsRegistry,
 ) {
   return command(({ get, set }, events: PersistedChatEvent[]): void => {
     if (events.length === 0) {
@@ -1465,7 +1494,12 @@ function createMergePersistentEvents(
       captureTaskCompletedSuccessfully();
     }
     const registeredEvents = events.map((event) => {
-      return registerChatEvent(event, registerBodyBlocks, artifactCardSignals);
+      return registerChatEvent(
+        event,
+        registerBodyBlocks,
+        artifactCardSignals,
+        agentReferenceSignals,
+      );
     });
     set(persistentEvents$, (prev) => {
       return mergeRegisteredEvents([prev, registeredEvents]);
@@ -2508,11 +2542,13 @@ function createBodyBlocksRenderer({
 
 function createInitializeIndexedDbEvents({
   artifactCardSignals,
+  agentReferenceSignals,
   threadId,
   persistentEvents$,
   registerBodyBlocks,
 }: {
   artifactCardSignals: ArtifactCardSignalsRegistry;
+  agentReferenceSignals: AgentReferenceSignalsRegistry;
   threadId: string;
   persistentEvents$: PersistentChatEvents$;
   registerBodyBlocks: BodyBlocksRenderer;
@@ -2525,6 +2561,7 @@ function createInitializeIndexedDbEvents({
           event,
           registerBodyBlocks,
           artifactCardSignals,
+          agentReferenceSignals,
         );
       });
       set(persistentEvents$, (previous) => {
@@ -2616,10 +2653,8 @@ function createBrowserLifecycleOptimisticEvents(
   };
 }
 
-function createPagedEvents(
+function createPagedEventResources(
   threadId: string,
-  dataSource: ChatThreadRemote,
-  initialOptimisticEntries: readonly OptimisticChatEventEntry[],
   previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
 ) {
   const mailDraftCardSignals = createMailDraftCardSignalsRegistry(threadId);
@@ -2630,28 +2665,52 @@ function createPagedEvents(
   const artifactCardSignals = createArtifactCardSignalsRegistry(
     previewImageUrlsByUrl$,
   );
-  const connectorCardSignals = createConnectorCardSignalsRegistry();
-  const customConnectorCardSignals = createCustomConnectorCardSignalsRegistry();
-  const permissionCardSignals = createPermissionCardSignalsRegistry();
-  const computerUseAuthorizationCardSignals =
-    createComputerUseAuthorizationCardSignalsRegistry();
-  const planUpgradeCardSignals = createPlanUpgradeCardSignalsRegistry();
+  const agentReferenceSignals = createAgentReferenceSignalsRegistry();
   const bodyBlocksRenderer = createBodyBlocksRenderer({
     artifactCardSignals,
-    connectorCardSignals,
-    customConnectorCardSignals,
-    permissionCardSignals,
-    computerUseAuthorizationCardSignals,
-    planUpgradeCardSignals,
+    connectorCardSignals: createConnectorCardSignalsRegistry(),
+    customConnectorCardSignals: createCustomConnectorCardSignalsRegistry(),
+    permissionCardSignals: createPermissionCardSignalsRegistry(),
+    computerUseAuthorizationCardSignals:
+      createComputerUseAuthorizationCardSignalsRegistry(),
+    planUpgradeCardSignals: createPlanUpgradeCardSignalsRegistry(),
     mailDraftCardSignals,
     browserSessionCardSignals,
   });
   const registerBodyBlocks = bodyBlocksRenderer("register");
-  const resolveBodyBlocks = bodyBlocksRenderer("resolve");
+  return {
+    agentReferenceSignals,
+    artifactCardSignals,
+    browserSessionCardSignals,
+    mailDraftCardSignals,
+    registerBodyBlocks,
+    registerOptimisticEventResources(entry: OptimisticChatEventEntry): void {
+      registerBodyBlocks(entry.parsedBodyBlocks);
+      registerEventAttachments(entry.event, artifactCardSignals);
+      registerEventAgentReferences(entry.event, agentReferenceSignals);
+    },
+    resolveBodyBlocks: bodyBlocksRenderer("resolve"),
+  };
+}
+
+function createPagedEvents(
+  threadId: string,
+  dataSource: ChatThreadRemote,
+  initialOptimisticEntries: readonly OptimisticChatEventEntry[],
+  previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
+) {
+  const {
+    agentReferenceSignals,
+    artifactCardSignals,
+    browserSessionCardSignals,
+    mailDraftCardSignals,
+    registerBodyBlocks,
+    registerOptimisticEventResources,
+    resolveBodyBlocks,
+  } = createPagedEventResources(threadId, previewImageUrlsByUrl$);
 
   for (const entry of initialOptimisticEntries) {
-    registerBodyBlocks(entry.parsedBodyBlocks);
-    registerEventAttachments(entry.event, artifactCardSignals);
+    registerOptimisticEventResources(entry);
   }
   const persistentChatEvents$ = state<RegisteredChatEvent[]>([]);
   const hasReachedOldestEvent$ = computed((get): boolean => {
@@ -2663,8 +2722,7 @@ function createPagedEvents(
   const appendOptimisticEvent$ = command(
     ({ set }, input: OptimisticChatEventInput): void => {
       const entry = createOptimisticChatEventEntry(input);
-      registerBodyBlocks(entry.parsedBodyBlocks);
-      registerEventAttachments(entry.event, artifactCardSignals);
+      registerOptimisticEventResources(entry);
       set(appendOptimisticChatEvent$, entry);
     },
   );
@@ -2706,9 +2764,11 @@ function createPagedEvents(
     persistentChatEvents$,
     registerBodyBlocks,
     artifactCardSignals,
+    agentReferenceSignals,
   );
   const indexedDbEvents = createInitializeIndexedDbEvents({
     artifactCardSignals,
+    agentReferenceSignals,
     threadId,
     persistentEvents$: persistentChatEvents$,
     registerBodyBlocks,
@@ -2747,6 +2807,9 @@ function createPagedEvents(
     subscribeBrowserSessions$: browserSessionCardSignals.subscribe$,
     artifactSignalsForUrl: (url: string): ArtifactSignals | undefined => {
       return artifactCardSignals.find(url);
+    },
+    agentReferenceSignalsForId: (agentId: string) => {
+      return agentReferenceSignals.resolve(agentId);
     },
     syncRemoteEvents$,
   };
@@ -4510,6 +4573,7 @@ function publicChatThreadEventSignals(
     sidebarAutoOpenCandidate$: events.sidebarAutoOpenCandidate$,
     eventImageGroups$: events.eventImageGroups$,
     artifactSignalsForUrl: events.artifactSignalsForUrl,
+    agentReferenceSignalsForId: events.agentReferenceSignalsForId,
     mailDraftCardSignalsById$: events.mailDraftCardSignalsById$,
     browserSessionSignals: events.browserSessionSignals,
     hasEvents$: events.hasEvents$,

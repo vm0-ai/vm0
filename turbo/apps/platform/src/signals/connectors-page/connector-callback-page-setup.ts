@@ -29,16 +29,16 @@ import { i18n } from "../../i18n/index.ts";
 type ConnectorCallbackPageResult =
   | { readonly status: "loading" }
   | ConnectorOauthCallbackResult;
-type ConnectorCallbackType = ConnectorSlug | "custom";
+type ConnectorCallbackSlug = ConnectorSlug | "custom";
 
 const {
   get$: connectorAppOauthCallbackMetadataRaw$,
   clear$: clearConnectorAppOauthCallbackMetadata$,
 } = localStorageSignals(CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY);
 
-function connectorTypeFromPath(
+function connectorSlugFromPath(
   value: string | undefined,
-): ConnectorCallbackType | null {
+): ConnectorCallbackSlug | null {
   const normalized = value?.toLowerCase();
   if (normalized === "custom") {
     return normalized;
@@ -47,18 +47,22 @@ function connectorTypeFromPath(
   return parsed.success ? parsed.data : null;
 }
 
-function connectorLabel(connectorType: ConnectorCallbackType | null): string {
-  if (!connectorType) {
+function connectorLabel(connectorSlug: ConnectorCallbackSlug | null): string {
+  if (!connectorSlug) {
     return i18n.t(($) => {
       return $.connectors.callback.genericLabel;
     });
   }
-  if (connectorType === "custom") {
+  if (connectorSlug === "custom") {
     return i18n.t(($) => {
       return $.connectors.callback.customConnectorLabel;
     });
   }
-  return connectorType === "github" ? "GitHub" : connectorType.toUpperCase();
+  return connectorSlug === "github"
+    ? i18n.t(($) => {
+        return $.connectors.callback.githubLabel;
+      })
+    : connectorSlug.toUpperCase();
 }
 
 function connectorCallbackDocumentTitle(label: string): string {
@@ -112,16 +116,18 @@ function connectorCallbackMetadataFromStorage(
     return null;
   }
   const value = jsonParseOr<unknown>(raw, null);
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    // TODO(#23619): Rename with the persisted app OAuth callback metadata.
-    !("connectorRef" in value) ||
-    !("icon" in value)
-  ) {
+  if (typeof value !== "object" || value === null || !("icon" in value)) {
     return null;
   }
-  const parsedConnectorSlug = connectorSlugSchema.safeParse(value.connectorRef);
+  // TODO(#23823): Remove the legacy callback metadata fallback.
+  const storedConnectorSlug =
+    "connectorSlug" in value
+      ? value.connectorSlug
+      : "connectorRef" in value
+        ? value.connectorRef
+        : undefined;
+  const parsedConnectorSlug =
+    connectorSlugSchema.safeParse(storedConnectorSlug);
   const parsedIcon = publicConnectorCatalogIconSchema.safeParse(value.icon);
   if (
     !parsedConnectorSlug.success ||
@@ -220,11 +226,14 @@ const completeCustomConnectorCallback$ = command(
 export const setupConnectorCallbackPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const params = get(pathParams$);
-    const connectorType = connectorTypeFromPath(
-      typeof params?.type === "string" ? params.type : undefined,
+    const callbackConnectorSlug = connectorSlugFromPath(
+      typeof params?.connectorSlug === "string"
+        ? params.connectorSlug
+        : undefined,
     );
-    const connectorSlug = connectorType === "custom" ? null : connectorType;
-    const label = connectorLabel(connectorType);
+    const connectorSlug =
+      callbackConnectorSlug === "custom" ? null : callbackConnectorSlug;
+    const label = connectorLabel(callbackConnectorSlug);
     const searchParams = get(searchParams$);
     const storedMetadata = connectorCallbackMetadataFromStorage(
       get(connectorAppOauthCallbackMetadataRaw$),
@@ -244,7 +253,7 @@ export const setupConnectorCallbackPage$ = command(
       return;
     }
 
-    if (!connectorType) {
+    if (!callbackConnectorSlug) {
       set(
         updatePage$,
         callbackPageElement(connectorIcon, label, {
@@ -268,9 +277,14 @@ export const setupConnectorCallbackPage$ = command(
 
     const query = Object.fromEntries(searchParams);
     const result =
-      connectorType === "custom"
+      callbackConnectorSlug === "custom"
         ? await set(completeCustomConnectorCallback$, query, signal)
-        : await set(completeConnectorCallback$, connectorType, query, signal);
+        : await set(
+            completeConnectorCallback$,
+            callbackConnectorSlug,
+            query,
+            signal,
+          );
     set(updatePage$, callbackPageElement(connectorIcon, label, result));
 
     const resultSearchParams = new URLSearchParams();
@@ -284,7 +298,7 @@ export const setupConnectorCallbackPage$ = command(
     set(
       replacePathSilently$,
       ROUTES.connectorCallbackResult,
-      { type: connectorType, status: result.status },
+      { connectorSlug: callbackConnectorSlug, status: result.status },
       resultSearchParams,
     );
     if (storedMetadata) {

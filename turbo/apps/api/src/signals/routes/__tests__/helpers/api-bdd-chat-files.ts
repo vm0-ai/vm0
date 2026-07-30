@@ -44,6 +44,7 @@ import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero
 import {
   zeroHostContract,
   type HostedSiteCompleteResponse,
+  type HostedSiteDeploymentsResponse,
   type HostedSitePrepareRequest,
   type HostedSitePrepareResponse,
 } from "@vm0/api-contracts/contracts/zero-host";
@@ -608,15 +609,11 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
       threadId: string,
       body: {
-        readonly draftContent?: string | null;
         readonly draftUserMessage: UserMessageDocument | null;
         readonly draftAttachments?: readonly PersistedAttachment[] | null;
       },
     ): Promise<void> {
       const requestBody = {
-        ...(body.draftContent === undefined
-          ? {}
-          : { draftContent: body.draftContent }),
         draftUserMessage: body.draftUserMessage,
         ...(body.draftAttachments === undefined
           ? {}
@@ -641,7 +638,6 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       threadId: string,
       body: {
-        readonly draftContent?: string | null;
         readonly draftUserMessage: UserMessageDocument | null;
         readonly draftAttachments?: readonly PersistedAttachment[] | null;
       },
@@ -652,9 +648,6 @@ export function createChatFilesBddApi(context: TestContext) {
           headers: authenticate(context, actor),
           params: { id: threadId },
           body: {
-            ...(body.draftContent === undefined
-              ? {}
-              : { draftContent: body.draftContent }),
             draftUserMessage: body.draftUserMessage,
             ...(body.draftAttachments === undefined
               ? {}
@@ -1386,6 +1379,20 @@ export function createChatFilesBddApi(context: TestContext) {
       return response.body;
     },
 
+    async requestPrepareHostedSiteWithBearer(
+      authorization: string,
+      body: HostedSitePrepareRequest,
+      statuses: readonly (200 | 400 | 401 | 402 | 403 | 409 | 500)[],
+    ) {
+      return await accept(
+        hostClient().prepare({
+          headers: bearerAuth(authorization),
+          body,
+        }),
+        statuses,
+      );
+    },
+
     async completeHostedSiteWithBearer(
       authorization: string,
       deploymentId: string,
@@ -1395,6 +1402,35 @@ export function createChatFilesBddApi(context: TestContext) {
           headers: bearerAuth(authorization),
           params: { deploymentId },
           body: {},
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestCompleteHostedSiteWithBearer(
+      authorization: string,
+      deploymentId: string,
+      statuses: readonly (200 | 400 | 401 | 402 | 403 | 404 | 409 | 500)[],
+    ) {
+      return await accept(
+        hostClient().complete({
+          headers: bearerAuth(authorization),
+          params: { deploymentId },
+          body: {},
+        }),
+        statuses,
+      );
+    },
+
+    async readHostedSiteDeploymentsWithBearer(
+      authorization: string,
+      site: string,
+    ): Promise<HostedSiteDeploymentsResponse> {
+      const response = await accept(
+        hostClient().deployments({
+          headers: bearerAuth(authorization),
+          params: { site },
         }),
         [200],
       );

@@ -67,19 +67,19 @@ function detachedSetupPage(
 function applyUserConnectorUpdate(
   current: readonly string[],
   body: {
-    readonly enabledTypes: readonly string[];
+    readonly enabledConnectorSlugs: readonly string[];
     readonly operation?: "replace" | "add" | "remove";
   },
 ): string[] {
   if (body.operation === "add") {
-    return Array.from(new Set([...current, ...body.enabledTypes]));
+    return Array.from(new Set([...current, ...body.enabledConnectorSlugs]));
   }
   if (body.operation === "remove") {
     return current.filter((connectorSlug) => {
-      return !body.enabledTypes.includes(connectorSlug);
+      return !body.enabledConnectorSlugs.includes(connectorSlug);
     });
   }
-  return [...body.enabledTypes];
+  return [...body.enabledConnectorSlugs];
 }
 
 function applyCustomConnectorUpdate(
@@ -1253,7 +1253,8 @@ describe("team page navigation", () => {
           body.grants.map((grant) => {
             return {
               agentId: body.agentId,
-              connectorRef: body.connectorRef,
+              connectorRef: body.connectorSlug,
+              connectorSlug: body.connectorSlug,
               permission: grant.permission,
               action: grant.action,
               expiresAt: null,
@@ -1306,7 +1307,7 @@ describe("team page navigation", () => {
     expect(capturedApplies).toStrictEqual([
       {
         agentId: researchAgentId,
-        connectorRef: "cloudflare",
+        connectorSlug: "cloudflare",
         mode: "patch",
         grants: [
           {
@@ -1462,6 +1463,7 @@ describe("team page navigation", () => {
       {
         agentId: researchAgentId,
         connectorRef: "axiom",
+        connectorSlug: "axiom",
         permission: "annotations|create",
         action: "allow",
         expiresAt: isoFromNowMs(30 * 60 * 1000),
@@ -1507,7 +1509,8 @@ describe("team page navigation", () => {
           (grant) => {
             return {
               agentId: body.agentId,
-              connectorRef: body.connectorRef,
+              connectorRef: body.connectorSlug,
+              connectorSlug: body.connectorSlug,
               permission: grant.permission,
               action: grant.action,
               expiresAt:
@@ -1529,7 +1532,7 @@ describe("team page navigation", () => {
             if (
               body.mode === "replace" &&
               current.agentId === body.agentId &&
-              current.connectorRef === body.connectorRef
+              current.connectorRef === body.connectorSlug
             ) {
               return false;
             }
@@ -1577,7 +1580,7 @@ describe("team page navigation", () => {
     expect(capturedApplies).toStrictEqual([
       {
         agentId: researchAgentId,
-        connectorRef: "axiom",
+        connectorSlug: "axiom",
         mode: "patch",
         grants: [
           {

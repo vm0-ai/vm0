@@ -102,6 +102,21 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     url: z.url(),
   }),
   z.object({
+    action: z.literal("insert-hosted-site-as-previous-api"),
+    user_id: z.string(),
+    org_id: z.string(),
+    run_id: z.uuid(),
+    site: z.string(),
+    public_slug: z.string(),
+  }),
+  z.object({
+    action: z.literal("insert-hosted-deployment-as-previous-api"),
+    user_id: z.string(),
+    org_id: z.string(),
+    run_id: z.uuid(),
+    hosted_site_id: z.uuid(),
+  }),
+  z.object({
     action: z.literal("set-computer-use-host-as-previous-api"),
     thread_id: z.uuid(),
     computer_use_host_id: z.uuid(),
@@ -110,16 +125,6 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     action: z.literal("set-runner-job-context-profile-as-previous-api"),
     run_id: z.uuid(),
     profile: z.string(),
-  }),
-  z.object({
-    action: z.literal("read-browser-profile-as-previous-api"),
-    browser_id: z.uuid(),
-    user_id: z.string(),
-    org_id: z.string(),
-  }),
-  z.object({
-    action: z.literal("set-browser-instance-as-previous-api"),
-    browser_id: z.uuid(),
   }),
 ]);
 
@@ -139,12 +144,8 @@ export const testRuntimeStateActionResponseSchema = z.object({
     })
     .optional(),
   file_id: z.uuid().optional(),
-  previous_api_browser_profile: z
-    .object({
-      browser_profile_id: z.uuid(),
-      provider_profile_id: z.uuid(),
-    })
-    .optional(),
+  hosted_site_id: z.uuid().optional(),
+  hosted_deployment_scope_blocked: z.boolean().optional(),
   storage_persistence: z
     .object({
       run_canonical: z.boolean(),

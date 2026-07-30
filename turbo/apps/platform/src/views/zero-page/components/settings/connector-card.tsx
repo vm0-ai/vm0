@@ -8,7 +8,7 @@ import {
   IconPlus,
 } from "@tabler/icons-react";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import type { PublicConnectorCatalogStatusItem } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { PlatformConnectorCatalogStatusItem } from "../../../../signals/connector-domain.ts";
 import {
   Button,
   DropdownMenu,
@@ -35,14 +35,14 @@ import {
 
 type CatalogConnectorCardProps = {
   readonly variant: "catalog";
-  readonly connector: PublicConnectorCatalogStatusItem;
+  readonly connector: PlatformConnectorCatalogStatusItem;
   readonly busy: boolean;
   readonly connect: ConnectorConnectHandlers;
 };
 
 type ConnectionConnectorCardProps = {
   readonly variant: "connection";
-  readonly connector: PublicConnectorCatalogStatusItem;
+  readonly connector: PlatformConnectorCatalogStatusItem;
   readonly connected: boolean;
   readonly busy: boolean;
   readonly disconnecting: boolean;
@@ -55,7 +55,7 @@ type ConnectionConnectorCardProps = {
 type OnboardingConnectorCardProps = {
   readonly variant: "onboarding";
   readonly connectorSlug: ConnectorSlug;
-  readonly connector: PublicConnectorCatalogStatusItem | undefined;
+  readonly connector: PlatformConnectorCatalogStatusItem | undefined;
   readonly connected: boolean;
   readonly busy: boolean;
   readonly loading: boolean;
@@ -66,7 +66,7 @@ type OnboardingConnectorCardProps = {
 
 type ActionConnectorCardProps = {
   readonly variant: "action";
-  readonly connector: PublicConnectorCatalogStatusItem;
+  readonly connector: PlatformConnectorCatalogStatusItem;
   readonly connected: boolean;
   readonly complete: boolean;
   readonly busy: boolean;
@@ -75,7 +75,7 @@ type ActionConnectorCardProps = {
 
 type PermissionConnectorCardProps = {
   readonly variant: "permission";
-  readonly connector: PublicConnectorCatalogStatusItem;
+  readonly connector: PlatformConnectorCatalogStatusItem;
   readonly enabled: boolean;
   readonly loading: boolean;
   readonly showManage: boolean;
@@ -92,7 +92,7 @@ type ConnectorCardProps =
   | PermissionConnectorCardProps;
 
 function runConnect(
-  connector: PublicConnectorCatalogStatusItem,
+  connector: PlatformConnectorCatalogStatusItem,
   connect: ConnectorConnectHandlers,
   busy: boolean,
 ): void {
@@ -177,7 +177,7 @@ function ConnectorConnectionStatus({
   busy,
   connect,
 }: {
-  readonly connector: PublicConnectorCatalogStatusItem;
+  readonly connector: PlatformConnectorCatalogStatusItem;
   readonly connected: boolean;
   readonly busy: boolean;
   readonly connect: ConnectorConnectHandlers;
@@ -494,7 +494,6 @@ function permissionDescription(description: string): string {
   return description
     .replace(/^Connect your \w+ account to /iu, "")
     .replace(/^access /iu, "")
-    .replace(/^create /iu, "Create ")
     .replace(/^./u, (character) => {
       return character.toUpperCase();
     });

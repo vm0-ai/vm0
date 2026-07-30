@@ -17,40 +17,10 @@ import type {
 import { agentRuns } from "./agent-run";
 import { chatThreads } from "./chat-thread";
 
-export const browserProfiles = pgTable(
-  "browser_profiles",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    orgId: text("org_id").notNull(),
-    userId: text("user_id").notNull(),
-    providerProfileId: uuid("provider_profile_id").notNull(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    updatedAt: timestamp("updated_at").defaultNow().notNull(),
-  },
-  (table) => {
-    return [
-      uniqueIndex("uq_browser_profiles_owner").on(table.orgId, table.userId),
-      uniqueIndex("uq_browser_profiles_provider_profile").on(
-        table.providerProfileId,
-      ),
-    ];
-  },
-);
-
-/**
- * Thread-scoped profiles used by all new managed browsers.
- *
- * browserProfiles remains the compatibility store while API versions that
- * predate thread scope can still serve traffic. New sessions dual-reference a
- * legacy owner profile and this thread profile; current APIs always prefer the
- * thread profile. The legacy reference can be removed only after the previous
- * API version has fully drained.
- */
 export const browserThreadProfiles = pgTable(
   "browser_thread_profiles",
   {
-    id: uuid("id").defaultRandom().primaryKey(),
-    chatThreadId: uuid("chat_thread_id").notNull(),
+    chatThreadId: uuid("chat_thread_id").primaryKey(),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
     providerProfileId: uuid("provider_profile_id").notNull(),
@@ -59,7 +29,6 @@ export const browserThreadProfiles = pgTable(
   },
   (table) => {
     return [
-      uniqueIndex("uq_browser_thread_profiles_thread").on(table.chatThreadId),
       uniqueIndex("uq_browser_thread_profiles_provider_profile").on(
         table.providerProfileId,
       ),
@@ -71,15 +40,9 @@ export const browserThreadProfiles = pgTable(
 export const browserSessions = pgTable(
   "browser_sessions",
   {
-    /**
-     * Compatibility key for the API version deployed before thread-keyed
-     * browsers. New code owns sessions by chatThreadId; remove this only after
-     * the previous API and frontend have drained.
-     */
-    id: uuid("id").defaultRandom().primaryKey(),
     // External browser cleanup must survive chat-thread deletion. The delete
     // path and reconciler use this durable key after the parent thread is gone.
-    chatThreadId: uuid("chat_thread_id").notNull(),
+    chatThreadId: uuid("chat_thread_id").primaryKey(),
     runId: uuid("run_id").references(
       () => {
         return agentRuns.id;
@@ -89,19 +52,6 @@ export const browserSessions = pgTable(
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
     name: varchar("name", { length: 64 }).notNull(),
-    /**
-     * Compatibility reference required by API versions that predate thread
-     * profiles. New sessions dual-write this and browserThreadProfileId.
-     */
-    browserProfileId: uuid("browser_profile_id")
-      .notNull()
-      .references(() => {
-        return browserProfiles.id;
-      }),
-    /** Thread-scoped profile preferred by current APIs when present. */
-    browserThreadProfileId: uuid("browser_thread_profile_id").references(() => {
-      return browserThreadProfiles.id;
-    }),
     status: varchar("status", { length: 20 })
       .$type<ZeroBrowserStatus>()
       .notNull(),
@@ -120,7 +70,6 @@ export const browserSessions = pgTable(
         table.chatThreadId,
         table.createdAt.desc(),
       ),
-      uniqueIndex("uq_browser_sessions_thread").on(table.chatThreadId),
       index("idx_browser_sessions_owner_created").on(
         table.orgId,
         table.userId,
@@ -163,18 +112,6 @@ export const browserSessionInstances = pgTable(
   "browser_session_instances",
   {
     providerSessionId: uuid("provider_session_id").primaryKey(),
-    /**
-     * Compatibility relation for the API version deployed before thread-keyed
-     * browser instances. Current writers dual-write it with chatThreadId.
-     */
-    browserSessionId: uuid("browser_session_id")
-      .notNull()
-      .references(
-        () => {
-          return browserSessions.id;
-        },
-        { onDelete: "cascade" },
-      ),
     // These IDs are immutable attribution keys rather than ownership FKs.
     // Provider cleanup must outlive deletion of either parent.
     chatThreadId: uuid("chat_thread_id").notNull(),
@@ -200,10 +137,6 @@ export const browserSessionInstances = pgTable(
   },
   (table) => {
     return [
-      index("idx_browser_session_instances_session").on(
-        table.browserSessionId,
-        table.createdAt.desc(),
-      ),
       index("idx_browser_session_instances_thread").on(
         table.chatThreadId,
         table.createdAt.desc(),
@@ -224,12 +157,8 @@ export const browserSessionInstances = pgTable(
 );
 
 /**
- * Resize capability and persisted dimensions for provider instances created
- * by APIs that support manual window fitting.
- *
- * Keeping this state in a companion table preserves the statement shape of
- * browser_session_instances while the previous API and migration 0737 may
- * deploy in either order. Row absence means the instance is not resizable.
+ * Persisted dimensions for provider instances that support manual window
+ * fitting. Row absence means the instance is not resizable.
  */
 export const browserSessionResizeStates = pgTable(
   "browser_session_resize_states",
@@ -254,10 +183,7 @@ export const browserSessionResizeStates = pgTable(
  * is reclaimed. URL snapshots are encrypted because query strings and
  * fragments may contain credentials or other sensitive state.
  *
- * Thread identity remains stable across browser lifecycle changes and does not
- * depend on the legacy browser_sessions.id key. Keeping this state in a
- * companion table also preserves the statement shape of browser_sessions while
- * the API and migration may deploy in either order.
+ * Thread identity remains stable across browser lifecycle changes.
  */
 export const browserSessionTabSnapshots = pgTable(
   "browser_session_tab_snapshots",

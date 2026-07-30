@@ -20,7 +20,7 @@ import {
   cn,
 } from "@vm0/ui";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import type { PublicConnectorCatalogPermissionDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { PlatformConnectorPermissionMetadata } from "../../../../signals/connector-domain.ts";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { applyUserPermissionGrants$ } from "../../../../signals/permission-allow/permission-allow-signals.ts";
@@ -133,7 +133,7 @@ function AgentAccessRow({
 }: {
   readonly row: ConnectorAgentAccessRow;
   readonly connectorLabel: string;
-  readonly metadata: PublicConnectorCatalogPermissionDetail | null;
+  readonly metadata: PlatformConnectorPermissionMetadata | null;
   readonly saving: boolean;
   readonly onToggle: (
     row: ConnectorAgentAccessRow,
@@ -221,7 +221,7 @@ function AgentAccessList({
 }: {
   readonly rows: readonly ConnectorAgentAccessRow[];
   readonly connectorLabel: string;
-  readonly metadata: PublicConnectorCatalogPermissionDetail | null;
+  readonly metadata: PlatformConnectorPermissionMetadata | null;
   readonly savingAgentId: string | null;
   readonly search: string;
   readonly onToggle: (
@@ -295,7 +295,7 @@ function ConnectorAccessDialog({
   readonly connectorLabel: string;
   readonly rows: readonly ConnectorAgentAccessRow[];
   readonly rowsLoaded: boolean;
-  readonly metadata: PublicConnectorCatalogPermissionDetail | null;
+  readonly metadata: PlatformConnectorPermissionMetadata | null;
   readonly savingAgentId: string | null;
   readonly search: string;
   readonly onSearchChange: (value: string) => void;
@@ -377,7 +377,7 @@ function AgentPermissionDialog({
   onClose,
 }: {
   readonly row: ConnectorAgentAccessRow | undefined;
-  readonly metadata: PublicConnectorCatalogPermissionDetail | null;
+  readonly metadata: PlatformConnectorPermissionMetadata | null;
   readonly connectorSlug: ConnectorSlug;
   readonly connectorLabel: string;
   readonly pageSignal: AbortSignal;

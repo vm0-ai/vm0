@@ -22,7 +22,6 @@ import {
   type NotionPageContentUpdatedEventCreateConfig,
   type StrapiEntryPublishedEventConfig,
   type ZeroWorkflowDetailResponse,
-  type ZeroWorkflowConnectorReadinessResponse,
   type ZeroWorkflowSchedule,
   type ZeroWorkflowWebhookSecretResponse,
   type ZeroWorkflowSummary,
@@ -54,6 +53,10 @@ import {
   reloadWorkflowData$,
   workflowReloadVersion$,
 } from "./workflow-reload.ts";
+import {
+  normalizeWorkflowConnectorReadinessResponse,
+  type PlatformWorkflowConnectorReadinessResponse,
+} from "../connector-domain.ts";
 
 type WorkflowDetailActionDialog = "copy" | "delete" | null;
 export type WorkflowDetailTab = "automations" | "instructions" | "info";
@@ -276,7 +279,7 @@ type WorkflowConnectorReadinessState =
       readonly workflowId: string;
       readonly requestId: string;
       readonly status: "success";
-      readonly response: ZeroWorkflowConnectorReadinessResponse;
+      readonly response: PlatformWorkflowConnectorReadinessResponse;
     };
 
 const internalWorkflowConnectorReadiness$ =
@@ -826,7 +829,7 @@ export const checkWorkflowConnectorReadiness$ = command(
       workflowId,
       requestId,
       status: "success",
-      response: result.body,
+      response: normalizeWorkflowConnectorReadinessResponse(result.body),
     });
   },
 );

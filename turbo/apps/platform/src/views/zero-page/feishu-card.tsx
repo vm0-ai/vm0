@@ -1279,7 +1279,11 @@ export function FeishuCard() {
           <img src={feishuIconImg} alt="" className="h-7 w-7" />
         </div>
         <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <div className="text-sm font-medium text-foreground">Feishu</div>
+          <div className="text-sm font-medium text-foreground">
+            {t(($) => {
+              return $.connectors.providerSettings.feishu.documentTitle;
+            })}
+          </div>
           <div className="truncate text-sm text-muted-foreground">
             {t(($) => {
               return $.connectors.providerSettings.feishu.routeDescription;
@@ -2085,7 +2089,9 @@ export function ZeroFeishuSettingsPage() {
             </span>
             <div className="min-w-0">
               <h1 className="truncate text-lg font-semibold tracking-tight text-foreground">
-                Feishu
+                {t(($) => {
+                  return $.connectors.providerSettings.feishu.documentTitle;
+                })}
               </h1>
               <p className="mt-0.5 text-sm text-muted-foreground">
                 {t(($) => {

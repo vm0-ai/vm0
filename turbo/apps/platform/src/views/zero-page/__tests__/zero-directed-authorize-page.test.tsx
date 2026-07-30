@@ -228,7 +228,7 @@ describe("directed connector authorize page", () => {
     });
 
     context.store.set(detachedNavigateTo$, ROUTES.directedAuthorize, {
-      pathParams: { type: "gmail" },
+      pathParams: { connectorSlug: "gmail" },
       searchParams: new URLSearchParams({ agentId: SECOND_AGENT_ID }),
     });
 
@@ -268,7 +268,7 @@ describe("directed connector authorize page", () => {
     });
 
     context.store.set(detachedNavigateTo$, ROUTES.directedAuthorize, {
-      pathParams: { type: "gmail" },
+      pathParams: { connectorSlug: "gmail" },
       searchParams: new URLSearchParams({ agentId: SECOND_AGENT_ID }),
     });
 
@@ -438,7 +438,7 @@ describe("directed connector authorize page", () => {
     expect(startCalls).toBe(0);
 
     context.store.set(detachedNavigateTo$, ROUTES.directedAuthorize, {
-      pathParams: { type: "github" },
+      pathParams: { connectorSlug: "github" },
       searchParams: new URLSearchParams({ agentId: SECOND_AGENT_ID }),
     });
 
@@ -593,8 +593,11 @@ describe("directed connector authorize page", () => {
       zeroUserConnectorsContract.update,
       ({ body, respond }) => {
         updateCalls += 1;
+        const enabledConnectorSlugs =
+          body.operation === "remove" ? [] : body.enabledConnectorSlugs;
         return respond(200, {
-          enabledTypes: body.operation === "remove" ? [] : body.enabledTypes,
+          enabledTypes: enabledConnectorSlugs,
+          enabledConnectorSlugs,
         });
       },
     );

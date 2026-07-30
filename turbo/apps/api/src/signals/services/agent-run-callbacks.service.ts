@@ -133,7 +133,7 @@ export const dispatchProgressCallbacks$ = command(
           await set(handleTelegramInternalCallback$, progressCallback, signal);
           return;
         }
-        if (internalKind === "agent" || internalKind === "github:issues") {
+        if (internalKind === "agent") {
           return;
         }
         if (!callback.url) {

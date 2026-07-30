@@ -32,6 +32,7 @@ const CONDITIONAL_CAPABILITIES = [
   ["banking:read", FeatureSwitchKey.Banking],
   ["browser:read", FeatureSwitchKey.ZeroBrowser],
   ["browser:write", FeatureSwitchKey.ZeroBrowser],
+  ["connector:write", FeatureSwitchKey.CustomConnectorCliCreate],
 ] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [

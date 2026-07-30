@@ -111,10 +111,10 @@ import {
 } from "../../signals/zero-page/zero-job-detail-page.ts";
 import type { FirewallPolicies } from "@vm0/connectors/firewall-types";
 import type {
-  PublicConnectorCatalogPermissionDetail,
-  PublicConnectorCatalogStatusItem,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+  PlatformConnectorCatalogStatusItem,
+  PlatformConnectorPermissionMetadata,
+  PlatformUserPermissionGrant,
+} from "../../signals/connector-domain.ts";
 import { activeUserPermissionGrantSnapshot } from "../../signals/user-permission-grants.ts";
 import {
   DetailPageBreadcrumbBar,
@@ -432,7 +432,7 @@ function ConnectedConnectorPermissions({
   onToggle,
   onManage,
 }: {
-  filteredConnectors: readonly PublicConnectorCatalogStatusItem[];
+  filteredConnectors: readonly PlatformConnectorCatalogStatusItem[];
   authorizedSet: ReadonlySet<string>;
   search: string;
   setSearch: (value: string) => void;
@@ -520,19 +520,19 @@ function ConnectedConnectorPermissions({
           filteredConnectors.map((c, i) => {
             return (
               <ConnectorCard
-                key={c.connectorRef}
+                key={c.slug}
                 variant="permission"
                 connector={c}
-                enabled={authorizedSet.has(c.connectorRef)}
+                enabled={authorizedSet.has(c.slug)}
                 onToggle={onDomEventFn(async (checked) => {
-                  await onToggle(c.connectorRef, checked);
+                  await onToggle(c.slug, checked);
                 })}
-                loading={savingConnectorSlug === c.connectorRef}
+                loading={savingConnectorSlug === c.slug}
                 showManage={
                   canManagePermissions && c.permissionSummary.hasPermissions
                 }
                 onManage={() => {
-                  return onManage(c.connectorRef);
+                  return onManage(c.slug);
                 }}
                 isLast={i === filteredConnectors.length - 1}
               />
@@ -577,7 +577,7 @@ function AgentPermissionsDrawer({
   connectorLabel: string;
   displayName: string;
   initialPolicies: FirewallPolicies;
-  initialGrants: readonly UserPermissionGrantResponse[];
+  initialGrants: readonly PlatformUserPermissionGrant[];
   initialIntent?: PermissionDraftIntent;
   initialSearch?: string;
   initialContextKey?: string;
@@ -586,7 +586,7 @@ function AgentPermissionsDrawer({
   onApply: (
     intent: PermissionDraftIntent,
     options: {
-      readonly metadata: PublicConnectorCatalogPermissionDetail;
+      readonly metadata: PlatformConnectorPermissionMetadata;
     },
   ) => Promise<void>;
   onClose: () => void;
@@ -669,7 +669,7 @@ function JobPermissionsTab({
   });
   const connectorLabel = connectorSlug
     ? (allConnectors.find((connector) => {
-        return connector.connectorRef === connectorSlug;
+        return connector.slug === connectorSlug;
       })?.label ?? connectorSlug)
     : "";
   const filteredConnectors = connectedConnectors.filter((c) => {

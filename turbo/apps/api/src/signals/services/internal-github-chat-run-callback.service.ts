@@ -2,12 +2,10 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { githubChatThreadRoutes } from "@vm0/db/schema/github-chat-thread-route";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
-import { githubIssueSessions } from "@vm0/db/schema/github-issue-session";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq, isNotNull } from "drizzle-orm";
 
@@ -281,74 +279,6 @@ async function buildGitHubDeliveryComment(args: {
   });
 }
 
-async function dualWriteLegacyIssueSession(args: {
-  readonly db: Db;
-  readonly run: GitHubChatRunContext;
-  readonly target: GitHubDeliveryTarget;
-  readonly commentId: string;
-  readonly status: "completed" | "failed";
-  readonly signal: AbortSignal;
-}): Promise<void> {
-  const [session] = await args.db
-    .select({ id: agentSessions.id })
-    .from(agentSessions)
-    .where(
-      and(
-        eq(agentSessions.id, args.run.sessionId),
-        eq(agentSessions.userId, args.run.userId),
-        eq(agentSessions.agentComposeId, args.run.agentId),
-        isNotNull(agentSessions.conversationId),
-      ),
-    )
-    .limit(1);
-  args.signal.throwIfAborted();
-  if (!session) {
-    return;
-  }
-
-  const [existing] = await args.db
-    .select({ agentSessionId: githubIssueSessions.agentSessionId })
-    .from(githubIssueSessions)
-    .where(
-      and(
-        eq(githubIssueSessions.installationId, args.target.installationId),
-        eq(githubIssueSessions.repo, args.target.repo),
-        eq(githubIssueSessions.issueNumber, args.target.subjectNumber),
-      ),
-    )
-    .limit(1);
-  args.signal.throwIfAborted();
-  const advanceLastComment =
-    args.status === "completed" ||
-    existing?.agentSessionId !== args.run.sessionId;
-
-  await args.db
-    .insert(githubIssueSessions)
-    .values({
-      installationId: args.target.installationId,
-      repo: args.target.repo,
-      issueNumber: args.target.subjectNumber,
-      userId: args.run.userId,
-      agentSessionId: session.id,
-      lastCommentId: args.commentId,
-      updatedAt: nowDate(),
-    })
-    .onConflictDoUpdate({
-      target: [
-        githubIssueSessions.installationId,
-        githubIssueSessions.repo,
-        githubIssueSessions.issueNumber,
-      ],
-      set: {
-        userId: args.run.userId,
-        agentSessionId: session.id,
-        ...(advanceLastComment ? { lastCommentId: args.commentId } : {}),
-        updatedAt: nowDate(),
-      },
-    });
-  args.signal.throwIfAborted();
-}
-
 async function deliverClaimedGitHubChatCallback(args: {
   readonly db: Db;
   readonly callback: ClaimedGitHubChatDelivery;
@@ -371,7 +301,7 @@ async function deliverClaimedGitHubChatCallback(args: {
     messageContent: context.messageContent,
     signal: args.signal,
   });
-  const commentId = await postGithubIssueComment({
+  await postGithubIssueComment({
     token,
     repo: context.payload.repo,
     issueNumber: context.payload.subjectNumber,
@@ -389,14 +319,6 @@ async function deliverClaimedGitHubChatCallback(args: {
     });
     args.signal.throwIfAborted();
   }
-  await dualWriteLegacyIssueSession({
-    db: args.db,
-    run: context.run,
-    target: context.payload,
-    commentId,
-    status: args.status,
-    signal: args.signal,
-  });
   return "delivered";
 }
 

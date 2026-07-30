@@ -134,7 +134,7 @@ export function ScopeReviewModal({
   }
 
   const connector = connectorCatalogItems?.find((candidate) => {
-    return candidate.connectorRef === connectorSlug;
+    return candidate.slug === connectorSlug;
   });
   const connectorLabel = connector?.label ?? connectorSlug;
 

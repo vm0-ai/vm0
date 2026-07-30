@@ -3,7 +3,6 @@ import {
   zeroBrowserContract,
   type ZeroBrowserSession,
 } from "@vm0/api-contracts/contracts/zero-browser";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -28,7 +27,6 @@ function browserSession(
   overrides: Partial<ZeroBrowserSession> = {},
 ): ZeroBrowserSession {
   return {
-    id: threadId,
     threadId,
     name: "booking",
     status: "active",
@@ -36,9 +34,6 @@ function browserSession(
     liveUrl,
     proxyCountryCode: null,
     timeoutMinutes: 240,
-    maxCredits: 1,
-    grossCredits: 0,
-    creditsCharged: 0,
     idleExpiresAt: "2026-07-24T10:10:00.000Z",
     suspendedAt: null,
     suspensionReason: null,
@@ -49,52 +44,6 @@ function browserSession(
 }
 
 describe("browser session page", () => {
-  it("keeps thread-keyed browser calls inert against the previous API", async () => {
-    let featureRequests = 0;
-    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
-      featureRequests += 1;
-      return respond(200, {
-        switches: { [FeatureSwitchKey.ZeroBrowser]: true },
-        effectiveSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
-        supportsStructuredInlineTemplates: true,
-        supportsCustomConnectorOAuth2: true,
-      });
-    });
-    let browserReads = 0;
-    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
-      browserReads += 1;
-      return respond(404, {
-        error: { code: "NOT_FOUND", message: "Browser not found" },
-      });
-    });
-    let browserStarts = 0;
-    context.mocks.api(zeroBrowserContract.start, ({ respond }) => {
-      browserStarts += 1;
-      return respond(404, {
-        error: { code: "NOT_FOUND", message: "Browser route not found" },
-      });
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/browsers/${threadId}`,
-    });
-
-    await waitFor(() => {
-      expect(featureRequests).toBeGreaterThan(0);
-    });
-    await expect(
-      screen.findByText("Browser not live"),
-    ).resolves.toBeInTheDocument();
-    const startButton = queryAllByRoleFast("button").find((candidate) => {
-      return candidate.textContent === "Start browser";
-    });
-    expect(startButton).toBeDefined();
-    startButton?.click();
-    expect(browserReads).toBe(0);
-    expect(browserStarts).toBe(0);
-  });
-
   it.each([
     {
       locale: "en-US",

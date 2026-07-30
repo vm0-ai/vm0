@@ -310,33 +310,23 @@ browser and a non-live browser use the same empty/start presentation.
 
 Once an instance is reclaimed, the viewer keeps the stable
 `/browsers/:threadId` link. Its Start action, and `zero browser use` in a later
-run, create a new provider instance from the saved profile: cookies and storage
-come back, but previous pages and tabs do not. Provider state changes also
-publish a user-scoped realtime event carrying both the compatibility browser
-UUID and canonical thread ID so previous and current clients refresh the card,
-sidebar, and full-page viewer together.
+run, create a new provider instance from the thread's saved profile: cookies and
+storage come back, and saved HTTP(S) tab URLs are reopened on a best-effort
+basis. Provider state changes publish a user-scoped realtime event carrying the
+canonical thread ID so the card, sidebar, and full-page viewer refresh together.
 
-Every thread for the same user in the same organization uses one shared login
-profile. Multiple threads may run provider instances with that profile in
-parallel up to the organization's run concurrency entitlement. Before starting
-another provider instance, the API reclaims the active browser with the earliest
-idle lease until a slot is available. Provider stop requests are best-effort and
-do not delay the new start. The API serializes only the profile's first creation
-so concurrent first use still creates one provider profile.
+Each thread owns an isolated login profile. Multiple threads may run provider
+instances in parallel up to the organization's run concurrency entitlement.
+Before starting another provider instance, the API reclaims the active browser
+with the earliest idle lease until a slot is available. Provider stop requests
+are best-effort and do not delay the new start. The API serializes each thread's
+first profile creation so concurrent first use still creates one provider
+profile for that thread.
 
 The same universal link also has an authenticated full-page route. The browser
 provider's CDP URL is reserved for the Zero CLI to connect `agent-browser` and
 is never returned by the card read, lease, or resume endpoints, nor printed in
 CLI output.
-
-During the one-release thread-key rollout, the physical browser UUID, response
-`id`, and `/api/zero/browsers/:browserId` read/lease/resume/resize routes remain
-compatibility-only aliases for already-deployed clients. Current product code
-must not use them; remove them only after the previous frontend and API have
-drained. The feature-switch response advertises
-`supportsThreadKeyedBrowserLifecycle`; a new frontend keeps its browser controls
-inert when the previous API omits that capability, preventing app-first
-promotion from calling thread-keyed routes before they exist.
 
 ## Adding a Card Type
 

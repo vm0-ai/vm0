@@ -243,6 +243,49 @@ export async function readRunUploadedFileSources(
   return response.uploaded_file_sources ?? [];
 }
 
+export async function insertHostedSiteAsPreviousApi(
+  context: TestContext,
+  args: {
+    readonly userId: string;
+    readonly orgId: string;
+    readonly runId: string;
+    readonly site: string;
+    readonly publicSlug: string;
+  },
+): Promise<string> {
+  const response = await postAction(context, {
+    action: "insert-hosted-site-as-previous-api",
+    user_id: args.userId,
+    org_id: args.orgId,
+    run_id: args.runId,
+    site: args.site,
+    public_slug: args.publicSlug,
+  });
+  if (!response.hosted_site_id) {
+    throw new Error("insertHostedSiteAsPreviousApi missing hosted_site_id");
+  }
+  return response.hosted_site_id;
+}
+
+export async function insertHostedDeploymentAsPreviousApi(
+  context: TestContext,
+  args: {
+    readonly userId: string;
+    readonly orgId: string;
+    readonly runId: string;
+    readonly hostedSiteId: string;
+  },
+): Promise<boolean> {
+  const response = await postAction(context, {
+    action: "insert-hosted-deployment-as-previous-api",
+    user_id: args.userId,
+    org_id: args.orgId,
+    run_id: args.runId,
+    hosted_site_id: args.hostedSiteId,
+  });
+  return response.hosted_deployment_scope_blocked ?? false;
+}
+
 export async function clearRunApiStart(
   context: TestContext,
   runId: string,
@@ -326,44 +369,5 @@ export async function setComputerUseHostAsPreviousApi(
     action: "set-computer-use-host-as-previous-api",
     thread_id: args.threadId,
     computer_use_host_id: args.computerUseHostId,
-  });
-}
-
-export async function readBrowserProfileAsPreviousApi(
-  context: TestContext,
-  args: {
-    readonly browserId: string;
-    readonly userId: string;
-    readonly orgId: string;
-  },
-): Promise<{
-  readonly browserProfileId: string;
-  readonly providerProfileId: string;
-}> {
-  const response = await postAction(context, {
-    action: "read-browser-profile-as-previous-api",
-    browser_id: args.browserId,
-    user_id: args.userId,
-    org_id: args.orgId,
-  });
-  if (!response.previous_api_browser_profile) {
-    throw new Error(
-      "readBrowserProfileAsPreviousApi missing previous_api_browser_profile",
-    );
-  }
-  return {
-    browserProfileId: response.previous_api_browser_profile.browser_profile_id,
-    providerProfileId:
-      response.previous_api_browser_profile.provider_profile_id,
-  };
-}
-
-export async function setBrowserInstanceAsPreviousApi(
-  context: TestContext,
-  browserId: string,
-): Promise<void> {
-  await postAction(context, {
-    action: "set-browser-instance-as-previous-api",
-    browser_id: browserId,
   });
 }

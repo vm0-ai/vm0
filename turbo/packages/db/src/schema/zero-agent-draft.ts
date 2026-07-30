@@ -27,7 +27,6 @@ export const zeroAgentDrafts = pgTable(
         },
         { onDelete: "cascade" },
       ),
-    draftContent: text("draft_content"),
     /** Canonical rich document for the agent composer's saved draft. */
     draftUserMessage:
       jsonb("draft_user_message").$type<ZeroAgentDraftUserMessage>(),
@@ -46,10 +45,7 @@ export const zeroAgentDrafts = pgTable(
       draftUserMessageCheck: check(
         "zero_agent_drafts_draft_user_message_check",
         sql`${table.draftUserMessage} IS NOT NULL
-          OR (
-            COALESCE(${table.draftContent}, '') = ''
-            AND COALESCE(${table.draftAttachments}, '[]'::jsonb) = '[]'::jsonb
-          )`,
+          OR COALESCE(${table.draftAttachments}, '[]'::jsonb) = '[]'::jsonb`,
       ),
     };
   },

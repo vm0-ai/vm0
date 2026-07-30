@@ -305,6 +305,55 @@ export async function settle<T>(
   }
 }
 
+/**
+ * Await an operation only until a signal aborts while continuing to observe
+ * the original operation if the signal wins the race.
+ */
+export function awaitWithSignal<T>(
+  operation: Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  const { promise, resolve, reject } = (
+    Promise as PromiseConstructor & {
+      withResolvers<T>(): PromiseResolvers<T>;
+    }
+  ).withResolvers<T>();
+  let settled = false;
+
+  const finish = (settlePromise: () => void): void => {
+    if (settled) {
+      return;
+    }
+    settled = true;
+    signal.removeEventListener("abort", onAbort);
+    settlePromise();
+  };
+  const onAbort = (): void => {
+    finish(() => {
+      reject(signal.reason);
+    });
+  };
+
+  if (signal.aborted) {
+    onAbort();
+  } else {
+    signal.addEventListener("abort", onAbort, { once: true });
+  }
+  void operation.then(
+    (value) => {
+      finish(() => {
+        resolve(value);
+      });
+    },
+    (error: unknown) => {
+      finish(() => {
+        reject(error);
+      });
+    },
+  );
+  return promise;
+}
+
 export function detach(
   promise: Promise<unknown>,
   mechanism: Mechanism,

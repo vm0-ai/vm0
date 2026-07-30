@@ -22,13 +22,48 @@ async fn execution_deadline_preserves_post_result_sigkill_pending()
 
     let runtime = common::guest_runtime_from_process_env()?;
     let masker = guest_agent::masker::SecretMasker::from_raw("");
+    let execution_timeout = runtime
+        .config
+        .agent_execution_timeout
+        .expect("test config should set an execution timeout");
+    let execution_deadline_after_sigterm = execution_timeout
+        .checked_sub(runtime.config.post_result_sigterm_grace)
+        .expect("execution deadline should follow post-result SIGTERM");
+    let sigkill_deadline_after_execution = runtime
+        .config
+        .post_result_sigkill_grace
+        .checked_sub(execution_deadline_after_sigterm)
+        .expect("SIGKILL deadline should follow the execution deadline");
+    let checkpoints = [
+        common::VirtualTimeCheckpoint {
+            file: runtime.paths.agent_log_file(),
+            needle: common::MOCK_TERMINATION_READY_EVENT,
+            advance: runtime.config.post_result_sigterm_grace,
+        },
+        common::VirtualTimeCheckpoint {
+            file: runtime.paths.system_log_file(),
+            needle: "Post-result cleanup quiet_timeout reached",
+            advance: execution_deadline_after_sigterm,
+        },
+        common::VirtualTimeCheckpoint {
+            file: runtime.paths.system_log_file(),
+            needle: "Agent execution deadline reached during post-result SIGKILL grace",
+            advance: sigkill_deadline_after_execution,
+        },
+    ];
 
+    // Each checkpoint proves the preceding state transition before virtual
+    // time reaches the next deadline. Keep the outer timeout as a real
+    // subprocess/reaping regression bound.
     let result = tokio::time::timeout(
         Duration::from_secs(15),
-        common::execute_cli_for_runtime(&runtime, &masker, common::spawn_dummy_heartbeat()),
+        common::execute_with_virtual_time_checkpoints(
+            common::execute_cli_for_runtime(&runtime, &masker, common::spawn_dummy_heartbeat()),
+            &checkpoints,
+        ),
     )
     .await
-    .expect("post-result reaper did not finish within its bounded grace")?;
+    .expect("post-result reaper did not finish within its bounded grace")??;
 
     assert_eq!(result.exit_code, common::SIGKILL_EXIT);
     assert!(

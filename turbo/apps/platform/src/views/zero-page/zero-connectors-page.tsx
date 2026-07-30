@@ -17,10 +17,8 @@ import {
   IconCheck,
 } from "@tabler/icons-react";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
-import type {
-  PublicConnectorCatalogCategoryMetadata,
-  PublicConnectorCatalogStatusItem,
-} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { PublicConnectorCatalogCategoryMetadata } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import {
@@ -281,7 +279,7 @@ function ConnectorCategoryMenu({
   groups,
 }: {
   activeCategoryId: string | null;
-  groups: readonly ConnectorCategoryGroup<PublicConnectorCatalogStatusItem>[];
+  groups: readonly ConnectorCategoryGroup<PlatformConnectorCatalogStatusItem>[];
 }) {
   const { t } = useTranslation();
   if (groups.length <= 1) {
@@ -657,8 +655,8 @@ function ConnectorCategoryGroupSection({
   group,
   renderCard,
 }: {
-  group: ConnectorCategoryGroup<PublicConnectorCatalogStatusItem>;
-  renderCard: (connector: PublicConnectorCatalogStatusItem) => ReactNode;
+  group: ConnectorCategoryGroup<PlatformConnectorCatalogStatusItem>;
+  renderCard: (connector: PlatformConnectorCatalogStatusItem) => ReactNode;
 }) {
   if (group.kind === "group") {
     return (
@@ -809,9 +807,9 @@ function renderBuiltinList({
   connectionFilter,
 }: {
   loadingState: "loading" | "hasData" | "hasError";
-  grouped: ConnectorCategoryGroup<PublicConnectorCatalogStatusItem>[];
+  grouped: ConnectorCategoryGroup<PlatformConnectorCatalogStatusItem>[];
   filteredCount: number;
-  renderCard: (connector: PublicConnectorCatalogStatusItem) => ReactNode;
+  renderCard: (connector: PlatformConnectorCatalogStatusItem) => ReactNode;
   search: string;
   connectionFilter: ConnectorsConnectionFilter;
 }): ReactNode {
@@ -901,7 +899,7 @@ function renderBuiltinList({
 }
 
 function connectorLabelForSlug(
-  connectors: readonly PublicConnectorCatalogStatusItem[],
+  connectors: readonly PlatformConnectorCatalogStatusItem[],
   connectorSlug: ConnectorSlug | null,
 ): string | null {
   if (!connectorSlug) {
@@ -909,7 +907,7 @@ function connectorLabelForSlug(
   }
   return (
     connectors.find((connector) => {
-      return connector.connectorRef === connectorSlug;
+      return connector.slug === connectorSlug;
     })?.label ?? connectorSlug
   );
 }
@@ -978,15 +976,15 @@ export function ZeroConnectorsPage() {
   const disconnecting = disconnectLoadable.state === "loading";
 
   const connectHandlers = (
-    connector: PublicConnectorCatalogStatusItem,
+    connector: PlatformConnectorCatalogStatusItem,
   ): ConnectorConnectHandlers => {
     return {
       openModal: () => {
-        setSelected(connector.connectorRef);
+        setSelected(connector.slug);
       },
       connectBrowserAuth: (authMethod) => {
         return connect(
-          connector.connectorRef,
+          connector.slug,
           authMethod,
           {
             authorizeVisibleAgents: true,
@@ -999,7 +997,7 @@ export function ZeroConnectorsPage() {
       connectNoAuth: (authMethod) => {
         return connectNoAuth(
           {
-            connectorSlug: connector.connectorRef,
+            connectorSlug: connector.slug,
             authMethod,
             options: {
               authorizeVisibleAgents: true,
@@ -1022,16 +1020,16 @@ export function ZeroConnectorsPage() {
     await disconnect(connectorSlug, connectorLabel, signal);
   };
 
-  const renderCard = (c: PublicConnectorCatalogStatusItem) => {
-    const isConnected = c.connected || optimisticConnected.has(c.connectorRef);
+  const renderCard = (c: PlatformConnectorCatalogStatusItem) => {
+    const isConnected = c.connected || optimisticConnected.has(c.slug);
     const isPolling =
-      pollingAuthCodeSlug === c.connectorRef ||
-      pollingDeviceAuthSlug === c.connectorRef ||
-      connectFlowSlug === c.connectorRef;
+      pollingAuthCodeSlug === c.slug ||
+      pollingDeviceAuthSlug === c.slug ||
+      connectFlowSlug === c.slug;
     if (!isConnected) {
       return (
         <ConnectorCard
-          key={c.connectorRef}
+          key={c.slug}
           variant="catalog"
           connector={c}
           busy={isPolling}
@@ -1041,7 +1039,7 @@ export function ZeroConnectorsPage() {
     }
     return (
       <ConnectorCard
-        key={c.connectorRef}
+        key={c.slug}
         variant="connection"
         connector={c}
         connected={isConnected}
@@ -1049,22 +1047,19 @@ export function ZeroConnectorsPage() {
         disconnecting={disconnecting}
         connect={connectHandlers(c)}
         onDisconnect={() => {
-          detach(
-            disconnectHandler(c.connectorRef, c.label),
-            Reason.DomCallback,
-          );
+          detach(disconnectHandler(c.slug, c.label), Reason.DomCallback);
         }}
         manageAccess={
           <ConnectorAccessButton
-            connectorSlug={c.connectorRef}
+            connectorSlug={c.slug}
             connectorLabel={c.label}
             onClick={() => {
-              setManagedConnectorSlug(c.connectorRef);
+              setManagedConnectorSlug(c.slug);
             }}
           />
         }
         onReviewScopes={() => {
-          return setScopeReviewConnectorSlug(c.connectorRef);
+          return setScopeReviewConnectorSlug(c.slug);
         }}
       />
     );
@@ -1168,7 +1163,7 @@ export function ZeroConnectorsPage() {
           onSuccess={() => {
             const label =
               allConnectors.find((c) => {
-                return c.connectorRef === selectedConnectorSlug;
+                return c.slug === selectedConnectorSlug;
               })?.label ?? selectedConnectorSlug;
             toast.success(
               t(
@@ -1191,7 +1186,7 @@ export function ZeroConnectorsPage() {
           onReconnect={(connectorSlug) => {
             setScopeReviewConnectorSlug(null);
             const connector = allConnectors.find((connector) => {
-              return connector.connectorRef === connectorSlug;
+              return connector.slug === connectorSlug;
             });
             const connection = connector?.connection ?? null;
             if (!connector || !connection) {

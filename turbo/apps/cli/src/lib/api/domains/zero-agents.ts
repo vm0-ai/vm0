@@ -106,6 +106,26 @@ export async function getZeroAgentCustomConnectors(
   );
 }
 
+export async function addZeroAgentCustomConnector(
+  id: string,
+  customConnectorId: string,
+): Promise<void> {
+  const config = await getClientConfig();
+  const client = initClient(zeroAgentCustomConnectorsContract, config);
+  const result = await client.update({
+    params: { id },
+    body: {
+      enabledIds: [customConnectorId],
+      operation: "add",
+    },
+  });
+  if (result.status === 200) return;
+  handleError(
+    result,
+    `Failed to authorize custom connector "${customConnectorId}" for zero agent "${id}"`,
+  );
+}
+
 export async function listZeroUserPermissionGrants(
   agentId: string,
 ): Promise<ZeroUserPermissionGrant[]> {

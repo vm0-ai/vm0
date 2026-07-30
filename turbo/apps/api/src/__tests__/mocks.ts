@@ -13,6 +13,9 @@ type SignalTimerDelayOptions = { readonly signal?: AbortSignal };
 type SignalTimerDelayMock = Mock<
   (ms: number, options?: SignalTimerDelayOptions) => Promise<void>
 >;
+type AbortSignalTimeoutMock = Mock<
+  (milliseconds: number) => AbortSignal | undefined
+>;
 type SyncMock = Mock<(...args: unknown[]) => void>;
 type UnknownMock = Mock<(...args: unknown[]) => unknown>;
 interface BrowserUseCdpCommand {
@@ -39,6 +42,9 @@ type PinnedRequestCallback = (
 ) => void;
 
 export interface ApiTestMocks {
+  readonly abortSignal: {
+    readonly timeout: AbortSignalTimeoutMock;
+  };
   readonly axiom: {
     readonly flush: AsyncMock;
     readonly ingest: BooleanMock;
@@ -385,6 +391,9 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
   };
 
   return {
+    abortSignal: {
+      timeout: vi.fn<(milliseconds: number) => AbortSignal | undefined>(),
+    },
     ably: {
       publish: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       createTokenRequest: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -440,6 +449,14 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
       ),
     },
   };
+});
+
+const originalAbortSignalTimeout = AbortSignal.timeout.bind(AbortSignal);
+vi.spyOn(AbortSignal, "timeout").mockImplementation((milliseconds) => {
+  return (
+    apiTestMocks.abortSignal.timeout(milliseconds) ??
+    originalAbortSignalTimeout(milliseconds)
+  );
 });
 
 const browserUseCdpCommandSchema = z.object({
@@ -970,8 +987,12 @@ vi.mock("../signals/external/telegram-client", async () => {
   };
 });
 
-vi.mock("../signals/external/axiom", () => {
+vi.mock("../signals/external/axiom", async () => {
+  const actual = await vi.importActual<
+    typeof import("../signals/external/axiom")
+  >("../signals/external/axiom");
   return {
+    ...actual,
     // Wrap the underlying vi.fn() in a ccstate `computed` so `get(queryAxiom(apl))`
     // resolves correctly. Tests configure responses via
     // `context.mocks.axiom.query.mockResolvedValue(...)`. The optional
@@ -1035,6 +1056,7 @@ export function getApiTestMocks(): ApiTestMocks {
 }
 
 export function resetApiTestMocks(): void {
+  apiTestMocks.abortSignal.timeout.mockReset();
   apiTestMocks.ably.publish.mockReset();
   apiTestMocks.ably.publish.mockResolvedValue(undefined);
   apiTestMocks.ably.createTokenRequest.mockReset();

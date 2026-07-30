@@ -242,15 +242,14 @@ export async function publishConnectorPermissionUpdatedSafely(
 
 /**
  * Notify the user's open chat surfaces that one managed browser changed
- * lifecycle state. The payload identifies the logical browser so each
- * thread-scoped card registry only reloads the matching shared signals.
+ * lifecycle state. The thread-scoped payload lets each card registry reload
+ * only the matching shared signals.
  *
  * Best-effort: a failed publish must not fail browser resume or reclamation.
  */
 export async function publishBrowserSessionChangedSafely(
   userId: string,
   browser: {
-    readonly browserId: string;
     readonly threadId: string;
   },
 ): Promise<void> {
@@ -259,7 +258,6 @@ export async function publishBrowserSessionChangedSafely(
     publishUserSignal([userId], "browserSessionChanged", payload),
     (error) => {
       L.warn("Failed to publish browser session changed signal", {
-        browserId: browser.browserId,
         threadId: browser.threadId,
         error,
       });

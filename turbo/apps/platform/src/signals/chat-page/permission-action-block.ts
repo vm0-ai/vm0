@@ -171,8 +171,9 @@ export function parsePermissionActionUrl(
   if (!path) {
     return null;
   }
-  // TODO(#23619): Rename this serialized chat-action query parameter.
-  const connectorSlug = url.searchParams.get("ref");
+  // TODO(#23823): Remove the legacy serialized-action query fallback.
+  const connectorSlug =
+    url.searchParams.get("connectorSlug") ?? url.searchParams.get("ref");
   const permission = url.searchParams.get("permission");
   const action = url.searchParams.get("action") ?? "allow";
   const method = url.searchParams.get("method");
