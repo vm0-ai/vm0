@@ -76,53 +76,32 @@ export interface VideoTemplateRegistryEntry extends Omit<
   };
 }
 
-interface GitCandidateSource {
-  readonly type: "git";
-  readonly repo: string;
-  readonly ref: string;
-}
-
-interface R2CandidateSource {
-  readonly type: "r2-archive";
-  readonly resolver: "zero-resource-pull";
-}
-
-type CandidateSource = GitCandidateSource | R2CandidateSource;
-
-interface CandidatePool<TSource extends CandidateSource> {
-  readonly source: TSource;
-  readonly items: readonly RegistryEntry[];
-}
-
 export interface ResourceCandidateSlice {
   readonly registryVersion: string;
-  readonly candidates: {
-    readonly skills: CandidatePool<GitCandidateSource>;
-    readonly templates: {
-      readonly openDesign: CandidatePool<GitCandidateSource>;
-      readonly websiteR2?: CandidatePool<R2CandidateSource>;
-    };
-    readonly designSystems: CandidatePool<GitCandidateSource>;
+  readonly source: {
+    readonly repo: string;
+    readonly ref: string;
   };
-}
-
-export interface ResourceCandidateSliceOptions {
-  readonly samplingEnabled: boolean;
-  readonly random?: () => number;
+  readonly sources: readonly (
+    | {
+        readonly type?: "git";
+        readonly repo: string;
+        readonly ref: string;
+      }
+    | {
+        readonly type: "r2-archive";
+        readonly description: string;
+      }
+  )[];
+  readonly candidates: {
+    readonly skills: readonly RegistryEntry[];
+    readonly templates: readonly RegistryEntry[];
+    readonly designSystems: readonly RegistryEntry[];
+  };
 }
 
 const RESOURCE_REGISTRY_REPO = "nexu-io/open-design";
 const RESOURCE_REGISTRY_COMMIT = "3fb620af423534643677c7c6fae76be088fa770a";
-const OPEN_DESIGN_CANDIDATE_SOURCE = {
-  type: "git",
-  repo: RESOURCE_REGISTRY_REPO,
-  ref: RESOURCE_REGISTRY_COMMIT,
-} as const satisfies GitCandidateSource;
-const WEBSITE_R2_CANDIDATE_SOURCE = {
-  type: "r2-archive",
-  resolver: "zero-resource-pull",
-} as const satisfies R2CandidateSource;
-const RESOURCE_CANDIDATE_SAMPLE_SIZE = 5;
 const VM0_SKILLS_REPO = "vm0-ai/vm0-skills";
 const VM0_SKILLS_REF = "main";
 const VIDEO_TEMPLATE_REGISTRY_SOURCE = {
@@ -3368,7 +3347,8 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
 // color system at runtime — no separate design system or color archive to
 // resolve. Templates without a package fall back to the legacy multi-resource
 // flow. These are intentionally NOT part of RESOURCE_REGISTRY so they never leak
-// into buildResourceCandidateSlice or listTemplates.
+// into the legacy multi-resource candidate slice (selectResourceCandidates) or
+// listTemplates.
 
 export interface PresentationRunbookPackage {
   /** Picker template id (the legacy `template:html-ppt-*` id the user selects). */
@@ -4025,7 +4005,7 @@ export function findColorSystem(id: string): RegistryEntry | undefined {
   });
 }
 
-function listOpenDesignTemplates(
+export function listTemplates(
   target?: GenerationTarget,
 ): readonly RegistryEntry[] {
   const all = filterByKind("template");
@@ -4035,32 +4015,17 @@ function listOpenDesignTemplates(
   const filtered = all.filter((entry) => {
     return entry.targets?.includes(target) ?? false;
   });
-  return filtered;
-}
-
-function listWebsiteTemplateCandidates(
-  openDesignTemplates: readonly RegistryEntry[],
-): readonly RegistryEntry[] {
-  return WEBSITE_TEMPLATE_PACKAGES.map(
+  if (target !== "website") {
+    return filtered;
+  }
+  const websitePackageEntries = WEBSITE_TEMPLATE_PACKAGES.map(
     websiteTemplatePackageToRegistryEntry,
   ).filter((entry) => {
-    return !openDesignTemplates.some((template) => {
+    return !filtered.some((template) => {
       return template.id === entry.id;
     });
   });
-}
-
-export function listTemplates(
-  target?: GenerationTarget,
-): readonly RegistryEntry[] {
-  const openDesignTemplates = listOpenDesignTemplates(target);
-  if (target !== "website") {
-    return openDesignTemplates;
-  }
-  return [
-    ...openDesignTemplates,
-    ...listWebsiteTemplateCandidates(openDesignTemplates),
-  ];
+  return [...filtered, ...websitePackageEntries];
 }
 
 export function findTemplate(id: string): RegistryEntry | undefined {
@@ -4085,78 +4050,34 @@ export function toGenerationTarget(value: string): GenerationTarget {
   return value as GenerationTarget;
 }
 
-function sampleWithoutReplacement<T>(
-  items: readonly T[],
-  count: number,
-  random: () => number,
-): readonly T[] {
-  const remaining = [...items];
-  const sampled: T[] = [];
-  while (sampled.length < count && remaining.length > 0) {
-    const index = Math.floor(random() * remaining.length);
-    sampled.push(...remaining.splice(index, 1));
-  }
-  return sampled;
-}
-
-export function buildResourceCandidateSlice(
-  target: GenerationTarget,
-  options: ResourceCandidateSliceOptions,
+export function selectResourceCandidates(
+  target?: GenerationTarget,
 ): ResourceCandidateSlice {
-  const random = options.random ?? Math.random;
-  const skillCandidates = listSkills(target);
-  const designSystemCandidates = listDesignSystems();
-  const openDesignTemplates = listOpenDesignTemplates(target);
-  const websiteTemplates =
-    target === "website"
-      ? listWebsiteTemplateCandidates(openDesignTemplates)
-      : [];
-  const skills = options.samplingEnabled
-    ? sampleWithoutReplacement(
-        skillCandidates,
-        RESOURCE_CANDIDATE_SAMPLE_SIZE,
-        random,
-      )
-    : skillCandidates;
-  const designSystems = options.samplingEnabled
-    ? sampleWithoutReplacement(
-        designSystemCandidates,
-        RESOURCE_CANDIDATE_SAMPLE_SIZE,
-        random,
-      )
-    : designSystemCandidates;
-
   return {
     registryVersion: RESOURCE_REGISTRY_VERSION,
+    source: {
+      repo: RESOURCE_REGISTRY_REPO,
+      ref: RESOURCE_REGISTRY_COMMIT,
+    },
+    sources: [
+      {
+        repo: RESOURCE_REGISTRY_REPO,
+        ref: RESOURCE_REGISTRY_COMMIT,
+      },
+      {
+        repo: VM0_SKILLS_REPO,
+        ref: VM0_SKILLS_REF,
+      },
+      {
+        type: "r2-archive",
+        description:
+          "Private R2-backed resource archives resolved through authenticated `zero resource pull` requests",
+      },
+    ],
     candidates: {
-      skills: {
-        source: OPEN_DESIGN_CANDIDATE_SOURCE,
-        items: skills,
-      },
-      templates: {
-        openDesign: {
-          source: OPEN_DESIGN_CANDIDATE_SOURCE,
-          items: openDesignTemplates,
-        },
-        ...(target === "website"
-          ? {
-              websiteR2: {
-                source: WEBSITE_R2_CANDIDATE_SOURCE,
-                items: options.samplingEnabled
-                  ? sampleWithoutReplacement(
-                      websiteTemplates,
-                      RESOURCE_CANDIDATE_SAMPLE_SIZE,
-                      random,
-                    )
-                  : websiteTemplates,
-              },
-            }
-          : {}),
-      },
-      designSystems: {
-        source: OPEN_DESIGN_CANDIDATE_SOURCE,
-        items: designSystems,
-      },
+      skills: listSkills(target),
+      templates: listTemplates(target),
+      designSystems: filterByKind("design-system"),
     },
   };
 }

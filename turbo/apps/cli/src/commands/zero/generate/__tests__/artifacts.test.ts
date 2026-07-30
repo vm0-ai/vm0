@@ -3,14 +3,9 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import chalk from "chalk";
 import { generateCommand } from "../index";
 import { reportCommand } from "../artifacts";
-import {
-  buildResourceCandidateSlice,
-  listDesignSystems,
-  listSkills,
-  listTemplates,
-} from "../../shared/resource-registry";
+import { selectResourceCandidates } from "../../shared/resource-registry";
 
-function zeroToken(sampleCandidates: boolean): string {
+function zeroToken(registrySearchEnabled: boolean): string {
   const payload = Buffer.from(
     JSON.stringify({
       userId: "user-123",
@@ -19,7 +14,8 @@ function zeroToken(sampleCandidates: boolean): string {
       scope: "zero",
       capabilities: [],
       featureSwitchOverrides: {
-        [FeatureSwitchKey.ArtifactResourceCandidateSampling]: sampleCandidates,
+        [FeatureSwitchKey.ArtifactResourceRegistrySearch]:
+          registrySearchEnabled,
       },
       iat: 1,
       exp: 4_102_444_800,
@@ -52,43 +48,30 @@ describe("zero generate source-backed artifact commands", () => {
     return mockConsoleLog.mock.calls.flat().join("\n");
   }
 
-  function pickFirst(): number {
-    return 0;
-  }
-
-  function pickLast(): number {
-    return 0.999_999;
-  }
-
   it.each([
     {
       command: "report",
       prompt: "Q2 generation usage report",
-      template: "template:finance-report",
     },
     {
       command: "docs-design",
       prompt: "Docs for adding built-in artifact targets",
-      template: "template:docs-page",
     },
     {
       command: "poster",
       prompt: "A poster for source-backed generation",
-      template: "template:html-ppt-zhangzara-retro-zine",
     },
     {
       command: "dashboard-design",
       prompt: "A dashboard for generation run health",
-      template: "template:dashboard",
     },
     {
       command: "mobile-app-design",
       prompt: "A mobile app design for reviewing generated artifacts",
-      template: "template:mobile-app",
     },
   ])(
-    "prints a source selection packet for $command",
-    async ({ command, prompt, template }) => {
+    "prints a static Registry search packet for $command",
+    async ({ command, prompt }) => {
       await generateCommand.parseAsync([
         "node",
         "cli",
@@ -106,13 +89,30 @@ describe("zero generate source-backed artifact commands", () => {
       expect(stdout).toContain("generation resource-selection packet");
       expect(stdout).not.toContain("federated");
       expect(stdout).toContain(prompt);
-      expect(stdout).toContain(template);
-      expect(stdout).toContain('"type": "git"');
-      expect(stdout).not.toContain("vm0-ai/vm0-skills");
+      expect(stdout).toContain("## Stage 1: Search Resource Registry");
       expect(stdout).toContain(
-        "Source: `nexu-io/open-design@3fb620af423534643677c7c6fae76be088fa770a`",
+        "Derive 3-8 concise English keywords and synonyms from the user prompt.",
       );
-      expect(stdout).not.toContain("Sources:");
+      expect(stdout).toContain(
+        "matching keywords against each resource's `name`, `description`, and `tags`.",
+      );
+      expect(stdout).toContain(
+        "https://static.vm0.io/vm0/html-resource-registry/v2/0899a14208b6a4775b326ebbaf08cf76973ebdb99fbb2fb6eb3a9f23be3f8c58/registry.json",
+      );
+      expect(stdout).toContain(
+        "0899a14208b6a4775b326ebbaf08cf76973ebdb99fbb2fb6eb3a9f23be3f8c58  /tmp/vm0-html-resource-registry-v2.json",
+      );
+      expect(stdout).toContain(`jq -r --arg target "${command}"`);
+      expect(stdout).toContain("| rg -i '<keyword|synonym>'");
+      expect(stdout).toContain('"resource": "string"');
+      expect(stdout).toContain(
+        "For `openDesign`, follow the Registry's three Git sparse-checkout steps",
+      );
+      expect(stdout).toContain(
+        "For `websiteR2`, run the Registry's authenticated `zero resource pull` command.",
+      );
+      expect(stdout).not.toContain("## Candidate Registry Slice");
+      expect(stdout).not.toContain('"id": "skill:article-magazine"');
       expect(stdout).toContain(`Artifact kind: ${command}`);
       expect(stdout).toContain("## Artifact Output Model");
       expect(stdout).toContain(
@@ -156,7 +156,9 @@ describe("zero generate source-backed artifact commands", () => {
   });
 
   it("returns every registered skill when no target is requested", () => {
-    expect(listSkills()).toEqual(
+    const selection = selectResourceCandidates();
+
+    expect(selection.candidates.skills).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: "skill:theme-factory",
@@ -172,22 +174,34 @@ describe("zero generate source-backed artifact commands", () => {
   });
 
   it("filters skill candidates by target when requested", () => {
-    const websiteSkillIds = listSkills("website").map((skill) => {
+    const websiteSkillIds = selectResourceCandidates(
+      "website",
+    ).candidates.skills.map((skill) => {
       return skill.id;
     });
-    const reportSkillIds = listSkills("report").map((skill) => {
+    const reportSkillIds = selectResourceCandidates(
+      "report",
+    ).candidates.skills.map((skill) => {
       return skill.id;
     });
-    const posterSkillIds = listSkills("poster").map((skill) => {
+    const posterSkillIds = selectResourceCandidates(
+      "poster",
+    ).candidates.skills.map((skill) => {
       return skill.id;
     });
-    const presentationSkillIds = listSkills("presentation").map((skill) => {
+    const presentationSkillIds = selectResourceCandidates(
+      "presentation",
+    ).candidates.skills.map((skill) => {
       return skill.id;
     });
-    const imageSkillIds = listSkills("image").map((skill) => {
+    const imageSkillIds = selectResourceCandidates(
+      "image",
+    ).candidates.skills.map((skill) => {
       return skill.id;
     });
-    const videoSkillIds = listSkills("intro-video").map((skill) => {
+    const videoSkillIds = selectResourceCandidates(
+      "intro-video",
+    ).candidates.skills.map((skill) => {
       return skill.id;
     });
 
@@ -214,58 +228,10 @@ describe("zero generate source-backed artifact commands", () => {
     expect(videoSkillIds).toContain("skill:8-bit-orbit-video-template");
   });
 
-  it("samples five target-compatible skills and design systems without replacement", () => {
-    const first = buildResourceCandidateSlice("report", {
-      samplingEnabled: true,
-      random: pickFirst,
-    });
-    const repeated = buildResourceCandidateSlice("report", {
-      samplingEnabled: true,
-      random: pickFirst,
-    });
-    const alternate = buildResourceCandidateSlice("report", {
-      samplingEnabled: true,
-      random: pickLast,
-    });
-    const skillIds = first.candidates.skills.items.map((skill) => {
-      return skill.id;
-    });
-    const designSystemIds = first.candidates.designSystems.items.map(
-      (designSystem) => {
-        return designSystem.id;
-      },
-    );
-
-    expect(skillIds).toHaveLength(5);
-    expect(new Set(skillIds).size).toBe(5);
-    expect(first.candidates.skills.source).toEqual({
-      type: "git",
-      repo: "nexu-io/open-design",
-      ref: "3fb620af423534643677c7c6fae76be088fa770a",
-    });
-    expect(
-      first.candidates.skills.items.every((skill) => {
-        return skill.targets?.includes("report") ?? false;
-      }),
-    ).toBe(true);
-    expect(designSystemIds).toHaveLength(5);
-    expect(new Set(designSystemIds).size).toBe(5);
-    expect(repeated.candidates.skills.items).toEqual(
-      first.candidates.skills.items,
-    );
-    expect(repeated.candidates.designSystems.items).toEqual(
-      first.candidates.designSystems.items,
-    );
-    expect(alternate.candidates.skills.items).not.toEqual(
-      first.candidates.skills.items,
-    );
-    expect(alternate.candidates.designSystems.items).not.toEqual(
-      first.candidates.designSystems.items,
-    );
-  });
-
   it("returns every registered template and design system", () => {
-    expect(listTemplates()).toEqual(
+    const selection = selectResourceCandidates();
+
+    expect(selection.candidates.templates).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: "template:finance-report",
@@ -273,7 +239,7 @@ describe("zero generate source-backed artifact commands", () => {
         }),
       ]),
     );
-    expect(listDesignSystems()).toEqual(
+    expect(selection.candidates.designSystems).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: "design-system:shopify",
@@ -303,13 +269,11 @@ describe("zero generate source-backed artifact commands", () => {
     expect(stdout).not.toContain('"audioStyle"');
     expect(stdout).not.toContain('"videoTemplate"');
     expect(stdout).not.toContain('"bundleTemplate"');
-    expect(stdout).not.toContain('"websiteR2"');
-    expect(stdout).not.toContain('"type": "r2-archive"');
-    expect(stdout.match(/"kind": "skill"/gu)).toHaveLength(5);
-    expect(stdout.match(/"kind": "design-system"/gu)).toHaveLength(5);
+    expect(stdout).not.toContain('"kind": "skill"');
+    expect(stdout).not.toContain('"kind": "design-system"');
   });
 
-  it("keeps full candidate pools when candidate sampling is disabled", async () => {
+  it("keeps the legacy full candidate slice when Registry search is disabled", async () => {
     vi.stubEnv("ZERO_TOKEN", zeroToken(false));
 
     await generateCommand.parseAsync([
@@ -323,94 +287,52 @@ describe("zero generate source-backed artifact commands", () => {
     ]);
 
     const stdout = output();
+    const legacySelection = selectResourceCandidates("report");
+    expect(stdout).toContain("federated generation source-selection packet");
+    expect(stdout).toContain("## Candidate Registry Slice");
+    expect(stdout).not.toContain("## Static Resource Registry");
+    expect(stdout).not.toContain("| rg -i '<keyword|synonym>'");
+    expect(stdout).toContain('"skills": "string[]"');
     expect(stdout.match(/"kind": "skill"/gu)).toHaveLength(
-      listSkills("report").length,
+      legacySelection.candidates.skills.length,
     );
     expect(stdout.match(/"kind": "design-system"/gu)).toHaveLength(
-      listDesignSystems().length,
+      legacySelection.candidates.designSystems.length,
     );
   });
 
-  it("keeps filtered Open Design templates and samples five R2 website templates", () => {
-    const websiteSelection = buildResourceCandidateSlice("website", {
-      samplingEnabled: true,
-      random: pickFirst,
-    });
-    const repeatedWebsiteSelection = buildResourceCandidateSlice("website", {
-      samplingEnabled: true,
-      random: pickFirst,
-    });
-    const alternateWebsiteSelection = buildResourceCandidateSlice("website", {
-      samplingEnabled: true,
-      random: pickLast,
-    });
-    const fullWebsiteSelection = buildResourceCandidateSlice("website", {
-      samplingEnabled: false,
-      random: pickFirst,
-    });
-    const presentationSelection = buildResourceCandidateSlice("presentation", {
-      samplingEnabled: true,
-      random: pickFirst,
-    });
-    const websiteR2 = websiteSelection.candidates.templates.websiteR2;
-    const expectedOpenDesignTemplates = listTemplates("website").filter(
-      (template) => {
-        return template.source.archive === undefined;
-      },
-    );
+  it("filters template candidates by target when requested", () => {
+    const websiteSelection = selectResourceCandidates("website");
+    const presentationSelection = selectResourceCandidates("presentation");
 
-    expect(websiteSelection.candidates.templates.openDesign.items).toEqual(
-      expectedOpenDesignTemplates,
+    expect(websiteSelection.candidates.templates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "template:warm-cards",
+          source: expect.objectContaining({
+            path: "warm-cards",
+            archive: expect.objectContaining({ type: "tar.gz" }),
+          }),
+        }),
+      ]),
     );
-    expect(websiteSelection.candidates.templates.openDesign.items).toEqual(
+    expect(websiteSelection.candidates.templates).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: "template:saas-landing" }),
         expect.objectContaining({ id: "template:web-prototype" }),
       ]),
     );
-    expect(websiteSelection.candidates.templates.openDesign.items).not.toEqual(
+    expect(websiteSelection.candidates.templates).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: "template:html-ppt-pitch-deck" }),
       ]),
     );
-    expect(websiteR2?.source).toEqual({
-      type: "r2-archive",
-      resolver: "zero-resource-pull",
-    });
-    expect(websiteR2?.items).toHaveLength(5);
-    expect(
-      new Set(
-        websiteR2?.items.map((template) => {
-          return template.id;
-        }),
-      ).size,
-    ).toBe(5);
-    expect(
-      websiteR2?.items.every((template) => {
-        return template.source.archive?.type === "tar.gz";
-      }),
-    ).toBe(true);
-    expect(
-      repeatedWebsiteSelection.candidates.templates.websiteR2?.items,
-    ).toEqual(websiteR2?.items);
-    expect(
-      alternateWebsiteSelection.candidates.templates.websiteR2?.items,
-    ).not.toEqual(websiteR2?.items);
-    expect(fullWebsiteSelection.candidates.templates.websiteR2?.items).toEqual(
-      listTemplates("website").filter((template) => {
-        return template.source.archive !== undefined;
-      }),
-    );
-    expect(
-      presentationSelection.candidates.templates.openDesign.items,
-    ).toHaveLength(0);
-    expect(
-      presentationSelection.candidates.templates.websiteR2,
-    ).toBeUndefined();
+    expect(presentationSelection.candidates.templates).toHaveLength(0);
   });
 
   it("annotates every template entry with at least one target", () => {
-    for (const template of listTemplates()) {
+    const selection = selectResourceCandidates();
+    for (const template of selection.candidates.templates) {
       expect(
         template.targets,
         `${template.id} is missing the targets field`,
@@ -423,7 +345,8 @@ describe("zero generate source-backed artifact commands", () => {
   });
 
   it("annotates every skill entry with targets", () => {
-    for (const skill of listSkills()) {
+    const selection = selectResourceCandidates();
+    for (const skill of selection.candidates.skills) {
       expect(
         skill.targets,
         `${skill.id} is missing the targets field`,

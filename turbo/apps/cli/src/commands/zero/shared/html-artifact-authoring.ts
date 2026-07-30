@@ -2,13 +2,19 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { decodeZeroTokenPayload } from "../../../lib/api/zero-token";
 import {
-  buildResourceCandidateSlice,
   type GenerationOutputKind,
   type ResourceCandidateSlice,
   type GenerationTarget,
+  selectResourceCandidates,
 } from "./resource-registry";
 
 type HtmlArtifactKind = GenerationTarget;
+
+const HTML_RESOURCE_REGISTRY = {
+  url: "https://static.vm0.io/vm0/html-resource-registry/v2/0899a14208b6a4775b326ebbaf08cf76973ebdb99fbb2fb6eb3a9f23be3f8c58/registry.json",
+  sha256: "0899a14208b6a4775b326ebbaf08cf76973ebdb99fbb2fb6eb3a9f23be3f8c58",
+  path: "/tmp/vm0-html-resource-registry-v2.json",
+} as const;
 
 interface HtmlArtifactAuthoringOptions {
   readonly kind: HtmlArtifactKind;
@@ -40,12 +46,17 @@ interface HtmlArtifactAuthoringPacket {
   };
   readonly selection: {
     readonly candidates: ResourceCandidateSlice["candidates"];
-    readonly outputSchema: {
-      readonly skills: "string[]";
-      readonly template: "string";
-      readonly designSystem: "string | null";
-      readonly rationale: "string";
-    };
+    readonly outputSchema:
+      | {
+          readonly skills: "string[]";
+          readonly template: "string";
+          readonly designSystem: "string | null";
+          readonly rationale: "string";
+        }
+      | {
+          readonly resource: "string";
+          readonly rationale: "string";
+        };
   };
   readonly authoring: {
     readonly details: readonly string[];
@@ -88,9 +99,18 @@ function outputDirForSite(site: string): string {
   return `./generated/mockups/${site}`;
 }
 
-function artifactResourceCandidateSamplingEnabled(): boolean {
+function formatCandidateSource(
+  source: ResourceCandidateSlice["sources"][number],
+): string {
+  if ("repo" in source) {
+    return `- \`${source.repo}@${source.ref}\``;
+  }
+  return `- ${source.description}`;
+}
+
+function artifactResourceRegistrySearchEnabled(): boolean {
   const payload = decodeZeroTokenPayload();
-  return isFeatureEnabled(FeatureSwitchKey.ArtifactResourceCandidateSampling, {
+  return isFeatureEnabled(FeatureSwitchKey.ArtifactResourceRegistrySearch, {
     userId: payload?.userId,
     orgId: payload?.orgId,
     overrides: payload?.featureSwitchOverrides,
@@ -109,22 +129,19 @@ export function createHtmlArtifactAuthoringPacket(
     options.kind === "website" ? " --spa" : ""
   }`;
   const title = titleForKind(options.kind);
-  const candidateSlice = buildResourceCandidateSlice(options.kind, {
-    samplingEnabled: artifactResourceCandidateSamplingEnabled(),
-  });
-  const openDesignSource = candidateSlice.candidates.skills.source;
-  const r2ResolutionInstructions =
-    candidateSlice.candidates.templates.websiteR2 === undefined
-      ? []
-      : [
-          "- For the `templates.websiteR2` pool, pull the selected private R2 archive with `zero resource pull <resource-id> --dir ./generated/resources`; the CLI requests an authenticated short-lived download URL, verifies the digest, and extracts `source.path`.",
-        ];
-  const selectionSchema = {
-    skills: "string[]",
-    template: "string",
-    designSystem: "string | null",
-    rationale: "string",
-  } as const;
+  const registrySearchEnabled = artifactResourceRegistrySearchEnabled();
+  const candidateSlice = selectResourceCandidates(options.kind);
+  const selectionSchema = registrySearchEnabled
+    ? ({
+        resource: "string",
+        rationale: "string",
+      } as const)
+    : ({
+        skills: "string[]",
+        template: "string",
+        designSystem: "string | null",
+        rationale: "string",
+      } as const);
   const artifact = {
     outputMode: "primary-artifact-with-supporting-assets",
     primaryArtifact: {
@@ -156,42 +173,111 @@ export function createHtmlArtifactAuthoringPacket(
     previewKind: "hosted-url",
     outputDir,
   } as const;
+  const packetIntroduction = registrySearchEnabled
+    ? "This is a generation resource-selection packet for the current agent."
+    : "This is a federated generation source-selection packet for the current agent.";
+  const resourceSelectionInstructions = registrySearchEnabled
+    ? [
+        "## Stage 1: Search Resource Registry",
+        "- If Requested Parameters explicitly name resources, treat those IDs as required. Otherwise choose exactly one best target-compatible resource.",
+        "- Derive 3-8 concise English keywords and synonyms from the user prompt. Translate non-English concepts into English search terms.",
+        "- Search only target-compatible IDs, matching keywords against each resource's `name`, `description`, and `tags`.",
+        "- Run separate or broader keyword searches when needed, but do not print the full Registry into context.",
+        "- Choose only IDs returned by the Registry; do not invent resource IDs.",
+        "- Treat the selection JSON as internal working state, then continue to resolution.",
+        "",
+        "## Selection Output Schema",
+        "```json",
+        JSON.stringify(selectionSchema, null, 2),
+        "```",
+        "",
+        "## Static Resource Registry",
+        `URL: \`${HTML_RESOURCE_REGISTRY.url}\``,
+        `SHA-256: \`${HTML_RESOURCE_REGISTRY.sha256}\``,
+        "",
+        "Download, verify, narrow by the current target, then search with `rg -i`:",
+        "",
+        "```bash",
+        `curl -fsSL "${HTML_RESOURCE_REGISTRY.url}" -o "${HTML_RESOURCE_REGISTRY.path}"`,
+        `echo "${HTML_RESOURCE_REGISTRY.sha256}  ${HTML_RESOURCE_REGISTRY.path}" | sha256sum --check`,
+        `jq -r --arg target "${options.kind}" '`,
+        "  (",
+        "    .indexes.targets[$target].skills",
+        "    + ([.indexes.targets[$target].templates[]] | add)",
+        "    + .indexes.shared.designSystems",
+        "  )[] as $id",
+        "  | .resourcesById[$id] as $resource",
+        "  | [",
+        "      $id,",
+        "      $resource.kind,",
+        "      $resource.name,",
+        "      $resource.description,",
+        '      ($resource.tags | join(" "))',
+        "    ]",
+        "  | @tsv",
+        `' "${HTML_RESOURCE_REGISTRY.path}" | rg -i '<keyword|synonym>'`,
+        "```",
+      ]
+    : [
+        "## Stage 1: Resource Selection",
+        "- Choose generation resources from the bundled federated registry slice below.",
+        "- Select one template, one or more skills, and zero or one design system.",
+        "- Choose only IDs present in this packet; do not invent registry IDs.",
+        "- Prefer compatible resources, but the user prompt is the highest-priority signal.",
+        "- Treat the selection JSON as internal working state, then continue to authoring.",
+        "",
+        "## Selection Output Schema",
+        "```json",
+        JSON.stringify(selectionSchema, null, 2),
+        "```",
+        "",
+        "## Candidate Registry Slice",
+        `Registry: \`${candidateSlice.registryVersion}\``,
+        "Sources:",
+        ...candidateSlice.sources.map(formatCandidateSource),
+        "",
+        "```json",
+        JSON.stringify(candidateSlice.candidates, null, 2),
+        "```",
+      ];
+  const resourceResolutionInstructions = registrySearchEnabled
+    ? [
+        "## Stage 2: Resolve Selected Resources",
+        "- Read only each selected or explicitly required resource and its source resolver:",
+        "",
+        "```bash",
+        `jq --arg id "<selected-resource-id>" '{ resource: .resourcesById[$id], source: .sources[.resourcesById[$id].source] }' "${HTML_RESOURCE_REGISTRY.path}"`,
+        "```",
+        "",
+        "- Download only the selected or explicitly required resources; do not clone or pull every candidate.",
+        "- For `openDesign`, follow the Registry's three Git sparse-checkout steps and checkout its fixed commit.",
+        "- For `websiteR2`, run the Registry's authenticated `zero resource pull` command.",
+        "- For directory refs, inspect the most relevant files such as `SKILL.md`, `DESIGN.md`, `README.md`, tokens, examples, and templates.",
+        "- If a source file cannot be fetched, state that limitation and fall back to the Registry metadata for that resource.",
+      ]
+    : [
+        "## Stage 2: Resolve Selected Resources",
+        "- First resolve every required resource listed above, then resolve every selected resource before authoring.",
+        "- Each candidate carries a `source` object with `path` and optional `repo`/`ref`; when `repo`/`ref` are omitted, fall back to the registry-level source above.",
+        "- If `source.archive` is present, pull the private R2 archive with `zero resource pull <resource-id> --dir ./generated/resources`; the CLI requests an authenticated short-lived download URL, verifies the digest, and then extracts `source.path`.",
+        "- For directory refs, inspect the most relevant files such as `SKILL.md`, `DESIGN.md`, `README.md`, tokens, examples, and templates.",
+        "- If a source file cannot be fetched, state that limitation and fall back to the registry metadata for that resource.",
+      ];
+  const selectedResourceAuthoringRule = registrySearchEnabled
+    ? "- Let each resolved resource define the applicable structure, process, or visual language based on its kind."
+    : "- Let the selected template define structure, the selected design system define visual language, and the selected skills define process.";
   const instructions = [
     `# Zero generate ${options.kind}`,
     "",
-    "This is a generation resource-selection packet for the current agent.",
+    packetIntroduction,
     `Zero is not generating this ${title} on the server. You select resources, resolve them, and author the artifact.`,
     "",
     "## User Prompt",
     options.prompt,
     "",
-    "## Stage 1: Resource Selection",
-    "- Choose generation resources from the typed candidate pools below.",
-    "- Select one template, one or more skills, and zero or one design system.",
-    "- Choose only IDs present in this packet; do not invent registry IDs.",
-    "- Prefer compatible resources, but the user prompt is the highest-priority signal.",
-    "- Treat the selection JSON as internal working state, then continue to authoring.",
+    ...resourceSelectionInstructions,
     "",
-    "## Selection Output Schema",
-    "```json",
-    JSON.stringify(selectionSchema, null, 2),
-    "```",
-    "",
-    "## Candidate Registry Slice",
-    `Registry: \`${candidateSlice.registryVersion}\``,
-    `Source: \`${openDesignSource.repo}@${openDesignSource.ref}\``,
-    "",
-    "```json",
-    JSON.stringify(candidateSlice.candidates, null, 2),
-    "```",
-    "",
-    "## Stage 2: Resolve Selected Resources",
-    "- First resolve every required resource listed above, then resolve every selected resource before authoring.",
-    "- Each candidate pool declares its source type and contains its entries under `items`.",
-    "- For a `git` pool, resolve each selected entry's `source.path` from the pool's pinned `repo` and `ref`.",
-    ...r2ResolutionInstructions,
-    "- For directory refs, inspect the most relevant files such as `SKILL.md`, `DESIGN.md`, `README.md`, tokens, examples, and templates.",
-    "- If a source file cannot be fetched, state that limitation and fall back to the registry metadata for that resource.",
+    ...resourceResolutionInstructions,
     "",
     "## Stage 3: Author Artifact",
     `Author a production-quality ${title} as a static HTML artifact using the selected generation resources.`,
@@ -216,7 +302,7 @@ export function createHtmlArtifactAuthoringPacket(
     }),
     "",
     "## Authoring Rules",
-    "- Let the selected template define structure, the selected design system define visual language, and the selected skills define process.",
+    selectedResourceAuthoringRule,
     "- Read the local codebase, brand assets, and existing design systems when the prompt depends on this repository.",
     "- Avoid generic AI design defaults: no stock SaaS gradients, no emoji-as-icons, no filler stats, no decorative chrome that does not help the artifact.",
     "- Build the actual artifact first, not a marketing explanation of the artifact.",

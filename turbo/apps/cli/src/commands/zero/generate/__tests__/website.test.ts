@@ -8,9 +8,29 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import chalk from "chalk";
 import { generateCommand } from "../index";
 import { websiteCommand } from "../website";
+
+function zeroToken(registrySearchEnabled: boolean): string {
+  const payload = Buffer.from(
+    JSON.stringify({
+      userId: "user-123",
+      runId: "run-123",
+      orgId: "org-123",
+      scope: "zero",
+      capabilities: [],
+      featureSwitchOverrides: {
+        [FeatureSwitchKey.ArtifactResourceRegistrySearch]:
+          registrySearchEnabled,
+      },
+      iat: 1,
+      exp: 4_102_444_800,
+    }),
+  ).toString("base64url");
+  return `vm0_sandbox_header.${payload}.signature`;
+}
 
 describe("zero generate website command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
@@ -34,6 +54,8 @@ describe("zero generate website command", () => {
   });
 
   it("should print source selection instructions for website", async () => {
+    vi.stubEnv("ZERO_TOKEN", zeroToken(true));
+
     await generateCommand.parseAsync([
       "node",
       "cli",
@@ -50,18 +72,17 @@ describe("zero generate website command", () => {
     expect(stdout).toContain("# Zero generate website");
     expect(stdout).toContain("generation resource-selection packet");
     expect(stdout).not.toContain("federated");
-    expect(stdout).toContain("## Stage 1: Resource Selection");
-    expect(stdout).toContain("## Candidate Registry Slice");
+    expect(stdout).toContain("## Stage 1: Search Resource Registry");
+    expect(stdout).toContain('jq -r --arg target "website"');
+    expect(stdout).toContain("| rg -i '<keyword|synonym>'");
     expect(stdout).toContain("observability launch site");
-    expect(stdout).toContain('"websiteR2"');
-    expect(stdout).toContain('"type": "r2-archive"');
-    expect(stdout).toContain('"resolver": "zero-resource-pull"');
-    expect(stdout).toContain("template:web-prototype-taste-editorial");
+    expect(stdout).not.toContain("## Candidate Registry Slice");
+    expect(stdout).not.toContain("template:web-prototype-taste-editorial");
     expect(stdout).toContain(
-      "For landing, marketing, official brand or product, and launch pages, select a template from `templates.websiteR2.items`.",
+      "For landing, marketing, official brand or product, and launch pages, select a Website R2 template.",
     );
     expect(stdout).toContain(
-      "For other HTML or website requests, select from `templates.openDesign.items` based on intent; when ambiguous, prefer Open Design.",
+      "For other HTML or website requests, select an Open Design template based on intent; when ambiguous, prefer Open Design.",
     );
     expect(stdout).not.toContain("template:html-ppt-pitch-deck");
     expect(stdout).toContain(

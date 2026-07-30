@@ -63,7 +63,7 @@ describe("isFeatureEnabled", () => {
       false,
     );
     expect(
-      isFeatureEnabled(FeatureSwitchKey.ArtifactResourceCandidateSampling, {}),
+      isFeatureEnabled(FeatureSwitchKey.ArtifactResourceRegistrySearch, {}),
     ).toBe(false);
   });
 
