@@ -16,7 +16,7 @@ import { publishUserSignal } from "../external/realtime";
 import { env, optionalEnv } from "../../lib/env";
 import { getOAuthWebOrigin } from "../routes/oauth-web-origin";
 import {
-  buildGithubOauthState,
+  buildGithubAppInstallUrl,
   buildGithubUserConnectAuthorizationUrl,
   findGithubInstallationByInstallationId,
   getGithubOAuthAuthMethod,
@@ -34,31 +34,28 @@ function githubConnectStartUrl(origin: string): string {
 }
 
 async function githubInstallUrl(args: {
+  readonly db: ReadonlyDb;
   readonly userId: string;
   readonly orgId: string;
-  readonly composeId: string | null;
   readonly origin: string;
+  readonly signal: AbortSignal;
 }): Promise<string | null> {
   const appSlug = optionalEnv("GITHUB_APP_SLUG");
   if (!appSlug) {
     return null;
   }
 
-  const state = await buildGithubOauthState({
+  const composeId = await loadOrgDefaultComposeId(args.db, args.orgId);
+  args.signal.throwIfAborted();
+
+  return await buildGithubAppInstallUrl({
+    appSlug,
     vm0UserId: args.userId,
     orgId: args.orgId,
-    composeId: args.composeId ?? undefined,
+    composeId: composeId ?? undefined,
+    origin: args.origin,
     secretsEncryptionKey: env("SECRETS_ENCRYPTION_KEY"),
   });
-  const url = new URL(`https://github.com/apps/${appSlug}/installations/new`);
-  if (state) {
-    url.searchParams.set("state", state);
-  }
-  url.searchParams.set(
-    "redirect_uri",
-    `${args.origin}/api/github/app/setup/callback`,
-  );
-  return url.toString();
 }
 
 async function publishGithubChanged(userIds: readonly string[]): Promise<void> {
@@ -228,14 +225,13 @@ export const getGithubInstallation$ = command(
     signal.throwIfAborted();
 
     if (!installation) {
-      const composeId = await loadOrgDefaultComposeId(db, auth.orgId);
-      signal.throwIfAborted();
       const installUrl = canManageInstallation({ orgRole: auth.orgRole })
         ? await githubInstallUrl({
+            db,
             userId: auth.userId,
             orgId: auth.orgId,
-            composeId,
             origin,
+            signal,
           })
         : null;
       signal.throwIfAborted();

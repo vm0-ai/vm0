@@ -7927,19 +7927,21 @@ function GithubNotInstalledNotice({
   readonly githubData: GithubIntegrationData | null;
 }) {
   const installUrl =
-    githubData && !githubData.isInstalled ? githubData.installUrl : null;
+    githubData && !githubData.isInstalled
+      ? (githubData.installUrl ?? null)
+      : null;
 
   return (
     <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
       {i18n.t(($) => {
         return $.workflows.automations.github.installedRequired;
-      })}
+      })}{" "}
       {installUrl ? (
         <Button
           asChild
           type="button"
           variant="link"
-          className="ml-1 h-auto p-0 text-xs"
+          className="h-auto p-0 text-xs"
         >
           <a href={installUrl} target="_blank" rel="noreferrer">
             {i18n.t(($) => {
@@ -7948,7 +7950,7 @@ function GithubNotInstalledNotice({
           </a>
         </Button>
       ) : (
-        <span className="ml-1">
+        <span>
           {i18n.t(($) => {
             return $.workflows.automations.github.installAdminRequired;
           })}
