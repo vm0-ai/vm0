@@ -100,27 +100,9 @@ test("send a chat message, preserve media layout, cap long drafts, and preserve 
 
   await page.route("**/*layout-shift*.png*", async (route) => {
     const method = route.request().method();
-    if (method === "OPTIONS") {
-      await route.fulfill({
-        status: 204,
-        headers: {
-          "access-control-allow-headers": "*",
-          "access-control-allow-methods": "GET, PUT, OPTIONS",
-          "access-control-allow-origin": appUrl,
-        },
-      });
-      return;
-    }
-    if (method === "PUT") {
-      await route.fulfill({
-        status: 200,
-        headers: {
-          "access-control-allow-origin": appUrl,
-        },
-      });
-      return;
-    }
     if (method !== "GET") {
+      // Let the attachment reach real storage so the runner can read it.
+      // Only browser image reads are delayed for the layout-shift assertions.
       await route.continue();
       return;
     }
@@ -165,25 +147,24 @@ test("send a chat message, preserve media layout, cap long drafts, and preserve 
   const composer = page.locator('[contenteditable="true"]').first();
   await expect(composer).toBeVisible({ timeout: 20_000 });
 
-  // Own the runner precondition below instead of relying on the workspace's
-  // default model. USE_MOCK_CLAUDE only makes Claude runtimes execute the
-  // prompt as bash; Codex runtimes can answer the command as natural language.
+  // Own the runner precondition instead of relying on the workspace default.
+  // CI's mock Codex echoes the prompt verbatim, including attachment context.
   const modelPicker = page.locator(".zero-composer").getByRole("combobox");
   await modelPicker.click();
-  await page.getByRole("option", { name: /Claude Sonnet 5/ }).click();
+  await page.getByRole("option", { name: /^GPT 5\.6 Luna\b/ }).click();
   await expect(
     page
       .locator(".zero-composer")
-      .getByRole("combobox", { name: "Claude Sonnet 5", exact: true }),
+      .getByRole("combobox", { name: "GPT 5.6 Luna", exact: true }),
   ).toBeVisible();
 
-  // Send a message with an image attachment. Mock claude executes the prompt
-  // as bash and emits a second image URL in the assistant's Markdown.
+  // Send a message with an image attachment. Mock Codex echoes the plain-text
+  // prompt and renders its second image URL in the assistant's Markdown.
   const marker = `e2e-${Date.now()}`;
   const afterMediaMarker = `after-media-${Date.now()}`;
   const markdownImageUrl =
     "https://layout-shift.test/markdown-layout-shift.png";
-  const prompt = `printf '%s\\n\\n%s\\n\\n%s\\n' '${marker}' '${markdownImageUrl}' '${afterMediaMarker}'`;
+  const prompt = `${marker}\n\n${markdownImageUrl}\n\n${afterMediaMarker}`;
   await page.locator('input[type="file"]').first().setInputFiles({
     name: "attachment-layout-shift.png",
     mimeType: "image/png",
@@ -237,8 +218,8 @@ test("send a chat message, preserve media layout, cap long drafts, and preserve 
   ).toEqual(attachmentBefore);
 
   // Wait for assistant response — 120s because the full pipeline runs:
-  // runner picks up job → starts VM sandbox → mock claude executes → response streams back.
-  // Requires USE_MOCK_CLAUDE=true in CI. Expected latency: 60–90s.
+  // runner picks up job → starts VM sandbox → mock Codex echoes → response streams back.
+  // Requires USE_MOCK_CODEX=true in CI. Expected latency: 60–90s.
   const assistantMessage = page.locator('[data-role="assistant"]').last();
   const afterMedia = assistantMessage.getByText(afterMediaMarker);
   await expect(afterMedia).toBeVisible({ timeout: 120_000 });
