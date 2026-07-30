@@ -1038,10 +1038,9 @@
     "openNewPage": "Ouvrir ce navigateur dans une nouvelle page",
     "panel": {
       "notLive": "Navigateur non actif",
-      "resume": "Reprendre le navigateur",
-      "resumeDescription": "La reprise restaure le profil de connexion et le stockage enregistrés. Les pages et onglets précédents ne reviennent pas.",
-      "resuming": "Reprise en cours…",
-      "suspended": "Navigateur suspendu"
+      "start": "Démarrer le navigateur",
+      "startDescription": "Le démarrage restaure le profil de connexion et le stockage enregistrés lorsqu'ils sont disponibles, et rouvre les onglets enregistrés lorsque cela est possible.",
+      "starting": "Démarrage…"
     },
     "reclaimHint_one": "Zero conserve ce navigateur tant que ce panneau est ouvert, et le récupère après {{formattedCount}} minute d'inactivité.",
     "reclaimHint_many": "Zero conserve ce navigateur tant que ce panneau est ouvert, et le récupère après {{formattedCount}} minutes d'inactivité.",
@@ -1051,6 +1050,7 @@
       "starting": "Démarrage",
       "stopped": "Arrêté"
     },
+    "stop": "Arrêter le navigateur",
     "title": "Navigateur en direct",
     "unavailable": {
       "description": "Ce navigateur n'appartient pas à ce chat ou a été supprimé.",
