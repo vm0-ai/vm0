@@ -143,6 +143,9 @@ describe("zero generate website command", () => {
     expect(stdout).toContain(
       '"sha256": "f489a51fb99d8fadff8712d0406df06ac1a530116ebe612ab3f8605daa2bcce2"',
     );
+    expect(stdout.match(/"kind": "template"/gu)).toHaveLength(1);
+    expect(stdout).not.toContain('"id": "template:black-slabs"');
+    expect(stdout).not.toContain('"id": "template:web-prototype"');
   });
 
   it("should accept the built-in website picker id for --template", async () => {

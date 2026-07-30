@@ -159,6 +159,7 @@ ${formatRegistryListing(templates, "website templates")}`;
         prompt,
         slugSource: options.title,
         siteSlug: options.siteSlug,
+        selectedTemplate: resolvedTemplate,
         details: [
           `Requested title/site name: ${options.title ?? "not specified"}`,
           `Selected design system: ${

@@ -1,5 +1,6 @@
 import {
   type GenerationOutputKind,
+  type RegistryEntry,
   type ResourceCandidateSlice,
   type GenerationTarget,
   selectResourceCandidates,
@@ -12,6 +13,7 @@ interface HtmlArtifactAuthoringOptions {
   readonly prompt: string;
   readonly slugSource?: string;
   readonly siteSlug?: string;
+  readonly selectedTemplate?: RegistryEntry;
   readonly details: readonly string[];
   readonly artifactRules: readonly string[];
 }
@@ -107,6 +109,13 @@ export function createHtmlArtifactAuthoringPacket(
   }`;
   const title = titleForKind(options.kind);
   const candidateSlice = selectResourceCandidates(options.kind);
+  const candidates: ResourceCandidateSlice["candidates"] = {
+    ...candidateSlice.candidates,
+    templates:
+      options.selectedTemplate === undefined
+        ? candidateSlice.candidates.templates
+        : [options.selectedTemplate],
+  };
   const selectionSchema = {
     skills: "string[]",
     template: "string",
@@ -171,7 +180,7 @@ export function createHtmlArtifactAuthoringPacket(
     ...candidateSlice.sources.map(formatCandidateSource),
     "",
     "```json",
-    JSON.stringify(candidateSlice.candidates, null, 2),
+    JSON.stringify(candidates, null, 2),
     "```",
     "",
     "## Stage 2: Resolve Selected Resources",
@@ -241,7 +250,7 @@ export function createHtmlArtifactAuthoringPacket(
     registryVersion: candidateSlice.registryVersion,
     artifact,
     selection: {
-      candidates: candidateSlice.candidates,
+      candidates,
       outputSchema: selectionSchema,
     },
     authoring: {

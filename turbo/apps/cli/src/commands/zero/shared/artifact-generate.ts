@@ -169,6 +169,7 @@ ${formatRegistryListing(templates, `${config.target} templates`)}`;
           prompt,
           slugSource: options.title,
           siteSlug: options.siteSlug,
+          selectedTemplate: resolvedTemplate,
           details: [...config.details(options), ...extraDetails],
           artifactRules: config.artifactRules,
         });

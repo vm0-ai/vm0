@@ -317,6 +317,9 @@ describe("zero generate source-backed artifact commands", () => {
     expect(stdout).toContain(
       "Selected template: template:finance-report (Finance Report)",
     );
+    expect(stdout).toContain('"id": "template:finance-report"');
+    expect(stdout.match(/"kind": "template"/gu)).toHaveLength(1);
+    expect(stdout).not.toContain('"id": "template:weekly-update"');
   });
 
   it("rejects an unknown template id on dashboard-design", async () => {
