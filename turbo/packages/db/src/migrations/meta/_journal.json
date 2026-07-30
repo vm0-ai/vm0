@@ -5335,6 +5335,13 @@
       "when": 1785409880174,
       "tag": "0761_drop_github_issue_sessions",
       "breakpoints": true
+    },
+    {
+      "idx": 762,
+      "version": "7",
+      "when": 1785410977112,
+      "tag": "0762_remove_legacy_connector_identity_columns",
+      "breakpoints": true
     }
   ]
 }

@@ -1233,6 +1233,57 @@ jobs:
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
+      - name: Resolve Cloudflare Pages preview branch
+        id: pages-branch
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref || '' }}
+          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number || '' }}
+        run: |
+          branch="$(bash .github/scripts/resolve-okou-pages-branch.sh \
+            "$EVENT_NAME" \
+            "$PULL_REQUEST_NUMBER" \
+            "$MERGE_GROUP_HEAD_REF")"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve Cloudflare Pages custom preview domain
+        id: pages-custom-domain
+        if: needs.detect-release.outputs.skip != 'true' || github.event_name == 'push'
+        env:
+          PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
+        run: |
+          : "${CF_PAGES_PREVIEW_DOMAIN:?CF_PAGES_PREVIEW_DOMAIN variable is required}"
+          echo "domain=${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}" >> "$GITHUB_OUTPUT"
+          echo "url=https://${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}" >> "$GITHUB_OUTPUT"
+
+      - name: Begin Cloudflare Pages custom preview domain validation
+        id: pages-domain-validation
+        if: steps.pages-custom-domain.outputs.domain != ''
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
+          PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
+          PAGES_CUSTOM_DOMAIN: ${{ steps.pages-custom-domain.outputs.domain }}
+        run: |
+          : "${CF_PAGES_PROJECT_NAME:?CF_PAGES_PROJECT_NAME variable is required}"
+          : "${CF_PAGES_PREVIEW_ZONE_ID:?CF_PAGES_PREVIEW_ZONE_ID variable is required}"
+          : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
+          status="$(bash .github/scripts/manage-okou-pages-domain.sh \
+            begin \
+            "$CLOUDFLARE_ACCOUNT_ID" \
+            "$CF_PAGES_PREVIEW_ZONE_ID" \
+            "$CF_PAGES_PROJECT_NAME" \
+            "$PAGES_CUSTOM_DOMAIN" \
+            "$PAGES_BRANCH")"
+          case "$status" in
+            active|pending) ;;
+            *)
+              echo "Unexpected Pages domain status: ${status}" >&2
+              exit 1
+              ;;
+          esac
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          echo "Cloudflare Pages domain validation status: ${status}"
+
       - uses: ./.github/actions/toolchain-init
 
       - name: Install AWS CLI
@@ -1258,19 +1309,6 @@ jobs:
           sha="$(bash .github/scripts/resolve-build-commit-sha.sh)"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "prefix=okou-app/$sha" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve Cloudflare Pages preview branch
-        id: pages-branch
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref || '' }}
-          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number || '' }}
-        run: |
-          branch="$(bash .github/scripts/resolve-okou-pages-branch.sh \
-            "$EVENT_NAME" \
-            "$PULL_REQUEST_NUMBER" \
-            "$MERGE_GROUP_HEAD_REF")"
-          echo "branch=$branch" >> "$GITHUB_OUTPUT"
 
       - name: Check for existing artifact
         id: existing
@@ -1445,16 +1483,6 @@ jobs:
             echo "url=https://${PAGES_BRANCH}.${CF_PAGES_PROJECT_NAME}.pages.dev"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Resolve Cloudflare Pages custom preview domain
-        id: pages-custom-domain
-        if: needs.detect-release.outputs.skip != 'true' || github.event_name == 'push'
-        env:
-          PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
-        run: |
-          : "${CF_PAGES_PREVIEW_DOMAIN:?CF_PAGES_PREVIEW_DOMAIN variable is required}"
-          echo "domain=${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}" >> "$GITHUB_OUTPUT"
-          echo "url=https://${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}" >> "$GITHUB_OUTPUT"
-
       - name: Deploy Cloudflare Pages preview
         id: pages-deploy
         env:
@@ -1503,16 +1531,21 @@ jobs:
 
           echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
 
-      - name: Configure Cloudflare Pages custom preview domain
+      - name: Finalize Cloudflare Pages custom preview domain
         if: steps.pages-custom-domain.outputs.domain != ''
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
           PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
           PAGES_CUSTOM_DOMAIN: ${{ steps.pages-custom-domain.outputs.domain }}
+          PAGES_DOMAIN_STATUS: ${{ steps.pages-domain-validation.outputs.status }}
         run: |
           : "${CF_PAGES_PREVIEW_ZONE_ID:?CF_PAGES_PREVIEW_ZONE_ID variable is required}"
+          if [[ "$PAGES_DOMAIN_STATUS" == "active" ]]; then
+            echo "Cloudflare Pages custom branch domain already active: https://${PAGES_CUSTOM_DOMAIN}"
+            exit 0
+          fi
           bash .github/scripts/manage-okou-pages-domain.sh \
-            ensure \
+            finish \
             "$CLOUDFLARE_ACCOUNT_ID" \
             "$CF_PAGES_PREVIEW_ZONE_ID" \
             "$CF_PAGES_PROJECT_NAME" \

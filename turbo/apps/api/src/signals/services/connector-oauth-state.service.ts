@@ -27,7 +27,7 @@ const storedOAuthStateSelection = Object.freeze({
 
 export type StoredOAuthState = Omit<
   typeof connectorOauthStates.$inferSelect,
-  "connectorSlug" | "legacyType"
+  "connectorSlug"
 > & {
   readonly type: typeof connectorOauthStates.$inferSelect.connectorSlug;
 };
