@@ -207,7 +207,12 @@ async fn restore_drain_restart_override_after_failed_cleanup(
             unit.unit_name()
         )));
     }
-    if let Err(e) = coordinate_systemd_reload(unit, SystemdReloadRequirement::Dirty).await {
+    if let Err(e) = coordinate_systemd_reload(
+        unit,
+        SystemdReloadRequirement::dirty().with_drain_override(true),
+    )
+    .await
+    {
         return Err(RunnerError::Internal(format!(
             "failed to reload systemd after restoring drain restart override for {} ({context}): {e}",
             unit.unit_name()
@@ -223,8 +228,11 @@ async fn reload_systemd_if_drain_restart_override_removed(
         return Ok(false);
     }
 
-    if let Err(reload_error) =
-        coordinate_systemd_reload(unit, SystemdReloadRequirement::Dirty).await
+    if let Err(reload_error) = coordinate_systemd_reload(
+        unit,
+        SystemdReloadRequirement::dirty().with_drain_override(false),
+    )
+    .await
     {
         if let Err(restore_error) =
             restore_drain_restart_override_after_failed_cleanup(unit, "remove_reload").await
@@ -256,9 +264,12 @@ async fn restore_service_state_after_reload_failure(
         failures.push(format!("restore boot enablement: {error}"));
     }
 
-    if let Err(error) =
-        coordinate_systemd_reload(unit, SystemdReloadRequirement::DirtyOrNotFound).await
-    {
+    let requirement = if restore_drain_override {
+        SystemdReloadRequirement::dirty_or_not_found().with_drain_override(true)
+    } else {
+        SystemdReloadRequirement::dirty_or_not_found()
+    };
+    if let Err(error) = coordinate_systemd_reload(unit, requirement).await {
         failures.push(format!("reload restored systemd state: {error}"));
     }
 
@@ -458,11 +469,13 @@ async fn install(args: ServiceRunArgs) -> RunnerResult<()> {
                 unit_for_activation.service_name(),
             ])
             .await;
-            let reload_result = coordinate_systemd_reload(
-                &unit_for_activation,
-                SystemdReloadRequirement::DirtyOrNotFound,
-            )
-            .await;
+            let requirement = if drain_override_removed {
+                SystemdReloadRequirement::dirty_or_not_found().with_drain_override(false)
+            } else {
+                SystemdReloadRequirement::dirty_or_not_found()
+            };
+            let reload_result =
+                coordinate_systemd_reload(&unit_for_activation, requirement).await;
 
             if let Err(reload_error) = reload_result {
                 let primary_error = match enable_result {
@@ -545,7 +558,11 @@ pub(crate) async fn uninstall_service_unit(unit: &RunnerServiceUnit) -> RunnerRe
         }
     }
 
-    coordinate_systemd_reload(unit, SystemdReloadRequirement::Dirty).await?;
+    coordinate_systemd_reload(
+        unit,
+        SystemdReloadRequirement::dirty().with_drain_override(false),
+    )
+    .await?;
 
     info!(unit = %unit.unit_name(), "service uninstalled");
     Ok(())

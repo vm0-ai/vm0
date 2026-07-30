@@ -153,7 +153,7 @@ async fn reload_systemd_if_drain_restart_override_removed_bounded(
 
     let reload_result = coordinate_systemd_reload_bounded(
         unit,
-        SystemdReloadRequirement::Dirty,
+        SystemdReloadRequirement::dirty().with_drain_override(false),
         CLEANUP_LOCK_TIMEOUT,
         CLEANUP_ACTION_TIMEOUT,
     )
@@ -196,7 +196,7 @@ async fn restore_drain_restart_override_after_failed_cleanup_bounded(
     }
     if let Err(e) = coordinate_systemd_reload_bounded(
         unit,
-        SystemdReloadRequirement::Dirty,
+        SystemdReloadRequirement::dirty().with_drain_override(true),
         CLEANUP_LOCK_TIMEOUT,
         CLEANUP_ACTION_TIMEOUT,
     )

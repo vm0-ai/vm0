@@ -49,7 +49,11 @@ trait ServiceDrainOps {
     ) -> ServiceFuture<'a, SystemdUnitEnablement>;
     fn write_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<()>;
     fn remove_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<bool>;
-    fn daemon_reload<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()>;
+    fn daemon_reload<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+        requirement: SystemdReloadRequirement,
+    ) -> ServiceFuture<'a, ()>;
     fn restart_policy<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, String>;
     fn signal_drain<'a>(
         &'a mut self,
@@ -70,7 +74,11 @@ trait ServiceResumeOps {
     ) -> ServiceFuture<'a, SystemdUnitEnablement>;
     fn write_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<()>;
     fn remove_restart_override(&mut self, unit: &RunnerServiceUnit) -> RunnerResult<bool>;
-    fn daemon_reload<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()>;
+    fn daemon_reload<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+        requirement: SystemdReloadRequirement,
+    ) -> ServiceFuture<'a, ()>;
     fn signal_resume<'a>(
         &'a mut self,
         unit: &'a RunnerServiceUnit,
@@ -106,9 +114,13 @@ impl ServiceDrainOps for RealServiceDrainOps {
         remove_drain_restart_override(unit)
     }
 
-    fn daemon_reload<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
+    fn daemon_reload<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+        requirement: SystemdReloadRequirement,
+    ) -> ServiceFuture<'a, ()> {
         Box::pin(async move {
-            coordinate_systemd_reload(unit, SystemdReloadRequirement::Dirty)
+            coordinate_systemd_reload(unit, requirement)
                 .await
                 .map(|_| ())
         })
@@ -156,9 +168,13 @@ impl ServiceResumeOps for RealServiceResumeOps {
         remove_drain_restart_override(unit)
     }
 
-    fn daemon_reload<'a>(&'a mut self, unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
+    fn daemon_reload<'a>(
+        &'a mut self,
+        unit: &'a RunnerServiceUnit,
+        requirement: SystemdReloadRequirement,
+    ) -> ServiceFuture<'a, ()> {
         Box::pin(async move {
-            coordinate_systemd_reload(unit, SystemdReloadRequirement::Dirty)
+            coordinate_systemd_reload(unit, requirement)
                 .await
                 .map(|_| ())
         })
@@ -223,7 +239,13 @@ async fn rollback_drain_transition(
         None => failures.push("prior boot enablement is unavailable".to_string()),
     }
 
-    if let Err(error) = ops.daemon_reload(unit).await {
+    if let Err(error) = ops
+        .daemon_reload(
+            unit,
+            SystemdReloadRequirement::dirty().with_drain_override(false),
+        )
+        .await
+    {
         failures.push(format!("reload restored systemd state: {error}"));
     }
 
@@ -260,7 +282,13 @@ async fn rollback_resume_transition(
         None => failures.push("prior boot enablement is unavailable".to_string()),
     }
 
-    if let Err(error) = ops.daemon_reload(unit).await {
+    if let Err(error) = ops
+        .daemon_reload(
+            unit,
+            SystemdReloadRequirement::dirty().with_drain_override(true),
+        )
+        .await
+    {
         failures.push(format!("reload restored systemd state: {error}"));
     }
 
@@ -399,7 +427,13 @@ async fn drain_with_ops(
         info!(unit = %unit.unit_name(), "disabled (won't restart on reboot)");
     }
 
-    if let Err(error) = ops.daemon_reload(unit).await {
+    if let Err(error) = ops
+        .daemon_reload(
+            unit,
+            SystemdReloadRequirement::dirty().with_drain_override(true),
+        )
+        .await
+    {
         return Err(drain_error_after_rollback(
             unit,
             restart_override_written,
@@ -507,7 +541,13 @@ async fn resume_after_preflight_with_ops(
         info!(unit = %unit.unit_name(), "re-enabled (will restart on reboot)");
     }
 
-    if let Err(error) = ops.daemon_reload(unit).await {
+    if let Err(error) = ops
+        .daemon_reload(
+            unit,
+            SystemdReloadRequirement::dirty().with_drain_override(false),
+        )
+        .await
+    {
         return Err(resume_error_after_rollback(
             unit,
             drain_override_removed,
@@ -714,7 +754,11 @@ mod tests {
             }
         }
 
-        fn daemon_reload<'a>(&'a mut self, _unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
+        fn daemon_reload<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+            _requirement: SystemdReloadRequirement,
+        ) -> ServiceFuture<'a, ()> {
             self.events.push("daemon_reload");
             let reload_error = self.reload_errors.pop_front().unwrap_or(false);
             Box::pin(std::future::ready(if reload_error {
@@ -806,7 +850,11 @@ mod tests {
             }
         }
 
-        fn daemon_reload<'a>(&'a mut self, _unit: &'a RunnerServiceUnit) -> ServiceFuture<'a, ()> {
+        fn daemon_reload<'a>(
+            &'a mut self,
+            _unit: &'a RunnerServiceUnit,
+            _requirement: SystemdReloadRequirement,
+        ) -> ServiceFuture<'a, ()> {
             self.events.push("daemon_reload");
             let reload_error = self.reload_errors.pop_front().unwrap_or(false);
             Box::pin(std::future::ready(if reload_error {

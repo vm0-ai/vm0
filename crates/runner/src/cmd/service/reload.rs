@@ -5,6 +5,7 @@ use tracing::{debug, info, warn};
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
 
+use super::drain_override::drain_restart_override_path;
 use super::systemctl::{
     BoundedSystemctlOutcome, SystemdReloadState, read_systemd_reload_state,
     read_systemd_reload_state_bounded, run_systemctl, run_systemctl_bounded,
@@ -12,14 +13,37 @@ use super::systemctl::{
 use super::{RunnerServiceUnit, ServiceFuture};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum SystemdReloadRequirement {
-    Dirty,
-    DirtyOrNotFound,
+pub(super) struct SystemdReloadRequirement {
+    reload_if_not_found: bool,
+    expected_drain_override: Option<bool>,
 }
 
 impl SystemdReloadRequirement {
-    fn requires_reload(self, state: SystemdReloadState) -> bool {
-        state.need_daemon_reload() || matches!(self, Self::DirtyOrNotFound) && state.is_not_found()
+    pub(super) const fn dirty() -> Self {
+        Self {
+            reload_if_not_found: false,
+            expected_drain_override: None,
+        }
+    }
+
+    pub(super) const fn dirty_or_not_found() -> Self {
+        Self {
+            reload_if_not_found: true,
+            expected_drain_override: None,
+        }
+    }
+
+    pub(super) const fn with_drain_override(mut self, expected_present: bool) -> Self {
+        self.expected_drain_override = Some(expected_present);
+        self
+    }
+
+    fn requires_reload(self, unit: &RunnerServiceUnit, state: &SystemdReloadState) -> bool {
+        state.need_daemon_reload()
+            || self.reload_if_not_found && state.is_not_found()
+            || self.expected_drain_override.is_some_and(|expected| {
+                state.has_drop_in_path(&drain_restart_override_path(unit)) != expected
+            })
     }
 }
 
@@ -99,7 +123,7 @@ async fn coordinate_systemd_reload_with_ops(
     let _reload_lock = acquire_systemd_reload_lock(home, unit, lock_timeout).await?;
 
     let should_reload = match ops.read_state(unit).await {
-        Ok(state) => requirement.requires_reload(state),
+        Ok(state) => requirement.requires_reload(unit, &state),
         Err(error) => {
             warn!(
                 unit = %unit.unit_name(),
@@ -169,6 +193,7 @@ mod tests {
     #[derive(Clone)]
     struct FakeSystemdReloadOps {
         dirty: Arc<AtomicBool>,
+        drain_override_loaded: bool,
         query_error: bool,
         reload_count: Arc<AtomicUsize>,
     }
@@ -176,7 +201,7 @@ mod tests {
     impl SystemdReloadOps for FakeSystemdReloadOps {
         fn read_state<'a>(
             &'a mut self,
-            _unit: &'a RunnerServiceUnit,
+            unit: &'a RunnerServiceUnit,
         ) -> ServiceFuture<'a, SystemdReloadState> {
             Box::pin(std::future::ready(if self.query_error {
                 Err(RunnerError::Internal("query failed".to_string()))
@@ -184,6 +209,15 @@ mod tests {
                 Ok(SystemdReloadState::for_test(
                     false,
                     self.dirty.load(Ordering::SeqCst),
+                    if self.drain_override_loaded {
+                        vec![
+                            drain_restart_override_path(unit)
+                                .to_string_lossy()
+                                .into_owned(),
+                        ]
+                    } else {
+                        Vec::new()
+                    },
                 ))
             }))
         }
@@ -198,6 +232,7 @@ mod tests {
     fn fake_ops(dirty: bool) -> FakeSystemdReloadOps {
         FakeSystemdReloadOps {
             dirty: Arc::new(AtomicBool::new(dirty)),
+            drain_override_loaded: false,
             query_error: false,
             reload_count: Arc::new(AtomicUsize::new(0)),
         }
@@ -205,13 +240,50 @@ mod tests {
 
     #[test]
     fn install_requires_reload_for_not_found_unit() {
-        let state = SystemdReloadState::for_test(true, false);
+        let unit = RunnerServiceUnit::from_suffix("test").unwrap();
+        let state = SystemdReloadState::for_test(true, false, Vec::new());
 
         assert!(
-            SystemdReloadRequirement::DirtyOrNotFound.requires_reload(state),
+            SystemdReloadRequirement::dirty_or_not_found().requires_reload(&unit, &state),
             "a newly written unit must be loaded before start"
         );
-        assert!(!SystemdReloadRequirement::Dirty.requires_reload(state));
+        assert!(!SystemdReloadRequirement::dirty().requires_reload(&unit, &state));
+    }
+
+    #[test]
+    fn drain_override_state_requires_reload_when_systemd_dirty_flag_misses_change() {
+        let unit = RunnerServiceUnit::from_suffix("test").unwrap();
+        let absent = SystemdReloadState::for_test(false, false, Vec::new());
+        let present = SystemdReloadState::for_test(
+            false,
+            false,
+            vec![
+                drain_restart_override_path(&unit)
+                    .to_string_lossy()
+                    .into_owned(),
+            ],
+        );
+
+        assert!(
+            SystemdReloadRequirement::dirty()
+                .with_drain_override(true)
+                .requires_reload(&unit, &absent)
+        );
+        assert!(
+            !SystemdReloadRequirement::dirty()
+                .with_drain_override(true)
+                .requires_reload(&unit, &present)
+        );
+        assert!(
+            SystemdReloadRequirement::dirty()
+                .with_drain_override(false)
+                .requires_reload(&unit, &present)
+        );
+        assert!(
+            !SystemdReloadRequirement::dirty()
+                .with_drain_override(false)
+                .requires_reload(&unit, &absent)
+        );
     }
 
     #[tokio::test]
@@ -226,7 +298,7 @@ mod tests {
             coordinate_systemd_reload_with_ops(
                 &unit,
                 &home,
-                SystemdReloadRequirement::Dirty,
+                SystemdReloadRequirement::dirty(),
                 None,
                 &mut ops,
             )
@@ -250,14 +322,14 @@ mod tests {
             coordinate_systemd_reload_with_ops(
                 &unit_a,
                 &home,
-                SystemdReloadRequirement::Dirty,
+                SystemdReloadRequirement::dirty(),
                 None,
                 &mut ops_a,
             ),
             coordinate_systemd_reload_with_ops(
                 &unit_b,
                 &home,
-                SystemdReloadRequirement::Dirty,
+                SystemdReloadRequirement::dirty(),
                 None,
                 &mut ops_b,
             ),
@@ -284,7 +356,7 @@ mod tests {
         let error = coordinate_systemd_reload_with_ops(
             &unit,
             &home,
-            SystemdReloadRequirement::Dirty,
+            SystemdReloadRequirement::dirty(),
             Some(Duration::from_secs(1)),
             &mut ops,
         )

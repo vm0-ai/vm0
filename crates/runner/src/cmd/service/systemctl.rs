@@ -263,23 +263,35 @@ enum SystemdUnitLoadState {
     Masked,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct SystemdReloadState {
     load_state: SystemdUnitLoadState,
     need_daemon_reload: bool,
+    drop_in_paths: Vec<String>,
 }
 
 impl SystemdReloadState {
-    pub(super) fn is_not_found(self) -> bool {
+    pub(super) fn is_not_found(&self) -> bool {
         self.load_state == SystemdUnitLoadState::NotFound
     }
 
-    pub(super) fn need_daemon_reload(self) -> bool {
+    pub(super) fn need_daemon_reload(&self) -> bool {
         self.need_daemon_reload
     }
 
+    pub(super) fn has_drop_in_path(&self, path: &std::path::Path) -> bool {
+        let path = path.to_string_lossy();
+        self.drop_in_paths
+            .iter()
+            .any(|loaded| loaded == path.as_ref())
+    }
+
     #[cfg(test)]
-    pub(super) fn for_test(is_not_found: bool, need_daemon_reload: bool) -> Self {
+    pub(super) fn for_test(
+        is_not_found: bool,
+        need_daemon_reload: bool,
+        drop_in_paths: Vec<String>,
+    ) -> Self {
         Self {
             load_state: if is_not_found {
                 SystemdUnitLoadState::NotFound
@@ -287,6 +299,7 @@ impl SystemdReloadState {
                 SystemdUnitLoadState::Loaded
             },
             need_daemon_reload,
+            drop_in_paths,
         }
     }
 }
@@ -296,7 +309,7 @@ pub(super) async fn read_systemd_reload_state(
     unit: &RunnerServiceUnit,
 ) -> RunnerResult<SystemdReloadState> {
     let svc = unit.service_name();
-    let properties = ["LoadState", "NeedDaemonReload"];
+    let properties = ["LoadState", "NeedDaemonReload", "DropInPaths"];
     let output = run_systemctl_show(svc, &properties).await?;
     systemd_reload_state_from_output(svc, &properties, &output)
 }
@@ -307,7 +320,7 @@ pub(super) async fn read_systemd_reload_state_bounded(
     duration: Duration,
 ) -> RunnerResult<SystemdReloadState> {
     let svc = unit.service_name();
-    let properties = ["LoadState", "NeedDaemonReload"];
+    let properties = ["LoadState", "NeedDaemonReload", "DropInPaths"];
     let output = run_systemctl_show_bounded(svc, &properties, duration).await?;
     systemd_reload_state_from_output(svc, &properties, &output)
 }
@@ -768,6 +781,10 @@ fn systemd_reload_state_from_systemctl_show(
         "NeedDaemonReload",
         required_systemctl_property(svc, values, "NeedDaemonReload")?,
     )?;
+    let drop_in_paths = systemctl_property(svc, values, "DropInPaths")?
+        .split_ascii_whitespace()
+        .map(str::to_owned)
+        .collect();
     ensure_systemctl_show_status(
         svc,
         properties,
@@ -778,6 +795,7 @@ fn systemd_reload_state_from_systemctl_show(
     Ok(SystemdReloadState {
         load_state,
         need_daemon_reload,
+        drop_in_paths,
     })
 }
 
@@ -1296,10 +1314,10 @@ mod tests {
     fn systemd_reload_state_parses_loaded_dirty_unit() {
         use std::os::unix::process::ExitStatusExt;
 
-        let properties = ["LoadState", "NeedDaemonReload"];
+        let properties = ["LoadState", "NeedDaemonReload", "DropInPaths"];
         let output = systemctl_show_output(
             ExitStatus::from_raw(0),
-            b"LoadState=loaded\nNeedDaemonReload=yes\n",
+            b"LoadState=loaded\nNeedDaemonReload=yes\nDropInPaths=/run/systemd/system/vm0-runner-test.service.d/50-vm0-drain.conf\n",
             b"",
         );
 
@@ -1309,16 +1327,19 @@ mod tests {
 
         assert!(!state.is_not_found());
         assert!(state.need_daemon_reload());
+        assert!(state.has_drop_in_path(std::path::Path::new(
+            "/run/systemd/system/vm0-runner-test.service.d/50-vm0-drain.conf"
+        )));
     }
 
     #[test]
     fn systemd_reload_state_accepts_not_found_with_failed_status() {
         use std::os::unix::process::ExitStatusExt;
 
-        let properties = ["LoadState", "NeedDaemonReload"];
+        let properties = ["LoadState", "NeedDaemonReload", "DropInPaths"];
         let output = systemctl_show_output(
             ExitStatus::from_raw(0x100),
-            b"LoadState=not-found\nNeedDaemonReload=no\n",
+            b"LoadState=not-found\nNeedDaemonReload=no\nDropInPaths=\n",
             b"Unit not found\n",
         );
 
@@ -1334,10 +1355,10 @@ mod tests {
     fn systemd_reload_state_rejects_unknown_boolean() {
         use std::os::unix::process::ExitStatusExt;
 
-        let properties = ["LoadState", "NeedDaemonReload"];
+        let properties = ["LoadState", "NeedDaemonReload", "DropInPaths"];
         let output = systemctl_show_output(
             ExitStatus::from_raw(0),
-            b"LoadState=loaded\nNeedDaemonReload=maybe\n",
+            b"LoadState=loaded\nNeedDaemonReload=maybe\nDropInPaths=\n",
             b"",
         );
 
@@ -1352,10 +1373,10 @@ mod tests {
     fn systemd_reload_state_rejects_unknown_load_state() {
         use std::os::unix::process::ExitStatusExt;
 
-        let properties = ["LoadState", "NeedDaemonReload"];
+        let properties = ["LoadState", "NeedDaemonReload", "DropInPaths"];
         let output = systemctl_show_output(
             ExitStatus::from_raw(0),
-            b"LoadState=half-loaded\nNeedDaemonReload=yes\n",
+            b"LoadState=half-loaded\nNeedDaemonReload=yes\nDropInPaths=\n",
             b"",
         );
 
