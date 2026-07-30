@@ -374,7 +374,7 @@ const sendEventBody$ = bodyResultOf(chatEventsContract.send);
 const RECENT_CHAT_RUN_LIMIT = 10;
 const WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP = 4000;
 const INSUFFICIENT_CREDITS_MARKER = "insufficient_credits";
-const replacementChatEvent = alias(chatEvents, "replacement_chat_message");
+const replacementChatEvent = alias(chatEvents, "replacement_chat_event");
 const replacementAgentRun = alias(agentRuns, "replacement_agent_run");
 
 function forbidden(message: string) {
