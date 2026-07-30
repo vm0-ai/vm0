@@ -106,6 +106,7 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     completeHostedSiteDeployment$,
     {
       orgId: auth.orgId,
+      runId: "runId" in auth ? auth.runId : undefined,
       deploymentId: params.deploymentId,
     },
     signal,
@@ -167,7 +168,11 @@ const deploymentsInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const params = get(deploymentsParams$);
   const result = await set(
     getHostedSiteDeployments$,
-    { orgId: auth.orgId, site: params.site },
+    {
+      orgId: auth.orgId,
+      runId: "runId" in auth ? auth.runId : undefined,
+      site: params.site,
+    },
     signal,
   );
   signal.throwIfAborted();
