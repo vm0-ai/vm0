@@ -29,8 +29,6 @@ export const zeroBrowserSuspensionReasonSchema = z.enum([
   "run_end",
   "idle",
   "timeout",
-  // Historical reason kept for rows written before browser billing was removed.
-  "budget",
   "provider",
   "reconcile",
   "user",

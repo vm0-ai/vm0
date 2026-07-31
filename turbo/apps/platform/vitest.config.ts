@@ -20,6 +20,9 @@ export default defineConfig({
       // Mock idb in tests so IndexedDB operations fall through to the
       // remote (MSW-mocked) path on openDB rejection in happy-dom.
       idb: path.resolve(__dirname, "./src/mocks/idb.ts"),
+      // Mock mermaid in tests: the real renderer needs SVG measurement APIs
+      // that happy-dom does not implement.
+      mermaid: path.resolve(__dirname, "./src/mocks/mermaid.ts"),
       "idb-real": path.resolve(__dirname, "./node_modules/idb/build/index.js"),
     },
   },

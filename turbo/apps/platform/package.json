@@ -42,6 +42,7 @@
     "idb": "~8.0.3",
     "katex": "^0.17.0",
     "lowlight": "^3.3.0",
+    "mermaid": "^11.16.0",
     "path-to-regexp": "^8.4.0",
     "posthog-js": "^1.372.1",
     "react": "^19.2.6",

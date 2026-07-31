@@ -4545,6 +4545,11 @@
       "description": "Versi {{brandName}} ini tidak lagi didukung. Muat ulang untuk memuat versi terbaru.",
       "title": "Pembaruan diperlukan"
     },
+    "mermaid": {
+      "diagramLabel": "Diagram",
+      "expand": "Perbesar diagram",
+      "viewSource": "Sumber diagram"
+    },
     "notFound": {
       "description": "Halaman yang Anda cari tidak ada.",
       "title": "Halaman tidak ditemukan"
