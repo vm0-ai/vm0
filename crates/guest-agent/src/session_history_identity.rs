@@ -82,13 +82,14 @@ pub fn verify_final_session_history_identity_file(
 /// decoded size and SHA-256 identity are verified from the same snapshot that
 /// supplies the exported bytes.
 ///
-/// Plain history is exported as [`SessionHistorySidecarRepresentation::Raw`].
-/// Native Codex zstd is preserved as
-/// [`SessionHistorySidecarRepresentation::CodexZstd`] when its encoded form
-/// fits the export budget; otherwise its decoded bytes are exported as raw
-/// history. Identity size and hash fields always describe decoded history,
-/// while [`SessionHistorySidecarExportMetadata::encoded_size`] is the exact
-/// length of the selected output representation.
+/// History is exported as [`SessionHistorySidecarRepresentation::Raw`] after
+/// decoding unless it is native Codex zstd whose encoded form fits the export
+/// budget. That native representation is preserved as
+/// [`SessionHistorySidecarRepresentation::CodexZstd`]; an oversized encoded
+/// form falls back to decoded raw history. Identity size and hash fields always
+/// describe decoded history, while
+/// [`SessionHistorySidecarExportMetadata::encoded_size`] is the exact length of
+/// the selected output representation.
 ///
 /// After verification, `export_path` is created or truncated through
 /// [`crate::paths::write_private`] and inherits that helper's platform-specific
