@@ -50,6 +50,7 @@ describe("POST /api/test/usage-settlement/process", () => {
     });
     const modelIdempotencyKey = randomUUID();
     const browserIdempotencyKey = randomUUID();
+    const connectorIdempotencyKey = randomUUID();
 
     await store.set(
       insertUsageEvent$,
@@ -61,6 +62,19 @@ describe("POST /api/test/usage-settlement/process", () => {
         quantity: 100,
         grossCredits: 19,
         idempotencyKey: modelIdempotencyKey,
+      },
+      context.signal,
+    );
+    await store.set(
+      insertUsageEvent$,
+      {
+        ...fixture,
+        kind: "connector",
+        provider: "x",
+        category: "analytics.read",
+        quantity: 2,
+        grossCredits: 97,
+        idempotencyKey: connectorIdempotencyKey,
       },
       context.signal,
     );
@@ -109,6 +123,15 @@ describe("POST /api/test/usage-settlement/process", () => {
       grossCredits: 23,
       creditsCharged: 0,
       billingError: "missing_pricing",
+    });
+    await expect(
+      store.set(readUsageEventState$, connectorIdempotencyKey, context.signal),
+    ).resolves.toStrictEqual({
+      id: expect.any(String),
+      status: "processed",
+      grossCredits: 97,
+      creditsCharged: 10,
+      billingError: null,
     });
   });
 });
