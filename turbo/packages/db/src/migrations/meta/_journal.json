@@ -5423,8 +5423,15 @@
     {
       "idx": 774,
       "version": "7",
-      "when": 1785456335274,
-      "tag": "0774_abnormal_korvac",
+      "when": 1785456385514,
+      "tag": "0774_drop_legacy_chat_event_seq_allocator",
+      "breakpoints": true
+    },
+    {
+      "idx": 775,
+      "version": "7",
+      "when": 1785458655096,
+      "tag": "0775_supreme_tarantula",
       "breakpoints": true
     }
   ]
