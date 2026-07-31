@@ -4552,6 +4552,7 @@
     },
     "mermaid": {
       "diagramLabel": "Diagram",
+      "expand": "Expand diagram",
       "viewSource": "Diagram source"
     },
     "notFound": {

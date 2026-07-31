@@ -168,6 +168,28 @@ describe("assistant markdown", () => {
     expect(screen.getByText("Diagram source")).toBeInTheDocument();
   });
 
+  it("opens a rendered mermaid diagram in the zoomable lightbox", async () => {
+    mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-markdown",
+      featureSwitches: { [FeatureSwitchKey.MermaidDiagrams]: true },
+    });
+
+    const expand = await screen.findByLabelText("Expand diagram");
+    await waitFor(() => {
+      expect(expand).toBeEnabled();
+    });
+
+    click(expand);
+
+    const lightboxImage = await screen.findByTestId(
+      "attachment-lightbox-image",
+    );
+    expect(lightboxImage.getAttribute("src")).toContain("data:image/svg+xml");
+  });
+
   it("keeps the source visible when a mermaid diagram cannot be parsed", async () => {
     mockThread("```mermaid\nthis is not a diagram\n```");
 

@@ -1060,6 +1060,20 @@ body {
   margin-bottom: 16px;
 }
 
+.wmde-markdown .mermaid-diagram-expand {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+}
+
+.wmde-markdown .mermaid-diagram-expand:disabled {
+  cursor: default;
+}
+
 .wmde-markdown .mermaid-diagram-canvas {
   overflow-x: auto;
 }

@@ -1,28 +1,31 @@
 import { command, computed, state } from "ccstate";
 import { onRef, settle, withCleanup } from "./utils.ts";
 
-type MermaidDiagramStatus = "rendering" | "rendered" | "error";
+export type MermaidDiagramResult =
+  | { readonly status: "rendering" }
+  | { readonly status: "rendered"; readonly url: string }
+  | { readonly status: "error" };
 
-const internalMermaidDiagramStatusByKey$ = state<
-  Record<string, MermaidDiagramStatus>
+const internalMermaidDiagramResultByKey$ = state<
+  Record<string, MermaidDiagramResult>
 >({});
 
-export const mermaidDiagramStatusByKey$ = computed((get) => {
-  return get(internalMermaidDiagramStatusByKey$);
+export const mermaidDiagramResultByKey$ = computed((get) => {
+  return get(internalMermaidDiagramResultByKey$);
 });
 
 /**
  * Diagrams are identified by their source and theme: identical diagrams share a
- * status entry, and a theme switch renders a new one.
+ * result entry, and a theme switch renders a new one.
  */
 export function mermaidDiagramKey(code: string, theme: string): string {
   return `${theme}:${code}`;
 }
 
-const setMermaidDiagramStatus$ = command(
-  ({ set }, key: string, status: MermaidDiagramStatus) => {
-    set(internalMermaidDiagramStatusByKey$, (current) => {
-      return { ...current, [key]: status };
+const setMermaidDiagramResult$ = command(
+  ({ set }, key: string, result: MermaidDiagramResult) => {
+    set(internalMermaidDiagramResultByKey$, (current) => {
+      return { ...current, [key]: result };
     });
   },
 );
@@ -50,7 +53,12 @@ const loadMermaid$ = command(
       // Without this mermaid injects its own error diagram into the document.
       suppressErrorRendering: true,
       theme: theme === "dark" ? "dark" : "default",
-      fontFamily: "var(--font-family-sans)",
+      // Resolved to a concrete stack rather than passed as `var(...)`: the same
+      // SVG is also shown inside an <img> in the lightbox, where page-level CSS
+      // custom properties do not resolve.
+      fontFamily: getComputedStyle(document.documentElement)
+        .getPropertyValue("--font-family-sans")
+        .trim(),
       // mermaid's defaults are sized for a standalone page: 16px labels and
       // 50px rank spacing make a five-node flowchart taller than the message
       // around it. These match the chat body text and cut roughly a third of
@@ -83,6 +91,15 @@ interface QueuedDiagram {
   readonly theme: string;
 }
 
+/**
+ * The lightbox reuses the attachment image preview, which takes a URL. The
+ * rendered SVG never leaves the browser, so it is inlined as a data URL instead
+ * of being uploaded.
+ */
+function svgDataUrl(svg: string): string {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
 const renderQueuedDiagram$ = command(
   async ({ get, set }, diagram: QueuedDiagram, signal: AbortSignal) => {
     signal.throwIfAborted();
@@ -101,14 +118,17 @@ const renderQueuedDiagram$ = command(
       signal,
     );
     if (!rendered.ok || rendered.value === undefined) {
-      set(setMermaidDiagramStatus$, diagram.key, "error");
+      set(setMermaidDiagramResult$, diagram.key, { status: "error" });
       return;
     }
 
     // Safe to assign: mermaid sanitized the markup, and React owns no children
     // inside this element.
     diagram.el.innerHTML = rendered.value;
-    set(setMermaidDiagramStatus$, diagram.key, "rendered");
+    set(setMermaidDiagramResult$, diagram.key, {
+      status: "rendered",
+      url: svgDataUrl(rendered.value),
+    });
   },
 );
 
@@ -130,7 +150,7 @@ const renderMermaidDiagram$ = command(
     const theme = el.dataset.mermaidTheme === "dark" ? "dark" : "light";
     const key = mermaidDiagramKey(code, theme);
 
-    set(setMermaidDiagramStatus$, key, "rendering");
+    set(setMermaidDiagramResult$, key, { status: "rendering" });
 
     const previous = get(renderQueue$);
     const { promise, resolve } = Promise.withResolvers<void>();

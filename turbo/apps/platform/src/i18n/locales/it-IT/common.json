@@ -4621,6 +4621,7 @@
     },
     "mermaid": {
       "diagramLabel": "Diagramma",
+      "expand": "Ingrandisci diagramma",
       "viewSource": "Codice del diagramma"
     },
     "notFound": {
