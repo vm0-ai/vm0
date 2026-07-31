@@ -160,6 +160,11 @@ Model-provider usage
   Entries are released before ``websocket_end()`` after each source-preserving
   report attempt. Zero-only entries are also released immediately because
   observable model-provider flows already carry ``MODEL_USAGE_PROVIDER``.
+- ``MODEL_PROVIDER_USAGE_TIERS``: bounded insertion-ordered mapping from
+  WebSocket response id to the concrete billing tier decision selected from
+  its input partition. Zero-only decisions remain provisional until the first
+  positive billing item. Written by model-provider billing and cleared at the
+  WebSocket terminal lifecycle boundary.
 - ``MODEL_USAGE_PROVIDER``: optional ``str`` canonical model id from registry VM
   info. Read by model-provider usage observability and reported-model selection.
 - ``MODEL_JSON_USAGE_FINALIZED``: ``bool`` written when JSON usage finalization
@@ -223,6 +228,7 @@ TRUSTED_AUTHORITY_HOST: Final = "trusted_authority_host"
 # Usage and streaming metadata
 MODEL_PROVIDER_USAGE: Final = "model_provider_usage"
 MODEL_PROVIDER_USAGE_SOURCES: Final = "model_provider_usage_sources"
+MODEL_PROVIDER_USAGE_TIERS: Final = "model_provider_usage_tiers"
 MODEL_USAGE_PROVIDER: Final = "model_usage_provider"
 MODEL_JSON_USAGE_FINALIZED: Final = "_model_json_usage_finalized"
 RESPONSE_STREAM_STATE: Final = "response_stream_state"

@@ -42,6 +42,7 @@ import {
   type FinalizedUsageRelation,
 } from "./finalized-usage-relation";
 import { normalizeFinalizedUsagePeriod } from "./finalized-usage-time";
+import { MODEL_TOKEN_CATEGORIES } from "./model-token-categories";
 import { getOrgBillingPeriod$ } from "./zero-org-billing-period.service";
 import { resolveEmails } from "./zero-usage.service";
 import {
@@ -51,12 +52,6 @@ import {
 } from "./usage-period";
 
 const MODEL_USAGE_KIND = "model";
-const MODEL_TOKEN_CATEGORIES = [
-  "tokens.input",
-  "tokens.output",
-  "tokens.cache_read",
-  "tokens.cache_creation",
-] as const;
 const THREADED_SOURCES = ["chat", "automation"] as const;
 const USAGE_RECORD_KINDS = ["model", "image", "video", "connector"] as const;
 const PASSTHROUGH_TRIGGER_SOURCES = [
