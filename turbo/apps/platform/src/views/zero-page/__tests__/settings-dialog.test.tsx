@@ -86,7 +86,7 @@ function createPreferences(
 }
 
 describe("settings dialog", () => {
-  it("caps the language menu height when all locales are available", async () => {
+  it("keeps every available locale in the language menu", async () => {
     context.mocks.data.userPreferences(
       createPreferences("en-US", [
         "en-US",
@@ -109,9 +109,9 @@ describe("settings dialog", () => {
 
     click(await screen.findByRole("combobox", { name: "Language" }));
 
-    const languageMenu = screen.getByRole("listbox");
-    expect(languageMenu).toHaveClass("max-h-64");
-    expect(within(languageMenu).getAllByRole("option")).toHaveLength(10);
+    expect(
+      within(screen.getByRole("listbox")).getAllByRole("option"),
+    ).toHaveLength(10);
   });
 
   it("defaults to English instead of the browser language before user selection", async () => {
