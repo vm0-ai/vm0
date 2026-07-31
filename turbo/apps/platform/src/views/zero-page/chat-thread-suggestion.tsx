@@ -100,7 +100,7 @@ export function ComposerMentionSuggestionMenu({
               ref={selected ? scrollSelectedSuggestionIntoView : undefined}
               type="button"
               className={cn(
-                "flex w-full items-center rounded px-2 py-1.5 text-left transition-colors",
+                "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left transition-colors",
                 selected ? "bg-accent" : "hover:bg-accent/60",
               )}
               onMouseDown={(event) => {
@@ -108,6 +108,12 @@ export function ComposerMentionSuggestionMenu({
                 onSelectChatThread(chatThread);
               }}
             >
+              <AvatarFromUrl
+                avatarUrl={chatThread.avatarUrl}
+                alt=""
+                className="h-5 w-5 shrink-0 rounded-full bg-muted"
+                size={20}
+              />
               <span className="truncate text-sm text-popover-foreground">
                 {chatThread.title}
               </span>
