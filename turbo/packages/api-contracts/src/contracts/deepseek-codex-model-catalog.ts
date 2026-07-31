@@ -50,6 +50,10 @@ export const DEEPSEEK_CODEX_MODEL_CATALOG: Record<string, unknown> = {
       availability_nux: null,
       upgrade: null,
       priority: 1,
+      experimental_supported_tools: [],
+      supports_search_tool: true,
+      default_service_tier: null,
+      supports_reasoning_summaries: true,
     },
   ],
 };
