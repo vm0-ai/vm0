@@ -127,6 +127,7 @@ def test_has_unsafe_path_blocks_invalid_percent_encoded_utf8(path):
 @pytest.mark.parametrize(
     "path",
     [
+        "",
         "/",
         "/api/users",
         "/api/..hidden/admin",
