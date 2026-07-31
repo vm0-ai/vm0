@@ -26,7 +26,6 @@ export {
 export {
   CHAT_EVENT_TYPES,
   chatEventCompatibilityRole,
-  chatEventRunLifecycle,
   chatEventTypeSchema,
   foldActiveChatGoalObjective,
   foldPendingChatQueueEvents,

@@ -69,6 +69,11 @@ describe("dev bench seed profile rows", () => {
         }),
       ).toBeFalsy();
       expect(
+        rows.eventRows.some((row) => {
+          return "runLifecycleEvent" in row;
+        }),
+      ).toBeFalsy();
+      expect(
         countWhere(rows.eventRows, (row) => {
           return chatEventCompatibilityRole(row.eventType) === "user";
         }),
@@ -85,12 +90,12 @@ describe("dev bench seed profile rows", () => {
       ).toBe(expected.nullRunEvents);
       expect(
         countWhere(rows.eventRows, (row) => {
-          return row.runLifecycleEvent === "completed";
+          return row.eventType === "run.completed";
         }),
       ).toBe(expected.completedLifecycleEvents);
       expect(
         countWhere(rows.eventRows, (row) => {
-          return row.runLifecycleEvent === "failed";
+          return row.eventType === "run.failed";
         }),
       ).toBe(expected.failedLifecycleEvents);
       expect(
