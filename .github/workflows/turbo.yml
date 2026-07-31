@@ -2322,6 +2322,7 @@ jobs:
             local HOST=$1
             local HOST_INDEX=$2
             local RUNNER_NAME="${RUNNER_SERVICE_REF}-${HOST_INDEX}"
+            local RUNNER_DIRNAME="${RUNNER_DIR##*/}"
             local REMOTE="${METAL_USER}@${HOST}"
             local MC
             echo "=== Starting runner ${RUNNER_NAME} on ${HOST} ==="
@@ -2351,7 +2352,7 @@ jobs:
               --snapshot-hash ${SNAPSHOT_HASH} \
               --name ${RUNNER_NAME} \
               --group ${RUNNER_GROUP} \
-              --runner-dirname ${RUNNER_SERVICE_REF} \
+              --runner-dirname ${RUNNER_DIRNAME} \
               --concurrency-factor 1.5 \
               --api-url ${RUNNER_API_URL} \
               --token vm0_official_${OFFICIAL_RUNNER_SECRET}"

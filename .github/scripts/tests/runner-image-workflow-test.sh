@@ -25,7 +25,7 @@ jq -e '
     .env.PLAYWRIGHT_RUNNER_CONSUMER_NEEDED ==
       "${{ steps.turbo.outputs.playwright-runner-consumer-needed }}"
   )
-' <<<"$workflow_json" >/dev/null || fail "Playwright mock-runner demand must reach runner image selection"
+' <<<"$workflow_json" >/dev/null || fail "Playwright dedicated-runner demand must reach runner image selection"
 
 jq -e '
   .jobs["cancel-superseded"].name == "Cancel superseded merge-group CI" and

@@ -35,16 +35,27 @@ test("complete app onboarding to chat page", async ({ browser, page }) => {
 
   await refreshClerkSessionToken(page, { activeOrganizationId: orgId });
 
+  const token = await page.evaluate(async () => {
+    return (await window.Clerk?.session?.getToken({ skipCache: true })) ?? null;
+  });
+  if (!token) {
+    throw new Error("Clerk session token unavailable for Playwright setup");
+  }
+
+  // Keep the pipeline-owned runner and VM, but bypass their mock agent CLIs.
+  const featureSwitchResponse = await page.request.post(
+    new URL("/api/zero/feature-switches", apiUrl).toString(),
+    {
+      headers: authHeadersForToken(token),
+      data: {
+        switches: { realAgentInPreview: true },
+      },
+    },
+  );
+  expect(featureSwitchResponse.status()).toBe(200);
+
   const runnerGroup = process.env.E2E_RUNNER_GROUP;
   if (runnerGroup) {
-    const token = await page.evaluate(async () => {
-      return (
-        (await window.Clerk?.session?.getToken({ skipCache: true })) ?? null
-      );
-    });
-    if (!token) {
-      throw new Error("Clerk session token unavailable for runner setup");
-    }
     const response = await page.request.post(
       new URL("/api/test/agent-composes", apiUrl).toString(),
       {
