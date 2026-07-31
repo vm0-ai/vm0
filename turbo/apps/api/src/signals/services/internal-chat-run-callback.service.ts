@@ -14,6 +14,7 @@ import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { runOutputMaterializations } from "@vm0/db/schema/run-output-materialization";
 import {
+  chatEventTerminalPredicate,
   chatEvents,
   type ChatEventGenerationTemplate,
   type ChatEventRecommendedFollowups,
@@ -1427,7 +1428,10 @@ async function teamsRunLifecycleMarkerExists(
     .select({ id: chatEvents.id })
     .from(chatEvents)
     .where(
-      and(eq(chatEvents.runId, runId), isNotNull(chatEvents.runLifecycleEvent)),
+      and(
+        eq(chatEvents.runId, runId),
+        chatEventTerminalPredicate(chatEvents.eventType),
+      ),
     )
     .limit(1);
   return marker !== undefined;

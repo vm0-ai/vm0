@@ -9,6 +9,7 @@ import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import {
+  chatEventTerminalPredicate,
   chatEvents,
   type ChatEventGoalSnapshot,
 } from "@vm0/db/schema/chat-event";
@@ -20,7 +21,7 @@ import { chatTeamsContext } from "@vm0/db/schema/chat-teams-context";
 import { chatTelegramContext } from "@vm0/db/schema/chat-telegram-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatEventAssetRefs } from "@vm0/db/schema/run-uploaded-file";
-import { eq, isNotNull, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";
 import { nowDate } from "../external/time";
@@ -741,7 +742,7 @@ export async function insertChatEvent(
           ? await query
               .onConflictDoNothing({
                 target: chatEvents.runId,
-                where: isNotNull(chatEvents.runLifecycleEvent),
+                where: chatEventTerminalPredicate(chatEvents.eventType),
               })
               .returning({
                 id: chatEvents.id,

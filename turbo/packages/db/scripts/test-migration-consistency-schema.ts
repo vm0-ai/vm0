@@ -12339,6 +12339,7 @@ async function validateChatEventTerminalIndexExpansion(): Promise<void> {
   const testDbUrl = createTestDbUrl(testDb);
   const composeId = "00000000-0000-4000-8000-000000077801";
   const threadId = "00000000-0000-4000-8000-000000077802";
+  const otherThreadId = "00000000-0000-4000-8000-000000077807";
   const completedRunId = "00000000-0000-4000-8000-000000077803";
   const failedRunId = "00000000-0000-4000-8000-000000077804";
   const cancelledRunId = "00000000-0000-4000-8000-000000077805";
@@ -12397,9 +12398,14 @@ async function validateChatEventTerminalIndexExpansion(): Promise<void> {
             'terminal-index-test-user',
             $2,
             'terminal index test'
+          ), (
+            $3,
+            'terminal-index-test-user',
+            $2,
+            'terminal index plan selectivity test'
           )
         `,
-        [threadId, composeId],
+        [threadId, composeId, otherThreadId],
       );
       await client.query(
         `
@@ -12429,6 +12435,46 @@ async function validateChatEventTerminalIndexExpansion(): Promise<void> {
           cancelledRunId,
           queuedRunId,
         ],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "event_type",
+            "seq_id",
+            "created_at"
+          )
+          SELECT
+            $1,
+            'run.queued',
+            4 + "generated"."offset",
+            TIMESTAMP '2026-07-31 00:00:03'
+              + "generated"."offset" * INTERVAL '1 second'
+          FROM generate_series(1, 500) AS "generated"("offset")
+        `,
+        [threadId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "run_lifecycle_event",
+            "seq_id",
+            "created_at"
+          )
+          SELECT
+            $1,
+            gen_random_uuid(),
+            'run.completed',
+            'completed',
+            "generated"."offset",
+            TIMESTAMP '2026-07-31 00:00:00'
+              + "generated"."offset" * INTERVAL '1 second'
+          FROM generate_series(1, 500) AS "generated"("offset")
+        `,
+        [otherThreadId],
       );
 
       const terminalRowsBefore = await client.query<{
@@ -12544,6 +12590,38 @@ async function validateChatEventTerminalIndexExpansion(): Promise<void> {
         }
       }
 
+      await client.query(`ANALYZE "chat_events"`);
+      await client.query(`SET enable_seqscan = off`);
+      const terminalReadPlan = await client.query<{ "QUERY PLAN": string }>(
+        `
+          EXPLAIN (COSTS OFF)
+          SELECT "created_at"
+          FROM "chat_events"
+          WHERE "chat_thread_id" = $1
+            AND "event_type" IN (
+              'run.completed',
+              'run.failed',
+              'run.cancelled'
+            )
+          ORDER BY "created_at" DESC NULLS LAST, "id" DESC
+          LIMIT 1
+        `,
+        [threadId],
+      );
+      const terminalReadPlanText = terminalReadPlan.rows
+        .map((row) => {
+          return row["QUERY PLAN"];
+        })
+        .join("\n");
+      assert.match(
+        terminalReadPlanText,
+        /\bidx_chat_events_thread_run_terminal_created\b/u,
+      );
+      assert.doesNotMatch(
+        terminalReadPlanText,
+        /\bidx_chat_events_thread_run_finish_created\b/u,
+      );
+
       const terminalRowDifference = await client.query<{ id: string }>(`
         (
           SELECT "id"
@@ -12651,6 +12729,7 @@ async function validateChatEventTerminalIndexExpansion(): Promise<void> {
       console.log(
         "   ✅ Both valid unique indexes independently arbitrate duplicate terminal events",
       );
+      console.log("   ✅ Terminal ordering uses the event_type partial index");
       console.log(
         "   ✅ Concurrent retry-safe builds preserve the old index pair\n",
       );

@@ -20,6 +20,7 @@ import {
   type ChatEvent,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { isChatRunTerminalEventType } from "@vm0/api-contracts/contracts/chat-events";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import {
   getModelProviderFirewall,
@@ -1265,6 +1266,14 @@ describe("CHAT-02: interrupting active chat runs", () => {
           message.eventType === "run.cancelled" &&
           message.runId === first.runId &&
           message.runLifecycleEvent === "cancelled"
+        );
+      }),
+    ).toHaveLength(1);
+    expect(
+      assistantMessages(messages.events).filter((message) => {
+        return (
+          message.runId === first.runId &&
+          isChatRunTerminalEventType(message.eventType)
         );
       }),
     ).toHaveLength(1);
