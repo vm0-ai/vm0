@@ -46,23 +46,10 @@ describe("connector OAuth device provider state", () => {
     });
   });
 
-  it.each([
-    {
-      identity: "zero",
-      serializedState: JSON.stringify({ deviceCode: "device-code" }),
-    },
-    {
-      identity: "dual",
-      serializedState: JSON.stringify({
-        connectorType: connectorSlug,
-        connectorSlug,
-        deviceCode: "device-code",
-      }),
-    },
-  ])("rejects $identity identity state", ({ serializedState }) => {
+  it("rejects state without a connector slug", () => {
     expect(() => {
       parseConnectorOauthDeviceProviderState({
-        serializedState,
+        serializedState: JSON.stringify({ deviceCode: "device-code" }),
         connectorSlug,
       });
     }).toThrow(ZodError);
@@ -145,27 +132,13 @@ describe("connector external-code provider state", () => {
     });
   });
 
-  it.each([
-    {
-      identity: "zero",
-      serializedState: JSON.stringify({
-        authMethod,
-        providerState: "provider-state",
-      }),
-    },
-    {
-      identity: "dual",
-      serializedState: JSON.stringify({
-        connectorType: connectorSlug,
-        connectorSlug,
-        authMethod,
-        providerState: "provider-state",
-      }),
-    },
-  ])("rejects $identity identity state", ({ serializedState }) => {
+  it("rejects state without a connector slug", () => {
     expect(() => {
       parseConnectorExternalCodeProviderState({
-        serializedState,
+        serializedState: JSON.stringify({
+          authMethod,
+          providerState: "provider-state",
+        }),
         connectorSlug,
         authMethod,
       });

@@ -8,7 +8,6 @@ import { z } from "zod";
 
 const deviceProviderStateSchema = z
   .object({
-    connectorType: z.never().optional(),
     connectorSlug: connectorSlugSchema,
     deviceCode: z.string(),
     pollState: z.string().optional(),
@@ -23,7 +22,6 @@ const deviceProviderStateSchema = z
 
 const externalCodeProviderStateSchema = z
   .object({
-    connectorType: z.never().optional(),
     connectorSlug: connectorSlugSchema,
     authMethod: connectorAuthMethodIdSchema,
     providerState: z.string(),
