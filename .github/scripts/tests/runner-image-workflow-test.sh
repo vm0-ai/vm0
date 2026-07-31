@@ -14,6 +14,20 @@ command -v yq >/dev/null || fail "yq is required"
 workflow_json=$(yq -o=json '.' "$WORKFLOW")
 
 jq -e '
+  .jobs.prepare.outputs["playwright-runner-consumer-needed"] ==
+    "${{ steps.needed.outputs.playwright-runner-consumer-needed }}" and
+  any(.jobs.prepare.steps[];
+    .id == "turbo" and
+    (.run | contains(".github/scripts/runner-image-context.sh playwright-consumer"))
+  ) and
+  any(.jobs.prepare.steps[];
+    .id == "needed" and
+    .env.PLAYWRIGHT_RUNNER_CONSUMER_NEEDED ==
+      "${{ steps.turbo.outputs.playwright-runner-consumer-needed }}"
+  )
+' <<<"$workflow_json" >/dev/null || fail "Playwright mock-runner demand must reach runner image selection"
+
+jq -e '
   .jobs["cancel-superseded"].name == "Cancel superseded merge-group CI" and
   .jobs["cancel-superseded"].if == "github.event_name == '\''merge_group'\''" and
   .jobs["cancel-superseded"].permissions.actions == "write" and

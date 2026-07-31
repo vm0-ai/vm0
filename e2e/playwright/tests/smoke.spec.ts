@@ -4,7 +4,10 @@ import {
   refreshClerkSessionToken,
   signInWithClerkTestingHelper,
 } from "../lib/auth";
-import { completeExploreOnboarding } from "../lib/onboarding";
+import {
+  authHeadersForToken,
+  completeExploreOnboarding,
+} from "../lib/onboarding";
 import { deriveAppUrl, STORAGE_STATE } from "../playwright.config";
 
 test("complete app onboarding to chat page", async ({ browser, page }) => {
@@ -31,6 +34,41 @@ test("complete app onboarding to chat page", async ({ browser, page }) => {
   expect(page.url()).toMatch(/\/agents\/.*\/chat/);
 
   await refreshClerkSessionToken(page, { activeOrganizationId: orgId });
+
+  const runnerGroup = process.env.E2E_RUNNER_GROUP;
+  if (runnerGroup) {
+    const token = await page.evaluate(async () => {
+      return (
+        (await window.Clerk?.session?.getToken({ skipCache: true })) ?? null
+      );
+    });
+    if (!token) {
+      throw new Error("Clerk session token unavailable for runner setup");
+    }
+    const response = await page.request.post(
+      new URL("/api/test/agent-composes", apiUrl).toString(),
+      {
+        headers: authHeadersForToken(token),
+        data: {
+          content: {
+            version: "1",
+            agents: {
+              "default-agent": {
+                framework: "claude-code",
+                instructions: "CLAUDE.md",
+                environment: {
+                  ZERO_AGENT_ID: "${{ vars.ZERO_AGENT_ID }}",
+                  ZERO_TOKEN: "${{ secrets.ZERO_TOKEN }}",
+                },
+                experimental_runner: { group: runnerGroup },
+              },
+            },
+          },
+        },
+      },
+    );
+    expect(response.status()).toBe(200);
+  }
 
   // Save storageState for feature tests (use absolute path to match playwright.config.ts)
   await page.context().storageState({ path: STORAGE_STATE });
