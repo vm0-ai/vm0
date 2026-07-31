@@ -1785,6 +1785,235 @@ async function expectDatabaseError(
   throw new Error(`Expected database error ${args.code}`);
 }
 
+async function validateConnectorCatalogCompatibilityFormatRollout(): Promise<void> {
+  console.log(
+    "=== Validate connector catalog compatibility format rollout ===\n",
+  );
+  const testDb = "migration_connector_catalog_format_rollout_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const sourceId = "migration-catalog-format";
+  const catalogDigest = `sha256:${"a".repeat(64)}`;
+  const legacyCapabilityDigest = `sha256:${"b".repeat(64)}`;
+  const previousWriterCapabilityDigest = `sha256:${"c".repeat(64)}`;
+  const invalidCapabilityDigest = `sha256:${"d".repeat(64)}`;
+  const firstBuildCommitSha = "1".repeat(40);
+  const secondBuildCommitSha = "2".repeat(40);
+  const migrationSql = await fs.readFile(
+    path.join(MIGRATIONS_DIR, "0778_windy_firelord.sql"),
+    "utf8",
+  );
+  assert.match(
+    migrationSql,
+    /ADD COLUMN "compatibility_format_version" integer DEFAULT 1 NOT NULL/u,
+  );
+  assert.doesNotMatch(migrationSql, /\b(?:CREATE TABLE|DROP)\b/u);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 777);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "connector_catalog_sync_state" (
+            "source_id",
+            "schema_version"
+          )
+          VALUES ($1, 1)
+        `,
+        [sourceId],
+      );
+      await client.query(
+        `
+          INSERT INTO "connector_catalog_compatibility_evaluation" (
+            "source_id",
+            "schema_version",
+            "catalog_version",
+            "catalog_digest",
+            "executable_capability_digest",
+            "catalog_validation_backend_version",
+            "catalog_validation_build_commit_sha",
+            "evaluated_at",
+            "filtered_auth_methods"
+          )
+          VALUES (
+            $1,
+            1,
+            '2026-07-31.1',
+            $2,
+            $3,
+            '1.0.0',
+            $4,
+            '2026-07-31 00:00:00',
+            '[]'::jsonb
+          )
+        `,
+        [sourceId, catalogDigest, legacyCapabilityDigest, firstBuildCommitSha],
+      );
+
+      await applyMigrationsUpTo(client, 778);
+
+      const migratedRows = await client.query<{
+        compatibilityFormatVersion: number;
+        filteredAuthMethods: unknown;
+      }>(
+        `
+          SELECT
+            "compatibility_format_version" AS "compatibilityFormatVersion",
+            "filtered_auth_methods" AS "filteredAuthMethods"
+          FROM "connector_catalog_compatibility_evaluation"
+          WHERE "source_id" = $1
+            AND "executable_capability_digest" = $2
+        `,
+        [sourceId, legacyCapabilityDigest],
+      );
+      assert.deepEqual(migratedRows.rows, [
+        {
+          compatibilityFormatVersion: 1,
+          filteredAuthMethods: [],
+        },
+      ]);
+
+      const previousWriterSql = `
+        INSERT INTO "connector_catalog_compatibility_evaluation" (
+          "source_id",
+          "schema_version",
+          "catalog_version",
+          "catalog_digest",
+          "executable_capability_digest",
+          "catalog_validation_backend_version",
+          "catalog_validation_build_commit_sha",
+          "evaluated_at",
+          "filtered_auth_methods"
+        )
+        VALUES (
+          $1,
+          1,
+          '2026-07-31.1',
+          $2,
+          $3,
+          $4,
+          $5,
+          $6,
+          '[]'::jsonb
+        )
+        ON CONFLICT (
+          "source_id",
+          "schema_version",
+          "catalog_version",
+          "catalog_digest",
+          "executable_capability_digest"
+        )
+        DO UPDATE SET
+          "catalog_validation_backend_version" = $4,
+          "catalog_validation_build_commit_sha" = $5,
+          "evaluated_at" = $6,
+          "filtered_auth_methods" = '[]'::jsonb
+        WHERE (
+          "connector_catalog_compatibility_evaluation".
+            "catalog_validation_backend_version" IS NULL
+          OR string_to_array(
+            "connector_catalog_compatibility_evaluation".
+              "catalog_validation_backend_version",
+            '.'
+          )::numeric[] <= string_to_array($4, '.')::numeric[]
+        )
+      `;
+      const inserted = await client.query(previousWriterSql, [
+        sourceId,
+        catalogDigest,
+        previousWriterCapabilityDigest,
+        "1.0.0",
+        firstBuildCommitSha,
+        "2026-07-31 01:00:00",
+      ]);
+      assert.equal(inserted.rowCount, 1);
+      const updated = await client.query(previousWriterSql, [
+        sourceId,
+        catalogDigest,
+        previousWriterCapabilityDigest,
+        "1.1.0",
+        secondBuildCommitSha,
+        "2026-07-31 02:00:00",
+      ]);
+      assert.equal(updated.rowCount, 1);
+      const downgrade = await client.query(previousWriterSql, [
+        sourceId,
+        catalogDigest,
+        previousWriterCapabilityDigest,
+        "1.0.0",
+        firstBuildCommitSha,
+        "2026-07-31 03:00:00",
+      ]);
+      assert.equal(downgrade.rowCount, 0);
+
+      const previousWriterRows = await client.query<{
+        backendVersion: string | null;
+        buildCommitSha: string | null;
+        compatibilityFormatVersion: number;
+        evaluatedAt: string;
+      }>(
+        `
+          SELECT
+            "compatibility_format_version" AS "compatibilityFormatVersion",
+            "catalog_validation_backend_version" AS "backendVersion",
+            "catalog_validation_build_commit_sha" AS "buildCommitSha",
+            "evaluated_at"::text AS "evaluatedAt"
+          FROM "connector_catalog_compatibility_evaluation"
+          WHERE "source_id" = $1
+            AND "executable_capability_digest" = $2
+        `,
+        [sourceId, previousWriterCapabilityDigest],
+      );
+      assert.deepEqual(previousWriterRows.rows, [
+        {
+          compatibilityFormatVersion: 1,
+          backendVersion: "1.1.0",
+          buildCommitSha: secondBuildCommitSha,
+          evaluatedAt: "2026-07-31 02:00:00",
+        },
+      ]);
+
+      await expectDatabaseError(client, {
+        code: "23514",
+        messageIncludes: "connector_catalog_compat_format_version_positive",
+        query: `
+          INSERT INTO "connector_catalog_compatibility_evaluation" (
+            "source_id",
+            "schema_version",
+            "catalog_version",
+            "catalog_digest",
+            "executable_capability_digest",
+            "compatibility_format_version",
+            "evaluated_at",
+            "filtered_auth_methods"
+          )
+          VALUES (
+            $1,
+            1,
+            '2026-07-31.1',
+            $2,
+            $3,
+            0,
+            '2026-07-31 04:00:00',
+            '[]'::jsonb
+          )
+        `,
+        values: [sourceId, catalogDigest, invalidCapabilityDigest],
+      });
+
+      console.log(
+        "   ✅ Existing rows and previous-writer upserts remain format 1, while invalid versions are rejected\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateConnectorCatalogFinalConstraints(
   dbUrl: string,
 ): Promise<void> {
@@ -13455,6 +13684,7 @@ async function main(): Promise<void> {
     await validateCustomModelGatewayRolloutCompatibility();
     await validateHostedSiteChatScopeRollout();
     await validateCurrentBrowserApiBeforeBillingMigration();
+    await validateConnectorCatalogCompatibilityFormatRollout();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

@@ -246,6 +246,9 @@ export const connectorCatalogCompatibilityEvaluation = pgTable(
     executableCapabilityDigest: varchar("executable_capability_digest", {
       length: 71,
     }).notNull(),
+    compatibilityFormatVersion: integer("compatibility_format_version")
+      .default(1)
+      .notNull(),
     catalogValidationBackendVersion: varchar(
       "catalog_validation_backend_version",
       {
@@ -286,6 +289,10 @@ export const connectorCatalogCompatibilityEvaluation = pgTable(
       check(
         "connector_catalog_compat_eval_schema_version_positive",
         sql`${table.schemaVersion} > 0`,
+      ),
+      check(
+        "connector_catalog_compat_format_version_positive",
+        sql`${table.compatibilityFormatVersion} > 0`,
       ),
       check(
         "connector_catalog_compatibility_evaluation_digest_valid",

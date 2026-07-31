@@ -5447,6 +5447,13 @@
       "when": 1785467152361,
       "tag": "0777_drop_chat_event_goal_snapshot",
       "breakpoints": true
+    },
+    {
+      "idx": 778,
+      "version": "7",
+      "when": 1785469552640,
+      "tag": "0778_windy_firelord",
+      "breakpoints": true
     }
   ]
 }

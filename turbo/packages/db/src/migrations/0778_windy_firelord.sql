@@ -1,0 +1,2 @@
+ALTER TABLE "connector_catalog_compatibility_evaluation" ADD COLUMN "compatibility_format_version" integer DEFAULT 1 NOT NULL;--> statement-breakpoint
+ALTER TABLE "connector_catalog_compatibility_evaluation" ADD CONSTRAINT "connector_catalog_compat_format_version_positive" CHECK ("connector_catalog_compatibility_evaluation"."compatibility_format_version" > 0);
