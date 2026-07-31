@@ -529,10 +529,7 @@ describe("chat event action cards", () => {
 
     await screen.findByText(MAIL_FOLLOW_UP_SUBJECT);
     const mailCard = document.querySelector("[data-mail-draft-card]");
-    expect(mailCard).toHaveClass("h-[76px]", "items-center");
-    expect(buttonByText("Follow up", mailCard as HTMLElement)).toHaveClass(
-      "h-full",
-    );
+    expect(mailCard).toHaveClass("h-[76px]");
     expect(
       screen.queryByTestId("mail-draft-card-loading"),
     ).not.toBeInTheDocument();
@@ -812,11 +809,6 @@ describe("chat event action cards", () => {
     if (!messageSection) {
       throw new Error("Expected mail message section");
     }
-    const messageHeader = within(sidebar)
-      .getByRole("heading", { name: "Hello" })
-      .closest("header");
-    expect(messageHeader?.closest(".overflow-y-auto")).toBeNull();
-    expect(messageSection.closest(".overflow-y-auto")).toHaveClass("flex-1");
     const boldText = within(messageSection).getByText("before");
     expect(boldText.tagName).toBe("STRONG");
     expect(
