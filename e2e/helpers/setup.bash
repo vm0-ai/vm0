@@ -331,6 +331,15 @@ zero_usage_runs_response() {
     e2e_api_curl "/api/zero/usage/runs?runId=$run_id&pageSize=1"
 }
 
+settle_zero_usage_run() {
+    local run_id="$1"
+    local payload
+    payload=$(jq -nc --arg runId "$run_id" '{run_id: $runId}')
+    e2e_api_curl "/api/test/usage-settlement/process" \
+        -X POST \
+        -d "$payload" >/dev/null
+}
+
 zero_run_response() {
     local run_id="$1"
     e2e_api_curl "/api/zero/runs/$run_id"
@@ -375,6 +384,7 @@ wait_for_zero_usage_run() {
     local count=""
 
     while (( SECONDS - start < timeout )); do
+        settle_zero_usage_run "$run_id" || return 1
         if body=$(zero_usage_runs_response "$run_id" 2>&1); then
             count=$(printf '%s' "$body" | jq -r '.runs | length')
             if [[ "$count" == "1" ]]; then

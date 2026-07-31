@@ -5,9 +5,14 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
-export const testUsageSettlementRequestSchema = z.object({
-  org_id: z.string().min(1),
-});
+export const testUsageSettlementRequestSchema = z.union([
+  z.object({
+    org_id: z.string().min(1),
+  }),
+  z.object({
+    run_id: z.string().min(1),
+  }),
+]);
 
 export const testUsageSettlementResponseSchema = z.object({
   ok: z.literal(true),
@@ -23,7 +28,7 @@ export const testUsageSettlementContract = c.router({
       400: apiErrorSchema,
       404: z.string(),
     },
-    summary: "Process one organization's usage in API tests",
+    summary: "Process one organization's usage in tests",
   },
 });
 
