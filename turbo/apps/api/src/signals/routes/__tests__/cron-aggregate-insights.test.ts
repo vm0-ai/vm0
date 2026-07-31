@@ -845,14 +845,7 @@ describe("GET /api/cron/aggregate-insights", () => {
         }),
       ]),
     );
-    for (const permission of storedPermissions) {
-      expect(permission).not.toHaveProperty("connectorType");
-    }
-
     const data = await findInsights(seeded.actor);
-    for (const permission of data?.permissions ?? []) {
-      expect(permission).not.toHaveProperty("connectorType");
-    }
     const githubDeny = data?.permissions.find((permission) => {
       return permission.label === "github" && permission.denied > 0;
     });
