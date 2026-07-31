@@ -3330,7 +3330,6 @@ describe("connectors page", () => {
       path: "/connectors?tab=custom",
       featureSwitches: {
         [FeatureSwitchKey.CustomConnectorOAuth2]: true,
-        [FeatureSwitchKey.LanguagePreference]: true,
       },
     });
 

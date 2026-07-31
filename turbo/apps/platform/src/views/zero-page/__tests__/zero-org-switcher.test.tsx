@@ -1,5 +1,4 @@
 import { screen, waitFor } from "@testing-library/react";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -294,7 +293,6 @@ describe("zero org switcher", () => {
     detachedSetupPage({
       context,
       path: "/",
-      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: true },
       user: {
         id: "test-user-123",
         fullName: "Alex Rivera",

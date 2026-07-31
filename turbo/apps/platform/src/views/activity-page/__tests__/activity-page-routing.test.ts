@@ -3,7 +3,6 @@ import {
   logsByIdContract,
   logsListContract,
 } from "@vm0/api-contracts/contracts/logs";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { zeroRunAgentEventsContract } from "@vm0/api-contracts/contracts/zero-runs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -169,7 +168,6 @@ describe("activity page routing", () => {
       detachedSetupPage({
         context,
         path: "/activities",
-        featureSwitches: { [FeatureSwitchKey.LanguagePreference]: true },
       });
 
       await waitFor(() => {
@@ -254,7 +252,6 @@ describe("activity page routing", () => {
     detachedSetupPage({
       context,
       path: "/activities",
-      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: true },
     });
 
     await waitFor(() => {

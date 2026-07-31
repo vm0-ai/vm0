@@ -669,9 +669,6 @@ describe("organization model providers settings", () => {
     detachedSetupPage({
       context,
       path: "/?settings=model",
-      featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
-      },
     });
 
     await expect(

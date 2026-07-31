@@ -981,9 +981,6 @@ describe("chat lifecycle", () => {
       detachedSetupPage({
         context,
         path: "/chats/thread-localized-completed-run",
-        featureSwitches: {
-          [FeatureSwitchKey.LanguagePreference]: true,
-        },
       });
 
       await expect(
@@ -1046,9 +1043,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-japanese-completed-run",
-      featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
-      },
     });
 
     await expect(
@@ -1107,9 +1101,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/thread-spanish-completed-run",
-      featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
-      },
     });
 
     await expect(

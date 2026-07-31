@@ -287,7 +287,6 @@ describe("chat composer models", () => {
       context,
       featureSwitches: {
         [FeatureSwitchKey.CodexFastMode]: true,
-        [FeatureSwitchKey.LanguagePreference]: true,
       },
       path: `/agents/${AGENT_ID}/chat`,
     });

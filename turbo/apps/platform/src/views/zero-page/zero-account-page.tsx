@@ -297,8 +297,6 @@ export function ZeroPreferencesPage() {
   const { t } = useTranslation();
   const features = useLastResolved(featureSwitch$);
   const showDebug = features?.[FeatureSwitchKey.ZeroDebug] ?? false;
-  const showLanguagePreference =
-    features?.[FeatureSwitchKey.LanguagePreference] ?? false;
   const showModelConfiguration = true;
   const tab = useGet(preferencesTab$);
   const activeTab = resolveVisiblePreferencesTab(tab, {
@@ -375,7 +373,7 @@ export function ZeroPreferencesPage() {
               {activeTab === "appearance" && (
                 <div className="flex flex-col gap-6">
                   <AppearanceSettings />
-                  {showLanguagePreference && <LanguageSettings />}
+                  <LanguageSettings />
                   <SendModeSettings />
                 </div>
               )}

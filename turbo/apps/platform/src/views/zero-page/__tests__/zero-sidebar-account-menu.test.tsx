@@ -1147,7 +1147,6 @@ describe("zero sidebar account menu", () => {
         ],
       },
       featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
         [FeatureSwitchKey.SidebarSubscriptionUsage]: true,
       },
     });

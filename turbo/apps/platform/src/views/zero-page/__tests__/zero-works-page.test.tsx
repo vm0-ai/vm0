@@ -423,7 +423,6 @@ describe("works page", () => {
       context,
       path: "/settings/strapi",
       featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
         [FeatureSwitchKey.StrapiIntegration]: true,
       },
     });

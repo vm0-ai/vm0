@@ -1,6 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import {
   type UserLocale,
   type UserPreferencesResponse,
@@ -16,7 +15,6 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { localeStorageKey } from "../../../i18n/locale-storage.ts";
-import { setFeatureSwitch$ } from "../../../signals/external/feature-switch.ts";
 import { localStorageSignals } from "../../../signals/external/local-storage.ts";
 
 const context = testContext();
@@ -32,7 +30,6 @@ function cachedLocale(): string | null {
 async function openDialog(
   role: "admin" | "member" = "admin",
   section: "debug" | "general" | "preference" = "general",
-  featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>,
 ): Promise<void> {
   context.mocks.data.org({
     id: "org_1",
@@ -53,7 +50,6 @@ async function openDialog(
     path: `/?settings=${section}`,
     featureSwitches: {
       ...(section === "debug" ? { [FeatureSwitchKey.ZeroDebug]: true } : {}),
-      ...featureSwitches,
     },
   });
   await waitFor(() => {
@@ -69,6 +65,9 @@ function createPreferences(
     "ja-JP",
     "ko-KR",
     "id-ID",
+    "de-DE",
+    "es-ES",
+    "it-IT",
     "fr-FR",
     "hi-IN",
   ],
@@ -102,10 +101,7 @@ describe("settings dialog", () => {
       ]),
     );
 
-    await openDialog("admin", "preference", {
-      [FeatureSwitchKey.LanguagePreference]: true,
-      [FeatureSwitchKey.JapaneseLocale]: true,
-    });
+    await openDialog("admin", "preference");
 
     click(await screen.findByRole("combobox", { name: "Language" }));
 
@@ -132,9 +128,7 @@ describe("settings dialog", () => {
       },
     );
 
-    await openDialog("admin", "preference", {
-      [FeatureSwitchKey.LanguagePreference]: true,
-    });
+    await openDialog("admin", "preference");
 
     const languageSelect = await screen.findByRole("combobox", {
       name: "Language",
@@ -183,9 +177,7 @@ describe("settings dialog", () => {
       },
     );
 
-    await openDialog("admin", "preference", {
-      [FeatureSwitchKey.LanguagePreference]: true,
-    });
+    await openDialog("admin", "preference");
 
     const languageSelect = await screen.findByRole("combobox", {
       name: "Bahasa",
@@ -223,9 +215,7 @@ describe("settings dialog", () => {
       },
     );
 
-    await openDialog("admin", "preference", {
-      [FeatureSwitchKey.LanguagePreference]: true,
-    });
+    await openDialog("admin", "preference");
 
     click(
       await screen.findByRole("combobox", {
@@ -272,9 +262,7 @@ describe("settings dialog", () => {
       },
     );
 
-    await openDialog("admin", "preference", {
-      [FeatureSwitchKey.LanguagePreference]: true,
-    });
+    await openDialog("admin", "preference");
 
     holdPreferenceReload = true;
     click(await screen.findByRole("combobox", { name: "Language" }));
@@ -325,9 +313,7 @@ describe("settings dialog", () => {
       },
     );
 
-    await openDialog("admin", "preference", {
-      [FeatureSwitchKey.LanguagePreference]: true,
-    });
+    await openDialog("admin", "preference");
 
     const languageSelect = await screen.findByRole("combobox", {
       name: "Language",
@@ -367,9 +353,7 @@ describe("settings dialog", () => {
       },
     );
 
-    await openDialog("admin", "preference", {
-      [FeatureSwitchKey.LanguagePreference]: true,
-    });
+    await openDialog("admin", "preference");
 
     click(await screen.findByRole("combobox", { name: "Language" }));
     click(screen.getByRole("option", { name: "Français" }));
@@ -402,9 +386,7 @@ describe("settings dialog", () => {
       },
     );
 
-    await openDialog("admin", "preference", {
-      [FeatureSwitchKey.LanguagePreference]: true,
-    });
+    await openDialog("admin", "preference");
 
     click(await screen.findByRole("combobox", { name: "Language" }));
     click(screen.getByRole("option", { name: "हिन्दी" }));
@@ -431,9 +413,7 @@ describe("settings dialog", () => {
     );
     context.mocks.data.userPreferences(createPreferences("id-ID"));
 
-    await openDialog("admin", "preference", {
-      [FeatureSwitchKey.LanguagePreference]: true,
-    });
+    await openDialog("admin", "preference");
 
     const languageSelect = await screen.findByRole("combobox", {
       name: "Bahasa",
@@ -478,10 +458,7 @@ describe("settings dialog", () => {
       },
     );
 
-    await openDialog("admin", "preference", {
-      [FeatureSwitchKey.LanguagePreference]: true,
-      [FeatureSwitchKey.JapaneseLocale]: true,
-    });
+    await openDialog("admin", "preference");
 
     click(
       await screen.findByRole("combobox", {
@@ -530,9 +507,7 @@ describe("settings dialog", () => {
       },
     );
 
-    await openDialog("admin", "preference", {
-      [FeatureSwitchKey.LanguagePreference]: true,
-    });
+    await openDialog("admin", "preference");
 
     click(
       await screen.findByRole("combobox", {
@@ -575,9 +550,7 @@ describe("settings dialog", () => {
       },
     );
 
-    await openDialog("admin", "preference", {
-      [FeatureSwitchKey.LanguagePreference]: true,
-    });
+    await openDialog("admin", "preference");
 
     click(
       await screen.findByRole("combobox", {
@@ -609,10 +582,7 @@ describe("settings dialog", () => {
       createPreferences("ja-JP", ["en-US", "ja-JP"]),
     );
 
-    await openDialog("admin", "preference", {
-      [FeatureSwitchKey.LanguagePreference]: true,
-      [FeatureSwitchKey.JapaneseLocale]: true,
-    });
+    await openDialog("admin", "preference");
 
     const languageSelect = await screen.findByRole("combobox", {
       name: "言語",
@@ -640,10 +610,7 @@ describe("settings dialog", () => {
       createPreferences("ko-KR", ["en-US", "ko-KR"]),
     );
 
-    await openDialog("admin", "preference", {
-      [FeatureSwitchKey.LanguagePreference]: true,
-      [FeatureSwitchKey.JapaneseLocale]: false,
-    });
+    await openDialog("admin", "preference");
 
     const languageSelect = await screen.findByRole("combobox", {
       name: "언어",
@@ -671,10 +638,7 @@ describe("settings dialog", () => {
       createPreferences("es-ES", ["en-US", "es-ES"]),
     );
 
-    await openDialog("admin", "preference", {
-      [FeatureSwitchKey.LanguagePreference]: true,
-      [FeatureSwitchKey.JapaneseLocale]: false,
-    });
+    await openDialog("admin", "preference");
 
     const languageSelect = await screen.findByRole("combobox", {
       name: "Idioma",
@@ -718,9 +682,7 @@ describe("settings dialog", () => {
       },
     );
 
-    await openDialog("admin", "preference", {
-      [FeatureSwitchKey.LanguagePreference]: true,
-    });
+    await openDialog("admin", "preference");
 
     await waitFor(() => {
       expect(submittedLocales).toContain("en-US");
@@ -751,10 +713,7 @@ describe("settings dialog", () => {
       },
     );
 
-    await openDialog("admin", "preference", {
-      [FeatureSwitchKey.LanguagePreference]: true,
-      [FeatureSwitchKey.JapaneseLocale]: true,
-    });
+    await openDialog("admin", "preference");
 
     await waitFor(() => {
       expect(submittedLocales).toContain("en-US");
@@ -791,93 +750,13 @@ describe("settings dialog", () => {
       },
     );
 
-    await openDialog("admin", "preference", {
-      [FeatureSwitchKey.LanguagePreference]: true,
-    });
+    await openDialog("admin", "preference");
 
     await waitFor(() => {
       expect(submittedLocales).toContain("en-US");
       expect(submittedLocales).not.toContain("es-ES");
       expect(document.documentElement.lang).toBe("en-US");
       expect(cachedLocale()).toBe("en-US");
-    });
-  });
-
-  it("updates Japanese availability after a same-session Lab toggle", async () => {
-    let japaneseEnabled = false;
-    context.mocks.data.userPreferences(createPreferences("en-US", ["en-US"]));
-
-    await openDialog("admin", "preference", {
-      [FeatureSwitchKey.LanguagePreference]: true,
-      [FeatureSwitchKey.JapaneseLocale]: false,
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Theme")).toBeInTheDocument();
-      expect(
-        screen.queryByRole("combobox", { name: "Language" }),
-      ).not.toBeInTheDocument();
-    });
-
-    context.mocks.api(
-      zeroFeatureSwitchesContract.update,
-      ({ body, respond }) => {
-        japaneseEnabled =
-          body.switches[FeatureSwitchKey.JapaneseLocale] ?? japaneseEnabled;
-        return respond(200, {
-          switches: body.switches,
-          effectiveSwitches: {
-            [FeatureSwitchKey.JapaneseLocale]: japaneseEnabled,
-          },
-        });
-      },
-    );
-    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
-      return respond(200, {
-        switches: {
-          [FeatureSwitchKey.JapaneseLocale]: japaneseEnabled,
-        },
-        effectiveSwitches: {
-          [FeatureSwitchKey.JapaneseLocale]: japaneseEnabled,
-        },
-      });
-    });
-
-    await context.store.set(
-      setFeatureSwitch$,
-      { [FeatureSwitchKey.JapaneseLocale]: true },
-      context.signal,
-    );
-
-    const languageSelect = await screen.findByRole("combobox", {
-      name: "Language",
-    });
-    click(languageSelect);
-    expect(screen.getByRole("option", { name: "日本語" })).toBeInTheDocument();
-
-    await context.store.set(
-      setFeatureSwitch$,
-      { [FeatureSwitchKey.JapaneseLocale]: false },
-      context.signal,
-    );
-
-    await waitFor(() => {
-      expect(
-        screen.queryByRole("combobox", { name: "Language" }),
-      ).not.toBeInTheDocument();
-    });
-  });
-
-  it("hides the language entry when the feature switch is off", async () => {
-    context.mocks.data.userPreferences(createPreferences("en-US"));
-
-    await openDialog("admin", "preference", {
-      [FeatureSwitchKey.LanguagePreference]: false,
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Theme")).toBeInTheDocument();
-      expect(screen.queryByText("Language")).not.toBeInTheDocument();
     });
   });
 
@@ -888,10 +767,7 @@ describe("settings dialog", () => {
       return respond(200, oldApiPreferences);
     });
 
-    await openDialog("admin", "preference", {
-      [FeatureSwitchKey.LanguagePreference]: true,
-      [FeatureSwitchKey.JapaneseLocale]: false,
-    });
+    await openDialog("admin", "preference");
 
     await waitFor(() => {
       expect(screen.getByText("Theme")).toBeInTheDocument();
@@ -906,10 +782,7 @@ describe("settings dialog", () => {
       return respond(200, oldApiPreferences);
     });
 
-    await openDialog("admin", "preference", {
-      [FeatureSwitchKey.LanguagePreference]: true,
-      [FeatureSwitchKey.JapaneseLocale]: false,
-    });
+    await openDialog("admin", "preference");
 
     await waitFor(() => {
       expect(screen.getByText("Theme")).toBeInTheDocument();
@@ -917,17 +790,14 @@ describe("settings dialog", () => {
     });
   });
 
-  it("hides the language entry while the API locale rollout is disabled", async () => {
+  it("hides the language entry when the API advertises only English", async () => {
     document.documentElement.lang = "de-DE";
     context.store.set(setCachedLocale$, "de-DE");
     const guardedPreferences = createPreferences("de-DE");
     guardedPreferences.supportedLocales = ["en-US"];
     context.mocks.data.userPreferences(guardedPreferences);
 
-    await openDialog("admin", "preference", {
-      [FeatureSwitchKey.LanguagePreference]: true,
-      [FeatureSwitchKey.JapaneseLocale]: false,
-    });
+    await openDialog("admin", "preference");
 
     await waitFor(() => {
       expect(screen.getByText("Theme")).toBeInTheDocument();
@@ -937,14 +807,12 @@ describe("settings dialog", () => {
     });
   });
 
-  it("omits Indonesian while its API rollout is disabled", async () => {
+  it("omits locales that the API does not advertise", async () => {
     const guardedPreferences = createPreferences("en-US");
     guardedPreferences.supportedLocales = ["en-US", "pt-BR"];
     context.mocks.data.userPreferences(guardedPreferences);
 
-    await openDialog("admin", "preference", {
-      [FeatureSwitchKey.LanguagePreference]: true,
-    });
+    await openDialog("admin", "preference");
 
     const languageSelect = await screen.findByRole("combobox", {
       name: "Language",
@@ -961,14 +829,12 @@ describe("settings dialog", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("does not expose French to a client paired with the previous API rollout", async () => {
+  it("does not expose French when the API does not advertise it", async () => {
     context.mocks.data.userPreferences(
       createPreferences("en-US", ["en-US", "pt-BR"]),
     );
 
-    await openDialog("admin", "preference", {
-      [FeatureSwitchKey.LanguagePreference]: true,
-    });
+    await openDialog("admin", "preference");
 
     const languageSelect = await screen.findByRole("combobox", {
       name: "Language",
@@ -1009,9 +875,7 @@ describe("settings dialog", () => {
       },
     );
 
-    await openDialog("admin", "preference", {
-      [FeatureSwitchKey.LanguagePreference]: true,
-    });
+    await openDialog("admin", "preference");
 
     await waitFor(() => {
       expect(submittedLocales).toContain("en-US");

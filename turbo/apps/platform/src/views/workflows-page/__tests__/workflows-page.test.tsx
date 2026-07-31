@@ -1532,9 +1532,6 @@ describe("workflow localization", () => {
       detachedSetupPage({
         context,
         path: "/workflows",
-        featureSwitches: {
-          [FeatureSwitchKey.LanguagePreference]: true,
-        },
       });
 
       await waitFor(() => {
