@@ -33,11 +33,14 @@ import {
   drizzleCallName,
   getDrizzleColumnDataType,
   getDrizzleColumnMetadata,
+  getDrizzleTableMetadataForWrite,
   isDrizzleDeclaration,
   isDrizzlePgCoreDeclaration,
+  isDrizzleSelectType,
   isDrizzleSqlTag,
   isDrizzleSqlType,
   isDrizzleSymbol,
+  isDrizzleTableType,
   isNamedDrizzleSignature,
   resolvedSymbol,
 } from "../drizzle.ts";
@@ -224,6 +227,7 @@ export const preferDrizzleApis = createRule({
       hasDirectResultMapping: hasDirectMapWith,
       hasParameterListOrigin,
       isInlineParameterList: isInlineParameterListSqlJoin,
+      isSelectExistence,
     };
 
     function allowsWriteQueryBuilder(
@@ -835,6 +839,200 @@ export const preferDrizzleApis = createRule({
         statement.expression !== undefined
         ? services.tsNodeToESTreeNodeMap.get(statement.expression)
         : undefined;
+    }
+
+    function isConventionalReferenceExpression(
+      node: TSESTree.Expression,
+    ): boolean {
+      const transparent = transparentNode(node);
+      if (transparent !== undefined) {
+        return isConventionalReferenceExpression(transparent);
+      }
+      if (
+        node.type === AST_NODE_TYPES.Identifier ||
+        node.type === AST_NODE_TYPES.Literal
+      ) {
+        return true;
+      }
+      return (
+        node.type === AST_NODE_TYPES.MemberExpression &&
+        !node.computed &&
+        !node.optional &&
+        node.object.type !== AST_NODE_TYPES.Super &&
+        node.property.type === AST_NODE_TYPES.Identifier &&
+        isConventionalReferenceExpression(node.object)
+      );
+    }
+
+    function localSelectExistenceReturn(
+      node: TSESTree.CallExpression,
+    ): TSESTree.Node | undefined {
+      if (
+        node.callee.type !== AST_NODE_TYPES.Identifier ||
+        node.arguments.some((argument) => {
+          return (
+            argument.type === AST_NODE_TYPES.SpreadElement ||
+            !isConventionalReferenceExpression(argument)
+          );
+        })
+      ) {
+        return undefined;
+      }
+      const tsCallee = services.esTreeNodeToTSNodeMap.get(node.callee);
+      const declaration = resolvedSymbol(
+        checker,
+        checker.getSymbolAtLocation(tsCallee),
+      )?.valueDeclaration;
+      if (
+        declaration === undefined ||
+        !isFunctionDeclaration(declaration) ||
+        declaration.getSourceFile() !== tsCallee.getSourceFile() ||
+        declaration.parameters.length !== node.arguments.length ||
+        declaration.parameters.some((parameter) => {
+          return (
+            parameter.dotDotDotToken !== undefined ||
+            parameter.initializer !== undefined ||
+            !isIdentifier(parameter.name)
+          );
+        }) ||
+        declaration.body === undefined ||
+        declaration.body.statements.length !== 1
+      ) {
+        return undefined;
+      }
+      const statement = declaration.body.statements[0];
+      return statement !== undefined &&
+        isReturnStatement(statement) &&
+        statement.expression !== undefined
+        ? services.tsNodeToESTreeNodeMap.get(statement.expression)
+        : undefined;
+    }
+
+    function isDirectSchemaRowSelect(
+      node: TSESTree.Node,
+      visited: Set<TSESTree.Node>,
+    ): boolean {
+      if (visited.has(node)) {
+        return false;
+      }
+      visited.add(node);
+      const transparent = transparentNode(node);
+      if (transparent !== undefined) {
+        return isDirectSchemaRowSelect(transparent, visited);
+      }
+      const initializer = localSelectionInitializer(node);
+      if (initializer !== undefined) {
+        return isDirectSchemaRowSelect(initializer, visited);
+      }
+      if (node.type !== AST_NODE_TYPES.CallExpression) {
+        return false;
+      }
+      const tsNode = services.esTreeNodeToTSNodeMap.get(node);
+      if (
+        !isDrizzleSelectType(checker, checker.getTypeAtLocation(tsNode), tsNode)
+      ) {
+        return false;
+      }
+
+      let current: TSESTree.Expression = node;
+      const where = directDrizzleCall(current, "where");
+      if (where !== undefined) {
+        const beforeWhere = callReceiver(where);
+        if (
+          where.optional ||
+          singleCallArgument(where) === undefined ||
+          beforeWhere === undefined
+        ) {
+          return false;
+        }
+        current = beforeWhere;
+      }
+
+      const from = directDrizzleCall(current, "from");
+      const source = from === undefined ? undefined : singleCallArgument(from);
+      const beforeFrom = from === undefined ? undefined : callReceiver(from);
+      if (
+        from?.optional === true ||
+        source === undefined ||
+        beforeFrom === undefined
+      ) {
+        return false;
+      }
+      const tsSource = services.esTreeNodeToTSNodeMap.get(source);
+      const sourceType = checker.getTypeAtLocation(tsSource);
+      const sourceMetadata = getDrizzleTableMetadataForWrite(checker, tsSource);
+      if (
+        !isDrizzleTableType(checker, sourceType, tsSource) ||
+        sourceMetadata === undefined
+      ) {
+        return false;
+      }
+
+      const select = directDrizzleCall(beforeFrom, "select");
+      const selection =
+        select === undefined ? undefined : singleCallArgument(select);
+      if (
+        select?.optional === true ||
+        selection?.type !== AST_NODE_TYPES.ObjectExpression ||
+        selection.properties.length !== 1
+      ) {
+        return false;
+      }
+      const property = selection.properties[0];
+      if (
+        property?.type !== AST_NODE_TYPES.Property ||
+        property.kind !== "init" ||
+        property.computed ||
+        property.method ||
+        (property.value.type !== AST_NODE_TYPES.Identifier &&
+          property.value.type !== AST_NODE_TYPES.MemberExpression) ||
+        !isConventionalColumnExpression(property.value)
+      ) {
+        return false;
+      }
+      const selectedColumn = columnMetadata(property.value);
+      return (
+        selectedColumn !== undefined &&
+        selectedColumn.tableName === sourceMetadata.name &&
+        sourceMetadata.columns.has(selectedColumn.databaseName)
+      );
+    }
+
+    function isSelectExistenceNode(
+      node: TSESTree.Node,
+      visited: Set<TSESTree.Node>,
+    ): boolean {
+      if (visited.has(node)) {
+        return false;
+      }
+      visited.add(node);
+      const transparent = transparentNode(node);
+      if (transparent !== undefined) {
+        return isSelectExistenceNode(transparent, visited);
+      }
+      const initializer = localSelectionInitializer(node);
+      if (initializer !== undefined) {
+        return isSelectExistenceNode(initializer, visited);
+      }
+      if (node.type !== AST_NODE_TYPES.CallExpression) {
+        return false;
+      }
+      const returned = localSelectExistenceReturn(node);
+      if (returned !== undefined) {
+        return isSelectExistenceNode(returned, visited);
+      }
+      const select = node.arguments[0];
+      return (
+        node.arguments.length === 1 &&
+        select !== undefined &&
+        select.type !== AST_NODE_TYPES.SpreadElement &&
+        isNamedDrizzleCall(node, "exists") &&
+        isDirectSchemaRowSelect(select, new Set())
+      );
+    }
+
+    function isSelectExistence(node: TSESTree.Expression): boolean {
+      return isSelectExistenceNode(node, new Set());
     }
 
     function isDrizzleResultWrapper(node: TSESTree.CallExpression): boolean {

@@ -32,6 +32,7 @@ import {
   drizzleCallName,
   getDrizzleColumnMetadata,
   getDrizzleTableMetadataForWrite,
+  isDefinitelyPresentDrizzleBooleanHelper,
   isDrizzleArrayParameter,
   isDrizzleColumnType,
   isDrizzleArrayOperandType,
@@ -114,6 +115,7 @@ export interface SqlCapabilityChecks {
   hasDirectResultMapping(node: TSESTree.Expression): boolean;
   hasParameterListOrigin(node: TSESTree.Expression): boolean;
   isInlineParameterList(node: TSESTree.Expression): boolean;
+  isSelectExistence(node: TSESTree.Expression): boolean;
 }
 
 const NO_CAPABILITY_CHECKS: SqlCapabilityChecks = {
@@ -130,6 +132,9 @@ const NO_CAPABILITY_CHECKS: SqlCapabilityChecks = {
     return false;
   },
   isInlineParameterList(): boolean {
+    return false;
+  },
+  isSelectExistence(): boolean {
     return false;
   },
 };
@@ -204,9 +209,11 @@ interface SqlMarker {
   readonly isArrayOperand: boolean;
   readonly isBoundScalar: boolean;
   readonly isColumn: boolean;
+  readonly isDefinitelyPresentWrapper: boolean;
   readonly isNumber: boolean;
   readonly isPatternOperand: boolean;
   readonly isSelect: boolean;
+  readonly isSelectExistence: boolean;
   readonly isStringOrWrapper: boolean;
   readonly isAnalyzableWriteInterpolation: boolean;
   readonly isTable: boolean;
@@ -798,6 +805,17 @@ function markerIsWrapper(
   return isDrizzleWrapperType(checker, checker.getTypeAtLocation(tsNode));
 }
 
+function markerIsDefinitelyPresentWrapper(
+  node: TSESTree.Expression,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+): boolean {
+  return (
+    markerIsWrapper(node, checker, services) ||
+    isDefinitelyPresentDrizzleBooleanHelper(checker, services, node)
+  );
+}
+
 function isOptionalDrizzleWrapperType(
   type: Type,
   checker: TypeChecker,
@@ -1135,6 +1153,7 @@ function parseSqlVariant(
   checker: TypeChecker,
   services: ParserServicesWithTypeInformation,
   schemaTarget: SqlSchemaTarget | undefined,
+  capabilities: SqlCapabilityChecks = NO_CAPABILITY_CHECKS,
 ): ParsedSql | null {
   const literals = variant.chunks.flatMap((chunk) => {
     return chunk.kind === "literal" ? [chunk.text] : [];
@@ -1181,10 +1200,12 @@ function parseSqlVariant(
     let cachedBoundScalar: boolean | undefined;
     let cachedColumn: boolean | undefined;
     let cachedColumnMetadata: SqlMarker["columnMetadata"] | null | undefined;
+    let cachedDefinitelyPresentWrapper: boolean | undefined;
     let cachedExpressionSymbol: TypeScriptSymbol | null | undefined;
     let cachedNumber: boolean | undefined;
     let cachedPatternOperand: boolean | undefined;
     let cachedSelect: boolean | undefined;
+    let cachedSelectExistence: boolean | undefined;
     let cachedAnalyzableWriteInterpolation: boolean | undefined;
     let cachedStringOrWrapper: boolean | undefined;
     let cachedTable: boolean | undefined;
@@ -1236,6 +1257,14 @@ function parseSqlVariant(
         cachedColumn ??= markerIsColumn(expression, checker, services);
         return cachedColumn;
       },
+      get isDefinitelyPresentWrapper(): boolean {
+        cachedDefinitelyPresentWrapper ??= markerIsDefinitelyPresentWrapper(
+          expression,
+          checker,
+          services,
+        );
+        return cachedDefinitelyPresentWrapper;
+      },
       get isNumber(): boolean {
         cachedNumber ??= markerIsNumber(expression, checker, services);
         return cachedNumber;
@@ -1251,6 +1280,10 @@ function parseSqlVariant(
       get isSelect(): boolean {
         cachedSelect ??= markerIsSelect(expression, checker, services);
         return cachedSelect;
+      },
+      get isSelectExistence(): boolean {
+        cachedSelectExistence ??= capabilities.isSelectExistence(expression);
+        return cachedSelectExistence;
       },
       get isAnalyzableWriteInterpolation(): boolean {
         cachedAnalyzableWriteInterpolation ??=
@@ -3248,7 +3281,7 @@ function relationMatch(
   value: unknown,
   markers: ReadonlyMap<string, SqlMarker>,
 ): RelationMatch | undefined {
-  const direct = relationMarker(value, markers);
+  const direct = schemaRelationMarker(value, markers);
   if (direct !== undefined) {
     return {
       joinedConditions: [],
@@ -3270,7 +3303,7 @@ function relationMatch(
     return undefined;
   }
   const left = relationMatch(join.larg, markers);
-  const right = relationMarker(join.rarg, markers);
+  const right = schemaRelationMarker(join.rarg, markers);
   const condition = columnMarker(join.quals, markers);
   if (left === undefined || right === undefined || condition === undefined) {
     return undefined;
@@ -3399,10 +3432,10 @@ function isHandBuiltExistenceSelect(
       return marker.isTable;
     }) &&
     relation.joinedConditions.every((marker) => {
-      return marker.isWrapper;
+      return marker.isDefinitelyPresentWrapper;
     }) &&
     predicates?.every((marker) => {
-      return marker.isWrapper;
+      return marker.isDefinitelyPresentWrapper;
     }) === true
   );
 }
@@ -3595,7 +3628,7 @@ function schemaJoinGraph(
   value: unknown,
   markers: ReadonlyMap<string, SqlMarker>,
 ): SchemaJoinGraph | undefined {
-  const table = relationMarker(value, markers);
+  const table = schemaRelationMarker(value, markers);
   if (table !== undefined) {
     return table.isTable ? { conditions: [], joinCount: 0 } : undefined;
   }
@@ -3612,7 +3645,7 @@ function schemaJoinGraph(
     return undefined;
   }
   const left = schemaJoinGraph(join.larg, markers);
-  const right = relationMarker(join.rarg, markers);
+  const right = schemaRelationMarker(join.rarg, markers);
   if (left === undefined || right?.isTable !== true) {
     return undefined;
   }
@@ -3620,6 +3653,30 @@ function schemaJoinGraph(
     conditions: [...left.conditions, join.quals],
     joinCount: left.joinCount + 1,
   };
+}
+
+function schemaRelationMarker(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+): SqlMarker | undefined {
+  const direct = relationMarker(value, markers);
+  if (direct !== undefined) {
+    return direct;
+  }
+  const range = rangeVarPayload(value);
+  const aliasName =
+    range === undefined ? undefined : directRelationAliasName(range.alias);
+  if (range === undefined || aliasName === undefined) {
+    return undefined;
+  }
+  const relation = markers.get(range.relname);
+  const alias = markers.get(aliasName);
+  const tableAlias = alias?.tableAlias;
+  return relation?.isTable === true &&
+    alias?.isTable === true &&
+    tableAlias?.sourceSymbol === relation.expressionSymbol
+    ? alias
+    : undefined;
 }
 
 const PAGINATED_SELECT_KEYS = new Set([
@@ -3632,7 +3689,7 @@ const PAGINATED_SELECT_KEYS = new Set([
   "whereClause",
 ]);
 
-function isPaginatedJoinedSelect(
+function isPaginatedSchemaSelect(
   select: Record<string, unknown>,
   markers: ReadonlyMap<string, SqlMarker>,
 ): boolean {
@@ -3661,14 +3718,13 @@ function isPaginatedJoinedSelect(
   const relation = schemaJoinGraph(select.fromClause[0], markers);
   if (
     relation === undefined ||
-    relation.joinCount === 0 ||
     !relation.conditions.every((condition) => {
       return markersMatch(condition, markers, (marker) => {
-        return marker.isWrapper;
+        return marker.isDefinitelyPresentWrapper;
       });
     }) ||
     !markersMatch(select.whereClause, markers, (marker) => {
-      return marker.isWrapper;
+      return marker.isDefinitelyPresentWrapper;
     })
   ) {
     return false;
@@ -3708,15 +3764,22 @@ function isPaginatedExistsSelect(
     return false;
   }
   const target = recordProperty(select.targetList[0], "ResTarget");
+  if (
+    target === undefined ||
+    typeof target.name !== "string" ||
+    !hasOnlyKeys(target, new Set(["location", "name", "val"]))
+  ) {
+    return false;
+  }
+  if (columnMarker(target.val, markers)?.isSelectExistence === true) {
+    return true;
+  }
   const subLink = exactSubLink(target?.val);
   const inner = recordProperty(subLink?.subselect, "SelectStmt");
   return (
-    target !== undefined &&
-    typeof target.name === "string" &&
-    hasOnlyKeys(target, new Set(["location", "name", "val"])) &&
     subLink?.subLinkType === "EXISTS_SUBLINK" &&
     inner !== undefined &&
-    isPaginatedJoinedSelect(inner, markers)
+    isPaginatedSchemaSelect(inner, markers)
   );
 }
 
@@ -5803,6 +5866,7 @@ function replacementBoundaryForFinding(
         checker,
         services,
         schemaTarget,
+        capabilities,
       );
       if (
         parsed === null ||
@@ -6388,6 +6452,7 @@ export function analyzeSql(
           checker,
           services,
           schemaTarget,
+          capabilities,
         );
         if (parsed === null) {
           variants.length = 0;
