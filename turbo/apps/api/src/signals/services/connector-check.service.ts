@@ -254,85 +254,87 @@ async function loadStoredRuntimeState(
     readonly snapshot: ConnectorRuntimeSnapshot;
   },
 ): Promise<StoredRuntimeState> {
-  return await db.transaction(async (tx) => {
-    await tx.execute(
-      sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`,
-    );
+  return await db.transaction(
+    async (tx) => {
+      const connectorRows = await tx
+        .select({
+          connectorId: connectors.id,
+          connectorSlug: sql`${connectors.connectorSlug}`
+            .mapWith(pgTextDecoder)
+            .as("connector_slug"),
+          authMethod: connectors.authMethod,
+          storageVersion: connectors.storageVersion,
+        })
+        .from(connectors)
+        .where(
+          and(
+            eq(connectors.orgId, args.orgId),
+            eq(connectors.userId, args.userId),
+            isNotNull(connectors.connectorSlug),
+          ),
+        );
 
-    const connectorRows = await tx
-      .select({
-        connectorId: connectors.id,
-        connectorSlug: sql`${connectors.connectorSlug}`
-          .mapWith(pgTextDecoder)
-          .as("connector_slug"),
-        authMethod: connectors.authMethod,
-        storageVersion: connectors.storageVersion,
-      })
-      .from(connectors)
-      .where(
-        and(
-          eq(connectors.orgId, args.orgId),
-          eq(connectors.userId, args.userId),
-          isNotNull(connectors.connectorSlug),
-        ),
+      const pending = pendingStoredConnectorRuntimes(connectorRows, args);
+
+      const readGroups = [...pending.values()].flatMap((value) => {
+        return value === null || value.storageNameByRuntimeName.size === 0
+          ? []
+          : [
+              {
+                access: value.access,
+                names: [...value.storageNameByRuntimeName.values()],
+              },
+            ];
+      });
+      const variableRows =
+        readGroups.length === 0
+          ? []
+          : await tx
+              .select({ name: variables.name, value: variables.value })
+              .from(variables)
+              .where(
+                connectorCredentialVariableReadCondition({
+                  db: tx,
+                  groups: readGroups,
+                }),
+              );
+      const valueByStorageName = new Map(
+        variableRows.map((row) => {
+          return [row.name, row.value] as const;
+        }),
       );
-
-    const pending = pendingStoredConnectorRuntimes(connectorRows, args);
-
-    const readGroups = [...pending.values()].flatMap((value) => {
-      return value === null || value.storageNameByRuntimeName.size === 0
-        ? []
-        : [
-            {
-              access: value.access,
-              names: [...value.storageNameByRuntimeName.values()],
-            },
-          ];
-    });
-    const variableRows =
-      readGroups.length === 0
-        ? []
-        : await tx
-            .select({ name: variables.name, value: variables.value })
-            .from(variables)
-            .where(
-              connectorCredentialVariableReadCondition({
-                db: tx,
-                groups: readGroups,
-              }),
-            );
-    const valueByStorageName = new Map(
-      variableRows.map((row) => {
-        return [row.name, row.value] as const;
-      }),
-    );
-    const baseUrlVarsBySlug = new Map<
-      ConnectorSlug,
-      Readonly<Record<string, string>> | null
-    >();
-    for (const [connectorSlug, pendingState] of pending) {
-      if (pendingState === null) {
-        baseUrlVarsBySlug.set(connectorSlug, null);
-        continue;
-      }
-      const values: Record<string, string> = {};
-      let complete = true;
-      for (const [
-        runtimeName,
-        storageName,
-      ] of pendingState.storageNameByRuntimeName) {
-        const value = valueByStorageName.get(storageName);
-        if (!value) {
-          complete = false;
-          break;
+      const baseUrlVarsBySlug = new Map<
+        ConnectorSlug,
+        Readonly<Record<string, string>> | null
+      >();
+      for (const [connectorSlug, pendingState] of pending) {
+        if (pendingState === null) {
+          baseUrlVarsBySlug.set(connectorSlug, null);
+          continue;
         }
-        values[runtimeName] = value;
+        const values: Record<string, string> = {};
+        let complete = true;
+        for (const [
+          runtimeName,
+          storageName,
+        ] of pendingState.storageNameByRuntimeName) {
+          const value = valueByStorageName.get(storageName);
+          if (!value) {
+            complete = false;
+            break;
+          }
+          values[runtimeName] = value;
+        }
+        baseUrlVarsBySlug.set(connectorSlug, complete ? values : null);
       }
-      baseUrlVarsBySlug.set(connectorSlug, complete ? values : null);
-    }
 
-    return { baseUrlVarsBySlug };
-  });
+      return { baseUrlVarsBySlug };
+    },
+    {
+      isolationLevel: "repeatable read",
+      accessMode: "read only",
+    },
+  );
 }
 
 function routesToDecisionPermissions(
