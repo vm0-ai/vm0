@@ -5482,6 +5482,13 @@
       "when": 1785481682874,
       "tag": "0782_add_runner_job_queue_reuse_key",
       "breakpoints": true
+    },
+    {
+      "idx": 783,
+      "version": "7",
+      "when": 1785484828737,
+      "tag": "0783_remove_browser_usage_compatibility",
+      "breakpoints": true
     }
   ]
 }

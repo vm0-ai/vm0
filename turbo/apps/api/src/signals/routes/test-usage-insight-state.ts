@@ -519,6 +519,7 @@ async function insertUsageEvent(
     readonly category?: string;
     readonly quantity?: number;
     readonly status?: string;
+    readonly grossCredits?: number | null;
     readonly creditsCharged?: number;
     readonly idempotencyKey?: string;
     readonly billingError?: string | null;
@@ -547,6 +548,7 @@ async function insertUsageEvent(
         category: args.category ?? "tweet.read",
         quantity: args.quantity ?? 1,
         status,
+        grossCredits: args.grossCredits ?? null,
         creditsCharged: args.creditsCharged ?? null,
         billingError: args.billingError ?? null,
         idempotencyKey: args.idempotencyKey ?? randomUUID(),
@@ -970,9 +972,21 @@ async function readInsightsDailyPermissions(
 async function readUsageEventState(
   db: Db,
   idempotencyKey: string,
-): Promise<{ readonly id: string; readonly status: string }> {
+): Promise<{
+  readonly id: string;
+  readonly status: string;
+  readonly grossCredits: number | null;
+  readonly creditsCharged: number | null;
+  readonly billingError: string | null;
+}> {
   const [event] = await db
-    .select({ id: usageEvent.id, status: usageEvent.status })
+    .select({
+      id: usageEvent.id,
+      status: usageEvent.status,
+      grossCredits: usageEvent.grossCredits,
+      creditsCharged: usageEvent.creditsCharged,
+      billingError: usageEvent.billingError,
+    })
     .from(usageEvent)
     .where(eq(usageEvent.idempotencyKey, idempotencyKey))
     .limit(1);
@@ -1133,6 +1147,7 @@ async function mutateUsageInsightEventWriteState(
         category: body.category,
         quantity: body.quantity,
         status: body.status,
+        grossCredits: body.gross_credits,
         creditsCharged: body.credits_charged,
         idempotencyKey: body.idempotency_key,
         billingError: body.billing_error,
@@ -1194,6 +1209,9 @@ async function mutateUsageInsightEventWriteState(
           ok: true as const,
           usage_event_id: event.id,
           usage_event_status: event.status,
+          usage_event_gross_credits: event.grossCredits,
+          usage_event_credits_charged: event.creditsCharged,
+          usage_event_billing_error: event.billingError,
         },
       };
     }

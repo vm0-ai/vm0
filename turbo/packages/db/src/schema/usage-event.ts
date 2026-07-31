@@ -32,11 +32,10 @@ import { agentRuns } from "./agent-run";
  *   video     fal-ai/veo3.1/fast           output_video_seconds.audio
  *   video     bytedance/seedance-2.0       output_video_tokens
  *
- * Charging is applied by the billing processor. Browser events may include
- * backend-calculated `grossCredits`, and historical model events may retain
- * runner-calculated values. Other events use the `(kind, provider, category)`
- * pricing-table lookup. The processor applies allowances to the gross amount
- * and writes `creditsCharged`.
+ * Charging is applied by the billing processor. Historical model events may
+ * retain runner-calculated `grossCredits`; other events use the
+ * `(kind, provider, category)` pricing-table lookup. The processor applies
+ * allowances to the gross amount and writes `creditsCharged`.
  *
  * `billingError` is a short code naming a billing-time problem on the
  * row. NULL on healthy rows. Ops queries `WHERE billing_error IS NOT
