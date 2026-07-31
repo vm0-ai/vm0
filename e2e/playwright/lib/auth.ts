@@ -1,8 +1,7 @@
 import { clerk } from "@clerk/testing/playwright";
 import { errors, type Page } from "@playwright/test";
 
-const CLERK_BOOTSTRAP_ATTEMPTS = 2;
-const CLERK_BOOTSTRAP_ATTEMPT_TIMEOUT_MS = 15_000;
+const CLERK_BOOTSTRAP_TIMEOUTS_MS = [15_000, 30_000] as const;
 
 export interface ClerkTestingSignInOptions {
   readonly activeOrganizationId?: string;
@@ -109,26 +108,26 @@ async function navigateToLoadedClerk(
   page: Page,
   helperUrl: URL,
 ): Promise<void> {
-  for (let attempt = 1; attempt <= CLERK_BOOTSTRAP_ATTEMPTS; attempt += 1) {
+  for (const [attempt, timeout] of CLERK_BOOTSTRAP_TIMEOUTS_MS.entries()) {
     await page.goto(helperUrl.toString(), { waitUntil: "domcontentloaded" });
     try {
       await page.waitForFunction(
         () => Boolean(window.Clerk?.loaded),
         undefined,
         {
-          timeout: CLERK_BOOTSTRAP_ATTEMPT_TIMEOUT_MS,
+          timeout,
         },
       );
       return;
     } catch (error) {
       if (
         !(error instanceof errors.TimeoutError) ||
-        attempt === CLERK_BOOTSTRAP_ATTEMPTS
+        attempt === CLERK_BOOTSTRAP_TIMEOUTS_MS.length - 1
       ) {
         throw error;
       }
       // Clerk's testing-token route allows a single FAPI fetch to consume 30s.
-      // Reload within the same total budget so a stalled fetch is aborted and retried.
+      // Retry sooner, then retain the original 30s tolerance on the final attempt.
       console.warn("[e2e] Clerk bootstrap stalled; retrying navigation");
     }
   }
