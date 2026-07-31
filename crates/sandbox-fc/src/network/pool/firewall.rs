@@ -634,6 +634,28 @@ async fn run_firewall_restore(
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
+    fn restore_capture_command(dir: &std::path::Path) -> (std::path::PathBuf, std::path::PathBuf) {
+        use std::os::unix::fs::PermissionsExt;
+
+        let command = dir.join("verify-restore");
+        let payload = dir.join("payload");
+        std::fs::write(
+            &command,
+            r#"#!/bin/sh
+[ "$1" = "--wait" ] || exit 2
+[ "$2" = "--noflush" ] || exit 3
+PAYLOAD="${0%/*}/payload"
+while IFS= read -r LINE; do
+    printf '%s\n' "$LINE"
+done < "$3" > "$PAYLOAD"
+"#,
+        )
+        .unwrap();
+        std::fs::set_permissions(&command, std::fs::Permissions::from_mode(0o755)).unwrap();
+        (command, payload)
+    }
+
     #[tokio::test]
     async fn xtables_status_prepends_bare_wait() {
         exec_xtables_status_with_timeout(
@@ -648,26 +670,8 @@ mod tests {
     #[tokio::test]
     #[cfg(unix)]
     async fn firewall_restore_applies_insert_and_append_rules_in_one_waiting_mutation() {
-        use std::os::unix::fs::PermissionsExt;
-
         let dir = tempfile::tempdir().unwrap();
-        let command = dir.path().join("verify-restore");
-        std::fs::write(
-            &command,
-            r#"#!/bin/sh
-[ "$1" = "--wait" ] || exit 2
-[ "$2" = "--noflush" ] || exit 3
-EXPECTED='*raw
--I PREROUTING 1 -m comment --comment vm0-ns-00-00 -j DROP
-COMMIT
-*filter
--A FORWARD -m comment --comment vm0-ns-00-00 -j ACCEPT
-COMMIT'
-[ "$(cat "$3")" = "$EXPECTED" ] || exit 4
-"#,
-        )
-        .unwrap();
-        std::fs::set_permissions(&command, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let (command, payload) = restore_capture_command(dir.path());
 
         apply_firewall_rules_with_restore(
             command.to_str().unwrap(),
@@ -684,6 +688,11 @@ COMMIT'
         )
         .await
         .unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(payload).unwrap(),
+            "*raw\n-I PREROUTING 1 -m comment --comment vm0-ns-00-00 -j DROP\nCOMMIT\n*filter\n-A FORWARD -m comment --comment vm0-ns-00-00 -j ACCEPT\nCOMMIT\n"
+        );
     }
 
     #[test]
@@ -718,26 +727,8 @@ COMMIT'
     #[tokio::test]
     #[cfg(unix)]
     async fn firewall_restore_batches_tables_in_one_waiting_mutation() {
-        use std::os::unix::fs::PermissionsExt;
-
         let dir = tempfile::tempdir().unwrap();
-        let command = dir.path().join("verify-restore");
-        std::fs::write(
-            &command,
-            r#"#!/bin/sh
-[ "$1" = "--wait" ] || exit 2
-[ "$2" = "--noflush" ] || exit 3
-EXPECTED='*raw
--D PREROUTING -m comment --comment vm0-ns-00-00 -j DROP
-COMMIT
-*filter
--D FORWARD -m comment --comment vm0-ns-00-00 -j ACCEPT
-COMMIT'
-[ "$(cat "$3")" = "$EXPECTED" ] || exit 4
-"#,
-        )
-        .unwrap();
-        std::fs::set_permissions(&command, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let (command, payload) = restore_capture_command(dir.path());
 
         let outcome = delete_firewall_rules_with_restore(
             command.to_str().unwrap(),
@@ -759,6 +750,10 @@ COMMIT'
         .await;
 
         assert_eq!(outcome, NamespaceDeleteOutcome::Deleted);
+        assert_eq!(
+            std::fs::read_to_string(payload).unwrap(),
+            "*raw\n-D PREROUTING -m comment --comment vm0-ns-00-00 -j DROP\nCOMMIT\n*filter\n-D FORWARD -m comment --comment vm0-ns-00-00 -j ACCEPT\nCOMMIT\n"
+        );
     }
 
     #[tokio::test]
@@ -778,28 +773,8 @@ COMMIT'
     #[tokio::test]
     #[cfg(unix)]
     async fn incomplete_snapshot_deletes_captured_rules_and_remains_abandoned() {
-        use std::os::unix::fs::PermissionsExt;
-
         let dir = tempfile::tempdir().unwrap();
-        let command = dir.path().join("verify-restore");
-        let called = dir.path().join("called");
-        std::fs::write(
-            &command,
-            format!(
-                r#"#!/bin/sh
-[ "$1" = "--wait" ] || exit 2
-[ "$2" = "--noflush" ] || exit 3
-EXPECTED='*raw
--D PREROUTING -m comment --comment vm0-ns-00-00 -j DROP
-COMMIT'
-[ "$(cat "$3")" = "$EXPECTED" ] || exit 4
-touch "{}"
-"#,
-                called.display()
-            ),
-        )
-        .unwrap();
-        std::fs::set_permissions(&command, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let (command, payload) = restore_capture_command(dir.path());
 
         let captured = FirewallTableSnapshot {
             table: "raw",
@@ -816,7 +791,10 @@ touch "{}"
 
         let outcome = delete_firewall_restore_selection(command.to_str().unwrap(), selection).await;
 
-        assert!(called.exists());
         assert_eq!(outcome, NamespaceDeleteOutcome::Abandoned);
+        assert_eq!(
+            std::fs::read_to_string(payload).unwrap(),
+            "*raw\n-D PREROUTING -m comment --comment vm0-ns-00-00 -j DROP\nCOMMIT\n"
+        );
     }
 }
