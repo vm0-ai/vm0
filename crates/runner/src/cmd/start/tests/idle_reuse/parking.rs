@@ -7,6 +7,13 @@ use super::super::support::{
 
 use crate::types::SandboxReuseResult;
 
+// -----------------------------------------------------------------------
+// Test 9: idle pool park/take is gated on session ID availability
+//
+// With a session ID, the VM is parked after execution; without one,
+// the VM is destroyed (no key to re-find it under).
+// -----------------------------------------------------------------------
+
 fn context_with_session_opt(
     run_id: RunId,
     session_id: Option<&str>,
