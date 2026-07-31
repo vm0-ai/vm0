@@ -21,7 +21,7 @@ const mockLogEntry = {
   agentId: AGENT_ID,
   displayName: "My Agent",
   framework: "claude",
-  triggerSource: "cli",
+  triggerSource: "web",
   triggerAgentName: null,
   status: "completed",
   createdAt: "2026-04-01T10:30:00Z",

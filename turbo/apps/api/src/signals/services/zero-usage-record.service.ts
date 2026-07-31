@@ -66,7 +66,6 @@ const PASSTHROUGH_TRIGGER_SOURCES = [
   "email",
   "agentphone",
   "github",
-  "cli",
   "agent",
 ] as const;
 const usageRecordKindDecoder = zodEnumDriverValueDecoder(usageRecordKindSchema);
