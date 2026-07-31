@@ -24,6 +24,7 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.SlackDmSessionRouting, {})).toBe(
       true,
     );
+    expect(isFeatureEnabled(FeatureSwitchKey.HtmlResourceIndex, {})).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -177,7 +178,7 @@ describe("getAllFeatureStates", () => {
     );
     expect(otherOrgStates[FeatureSwitchKey.SlackDmSessionRouting]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ArtifactKeyV2]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.HtmlResourceIndex]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.HtmlResourceIndex]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ComposerUploadPopover]).toBe(false);
     expect(
       otherOrgStates[FeatureSwitchKey.StructuredPromptInlineTemplates],
