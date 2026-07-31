@@ -1976,16 +1976,7 @@
         "verifying": "कृपया तब तक प्रतीक्षा करें जब तक हम आपका कनेक्शन सत्यापित नहीं कर देते।"
       },
       "feishu": {
-        "back": "Feishu सेटिंग्स पर वापस जाएँ",
-        "checkingTitle": "खाते की स्थिति जाँची जा रही है...",
-        "connectDescription": "अपने {{brandName}} खाते को इस Feishu बॉट से लिंक करें ताकि आप सीधे Feishu से अपने एजेंट के साथ काम कर सकें।",
-        "connectTitle": "Feishu से कनेक्ट करें",
-        "errorFallback": "हम Feishu कनेक्ट नहीं कर सके. एक ताज़ा कनेक्ट लिंक खोलें और पुनः प्रयास करें।",
-        "invalidDescription": "Feishu से एक ताज़ा कनेक्ट लिंक खोलें और पुनः प्रयास करें।",
-        "open": "Feishu खोलें",
-        "successDescription": "आप जुड़े हुए हैं. चैटिंग शुरू करने के लिए Feishu में एक संदेश भेजें।",
-        "successDescriptionNamed": "आप {{bot}} से कनेक्ट हैं. चैटिंग शुरू करने के लिए Feishu में एक संदेश भेजें।",
-        "successTitle": "Feishu से जुड़ा!"
+        "connectTitle": "Feishu से कनेक्ट करें"
       },
       "github": {
         "accountFallback": "यह GitHub खाता",
@@ -2230,10 +2221,14 @@
         "moreOptions": "{{bot}} के लिए अधिक विकल्प",
         "pageDescription": "इस वर्कस्पेस के लिए बॉट रूटिंग प्रबंधित करें",
         "permissions": {
-          "description": "Feishu डेवलपर कंसोल में Permissions & Scopes खोलें और User identity के लिए नीचे दिए गए सभी स्कोप जोड़ें। इन सहयोग स्कोप से कनेक्टर संदेशों, फ़ाइलों, दस्तावेज़ों, स्प्रेडशीट, Base, Wiki, Slides, व्हाइटबोर्ड, खोज, कैलेंडर, टास्क और बुनियादी संपर्कों के साथ काम कर सकता है।",
-          "hint": "अनुमतियाँ बदलने के बाद नया ऐप संस्करण बनाएँ और प्रकाशित करें, ताकि OAuth सहमति स्क्रीन उन्हें प्रदान कर सके।",
-          "label": "OAuth स्कोप",
-          "title": "कनेक्टर अनुमतियाँ चालू करें"
+          "description": "Feishu डेवलपर कंसोल में Permissions & Scopes खोलें, Batch Import/Export > Import चुनें और नीचे दिया गया JSON पेस्ट करें। इससे मैनेज्ड कनेक्टर के सभी स्कोप User identity के अंतर्गत इंपोर्ट हो जाते हैं।",
+          "hint": "इंपोर्ट की गई User identity अनुमतियों की पुष्टि करें, फिर नया ऐप संस्करण बनाएँ और प्रकाशित करें ताकि OAuth सहमति स्क्रीन उन्हें प्रदान कर सके।",
+          "label": "यूज़र टोकन स्कोप JSON",
+          "menuAlt": "Feishu Permissions & Scopes पेज, जिसमें Batch import/export scopes मेन्यू हाइलाइट किया गया है",
+          "menuLabel": "Batch import/export scopes खोलें",
+          "reviewAlt": "Feishu Batch import/export scopes डायलॉग, जिसमें इंपोर्ट किया गया JSON और रिव्यू बटन हाइलाइट हैं",
+          "reviewLabel": "JSON पेस्ट करें और नए स्कोप रिव्यू करें",
+          "title": "यूज़र टोकन स्कोप इंपोर्ट करें"
         },
         "publish": {
           "allMembersAlt": "सभी सदस्यों के साथ Feishu उपलब्धता सेटिंग्स चयनित",
@@ -2267,7 +2262,7 @@
           "done": "हो गया",
           "events": "घटनाएँ",
           "next": "अगला",
-          "permissions": "अनुमतियाँ",
+          "permissions": "स्कोप",
           "publish": "प्रकाशित करना",
           "redirect": "पुनर्निर्देशन",
           "tokens": "टोकन",

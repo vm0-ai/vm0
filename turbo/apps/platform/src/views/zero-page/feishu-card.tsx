@@ -49,6 +49,8 @@ import {
   platformFeishuEncryptionStrategyImg,
   platformFeishuEventRequestUrlImg,
   platformFeishuEventSubscriptionModeImg,
+  platformFeishuPermissionsScopesBatchImportMenuImg,
+  platformFeishuPermissionsScopesBatchImportReviewImg,
   platformFeishuSecuritySettingsRedirectUrlImg,
   platformFeishuVersionAvailabilityEditImg,
   platformFeishuVersionManagementCreateVersionImg,
@@ -824,7 +826,16 @@ function FeishuRedirectStep({ data }: { data: FeishuDialogData | null }) {
 function FeishuPermissionsStep({ data }: { data: FeishuDialogData | null }) {
   const { t } = useTranslation();
   const scopes = data?.oauthScopes ?? FEISHU_OAUTH_SCOPES;
-  const scopeList = scopes.join(", ");
+  const scopeImportJson = JSON.stringify(
+    {
+      scopes: {
+        tenant: [],
+        user: scopes,
+      },
+    },
+    null,
+    2,
+  );
   return (
     <div className="space-y-4">
       <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
@@ -838,6 +849,34 @@ function FeishuPermissionsStep({ data }: { data: FeishuDialogData | null }) {
             return $.connectors.providerSettings.feishu.permissions.description;
           })}
         </p>
+        <div className="mt-4">
+          <FeishuGuideCarousel
+            images={[
+              {
+                src: platformFeishuPermissionsScopesBatchImportMenuImg,
+                alt: t(($) => {
+                  return $.connectors.providerSettings.feishu.permissions
+                    .menuAlt;
+                }),
+                label: t(($) => {
+                  return $.connectors.providerSettings.feishu.permissions
+                    .menuLabel;
+                }),
+              },
+              {
+                src: platformFeishuPermissionsScopesBatchImportReviewImg,
+                alt: t(($) => {
+                  return $.connectors.providerSettings.feishu.permissions
+                    .reviewAlt;
+                }),
+                label: t(($) => {
+                  return $.connectors.providerSettings.feishu.permissions
+                    .reviewLabel;
+                }),
+              },
+            ]}
+          />
+        </div>
       </div>
       <div className="rounded-lg border border-border p-4">
         <div className="mb-3 flex items-center justify-between gap-3">
@@ -846,9 +885,9 @@ function FeishuPermissionsStep({ data }: { data: FeishuDialogData | null }) {
               return $.connectors.providerSettings.feishu.permissions.label;
             })}
           </span>
-          {scopeList ? (
+          {scopes.length > 0 ? (
             <CopyButton
-              value={scopeList}
+              value={scopeImportJson}
               label={t(($) => {
                 return $.connectors.providerSettings.feishu.permissions.label;
               })}
@@ -856,8 +895,11 @@ function FeishuPermissionsStep({ data }: { data: FeishuDialogData | null }) {
           ) : null}
         </div>
         <div className="max-h-56 overflow-y-auto rounded-md bg-muted/40 p-3">
-          <code className="whitespace-pre-wrap break-words text-xs text-foreground">
-            {scopes.join("\n")}
+          <code
+            className="whitespace-pre-wrap break-words text-xs text-foreground"
+            data-testid="feishu-user-scope-import-json"
+          >
+            {scopeImportJson}
           </code>
         </div>
       </div>
@@ -1480,40 +1522,26 @@ function FeishuBotMenu({
       </PopoverTrigger>
       <PopoverContent align="end" className="flex w-40 flex-col gap-0.5 p-2">
         {isAdmin ? (
-          <>
-            <button
-              type="button"
-              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
-              onClick={() => {
-                open({
-                  appId: bot.appId,
-                  defaultAgentId: bot.defaultAgentId,
-                  step: bot.setupCompleted ? "create" : "redirect",
-                  installationId: bot.id,
-                });
-              }}
-            >
-              {bot.setupCompleted
-                ? t(($) => {
-                    return $.connectors.providerSettings.feishu.reviewGuide;
-                  })
-                : t(($) => {
-                    return $.connectors.providerSettings.feishu.manage;
-                  })}
-            </button>
-            <button
-              type="button"
-              disabled={!bot.id}
-              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-destructive transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
-              onClick={() => {
-                setUninstallInstallationId(bot.id);
-              }}
-            >
-              {t(($) => {
-                return $.connectors.actions.uninstall;
-              })}
-            </button>
-          </>
+          <button
+            type="button"
+            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+            onClick={() => {
+              open({
+                appId: bot.appId,
+                defaultAgentId: bot.defaultAgentId,
+                step: bot.setupCompleted ? "create" : "redirect",
+                installationId: bot.id,
+              });
+            }}
+          >
+            {bot.setupCompleted
+              ? t(($) => {
+                  return $.connectors.providerSettings.feishu.reviewGuide;
+                })
+              : t(($) => {
+                  return $.connectors.providerSettings.feishu.manage;
+                })}
+          </button>
         ) : null}
         {bot.isConnected ? (
           <button
@@ -1531,6 +1559,20 @@ function FeishuBotMenu({
               : t(($) => {
                   return $.connectors.actions.disconnect;
                 })}
+          </button>
+        ) : null}
+        {isAdmin ? (
+          <button
+            type="button"
+            disabled={!bot.id}
+            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-destructive transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
+            onClick={() => {
+              setUninstallInstallationId(bot.id);
+            }}
+          >
+            {t(($) => {
+              return $.connectors.actions.uninstall;
+            })}
           </button>
         ) : null}
       </PopoverContent>
@@ -1557,6 +1599,8 @@ function FeishuBotRow({
       return $.connectors.providerSettings.feishu.botFallback;
     });
   const connectUrl = bot.connectUrl;
+  const canConnect =
+    bot.setupCompleted === true && typeof connectUrl === "string";
   return (
     <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:px-5">
       <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -1597,13 +1641,16 @@ function FeishuBotRow({
             />
           </div>
         ) : null}
-        {!bot.isConnected && bot.setupCompleted && connectUrl ? (
+        {!bot.isConnected && canConnect ? (
           <Button
             type="button"
             variant="outline"
             size="sm"
             className="h-9 justify-center"
             onClick={() => {
+              if (typeof connectUrl !== "string") {
+                return;
+              }
               const url = new URL(connectUrl);
               url.searchParams.set("callbackTarget", "app");
               window.open(url.toString(), "_blank");

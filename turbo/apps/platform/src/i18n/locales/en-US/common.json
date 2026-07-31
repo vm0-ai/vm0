@@ -1976,16 +1976,7 @@
         "verifying": "Please wait while we verify your connection."
       },
       "feishu": {
-        "back": "Back to Feishu settings",
-        "checkingTitle": "Checking account status…",
-        "connectDescription": "Link your {{brandName}} account to this Feishu bot so you can work with your agent directly from Feishu.",
-        "connectTitle": "Connect to Feishu",
-        "errorFallback": "We couldn't connect Feishu. Open a fresh connect link and try again.",
-        "invalidDescription": "Open a fresh connect link from Feishu and try again.",
-        "open": "Open Feishu",
-        "successDescription": "You're connected. Send a message in Feishu to start chatting.",
-        "successDescriptionNamed": "You're connected to {{bot}}. Send a message in Feishu to start chatting.",
-        "successTitle": "Connected to Feishu!"
+        "connectTitle": "Connect to Feishu"
       },
       "github": {
         "accountFallback": "this GitHub account",
@@ -2230,10 +2221,14 @@
         "moreOptions": "More options for {{bot}}",
         "pageDescription": "Manage bot routing for this workspace",
         "permissions": {
-          "description": "Open Permissions & Scopes in the Feishu developer console and add every scope below for User identity. These collaboration scopes let the connector work with messages, files, documents, spreadsheets, Base, Wiki, Slides, whiteboards, search, calendars, tasks, and basic contacts.",
-          "hint": "After changing permissions, create and publish a new app version so the OAuth consent screen can grant them.",
-          "label": "OAuth scopes",
-          "title": "Enable connector permissions"
+          "description": "In the Feishu developer console, open Permissions & Scopes, choose Batch Import/Export > Import, and paste the JSON below. It imports every managed connector scope under User identity.",
+          "hint": "Confirm the imported User identity permissions, then create and publish a new app version so the OAuth consent screen can grant them.",
+          "label": "User token scope JSON",
+          "menuAlt": "Feishu Permissions & Scopes page with the Batch import/export scopes menu highlighted",
+          "menuLabel": "Open Batch import/export scopes",
+          "reviewAlt": "Feishu Batch import/export scopes dialog with the imported JSON and review button highlighted",
+          "reviewLabel": "Paste the JSON and review new scopes",
+          "title": "Import user token scopes"
         },
         "publish": {
           "allMembersAlt": "Feishu availability settings with All members selected",
@@ -2267,7 +2262,7 @@
           "done": "Done",
           "events": "Events",
           "next": "Next",
-          "permissions": "Permissions",
+          "permissions": "Scopes",
           "publish": "Publish",
           "redirect": "Redirect",
           "tokens": "Tokens",

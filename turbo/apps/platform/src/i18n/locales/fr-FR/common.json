@@ -2019,16 +2019,7 @@
         "verifying": "Veuillez patienter pendant que nous vérifions votre connexion."
       },
       "feishu": {
-        "back": "Retour aux paramètres Feishu",
-        "checkingTitle": "Vérification de l'état du compte…",
-        "connectDescription": "Liez votre compte {{brandName}} à ce bot Feishu pour pouvoir travailler avec votre agent directement depuis Feishu.",
-        "connectTitle": "Se connecter à Feishu",
-        "errorFallback": "Nous n'avons pas pu connecter Feishu. Ouvrez un nouveau lien de connexion et réessayez.",
-        "invalidDescription": "Ouvrez un nouveau lien de connexion depuis Feishu et réessayez.",
-        "open": "Ouvrir Feishu",
-        "successDescription": "Vous êtes connecté. Envoyez un message dans Feishu pour commencer à discuter.",
-        "successDescriptionNamed": "Vous êtes connecté à {{bot}}. Envoyez un message dans Feishu pour commencer à discuter.",
-        "successTitle": "Connecté à Feishu !"
+        "connectTitle": "Se connecter à Feishu"
       },
       "github": {
         "accountFallback": "ce compte GitHub",
@@ -2273,10 +2264,14 @@
         "moreOptions": "Plus d'options pour {{bot}}",
         "pageDescription": "Gérer le routage du bot pour cet espace de travail",
         "permissions": {
-          "description": "Ouvrez Autorisations et portées dans la console développeur Feishu et ajoutez toutes les portées ci-dessous pour l'identité Utilisateur. Ces portées de collaboration permettent au connecteur d'accéder aux messages, fichiers, documents, feuilles de calcul, Base, Wiki, Slides, tableaux blancs, recherche, calendriers, tâches et contacts de base.",
-          "hint": "Après avoir modifié les autorisations, créez et publiez une nouvelle version de l'application afin que l'écran de consentement OAuth puisse les accorder.",
-          "label": "Portées OAuth",
-          "title": "Activer les autorisations du connecteur"
+          "description": "Dans la console développeur Feishu, ouvrez Autorisations et portées, choisissez Importation/exportation par lots > Importer, puis collez le JSON ci-dessous. Toutes les portées du connecteur géré sont importées sous l'identité Utilisateur.",
+          "hint": "Confirmez les autorisations importées de l'identité Utilisateur, puis créez et publiez une nouvelle version de l'application afin que l'écran de consentement OAuth puisse les accorder.",
+          "label": "JSON des portées du jeton utilisateur",
+          "menuAlt": "Page Autorisations et portées de Feishu avec le menu d’importation/exportation par lots des portées mis en évidence",
+          "menuLabel": "Ouvrir l’importation/exportation par lots des portées",
+          "reviewAlt": "Boîte de dialogue d’importation/exportation par lots des portées de Feishu avec le JSON importé et le bouton de vérification mis en évidence",
+          "reviewLabel": "Coller le JSON et vérifier les nouvelles portées",
+          "title": "Importer les portées du jeton utilisateur"
         },
         "publish": {
           "allMembersAlt": "Paramètres de disponibilité de Feishu avec Tous les membres sélectionnés",
@@ -2310,7 +2305,7 @@
           "done": "Terminé",
           "events": "Événements",
           "next": "Suivant",
-          "permissions": "Autorisations",
+          "permissions": "Portées",
           "publish": "Publier",
           "redirect": "Rediriger",
           "tokens": "Tokens",

@@ -2019,16 +2019,7 @@
         "verifying": "Aguarde enquanto verificamos sua conexão."
       },
       "feishu": {
-        "back": "Voltar para as configurações do Feishu",
-        "checkingTitle": "Verificando o status da conta…",
-        "connectDescription": "Vincule sua conta do {{brandName}} a este bot do Feishu para trabalhar com seu agente diretamente pelo Feishu.",
-        "connectTitle": "Conectar ao Feishu",
-        "errorFallback": "Não foi possível conectar o Feishu. Abra um novo link de conexão e tente novamente.",
-        "invalidDescription": "Abra um novo link de conexão no Feishu e tente novamente.",
-        "open": "Abrir Feishu",
-        "successDescription": "Você está conectado. Envie uma mensagem no Feishu para começar a conversar.",
-        "successDescriptionNamed": "Você está conectado a {{bot}}. Envie uma mensagem no Feishu para começar a conversar.",
-        "successTitle": "Conectado ao Feishu!"
+        "connectTitle": "Conectar ao Feishu"
       },
       "github": {
         "accountFallback": "esta conta do GitHub",
@@ -2273,10 +2264,14 @@
         "moreOptions": "Mais opções para {{bot}}",
         "pageDescription": "Gerencie o encaminhamento dos bots neste workspace",
         "permissions": {
-          "description": "Abra Permissions & Scopes no console de desenvolvedor do Feishu e adicione todos os escopos abaixo para User identity. Esses escopos de colaboração permitem que o conector trabalhe com mensagens, arquivos, documentos, planilhas, Base, Wiki, Slides, quadros brancos, pesquisa, calendários, tarefas e contatos básicos.",
-          "hint": "Depois de alterar as permissões, crie e publique uma nova versão do app para que a tela de consentimento OAuth possa concedê-las.",
-          "label": "Escopos OAuth",
-          "title": "Habilitar permissões do conector"
+          "description": "No console de desenvolvedor do Feishu, abra Permissions & Scopes, escolha Batch Import/Export > Import e cole o JSON abaixo. Isso importa todos os escopos do conector gerenciado em User identity.",
+          "hint": "Confirme as permissões importadas de User identity e depois crie e publique uma nova versão do app para que a tela de consentimento OAuth possa concedê-las.",
+          "label": "JSON de escopos do token de usuário",
+          "menuAlt": "Página Permissões e escopos do Feishu com o menu de importação/exportação em lote de escopos destacado",
+          "menuLabel": "Abrir importação/exportação em lote de escopos",
+          "reviewAlt": "Caixa de diálogo de importação/exportação em lote de escopos do Feishu com o JSON importado e o botão de revisão destacado",
+          "reviewLabel": "Colar o JSON e revisar os novos escopos",
+          "title": "Importar escopos do token de usuário"
         },
         "publish": {
           "allMembersAlt": "Configurações de disponibilidade do Feishu com All members selecionado",
@@ -2310,7 +2305,7 @@
           "done": "Concluído",
           "events": "Eventos",
           "next": "Avançar",
-          "permissions": "Permissões",
+          "permissions": "Escopos",
           "publish": "Publicar",
           "redirect": "Redirecionar",
           "tokens": "Tokens",

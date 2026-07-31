@@ -3276,6 +3276,10 @@ describe("connectors page", () => {
       teamAgent(researchAgentId, "Research"),
       teamAgent(supportAgentId, "Support"),
     ]);
+    const enabledIdsByAgent = new Map<string, string[]>([
+      [researchAgentId, [connector.id]],
+      [supportAgentId, []],
+    ]);
     context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: [connector] });
     });
@@ -3283,7 +3287,26 @@ describe("connectors page", () => {
       zeroAgentCustomConnectorsContract.get,
       ({ params, respond }) => {
         return respond(200, {
-          enabledIds: params.id === researchAgentId ? [connector.id] : [],
+          enabledIds: enabledIdsByAgent.get(params.id) ?? [],
+        });
+      },
+    );
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ params, body, respond }) => {
+        if (!("enabledIds" in body)) {
+          throw new Error("Expected custom connector ID authorization");
+        }
+        const current = enabledIdsByAgent.get(params.id) ?? [];
+        const next =
+          body.operation === "add"
+            ? Array.from(new Set([...current, ...body.enabledIds]))
+            : current.filter((id) => {
+                return !body.enabledIds.includes(id);
+              });
+        enabledIdsByAgent.set(params.id, next);
+        return respond(200, {
+          enabledIds: next,
         });
       },
     );
@@ -3296,6 +3319,31 @@ describe("connectors page", () => {
       expect(
         within(card).getByTestId("custom-connector-card-agent-usage"),
       ).toHaveTextContent("Used by Research");
+    });
+
+    click(
+      within(connectorCardByLabel("Acme Search")).getByLabelText(
+        "Manage Acme Search access",
+      ),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage Acme Search access",
+    });
+    expect(within(dialog).getByText("Research")).toBeInTheDocument();
+    expect(within(dialog).getByText("Support")).toBeInTheDocument();
+
+    click(
+      within(dialog).getByLabelText("Authorize Acme Search access for Support"),
+    );
+    await waitFor(() => {
+      expect(
+        within(dialog).getByLabelText("Revoke Acme Search access for Support"),
+      ).toBeInTheDocument();
+      expect(
+        within(connectorCardByLabel("Acme Search")).getByTestId(
+          "custom-connector-card-agent-usage",
+        ),
+      ).toHaveTextContent("Used by Research, Support");
     });
     expect(
       screen.queryByText("https://api.acme.test/v1/"),

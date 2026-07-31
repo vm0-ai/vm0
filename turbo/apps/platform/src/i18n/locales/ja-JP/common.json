@@ -1976,16 +1976,7 @@
         "verifying": "接続を確認するまでお待ちください。"
       },
       "feishu": {
-        "back": "Feishu 設定に戻る",
-        "checkingTitle": "アカウントのステータスを確認しています…",
-        "connectDescription": "{{brandName}} アカウントをこの Feishu ボットにリンクすると、Feishu から直接エージェントと連携できるようになります。",
-        "connectTitle": "Feishu に接続します",
-        "errorFallback": "Feishu に接続できませんでした。新しい接続リンクを開いて、再試行してください。",
-        "invalidDescription": "Feishu から新しい接続リンクを開いて、再試行してください。",
-        "open": "Feishu を開く",
-        "successDescription": "つながっていますね。 Feishu でメッセージを送信してチャットを開始してください。",
-        "successDescriptionNamed": "{{bot}} に接続しています。 Feishu でメッセージを送信してチャットを開始してください。",
-        "successTitle": "Feishu に接続しました!"
+        "connectTitle": "Feishu に接続します"
       },
       "github": {
         "accountFallback": "この GitHub アカウント",
@@ -2230,10 +2221,14 @@
         "moreOptions": "{{bot}} のその他のオプション",
         "pageDescription": "このワークスペースのボット ルーティングを管理する",
         "permissions": {
-          "description": "Feishu 開発者コンソールで「権限とスコープ」を開き、以下のすべてのスコープを「ユーザー ID」に追加します。これらのコラボレーション スコープにより、コネクタはメッセージ、ファイル、ドキュメント、スプレッドシート、Base、Wiki、Slides、ホワイトボード、検索、カレンダー、タスク、および基本的な連絡先を操作できます。",
-          "hint": "権限を変更した後、OAuth 同意画面で権限を付与できるように、アプリの新しいバージョンを作成して公開します。",
-          "label": "OAuth スコープ",
-          "title": "コネクタの権限を有効にする"
+          "description": "Feishu 開発者コンソールで「権限とスコープ」を開き、「一括インポート/エクスポート > インポート」を選択して、以下の JSON を貼り付けます。管理対象コネクタに必要なすべてのスコープがユーザー ID にインポートされます。",
+          "hint": "インポートされたユーザー ID の権限を確認し、OAuth 同意画面で権限を付与できるように、アプリの新しいバージョンを作成して公開します。",
+          "label": "ユーザートークンスコープ JSON",
+          "menuAlt": "「スコープの一括インポート/エクスポート」メニューが強調表示された Feishu の「権限とスコープ」ページ",
+          "menuLabel": "スコープの一括インポート/エクスポートを開く",
+          "reviewAlt": "インポートした JSON と確認ボタンが強調表示された Feishu の「スコープの一括インポート/エクスポート」ダイアログ",
+          "reviewLabel": "JSON を貼り付けて新しいスコープを確認",
+          "title": "ユーザートークンスコープをインポート"
         },
         "publish": {
           "allMembersAlt": "すべてのメンバーが選択された場合の Feishu 可用性設定",
@@ -2267,7 +2262,7 @@
           "done": "完了",
           "events": "イベント",
           "next": "次へ",
-          "permissions": "権限",
+          "permissions": "スコープ",
           "publish": "発行する",
           "redirect": "リダイレクト",
           "tokens": "トークン",

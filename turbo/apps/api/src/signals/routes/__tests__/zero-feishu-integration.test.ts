@@ -26,6 +26,7 @@ import { getCustomConnectorSkillStorageName } from "@vm0/core/storage-names";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { extractFileFromTarGz } from "../../../lib/tar";
 import { server } from "../../../mocks/server";
 import {
   findPendingChatEventInputParamsByPromptFixture,
@@ -166,6 +167,36 @@ function feishuConnectBody(connectUrl: string) {
       "Expected signature in Feishu connect URL",
     ),
   };
+}
+
+function commandInput(command: unknown): Record<string, unknown> {
+  if (
+    typeof command === "object" &&
+    command !== null &&
+    "input" in command &&
+    typeof command.input === "object" &&
+    command.input !== null
+  ) {
+    return command.input as Record<string, unknown>;
+  }
+  return {};
+}
+
+function uploadedSkillMarkdown(): string {
+  for (const [command] of context.mocks.s3.send.mock.calls) {
+    const input = commandInput(command);
+    if (
+      !String(input.Key).endsWith("/archive.tar.gz") ||
+      !Buffer.isBuffer(input.Body)
+    ) {
+      continue;
+    }
+    const skillMarkdown = extractFileFromTarGz(input.Body, "SKILL.md");
+    if (skillMarkdown !== null) {
+      return skillMarkdown;
+    }
+  }
+  throw new Error("Expected an uploaded SKILL.md");
 }
 
 function legacyFeishuAppOAuthState(args: {
@@ -1291,7 +1322,7 @@ describe("Feishu integration", () => {
     );
     expect(managedConnector).toMatchObject({
       slug: `_feishu-${installationId}`,
-      displayName: "Feishu",
+      displayName: "Feishu-Okou Feishu",
       prefixes: ["https://open.feishu.cn/open-apis/"],
       headerInjections: [
         {
@@ -1312,13 +1343,23 @@ describe("Feishu integration", () => {
         scopes: [...EXPECTED_FEISHU_OAUTH_SCOPES],
       },
     });
-    expect(managedConnector.skillMarkdown).toContain("Chats and messages");
+    expect(managedConnector.skillMarkdown).toContain("Available capabilities");
     expect(managedConnector.skillMarkdown).toContain(
-      "Documents: create and edit",
+      "Every request runs with the connected user's identity",
     );
     expect(managedConnector.skillMarkdown).toContain(
-      "Authentication is injected automatically",
+      "does not grant whiteboard node update or delete scopes",
     );
+    const skillMarkdown = uploadedSkillMarkdown();
+    expect(skillMarkdown).toContain("---\nname: feishu\n");
+    expect(skillMarkdown).toContain(
+      "description: Feishu OpenAPI for user-authorized messaging, people search, cloud",
+    );
+    expect(skillMarkdown).toContain(
+      "documents, calendars, and tasks. Use when the user asks to work with Feishu.",
+    );
+    expect(skillMarkdown).not.toContain("Okou Feishu");
+    expect(skillMarkdown).not.toContain(managedConnector.id);
 
     const customConnectorOAuthClient = setupApp({ context })(
       zeroCustomConnectorOAuth2Contract,
