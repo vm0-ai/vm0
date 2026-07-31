@@ -467,7 +467,11 @@ const browserUseCdpCommandSchema = z.object({
 
 function defaultBrowserUseCdpResult(command: BrowserUseCdpCommand): unknown {
   if (command.method === "Target.getTargets") {
-    return { targetInfos: [{ targetId: "page-target", type: "page" }] };
+    return {
+      targetInfos: [
+        { targetId: "page-target", type: "page", url: "about:blank" },
+      ],
+    };
   }
   if (command.method === "Browser.getWindowForTarget") {
     return { windowId: 7 };
@@ -484,10 +488,22 @@ export function browserUseCdpHandler(url: string) {
         throw new Error("Expected a text CDP command");
       }
       const command = browserUseCdpCommandSchema.parse(JSON.parse(event.data));
-      const result =
-        apiTestMocks.browserUseCdp.command(command) ??
-        defaultBrowserUseCdpResult(command);
-      client.send(JSON.stringify({ id: command.id, result }));
+      const mockedResult = apiTestMocks.browserUseCdp.command(command);
+      if (mockedResult instanceof Error) {
+        client.send(
+          JSON.stringify({
+            id: command.id,
+            error: { message: mockedResult.message },
+          }),
+        );
+        return;
+      }
+      client.send(
+        JSON.stringify({
+          id: command.id,
+          result: mockedResult ?? defaultBrowserUseCdpResult(command),
+        }),
+      );
     });
   });
 }

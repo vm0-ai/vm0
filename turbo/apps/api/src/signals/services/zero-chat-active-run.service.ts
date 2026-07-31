@@ -86,6 +86,7 @@ async function activeChatRunExists(
   args: {
     readonly threadId: string;
     readonly excludeRunId?: string;
+    readonly apiStartTime?: number;
   },
 ): Promise<boolean> {
   const [run] = await db
@@ -105,7 +106,8 @@ async function activeChatRunExists(
             gt(
               agentRuns.completedAt,
               new Date(
-                nowDate().getTime() - CANCELLATION_RECOVERY_STALE_AFTER_MS,
+                (args.apiStartTime ?? nowDate().getTime()) -
+                  CANCELLATION_RECOVERY_STALE_AFTER_MS,
               ),
             ),
           ),
@@ -125,6 +127,7 @@ export async function chatThreadAdmissionBlocked(
   args: {
     readonly threadId: string;
     readonly excludeRunId?: string;
+    readonly apiStartTime?: number;
   },
 ): Promise<boolean> {
   return await activeChatRunExists(db, args);

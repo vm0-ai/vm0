@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import type { BrowserSessionSignals } from "../../signals/chat-page/browser-session-block.ts";
 import {
-  activeSidebarBrowserSessionId$,
+  activeSidebarBrowserThreadId$,
   openThreadBrowserSession$,
 } from "../../signals/chat-page/thread-sidebar-coordinator.ts";
 
@@ -30,13 +30,22 @@ function BrowserSessionCardSkeleton() {
   );
 }
 
-function BrowserSessionUnavailable() {
+function BrowserSessionUnavailable({
+  signals,
+}: {
+  readonly signals?: BrowserSessionSignals;
+}) {
   const { t } = useTranslation();
+  const openSidebar = useSet(openThreadBrowserSession$);
+  const unavailable = signals === undefined;
   return (
     <div
       data-browser-session-card
-      data-browser-session-status="unavailable"
-      className={cn(BROWSER_SESSION_CARD_CLASS, "border-border/60 opacity-70")}
+      data-browser-session-status={unavailable ? "unavailable" : "suspended"}
+      className={cn(
+        BROWSER_SESSION_CARD_CLASS,
+        unavailable ? "border-border/60 opacity-70" : "border-border/70",
+      )}
     >
       <span className="flex min-w-0 flex-1 items-center gap-2">
         <span className="truncate text-sm font-medium text-foreground">
@@ -54,10 +63,23 @@ function BrowserSessionUnavailable() {
       <Button
         type="button"
         size="sm"
-        disabled
-        aria-label={t(($) => {
-          return $.browserSession.unavailable.title;
-        })}
+        disabled={unavailable}
+        aria-label={
+          unavailable
+            ? t(($) => {
+                return $.browserSession.unavailable.title;
+              })
+            : t(($) => {
+                return $.browserSession.openAction;
+              })
+        }
+        onClick={
+          signals
+            ? () => {
+                openSidebar(signals.threadId);
+              }
+            : undefined
+        }
         className="min-w-[58px] bg-foreground px-2.5 text-xs text-background hover:bg-foreground/90 active:bg-foreground/80"
       >
         {t(($) => {
@@ -73,18 +95,21 @@ function BrowserSessionUnavailable() {
 export function BrowserSessionCard({ signals }: BrowserSessionCardProps) {
   const { t } = useTranslation();
   const sessionLoadable = useLastLoadable(signals.session$);
-  const selectedBrowserId = useGet(activeSidebarBrowserSessionId$);
+  const selectedBrowserThreadId = useGet(activeSidebarBrowserThreadId$);
   const openSidebar = useSet(openThreadBrowserSession$);
 
   if (sessionLoadable.state === "loading") {
     return <BrowserSessionCardSkeleton />;
   }
-  if (sessionLoadable.state === "hasError" || sessionLoadable.data === null) {
+  if (sessionLoadable.state === "hasError") {
     return <BrowserSessionUnavailable />;
+  }
+  if (sessionLoadable.data === null) {
+    return <BrowserSessionUnavailable signals={signals} />;
   }
 
   const session = sessionLoadable.data;
-  const selected = selectedBrowserId === signals.browserId;
+  const selected = selectedBrowserThreadId === signals.threadId;
   const live = session.status === "active";
   return (
     <div
@@ -134,7 +159,7 @@ export function BrowserSessionCard({ signals }: BrowserSessionCardProps) {
           { name: session.name },
         )}
         onClick={() => {
-          openSidebar(signals.browserId);
+          openSidebar(signals.threadId);
         }}
         className="min-w-[58px] bg-foreground px-2.5 text-xs text-background hover:bg-foreground/90 active:bg-foreground/80"
       >

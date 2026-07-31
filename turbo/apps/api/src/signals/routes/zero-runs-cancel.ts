@@ -3,6 +3,7 @@ import { zeroRunsCancelContract } from "@vm0/api-contracts/contracts/zero-runs";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { apiStartTime$ } from "../context/hono";
 import { pathParamsOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { logger } from "../../lib/log";
@@ -24,11 +25,17 @@ function isCancelResult(value: NonNullable<unknown>): value is CancelRunResult {
 const cancelInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const params = get(pathParamsOf(zeroRunsCancelContract.cancel));
+  const apiStartTime = get(apiStartTime$);
   signal.throwIfAborted();
 
   const result = await set(
     cancelRun$,
-    { runId: params.id, userId: auth.userId, orgId: auth.orgId },
+    {
+      runId: params.id,
+      userId: auth.userId,
+      orgId: auth.orgId,
+      apiStartTime,
+    },
     signal,
   );
   signal.throwIfAborted();

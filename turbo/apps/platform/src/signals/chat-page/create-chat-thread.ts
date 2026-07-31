@@ -42,6 +42,7 @@ import {
   createOptimisticChatEventEntry,
   createOptimisticChatEventsForThread,
   reconcileOptimisticChatEvents$,
+  removeOptimisticChatEvent$,
   type OptimisticChatEventEntry,
   type OptimisticChatEventInput,
 } from "./optimistic-chat-events.ts";
@@ -60,6 +61,7 @@ import {
   chatEventCompatibilityRole,
   foldActiveChatGoalObjective,
   foldLatestChatUsageByRunId,
+  isBrowserLifecycleEventType,
   isChatRunTerminalEventType,
   revokedChatEventIds,
   terminatedChatRunIds,
@@ -162,8 +164,8 @@ import {
 } from "./mail-draft.ts";
 import {
   createBrowserSessionCardSignalsRegistry,
+  type BrowserLifecycleOptimisticEvents,
   type BrowserSessionCardSignalsRegistry,
-  type BrowserSessionSignals,
 } from "./browser-session-block.ts";
 import { createChatThreadContainerSignals } from "./chat-thread-container.ts";
 import { createAssistantErrorRecoverySignals } from "./assistant-error-recovery.ts";
@@ -1333,10 +1335,6 @@ function createRenderedChatGroups(
       return groupEventsForDisplay(events);
     },
   );
-  const sidebarAutoOpenCandidate$ = createThreadSidebarAutoOpenCandidate(
-    allRenderedChatGroups$,
-  );
-
   const eventImageGroups$ = computed(
     async (get): Promise<EventImageGroupProjection[]> => {
       return (await get(allRenderedChatGroups$)).map((group) => {
@@ -1355,7 +1353,6 @@ function createRenderedChatGroups(
 
   return {
     allRenderedChatGroups$,
-    sidebarAutoOpenCandidate$,
     eventImageGroups$,
   };
 }
@@ -1669,6 +1666,7 @@ function semanticTranscriptEventsFromRaw(
       isQueueMarkerEvent(event) ||
       isGoalQueueEvent(event) ||
       isGoalMarkerEvent(event) ||
+      isBrowserLifecycleEventType(event.eventType) ||
       isInterruptedAssistantCancellation(event, interruptedRunIds) ||
       recalledIds.has(event.id) ||
       replacedIds.has(event.id)
@@ -2129,34 +2127,100 @@ function createEventSemanticSignals(
   };
 }
 
+interface EventSyncTracking {
+  readonly completion: Promise<void>;
+  readonly initialRemoteEventsReady: Promise<boolean>;
+}
+
+type MarkInitialRemoteEventsReady = (
+  browserLifecycleAuthoritative: boolean,
+) => void;
+
+async function eventSyncCompletionAsAuthoritative(
+  completion: Promise<void>,
+): Promise<boolean> {
+  await completion;
+  return true;
+}
+
 function createEventSyncSignals(hasEvents$: Computed<Promise<boolean>>) {
   const initialSyncStarted = Promise.withResolvers<void>();
-  const internalEventSyncPromise$ = state<Promise<void> | null>(null);
+  const internalEventSync$ = state<EventSyncTracking | null>(null);
+  const eventSyncTracking$ = computed(
+    async (get): Promise<EventSyncTracking> => {
+      await initialSyncStarted.promise;
+      const tracking = get(internalEventSync$);
+      if (!tracking) {
+        throw new Error("Initial chat event sync tracking is missing");
+      }
+      return tracking;
+    },
+  );
+  const initialRemoteEventsComplete$ = computed(async (get): Promise<void> => {
+    await (
+      await get(eventSyncTracking$)
+    ).completion;
+  });
   const hasNewEvents$ = computed(async (get): Promise<boolean> => {
-    await initialSyncStarted.promise;
-    await get(internalEventSyncPromise$);
+    await get(initialRemoteEventsComplete$);
     return await get(hasEvents$);
   });
-  const trackEventSync$ = command(({ set }, promise: Promise<void>): void => {
-    set(internalEventSyncPromise$, promise);
-    initialSyncStarted.resolve(undefined);
+  const initialBrowserLifecycleAuthoritative$ = computed(
+    async (get): Promise<boolean> => {
+      return await (
+        await get(eventSyncTracking$)
+      ).initialRemoteEventsReady;
+    },
+  );
+  const initialRemoteEventsReady$ = computed(async (get): Promise<void> => {
+    await get(initialBrowserLifecycleAuthoritative$);
   });
+  const trackEventSync$ = command(
+    ({ set }, tracking: EventSyncTracking): void => {
+      set(internalEventSync$, tracking);
+      initialSyncStarted.resolve(undefined);
+    },
+  );
   const settleEventSync$ = command(({ set }): Promise<void> => {
     const promise = Promise.resolve();
-    set(trackEventSync$, promise);
+    set(trackEventSync$, {
+      completion: promise,
+      initialRemoteEventsReady: Promise.resolve(true),
+    });
     return promise;
   });
-  return { hasNewEvents$, trackEventSync$, settleEventSync$ };
+  return {
+    hasNewEvents$,
+    initialRemoteEventsReady$,
+    initialBrowserLifecycleAuthoritative$,
+    initialRemoteEventsComplete$,
+    trackEventSync$,
+    settleEventSync$,
+  };
 }
 
 function createTrackedEventSyncCommand(
-  runSyncRemoteEvents$: Command<Promise<void>, [AbortSignal]>,
-  trackEventSync$: Command<void, [Promise<void>]>,
+  runSyncRemoteEvents$: Command<
+    Promise<void>,
+    [MarkInitialRemoteEventsReady, AbortSignal]
+  >,
+  trackEventSync$: Command<void, [EventSyncTracking]>,
 ): Command<Promise<void>, [AbortSignal]> {
   return command(({ set }, signal: AbortSignal): Promise<void> => {
-    const promise = set(runSyncRemoteEvents$, signal);
-    set(trackEventSync$, promise);
-    return promise;
+    const initialRemoteEventsReady = Promise.withResolvers<boolean>();
+    const completion = set(
+      runSyncRemoteEvents$,
+      initialRemoteEventsReady.resolve,
+      signal,
+    );
+    set(trackEventSync$, {
+      completion,
+      initialRemoteEventsReady: Promise.race([
+        initialRemoteEventsReady.promise,
+        eventSyncCompletionAsAuthoritative(completion),
+      ]),
+    });
+    return completion;
   });
 }
 
@@ -2229,29 +2293,9 @@ function createLatestEventSignals(
       );
     },
   );
-  const latestBrowserSessionSignals$ = computed(
-    (get): BrowserSessionSignals | null => {
-      const events = get(rawEvents$);
-      for (let eventIndex = events.length - 1; eventIndex >= 0; eventIndex--) {
-        const blocks = events[eventIndex]!.blocks;
-        for (
-          let blockIndex = blocks.length - 1;
-          blockIndex >= 0;
-          blockIndex--
-        ) {
-          const block = blocks[blockIndex]!;
-          if (block.type === "browser-session") {
-            return block.signals;
-          }
-        }
-      }
-      return null;
-    },
-  );
   return {
     latestRunFinishCreatedAt$,
     latestAssistantTextCreatedAt$,
-    latestBrowserSessionSignals$,
   };
 }
 
@@ -2259,6 +2303,13 @@ const HISTORY_BACKFILL_MERGE_BATCH_SIZE = 300;
 
 /** Per-thread chat event sequences start at 1, so this marks the oldest event. */
 const FIRST_CHAT_EVENT_SEQ_ID = 1;
+
+function isBrowserLifecycleEvent(event: PersistedChatEvent): boolean {
+  return (
+    event.eventType === "browser.started" ||
+    event.eventType === "browser.stopped"
+  );
+}
 
 function createSyncRemoteEventsCommand({
   threadId,
@@ -2276,117 +2327,136 @@ function createSyncRemoteEventsCommand({
   threadScrollPosition$: Computed<ThreadScrollPosition | null>;
   requestScrollAfterRender$: Command<void, [ThreadScrollPosition | null]>;
   dataSource: ChatThreadRemote;
-}): Command<Promise<void>, [AbortSignal]> {
-  return command(async ({ get, set }, signal: AbortSignal) => {
-    const mergeEvents = (events: PersistedChatEvent[]): void => {
-      const scrollPosition = get(threadScrollPosition$);
-      set(mergePersistentEvents$, events);
-      set(requestScrollAfterRender$, scrollPosition);
-    };
-    const persistentEvents = get(persistentEvents$);
-    const accumulatedEvents: PersistedChatEvent[] = [];
-    let mergedEventCount = 0;
-    const latestPersistentEvent = persistentEvents.at(-1);
-    let sinceSeqId = latestPersistentEvent?.event.seqId;
-    let initialPageOldestEvent: PersistedChatEvent | undefined;
-
-    async function syncEventsAfter(): Promise<void> {
-      const requestedSinceSeqId = sinceSeqId;
-      const isInitialPage = requestedSinceSeqId === undefined;
-      const events = await set(
-        dataSource.listEventsAfter$,
-        { threadId, sinceSeqId: requestedSinceSeqId },
-        signal,
-      );
-      signal.throwIfAborted();
-      L.debug("syncRemoteMessages$ listEventsAfter result", {
-        threadId,
-        sinceSeqId: requestedSinceSeqId ?? null,
-        gotCount: events.length,
+}): Command<Promise<void>, [MarkInitialRemoteEventsReady, AbortSignal]> {
+  return command(
+    async (
+      { get, set },
+      markInitialRemoteEventsReady: MarkInitialRemoteEventsReady,
+      signal: AbortSignal,
+    ) => {
+      const mergeEvents = (events: PersistedChatEvent[]): void => {
+        const scrollPosition = get(threadScrollPosition$);
+        set(mergePersistentEvents$, events);
+        set(requestScrollAfterRender$, scrollPosition);
+      };
+      const persistentEvents = get(persistentEvents$);
+      const accumulatedEvents: PersistedChatEvent[] = [];
+      let mergedEventCount = 0;
+      const latestPersistentEvent = persistentEvents.at(-1);
+      let sinceSeqId = latestPersistentEvent?.event.seqId;
+      let initialPageOldestEvent: PersistedChatEvent | undefined;
+      let browserLifecycleObserved = persistentEvents.some(({ event }) => {
+        return isBrowserLifecycleEvent(event);
       });
 
-      if (events.length === 0) {
-        return;
-      }
+      async function syncEventsAfter(): Promise<void> {
+        const requestedSinceSeqId = sinceSeqId;
+        const isInitialPage = requestedSinceSeqId === undefined;
+        const events = await set(
+          dataSource.listEventsAfter$,
+          { threadId, sinceSeqId: requestedSinceSeqId },
+          signal,
+        );
+        signal.throwIfAborted();
+        L.debug("syncRemoteMessages$ listEventsAfter result", {
+          threadId,
+          sinceSeqId: requestedSinceSeqId ?? null,
+          gotCount: events.length,
+        });
 
-      await set(writeIndexedDbChatEvents$, threadId, events, signal);
-      signal.throwIfAborted();
-      if (isInitialPage) {
-        initialPageOldestEvent = events[0]!;
-        mergeEvents(events);
-      } else {
-        accumulatedEvents.push(...events);
-      }
-      sinceSeqId = events.at(-1)!.seqId;
-
-      if (
-        requestedSinceSeqId !== undefined &&
-        events.length < CHAT_EVENTS_PAGE_LIMIT
-      ) {
-        return;
-      }
-      return syncEventsAfter();
-    }
-    await syncEventsAfter();
-    signal.throwIfAborted();
-
-    if (!get(hasReachedOldestEvent$)) {
-      const oldestEvent =
-        persistentEvents[0]?.event ??
-        initialPageOldestEvent ??
-        accumulatedEvents[0];
-      if (oldestEvent !== undefined) {
-        let beforeSeqId = oldestEvent.seqId;
-        async function syncEventsBefore(): Promise<void> {
-          const events = await set(
-            dataSource.listEventsBefore$,
-            { threadId, beforeSeqId },
-            signal,
-          );
-          signal.throwIfAborted();
-          L.debug("syncRemoteMessages$ listEventsBefore result", {
-            threadId,
-            beforeSeqId,
-            gotCount: events.length,
-          });
-
-          const oldestInPage = events[0];
-          if (oldestInPage !== undefined) {
-            accumulatedEvents.push(...events);
-            await set(writeIndexedDbChatEvents$, threadId, events, signal);
-            signal.throwIfAborted();
-            // Flush periodically so long backfills surface incrementally
-            // (e.g. the history backfill progress bar) instead of appearing
-            // only after every page has been fetched.
-            if (
-              accumulatedEvents.length - mergedEventCount >=
-              HISTORY_BACKFILL_MERGE_BATCH_SIZE
-            ) {
-              mergeEvents(accumulatedEvents.slice(mergedEventCount));
-              mergedEventCount = accumulatedEvents.length;
-            }
-          }
-
-          // A thread's first event always carries seqId 1, so reaching it is
-          // the only stop condition for walking history backwards. An empty
-          // page leaves no usable cursor, which also ends the walk.
-          if (
-            oldestInPage === undefined ||
-            oldestInPage.seqId <= FIRST_CHAT_EVENT_SEQ_ID
-          ) {
-            return;
-          }
-
-          beforeSeqId = oldestInPage.seqId;
-
-          return syncEventsBefore();
+        if (events.length === 0) {
+          return;
         }
-        await syncEventsBefore();
+        browserLifecycleObserved ||= events.some(isBrowserLifecycleEvent);
+
+        await set(writeIndexedDbChatEvents$, threadId, events, signal);
+        signal.throwIfAborted();
+        if (isInitialPage) {
+          initialPageOldestEvent = events[0]!;
+          mergeEvents(events);
+        } else {
+          accumulatedEvents.push(...events);
+        }
+        sinceSeqId = events.at(-1)!.seqId;
+
+        if (
+          requestedSinceSeqId !== undefined &&
+          events.length < CHAT_EVENTS_PAGE_LIMIT
+        ) {
+          return;
+        }
+        return syncEventsAfter();
       }
-    }
-    signal.throwIfAborted();
-    mergeEvents(accumulatedEvents.slice(mergedEventCount));
-  });
+      await syncEventsAfter();
+      signal.throwIfAborted();
+      // When IndexedDB supplied the starting cursor, forward catch-up events
+      // were accumulated rather than merged. Apply them before the sidebar
+      // reads the lifecycle projection so cached state cannot win over remote
+      // events that happened later.
+      mergeEvents(accumulatedEvents.slice(mergedEventCount));
+      mergedEventCount = accumulatedEvents.length;
+      markInitialRemoteEventsReady(
+        browserLifecycleObserved || get(hasReachedOldestEvent$),
+      );
+
+      if (!get(hasReachedOldestEvent$)) {
+        const oldestEvent =
+          persistentEvents[0]?.event ??
+          initialPageOldestEvent ??
+          accumulatedEvents[0];
+        if (oldestEvent !== undefined) {
+          let beforeSeqId = oldestEvent.seqId;
+          async function syncEventsBefore(): Promise<void> {
+            const events = await set(
+              dataSource.listEventsBefore$,
+              { threadId, beforeSeqId },
+              signal,
+            );
+            signal.throwIfAborted();
+            L.debug("syncRemoteMessages$ listEventsBefore result", {
+              threadId,
+              beforeSeqId,
+              gotCount: events.length,
+            });
+
+            const oldestInPage = events[0];
+            if (oldestInPage !== undefined) {
+              accumulatedEvents.push(...events);
+              await set(writeIndexedDbChatEvents$, threadId, events, signal);
+              signal.throwIfAborted();
+              // Flush periodically so long backfills surface incrementally
+              // (e.g. the history backfill progress bar) instead of appearing
+              // only after every page has been fetched.
+              if (
+                accumulatedEvents.length - mergedEventCount >=
+                HISTORY_BACKFILL_MERGE_BATCH_SIZE
+              ) {
+                mergeEvents(accumulatedEvents.slice(mergedEventCount));
+                mergedEventCount = accumulatedEvents.length;
+              }
+            }
+
+            // A thread's first event always carries seqId 1, so reaching it is
+            // the only stop condition for walking history backwards. An empty
+            // page leaves no usable cursor, which also ends the walk.
+            if (
+              oldestInPage === undefined ||
+              oldestInPage.seqId <= FIRST_CHAT_EVENT_SEQ_ID
+            ) {
+              return;
+            }
+
+            beforeSeqId = oldestInPage.seqId;
+
+            return syncEventsBefore();
+          }
+          await syncEventsBefore();
+        }
+      }
+      signal.throwIfAborted();
+      mergeEvents(accumulatedEvents.slice(mergedEventCount));
+    },
+  );
 }
 
 function createActiveGoalObjectiveComputed(
@@ -2592,16 +2662,6 @@ function createMailDraftCardSignalsById(
   });
 }
 
-function createBrowserSessionCardSignalsById(
-  rawEvents$: Computed<ChatEventProjectionEntry[]>,
-  browserSessionCardSignals: BrowserSessionCardSignalsRegistry,
-): Computed<ReadonlyMap<string, BrowserSessionSignals>> {
-  return computed((get) => {
-    get(rawEvents$);
-    return new Map(browserSessionCardSignals.entries());
-  });
-}
-
 function createEventHistoryBackfillProgress(
   hasReachedOldestEvent$: Computed<boolean>,
   persistentEvents$: PersistentChatEvents$,
@@ -2626,13 +2686,40 @@ function createEventHistoryBackfillProgress(
   });
 }
 
+function createBrowserLifecycleOptimisticEvents(
+  threadId: string,
+): BrowserLifecycleOptimisticEvents {
+  return {
+    append$: command(({ set }, { eventId, eventType }): void => {
+      set(
+        appendOptimisticChatEvent$,
+        createOptimisticChatEventEntry({
+          threadId,
+          event: {
+            id: eventId,
+            threadId,
+            eventType,
+            content: null,
+            createdAt: nowDate().toISOString(),
+          },
+        }),
+      );
+    }),
+    remove$: command(({ set }, eventId): void => {
+      set(removeOptimisticChatEvent$, { threadId, eventId });
+    }),
+  };
+}
+
 function createPagedEventResources(
   threadId: string,
   previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
 ) {
   const mailDraftCardSignals = createMailDraftCardSignalsRegistry(threadId);
-  const browserSessionCardSignals =
-    createBrowserSessionCardSignalsRegistry(threadId);
+  const browserSessionCardSignals = createBrowserSessionCardSignalsRegistry(
+    threadId,
+    createBrowserLifecycleOptimisticEvents(threadId),
+  );
   const artifactCardSignals = createArtifactCardSignalsRegistry(
     previewImageUrlsByUrl$,
   );
@@ -2707,6 +2794,8 @@ function createPagedEvents(
     optimisticEvents$,
     resolveBodyBlocks,
   });
+  const sidebarAutoOpenCandidate$ =
+    createThreadSidebarAutoOpenCandidate(rawEvents$);
   const historyBackfillProgress$ = createEventHistoryBackfillProgress(
     hasReachedOldestEvent$,
     persistentChatEvents$,
@@ -2732,11 +2821,6 @@ function createPagedEvents(
     rawEvents$,
     mailDraftCardSignals,
   );
-  const browserSessionCardSignalsById$ = createBrowserSessionCardSignalsById(
-    rawEvents$,
-    browserSessionCardSignals,
-  );
-
   const mergePersistentEvents$ = createMergePersistentEvents(
     threadId,
     persistentChatEvents$,
@@ -2777,12 +2861,13 @@ function createPagedEvents(
     ...eventSync,
     ...renderedGroups,
     rawEvents$,
+    sidebarAutoOpenCandidate$,
     historyBackfillProgress$,
     eventRunIndicatorState$,
     activeGoalObjective$,
     mailDraftCardSignalsById$,
     reloadMailDrafts$: mailDraftCardSignals.reload$,
-    browserSessionCardSignalsById$,
+    browserSessionSignals: browserSessionCardSignals.browser,
     subscribeBrowserSessions$: browserSessionCardSignals.subscribe$,
     artifactSignalsForUrl: (url: string): ArtifactSignals | undefined => {
       return artifactCardSignals.find(url);
@@ -2930,7 +3015,6 @@ function createLoadMoreRenderedChatGroupsWithPrependScroll(
 interface RunTrackingDeps {
   threadId: string;
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
-  initialAutoOpenDecisionCompleted$: Computed<Promise<void>>;
   initializeIndexedDbEvents$: Command<Promise<void>, [AbortSignal]>;
   mergePersistentEvents$: Command<void, [PersistedChatEvent[]]>;
   syncRemoteEvents$: Command<Promise<void>, [AbortSignal]>;
@@ -3175,7 +3259,6 @@ function createMarkThreadReadIfNeeded({
 
 function createOnSubscribedCommand({
   threadId,
-  initialAutoOpenDecisionCompleted$,
   syncRemoteEvents$,
   settleEventSync$,
   reloadArtifacts$,
@@ -3185,7 +3268,6 @@ function createOnSubscribedCommand({
 }: Pick<
   RunTrackingDeps,
   | "threadId"
-  | "initialAutoOpenDecisionCompleted$"
   | "syncRemoteEvents$"
   | "settleEventSync$"
   | "reloadArtifacts$"
@@ -3199,8 +3281,6 @@ function createOnSubscribedCommand({
   const hasSubscribed$ = state(false);
   return command(async ({ get, set }, signal: AbortSignal) => {
     L.debug("subscribeChatThread$ catchup start", { threadId });
-    await get(initialAutoOpenDecisionCompleted$);
-    signal.throwIfAborted();
     set(reloadArtifacts$);
     if (get(hasSubscribed$)) {
       set(reloadMailDrafts$);
@@ -3258,7 +3338,6 @@ function createReceiveSyncedEventsCommand({
 function createRunTracking({
   threadId,
   latestRunFinishCreatedAt$,
-  initialAutoOpenDecisionCompleted$,
   initializeIndexedDbEvents$,
   mergePersistentEvents$,
   syncRemoteEvents$,
@@ -3291,7 +3370,6 @@ function createRunTracking({
 
   const onSubscribed$ = createOnSubscribedCommand({
     threadId,
-    initialAutoOpenDecisionCompleted$,
     syncRemoteEvents$,
     settleEventSync$,
     reloadArtifacts$,
@@ -4605,10 +4683,13 @@ function publicChatThreadEventSignals(
     artifactSignalsForUrl: events.artifactSignalsForUrl,
     agentReferenceSignalsForId: events.agentReferenceSignalsForId,
     mailDraftCardSignalsById$: events.mailDraftCardSignalsById$,
-    browserSessionCardSignalsById$: events.browserSessionCardSignalsById$,
-    latestBrowserSessionSignals$: events.latestBrowserSessionSignals$,
+    browserSessionSignals: events.browserSessionSignals,
     hasEvents$: events.hasEvents$,
     hasNewEvents$: events.hasNewEvents$,
+    initialRemoteEventsReady$: events.initialRemoteEventsReady$,
+    initialBrowserLifecycleAuthoritative$:
+      events.initialBrowserLifecycleAuthoritative$,
+    initialRemoteEventsComplete$: events.initialRemoteEventsComplete$,
     hasQueuedEvents$: events.hasQueuedEvents$,
     queuedEventItems$: events.queuedEventItems$,
     emptyQueuedEventItems$: events.emptyQueuedEventItems$,
@@ -4726,8 +4807,6 @@ export function createChatThreadSignals(
   const runTracking = createRunTracking({
     threadId,
     latestRunFinishCreatedAt$: events.latestRunFinishCreatedAt$,
-    initialAutoOpenDecisionCompleted$:
-      threadOwned.sidebar.initialAutoOpenDecisionCompleted$,
     initializeIndexedDbEvents$: events.initializeIndexedDbEvents$,
     mergePersistentEvents$: events.mergePersistentEvents$,
     syncRemoteEvents$: events.syncRemoteEvents$,

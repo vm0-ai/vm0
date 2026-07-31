@@ -1015,10 +1015,9 @@
     "openNewPage": "Open this browser in a new page",
     "panel": {
       "notLive": "Browser not live",
-      "resume": "Resume browser",
-      "resumeDescription": "Resuming restores the saved login profile and storage. The previous pages and tabs do not come back.",
-      "resuming": "Resuming…",
-      "suspended": "Browser suspended"
+      "start": "Start browser",
+      "startDescription": "Starting restores the saved login profile and storage when available, and reopens saved tabs when possible.",
+      "starting": "Starting…"
     },
     "reclaimHint_one": "Zero keeps this browser while this panel is open, and reclaims it after {{formattedCount}} idle minute.",
     "reclaimHint_other": "Zero keeps this browser while this panel is open, and reclaims it after {{formattedCount}} idle minutes.",
@@ -1027,6 +1026,7 @@
       "starting": "Starting",
       "stopped": "Stopped"
     },
+    "stop": "Stop browser",
     "title": "Live browser",
     "unavailable": {
       "description": "This browser does not belong to this chat or has been removed.",

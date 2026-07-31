@@ -2,6 +2,7 @@ import {
   IconArrowsDiagonal,
   IconAspectRatio,
   IconLoader2,
+  IconPlayerStop,
   IconX,
 } from "@tabler/icons-react";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
@@ -24,6 +25,8 @@ export function BrowserSessionSidebar({
   const { t } = useTranslation();
   const fitWindow = useSet(signals.fitWindow$);
   const fittingWindow = useGet(signals.fittingWindow$);
+  const stop = useSet(signals.stop$);
+  const stopping = useGet(signals.stopping$);
   const sessionLoadable = useLastLoadable(signals.panelSession$);
   const pageSignal = useGet(pageSignal$);
   const canFitWindow =
@@ -32,6 +35,10 @@ export function BrowserSessionSidebar({
     sessionLoadable.data?.status === "active" &&
     sessionLoadable.data.liveUrl !== null &&
     sessionLoadable.data.screen?.resizable === true;
+  const canStop =
+    sessionLoadable.state !== "loading" &&
+    sessionLoadable.state !== "hasError" &&
+    sessionLoadable.data?.status === "active";
 
   const handleFitWindow = (button: HTMLButtonElement) => {
     if (!canFitWindow || fittingWindow) {
@@ -72,6 +79,26 @@ export function BrowserSessionSidebar({
             return $.browserSession.title;
           })}
         </span>
+        <button
+          type="button"
+          onClick={() => {
+            detach(stop(pageSignal), Reason.DomCallback, "stop thread browser");
+          }}
+          disabled={!canStop || stopping}
+          aria-label={t(($) => {
+            return $.browserSession.stop;
+          })}
+          title={t(($) => {
+            return $.browserSession.stop;
+          })}
+          className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/60 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+        >
+          {stopping ? (
+            <IconLoader2 className="animate-spin" size={16} />
+          ) : (
+            <IconPlayerStop size={16} />
+          )}
+        </button>
         <button
           type="button"
           onClick={(event) => {

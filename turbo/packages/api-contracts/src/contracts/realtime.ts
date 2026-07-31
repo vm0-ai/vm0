@@ -14,9 +14,11 @@ export type ConnectorChangedPayload = z.infer<
   typeof connectorChangedPayloadSchema
 >;
 
-export const browserSessionChangedPayloadSchema = z.object({
-  browserId: z.uuid(),
-});
+export const browserSessionChangedPayloadSchema = z
+  .object({
+    threadId: z.uuid(),
+  })
+  .strict();
 
 export type BrowserSessionChangedPayload = z.infer<
   typeof browserSessionChangedPayloadSchema

@@ -1037,10 +1037,9 @@
     "openNewPage": "Abre este navegador en una página nueva",
     "panel": {
       "notLive": "El navegador no está activo",
-      "resume": "Reanudar navegador",
-      "resumeDescription": "Reanudar restaura el perfil de inicio de sesión y el almacenamiento guardados. Las páginas y pestañas anteriores no regresan.",
-      "resuming": "Reanudando...",
-      "suspended": "Navegador suspendido"
+      "start": "Iniciar navegador",
+      "startDescription": "Al iniciar, se restauran el perfil de inicio de sesión y el almacenamiento guardados cuando están disponibles, y se vuelven a abrir las pestañas guardadas cuando es posible.",
+      "starting": "Iniciando…"
     },
     "reclaimHint_one": "Zero mantiene este navegador mientras este panel está abierto y lo recupera tras {{formattedCount}} minuto de reposo.",
     "reclaimHint_many": "Zero mantiene este navegador mientras este panel está abierto y lo recupera tras {{formattedCount}} minutos de reposo.",
@@ -1050,6 +1049,7 @@
       "starting": "Iniciando",
       "stopped": "Detenido"
     },
+    "stop": "Detener navegador",
     "title": "Navegador en vivo",
     "unavailable": {
       "description": "Este navegador no pertenece a este chat ni ha sido eliminado.",

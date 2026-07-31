@@ -1,6 +1,9 @@
 import { command, computed } from "ccstate";
 
-import { chatThreadSidebarAutoOpenEnabled$ } from "../external/feature-switch.ts";
+import {
+  chatThreadSidebarAutoOpenEnabled$,
+  zeroBrowserEnabled$,
+} from "../external/feature-switch.ts";
 import {
   classifyChatAttachment,
   previewAttachmentFromUrl,
@@ -66,27 +69,12 @@ const openOnThread$ = command(
 );
 
 function targetFromAutoOpenCandidate(
-  candidate: ThreadSidebarAutoOpenCandidate,
+  _candidate: ThreadSidebarAutoOpenCandidate,
 ): ThreadSidebarTarget {
-  if (candidate.type === "email-draft") {
-    return { type: "email-draft", mailDraftId: candidate.resourceKey };
-  }
-  if (candidate.type === "browser") {
-    return { type: "browser", browserSessionId: candidate.resourceKey };
-  }
-  const attachment = previewAttachmentFromUrl(candidate.resourceKey);
-  const ref: ArtifactRef = {
-    url: candidate.resourceKey,
-    kind: classifyChatAttachment(attachment),
-    filename: attachment.filename,
-  };
-  return {
-    type: "artifact",
-    source: { kind: "attachment", ref },
-  };
+  return { type: "browser" };
 }
 
-const autoOpenThreadSidebarFromCurrentGroups$ = command(
+const autoOpenThreadSidebarFromBrowserLifecycle$ = command(
   async (
     { get, set },
     thread: ChatThreadSignals,
@@ -94,6 +82,7 @@ const autoOpenThreadSidebarFromCurrentGroups$ = command(
   ): Promise<void> => {
     if (
       !get(chatThreadSidebarAutoOpenEnabled$) ||
+      !get(zeroBrowserEnabled$) ||
       typeof window === "undefined" ||
       !window.matchMedia(CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY).matches
     ) {
@@ -121,6 +110,7 @@ const autoOpenThreadSidebarFromCurrentGroups$ = command(
     }
     if (
       !get(chatThreadSidebarAutoOpenEnabled$) ||
+      !get(zeroBrowserEnabled$) ||
       typeof window === "undefined" ||
       !window.matchMedia(CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY).matches ||
       get(activeThreadSidebar$) !== null
@@ -139,8 +129,21 @@ export const autoOpenInitialThreadSidebar$ = command(
   ): Promise<void> => {
     await get(thread.indexedDbEventsInitialized$);
     signal.throwIfAborted();
+    // A lifecycle event in the locally cached/forward-synced window is
+    // authoritative because every newer remote event has already been merged.
+    // When that window has no lifecycle event and does not reach seqId 1,
+    // older history may still contain an unmatched browser.started, so finish
+    // the backfill before deciding that the browser is inactive.
+    const browserLifecycleAuthoritative = await get(
+      thread.initialBrowserLifecycleAuthoritative$,
+    );
+    signal.throwIfAborted();
+    if (!browserLifecycleAuthoritative) {
+      await get(thread.initialRemoteEventsComplete$);
+    }
+    signal.throwIfAborted();
     const result = await settle(
-      set(autoOpenThreadSidebarFromCurrentGroups$, thread, signal),
+      set(autoOpenThreadSidebarFromBrowserLifecycle$, thread, signal),
       signal,
     );
     set(thread.sidebar.enableEntryAnimations$);
@@ -156,9 +159,9 @@ export const autoOpenThreadSidebar$ = command(
     thread: ChatThreadSignals,
     signal: AbortSignal,
   ): Promise<void> => {
-    await get(thread.hasNewEvents$);
+    await get(thread.initialRemoteEventsReady$);
     signal.throwIfAborted();
-    await set(autoOpenThreadSidebarFromCurrentGroups$, thread, signal);
+    await set(autoOpenThreadSidebarFromBrowserLifecycle$, thread, signal);
   },
 );
 
@@ -207,19 +210,16 @@ export const openThreadMailDraft$ = command(
 );
 
 export const openThreadBrowserSession$ = command(
-  ({ get, set }, browserSessionId: string) => {
-    const thread = threadOwningCard(
-      [get(currentLeftThread$), get(currentRightThread$)],
+  ({ get, set }, threadId: string) => {
+    const thread = [get(currentLeftThread$), get(currentRightThread$)].find(
       (candidate) => {
-        return get(candidate.browserSessionCardSignalsById$).has(
-          browserSessionId,
-        );
+        return candidate?.threadId === threadId;
       },
     );
     if (!thread) {
       return;
     }
-    set(openOnThread$, thread, { type: "browser", browserSessionId });
+    set(openOnThread$, thread, { type: "browser" });
   },
 );
 
@@ -257,9 +257,7 @@ export const activeSidebarMailDraftId$ = computed((get): string | null => {
     : null;
 });
 
-export const activeSidebarBrowserSessionId$ = computed((get): string | null => {
+export const activeSidebarBrowserThreadId$ = computed((get): string | null => {
   const active = get(activeThreadSidebar$);
-  return active?.target.type === "browser"
-    ? active.target.browserSessionId
-    : null;
+  return active?.target.type === "browser" ? active.thread.threadId : null;
 });

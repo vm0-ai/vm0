@@ -1015,10 +1015,9 @@
     "openNewPage": "Buka browser ini di halaman baru",
     "panel": {
       "notLive": "Browser belum live",
-      "resume": "Lanjutkan browser",
-      "resumeDescription": "Melanjutkan akan memulihkan profil login dan penyimpanan yang tersimpan. Halaman dan tab sebelumnya tidak akan kembali.",
-      "resuming": "Melanjutkan…",
-      "suspended": "Browser dijeda"
+      "start": "Mulai browser",
+      "startDescription": "Memulai akan memulihkan profil login dan penyimpanan yang tersimpan jika tersedia, serta membuka kembali tab yang tersimpan jika memungkinkan.",
+      "starting": "Memulai…"
     },
     "reclaimHint_one": "Zero mempertahankan browser ini selama panel ini terbuka, lalu mengambilnya kembali setelah {{formattedCount}} menit tidak aktif.",
     "reclaimHint_other": "Zero mempertahankan browser ini selama panel ini terbuka, lalu mengambilnya kembali setelah {{formattedCount}} menit tidak aktif.",
@@ -1027,6 +1026,7 @@
       "starting": "Memulai",
       "stopped": "Berhenti"
     },
+    "stop": "Hentikan browser",
     "title": "Browser live",
     "unavailable": {
       "description": "Browser ini bukan milik chat ini atau telah dihapus.",
