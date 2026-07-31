@@ -130,7 +130,7 @@ describe("workflow queue panel", () => {
       expect(
         screen.getByText("1 message and 2 events waiting"),
       ).toBeInTheDocument();
-      expect(screen.getByText("Nightly sync")).toBeInTheDocument();
+      expect(screen.getByText("customer-followup")).toBeInTheDocument();
       expect(screen.getByText("Webhook event third")).toBeInTheDocument();
     });
 
@@ -177,7 +177,7 @@ describe("workflow queue panel", () => {
       },
     });
     await waitFor(() => {
-      expect(screen.getByText("Nightly sync")).toBeInTheDocument();
+      expect(screen.getByText("customer-followup")).toBeInTheDocument();
     });
 
     const skipButtons = queryAllByRoleFast("button").filter((candidate) => {
@@ -191,7 +191,7 @@ describe("workflow queue panel", () => {
       expect(recall?.clientEventId).toMatch(
         /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
       );
-      expect(screen.queryByText("Nightly sync")).not.toBeInTheDocument();
+      expect(screen.queryByText("customer-followup")).not.toBeInTheDocument();
       expect(screen.getByText("Webhook event third")).toBeInTheDocument();
     });
   });
