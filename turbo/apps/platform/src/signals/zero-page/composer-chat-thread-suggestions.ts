@@ -45,12 +45,17 @@ export function createComposerChatThreadSuggestions(
     }
 
     const query = range.query.toLowerCase();
+    const allAgents = await get(agents$);
+    const agentAvatarUrls = new Map(
+      allAgents.map((agent) => {
+        return [agent.id, agent.avatarUrl] as const;
+      }),
+    );
     const agentSuggestions: ComposerAgentSuggestion[] = [];
     const zeroChatMessagingEnabled =
       get(featureSwitch$)[FeatureSwitchKey.ZeroChatMessaging] ?? false;
     if (zeroChatMessagingEnabled) {
-      const visibleAgents = await get(agents$);
-      for (const agent of visibleAgents) {
+      for (const agent of allAgents) {
         const name = agent.displayName ?? agent.id;
         if (agent.id === agentId || !name.toLowerCase().includes(query)) {
           continue;
@@ -73,13 +78,17 @@ export function createComposerChatThreadSuggestions(
     for (const thread of get(eventDrivenChatThreads$)) {
       const title = thread.title;
       if (
-        thread.agentId !== agentId ||
+        (!zeroChatMessagingEnabled && thread.agentId !== agentId) ||
         !title ||
         !title.toLowerCase().includes(query)
       ) {
         continue;
       }
-      chatThreads.push({ id: thread.id, title });
+      chatThreads.push({
+        id: thread.id,
+        title,
+        avatarUrl: agentAvatarUrls.get(thread.agentId) ?? null,
+      });
       if (chatThreads.length === MAX_VISIBLE_CHAT_THREAD_SUGGESTIONS) {
         break;
       }
