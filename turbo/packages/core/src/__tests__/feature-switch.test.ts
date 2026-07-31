@@ -29,6 +29,9 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.ItalianLocale, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.FrenchLocale, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.HindiLocale, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.ZeroMailReplyFollowUp, {})).toBe(
+      true,
+    );
     expect(
       isFeatureEnabled(FeatureSwitchKey.ComposerSkillSubstringSearch, {}),
     ).toBe(true);

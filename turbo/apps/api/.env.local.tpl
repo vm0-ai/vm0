@@ -129,9 +129,8 @@ GMAIL_PUBSUB_TOPIC_NAME=op://Development/gmail/GMAIL_PUBSUB_TOPIC_NAME
 GMAIL_PUBSUB_PUSH_AUDIENCE=op://Development/gmail/GMAIL_PUBSUB_PUSH_AUDIENCE
 GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL=op://Development/gmail/GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL
 
-# Keep disabled until every rollback-eligible API version accepts Gmail
-# new-message event configurations with threadId.
-ZERO_MAIL_REPLY_FOLLOW_UP_ROLLOUT_ENABLED=false
+# Enable Gmail reply follow-up rollout in development.
+ZERO_MAIL_REPLY_FOLLOW_UP_ROLLOUT_ENABLED=true
 
 # Enable locale rollout gates in development.
 BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED=true

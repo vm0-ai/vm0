@@ -878,6 +878,7 @@ describe("POST /api/zero/mail/drafts/link", () => {
   });
 
   it("rejects reply tracking while its rollout switch is disabled", async () => {
+    mockOptionalEnv("ZERO_MAIL_REPLY_FOLLOW_UP_ROLLOUT_ENABLED", undefined);
     const fixture = await seedGmailMailCardFixture();
     if (!fixture.actor.orgId) {
       throw new Error("Expected an org-scoped actor");

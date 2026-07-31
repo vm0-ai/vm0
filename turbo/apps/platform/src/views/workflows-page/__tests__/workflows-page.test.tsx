@@ -2449,7 +2449,9 @@ describe("workflow detail page", () => {
   it("hides Gmail thread matching while its rollout switch is disabled", async () => {
     mockWorkflowApis([salesResearch()]);
 
-    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
+      [FeatureSwitchKey.ZeroMailReplyFollowUp]: false,
+    });
 
     await waitFor(() => {
       expect(buttonByText("Add automation")).toBeInTheDocument();

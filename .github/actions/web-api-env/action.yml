@@ -184,6 +184,7 @@ runs:
           add_env FEISHU_CALLBACK_BASE_URL "$api_backend_url"
           add_env VM0_WEB_URL "$web_url"
           add_env ENV "$deploy_env"
+          add_env ZERO_MAIL_REPLY_FOLLOW_UP_ROLLOUT_ENABLED "true"
           add_env BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED "true"
           add_env JAPANESE_LOCALE_ROLLOUT_ENABLED "true"
           add_env KOREAN_LOCALE_ROLLOUT_ENABLED "true"

@@ -750,6 +750,9 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroMailReplyFollowUp]: false,
+      },
     });
 
     let cards: HTMLElement[] = [];
@@ -796,6 +799,10 @@ describe("chat event action cards", () => {
     expect(
       within(sidebar).getByText(/bcc hidden@example\.com/u),
     ).toBeInTheDocument();
+    expect(linkByText("Open in Gmail", sidebar)).toHaveAttribute(
+      "href",
+      "https://mail.google.com/mail/?authuser=sender%40example.com#drafts?compose=gmail-message-id",
+    );
     const messageSection = sidebar.querySelector<HTMLElement>(
       "[data-feedback-source]",
     );
@@ -927,6 +934,10 @@ describe("chat event action cards", () => {
       sidebar = screen.getByTestId("mail-draft-sidebar");
       expect(within(sidebar).getByText("Sent")).toBeInTheDocument();
     });
+    expect(linkByText("Open in Gmail", sidebar)).toHaveAttribute(
+      "href",
+      "https://mail.google.com/mail/?authuser=sender%40example.com#all/gmail-thread-id",
+    );
     expect(queryButtonByText("Send", sidebar)).toBeNull();
     const sentMessageSection = sidebar.querySelector<HTMLElement>(
       "[data-feedback-source]",
@@ -1075,6 +1086,9 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${scenario.threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroMailReplyFollowUp]: false,
+      },
     });
 
     await user.click(await waitForMailDraftCard());
@@ -1372,6 +1386,9 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroMailReplyFollowUp]: false,
+      },
     });
 
     await user.click(
@@ -1807,6 +1824,9 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroMailReplyFollowUp]: false,
+      },
     });
 
     const card = await screen.findByLabelText("Open draft email: Delete me");
@@ -1948,6 +1968,9 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroMailReplyFollowUp]: false,
+      },
     });
 
     const card = await screen.findByLabelText(

@@ -2213,6 +2213,15 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(appendSystemPrompt).toContain(
       "GET /gmail/v1/users/me/settings/sendAs",
     );
+    expect(appendSystemPrompt).toContain(
+      "Include a `multipart/alternative` body",
+    );
+    expect(appendSystemPrompt).toContain(
+      "Keep each plain-text paragraph on one logical line",
+    );
+    expect(appendSystemPrompt).toContain(
+      "use HTML paragraph elements so Gmail wraps the message naturally",
+    );
     expect(appendSystemPrompt).toContain("append that signature exactly once");
     expect(appendSystemPrompt).toContain(
       "return the link from the command to the user",
