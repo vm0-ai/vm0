@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { openArtifactInOpenSidebar$ } from "../chat-page/thread-sidebar-coordinator.ts";
 import {
   createTextPreviewComputed,
   isTextPreviewKind,
@@ -47,8 +48,7 @@ type AttachmentFramedDocumentLightboxInput = AttachmentDocumentLightboxBase & {
 };
 
 type AttachmentDocumentLightboxInput =
-  | AttachmentTextDocumentLightboxInput
-  | AttachmentFramedDocumentLightboxInput;
+  AttachmentTextDocumentLightboxInput | AttachmentFramedDocumentLightboxInput;
 
 export type AttachmentDocumentLightboxState =
   | (AttachmentDocumentLightboxBase & {
@@ -129,6 +129,20 @@ export const closeLightboxWithDialogExit$ = command(({ get, set }) => {
   }, LIGHTBOX_DIALOG_EXIT_DURATION_MS);
 });
 
+/**
+ * An open artifact sidebar owns every artifact click that could live in it, so
+ * the preview swaps the sidebar content instead of stacking a dialog over it.
+ * Previews that cannot move into the sidebar keep the lightbox.
+ */
+const routeToOpenArtifactSidebar$ = command(
+  ({ set }, value: { url: string; splitViewAvailable?: boolean }): boolean => {
+    if (value.splitViewAvailable === false) {
+      return false;
+    }
+    return set(openArtifactInOpenSidebar$, value.url);
+  },
+);
+
 export const openImageLightbox$ = command(
   (
     { set },
@@ -144,16 +158,16 @@ export const openImageLightbox$ = command(
           splitViewAvailable?: boolean;
         },
   ) => {
+    const input = typeof value === "string" ? { url: value } : value;
+    if (set(routeToOpenArtifactSidebar$, input)) {
+      return;
+    }
     set(internalLightboxDialogCloseToken$, (value) => {
       return value + 1;
     });
     set(internalLightboxDialogVisible$, true);
     set(internalLightboxDialogFullscreen$, false);
-    if (typeof value === "string") {
-      set(internalLightboxState$, { kind: "image", url: value });
-      return;
-    }
-    set(internalLightboxState$, { kind: "image", ...value });
+    set(internalLightboxState$, { kind: "image", ...input });
   },
 );
 
@@ -182,6 +196,9 @@ export const navigateImageLightbox$ = command(
 
 export const openDocumentLightbox$ = command(
   ({ set }, value: AttachmentDocumentLightboxInput) => {
+    if (set(routeToOpenArtifactSidebar$, value)) {
+      return;
+    }
     set(internalLightboxDialogCloseToken$, (value) => {
       return value + 1;
     });
@@ -210,6 +227,9 @@ export const openVideoLightbox$ = command(
       splitViewAvailable?: boolean;
     },
   ) => {
+    if (set(routeToOpenArtifactSidebar$, value)) {
+      return;
+    }
     set(internalLightboxDialogCloseToken$, (value) => {
       return value + 1;
     });
@@ -231,6 +251,9 @@ export const openAudioLightbox$ = command(
       splitViewAvailable?: boolean;
     },
   ) => {
+    if (set(routeToOpenArtifactSidebar$, value)) {
+      return;
+    }
     set(internalLightboxDialogCloseToken$, (value) => {
       return value + 1;
     });
