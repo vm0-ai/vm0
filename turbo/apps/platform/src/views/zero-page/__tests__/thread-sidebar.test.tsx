@@ -382,7 +382,7 @@ describe("thread-owned utility sidebar", () => {
     context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
       return respond(200, { browser: browserSession({ liveUrl: null }) });
     });
-    const finishStop = Promise.withResolvers<void>();
+    const finishStop = context.mocks.deferred<void>();
     let stopEventId: string | null = null;
     context.mocks.api(
       zeroBrowserContract.stop,
@@ -849,6 +849,47 @@ describe("thread-owned utility sidebar", () => {
     });
   });
 
+  it("auto-opens the browser sidebar before the event scroll animation frame", async () => {
+    const pendingFrames: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      pendingFrames.push(callback);
+      return pendingFrames.length;
+    });
+    context.mocks.browser.matchMedia((query) => {
+      return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
+    });
+    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+      return respond(200, { browser: browserSession() });
+    });
+    context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
+      return respond(200, {
+        browser: browserSession({ liveUrl: null }),
+      });
+    });
+
+    setupChatThread({
+      autoOpenEnabled: true,
+      messages: [
+        {
+          id: "c0000000-0000-4000-a000-000000000058",
+          eventType: "browser.started",
+          content: null,
+          seqId: 1,
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    await expect(
+      screen.findByLabelText("Live browser"),
+    ).resolves.toHaveAttribute("data-browser-session-sidebar");
+    expect(pendingFrames.length).toBeGreaterThan(0);
+
+    for (const callback of pendingFrames.splice(0)) {
+      callback(0);
+    }
+  });
+
   it("auto-opens from the first remote page while older history is still loading", async () => {
     const historyRequestStarted = context.mocks.deferred<void>();
     const releaseHistoryResponse = context.mocks.deferred<void>();
@@ -1095,8 +1136,8 @@ describe("thread-owned utility sidebar", () => {
   });
 
   it("auto-opens a background-synced browser start before mark-read completes", async () => {
-    const markReadStarted = Promise.withResolvers<void>();
-    const finishMarkRead = Promise.withResolvers<void>();
+    const markReadStarted = context.mocks.deferred<void>();
+    const finishMarkRead = context.mocks.deferred<void>();
     context.mocks.browser.matchMedia((query) => {
       return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
     });

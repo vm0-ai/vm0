@@ -33,10 +33,6 @@ import {
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
 import { syncPrimaryThread$ } from "./sync-primary-thread.ts";
 import {
-  autoOpenInitialThreadSidebar$,
-  autoOpenThreadSidebar$,
-} from "./thread-sidebar-coordinator.ts";
-import {
   createComposerConnectorAuthorizationSignals,
   type ComposerConnectorAuthorizationSignals,
 } from "../zero-page/zero-connectors.ts";
@@ -211,8 +207,6 @@ const resolvePaneThread$ = command(
     await Promise.all([
       set(loadDraft$, thread, isNew, signal),
       set(thread.subscribeChatThread$, signal),
-      set(autoOpenInitialThreadSidebar$, thread, signal),
-      set(autoOpenThreadSidebar$, thread, signal),
     ]);
     signal.throwIfAborted();
     L.debug("resolvePaneThread$ Promise.all done", {

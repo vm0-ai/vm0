@@ -13,7 +13,6 @@ import {
   currentRightThread$,
   SIDEBAR_PARAM,
 } from "./chat-thread-panes.ts";
-import { autoOpenThreadSidebar$ } from "./thread-sidebar-coordinator.ts";
 import {
   CHAT_EVENTS_PAGE_LIMIT,
   listEventsAfter$,
@@ -152,22 +151,8 @@ const receiveSyncedEventsInVisibleThreads$ = command(
     });
 
     await Promise.all(
-      visibleThreads.map(async (thread) => {
-        // Receiving merges the new events before it awaits read-state work, so
-        // start it first and let sidebar selection proceed from that projection.
-        const receiveEventsPromise = set(
-          thread.receiveSyncedEvents$,
-          events,
-          signal,
-        );
-        if (events.length === 0) {
-          await receiveEventsPromise;
-          return;
-        }
-        await Promise.all([
-          receiveEventsPromise,
-          set(autoOpenThreadSidebar$, thread, signal),
-        ]);
+      visibleThreads.map((thread) => {
+        return set(thread.receiveSyncedEvents$, events, signal);
       }),
     );
     signal.throwIfAborted();

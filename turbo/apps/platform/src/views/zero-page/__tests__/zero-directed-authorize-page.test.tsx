@@ -243,7 +243,7 @@ describe("directed connector authorize page", () => {
 
   it("does not reuse stale loaded authorization across agents", async () => {
     mockConnectedConnector("gmail");
-    const secondAgentResponse = Promise.withResolvers<void>();
+    const secondAgentResponse = context.mocks.deferred<void>();
     let secondAgentRequested = false;
     context.mocks.api(
       zeroUserConnectorsContract.get,

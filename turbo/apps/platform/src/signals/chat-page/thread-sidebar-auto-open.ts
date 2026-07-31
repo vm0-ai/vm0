@@ -2,7 +2,7 @@ import { computed, type Computed } from "ccstate";
 
 import type { ChatEvent } from "./chat-event-types.ts";
 
-export interface ThreadSidebarAutoOpenCandidate {
+interface ThreadSidebarAutoOpenCandidate {
   readonly type: "browser";
   readonly resourceKey: string;
 }
@@ -13,7 +13,7 @@ interface RawChatEventProjection {
 
 export function createThreadSidebarAutoOpenCandidate(
   rawEvents$: Computed<readonly RawChatEventProjection[]>,
-): Computed<Promise<ThreadSidebarAutoOpenCandidate | null>> {
+): Computed<ThreadSidebarAutoOpenCandidate | null> {
   return computed((get) => {
     let activeStartEventId: string | null = null;
     for (const { event } of get(rawEvents$)) {
@@ -23,11 +23,9 @@ export function createThreadSidebarAutoOpenCandidate(
         activeStartEventId = null;
       }
     }
-    return Promise.resolve(
-      activeStartEventId === null
-        ? null
-        : { type: "browser", resourceKey: activeStartEventId },
-    );
+    return activeStartEventId === null
+      ? null
+      : { type: "browser", resourceKey: activeStartEventId };
   });
 }
 

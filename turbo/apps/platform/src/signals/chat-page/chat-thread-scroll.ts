@@ -24,9 +24,9 @@ interface ChatThreadScrollSignals {
   >;
   readonly threadScrollPosition$: Computed<ThreadScrollPosition | null>;
   readonly awayFromBottom$: Computed<boolean>;
-  readonly requestScrollAfterRender$: Command<
-    void,
-    [ThreadScrollPosition | null]
+  readonly autoScroll$: Command<
+    Promise<void>,
+    [ThreadScrollPosition | null, AbortSignal]
   >;
   readonly scrollTo$: Command<void, [ThreadScrollPosition]>;
   readonly scrollToTop$: Command<void, []>;
@@ -285,8 +285,13 @@ function createScrollNavigationSignals(
       });
     },
   );
-  const requestScrollAfterRender$ = command(
-    ({ set }, position: ThreadScrollPosition | null): void => {
+  const autoScroll$ = command(
+    (
+      { set },
+      position: ThreadScrollPosition | null,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      signal.throwIfAborted();
       if (position === null) {
         set(scroll.clearThreadScrollPosition$);
       }
@@ -301,9 +306,13 @@ function createScrollNavigationSignals(
         targetEventId: position?.targetEventId ?? null,
         viewportOffsetTop: position?.viewportOffsetTop ?? null,
       });
-      animationFrame(() => {
-        set(commitScrollAfterRender$, request);
-      });
+      animationFrame(
+        () => {
+          set(commitScrollAfterRender$, request);
+        },
+        { signal },
+      );
+      return Promise.resolve();
     },
   );
 
@@ -312,7 +321,7 @@ function createScrollNavigationSignals(
     scrollToBottom$,
     scrollToTop$,
     restoreAfterResize$,
-    requestScrollAfterRender$,
+    autoScroll$,
   };
 }
 
@@ -409,7 +418,7 @@ export function createChatThreadScrollSignals(
     scrollContainerOnRef$,
     threadScrollPosition$: scroll.threadScrollPosition$,
     awayFromBottom$: scroll.awayFromBottom$,
-    requestScrollAfterRender$: navigation.requestScrollAfterRender$,
+    autoScroll$: navigation.autoScroll$,
     scrollTo$: navigation.scrollTo$,
     scrollToTop$: navigation.scrollToTop$,
     scrollToBottom$: navigation.scrollToBottom$,

@@ -22,7 +22,6 @@ import type { ComposerConnectorSignals } from "../zero-page/zero-connectors.ts";
 import type { EditorDocumentSnapshot } from "../zero-page/user-message-document-codec.ts";
 import type { AgentReferenceSignals } from "./agent-reference-signals.ts";
 import type { ArtifactSignals } from "./artifact-card-signals.ts";
-import type { ThreadSidebarAutoOpenCandidate } from "./thread-sidebar-auto-open.ts";
 import type { ThreadScrollPosition } from "./chat-thread-scroll.ts";
 import type { AssistantErrorRecovery } from "./assistant-error-recovery.ts";
 
@@ -169,22 +168,15 @@ export interface ChatThreadSignals {
   // -- Paged events (sole rendering path) ----------------------------------
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
-  indexedDbEventsInitialized$: Computed<Promise<void>>;
+  indexedDbEventsLoading$: Computed<boolean>;
   visibleRenderedChatGroups$: Computed<Promise<ChatEventGroup[]>>;
   visibleRenderedChatGroupsReady$: Computed<Promise<boolean>>;
-  sidebarAutoOpenCandidate$: Computed<
-    Promise<ThreadSidebarAutoOpenCandidate | null>
-  >;
   eventImageGroups$: Computed<Promise<EventImageGroupProjection[]>>;
   artifactSignalsForUrl: (url: string) => ArtifactSignals | undefined;
   agentReferenceSignalsForId: (agentId: string) => AgentReferenceSignals;
   mailDraftCardSignalsById$: Computed<ReadonlyMap<string, MailDraftSignals>>;
   browserSessionSignals: BrowserSessionSignals;
   hasEvents$: Computed<Promise<boolean>>;
-  hasNewEvents$: Computed<Promise<boolean>>;
-  initialRemoteEventsReady$: Computed<Promise<void>>;
-  initialBrowserLifecycleAuthoritative$: Computed<Promise<boolean>>;
-  initialRemoteEventsComplete$: Computed<Promise<void>>;
   hasQueuedEvents$: Computed<Promise<boolean>>;
   queuedEventItems$: Computed<Promise<readonly QueuedChatEventItem[]>>;
   emptyQueuedEventItems$: Computed<Promise<readonly QueuedChatEventItem[]>>;
@@ -194,9 +186,7 @@ export interface ChatThreadSignals {
   recommendedFollowupSource$: Computed<
     Promise<RecommendedFollowupSource | null>
   >;
-  // Approximate history backfill progress in [0, 1]; null when there is no
-  // backfill to show (no events loaded yet or history fully loaded).
-  historyBackfillProgress$: Computed<Promise<number | null>>;
+  historyBackfillPending$: Computed<boolean>;
   activeGoalObjective$: Computed<Promise<string | null>>;
   loadMoreRenderedChatGroups$: Command<Promise<boolean>, [AbortSignal]>;
   resetRenderedChatGroupsIfAtBottom$: Command<void, []>;

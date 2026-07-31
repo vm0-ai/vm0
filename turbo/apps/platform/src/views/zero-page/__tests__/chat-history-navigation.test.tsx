@@ -191,7 +191,7 @@ describe("chat lifecycle", () => {
         expect(initialPageRequested).toBeTruthy();
       });
       expect(beforeSeqIds).toStrictEqual([]);
-      expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
+      expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
 
       initialPageGate.resolve();
       await waitFor(() => {

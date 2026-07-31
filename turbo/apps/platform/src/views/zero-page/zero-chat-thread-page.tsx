@@ -8,7 +8,6 @@ import type {
 import {
   useGet,
   useSet,
-  useLoadableState,
   useLastLoadable,
   useLastResolved,
   useLoadable,
@@ -2609,13 +2608,7 @@ function ChatThreadEmptyState({ thread }: { thread: ChatThreadSignals }) {
     useLastResolved(thread.visibleRenderedChatGroupsReady$) ?? false;
   const threadSettledInServer = useGet(thread.threadSettledInServer$);
   const hasEvents = useLastResolved(thread.hasEvents$);
-  const hasNewEventsState = useLoadableState(thread.hasNewEvents$);
-  if (
-    !renderedGroupsReady ||
-    !threadSettledInServer ||
-    hasEvents !== false ||
-    hasNewEventsState === "loading"
-  ) {
+  if (!renderedGroupsReady || !threadSettledInServer || hasEvents !== false) {
     return null;
   }
   return (
@@ -3483,15 +3476,8 @@ function RunGroupFoldRow({
 }
 
 function ChatThreadSkeletonOverlay({ thread }: { thread: ChatThreadSignals }) {
-  const renderedGroupsReadyLoadable = useLastLoadable(
-    thread.visibleRenderedChatGroupsReady$,
-  );
-  const sessionError = resolveSessionError(renderedGroupsReadyLoadable);
-  const hasEvents = useLastResolved(thread.hasEvents$);
-  const hasNewEventsState = useLoadableState(thread.hasNewEvents$);
-  const skeletonVisible =
-    hasEvents === false && hasNewEventsState === "loading";
-  if (!skeletonVisible || sessionError) {
+  const indexedDbEventsLoading = useGet(thread.indexedDbEventsLoading$);
+  if (!indexedDbEventsLoading) {
     return null;
   }
 
@@ -3560,8 +3546,8 @@ function ChatHistoryBackfillSkeleton({
   thread: ChatThreadSignals;
 }) {
   const { t } = useTranslation();
-  const progress = useLastResolved(thread.historyBackfillProgress$);
-  if (progress === null || progress === undefined) {
+  const historyBackfillPending = useGet(thread.historyBackfillPending$);
+  if (!historyBackfillPending) {
     return null;
   }
   return (
