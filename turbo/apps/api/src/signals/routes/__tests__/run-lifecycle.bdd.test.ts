@@ -8261,6 +8261,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         path: "full_invalid_baseline",
       },
       {
+        mode: "legacy-capability",
+        path: "full_incompatible_baseline",
+      },
+      {
         mode: "catalog-mismatch",
         path: "full_incompatible_baseline",
       },

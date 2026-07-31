@@ -55,7 +55,7 @@ const COMPATIBILITY_REASON_ORDER = [
   "missing-platform-configuration",
 ] as const satisfies readonly ConnectorCatalogCompatibilityReason[];
 
-export const legacyConnectorCatalogCompatibilityEvaluationSchema: z.ZodType<LegacyConnectorCatalogCompatibilityEvaluation> =
+const legacyConnectorCatalogCompatibilityEvaluationSchema: z.ZodType<LegacyConnectorCatalogCompatibilityEvaluation> =
   z.array(
     z
       .object({
@@ -65,6 +65,21 @@ export const legacyConnectorCatalogCompatibilityEvaluationSchema: z.ZodType<Lega
       })
       .strict(),
   );
+
+export const canonicalConnectorCatalogCompatibilityEvaluationSchema: z.ZodType<CanonicalConnectorCatalogCompatibilityEvaluation> =
+  z
+    .object({
+      filteredAuthMethods: z.array(
+        z
+          .object({
+            connectorSlug: connectorSlugSchema,
+            authMethodId: connectorAuthMethodIdSchema,
+            reasons: z.array(connectorCatalogCompatibilityReasonSchema).min(1),
+          })
+          .strict(),
+      ),
+    })
+    .strict();
 
 const LEGACY_EXECUTABLE_CAPABILITY_EVALUATOR_VERSION = 1;
 const CANONICAL_EXECUTABLE_CAPABILITY_EVALUATOR_VERSION = 2;
@@ -200,13 +215,12 @@ export function connectorCatalogExecutableCapabilityStates(): ExecutableCapabili
   };
 }
 
-// TODO(#24184): Switch active readers only after the canonical row is observed.
 export function connectorCatalogExecutableCapabilityState(): ExecutableCapabilityState {
   const facts = connectorCatalogExecutableCapabilityFacts();
   return createExecutableCapabilityState({
     facts,
-    evaluatorVersion: LEGACY_EXECUTABLE_CAPABILITY_EVALUATOR_VERSION,
-    digestRegistrations: facts.registrations.map(legacyRegistrationCapability),
+    evaluatorVersion: CANONICAL_EXECUTABLE_CAPABILITY_EVALUATOR_VERSION,
+    digestRegistrations: facts.registrations,
   });
 }
 
@@ -481,17 +495,20 @@ export async function persistConnectorCatalogCompatibility(args: {
     capability: args.capabilities.canonical,
   });
   const evaluatedAt = nowDate();
-  const legacyPayload: LegacyConnectorCatalogCompatibilityEvaluation =
-    filteredAuthMethods.map((method) => {
-      return {
-        connectorRef: method.connectorSlug,
-        authMethodId: method.authMethodId,
-        reasons: method.reasons,
-      };
+  const legacyPayload =
+    legacyConnectorCatalogCompatibilityEvaluationSchema.parse(
+      filteredAuthMethods.map((method) => {
+        return {
+          connectorRef: method.connectorSlug,
+          authMethodId: method.authMethodId,
+          reasons: method.reasons,
+        };
+      }),
+    );
+  const canonicalPayload =
+    canonicalConnectorCatalogCompatibilityEvaluationSchema.parse({
+      filteredAuthMethods,
     });
-  const canonicalPayload: CanonicalConnectorCatalogCompatibilityEvaluation = {
-    filteredAuthMethods,
-  };
   await persistConnectorCatalogCompatibilityEvaluation({
     ...args,
     capabilityDigest: args.capabilities.legacy.digest,
@@ -648,12 +665,12 @@ async function reconcileCompatibility(args: {
 }
 
 function diagnosticFilteredAuthMethods(
-  filteredAuthMethods: LegacyConnectorCatalogCompatibilityEvaluation,
+  filteredAuthMethods: readonly CanonicalConnectorCatalogFilteredAuthMethod[],
 ): ConnectorCatalogFilteredAuthMethod[] {
   return filteredAuthMethods.map((method) => {
     return {
-      connectorSlug: method.connectorRef,
-      connectorRef: method.connectorRef,
+      connectorSlug: method.connectorSlug,
+      connectorRef: method.connectorSlug,
       authMethodId: method.authMethodId,
       reasons: [...method.reasons],
     };
@@ -707,9 +724,9 @@ async function compatibilityStatus(args: {
     evaluatedAt: result.evaluatedAt.toISOString(),
     stale: false,
     filteredAuthMethods: diagnosticFilteredAuthMethods(
-      legacyConnectorCatalogCompatibilityEvaluationSchema.parse(
+      canonicalConnectorCatalogCompatibilityEvaluationSchema.parse(
         result.filteredAuthMethods,
-      ),
+      ).filteredAuthMethods,
     ),
   };
 }

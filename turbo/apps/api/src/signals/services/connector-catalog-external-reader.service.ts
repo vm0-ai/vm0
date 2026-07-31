@@ -40,8 +40,8 @@ import {
 import { connectorCatalogIconUrl } from "./connector-catalog-artifacts/icon";
 import { deriveConnectorCatalogFirewallPermissions } from "./connector-catalog-artifacts/relationships";
 import {
+  canonicalConnectorCatalogCompatibilityEvaluationSchema,
   connectorCatalogExecutableCapabilityDigest,
-  legacyConnectorCatalogCompatibilityEvaluationSchema,
 } from "./connector-catalog-compatibility.service";
 import type { ConnectorFeatureStates } from "./connector-catalog-feature-states";
 import type { ConnectorCatalogLoadTiming } from "./connector-catalog-load-timing.service";
@@ -390,7 +390,7 @@ async function readCurrentCatalog(args: {
     "api_dispatch_connector_catalog_validate_compatibility",
     () => {
       const parsed =
-        legacyConnectorCatalogCompatibilityEvaluationSchema.safeParse(
+        canonicalConnectorCatalogCompatibilityEvaluationSchema.safeParse(
           row.filteredAuthMethods,
         );
       if (!parsed.success) {
@@ -403,7 +403,7 @@ async function readCurrentCatalog(args: {
         );
         throw new ExternalConnectorCatalogUnavailableError();
       }
-      return parsed.data;
+      return parsed.data.filteredAuthMethods;
     },
   );
   const artifact = decoded.artifact;
@@ -424,7 +424,7 @@ async function readCurrentCatalog(args: {
         privateMethodFacts: privateMethodFacts(artifact),
         filteredMethodKeys: new Set(
           filteredAuthMethods.map((filtered) => {
-            return authMethodKey(filtered.connectorRef, filtered.authMethodId);
+            return authMethodKey(filtered.connectorSlug, filtered.authMethodId);
           }),
         ),
       };
