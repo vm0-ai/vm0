@@ -11,6 +11,7 @@ import { server } from "../../../mocks/server";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
@@ -388,8 +389,16 @@ describe("POST /api/zero/developer-support", () => {
     expect(response.body.error.code).toBe("INVALID_CONSENT_CODE");
   });
 
-  it("submits a diagnostic bundle with a valid consent code", async () => {
+  it("submits canonical connector summaries with a valid consent code", async () => {
     const seed = await seedSupportActor();
+    const connectors = createConnectorBddApi(context);
+    await connectors.connectManualGrant(
+      seed.actor,
+      "runtime",
+      "api-token",
+      { apiKey: "diagnostic-runtime-key" },
+      seed.agentId,
+    );
     const run = await createSupportRun(seed);
     const token = zeroToken({ ...seed, runId: run.runId });
     const consent = await accept(
@@ -412,6 +421,17 @@ describe("POST /api/zero/developer-support", () => {
     expect(requireReference(response.body)).toMatch(/^ds-[a-f0-9]{8}$/);
     const putInput = putObjectInput();
     expect(putInput.Key).toContain("developer-support/");
+    const connectorSummaries: unknown = JSON.parse(
+      zipText(uploadedZip(), "connectors.json"),
+    );
+    expect(connectorSummaries).toStrictEqual([
+      {
+        slug: "runtime",
+        authMethod: "api-token",
+        connectionStatus: "connected",
+        externalUsername: null,
+      },
+    ]);
   });
 
   it("falls back to the current runId when a run has no session", async () => {
