@@ -421,7 +421,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Show DeepSeek V4 Flash in the workspace Add model selector.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-    userOverridable: false,
   },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",

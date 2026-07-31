@@ -312,7 +312,7 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.StrapiIntegration,
     );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+    expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.DeepSeekV4Flash,
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
@@ -345,6 +345,7 @@ describe("user-overridable switches", () => {
       }),
     ).toStrictEqual({
       [FeatureSwitchKey.ZeroBrowser]: true,
+      [FeatureSwitchKey.DeepSeekV4Flash]: true,
       [FeatureSwitchKey.ComposerConnectorPermissions]: true,
       [FeatureSwitchKey.Dummy]: false,
       [FeatureSwitchKey.JapaneseLocale]: true,
