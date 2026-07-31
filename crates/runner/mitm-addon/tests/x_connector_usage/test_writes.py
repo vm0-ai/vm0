@@ -20,10 +20,29 @@ from tests.x_flow_helpers import (
 )
 from usage.providers.connectors import x_billing
 
+_PLAIN_TEXT_TWEET_BODY = b'{"text":"hello world"}'
+_GZIP_WBITS = 16 + zlib.MAX_WBITS
+_ZLIB_DEFLATE_WBITS = zlib.MAX_WBITS
+_RAW_DEFLATE_WBITS = -zlib.MAX_WBITS
+
+
+def _gzip_members(*payloads: bytes) -> bytes:
+    return b"".join(gzip.compress(payload, mtime=0) for payload in payloads)
+
 
 def _raw_deflate_body(payload: bytes) -> bytes:
-    compressor = zlib.compressobj(wbits=-zlib.MAX_WBITS)
+    compressor = zlib.compressobj(wbits=_RAW_DEFLATE_WBITS)
     return compressor.compress(payload) + compressor.flush()
+
+
+def _tweet_body_with_size(size: int) -> bytes:
+    framing = b'{"text":""}'
+    return b'{"text":"' + b"x" * (size - len(framing)) + b'"}'
+
+
+_GZIP_TWEET_BODY = _gzip_members(_PLAIN_TEXT_TWEET_BODY)
+_ZLIB_DEFLATE_TWEET_BODY = zlib.compress(_PLAIN_TEXT_TWEET_BODY)
+_RAW_DEFLATE_TWEET_BODY = _raw_deflate_body(_PLAIN_TEXT_TWEET_BODY)
 
 
 def test_logs_write_operation_charges_one(x_usage, tmp_path, real_flow):
@@ -138,18 +157,23 @@ def test_lowercase_post_tweet_create_plain_text_downgrades(x_usage, tmp_path, re
     [
         pytest.param(
             "gzip",
-            gzip.compress(json.dumps({"text": "hello world"}).encode()),
+            _GZIP_TWEET_BODY,
             id="gzip",
         ),
         pytest.param(
             "deflate",
-            zlib.compress(json.dumps({"text": "hello world"}).encode()),
+            _ZLIB_DEFLATE_TWEET_BODY,
             id="deflate-zlib",
         ),
         pytest.param(
             "deflate",
-            _raw_deflate_body(json.dumps({"text": "hello world"}).encode()),
+            _RAW_DEFLATE_TWEET_BODY,
             id="deflate-raw",
+        ),
+        pytest.param(
+            "gzip",
+            _gzip_members(_PLAIN_TEXT_TWEET_BODY[:10], _PLAIN_TEXT_TWEET_BODY[10:]),
+            id="gzip-multiple-members",
         ),
     ],
 )
@@ -171,6 +195,139 @@ def test_tweet_create_compressed_plain_text_downgrades_to_content_create(
     flow.request.method = "POST"
     p = x_usage.call_and_get_single_billing(flow)
     assert p["category"] == "content.create"
+    assert p["quantity"] == 1
+
+
+@pytest.mark.parametrize(
+    ("decoded_size", "trailing_data", "expected_category"),
+    [
+        pytest.param(
+            REQUEST_BODY_BILLING_INSPECTION_LIMIT,
+            _gzip_members(b""),
+            "content.create",
+            id="exact-limit-with-empty-member",
+        ),
+        pytest.param(
+            REQUEST_BODY_BILLING_INSPECTION_LIMIT,
+            b"trailing garbage",
+            "content.create_with_url",
+            id="exact-limit-with-trailing-garbage",
+        ),
+        pytest.param(
+            REQUEST_BODY_BILLING_INSPECTION_LIMIT + 1,
+            b"",
+            "content.create_with_url",
+            id="over-limit",
+        ),
+    ],
+)
+def test_tweet_create_multi_member_gzip_enforces_total_decoded_cap(
+    x_usage, tmp_path, real_flow, decoded_size, trailing_data, expected_category
+):
+    request_payload = _tweet_body_with_size(decoded_size)
+    split = len(request_payload) // 2
+    request_body = _gzip_members(request_payload[:split], request_payload[split:]) + trailing_data
+    assert len(request_payload) == decoded_size
+    assert len(request_body) < REQUEST_BODY_BILLING_INSPECTION_LIMIT
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+        request_body=request_body,
+        request_encoding="gzip",
+    )
+    flow.request.method = "POST"
+
+    p = x_usage.call_and_get_single_billing(flow)
+
+    assert p["category"] == expected_category
+    assert p["quantity"] == 1
+
+
+@pytest.mark.parametrize(
+    ("request_encoding", "request_body", "wbits"),
+    [
+        pytest.param(
+            "gzip",
+            _GZIP_TWEET_BODY[:-1],
+            _GZIP_WBITS,
+            id="gzip-truncated-first-member",
+        ),
+        pytest.param(
+            "gzip",
+            _GZIP_TWEET_BODY + _gzip_members(b"")[:-1],
+            _GZIP_WBITS,
+            id="gzip-truncated-later-member",
+        ),
+        pytest.param(
+            "gzip",
+            _GZIP_TWEET_BODY + b"trailing garbage",
+            _GZIP_WBITS,
+            id="gzip-trailing-garbage",
+        ),
+        pytest.param(
+            "deflate",
+            _ZLIB_DEFLATE_TWEET_BODY[:-1],
+            _ZLIB_DEFLATE_WBITS,
+            id="deflate-zlib-truncated",
+        ),
+        pytest.param(
+            "deflate",
+            _ZLIB_DEFLATE_TWEET_BODY + b"trailing garbage",
+            _ZLIB_DEFLATE_WBITS,
+            id="deflate-zlib-trailing-garbage",
+        ),
+        pytest.param(
+            "deflate",
+            _ZLIB_DEFLATE_TWEET_BODY + _ZLIB_DEFLATE_TWEET_BODY,
+            _ZLIB_DEFLATE_WBITS,
+            id="deflate-zlib-second-stream",
+        ),
+        pytest.param(
+            "deflate",
+            _RAW_DEFLATE_TWEET_BODY[:-1],
+            _RAW_DEFLATE_WBITS,
+            id="deflate-raw-truncated",
+        ),
+        pytest.param(
+            "deflate",
+            _RAW_DEFLATE_TWEET_BODY + b"trailing garbage",
+            _RAW_DEFLATE_WBITS,
+            id="deflate-raw-trailing-garbage",
+        ),
+        pytest.param(
+            "deflate",
+            _RAW_DEFLATE_TWEET_BODY + _RAW_DEFLATE_TWEET_BODY,
+            _RAW_DEFLATE_WBITS,
+            id="deflate-raw-second-stream",
+        ),
+    ],
+)
+def test_tweet_create_incomplete_or_trailing_compressed_body_stays_conservative(
+    x_usage, tmp_path, real_flow, request_encoding, request_body, wbits
+):
+    prefix_decoder = zlib.decompressobj(wbits)
+    assert prefix_decoder.decompress(request_body) == _PLAIN_TEXT_TWEET_BODY
+    flow = x_usage.make_flow(
+        real_flow,
+        tmp_path,
+        path="/2/tweets",
+        body=json.dumps({"data": {"id": "1"}}).encode(),
+        status=201,
+        permission="tweet.write",
+        rule="POST /2/tweets",
+        request_body=request_body,
+        request_encoding=request_encoding,
+    )
+    flow.request.method = "POST"
+
+    p = x_usage.call_and_get_single_billing(flow)
+
+    assert p["category"] == "content.create_with_url"
     assert p["quantity"] == 1
 
 
