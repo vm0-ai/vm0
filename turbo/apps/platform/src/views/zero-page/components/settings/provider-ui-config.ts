@@ -22,7 +22,8 @@ export function getUILabel(type: ModelProviderType): string {
         return $.settings.models.picker.providerLabels.claudeCodeOauth;
       });
     }
-    case "deepseek-api-key": {
+    case "deepseek-api-key":
+    case "deepseek-codex": {
       return i18n.t(($) => {
         return $.settings.models.picker.providerLabels.deepseek;
       });
@@ -73,6 +74,7 @@ const MODEL_BRAND_ICON: Readonly<Record<SupportedRunModel, ModelProviderType>> =
     "claude-sonnet-5": "anthropic-api-key",
     "claude-sonnet-4-6": "anthropic-api-key",
     "deepseek-v4-pro": "deepseek-api-key",
+    "deepseek-v4-flash": "deepseek-codex",
     "kimi-k3": "moonshot-api-key",
     "kimi-k2.7-code": "moonshot-api-key",
     "MiniMax-M3": "minimax-api-key",

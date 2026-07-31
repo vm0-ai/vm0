@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { DEEPSEEK_CODEX_MODEL_CATALOG } from "./deepseek-codex-model-catalog";
 import {
   SUPPORTED_RUN_MODELS,
   VM0_MODEL_PRICE_TIER,
@@ -82,6 +83,21 @@ export const modelProviderCodexRuntimeConfigSchema = z.object({
 export type ModelProviderCodexRuntimeConfig = z.infer<
   typeof modelProviderCodexRuntimeConfigSchema
 >;
+
+const MODEL_PROVIDER_CODEX_RUNTIME_CONFIGS: Partial<
+  Record<ModelProviderType, ModelProviderCodexRuntimeConfig>
+> = {
+  "deepseek-codex": {
+    providerId: "vm0-model",
+    name: "DeepSeek",
+    baseUrl: "https://api.deepseek.com",
+    envKey: "OPENAI_API_KEY",
+    requiresOpenaiAuth: false,
+    wireApi: "responses",
+    supportsWebsockets: false,
+    modelCatalog: DEEPSEEK_CODEX_MODEL_CATALOG,
+  },
+};
 
 /**
  * The org slug authorized to use the VM0 managed provider.
@@ -174,6 +190,7 @@ const SUPPORTED_RUN_MODEL_LABELS: Record<SupportedRunModel, string> = {
   "claude-sonnet-5": "Claude Sonnet 5",
   "claude-sonnet-4-6": "Claude Sonnet 4.6",
   "deepseek-v4-pro": "DeepSeek V4 Pro",
+  "deepseek-v4-flash": "DeepSeek V4 Flash",
   "kimi-k3": "Kimi K3",
   "kimi-k2.7-code": "Kimi K2.7 Code",
   "MiniMax-M3": "MiniMax M3",
@@ -327,6 +344,10 @@ export const VM0_MODEL_TO_PROVIDER: Record<string, Vm0ModelConfig> = {
     concreteType: "deepseek-api-key",
     vendor: "deepseek",
   },
+  "deepseek-v4-flash": {
+    concreteType: "deepseek-codex",
+    vendor: "deepseek",
+  },
   "gpt-5.6-sol": {
     concreteType: "openai-api-key",
     vendor: "openai",
@@ -437,6 +458,7 @@ const IMAGE_INPUT_UNSUPPORTED_MODELS = new Set([
   "hy3-preview",
   "tencent/hy3-preview",
   "deepseek-v4-pro",
+  "deepseek-v4-flash",
   "deepseek/deepseek-v4-pro",
   "MiniMax-M2.1",
   "minimax/minimax-m2.5",
@@ -640,6 +662,24 @@ export const MODEL_PROVIDER_TYPES = {
     } satisfies ModelProviderEnvBindings,
     models: ["deepseek-v4-pro"] as string[],
     defaultModel: "deepseek-v4-pro",
+  },
+  // Codex-framework twin of deepseek-api-key. It shares the same DeepSeek
+  // credential while using the native Responses API required by Codex.
+  // Future DeepSeek Responses models can be added without changing runtime
+  // configuration.
+  "deepseek-codex": {
+    framework: "codex" as const,
+    secretName: "DEEPSEEK_API_KEY",
+    label: "DeepSeek",
+    secretLabel: "API key",
+    helpText: "Get your API key at: https://platform.deepseek.com/api_keys",
+    envBindings: {
+      OPENAI_API_KEY: "$secret",
+      OPENAI_BASE_URL: "https://api.deepseek.com",
+      OPENAI_MODEL: "$model",
+    } satisfies ModelProviderEnvBindings,
+    models: ["deepseek-v4-flash"] as string[],
+    defaultModel: "deepseek-v4-flash",
   },
   "zai-api-key": {
     framework: "claude-code" as const,
@@ -1027,6 +1067,7 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "vercel-ai-gateway-codex",
   ],
   "deepseek-v4-pro": ["vm0", "deepseek-api-key", "openrouter-api-key"],
+  "deepseek-v4-flash": ["vm0", "deepseek-codex"],
   "kimi-k3": ["vm0", "moonshot-api-key"],
   "kimi-k2.7-code": ["vm0", "moonshot-api-key"],
   "MiniMax-M3": ["vm0", "minimax-api-key"],
@@ -1288,6 +1329,15 @@ export function getModelProviderEnvBindings(
 ): ModelProviderEnvBindings | undefined {
   const config = MODEL_PROVIDER_TYPES[type];
   return "envBindings" in config ? config.envBindings : undefined;
+}
+
+/**
+ * Get VM0-owned Codex provider metadata for a static model provider.
+ */
+export function getModelProviderCodexRuntimeConfig(
+  type: ModelProviderType,
+): ModelProviderCodexRuntimeConfig | undefined {
+  return MODEL_PROVIDER_CODEX_RUNTIME_CONFIGS[type];
 }
 
 /**

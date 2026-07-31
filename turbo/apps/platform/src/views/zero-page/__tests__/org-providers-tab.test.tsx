@@ -317,12 +317,16 @@ function mockGatewayConnectionLifecycle() {
   };
 }
 
-async function openProvidersTab(customModelGateways = false): Promise<void> {
+async function openProvidersTab(
+  customModelGateways = false,
+  deepSeekV4Flash = false,
+): Promise<void> {
   detachedSetupPage({
     context,
     path: "/?settings=model",
     featureSwitches: {
       [FeatureSwitchKey.CustomModelGateways]: customModelGateways,
+      [FeatureSwitchKey.DeepSeekV4Flash]: deepSeekV4Flash,
     },
   });
   await waitFor(() => {
@@ -720,7 +724,28 @@ describe("organization model providers settings", () => {
       screen.queryByRole("option", { name: "DeepSeek V4 Pro" }),
     ).not.toBeInTheDocument();
     expect(
+      screen.queryByRole("option", { name: "DeepSeek V4 Flash" }),
+    ).not.toBeInTheDocument();
+    expect(
       screen.queryByRole("option", { name: "Kimi K2.7 Code" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers DeepSeek V4 Flash when its feature switch is enabled", async () => {
+    mockAdminOrg();
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([]);
+    await openProvidersTab(false, true);
+
+    click(buttonByText("Add model"));
+    const dialog = screen.getByRole("dialog", { name: "Add model" });
+    click(within(dialog).getByRole("combobox"));
+
+    await expect(
+      screen.findByRole("option", { name: "DeepSeek V4 Flash" }),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "DeepSeek V4 Pro" }),
     ).not.toBeInTheDocument();
   });
 

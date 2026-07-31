@@ -437,6 +437,14 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     "MiniMax-M3",
     withLongContextPricing(MINIMAX_M3_PRICING, 2, 2),
   ),
+  // DeepSeek API pricing retrieved 2026-07-31 from:
+  // https://api-docs.deepseek.com/quick_start/pricing/
+  ...usageGroup("model", "deepseek-v4-flash", [
+    ["tokens.input", usd(0.14), 1_000_000],
+    ["tokens.output", usd(0.28), 1_000_000],
+    ["tokens.cache_read", usd(0.0028), 1_000_000],
+    ["tokens.cache_creation", 0, 1_000_000],
+  ]),
   ...usageGroup("model", "deepseek-v4-pro", [
     ["tokens.input", usd(1.74), 1_000_000],
     ["tokens.output", usd(3.48), 1_000_000],

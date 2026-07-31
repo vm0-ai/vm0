@@ -19,6 +19,7 @@ import type {
 import { modelProviderSurfaceProtocolSchema } from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
 import {
   getDefaultModel,
+  getModelProviderCodexRuntimeConfig,
   getModelProviderFirewall,
   getModelProviderEnvBindings,
   getFrameworkForType,
@@ -1703,6 +1704,7 @@ function modelProviderEnvironment(args: {
       .replaceAll("$secret", environmentSecret)
       .replaceAll("$model", runtimeModel);
   }
+  const codexRuntimeConfig = getModelProviderCodexRuntimeConfig(args.type);
 
   return {
     id: args.id,
@@ -1710,6 +1712,7 @@ function modelProviderEnvironment(args: {
     environment,
     secrets,
     selectedModel: model,
+    ...(codexRuntimeConfig ? { codexRuntimeConfig } : {}),
     ...modelProviderFirewallAuthMaps(args.type, args.sourceUserId, [
       args.config.secretName,
     ]),
@@ -1952,6 +1955,7 @@ async function vm0ModelProviderEnvironment(
   if (!apiKey || !secretName) {
     return null;
   }
+  const codexRuntimeConfig = getModelProviderCodexRuntimeConfig(concreteType);
 
   return {
     id: null,
@@ -1965,6 +1969,7 @@ async function vm0ModelProviderEnvironment(
     ),
     secrets: { [secretName]: apiKey },
     selectedModel,
+    ...(codexRuntimeConfig ? { codexRuntimeConfig } : {}),
   };
 }
 
