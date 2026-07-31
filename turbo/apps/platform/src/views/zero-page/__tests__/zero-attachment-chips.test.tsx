@@ -12,6 +12,7 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { initializeI18n } from "../../../i18n/index.ts";
@@ -41,6 +42,7 @@ function artifactFile(
 
 function setupHostedSiteArtifactPreview({
   artifactUrl,
+  featureSwitches,
   filename,
   html,
   htmlUrl,
@@ -50,6 +52,7 @@ function setupHostedSiteArtifactPreview({
   runId,
 }: {
   artifactUrl?: string;
+  featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   filename: string;
   html?: string;
   htmlUrl: string;
@@ -109,6 +112,7 @@ function setupHostedSiteArtifactPreview({
   detachedSetupPage({
     context,
     path,
+    ...(featureSwitches ? { featureSwitches } : {}),
   });
 }
 
@@ -2267,6 +2271,161 @@ describe("zero attachment chips", () => {
         screen.getAllByTestId("artifact-download-menu-dismiss-layer"),
       ).toHaveLength(1);
     });
+  });
+
+  it("reopens the artifact already in split view without stacking a dialog", async () => {
+    const user = userEvent.setup({ delay: null });
+    setupHostedSiteArtifactPreview({
+      featureSwitches: {
+        [FeatureSwitchKey.ArtifactSidebarInlineOpen]: true,
+      },
+      filename: "split-dialog-download.html",
+      htmlUrl: "https://split-dialog-download.sites.vm7.io",
+      label: "Split dialog download",
+      runId: "run-split-dialog-download",
+    });
+
+    await user.click(
+      await screen.findByLabelText(
+        "Open html preview for Split dialog download",
+      ),
+    );
+    await user.click(await screen.findByLabelText("Open in split view"));
+
+    const sidebar = await screen.findByTestId("artifact-sidebar");
+    // Body previews stay disabled until the promoted lightbox finishes its exit
+    // animation, so wait it out before the click that must reach the sidebar.
+    const htmlChip = await screen.findByLabelText(
+      "Open html preview for Split dialog download",
+    );
+    await waitFor(() => {
+      expect(htmlChip).toBeEnabled();
+    });
+    click(htmlChip);
+
+    await waitFor(() => {
+      expect(
+        within(sidebar).getByTestId("artifact-sidebar-body-html"),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+    // The same node: the click swapped sidebar content in place instead of
+    // closing and reopening the pane.
+    expect(screen.getByTestId("artifact-sidebar")).toBe(sidebar);
+  });
+
+  it("keeps a composer upload preview in the lightbox while the sidebar is open", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.upload.success({
+      id: "upload-composer-photo",
+      filename: "photo.png",
+      contentType: "image/png",
+      size: 2048,
+      url: "https://example.com/photo.png",
+    });
+    setupHostedSiteArtifactPreview({
+      featureSwitches: {
+        [FeatureSwitchKey.ArtifactSidebarInlineOpen]: true,
+      },
+      filename: "composer-guard.html",
+      htmlUrl: "https://composer-guard.sites.vm7.io",
+      label: "Composer guard",
+      runId: "run-composer-guard",
+    });
+
+    await user.click(
+      await screen.findByLabelText("Open html preview for Composer guard"),
+    );
+    await user.click(await screen.findByLabelText("Open in split view"));
+
+    const sidebar = await screen.findByTestId("artifact-sidebar");
+    await waitFor(() => {
+      expect(
+        within(sidebar).getByTestId("artifact-sidebar-body-html"),
+      ).toBeInTheDocument();
+    });
+
+    await uploadFile(new File(["img"], "photo.png", { type: "image/png" }));
+    const composerPreview = await screen.findByLabelText(
+      "Open image preview for photo.png",
+    );
+    await waitFor(() => {
+      expect(composerPreview).toBeEnabled();
+    });
+    click(composerPreview);
+
+    // The pending upload opens the lightbox and leaves the sidebar on the
+    // artifact the user was reading.
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox")).toBeInTheDocument();
+    });
+    expect(
+      within(sidebar).getByTestId("artifact-sidebar-body-html"),
+    ).toBeInTheDocument();
+  });
+
+  it("swaps the open artifact sidebar to a different clicked artifact", async () => {
+    const user = userEvent.setup({ delay: null });
+    const videoUrl = "https://cdn.vm7.io/artifacts/test/sidebar-swap/demo.mp4";
+    const audioUrl =
+      "https://cdn.vm7.io/artifacts/test/sidebar-swap/briefing.mp3";
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-sidebar-swap",
+          role: "assistant",
+          content: `Generated preview links:\n\n${videoUrl}\n${audioUrl}`,
+          runId: "run-sidebar-swap",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ArtifactSidebarInlineOpen]: true,
+      },
+    });
+
+    await user.click(await screen.findByLabelText("Preview demo.mp4"));
+    await user.click(await screen.findByLabelText("Open in split view"));
+
+    const sidebar = await screen.findByTestId("artifact-sidebar");
+    await waitFor(() => {
+      expect(
+        within(sidebar).getByTestId("artifact-sidebar-body-video"),
+      ).toBeInTheDocument();
+    });
+
+    // Body previews stay disabled until the promoted lightbox finishes its exit
+    // animation, so wait it out before the click that must reach the sidebar.
+    const audioChip = screen.getByLabelText(
+      "Open audio preview for briefing.mp3",
+    );
+    await waitFor(() => {
+      expect(audioChip).toBeEnabled();
+    });
+    click(audioChip);
+
+    await waitFor(() => {
+      expect(
+        within(sidebar).getByTestId("artifact-sidebar-body-audio"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      within(sidebar).queryByTestId("artifact-sidebar-body-video"),
+    ).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
+    expect(screen.getByTestId("artifact-sidebar")).toBe(sidebar);
   });
 
   it("opens media previews parsed from chat message links", async () => {

@@ -58,6 +58,12 @@ export const featureSwitch$ = computed((get) => {
   return JSON.parse(raw) as Record<FeatureSwitchKey, boolean>;
 });
 
+export const artifactSidebarInlineOpenEnabled$ = computed((get): boolean => {
+  return (
+    get(featureSwitch$)[FeatureSwitchKey.ArtifactSidebarInlineOpen] ?? false
+  );
+});
+
 export const chatThreadSidebarAutoOpenEnabled$ = computed((get): boolean => {
   return (
     get(featureSwitch$)[FeatureSwitchKey.ChatThreadSidebarAutoOpen] ?? false

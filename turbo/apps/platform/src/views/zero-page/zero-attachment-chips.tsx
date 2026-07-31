@@ -1612,7 +1612,11 @@ function AttachmentChip({
       {isImage ? (
         <ComposerImagePreviewButton
           filename={attachment.filename}
-          openImageLightbox={openImageLightbox}
+          openImageLightbox={(previewUrl) => {
+            // A pending upload is not an artifact yet, so checking it must not
+            // take over an open artifact sidebar.
+            openImageLightbox({ url: previewUrl, splitViewAvailable: false });
+          }}
           url={url}
         />
       ) : (

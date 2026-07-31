@@ -403,6 +403,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ArtifactSidebarInlineOpen]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Open an artifact clicked in a chat thread inside the already-open artifact sidebar instead of stacking the page-global lightbox over it.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: true,
+  },
   [FeatureSwitchKey.ComposerSkillSubstringSearch]: {
     maintainer: "yuma@vm0.ai",
     description:
