@@ -1976,16 +1976,7 @@
         "verifying": "Bitte warten Sie, während wir Ihre Verbindung überprüfen."
       },
       "feishu": {
-        "back": "Zurück zu den Feishu-Einstellungen",
-        "checkingTitle": "Kontostatus wird überprüft…",
-        "connectDescription": "Verknüpfen Sie Ihr {{brandName}}-Konto mit diesem Feishu-Bot, damit Sie direkt von Feishu aus mit Ihrem Agenten zusammenarbeiten können.",
-        "connectTitle": "Mit Feishu verbinden",
-        "errorFallback": "Wir konnten Feishu nicht verbinden. Öffnen Sie einen neuen Verbindungslink und versuchen Sie es erneut.",
-        "invalidDescription": "Öffnen Sie einen neuen Verbindungslink von Feishu und versuchen Sie es erneut.",
-        "open": "Öffne Feishu",
-        "successDescription": "Sie sind verbunden. Senden Sie eine Nachricht in Feishu, um einen Chat zu beginnen.",
-        "successDescriptionNamed": "Sie sind mit {{bot}} verbunden. Senden Sie eine Nachricht in Feishu, um mit dem Chatten zu beginnen.",
-        "successTitle": "Verbunden mit Feishu!"
+        "connectTitle": "Mit Feishu verbinden"
       },
       "github": {
         "accountFallback": "dieses GitHub-Konto",
@@ -2230,10 +2221,14 @@
         "moreOptions": "Weitere Optionen für {{bot}}",
         "pageDescription": "Verwalten Sie das Bot-Routing für diesen Arbeitsbereich",
         "permissions": {
-          "description": "Öffnen Sie „Berechtigungen & Bereiche“ in der Feishu-Entwicklerkonsole und fügen Sie für die Benutzeridentität alle unten aufgeführten Bereiche hinzu. Diese Bereiche für die Zusammenarbeit ermöglichen dem Connector den Zugriff auf Nachrichten, Dateien, Dokumente, Tabellen, Base, Wiki, Folien, Whiteboards, Suche, Kalender, Aufgaben und grundlegende Kontakte.",
-          "hint": "Erstellen und veröffentlichen Sie nach einer Änderung der Berechtigungen eine neue App-Version, damit sie über den OAuth-Zustimmungsbildschirm gewährt werden können.",
-          "label": "OAuth-Bereiche",
-          "title": "Connector-Berechtigungen aktivieren"
+          "description": "Öffnen Sie in der Feishu-Entwicklerkonsole „Berechtigungen & Bereiche“, wählen Sie „Stapelimport/-export > Importieren“ und fügen Sie das folgende JSON ein. Dadurch werden alle Bereiche des verwalteten Connectors unter der Benutzeridentität importiert.",
+          "hint": "Bestätigen Sie die importierten Berechtigungen der Benutzeridentität. Erstellen und veröffentlichen Sie anschließend eine neue App-Version, damit der OAuth-Zustimmungsbildschirm sie gewähren kann.",
+          "label": "JSON für Benutzertoken-Bereiche",
+          "menuAlt": "Feishu-Seite „Berechtigungen & Bereiche“ mit hervorgehobenem Menü „Stapelimport/-export von Bereichen“",
+          "menuLabel": "Stapelimport/-export von Bereichen öffnen",
+          "reviewAlt": "Feishu-Dialog „Stapelimport/-export von Bereichen“ mit importiertem JSON und hervorgehobener Prüfschaltfläche",
+          "reviewLabel": "JSON einfügen und neue Bereiche prüfen",
+          "title": "Benutzertoken-Bereiche importieren"
         },
         "publish": {
           "allMembersAlt": "Feishu-Verfügbarkeitseinstellungen mit ausgewählter Option „Alle Mitglieder“.",
@@ -2267,7 +2262,7 @@
           "done": "Erledigt",
           "events": "Veranstaltungen",
           "next": "Nächste",
-          "permissions": "Berechtigungen",
+          "permissions": "Bereiche",
           "publish": "Veröffentlichen",
           "redirect": "Umleiten",
           "tokens": "Tokens",

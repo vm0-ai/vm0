@@ -23,6 +23,8 @@ export const syncCustomConnectorSkillVolume$ = command(
       readonly connectorSlug: string;
       readonly displayName: string;
       readonly skillMarkdown: string | null;
+      readonly skillName?: string;
+      readonly skillDescription?: string;
     },
     signal: AbortSignal,
   ): Promise<void> => {
@@ -37,11 +39,13 @@ export const syncCustomConnectorSkillVolume$ = command(
             {
               path: SKILL_FILENAME,
               content: synthesizeSkillMd({
-                name: getCustomConnectorSkillName(
-                  args.connectorSlug,
-                  args.connectorId,
-                ),
-                description: args.displayName,
+                name:
+                  args.skillName ??
+                  getCustomConnectorSkillName(
+                    args.connectorSlug,
+                    args.connectorId,
+                  ),
+                description: args.skillDescription ?? args.displayName,
                 instruction: args.skillMarkdown,
               }),
             },

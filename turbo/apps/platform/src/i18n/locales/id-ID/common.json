@@ -1976,16 +1976,7 @@
         "verifying": "Harap tunggu saat kami memverifikasi koneksi Anda."
       },
       "feishu": {
-        "back": "Kembali ke setelan Feishu",
-        "checkingTitle": "Memeriksa status akun…",
-        "connectDescription": "Hubungkan akun {{brandName}} Anda ke bot Feishu ini agar Anda bisa bekerja dengan agen Anda langsung dari Feishu.",
-        "connectTitle": "Hubungkan ke Feishu",
-        "errorFallback": "Kami tidak dapat menghubungkan Feishu. Buka tautan connect baru dan coba lagi.",
-        "invalidDescription": "Buka tautan connect baru dari Feishu dan coba lagi.",
-        "open": "Buka Feishu",
-        "successDescription": "Anda sudah terhubung. Kirim pesan di Feishu untuk mulai mengobrol.",
-        "successDescriptionNamed": "Anda terhubung ke {{bot}}. Kirim pesan di Feishu untuk mulai mengobrol.",
-        "successTitle": "Terhubung ke Feishu!"
+        "connectTitle": "Hubungkan ke Feishu"
       },
       "github": {
         "accountFallback": "akun GitHub ini",
@@ -2230,10 +2221,14 @@
         "moreOptions": "Opsi lainnya untuk {{bot}}",
         "pageDescription": "Kelola perutean bot untuk ruang kerja ini",
         "permissions": {
-          "description": "Buka Permissions & Scopes di konsol developer Feishu dan tambahkan semua scope di bawah untuk User identity. Scope kolaborasi ini memungkinkan konektor bekerja dengan pesan, file, dokumen, spreadsheet, Base, Wiki, Slides, papan tulis, pencarian, kalender, tugas, dan kontak dasar.",
-          "hint": "Setelah mengubah izin, buat dan publikasikan versi aplikasi baru agar layar persetujuan OAuth dapat memberikannya.",
-          "label": "Scope OAuth",
-          "title": "Aktifkan izin konektor"
+          "description": "Di konsol developer Feishu, buka Permissions & Scopes, pilih Batch Import/Export > Import, lalu tempel JSON di bawah. Tindakan ini mengimpor semua scope konektor terkelola di bawah User identity.",
+          "hint": "Konfirmasikan izin User identity yang diimpor, lalu buat dan publikasikan versi aplikasi baru agar layar persetujuan OAuth dapat memberikannya.",
+          "label": "JSON scope token pengguna",
+          "menuAlt": "Halaman Permissions & Scopes Feishu dengan menu Batch import/export scopes disorot",
+          "menuLabel": "Buka Batch import/export scopes",
+          "reviewAlt": "Dialog Batch import/export scopes Feishu dengan JSON yang diimpor dan tombol tinjau disorot",
+          "reviewLabel": "Tempel JSON dan tinjau scope baru",
+          "title": "Impor scope token pengguna"
         },
         "publish": {
           "allMembersAlt": "Pengaturan ketersediaan Feishu dengan All members dipilih",
@@ -2267,7 +2262,7 @@
           "done": "Selesai",
           "events": "Event",
           "next": "Berikutnya",
-          "permissions": "Izin",
+          "permissions": "Scope",
           "publish": "Publikasikan",
           "redirect": "Alihkan",
           "tokens": "Token",

@@ -4,7 +4,6 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { i18n } from "../../i18n/index.ts";
 import { ZeroFeishuSettingsPage } from "../../views/zero-page/feishu-card.tsx";
-import { ZeroFeishuConnectPage } from "../../views/zero-page/zero-feishu-connect-page.tsx";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
@@ -17,7 +16,10 @@ import {
   showFeishuSettingsResult$,
   startFeishuSettingsRealtime$,
 } from "./zero-feishu.ts";
-import { hasFeishuConnectParams$ } from "./feishu-connect-signals.ts";
+import {
+  connectFeishuAccount$,
+  hasFeishuConnectParams$,
+} from "./feishu-connect-signals.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 
 export const setupFeishuSettingsPage$ = command(
@@ -36,14 +38,7 @@ export const setupFeishuSettingsPage$ = command(
     }
 
     if (isAccountConnect) {
-      set(updatePage$, createElement(ZeroFeishuConnectPage));
-      set(
-        updateDocumentTitle$,
-        i18n.t(($) => {
-          return $.connectors.providerConnect.feishu.connectTitle;
-        }),
-      );
-      await set(hideAppSkeleton$, signal);
+      await set(connectFeishuAccount$, signal);
       return;
     }
 

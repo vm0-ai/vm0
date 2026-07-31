@@ -20,10 +20,12 @@ import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   clearCustomConnectorSecret$,
+  closeCustomConnectorDialog$,
   connectCustomConnectorOAuth2$,
   customConnectorAuthorizedAgentsById$,
   customConnectorDialog$,
   customConnectors$,
+  openCustomConnectorAccessDialog$,
   openCustomConnectorConnectDialog$,
   openCustomConnectorDeleteDialog$,
   openCustomConnectorEditDialog$,
@@ -39,6 +41,7 @@ import { CustomConnectorCreateDialog } from "./custom-connector-create-dialog.ts
 import { CustomConnectorRenameDialog } from "./custom-connector-rename-dialog.tsx";
 import { CustomConnectorConnectDialog } from "./custom-connector-connect-dialog.tsx";
 import { CustomConnectorDeleteConfirm } from "./custom-connector-delete-confirm.tsx";
+import { CustomConnectorAccessManagementDialog } from "./connector-access-management-dialog.tsx";
 import { DropdownMenuModalItem } from "../../../components/dropdown-menu-modal-item.tsx";
 import { noConnectorImg } from "../../platform-assets.ts";
 
@@ -74,27 +77,55 @@ function truncateCustomConnectorAgentName(name: string): string {
 function CustomConnectorAgentUsage({
   agents,
   loading,
+  connectorLabel,
+  onClick,
 }: {
   readonly agents: readonly TeamComposeItem[];
   readonly loading: boolean;
+  readonly connectorLabel: string;
+  readonly onClick: () => void;
 }) {
   const { t } = useTranslation();
   const unnamed = t(($) => {
     return $.connectors.catalog.unnamedAgent;
   });
   if (loading) {
-    return <span className="block h-3 w-20 animate-pulse rounded bg-muted" />;
+    return (
+      <button
+        type="button"
+        className="inline-flex h-7 min-w-0 shrink items-center rounded-lg px-2"
+        aria-label={t(
+          ($) => {
+            return $.connectors.catalog.access.manage;
+          },
+          { connector: connectorLabel },
+        )}
+        onClick={onClick}
+      >
+        <span className="block h-3 w-20 animate-pulse rounded bg-muted" />
+      </button>
+    );
   }
   if (agents.length === 0) {
     return (
-      <span
-        className="truncate text-xs text-muted-foreground"
+      <button
+        type="button"
+        className="inline-flex h-7 min-w-0 shrink items-center rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:bg-[hsl(var(--gray-50))] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        aria-label={t(
+          ($) => {
+            return $.connectors.catalog.access.manage;
+          },
+          { connector: connectorLabel },
+        )}
         data-testid="custom-connector-card-agent-usage"
+        onClick={onClick}
       >
-        {t(($) => {
-          return $.connectors.custom.agentUsage.none;
-        })}
-      </span>
+        <span className="truncate underline decoration-dotted decoration-muted-foreground/40 underline-offset-2">
+          {t(($) => {
+            return $.connectors.custom.agentUsage.none;
+          })}
+        </span>
+      </button>
     );
   }
 
@@ -108,33 +139,43 @@ function CustomConnectorAgentUsage({
   const overflowCount = agents.length - visibleNames.length;
   const agentNames = visibleNames.join(", ");
   return (
-    <span
-      className="min-w-0 truncate text-xs text-muted-foreground"
+    <button
+      type="button"
+      className="inline-flex h-7 min-w-0 shrink items-center rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:bg-[hsl(var(--gray-50))] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      aria-label={t(
+        ($) => {
+          return $.connectors.catalog.access.manage;
+        },
+        { connector: connectorLabel },
+      )}
       data-testid="custom-connector-card-agent-usage"
       title={agents
         .map((agent) => {
           return customConnectorAgentName(agent, unnamed);
         })
         .join(", ")}
+      onClick={onClick}
     >
-      {overflowCount > 0
-        ? t(
-            ($) => {
-              return $.connectors.custom.agentUsage.usedByOverflow;
-            },
-            {
-              agents: agentNames,
-              count: overflowCount,
-              value: formatLocalizedNumber(overflowCount),
-            },
-          )
-        : t(
-            ($) => {
-              return $.connectors.custom.agentUsage.usedBy;
-            },
-            { agents: agentNames },
-          )}
-    </span>
+      <span className="truncate underline decoration-dotted decoration-muted-foreground/40 underline-offset-2">
+        {overflowCount > 0
+          ? t(
+              ($) => {
+                return $.connectors.custom.agentUsage.usedByOverflow;
+              },
+              {
+                agents: agentNames,
+                count: overflowCount,
+                value: formatLocalizedNumber(overflowCount),
+              },
+            )
+          : t(
+              ($) => {
+                return $.connectors.custom.agentUsage.usedBy;
+              },
+              { agents: agentNames },
+            )}
+      </span>
+    </button>
   );
 }
 
@@ -147,6 +188,7 @@ interface CustomConnectorRowProps {
   readonly onDisconnect: () => void;
   readonly onEdit: () => void;
   readonly onRename: () => void;
+  readonly onManageAccess: () => void;
   readonly fullEditingEnabled: boolean;
   readonly feishuEnabled: boolean;
   readonly onDelete: () => void;
@@ -157,11 +199,13 @@ function CustomConnectorCardContent({
   authorizedAgents,
   authorizedAgentsLoading,
   hasActions,
+  onManageAccess,
 }: {
   readonly connector: CustomConnectorResponse;
   readonly authorizedAgents: readonly TeamComposeItem[];
   readonly authorizedAgentsLoading: boolean;
   readonly hasActions: boolean;
+  readonly onManageAccess: () => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -195,6 +239,8 @@ function CustomConnectorCardContent({
             <CustomConnectorAgentUsage
               agents={authorizedAgents}
               loading={authorizedAgentsLoading}
+              connectorLabel={connector.displayName}
+              onClick={onManageAccess}
             />
           </>
         ) : (
@@ -219,6 +265,7 @@ function CustomConnectorRow({
   onDisconnect,
   onEdit,
   onRename,
+  onManageAccess,
   fullEditingEnabled,
   feishuEnabled,
   onDelete,
@@ -238,6 +285,7 @@ function CustomConnectorRow({
       authorizedAgents={authorizedAgents}
       authorizedAgentsLoading={authorizedAgentsLoading}
       hasActions={hasActions}
+      onManageAccess={onManageAccess}
     />
   );
 
@@ -328,6 +376,40 @@ function CustomConnectorRow({
   );
 }
 
+function CustomConnectorDialogs() {
+  const dialog = useGet(customConnectorDialog$);
+  const closeDialog = useSet(closeCustomConnectorDialog$);
+  return (
+    <>
+      {dialog.kind === "create" && <CustomConnectorCreateDialog />}
+      {dialog.kind === "edit" && (
+        <CustomConnectorCreateDialog connector={dialog.connector} />
+      )}
+      {dialog.kind === "rename" && (
+        <CustomConnectorRenameDialog
+          id={dialog.connector.id}
+          currentDisplayName={dialog.connector.displayName}
+        />
+      )}
+      {dialog.kind === "connect" && (
+        <CustomConnectorConnectDialog connector={dialog.connector} />
+      )}
+      {dialog.kind === "access" && (
+        <CustomConnectorAccessManagementDialog
+          connector={dialog.connector}
+          onClose={closeDialog}
+        />
+      )}
+      {dialog.kind === "delete" && (
+        <CustomConnectorDeleteConfirm
+          id={dialog.connector.id}
+          displayName={dialog.connector.displayName}
+        />
+      )}
+    </>
+  );
+}
+
 export function CustomConnectorsPanel() {
   const { t } = useTranslation();
   const connectors = useLastResolved(customConnectors$);
@@ -346,9 +428,9 @@ export function CustomConnectorsPanel() {
     featureSwitches[FeatureSwitchKey.CustomConnectorOAuth2] ?? false;
   const feishuEnabled =
     featureSwitches[FeatureSwitchKey.FeishuIntegration] ?? false;
-  const dialog = useGet(customConnectorDialog$);
   const openEdit = useSet(openCustomConnectorEditDialog$);
   const openRename = useSet(openCustomConnectorRenameDialog$);
+  const openAccess = useSet(openCustomConnectorAccessDialog$);
   const openConnect = useSet(openCustomConnectorConnectDialog$);
   const openDelete = useSet(openCustomConnectorDeleteDialog$);
   const connectOAuth2 = useSet(connectCustomConnectorOAuth2$);
@@ -420,6 +502,9 @@ export function CustomConnectorsPanel() {
                 onRename={() => {
                   return handleRename(c);
                 }}
+                onManageAccess={() => {
+                  return openAccess(c);
+                }}
                 fullEditingEnabled={fullEditingEnabled}
                 feishuEnabled={feishuEnabled}
                 onDelete={() => {
@@ -431,25 +516,7 @@ export function CustomConnectorsPanel() {
         </div>
       )}
 
-      {dialog.kind === "create" && <CustomConnectorCreateDialog />}
-      {dialog.kind === "edit" && (
-        <CustomConnectorCreateDialog connector={dialog.connector} />
-      )}
-      {dialog.kind === "rename" && (
-        <CustomConnectorRenameDialog
-          id={dialog.connector.id}
-          currentDisplayName={dialog.connector.displayName}
-        />
-      )}
-      {dialog.kind === "connect" && (
-        <CustomConnectorConnectDialog connector={dialog.connector} />
-      )}
-      {dialog.kind === "delete" && (
-        <CustomConnectorDeleteConfirm
-          id={dialog.connector.id}
-          displayName={dialog.connector.displayName}
-        />
-      )}
+      <CustomConnectorDialogs />
     </section>
   );
 }

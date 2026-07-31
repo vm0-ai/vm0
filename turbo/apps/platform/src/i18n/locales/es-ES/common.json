@@ -2019,16 +2019,7 @@
         "verifying": "Espera mientras verificamos tu conexión."
       },
       "feishu": {
-        "back": "Volver a los ajustes de Feishu",
-        "checkingTitle": "Comprobando el estado de la cuenta...",
-        "connectDescription": "Vincula tu cuenta de {{brandName}} a este bot de Feishu para que puedas trabajar directamente con tu agente desde Feishu.",
-        "connectTitle": "Conectar con Feishu",
-        "errorFallback": "No pudimos conectar Feishu. Abre un enlace de conexión nuevo e inténtalo de nuevo.",
-        "invalidDescription": "Abre un enlace de conexión nuevo desde Feishu e inténtalo de nuevo.",
-        "open": "Abrir Feishu",
-        "successDescription": "Estás conectado. Envía un mensaje en Feishu para empezar a chatear.",
-        "successDescriptionNamed": "Estás conectado con {{bot}}. Envía un mensaje en Feishu para empezar a chatear.",
-        "successTitle": "¡Conectado a Feishu!"
+        "connectTitle": "Conectar con Feishu"
       },
       "github": {
         "accountFallback": "esta cuenta de GitHub",
@@ -2273,10 +2264,14 @@
         "moreOptions": "Más opciones para {{bot}}",
         "pageDescription": "Gestiona el enrutamiento de bots para este espacio de trabajo",
         "permissions": {
-          "description": "Abre Permisos y ámbitos en la consola de desarrolladores de Feishu y añade todos los ámbitos que se indican a continuación para la identidad de usuario. Estos ámbitos de colaboración permiten al conector trabajar con mensajes, archivos, documentos, hojas de cálculo, Base, Wiki, Slides, pizarras, búsquedas, calendarios, tareas y contactos básicos.",
-          "hint": "Después de cambiar los permisos, crea y publica una nueva versión de la aplicación para que la pantalla de consentimiento de OAuth pueda concederlos.",
-          "label": "Ámbitos de OAuth",
-          "title": "Habilitar permisos del conector"
+          "description": "En la consola de desarrolladores de Feishu, abre Permisos y ámbitos, elige Importación/exportación por lotes > Importar y pega el JSON siguiente. Esto importa todos los ámbitos del conector administrado bajo la identidad de usuario.",
+          "hint": "Confirma los permisos importados de la identidad de usuario y, después, crea y publica una nueva versión de la aplicación para que la pantalla de consentimiento de OAuth pueda concederlos.",
+          "label": "JSON de ámbitos del token de usuario",
+          "menuAlt": "Página Permisos y ámbitos de Feishu con el menú de importación/exportación por lotes de ámbitos resaltado",
+          "menuLabel": "Abrir la importación/exportación por lotes de ámbitos",
+          "reviewAlt": "Cuadro de importación/exportación por lotes de ámbitos de Feishu con el JSON importado y el botón de revisión resaltado",
+          "reviewLabel": "Pegar el JSON y revisar los nuevos ámbitos",
+          "title": "Importar ámbitos del token de usuario"
         },
         "publish": {
           "allMembersAlt": "Ajustes de disponibilidad de Feishu con la opción Todos los miembros seleccionada",
@@ -2310,7 +2305,7 @@
           "done": "Completado",
           "events": "Eventos",
           "next": "Siguiente",
-          "permissions": "Permisos",
+          "permissions": "Ámbitos",
           "publish": "Publicar",
           "redirect": "Redirección",
           "tokens": "Tokens",

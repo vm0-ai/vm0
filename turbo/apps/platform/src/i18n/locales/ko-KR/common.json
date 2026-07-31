@@ -1976,16 +1976,7 @@
         "verifying": "연결 확인 중입니다. 잠시만 기다려 주세요."
       },
       "feishu": {
-        "back": "Feishu 설정으로 돌아가기",
-        "checkingTitle": "계정 상태 확인 중…",
-        "connectDescription": "이 {{brandName}} 계정을 Feishu 봇에 연결하여 Feishu에서 에이전트와 직접 작업하세요.",
-        "connectTitle": "Feishu 연결",
-        "errorFallback": "Feishu 연결에 실패했습니다. 새 연결 링크를 열고 다시 시도하세요.",
-        "invalidDescription": "Feishu에서 새 연결 링크를 열고 다시 시도하세요.",
-        "open": "Feishu 열기",
-        "successDescription": "연결되었습니다. Feishu에서 메시지를 보내 대화를 시작하세요.",
-        "successDescriptionNamed": "{{bot}}에 연결되었습니다. Feishu에서 메시지를 보내 대화를 시작하세요.",
-        "successTitle": "Feishu에 연결됨!"
+        "connectTitle": "Feishu 연결"
       },
       "github": {
         "accountFallback": "이 GitHub 계정",
@@ -2230,10 +2221,14 @@
         "moreOptions": "{{bot}}에 대한 추가 옵션",
         "pageDescription": "이 워크스페이스의 봇 라우팅 관리",
         "permissions": {
-          "description": "Feishu 개발자 콘솔에서 '권한 및 범위'를 열고 아래의 모든 범위를 '사용자 ID'에 추가하세요. 이러한 협업 범위를 통해 커넥터에서 메시지, 파일, 문서, 스프레드시트, Base, Wiki, Slides, 화이트보드, 검색, 캘린더, 작업 및 기본 연락처를 사용할 수 있습니다.",
-          "hint": "권한을 변경한 후 OAuth 동의 화면에서 해당 권한을 부여할 수 있도록 새 앱 버전을 생성하고 게시하세요.",
-          "label": "OAuth 범위",
-          "title": "커넥터 권한 활성화"
+          "description": "Feishu 개발자 콘솔에서 '권한 및 범위'를 열고 '일괄 가져오기/내보내기 > 가져오기'를 선택한 다음 아래 JSON을 붙여넣으세요. 관리형 커넥터에 필요한 모든 범위가 사용자 ID로 가져와집니다.",
+          "hint": "가져온 사용자 ID 권한을 확인한 후 OAuth 동의 화면에서 권한을 부여할 수 있도록 새 앱 버전을 생성하고 게시하세요.",
+          "label": "사용자 토큰 범위 JSON",
+          "menuAlt": "일괄 범위 가져오기/내보내기 메뉴가 강조 표시된 Feishu 권한 및 범위 페이지",
+          "menuLabel": "일괄 범위 가져오기/내보내기 열기",
+          "reviewAlt": "가져온 JSON과 검토 버튼이 강조 표시된 Feishu 일괄 범위 가져오기/내보내기 대화 상자",
+          "reviewLabel": "JSON을 붙여넣고 새 범위 검토",
+          "title": "사용자 토큰 범위 가져오기"
         },
         "publish": {
           "allMembersAlt": "모든 구성원이 선택된 Feishu 사용 가능 설정",
@@ -2267,7 +2262,7 @@
           "done": "완료",
           "events": "이벤트",
           "next": "다음",
-          "permissions": "권한",
+          "permissions": "범위",
           "publish": "게시",
           "redirect": "리디렉션",
           "tokens": "토큰",
