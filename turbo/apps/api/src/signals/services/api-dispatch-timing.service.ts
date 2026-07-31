@@ -137,6 +137,8 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_concurrency_preflight_check"
   | "api_dispatch_resolve_queue_first_admission"
   | "api_dispatch_claim_queue_first_message"
+  | "api_dispatch_resolve_queue_first_claim_snapshot"
+  | "api_dispatch_persist_queue_first_replacement"
   | "api_dispatch_queue_first_thread_lock_wait"
   | "api_dispatch_insert_run_record"
   | "api_dispatch_validate_thread_session_snapshot_thread"
