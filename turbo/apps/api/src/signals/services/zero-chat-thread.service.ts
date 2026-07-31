@@ -42,15 +42,7 @@ import {
   type ChatEventUserMessage,
   type ChatEventGoalEvent,
 } from "@vm0/db/schema/chat-event";
-import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
-import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
-import { chatGithubContext } from "@vm0/db/schema/chat-github-context";
-import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
-import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
-import { chatTeamsContext } from "@vm0/db/schema/chat-teams-context";
-import { chatTelegramContext } from "@vm0/db/schema/chat-telegram-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
 import {
   CANONICAL_ASSET_ACCESS_LEVELS,
@@ -62,10 +54,6 @@ import {
 } from "@vm0/db/schema/run-uploaded-file";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import {
-  zeroWorkflowAutomations,
-  zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
 import { alias } from "drizzle-orm/pg-core";
 import {
   and,
@@ -114,8 +102,6 @@ import { latestRunFinishEventSubquery } from "./zero-chat-thread-read-state-quer
 import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
-import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
-import { projectChatEventAnnotation } from "./chat-event-annotation.service";
 import {
   projectUserMessage,
   requiredUserMessageForEvent,
@@ -140,27 +126,11 @@ type ChatEventRow = {
   readonly thinking: string | null;
   readonly runId: string | null;
   readonly runGroupId: string | null;
-  readonly contextType: typeof chatEvents.$inferSelect.contextType;
-  readonly automationId: string | null;
   readonly triggerSource: TriggerSource | null;
-  readonly triggerBrief: string | null;
-  readonly slackPermalink: string | null;
-  readonly feishuOpenUrl: string | null;
-  readonly teamsTenantId: string | null;
-  readonly teamsChannelId: string | null;
-  readonly teamsActivityId: string | null;
-  readonly telegramChatId: string | null;
-  readonly telegramMessageId: string | null;
-  readonly telegramIsDm: boolean | null;
-  readonly githubRepo: string | null;
-  readonly githubSubjectNumber: number | null;
-  readonly githubSubjectKind: "issue" | "pull_request" | null;
-  readonly githubTriggerCommentId: string | null;
   readonly isGoalRun: boolean;
   readonly usagePayload: ChatEventUsagePayload | null;
   readonly runEventId: string | null;
   readonly goalEvent: ChatEventGoalEvent | null;
-  readonly goalObjectiveBrief: string | null;
   readonly error: string | null;
   readonly runLifecycleEvent: string | null;
   readonly seqId: number;
@@ -171,20 +141,6 @@ type ChatEventRow = {
   readonly recommendedFollowups: ChatEventRecommendedFollowups | null;
   readonly revokesEventId: string | null;
   readonly interruptsRunId: string | null;
-  readonly workflowName: string | null;
-  readonly workflowDisplayName: string | null;
-  readonly workflowDescription: string | null;
-  readonly workflowId: string | null;
-  readonly workflowAgentId: string | null;
-  readonly workflowAutomationId: string | null;
-  readonly workflowAutomationBrief: string | null;
-  readonly workflowAutomationKind: string | null;
-  readonly workflowAutomationScheduleType: string | null;
-  readonly workflowAutomationCronExpression: string | null;
-  readonly workflowAutomationIntervalSeconds: number | null;
-  readonly workflowAutomationAtTime: Date | null;
-  readonly workflowAutomationTimezone: string | null;
-  readonly workflowAutomationUserTimezone: string | null;
 };
 
 const canonicalAssetClassificationSchema = z.enum(
@@ -310,7 +266,6 @@ const eventColumns = {
   thinking: chatEvents.thinking,
   runId: effectiveChatEventRunId(),
   runGroupId: chatEvents.runGroupId,
-  contextType: chatEvents.contextType,
   usagePayload: chatEvents.usagePayload,
   runEventId: chatEvents.runEventId,
   goalEvent: chatEvents.goalEvent,
@@ -332,86 +287,9 @@ function chatEventMetadataSubquery(db: Pick<Db, "select">) {
       runTriggerSource: sql`${zeroRuns.triggerSource}`
         .mapWith(nullableTriggerSourceDecoder)
         .as("run_trigger_source"),
-      workflowId: sql`${zeroWorkflows.id}`
-        .mapWith(zeroWorkflows.id)
-        .as("workflow_id"),
-      workflowAgentId: zeroWorkflows.agentId,
-      workflowName: zeroWorkflows.name,
-      workflowDisplayName: zeroWorkflows.displayName,
-      workflowDescription: zeroWorkflows.description,
-      workflowAutomationId: sql`${zeroWorkflowAutomations.id}`
-        .mapWith(zeroWorkflowAutomations.id)
-        .as("workflow_automation_id"),
-      workflowAutomationBrief: sql`CASE
-        WHEN ${isNull(zeroWorkflowAutomations.id)} THEN NULL
-        ELSE COALESCE(
-          ${zeroRuns.triggerBrief},
-          CASE
-            WHEN ${eq(zeroWorkflowAutomations.kind, "event")} THEN CASE
-              WHEN ${eq(
-                zeroWorkflowAutomations.eventType,
-                "chat-run-finished",
-              )} THEN 'Chat run finished'
-              WHEN ${eq(
-                zeroWorkflowAutomations.eventType,
-                "gmail-label-applied",
-              )} THEN 'Gmail label applied'
-              WHEN ${eq(
-                zeroWorkflowAutomations.eventType,
-                "gmail-new-message",
-              )} THEN 'Gmail new message'
-              WHEN ${eq(
-                zeroWorkflowAutomations.eventType,
-                "google-calendar-event-created",
-              )} THEN 'Google Calendar event created'
-              WHEN ${eq(
-                zeroWorkflowAutomations.eventType,
-                "google-calendar-event-updated",
-              )} THEN 'Google Calendar event updated'
-              WHEN ${eq(
-                zeroWorkflowAutomations.eventType,
-                "google-calendar-event-cancelled",
-              )} THEN 'Google Calendar event cancelled'
-              WHEN ${eq(
-                zeroWorkflowAutomations.eventType,
-                "webhook-received",
-              )} THEN 'Webhook received'
-              ELSE NULL
-            END
-            ELSE NULL
-          END
-        )
-      END`
-        .mapWith(nullableTextDecoder)
-        .as("workflow_automation_brief"),
-      workflowAutomationKind: zeroWorkflowAutomations.kind,
-      workflowAutomationScheduleType: zeroWorkflowAutomations.scheduleType,
-      workflowAutomationCronExpression: zeroWorkflowAutomations.cronExpression,
-      workflowAutomationIntervalSeconds:
-        zeroWorkflowAutomations.intervalSeconds,
-      workflowAutomationAtTime: zeroWorkflowAutomations.atTime,
-      workflowAutomationTimezone: zeroWorkflowAutomations.timezone,
-      workflowAutomationUserTimezone: sql`${orgMembersMetadata.timezone}`
-        .mapWith(orgMembersMetadata.timezone)
-        .as("workflow_automation_user_timezone"),
       goalId: zeroRuns.goalId,
     })
     .from(zeroRuns)
-    .leftJoin(
-      zeroWorkflowAutomations,
-      eq(zeroWorkflowAutomations.id, zeroRuns.workflowAutomationId),
-    )
-    .leftJoin(
-      zeroWorkflows,
-      eq(zeroWorkflows.id, zeroWorkflowAutomations.workflowId),
-    )
-    .leftJoin(
-      orgMembersMetadata,
-      and(
-        eq(orgMembersMetadata.orgId, zeroWorkflowAutomations.orgId),
-        eq(orgMembersMetadata.userId, zeroWorkflowAutomations.ownerUserId),
-      ),
-    )
     .where(eq(zeroRuns.id, chatEvents.runId))
     .limit(1)
     .as("chat_event_metadata");
@@ -422,96 +300,16 @@ function selectChatEventsWithMetadata(db: Pick<Db, "select">) {
   return db
     .select({
       ...eventColumns,
-      automationId: chatAutomationContext.automationId,
-      triggerBrief: chatAutomationContext.triggerBrief,
       triggerSource: sql`COALESCE(
         ${chatEvents.triggerSource},
         ${metadata.runTriggerSource}
       )`
         .mapWith(nullableTriggerSourceDecoder)
         .as("trigger_source"),
-      slackPermalink: chatSlackContext.messagePermalink,
-      feishuOpenUrl: chatFeishuContext.chatOpenUrl,
-      teamsTenantId: chatTeamsContext.tenantId,
-      teamsChannelId: chatTeamsContext.channelId,
-      teamsActivityId: chatTeamsContext.activityId,
-      telegramChatId: chatTelegramContext.chatId,
-      telegramMessageId: chatTelegramContext.messageId,
-      telegramIsDm: chatTelegramContext.isDm,
-      githubRepo: chatGithubContext.repo,
-      githubSubjectNumber: chatGithubContext.subjectNumber,
-      githubSubjectKind: chatGithubContext.subjectKind,
-      githubTriggerCommentId: chatGithubContext.triggerCommentId,
-      goalObjectiveBrief: chatGoalContext.objectiveBrief,
-      workflowId: metadata.workflowId,
-      workflowAgentId: metadata.workflowAgentId,
-      workflowName: metadata.workflowName,
-      workflowDisplayName: metadata.workflowDisplayName,
-      workflowDescription: metadata.workflowDescription,
-      workflowAutomationId: metadata.workflowAutomationId,
-      workflowAutomationBrief: metadata.workflowAutomationBrief,
-      workflowAutomationKind: metadata.workflowAutomationKind,
-      workflowAutomationScheduleType: metadata.workflowAutomationScheduleType,
-      workflowAutomationCronExpression:
-        metadata.workflowAutomationCronExpression,
-      workflowAutomationIntervalSeconds:
-        metadata.workflowAutomationIntervalSeconds,
-      workflowAutomationAtTime: metadata.workflowAutomationAtTime,
-      workflowAutomationTimezone: metadata.workflowAutomationTimezone,
-      workflowAutomationUserTimezone: metadata.workflowAutomationUserTimezone,
       isGoalRun: isNotNull(metadata.goalId).mapWith(pgBooleanDecoder),
     })
     .from(chatEvents)
-    .leftJoinLateral(metadata, sql`true`)
-    .leftJoin(
-      chatAutomationContext,
-      and(
-        eq(chatEvents.contextType, "automation"),
-        eq(chatAutomationContext.id, chatEvents.contextId),
-      ),
-    )
-    .leftJoin(
-      chatSlackContext,
-      and(
-        eq(chatEvents.contextType, "slack"),
-        eq(chatSlackContext.id, chatEvents.contextId),
-      ),
-    )
-    .leftJoin(
-      chatFeishuContext,
-      and(
-        eq(chatEvents.contextType, "feishu"),
-        eq(chatFeishuContext.id, chatEvents.contextId),
-      ),
-    )
-    .leftJoin(
-      chatTeamsContext,
-      and(
-        eq(chatEvents.contextType, "teams"),
-        eq(chatTeamsContext.id, chatEvents.contextId),
-      ),
-    )
-    .leftJoin(
-      chatTelegramContext,
-      and(
-        eq(chatEvents.contextType, "telegram"),
-        eq(chatTelegramContext.id, chatEvents.contextId),
-      ),
-    )
-    .leftJoin(
-      chatGithubContext,
-      and(
-        eq(chatEvents.contextType, "github"),
-        eq(chatGithubContext.id, chatEvents.contextId),
-      ),
-    )
-    .leftJoin(
-      chatGoalContext,
-      and(
-        eq(chatEvents.contextType, "goal"),
-        eq(chatGoalContext.id, chatEvents.contextId),
-      ),
-    );
+    .leftJoinLateral(metadata, sql`true`);
 }
 
 const searchMessageColumns = {
@@ -823,87 +621,7 @@ function requiredChatEventField<T>(
   return value;
 }
 
-function workflowScheduleAutomationBrief(row: ChatEventRow): string | null {
-  if (row.workflowAutomationKind !== "schedule") {
-    return null;
-  }
-  return buildWorkflowScheduleAutomationBrief({
-    createdAt: row.createdAt,
-    scheduleType: row.workflowAutomationScheduleType,
-    cronExpression: row.workflowAutomationCronExpression,
-    intervalSeconds: row.workflowAutomationIntervalSeconds,
-    atTime: row.workflowAutomationAtTime,
-    automationTimezone: row.workflowAutomationTimezone,
-    userTimezone: row.workflowAutomationUserTimezone,
-  });
-}
-
-function workflowSnapshotFromRow(
-  row: ChatEventRow,
-): NonNullable<ChatEvent["workflowSnapshot"]> | undefined {
-  if (row.workflowName === null) {
-    return undefined;
-  }
-  return {
-    id: row.workflowId ?? undefined,
-    agentId: row.workflowAgentId ?? undefined,
-    name: row.workflowName,
-    displayName: row.workflowDisplayName,
-    description: row.workflowDescription,
-    automationId: row.workflowAutomationId ?? undefined,
-    triggerBrief:
-      row.workflowAutomationBrief ?? workflowScheduleAutomationBrief(row),
-  };
-}
-
-function annotationFromRow(
-  row: ChatEventRow,
-): ChatEvent["annotation"] | undefined {
-  if (row.contextType === "slack") {
-    return projectChatEventAnnotation({
-      kind: "slack",
-      messagePermalink: row.slackPermalink,
-    });
-  }
-  if (row.contextType === "feishu") {
-    return projectChatEventAnnotation({
-      kind: "feishu",
-      chatOpenUrl: row.feishuOpenUrl,
-    });
-  }
-  if (row.contextType === "teams") {
-    return projectChatEventAnnotation({
-      kind: "teams",
-      tenantId: row.teamsTenantId,
-      channelId: row.teamsChannelId,
-      activityId: row.teamsActivityId,
-    });
-  }
-  if (row.contextType === "telegram") {
-    return projectChatEventAnnotation({
-      kind: "telegram",
-      chatId: row.telegramChatId,
-      messageId: row.telegramMessageId,
-      isDm: row.telegramIsDm,
-    });
-  }
-  if (row.contextType === "github") {
-    return projectChatEventAnnotation({
-      kind: "github",
-      repo: row.githubRepo,
-      subjectNumber: row.githubSubjectNumber,
-      subjectKind: row.githubSubjectKind,
-      triggerCommentId: row.githubTriggerCommentId,
-    });
-  }
-  return undefined;
-}
-
-function baseChatEventFromRow(
-  row: ChatEventRow,
-  workflowSnapshot: NonNullable<ChatEvent["workflowSnapshot"]> | undefined,
-  content: string | null,
-) {
+function baseChatEventFromRow(row: ChatEventRow, content: string | null) {
   return {
     id: row.id,
     threadId: row.chatThreadId,
@@ -911,17 +629,11 @@ function baseChatEventFromRow(
     runId: row.runId ?? undefined,
     runGroupId: row.runGroupId ?? undefined,
     triggerSource: row.triggerSource ?? undefined,
-    annotation: annotationFromRow(row),
     isGoalRun: row.isGoalRun || undefined,
     runEventId: row.runEventId ?? undefined,
-    goalSnapshot:
-      row.goalObjectiveBrief === null
-        ? undefined
-        : { objectiveBrief: row.goalObjectiveBrief },
     revokesEventId: row.revokesEventId ?? undefined,
     seqId: row.seqId,
     sequenceNumber: row.sequenceNumber,
-    workflowSnapshot,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -953,17 +665,12 @@ const chatEventBuilders = {
       ...event,
       eventType: "input.automation",
       content: null,
-      automationId: requiredChatEventField(
-        row.automationId,
-        row.eventType,
-        "automationId",
-      ),
+      userMessage: row.userMessage ?? undefined,
       triggerSource: requiredChatEventField(
         row.triggerSource,
         row.eventType,
         "triggerSource",
       ),
-      triggerBrief: row.triggerBrief,
     };
   },
   "input.goal": (row, event) => {
@@ -972,10 +679,10 @@ const chatEventBuilders = {
       threadId: event.threadId,
       eventType: "input.goal",
       content: null,
-      goalSnapshot: requiredChatEventField(
-        event.goalSnapshot ?? null,
+      userMessage: requiredChatEventField(
+        row.userMessage,
         row.eventType,
-        "goalSnapshot",
+        "userMessage",
       ),
       seqId: event.seqId,
       createdAt: event.createdAt,
@@ -992,8 +699,6 @@ const chatEventBuilders = {
         "userMessage",
       ),
       error: requiredChatEventField(row.error, row.eventType, "error"),
-      automationId: row.automationId ?? undefined,
-      triggerBrief: row.automationId === null ? undefined : row.triggerBrief,
       attachFiles: attachFiles ? [...attachFiles] : undefined,
       generationTemplate: row.generationTemplate ?? undefined,
     };
@@ -1157,7 +862,7 @@ function toChatEvent(
     );
     const event = chatEventBuilders[row.eventType](
       row,
-      baseChatEventFromRow(row, workflowSnapshotFromRow(row), row.content),
+      baseChatEventFromRow(row, row.content),
       attachFiles,
     );
     return chatEventResponse(event);

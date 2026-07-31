@@ -205,6 +205,45 @@ describe("user message document codec", () => {
     ).toStrictEqual(structured);
   });
 
+  it("excludes non-content parts from prompt and display text", () => {
+    const documents: readonly UserMessageDocument[] = [
+      {
+        version: 1,
+        parts: [
+          { type: "text", text: "Keep this text" },
+          {
+            type: "source",
+            kind: "slack",
+            href: "https://vm0.slack.com/archives/C123/p456",
+          },
+        ],
+      },
+      {
+        version: 1,
+        parts: [
+          { type: "text", text: "Keep this text" },
+          {
+            type: "automation",
+            workflowName: "daily-digest",
+            automationBrief: "Open message",
+          },
+        ],
+      },
+      {
+        version: 1,
+        parts: [
+          { type: "text", text: "Keep this text" },
+          { type: "goal", goalBrief: "Private goal prompt" },
+        ],
+      },
+    ];
+
+    for (const document of documents) {
+      expect(messageDocumentToPrompt(document)).toBe("Keep this text");
+      expect(messageDocumentToDisplayText(document)).toBe("Keep this text");
+    }
+  });
+
   it("preserves multiple inline templates and templates inside feedback notes", () => {
     const presentation = presentationTemplate();
     const illustration = {

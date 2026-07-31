@@ -1,6 +1,9 @@
 import { randomBytes } from "node:crypto";
 
-import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
+import {
+  zeroWorkflowAutomations,
+  zeroWorkflows,
+} from "@vm0/db/schema/zero-workflow";
 import { eq } from "drizzle-orm";
 
 import { db } from "../lib/db";
@@ -27,17 +30,25 @@ interface PreviousDeploymentWorkflowEventArgs {
 export async function admitPreviousDeploymentWorkflowEventFixture(
   args: PreviousDeploymentWorkflowEventArgs,
 ): Promise<void> {
-  const [automation] = await db()
-    .select()
+  const [row] = await db()
+    .select({
+      automation: zeroWorkflowAutomations,
+      workflowName: zeroWorkflows.name,
+    })
     .from(zeroWorkflowAutomations)
+    .innerJoin(
+      zeroWorkflows,
+      eq(zeroWorkflows.id, zeroWorkflowAutomations.workflowId),
+    )
     .where(eq(zeroWorkflowAutomations.id, args.automationId))
     .limit(1);
-  if (!automation) {
+  if (!row) {
     throw new Error("Expected the workflow automation to exist");
   }
 
   const admission = await admitWorkflowAutomationEvent(db(), {
-    automation,
+    automation: row.automation,
+    workflowName: row.workflowName,
     chatThreadId: args.chatThreadId,
     triggerSource: "workflow-event",
     triggerBrief: args.triggerBrief,

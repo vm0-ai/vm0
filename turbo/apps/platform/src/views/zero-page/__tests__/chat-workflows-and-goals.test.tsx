@@ -59,10 +59,9 @@ describe("chat lifecycle", () => {
           content: objectiveBrief,
           userMessage: {
             version: 1,
-            parts: [{ type: "text", text: objectiveBrief }],
+            parts: [{ type: "goal", goalBrief: objectiveBrief }],
           },
           error: machineReason,
-          goalSnapshot: { objectiveBrief },
           createdAt: "2026-07-29T10:00:00Z",
         },
       ],
@@ -599,8 +598,9 @@ describe("chat lifecycle", () => {
           eventType: "input.goal",
           runId: undefined,
           content: null,
-          goalSnapshot: {
-            objectiveBrief: "Finish the queued goal",
+          userMessage: {
+            version: 1,
+            parts: [{ type: "goal", goalBrief: "Finish the queued goal" }],
           },
           createdAt: "2026-06-09T10:00:00Z",
         },
@@ -818,7 +818,10 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           id: "msg-goal-run-group-user-1",
           role: "user",
           content: goalPrompt,
-          goalSnapshot: { objectiveBrief: goalBrief },
+          userMessage: {
+            version: 1,
+            parts: [{ type: "goal", goalBrief }],
+          },
           runId: "f0000001-0000-4000-a000-00000000072c",
           runGroupId,
           isGoalRun: true,
@@ -837,7 +840,10 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           id: "msg-goal-run-group-user-2",
           role: "user",
           content: goalPrompt,
-          goalSnapshot: { objectiveBrief: goalBrief },
+          userMessage: {
+            version: 1,
+            parts: [{ type: "goal", goalBrief }],
+          },
           runId: "f0000001-0000-4000-a000-00000000072d",
           runGroupId,
           isGoalRun: true,
@@ -928,7 +934,10 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           id: "msg-goal-run-group-active-user-1",
           role: "user",
           content: goalPrompt,
-          goalSnapshot: { objectiveBrief: goalBrief },
+          userMessage: {
+            version: 1,
+            parts: [{ type: "goal", goalBrief }],
+          },
           runId: "f0000001-0000-4000-a000-00000000082c",
           runGroupId,
           isGoalRun: true,
@@ -948,7 +957,10 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           id: "msg-goal-run-group-active-user-2",
           role: "user",
           content: goalPrompt,
-          goalSnapshot: { objectiveBrief: goalBrief },
+          userMessage: {
+            version: 1,
+            parts: [{ type: "goal", goalBrief }],
+          },
           runId: "f0000001-0000-4000-a000-00000000082d",
           runGroupId,
           isGoalRun: true,
@@ -995,10 +1007,15 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     const threadId = "thread-workflow-run-group-folding";
     const runGroupId = "f0000001-0000-4000-a000-00000000073b";
     const workflowPrompt = "/daily-workflow";
-    const workflowSnapshot = {
-      name: "daily-workflow",
-      displayName: "Daily workflow",
-      description: "Daily workflow summary",
+    const workflowUserMessage = {
+      version: 1 as const,
+      parts: [
+        {
+          type: "automation" as const,
+          workflowName: "daily-workflow",
+          automationBrief: "Daily workflow summary",
+        },
+      ],
     };
 
     mockChatLifecycle(context, {
@@ -1012,7 +1029,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           runId: "f0000001-0000-4000-a000-00000000073c",
           runGroupId,
           triggerSource: "workflow-event",
-          workflowSnapshot,
+          userMessage: workflowUserMessage,
           createdAt: "2026-06-09T10:00:00Z",
         },
         {
@@ -1022,7 +1039,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           runId: "f0000001-0000-4000-a000-00000000073c",
           runGroupId,
           triggerSource: "workflow-event",
-          workflowSnapshot,
           createdAt: "2026-06-09T10:00:30Z",
         },
         {
@@ -1032,7 +1048,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           runId: "f0000001-0000-4000-a000-00000000073d",
           runGroupId,
           triggerSource: "workflow-event",
-          workflowSnapshot,
+          userMessage: workflowUserMessage,
           createdAt: "2026-06-09T10:02:00Z",
         },
         {
@@ -1042,7 +1058,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           runId: "f0000001-0000-4000-a000-00000000073d",
           runGroupId,
           triggerSource: "workflow-event",
-          workflowSnapshot,
           runLifecycleEvent: "completed",
           createdAt: "2026-06-09T10:02:30Z",
         },
@@ -1070,10 +1085,15 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
     const threadId = "thread-paused-workflow-run-group";
     const runGroupId = "f0000001-0000-4000-a000-00000000074b";
     const workflowPrompt = "/daily-workflow";
-    const workflowSnapshot = {
-      name: "daily-workflow",
-      displayName: "Daily workflow",
-      description: "Daily workflow summary",
+    const workflowUserMessage = {
+      version: 1 as const,
+      parts: [
+        {
+          type: "automation" as const,
+          workflowName: "daily-workflow",
+          automationBrief: "Daily workflow summary",
+        },
+      ],
     };
 
     mockChatLifecycle(context, {
@@ -1087,7 +1107,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           runId: "f0000001-0000-4000-a000-00000000074c",
           runGroupId,
           triggerSource: "workflow-event",
-          workflowSnapshot,
+          userMessage: workflowUserMessage,
           createdAt: "2026-06-09T10:00:00Z",
         },
         {
@@ -1097,7 +1117,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           runId: "f0000001-0000-4000-a000-00000000074c",
           runGroupId,
           triggerSource: "workflow-event",
-          workflowSnapshot,
           runLifecycleEvent: "completed",
           createdAt: "2026-06-09T10:00:30Z",
         },
@@ -1108,7 +1127,7 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           runId: "f0000001-0000-4000-a000-00000000074d",
           runGroupId,
           triggerSource: "workflow-event",
-          workflowSnapshot,
+          userMessage: workflowUserMessage,
           createdAt: "2026-06-09T10:02:00Z",
         },
         {
@@ -1119,7 +1138,6 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           runId: "f0000001-0000-4000-a000-00000000074d",
           runGroupId,
           triggerSource: "workflow-event",
-          workflowSnapshot,
           runLifecycleEvent: "cancelled",
           createdAt: "2026-06-09T10:02:30Z",
         },
@@ -1166,18 +1184,20 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
       chatEvents: [
         {
           id: "msg-workflow-marker-user",
-          role: "user",
-          content: workflowPrompt,
+          eventType: "input.automation",
+          content: null,
           runId: "f0000001-0000-4000-a000-00000000083c",
           triggerSource: "workflow-event",
-          workflowSnapshot: {
-            id: "f0000001-0000-4000-a000-000000000831",
-            agentId: "c0000000-0000-4000-a000-000000000001",
-            name: "daily-workflow",
-            displayName: "Daily workflow",
-            description: "Daily workflow summary",
-            automationId: "f0000001-0000-4000-a000-000000000832",
-            triggerBrief: "Gmail label applied",
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "automation",
+                workflowName: "Daily workflow",
+                workflowId: "f0000001-0000-4000-a000-000000000831",
+                automationBrief: "Gmail label applied",
+              },
+            ],
           },
           createdAt: "2026-06-09T10:00:00Z",
         },
@@ -1220,9 +1240,17 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           id: "msg-claimed-automation",
           eventType: "input.automation",
           content: null,
-          automationId: "f0000001-0000-4000-a000-000000000931",
           triggerSource: "workflow-event",
-          triggerBrief: "Scheduled digest due",
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "automation",
+                workflowName: "daily-workflow",
+                automationBrief: "Scheduled digest due",
+              },
+            ],
+          },
           runId: "f0000001-0000-4000-a000-000000000933",
           createdAt: "2026-06-09T09:59:00Z",
         },
@@ -1230,9 +1258,17 @@ Full autonomous goal prompt that should stay out of the compact chat UI`;
           id: "msg-pending-automation",
           eventType: "input.automation",
           content: null,
-          automationId: "f0000001-0000-4000-a000-000000000932",
           triggerSource: "workflow-event",
-          triggerBrief: "Gmail label applied",
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "automation",
+                workflowName: "daily-workflow",
+                automationBrief: "Gmail label applied",
+              },
+            ],
+          },
           runId: undefined,
           createdAt: "2026-06-09T10:00:00Z",
         },

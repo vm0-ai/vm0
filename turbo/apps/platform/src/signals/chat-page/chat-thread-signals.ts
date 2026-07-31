@@ -44,8 +44,8 @@ export type QueuedChatEventItem =
   | {
       readonly kind: "automation";
       readonly id: string;
-      readonly automationId: string;
-      readonly triggerBrief: string | null;
+      readonly workflowName: string;
+      readonly automationBrief: string | undefined;
     };
 
 export type ThinkingIndicatorMode =

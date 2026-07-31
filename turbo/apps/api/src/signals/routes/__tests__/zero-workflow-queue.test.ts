@@ -29,7 +29,10 @@ import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
-import { chatEventDisplayText } from "./helpers/chat-event";
+import {
+  chatEventAutomationPart,
+  chatEventDisplayText,
+} from "./helpers/chat-event";
 import { readThreadSessionBinding } from "./helpers/runtime-state";
 import {
   generateDataKeyOutput,
@@ -239,7 +242,7 @@ async function workflowRunIds(threadId: string): Promise<readonly string[]> {
   return messages.flatMap((message) => {
     if (
       message.eventType !== "input.prompt" ||
-      !chatEventDisplayText(message)?.startsWith(`/${WORKFLOW_NAME}`) ||
+      chatEventAutomationPart(message)?.workflowName !== WORKFLOW_NAME ||
       !message.runId
     ) {
       return [];
@@ -269,6 +272,19 @@ async function pendingWorkflowEvents(threadId: string) {
       );
     },
   );
+}
+
+async function pendingWorkflowEventForAutomation(
+  threadId: string,
+  automationId: string,
+) {
+  for (const event of await pendingWorkflowEvents(threadId)) {
+    const eventContext = await readChatEventContextFixture(event.id);
+    if (eventContext?.automationId === automationId) {
+      return event;
+    }
+  }
+  return undefined;
 }
 
 async function completeRunThroughSandbox(scenario: Scenario, runId: string) {
@@ -705,16 +721,16 @@ describe("workflow queue", () => {
     const firedAt = Date.parse(created.body.nextRunAt) + 60_000;
     mockNow(firedAt);
     await executeDueWorkflowAutomations();
-    const pendingTick = (
-      await pendingWorkflowEvents(webhookAutomation.threadId)
-    ).find((event) => {
-      return event.automationId === created.body.id;
-    });
+    const pendingTick = await pendingWorkflowEventForAutomation(
+      webhookAutomation.threadId,
+      created.body.id,
+    );
     if (!pendingTick) {
       throw new Error("Expected the schedule tick to remain pending");
     }
-    const admittedTriggerBrief = pendingTick.triggerBrief;
-    if (admittedTriggerBrief === null) {
+    const admittedTriggerBrief =
+      chatEventAutomationPart(pendingTick)?.automationBrief;
+    if (admittedTriggerBrief === undefined) {
       throw new Error("Expected the admitted schedule tick trigger brief");
     }
     const pendingContext = await readChatEventContextFixture(pendingTick.id);
@@ -740,7 +756,7 @@ describe("workflow queue", () => {
     if (!claimedTick) {
       throw new Error("Expected the schedule tick to be claimed");
     }
-    expect(claimedTick.workflowSnapshot?.triggerBrief).toBe(
+    expect(chatEventAutomationPart(claimedTick)?.automationBrief).toBe(
       admittedTriggerBrief,
     );
     await expect(
@@ -795,8 +811,16 @@ describe("workflow queue", () => {
     ).resolves.toStrictEqual([
       expect.objectContaining({
         id: legacyEvent.id,
-        automationId: automation.automationId,
-        triggerBrief: legacyTriggerBrief,
+        userMessage: {
+          version: 1,
+          parts: [
+            expect.objectContaining({
+              type: "automation",
+              workflowId: scenario.workflowId,
+              automationBrief: legacyTriggerBrief,
+            }),
+          ],
+        },
       }),
     ]);
 
@@ -811,9 +835,11 @@ describe("workflow queue", () => {
         return event.eventType === "input.prompt" && event.runId === runIds[1];
       },
     );
-    expect(claimedEvent?.workflowSnapshot?.triggerBrief).toBe(
-      legacyTriggerBrief,
-    );
+    expect(
+      claimedEvent
+        ? chatEventAutomationPart(claimedEvent)?.automationBrief
+        : undefined,
+    ).toBe(legacyTriggerBrief);
     // The row carries no prompt, so it renders the way its writer intended
     // rather than picking up a schedule trigger line.
     expect(claim.prompt).toBe(`/${WORKFLOW_NAME}`);
@@ -886,7 +912,11 @@ describe("workflow queue", () => {
     if (!coalescedEvent) {
       throw new Error("Expected one coalesced schedule queue event");
     }
-    expect(coalescedEvent.automationId).toBe(created.body.id);
+    await expect(
+      readChatEventContextFixture(coalescedEvent.id),
+    ).resolves.toMatchObject({
+      automationId: created.body.id,
+    });
     await expect(
       readChatEventInputParamsFixture(coalescedEvent.id),
     ).resolves.toMatchObject({
@@ -1145,22 +1175,33 @@ describe("workflow queue", () => {
         expect.objectContaining({
           eventType: "input.rejected",
           error: expect.any(String),
-          automationId: automation.automationId,
-          triggerBrief: null,
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "automation",
+                workflowName: WORKFLOW_NAME,
+                workflowId: scenario.workflowId,
+              },
+            ],
+          },
         }),
       ]),
     );
     const rejectedEvent = failedEvents.body.events.find((event) => {
-      return (
-        event.eventType === "input.rejected" &&
-        event.automationId === automation.automationId
-      );
+      return event.eventType === "input.rejected";
     });
     expect(rejectedEvent).toStrictEqual(
       expect.objectContaining({
         userMessage: {
           version: 1,
-          parts: [{ type: "text", text: expect.any(String) }],
+          parts: [
+            {
+              type: "automation",
+              workflowName: WORKFLOW_NAME,
+              workflowId: scenario.workflowId,
+            },
+          ],
         },
       }),
     );
@@ -1258,11 +1299,10 @@ describe("workflow queue", () => {
     expect(claimed.enabled).toBeTruthy();
     expect(claimed.nextRunAt).toBeNull();
 
-    const queuedEvent = (
-      await pendingWorkflowEvents(created.body.chatThreadId)
-    ).find((event) => {
-      return event.automationId === created.body.id;
-    });
+    const queuedEvent = await pendingWorkflowEventForAutomation(
+      created.body.chatThreadId,
+      created.body.id,
+    );
     if (!queuedEvent) {
       throw new Error("Expected the claimed one-time event to remain queued");
     }

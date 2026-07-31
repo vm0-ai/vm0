@@ -852,9 +852,22 @@ describe("zero attachment chips", () => {
           id: "msg-canonical-slack-input",
           role: "user",
           content: "Review the source notes",
-          annotation: {
-            kind: "slack",
-            href: "https://example.slack.com/archives/C123/p123456789",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Review the source notes" },
+              {
+                type: "file",
+                fileId: assetId,
+                filenameSnapshot: "source-notes.md",
+                contentType: "text/markdown",
+              },
+              {
+                type: "source",
+                kind: "slack",
+                href: "https://example.slack.com/archives/C123/p123456789",
+              },
+            ],
           },
           attachFiles: [
             {
@@ -897,9 +910,22 @@ describe("zero attachment chips", () => {
           id: "msg-failed-slack-input",
           role: "user",
           content: "Use this attachment",
-          annotation: {
-            kind: "slack",
-            href: "https://example.slack.com/archives/C123/p123456790",
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "Use this attachment" },
+              {
+                type: "file",
+                fileId: assetId,
+                filenameSnapshot: "expired.pdf",
+                contentType: "application/pdf",
+              },
+              {
+                type: "source",
+                kind: "slack",
+                href: "https://example.slack.com/archives/C123/p123456790",
+              },
+            ],
           },
           attachFiles: [
             {

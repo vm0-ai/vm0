@@ -1,7 +1,4 @@
-import {
-  chatEvents,
-  type ChatEventGoalSnapshot,
-} from "@vm0/db/schema/chat-event";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
@@ -79,9 +76,6 @@ export async function admitGoalQueueEvent(
     readonly objectiveBrief: string;
   },
 ): Promise<GoalQueueAdmission> {
-  const goalSnapshot: ChatEventGoalSnapshot = {
-    objectiveBrief: args.objectiveBrief,
-  };
   return await db.transaction(async (tx) => {
     if (!(await lockChatQueueThread(tx, args.chatThreadId))) {
       throw new Error("Goal chat thread no longer exists");
@@ -95,7 +89,14 @@ export async function admitGoalQueueEvent(
       content: null,
       runId: null,
       runGroupId: args.goalId,
-      goalSnapshot,
+      userMessage: createUserMessageDocument({
+        text: null,
+        nonContentPart: {
+          type: "goal",
+          goalBrief: args.objectiveBrief,
+        },
+      }),
+      goalBrief: args.objectiveBrief,
     });
     if (!inserted) {
       throw new Error("Goal queue event insert returned no row");
@@ -311,7 +312,13 @@ export async function rejectGoalQueueEvent(
     const rejected = await replaceChatEvent(tx, args.eventId, {
       chatThreadId: args.chatThreadId,
       eventType: "input.rejected",
-      userMessage: createUserMessageDocument({ text: objectiveBrief }),
+      userMessage: createUserMessageDocument({
+        text: null,
+        nonContentPart: {
+          type: "goal",
+          goalBrief: objectiveBrief,
+        },
+      }),
       runId: null,
       error: args.reason,
     });

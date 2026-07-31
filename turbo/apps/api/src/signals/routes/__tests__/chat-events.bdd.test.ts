@@ -4693,6 +4693,11 @@ describe("CHAT-02: generation templates and attachments", () => {
             status: "draft",
           },
         },
+        {
+          type: "source",
+          kind: "slack",
+          href: "https://vm0.slack.com/archives/C123/p456",
+        },
       ],
     };
 

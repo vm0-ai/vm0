@@ -184,9 +184,17 @@ function mockCancellationRecoveryQueue(options?: {
               id: `${THREAD_ID}-queued-automation`,
               eventType: "input.automation" as const,
               content: null,
-              automationId: "e0000001-0000-4000-a000-000000000001",
               triggerSource: "workflow-event" as const,
-              triggerBrief: "Process the queued automation",
+              userMessage: {
+                version: 1 as const,
+                parts: [
+                  {
+                    type: "automation" as const,
+                    workflowName: "queued-workflow",
+                    automationBrief: "Process the queued automation",
+                  },
+                ],
+              },
               runId: undefined,
               createdAt: "2026-07-30T10:00:03Z",
             },

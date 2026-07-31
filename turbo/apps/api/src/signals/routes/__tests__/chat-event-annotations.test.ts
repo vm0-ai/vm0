@@ -24,13 +24,19 @@ function eventText(event: ChatEvent): string | undefined {
   })?.text;
 }
 
-function annotationForText(
-  events: readonly ChatEvent[],
-  text: string,
-): ChatEvent["annotation"] {
-  return events.find((event) => {
-    return eventText(event) === text;
-  })?.annotation;
+function sourcePartForText(events: readonly ChatEvent[], text: string) {
+  const event = events.find((candidate) => {
+    return eventText(candidate) === text;
+  });
+  if (
+    event?.eventType !== "input.prompt" &&
+    event?.eventType !== "input.rejected"
+  ) {
+    return undefined;
+  }
+  return event.userMessage.parts.find((part) => {
+    return part.type === "source";
+  });
 }
 
 describe("chat event annotations", () => {
@@ -50,49 +56,65 @@ describe("chat event annotations", () => {
       await seedChatEventAnnotationProjectionFixture(thread.id);
 
     const events = (await chat.listThreadEvents(actor, thread.id)).events;
-    expect(annotationForText(events, "slack linked")).toStrictEqual({
+    expect(sourcePartForText(events, "slack linked")).toStrictEqual({
+      type: "source",
       kind: "slack",
       href: "https://vm0.slack.com/archives/C123/p1753257600000100",
     });
-    expect(annotationForText(events, "feishu linked")).toStrictEqual({
+    expect(sourcePartForText(events, "feishu linked")).toStrictEqual({
+      type: "source",
       kind: "feishu",
       href: "https://applink.feishu.cn/client/chat/open?openChatId=oc_123",
     });
-    expect(annotationForText(events, "teams channel linked")).toStrictEqual({
+    expect(sourcePartForText(events, "teams channel linked")).toStrictEqual({
+      type: "source",
       kind: "teams",
       href: "https://teams.microsoft.com/l/message/19%3Achannel%40thread.tacv2/activity-1?tenantId=tenant-1",
     });
-    expect(annotationForText(events, "teams personal unlinked")).toStrictEqual({
+    expect(sourcePartForText(events, "teams personal unlinked")).toStrictEqual({
+      type: "source",
       kind: "teams",
     });
     expect(
-      annotationForText(events, "telegram supergroup linked"),
+      sourcePartForText(events, "telegram supergroup linked"),
     ).toStrictEqual({
+      type: "source",
       kind: "telegram",
       href: "https://t.me/c/1234567890/42",
     });
-    expect(annotationForText(events, "telegram dm unlinked")).toStrictEqual({
+    expect(sourcePartForText(events, "telegram dm unlinked")).toStrictEqual({
+      type: "source",
       kind: "telegram",
     });
-    expect(annotationForText(events, "telegram group unlinked")).toStrictEqual({
+    expect(sourcePartForText(events, "telegram group unlinked")).toStrictEqual({
+      type: "source",
       kind: "telegram",
     });
     expect(
-      annotationForText(events, "github issue comment linked"),
+      sourcePartForText(events, "github issue comment linked"),
     ).toStrictEqual({
+      type: "source",
       kind: "github",
       href: "https://github.com/vm0-ai/vm0/issues/24218#issuecomment-123456",
     });
     expect(
-      annotationForText(events, "github pull request linked"),
+      sourcePartForText(events, "github pull request linked"),
     ).toStrictEqual({
+      type: "source",
       kind: "github",
       href: "https://github.com/vm0-ai/vm0/pull/24219",
     });
     const claimedReplacement = events.find((event) => {
       return event.revokesEventId === claimedPendingId;
     });
-    expect(claimedReplacement?.annotation).toStrictEqual({
+    expect(
+      claimedReplacement?.eventType === "input.prompt"
+        ? claimedReplacement.userMessage.parts.find((part) => {
+            return part.type === "source";
+          })
+        : undefined,
+    ).toStrictEqual({
+      type: "source",
       kind: "github",
       href: "https://github.com/vm0-ai/vm0/issues/24218#issuecomment-654321",
     });
@@ -102,7 +124,14 @@ describe("chat event annotations", () => {
         event.revokesEventId === rejectedPendingId
       );
     });
-    expect(rejectedReplacement?.annotation).toStrictEqual({
+    expect(
+      rejectedReplacement?.eventType === "input.rejected"
+        ? rejectedReplacement.userMessage.parts.find((part) => {
+            return part.type === "source";
+          })
+        : undefined,
+    ).toStrictEqual({
+      type: "source",
       kind: "teams",
       href: "https://teams.microsoft.com/l/message/19%3Areject%40thread.tacv2/activity-rejected?tenantId=tenant-2",
     });

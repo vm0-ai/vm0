@@ -10,5 +10,11 @@ export type ChatEvent = PersistedChatEvent | OptimisticChatEvent;
 
 export type ChatInputEvent = Extract<
   ChatEvent,
-  { eventType: "input.prompt" | "input.rejected" }
+  {
+    eventType:
+      | "input.prompt"
+      | "input.automation"
+      | "input.goal"
+      | "input.rejected";
+  }
 >;

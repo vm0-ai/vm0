@@ -33,6 +33,7 @@ import {
 } from "./integration-model-route.service";
 import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
+import { createChatEventSourcePart } from "./chat-event-annotation.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { encryptQueuedUserMessageRunParams } from "./zero-chat-queued-event.service";
 import {
@@ -242,7 +243,10 @@ interface PersistedCanonicalFeishuIngress {
   readonly receivedAt: Date;
 }
 
-function feishuInboundUserMessage(message: FeishuInboundMessage) {
+function feishuInboundUserMessage(
+  message: FeishuInboundMessage,
+  chatOpenUrl: string,
+) {
   return createUserMessageDocument({
     text: message.file ? null : message.text,
     files: (message.file ? [message.file] : []).map((file) => {
@@ -251,6 +255,10 @@ function feishuInboundUserMessage(message: FeishuInboundMessage) {
         filename: file.filename,
         contentType: inferMimetype(file.filename),
       };
+    }),
+    nonContentPart: createChatEventSourcePart({
+      kind: "feishu",
+      chatOpenUrl,
     }),
   });
 }
@@ -324,18 +332,19 @@ async function persistCanonicalFeishuIngress(args: {
   args.signal.throwIfAborted();
 
   await args.db.transaction(async (tx) => {
+    const chatOpenUrl = buildFeishuChatOpenUrl(args.message.chatId);
     const inserted = await insertChatEvent(
       tx,
       {
         id: args.ingress.ingressId,
         chatThreadId: route.chatThreadId,
         eventType: "input.prompt",
-        userMessage: feishuInboundUserMessage(args.message),
+        userMessage: feishuInboundUserMessage(args.message, chatOpenUrl),
         runId: null,
         triggerSource: "feishu",
         encryptedParams,
         feishuContext: {
-          chatOpenUrl: buildFeishuChatOpenUrl(args.message.chatId),
+          chatOpenUrl,
         },
         createdAt: args.ingress.createdAt,
       },

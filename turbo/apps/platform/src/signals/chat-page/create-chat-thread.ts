@@ -2065,11 +2065,21 @@ function createEventSemanticSignals(
       return Promise.resolve(
         get(queuedEvents$).map((event) => {
           if (event.eventType === "input.automation") {
+            const automationPart = event.userMessage?.parts.find((part) => {
+              return part.type === "automation";
+            });
+            if (!automationPart || automationPart.type !== "automation") {
+              return {
+                kind: "message" as const,
+                id: event.id,
+                text: "",
+              };
+            }
             return {
               kind: "automation" as const,
               id: event.id,
-              automationId: event.automationId,
-              triggerBrief: event.triggerBrief,
+              workflowName: automationPart.workflowName,
+              automationBrief: automationPart.automationBrief,
             };
           }
           return {

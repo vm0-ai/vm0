@@ -25,6 +25,7 @@ import {
   insertChatEvent,
   replaceChatEvent,
 } from "../signals/services/zero-chat-event.service";
+import { createChatEventSourcePart } from "../signals/services/chat-event-annotation.service";
 import { createUserMessageDocument } from "../signals/services/zero-chat-user-message.service";
 import { createDeferredPromise, onRejection } from "../signals/utils";
 
@@ -225,6 +226,46 @@ const annotationProjectionInputs = [
   },
 ] as const;
 
+function annotationProjectionSourcePart(
+  input: (typeof annotationProjectionInputs)[number],
+) {
+  if ("slackContext" in input.context) {
+    return createChatEventSourcePart({
+      kind: "slack",
+      messagePermalink: input.context.slackContext.messagePermalink,
+    });
+  }
+  if ("feishuContext" in input.context) {
+    return createChatEventSourcePart({
+      kind: "feishu",
+      chatOpenUrl: input.context.feishuContext.chatOpenUrl,
+    });
+  }
+  if ("teamsContext" in input.context) {
+    return createChatEventSourcePart({
+      kind: "teams",
+      tenantId: input.context.teamsContext.tenantId,
+      channelId: input.context.teamsContext.channelId,
+      activityId: input.context.teamsContext.activityId,
+    });
+  }
+  if ("telegramContext" in input.context) {
+    return createChatEventSourcePart({
+      kind: "telegram",
+      chatId: input.context.telegramContext.chatId,
+      messageId: input.context.telegramContext.messageId,
+      isDm: input.context.telegramContext.isDm,
+    });
+  }
+  return createChatEventSourcePart({
+    kind: "github",
+    repo: input.context.githubContext.repo,
+    subjectNumber: input.context.githubContext.subjectNumber,
+    subjectKind: input.context.githubContext.subjectKind,
+    triggerCommentId: input.context.githubContext.triggerCommentId,
+  });
+}
+
 export async function seedChatEventAnnotationProjectionFixture(
   chatThreadId: string,
 ): Promise<{
@@ -238,7 +279,10 @@ export async function seedChatEventAnnotationProjectionFixture(
       await insertChatEvent(tx, {
         chatThreadId,
         eventType: "input.prompt",
-        userMessage: createUserMessageDocument({ text: input.text }),
+        userMessage: createUserMessageDocument({
+          text: input.text,
+          nonContentPart: annotationProjectionSourcePart(input),
+        }),
         runId: null,
         triggerSource: input.triggerSource,
         ...input.context,
@@ -249,7 +293,16 @@ export async function seedChatEventAnnotationProjectionFixture(
       id: claimedPendingId,
       chatThreadId,
       eventType: "input.prompt",
-      userMessage: createUserMessageDocument({ text: "claimed annotation" }),
+      userMessage: createUserMessageDocument({
+        text: "claimed annotation",
+        nonContentPart: createChatEventSourcePart({
+          kind: "github",
+          repo: "vm0-ai/vm0",
+          subjectNumber: 24_218,
+          subjectKind: "issue",
+          triggerCommentId: "654321",
+        }),
+      }),
       runId: null,
       triggerSource: "github",
       githubContext: {
@@ -262,7 +315,16 @@ export async function seedChatEventAnnotationProjectionFixture(
     await replaceChatEvent(tx, claimedPendingId, {
       chatThreadId,
       eventType: "input.prompt",
-      userMessage: createUserMessageDocument({ text: "claimed annotation" }),
+      userMessage: createUserMessageDocument({
+        text: "claimed annotation",
+        nonContentPart: createChatEventSourcePart({
+          kind: "github",
+          repo: "vm0-ai/vm0",
+          subjectNumber: 24_218,
+          subjectKind: "issue",
+          triggerCommentId: "654321",
+        }),
+      }),
       runId: randomUUID(),
       triggerSource: "github",
     });
@@ -271,7 +333,15 @@ export async function seedChatEventAnnotationProjectionFixture(
       id: rejectedPendingId,
       chatThreadId,
       eventType: "input.prompt",
-      userMessage: createUserMessageDocument({ text: "rejected annotation" }),
+      userMessage: createUserMessageDocument({
+        text: "rejected annotation",
+        nonContentPart: createChatEventSourcePart({
+          kind: "teams",
+          tenantId: "tenant-2",
+          channelId: "19:reject@thread.tacv2",
+          activityId: "activity-rejected",
+        }),
+      }),
       runId: null,
       triggerSource: "teams",
       teamsContext: {
@@ -286,7 +356,15 @@ export async function seedChatEventAnnotationProjectionFixture(
     await replaceChatEvent(tx, rejectedPendingId, {
       chatThreadId,
       eventType: "input.rejected",
-      userMessage: createUserMessageDocument({ text: "rejected annotation" }),
+      userMessage: createUserMessageDocument({
+        text: "rejected annotation",
+        nonContentPart: createChatEventSourcePart({
+          kind: "teams",
+          tenantId: "tenant-2",
+          channelId: "19:reject@thread.tacv2",
+          activityId: "activity-rejected",
+        }),
+      }),
       runId: null,
       error: "rejected for annotation coverage",
       triggerSource: "teams",

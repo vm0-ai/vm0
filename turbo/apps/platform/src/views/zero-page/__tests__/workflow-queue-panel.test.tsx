@@ -78,9 +78,11 @@ function setupWorkflowQueuePage({
         id: EVENT_ID_1,
         eventType: "input.automation",
         content: null,
-        automationId: "e0000001-0000-4000-a000-000000000001",
         triggerSource: "workflow-event",
-        triggerBrief: null,
+        userMessage: {
+          version: 1,
+          parts: [{ type: "automation", workflowName: "customer-followup" }],
+        },
         runId: undefined,
         createdAt: "2026-07-10T01:01:00Z",
       },
@@ -88,9 +90,17 @@ function setupWorkflowQueuePage({
         id: EVENT_ID_2,
         eventType: "input.automation",
         content: null,
-        automationId: "e0000001-0000-4000-a000-000000000001",
         triggerSource: "workflow-event",
-        triggerBrief: "Webhook event third",
+        userMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "automation",
+              workflowName: "customer-followup",
+              automationBrief: "Webhook event third",
+            },
+          ],
+        },
         runId: undefined,
         createdAt: "2026-07-10T01:02:00Z",
       },

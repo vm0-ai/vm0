@@ -80,14 +80,11 @@ function baseEvent(
     runId: message.runId,
     runGroupId: message.runGroupId,
     triggerSource: message.triggerSource,
-    annotation: message.annotation,
     isGoalRun: message.isGoalRun,
     runEventId: message.runEventId,
-    goalSnapshot: message.goalSnapshot,
     revokesEventId: message.revokesEventId,
     seqId: message.seqId ?? fallbackSeqId,
     sequenceNumber: message.sequenceNumber,
-    workflowSnapshot: message.workflowSnapshot,
     createdAt: message.createdAt,
   };
 }
@@ -134,21 +131,30 @@ const mockChatEventOverrides = {
   "input.automation": (message, id) => {
     return {
       content: null,
-      automationId:
-        message.automationId ?? "00000000-0000-4000-8000-000000000010",
       triggerSource: message.triggerSource ?? "workflow-event",
-      triggerBrief:
-        message.triggerBrief === undefined
-          ? `Automation event ${id}`
-          : message.triggerBrief,
+      userMessage:
+        message.userMessage ??
+        ({
+          version: 1,
+          parts: [
+            {
+              type: "automation",
+              workflowName: "mock-workflow",
+              automationBrief: `Automation event ${id}`,
+            },
+          ],
+        } satisfies UserMessageDocument),
     };
   },
   "input.goal": (message) => {
     return {
       content: null,
-      goalSnapshot: message.goalSnapshot ?? {
-        objectiveBrief: "Mock queued goal",
-      },
+      userMessage:
+        message.userMessage ??
+        ({
+          version: 1,
+          parts: [{ type: "goal", goalBrief: "Mock queued goal" }],
+        } satisfies UserMessageDocument),
     };
   },
   "input.rejected": (message) => {

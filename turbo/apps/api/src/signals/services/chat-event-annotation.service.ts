@@ -1,8 +1,11 @@
-import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
+import type { UserMessagePart } from "@vm0/api-contracts/contracts/chat-threads";
 
-type ChatEventAnnotation = NonNullable<ChatEvent["annotation"]>;
+type UserMessageSourcePart = Extract<
+  UserMessagePart,
+  { readonly type: "source" }
+>;
 
-type ChatEventAnnotationContext =
+type ChatEventSourceContext =
   | {
       readonly kind: "slack";
       readonly messagePermalink: string | null;
@@ -36,7 +39,7 @@ function storedHref(value: string | null): string | undefined {
 }
 
 function teamsMessageUrl(
-  context: Extract<ChatEventAnnotationContext, { readonly kind: "teams" }>,
+  context: Extract<ChatEventSourceContext, { readonly kind: "teams" }>,
 ): string | undefined {
   if (!context.channelId || !context.activityId || !context.tenantId) {
     return undefined;
@@ -50,7 +53,7 @@ function teamsMessageUrl(
 }
 
 function telegramMessageUrl(
-  context: Extract<ChatEventAnnotationContext, { readonly kind: "telegram" }>,
+  context: Extract<ChatEventSourceContext, { readonly kind: "telegram" }>,
 ): string | undefined {
   if (
     context.isDm !== false ||
@@ -71,7 +74,7 @@ function telegramMessageUrl(
 }
 
 function githubSubjectUrl(
-  context: Extract<ChatEventAnnotationContext, { readonly kind: "github" }>,
+  context: Extract<ChatEventSourceContext, { readonly kind: "github" }>,
 ): string | undefined {
   if (
     context.repo === null ||
@@ -104,9 +107,9 @@ function githubSubjectUrl(
     : `${subjectUrl}#issuecomment-${commentId}`;
 }
 
-export function projectChatEventAnnotation(
-  context: ChatEventAnnotationContext,
-): ChatEventAnnotation {
+export function createChatEventSourcePart(
+  context: ChatEventSourceContext,
+): UserMessageSourcePart {
   let href: string | undefined;
   if (context.kind === "slack") {
     href = storedHref(context.messagePermalink);
@@ -120,6 +123,7 @@ export function projectChatEventAnnotation(
     href = githubSubjectUrl(context);
   }
   return {
+    type: "source",
     kind: context.kind,
     ...(href ? { href } : {}),
   };

@@ -1514,14 +1514,6 @@ describe("POST /api/zero/teams/bot", () => {
     expect(threadEventsPage.body.events).toContainEqual(
       expect.objectContaining({
         content: null,
-        annotation: {
-          kind: "teams",
-          href: `https://teams.microsoft.com/l/message/${encodeURIComponent(
-            "19:channel@thread.tacv2",
-          )}/activity-file-channel?tenantId=${encodeURIComponent(
-            fixture.teamsTenantId,
-          )}`,
-        },
         userMessage: {
           version: 1,
           parts: [
@@ -1532,6 +1524,15 @@ describe("POST /api/zero/teams/bot", () => {
               contentType: "image/png",
             },
             { type: "text", text: "please inspect this" },
+            {
+              type: "source",
+              kind: "teams",
+              href: `https://teams.microsoft.com/l/message/${encodeURIComponent(
+                "19:channel@thread.tacv2",
+              )}/activity-file-channel?tenantId=${encodeURIComponent(
+                fixture.teamsTenantId,
+              )}`,
+            },
           ],
         },
       }),

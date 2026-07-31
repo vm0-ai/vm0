@@ -2619,17 +2619,9 @@ function loadQueuedMessageSessionState(
         }),
         loadUserFeatureSwitchContext(args.db, args.agent.orgId, args.userId),
       ]);
-      const inlineTemplatesEnabled = isFeatureEnabled(
-        FeatureSwitchKey.StructuredPromptInlineTemplates,
-        featureSwitchContext,
-      );
       const incompleteContext =
         args.queuedMessage.triggerSource === "web"
-          ? await loadWebChatIncompleteContext(
-              args.db,
-              args.threadId,
-              inlineTemplatesEnabled,
-            )
+          ? await loadWebChatIncompleteContext(args.db, args.threadId)
           : "";
       return [
         sessionResolution.action === "rotated",

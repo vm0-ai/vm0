@@ -7,13 +7,15 @@ function chatEventBodyContent(event: ChatEvent): string {
   if (chatEventCompatibilityRole(event.eventType) === "assistant") {
     return event.content ?? "";
   }
-  if (event.eventType === "input.automation") {
-    return event.triggerBrief?.trim() ?? "";
-  }
   if (
     event.eventType === "input.prompt" ||
+    event.eventType === "input.automation" ||
+    event.eventType === "input.goal" ||
     event.eventType === "input.rejected"
   ) {
+    if (event.eventType === "input.automation" && !event.userMessage) {
+      return "";
+    }
     const content = messageDocumentToDisplayText(event.userMessage);
     if (content === null) {
       throw new Error(`${event.eventType} is missing a valid userMessage`);

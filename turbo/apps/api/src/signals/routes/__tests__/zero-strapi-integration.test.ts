@@ -10,7 +10,7 @@ import { mockEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
-import { chatEventDisplayText } from "./helpers/chat-event";
+import { chatEventAutomationPart } from "./helpers/chat-event";
 import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -86,10 +86,11 @@ async function pendingWorkflowEvents(threadId: string) {
 async function workflowAutomationRuns(threadId: string, automationId: string) {
   const events = await workflows.readThreadEvents(threadId);
   return events.filter((event) => {
+    const automationPart = chatEventAutomationPart(event);
     return (
       event.eventType === "input.prompt" &&
-      chatEventDisplayText(event)?.startsWith(`/${WORKFLOW_NAME}`) === true &&
-      event.workflowSnapshot?.automationId === automationId
+      automationPart?.workflowName === WORKFLOW_NAME &&
+      automationPart.workflowId === automationId
     );
   });
 }
@@ -463,9 +464,9 @@ describe("Strapi integration", () => {
       automation.body.id,
     );
     expect(runsForAutomation).toHaveLength(1);
-    expect(runsForAutomation[0]?.workflowSnapshot?.triggerBrief).toContain(
-      "(2 locales)",
-    );
+    expect(
+      chatEventAutomationPart(runsForAutomation[0]!)?.automationBrief,
+    ).toContain("(2 locales)");
 
     const runId = runsForAutomation[0]?.runId;
     if (!runId) {
@@ -609,7 +610,9 @@ describe("Strapi integration", () => {
     );
     expect(
       eventsAfterFailure.filter((event) => {
-        return event.workflowSnapshot?.automationId === automation.body.id;
+        return (
+          chatEventAutomationPart(event)?.workflowId === automation.body.id
+        );
       }),
     ).toHaveLength(0);
 

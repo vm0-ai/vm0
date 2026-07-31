@@ -29,12 +29,7 @@ const legacyProviderPinnedModelSelection = {
 };
 
 describe("chat message response contract", () => {
-  const automationId = "11111111-1111-4111-8111-111111111111";
-  const workflowSnapshot = {
-    name: "scheduled-workflow",
-    displayName: "Scheduled workflow",
-    description: null,
-  };
+  const workflowId = "11111111-1111-4111-8111-111111111111";
 
   it("rejects legacy automation metadata", () => {
     const parsed = chatEventSchema.safeParse({
@@ -72,7 +67,13 @@ describe("chat message response contract", () => {
     expect(parsed.success).toBe(false);
   });
 
-  it("accepts a canonical-only workflow Automation identifier", () => {
+  it("accepts workflow display metadata only as a user-message part", () => {
+    const automationPart = {
+      type: "automation" as const,
+      workflowName: "scheduled-workflow",
+      workflowId,
+      automationBrief: "Daily schedule fired",
+    };
     const parsed = chatEventSchema.safeParse({
       id: "message-1",
       threadId: "thread-1",
@@ -80,21 +81,17 @@ describe("chat message response contract", () => {
       content: null,
       userMessage: {
         version: 1,
-        parts: [{ type: "text", text: "Run the workflow" }],
+        parts: [automationPart],
       },
       seqId: 1,
       createdAt: "2026-07-13T00:00:00.000Z",
-      workflowSnapshot: { ...workflowSnapshot, automationId },
     });
 
     expect(parsed.success).toBe(true);
-    if (!parsed.success) {
+    if (!parsed.success || parsed.data.eventType !== "input.prompt") {
       return;
     }
-    expect(parsed.data.workflowSnapshot).toStrictEqual({
-      ...workflowSnapshot,
-      automationId,
-    });
+    expect(parsed.data.userMessage.parts).toStrictEqual([automationPart]);
   });
 
   it("exposes user input documents as userMessage", () => {
@@ -403,6 +400,30 @@ describe("chat thread computer access contract", () => {
 });
 
 describe("chat thread generation template contract", () => {
+  it("allows at most one non-content user-message part", () => {
+    expect(
+      userMessageDocumentSchema.safeParse({
+        version: 1,
+        parts: [
+          { type: "source", kind: "slack" },
+          {
+            type: "automation",
+            workflowName: "daily-digest",
+          },
+        ],
+      }),
+    ).toMatchObject({ success: false });
+    expect(
+      userMessageDocumentSchema.safeParse({
+        version: 1,
+        parts: [
+          { type: "text", text: "Visible content" },
+          { type: "goal", goalBrief: "Finish the rollout" },
+        ],
+      }),
+    ).toMatchObject({ success: true });
+  });
+
   it("accepts template parts inside feedback notes", () => {
     const parsed = userMessageDocumentSchema.safeParse({
       version: 1,

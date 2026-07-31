@@ -1543,11 +1543,7 @@ async function resolveThread(params: {
         cliAgentType: runConfiguration.providerAdmission.cliAgentType,
       },
     }),
-    loadWebChatIncompleteContext(
-      params.db,
-      thread.id,
-      params.userMessageInlineTemplatesEnabled,
-    ),
+    loadWebChatIncompleteContext(params.db, thread.id),
   ]);
   const startNewSession = sessionResolution.action === "rotated";
   return {

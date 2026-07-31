@@ -5,7 +5,6 @@ import {
   chatEventCompatibilityRole,
   type ChatEventType,
 } from "@vm0/api-contracts/contracts/chat-events";
-import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   and,
   asc,
@@ -27,10 +26,6 @@ import { executeRawRows } from "../../lib/db-raw-rows";
 import type { Db } from "../external/db";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
-import {
-  projectUserMessage,
-  requiredUserMessageForEvent,
-} from "./zero-chat-user-message.service";
 
 const INCOMPLETE_ROUND_LIMIT = 20;
 const INCOMPLETE_EVENT_CHAR_CAP = 4000;
@@ -54,8 +49,7 @@ interface IncompleteRoundEvent {
   readonly eventType: ChatEventType;
   readonly role: "user" | "assistant";
   readonly content: string | null;
-  readonly userMessage: UserMessageDocument | null;
-  readonly attachFiles: readonly string[] | null;
+  readonly agentPrompt: string;
 }
 
 interface IncompleteRound extends IncompleteRoundSelection {
@@ -220,10 +214,10 @@ async function loadSelectedIncompleteRounds(
       runId: chatEvents.runId,
       eventType: chatEvents.eventType,
       content: chatEvents.content,
-      userMessage: chatEvents.userMessage,
-      attachFiles: chatEvents.attachFiles,
+      agentPrompt: agentRuns.prompt,
     })
     .from(chatEvents)
+    .innerJoin(agentRuns, eq(agentRuns.id, chatEvents.runId))
     .where(
       and(
         eq(chatEvents.chatThreadId, threadId),
@@ -266,25 +260,11 @@ async function loadSelectedIncompleteRounds(
       eventType: row.eventType,
       role: chatEventCompatibilityRole(row.eventType),
       content: row.content,
-      userMessage: row.userMessage,
-      attachFiles: row.attachFiles,
+      agentPrompt: row.agentPrompt,
     });
   }
 
   return [...roundsByRunId.values()];
-}
-
-function formatAttachFileIds(
-  ids: readonly string[] | null | undefined,
-): string {
-  if (!ids || ids.length === 0) {
-    return "";
-  }
-  return ids
-    .map((id) => {
-      return `[Web file]\n   [ID] ${id}`;
-    })
-    .join("\n");
 }
 
 function truncateIncomplete(value: string): string {
@@ -294,27 +274,9 @@ function truncateIncomplete(value: string): string {
   return `${value.slice(0, INCOMPLETE_EVENT_CHAR_CAP)}...[truncated]`;
 }
 
-function formatIncompleteEvent(
-  event: IncompleteRoundEvent,
-  inlineTemplatesEnabled: boolean,
-): string {
-  const userMessage = requiredUserMessageForEvent(
-    event.eventType,
-    event.userMessage,
-  );
-  if (userMessage) {
-    const prompt = projectUserMessage(userMessage, {
-      inlineTemplates: inlineTemplatesEnabled,
-    }).agentPrompt;
-    return `User: ${truncateIncomplete(prompt) || "[empty message]"}`;
-  }
-  const attach = formatAttachFileIds(event.attachFiles);
+function formatIncompleteEvent(event: IncompleteRoundEvent): string {
   if (event.role === "user") {
-    const body =
-      event.content !== null && event.content !== ""
-        ? truncateIncomplete(event.content)
-        : "[empty message]";
-    return attach ? `User: ${body}\n${attach}` : `User: ${body}`;
+    return `User: ${truncateIncomplete(event.agentPrompt) || "[empty message]"}`;
   }
   if (event.content !== null && event.content !== "") {
     return `Assistant (partial): ${truncateIncomplete(event.content)}`;
@@ -324,7 +286,6 @@ function formatIncompleteEvent(
 
 function buildWebChatIncompleteContext(
   rounds: readonly IncompleteRound[],
-  inlineTemplatesEnabled: boolean,
 ): string {
   if (rounds.length === 0) {
     return "";
@@ -333,7 +294,7 @@ function buildWebChatIncompleteContext(
   const blocks = rounds.map((round, index) => {
     const relativeIndex = index - total + 1;
     const rendered = round.events.map((event) => {
-      return formatIncompleteEvent(event, inlineTemplatesEnabled);
+      return formatIncompleteEvent(event);
     });
     const hasAssistant = round.events.some((event) => {
       return event.role === "assistant";
@@ -367,9 +328,8 @@ function buildWebChatIncompleteContext(
 export async function loadWebChatIncompleteContext(
   db: Db,
   threadId: string,
-  inlineTemplatesEnabled = false,
 ): Promise<string> {
   const selection = await selectIncompleteRoundFrontier(db, threadId);
   const rounds = await loadSelectedIncompleteRounds(db, threadId, selection);
-  return buildWebChatIncompleteContext(rounds, inlineTemplatesEnabled);
+  return buildWebChatIncompleteContext(rounds);
 }

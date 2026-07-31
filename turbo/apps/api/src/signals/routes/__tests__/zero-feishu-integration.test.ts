@@ -2336,11 +2336,14 @@ describe("Feishu integration", () => {
         content: null,
         userMessage: {
           version: 1,
-          parts: [{ type: "text", text: "do the Feishu task" }],
-        },
-        annotation: {
-          kind: "feishu",
-          href: "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_dm",
+          parts: [
+            { type: "text", text: "do the Feishu task" },
+            {
+              type: "source",
+              kind: "feishu",
+              href: "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_dm",
+            },
+          ],
         },
       }),
     );
@@ -2409,9 +2412,14 @@ describe("Feishu integration", () => {
         return (
           event.eventType === "input.prompt" &&
           event.revokesEventId !== undefined &&
-          event.annotation?.kind === "feishu" &&
-          event.annotation.href ===
-            "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_dm"
+          event.userMessage.parts.some((part) => {
+            return (
+              part.type === "source" &&
+              part.kind === "feishu" &&
+              part.href ===
+                "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_dm"
+            );
+          })
         );
       },
     );
