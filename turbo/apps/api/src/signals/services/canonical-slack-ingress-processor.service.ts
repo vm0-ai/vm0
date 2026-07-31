@@ -340,6 +340,8 @@ async function persistCanonicalSlackMessage(
     readonly chatThreadId: string;
     readonly displayContent: string;
     readonly messagePermalink: string | null;
+    readonly channelId: string;
+    readonly messageTs: string;
     readonly canonicalAssets: readonly CanonicalSlackInputAsset[];
     readonly encryptedParams: Awaited<
       ReturnType<typeof encryptQueuedUserMessageRunParams>
@@ -367,7 +369,11 @@ async function persistCanonicalSlackMessage(
         runId: null,
         triggerSource: "slack",
         encryptedParams: args.encryptedParams,
-        slackMessagePermalink: args.messagePermalink,
+        slackContext: {
+          messagePermalink: args.messagePermalink,
+          channelId: args.channelId,
+          messageTs: args.messageTs,
+        },
         createdAt: args.ingress.createdAt,
       },
       "id",
@@ -518,6 +524,8 @@ const persistClaimedCanonicalSlackIngress$ = command(
         chatThreadId,
         displayContent: enriched.displayContent,
         messagePermalink,
+        channelId: event.channel,
+        messageTs: event.ts,
         canonicalAssets,
         encryptedParams,
       },

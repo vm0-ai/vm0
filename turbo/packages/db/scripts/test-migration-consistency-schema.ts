@@ -1151,7 +1151,7 @@ async function validateChatEventContextPointerConstraints(
           '00000000-0000-4000-8000-000000074514',
           $1,
           'output.message',
-          'telegram',
+          'discord',
           '00000000-0000-4000-8000-000000074505',
           3
         )

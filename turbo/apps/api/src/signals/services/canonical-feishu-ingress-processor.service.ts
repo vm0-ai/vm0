@@ -24,7 +24,7 @@ import {
 import { settle } from "../utils";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
-import { feishuChatOpenUrl } from "./feishu-config";
+import { buildFeishuChatOpenUrl } from "./feishu-config";
 import { ensureFeishuChatThreadRoute } from "./feishu-chat-ingress.service";
 import { hasFeishuCustomConnectorOAuthConnection } from "./feishu-custom-connector.service";
 import {
@@ -334,7 +334,9 @@ async function persistCanonicalFeishuIngress(args: {
         runId: null,
         triggerSource: "feishu",
         encryptedParams,
-        feishuChatOpenUrl: feishuChatOpenUrl(args.message.chatId),
+        feishuContext: {
+          chatOpenUrl: buildFeishuChatOpenUrl(args.message.chatId),
+        },
         createdAt: args.ingress.createdAt,
       },
       "id",

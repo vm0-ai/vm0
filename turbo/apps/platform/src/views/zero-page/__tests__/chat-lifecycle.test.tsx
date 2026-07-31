@@ -133,7 +133,7 @@ describe("chat lifecycle", () => {
           content: "Check the production rollout",
           runId: "run-slack-origin",
           triggerSource: "slack",
-          slackMessagePermalink: permalink,
+          annotation: { kind: "slack", href: permalink },
           createdAt: "2026-07-23T01:00:00Z",
         },
         {
@@ -149,6 +149,7 @@ describe("chat lifecycle", () => {
           content: "This source link was unavailable",
           runId: "run-slack-origin-without-link",
           triggerSource: "slack",
+          annotation: { kind: "slack" },
           createdAt: "2026-07-23T01:02:00Z",
         },
       ],
@@ -171,6 +172,7 @@ describe("chat lifecycle", () => {
     expect(originLink).toHaveTextContent("Slack");
     expect(originLink).toHaveTextContent("Open message");
     expect(originLinks).toHaveLength(1);
+    expect(screen.getAllByText("Slack")).toHaveLength(2);
   });
 
   it("links Feishu-origin user messages back to the original chat", async () => {
@@ -186,7 +188,7 @@ describe("chat lifecycle", () => {
           content: "Check the Feishu conversation",
           runId: "run-feishu-origin",
           triggerSource: "feishu",
-          feishuChatOpenUrl: chatOpenUrl,
+          annotation: { kind: "feishu", href: chatOpenUrl },
           createdAt: "2026-07-23T01:00:00Z",
         },
         {
@@ -202,6 +204,7 @@ describe("chat lifecycle", () => {
           content: "This source link was unavailable",
           runId: "run-feishu-origin-without-link",
           triggerSource: "feishu",
+          annotation: { kind: "feishu" },
           createdAt: "2026-07-23T01:02:00Z",
         },
       ],
@@ -222,6 +225,77 @@ describe("chat lifecycle", () => {
     expect(originLink).toHaveTextContent("Feishu");
     expect(originLink).toHaveTextContent("Open chat");
     expect(originLinks).toHaveLength(1);
+    expect(screen.getAllByText("Feishu")).toHaveLength(2);
+  });
+
+  it("renders Teams, Telegram, and GitHub annotations through one source line", async () => {
+    const threadId = "thread-generic-message-annotations";
+    const teamsHref =
+      "https://teams.microsoft.com/l/message/19%3Achannel%40thread.tacv2/activity-1?tenantId=tenant-1";
+    const githubHref =
+      "https://github.com/vm0-ai/vm0/issues/24218#issuecomment-123";
+    mockChatLifecycle(context, {
+      threadId,
+      chatEvents: [
+        {
+          id: "msg-teams-annotation",
+          role: "user",
+          content: "Teams source",
+          runId: "run-teams-annotation",
+          annotation: { kind: "teams", href: teamsHref },
+          createdAt: "2026-07-23T01:00:00Z",
+        },
+        {
+          id: "msg-telegram-annotation",
+          role: "user",
+          content: "Telegram source",
+          runId: "run-telegram-annotation",
+          annotation: { kind: "telegram" },
+          createdAt: "2026-07-23T01:01:00Z",
+        },
+        {
+          id: "msg-github-annotation",
+          role: "user",
+          content: "GitHub source",
+          runId: "run-github-annotation",
+          annotation: { kind: "github", href: githubHref },
+          createdAt: "2026-07-23T01:02:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("Telegram")).toBeInTheDocument();
+    });
+    const annotationLinks = queryAllByRoleFast("link");
+    const teamsLink = annotationLinks.find((link) => {
+      return (
+        link.getAttribute("aria-label") ===
+        "Open original message in Microsoft Teams"
+      );
+    });
+    expect(teamsLink).toBeDefined();
+    expect(teamsLink).toHaveAttribute("href", teamsHref);
+    expect(teamsLink).toHaveTextContent("Microsoft Teams");
+    const githubLink = annotationLinks.find((link) => {
+      return (
+        link.getAttribute("aria-label") ===
+        "Open original issue or pull request in GitHub"
+      );
+    });
+    expect(githubLink).toBeDefined();
+    expect(githubLink).toHaveAttribute("href", githubHref);
+    expect(githubLink).toHaveTextContent("GitHub");
+    expect(
+      annotationLinks.find((link) => {
+        return (
+          link.getAttribute("aria-label") ===
+          "Open original message in Telegram"
+        );
+      }),
+    ).toBeUndefined();
   });
 
   it("keeps an existing thread composer in its footer while idle and working", async () => {

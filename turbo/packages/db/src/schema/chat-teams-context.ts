@@ -2,7 +2,7 @@ import { pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 import { chatThreads } from "./chat-thread";
 
-export const chatSlackContext = pgTable("chat_slack_context", {
+export const chatTeamsContext = pgTable("chat_teams_context", {
   id: uuid("id").defaultRandom().primaryKey(),
   chatThreadId: uuid("chat_thread_id")
     .notNull()
@@ -12,8 +12,11 @@ export const chatSlackContext = pgTable("chat_slack_context", {
       },
       { onDelete: "cascade" },
     ),
-  messagePermalink: text("message_permalink"),
+  tenantId: text("tenant_id").notNull(),
+  teamId: text("team_id"),
   channelId: text("channel_id"),
-  messageTs: text("message_ts"),
+  conversationId: text("conversation_id").notNull(),
+  conversationType: text("conversation_type"),
+  activityId: text("activity_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

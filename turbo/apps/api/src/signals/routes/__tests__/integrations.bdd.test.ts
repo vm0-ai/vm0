@@ -89,7 +89,8 @@ async function expectClaimedSlackDisplayContext(
     return (
       message.eventType === "input.prompt" &&
       message.revokesEventId !== undefined &&
-      message.slackMessagePermalink === messagePermalink
+      message.annotation?.kind === "slack" &&
+      message.annotation.href === messagePermalink
     );
   });
   if (!claimedMessage?.revokesEventId) {
@@ -102,12 +103,12 @@ async function expectClaimedSlackDisplayContext(
   expect(claimedContext).toMatchObject({
     contextType: "slack",
     contextId: expect.any(String),
-    slackMessagePermalink: messagePermalink,
+    slackPermalink: messagePermalink,
   });
   expect(pendingContext).toMatchObject({
     contextType: "slack",
     contextId: claimedContext?.contextId,
-    slackMessagePermalink: messagePermalink,
+    slackPermalink: messagePermalink,
   });
 }
 
@@ -1583,8 +1584,10 @@ describe("INT-01: Slack app deep webhook flows", () => {
               { type: "text", text: "admit this event once" },
             ],
           },
-          slackMessagePermalink:
-            "https://vm0.slack.com/archives/C_BDD_CANONICAL_INGRESS/p2900000100",
+          annotation: {
+            kind: "slack",
+            href: "https://vm0.slack.com/archives/C_BDD_CANONICAL_INGRESS/p2900000100",
+          },
           attachFiles: [
             expect.objectContaining({
               filename: "source-notes.txt",
@@ -1722,16 +1725,17 @@ describe("INT-01: Slack app deep webhook flows", () => {
     await expect(
       readChatEventContextFixture(queuedSlackParams.eventId),
     ).resolves.toMatchObject({
-      contextType: null,
-      contextId: null,
-      slackMessagePermalink: null,
-      feishuChatOpenUrl: null,
+      contextType: "slack",
+      contextId: expect.any(String),
+      slackPermalink: null,
+      slackChannelId: channelId,
+      slackMessageTs: "2900.000200",
     });
     const stickyVisibleMessage = slackInputMessageByText(
       (await chat.listThreadEvents(actor, canonicalChatThreadId)).events,
       "stay canonical on the same route",
     );
-    expect(stickyVisibleMessage?.slackMessagePermalink).toBeUndefined();
+    expect(stickyVisibleMessage?.annotation).toStrictEqual({ kind: "slack" });
     context.mocks.slack.chat.postMessage.mockClear();
     await completeSlackTriggeredRun({
       runId: run1Id,
