@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.358.0](https://github.com/vm0-ai/vm0/compare/api-v1.357.0...api-v1.358.0) (2026-07-31)
+
+
+### Features
+
+* **platform:** explain cancellation recovery before queued continuation ([#24138](https://github.com/vm0-ai/vm0/issues/24138)) ([e69feb8](https://github.com/vm0-ai/vm0/commit/e69feb8210a878f3a5f130766e67274d7115b57b))
+
+
+### Refactoring
+
+* **api:** rename GitHub chat event identifiers ([#24163](https://github.com/vm0-ai/vm0/issues/24163)) ([240143f](https://github.com/vm0-ai/vm0/commit/240143f24fe334ff039b5b5d08d469e149a874cf))
+* **api:** retire the agent session read endpoint ([#24164](https://github.com/vm0-ai/vm0/issues/24164)) ([f76fc80](https://github.com/vm0-ai/vm0/commit/f76fc805f64da464ce910d0975f2d87c9516062c))
+* **db:** add chat goal context ([#24160](https://github.com/vm0-ai/vm0/issues/24160)) ([67ce15b](https://github.com/vm0-ai/vm0/commit/67ce15bd3e74748abe572aed6779b8aa9505f486))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.258.0
+    * @vm0/core bumped to 8.496.3
+    * @vm0/db bumped to 1.158.1
+
 ## [1.357.0](https://github.com/vm0-ai/vm0/compare/api-v1.356.2...api-v1.357.0) (2026-07-31)
 
 

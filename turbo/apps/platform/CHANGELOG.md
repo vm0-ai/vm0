@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.669.0](https://github.com/vm0-ai/vm0/compare/app-v0.668.0...app-v0.669.0) (2026-07-31)
+
+
+### Features
+
+* **platform:** explain cancellation recovery before queued continuation ([#24138](https://github.com/vm0-ai/vm0/issues/24138)) ([e69feb8](https://github.com/vm0-ai/vm0/commit/e69feb8210a878f3a5f130766e67274d7115b57b))
+
+
+### Refactoring
+
+* **platform:** remove obsolete hidden connector storage ([#24161](https://github.com/vm0-ai/vm0/issues/24161)) ([d3b7633](https://github.com/vm0-ai/vm0/commit/d3b76335a4508c1d4df2b64f53b360dd39e72d2a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.258.0
+    * @vm0/core bumped to 8.496.3
+
 ## [0.668.0](https://github.com/vm0-ai/vm0/compare/app-v0.667.1...app-v0.668.0) (2026-07-31)
 
 
