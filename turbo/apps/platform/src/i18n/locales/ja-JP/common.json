@@ -1365,11 +1365,17 @@
     "newChat": "新しいチャット",
     "origins": {
       "feishu": "Feishu",
+      "github": "GitHub",
       "openChat": "オープンチャット",
       "openFeishuChat": "Feishu で元のチャットを開く",
+      "openGithubMessage": "GitHub で元の Issue または Pull Request を開く",
       "openMessage": "メッセージを開く",
       "openSlackMessage": "Slack で元のメッセージを開く",
-      "slack": "Slack"
+      "openTeamsMessage": "Microsoft Teams で元のメッセージを開く",
+      "openTelegramMessage": "Telegram で元のメッセージを開く",
+      "slack": "Slack",
+      "teams": "Microsoft Teams",
+      "telegram": "Telegram"
     },
     "permissions": {
       "actionDescription": "{{action}} {{permissionName}}",

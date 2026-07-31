@@ -144,12 +144,14 @@ describe("buildGenerationTemplatePrompt", () => {
       `- Style description: ${imageStyle.description}`,
     );
     expect(result.prompt).toContain(
-      `zero generate image --provider built-in --style ${item.illustrationStyleId} --prompt "<user request>" --compile`,
+      `zero generate image --provider built-in --style ${item.illustrationStyleId} --prompt "<user request>" --compile --style-source r2`,
     );
-    expect(result.prompt).toContain("Style source: vm0-ai/vm0-skills@main:");
+    expect(result.prompt).toContain(
+      `Style source: private R2 registry resource ${imageStyle.id}`,
+    );
     expect(result.prompt).toContain("Follow the returned packet completely");
     expect(result.prompt).toContain(
-      "If the source is unavailable, stop without generating",
+      "If the R2 source is unavailable, stop without generating; do not fall back to GitHub.",
     );
     expect(result.prompt).toContain("--compiled-prompt");
     expect(result.prompt).toContain("resolved compatible CLI options");

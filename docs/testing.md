@@ -48,7 +48,7 @@ When you test a CLI command via `command.parseAsync()`, you're already exercisin
 
 - **Security-critical code** where the stakes of a bug are high and the logic is genuinely independent.
 - **Algorithmically complex code** with non-obvious invariants (e.g. parsers, serializers, cryptographic routines).
-- **State-machine transition matrices.** When a handler's contract is the full N×M table of (current state, input) → next state, pinning every cell via integration tests balloons setup cost without catching more bugs than a direct unit test would. The canonical example is the runner signal-handler matrix in `crates/runner/src/cmd/start.rs` (`drain_signal_state_guards`, `resume_signal_state_guards`, `stopping_signal_repeat_is_idempotent`): each test is a 3–4-cell table calling a private `fn` directly, and the happy-path transitions are still covered by full-`run()` integration tests alongside.
+- **State-machine transition matrices.** When a handler's contract is the full N×M table of (current state, input) → next state, pinning every cell via integration tests balloons setup cost without catching more bugs than a direct unit test would. The canonical example is the runner lifecycle matrix in `crates/runner/src/lifecycle.rs` (`soft_drain_state_guards`, `resume_state_guards`): each test is a multi-cell table calling the lifecycle controller directly, and the happy-path transitions are still covered by full-`run()` integration tests alongside.
 
 ### E2E Tests: Happy Path Only
 

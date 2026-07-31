@@ -12,7 +12,6 @@ import {
   chatThreadEventSchema,
   chatThreadModelSelectionContract,
   chatThreadsContract,
-  chatEventResponseSchema,
   chatEventSchema,
   generationTemplateRequestSchema,
   MODEL_FIRST_SELECTION_PROVIDER_ID,
@@ -62,7 +61,7 @@ describe("chat message response contract", () => {
   });
 
   it("rejects API messages without a sequence ID", () => {
-    const parsed = chatEventResponseSchema.safeParse({
+    const parsed = chatEventSchema.safeParse({
       id: "message-1",
       threadId: "thread-1",
       eventType: "input.prompt",

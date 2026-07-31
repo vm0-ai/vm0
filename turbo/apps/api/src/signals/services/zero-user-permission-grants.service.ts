@@ -66,7 +66,7 @@ const userPermissionGrantSelection = Object.freeze({
   orgId: userPermissionGrants.orgId,
   userId: userPermissionGrants.userId,
   agentId: userPermissionGrants.agentId,
-  connectorRef: userPermissionGrants.connectorSlug,
+  connectorSlug: userPermissionGrants.connectorSlug,
   permission: userPermissionGrants.permission,
   action: userPermissionGrants.action,
   expiresAt: userPermissionGrants.expiresAt,
@@ -74,14 +74,11 @@ const userPermissionGrantSelection = Object.freeze({
   updatedAt: userPermissionGrants.updatedAt,
 });
 
-type UserPermissionGrantRow = Omit<
-  typeof userPermissionGrants.$inferSelect,
-  "connectorSlug"
-> & { readonly connectorRef: string };
+type UserPermissionGrantRow = typeof userPermissionGrants.$inferSelect;
 type StoredPermissionGrantRow = UserPermissionGrantRow;
 type ResolvedPermissionGrant = Pick<
   UserPermissionGrantRow,
-  "connectorRef" | "permission" | "action" | "expiresAt"
+  "connectorSlug" | "permission" | "action" | "expiresAt"
 >;
 type UserPermissionGrantAction = UserPermissionGrantResponse["action"];
 
@@ -279,7 +276,7 @@ function earliestTemporaryAllowExpiresAt(
   let earliest: Date | null = null;
   for (const grant of grants) {
     if (
-      grant.connectorRef !== connectorSlug ||
+      grant.connectorSlug !== connectorSlug ||
       grant.action !== "allow" ||
       !grant.expiresAt
     ) {
@@ -480,7 +477,7 @@ export async function resolveActiveNetworkPolicyRefreshesFromBaseline(
         catalogDigest: connectorCatalogActiveSnapshot.catalogDigest,
       },
       grant: {
-        connectorRef: userPermissionGrants.connectorSlug,
+        connectorSlug: userPermissionGrants.connectorSlug,
         permission: userPermissionGrants.permission,
         action: userPermissionGrants.action,
         expiresAt: userPermissionGrants.expiresAt,
@@ -587,7 +584,7 @@ export function mergeNetworkPolicyRefreshes(
 function formatUserPermissionGrant(
   row: Pick<
     StoredPermissionGrantRow,
-    | "connectorRef"
+    | "connectorSlug"
     | "permission"
     | "action"
     | "expiresAt"
@@ -598,7 +595,7 @@ function formatUserPermissionGrant(
 ): UserPermissionGrantResponse {
   return {
     ...scope,
-    connectorSlug: row.connectorRef,
+    connectorSlug: row.connectorSlug,
     permission: row.permission,
     action: row.action,
     expiresAt: row.expiresAt?.toISOString() ?? null,
@@ -687,7 +684,7 @@ async function validateApplyUserPermissionGrants(
 ): Promise<ValidationErrorResponse | null> {
   const index = await catalog.loadPermissionIndex(apply.connectorSlug);
   if (!index) {
-    return validationError(`Unknown connector ref: ${apply.connectorSlug}`);
+    return validationError(`Unknown connector slug: ${apply.connectorSlug}`);
   }
 
   const seenPermissions = new Set<string>();

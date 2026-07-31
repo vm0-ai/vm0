@@ -84,7 +84,7 @@ const providerRegistrations = singleton(() => {
   return new Map(
     getConnectorAuthProviderRegistrationCapabilities().map((registration) => {
       return [
-        methodKey(registration.connectorRef, registration.authMethodId),
+        methodKey(registration.connectorSlug, registration.authMethodId),
         registration,
       ];
     }),

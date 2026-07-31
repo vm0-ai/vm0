@@ -18,7 +18,7 @@
 //! - `orphan_reap`: orphan active-run reconciliation.
 //! - `ownership`: active/idle/orphan ownership transition ordering.
 //! - `sandbox_finalization`: post-executor sandbox park/destroy finalization.
-//! - `signals`: lifecycle signal registration and mode transitions.
+//! - `signals`: lifecycle signal registration, task ownership, and dispatch.
 //!
 //! Important invariants:
 //! - one process owns the canonical `base_dir` lock;
@@ -57,6 +57,7 @@ use crate::host;
 use crate::http::{HttpClient, HttpClientConfig};
 use crate::idle_pool::{IdlePool, IdlePoolConfig, ParkingGate};
 use crate::kmsg_log;
+use crate::lifecycle::RunnerMode;
 use crate::lock;
 use crate::network_log_drain::{DrainableLineReaderExit, NetworkLogDrainCoordinator};
 use crate::network_log_manager::NetworkLogManager;
@@ -70,7 +71,7 @@ use crate::proxy;
 use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::{RunCancellationRegistration, RunCancellationRegistry};
-use crate::status::{RunnerMode, StatusTracker, remove_stale_status_file};
+use crate::status::{StatusTracker, remove_stale_status_file};
 use crate::workspace_image_cache::SessionWorkspaceCache;
 
 mod active_sessions;

@@ -123,57 +123,6 @@ describe("connector callback page", () => {
     );
   });
 
-  it("ignores stale legacy callback metadata while completing the callback", async () => {
-    const legacyIcon = createGithubIcon();
-    context.store.set(
-      setConnectorAppOauthCallbackMetadata$,
-      JSON.stringify({
-        connectorRef: "github",
-        icon: legacyIcon,
-      }),
-    );
-    let observedQuery: Readonly<Record<string, string | undefined>> = {};
-    context.mocks.api(
-      connectorsSlugCallbackContract.callback,
-      ({ params, query, respond }) => {
-        expect(params.connectorSlug).toBe("github");
-        observedQuery = query;
-        return respond(200, {
-          status: "success",
-          username: "octocat",
-        });
-      },
-    );
-
-    detachedSetupPage({
-      context,
-      path: "/connectors/github/callback?code=oauth-code&state=oauth-state",
-      user: null,
-      session: null,
-    });
-
-    const heading = await screen.findByRole("heading", {
-      name: "GitHub connected",
-    });
-    expect(heading.parentElement?.querySelector("img")).toBeNull();
-    expect(
-      screen.getByText("Connected as octocat. You can close this window."),
-    ).toBeInTheDocument();
-    expect(observedQuery).toMatchObject({
-      code: "oauth-code",
-      state: "oauth-state",
-      responseMode: "json",
-    });
-    await waitFor(() => {
-      expect(pathname()).toBe("/connectors/github/callback/success");
-    });
-    const resultSearchParams = new URLSearchParams(search());
-    expect(resultSearchParams.get("username")).toBe("octocat");
-    expect(resultSearchParams.get("iconUrl")).toBeNull();
-    expect(resultSearchParams.get("iconInvertInDarkMode")).toBeNull();
-    expect(resultSearchParams.get("iconScale")).toBeNull();
-  });
-
   it("renders the API failure result without retaining OAuth parameters", async () => {
     context.mocks.api(
       connectorsSlugCallbackContract.callback,

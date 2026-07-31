@@ -56,6 +56,10 @@ export interface WorkflowAgentInfo {
   readonly displayName: string | null;
 }
 
+interface VisibleWorkflowAgentInfo extends WorkflowAgentInfo {
+  readonly orgId: string;
+}
+
 interface WorkflowShadow {
   readonly id: string;
   readonly name: string;
@@ -206,12 +210,13 @@ export async function loadVisibleWorkflowById(
     readonly member: WorkflowMember;
     readonly workflowId: string;
   },
-): Promise<{ workflow: WorkflowRow; agent: WorkflowAgentInfo } | null> {
+): Promise<{ workflow: WorkflowRow; agent: VisibleWorkflowAgentInfo } | null> {
   const [row] = await db
     .select({
       workflow: zeroWorkflows,
       agent: {
         id: zeroAgents.id,
+        orgId: zeroAgents.orgId,
         owner: zeroAgents.owner,
         visibility: zeroAgents.visibility,
         name: zeroAgents.name,

@@ -1,4 +1,3 @@
-import { connectorCatalogFilteredAuthMethodsSchema } from "@vm0/api-contracts/contracts/connector-catalog-diagnostics";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { ConnectorSearchItem } from "@vm0/api-contracts/contracts/zero-connectors";
@@ -40,7 +39,10 @@ import {
 } from "./connector-catalog-artifacts/loader";
 import { connectorCatalogIconUrl } from "./connector-catalog-artifacts/icon";
 import { deriveConnectorCatalogFirewallPermissions } from "./connector-catalog-artifacts/relationships";
-import { connectorCatalogExecutableCapabilityDigest } from "./connector-catalog-compatibility.service";
+import {
+  connectorCatalogExecutableCapabilityDigest,
+  legacyConnectorCatalogCompatibilityEvaluationSchema,
+} from "./connector-catalog-compatibility.service";
 import type { ConnectorFeatureStates } from "./connector-catalog-feature-states";
 import type { ConnectorCatalogLoadTiming } from "./connector-catalog-load-timing.service";
 import { connectorCatalogSource } from "./connector-catalog-source";
@@ -387,9 +389,10 @@ async function readCurrentCatalog(args: {
     args.timing,
     "api_dispatch_connector_catalog_validate_compatibility",
     () => {
-      const parsed = connectorCatalogFilteredAuthMethodsSchema.safeParse(
-        row.filteredAuthMethods,
-      );
+      const parsed =
+        legacyConnectorCatalogCompatibilityEvaluationSchema.safeParse(
+          row.filteredAuthMethods,
+        );
       if (!parsed.success) {
         log.error(
           "Rejected persisted connector catalog compatibility evaluation",

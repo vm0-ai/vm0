@@ -420,6 +420,13 @@ const goalSnapshotSchema = z.object({
   objectiveBrief: z.string().min(1),
 });
 
+const chatEventAnnotationSchema = z
+  .object({
+    kind: z.enum(["slack", "feishu", "teams", "telegram", "github"]),
+    href: z.string().url().optional(),
+  })
+  .strict();
+
 const chatEventBaseSchema = z.object({
   id: z.string(),
   threadId: z.string(),
@@ -427,8 +434,7 @@ const chatEventBaseSchema = z.object({
   runId: z.string().optional(),
   runGroupId: z.string().optional(),
   triggerSource: triggerSourceSchema.optional(),
-  slackMessagePermalink: z.string().url().optional(),
-  feishuChatOpenUrl: z.string().url().optional(),
+  annotation: chatEventAnnotationSchema.optional(),
   isGoalRun: z.boolean().optional(),
   runEventId: z.string().optional(),
   goalSnapshot: goalSnapshotSchema.optional(),
@@ -487,8 +493,7 @@ const inputGoalEventSchema = chatEventBaseSchema
     runId: z.never().optional(),
     runGroupId: z.never().optional(),
     triggerSource: z.never().optional(),
-    slackMessagePermalink: z.never().optional(),
-    feishuChatOpenUrl: z.never().optional(),
+    annotation: z.never().optional(),
     isGoalRun: z.never().optional(),
     runEventId: z.never().optional(),
     goalSnapshot: goalSnapshotSchema,
@@ -585,25 +590,6 @@ const runCancelledEventSchema = chatEventBaseSchema
   })
   .strict();
 
-// Read-only leaves for historical queue pause markers, which the API serves
-// as part of the complete per-thread event stream. These deliberately stay
-// outside CHAT_EVENT_TYPES and chatEventSchema so no current writer or fold
-// can recreate the retired pause/resume behavior.
-const legacyQueueAutomationPausedEventSchema = chatEventBaseSchema
-  .extend({
-    eventType: z.literal("queue.automation_paused"),
-    content: z.null(),
-    pauseReason: z.string().nullable(),
-  })
-  .strict();
-
-const legacyQueueAutomationResumedEventSchema = chatEventBaseSchema
-  .extend({
-    eventType: z.literal("queue.automation_resumed"),
-    content: z.null(),
-  })
-  .strict();
-
 const controlInterruptEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("control.interrupt"),
@@ -651,6 +637,10 @@ const usageRecordedEventSchema = chatEventBaseSchema
   })
   .strict();
 
+/**
+ * Redacted public projection of the canonical thread stream.
+ * Server-only payload fields are not accepted.
+ */
 const chatEventSchema = z.discriminatedUnion("eventType", [
   inputPromptEventSchema,
   inputAutomationEventSchema,
@@ -671,17 +661,6 @@ const chatEventSchema = z.discriminatedUnion("eventType", [
   browserStoppedEventSchema,
   goalChangedEventSchema,
   usageRecordedEventSchema,
-]);
-
-/**
- * Redacted public projection of the canonical thread stream, plus read-only
- * compatibility for retired pause markers from older API deployments.
- * Server-only payload fields are not accepted.
- */
-const chatEventResponseSchema = z.discriminatedUnion("eventType", [
-  ...chatEventSchema.options,
-  legacyQueueAutomationPausedEventSchema,
-  legacyQueueAutomationResumedEventSchema,
 ]);
 
 if (CHAT_EVENT_TYPES.length !== chatEventSchema.options.length) {
@@ -1409,7 +1388,7 @@ export const chatThreadEventsContract = c.router({
     }),
     responses: {
       200: z.object({
-        events: z.array(chatEventResponseSchema),
+        events: z.array(chatEventSchema),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,
@@ -1424,7 +1403,7 @@ export const chatThreadEventsContract = c.router({
     headers: authHeadersSchema,
     pathParams: chatThreadEventPathParamsSchema,
     responses: {
-      200: chatEventResponseSchema,
+      200: chatEventSchema,
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
@@ -1583,7 +1562,6 @@ export {
   chatThreadArtifactFileSchema,
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
-  chatEventResponseSchema,
 };
 
 export type CodexServiceTier = z.infer<typeof codexServiceTierSchema>;
@@ -1639,20 +1617,10 @@ export type ChatThreadDetail = z.infer<typeof chatThreadDetailSchema>;
 export type ChatThreadMetadata = z.infer<typeof chatThreadMetadataSchema>;
 export type ChatThreadDraft = z.infer<typeof chatThreadDraftSchema>;
 export type ChatEvent = z.infer<typeof chatEventSchema>;
-export type ChatEventResponse = z.infer<typeof chatEventResponseSchema>;
 export type ChatEventSendBody = z.infer<typeof chatEventsContract.send.body>;
 
-export function isCanonicalChatEventResponse(
-  event: ChatEventResponse,
-): event is ChatEvent {
-  return (
-    event.eventType !== "queue.automation_paused" &&
-    event.eventType !== "queue.automation_resumed"
-  );
-}
-
-export function chatEventResponse(event: ChatEventResponse): ChatEventResponse {
-  return chatEventResponseSchema.parse(event);
+export function chatEventResponse(event: ChatEvent): ChatEvent {
+  return chatEventSchema.parse(event);
 }
 
 export type ChatInputEvent = Extract<

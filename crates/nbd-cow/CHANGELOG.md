@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.70](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.69...nbd-cow-v0.4.70) (2026-07-31)
+
+
+### Documentation
+
+* **rust:** align cow layer threshold and restore contracts ([#24251](https://github.com/vm0-ai/vm0/issues/24251)) ([022c237](https://github.com/vm0-ai/vm0/commit/022c237491bd53852a9c7e67219e2a54fc8f8e25))
+
 ## [0.4.69](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.68...nbd-cow-v0.4.69) (2026-07-23)
 
 

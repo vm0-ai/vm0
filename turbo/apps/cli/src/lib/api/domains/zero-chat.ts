@@ -4,7 +4,6 @@ import {
   type ChatEventSendBody,
   chatEventsContract,
   chatThreadEventsContract,
-  isCanonicalChatEventResponse,
   chatThreadsContract,
   type ChatThreadEvent,
   chatThreadMetadataContract,
@@ -218,7 +217,7 @@ export async function listZeroChatEvents(options: {
     },
   });
   if (result.status === 200) {
-    return result.body.events.filter(isCanonicalChatEventResponse);
+    return result.body.events;
   }
   handleError(result, "Failed to list chat events");
 }

@@ -355,10 +355,10 @@ function buildSortedGroups(
   metadata: PlatformConnectorPermissionMetadata,
 ): { category: string; permissions: ConnectorPermission[] }[] | null {
   return (
-    groupFirewallMetadataPermissionsByCategory(metadata.permissions, {
-      ...metadata,
-      connectorRef: metadata.connectorSlug,
-    })?.map((group) => {
+    groupFirewallMetadataPermissionsByCategory(
+      metadata.permissions,
+      metadata,
+    )?.map((group) => {
       return { ...group, permissions: sortPermissions(group.permissions) };
     }) ?? null
   );

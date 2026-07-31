@@ -1,8 +1,18 @@
-"""Content-free provider-output timing observations for Claude Code runs.
+"""Run-scoped, content-free provider-output timing for Claude Code runs.
 
-Unadmitted reports retain only their run ID, fixed milestone timestamps, and
-minimal platform reporting context. The runner's pre-stop flush retries them
-while the shared buffered-work counter keeps shutdown pending.
+State is keyed by ``run_id``, not HTTP flow, so first-milestone selection spans
+provider responses, tool turns, and separate Anthropic SSE flows. A new run ID
+in a reused sandbox remains independent. The process-global run map is
+LRU-bounded by ``_MAX_TRACKED_RUNS``.
+
+Pending milestones keep their original observation timestamps when reporting
+context or bounded webhook admission is unavailable. This module retries
+admission when an SSE flow terminates and during runner pre-stop flushes; after
+admission, ``usage.webhook`` owns HTTP delivery. Unadmitted reports retain only
+their run ID, fixed milestone timestamps, and minimal platform reporting
+context, never provider content.
+
+See ``tests/test_claude_output_timing.py`` for focused lifecycle coverage.
 """
 
 from __future__ import annotations
@@ -48,7 +58,15 @@ def observe_lifecycle_event(
     event_type: str,
     content_block_type: str | None,
 ) -> None:
-    """Observe one complete, content-free Anthropic SSE lifecycle event."""
+    """Advance one run's timing state from a content-free Anthropic SSE event.
+
+    The first ``message_start``, the first ``content_block_start`` whose block
+    type is ``thinking``, ``redacted_thinking``, or ``text``, and the first
+    ``text`` block are each selected once while their run remains tracked. When
+    text is the first qualifying block, both block milestones use the same
+    observation timestamp. Tool-only and irrelevant events leave missing
+    milestones available to later flows for the same run.
+    """
     run_id = flow_metadata.run_id(flow.metadata)
     if not run_id:
         return

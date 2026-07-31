@@ -17,7 +17,7 @@ import {
   type ChatRunOptionsRequest,
   type ChatThreadEvent,
   type GenerationTemplateRequest,
-  type ChatEventResponse,
+  type ChatEvent,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
@@ -25,6 +25,7 @@ import {
   getModelProviderFirewall,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
+import { RUNNER_CANCELLATION_RECOVERY_CAPABILITY } from "@vm0/api-contracts/contracts/runners";
 import {
   zeroModelProviderConnectionsByIdContract,
   zeroModelProviderConnectionsMainContract,
@@ -83,7 +84,6 @@ import {
   holdThreadSessionBindingClearFixture,
   holdThreadSessionConversationChangesFixture,
   holdThreadSessionConversationClearFixture,
-  insertRetiredQueuePauseEventsFixture,
   readChatEventInputParamsFixture,
   replayPendingChatInputQueueEventFixture,
   replaceBddVm0ApiKeys,
@@ -218,7 +218,7 @@ function codexAuthJson(): string {
 }
 
 type UserMessage = Extract<
-  ChatEventResponse,
+  ChatEvent,
   {
     eventType:
       | "input.prompt"
@@ -228,17 +228,11 @@ type UserMessage = Extract<
       | "control.revoke";
   }
 >;
-type AssistantMessage = Exclude<ChatEventResponse, UserMessage>;
-type PromptMessage = Extract<ChatEventResponse, { eventType: "input.prompt" }>;
-type FailedMessage = Extract<ChatEventResponse, { eventType: "run.failed" }>;
-type OutputMessage = Extract<
-  ChatEventResponse,
-  { eventType: "output.message" }
->;
-type FollowupsEvent = Extract<
-  ChatEventResponse,
-  { eventType: "output.followups" }
->;
+type AssistantMessage = Exclude<ChatEvent, UserMessage>;
+type PromptMessage = Extract<ChatEvent, { eventType: "input.prompt" }>;
+type FailedMessage = Extract<ChatEvent, { eventType: "run.failed" }>;
+type OutputMessage = Extract<ChatEvent, { eventType: "output.message" }>;
+type FollowupsEvent = Extract<ChatEvent, { eventType: "output.followups" }>;
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
 
 interface EntitledChatActor {
@@ -518,7 +512,7 @@ function zeroTokenFromClaim(claim: RunnerClaim): string {
 async function waitForThreadMessages(
   actor: ApiTestUser,
   threadId: string,
-  predicate: (messages: readonly ChatEventResponse[]) => boolean,
+  predicate: (messages: readonly ChatEvent[]) => boolean,
 ) {
   let page: Awaited<ReturnType<typeof chat.listThreadEvents>> | undefined;
   await expect
@@ -673,19 +667,17 @@ async function cancelChatRun(actor: ApiTestUser, runId: string): Promise<void> {
   await waitForRunStatus(actor, runId, "cancelled");
 }
 
-function assistantMessages(
-  messages: readonly ChatEventResponse[],
-): AssistantMessage[] {
+function assistantMessages(messages: readonly ChatEvent[]): AssistantMessage[] {
   return messages.filter((message): message is AssistantMessage => {
     return !isUserMessage(message);
   });
 }
 
-function userMessages(messages: readonly ChatEventResponse[]): UserMessage[] {
+function userMessages(messages: readonly ChatEvent[]): UserMessage[] {
   return messages.filter(isUserMessage);
 }
 
-function isUserMessage(message: ChatEventResponse): message is UserMessage {
+function isUserMessage(message: ChatEvent): message is UserMessage {
   switch (message.eventType) {
     case "input.prompt":
     case "input.automation":
@@ -701,7 +693,7 @@ function isUserMessage(message: ChatEventResponse): message is UserMessage {
 }
 
 function eventBackedContents(
-  messages: readonly ChatEventResponse[],
+  messages: readonly ChatEvent[],
   runId: string,
 ): OutputMessage[] {
   return messages.filter((message): message is OutputMessage => {
@@ -710,7 +702,7 @@ function eventBackedContents(
 }
 
 function recommendedFollowupEvents(
-  messages: readonly ChatEventResponse[],
+  messages: readonly ChatEvent[],
   runId: string,
 ): FollowupsEvent[] {
   return messages.filter((message): message is FollowupsEvent => {
@@ -1171,13 +1163,18 @@ describe("CHAT-02: web chat send and client ids", () => {
 
 describe("CHAT-02: interrupting active chat runs", () => {
   it("interrupts an active run, guards interrupt ids, and feeds cancelled rounds into the next run", async () => {
-    const { actor, agentId } = await entitledChatActor();
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const first = await sendChatRun(actor, {
       agentId,
       prompt: "long task to interrupt",
     });
+    await api.heartbeatRunner(runnerGroup);
+    const firstClaim = await api.claimRunnerJob(first.runId, {
+      capabilities: [RUNNER_CANCELLATION_RECOVERY_CAPABILITY],
+    });
+    context.mocks.ably.publish.mockClear();
 
     const interruptId = randomUUID();
     const interrupted = await chat.requestSendEvent(
@@ -1195,6 +1192,17 @@ describe("CHAT-02: interrupting active chat runs", () => {
     }
     expect(interrupted.body.runId).toBeNull();
     await waitForRunStatus(actor, first.runId, "cancelled");
+    await flushWaitUntilForTest();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith("cancel", {
+      runId: first.runId,
+      mode: "cooperative",
+    });
+    await webhooks.requestAgentComplete(
+      { runId: first.runId, exitCode: 1 },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+    await flushWaitUntilForTest();
 
     const messages = await waitForThreadMessages(
       actor,
@@ -3742,6 +3750,8 @@ describe("CHAT-02: run-level model overrides", () => {
     );
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(second.runId, secondClaim.sandboxHeaders);
+    // Settle terminal materialization before simulating later retention.
+    await flushWaitUntilForTest();
     const originalBinding = await readThreadSessionBinding(
       context,
       first.threadId,
@@ -4784,7 +4794,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, website.runId);
   }, 90_000);
 
-  it("uses R2 by default and preserves GitHub fallback through the user feature switch", async () => {
+  it("uses R2 for archive-backed styles", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const style = ILLUSTRATION_TEMPLATE_ITEMS.find((item) => {
@@ -4809,32 +4819,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expect(defaultR2Prompt).toContain("--compile --style-source r2");
     await cancelChatRun(actor, defaultR2Run.runId);
-
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.ImageStyleR2]: false },
-    );
-
-    const githubRun = await sendChatRun(actor, {
-      agentId,
-      prompt: "draw a flower shop",
-      generationTemplate: {
-        type: "illustration",
-        selection: { illustrationStyleId: style.illustrationStyleId },
-      },
-    });
-    const githubPrompt =
-      (await api.readRun(actor, githubRun.runId)).appendSystemPrompt ?? "";
-    expect(githubPrompt).toContain(
-      "Style source: vm0-ai/vm0-skills@main:illustration-template/ink-storefront",
-    );
-    expect(githubPrompt).not.toContain("private R2 registry resource");
-    expect(githubPrompt).not.toContain("--style-source r2");
-    await cancelChatRun(actor, githubRun.runId);
   }, 90_000);
 
   it("is one-shot: a follow-up without re-attaching the style gets no template context", async () => {
@@ -6781,71 +6765,5 @@ describe("CHAT-02: shared user message queue", () => {
     const followUp = await api.readRun(actor, fired.runId);
     expect(followUp.prompt).toContain("queue-first fires after cancel");
     await cancelChatRun(actor, fired.runId);
-  }, 90_000);
-});
-
-describe("CHAT-02: complete event stream", () => {
-  it("serves retired queue pause markers instead of skipping their seqIds", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-
-    const prompt = "list the full historical event stream";
-    const model = await chat.getDefaultCreateThreadModel(actor);
-    const sent = await accept(
-      chatEventsClient().send({
-        headers: sessionHeaders(actor),
-        body: {
-          agentId,
-          prompt,
-          userMessage: {
-            version: 1,
-            parts: [{ type: "text", text: prompt }],
-          },
-          model,
-        },
-      }),
-      [201],
-    );
-    if (sent.status !== 201) {
-      throw new Error("Expected the chat send to create a thread");
-    }
-    const threadId = sent.body.threadId;
-
-    const { pausedSeqId, resumedSeqId } =
-      await insertRetiredQueuePauseEventsFixture({
-        threadId,
-        pauseReason: "historical pause fixture",
-      });
-
-    const page = await chat.listThreadEvents(actor, threadId);
-    const seqIds = page.events
-      .map((event) => {
-        return event.seqId;
-      })
-      .sort((left, right) => {
-        return left - right;
-      });
-    const lowest = seqIds[0];
-    const highest = seqIds.at(-1);
-    if (lowest === undefined || highest === undefined) {
-      throw new Error("Expected the thread to have events");
-    }
-    expect(highest - lowest + 1).toBe(seqIds.length);
-
-    const paused = page.events.find((event) => {
-      return event.seqId === pausedSeqId;
-    });
-    expect(paused).toMatchObject({
-      eventType: "queue.automation_paused",
-      content: null,
-      pauseReason: "historical pause fixture",
-    });
-    const resumed = page.events.find((event) => {
-      return event.seqId === resumedSeqId;
-    });
-    expect(resumed).toMatchObject({
-      eventType: "queue.automation_resumed",
-      content: null,
-    });
   }, 90_000);
 });

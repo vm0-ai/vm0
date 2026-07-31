@@ -491,6 +491,87 @@ describe("chat composer models", () => {
     expect(chip).toHaveTextContent("Project Alpha");
   });
 
+  it("suggests threads from every agent with aligned agent avatars", async () => {
+    const currentAgentAvatarUrl =
+      "https://example.com/current-agent-avatar.png";
+    const otherAgentAvatarUrl = "https://example.com/other-agent-avatar.png";
+    const user = userEvent.setup({ delay: null });
+    mockOrgModelRoutes("kimi-k2.7-code");
+    mockAgent();
+    mockThread();
+    context.mocks.data.team([
+      suggestionAgent({
+        id: AGENT_ID,
+        displayName: "Scout",
+        avatarUrl: currentAgentAvatarUrl,
+      }),
+      suggestionAgent({
+        id: OTHER_AGENT_ID,
+        displayName: "Reviewer",
+        avatarUrl: otherAgentAvatarUrl,
+      }),
+    ]);
+    mockComposerThreadSnapshot([
+      { id: THREAD_ID, agentId: AGENT_ID, title: "My thread" },
+      {
+        id: SUGGESTED_THREAD_ID,
+        agentId: AGENT_ID,
+        title: "Project Alpha",
+      },
+      {
+        id: OTHER_AGENT_THREAD_ID,
+        agentId: OTHER_AGENT_ID,
+        title: "Other Alpha",
+      },
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroChatMessaging]: true,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+    await user.keyboard("Review @alpha");
+
+    const menu = await screen.findByTestId("chat-thread-suggestion-menu");
+    const threadButtons = queryAllByRoleFast("button", menu);
+    const currentAgentThread = threadButtons.find((button) => {
+      return button.textContent === "Project Alpha";
+    });
+    const otherAgentThread = threadButtons.find((button) => {
+      return button.textContent === "Other Alpha";
+    });
+    if (!currentAgentThread || !otherAgentThread) {
+      throw new Error("Expected matching chat thread suggestions");
+    }
+    const currentAgentThreadAvatar = currentAgentThread.querySelector("img");
+    const otherAgentThreadAvatar = otherAgentThread.querySelector("img");
+    expect(currentAgentThread).toHaveClass("gap-2");
+    expect(otherAgentThread).toHaveClass("gap-2");
+    expect(currentAgentThreadAvatar).toHaveAttribute(
+      "src",
+      currentAgentAvatarUrl,
+    );
+    expect(currentAgentThreadAvatar).toHaveClass("h-5", "w-5");
+    expect(otherAgentThreadAvatar).toHaveAttribute("src", otherAgentAvatarUrl);
+    expect(otherAgentThreadAvatar).toHaveClass("h-5", "w-5");
+
+    await user.click(otherAgentThread);
+
+    await waitFor(() => {
+      expect(editor).toHaveTextContent("Review Other Alpha");
+    });
+    expect(
+      editor.querySelector(
+        `span[data-chat-thread-mention="${OTHER_AGENT_THREAD_ID}"]`,
+      ),
+    ).toHaveTextContent("Other Alpha");
+  });
+
   it("keeps agent suggestions behind zero chat messaging", async () => {
     const user = userEvent.setup({ delay: null });
     mockOrgModelRoutes("kimi-k2.7-code");
