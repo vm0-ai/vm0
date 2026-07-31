@@ -101,13 +101,15 @@ function detailClient() {
 
 function mockConnectorReadinessModel(
   detected: readonly {
-    readonly connectorRef: string;
+    readonly connectorSlug: ConnectorSlug;
     readonly reason: string;
   }[],
-): void {
+): readonly unknown[] {
+  const requests: unknown[] = [];
   mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
   server.use(
-    http.post(OPENROUTER_URL, () => {
+    http.post(OPENROUTER_URL, async ({ request }) => {
+      requests.push(await request.json());
       return HttpResponse.json({
         choices: [
           {
@@ -120,6 +122,7 @@ function mockConnectorReadinessModel(
       });
     }),
   );
+  return requests;
 }
 
 function visibilityClient() {
@@ -307,17 +310,21 @@ describe("zero workflows", () => {
     });
     await api.enableAgentConnectors(viewer, agent.agentId, ["gitlab"]);
 
-    mockConnectorReadinessModel([
+    const modelRequests = mockConnectorReadinessModel([
       {
-        connectorRef: "gmail",
+        connectorSlug: "gmail",
         reason: "The workflow reads Gmail messages.",
       },
       {
-        connectorRef: "runtime",
+        connectorSlug: "gmail",
+        reason: "This duplicate Gmail selection should be ignored.",
+      },
+      {
+        connectorSlug: "runtime",
         reason: "The workflow reads Runtime jobs.",
       },
       {
-        connectorRef: "gitlab",
+        connectorSlug: "gitlab",
         reason: "The workflow reads GitLab projects.",
       },
     ]);
@@ -329,6 +336,48 @@ describe("zero workflows", () => {
       }),
       [200],
     );
+
+    expect(modelRequests).toHaveLength(1);
+    const [modelRequest] = modelRequests;
+    if (!isRecord(modelRequest) || !Array.isArray(modelRequest.messages)) {
+      throw new Error("Expected OpenRouter request messages");
+    }
+    const messages: readonly unknown[] = modelRequest.messages;
+    const systemMessage = messages.find((message) => {
+      return isRecord(message) && message.role === "system";
+    });
+    if (!isRecord(systemMessage) || typeof systemMessage.content !== "string") {
+      throw new Error("Expected OpenRouter system message");
+    }
+    expect(systemMessage.content).toContain(
+      "Select only connectorSlug values from the supplied catalog.",
+    );
+    expect(systemMessage.content).toContain(
+      '{"connectors":[{"connectorSlug":"...","reason":"..."}]}',
+    );
+
+    const userMessage = messages.find((message) => {
+      return isRecord(message) && message.role === "user";
+    });
+    if (!isRecord(userMessage) || typeof userMessage.content !== "string") {
+      throw new Error("Expected OpenRouter user message");
+    }
+    const userPayload: unknown = JSON.parse(userMessage.content);
+    if (
+      !isRecord(userPayload) ||
+      !Array.isArray(userPayload.connectorCatalog)
+    ) {
+      throw new Error("Expected OpenRouter connector catalog");
+    }
+    const connectorCatalog: readonly unknown[] = userPayload.connectorCatalog;
+    expect(connectorCatalog.length).toBeGreaterThan(0);
+    for (const connector of connectorCatalog) {
+      expect(connector).toStrictEqual({
+        connectorSlug: expect.any(String),
+        label: expect.any(String),
+        description: expect.any(String),
+      });
+    }
 
     expect(response.body.connectors).toStrictEqual([
       {
@@ -362,6 +411,27 @@ describe("zero workflows", () => {
         status: "connected",
       },
     ]);
+  });
+
+  it("returns no readiness entries when the model detects no connectors", async () => {
+    const actor = user({ orgId: STAFF_ORG_ID });
+    const agent = await createAgent(actor, { visibility: "private" });
+    const workflow = await createWorkflow(actor, {
+      agentId: agent.agentId,
+      name: `readiness-empty-${randomUUID().slice(0, 8)}`,
+      instruction: "Summarize the provided text.",
+    });
+    mockConnectorReadinessModel([]);
+
+    const response = await accept(
+      detailClient().connectorReadiness({
+        headers: authHeaders(actor),
+        params: { workflowId: workflow.body.id },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ connectors: [] });
   });
 
   it("rejects readiness checks when the feature switch is disabled", async () => {
@@ -404,7 +474,7 @@ describe("zero workflows", () => {
     expect(response.body.error.code).toBe("PAYLOAD_TOO_LARGE");
   });
 
-  it("fails the whole readiness check when any model ref is unavailable", async () => {
+  it("fails the whole readiness check when any model slug is unavailable", async () => {
     const actor = user({ orgId: STAFF_ORG_ID });
     const agent = await createAgent(actor, { visibility: "private" });
     const workflow = await createWorkflow(actor, {
@@ -414,11 +484,11 @@ describe("zero workflows", () => {
     });
     mockConnectorReadinessModel([
       {
-        connectorRef: "gmail",
+        connectorSlug: "gmail",
         reason: "The workflow reads Gmail messages.",
       },
       {
-        connectorRef: "box",
+        connectorSlug: "box",
         reason: "The workflow reads Box files.",
       },
     ]);
