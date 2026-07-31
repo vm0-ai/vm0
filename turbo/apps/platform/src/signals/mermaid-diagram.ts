@@ -92,22 +92,49 @@ interface QueuedDiagram {
 }
 
 /**
- * mermaid sizes its SVG with `width="100%"` plus an inline `max-width`. An
- * <img> cannot resolve that percentage, so the lightbox would stretch the
- * diagram to the full container width. Writing the viewBox's pixel size onto
- * the element keeps the inline rendering identical and makes the standalone
- * SVG self-describing.
+ * Intrinsic width of the serialized copy. The lightbox fits an image into the
+ * stage but never scales it above 100%, so a diagram serialized at chat size
+ * would open as a thumbnail. SVG is vector, so the enlarged copy stays sharp
+ * and the lightbox scales it down to fit the viewport like any other image.
  */
-function applyIntrinsicSize(svg: SVGSVGElement): void {
+const LIGHTBOX_SVG_WIDTH = 1600;
+
+function viewBoxSize(
+  svg: SVGSVGElement,
+): { readonly width: number; readonly height: number } | undefined {
   const viewBox = (svg.getAttribute("viewBox") ?? "").split(/\s+/);
-  const width = viewBox[2];
-  const height = viewBox[3];
-  if (width === undefined || height === undefined) {
-    return;
+  const width = Number(viewBox[2]);
+  const height = Number(viewBox[3]);
+  if (!(width > 0) || !(height > 0)) {
+    return undefined;
   }
-  svg.setAttribute("width", width);
-  svg.setAttribute("height", height);
+  return { width, height };
+}
+
+function setSvgSize(svg: SVGSVGElement, width: number, height: number): void {
+  svg.setAttribute("width", String(Math.round(width)));
+  svg.setAttribute("height", String(Math.round(height)));
+}
+
+/**
+ * mermaid sizes its SVG with `width="100%"` plus an inline `max-width`, which an
+ * <img> cannot resolve — the lightbox would stretch the diagram to the stage
+ * width. Both copies therefore get an explicit pixel size: the markup is
+ * serialized at lightbox scale, then the element is restored to the size the
+ * message shows inline.
+ */
+function sizeDiagramAndSerialize(svg: SVGSVGElement): string {
   svg.style.maxWidth = "";
+  const size = viewBoxSize(svg);
+  if (!size) {
+    return new XMLSerializer().serializeToString(svg);
+  }
+
+  const scale = Math.max(1, LIGHTBOX_SVG_WIDTH / size.width);
+  setSvgSize(svg, size.width * scale, size.height * scale);
+  const markup = new XMLSerializer().serializeToString(svg);
+  setSvgSize(svg, size.width, size.height);
+  return markup;
 }
 
 /**
@@ -115,8 +142,7 @@ function applyIntrinsicSize(svg: SVGSVGElement): void {
  * rendered SVG never leaves the browser, so it is inlined as a data URL instead
  * of being uploaded.
  */
-function svgDataUrl(svg: SVGSVGElement): string {
-  const markup = new XMLSerializer().serializeToString(svg);
+function svgDataUrl(markup: string): string {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`;
 }
 
@@ -151,10 +177,9 @@ const renderQueuedDiagram$ = command(
       return;
     }
 
-    applyIntrinsicSize(svg);
     set(setMermaidDiagramResult$, diagram.key, {
       status: "rendered",
-      url: svgDataUrl(svg),
+      url: svgDataUrl(sizeDiagramAndSerialize(svg)),
     });
   },
 );
