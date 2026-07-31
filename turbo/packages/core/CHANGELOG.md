@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.501.0](https://github.com/vm0-ai/vm0/compare/core-v8.500.0...core-v8.501.0) (2026-07-31)
+
+
+### Features
+
+* fully enable DeepSeek V4 Flash feature switch ([#24376](https://github.com/vm0-ai/vm0/issues/24376)) ([8586d1e](https://github.com/vm0-ai/vm0/commit/8586d1e3667f1166022f0c41b97f7ee1bda4cb74))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.260.2
+
 ## [8.500.0](https://github.com/vm0-ai/vm0/compare/core-v8.499.0...core-v8.500.0) (2026-07-31)
 
 
