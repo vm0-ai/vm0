@@ -495,7 +495,7 @@ export async function setWorkflowQueueEventCreatedAtFixture(args: {
       .returning({ id: chatEvents.id });
   });
   if (updated.length !== 1) {
-    throw new Error("Expected one workflow queue event to become historical");
+    throw new Error("Expected one workflow queue event timestamp to update");
   }
 }
 
