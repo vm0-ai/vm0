@@ -51,9 +51,9 @@ import { agentRuns } from "./agent-run";
  * Writers must keep the same UUID across retries of the same logical
  * event; the UNIQUE index blocks duplicate insertions.
  *
- * Healthy usage follows `pending -> processed -> compacted`. `compacted`
- * means that the settled event remains stored here while its finalized facts
- * are represented in `usage_event_hourly_rollup`.
+ * Healthy usage follows `pending -> processed -> hourly rollup`, after which
+ * the source event is deleted. `compacted` is legacy rollout state retained
+ * temporarily while older API revisions drain.
  */
 export const usageEvent = pgTable(
   "usage_event",
@@ -104,6 +104,10 @@ export const usageEvent = pgTable(
         .where(
           sql`${table.status} = 'processed' AND ${table.processedAt} IS NOT NULL`,
         ),
+      // Temporary rollout index for the bounded legacy compacted-row drain.
+      index("idx_usage_event_compacted_created_id")
+        .on(table.createdAt, table.id)
+        .where(sql`${table.status} = 'compacted'`),
     ];
   },
 );

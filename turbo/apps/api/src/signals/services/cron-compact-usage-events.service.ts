@@ -28,6 +28,7 @@ import { lockUsageEventCompaction } from "./usage-event-compaction-lock.service"
 
 const L = logger("CronCompactUsageEvents");
 const USAGE_EVENT_COMPACTION_RAW_SEED_LIMIT = 500;
+const USAGE_EVENT_LEGACY_COMPACTED_BATCH_LIMIT = 500;
 const event = alias(usageEvent, "event");
 const allocation = alias(usageAllowanceAllocations, "allocation");
 const hourly = alias(usageEventHourlyRollup, "hourly");
@@ -41,7 +42,10 @@ interface UsageEventCompactionStats {
   readonly selectedGrains: number;
   readonly probedRawRows: number;
   readonly billingErrorHeldRows: number;
-  readonly rawRowsCompacted: number;
+  readonly rawRowsDeleted: number;
+  readonly legacyCompactedBatchLimit: number;
+  readonly selectedLegacyCompactedRows: number;
+  readonly legacyCompactedRowsDeleted: number;
   readonly hourlyRowsDeleted: number;
   readonly hourlyRowsInserted: number;
   readonly quantity: string;
@@ -50,6 +54,8 @@ interface UsageEventCompactionStats {
   readonly affectedShortWindows: number;
   readonly affectedWeeklyWindows: number;
   readonly reconciled: boolean;
+  readonly hasMoreRaw: boolean;
+  readonly hasMoreLegacyCompacted: boolean;
   readonly hasMore: boolean;
   readonly lockWaitMs: number;
   readonly durationMs: number;
@@ -69,7 +75,7 @@ const holdProbeRowSchema = z.object({
 const compactionRowSchema = z.object({
   seededRawRows: z.int(),
   selectedGrains: z.int(),
-  rawRowsCompacted: z.int(),
+  rawRowsDeleted: z.int(),
   hourlyRowsDeleted: z.int(),
   hourlyRowsInserted: z.int(),
   quantity: integerTextSchema,
@@ -79,6 +85,16 @@ const compactionRowSchema = z.object({
   affectedWeeklyWindows: z.int(),
   reconciled: z.boolean(),
 });
+
+const legacyCompactedDeletionRowSchema = z.object({
+  selectedLegacyCompactedRows: z.int(),
+  legacyCompactedRowsDeleted: z.int(),
+});
+
+interface RemainingUsageCompactionWork {
+  readonly hasMoreRaw: boolean;
+  readonly hasMoreLegacyCompacted: boolean;
+}
 
 // The explicit null order matches a reverse scan of the deployed
 // idx_usage_event_processed_org_user index. Eligible rows are always non-null.
@@ -327,10 +343,9 @@ function mutationCtes(): SQL {
         credits_charged,
         allowance_units
     ),
-    compacted_raw AS (
-      UPDATE ${usageEvent} ${event}
-      SET status = 'compacted'
-      FROM locked_raw
+    deleted_raw AS (
+      DELETE FROM ${usageEvent} ${event}
+      USING locked_raw
       WHERE ${and(
         eq(event.id, sql`locked_raw.id`),
         eq(event.status, sql`'processed'`),
@@ -348,7 +363,7 @@ function rowCountCte(): SQL {
         (SELECT ${count()}::int FROM selected_grains) AS selected_grains,
         (SELECT ${count()}::int FROM locked_raw) AS locked_raw_rows,
         (SELECT ${count()}::int FROM locked_hourly) AS locked_hourly_rows,
-        (SELECT ${count()}::int FROM compacted_raw) AS raw_rows_compacted,
+        (SELECT ${count()}::int FROM deleted_raw) AS raw_rows_deleted,
         (SELECT ${count()}::int FROM deleted_hourly) AS hourly_rows_deleted,
         (SELECT ${count()}::int FROM inserted_hourly) AS hourly_rows_inserted
     )
@@ -457,7 +472,7 @@ function compactionSummarySelect(): SQL {
     SELECT
       row_counts.seeded_raw_rows AS "seededRawRows",
       row_counts.selected_grains AS "selectedGrains",
-      row_counts.raw_rows_compacted AS "rawRowsCompacted",
+      row_counts.raw_rows_deleted AS "rawRowsDeleted",
       row_counts.hourly_rows_deleted AS "hourlyRowsDeleted",
       row_counts.hourly_rows_inserted AS "hourlyRowsInserted",
       source_totals.quantity::text AS "quantity",
@@ -470,7 +485,7 @@ function compactionSummarySelect(): SQL {
         AND source_totals.credits_charged = inserted_totals.credits_charged
         AND source_totals.allowance_units = inserted_totals.allowance_units
         AND window_reconciliation.reconciled
-        AND row_counts.locked_raw_rows = row_counts.raw_rows_compacted
+        AND row_counts.locked_raw_rows = row_counts.raw_rows_deleted
         AND row_counts.locked_hourly_rows = row_counts.hourly_rows_deleted
         AND row_counts.selected_grains = row_counts.hourly_rows_inserted
       ) AS "reconciled"
@@ -552,16 +567,63 @@ async function loadHoldProbe(
   return probe;
 }
 
-async function hasRemainingRawUsage(
+async function deleteLegacyCompactedUsageEvents(
+  db: Pick<Db, "execute">,
+  batchLimit: number,
+): Promise<z.output<typeof legacyCompactedDeletionRowSchema>> {
+  const rows = await executeRawRows(
+    db,
+    sql`
+      WITH selected_legacy_compacted AS MATERIALIZED (
+        SELECT event.id
+        FROM ${usageEvent} ${event}
+        WHERE ${eq(event.status, sql`'compacted'`)}
+        ORDER BY ${asc(event.createdAt)}, ${asc(event.id)}
+        LIMIT ${batchLimit}
+        FOR UPDATE OF event
+      ),
+      deleted_legacy_compacted AS (
+        DELETE FROM ${usageEvent} ${event}
+        USING selected_legacy_compacted
+        WHERE ${and(
+          eq(event.id, sql`selected_legacy_compacted.id`),
+          eq(event.status, sql`'compacted'`),
+        )}
+        RETURNING event.id
+      )
+      SELECT
+        (SELECT ${count()}::int FROM selected_legacy_compacted)
+          AS "selectedLegacyCompactedRows",
+        (SELECT ${count()}::int FROM deleted_legacy_compacted)
+          AS "legacyCompactedRowsDeleted"
+    `,
+    legacyCompactedDeletionRowSchema,
+  );
+  const deletion = rows[0];
+  if (!deletion) {
+    throw new Error("Legacy compacted usage deletion returned no summary row");
+  }
+  return deletion;
+}
+
+async function loadRemainingWork(
   db: Pick<Db, "select">,
   cutoff: string,
-): Promise<boolean> {
-  const [remaining] = await db
+): Promise<RemainingUsageCompactionWork> {
+  const [remainingRaw] = await db
     .select({ id: event.id })
     .from(event)
     .where(eligibleRawPredicate(cutoff))
     .limit(1);
-  return remaining !== undefined;
+  const [remainingLegacyCompacted] = await db
+    .select({ id: event.id })
+    .from(event)
+    .where(eq(event.status, "compacted"))
+    .limit(1);
+  return {
+    hasMoreRaw: remainingRaw !== undefined,
+    hasMoreLegacyCompacted: remainingLegacyCompacted !== undefined,
+  };
 }
 
 async function compactUsageEventBatch(
@@ -569,6 +631,7 @@ async function compactUsageEventBatch(
   signal: AbortSignal,
 ): Promise<Omit<UsageEventCompactionStats, "durationMs">> {
   const rawSeedLimit = USAGE_EVENT_COMPACTION_RAW_SEED_LIMIT;
+  const legacyCompactedBatchLimit = USAGE_EVENT_LEGACY_COMPACTED_BATCH_LIMIT;
   return await db.transaction(async (tx) => {
     const lockStartedAt = performance.now();
     await lockUsageEventCompaction(tx);
@@ -583,43 +646,64 @@ async function compactUsageEventBatch(
       compactUsageEventsSql({ cutoff, rawSeedLimit }),
       compactionRowSchema,
     );
-    const compacted = rows[0];
-    if (!compacted) {
+    const compaction = rows[0];
+    if (!compaction) {
       throw new Error("Usage event compaction returned no summary row");
     }
-    if (!compacted.reconciled) {
+    if (!compaction.reconciled) {
       L.error("usage event compaction reconciliation failed", {
         cutoff: cutoffDate.toISOString(),
         rawSeedLimit,
-        seededRawRows: compacted.seededRawRows,
-        selectedGrains: compacted.selectedGrains,
-        rawRowsCompacted: compacted.rawRowsCompacted,
-        hourlyRowsDeleted: compacted.hourlyRowsDeleted,
-        hourlyRowsInserted: compacted.hourlyRowsInserted,
+        seededRawRows: compaction.seededRawRows,
+        selectedGrains: compaction.selectedGrains,
+        rawRowsDeleted: compaction.rawRowsDeleted,
+        hourlyRowsDeleted: compaction.hourlyRowsDeleted,
+        hourlyRowsInserted: compaction.hourlyRowsInserted,
       });
       throw new Error("Usage event compaction reconciliation failed");
     }
     signal.throwIfAborted();
-    const hasMoreRaw = await hasRemainingRawUsage(tx, cutoff);
+    const legacyDeletion = await deleteLegacyCompactedUsageEvents(
+      tx,
+      legacyCompactedBatchLimit,
+    );
+    if (
+      legacyDeletion.selectedLegacyCompactedRows !==
+      legacyDeletion.legacyCompactedRowsDeleted
+    ) {
+      L.error("legacy compacted usage deletion reconciliation failed", {
+        legacyCompactedBatchLimit,
+        selectedLegacyCompactedRows: legacyDeletion.selectedLegacyCompactedRows,
+        legacyCompactedRowsDeleted: legacyDeletion.legacyCompactedRowsDeleted,
+      });
+      throw new Error("Legacy compacted usage deletion reconciliation failed");
+    }
+    signal.throwIfAborted();
+    const remaining = await loadRemainingWork(tx, cutoff);
     signal.throwIfAborted();
 
     return {
       cutoff: cutoffDate.toISOString(),
       rawSeedLimit,
-      seededRawRows: compacted.seededRawRows,
-      selectedGrains: compacted.selectedGrains,
+      seededRawRows: compaction.seededRawRows,
+      selectedGrains: compaction.selectedGrains,
       probedRawRows: holdProbe.probedRawRows,
       billingErrorHeldRows: holdProbe.billingErrorHeldRows,
-      rawRowsCompacted: compacted.rawRowsCompacted,
-      hourlyRowsDeleted: compacted.hourlyRowsDeleted,
-      hourlyRowsInserted: compacted.hourlyRowsInserted,
-      quantity: compacted.quantity,
-      creditsCharged: compacted.creditsCharged,
-      allowanceUnits: compacted.allowanceUnits,
-      affectedShortWindows: compacted.affectedShortWindows,
-      affectedWeeklyWindows: compacted.affectedWeeklyWindows,
-      reconciled: compacted.reconciled,
-      hasMore: hasMoreRaw,
+      rawRowsDeleted: compaction.rawRowsDeleted,
+      legacyCompactedBatchLimit,
+      selectedLegacyCompactedRows: legacyDeletion.selectedLegacyCompactedRows,
+      legacyCompactedRowsDeleted: legacyDeletion.legacyCompactedRowsDeleted,
+      hourlyRowsDeleted: compaction.hourlyRowsDeleted,
+      hourlyRowsInserted: compaction.hourlyRowsInserted,
+      quantity: compaction.quantity,
+      creditsCharged: compaction.creditsCharged,
+      allowanceUnits: compaction.allowanceUnits,
+      affectedShortWindows: compaction.affectedShortWindows,
+      affectedWeeklyWindows: compaction.affectedWeeklyWindows,
+      reconciled: compaction.reconciled,
+      hasMoreRaw: remaining.hasMoreRaw,
+      hasMoreLegacyCompacted: remaining.hasMoreLegacyCompacted,
+      hasMore: remaining.hasMoreRaw || remaining.hasMoreLegacyCompacted,
       lockWaitMs,
     };
   });
@@ -633,7 +717,7 @@ export const compactUsageEvents$ = command(
       ...result,
       durationMs: Math.round(performance.now() - startedAt),
     };
-    const logicalInputRows = stats.rawRowsCompacted + stats.hourlyRowsDeleted;
+    const logicalInputRows = stats.rawRowsDeleted + stats.hourlyRowsDeleted;
     L.debug("usage event compaction completed", {
       ...stats,
       logicalInputRows,
