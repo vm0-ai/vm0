@@ -3231,6 +3231,7 @@ function createMarkThreadReadIfNeeded({
 function createOnSubscribedCommand({
   threadId,
   syncRemoteEvents$,
+  initialEventsSyncResolved$,
   reloadArtifacts$,
   reloadMailDrafts$,
   reloadComposerWorkflows$,
@@ -3246,6 +3247,7 @@ function createOnSubscribedCommand({
   | "dataSource"
 > & {
   markThreadReadIfNeeded$: Command<Promise<void>, [AbortSignal]>;
+  initialEventsSyncResolved$: State<boolean>;
 }): Command<Promise<void>, [AbortSignal]> {
   const optimisticCreateUnsettled$ =
     optimisticChatThreadCreateUnsettled(threadId);
@@ -3264,7 +3266,24 @@ function createOnSubscribedCommand({
       set(reloadComposerWorkflows$, signal),
     ];
     if (!get(optimisticCreateUnsettled$)) {
-      catchUpPromises.push(set(syncRemoteEvents$, signal));
+      // The skeleton stays visible until the first remote events fetch
+      // resolves, so an unsynced thread is not mistaken for an empty one.
+      // The flag also resolves on failure so a broken fetch never leaves the
+      // chat stuck on the skeleton.
+      catchUpPromises.push(
+        set(syncRemoteEvents$, signal).then(
+          () => {
+            set(initialEventsSyncResolved$);
+          },
+          () => {
+            set(initialEventsSyncResolved$);
+          },
+        ),
+      );
+    } else {
+      // Optimistic creates skip the initial remote events fetch; resolve
+      // immediately so the empty state can render once the create settles.
+      set(initialEventsSyncResolved$);
     }
     await Promise.all(catchUpPromises);
     signal.throwIfAborted();
@@ -3314,6 +3333,7 @@ function createRunTracking({
   dataSource,
 }: RunTrackingDeps) {
   const locallyMarkedReadAt$ = state<string | undefined>(undefined);
+  const initialEventsSyncResolved$ = state(false);
 
   const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({
     threadId,
@@ -3331,6 +3351,7 @@ function createRunTracking({
   const onSubscribed$ = createOnSubscribedCommand({
     threadId,
     syncRemoteEvents$,
+    initialEventsSyncResolved$,
     reloadArtifacts$,
     reloadMailDrafts$,
     reloadComposerWorkflows$,
@@ -3390,7 +3411,13 @@ function createRunTracking({
     ]);
   });
 
-  return { receiveSyncedEvents$, subscribeChatThread$ };
+  return {
+    receiveSyncedEvents$,
+    subscribeChatThread$,
+    initialEventsSyncResolved$: computed((get) => {
+      return get(initialEventsSyncResolved$);
+    }),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -4831,6 +4858,7 @@ export function createChatThreadSignals(
     ...publicChatThreadEventSignals(events),
     receiveSyncedEvents$: runTracking.receiveSyncedEvents$,
     subscribeChatThread$: runTracking.subscribeChatThread$,
+    initialEventsSyncResolved$: runTracking.initialEventsSyncResolved$,
     ...createThinkingIndicatorSignals(
       events.thinkingText$,
       events.thinkingEventId$,

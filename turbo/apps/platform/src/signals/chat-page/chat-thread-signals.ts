@@ -169,6 +169,9 @@ export interface ChatThreadSignals {
   latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;
   latestAssistantTextCreatedAt$: Computed<Promise<string | undefined>>;
   indexedDbEventsLoading$: Computed<boolean>;
+  // Resolves once the initial remote event sync (first network fetch) has
+  // completed, so an empty thread is not rendered until we know it is empty.
+  initialEventsSyncResolved$: Computed<boolean>;
   visibleRenderedChatGroups$: Computed<Promise<ChatEventGroup[]>>;
   visibleRenderedChatGroupsReady$: Computed<Promise<boolean>>;
   eventImageGroups$: Computed<Promise<EventImageGroupProjection[]>>;

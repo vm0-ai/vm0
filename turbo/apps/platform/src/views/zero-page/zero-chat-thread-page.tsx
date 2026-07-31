@@ -2639,7 +2639,13 @@ function ChatThreadEmptyState({ thread }: { thread: ChatThreadSignals }) {
     useLastResolved(thread.visibleRenderedChatGroupsReady$) ?? false;
   const threadSettledInServer = useGet(thread.threadSettledInServer$);
   const hasEvents = useLastResolved(thread.hasEvents$);
-  if (!renderedGroupsReady || !threadSettledInServer || hasEvents !== false) {
+  const initialEventsSyncResolved = useGet(thread.initialEventsSyncResolved$);
+  if (
+    !renderedGroupsReady ||
+    !threadSettledInServer ||
+    hasEvents !== false ||
+    !initialEventsSyncResolved
+  ) {
     return null;
   }
   return (
@@ -3487,8 +3493,15 @@ function RunGroupFoldRow({
 }
 
 function ChatThreadSkeletonOverlay({ thread }: { thread: ChatThreadSignals }) {
-  const indexedDbEventsLoading = useGet(thread.indexedDbEventsLoading$);
-  if (!indexedDbEventsLoading) {
+  const renderedGroupsReadyLoadable = useLastLoadable(
+    thread.visibleRenderedChatGroupsReady$,
+  );
+  const sessionError = resolveSessionError(renderedGroupsReadyLoadable);
+  const hasEvents = useLastResolved(thread.hasEvents$);
+  const initialEventsSyncResolved = useGet(thread.initialEventsSyncResolved$);
+  // Keep the skeleton until the first remote events fetch resolves so an
+  // unsynced thread is not shown as an empty one before we know it is empty.
+  if (hasEvents !== false || initialEventsSyncResolved || sessionError) {
     return null;
   }
 
