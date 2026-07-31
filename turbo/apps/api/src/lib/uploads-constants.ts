@@ -105,3 +105,40 @@ const ALLOWED_UPLOAD_TYPES: Readonly<Set<string>> = new Set([
 export function isAllowedUploadType(contentType: string): boolean {
   return ALLOWED_UPLOAD_TYPES.has(contentType);
 }
+
+/**
+ * Media the artifact catalog files under its `image` and `video` kinds. These
+ * are the uploadable types a browser renders, so `image/tiff` and the
+ * Photoshop types stay ordinary files: they are storable and downloadable, but
+ * a gallery card cannot show them.
+ */
+const CATALOG_IMAGE_CONTENT_TYPES: Readonly<Set<string>> = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "image/avif",
+  "image/svg+xml",
+  "image/bmp",
+  "image/heic",
+  "image/heif",
+]);
+
+const CATALOG_VIDEO_CONTENT_TYPES: Readonly<Set<string>> = new Set([
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+]);
+
+function normalizeContentType(contentType: string): string {
+  const [mediaType = ""] = contentType.split(";");
+  return mediaType.trim().toLowerCase();
+}
+
+export function isCatalogImageContentType(contentType: string): boolean {
+  return CATALOG_IMAGE_CONTENT_TYPES.has(normalizeContentType(contentType));
+}
+
+export function isCatalogVideoContentType(contentType: string): boolean {
+  return CATALOG_VIDEO_CONTENT_TYPES.has(normalizeContentType(contentType));
+}

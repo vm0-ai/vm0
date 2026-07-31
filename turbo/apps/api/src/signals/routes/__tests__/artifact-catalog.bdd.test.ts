@@ -1,9 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
 
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { mockOptionalEnv } from "../../../lib/env";
+import { server } from "../../../mocks/server";
+import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-helpers";
 import { signSandboxJwtForTests } from "../../auth/tokens";
@@ -13,6 +16,7 @@ import {
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
+import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import {
   createChatFilesBddApi,
@@ -369,6 +373,206 @@ describe("GET /api/zero/artifacts/catalog", () => {
       url: uploaded.url,
       previewImageUrl: null,
     });
+  }, 180_000);
+
+  it("catalogues an image delivered through the generic upload path", async () => {
+    const owner = await catalogActor("Artifact catalog uploaded image owner");
+    const uploaded = await uploadFile({
+      owner,
+      prompt: "generate a kitten image",
+      filename: "kitten.png",
+      contentType: "image/png",
+      sizeBytes: 4096,
+    });
+
+    const images = await chat.listArtifactCatalog(owner.actor, {
+      kind: "image",
+    });
+    expect(images.artifacts).toStrictEqual([
+      {
+        id: expect.any(String),
+        kind: "image",
+        title: "kitten.png",
+        thumbnail: { url: uploaded.url },
+        createdAt: expect.any(String),
+        updatedAt: expect.any(String),
+      },
+    ]);
+
+    const files = await chat.listArtifactCatalog(owner.actor, { kind: "file" });
+    expect(files.artifacts).toStrictEqual([]);
+
+    const artifactId = images.artifacts[0]?.id;
+    if (!artifactId) {
+      throw new Error("Expected the catalog to list the uploaded image");
+    }
+    const detail = await chat.getArtifactCatalogEntry(owner.actor, artifactId);
+    if (detail.kind !== "image") {
+      throw new Error(
+        "Expected an uploaded image to be catalogued as an image",
+      );
+    }
+    // An image that vm0 did not generate carries no generation attribution.
+    expect(detail.model).toBeNull();
+    expect(detail.provider).toBeNull();
+    expect(detail.file).toStrictEqual({
+      id: expect.any(String),
+      filename: "kitten.png",
+      contentType: "image/png",
+      size: 4096,
+      url: uploaded.url,
+      previewImageUrl: null,
+    });
+  }, 180_000);
+
+  it("catalogues a built-in generated image with its model and provider", async () => {
+    const owner = await catalogActor("Artifact catalog generated image owner");
+    if (!owner.actor.orgId) {
+      throw new Error("Expected the generated image actor to have an org");
+    }
+    await seedOrgMetadata({
+      orgId: owner.actor.orgId,
+      tier: "pro",
+      credits: 1_000_000,
+    });
+    const media = createBillingMediaApi(context);
+    const imageUrl = `https://assets.example.test/${randomUUID()}.png`;
+    context.mocks.ably.createTokenRequest.mockResolvedValueOnce({
+      keyName: "ably-key",
+      timestamp: 1_700_000_000,
+      capability: JSON.stringify({
+        [`user:${owner.actor.userId}`]: ["subscribe"],
+      }),
+      nonce: "nonce",
+      mac: "mac",
+    });
+    server.use(
+      http.post("https://queue.fal.run/*", () => {
+        return HttpResponse.json({
+          request_id: `fal_catalog_${randomUUID()}`,
+          status_url: "https://queue.fal.run/status/catalog-image",
+          response_url: "https://queue.fal.run/response/catalog-image",
+        });
+      }),
+      http.get(imageUrl, () => {
+        return new HttpResponse(new Uint8Array([137, 80, 78, 71]).buffer, {
+          status: 200,
+          headers: { "Content-Type": "image/png" },
+        });
+      }),
+    );
+
+    const run = await sendChatRun(owner.actor, {
+      agentId: owner.agentId,
+      prompt: "generate a kitten image",
+    });
+    const { claim, sandboxHeaders } = await claimChatRun(
+      owner.runnerGroup,
+      run.runId,
+    );
+    const queued = await media.requestImageIoGenerateWithBearer(
+      `Bearer ${zeroTokenFromClaim(claim)}`,
+      { prompt: "a kitten napping in a sunbeam" },
+      [202],
+    );
+    if (queued.status !== 202) {
+      throw new Error(
+        `Expected image generation to queue, got ${queued.status}`,
+      );
+    }
+    const generationId = queued.body.generationId;
+    await webhooks.requestFalGenerationWebhook({
+      generationId,
+      token: webhooks.falGenerationWebhookToken(generationId),
+      body: {
+        status: "COMPLETED",
+        payload: {
+          images: [
+            {
+              url: imageUrl,
+              content_type: "image/png",
+              width: 1024,
+              height: 1024,
+            },
+          ],
+          prompt: "a kitten napping in a sunbeam",
+          seed: 7,
+        },
+      },
+      statuses: [200],
+    });
+    await completeChatRunOk(run.runId, sandboxHeaders);
+
+    const images = await chat.listArtifactCatalog(owner.actor, {
+      kind: "image",
+    });
+    expect(images.artifacts).toStrictEqual([
+      expect.objectContaining({ kind: "image" }),
+    ]);
+
+    const artifactId = images.artifacts[0]?.id;
+    if (!artifactId) {
+      throw new Error("Expected the catalog to list the generated image");
+    }
+    const detail = await chat.getArtifactCatalogEntry(owner.actor, artifactId);
+    if (detail.kind !== "image") {
+      throw new Error(
+        "Expected a generated image to be catalogued as an image",
+      );
+    }
+    expect(detail.model).toBe("gpt-image-1");
+    expect(detail.provider).toBe("fal");
+    expect(detail.file.contentType).toBe("image/png");
+  }, 180_000);
+
+  it("catalogues an uploaded video as a video artifact", async () => {
+    const owner = await catalogActor("Artifact catalog uploaded video owner");
+    await uploadFile({
+      owner,
+      prompt: "upload reference footage",
+      filename: "footage.mp4",
+      contentType: "video/mp4",
+    });
+
+    const videos = await chat.listArtifactCatalog(owner.actor, {
+      kind: "video",
+    });
+    expect(videos.artifacts).toStrictEqual([
+      expect.objectContaining({ kind: "video", title: "footage.mp4" }),
+    ]);
+
+    const artifactId = videos.artifacts[0]?.id;
+    if (!artifactId) {
+      throw new Error("Expected the catalog to list the uploaded video");
+    }
+    const detail = await chat.getArtifactCatalogEntry(owner.actor, artifactId);
+    if (detail.kind !== "video") {
+      throw new Error("Expected an uploaded video to be catalogued as a video");
+    }
+    expect(detail.model).toBeNull();
+    expect(detail.durationSeconds).toBeNull();
+  }, 180_000);
+
+  it("keeps media a browser cannot render as a file artifact", async () => {
+    const owner = await catalogActor("Artifact catalog opaque media owner");
+    await uploadFile({
+      owner,
+      prompt: "upload a layered design",
+      filename: "cover.psd",
+      contentType: "image/vnd.adobe.photoshop",
+    });
+
+    const catalog = await chat.listArtifactCatalog(owner.actor);
+    expect(catalog.artifacts).toStrictEqual([
+      {
+        id: expect.any(String),
+        kind: "file",
+        title: "cover.psd",
+        thumbnail: null,
+        createdAt: expect.any(String),
+        updatedAt: expect.any(String),
+      },
+    ]);
   }, 180_000);
 
   it("keeps repeated projections of one file URL as one artifact", async () => {

@@ -22,19 +22,15 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { z } from "zod";
 
 import { nowDate } from "../../lib/time";
+import {
+  isCatalogImageContentType,
+  isCatalogVideoContentType,
+} from "../../lib/uploads-constants";
 import { writeDb$, type Db } from "../external/db";
 import { publishArtifactCatalogChanged } from "./artifact-realtime.service";
 import { inferMimetype } from "./zero-chat-event-shared.service";
 
 const ARTIFACT_CATALOG_DEFAULT_LIMIT = 60;
-
-/**
- * `generatedBy` markers written by the built-in generation pipelines. They are
- * the only signal that separates an officially generated image or video from an
- * ordinary upload that happens to share a content type.
- */
-const OFFICIAL_IMAGE_MARKER = "zero-official-image";
-const OFFICIAL_VIDEO_MARKER = "zero-official-video";
 
 const artifactCursorSchema = z.object({
   createdAt: z.string(),
@@ -76,15 +72,27 @@ function metadataString(
 }
 
 /**
- * The catalog kind a stored file maps to. Ordinary uploads of every media type
- * stay `file`; only the official generation pipelines produce `image`/`video`.
+ * The effective media type of a stored file. Channel uploads may leave
+ * `content_type` null, so the filename carries the type in that case.
+ */
+function fileContentType(row: CatalogFileRow): string {
+  return row.contentType ?? inferMimetype(row.filename ?? row.externalId);
+}
+
+/**
+ * The catalog kind a stored file maps to. The kind describes what the file is,
+ * not which service produced it, so every path that materializes a file reaches
+ * the same answer: built-in generation, a connector provider's output delivered
+ * through `/uploads/complete`, `/uploads/import-image`, and files received from
+ * an external chat channel. Generation metadata only enriches the kind entity
+ * with `model` and `provider`; it never decides the kind.
  */
 function fileArtifactKind(row: CatalogFileRow): "file" | "image" | "video" {
-  const generatedBy = metadataString(row.metadata, "generatedBy");
-  if (generatedBy === OFFICIAL_IMAGE_MARKER) {
+  const contentType = fileContentType(row);
+  if (isCatalogImageContentType(contentType)) {
     return "image";
   }
-  if (generatedBy === OFFICIAL_VIDEO_MARKER) {
+  if (isCatalogVideoContentType(contentType)) {
     return "video";
   }
   return "file";
@@ -107,9 +115,7 @@ function fileThumbnail(row: CatalogFileRow): ArtifactThumbnail | null {
   if (row.previewImageUrl) {
     return { url: row.previewImageUrl };
   }
-  const filename = row.filename ?? row.externalId;
-  const contentType = row.contentType ?? inferMimetype(filename);
-  if (row.url && contentType.startsWith("image/")) {
+  if (row.url && isCatalogImageContentType(fileContentType(row))) {
     return { url: row.url };
   }
   return null;

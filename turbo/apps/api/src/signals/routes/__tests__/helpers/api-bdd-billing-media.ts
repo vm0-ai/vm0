@@ -646,6 +646,26 @@ export function createBillingMediaApi(context: TestContext) {
       );
     },
 
+    /**
+     * Generate through a run-scoped sandbox token instead of a browser session,
+     * so the generated file is recorded against the run the way an agent's
+     * `zero generate image` call is.
+     */
+    async requestImageIoGenerateWithBearer(
+      authorization: string,
+      body: { readonly prompt: string },
+      statuses: readonly ImageIoStatus[],
+    ) {
+      context.mocks.clerk.authenticateRequest.mockResolvedValue({
+        isAuthenticated: false,
+      });
+      const client = setupApp({ context })(zeroImageIoGenerateContract);
+      return await accept(
+        client.post({ headers: { authorization }, body }),
+        statuses,
+      );
+    },
+
     async requestVideoIoGenerate(
       actor: ApiTestUser | null,
       body: {
