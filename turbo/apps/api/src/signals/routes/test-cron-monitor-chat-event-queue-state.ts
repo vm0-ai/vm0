@@ -127,10 +127,7 @@ async function seedFixture(
       }),
       runId: null,
     };
-    if (
-      fixtureKind === "legacy-automation" ||
-      fixtureKind === "orphaned-automation"
-    ) {
+    if (fixtureKind === "orphaned-automation") {
       const [orphanedAutomation] = await tx
         .insert(chatEvents)
         .values({
@@ -138,9 +135,6 @@ async function seedFixture(
           eventType: "input.automation",
           runId: null,
           triggerSource: "workflow-event",
-          ...(fixtureKind === "legacy-automation"
-            ? { automationId: randomUUID() }
-            : {}),
           seqId: 1,
         })
         .returning({ id: chatEvents.id });
@@ -167,7 +161,6 @@ async function seedFixture(
   }
 
   if (
-    fixtureKind === "legacy-automation" ||
     fixtureKind === "queued-integration" ||
     fixtureKind === "orphaned-automation"
   ) {

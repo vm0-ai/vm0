@@ -493,13 +493,7 @@ export async function claimQueueFirstRunAssociation(
         const head = pending[0];
         const [automationEvent] = await db
           .select({
-            automationId: sql`CASE
-              WHEN ${isNull(chatEvents.contextId)}
-                THEN ${chatEvents.automationId}
-              ELSE ${chatAutomationContext.automationId}
-            END`
-              .mapWith(chatEvents.automationId)
-              .as("automation_id"),
+            automationId: chatAutomationContext.automationId,
             triggerSource: chatEvents.triggerSource,
           })
           .from(chatEvents)

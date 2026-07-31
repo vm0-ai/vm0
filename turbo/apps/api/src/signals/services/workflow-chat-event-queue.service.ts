@@ -41,22 +41,6 @@ import { createUserMessageDocument } from "./zero-chat-user-message.service";
 const WORKFLOW_QUEUE_EVENT_PARAMS_KEY = "__workflow_queue_event_params__";
 const automationEventRevoker = alias(chatEvents, "automation_event_revoker");
 
-function automationIdWithLegacyFallback() {
-  return sql`CASE
-    WHEN ${isNull(chatEvents.contextId)}
-      THEN ${chatEvents.automationId}
-    ELSE ${chatAutomationContext.automationId}
-  END`.mapWith(chatEvents.automationId);
-}
-
-function triggerBriefWithLegacyFallback() {
-  return sql`CASE
-    WHEN ${isNull(chatEvents.contextId)}
-      THEN ${chatEvents.triggerBrief}
-    ELSE ${chatAutomationContext.triggerBrief}
-  END`.mapWith(chatEvents.triggerBrief);
-}
-
 export type WorkflowQueueAdmissionTransaction = Parameters<
   Parameters<Db["transaction"]>[0]
 >[0];
@@ -178,29 +162,7 @@ async function pendingTickExistsForAutomation(
       ),
     )
     .limit(1);
-  if (tick) {
-    return true;
-  }
-
-  const [legacyTick] = await db
-    .select({ id: chatEvents.id })
-    .from(chatEvents)
-    .where(
-      and(
-        isNull(chatEvents.contextId),
-        eq(chatEvents.automationId, automationId),
-        chatEventTypeIn(["input.automation"]),
-        isNull(chatEvents.runId),
-        notExists(
-          db
-            .select({ id: automationEventRevoker.id })
-            .from(automationEventRevoker)
-            .where(eq(automationEventRevoker.revokesEventId, chatEvents.id)),
-        ),
-      ),
-    )
-    .limit(1);
-  return legacyTick !== undefined;
+  return tick !== undefined;
 }
 
 type WorkflowQueueAdmission =
@@ -356,10 +318,10 @@ export async function loadNextWorkflowQueueEvent(
       .select({
         id: chatEvents.id,
         userId: chatThreads.userId,
-        automationId: automationIdWithLegacyFallback().as("automation_id"),
+        automationId: chatAutomationContext.automationId,
         chatThreadId: chatEvents.chatThreadId,
         triggerSource: chatEvents.triggerSource,
-        triggerBrief: triggerBriefWithLegacyFallback().as("trigger_brief"),
+        triggerBrief: chatAutomationContext.triggerBrief,
         encryptedParams: chatEventInputParams.encryptedParams,
         createdAt: chatEvents.createdAt,
       })
@@ -401,9 +363,9 @@ async function loadAutomationRejectionPayload(
 ) {
   const [event] = await db
     .select({
-      automationId: automationIdWithLegacyFallback().as("automation_id"),
+      automationId: chatAutomationContext.automationId,
       triggerSource: chatEvents.triggerSource,
-      triggerBrief: triggerBriefWithLegacyFallback().as("trigger_brief"),
+      triggerBrief: chatAutomationContext.triggerBrief,
     })
     .from(chatEvents)
     .leftJoin(
@@ -567,9 +529,9 @@ export async function listPendingWorkflowQueueEvents(
   const rows = await db
     .select({
       id: chatEvents.id,
-      automationId: automationIdWithLegacyFallback().as("automation_id"),
+      automationId: chatAutomationContext.automationId,
       triggerSource: chatEvents.triggerSource,
-      triggerBrief: triggerBriefWithLegacyFallback().as("trigger_brief"),
+      triggerBrief: chatAutomationContext.triggerBrief,
       createdAt: chatEvents.createdAt,
     })
     .from(chatEvents)

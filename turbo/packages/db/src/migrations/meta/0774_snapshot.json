@@ -1,6 +1,6 @@
 {
-  "id": "c0f8f50b-44bd-4c93-9f19-6be90ea7db66",
-  "prevId": "dc96f68f-71b6-4e69-b16d-4388619970d9",
+  "id": "ba428498-78c0-4028-a1f4-b52f193e3c5a",
+  "prevId": "aa3ef7f5-32a5-4073-a196-3adb6a0dee4c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3205,7 +3205,7 @@
           "name": "browser_session_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "chat_thread_id": {
           "name": "chat_thread_id",
@@ -3350,6 +3350,27 @@
           "columns": [
             {
               "expression": "browser_session_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_browser_session_instances_thread": {
+          "name": "idx_browser_session_instances_thread",
+          "columns": [
+            {
+              "expression": "chat_thread_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -3518,6 +3539,59 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.browser_session_tab_snapshots": {
+      "name": "browser_session_tab_snapshots",
+      "schema": "",
+      "columns": {
+        "chat_thread_id": {
+          "name": "chat_thread_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "encrypted_tab_urls": {
+          "name": "encrypted_tab_urls",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "browser_session_tab_snapshots_chat_thread_id_chat_threads_id_fk": {
+          "name": "browser_session_tab_snapshots_chat_thread_id_chat_threads_id_fk",
+          "tableFrom": "browser_session_tab_snapshots",
+          "tableTo": "chat_threads",
+          "columnsFrom": [
+            "chat_thread_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.browser_sessions": {
       "name": "browser_sessions",
       "schema": "",
@@ -3563,7 +3637,7 @@
           "name": "browser_profile_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "browser_thread_profile_id": {
           "name": "browser_thread_profile_id",
@@ -4628,7 +4702,7 @@
       "checkConstraints": {
         "chat_events_event_type_check": {
           "name": "chat_events_event_type_check",
-          "value": "\"chat_events\".\"event_type\" IN (\n          'input.prompt',\n          'input.automation',\n          'input.goal',\n          'input.rejected',\n          'output.message',\n          'output.error',\n          'output.thinking',\n          'output.followups',\n          'run.queued',\n          'run.dequeued',\n          'run.completed',\n          'run.failed',\n          'run.cancelled',\n          'queue.automation_paused',\n          'queue.automation_resumed',\n          'control.interrupt',\n          'control.revoke',\n          'goal.changed',\n          'usage.recorded'\n        )"
+          "value": "\"chat_events\".\"event_type\" IN (\n          'input.prompt',\n          'input.automation',\n          'input.goal',\n          'input.rejected',\n          'output.message',\n          'output.error',\n          'output.thinking',\n          'output.followups',\n          'run.queued',\n          'run.dequeued',\n          'run.completed',\n          'run.failed',\n          'run.cancelled',\n          'queue.automation_paused',\n          'queue.automation_resumed',\n          'control.interrupt',\n          'control.revoke',\n          'browser.started',\n          'browser.stopped',\n          'goal.changed',\n          'usage.recorded'\n        )"
         },
         "chat_events_input_user_message_check": {
           "name": "chat_events_input_user_message_check",

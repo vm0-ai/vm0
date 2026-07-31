@@ -2,7 +2,7 @@ import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { command } from "ccstate";
-import { and, count, eq, inArray, isNotNull, isNull, or } from "drizzle-orm";
+import { and, count, eq, inArray, isNull, or } from "drizzle-orm";
 
 import { writeDb$ } from "../external/db";
 import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
@@ -44,14 +44,7 @@ export const monitorChatEventQueue$ = command(
             and(
               chatEventTypeIn(["input.automation"]),
               or(
-                and(
-                  isNull(chatEvents.contextId),
-                  isNull(chatEvents.automationId),
-                ),
-                and(
-                  isNotNull(chatEvents.contextId),
-                  isNull(chatAutomationContext.automationId),
-                ),
+                isNull(chatAutomationContext.automationId),
                 isNull(chatEvents.triggerSource),
                 isNull(chatEventInputParams.encryptedParams),
               ),
