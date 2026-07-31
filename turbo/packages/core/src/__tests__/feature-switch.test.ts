@@ -30,6 +30,7 @@ describe("isFeatureEnabled", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.Dummy, { userId: "any-user" }),
     ).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.DeepSeekV4Flash, {})).toBe(true);
   });
 
   it("should return false for disabled switch without context", () => {
@@ -54,7 +55,6 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.ZeroChatMessaging, {})).toBe(
       false,
     );
-    expect(isFeatureEnabled(FeatureSwitchKey.DeepSeekV4Flash, {})).toBe(false);
   });
 
   it("should return false for disabled switch with non-matching userId", () => {
@@ -189,7 +189,7 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.DeepSeekV4Flash]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.DeepSeekV4Flash]).toBe(true);
   });
 
   it("should apply overrides to enable disabled features", () => {
