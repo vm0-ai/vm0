@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.363.0](https://github.com/vm0-ai/vm0/compare/api-v1.362.0...api-v1.363.0) (2026-07-31)
+
+
+### Features
+
+* **app:** render mermaid code blocks as diagrams ([#24290](https://github.com/vm0-ai/vm0/issues/24290)) ([e83ae59](https://github.com/vm0-ai/vm0/commit/e83ae59001537cdc86c8a7aac343474209c56a19))
+
+
+### Bug Fixes
+
+* **api:** restore managed browser size after resume ([#24368](https://github.com/vm0-ai/vm0/issues/24368)) ([5317adb](https://github.com/vm0-ai/vm0/commit/5317adb355e8759892ac604ce5308104b56cf8a7))
+* **runner:** preserve workspace cache across session rotation ([#24364](https://github.com/vm0-ai/vm0/issues/24364)) ([98eaba8](https://github.com/vm0-ai/vm0/commit/98eaba8df7c4dc5a26cd32ef8c5dbafd23fe94f9))
+
+
+### Refactoring
+
+* **api:** stop run lifecycle event dual-write ([#24374](https://github.com/vm0-ai/vm0/issues/24374)) ([877225a](https://github.com/vm0-ai/vm0/commit/877225afb19be62910e2911777baf4930444ed77))
+* derive queued launch metadata at claim ([#24365](https://github.com/vm0-ai/vm0/issues/24365)) ([e347176](https://github.com/vm0-ai/vm0/commit/e34717635bd3e8e5a26319a96ed53c6fa70d87c9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.260.1
+    * @vm0/core bumped to 8.500.0
+    * @vm0/db bumped to 1.160.1
+
 ## [1.362.0](https://github.com/vm0-ai/vm0/compare/api-v1.361.1...api-v1.362.0) (2026-07-31)
 
 
