@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.150.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.150.4...runner-rs-v0.150.5) (2026-07-31)
+
+
+### Bug Fixes
+
+* **runner:** distinguish cancellation intent ([#24217](https://github.com/vm0-ai/vm0/issues/24217)) ([ce76a6d](https://github.com/vm0-ai/vm0/commit/ce76a6d1fc3c332da622f390be9119f58275cc30))
+
+
+### Performance Improvements
+
+* **python:** bound x ndjson row inspection work ([#24227](https://github.com/vm0-ai/vm0/issues/24227)) ([e182d2c](https://github.com/vm0-ai/vm0/commit/e182d2c7a869f8bab849c71c8312019111c648aa))
+
 ## [0.150.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.150.3...runner-rs-v0.150.4) (2026-07-31)
 
 
