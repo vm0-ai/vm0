@@ -475,7 +475,7 @@ async fn assert_workspace_cache_after_late_cancellation(
 
     match cancellation_point {
         LateCancellationPoint::DuringPark => {
-            cancel_handle.cancel().await;
+            cancel_handle.request_hard_cancellation().await;
             park_gate.release_one();
         }
         LateCancellationPoint::BeforeIdlePoolTransfer => {
@@ -484,7 +484,7 @@ async fn assert_workspace_cache_after_late_cancellation(
             env.start_observer
                 .wait_before_idle_pool_ownership_transfer(run_id, Duration::from_secs(5))
                 .await;
-            cancel_handle.cancel().await;
+            cancel_handle.request_hard_cancellation().await;
             drop(pool_guard);
         }
     }
@@ -711,7 +711,7 @@ async fn cancellation_while_waiting_for_idle_pool_lock_destroys_instead_of_parki
     env.start_observer
         .wait_before_idle_pool_ownership_transfer(run_id, Duration::from_secs(5))
         .await;
-    cancel_handle.cancel().await;
+    cancel_handle.request_hard_cancellation().await;
     drop(pool_guard);
 
     wait_lifecycle_gate_entered(
@@ -779,7 +779,7 @@ async fn cancellation_during_sandbox_park_destroys_instead_of_parking() {
     wait_lifecycle_gate_entered(&park_gate, "sandbox park should enter gate").await;
     assert_eq!(counter.park_call_count(), 1);
 
-    cancel_handle.cancel().await;
+    cancel_handle.request_hard_cancellation().await;
     park_gate.release_one();
 
     wait_lifecycle_gate_entered(
