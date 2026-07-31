@@ -1,4 +1,4 @@
-import { clerk } from "@clerk/testing/playwright";
+import { clerk, setupClerkTestingToken } from "@clerk/testing/playwright";
 import type { Page } from "@playwright/test";
 
 export interface ClerkTestingSignInOptions {
@@ -34,6 +34,7 @@ export async function signInWithClerkTestingHelper(
   options: ClerkTestingSignInOptions,
 ): Promise<void> {
   const helperUrl = new URL("/_/skeleton", appUrl);
+  await setupClerkTestingToken({ page });
   await page.goto(helperUrl.toString(), { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => Boolean(window.Clerk?.loaded), undefined, {
     timeout: 30_000,
