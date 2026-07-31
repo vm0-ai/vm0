@@ -30,7 +30,7 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 /*
  * RUN-03/RUN-04 read surfaces for agent runs (list/read/queue/cancel,
- * sessions, telemetry families, zero run detail reads, queue
+ * telemetry families, zero run detail reads, queue
  * position, and zero logs) plus the RUN-01/02 direct-run create arms that
  * end in those reads (session continuation, memory root policies, volume
  * pinning, concurrency caps, and the production capture gate).
@@ -186,7 +186,6 @@ describe("RUN-03/RUN-04: run read surface auth matrix", () => {
       (await api.requestReadRun(null, missingId, [401])).body,
       (await api.requestReadRunQueue(null, [401])).body,
       (await api.requestCancelRun(null, missingId, [401])).body,
-      (await reads.requestReadSession(null, missingId, [401])).body,
       (await reads.requestQueuePosition(null, missingId, [401])).body,
       (await reads.requestRunSystemLog(null, missingId, {}, [401])).body,
       (await reads.requestRunMetrics(null, missingId, {}, [401])).body,
@@ -212,15 +211,6 @@ describe("RUN-03/RUN-04: run read surface auth matrix", () => {
     for (const body of orglessUnauthorized) {
       expect(body).toStrictEqual(NOT_AUTHENTICATED);
     }
-
-    const orglessSession = await reads.requestReadSession(
-      orgless,
-      missingId,
-      [404],
-    );
-    expect(orglessSession.body).toStrictEqual({
-      error: { message: "Session not found", code: "NOT_FOUND" },
-    });
   });
 });
 
@@ -642,161 +632,6 @@ describe("RUN-03: queue position", () => {
     await api.requestCancelRun(member, memberQueued.runId, [200]);
     await api.requestCancelRun(actor, pending.runId, [200]);
     await api.requestCancelRun(actor, running.runId, [200]);
-  });
-});
-
-describe("RUN-04: session reads", () => {
-  it("exposes sessions created through run and webhook flows", async () => {
-    const authOrg = createAuthOrgAgentsBddApi(context);
-    const actor = await entitledActor();
-    await authOrg.setSecret(actor, {
-      name: "BDD_RUN_READS_TOKEN",
-      value: "bdd-run-reads-secret",
-    });
-
-    const secretComposeName = `bdd-session-${randomUUID().slice(0, 8)}`;
-    const secretCompose = await api.createCompose(actor, {
-      version: "1",
-      agents: {
-        [secretComposeName]: {
-          framework: "claude-code",
-          environment: {
-            ANTHROPIC_API_KEY: "bdd-inline-key",
-            API_TOKEN: `\${{ secrets.BDD_RUN_READS_TOKEN }}`,
-          },
-        },
-      },
-      artifacts: [{ name: "bdd-compose-art", mount_path: "/compose-art" }],
-    });
-    const plainCompose = await createClaudeCompose(actor, "bdd-plain");
-
-    const presignCallsBeforeRun =
-      context.mocks.s3.getSignedUrl.mock.calls.length;
-    const r1 = await api.createDirectRun(actor, {
-      agentComposeId: secretCompose.composeId,
-      prompt: "produce a session with artifacts",
-      artifacts: [{ name: "bdd-out", mountPath: "/out" }],
-    });
-    const claim1 = await api.claimRunnerJob(r1.runId);
-    const claimedArtifacts = expectCanonicalStorageManifest(
-      claim1.storageManifest,
-    )?.storageMounts;
-    const outArtifact = claimedArtifacts?.find((artifact) => {
-      return artifact.name === "bdd-out";
-    });
-    if (!claimedArtifacts || !outArtifact) {
-      throw new Error("Expected the claim manifest to mount bdd-out");
-    }
-    expect(outArtifact.empty).toBeTruthy();
-    expect(outArtifact.archiveUrl).toBeUndefined();
-    expect(outArtifact.storageId).toStrictEqual(expect.any(String));
-    expect(outArtifact.versionId).toStrictEqual(expect.any(String));
-    expect("manifestUrl" in outArtifact).toBeFalsy();
-    expect(
-      hasManifestPresign(presignedUrlKeysSince(presignCallsBeforeRun)),
-    ).toBeFalsy();
-
-    const headers1 = sandboxHeaders(claim1.sandboxToken);
-    const withArtifacts = await webhooks.requestAgentCheckpoint(
-      {
-        runId: r1.runId,
-        cliAgentType: "claude-code",
-        cliAgentSessionId: `bdd-cli-${r1.runId}`,
-        cliAgentSessionHistoryHash: createHash("sha256")
-          .update(`bdd session checkpoint ${r1.runId}`)
-          .digest("hex"),
-        artifactSnapshots: claimedArtifacts.map((artifact) => {
-          return {
-            name: artifact.name,
-            version: artifact.versionId,
-            mountPath: artifact.mountPath,
-            ...(artifact.missingRootPolicy === undefined
-              ? {}
-              : { missingRootPolicy: artifact.missingRootPolicy }),
-          };
-        }),
-      },
-      headers1,
-      [200],
-    );
-    if (withArtifacts.status !== 200) {
-      throw new Error("Expected the artifact checkpoint webhook to succeed");
-    }
-    await webhooks.requestAgentComplete(
-      { runId: r1.runId, exitCode: 0 },
-      headers1,
-      [200],
-    );
-
-    const completed = await api.readRun(actor, r1.runId);
-    expect(completed.status).toBe("completed");
-    expect(completed.result?.checkpointId).toBeDefined();
-    expect(completed.result?.artifact).toMatchObject({
-      "bdd-out": outArtifact.versionId,
-    });
-    expect(completed.result?.volumes).toBeUndefined();
-
-    const session = await reads.requestReadSession(actor, r1.sessionId, [200]);
-    expect(session.body).toMatchObject({
-      id: r1.sessionId,
-      agentComposeId: secretCompose.composeId,
-      secretNames: ["BDD_RUN_READS_TOKEN"],
-    });
-    if (session.status !== 200) {
-      throw new Error("Expected the session read to succeed");
-    }
-    expect([...session.body.artifactNames].sort()).toStrictEqual([
-      "bdd-compose-art",
-      "bdd-out",
-      "memory",
-    ]);
-    expect(session.body.conversationId).not.toBeNull();
-
-    const r2 = await api.createDirectRun(actor, {
-      agentComposeId: plainCompose.composeId,
-      prompt: "plain session without secret references",
-    });
-    const plainSession = await reads.requestReadSession(
-      actor,
-      r2.sessionId,
-      [200],
-    );
-    if (plainSession.status !== 200) {
-      throw new Error("Expected the plain session read to succeed");
-    }
-    expect(plainSession.body.secretNames).toBeNull();
-    expect(plainSession.body.artifactNames).toContain("memory");
-    await api.requestCancelRun(actor, r2.runId, [200]);
-
-    const missingSession = await reads.requestReadSession(
-      actor,
-      randomUUID(),
-      [404],
-    );
-    expectApiError(missingSession.body);
-    expect(missingSession.body.error.message).toBe("Session not found");
-
-    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
-    const memberSession = await reads.requestReadSession(
-      member,
-      r1.sessionId,
-      [403],
-    );
-    expect(memberSession.body).toStrictEqual({
-      error: {
-        message: "You do not have permission to access this session",
-        code: "FORBIDDEN",
-      },
-    });
-
-    const sameUserOtherOrg = bdd.user({ userId: actor.userId });
-    const crossOrgSession = await reads.requestReadSession(
-      sameUserOtherOrg,
-      r1.sessionId,
-      [404],
-    );
-    expectApiError(crossOrgSession.body);
-    expect(crossOrgSession.body.error.message).toBe("Session not found");
   });
 });
 
