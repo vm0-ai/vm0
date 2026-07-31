@@ -117,6 +117,16 @@ out=$(run_clean \
   "$CONTEXT" turbo-consumer)
 assert_contains "$out" "turbo-runner-consumer-needed=false"
 
+out=$(run_clean "$CONTEXT" playwright-consumer)
+assert_contains "$out" "playwright-runner-consumer-needed=false"
+
+for flag in API_CHANGED PLATFORM_CHANGED CLI_CHANGED CI_CHANGED E2E_CHANGED; do
+  out=$(run_clean \
+    "${flag}=true" \
+    "$CONTEXT" playwright-consumer)
+  assert_contains "$out" "playwright-runner-consumer-needed=true"
+done
+
 for flag in CI_CHANGED RUNNER_CHANGED; do
   out=$(run_clean \
     "${flag}=true" \
@@ -297,6 +307,21 @@ assert_contains "$out" "runner-image-inputs-changed=true"
 assert_contains "$out" "stable-runner-image-allowed=false"
 assert_contains "$out" "current-runner-image-needed=true"
 assert_contains "$out" "image-selection-reason=runner-image-inputs-changed"
+
+out=$(assert_needed_case "main Playwright runner consumer" \
+  EVENT_NAME=push \
+  RELEASE_SKIP=false \
+  METAL_HOSTS=dev-1 \
+  PLAYWRIGHT_RUNNER_CONSUMER_NEEDED=true \
+  RUNNER_IMAGE_INPUTS_CHANGED=false)
+assert_contains "$out" "turbo-runner-consumer-needed=false"
+assert_contains "$out" "playwright-runner-consumer-needed=true"
+assert_contains "$out" "crates-runner-consumer-needed=false"
+assert_contains "$out" "runner-image-consumer-needed=true"
+assert_contains "$out" "runner-image-inputs-changed=false"
+assert_contains "$out" "stable-runner-image-allowed=true"
+assert_contains "$out" "current-runner-image-needed=true"
+assert_contains "$out" "image-selection-reason=runner-image-consumer-without-stable-reuse"
 
 out=$(assert_needed_case "guest input" \
   EVENT_NAME=pull_request \

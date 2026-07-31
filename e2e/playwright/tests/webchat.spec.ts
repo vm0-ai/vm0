@@ -35,6 +35,6 @@ test("send a chat message and receive an assistant response", async ({
     .locator(".zero-chat-bubble-assistant")
     .filter({ hasText: /\S/ })
     .last();
-  await expect(assistantReply).toBeVisible({ timeout: 120_000 });
+  await expect(assistantReply).toBeVisible({ timeout: 30_000 });
   await expect(assistantReply).not.toContainText("Oops, something went wrong");
 });

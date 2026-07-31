@@ -58,6 +58,7 @@ jobs:
       pr-number: ${{ steps.identity.outputs.pr-number }}
       pr-head-ref: ${{ steps.identity.outputs.pr-head-ref }}
       turbo-runner-consumer-needed: ${{ steps.needed.outputs.turbo-runner-consumer-needed }}
+      playwright-runner-consumer-needed: ${{ steps.needed.outputs.playwright-runner-consumer-needed }}
       crates-runner-consumer-needed: ${{ steps.needed.outputs.crates-runner-consumer-needed }}
       runner-image-consumer-needed: ${{ steps.needed.outputs.runner-image-consumer-needed }}
       runner-image-inputs-changed: ${{ steps.needed.outputs.runner-image-inputs-changed }}
@@ -102,7 +103,7 @@ jobs:
           echo "base-ref=${BASE_REF}" >> "$GITHUB_OUTPUT"
           echo "Base ref: ${BASE_REF}"
 
-      - name: Detect Turbo runner image consumers
+      - name: Detect Turbo and Playwright runner image consumers
         id: turbo
         if: steps.identity.outputs.release-skip != 'true'
         env:
@@ -111,6 +112,7 @@ jobs:
           set -euo pipefail
           CHANGES_JSON=$(./scripts/changed.sh "$BASE_REF")
           web_changed=$(echo "$CHANGES_JSON" | jq -r '."web" // false')
+          platform_changed=$(echo "$CHANGES_JSON" | jq -r '."@vm0/app" // false')
           api_changed=$(echo "$CHANGES_JSON" | jq -r '."api" // false')
           cli_changed=$(echo "$CHANGES_JSON" | jq -r '."@vm0/cli" // false')
 
@@ -140,6 +142,14 @@ jobs:
           CI_CHANGED="$ci_changed" \
           E2E_CHANGED="$e2e_changed" \
           .github/scripts/runner-image-context.sh turbo-consumer
+
+          EVENT_NAME="${{ github.event_name }}" \
+          API_CHANGED="$api_changed" \
+          PLATFORM_CHANGED="$platform_changed" \
+          CLI_CHANGED="$cli_changed" \
+          CI_CHANGED="$ci_changed" \
+          E2E_CHANGED="$e2e_changed" \
+          .github/scripts/runner-image-context.sh playwright-consumer
 
       - name: Detect Crates runner image consumers
         id: crates
@@ -223,6 +233,7 @@ jobs:
           RELEASE_SKIP: ${{ steps.identity.outputs.release-skip }}
           RUNNER_HOST_GROUPS_CONFIGURED: ${{ steps.host-group-presence.outputs.configured }}
           TURBO_RUNNER_CONSUMER_NEEDED: ${{ steps.turbo.outputs.turbo-runner-consumer-needed }}
+          PLAYWRIGHT_RUNNER_CONSUMER_NEEDED: ${{ steps.turbo.outputs.playwright-runner-consumer-needed }}
           CRATES_RUNNER_CONSUMER_NEEDED: ${{ steps.crates.outputs.crates-runner-consumer-needed }}
           RUNNER_IMAGE_INPUTS_CHANGED: ${{ steps.image-inputs.outputs.runner-image-inputs-changed }}
         run: .github/scripts/runner-image-context.sh needed
