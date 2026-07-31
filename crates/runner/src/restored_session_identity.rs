@@ -131,9 +131,6 @@ impl RestoredSessionHistoryHashSizeRelationship {
 /// callers can compare the common content identity independently of evidence
 /// availability; use [`Self::is_verified_match_for_request`] for a decision
 /// that requires retained verification provenance.
-///
-/// Custom [`Debug`](std::fmt::Debug) output redacts the session-id hash,
-/// history hash, and verifier paths.
 #[derive(Clone, Eq)]
 pub(crate) struct RestoredSessionIdentity {
     framework: RestoredSessionFramework,
