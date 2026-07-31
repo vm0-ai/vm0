@@ -86,6 +86,34 @@ function createPreferences(
 }
 
 describe("settings dialog", () => {
+  it("caps the language menu height when all locales are available", async () => {
+    context.mocks.data.userPreferences(
+      createPreferences("en-US", [
+        "en-US",
+        "pt-BR",
+        "ja-JP",
+        "ko-KR",
+        "id-ID",
+        "de-DE",
+        "es-ES",
+        "it-IT",
+        "fr-FR",
+        "hi-IN",
+      ]),
+    );
+
+    await openDialog("admin", "preference", {
+      [FeatureSwitchKey.LanguagePreference]: true,
+      [FeatureSwitchKey.JapaneseLocale]: true,
+    });
+
+    click(await screen.findByRole("combobox", { name: "Language" }));
+
+    const languageMenu = screen.getByRole("listbox");
+    expect(languageMenu).toHaveClass("max-h-64");
+    expect(within(languageMenu).getAllByRole("option")).toHaveLength(10);
+  });
+
   it("defaults to English instead of the browser language before user selection", async () => {
     const submittedLocales: UserLocale[] = [];
     let serverLocale: UserLocale | null = null;
@@ -614,6 +642,7 @@ describe("settings dialog", () => {
 
     await openDialog("admin", "preference", {
       [FeatureSwitchKey.LanguagePreference]: true,
+      [FeatureSwitchKey.JapaneseLocale]: false,
     });
 
     const languageSelect = await screen.findByRole("combobox", {
@@ -644,6 +673,7 @@ describe("settings dialog", () => {
 
     await openDialog("admin", "preference", {
       [FeatureSwitchKey.LanguagePreference]: true,
+      [FeatureSwitchKey.JapaneseLocale]: false,
     });
 
     const languageSelect = await screen.findByRole("combobox", {
@@ -860,6 +890,7 @@ describe("settings dialog", () => {
 
     await openDialog("admin", "preference", {
       [FeatureSwitchKey.LanguagePreference]: true,
+      [FeatureSwitchKey.JapaneseLocale]: false,
     });
 
     await waitFor(() => {
@@ -877,6 +908,7 @@ describe("settings dialog", () => {
 
     await openDialog("admin", "preference", {
       [FeatureSwitchKey.LanguagePreference]: true,
+      [FeatureSwitchKey.JapaneseLocale]: false,
     });
 
     await waitFor(() => {
@@ -894,6 +926,7 @@ describe("settings dialog", () => {
 
     await openDialog("admin", "preference", {
       [FeatureSwitchKey.LanguagePreference]: true,
+      [FeatureSwitchKey.JapaneseLocale]: false,
     });
 
     await waitFor(() => {

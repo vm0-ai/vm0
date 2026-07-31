@@ -43,7 +43,7 @@ function LanguageSelectContent({
   };
 
   return (
-    <SelectContent>
+    <SelectContent className="max-h-64">
       {supports("en-US") && (
         <SelectItem value="en-US">
           {t(($) => {

@@ -240,6 +240,7 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
   it("negotiates gated locales across old and new clients", async () => {
     const { api, admin } = testActors();
     mockOptionalEnv("BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED", undefined);
+    mockOptionalEnv("JAPANESE_LOCALE_ROLLOUT_ENABLED", undefined);
     mockOptionalEnv("INDONESIAN_LOCALE_ROLLOUT_ENABLED", undefined);
     mockOptionalEnv("FRENCH_LOCALE_ROLLOUT_ENABLED", undefined);
 
@@ -414,6 +415,7 @@ describe("MISC-02: preferences, push subscription, user export, and empty logs",
   it("negotiates French across rollout and legacy clients", async () => {
     const { api, admin } = testActors();
     mockOptionalEnv("BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED", undefined);
+    mockOptionalEnv("JAPANESE_LOCALE_ROLLOUT_ENABLED", undefined);
     mockOptionalEnv("INDONESIAN_LOCALE_ROLLOUT_ENABLED", undefined);
     mockOptionalEnv("FRENCH_LOCALE_ROLLOUT_ENABLED", undefined);
 
