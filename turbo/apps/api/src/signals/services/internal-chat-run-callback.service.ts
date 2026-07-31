@@ -110,7 +110,6 @@ import {
   type CanonicalSlackThreadStatusTarget,
 } from "./canonical-slack-thread-status.service";
 import { saveRunSummary, saveRunSummary$ } from "./run-summary.service";
-import { queryPreviousWriterChatOutput } from "./legacy-run-output-compat.service";
 import type { ChatRunFinishedEvent } from "./chat-run-finished-workflow-event.service";
 import {
   insertAssistantEvents,
@@ -177,7 +176,6 @@ type ChatCallbackPreCreateTimingActionType =
   | "api_dispatch_pre_create_zero_chat_callback_load_db_output_state"
   | "api_dispatch_pre_create_zero_chat_callback_db_output_complete"
   | "api_dispatch_pre_create_zero_chat_callback_db_output_incomplete"
-  | "api_dispatch_pre_create_zero_chat_callback_legacy_output_compat"
   | "api_dispatch_pre_create_zero_chat_callback_insert_assistant_items"
   | "api_dispatch_pre_create_zero_chat_callback_insert_lifecycle_marker"
   | "api_dispatch_pre_create_zero_chat_callback_load_followup_context"
@@ -365,7 +363,6 @@ interface DbCompletedChatOutputState {
   readonly kind: "complete" | "incomplete";
   readonly latestAssistant: AssistantEventItem | null;
   readonly resultFallback: ResultEventItem | null;
-  readonly legacyCompatibility: "full" | "result" | null;
 }
 
 interface CompletedChatOutputLoad {
@@ -893,7 +890,6 @@ async function loadDbCompletedChatOutputState(args: {
       kind: "complete",
       latestAssistant: null,
       resultFallback: null,
-      legacyCompatibility: null,
     };
   }
 
@@ -930,14 +926,6 @@ async function loadDbCompletedChatOutputState(args: {
         : "incomplete",
     latestAssistant,
     resultFallback,
-    legacyCompatibility:
-      !state || state.processedThroughSequence < args.lastEventSequence
-        ? "full"
-        : state.latestResultSequence !== null &&
-            state.latestResultSequence <= args.lastEventSequence &&
-            state.latestResultText === null
-          ? "result"
-          : null,
   };
 }
 
@@ -984,56 +972,6 @@ async function loadCompletedChatOutput(args: {
       runId: args.runId,
       lastEventSequence: args.lastEventSequence,
     });
-  }
-
-  if (
-    dbOutputState.legacyCompatibility !== null &&
-    args.lastEventSequence !== null
-  ) {
-    const lastEventSequence = args.lastEventSequence;
-    log.warn("Using temporary previous-writer chat output compatibility read", {
-      runId: args.runId,
-      lastEventSequence,
-      mode: dbOutputState.legacyCompatibility,
-    });
-    const legacyOutput = await measureChatCallbackPreCreateTiming(
-      args.timing,
-      "api_dispatch_pre_create_zero_chat_callback_legacy_output_compat",
-      "nested",
-      () => {
-        return queryPreviousWriterChatOutput(
-          args.runId,
-          lastEventSequence,
-          args.signal,
-        );
-      },
-    );
-    args.signal.throwIfAborted();
-    const legacyLatestAssistant =
-      legacyOutput.assistantItems[legacyOutput.assistantItems.length - 1] ??
-      null;
-    const latestAssistant =
-      legacyLatestAssistant !== null &&
-      (dbOutputState.latestAssistant === null ||
-        legacyLatestAssistant.sequenceNumber >
-          dbOutputState.latestAssistant.sequenceNumber)
-        ? legacyLatestAssistant
-        : dbOutputState.latestAssistant;
-    const resultFallback =
-      legacyOutput.resultFallback !== null &&
-      (dbOutputState.resultFallback === null ||
-        legacyOutput.resultFallback.sequenceNumber >
-          dbOutputState.resultFallback.sequenceNumber)
-        ? legacyOutput.resultFallback
-        : dbOutputState.resultFallback;
-    return {
-      assistantItemsToInsert:
-        dbOutputState.legacyCompatibility === "full"
-          ? legacyOutput.assistantItems
-          : [],
-      latestAssistant,
-      resultFallback,
-    };
   }
 
   return {
@@ -4452,8 +4390,8 @@ async function handleChatInternalCallback(args: {
   // record delivery; it does not retry and nothing downstream reads the body.
   // The frontend learns about new messages through Ably realtime signals, not
   // this HTTP response. So acknowledge immediately and run the heavy terminal
-  // processing (Axiom watermark wait, message persistence, LLM generation,
-  // push delivery) in the background, mirroring webhooks-agent-complete. Use a
+  // processing (message persistence, LLM generation, and push delivery) in the
+  // background, mirroring webhooks-agent-complete. Use a
   // detached signal so request cancellation cannot interrupt the idempotency
   // marker -> queued auto-send sequence after the callback is acknowledged.
   const backgroundSignal = new AbortController().signal;
