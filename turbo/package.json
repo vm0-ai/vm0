@@ -14,6 +14,7 @@
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
     "test:perf": "VITEST_PERF=1 vitest --run",
+    "html-resource-index:build": "tsx scripts/build-html-resource-index.ts",
     "profile-tests": "bash scripts/profile-tests.sh",
     "knip": "knip",
     "knip:fix": "knip --fix --allow-remove-files",

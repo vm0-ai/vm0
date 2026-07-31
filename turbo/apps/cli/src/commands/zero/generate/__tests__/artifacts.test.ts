@@ -1,8 +1,30 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import chalk from "chalk";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { generateCommand } from "../index";
 import { reportCommand } from "../artifacts";
 import { selectResourceCandidates } from "../../shared/resource-registry";
+
+function buildZeroToken(
+  featureSwitchOverrides: Partial<Record<FeatureSwitchKey, boolean>>,
+): string {
+  const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
+    "base64url",
+  );
+  const payload = Buffer.from(
+    JSON.stringify({
+      userId: "user-1",
+      runId: "run-1",
+      orgId: "org-1",
+      scope: "zero",
+      capabilities: [],
+      featureSwitchOverrides,
+      iat: 1000,
+      exp: 2000,
+    }),
+  ).toString("base64url");
+  return `vm0_sandbox_${header}.${payload}.test-signature`;
+}
 
 describe("zero generate source-backed artifact commands", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
@@ -134,6 +156,46 @@ describe("zero generate source-backed artifact commands", () => {
     expect(helpOutput).not.toContain("--audience");
     expect(helpOutput).not.toContain("--site <slug>");
   });
+
+  it.each([
+    "report",
+    "docs-design",
+    "poster",
+    "dashboard-design",
+    "mobile-app-design",
+  ])(
+    "uses the target-specific static resource index for %s when enabled",
+    async (command) => {
+      vi.stubEnv(
+        "ZERO_TOKEN",
+        buildZeroToken({
+          [FeatureSwitchKey.HtmlResourceIndex]: true,
+        }),
+      );
+
+      await generateCommand.parseAsync([
+        "node",
+        "cli",
+        command,
+        "--prompt",
+        `Generate a ${command} artifact`,
+        "--site-slug",
+        `${command}-demo`,
+      ]);
+
+      const stdout = output();
+      expect(stdout).toContain(
+        `https://static.vm0.io/html-resources/e2eaf4c4761a524b692d79eb88588debd2daef59e9b121f1e67e1a10abe74736/${command}.json`,
+      );
+      expect(stdout).not.toContain("/website.json");
+      expect(stdout).not.toContain("## Candidate Registry Slice");
+      expect(stdout).toContain('"templates": "string[]"');
+      expect(stdout).toContain(
+        "Resolve and download only resources selected from the index.",
+      );
+      expect(stdout).not.toContain("built-in R2 template packages");
+    },
+  );
 
   it("returns every registered skill when no target is requested", () => {
     const selection = selectResourceCandidates();
