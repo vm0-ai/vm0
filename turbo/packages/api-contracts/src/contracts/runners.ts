@@ -283,6 +283,11 @@ export const jobSchema = z.object({
   sessionAffinityResource: sessionAffinityResourceSchema.optional(),
 });
 
+const heldWorkspaceCacheSchema = z.object({
+  profile: z.string(),
+  workspaceAffinityVersion: z.literal(1).optional(),
+});
+
 export const heldSessionStateSchema = z.object({
   // Compatibility wire name. Semantically this is the Claude/Codex CLI agent
   // session id retained for telemetry and diagnostics.
@@ -296,15 +301,13 @@ export const heldSessionStateSchema = z.object({
       historyGenerationRunId: z.uuid().optional(),
     })
     .optional(),
-  workspaceCaches: z
-    .array(
-      z.object({
-        profile: z.string(),
-        workspaceAffinityVersion: z.literal(1).optional(),
-      }),
-    )
-    .max(8)
-    .optional(),
+  workspaceCaches: z.array(heldWorkspaceCacheSchema).max(8).optional(),
+});
+
+export const heldWorkspaceStateSchema = z.object({
+  reuseKey: z.string(),
+  lastCompletedAt: z.string().datetime({ offset: true }),
+  workspaceCaches: z.array(heldWorkspaceCacheSchema).min(1).max(8),
 });
 
 /**
@@ -786,15 +789,25 @@ export const heartbeatBodySchema = z
     runningCount: z.number().int().nonnegative(),
     admittableProfiles: runnerProfileListSchema,
     heldSessionStates: z.array(heldSessionStateSchema).max(1024),
+    // Additive workspace-only state for runners that separate environment
+    // affinity from provider session identity. Older APIs ignore this field.
+    heldWorkspaceStates: z.array(heldWorkspaceStateSchema).max(1024).optional(),
     mode: z.enum(["starting", "running", "draining", "stopping"]),
   })
   .superRefine((heartbeat, ctx) => {
-    const workspaceCacheCount = heartbeat.heldSessionStates.reduce(
+    const legacyWorkspaceCacheCount = heartbeat.heldSessionStates.reduce(
       (count, state) => {
         return count + (state.workspaceCaches?.length ?? 0);
       },
       0,
     );
+    const workspaceOnlyCacheCount = (
+      heartbeat.heldWorkspaceStates ?? []
+    ).reduce((count, state) => {
+      return count + state.workspaceCaches.length;
+    }, 0);
+    const workspaceCacheCount =
+      legacyWorkspaceCacheCount + workspaceOnlyCacheCount;
     if (workspaceCacheCount <= 1024) {
       return;
     }
@@ -802,7 +815,7 @@ export const heartbeatBodySchema = z
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["heldSessionStates"],
-      message: "heldSessionStates may contain at most 1024 workspace caches",
+      message: "heartbeat may contain at most 1024 workspace caches",
     });
   });
 
@@ -835,6 +848,7 @@ export type RunnersBuiltinFirewallsResolveContract =
   typeof runnersBuiltinFirewallsResolveContract;
 export type Job = z.infer<typeof jobSchema>;
 export type HeldSessionState = z.infer<typeof heldSessionStateSchema>;
+export type HeldWorkspaceState = z.infer<typeof heldWorkspaceStateSchema>;
 export type ExecutionContext = z.infer<typeof executionContextSchema>;
 export type StoredExecutionContext = z.infer<
   typeof storedExecutionContextSchema

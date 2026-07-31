@@ -10,6 +10,7 @@ import {
   executionContextSchema,
   heartbeatBodySchema,
   heldSessionStateSchema,
+  heldWorkspaceStateSchema,
   jobSchema,
   NETWORK_POLICY_REFRESH_CONNECTOR_SLUGS_MAX,
   NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
@@ -613,6 +614,13 @@ describe("runner resume session contract", () => {
         workspaceCaches,
       };
     });
+    const heldWorkspaceStates = Array.from({ length: 128 }, (_, index) => {
+      return {
+        reuseKey: `thread:${index}`,
+        lastCompletedAt: "2026-07-15T00:00:00.000Z",
+        workspaceCaches,
+      };
+    });
 
     expect(
       heartbeatBodySchema.safeParse({ ...heartbeat, heldSessionStates })
@@ -621,10 +629,31 @@ describe("runner resume session contract", () => {
     expect(
       heartbeatBodySchema.safeParse({
         ...heartbeat,
+        heldSessionStates: [],
+        heldWorkspaceStates,
+      }).success,
+    ).toBe(true);
+    expect(
+      heartbeatBodySchema.safeParse({
+        ...heartbeat,
         heldSessionStates: [
           ...heldSessionStates,
           {
             sessionId: "sess-over-global-cap",
+            lastCompletedAt: "2026-07-15T00:00:00.000Z",
+            workspaceCaches: [{ profile: "vm0/default" }],
+          },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      heartbeatBodySchema.safeParse({
+        ...heartbeat,
+        heldSessionStates: heldSessionStates.slice(0, 64),
+        heldWorkspaceStates: [
+          ...heldWorkspaceStates.slice(0, 64),
+          {
+            reuseKey: "thread:over-global-cap",
             lastCompletedAt: "2026-07-15T00:00:00.000Z",
             workspaceCaches: [{ profile: "vm0/default" }],
           },
@@ -644,6 +673,22 @@ describe("runner resume session contract", () => {
     expect(
       heldSessionStateSchema.safeParse({
         sessionId: "sess-invalid-capability",
+        lastCompletedAt: "2026-07-15T00:00:00.000Z",
+        workspaceCaches: [
+          { profile: "vm0/default", workspaceAffinityVersion: 2 },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      heldWorkspaceStateSchema.safeParse({
+        reuseKey: "thread:without-workspace",
+        lastCompletedAt: "2026-07-15T00:00:00.000Z",
+        workspaceCaches: [],
+      }).success,
+    ).toBe(false);
+    expect(
+      heldWorkspaceStateSchema.safeParse({
+        reuseKey: "thread:invalid-capability",
         lastCompletedAt: "2026-07-15T00:00:00.000Z",
         workspaceCaches: [
           { profile: "vm0/default", workspaceAffinityVersion: 2 },

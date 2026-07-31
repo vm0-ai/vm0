@@ -93,8 +93,8 @@ use active_sessions::new_active_reuse_keys;
 use factory_lifecycle::{shutdown_factory_instances, shutdown_runtime, start_factories};
 use heartbeat::{
     HEARTBEAT_PERIOD, HeartbeatContext, HeartbeatContextInit, HeartbeatController,
-    HeartbeatSnapshotMetadata, HeldSessionStateSnapshot, collect_heartbeat_state,
-    refresh_workspace_cache_held_session_snapshot,
+    HeartbeatSnapshotMetadata, WorkspaceCacheStateSnapshot, collect_heartbeat_state,
+    refresh_workspace_cache_snapshot,
 };
 use identity::{load_or_generate_runner_id, next_heartbeat_generation};
 use idle_lifecycle::{
@@ -1345,7 +1345,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     let park_notify = Arc::new(tokio::sync::Notify::new());
     let orphaned_active_runs = OrphanedActiveRuns::new();
     let active_reuse_keys = new_active_reuse_keys();
-    let held_session_snapshot = HeldSessionStateSnapshot::new();
+    let workspace_cache_snapshot = WorkspaceCacheStateSnapshot::new();
     let mut orphan_reap_tick = tokio::time::interval_at(
         tokio::time::Instant::now() + Duration::from_secs(10),
         Duration::from_secs(10),
@@ -1363,15 +1363,15 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         provider: &*provider_state.provider,
         workspace_cache: exec_config.workspace_cache.clone(),
         active_reuse_keys: &active_reuse_keys,
-        held_session_snapshot: held_session_snapshot.clone(),
+        workspace_cache_snapshot: workspace_cache_snapshot.clone(),
     });
-    refresh_workspace_cache_held_session_snapshot(
-        &held_session_snapshot,
+    refresh_workspace_cache_snapshot(
+        &workspace_cache_snapshot,
         exec_config.workspace_cache.as_ref(),
         &runner.profiles,
     )
     .await;
-    debug_assert!(held_session_snapshot.workspace_cache_loaded());
+    debug_assert!(workspace_cache_snapshot.workspace_cache_loaded());
     let mut heartbeat = HeartbeatController::new(hb_ctx);
 
     // Pin the discover future so it survives cancellation by other select!
@@ -1391,7 +1391,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         park_notify: Arc::clone(&park_notify),
         usage_flush_tx,
         active_reuse_keys: active_reuse_keys.clone(),
-        held_session_snapshot,
+        workspace_cache_snapshot,
         device_rate_limits: capacity.device_rate_limits.clone(),
         #[cfg(test)]
         outer_job_panic: test_hooks.outer_job_panic,

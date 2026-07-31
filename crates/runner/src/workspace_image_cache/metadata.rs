@@ -39,7 +39,8 @@ pub(super) struct WorkspaceCacheMetadata {
     pub(super) cache_scope: String,
     pub(super) profile_name: String,
     pub(super) reuse_key: String,
-    pub(super) cli_agent_session_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) cli_agent_session_id: Option<String>,
     pub(super) working_dir: String,
     pub(super) last_completed_at: String,
     pub(super) last_used_at: String,

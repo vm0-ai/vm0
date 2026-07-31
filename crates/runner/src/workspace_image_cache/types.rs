@@ -11,7 +11,7 @@ use super::{MAX_ENTRY_BYTES_CAP, MIN_FREE_BYTES_FLOOR};
 pub(crate) enum WorkspaceCacheCheckoutResult {
     Hit,
     Miss,
-    NoSession,
+    NoReuseKey,
     InvalidWorkingDir,
     LockBusy,
     InvalidMetadata,
@@ -129,6 +129,13 @@ pub(crate) struct WorkspaceSessionHistorySidecarPromotionSource {
     pub(crate) representation: WorkspaceSessionHistorySidecarRepresentation,
     pub(crate) encoded_size: u64,
     pub(crate) restored_session_identity: crate::restored_session_identity::RestoredSessionIdentity,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum WorkspaceSessionHistorySidecarPublication<'a> {
+    PreserveExisting,
+    Replace(&'a WorkspaceSessionHistorySidecarPromotionSource),
+    Prune,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

@@ -71,7 +71,7 @@ pub(super) async fn write_current_cache_entry_for_profile(
                 cache_scope: cache.inner.cache_scope.clone(),
                 profile_name: profile_name.into(),
                 reuse_key: session_id.into(),
-                cli_agent_session_id: session_id.into(),
+                cli_agent_session_id: Some(session_id.into()),
                 working_dir: working_dir.into(),
                 last_completed_at: last_completed_at.into(),
                 last_used_at: last_used_at.into(),

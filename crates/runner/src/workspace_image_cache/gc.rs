@@ -7,7 +7,7 @@ use tokio::fs;
 use tracing::{info, warn};
 
 use crate::error::{RunnerError, RunnerResult};
-use crate::types::MAX_HELD_SESSION_STATES;
+use crate::types::MAX_HELD_WORKSPACE_STATES;
 
 use super::entry::is_cache_key_name;
 use super::fs::{
@@ -70,7 +70,7 @@ pub(super) fn gc_budget_satisfied(
     budget: CacheBudget,
     candidate_freed_bytes: u64,
 ) -> bool {
-    if entry_count > MAX_HELD_SESSION_STATES {
+    if entry_count > MAX_HELD_WORKSPACE_STATES {
         return false;
     }
     !needs_budget_gc
@@ -105,7 +105,7 @@ impl SessionWorkspaceCache {
             .sum();
         let needs_budget_gc = total > budget.max_cache_bytes
             || stats_after_pre_cleanup.available_bytes < budget.min_free_bytes;
-        if !needs_budget_gc && entry_count <= MAX_HELD_SESSION_STATES {
+        if !needs_budget_gc && entry_count <= MAX_HELD_WORKSPACE_STATES {
             return Ok(pre_cleanup_freed);
         }
         candidates.sort_by(|left, right| {

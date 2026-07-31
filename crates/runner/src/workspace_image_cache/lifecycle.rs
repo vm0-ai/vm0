@@ -14,7 +14,7 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::ids::RunId;
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::types::{
-    HeldSessionState, MAX_HELD_SESSION_STATES, MAX_WORKSPACE_CACHES_PER_HEARTBEAT,
+    HeldWorkspaceState, MAX_HELD_WORKSPACE_STATES, MAX_WORKSPACE_CACHES_PER_HEARTBEAT,
     MAX_WORKSPACE_CACHES_PER_REUSE_KEY, WORKSPACE_AFFINITY_VERSION, WorkspaceCacheState,
 };
 
@@ -37,7 +37,7 @@ use super::types::{
     WorkspaceImagePromotionIdentity, WorkspaceImagePromotionIdentityMismatch,
     WorkspaceImagePromotionIdentityRequest, WorkspaceImagePromotionRequest,
     WorkspaceSessionHistorySidecar, WorkspaceSessionHistorySidecarMiss,
-    WorkspaceSessionHistorySidecarPromotionSource,
+    WorkspaceSessionHistorySidecarPromotionSource, WorkspaceSessionHistorySidecarPublication,
 };
 use super::{
     CACHE_FORMAT_VERSION, CACHE_KEY_VERSION, SessionWorkspaceCache, WORKSPACE_DRIVE_LAYOUT,
@@ -68,7 +68,7 @@ pub(crate) struct WorkspaceImagePromotionContext {
     sandbox_id: sandbox::SandboxId,
     profile_name: String,
     reuse_key: String,
-    cli_agent_session_id: String,
+    cli_agent_session_id: Option<String>,
     working_dir: String,
     active_image: PathBuf,
     image_size_bytes: u64,
@@ -104,20 +104,20 @@ struct WorkspaceImagePromotionInput<'a> {
     cache_key: &'a str,
     profile_name: &'a str,
     reuse_key: &'a str,
-    cli_agent_session_id: &'a str,
+    cli_agent_session_id: Option<&'a str>,
     working_dir: &'a str,
     active_image: &'a Path,
     image_size_bytes: u64,
     terminal_status: WorkspaceCacheTerminalStatus,
     completed_at: &'a str,
     storage_fingerprints: &'a StorageFingerprints,
-    session_history_sidecar: Option<&'a WorkspaceSessionHistorySidecarPromotionSource>,
+    session_history_sidecar: WorkspaceSessionHistorySidecarPublication<'a>,
 }
 
 struct WorkspaceImagePromotionTarget {
     cache_key: String,
     reuse_key: String,
-    cli_agent_session_id: String,
+    cli_agent_session_id: Option<String>,
 }
 
 struct WorkspaceImageLeaseCommon<'a> {
@@ -281,7 +281,7 @@ impl SessionWorkspaceCache {
             return active_lease(WorkspaceCacheCheckoutResult::InvalidWorkingDir, None, None);
         };
         let Some(reuse_key) = common.reuse_key else {
-            return active_lease(WorkspaceCacheCheckoutResult::NoSession, None, None);
+            return active_lease(WorkspaceCacheCheckoutResult::NoReuseKey, None, None);
         };
 
         let cache_key = common.cache_key(self, reuse_key, working_dir);
@@ -347,7 +347,7 @@ impl SessionWorkspaceCache {
         };
         let Some(reuse_key) = common.reuse_key else {
             return workspace_drive(
-                WorkspaceCacheCheckoutResult::NoSession,
+                WorkspaceCacheCheckoutResult::NoReuseKey,
                 None,
                 None,
                 None,
@@ -584,24 +584,24 @@ impl SessionWorkspaceCache {
         }
     }
 
-    pub(crate) async fn held_session_states_for_profiles(
+    pub(crate) async fn held_workspace_states_for_profiles(
         &self,
         profile_image_sizes_bytes: &BTreeMap<&str, u64>,
-    ) -> Vec<HeldSessionState> {
-        self.held_session_states_matching_profiles(Some(profile_image_sizes_bytes))
+    ) -> Vec<HeldWorkspaceState> {
+        self.held_workspace_states_matching_profiles(Some(profile_image_sizes_bytes))
             .await
     }
 
     /// Inspect cache state without a running profile configuration in tests.
     #[cfg(test)]
-    pub(crate) async fn held_session_states(&self) -> Vec<HeldSessionState> {
-        self.held_session_states_matching_profiles(None).await
+    pub(crate) async fn held_workspace_states(&self) -> Vec<HeldWorkspaceState> {
+        self.held_workspace_states_matching_profiles(None).await
     }
 
-    async fn held_session_states_matching_profiles(
+    async fn held_workspace_states_matching_profiles(
         &self,
         profile_image_sizes_bytes: Option<&BTreeMap<&str, u64>>,
-    ) -> Vec<HeldSessionState> {
+    ) -> Vec<HeldWorkspaceState> {
         let root = self.workspace_image_cache_dir().to_path_buf();
         let mut entries = match fs::read_dir(&root).await {
             Ok(entries) => entries,
@@ -638,18 +638,16 @@ impl SessionWorkspaceCache {
                 }
             };
             if self
-                .metadata_is_publishable_held_session_state(
+                .metadata_is_publishable_held_workspace_state(
                     cache_key,
                     &metadata,
                     profile_image_sizes_bytes,
                 )
                 .await
             {
-                states.push(HeldSessionState {
-                    session_id: metadata.cli_agent_session_id,
+                states.push(HeldWorkspaceState {
                     reuse_key: metadata.reuse_key,
                     last_completed_at: metadata.last_completed_at,
-                    reusable_sandbox: None,
                     workspace_caches: vec![WorkspaceCacheState {
                         profile: metadata.profile_name,
                         workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
@@ -662,7 +660,7 @@ impl SessionWorkspaceCache {
             .iter()
             .map(|state| state.workspace_caches.len())
             .sum::<usize>();
-        let states = cap_workspace_held_session_states(states);
+        let states = cap_held_workspace_states(states);
         let retained_workspace_caches = states
             .iter()
             .map(|state| state.workspace_caches.len())
@@ -670,15 +668,15 @@ impl SessionWorkspaceCache {
         if retained_workspace_caches < observed_workspace_caches {
             info!(
                 observed_workspace_caches,
-                retained_sessions = states.len(),
+                retained_workspace_states = states.len(),
                 retained_workspace_caches,
-                "workspace cache held session state truncated"
+                "workspace cache state truncated"
             );
         }
         states
     }
 
-    async fn metadata_is_publishable_held_session_state(
+    async fn metadata_is_publishable_held_workspace_state(
         &self,
         cache_key: &str,
         metadata: &WorkspaceCacheMetadata,
@@ -973,7 +971,7 @@ impl SessionWorkspaceCache {
             cache_scope: self.inner.cache_scope.clone(),
             profile_name: input.profile_name.to_owned(),
             reuse_key: input.reuse_key.to_owned(),
-            cli_agent_session_id: input.cli_agent_session_id.to_owned(),
+            cli_agent_session_id: input.cli_agent_session_id.map(str::to_owned),
             working_dir: input.working_dir.to_owned(),
             last_completed_at: input.completed_at.to_owned(),
             last_used_at: local_timestamp(),
@@ -1128,10 +1126,10 @@ impl WorkspaceImageLease {
                     cli_agent_session_id: self
                         .cli_agent_session_id
                         .clone()
-                        .or_else(|| cli_agent_session_id_override.map(str::to_owned))?,
+                        .or_else(|| cli_agent_session_id_override.map(str::to_owned)),
                 })
             }
-            WorkspaceCacheCheckoutResult::NoSession => None,
+            WorkspaceCacheCheckoutResult::NoReuseKey => None,
             WorkspaceCacheCheckoutResult::InvalidWorkingDir
             | WorkspaceCacheCheckoutResult::LockBusy
             | WorkspaceCacheCheckoutResult::InvalidMetadata
@@ -1192,10 +1190,6 @@ impl WorkspaceImagePromotionContext {
 
     pub(crate) fn profile_name(&self) -> &str {
         &self.profile_name
-    }
-
-    pub(crate) fn cli_agent_session_id(&self) -> &str {
-        &self.cli_agent_session_id
     }
 
     pub(crate) fn reuse_key(&self) -> &str {
@@ -1308,12 +1302,17 @@ impl WorkspaceImagePromotionContext {
             }
         };
 
-        self.promote_locked(None).await
+        let publication = if self.consumed_cache_hit {
+            WorkspaceSessionHistorySidecarPublication::PreserveExisting
+        } else {
+            WorkspaceSessionHistorySidecarPublication::Prune
+        };
+        self.promote_locked(publication).await
     }
 
     async fn promote_locked(
         &self,
-        session_history_sidecar: Option<&WorkspaceSessionHistorySidecarPromotionSource>,
+        session_history_sidecar: WorkspaceSessionHistorySidecarPublication<'_>,
     ) -> RunnerResult<WorkspaceImagePromotionOutcome> {
         self.cache
             .promote_locked(WorkspaceImagePromotionInput {
@@ -1321,7 +1320,7 @@ impl WorkspaceImagePromotionContext {
                 cache_key: &self.cache_key,
                 profile_name: &self.profile_name,
                 reuse_key: &self.reuse_key,
-                cli_agent_session_id: &self.cli_agent_session_id,
+                cli_agent_session_id: self.cli_agent_session_id.as_deref(),
                 working_dir: &self.working_dir,
                 active_image: &self.active_image,
                 image_size_bytes: self.image_size_bytes,
@@ -1455,7 +1454,7 @@ impl WorkspaceImagePromotionContext {
             cache,
             profile_name,
             reuse_key: Some(reuse_key),
-            cli_agent_session_id: Some(cli_agent_session_id),
+            cli_agent_session_id,
             working_dir,
             active_image,
             image_size_bytes,
@@ -1514,40 +1513,34 @@ impl WorkspaceSessionHistorySidecarEntryGuard {
                 "workspace session history sidecar guard does not match promotion context".into(),
             ));
         }
-        promotion.promote_locked(Some(source)).await
+        promotion
+            .promote_locked(WorkspaceSessionHistorySidecarPublication::Replace(source))
+            .await
     }
 }
 
-pub(crate) fn cap_workspace_held_session_states(
-    states: Vec<HeldSessionState>,
-) -> Vec<HeldSessionState> {
-    struct ObservedSessionState {
-        session_id: String,
+pub(crate) fn cap_held_workspace_states(
+    states: Vec<HeldWorkspaceState>,
+) -> Vec<HeldWorkspaceState> {
+    struct ObservedWorkspaceState {
         last_completed_at: String,
-        reusable_sandbox: Option<crate::types::ReusableSandboxState>,
         workspace_caches: BTreeMap<String, (String, WorkspaceCacheState)>,
     }
 
-    let mut by_reuse_key = BTreeMap::<String, ObservedSessionState>::new();
+    let mut by_reuse_key = BTreeMap::<String, ObservedWorkspaceState>::new();
     for state in states {
         let reuse_key = state.reuse_key.clone();
-        let session = by_reuse_key
+        let observed = by_reuse_key
             .entry(reuse_key)
-            .or_insert_with(|| ObservedSessionState {
-                session_id: state.session_id.clone(),
+            .or_insert_with(|| ObservedWorkspaceState {
                 last_completed_at: state.last_completed_at.clone(),
-                reusable_sandbox: state.reusable_sandbox.clone(),
                 workspace_caches: BTreeMap::new(),
             });
-        if state.last_completed_at > session.last_completed_at {
-            session.session_id.clone_from(&state.session_id);
-            session.last_completed_at = state.last_completed_at.clone();
-        }
-        if session.reusable_sandbox.is_none() {
-            session.reusable_sandbox = state.reusable_sandbox;
+        if state.last_completed_at > observed.last_completed_at {
+            observed.last_completed_at = state.last_completed_at.clone();
         }
         for workspace_cache in state.workspace_caches {
-            match session
+            match observed
                 .workspace_caches
                 .entry(workspace_cache.profile.clone())
             {
@@ -1571,13 +1564,11 @@ pub(crate) fn cap_workspace_held_session_states(
         }
     }
 
-    let mut states: Vec<HeldSessionState> = by_reuse_key
+    let mut states: Vec<HeldWorkspaceState> = by_reuse_key
         .into_iter()
-        .map(|(reuse_key, state)| HeldSessionState {
-            session_id: state.session_id,
+        .map(|(reuse_key, state)| HeldWorkspaceState {
             reuse_key,
             last_completed_at: state.last_completed_at,
-            reusable_sandbox: state.reusable_sandbox,
             workspace_caches: state
                 .workspace_caches
                 .into_values()
@@ -1595,7 +1586,7 @@ pub(crate) fn cap_workspace_held_session_states(
     let mut retained = Vec::new();
     let mut retained_workspace_caches = 0;
     for mut state in states {
-        if retained.len() == MAX_HELD_SESSION_STATES
+        if retained.len() == MAX_HELD_WORKSPACE_STATES
             || retained_workspace_caches == MAX_WORKSPACE_CACHES_PER_HEARTBEAT
         {
             break;

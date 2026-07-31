@@ -470,7 +470,7 @@ fn pre_spawn_timing_with_phases() -> RunnerPreSpawnTiming {
         (RunnerPreSpawnPhase::SessionHistoryMaterializerStart, 2),
         (RunnerPreSpawnPhase::DeviceRateLimits, 3),
         (RunnerPreSpawnPhase::IdleReuseLookup, 4),
-        (RunnerPreSpawnPhase::HeldSessionStateRefresh, 5),
+        (RunnerPreSpawnPhase::WorkspaceCacheStateLookup, 5),
         (RunnerPreSpawnPhase::WorkspacePromotionValidation, 6),
         (RunnerPreSpawnPhase::IdleUnpark, 7),
         (RunnerPreSpawnPhase::ActiveStatusPublish, 8),

@@ -1,9 +1,9 @@
 export type RunnerAdmittableProfiles = string[];
 
 export interface RunnerHeldSessionState {
-  // Compatibility JSON field name. Semantically this is the CLI agent session
-  // id retained for telemetry and diagnostics.
-  readonly sessionId: string;
+  // Compatibility JSON field name. Workspace-only heartbeat records omit it;
+  // reusable sandbox records always retain the CLI agent session id.
+  readonly sessionId?: string;
   // Optional while older runners drain during deployment.
   readonly reuseKey?: string;
   readonly lastCompletedAt: string;

@@ -900,7 +900,7 @@ fn workspace_image_prepare_error(result: WorkspaceCacheCheckoutResult) -> Option
     match result {
         WorkspaceCacheCheckoutResult::Hit
         | WorkspaceCacheCheckoutResult::Miss
-        | WorkspaceCacheCheckoutResult::NoSession => None,
+        | WorkspaceCacheCheckoutResult::NoReuseKey => None,
         WorkspaceCacheCheckoutResult::InvalidWorkingDir => {
             Some(WORKSPACE_IMAGE_PREPARE_INVALID_WORKING_DIR)
         }

@@ -277,8 +277,8 @@ mod tests {
 
         assert!(promoted);
         assert_eq!(budget.allocated(), (0, 0, 0));
-        let held = fixture.cache.held_session_states().await;
+        let held = fixture.cache.held_workspace_states().await;
         assert_eq!(held.len(), 1);
-        assert_eq!(held[0].session_id, fixture.session_id);
+        assert_eq!(held[0].reuse_key, fixture.session_id);
     }
 }

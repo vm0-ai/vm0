@@ -1155,7 +1155,7 @@ async fn promote_skips_transferred_image_with_unexpected_logical_size() {
             .session_workspace_cache_current_image(&cache_key)
             .exists()
     );
-    assert!(cache.held_session_states().await.is_empty());
+    assert!(cache.held_workspace_states().await.is_empty());
 }
 
 #[tokio::test]
@@ -1205,11 +1205,11 @@ async fn promote_skips_when_capacity_lock_is_busy() {
             .session_workspace_cache_current_image(&cache_key)
             .exists()
     );
-    assert!(cache.held_session_states().await.is_empty());
+    assert!(cache.held_workspace_states().await.is_empty());
 }
 
 #[tokio::test]
-async fn no_session_checkout_without_late_cli_agent_session_id_has_no_promotion_context() {
+async fn no_reuse_key_checkout_without_session_has_no_promotion_context() {
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().join("runner"));
     tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
@@ -1231,7 +1231,7 @@ async fn no_session_checkout_without_late_cli_agent_session_id_has_no_promotion_
         })
         .await;
 
-    assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::NoSession);
+    assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::NoReuseKey);
     assert!(
         lease
             .into_promotion_context(WorkspaceImagePromotionRequest {
@@ -1244,7 +1244,7 @@ async fn no_session_checkout_without_late_cli_agent_session_id_has_no_promotion_
                 storage_fingerprints: StorageFingerprints::default(),
             })
             .is_none(),
-        "workspace image promotion must wait until a CLI agent session id is available"
+        "workspace image promotion requires a reuse key"
     );
 }
 
@@ -1274,7 +1274,7 @@ async fn no_reuse_key_checkout_cannot_promote_with_late_discovered_cli_agent_ses
         .await
         .unwrap();
 
-    assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::NoSession);
+    assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::NoReuseKey);
     assert!(
         !lease
             .promote(

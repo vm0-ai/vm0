@@ -1,7 +1,7 @@
-//! Local session workspace image cache.
+//! Local workspace image cache keyed by runner reuse identity.
 //!
-//! This cache stores reusable workspace drive images for session-backed runs.
-//! Each cache entry is keyed by cache scope, profile, session id, and logical
+//! This cache stores reusable workspace drive images for reuse-key-backed runs.
+//! Each cache entry is keyed by cache scope, profile, reuse key, and logical
 //! workspace image size. The normalized working directory is still stored in
 //! metadata and validated at promotion/reuse boundaries; the hash key itself
 //! follows the canonical-workspace semantics in `paths.rs`. A cache entry
@@ -56,7 +56,7 @@ mod tests;
 pub(crate) use lifecycle::{
     WorkspaceImageLease, WorkspaceImagePromotionContext, WorkspaceImagePromotionIdentityFailure,
     WorkspaceImagePromotionOutcome, WorkspaceSessionHistorySidecarEntryGuard,
-    cap_workspace_held_session_states,
+    cap_held_workspace_states,
 };
 pub(crate) use types::{
     CacheBudget, FsStats, WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus,
