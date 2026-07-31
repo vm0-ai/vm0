@@ -168,9 +168,10 @@ class TestNdjsonExtractor:
         line = (
             prefix + b"x" * (LARGE_RESPONSE_DECOMPRESS_LIMIT - len(prefix) - len(suffix)) + suffix
         )
+        body = line + b"\n"
 
         assert len(line) == LARGE_RESPONSE_DECOMPRESS_LIMIT
-        assert parse(line + b"\n") == line + b"\n"
+        assert parse(body) == body
         assert state["lines_failed"] == 0
         assert state["lines_parsed"] == 1
         assert state["data_count"] == 1
