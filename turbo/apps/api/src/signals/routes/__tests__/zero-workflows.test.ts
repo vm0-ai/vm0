@@ -655,7 +655,7 @@ describe("zero workflows", () => {
     }
   });
 
-  it("runs public workflows for members and hides private-agent workflows", async () => {
+  it("runs public workflows for members and hides workflows on private agents", async () => {
     const owner = user({ orgRole: "org:admin" });
     const member = user({ orgId: owner.orgId, orgRole: "org:member" });
     await enableWorkflowRuns(owner);
@@ -688,6 +688,7 @@ describe("zero workflows", () => {
     const privateWorkflow = await createWorkflow(owner, {
       agentId: privateAgent.agentId,
       name: `private-run-workflow-${randomUUID().slice(0, 8)}`,
+      visibility: "public",
       instruction: "# private run workflow",
     });
     const hidden = await accept(
