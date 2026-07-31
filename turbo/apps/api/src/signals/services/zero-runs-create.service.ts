@@ -550,7 +550,7 @@ function buildZeroRunExtraEnvironment(args: {
   readonly codexServiceTier: "fast" | undefined;
 }): Record<string, string> {
   return {
-    VM0_APP_URL: env("APP_URL"),
+    ZERO_APP_URL: env("APP_URL"),
     ZERO_AGENT_ID: args.agentId,
     // Keep the retired rollout marker for older guest CLIs until the CLI
     // released with this cleanup is the oldest supported guest CLI version.

@@ -858,6 +858,14 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     ctx.user_timezone = Some("Asia/Shanghai".into());
     ctx.environment = Some(HashMap::from([
         ("CUSTOM_USER_ENV".into(), "visible-to-cli".into()),
+        (
+            "ZERO_APP_URL".into(),
+            "https://app.runner-env.example.test/path".into(),
+        ),
+        (
+            "VM0_APP_URL".into(),
+            "https://filtered.runner-env.example.test".into(),
+        ),
         ("BASH_ENV".into(), "/tmp/user-bash-env".into()),
         ("NODE_OPTIONS".into(), "--require /tmp/user-node.js".into()),
         ("VM0_API_TOKEN".into(), "stolen-token".into()),
@@ -904,7 +912,14 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
             "{key} should be passed through the run payload file"
         );
     }
-    for key in ["CUSTOM_USER_ENV", "BASH_ENV", "NODE_OPTIONS", "TZ"] {
+    for key in [
+        "CUSTOM_USER_ENV",
+        "ZERO_APP_URL",
+        "VM0_APP_URL",
+        "BASH_ENV",
+        "NODE_OPTIONS",
+        "TZ",
+    ] {
         assert!(
             !start_env.contains_key(key),
             "{key} should not be passed to guest-agent bootstrap"
@@ -932,12 +947,17 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     let user_env: HashMap<String, String> =
         serde_json::from_slice(&user_env_write.content).unwrap();
     assert_eq!(user_env.get("CUSTOM_USER_ENV").unwrap(), "visible-to-cli");
+    assert_eq!(
+        user_env.get("ZERO_APP_URL").unwrap(),
+        "https://app.runner-env.example.test/path"
+    );
     assert_eq!(user_env.get("BASH_ENV").unwrap(), "/tmp/user-bash-env");
     assert_eq!(
         user_env.get("NODE_OPTIONS").unwrap(),
         "--require /tmp/user-node.js"
     );
     assert_eq!(user_env.get("TZ").unwrap(), "Asia/Shanghai");
+    assert!(!user_env.contains_key("VM0_APP_URL"));
     assert!(!user_env.contains_key("VM0_API_TOKEN"));
     assert!(!user_env.contains_key(USER_ENV_FILE_ENV_KEY));
     assert!(!user_env.contains_key("VM0_STUCK_TOOL_TIMEOUT_SECS"));

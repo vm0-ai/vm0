@@ -124,6 +124,7 @@ describe("zero connector status command", () => {
 
   beforeEach(() => {
     chalk.level = 0;
+    vi.stubEnv("ZERO_APP_URL", "");
     vi.stubEnv("VM0_APP_URL", "");
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("ZERO_TOKEN", "test-token");
@@ -314,9 +315,38 @@ describe("zero connector status command", () => {
       );
     });
 
-    it("uses VM0_APP_URL in authorization links", async () => {
+    it("prefers ZERO_APP_URL in authorization links", async () => {
       const apiOrigin = "https://api.example.test";
       const appOrigin = "https://app.example.test";
+      vi.stubEnv("VM0_API_BACKEND_URL", apiOrigin);
+      vi.stubEnv("ZERO_APP_URL", `${appOrigin}/ignored-path`);
+      vi.stubEnv("VM0_APP_URL", "https://legacy-app.example.test");
+      server.use(
+        stubConnectorCatalogStatus(
+          [statusItemFromConnector(connectedGithub)],
+          apiOrigin,
+        ),
+        stubAgent(AGENT_UUID, "maya", apiOrigin),
+        stubUserConnectors(AGENT_UUID, [], apiOrigin),
+      );
+
+      await statusCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--agent",
+        AGENT_UUID,
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        `[Authorize github](${appOrigin}/connectors/github/authorize?agentId=${AGENT_UUID})`,
+      );
+    });
+
+    it("uses VM0_APP_URL as a legacy authorization-link fallback", async () => {
+      const apiOrigin = "https://api.example.test";
+      const appOrigin = "https://legacy-app.example.test";
       vi.stubEnv("VM0_API_BACKEND_URL", apiOrigin);
       vi.stubEnv("VM0_APP_URL", `${appOrigin}/ignored-path`);
       server.use(
