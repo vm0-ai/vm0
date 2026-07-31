@@ -2635,28 +2635,6 @@ function ChatThreadEmptyState({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-function ChatThreadScrollCommitMarker({
-  thread,
-}: {
-  thread: ChatThreadSignals;
-}) {
-  const requestLoadable = useLoadable(thread.scrollRenderRequestReady$);
-  const commitScroll = useSet(thread.scrollCommitOnRef$);
-  if (requestLoadable.state !== "hasData" || !requestLoadable.data) {
-    return null;
-  }
-  const request = requestLoadable.data;
-  return (
-    <span
-      key={request.revision}
-      ref={commitScroll}
-      data-chat-scroll-commit-revision={request.revision}
-      aria-hidden
-      className="hidden"
-    />
-  );
-}
-
 function ChatThreadEventsMain({ thread }: { thread: ChatThreadSignals }) {
   const renderedGroupsReady =
     useLastResolved(thread.visibleRenderedChatGroupsReady$) ?? false;
@@ -2673,7 +2651,6 @@ function ChatThreadEventsMain({ thread }: { thread: ChatThreadSignals }) {
         <ChatHistoryBackfillSkeleton thread={thread} />
         <ChatThreadRenderedEventGroups thread={thread} />
         <ChatThreadThinkingIndicator thread={thread} />
-        <ChatThreadScrollCommitMarker thread={thread} />
       </div>
     </main>
   );
