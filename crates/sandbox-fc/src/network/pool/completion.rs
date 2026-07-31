@@ -4,8 +4,8 @@ use tokio::sync::{mpsc, watch};
 use tracing::warn;
 
 use super::super::error::{NetworkError, Result};
-use super::host::{NamespaceDeleteOutcome, NetnsLifecycleOps};
-use super::types::NetnsInfo;
+use super::host::NetnsLifecycleOps;
+use super::types::{NamespaceDeleteOutcome, NetnsInfo};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(super) struct PendingId(pub(super) u64);

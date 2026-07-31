@@ -23,16 +23,17 @@ use super::completion::{
     CreationCompletion, CreationCompletionCoordinator, CreationNotifier, NetnsKind, PendingId,
     PreparedCreationWait, spawn_creation_worker,
 };
+use super::firewall::setup_dns_input_filter;
 #[cfg(test)]
 use super::host::ConntrackFlushOutcome;
 use super::host::{
-    NamespaceDeleteOutcome, NetnsLifecycleOps, PoolIndexLock, acquire_pool_lock,
-    create_single_namespace, enable_host_ip_forwarding, get_default_interface,
-    reconcile_orphan_namespaces, setup_dns_input_filter,
+    NetnsLifecycleOps, PoolIndexLock, acquire_pool_lock, create_single_namespace,
+    enable_host_ip_forwarding, get_default_interface, reconcile_orphan_namespaces,
 };
 use super::naming::{MAX_NAMESPACES, format_hex_index, make_host_device_dnsmasq_pattern};
 use super::types::{
-    CheckedNetnsPoolConfig, NetnsInfo, NetnsLease, NetnsPoolConfig, NetnsReleaseOutcome,
+    CheckedNetnsPoolConfig, NamespaceDeleteOutcome, NetnsInfo, NetnsLease, NetnsPoolConfig,
+    NetnsReleaseOutcome,
 };
 
 const BUFFER_SIZE: usize = 4;
