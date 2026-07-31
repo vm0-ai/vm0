@@ -16,6 +16,8 @@ import {
   deleteUsageInsightFixture$,
   insertUsageEvent$,
   readUsageEventState$,
+  seedCompose$,
+  seedRun$,
   seedUsageInsightFixture$,
 } from "./helpers/zero-usage-insight";
 
@@ -41,6 +43,100 @@ describe("POST /api/test/usage-settlement/process", () => {
 
     expect(response.status).toBe(404);
     await expect(response.text()).resolves.toBe("Not found");
+  });
+
+  it("returns 400 for an invalid run ID", async () => {
+    const app = createAppWithRoutes({
+      signal: context.signal,
+      routes: testUsageSettlementRoutes,
+    });
+
+    const response = await app.request(
+      testUsageSettlementContract.process.path,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ run_id: "not-a-run-id" }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 404 for an unknown run ID", async () => {
+    const app = createAppWithRoutes({
+      signal: context.signal,
+      routes: testUsageSettlementRoutes,
+    });
+
+    const response = await app.request(
+      testUsageSettlementContract.process.path,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ run_id: randomUUID() }),
+      },
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.text()).resolves.toBe("Not found");
+  });
+
+  it("settles usage that arrives after an earlier run settlement", async () => {
+    const fixture = await store.set(
+      seedUsageInsightFixture$,
+      undefined,
+      context.signal,
+    );
+    onTestFinished(async () => {
+      await store.set(deleteUsageInsightFixture$, fixture, context.signal);
+    });
+    const compose = await store.set(seedCompose$, fixture, context.signal);
+    const { runId } = await store.set(
+      seedRun$,
+      { ...fixture, composeId: compose.composeId },
+      context.signal,
+    );
+    const app = createAppWithRoutes({
+      signal: context.signal,
+      routes: testUsageSettlementRoutes,
+    });
+    const requestSettlement = () => {
+      return app.request(testUsageSettlementContract.process.path, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ run_id: runId }),
+      });
+    };
+
+    expect((await requestSettlement()).status).toBe(200);
+
+    const idempotencyKey = randomUUID();
+    await store.set(
+      insertUsageEvent$,
+      {
+        ...fixture,
+        runId,
+        kind: "model",
+        provider: "historical-model",
+        category: "tokens.input",
+        quantity: 100,
+        grossCredits: 7,
+        idempotencyKey,
+      },
+      context.signal,
+    );
+
+    const response = await requestSettlement();
+
+    expect(response.status).toBe(200);
+    await expect(
+      store.set(readUsageEventState$, idempotencyKey, context.signal),
+    ).resolves.toMatchObject({
+      status: "processed",
+      grossCredits: 7,
+      creditsCharged: 7,
+    });
   });
 
   it("uses precomputed credits only for historical model events", async () => {

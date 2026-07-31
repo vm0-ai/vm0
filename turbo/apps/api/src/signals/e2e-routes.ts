@@ -15,6 +15,7 @@ import { testTelegramStateRoutes } from "./routes/test-telegram-state";
 import { testTeamsDispatchProbeRoutes } from "./routes/test-teams-dispatch-probe";
 import { testTeamsMockRoutes } from "./routes/test-teams-mock";
 import { testTeamsStateRoutes } from "./routes/test-teams-state";
+import { testUsageSettlementRoutes } from "./routes/test-usage-settlement";
 import { testZeroAgentStateRoutes } from "./routes/test-zero-agent-state";
 
 /**
@@ -38,13 +39,16 @@ import { testZeroAgentStateRoutes } from "./routes/test-zero-agent-state";
  * - state routes and the Teams dispatch probe: fixture seeding and provider
  *   ingress used by `e2e/helpers/slack.bash`, `e2e/helpers/telegram.bash`,
  *   and `e2e/helpers/teams.bash`.
+ * - `test-usage-settlement`: an explicit billing barrier for runner E2E after
+ *   proxy usage delivery races run completion.
  *
  * Every route here is gated by `isTestEndpointAllowed` (development or
  * preview-with-bypass only) and returns 404 in production.
  *
- * API integration tests (vitest) must NOT use these routes: construct state
- * through real production APIs, mock external providers with MSW, and assert
- * through product read surfaces instead.
+ * API integration tests (vitest) must NOT use these routes as fixture
+ * shortcuts: outside route-specific contract tests, construct state through
+ * real production APIs, mock external providers with MSW, and assert through
+ * product read surfaces instead.
  */
 export const E2E_ROUTES: readonly RouteEntry[] = [
   ...cliAuthTestRoutes,
@@ -63,5 +67,6 @@ export const E2E_ROUTES: readonly RouteEntry[] = [
   ...testTeamsDispatchProbeRoutes,
   ...testTeamsMockRoutes,
   ...testTeamsStateRoutes,
+  ...testUsageSettlementRoutes,
   ...testZeroAgentStateRoutes,
 ];
