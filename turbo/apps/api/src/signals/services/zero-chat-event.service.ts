@@ -305,6 +305,17 @@ interface StoredChatEventContextPointer {
   readonly contextId: string | null;
 }
 
+export interface LoadedChatEventReplacementTarget extends StoredChatEventContextPointer {
+  readonly id: string;
+  readonly chatThreadId: string;
+  readonly createdAt: Date;
+  readonly eventType: NonNullable<ChatEventInsert["eventType"]>;
+  readonly encryptedParams: string | null;
+  readonly attachFileMetadata:
+    | typeof chatEventInputParams.$inferSelect.attachFileMetadata
+    | null;
+}
+
 type NewDisplayContext =
   | {
       readonly type: "slack";
@@ -817,6 +828,7 @@ export async function replaceChatEvent(
 ): Promise<ChatEventCommandResult | null> {
   const [target] = await tx
     .select({
+      id: chatEvents.id,
       chatThreadId: chatEvents.chatThreadId,
       createdAt: chatEvents.createdAt,
       eventType: chatEvents.eventType,
@@ -835,10 +847,20 @@ export async function replaceChatEvent(
   if (!target) {
     throw new Error("Cannot revoke a missing chat event");
   }
+  return await replaceLoadedChatEvent(tx, target, replacement, options);
+}
+
+/** Append a replacement for a target already loaded by an authoritative read. */
+export async function replaceLoadedChatEvent(
+  tx: ChatEventWriteTransaction,
+  target: LoadedChatEventReplacementTarget,
+  replacement: NewChatEvent,
+  options?: { readonly preserveAssetRefs?: boolean },
+): Promise<ChatEventCommandResult | null> {
   if (target.chatThreadId !== replacement.chatThreadId) {
     throw new Error("Cannot revoke a chat event from another thread");
   }
-  if (replacement.id === eventId) {
+  if (replacement.id === target.id) {
     throw new Error("A chat event cannot revoke itself");
   }
   const createdAt =
@@ -885,7 +907,7 @@ export async function replaceChatEvent(
         },
       ),
       seqId,
-      revokesEventId: eventId,
+      revokesEventId: target.id,
     })
     .onConflictDoNothing()
     .returning({
@@ -903,31 +925,28 @@ export async function replaceChatEvent(
   }
   await insertEventInputParams(tx, inserted.id, replacementWithParams);
   if (options?.preserveAssetRefs !== false) {
-    const assetRefs = await tx
-      .select({
-        assetId: chatEventAssetRefs.assetId,
-        position: chatEventAssetRefs.position,
-      })
-      .from(chatEventAssetRefs)
-      .where(eq(chatEventAssetRefs.chatEventId, eventId));
-    if (assetRefs.length > 0) {
-      await tx
-        .insert(chatEventAssetRefs)
-        .values(
-          assetRefs.map((assetRef) => {
-            return {
-              chatEventId: inserted.id,
-              assetId: assetRef.assetId,
-              position: assetRef.position,
-            };
-          }),
-        )
-        .onConflictDoNothing();
-    }
+    await tx
+      .insert(chatEventAssetRefs)
+      .select(
+        tx
+          .select({
+            chatEventId: sql`${inserted.id}`
+              .mapWith(chatEventAssetRefs.chatEventId)
+              .as("chat_event_id"),
+            assetId: chatEventAssetRefs.assetId,
+            position: chatEventAssetRefs.position,
+            createdAt: sql`now()`
+              .mapWith(chatEventAssetRefs.createdAt)
+              .as("created_at"),
+          })
+          .from(chatEventAssetRefs)
+          .where(eq(chatEventAssetRefs.chatEventId, target.id)),
+      )
+      .onConflictDoNothing();
   }
   await tx
     .delete(chatEventInputParams)
-    .where(eq(chatEventInputParams.eventId, eventId));
+    .where(eq(chatEventInputParams.eventId, target.id));
   return inserted;
 }
 

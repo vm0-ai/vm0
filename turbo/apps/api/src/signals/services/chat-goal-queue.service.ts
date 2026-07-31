@@ -105,7 +105,7 @@ export async function admitGoalQueueEvent(
   });
 }
 
-function noGoalChangeAfterQueueEvent(db: Pick<Db, "select">) {
+export function noGoalChangeAfterQueueEvent(db: Pick<Db, "select">) {
   return notExists(
     db
       .select({ id: laterGoalChange.id })
@@ -212,42 +212,6 @@ export async function loadGoalQueueTarget(
     objective: goal.objective,
     objectiveBrief: goal.objectiveBrief,
   };
-}
-
-/** Final-claim goal snapshot check after expensive run preparation. */
-export async function goalQueueEventMatchesActiveGoal(
-  db: Pick<Db, "select">,
-  args: {
-    readonly chatThreadId: string;
-    readonly goalId: string;
-    readonly eventId: string;
-    readonly orgId: string;
-    readonly userId: string;
-  },
-): Promise<boolean> {
-  const [goal] = await db
-    .select({
-      status: threadGoals.status,
-    })
-    .from(threadGoals)
-    .innerJoin(
-      chatEvents,
-      and(
-        eq(chatEvents.id, args.eventId),
-        eq(chatEvents.chatThreadId, threadGoals.chatThreadId),
-      ),
-    )
-    .where(
-      and(
-        eq(threadGoals.id, args.goalId),
-        eq(threadGoals.chatThreadId, args.chatThreadId),
-        eq(threadGoals.orgId, args.orgId),
-        eq(threadGoals.ownerUserId, args.userId),
-        noGoalChangeAfterQueueEvent(db),
-      ),
-    )
-    .limit(1);
-  return goal?.status === "active";
 }
 
 async function pendingGoalEventStillExists(

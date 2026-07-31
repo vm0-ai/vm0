@@ -144,6 +144,10 @@ const API_DISPATCH_THREAD_SESSION_BINDING_ACTION_TYPES = [
 const API_DISPATCH_QUEUE_FIRST_ADMISSION_ACTION_TYPES = [
   "api_dispatch_resolve_queue_first_admission",
 ] as const;
+const API_DISPATCH_QUEUE_FIRST_CLAIM_PHASE_ACTION_TYPES = [
+  "api_dispatch_resolve_queue_first_claim_snapshot",
+  "api_dispatch_persist_queue_first_replacement",
+] as const;
 const API_DISPATCH_REUSED_THREAD_READ_ACTION_TYPES = [
   "api_dispatch_queue_first_thread_lock_wait",
   "api_dispatch_load_thread_session_binding",
@@ -5527,6 +5531,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
 
     const fileId = randomUUID();
+    const secondFileId = randomUUID();
     const queuedId = randomUUID();
     const queued = await chat.requestSendEvent(
       actor,
@@ -5543,6 +5548,12 @@ describe("CHAT-02: queued attachments on auto-send", () => {
             contentType: "text/plain",
             size: 12,
           },
+          {
+            id: secondFileId,
+            filename: "details.json",
+            contentType: "application/json",
+            size: 24,
+          },
         ],
       },
       [201],
@@ -5558,6 +5569,11 @@ describe("CHAT-02: queued attachments on auto-send", () => {
           id: fileId,
           filename: "notes.txt",
           contentType: "text/plain",
+        }),
+        expect.objectContaining({
+          id: secondFileId,
+          filename: "details.json",
+          contentType: "application/json",
         }),
       ],
     });
@@ -5590,13 +5606,22 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     await expect(readChatEventInputParamsFixture(queuedId)).resolves.toBeNull();
     expect(promoted.content).toBeNull();
     expect(chatEventDisplayText(promoted)).toBe("queued with attachment");
-    expect(promoted.attachFiles?.[0]).toMatchObject({
-      id: fileId,
-      filename: "notes.txt",
-      contentType: "text/plain",
-      size: 12,
-      url: expect.stringContaining(`${fileId}/notes.txt`),
-    });
+    expect(promoted.attachFiles).toMatchObject([
+      {
+        id: fileId,
+        filename: "notes.txt",
+        contentType: "text/plain",
+        size: 12,
+        url: expect.stringContaining(`${fileId}/notes.txt`),
+      },
+      {
+        id: secondFileId,
+        filename: "details.json",
+        contentType: "application/json",
+        size: 24,
+        url: expect.stringContaining(`${secondFileId}/details.json`),
+      },
+    ]);
     const original = userMessages(messages.events).find((message) => {
       return message.id === queuedId;
     });
@@ -5614,6 +5639,10 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     expect(followUp.prompt).toContain("queued with attachment");
     expect(followUp.prompt).toContain("[Web file] notes.txt (text/plain)");
     expect(followUp.prompt).toContain(`[ID] ${fileId}`);
+    expect(followUp.prompt).toContain(
+      "[Web file] details.json (application/json)",
+    );
+    expect(followUp.prompt).toContain(`[ID] ${secondFileId}`);
     await cancelChatRun(actor, promoted.runId);
   }, 90_000);
 });
@@ -5972,11 +6001,31 @@ describe("CHAT-02: shared user message queue", () => {
     );
     await expect
       .poll(() => {
-        return apiDispatchActionTypes(apiDispatchTimingEventsForRun(runId)).has(
-          "api_dispatch_claim_queue_first_message",
+        const actionTypes = apiDispatchActionTypes(
+          apiDispatchTimingEventsForRun(runId),
         );
+        return [
+          "api_dispatch_claim_queue_first_message",
+          ...API_DISPATCH_QUEUE_FIRST_CLAIM_PHASE_ACTION_TYPES,
+        ].every((actionType) => {
+          return actionTypes.has(actionType);
+        });
       })
       .toBe(true);
+    const claimTimingEvents = apiDispatchTimingEventsForRun(runId);
+    expectApiDispatchSpanKind(
+      claimTimingEvents,
+      API_DISPATCH_QUEUE_FIRST_CLAIM_PHASE_ACTION_TYPES,
+      "nested",
+    );
+    for (const actionType of API_DISPATCH_QUEUE_FIRST_CLAIM_PHASE_ACTION_TYPES) {
+      expect(claimTimingEvents).toContainEqual(
+        expect.objectContaining({
+          op_type: actionType,
+          queue_first_association_kind: "user_message",
+        }),
+      );
+    }
 
     await cancelChatRun(actor, runId);
   }, 90_000);
