@@ -11,8 +11,12 @@ import {
 import type {
   RunnerAdmittableProfiles,
   RunnerHeldSessionStates,
+  RunnerHeldWorkspaceStates,
 } from "@vm0/db/jsonb-contracts/runner-state";
-export type { RunnerHeldSessionState } from "@vm0/db/jsonb-contracts/runner-state";
+export type {
+  RunnerHeldSessionState,
+  RunnerHeldWorkspaceState,
+} from "@vm0/db/jsonb-contracts/runner-state";
 
 export const runnerState = pgTable(
   "runner_state",
@@ -40,6 +44,10 @@ export const runnerState = pgTable(
       .notNull(),
     heldSessionStates: jsonb("held_session_states")
       .$type<RunnerHeldSessionStates>()
+      .default([])
+      .notNull(),
+    heldWorkspaceStates: jsonb("held_workspace_states")
+      .$type<RunnerHeldWorkspaceStates>()
       .default([])
       .notNull(),
     mode: varchar("mode", { length: 20 }).notNull().default("running"),
