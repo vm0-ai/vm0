@@ -4,6 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 WORKFLOW="${REPO_ROOT}/.github/workflows/runner-image.yml"
+TURBO_WORKFLOW="${REPO_ROOT}/.github/workflows/turbo.yml"
 
 fail() {
   echo "FAIL: $1" >&2
@@ -12,6 +13,33 @@ fail() {
 
 command -v yq >/dev/null || fail "yq is required"
 workflow_json=$(yq -o=json '.' "$WORKFLOW")
+turbo_workflow_json=$(yq -o=json '.' "$TURBO_WORKFLOW")
+
+jq -e '
+  .jobs.prepare.outputs["runner-image-job-ref"] ==
+    "${{ steps.set-job-ref.outputs.runner-image-job-ref }}" and
+  any(.jobs.prepare.steps[];
+    .id == "set-job-ref" and
+    (.run | contains("echo \"job-ref=staging\"")) and
+    (.run | contains("echo \"runner-image-job-ref=staging-${SHORT_SHA}\""))
+  )
+' <<<"$turbo_workflow_json" >/dev/null || fail "main runner image directories must remain commit-specific"
+
+jq -e '
+  .jobs["deploy-runner-start"].steps[] |
+  select(.id == "start") as $start |
+  $start.env.RUNNER_SERVICE_REF ==
+    "${{ github.event_name == '\''push'\'' && '\''playwright-staging'\'' || needs.prepare.outputs.job-ref }}" and
+  $start.env.RUNNER_GROUP ==
+    "${{ github.event_name == '\''push'\'' && '\''vm0/playwright-staging'\'' || format('\''vm0/development-{0}'\'', needs.prepare.outputs.job-ref) }}" and
+  $start.env.RUNNER_DIR ==
+    "${{ needs.deploy-runner-prepare.outputs.runner-dir }}" and
+  ($start.run | contains("local RUNNER_NAME=\"${RUNNER_SERVICE_REF}-${HOST_INDEX}\"")) and
+  ($start.run | contains("local RUNNER_DIRNAME=\"${RUNNER_DIR##*/}\"")) and
+  ($start.run | contains("--runner-dirname ${RUNNER_DIRNAME}")) and
+  ($start.run | contains("sudo rm -f ${RUNNER_DIR}/status.json")) and
+  ($start.run | contains("--config ${RUNNER_DIR}/runner.yaml"))
+' <<<"$turbo_workflow_json" >/dev/null || fail "Playwright service identity and manifest runner directory must remain independent"
 
 jq -e '
   .jobs.prepare.outputs["playwright-runner-consumer-needed"] ==
