@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.150.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.150.6...runner-rs-v0.150.7) (2026-07-31)
+
+
+### Bug Fixes
+
+* **mitm-addon:** support multi-member gzip billing bodies ([#24278](https://github.com/vm0-ai/vm0/issues/24278)) ([5d63984](https://github.com/vm0-ai/vm0/commit/5d639845e10a7fbfd2dfe7da9af5adc18745e101))
+
 ## [0.150.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.150.5...runner-rs-v0.150.6) (2026-07-31)
 
 
