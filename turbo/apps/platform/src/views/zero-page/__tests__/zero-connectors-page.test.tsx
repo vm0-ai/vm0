@@ -57,13 +57,6 @@ import { customConnectorCreateForm$ } from "../../../signals/zero-page/settings/
 
 const context = testContext();
 const resetAfterManualGrantConnectSignal$ = resetSignal();
-const { get$: hiddenConnectorSlugs$ } = localStorageSignals(
-  "vm0.connections.hiddenConnectorSlugs",
-);
-const {
-  get$: legacyHiddenConnectorSlugs$,
-  set$: setLegacyHiddenConnectorSlugs$,
-} = localStorageSignals("vm0.connections.hiddenTypes");
 const { get$: connectorAppOauthCallbackMetadata$ } = localStorageSignals(
   CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY,
 );
@@ -528,21 +521,6 @@ async function expectConnectorCardsVisible(expected: {
 }
 
 describe("connectors page", () => {
-  it("migrates legacy hidden connector storage to the canonical key", async () => {
-    const hiddenConnectorSlugs = JSON.stringify(["github"]);
-    context.store.set(setLegacyHiddenConnectorSlugs$, hiddenConnectorSlugs);
-
-    detachedSetupPage({ context, path: "/connectors" });
-
-    await screen.findByPlaceholderText("Find connectors");
-    await waitFor(() => {
-      expect(context.store.get(hiddenConnectorSlugs$)).toBe(
-        hiddenConnectorSlugs,
-      );
-      expect(context.store.get(legacyHiddenConnectorSlugs$)).toBeNull();
-    });
-  });
-
   it("syncs the active connector tab with the URL query", async () => {
     mockCustomConnectorStory();
 
