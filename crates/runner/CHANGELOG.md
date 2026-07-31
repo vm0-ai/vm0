@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.150.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.150.2...runner-rs-v0.150.3) (2026-07-31)
+
+
+### Refactoring
+
+* **observability:** remove legacy connector debug dimensions ([#24137](https://github.com/vm0-ai/vm0/issues/24137)) ([77c077f](https://github.com/vm0-ai/vm0/commit/77c077f8d2e514ad1c2611d742700c3c5a5b2ae6))
+
 ## [0.150.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.150.1...runner-rs-v0.150.2) (2026-07-30)
 
 ## [0.150.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.150.0...runner-rs-v0.150.1) (2026-07-30)

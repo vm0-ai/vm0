@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.668.0](https://github.com/vm0-ai/vm0/compare/app-v0.667.1...app-v0.668.0) (2026-07-31)
+
+
+### Features
+
+* source thread browser state from chat events ([#23854](https://github.com/vm0-ai/vm0/issues/23854)) ([34def5b](https://github.com/vm0-ai/vm0/commit/34def5bba28b1a9f639fcbc872d7e22ad823a902))
+
+
+### Refactoring
+
+* **observability:** remove legacy connector debug dimensions ([#24137](https://github.com/vm0-ai/vm0/issues/24137)) ([77c077f](https://github.com/vm0-ai/vm0/commit/77c077f8d2e514ad1c2611d742700c3c5a5b2ae6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.257.0
+    * @vm0/core bumped to 8.496.2
+
 ## [0.667.1](https://github.com/vm0-ai/vm0/compare/app-v0.667.0...app-v0.667.1) (2026-07-31)
 
 

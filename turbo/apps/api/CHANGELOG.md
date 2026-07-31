@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.357.0](https://github.com/vm0-ai/vm0/compare/api-v1.356.2...api-v1.357.0) (2026-07-31)
+
+
+### Features
+
+* source thread browser state from chat events ([#23854](https://github.com/vm0-ai/vm0/issues/23854)) ([34def5b](https://github.com/vm0-ai/vm0/commit/34def5bba28b1a9f639fcbc872d7e22ad823a902))
+
+
+### Refactoring
+
+* **api:** remove legacy axiom output bridge ([#24147](https://github.com/vm0-ai/vm0/issues/24147)) ([b22b99d](https://github.com/vm0-ai/vm0/commit/b22b99de3829464873a309e3f17132a43a30aca5))
+* **connectors:** remove legacy authorization state reader ([#24135](https://github.com/vm0-ai/vm0/issues/24135)) ([2924137](https://github.com/vm0-ai/vm0/commit/2924137d49442af25a73d19f8526d4ca968f0bfc))
+* **observability:** remove legacy connector debug dimensions ([#24137](https://github.com/vm0-ai/vm0/issues/24137)) ([77c077f](https://github.com/vm0-ai/vm0/commit/77c077f8d2e514ad1c2611d742700c3c5a5b2ae6))
+
+
+### Performance Improvements
+
+* **api:** incrementally project model statistics ([#24139](https://github.com/vm0-ai/vm0/issues/24139)) ([50ee908](https://github.com/vm0-ai/vm0/commit/50ee90878c70cb7fd1b99cb909a291ab9fd9c7e0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.257.0
+    * @vm0/core bumped to 8.496.2
+    * @vm0/db bumped to 1.158.0
+
 ## [1.356.2](https://github.com/vm0-ai/vm0/compare/api-v1.356.1...api-v1.356.2) (2026-07-31)
 
 
