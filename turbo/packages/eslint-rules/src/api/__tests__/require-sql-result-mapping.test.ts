@@ -94,6 +94,69 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
     {
       code: `${drizzlePreamble}
         import { sql } from "drizzle-orm";
+        const nameDecoder = users.name;
+        const chainedDecoder = nameDecoder;
+        db.select({
+          value: sql\`upper(\${users.name})\`.mapWith(chainedDecoder),
+        });
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        import { z } from "zod";
+        import {
+          pgTextDecoder,
+          pgTextDecoder as textDecoder,
+          zodDriverValueDecoder as makeDecoder,
+        } from "../../apps/api/src/lib/db-structured-result";
+        import * as structuredResult from
+          "../../apps/api/src/lib/db-structured-result";
+
+        const directAlias = textDecoder;
+        const chainedAlias = directAlias;
+        const parsedDecoder = makeDecoder(z.string());
+        const enumDecoder = structuredResult.zodEnumDriverValueDecoder(
+          z.enum(["left", "right"]),
+        );
+        const nullableDecoder = structuredResult.nullableDriverValueDecoder(
+          chainedAlias,
+        );
+        const parsedSql = sql\`'value'\`.mapWith(parsedDecoder);
+        const inlineFactorySql = sql\`'value'\`.mapWith(
+          makeDecoder(z.string()),
+        );
+        db.select({
+          direct: sql\`'value'\`.mapWith(pgTextDecoder),
+          importedAlias: sql\`'value'\`.mapWith(textDecoder),
+          aliased: sql\`'value'\`.mapWith(chainedAlias),
+          namespace: sql\`'value'\`.mapWith(
+            structuredResult.pgTextDecoder,
+          ),
+          enumValue: sql\`'left'\`.mapWith(enumDecoder),
+          nullableValue: sql\`NULL::text\`.mapWith(nullableDecoder),
+          inlineNullable: sql\`NULL::text\`.mapWith(
+            structuredResult.nullableDriverValueDecoder(textDecoder),
+          ),
+        });
+        void parsedSql;
+        void inlineFactorySql;
+      `,
+    },
+    {
+      code: `
+        class LocalSql {
+          mapWith<T>(decoder: (value: unknown) => T): T {
+            return decoder("value");
+          }
+        }
+        const local = new LocalSql();
+        void local.mapWith(String);
+      `,
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
         db.select({
           get value() {
             return sql\`upper(\${users.name})\`.mapWith(users.name);
@@ -194,17 +257,6 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
         db.select(messageColumns);
         db.select({ nested: messageColumns });
         db.select({ ...messageColumns });
-      `,
-    },
-    {
-      code: `${drizzlePreamble}
-        import { sql, type DriverValueDecoder } from "drizzle-orm";
-        declare const nullableTextDecoder:
-          DriverValueDecoder<string | null, unknown>;
-        db.select({
-          nullableValue: sql\`NULLIF(\${users.name}, '')\`
-            .mapWith(nullableTextDecoder),
-        });
       `,
     },
     {
@@ -412,15 +464,6 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
     },
     {
       code: `${drizzlePreamble}
-        import { sql } from "drizzle-orm";
-        function mapped<T>(value: T) {
-          return sql\`upper(\${users.name})\`.mapWith(() => value);
-        }
-        db.select({ value: mapped<string>("value") });
-      `,
-    },
-    {
-      code: `${drizzlePreamble}
         import { SQL } from "drizzle-orm";
         class MetadataSql<T> extends SQL {
           constructor(readonly metadata: T) {
@@ -429,21 +472,6 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
         }
         const predicate = new MetadataSql<string>("metadata");
         await db.select().from(users).where(predicate);
-      `,
-    },
-    {
-      code: `${drizzlePreamble}
-        import { SQL } from "drizzle-orm";
-        class TypedSql extends SQL {
-          override _: { brand: "SQL"; type: string } = {
-            brand: "SQL",
-            type: "",
-          };
-        }
-        const predicate = new TypedSql([]);
-        const mapped = new TypedSql([]).mapWith(String);
-        await db.select().from(users).where(predicate);
-        db.select({ value: mapped });
       `,
     },
     {
@@ -481,6 +509,199 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
     },
   ],
   invalid: [
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select({
+          numberValue: sql\`1::numeric\`.mapWith(Number),
+          stringValue: sql\`'value'\`.mapWith(String),
+          booleanValue: sql\`TRUE\`.mapWith(Boolean),
+        });
+      `,
+      errors: [
+        { messageId: "uninspectableResultDecoder" },
+        { messageId: "uninspectableResultDecoder" },
+        { messageId: "uninspectableResultDecoder" },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        db.select({
+          arrow: sql\`'value'\`.mapWith((value: unknown) => String(value)),
+          expression: sql\`'value'\`.mapWith(function decode(
+            value: unknown,
+          ): string {
+            return String(value);
+          }),
+        });
+      `,
+      errors: [
+        { messageId: "uninspectableResultDecoder" },
+        { messageId: "uninspectableResultDecoder" },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql, type DriverValueDecoder } from "drizzle-orm";
+        declare const opaqueDecoder:
+          DriverValueDecoder<string | null, unknown>;
+        db.select({
+          value: sql\`NULL::text\`.mapWith(opaqueDecoder),
+        });
+      `,
+      errors: [{ messageId: "uninspectableResultDecoder" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        import { z } from "zod";
+        import {
+          pgTextDecoder,
+          zodDriverValueDecoder,
+        } from "../../apps/api/src/lib/db-structured-result";
+        let mutableDecoder = pgTextDecoder;
+        let mutableFactory = zodDriverValueDecoder;
+        db.select({
+          decoder: sql\`'value'\`.mapWith(mutableDecoder),
+        });
+        void sql\`'value'\`.mapWith(mutableFactory(z.string()));
+      `,
+      errors: [
+        { messageId: "uninspectableResultDecoder" },
+        { messageId: "uninspectableResultDecoder" },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql, type DriverValueDecoder } from "drizzle-orm";
+        import { pgTextDecoder } from
+          "../../apps/api/src/lib/db-structured-result";
+        const asserted = pgTextDecoder as
+          DriverValueDecoder<string, unknown>;
+        const hiddenAssertion = asserted;
+        db.select({
+          hidden: sql\`'value'\`.mapWith(hiddenAssertion),
+          direct: sql\`'value'\`.mapWith(
+            pgTextDecoder as DriverValueDecoder<string, unknown>,
+          ),
+          nonNull: sql\`'value'\`.mapWith(pgTextDecoder!),
+        });
+      `,
+      errors: [
+        { messageId: "uninspectableResultDecoder" },
+        { messageId: "uninspectableResultDecoder" },
+        { messageId: "uninspectableResultDecoder" },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const assertedContainer = {} as {
+          readonly decoder: typeof users.name;
+        };
+        const assertedTable = {} as typeof users;
+        db.select({
+          value: sql\`'value'\`.mapWith(assertedContainer.decoder),
+          tableValue: sql\`'value'\`.mapWith(assertedTable.name),
+        });
+      `,
+      errors: [
+        { messageId: "uninspectableResultDecoder" },
+        { messageId: "uninspectableResultDecoder" },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql, type DriverValueDecoder } from "drizzle-orm";
+        const first: DriverValueDecoder<string, unknown> = second;
+        const second: DriverValueDecoder<string, unknown> = first;
+        db.select({ value: sql\`'value'\`.mapWith(first) });
+      `,
+      errors: [{ messageId: "uninspectableResultDecoder" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql, type DriverValueDecoder } from "drizzle-orm";
+        import { pgTextDecoder } from
+          "../../apps/api/src/lib/db-structured-result";
+        function zodDriverValueDecoder():
+          DriverValueDecoder<string, unknown> {
+          return {
+            mapFromDriverValue(value: unknown): string {
+              return String(value);
+            },
+          };
+        }
+        function nullableDriverValueDecoder(
+          decoder: DriverValueDecoder<string, unknown>,
+        ): DriverValueDecoder<string | null, unknown> {
+          return decoder;
+        }
+        db.select({
+          fakeZod: sql\`'value'\`.mapWith(zodDriverValueDecoder()),
+          fakeNullable: sql\`NULL::text\`.mapWith(
+            nullableDriverValueDecoder(pgTextDecoder),
+          ),
+        });
+      `,
+      errors: [
+        { messageId: "uninspectableResultDecoder" },
+        { messageId: "uninspectableResultDecoder" },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql, type DriverValueDecoder } from "drizzle-orm";
+        import { nullableDriverValueDecoder } from
+          "../../apps/api/src/lib/db-structured-result";
+        declare const opaqueDecoder: DriverValueDecoder<string, unknown>;
+        db.select({
+          value: sql\`NULL::text\`.mapWith(
+            nullableDriverValueDecoder(opaqueDecoder),
+          ),
+        });
+      `,
+      errors: [{ messageId: "uninspectableResultDecoder" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        declare const decoders: readonly [typeof users.name];
+        sql\`'value'\`.mapWith(...decoders);
+        sql\`'value'\`.mapWith();
+      `,
+      errors: [
+        { messageId: "uninspectableResultDecoder" },
+        { messageId: "uninspectableResultDecoder" },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        function mapped<T>(value: T) {
+          return sql\`upper(\${users.name})\`.mapWith(() => value);
+        }
+        db.select({ value: mapped<string>("value") });
+      `,
+      errors: [{ messageId: "uninspectableResultDecoder" }],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { SQL } from "drizzle-orm";
+        class TypedSql extends SQL {
+          override _: { brand: "SQL"; type: string } = {
+            brand: "SQL",
+            type: "",
+          };
+        }
+        const predicate = new TypedSql([]);
+        const mapped = new TypedSql([]).mapWith(String);
+        await db.select().from(users).where(predicate);
+        db.select({ value: mapped });
+      `,
+      errors: [{ messageId: "uninspectableResultDecoder" }],
+    },
     {
       code: `${drizzlePreamble}
         import { sql } from "drizzle-orm";
