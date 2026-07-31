@@ -43,10 +43,10 @@
 //! in-flight creations, and existing teardowns. Successful late creations
 //! remain pool-owned and enter the cleanup teardown queue.
 //!
-//! Shutdown is acknowledged only after every pool-owned slot's explicit
-//! [`destroy_prepared_slot_async`] task has finished. Finalization can preserve
-//! backing files when the NBD device lifecycle cannot prove that deletion is
-//! safe.
+//! Cleanup acknowledges shutdown only after pending creations have drained and
+//! all ready, late, and already-running [`destroy_prepared_slot_async`] teardown
+//! work has finished. Finalization can preserve backing files when the NBD
+//! device lifecycle cannot prove that deletion is safe.
 
 mod actor;
 mod create;
