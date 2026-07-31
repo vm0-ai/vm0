@@ -69,9 +69,9 @@ export function chatEventTerminalPredicate(eventType: SQLWrapper): SQL {
  * idempotent, lock-free inserts from both the event consumer and the callback's
  * final sweep.
  *
- * Terminal-state assistant rows carry `run_lifecycle_event` set to one of
- * `completed | failed | cancelled`. Exactly one such row exists per `run_id`;
- * the indicator and dim finish line are derived from this row.
+ * Terminal-state assistant rows use the `run.completed | run.failed |
+ * run.cancelled` event types. The legacy `run_lifecycle_event` column remains
+ * during rollout step 3, but new writers leave it null.
  *
  * Summaries (tool-use activity) are NOT stored here — the client fetches
  * them in real-time from the telemetry/logs endpoint for active runs.
@@ -128,7 +128,7 @@ export const chatEvents = pgTable(
     userMessage: jsonb("user_message").$type<ChatEventUserMessage>(),
     thinking: text("thinking"),
     error: text("error"),
-    /** "completed" | "failed" | "cancelled"; null for non-terminal rows. */
+    /** Legacy terminal marker retained through rollout step 3. */
     runLifecycleEvent: text("run_lifecycle_event"),
     sequenceNumber: integer("sequence_number"),
     runEventId: text("run_event_id"), // Anthropic message ID from event.message.id (e.g. "msg_01abc...")

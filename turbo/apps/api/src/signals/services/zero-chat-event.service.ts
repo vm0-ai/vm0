@@ -1,10 +1,7 @@
 /** Typed append-only commands for the canonical ChatEvent stream. */
 import { randomUUID } from "node:crypto";
 
-import {
-  chatEventRunLifecycle,
-  isValidChatEventRevocation,
-} from "@vm0/api-contracts/contracts/chat-events";
+import { isValidChatEventRevocation } from "@vm0/api-contracts/contracts/chat-events";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
@@ -293,7 +290,10 @@ interface ChatEventBatchCommandResult {
 type InsertChatEventConflict = "none" | "any" | "id" | "run-lifecycle";
 type InsertChatEventsConflict = "any" | "run-sequence";
 
-type PersistedChatEvent = Omit<ChatEventInsert, "role" | "seqId">;
+type PersistedChatEvent = Omit<
+  ChatEventInsert,
+  "role" | "runLifecycleEvent" | "seqId"
+>;
 
 type ChatEventContextPointer = Pick<
   ChatEventInsert,
@@ -631,7 +631,6 @@ function persistedChatEventValues(
     Pick<ChatEventInsert, "id" | "contextType" | "contextId">
   >,
 ): PersistedChatEvent {
-  const runLifecycleEvent = chatEventRunLifecycle(values.eventType);
   const { goalBrief: _goalBrief, ...persistedValues } = {
     goalBrief: undefined,
     ...values,
@@ -646,7 +645,6 @@ function persistedChatEventValues(
       ? { content: null }
       : {}),
     eventType: values.eventType,
-    ...(runLifecycleEvent === null ? {} : { runLifecycleEvent }),
   };
 }
 
