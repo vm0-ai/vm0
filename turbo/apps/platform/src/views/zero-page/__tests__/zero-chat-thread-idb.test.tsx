@@ -1,4 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   chatThreadArtifactsContract,
@@ -22,7 +23,7 @@ import {
   openChatIdb,
 } from "../../../signals/external/chat-idb-store.ts";
 import { CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY } from "../../../signals/chat-page/chat-thread-sidebar-layout.ts";
-import { PLACEHOLDER } from "./chat-test-helpers.ts";
+import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 vi.mock("idb", async () => {
   return await vi.importActual<typeof import("idb")>("idb-real");
@@ -33,6 +34,8 @@ const context = testContext();
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000001";
 const THREAD_TITLE = "GEO pricing research";
+const OTHER_THREAD_ID = "b0000000-0000-4000-a000-000000000002";
+const OTHER_THREAD_TITLE = "Other pricing research";
 const USER_MESSAGE = "Summarize the launch plan";
 const ASSISTANT_MESSAGE = "Here is the result";
 const IDB_USER_ID = "zero-chat-thread-idb-user";
@@ -85,6 +88,14 @@ function chatScrollContainer(): HTMLElement {
     throw new Error("Chat scroll container not found");
   }
   return container;
+}
+
+async function findThreadLink(title: string): Promise<HTMLAnchorElement> {
+  const link = (await screen.findByText(title)).closest("a");
+  if (!(link instanceof HTMLAnchorElement)) {
+    throw new Error(`Thread link not found: ${title}`);
+  }
+  return link;
 }
 
 async function primeRuntimeChatDb(): Promise<
@@ -282,34 +293,96 @@ describe("zero chat thread IndexedDB fallback", () => {
   });
 
   it("scrolls cached messages to the bottom while remote catch-up is blocked", async () => {
+    const user = userEvent.setup({ delay: null });
     prepareDefaultAgent();
-    mockCurrentThreadDetail();
-    mockSidebarThread();
     installChatScrollLayout();
 
     const runtimeDb = await primeRuntimeChatDb();
-    for (let index = 0; index < 8; index++) {
-      await runtimeDb.put(CHAT_MESSAGES_STORE, {
-        id: `cached-scroll-message-${index}`,
-        threadId: THREAD_ID,
-        eventType: "output.message",
-        content: `Cached scroll message ${index}`,
-        runId: `cached-scroll-run-${index}`,
-        seqId: index + 1,
-        createdAt: new Date(Date.UTC(2026, 2, 10, 0, index)).toISOString(),
-      });
-    }
-
+    const initialCatchUpCompleted = context.mocks.deferred<void>();
     const catchUpRequested = context.mocks.deferred<void>();
     const releaseCatchUp = context.mocks.deferred<void>();
-    context.mocks.api(chatThreadEventsContract.list, async ({ respond }) => {
-      catchUpRequested.resolve();
-      await releaseCatchUp.promise;
-      return respond(200, { events: [] });
+    let blockCurrentCatchUp = false;
+    const lifecycle = mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      threadTitle: THREAD_TITLE,
     });
+    lifecycle.setThreadList([
+      {
+        id: THREAD_ID,
+        title: THREAD_TITLE,
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:01:00Z",
+      },
+      {
+        id: OTHER_THREAD_ID,
+        title: OTHER_THREAD_TITLE,
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      },
+    ]);
+    context.mocks.api(
+      chatThreadEventsContract.list,
+      async ({ params, query, respond }) => {
+        if (params.threadId === THREAD_ID) {
+          if (blockCurrentCatchUp) {
+            catchUpRequested.resolve();
+            await releaseCatchUp.promise;
+            return respond(200, { events: [] });
+          }
+          if (query.sinceSeqId || query.sinceId) {
+            initialCatchUpCompleted.resolve();
+            return respond(200, { events: [] });
+          }
+          return respond(200, {
+            events: Array.from({ length: 8 }, (_, index) => {
+              return {
+                id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+                threadId: THREAD_ID,
+                eventType: "output.message" as const,
+                content: `Cached scroll message ${index}`,
+                runId: `cached-scroll-run-${index}`,
+                seqId: index + 1,
+                createdAt: new Date(
+                  Date.UTC(2026, 2, 10, 0, index),
+                ).toISOString(),
+              };
+            }),
+          });
+        }
+        if (query.sinceSeqId || query.sinceId) {
+          return respond(200, { events: [] });
+        }
+        return respond(200, {
+          events: [
+            {
+              id: "00000000-0000-4000-8000-000000000009",
+              threadId: OTHER_THREAD_ID,
+              eventType: "output.message" as const,
+              content: "Other cached-scroll thread",
+              seqId: 1,
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+          ],
+        });
+      },
+    );
 
     try {
       setupChatPage();
+      await initialCatchUpCompleted.promise;
+      await expect(
+        screen.findByText("Cached scroll message 7"),
+      ).resolves.toBeInTheDocument();
+
+      await user.click(await findThreadLink(OTHER_THREAD_TITLE));
+      await expect(
+        screen.findByText("Other cached-scroll thread"),
+      ).resolves.toBeInTheDocument();
+
+      blockCurrentCatchUp = true;
+      await user.click(await findThreadLink(THREAD_TITLE));
       await catchUpRequested.promise;
       await expect(
         screen.findByText("Cached scroll message 7"),
