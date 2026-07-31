@@ -1,6 +1,7 @@
 import { command, computed } from "ccstate";
 
 import {
+  artifactSidebarInlineOpenEnabled$,
   chatThreadSidebarAutoOpenEnabled$,
   zeroBrowserEnabled$,
 } from "../external/feature-switch.ts";
@@ -256,6 +257,9 @@ export const openThreadArtifactSplitView$ = command(
  */
 export const openArtifactInOpenSidebar$ = command(
   ({ get, set }, url: string): boolean => {
+    if (!get(artifactSidebarInlineOpenEnabled$)) {
+      return false;
+    }
     const active = get(activeThreadSidebar$);
     if (
       active?.target.type !== "artifacts" &&

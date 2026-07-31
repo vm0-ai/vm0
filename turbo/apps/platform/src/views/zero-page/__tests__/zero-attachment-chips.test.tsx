@@ -12,6 +12,7 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { initializeI18n } from "../../../i18n/index.ts";
@@ -41,6 +42,7 @@ function artifactFile(
 
 function setupHostedSiteArtifactPreview({
   artifactUrl,
+  featureSwitches,
   filename,
   html,
   htmlUrl,
@@ -50,6 +52,7 @@ function setupHostedSiteArtifactPreview({
   runId,
 }: {
   artifactUrl?: string;
+  featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   filename: string;
   html?: string;
   htmlUrl: string;
@@ -109,6 +112,7 @@ function setupHostedSiteArtifactPreview({
   detachedSetupPage({
     context,
     path,
+    ...(featureSwitches ? { featureSwitches } : {}),
   });
 }
 
@@ -2136,9 +2140,50 @@ describe("zero attachment chips", () => {
     });
   });
 
+  it("opens only the dialog download menu when the same artifact is in split view", async () => {
+    const user = userEvent.setup({ delay: null });
+    setupHostedSiteArtifactPreview({
+      filename: "split-dialog-download.html",
+      htmlUrl: "https://split-dialog-download.sites.vm7.io",
+      label: "Split dialog download",
+      runId: "run-split-dialog-download",
+    });
+
+    await user.click(
+      await screen.findByLabelText(
+        "Open html preview for Split dialog download",
+      ),
+    );
+    await user.click(await screen.findByLabelText("Open in split view"));
+
+    const sidebar = await screen.findByTestId("artifact-sidebar");
+    await user.click(
+      await screen.findByLabelText(
+        "Open html preview for Split dialog download",
+      ),
+    );
+    const lightbox = await screen.findByTestId("attachment-lightbox");
+    const sidebarDownload = within(sidebar).getByLabelText("Download artifact");
+    const dialogDownload = within(lightbox).getByLabelText("Download options");
+
+    await user.click(dialogDownload);
+
+    await waitFor(() => {
+      expect(dialogDownload).toHaveAttribute("aria-expanded", "true");
+      expect(sidebarDownload).toHaveAttribute("aria-expanded", "false");
+      expect(screen.getAllByRole("menu")).toHaveLength(1);
+      expect(
+        screen.getAllByTestId("artifact-download-menu-dismiss-layer"),
+      ).toHaveLength(1);
+    });
+  });
+
   it("reopens the artifact already in split view without stacking a dialog", async () => {
     const user = userEvent.setup({ delay: null });
     setupHostedSiteArtifactPreview({
+      featureSwitches: {
+        [FeatureSwitchKey.ArtifactSidebarInlineOpen]: true,
+      },
       filename: "split-dialog-download.html",
       htmlUrl: "https://split-dialog-download.sites.vm7.io",
       label: "Split dialog download",
@@ -2194,7 +2239,13 @@ describe("zero attachment chips", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ArtifactSidebarInlineOpen]: true,
+      },
+    });
 
     await user.click(await screen.findByLabelText("Preview demo.mp4"));
     await user.click(await screen.findByLabelText("Open in split view"));

@@ -90,6 +90,7 @@ export enum FeatureSwitchKey {
   ComposerConnectorPermissions = "composerConnectorPermissions",
   ThreeColumnNav = "threeColumnNav",
   ChatThreadSidebarAutoOpen = "chatThreadSidebarAutoOpen",
+  ArtifactSidebarInlineOpen = "artifactSidebarInlineOpen",
   CustomConnectorCliCreate = "customConnectorCliCreate",
   CustomConnectorOAuth2 = "customConnectorOAuth2",
 }
