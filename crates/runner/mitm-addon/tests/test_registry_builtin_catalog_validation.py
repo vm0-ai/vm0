@@ -8,7 +8,11 @@ import pytest
 import builtin_connector_diagnostics
 import builtin_firewall_cache
 import registry
-from tests.registry_builtin_helpers import cache_firewall, write_catalog_cache
+from tests.registry_builtin_helpers import (
+    cache_firewall,
+    write_catalog_cache,
+    write_registry_with_cache,
+)
 from tests.registry_helpers import (
     assert_invalid_builtin_vm,
     builtin_vm,
@@ -352,19 +356,12 @@ class TestRegistryBuiltinCatalogValidation:
     def test_reserved_permission_runner_catalog_cache_fails_closed(
         self, tmp_path, mitm_ctx, permission_name
     ):
-        registry_path = tmp_path / "registry.json"
-        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
         firewall = cache_firewall("fallback", "https://cache.example.com")
         firewall["apis"][0]["permissions"][0]["name"] = permission_name
-        write_catalog_cache(
-            cache_path,
-            digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-            version="catalog-a",
-            firewalls={"fallback": firewall},
-        )
-        write_multi_vm_registry(
-            registry_path,
+        registry_path, cache_path = write_registry_with_cache(
+            tmp_path,
             {"10.200.0.1": builtin_vm("run-fallback", "fallback")},
+            firewalls={"fallback": firewall},
         )
 
         with mitm_ctx(
