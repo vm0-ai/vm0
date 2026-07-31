@@ -161,6 +161,7 @@ jobs:
       image: ghcr.io/vm0-ai/vm0-toolchain:20260622
     outputs:
       job-ref: ${{ steps.set-job-ref.outputs.job-ref }}
+      runner-image-job-ref: ${{ steps.set-job-ref.outputs.runner-image-job-ref }}
       app-preview-url: ${{ steps.preview-urls.outputs.app-url }}
       api-preview-url: ${{ steps.preview-urls.outputs.api-url }}
       api-changed: ${{ steps.detect.outputs.api-changed }}
@@ -172,6 +173,7 @@ jobs:
       ci-changed: ${{ steps.detect.outputs.ci-changed }}
       e2e-changed: ${{ steps.detect.outputs.e2e-changed }}
       turbo-runner-consumer-needed: ${{ steps.runner-e2e.outputs.turbo-runner-consumer-needed }}
+      playwright-runner-consumer-needed: ${{ steps.playwright-runner.outputs.playwright-runner-consumer-needed }}
       base-ref: ${{ steps.detect.outputs.base-ref }}
     steps:
       - uses: actions/checkout@v7.0.1
@@ -272,6 +274,16 @@ jobs:
           E2E_CHANGED: ${{ steps.detect.outputs.e2e-changed }}
         run: .github/scripts/runner-image-context.sh turbo-consumer
 
+      - name: Select Playwright runner consumer
+        id: playwright-runner
+        env:
+          API_CHANGED: ${{ steps.detect.outputs.api-changed }}
+          PLATFORM_CHANGED: ${{ steps.detect.outputs.platform-changed }}
+          CLI_CHANGED: ${{ steps.detect.outputs.cli-changed }}
+          CI_CHANGED: ${{ steps.detect.outputs.ci-changed }}
+          E2E_CHANGED: ${{ steps.detect.outputs.e2e-changed }}
+        run: .github/scripts/runner-image-context.sh playwright-consumer
+
       - name: Set job-ref
         id: set-job-ref
         env:
@@ -301,19 +313,23 @@ jobs:
               exit 0
             fi
             echo "job-ref=pr-${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+            echo "runner-image-job-ref=pr-${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
             echo "Job ref set to: pr-${{ github.event.pull_request.number }}"
           elif [ "${{ github.event_name }}" = "merge_group" ]; then
             MQ_REF="${{ github.event.merge_group.head_ref }}"
             PR_NUM=$(echo "$MQ_REF" | grep -oE 'pr-[0-9]+' | head -1 | sed 's/pr-//')
             if [ -n "$PR_NUM" ]; then
               echo "job-ref=pr-${PR_NUM}" >> "$GITHUB_OUTPUT"
+              echo "runner-image-job-ref=pr-${PR_NUM}" >> "$GITHUB_OUTPUT"
               echo "Job ref set to: pr-${PR_NUM}"
             else
               echo "::error::Failed to extract PR number from merge_group head_ref: $MQ_REF"
               exit 1
             fi
           else
+            SHORT_SHA=$(printf '%s' "$GITHUB_SHA" | cut -c1-12)
             echo "job-ref=staging" >> "$GITHUB_OUTPUT"
+            echo "runner-image-job-ref=staging-${SHORT_SHA}" >> "$GITHUB_OUTPUT"
             echo "Job ref set to: staging"
           fi
 
@@ -1822,6 +1838,7 @@ jobs:
       - deploy-api
       - deploy-app
       - deploy-stripe-listener
+      - deploy-runner-start
     if: |
       always() &&
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
@@ -1834,7 +1851,14 @@ jobs:
       ) &&
       needs.deploy-api.result == 'success' &&
       needs.deploy-app.result == 'success' &&
-      (github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success')
+      (github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success') &&
+      (
+        (
+          needs.prepare.outputs.turbo-runner-consumer-needed != 'true' &&
+          needs.prepare.outputs.playwright-runner-consumer-needed != 'true'
+        ) ||
+        needs.deploy-runner-start.result == 'success'
+      )
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -1906,6 +1930,7 @@ jobs:
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          E2E_RUNNER_GROUP: ${{ github.event_name == 'push' && 'vm0/playwright-staging' || format('vm0/development-{0}', needs.prepare.outputs.job-ref) }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Print Stripe webhook forwarding log
         if: always() && github.event_name == 'push' && needs.prepare.outputs.job-ref != 'staging'
@@ -2136,7 +2161,6 @@ jobs:
 
   # Deploy runner prepare: wait for the shared runner-image workflow manifest.
   # The runner-image workflow owns cross-compilation and all-host image build.
-  # Skip on push to main - runner deployment is only needed for PRs
   deploy-runner-prepare:
     runs-on: ubuntu-latest
     permissions:
@@ -2150,7 +2174,10 @@ jobs:
     if: |
       needs.prepare.outputs.job-ref != '' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
-      needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
+      (
+        needs.prepare.outputs.turbo-runner-consumer-needed == 'true' ||
+        needs.prepare.outputs.playwright-runner-consumer-needed == 'true'
+      )
     outputs:
       bin-dir: ${{ steps.manifest.outputs.bin-dir }}
       runner-dir: ${{ steps.manifest.outputs.runner-dir }}
@@ -2224,7 +2251,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.sha }}
           LOOKUP_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          JOB_REF: ${{ needs.prepare.outputs.runner-image-job-ref }}
           # The helper resolves per-architecture host subsets locally and emits
           # merged hash maps for deploy-runner-start.
           AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
@@ -2248,7 +2275,10 @@ jobs:
     if: |
       needs.prepare.outputs.job-ref != '' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
-      needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
+      (
+        needs.prepare.outputs.turbo-runner-consumer-needed == 'true' ||
+        needs.prepare.outputs.playwright-runner-consumer-needed == 'true'
+      )
     steps:
       - uses: actions/checkout@v7.0.1
 
@@ -2268,7 +2298,8 @@ jobs:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          RUNNER_SERVICE_REF: ${{ github.event_name == 'push' && 'playwright-staging' || needs.prepare.outputs.job-ref }}
+          RUNNER_GROUP: ${{ github.event_name == 'push' && 'vm0/playwright-staging' || format('vm0/development-{0}', needs.prepare.outputs.job-ref) }}
           BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
           RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
           ROOTFS_HASH_MAP: ${{ needs.deploy-runner-prepare.outputs.rootfs-hash-map }}
@@ -2291,7 +2322,7 @@ jobs:
 
             local HOST=$1
             local HOST_INDEX=$2
-            local RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
+            local RUNNER_NAME="${RUNNER_SERVICE_REF}-${HOST_INDEX}"
             local REMOTE="${METAL_USER}@${HOST}"
             local MC
             echo "=== Starting runner ${RUNNER_NAME} on ${HOST} ==="
@@ -2320,8 +2351,8 @@ jobs:
               --rootfs-hash ${ROOTFS_HASH} \
               --snapshot-hash ${SNAPSHOT_HASH} \
               --name ${RUNNER_NAME} \
-              --group vm0/development-${JOB_REF} \
-              --runner-dirname ${JOB_REF} \
+              --group ${RUNNER_GROUP} \
+              --runner-dirname ${RUNNER_SERVICE_REF} \
               --concurrency-factor 1.5 \
               --api-url ${RUNNER_API_URL} \
               --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
@@ -2430,7 +2461,7 @@ jobs:
             local HOST_INDEX=0
             for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
               HOST_INDEX=$((HOST_INDEX + 1))
-              local RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
+              local RUNNER_NAME="${RUNNER_SERVICE_REF}-${HOST_INDEX}"
               local REMOTE="${METAL_USER}@${HOST}"
               echo "::warning::Requesting stop for partially started runner ${RUNNER_NAME} on ${HOST}"
               (
@@ -2496,7 +2527,7 @@ jobs:
           HOST_INDEX=0
           for HOST in $(echo "$METAL_HOSTS" | tr ',' ' '); do
             HOST_INDEX=$((HOST_INDEX + 1))
-            RUNNER_NAME="${JOB_REF}-${HOST_INDEX}"
+            RUNNER_NAME="${RUNNER_SERVICE_REF}-${HOST_INDEX}"
             if ! MC=$(read_host_capacity "$HOST" "$RUNNER_NAME"); then
               check_runner_start_exit
               FAILED=1
@@ -2859,6 +2890,11 @@ jobs:
           if [ "${{ needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed }}" = "false" ]; then
             TS_CHECK_SKIP_ALLOWED="skipped"
           fi
+          RUNNER_DEPLOY_SKIP_ALLOWED="true"
+          if [ "${{ needs.prepare.outputs.turbo-runner-consumer-needed }}" = "true" ] ||
+            [ "${{ needs.prepare.outputs.playwright-runner-consumer-needed }}" = "true" ]; then
+            RUNNER_DEPLOY_SKIP_ALLOWED=""
+          fi
           RUNNER_E2E_SKIP_ALLOWED="true"
           if [ "${{ needs.prepare.outputs.turbo-runner-consumer-needed }}" = "true" ]; then
             RUNNER_E2E_SKIP_ALLOWED=""
@@ -2867,6 +2903,7 @@ jobs:
           if [ "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}" = "true" ]; then
             # External fork PRs cannot access runner infra secrets, so their
             # runner deployment and runner E2E jobs are expected to skip.
+            RUNNER_DEPLOY_SKIP_ALLOWED="true"
             RUNNER_E2E_SKIP_ALLOWED="true"
             CF_APP_SKIP_ALLOWED="true"
           fi
@@ -2921,8 +2958,8 @@ jobs:
           check_result "cli-e2e-02-browser" "${{ needs.cli-e2e-02-browser.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
           check_result "cli-e2e-02-playwright" "${{ needs.cli-e2e-02-playwright.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
           check_result "cli-e2e-01-serial" "${{ needs.cli-e2e-01-serial.result }}" "true"
-          check_result "deploy-runner-prepare" "${{ needs.deploy-runner-prepare.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
-          check_result "deploy-runner-start" "${{ needs.deploy-runner-start.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
+          check_result "deploy-runner-prepare" "${{ needs.deploy-runner-prepare.result }}" "$RUNNER_DEPLOY_SKIP_ALLOWED"
+          check_result "deploy-runner-start" "${{ needs.deploy-runner-start.result }}" "$RUNNER_DEPLOY_SKIP_ALLOWED"
           check_result "e2e-runner-bootstrap" "${{ needs.e2e-runner-bootstrap.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           check_result "cli-e2e-03-runner" "${{ needs.cli-e2e-03-runner.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
 

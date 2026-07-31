@@ -21,7 +21,7 @@ test("send a chat message and receive an assistant response", async ({
       .getByRole("combobox", { name: "GPT 5.6 Terra", exact: true }),
   ).toBeVisible();
 
-  const prompt = "Reply with exactly: Hello from Zero. Do not use tools.";
+  const prompt = "Hello from Zero.";
   await composer.fill(prompt);
   await page.getByRole("button", { name: "Send", exact: true }).click();
 
@@ -33,8 +33,9 @@ test("send a chat message and receive an assistant response", async ({
   const assistantReply = page
     .locator('[data-role="assistant"]:not([data-thinking-indicator])')
     .locator(".zero-chat-bubble-assistant")
-    .filter({ hasText: /\S/ })
     .last();
-  await expect(assistantReply).toBeVisible({ timeout: 120_000 });
-  await expect(assistantReply).not.toContainText("Oops, something went wrong");
+  await expect(assistantReply).toHaveText(prompt, { timeout: 30_000 });
+  await expect(
+    page.getByRole("button", { name: "Send", exact: true }),
+  ).toBeVisible();
 });
