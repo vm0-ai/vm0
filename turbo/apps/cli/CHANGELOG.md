@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.272.5](https://github.com/vm0-ai/vm0/compare/cli-v9.272.4...cli-v9.272.5) (2026-07-31)
+
+
+### Refactoring
+
+* **chat:** retire automation pause events ([#24256](https://github.com/vm0-ai/vm0/issues/24256)) ([51b8186](https://github.com/vm0-ai/vm0/commit/51b81868c8779f14c8a59deac2452aee1eca2790))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.258.3
+    * @vm0/core bumped to 8.497.2
+
 ## [9.272.4](https://github.com/vm0-ai/vm0/compare/cli-v9.272.3...cli-v9.272.4) (2026-07-31)
 
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.150.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.150.5...runner-rs-v0.150.6) (2026-07-31)
+
+
+### Documentation
+
+* **rust:** correct run and sandbox identity contract ([#24250](https://github.com/vm0-ai/vm0/issues/24250)) ([49ab7e5](https://github.com/vm0-ai/vm0/commit/49ab7e5c1ef9ba45957a68a159c7ad45cffddf47))
+
+
+### Refactoring
+
+* **runner:** separate lifecycle state from signal handling ([#24255](https://github.com/vm0-ai/vm0/issues/24255)) ([df2effa](https://github.com/vm0-ai/vm0/commit/df2effa492b0a0c50430c435a4751a730ce02d17))
+
 ## [0.150.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.150.4...runner-rs-v0.150.5) (2026-07-31)
 
 
