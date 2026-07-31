@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.361.0](https://github.com/vm0-ai/vm0/compare/api-v1.360.0...api-v1.361.0) (2026-07-31)
+
+
+### Features
+
+* **mail:** enable reply follow-up and improve gmail handoff ([#24155](https://github.com/vm0-ai/vm0/issues/24155)) ([10e9949](https://github.com/vm0-ai/vm0/commit/10e9949ff98f5c50f50d5f2ec0307b80d87b4587))
+
+
+### Bug Fixes
+
+* preserve app URL through runner environment ([#24213](https://github.com/vm0-ai/vm0/issues/24213)) ([4171443](https://github.com/vm0-ai/vm0/commit/41714431c6f035a8fb551e57804d92cbb1f71954))
+
+
+### Refactoring
+
+* **api:** switch terminal event indexes ([#24305](https://github.com/vm0-ai/vm0/issues/24305)) ([31e6f39](https://github.com/vm0-ai/vm0/commit/31e6f39fa511f721f8cc3f7cf3a9ba614346f21b))
+* **browser:** remove usage compatibility paths ([#24284](https://github.com/vm0-ai/vm0/issues/24284)) ([a32baa4](https://github.com/vm0-ai/vm0/commit/a32baa495af5176df3279a32bc3d4dfa7915da61))
+* **runner:** remove cancellation recovery capability ([#24318](https://github.com/vm0-ai/vm0/issues/24318)) ([065a83d](https://github.com/vm0-ai/vm0/commit/065a83d12e68176a84fef19bfd415b32c686897d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.259.1
+    * @vm0/core bumped to 8.498.0
+    * @vm0/db bumped to 1.159.1
+
 ## [1.360.0](https://github.com/vm0-ai/vm0/compare/api-v1.359.3...api-v1.360.0) (2026-07-31)
 
 

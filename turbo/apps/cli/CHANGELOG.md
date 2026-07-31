@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.272.8](https://github.com/vm0-ai/vm0/compare/cli-v9.272.7...cli-v9.272.8) (2026-07-31)
+
+
+### Bug Fixes
+
+* preserve app URL through runner environment ([#24213](https://github.com/vm0-ai/vm0/issues/24213)) ([4171443](https://github.com/vm0-ai/vm0/commit/41714431c6f035a8fb551e57804d92cbb1f71954))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.259.1
+    * @vm0/core bumped to 8.498.0
+
 ## [9.272.7](https://github.com/vm0-ai/vm0/compare/cli-v9.272.6...cli-v9.272.7) (2026-07-31)
 
 
