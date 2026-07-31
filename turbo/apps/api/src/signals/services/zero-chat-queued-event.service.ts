@@ -175,6 +175,16 @@ export type QueueFirstRunClaimResult =
     }
   | { readonly kind: "lost" };
 
+export type QueueFirstRunAdmission =
+  | { readonly kind: "blocked" }
+  | { readonly kind: "idle" };
+
+export type QueueFirstRunSessionSnapshotState =
+  | "binding_changed"
+  | "current"
+  | "session_changed"
+  | "unvalidated";
+
 /**
  * Establish the thread-first lock order shared by every event-backed queue
  * claim, rejection, and revocation.
@@ -430,11 +440,6 @@ async function claimGoalQueueFirstRunAssociation(
   return { kind: "claimed", createdAt: claimed.createdAt };
 }
 
-/**
- * Authoritatively arbitrate a queue-first launch inside its final persistence
- * transaction. Successful launches acquire the organization admission lock
- * first; failed launches do not acquire that lock or create active state.
- */
 function queueFirstRunAdmissionBlocked(
   db: DbTransaction,
   args: { readonly apiStartTime: number; readonly threadId: string },
@@ -445,18 +450,24 @@ function queueFirstRunAdmissionBlocked(
   });
 }
 
-export async function claimQueueFirstRunAssociation(
+/**
+ * Resolve the transaction-scoped thread admission consumed by queue claim.
+ * Successful launches hold the organization admission lock; failed launches
+ * preserve their existing thread-only arbitration.
+ */
+export async function resolveQueueFirstRunAdmission(
   db: DbTransaction,
-  args: QueueFirstRunAssociation & {
+  args: {
     readonly apiStartTime: number;
-    readonly runId: string;
-    readonly timing: ApiDispatchTimingCollector;
+    readonly sessionSnapshotState: QueueFirstRunSessionSnapshotState;
     readonly threadAlreadyLocked?: true;
+    readonly threadId: string;
+    readonly timing: ApiDispatchTimingCollector;
   },
-): Promise<QueueFirstRunClaimResult> {
-  let outcome: "claimed" | "lost" | "error" = "error";
+): Promise<QueueFirstRunAdmission> {
+  let outcome: QueueFirstRunAdmission["kind"] | undefined;
   return await args.timing.measure(
-    "api_dispatch_claim_queue_first_message",
+    "api_dispatch_resolve_queue_first_admission",
     "nested",
     async () => {
       const threadExists =
@@ -469,11 +480,41 @@ export async function claimQueueFirstRunAssociation(
           },
         ));
       if (!threadExists) {
-        outcome = "lost";
-        return { kind: "lost" };
+        outcome = "blocked";
+        return { kind: "blocked" };
       }
 
       if (await queueFirstRunAdmissionBlocked(db, args)) {
+        outcome = "blocked";
+        return { kind: "blocked" };
+      }
+
+      outcome = "idle";
+      return { kind: "idle" };
+    },
+    () => {
+      return {
+        ...(outcome ? { queue_first_admission_result: outcome } : {}),
+        thread_session_snapshot_state: args.sessionSnapshotState,
+      };
+    },
+  );
+}
+
+export async function claimQueueFirstRunAssociation(
+  db: DbTransaction,
+  args: QueueFirstRunAssociation & {
+    readonly admission: QueueFirstRunAdmission;
+    readonly runId: string;
+    readonly timing: ApiDispatchTimingCollector;
+  },
+): Promise<QueueFirstRunClaimResult> {
+  let outcome: "claimed" | "lost" | "error" = "error";
+  return await args.timing.measure(
+    "api_dispatch_claim_queue_first_message",
+    "nested",
+    async () => {
+      if (args.admission.kind === "blocked") {
         outcome = "lost";
         return { kind: "lost" };
       }
