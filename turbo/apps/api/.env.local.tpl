@@ -133,33 +133,15 @@ GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL=op://Development/gmail/GMAIL_PUBSUB_PUSH
 # new-message event configurations with threadId.
 ZERO_MAIL_REPLY_FOLLOW_UP_ROLLOUT_ENABLED=false
 
-# Brazilian Portuguese has not shipped yet. Enable it in development so the
-# capable Platform client can exercise the rollout path.
+# Enable locale rollout gates in development.
 BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED=true
-ITALIAN_LOCALE_ROLLOUT_ENABLED=true
-
-# Keep disabled until every rollback-eligible API version accepts stored
-# Korean locale preferences.
-KOREAN_LOCALE_ROLLOUT_ENABLED=false
-
-# Enable Indonesian in development so the capable Platform client can exercise
-# the rollout path.
-INDONESIAN_LOCALE_ROLLOUT_ENABLED=true
-
-# German has not shipped yet. Enable it in development so the capable Platform
-# client can exercise the rollout path.
-GERMAN_LOCALE_ROLLOUT_ENABLED=true
-
-# French has not shipped yet. Enable it in development so the capable Platform
-# client can exercise the rollout path.
-FRENCH_LOCALE_ROLLOUT_ENABLED=true
-
-# Japanese has not shipped yet. Enable the deployment gate in development so
-# users can opt into the locale through the feature switch.
 JAPANESE_LOCALE_ROLLOUT_ENABLED=true
-
-# Enable Hindi in development so the capable Platform client can exercise the
-# rollout path.
+KOREAN_LOCALE_ROLLOUT_ENABLED=true
+INDONESIAN_LOCALE_ROLLOUT_ENABLED=true
+GERMAN_LOCALE_ROLLOUT_ENABLED=true
+SPANISH_LOCALE_ROLLOUT_ENABLED=true
+ITALIAN_LOCALE_ROLLOUT_ENABLED=true
+FRENCH_LOCALE_ROLLOUT_ENABLED=true
 HINDI_LOCALE_ROLLOUT_ENABLED=true
 
 # Optional: Google Ads API (developer token + login customer ID for MCC)

@@ -20,6 +20,17 @@ describe("isFeatureEnabled", () => {
       true,
     );
     expect(
+      isFeatureEnabled(FeatureSwitchKey.BrazilianPortugueseLocale, {}),
+    ).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.JapaneseLocale, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.KoreanLocale, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.IndonesianLocale, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.GermanLocale, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.SpanishLocale, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.ItalianLocale, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.FrenchLocale, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.HindiLocale, {})).toBe(true);
+    expect(
       isFeatureEnabled(FeatureSwitchKey.ComposerSkillSubstringSearch, {}),
     ).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.SlackDmSessionRouting, {})).toBe(
@@ -52,17 +63,6 @@ describe("isFeatureEnabled", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.ChatThreadSidebarAutoOpen, {}),
     ).toBe(false);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.BrazilianPortugueseLocale, {}),
-    ).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.JapaneseLocale, {})).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.KoreanLocale, {})).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.IndonesianLocale, {})).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.GermanLocale, {})).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.SpanishLocale, {})).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.ItalianLocale, {})).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.FrenchLocale, {})).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.HindiLocale, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.ZeroChatMessaging, {})).toBe(
       false,
     );
@@ -141,16 +141,16 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ZeroChatMessaging]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.LanguagePreference]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.BrazilianPortugueseLocale]).toBe(
-      false,
+      true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.JapaneseLocale]).toBe(false);
-    expect(staffOrgStates[FeatureSwitchKey.KoreanLocale]).toBe(false);
-    expect(staffOrgStates[FeatureSwitchKey.IndonesianLocale]).toBe(false);
-    expect(staffOrgStates[FeatureSwitchKey.GermanLocale]).toBe(false);
-    expect(staffOrgStates[FeatureSwitchKey.SpanishLocale]).toBe(false);
-    expect(staffOrgStates[FeatureSwitchKey.ItalianLocale]).toBe(false);
-    expect(staffOrgStates[FeatureSwitchKey.FrenchLocale]).toBe(false);
-    expect(staffOrgStates[FeatureSwitchKey.HindiLocale]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.JapaneseLocale]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.KoreanLocale]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.IndonesianLocale]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.GermanLocale]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.SpanishLocale]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ItalianLocale]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.FrenchLocale]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.HindiLocale]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
@@ -185,16 +185,16 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ZeroChatMessaging]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.LanguagePreference]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.BrazilianPortugueseLocale]).toBe(
-      false,
+      true,
     );
-    expect(otherOrgStates[FeatureSwitchKey.JapaneseLocale]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.KoreanLocale]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.IndonesianLocale]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.GermanLocale]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.SpanishLocale]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ItalianLocale]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.FrenchLocale]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.HindiLocale]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.JapaneseLocale]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.KoreanLocale]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.IndonesianLocale]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.GermanLocale]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.SpanishLocale]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.ItalianLocale]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.FrenchLocale]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.HindiLocale]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
