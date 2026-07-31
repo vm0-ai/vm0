@@ -10,7 +10,10 @@ import mitm_addon
 import response_streaming
 from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT, STREAM_BUFFER_LIMIT
 from tests.flow_helpers import response_stream
-from tests.x_flow_helpers import make_x_response_flow
+from tests.x_flow_helpers import (
+    json_body_that_exceeds_x_ndjson_work_limit,
+    make_x_response_flow,
+)
 
 _OVERSIZED_NDJSON_LINE_BYTES = LARGE_RESPONSE_DECOMPRESS_LIMIT + 1024
 
@@ -119,6 +122,58 @@ class TestNdjsonExtractor:
         assert state["data_count"] == 2
         assert state["lines_parsed"] == 2
         assert state["lines_failed"] == 1
+
+    @pytest.mark.parametrize(
+        "failed_line",
+        [
+            pytest.param(
+                b'{"data":{"id":"blocked"},"includes":{"users":[{},{},{}]},'
+                b'"matching_rules":[' + b",".join([b"0"] * 40_000) + b"]}",
+                id="dense-array",
+            ),
+            pytest.param(
+                json_body_that_exceeds_x_ndjson_work_limit(),
+                id="dense-objects",
+            ),
+        ],
+    )
+    @pytest.mark.parametrize("split_failed_row", [False, True], ids=["one-chunk", "split-row"])
+    def test_work_limited_line_forwards_and_recovers(
+        self,
+        real_flow,
+        failed_line,
+        split_failed_row,
+    ):
+        parse, state = self._stream_parser(real_flow)
+        valid_line = b'{"data":{"id":"after"},"includes":{"users":[{}]}}\n'
+        body = failed_line + b"\n" + valid_line
+        chunks = (
+            [body]
+            if not split_failed_row
+            else [body[:37], body[37 : len(failed_line) + 1], valid_line]
+        )
+
+        for chunk in chunks:
+            assert parse(chunk) == chunk
+
+        assert state["lines_failed"] == 1
+        assert state["lines_parsed"] == 1
+        assert state["data_count"] == 1
+        assert state["includes"] == {"users": 1}
+
+    def test_byte_cap_line_with_bulk_discarded_string_is_accepted(self, real_flow):
+        parse, state = self._stream_parser(real_flow)
+        prefix = b'{"data":{"id":"1"},"discarded":"'
+        suffix = b'"}'
+        line = (
+            prefix + b"x" * (LARGE_RESPONSE_DECOMPRESS_LIMIT - len(prefix) - len(suffix)) + suffix
+        )
+
+        assert len(line) == LARGE_RESPONSE_DECOMPRESS_LIMIT
+        assert parse(line + b"\n") == line + b"\n"
+        assert state["lines_failed"] == 0
+        assert state["lines_parsed"] == 1
+        assert state["data_count"] == 1
 
     def test_invalid_utf8_line_increments_failures_and_continues(self, real_flow):
         parse, state = self._stream_parser(real_flow)
