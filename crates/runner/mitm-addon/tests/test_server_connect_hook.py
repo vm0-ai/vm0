@@ -484,3 +484,44 @@ def test_server_disconnect_and_connect_error_clear_binding(tmp_path, mitm_ctx):
     assert data.server.id in upstream_destination_binding.binding_snapshot_for_tests()
     mitm_addon.server_connect_error(data)
     assert data.server.id not in upstream_destination_binding.binding_snapshot_for_tests()
+
+
+def test_client_disconnect_preserves_binding_reassociated_by_server_connect(
+    tmp_path,
+    mitm_ctx,
+):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    server = connection.Server(address=("203.0.113.10", 443))
+    first_client = connection.Client(
+        peername=("10.200.0.5", 12345),
+        sockname=("127.0.0.1", 8080),
+        sni="api.github.com",
+    )
+    second_client = connection.Client(
+        peername=("10.200.0.5", 12346),
+        sockname=("127.0.0.1", 8080),
+        sni="api.github.com",
+    )
+    first_data = _ServerConnectData(client=first_client, server=server)
+    second_data = _ServerConnectData(client=second_client, server=server)
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.server_connect(first_data)
+        mitm_addon.server_connect(second_data)
+
+    expected_original_address = ("203.0.113.10", 443)
+    assert (
+        upstream_destination_binding.server_binding_original_address(server)
+        == expected_original_address
+    )
+
+    mitm_addon.client_disconnected(first_client)
+
+    assert (
+        upstream_destination_binding.server_binding_original_address(server)
+        == expected_original_address
+    )
+
+    mitm_addon.client_disconnected(second_client)
+
+    assert not upstream_destination_binding.has_server_binding(server)
