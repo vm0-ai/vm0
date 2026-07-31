@@ -7,47 +7,12 @@
 ### Key Assumptions
 
 - **main branch is always stable** - All code merged to main has passed CI (build + tests). If your branch fails to build or pass tests, the issue is in your branch code, not main.
-- **Use dev-tunnel for local development** - Run `/dev-tunnel` to start a local server accessible by sandbox webhooks. Without this, webhooks cannot reach your local server.
+- **Use the API dev script for local development with external callbacks** - Run `cd turbo && pnpm -F api dev` to start the API server and its public tunnel.
 - **Run `pnpm -F @vm0/db db:migrate` to sync database** - After pulling new changes, run this command in the `turbo` directory to apply the latest migrations.
-- **Run `script/sync-env.sh` to sync environment variables** - If missing required environment variables, ask the user to run this script to sync `.env.local`.
+- **Run `scripts/sync-env.sh` to sync environment variables** - If missing required environment variables, ask the user to run this script to sync `.env.local`.
 - **Run `scripts/prepare.sh` when local dev or tests fail unexpectedly** - Before debugging test failures, verify your environment is set up correctly. This script checks Node.js, pnpm, PostgreSQL, syncs env files, installs dependencies, runs migrations, and seeds dev data.
 - **API endpoints live in `apps/api`** - Implement every new or changed API endpoint in `turbo/apps/api` (Hono, `apps/api/src/signals/routes/`). Frontend apps must not add API route handlers or thin proxy route handlers. Browser clients should call the canonical API service directly. When a `/api/*` path must stay reachable on a frontend origin (external webhooks or OAuth callbacks), configure it in that frontend's active deployment layer while keeping the handler in `turbo/apps/api`.
 - **Deployment compatibility matters** - Frontend, backend, and runner deploy independently and can briefly run different versions. Open browser pages can keep using already-loaded frontend code until navigation or refresh, and old runners can overlap briefly before draining existing runs and stopping. When changing APIs, runner protocols, queue payloads, or persisted state, preserve cross-version compatibility and test old/new combinations. See `docs/deployment-compatibility.md`.
-
-## Global Services Pattern
-
-### How to Use Services
-
-We use a simple global services pattern for managing singletons like database connections:
-
-```typescript
-// In any API route or server component
-import { initServices } from "../lib/init-services";
-
-export async function GET() {
-  // Initialize services at entry point (idempotent - safe to call multiple times)
-  initServices();
-  
-  // Access services directly from globalThis
-  const users = await globalThis.services.db.select().from(users);
-  const env = globalThis.services.env;
-  
-  return NextResponse.json({ users });
-}
-```
-
-### Key Points
-
-- **Always call `initServices()` at the entry point** - This ensures services are initialized
-- **Services are lazy-loaded** - Database connections are only created when first accessed
-- **No cleanup needed** - Serverless functions handle cleanup automatically
-- **Type-safe** - Full TypeScript support via global type declarations
-
-### Available Services
-
-- `globalThis.services.env` - Validated environment variables
-- `globalThis.services.db` - Drizzle database instance
-- `globalThis.services.pool` - PostgreSQL connection pool
 
 ## Architecture Design Principles
 
@@ -271,19 +236,12 @@ If tests timeout, investigate why:
 
 ### CLI E2E Timeout
 
-The `cli-e2e` jobs have a **maximum timeout** (5 minutes for serial, 8 minutes for browser and runner tests). If tests exceed this limit, GitHub Actions will **cancel** the job (not fail). **Cancelled status is NOT acceptable for merge** - treat it as a failure and investigate the cause.
+The `cli-e2e` jobs have a **maximum timeout** (10 minutes for serial, 8 minutes for browser, and 15 minutes for runner tests). If tests exceed this limit, GitHub Actions will **cancel** the job (not fail). **Cancelled status is NOT acceptable for merge** - treat it as a failure and investigate the cause.
 
 ### Merge Requirements
 
 - All required checks must show **green (passed)**
 - "Cancelled" status does **not** satisfy the requirement
-
-## Presentation Generation
-
-**Always publish with the `--artifact-kind presentation-html` flag:**
-```bash
-zero host <dir> --site <slug> --artifact-kind presentation-html
-```
 
 ## Language Standard
 
