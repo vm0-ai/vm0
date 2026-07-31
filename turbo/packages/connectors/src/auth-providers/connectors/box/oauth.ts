@@ -171,8 +171,12 @@ async function fetchBoxUserInfo(accessToken: string): Promise<BoxUserInfo> {
     })
     .parse(await response.json());
 
+  if (!data.id) {
+    throw new Error("No user id in Box user info response");
+  }
+
   return {
-    id: data.id ?? "",
+    id: data.id,
     username: data.name ?? data.login ?? null,
     email: data.login ?? null,
   };
