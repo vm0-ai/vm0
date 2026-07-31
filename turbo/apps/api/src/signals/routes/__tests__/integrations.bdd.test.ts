@@ -444,6 +444,30 @@ async function completeSlackTriggeredRun(args: {
   }
 }
 
+async function setupSlackDmSessionRouting() {
+  const actor = bdd.user();
+  bdd.acceptAgentStorageWrites();
+  runs.acceptStorageDownloads();
+  runs.acceptTelemetryIngest();
+  integrations.configureSlackAppMocks();
+  integrations.acceptSlackSessionHistoryDownloads();
+  const runnerGroup = runs.configureRunnerGroup();
+  await runs.grantProEntitlement(actor);
+  await integrations.configureSlackRunModelPolicies(actor);
+  await bdd.readOnboardingStatus(actor);
+  const slackUserId = uniqueSlackUserId();
+  const { teamId } = await integrations.installSlackWorkspace(actor, {
+    installerSlackUserId: slackUserId,
+  });
+  integrations.clearSlackCallHistory();
+  return {
+    actor,
+    runnerGroup,
+    slackUserId,
+    teamId,
+  };
+}
+
 function telegramDomainProbe() {
   return http.head("https://oauth.telegram.org/auth", () => {
     return new HttpResponse(null, {
@@ -2008,24 +2032,10 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(run2.result?.agentSessionId).toBe(webSessionId);
   });
 
-  it("forks Slack DM threads without replacing the main session", async () => {
-    const actor = bdd.user();
-    bdd.acceptAgentStorageWrites();
-    runs.acceptStorageDownloads();
-    runs.acceptTelemetryIngest();
-    integrations.configureSlackAppMocks();
-    integrations.acceptSlackSessionHistoryDownloads();
-    const runnerGroup = runs.configureRunnerGroup();
-    await runs.grantProEntitlement(actor);
-    await integrations.configureSlackRunModelPolicies(actor);
-    await bdd.readOnboardingStatus(actor);
-    const slackUserId = uniqueSlackUserId();
-    const { teamId } = await integrations.installSlackWorkspace(actor, {
-      installerSlackUserId: slackUserId,
-    });
-    integrations.clearSlackCallHistory();
-
-    const channelId = "D_BDD_SESSION_ROUTING";
+  it("continues the main Slack DM session", async () => {
+    const { runnerGroup, slackUserId, teamId } =
+      await setupSlackDmSessionRouting();
+    const channelId = "D_BDD_SESSION_CONTINUATION";
     const firstMessageTs = "2950.000100";
     await integrations.postSlackEvent(teamId, {
       type: "message",
@@ -2081,6 +2091,30 @@ describe("INT-01: Slack app deep webhook flows", () => {
         text: "Continued main Slack DM answer",
       }),
     );
+  });
+
+  it("keeps the main Slack DM session when an alternate agent runs", async () => {
+    const { actor, runnerGroup, slackUserId, teamId } =
+      await setupSlackDmSessionRouting();
+    const channelId = "D_BDD_SESSION_AGENT_SWITCH";
+    const firstMessageTs = "2951.000100";
+    await integrations.postSlackEvent(teamId, {
+      type: "message",
+      channel_type: "im",
+      user: slackUserId,
+      text: "remember the main Slack DM before switching agents",
+      ts: firstMessageTs,
+      channel: channelId,
+    });
+    const firstRunId = await pollSlackRun(runnerGroup);
+    const firstClaim = await runs.claimRunnerJob(firstRunId);
+    expect(firstClaim.resumeSession).toBeNull();
+    await completeSlackTriggeredRun({
+      runId: firstRunId,
+      sandboxToken: firstClaim.sandboxToken,
+      cliAgentType: firstClaim.cliAgentType,
+    });
+    await flushWaitUntilForTest();
 
     const alternateAgent = await bdd.createAgent(actor, {
       displayName: "BDD alternate Slack DM agent",
@@ -2098,7 +2132,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       channel_type: "im",
       user: slackUserId,
       text: "use an alternate Slack DM agent",
-      ts: "2950.000250",
+      ts: "2951.000200",
       channel: channelId,
     });
     const alternateRunId = await pollSlackRun(runnerGroup);
@@ -2123,9 +2157,47 @@ describe("INT-01: Slack app deep webhook flows", () => {
       type: "message",
       channel_type: "im",
       user: slackUserId,
+      text: "return to the main Slack DM after switching agents",
+      ts: "2951.000300",
+      channel: channelId,
+    });
+    const returnToMainRunId = await pollSlackRun(runnerGroup);
+    const returnToMainClaim = await runs.claimRunnerJob(returnToMainRunId);
+    expect(returnToMainClaim.resumeSession?.sessionId).toBe(
+      `bdd-slack-cli-${firstRunId}`,
+    );
+  });
+
+  it("forks Slack DM threads without replacing the main session", async () => {
+    const { runnerGroup, slackUserId, teamId } =
+      await setupSlackDmSessionRouting();
+    const channelId = "D_BDD_SESSION_THREAD";
+    const mainMessageTs = "2952.000100";
+    await integrations.postSlackEvent(teamId, {
+      type: "message",
+      channel_type: "im",
+      user: slackUserId,
+      text: "remember the main Slack DM before opening a thread",
+      ts: mainMessageTs,
+      channel: channelId,
+    });
+    const mainRunId = await pollSlackRun(runnerGroup);
+    const mainClaim = await runs.claimRunnerJob(mainRunId);
+    expect(mainClaim.resumeSession).toBeNull();
+    await completeSlackTriggeredRun({
+      runId: mainRunId,
+      sandboxToken: mainClaim.sandboxToken,
+      cliAgentType: mainClaim.cliAgentType,
+    });
+    await flushWaitUntilForTest();
+
+    await integrations.postSlackEvent(teamId, {
+      type: "message",
+      channel_type: "im",
+      user: slackUserId,
       text: "open a Slack DM thread",
-      ts: "2950.000300",
-      thread_ts: secondMessageTs,
+      ts: "2952.000200",
+      thread_ts: mainMessageTs,
       channel: channelId,
     });
     const threadRunId = await pollSlackRun(runnerGroup);
@@ -2143,8 +2215,8 @@ describe("INT-01: Slack app deep webhook flows", () => {
       channel_type: "im",
       user: slackUserId,
       text: "continue the Slack DM thread",
-      ts: "2950.000400",
-      thread_ts: secondMessageTs,
+      ts: "2952.000300",
+      thread_ts: mainMessageTs,
       channel: channelId,
     });
     const threadFollowUpRunId = await pollSlackRun(runnerGroup);
@@ -2164,13 +2236,13 @@ describe("INT-01: Slack app deep webhook flows", () => {
       channel_type: "im",
       user: slackUserId,
       text: "return to the main Slack DM",
-      ts: "2950.000500",
+      ts: "2952.000400",
       channel: channelId,
     });
     const returnToMainRunId = await pollSlackRun(runnerGroup);
     const returnToMainClaim = await runs.claimRunnerJob(returnToMainRunId);
     expect(returnToMainClaim.resumeSession?.sessionId).toBe(
-      `bdd-slack-cli-${secondRunId}`,
+      `bdd-slack-cli-${mainRunId}`,
     );
   });
 
