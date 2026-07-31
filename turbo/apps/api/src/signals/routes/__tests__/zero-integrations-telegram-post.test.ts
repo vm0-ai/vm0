@@ -1393,6 +1393,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       expect.objectContaining({
         eventType: "input.prompt",
         content: null,
+        annotation: { kind: "telegram" },
         userMessage: {
           version: 1,
           parts: [{ type: "text", text: firstPrompt }],

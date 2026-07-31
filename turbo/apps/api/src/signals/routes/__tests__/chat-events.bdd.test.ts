@@ -3742,6 +3742,8 @@ describe("CHAT-02: run-level model overrides", () => {
     );
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(second.runId, secondClaim.sandboxHeaders);
+    // Settle terminal materialization before simulating later retention.
+    await flushWaitUntilForTest();
     const originalBinding = await readThreadSessionBinding(
       context,
       first.threadId,
