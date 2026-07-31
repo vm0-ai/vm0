@@ -7,6 +7,10 @@ import { onTestFinished } from "vitest";
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
+import {
+  deleteUsagePricingRows,
+  seedUsagePricingRows,
+} from "../../../test-fixtures/system-config-seeds";
 import { testUsageSettlementRoutes } from "../test-usage-settlement";
 import {
   deleteUsageInsightFixture$,
@@ -51,6 +55,24 @@ describe("POST /api/test/usage-settlement/process", () => {
     const modelIdempotencyKey = randomUUID();
     const browserIdempotencyKey = randomUUID();
     const connectorIdempotencyKey = randomUUID();
+    const connectorProvider = `settlement-test-${randomUUID()}`;
+
+    await seedUsagePricingRows([
+      {
+        kind: "connector",
+        provider: connectorProvider,
+        category: "request",
+        unitPrice: 5,
+        unitSize: 1,
+      },
+    ]);
+    onTestFinished(async () => {
+      await deleteUsagePricingRows({
+        kind: "connector",
+        provider: connectorProvider,
+        categories: ["request"],
+      });
+    });
 
     await store.set(
       insertUsageEvent$,
@@ -70,8 +92,8 @@ describe("POST /api/test/usage-settlement/process", () => {
       {
         ...fixture,
         kind: "connector",
-        provider: "x",
-        category: "analytics.read",
+        provider: connectorProvider,
+        category: "request",
         quantity: 2,
         grossCredits: 97,
         idempotencyKey: connectorIdempotencyKey,
