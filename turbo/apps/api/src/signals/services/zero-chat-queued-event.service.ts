@@ -165,7 +165,6 @@ export type QueueFirstRunAssociation =
       readonly goalId: string;
       readonly orgId: string;
       readonly userId: string;
-      readonly objectiveBrief: string;
     };
 
 export type QueueFirstRunClaimResult =
@@ -423,7 +422,6 @@ async function claimGoalQueueFirstRunAssociation(
     userMessage: createUserMessageDocument({ text: args.prompt }),
     runId: args.runId,
     runGroupId: args.goalId,
-    goalSnapshot: { objectiveBrief: args.objectiveBrief },
     triggerSource: "workflow-event",
   });
   if (!claimed) {

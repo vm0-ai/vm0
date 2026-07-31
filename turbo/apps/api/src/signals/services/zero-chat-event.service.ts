@@ -8,7 +8,10 @@ import {
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
-import { chatEvents } from "@vm0/db/schema/chat-event";
+import {
+  chatEvents,
+  type ChatEventGoalSnapshot,
+} from "@vm0/db/schema/chat-event";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
 import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
 import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
@@ -47,9 +50,10 @@ type ChatEventDisplayContext =
 
 type ChatEventInputPayload = Pick<
   ChatEventInsert,
-  "attachFiles" | "generationTemplate" | "goalSnapshot"
+  "attachFiles" | "generationTemplate"
 > & {
   readonly attachFileMetadata?: typeof chatEventInputParams.$inferInsert.attachFileMetadata;
+  readonly goalSnapshot?: ChatEventGoalSnapshot | null;
   readonly userMessage: NonNullable<ChatEventInsert["userMessage"]>;
 };
 
@@ -80,7 +84,7 @@ type InputGoalEvent = ChatEventIdentity & {
   readonly eventType: "input.goal";
   readonly content?: null;
   readonly runGroupId: string;
-  readonly goalSnapshot: NonNullable<ChatEventInsert["goalSnapshot"]>;
+  readonly goalSnapshot: ChatEventGoalSnapshot;
 };
 
 type InputRejectedEvent = ChatEventIdentity &
@@ -457,8 +461,12 @@ function persistedChatEventValues(
   >,
 ): PersistedChatEvent {
   const runLifecycleEvent = chatEventRunLifecycle(values.eventType);
+  const persistedValues =
+    "goalSnapshot" in values
+      ? (({ goalSnapshot: _goalSnapshot, ...rest }) => rest)(values)
+      : values;
   return {
-    ...values,
+    ...persistedValues,
     ...overrides,
     ...(values.eventType === "input.prompt" ||
     values.eventType === "input.rejected" ||

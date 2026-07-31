@@ -42,7 +42,6 @@ import {
   type ChatEventRecommendedFollowups,
   type ChatEventUserMessage,
   type ChatEventGoalEvent,
-  type ChatEventGoalSnapshot,
 } from "@vm0/db/schema/chat-event";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
@@ -147,7 +146,6 @@ type ChatEventRow = {
   readonly usagePayload: ChatEventUsagePayload | null;
   readonly runEventId: string | null;
   readonly goalEvent: ChatEventGoalEvent | null;
-  readonly goalSnapshot: ChatEventGoalSnapshot | null;
   readonly goalObjectiveBrief: string | null;
   readonly error: string | null;
   readonly runLifecycleEvent: string | null;
@@ -301,7 +299,6 @@ const eventColumns = {
   usagePayload: chatEvents.usagePayload,
   runEventId: chatEvents.runEventId,
   goalEvent: chatEvents.goalEvent,
-  goalSnapshot: chatEvents.goalSnapshot,
   error: chatEvents.error,
   runLifecycleEvent: chatEvents.runLifecycleEvent,
   seqId: chatEvents.seqId,
@@ -831,7 +828,7 @@ function baseChatEventFromRow(
     runEventId: row.runEventId ?? undefined,
     goalSnapshot:
       row.goalObjectiveBrief === null
-        ? (row.goalSnapshot ?? undefined)
+        ? undefined
         : { objectiveBrief: row.goalObjectiveBrief },
     revokesEventId: row.revokesEventId ?? undefined,
     seqId: row.seqId,

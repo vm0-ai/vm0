@@ -257,7 +257,6 @@ const launchQueuedGoal$ = command(
           goalId: normalizedGoal.goalId,
           orgId: normalizedGoal.orgId,
           userId: normalizedGoal.userId,
-          objectiveBrief: goalSnapshot.objectiveBrief,
         },
         zeroRunModelPin: {
           modelProvider: effectiveModelProvider ?? null,

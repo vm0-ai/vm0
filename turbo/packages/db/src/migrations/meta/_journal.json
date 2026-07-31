@@ -5440,6 +5440,13 @@
       "when": 1785464060617,
       "tag": "0776_add_chat_goal_context",
       "breakpoints": true
+    },
+    {
+      "idx": 777,
+      "version": "7",
+      "when": 1785467152361,
+      "tag": "0777_drop_chat_event_goal_snapshot",
+      "breakpoints": true
     }
   ]
 }

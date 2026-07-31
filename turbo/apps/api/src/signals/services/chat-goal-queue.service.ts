@@ -278,7 +278,6 @@ export async function rejectGoalQueueEvent(
     const [payload] = await tx
       .select({
         goalObjectiveBrief: chatGoalContext.objectiveBrief,
-        goalSnapshot: chatEvents.goalSnapshot,
         currentGoalObjectiveBrief: threadGoals.objectiveBrief,
       })
       .from(chatEvents)
@@ -308,17 +307,13 @@ export async function rejectGoalQueueEvent(
       return false;
     }
     const objectiveBrief =
-      payload.goalObjectiveBrief ??
-      payload.goalSnapshot?.objectiveBrief ??
-      payload.currentGoalObjectiveBrief ??
-      "Goal";
+      payload.goalObjectiveBrief ?? payload.currentGoalObjectiveBrief ?? "Goal";
     const rejected = await replaceChatEvent(tx, args.eventId, {
       chatThreadId: args.chatThreadId,
       eventType: "input.rejected",
       userMessage: createUserMessageDocument({ text: objectiveBrief }),
       runId: null,
       error: args.reason,
-      goalSnapshot: { objectiveBrief },
     });
     return rejected !== null;
   });
