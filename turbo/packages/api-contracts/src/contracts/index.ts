@@ -597,13 +597,6 @@ export {
   isLimitedFree1RestrictedRunModel,
 } from "./model-providers";
 export {
-  sessionsByIdContract,
-  sessionResponseSchema,
-  type SessionsByIdContract,
-  // Inferred types
-  type SessionResponse,
-} from "./sessions";
-export {
   artifactCatalogContract,
   type ArtifactCatalogContract,
   type ArtifactCatalogKind,

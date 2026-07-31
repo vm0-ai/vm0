@@ -1,5 +1,4 @@
 import type { z } from "zod";
-import { sessionsByIdContract } from "@vm0/api-contracts/contracts/sessions";
 import {
   logsByIdContract,
   logsListContract,
@@ -150,20 +149,6 @@ export function createRunReadsApi(context: TestContext) {
             }
           : { status: 200 as const, body: result.body };
       return await accept(Promise.resolve(response), statuses);
-    },
-
-    async requestReadSession<TStatus extends 200 | 401 | 403 | 404>(
-      actor: ApiTestUser | null,
-      sessionId: string,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        setupApp({ context })(sessionsByIdContract).getById({
-          headers: authenticate(context, actor),
-          params: { id: sessionId },
-        }),
-        statuses,
-      );
     },
 
     async requestRunSystemLog<TStatus extends 200 | 400 | 401 | 403 | 404>(
