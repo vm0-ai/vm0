@@ -15,11 +15,14 @@ import * as sandboxTelemetrySchema from "./schema/sandbox-telemetry";
 import * as runnerSchema from "./schema/runner-job-queue";
 import * as runnerStateSchema from "./schema/runner-state";
 import * as agentRunQueueSchema from "./schema/agent-run-queue";
+import * as chatAutomationContextSchema from "./schema/chat-automation-context";
 import * as chatEventInputParamsSchema from "./schema/chat-event-input-params";
 import * as chatFeishuContextSchema from "./schema/chat-feishu-context";
+import * as chatGoalContextSchema from "./schema/chat-goal-context";
 import * as chatSlackContextSchema from "./schema/chat-slack-context";
 import * as secretSchema from "./schema/secret";
 import * as modelProviderSchema from "./schema/model-provider";
+import * as modelProviderGatewaySchema from "./schema/model-provider-gateway";
 import * as orgModelPolicySchema from "./schema/org-model-policy";
 import * as modelStatSchema from "./schema/model-stat";
 import * as modelUsageObservationSchema from "./schema/model-usage-observation";
@@ -95,7 +98,7 @@ import * as userBehaviorCountSchema from "./schema/user-behavior-count";
 import * as chatEventSchema from "./schema/chat-event";
 import * as chatThreadEventSchema from "./schema/chat-thread-event";
 import * as chatThreadSnapshotSchema from "./schema/chat-thread-snapshot";
-import * as chatOutputMaterializationSchema from "./schema/chat-output-materialization";
+import * as runOutputMaterializationSchema from "./schema/run-output-materialization";
 import * as agentRunCustomConnectorAuthRefSchema from "./schema/agent-run-custom-connector-auth-ref";
 import * as orgCustomConnectorSchema from "./schema/org-custom-connector";
 import * as orgCustomConnectorOauthConfigSchema from "./schema/org-custom-connector-oauth-config";
@@ -134,11 +137,14 @@ export const schema = {
   ...runnerSchema,
   ...runnerStateSchema,
   ...agentRunQueueSchema,
+  ...chatAutomationContextSchema,
   ...chatEventInputParamsSchema,
   ...chatFeishuContextSchema,
+  ...chatGoalContextSchema,
   ...chatSlackContextSchema,
   ...secretSchema,
   ...modelProviderSchema,
+  ...modelProviderGatewaySchema,
   ...orgModelPolicySchema,
   ...modelStatSchema,
   ...modelUsageObservationSchema,
@@ -214,7 +220,7 @@ export const schema = {
   ...chatEventSchema,
   ...chatThreadEventSchema,
   ...chatThreadSnapshotSchema,
-  ...chatOutputMaterializationSchema,
+  ...runOutputMaterializationSchema,
   ...agentRunCustomConnectorAuthRefSchema,
   ...orgCustomConnectorSchema,
   ...orgCustomConnectorOauthConfigSchema,

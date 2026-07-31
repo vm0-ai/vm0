@@ -6,26 +6,8 @@ import {
 } from "@vm0/api-contracts/contracts/connector-identity";
 import { z } from "zod";
 
-// #23770 accepts either single identity property until #24077 removes the
-// legacy reader after the staged writer rollout.
-const deviceLegacyProviderStateSchema = z
+const deviceProviderStateSchema = z
   .object({
-    connectorType: connectorSlugSchema,
-    connectorSlug: z.never().optional(),
-    deviceCode: z.string(),
-    pollState: z.string().optional(),
-  })
-  .transform((state) => {
-    return {
-      connectorSlug: state.connectorType,
-      deviceCode: state.deviceCode,
-      pollState: state.pollState,
-    };
-  });
-
-const deviceCanonicalProviderStateSchema = z
-  .object({
-    connectorType: z.never().optional(),
     connectorSlug: connectorSlugSchema,
     deviceCode: z.string(),
     pollState: z.string().optional(),
@@ -38,29 +20,8 @@ const deviceCanonicalProviderStateSchema = z
     };
   });
 
-const deviceProviderStateSchema = z.union([
-  deviceLegacyProviderStateSchema,
-  deviceCanonicalProviderStateSchema,
-]);
-
-const externalCodeLegacyProviderStateSchema = z
+const externalCodeProviderStateSchema = z
   .object({
-    connectorType: connectorSlugSchema,
-    connectorSlug: z.never().optional(),
-    authMethod: connectorAuthMethodIdSchema,
-    providerState: z.string(),
-  })
-  .transform((state) => {
-    return {
-      connectorSlug: state.connectorType,
-      authMethod: state.authMethod,
-      providerState: state.providerState,
-    };
-  });
-
-const externalCodeCanonicalProviderStateSchema = z
-  .object({
-    connectorType: z.never().optional(),
     connectorSlug: connectorSlugSchema,
     authMethod: connectorAuthMethodIdSchema,
     providerState: z.string(),
@@ -72,11 +33,6 @@ const externalCodeCanonicalProviderStateSchema = z
       providerState: state.providerState,
     };
   });
-
-const externalCodeProviderStateSchema = z.union([
-  externalCodeLegacyProviderStateSchema,
-  externalCodeCanonicalProviderStateSchema,
-]);
 
 export function parseConnectorOauthDeviceProviderState(args: {
   readonly serializedState: string;
@@ -86,7 +42,7 @@ export function parseConnectorOauthDeviceProviderState(args: {
     JSON.parse(args.serializedState) as unknown,
   );
   if (providerState.connectorSlug !== args.connectorSlug) {
-    throw new Error("OAuth device provider state connector type mismatch");
+    throw new Error("OAuth device provider state connector slug mismatch");
   }
   return providerState;
 }
@@ -96,9 +52,8 @@ export function serializeConnectorOauthDeviceProviderState(args: {
   readonly deviceCode: string;
   readonly pollState: string | undefined;
 }): string {
-  // #24075 switches this legacy-only writer after the prepared reader deploys.
   return JSON.stringify({
-    connectorType: args.connectorSlug,
+    connectorSlug: args.connectorSlug,
     deviceCode: args.deviceCode,
     ...(args.pollState === undefined ? {} : { pollState: args.pollState }),
   });
@@ -126,9 +81,8 @@ export function serializeConnectorExternalCodeProviderState(args: {
   readonly authMethod: ConnectorAuthMethodId;
   readonly providerState: string;
 }): string {
-  // #24075 switches this legacy-only writer after the prepared reader deploys.
   return JSON.stringify({
-    connectorType: args.connectorSlug,
+    connectorSlug: args.connectorSlug,
     authMethod: args.authMethod,
     providerState: args.providerState,
   });

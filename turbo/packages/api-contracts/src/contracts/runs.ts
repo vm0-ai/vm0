@@ -1,10 +1,5 @@
 import { z } from "zod";
-import {
-  authHeadersSchema,
-  initContract,
-  timestampQueryNumberSchema,
-} from "./base";
-import { apiErrorSchema } from "./errors";
+import { timestampQueryNumberSchema } from "./base";
 import { firewallPoliciesSchema } from "@vm0/connectors/firewall-types";
 import {
   modelProviderTypeSchema,
@@ -13,7 +8,6 @@ import {
 import { triggerSourceSchema } from "./logs";
 import { orgTierSchema } from "./orgs";
 
-const c = initContract();
 export type DirectRunModelProviderType = Exclude<ModelProviderType, "vm0">;
 
 const directRunModelProviderTypeSchema = modelProviderTypeSchema.refine(
@@ -57,16 +51,6 @@ export const eventSequenceNumberSchema = z
   .number()
   .int()
   .nonnegative()
-  .max(MAX_EVENT_SEQUENCE_NUMBER);
-const eventSequenceCursorSchema = z
-  .number()
-  .int()
-  .min(-1)
-  .max(MAX_EVENT_SEQUENCE_NUMBER);
-const eventSequenceCursorQuerySchema = z.coerce
-  .number()
-  .int()
-  .min(-1)
   .max(MAX_EVENT_SEQUENCE_NUMBER);
 
 /**
@@ -147,7 +131,7 @@ const unifiedRunRequestSchema = z
     // Settings JSON to pass to Claude CLI (passed as --settings)
     settings: z.string().optional(),
 
-    // How the run was triggered (defaults to "cli" on the server if not provided)
+    // How the run was triggered (defaults to "web" on the server if not provided)
     triggerSource: triggerSourceSchema.optional(),
 
     // Per-permission policies (e.g., { "github": { "actions:read": "allow" } })
@@ -234,17 +218,6 @@ const runStateSchema = z.object({
 });
 
 /**
- * Events response schema
- */
-const eventsResponseSchema = z.object({
-  events: z.array(runEventSchema),
-  hasMore: z.boolean(),
-  nextSequence: eventSequenceCursorSchema,
-  run: runStateSchema,
-  framework: z.string(),
-});
-
-/**
  * Run list item schema
  */
 const runListItemSchema = z.object({
@@ -265,123 +238,12 @@ const runsListResponseSchema = z.object({
 });
 
 /**
- * Runs main route contract (/api/agent/runs)
- * Handles GET list
- */
-export const runsMainContract = c.router({
-  /**
-   * GET /api/agent/runs
-   * List agent runs (pending and running by default)
-   */
-  list: {
-    method: "GET",
-    path: "/api/agent/runs",
-    headers: authHeadersSchema,
-    query: z.object({
-      status: z.string().optional(), // comma-separated: "pending,running"
-      agent: z.string().optional(), // agent name filter
-      since: z.string().optional(), // ISO timestamp
-      until: z.string().optional(), // ISO timestamp
-      limit: z.coerce.number().min(1).max(100).default(50),
-    }),
-    responses: {
-      200: runsListResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-    },
-    summary: "List agent runs",
-  },
-});
-
-/**
- * Runs by ID route contract (/api/agent/runs/[id])
- */
-export const runsByIdContract = c.router({
-  /**
-   * GET /api/agent/runs/:id
-   * Get agent run status and results
-   */
-  getById: {
-    method: "GET",
-    path: "/api/agent/runs/:id",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      id: z.uuid("Run ID must be a valid UUID"),
-    }),
-    responses: {
-      200: getRunResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get agent run by ID",
-  },
-});
-
-/**
  * Cancel run response schema
  */
 const cancelRunResponseSchema = z.object({
   id: z.string(),
   status: z.literal("cancelled"),
   message: z.string(),
-});
-
-/**
- * Runs cancel route contract (/api/agent/runs/[id]/cancel)
- */
-export const runsCancelContract = c.router({
-  /**
-   * POST /api/agent/runs/:id/cancel
-   * Cancel a pending or running run
-   */
-  cancel: {
-    method: "POST",
-    path: "/api/agent/runs/:id/cancel",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      id: z.uuid("Run ID must be a valid UUID"),
-    }),
-    body: z.undefined(),
-    responses: {
-      200: cancelRunResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Cancel a pending or running run",
-  },
-});
-
-/**
- * Run events route contract (/api/agent/runs/[id]/events)
- */
-export const runEventsContract = c.router({
-  /**
-   * GET /api/agent/runs/:id/events
-   * Poll for agent run events with pagination
-   */
-  getEvents: {
-    method: "GET",
-    path: "/api/agent/runs/:id/events",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      id: z.uuid("Run ID must be a valid UUID"),
-    }),
-    query: z.object({
-      since: eventSequenceCursorQuerySchema.default(-1),
-      limit: z.coerce.number().int().min(1).max(100).default(100),
-    }),
-    responses: {
-      200: eventsResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get agent run events",
-  },
 });
 
 /**
@@ -651,10 +513,6 @@ export function createLogPaginationQuerySchema(
     });
 }
 
-const timeLogPaginationQuerySchema = createLogPaginationQuerySchema({
-  cursorKind: "time",
-});
-
 /**
  * System log response schema
  */
@@ -751,7 +609,7 @@ const modelCatalogCacheEvictionCountSchema = z.number().int().min(0).max(32);
  * Network log entry schema.
  * [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
  */
-const networkLogEntryInputSchema = z.object({
+const networkLogEntrySchema = z.object({
   timestamp: z.string(),
   type: z.string().optional(),
   action: networkLogActionSchema.optional(),
@@ -807,8 +665,6 @@ const networkLogEntryInputSchema = z.object({
   upstream_binding_client_binding_endpoint_match: z.boolean().optional(),
   upstream_binding_client_binding_hosts: z.string().optional(),
   connector_diagnostic_slug: z.string().optional(),
-  // TODO(#23838): Remove after the diagnostic compatibility window.
-  connector_diagnostic_type: z.string().optional(),
   connector_diagnostic_reason: z.string().optional(),
   connector_diagnostic_env_names: z.array(z.string()).optional(),
   connector_diagnostic_base: z.string().optional(),
@@ -831,34 +687,6 @@ const networkLogEntryInputSchema = z.object({
   response_body_truncated: z.boolean().optional(),
 });
 
-const networkLogEntrySchema = networkLogEntryInputSchema
-  .superRefine((entry, context) => {
-    if (
-      entry.connector_diagnostic_slug !== undefined &&
-      entry.connector_diagnostic_type !== undefined &&
-      entry.connector_diagnostic_slug !== entry.connector_diagnostic_type
-    ) {
-      context.addIssue({
-        code: "custom",
-        path: ["connector_diagnostic_slug"],
-        message:
-          "connector_diagnostic_slug and connector_diagnostic_type must match",
-      });
-    }
-  })
-  .overwrite((entry) => {
-    const connectorDiagnosticSlug =
-      entry.connector_diagnostic_slug ?? entry.connector_diagnostic_type;
-    if (connectorDiagnosticSlug === undefined) {
-      return entry;
-    }
-    return {
-      ...entry,
-      connector_diagnostic_slug: connectorDiagnosticSlug,
-      connector_diagnostic_type: connectorDiagnosticSlug,
-    };
-  });
-
 /**
  * Network logs response schema
  */
@@ -867,65 +695,6 @@ const networkLogsResponseSchema = z.object({
   hasMore: z.boolean(),
   nextCursor: z.string().nullable().optional(),
 });
-
-/**
- * System log route contract (/api/agent/runs/[id]/telemetry/system-log)
- */
-export const runSystemLogContract = c.router({
-  /**
-   * GET /api/agent/runs/:id/telemetry/system-log
-   * Get system log with pagination
-   */
-  getSystemLog: {
-    method: "GET",
-    path: "/api/agent/runs/:id/telemetry/system-log",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      id: z.uuid("Run ID must be a valid UUID"),
-    }),
-    query: timeLogPaginationQuerySchema,
-    responses: {
-      200: systemLogResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get system log with pagination",
-  },
-});
-
-/**
- * Metrics route contract (/api/agent/runs/[id]/telemetry/metrics)
- */
-export const runMetricsContract = c.router({
-  /**
-   * GET /api/agent/runs/:id/telemetry/metrics
-   * Get metrics with pagination
-   */
-  getMetrics: {
-    method: "GET",
-    path: "/api/agent/runs/:id/telemetry/metrics",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      id: z.uuid("Run ID must be a valid UUID"),
-    }),
-    query: timeLogPaginationQuerySchema,
-    responses: {
-      200: metricsResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get metrics with pagination",
-  },
-});
-
-export type RunsMainContract = typeof runsMainContract;
-export type RunsByIdContract = typeof runsByIdContract;
-export type RunsCancelContract = typeof runsCancelContract;
-export type RunEventsContract = typeof runEventsContract;
-export type RunSystemLogContract = typeof runSystemLogContract;
-export type RunMetricsContract = typeof runMetricsContract;
 
 /**
  * Logs search result schema
@@ -1019,7 +788,6 @@ export {
   runEventSchema,
   runResultSchema,
   runStateSchema,
-  eventsResponseSchema,
   telemetryMetricSchema,
   systemLogResponseSchema,
   metricsResponseSchema,
@@ -1052,7 +820,6 @@ export type GetRunResponse = z.infer<typeof getRunResponseSchema>;
 export type RunListItem = z.infer<typeof runListItemSchema>;
 export type RunsListResponse = z.infer<typeof runsListResponseSchema>;
 export type CancelRunResponse = z.infer<typeof cancelRunResponseSchema>;
-export type EventsResponse = z.infer<typeof eventsResponseSchema>;
 export type TelemetryMetric = z.infer<typeof telemetryMetricSchema>;
 export type SystemLogResponse = z.infer<typeof systemLogResponseSchema>;
 export type MetricsResponse = z.infer<typeof metricsResponseSchema>;

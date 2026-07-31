@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
+import type { SupportedLocale } from "../../../i18n/resources.ts";
 import { platformVm0LogoDarkImg } from "../../../lib/static-assets.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
@@ -15,9 +16,9 @@ function setBrowserUrl(url: string): void {
   window.location.href = url;
 }
 
-function usePortugueseLocale(): void {
-  document.documentElement.lang = "pt-BR";
-  context.mocks.data.userPreferences({ locale: "pt-BR" });
+function useLocale(locale: SupportedLocale): void {
+  document.documentElement.lang = locale;
+  context.mocks.data.userPreferences({ locale });
   context.signal.addEventListener(
     "abort",
     () => {
@@ -42,30 +43,111 @@ function useJapaneseLocale(): void {
   );
 }
 
-describe("app auth pages", () => {
-  it("localizes the app auth shell and Clerk resources in Brazilian Portuguese", async () => {
-    usePortugueseLocale();
-    setBrowserUrl("https://app.vm0.ai/sign-up");
-
-    const authComponent = context.mocks.clerk.deferAuthComponentMount();
-    detachedSetupPage({ context, path: "/sign-up" });
-
-    await expect(
-      screen.findByText("Carregando autenticação"),
-    ).resolves.toBeInTheDocument();
-    expect(screen.getByLabelText("Alternar tema")).toBeInTheDocument();
-    expect(document.title).toBe("Criar conta | VM0");
-
-    const localization = getClerkLocalization("VM0", "pt-BR", i18n.t);
-    expect(localization.signIn?.start?.actionLink).toBe("Registre-se");
-    expect(localization.unstable__errors?.not_allowed_access).toBe(
-      "Acesso não permitido.",
-    );
-
-    act(() => {
-      authComponent.mount();
-    });
+function useKoreanLocale(): void {
+  document.documentElement.lang = "ko-KR";
+  context.mocks.data.userPreferences({
+    locale: "ko-KR",
+    supportedLocales: ["en-US", "ko-KR"],
   });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      document.documentElement.lang = "en-US";
+    },
+    { once: true },
+  );
+}
+
+function useGermanLocale(): void {
+  document.documentElement.lang = "de-DE";
+  context.mocks.data.userPreferences({
+    locale: "de-DE",
+    supportedLocales: ["en-US", "de-DE"],
+  });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      document.documentElement.lang = "en-US";
+    },
+    { once: true },
+  );
+}
+
+function useSpanishLocale(): void {
+  document.documentElement.lang = "es-ES";
+  context.mocks.data.userPreferences({
+    locale: "es-ES",
+    supportedLocales: ["en-US", "es-ES"],
+  });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      document.documentElement.lang = "en-US";
+    },
+    { once: true },
+  );
+}
+
+describe("app auth pages", () => {
+  const localeCases = [
+    {
+      locale: "pt-BR",
+      loading: "Carregando autenticação",
+      toggleTheme: "Alternar tema",
+      documentTitle: "Criar conta | VM0",
+      actionLink: "Registre-se",
+      accessNotAllowed: "Acesso não permitido.",
+    },
+    {
+      locale: "fr-FR",
+      loading: "Chargement de l'authentification",
+      toggleTheme: "Changer de thème",
+      documentTitle: "S'inscrire | VM0",
+      actionLink: "S'inscrire",
+      accessNotAllowed: "L'accès n'est pas autorisé.",
+    },
+    {
+      locale: "hi-IN",
+      loading: "प्रमाणीकरण लोड हो रहा है",
+      toggleTheme: "थीम टॉगल करें",
+      documentTitle: "साइन अप करें | VM0",
+      actionLink: "साइन अप करें",
+      accessNotAllowed: "प्रवेश की अनुमति नहीं है।",
+    },
+  ] as const;
+
+  it.each(localeCases)(
+    "localizes the app auth shell and Clerk resources in $locale",
+    async (localeCase) => {
+      useLocale(localeCase.locale);
+      setBrowserUrl("https://app.vm0.ai/sign-up");
+
+      const authComponent = context.mocks.clerk.deferAuthComponentMount();
+      detachedSetupPage({ context, path: "/sign-up" });
+
+      await expect(
+        screen.findByText(localeCase.loading),
+      ).resolves.toBeInTheDocument();
+      expect(screen.getByLabelText(localeCase.toggleTheme)).toBeInTheDocument();
+      expect(document.title).toBe(localeCase.documentTitle);
+
+      const localization = getClerkLocalization(
+        "VM0",
+        localeCase.locale,
+        i18n.t,
+      );
+      expect(localization.signIn?.start?.actionLink).toBe(
+        localeCase.actionLink,
+      );
+      expect(localization.unstable__errors?.not_allowed_access).toBe(
+        localeCase.accessNotAllowed,
+      );
+
+      act(() => {
+        authComponent.mount();
+      });
+    },
+  );
 
   it("localizes the app auth shell and Clerk resources in Japanese", async () => {
     useJapaneseLocale();
@@ -89,6 +171,82 @@ describe("app auth pages", () => {
     act(() => {
       authComponent.mount();
     });
+  });
+
+  it("localizes the app auth shell and Clerk resources in Korean", async () => {
+    useKoreanLocale();
+    setBrowserUrl("https://app.vm0.ai/sign-up");
+
+    const authComponent = context.mocks.clerk.deferAuthComponentMount();
+    detachedSetupPage({ context, path: "/sign-up" });
+
+    await expect(screen.findByText("인증 중")).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("테마 전환")).toBeInTheDocument();
+    expect(document.title).toBe("회원가입 | VM0");
+
+    const localization = getClerkLocalization("VM0", "ko-KR", i18n.t);
+    expect(localization.signIn?.start?.actionLink).toBe("회원가입");
+    expect(localization.unstable__errors?.not_allowed_access).toBe(
+      "접근이 허용되지 않습니다.",
+    );
+
+    act(() => {
+      authComponent.mount();
+    });
+  });
+
+  it("localizes the app auth shell and Clerk resources in German", async () => {
+    useGermanLocale();
+    setBrowserUrl("https://app.vm0.ai/sign-up");
+
+    const authComponent = context.mocks.clerk.deferAuthComponentMount();
+    detachedSetupPage({ context, path: "/sign-up" });
+
+    await expect(
+      screen.findByText("Authentifizierung wird geladen"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("Design wechseln")).toBeInTheDocument();
+    expect(document.title).toBe("Registrieren | VM0");
+
+    const localization = getClerkLocalization("VM0", "de-DE", i18n.t);
+    expect(localization.signIn?.start?.actionLink).toBe("Registrieren");
+    expect(localization.unstable__errors?.not_allowed_access).toBe(
+      "Zugriff nicht gestattet.",
+    );
+
+    act(() => {
+      authComponent.mount();
+    });
+  });
+
+  it("localizes the app auth shell and Clerk resources in Spanish", async () => {
+    useSpanishLocale();
+    setBrowserUrl("https://app.vm0.ai/sign-up");
+
+    const authComponent = context.mocks.clerk.deferAuthComponentMount();
+    detachedSetupPage({ context, path: "/sign-up" });
+
+    await expect(
+      screen.findByText("Cargando autenticación"),
+    ).resolves.toBeInTheDocument();
+    expect(screen.getByLabelText("Cambiar tema")).toBeInTheDocument();
+    expect(document.title).toBe("Crear una cuenta | VM0");
+
+    const localization = getClerkLocalization("VM0", "es-ES", i18n.t);
+    expect(localization.signIn?.start?.actionLink).toBe("Regístrese");
+    expect(localization.unstable__errors?.not_allowed_access).toBe(
+      "Acceso no permitido.",
+    );
+
+    act(() => {
+      authComponent.mount();
+    });
+  });
+
+  it("uses Italian Clerk resources", () => {
+    const localization = getClerkLocalization("VM0", "it-IT", i18n.t);
+
+    expect(localization.signIn?.start?.actionLink).toBe("Registrati");
   });
 
   it("mounts the Clerk sign-up route before Clerk finishes loading", async () => {

@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.150.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.150.2...runner-rs-v0.150.3) (2026-07-31)
+
+
+### Refactoring
+
+* **observability:** remove legacy connector debug dimensions ([#24137](https://github.com/vm0-ai/vm0/issues/24137)) ([77c077f](https://github.com/vm0-ai/vm0/commit/77c077f8d2e514ad1c2611d742700c3c5a5b2ae6))
+
+## [0.150.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.150.1...runner-rs-v0.150.2) (2026-07-30)
+
+## [0.150.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.150.0...runner-rs-v0.150.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* **runner:** preserve upstream bindings across flows ([#24122](https://github.com/vm0-ai/vm0/issues/24122)) ([fbc643c](https://github.com/vm0-ai/vm0/commit/fbc643cc1f9663833abff68435fe44250a477e92))
+
+
+### Performance Improvements
+
+* **runner:** prevent concurrent systemd daemon-reload storms ([#24109](https://github.com/vm0-ai/vm0/issues/24109)) ([681b3e4](https://github.com/vm0-ai/vm0/commit/681b3e49d0da6d8859b659c9db3d4fa05b6ac86c))
+
+## [0.150.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.149.4...runner-rs-v0.150.0) (2026-07-30)
+
+
+### Features
+
+* add admin-defined model gateway connections ([#23807](https://github.com/vm0-ai/vm0/issues/23807)) ([0632cb4](https://github.com/vm0-ai/vm0/commit/0632cb4e4dfda2c844a2531d6c13a3dd74b86e29))
+
 ## [0.149.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.149.3...runner-rs-v0.149.4) (2026-07-30)
 
 

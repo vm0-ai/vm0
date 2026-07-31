@@ -1,13 +1,6 @@
 import { buildInfoContract } from "@vm0/api-contracts/contracts/build-info";
 import { healthContract } from "@vm0/api-contracts/contracts/health";
 
-import { agentComposesByIdRoutes } from "./routes/agent-composes-id";
-import { agentComposesReadRoutes } from "./routes/agent-composes-read";
-import { agentComposesRoutes } from "./routes/agent-composes";
-import { agentRunsCancelRoutes } from "./routes/agent-runs-cancel";
-import { agentRunsReadRoutes } from "./routes/agent-runs-read";
-import { agentRunTelemetryRoutes } from "./routes/agent-run-telemetry";
-import { agentSessionsRoutes } from "./routes/agent-sessions-id";
 import { authMeRoutes } from "./routes/auth-me";
 import { cliAuthRoutes } from "./routes/cli-auth";
 import { E2E_ROUTES } from "./e2e-routes";
@@ -112,6 +105,7 @@ import { zeroMailRoutes } from "./routes/zero-mail";
 import { zeroMapsRoutes } from "./routes/zero-maps";
 import { zeroWeatherRoutes } from "./routes/zero-weather";
 import { zeroModelPoliciesRoutes } from "./routes/zero-model-policies";
+import { zeroModelProviderGatewayRoutes } from "./routes/zero-model-provider-gateways";
 import { zeroModelProvidersRoutes } from "./routes/zero-model-providers";
 import { zeroOnboardingCompleteRoutes } from "./routes/zero-onboarding-complete";
 import { zeroOnboardingStatusRoutes } from "./routes/zero-onboarding-status";
@@ -233,13 +227,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...webhooksAgentEventsRoutes,
   ...webhooksAgentFirewallAuthRoutes,
   ...webhooksAgentStorageRoutes,
-  ...agentComposesReadRoutes,
-  ...agentComposesByIdRoutes,
-  ...agentComposesRoutes,
-  ...agentRunsCancelRoutes,
-  ...agentRunsReadRoutes,
-  ...agentRunTelemetryRoutes,
-  ...agentSessionsRoutes,
   ...connectorsSlugCallbackRoutes,
   ...cronAggregateInsightsRoutes,
   ...cronAggregateUsageRoutes,
@@ -319,6 +306,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroBrowserRoutes,
   ...zeroBrowserAuthorizationRoutes,
   ...zeroModelPoliciesRoutes,
+  ...zeroModelProviderGatewayRoutes,
   ...zeroModelProvidersRoutes,
   ...zeroMeModelProvidersDeleteRoutes,
   ...zeroMeModelProvidersListRoutes,

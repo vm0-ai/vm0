@@ -8,7 +8,6 @@ import type {
   ChatThreadDraft,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
-import type { ScrollStepDirection } from "../auto-scroll.ts";
 import type { ChatClipboardPayload } from "../zero-page/clipboard.ts";
 import type { DraftSignals } from "../zero-page/chat-draft.ts";
 import type { WorkflowComposerSignals } from "../zero-page/tiptap-workflow-composer.ts";
@@ -24,6 +23,11 @@ import type { EditorDocumentSnapshot } from "../zero-page/user-message-document-
 import type { AgentReferenceSignals } from "./agent-reference-signals.ts";
 import type { ArtifactSignals } from "./artifact-card-signals.ts";
 import type { ThreadSidebarAutoOpenCandidate } from "./thread-sidebar-auto-open.ts";
+import type {
+  ThreadScrollPosition,
+  ThreadScrollRenderRequest,
+} from "./chat-thread-scroll.ts";
+import type { AssistantErrorRecovery } from "./assistant-error-recovery.ts";
 
 type RecommendedFollowup = NonNullable<
   ChatFollowupsEvent["recommendedFollowups"]
@@ -58,6 +62,7 @@ export type ThinkingIndicatorMode =
 export type ComposerSendButtonStatus = "idle" | "sending";
 
 export interface EventImageGroupProjection {
+  readonly role: ChatEventGroup["role"];
   readonly events: readonly {
     readonly attachFiles?: ChatPromptEvent["attachFiles"];
     readonly blocks: readonly BodyRenderBlock[];
@@ -89,6 +94,7 @@ export interface ChatThreadSignals {
   threadTitleEmoji$: Computed<string | null>;
   threadTitleText$: Computed<string>;
   threadSettledInServer$: Computed<boolean>;
+  cancellationRecoveryPending$: Computed<Promise<boolean>>;
   // -- Composer model selection --------------------------------------------
   // Derived from the thread event projection; user edits register optimistic
   // model_selection_updated events and then persist through the thread API.
@@ -110,6 +116,9 @@ export interface ChatThreadSignals {
     Promise<boolean>,
     [string, SendMessageOptions | undefined, AbortSignal]
   >;
+  assistantErrorRecovery$: Computed<Promise<AssistantErrorRecovery | null>>;
+  retryAssistantError$: Command<Promise<boolean>, [AbortSignal]>;
+  resetCodexSubscriptionAndRetry$: Command<Promise<boolean>, [AbortSignal]>;
   composerSendButtonStatus$: Computed<Promise<ComposerSendButtonStatus>>;
   queueMessage$: Command<
     Promise<boolean>,
@@ -118,12 +127,19 @@ export interface ChatThreadSignals {
   recallMessage$: Command<Promise<void>, [string, AbortSignal]>;
   skipAutomationEvent$: Command<Promise<void>, [string, AbortSignal]>;
   cancelRun$: Command<Promise<void>, [AbortSignal]>;
-  setScrollContainer$: Command<(() => void) | undefined, [HTMLElement | null]>;
-  autoScroll$: Command<void, []>;
+  scrollContainerOnRef$: Command<
+    (() => void) | undefined,
+    [HTMLElement | null]
+  >;
+  scrollCommitOnRef$: Command<(() => void) | undefined, [HTMLElement | null]>;
+  threadScrollPosition$: Computed<ThreadScrollPosition | null>;
+  scrollRenderRequestReady$: Computed<
+    Promise<ThreadScrollRenderRequest | null>
+  >;
+  requestScrollAfterRender$: Command<void, [ThreadScrollPosition | null]>;
+  scrollTo$: Command<void, [ThreadScrollPosition]>;
   scrollToBottom$: Command<void, []>;
   scrollToTop$: Command<void, []>;
-  scrollBy$: Command<boolean, [ScrollStepDirection]>;
-  prepareKeyboardScroll$: Command<boolean, []>;
   containerEl$: Computed<HTMLElement | null>;
   setContainerRef$: Command<(() => void) | undefined, [HTMLElement | null]>;
   setMainContainerRef$: Command<(() => void) | undefined, [HTMLElement | null]>;
@@ -171,12 +187,12 @@ export interface ChatThreadSignals {
   artifactSignalsForUrl: (url: string) => ArtifactSignals | undefined;
   agentReferenceSignalsForId: (agentId: string) => AgentReferenceSignals;
   mailDraftCardSignalsById$: Computed<ReadonlyMap<string, MailDraftSignals>>;
-  browserSessionCardSignalsById$: Computed<
-    ReadonlyMap<string, BrowserSessionSignals>
-  >;
-  latestBrowserSessionSignals$: Computed<BrowserSessionSignals | null>;
+  browserSessionSignals: BrowserSessionSignals;
   hasEvents$: Computed<Promise<boolean>>;
   hasNewEvents$: Computed<Promise<boolean>>;
+  initialRemoteEventsReady$: Computed<Promise<void>>;
+  initialBrowserLifecycleAuthoritative$: Computed<Promise<boolean>>;
+  initialRemoteEventsComplete$: Computed<Promise<void>>;
   hasQueuedEvents$: Computed<Promise<boolean>>;
   queuedEventItems$: Computed<Promise<readonly QueuedChatEventItem[]>>;
   emptyQueuedEventItems$: Computed<Promise<readonly QueuedChatEventItem[]>>;

@@ -72,6 +72,7 @@ interface WorkflowEventLaunch {
 }
 
 interface DrainWorkflowQueueArgs {
+  readonly apiStartTime?: number;
   readonly chatThreadId: string;
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
   readonly queueItemCreatedBefore?: Date;
@@ -251,7 +252,7 @@ export const drainWorkflowQueueForThread$ = command(
           },
           queueEventId: event.id,
           queueEventCreatedAt: event.createdAt,
-          apiStartTime: launchHint?.apiStartTime ?? now(),
+          apiStartTime: launchHint?.apiStartTime ?? args.apiStartTime ?? now(),
           prompt: params.prompt,
           triggerBrief: event.triggerBrief ?? undefined,
           triggerSource: event.triggerSource,

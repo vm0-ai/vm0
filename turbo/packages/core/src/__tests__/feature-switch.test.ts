@@ -20,6 +20,17 @@ describe("isFeatureEnabled", () => {
       true,
     );
     expect(
+      isFeatureEnabled(FeatureSwitchKey.BrazilianPortugueseLocale, {}),
+    ).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.JapaneseLocale, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.KoreanLocale, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.IndonesianLocale, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.GermanLocale, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.SpanishLocale, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.ItalianLocale, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.FrenchLocale, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.HindiLocale, {})).toBe(true);
+    expect(
       isFeatureEnabled(FeatureSwitchKey.ComposerSkillSubstringSearch, {}),
     ).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.SlackDmSessionRouting, {})).toBe(
@@ -52,10 +63,6 @@ describe("isFeatureEnabled", () => {
     expect(
       isFeatureEnabled(FeatureSwitchKey.ChatThreadSidebarAutoOpen, {}),
     ).toBe(false);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.BrazilianPortugueseLocale, {}),
-    ).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.JapaneseLocale, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.ZeroChatMessaging, {})).toBe(
       false,
     );
@@ -134,11 +141,20 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ZeroChatMessaging]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.LanguagePreference]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.BrazilianPortugueseLocale]).toBe(
-      false,
+      true,
     );
-    expect(staffOrgStates[FeatureSwitchKey.JapaneseLocale]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.JapaneseLocale]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.KoreanLocale]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.IndonesianLocale]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.GermanLocale]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.SpanishLocale]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ItalianLocale]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.FrenchLocale]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.HindiLocale]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.PwaChatKeyboardGestures]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
       true,
     );
@@ -169,11 +185,22 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ZeroChatMessaging]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.LanguagePreference]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.BrazilianPortugueseLocale]).toBe(
+      true,
+    );
+    expect(otherOrgStates[FeatureSwitchKey.JapaneseLocale]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.KoreanLocale]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.IndonesianLocale]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.GermanLocale]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.SpanishLocale]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.ItalianLocale]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.FrenchLocale]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.HindiLocale]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
       false,
     );
-    expect(otherOrgStates[FeatureSwitchKey.JapaneseLocale]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ClaudeSessionPruning]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ChatThreadUnifiedSearch]).toBe(
+    expect(otherOrgStates[FeatureSwitchKey.PwaChatKeyboardGestures]).toBe(
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadSidebarAutoOpen]).toBe(
@@ -236,6 +263,9 @@ describe("user-overridable switches", () => {
       FeatureSwitchKey.WorkflowConnectorReadiness,
     );
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.PwaChatKeyboardGestures,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.ZeroMailReplyFollowUp,
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
@@ -244,8 +274,29 @@ describe("user-overridable switches", () => {
     expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
       FeatureSwitchKey.BrazilianPortugueseLocale,
     );
-    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+    expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.JapaneseLocale,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.KoreanLocale,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.IndonesianLocale,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.GermanLocale,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.SpanishLocale,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.ItalianLocale,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.FrenchLocale,
+    );
+    expect(getUserOverridableFeatureSwitchKeys()).not.toContain(
+      FeatureSwitchKey.HindiLocale,
     );
     expect(getUserOverridableFeatureSwitchKeys()).toContain(
       FeatureSwitchKey.ZeroBrowser,
@@ -270,10 +321,18 @@ describe("user-overridable switches", () => {
       filterUserOverridableFeatureSwitchOverrides({
         [FeatureSwitchKey.ComposerUploadPopover]: true,
         [FeatureSwitchKey.WorkflowConnectorReadiness]: true,
+        [FeatureSwitchKey.PwaChatKeyboardGestures]: true,
         [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
         [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
         [FeatureSwitchKey.BrazilianPortugueseLocale]: true,
         [FeatureSwitchKey.JapaneseLocale]: true,
+        [FeatureSwitchKey.KoreanLocale]: true,
+        [FeatureSwitchKey.IndonesianLocale]: true,
+        [FeatureSwitchKey.GermanLocale]: true,
+        [FeatureSwitchKey.SpanishLocale]: true,
+        [FeatureSwitchKey.ItalianLocale]: true,
+        [FeatureSwitchKey.FrenchLocale]: true,
+        [FeatureSwitchKey.HindiLocale]: true,
         [FeatureSwitchKey.ZeroBrowser]: true,
         [FeatureSwitchKey.ComposerConnectorPermissions]: true,
         [FeatureSwitchKey.Dummy]: false,
@@ -282,6 +341,7 @@ describe("user-overridable switches", () => {
       [FeatureSwitchKey.ZeroBrowser]: true,
       [FeatureSwitchKey.ComposerConnectorPermissions]: true,
       [FeatureSwitchKey.Dummy]: false,
+      [FeatureSwitchKey.JapaneseLocale]: true,
       [FeatureSwitchKey.StructuredPromptInlineTemplates]: true,
     });
   });

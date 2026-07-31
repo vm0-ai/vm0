@@ -15,7 +15,7 @@ _validate_run_fixture_json() {
 _compose_fixture_id() {
     local name="$1" encoded_name response
     encoded_name="$(jq -rn --arg value "$name" '$value | @uri')"
-    response="$(e2e_api_curl "/api/agent/composes?name=$encoded_name")" || return 1
+    response="$(e2e_api_curl "/api/test/agent-composes?name=$encoded_name")" || return 1
     jq -er '.id | select(type == "string" and length > 0)' <<< "$response"
 }
 

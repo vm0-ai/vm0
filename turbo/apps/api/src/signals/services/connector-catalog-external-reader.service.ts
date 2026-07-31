@@ -679,7 +679,6 @@ function connectorCatalogItem(
   effective: EffectiveConnector,
 ): PublicConnectorCatalogItem {
   return {
-    connectorRef: effective.connector.slug,
     slug: effective.connector.slug,
     label: effective.connector.label,
     description: effective.connector.description,
@@ -938,7 +937,6 @@ export async function searchExternalConnectorCatalog(
     }
     return [
       {
-        id: connector.slug,
         slug: connector.slug,
         label: connector.label,
         description: connector.description,
@@ -974,7 +972,7 @@ export async function listExternalPublicConnectorCatalogStatus(
   });
   const connectorsBySlug = new Map(
     args.connectors.map((connector) => {
-      return [connector.type, connector];
+      return [connector.slug, connector];
     }),
   );
   const connectors = effective.map((entry) => {
@@ -1015,7 +1013,6 @@ export async function getExternalPublicConnectorCatalogPermissionDetail(
     firewall.config.apis,
   );
   return {
-    connectorRef: entry.connector.slug,
     connectorSlug: entry.connector.slug,
     label: entry.connector.label,
     icon: iconForCatalog(entry.connector),

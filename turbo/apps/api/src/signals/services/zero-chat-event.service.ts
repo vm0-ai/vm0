@@ -6,9 +6,14 @@ import {
   isValidChatEventRevocation,
 } from "@vm0/api-contracts/contracts/chat-events";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
-import { chatEvents } from "@vm0/db/schema/chat-event";
+import {
+  chatEvents,
+  type ChatEventGoalSnapshot,
+} from "@vm0/db/schema/chat-event";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
+import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
 import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatEventAssetRefs } from "@vm0/db/schema/run-uploaded-file";
@@ -45,7 +50,7 @@ type ChatEventDisplayContext =
 
 type ChatEventInputPayload = Pick<
   ChatEventInsert,
-  "attachFiles" | "generationTemplate" | "goalSnapshot"
+  "attachFiles" | "generationTemplate"
 > & {
   readonly attachFileMetadata?: typeof chatEventInputParams.$inferInsert.attachFileMetadata;
   readonly userMessage: NonNullable<ChatEventInsert["userMessage"]>;
@@ -78,7 +83,7 @@ type InputGoalEvent = ChatEventIdentity & {
   readonly eventType: "input.goal";
   readonly content?: null;
   readonly runGroupId: string;
-  readonly goalSnapshot: NonNullable<ChatEventInsert["goalSnapshot"]>;
+  readonly goalSnapshot: ChatEventGoalSnapshot;
 };
 
 type InputRejectedEvent = ChatEventIdentity &
@@ -167,6 +172,14 @@ type ControlRevokeEvent = ChatEventIdentity & {
   readonly content?: null;
 };
 
+type BrowserLifecycleEvent = Pick<
+  ChatEventIdentity,
+  "id" | "chatThreadId" | "createdAt"
+> & {
+  readonly eventType: "browser.started" | "browser.stopped";
+  readonly content?: null;
+};
+
 type GoalChangedEvent = ChatEventIdentity & {
   readonly eventType: "goal.changed";
   readonly content?: null;
@@ -197,6 +210,7 @@ export type NewChatEvent =
   | RunCancelledEvent
   | ControlInterruptEvent
   | ControlRevokeEvent
+  | BrowserLifecycleEvent
   | GoalChangedEvent
   | UsageRecordedEvent;
 
@@ -245,14 +259,27 @@ type NewDisplayContext =
       readonly id: string;
       readonly chatThreadId: string;
       readonly chatOpenUrl: string;
+    }
+  | {
+      readonly type: "automation";
+      readonly id: string;
+      readonly chatThreadId: string;
+      readonly automationId: string;
+      readonly triggerBrief: string | null;
+    }
+  | {
+      readonly type: "goal";
+      readonly id: string;
+      readonly chatThreadId: string;
+      readonly objectiveBrief: string;
     };
 
 function isPendingInputEvent(values: NewChatEvent): boolean {
   return (
-    values.runId === null &&
     (values.eventType === "input.prompt" ||
       values.eventType === "input.automation" ||
-      values.eventType === "input.goal")
+      values.eventType === "input.goal") &&
+    values.runId === null
   );
 }
 
@@ -322,6 +349,30 @@ function newDisplayContext(
     };
   }
 
+  const automationId =
+    "automationId" in values ? values.automationId : undefined;
+  if (automationId !== undefined) {
+    return {
+      type: "automation",
+      id: eventId,
+      chatThreadId: values.chatThreadId,
+      automationId,
+      triggerBrief:
+        "triggerBrief" in values ? (values.triggerBrief ?? null) : null,
+    };
+  }
+
+  const goalSnapshot =
+    "goalSnapshot" in values ? values.goalSnapshot : undefined;
+  if (goalSnapshot !== null && goalSnapshot !== undefined) {
+    return {
+      type: "goal",
+      id: eventId,
+      chatThreadId: values.chatThreadId,
+      objectiveBrief: goalSnapshot.objectiveBrief,
+    };
+  }
+
   return undefined;
 }
 
@@ -375,10 +426,29 @@ async function insertDisplayContext(
     });
     return;
   }
-  await tx.insert(chatFeishuContext).values({
+  if (context.type === "feishu") {
+    await tx.insert(chatFeishuContext).values({
+      id: context.id,
+      chatThreadId: context.chatThreadId,
+      chatOpenUrl: context.chatOpenUrl,
+      createdAt,
+    });
+    return;
+  }
+  if (context.type === "automation") {
+    await tx.insert(chatAutomationContext).values({
+      id: context.id,
+      chatThreadId: context.chatThreadId,
+      automationId: context.automationId,
+      triggerBrief: context.triggerBrief,
+      createdAt,
+    });
+    return;
+  }
+  await tx.insert(chatGoalContext).values({
     id: context.id,
     chatThreadId: context.chatThreadId,
-    chatOpenUrl: context.chatOpenUrl,
+    objectiveBrief: context.objectiveBrief,
     createdAt,
   });
 }
@@ -390,8 +460,12 @@ function persistedChatEventValues(
   >,
 ): PersistedChatEvent {
   const runLifecycleEvent = chatEventRunLifecycle(values.eventType);
-  return {
+  const { goalSnapshot: _goalSnapshot, ...persistedValues } = {
+    goalSnapshot: undefined,
     ...values,
+  };
+  return {
+    ...persistedValues,
     ...overrides,
     ...(values.eventType === "input.prompt" ||
     values.eventType === "input.rejected" ||

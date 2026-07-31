@@ -1,9 +1,13 @@
 import { command } from "ccstate";
+import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@vm0/api-contracts/contracts/runners";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq } from "drizzle-orm";
 
+import { logger } from "../../lib/log";
 import { writeDb$ } from "../external/db";
-import { nowDate } from "../external/time";
+import { now, nowDate } from "../external/time";
+import { publishChatThreadDetailChangedSafely } from "../external/realtime";
+import { tapError } from "../utils";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
 import { staleChatThreadQueueThreadIds } from "./workflow-chat-event-queue.service";
 import {
@@ -14,13 +18,28 @@ import {
   drainWorkflowQueueForThread$,
   type WorkflowQueueDrainResult,
 } from "./zero-workflow-queue-drain.service";
+import { expiredCancellationRecoveryThreads } from "./zero-chat-active-run.service";
 import { drainGoalQueueForThread$ } from "./zero-goal-queue-drain.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 
 const DRAIN_SWEEP_LIMIT = 20;
 const STALE_QUEUE_ITEM_AGE_MS = 5 * 60 * 1000;
+const L = logger("ChatThreadQueueDrain");
+
+type QueueDrainSweepCandidate =
+  | {
+      readonly chatThreadId: string;
+      readonly userId: string;
+      readonly reason: "cancellation-recovery-expired";
+    }
+  | {
+      readonly chatThreadId: string;
+      readonly queueItemCreatedBefore: Date;
+      readonly reason: "queue-item-stale";
+    };
 
 interface DrainChatThreadQueueInput {
+  readonly apiStartTime?: number;
   readonly chatThreadId: string;
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
   readonly queueItemCreatedBefore?: Date;
@@ -49,10 +68,12 @@ export const drainChatThreadQueueForThread$ = command(
     input: DrainChatThreadQueueInput,
     signal: AbortSignal,
   ): Promise<WorkflowQueueDrainResult | null> => {
+    const apiStartTime = input.apiStartTime ?? now();
     await set(
       drainQueuedUserMessagesForThread$,
       {
         chatThreadId: input.chatThreadId,
+        apiStartTime,
         queueItemCreatedBefore: input.queueItemCreatedBefore,
         timing: input.timing,
       },
@@ -63,6 +84,7 @@ export const drainChatThreadQueueForThread$ = command(
       drainWorkflowQueueForThread$,
       {
         chatThreadId: input.chatThreadId,
+        apiStartTime,
         dispatchFailedCallbacks: input.dispatchFailedCallbacks,
         queueItemCreatedBefore: input.queueItemCreatedBefore,
         ...(input.workflowEventLaunch
@@ -79,6 +101,7 @@ export const drainChatThreadQueueForThread$ = command(
       drainGoalQueueForThread$,
       {
         chatThreadId: input.chatThreadId,
+        apiStartTime,
         dispatchFailedCallbacks: input.dispatchFailedCallbacks,
         queueItemCreatedBefore: input.queueItemCreatedBefore,
       },
@@ -95,6 +118,7 @@ export const drainChatThreadQueueForRun$ = command(
     input: {
       readonly runId: string;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
+      readonly apiStartTime?: number;
     },
     signal: AbortSignal,
   ): Promise<void> => {
@@ -112,6 +136,7 @@ export const drainChatThreadQueueForRun$ = command(
       drainChatThreadQueueForThread$,
       {
         chatThreadId: run.chatThreadId,
+        apiStartTime: input.apiStartTime,
         dispatchFailedCallbacks: input.dispatchFailedCallbacks,
       },
       signal,
@@ -127,24 +152,86 @@ export const drainStaleChatThreadQueues$ = command(
     signal: AbortSignal,
   ): Promise<number> => {
     const db = set(writeDb$);
-    const staleBefore = new Date(nowDate().getTime() - STALE_QUEUE_ITEM_AGE_MS);
-    const threadIds = await staleChatThreadQueueThreadIds(db, {
-      staleBefore,
-      limit: DRAIN_SWEEP_LIMIT,
-    });
+    const currentTime = nowDate().getTime();
+    const staleBefore = new Date(currentTime - STALE_QUEUE_ITEM_AGE_MS);
+    const recoveryExpiredBefore = new Date(
+      currentTime - CANCELLATION_RECOVERY_STALE_AFTER_MS,
+    );
+    const [recoveryThreads, staleThreadIds] = await Promise.all([
+      expiredCancellationRecoveryThreads(db, {
+        expiredBefore: recoveryExpiredBefore,
+        limit: DRAIN_SWEEP_LIMIT,
+      }),
+      staleChatThreadQueueThreadIds(db, {
+        staleBefore,
+        limit: DRAIN_SWEEP_LIMIT,
+      }),
+    ]);
     signal.throwIfAborted();
-    for (const chatThreadId of threadIds) {
-      await set(
-        drainChatThreadQueueForThread$,
-        {
+    const recoveryThreadIdSet = new Set(
+      recoveryThreads.map((thread) => {
+        return thread.chatThreadId;
+      }),
+    );
+    const recoveryCandidates: readonly QueueDrainSweepCandidate[] =
+      recoveryThreads.map(({ chatThreadId, userId }) => {
+        return {
           chatThreadId,
-          dispatchFailedCallbacks: input.dispatchFailedCallbacks,
+          userId,
+          reason: "cancellation-recovery-expired" as const,
+        };
+      });
+    const staleCandidates: readonly QueueDrainSweepCandidate[] = staleThreadIds
+      .filter((chatThreadId) => {
+        return !recoveryThreadIdSet.has(chatThreadId);
+      })
+      .map((chatThreadId) => {
+        return {
+          chatThreadId,
           queueItemCreatedBefore: staleBefore,
+          reason: "queue-item-stale" as const,
+        };
+      });
+    // Give both repair paths capacity under sustained backlog, then let either
+    // path consume any unused share without raising the existing total limit.
+    const reservedPerReason = Math.floor(DRAIN_SWEEP_LIMIT / 2);
+    const candidates: readonly QueueDrainSweepCandidate[] = [
+      ...recoveryCandidates.slice(0, reservedPerReason),
+      ...staleCandidates.slice(0, reservedPerReason),
+      ...recoveryCandidates.slice(reservedPerReason),
+      ...staleCandidates.slice(reservedPerReason),
+    ].slice(0, DRAIN_SWEEP_LIMIT);
+    for (const candidate of candidates) {
+      await tapError(
+        set(
+          drainChatThreadQueueForThread$,
+          {
+            chatThreadId: candidate.chatThreadId,
+            dispatchFailedCallbacks: input.dispatchFailedCallbacks,
+            queueItemCreatedBefore:
+              candidate.reason === "queue-item-stale"
+                ? candidate.queueItemCreatedBefore
+                : undefined,
+          },
+          signal,
+        ),
+        (error) => {
+          L.error("Failed to drain stale chat thread queue", {
+            chatThreadId: candidate.chatThreadId,
+            reason: candidate.reason,
+            error,
+          });
         },
-        signal,
       );
       signal.throwIfAborted();
+      if (candidate.reason === "cancellation-recovery-expired") {
+        await publishChatThreadDetailChangedSafely(
+          candidate.userId,
+          candidate.chatThreadId,
+        );
+        signal.throwIfAborted();
+      }
     }
-    return threadIds.length;
+    return candidates.length;
   },
 );

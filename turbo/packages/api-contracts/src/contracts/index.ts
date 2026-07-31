@@ -66,12 +66,6 @@ export {
   type DesktopAuthHandoffContract,
 } from "./desktop-auth";
 export {
-  composesMainContract,
-  composesByIdContract,
-  composesVersionsContract,
-  type ComposesMainContract,
-  type ComposesByIdContract,
-  type ComposesVersionsContract,
   AGENT_NAME_REGEX,
   agentNameSchema,
   volumeConfigSchema,
@@ -83,6 +77,7 @@ export {
   agentComposeContentSchema,
   agentComposeApiContentSchema,
   composeResponseSchema,
+  createComposeResponseSchema,
   composeListItemSchema,
   ZERO_CAPABILITIES,
   ZERO_CAPABILITY_META,
@@ -94,12 +89,10 @@ export {
   type ArtifactConfig,
 } from "./composes";
 export {
-  runsMainContract,
-  runsByIdContract,
-  runsCancelContract,
-  runEventsContract,
-  runSystemLogContract,
-  runMetricsContract,
+  testAgentComposesContract,
+  type TestAgentComposesContract,
+} from "./test-agent-composes";
+export {
   ALL_RUN_STATUSES,
   runStatusSchema,
   unifiedRunRequestSchema,
@@ -111,7 +104,6 @@ export {
   runEventSchema,
   runResultSchema,
   runStateSchema,
-  eventsResponseSchema,
   telemetryMetricSchema,
   systemLogResponseSchema,
   metricsResponseSchema,
@@ -120,12 +112,6 @@ export {
   networkLogsResponseSchema,
   searchResultSchema,
   logsSearchResponseSchema,
-  type RunsMainContract,
-  type RunsByIdContract,
-  type RunsCancelContract,
-  type RunEventsContract,
-  type RunSystemLogContract,
-  type RunMetricsContract,
   // Inferred types
   type RunStatus,
   type RunResult,
@@ -136,7 +122,6 @@ export {
   type RunListItem,
   type RunsListResponse,
   type CancelRunResponse,
-  type EventsResponse,
   type TelemetryMetric,
   type SystemLogResponse,
   type MetricsResponse,
@@ -163,6 +148,22 @@ export {
   zeroModelPoliciesMainContract,
   type ZeroModelPoliciesMainContract,
 } from "./zero-model-policies";
+export {
+  createModelProviderConnectionRequestSchema,
+  getModelProviderTypeForSurfaceProtocol,
+  modelProviderConnectionResponseSchema,
+  modelProviderConnectionsResponseSchema,
+  modelProviderSurfaceInputSchema,
+  modelProviderSurfaceProtocolSchema,
+  modelProviderSurfaceResponseSchema,
+  updateModelProviderConnectionRequestSchema,
+  zeroModelProviderConnectionsByIdContract,
+  zeroModelProviderConnectionsMainContract,
+  type CreateModelProviderConnectionRequest,
+  type ModelProviderConnectionResponse,
+  type ModelProviderSurfaceProtocol,
+  type UpdateModelProviderConnectionRequest,
+} from "./zero-model-provider-gateways";
 export {
   userModelPreferenceResponseSchema,
   updateUserModelPreferenceRequestSchema,
@@ -195,10 +196,6 @@ export {
   type PresentationImageResolveResponse,
   type PresentationImagesContract,
 } from "./presentation-images";
-export {
-  testTelegramDispatchProbeContract,
-  type TestTelegramDispatchProbeContract,
-} from "./test-telegram-dispatch-probe";
 export {
   testTeamsDispatchProbeBodySchema,
   testTeamsDispatchProbeContract,
@@ -448,7 +445,6 @@ export {
   cronAggregateModelStatsResponseSchema,
   cronAggregateUsageContract,
   cronAggregateUsageResponseSchema,
-  CRON_AGGREGATE_MODEL_STATS_MAX_HOURS,
   cronCompactChatThreadSnapshotsContract,
   cronCompactChatThreadSnapshotsResponseSchema,
   cronCleanupSandboxesContract,
@@ -600,13 +596,6 @@ export {
   normalizeVm0ModelId,
   isLimitedFree1RestrictedRunModel,
 } from "./model-providers";
-export {
-  sessionsByIdContract,
-  sessionResponseSchema,
-  type SessionsByIdContract,
-  // Inferred types
-  type SessionResponse,
-} from "./sessions";
 export {
   artifactCatalogContract,
   type ArtifactCatalogContract,
@@ -1122,6 +1111,8 @@ export {
   zeroRunsCancelContract,
   zeroRunsQueueContract,
   zeroRunAgentEventsContract,
+  zeroRunSystemLogContract,
+  zeroRunMetricsContract,
   zeroRunContextContract,
   zeroRunNetworkLogsContract,
   zeroRunRunnerContract,
@@ -1130,6 +1121,8 @@ export {
   type ZeroRunsCancelContract,
   type ZeroRunsQueueContract,
   type ZeroRunAgentEventsContract,
+  type ZeroRunSystemLogContract,
+  type ZeroRunMetricsContract,
   type ZeroRunContextContract,
   type ZeroRunNetworkLogsContract,
   type ZeroRunRunnerContract,
@@ -1753,14 +1746,6 @@ export {
   type ZeroBuiltInGenerationAcceptedResponse,
   type ZeroBuiltInGenerationResponse,
 } from "./zero-built-in-generation";
-export {
-  internalCallbackBodySchema,
-  internalCallbackErrorSchema,
-  internalCallbackHeadersSchema,
-  internalCallbackSuccessSchema,
-  internalCallbackSuccessWithSkippedSchema,
-  type InternalCallbackBody,
-} from "./internal-callbacks-shared";
 export {
   zeroVoiceIoQuotaContract,
   audioInputQuotaResponseSchema,

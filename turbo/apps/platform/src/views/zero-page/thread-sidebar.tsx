@@ -374,19 +374,16 @@ function ThreadMailDraftPanel({
 
 function ThreadBrowserSessionPanel({
   thread,
-  browserSessionId,
 }: {
   readonly thread: ChatThreadSignals;
-  readonly browserSessionId: string;
 }) {
   const close = useSet(thread.sidebar.close$);
-  const signals = useGet(thread.browserSessionCardSignalsById$).get(
-    browserSessionId,
+  return (
+    <BrowserSessionSidebar
+      signals={thread.browserSessionSignals}
+      onClose={close}
+    />
   );
-  if (!signals) {
-    return null;
-  }
-  return <BrowserSessionSidebar signals={signals} onClose={close} />;
 }
 
 export function ThreadSidebarSlot({
@@ -417,12 +414,7 @@ export function ThreadSidebarSlot({
       );
     }
     case "browser": {
-      return (
-        <ThreadBrowserSessionPanel
-          thread={thread}
-          browserSessionId={target.browserSessionId}
-        />
-      );
+      return <ThreadBrowserSessionPanel thread={thread} />;
     }
   }
 }

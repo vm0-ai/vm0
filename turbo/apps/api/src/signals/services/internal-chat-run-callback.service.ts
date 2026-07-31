@@ -12,7 +12,7 @@ import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatOutputMaterializations } from "@vm0/db/schema/chat-output-materialization";
+import { runOutputMaterializations } from "@vm0/db/schema/run-output-materialization";
 import {
   chatEvents,
   type ChatEventGenerationTemplate,
@@ -38,15 +38,13 @@ import {
 } from "drizzle-orm";
 import { z } from "zod";
 
-import { waitForRunEventWatermarkVisible } from "../../lib/agent-event-visibility";
-import { escapeAplString } from "../../lib/axiom-apl";
 import { nullableDriverValueDecoder } from "../../lib/db-structured-result";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import { waitUntil } from "../context/wait-until";
-import { getDatasetName, queryAxiomDirect } from "../external/axiom";
 import { writeDb$, type Db } from "../external/db";
 import {
+  publishChatThreadDetailChangedSafely,
   publishChatThreadMessageCreatedSafely,
   publishThreadListChanged,
   publishThreadListChangedSafely,
@@ -167,7 +165,6 @@ import {
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 
 const log = logger("callback:chat");
-const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
 const PG_FOREIGN_KEY_VIOLATION = "23503";
 const RECENT_CHAT_RUN_LIMIT = 10;
 const PRIOR_MESSAGE_CHAR_CAP = 4000;
@@ -180,9 +177,7 @@ type ChatCallbackPreCreateTimingActionType =
   | "api_dispatch_pre_create_zero_chat_callback_load_db_output_state"
   | "api_dispatch_pre_create_zero_chat_callback_db_output_complete"
   | "api_dispatch_pre_create_zero_chat_callback_db_output_incomplete"
-  | "api_dispatch_pre_create_zero_chat_callback_query_output_events"
   | "api_dispatch_pre_create_zero_chat_callback_insert_assistant_items"
-  | "api_dispatch_pre_create_zero_chat_callback_lookup_existing_assistant"
   | "api_dispatch_pre_create_zero_chat_callback_insert_lifecycle_marker"
   | "api_dispatch_pre_create_zero_chat_callback_load_followup_context"
   | "api_dispatch_pre_create_zero_chat_callback_auto_send_load_thread"
@@ -342,27 +337,6 @@ const chatCallbackPayloadSchema = z
 
 type ChatCallbackPayload = z.infer<typeof chatCallbackPayloadSchema>;
 
-interface ContentBlock {
-  readonly type?: string;
-  readonly text?: string;
-}
-
-interface CodexItem {
-  readonly type?: string;
-  readonly text?: string;
-}
-
-interface AxiomChatOutputEvent {
-  readonly eventType?: string;
-  readonly sequenceNumber?: number;
-  readonly eventData?: {
-    readonly message?: { readonly content?: readonly ContentBlock[] };
-    readonly item?: CodexItem;
-    readonly result?: string;
-    readonly sequenceNumber?: number;
-  };
-}
-
 interface AssistantEventItem {
   readonly sequenceNumber: number;
   readonly content: string;
@@ -386,19 +360,16 @@ interface ResultEventItem {
   readonly content: string;
 }
 
-type DbCompletedChatOutputState =
-  | {
-      readonly kind: "complete";
-      readonly latestAssistantContent: string | null;
-      readonly hasResultFallbackCandidate: boolean;
-    }
-  | { readonly kind: "incomplete" };
+interface DbCompletedChatOutputState {
+  readonly kind: "complete" | "incomplete";
+  readonly latestAssistant: AssistantEventItem | null;
+  readonly resultFallback: ResultEventItem | null;
+}
 
 interface CompletedChatOutputLoad {
-  readonly assistantItems: readonly AssistantEventItem[];
+  readonly assistantItemsToInsert: readonly AssistantEventItem[];
+  readonly latestAssistant: AssistantEventItem | null;
   readonly resultFallback: ResultEventItem | null;
-  readonly lastResultText: string | null;
-  readonly skipExistingAssistantLookup: boolean;
 }
 
 interface PriorRunEvent {
@@ -567,7 +538,7 @@ interface ChatCallbackDependencies {
       readonly orgId: string;
       readonly agentId: string;
       readonly target: GitHubDeliveryTarget;
-      readonly chatMessageId: string;
+      readonly chatEventId: string;
     },
     signal: AbortSignal,
   ) => Promise<void>;
@@ -589,6 +560,7 @@ interface ChatRunInfo {
   readonly prompt: string;
   readonly error: string | null;
   readonly lastEventSequence: number | null;
+  readonly cancellationRecoveryCompleted: boolean | null;
 }
 
 interface CreateQueuedChatRunInput {
@@ -861,6 +833,7 @@ function buildQueuedCreateZeroRunArgs(
     threadSessionRoute: {
       selectedModel: input.modelPin.selectedModel,
       modelProvider: input.effectiveModelProvider ?? null,
+      modelProviderId: input.modelPin.modelProviderId,
       cliAgentType: input.cliAgentType,
     },
     body: {
@@ -872,162 +845,6 @@ function buildQueuedCreateZeroRunArgs(
       ...(input.realAgentInPreview ? { realAgentInPreview: true } : {}),
     },
   };
-}
-
-function extractAnthropicContent(
-  blocks: readonly ContentBlock[],
-): string | null {
-  const parts = blocks.flatMap((block) => {
-    return block.type === "text" &&
-      typeof block.text === "string" &&
-      block.text.trim().length > 0
-      ? [block.text]
-      : [];
-  });
-  if (parts.length === 0) {
-    return null;
-  }
-  return parts.length === 1 ? parts[0]! : parts.join("\n\n");
-}
-
-function extractCodexAgentMessageContent(item: CodexItem): string | null {
-  if (
-    item.type !== "agent_message" ||
-    typeof item.text !== "string" ||
-    item.text.trim().length === 0
-  ) {
-    return null;
-  }
-  return item.text;
-}
-
-function extractAssistantContent(event: AxiomChatOutputEvent): string | null {
-  const content =
-    event.eventType === "assistant" ? event.eventData?.message?.content : null;
-  if (content) {
-    return extractAnthropicContent(content);
-  }
-  const item =
-    event.eventType === "item.completed" ? event.eventData?.item : null;
-  if (item) {
-    return extractCodexAgentMessageContent(item);
-  }
-  return null;
-}
-
-function extractResultFallback(
-  sequenceNumber: number,
-  event: AxiomChatOutputEvent,
-): ResultEventItem | null {
-  if (event.eventType !== "result") {
-    return null;
-  }
-
-  const result = event.eventData?.result;
-  if (typeof result !== "string") {
-    return null;
-  }
-  if (!result.trim()) {
-    return null;
-  }
-  return { sequenceNumber, content: result };
-}
-
-async function queryChatOutputEvents(args: {
-  readonly runId: string;
-  readonly lastEventSequence: number | null;
-  readonly signal: AbortSignal;
-}): Promise<{
-  readonly assistantItems: readonly AssistantEventItem[];
-  readonly resultFallback: ResultEventItem | null;
-}> {
-  await waitForRunEventWatermarkVisible(args.runId, args.lastEventSequence);
-  args.signal.throwIfAborted();
-
-  const dataset = getDatasetName(AGENT_RUN_EVENTS_DATASET);
-  const pageSize = 200;
-  let lastScannedSequence = -1;
-  const assistantBySequence = new Map<number, string>();
-  let resultFallback: ResultEventItem | null = null;
-
-  while (true) {
-    const sequenceCap =
-      args.lastEventSequence === null
-        ? ""
-        : `\n| where sequenceNumber <= ${args.lastEventSequence}`;
-    const apl = `['${dataset}']
-| where runId == "${escapeAplString(args.runId)}"
-| where eventType == "assistant" or eventType == "result" or eventType == "item.completed"
-| where sequenceNumber > ${lastScannedSequence}
-${sequenceCap}
-| order by sequenceNumber asc
-| limit ${pageSize}`;
-
-    const events = await queryAxiomDirect<AxiomChatOutputEvent>(apl, {
-      noCache: true,
-    });
-    args.signal.throwIfAborted();
-    if (events.length === 0) {
-      break;
-    }
-
-    let pageMaxSequence = lastScannedSequence;
-    for (const event of events) {
-      const sequenceNumber =
-        event.sequenceNumber ?? event.eventData?.sequenceNumber;
-      if (
-        typeof sequenceNumber !== "number" ||
-        sequenceNumber <= lastScannedSequence
-      ) {
-        continue;
-      }
-      if (
-        args.lastEventSequence !== null &&
-        sequenceNumber > args.lastEventSequence
-      ) {
-        continue;
-      }
-      pageMaxSequence = Math.max(pageMaxSequence, sequenceNumber);
-
-      const assistant = extractAssistantContent(event);
-      if (assistant !== null) {
-        if (!assistantBySequence.has(sequenceNumber)) {
-          assistantBySequence.set(sequenceNumber, assistant);
-        }
-        continue;
-      }
-
-      const fallback = extractResultFallback(sequenceNumber, event);
-      if (
-        fallback !== null &&
-        (resultFallback === null ||
-          fallback.sequenceNumber > resultFallback.sequenceNumber)
-      ) {
-        resultFallback = fallback;
-      }
-    }
-
-    if (pageMaxSequence <= lastScannedSequence) {
-      break;
-    }
-    lastScannedSequence = pageMaxSequence;
-    if (
-      events.length < pageSize ||
-      (args.lastEventSequence !== null &&
-        lastScannedSequence >= args.lastEventSequence)
-    ) {
-      break;
-    }
-  }
-
-  const assistantItems = [...assistantBySequence.entries()]
-    .sort(([left], [right]) => {
-      return left - right;
-    })
-    .map(([sequenceNumber, content]) => {
-      return { sequenceNumber, content };
-    });
-  return { assistantItems, resultFallback };
 }
 
 async function latestEventBackedAssistantEvent(
@@ -1071,34 +888,46 @@ async function loadDbCompletedChatOutputState(args: {
   readonly lastEventSequence: number | null;
 }): Promise<DbCompletedChatOutputState> {
   if (args.lastEventSequence === null) {
-    return { kind: "incomplete" };
+    return {
+      kind: "complete",
+      latestAssistant: null,
+      resultFallback: null,
+    };
   }
 
   const [state] = await args.db
     .select({
       processedThroughSequence:
-        chatOutputMaterializations.processedThroughSequence,
-      latestResultSequence: chatOutputMaterializations.latestResultSequence,
+        runOutputMaterializations.processedThroughSequence,
+      latestResultSequence: runOutputMaterializations.latestResultSequence,
+      latestResultText: runOutputMaterializations.latestResultText,
     })
-    .from(chatOutputMaterializations)
-    .where(eq(chatOutputMaterializations.runId, args.runId))
+    .from(runOutputMaterializations)
+    .where(eq(runOutputMaterializations.runId, args.runId))
     .limit(1);
-
-  if (!state || state.processedThroughSequence < args.lastEventSequence) {
-    return { kind: "incomplete" };
-  }
 
   const latestAssistant = await latestEventBackedAssistantEvent(
     args.db,
     args.runId,
     { maxSequenceNumber: args.lastEventSequence },
   );
+  const resultFallback =
+    state?.latestResultSequence !== null &&
+    state?.latestResultSequence !== undefined &&
+    state.latestResultSequence <= args.lastEventSequence &&
+    state.latestResultText !== null
+      ? {
+          sequenceNumber: state.latestResultSequence,
+          content: state.latestResultText,
+        }
+      : null;
   return {
-    kind: "complete",
-    latestAssistantContent: latestAssistant?.content ?? null,
-    hasResultFallbackCandidate:
-      state.latestResultSequence !== null &&
-      state.latestResultSequence <= args.lastEventSequence,
+    kind:
+      state && state.processedThroughSequence >= args.lastEventSequence
+        ? "complete"
+        : "incomplete",
+    latestAssistant,
+    resultFallback,
   };
 }
 
@@ -1120,7 +949,6 @@ async function loadCompletedChatOutput(args: {
   readonly db: Db;
   readonly runId: string;
   readonly lastEventSequence: number | null;
-  readonly preferResultFallback: boolean;
   readonly timing: ChatCallbackPreCreateTimingCollector;
   readonly signal: AbortSignal;
 }): Promise<CompletedChatOutputLoad> {
@@ -1141,38 +969,17 @@ async function loadCompletedChatOutput(args: {
   await recordDbOutputStateTiming(args.timing, dbOutputState);
   args.signal.throwIfAborted();
 
-  if (
-    dbOutputState.kind === "complete" &&
-    (!dbOutputState.hasResultFallbackCandidate ||
-      (dbOutputState.latestAssistantContent !== null &&
-        !args.preferResultFallback))
-  ) {
-    return {
-      assistantItems: [],
-      resultFallback: null,
-      lastResultText: dbOutputState.latestAssistantContent,
-      skipExistingAssistantLookup: true,
-    };
+  if (dbOutputState.kind === "incomplete") {
+    log.warn("Run output projection is incomplete at terminal callback", {
+      runId: args.runId,
+      lastEventSequence: args.lastEventSequence,
+    });
   }
 
-  const axiomOutput = await measureChatCallbackPreCreateTiming(
-    args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_query_output_events",
-    "nested",
-    () => {
-      return queryChatOutputEvents({
-        runId: args.runId,
-        lastEventSequence: args.lastEventSequence,
-        signal: args.signal,
-      });
-    },
-  );
-
   return {
-    assistantItems: axiomOutput.assistantItems,
-    resultFallback: axiomOutput.resultFallback,
-    lastResultText: null,
-    skipExistingAssistantLookup: false,
+    assistantItemsToInsert: [],
+    latestAssistant: dbOutputState.latestAssistant,
+    resultFallback: dbOutputState.resultFallback,
   };
 }
 
@@ -1447,7 +1254,7 @@ async function insertGitHubChatDeliveryCallback(args: {
   readonly runId: string;
   readonly sourceCallbackId?: string;
   readonly target: GitHubDeliveryTarget;
-  readonly chatMessageId: string;
+  readonly chatEventId: string;
 }): Promise<string> {
   const callbackCondition = args.sourceCallbackId
     ? and(
@@ -1476,7 +1283,7 @@ async function insertGitHubChatDeliveryCallback(args: {
       encryptedSecret: sourceCallback.encryptedSecret,
       payload: {
         ...args.target,
-        chatMessageId: args.chatMessageId,
+        chatEventId: args.chatEventId,
       },
     })
     .returning({ id: agentRunCallbacks.id });
@@ -1492,6 +1299,7 @@ async function insertAssistantErrorEvent(args: {
   readonly threadId: string;
   readonly userId: string;
   readonly lifecycleEvent: "failed" | "cancelled";
+  readonly cancellationRecoveryCapable: boolean;
   readonly getFormattedError: () => Promise<string>;
   readonly slackDelivery?: SlackDeliveryTarget;
   readonly feishuDelivery?: FeishuDeliveryTarget;
@@ -1571,7 +1379,7 @@ async function insertAssistantErrorEvent(args: {
           runId: args.runId,
           sourceCallbackId: args.sourceCallbackId,
           target: args.githubDelivery,
-          chatMessageId: event.id,
+          chatEventId: event.id,
         })
       : undefined;
     await touchChatThreadLastMessageAt(tx, args.threadId, event.createdAt);
@@ -1590,6 +1398,9 @@ async function insertAssistantErrorEvent(args: {
 
   await publishChatThreadMessageCreatedSafely(args.userId, args.threadId);
   await publishThreadListChangedSafely(args.userId);
+  if (args.lifecycleEvent === "cancelled" && args.cancellationRecoveryCapable) {
+    await publishChatThreadDetailChangedSafely(args.userId, args.threadId);
+  }
   return {
     displayErrorMessage,
     inserted: true,
@@ -1839,7 +1650,7 @@ async function insertRunLifecycleMarkerTransaction(args: {
           runId: input.runId,
           sourceCallbackId: input.sourceCallbackId,
           target: input.githubDelivery,
-          chatMessageId: deliveryEvent.id,
+          chatEventId: deliveryEvent.id,
         })
       : undefined;
   await touchChatThreadLastMessageAt(
@@ -1961,9 +1772,6 @@ async function loadRecommendedFollowupContextForCompletedRun(args: {
 }
 
 async function materializeCompletedChatResult(args: {
-  readonly db: Db;
-  readonly runId: string;
-  readonly lastEventSequence: number | null;
   readonly output: CompletedChatOutputLoad;
   readonly preferResultFallback: boolean;
   readonly timing: ChatCallbackPreCreateTimingCollector;
@@ -1972,45 +1780,21 @@ async function materializeCompletedChatResult(args: {
     items: readonly AssistantEventItem[],
   ) => Promise<void>;
 }): Promise<string | null> {
-  const { assistantItems, resultFallback } = args.output;
-  if (assistantItems.length > 0) {
+  const { assistantItemsToInsert, latestAssistant, resultFallback } =
+    args.output;
+  if (assistantItemsToInsert.length > 0) {
     await measureChatCallbackPreCreateTiming(
       args.timing,
       "api_dispatch_pre_create_zero_chat_callback_insert_assistant_items",
       "nested",
       () => {
-        return args.insertAssistantItems(assistantItems);
+        return args.insertAssistantItems(assistantItemsToInsert);
       },
     );
     args.signal.throwIfAborted();
   }
-
-  let lastResultText =
-    args.output.lastResultText ??
-    (assistantItems.length > 0
-      ? assistantItems[assistantItems.length - 1]!.content
-      : null);
-  let latestAssistantSequence =
-    assistantItems.length > 0
-      ? assistantItems[assistantItems.length - 1]!.sequenceNumber
-      : null;
-  if (lastResultText === null && !args.output.skipExistingAssistantLookup) {
-    const existingAssistant = await measureChatCallbackPreCreateTiming(
-      args.timing,
-      "api_dispatch_pre_create_zero_chat_callback_lookup_existing_assistant",
-      "nested",
-      () => {
-        return latestEventBackedAssistantEvent(args.db, args.runId, {
-          maxSequenceNumber: args.lastEventSequence ?? undefined,
-        });
-      },
-    );
-    args.signal.throwIfAborted();
-    if (existingAssistant) {
-      lastResultText = existingAssistant.content;
-      latestAssistantSequence = existingAssistant.sequenceNumber;
-    }
-  }
+  let lastResultText = latestAssistant?.content ?? null;
+  const latestAssistantSequence = latestAssistant?.sequenceNumber ?? null;
 
   const shouldInsertResultFallback =
     resultFallback !== null &&
@@ -2056,21 +1840,12 @@ async function handleCompletedChatCallback(args: {
     db: args.db,
     runId: args.runId,
     lastEventSequence: args.run.lastEventSequence,
-    preferResultFallback:
-      args.slackDelivery !== undefined ||
-      args.teamsDelivery !== undefined ||
-      args.telegramDelivery !== undefined ||
-      args.agentphoneDelivery !== undefined ||
-      args.githubDelivery !== undefined,
     timing: args.timing,
     signal: args.signal,
   });
   args.signal.throwIfAborted();
 
   const lastResultText = await materializeCompletedChatResult({
-    db: args.db,
-    runId: args.runId,
-    lastEventSequence: args.run.lastEventSequence,
     output,
     preferResultFallback:
       args.slackDelivery !== undefined ||
@@ -2246,6 +2021,7 @@ async function handleFailedChatCallback(args: {
   readonly runId: string;
   readonly chatThread: ChatThreadForRunRow;
   readonly errorMessage: string;
+  readonly cancellationRecoveryCapable: boolean;
   readonly getFormattedError: () => Promise<string>;
   readonly slackDelivery?: SlackDeliveryTarget;
   readonly feishuDelivery?: FeishuDeliveryTarget;
@@ -2265,6 +2041,7 @@ async function handleFailedChatCallback(args: {
     threadId: args.chatThread.chatThreadId,
     userId: args.chatThread.userId,
     lifecycleEvent,
+    cancellationRecoveryCapable: args.cancellationRecoveryCapable,
     getFormattedError: args.getFormattedError,
     slackDelivery: args.slackDelivery,
     feishuDelivery: args.feishuDelivery,
@@ -2829,6 +2606,7 @@ function loadQueuedMessageSessionState(
           route: {
             selectedModel: modelRoute.modelPin.selectedModel,
             modelProvider: modelRoute.effectiveModelProvider ?? null,
+            modelProviderId: modelRoute.modelPin.modelProviderId,
             cliAgentType: modelRoute.cliAgentType,
           },
         }),
@@ -3542,7 +3320,7 @@ async function handleGitHubQueuedMessageAdmissionFailure(args: {
         orgId: args.failure.orgId,
         agentId: args.failure.agentId,
         target: args.failure.githubDelivery,
-        chatMessageId: failed.assistantEventId,
+        chatEventId: failed.assistantEventId,
       },
       args.signal,
     ),
@@ -3646,6 +3424,7 @@ async function handleQueuedMessageAdmissionFailure(args: {
 }
 
 interface AutoSendQueuedMessageArgs {
+  readonly apiStartTime?: number;
   readonly createRun: (
     input: CreateQueuedChatRunInput,
   ) => Promise<CreatedQueuedRun | null>;
@@ -3662,6 +3441,16 @@ interface AutoSendQueuedMessageArgs {
   readonly deliverTelegramAdmissionFailure: ChatCallbackDependencies["deliverTelegramAdmissionFailure"];
   readonly deliverAgentPhoneAdmissionFailure: ChatCallbackDependencies["deliverAgentPhoneAdmissionFailure"];
   readonly deliverGitHubAdmissionFailure: ChatCallbackDependencies["deliverGitHubAdmissionFailure"];
+}
+
+function chatThreadAdmissionBlockedForAutoSend(
+  args: AutoSendQueuedMessageArgs,
+  threadId: string,
+): Promise<boolean> {
+  return chatThreadAdmissionBlocked(args.db, {
+    threadId,
+    apiStartTime: args.apiStartTime,
+  });
 }
 
 /**
@@ -3730,7 +3519,7 @@ async function autoSendQueuedMessageForThread(
     "api_dispatch_pre_create_zero_chat_callback_auto_send_check_active_run",
     "nested",
     () => {
-      return chatThreadAdmissionBlocked(args.db, { threadId });
+      return chatThreadAdmissionBlockedForAutoSend(args, threadId);
     },
   );
   if (activeRunExists) {
@@ -3835,6 +3624,7 @@ async function loadTerminalChatCallback(args: {
       prompt: agentRuns.prompt,
       error: agentRuns.error,
       lastEventSequence: agentRuns.lastEventSequence,
+      cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
     })
     .from(agentRuns)
     .where(eq(agentRuns.id, args.runId))
@@ -3984,6 +3774,8 @@ async function prepareFailedTerminalChatCallbackWork(args: {
         runId: args.runId,
         chatThread: args.chatThread,
         errorMessage: args.errorMessage,
+        cancellationRecoveryCapable:
+          args.run.cancellationRecoveryCompleted !== null,
         getFormattedError: () => {
           return args.dependencies.formatRunError(
             {
@@ -4609,8 +4401,8 @@ async function handleChatInternalCallback(args: {
   // record delivery; it does not retry and nothing downstream reads the body.
   // The frontend learns about new messages through Ably realtime signals, not
   // this HTTP response. So acknowledge immediately and run the heavy terminal
-  // processing (Axiom watermark wait, message persistence, LLM generation,
-  // push delivery) in the background, mirroring webhooks-agent-complete. Use a
+  // processing (message persistence, LLM generation, and push delivery) in the
+  // background, mirroring webhooks-agent-complete. Use a
   // detached signal so request cancellation cannot interrupt the idempotency
   // marker -> queued auto-send sequence after the callback is acknowledged.
   const backgroundSignal = new AbortController().signal;
@@ -4937,6 +4729,7 @@ export const drainQueuedUserMessagesForThread$ = command(
     { set },
     args: {
       readonly chatThreadId: string;
+      readonly apiStartTime?: number;
       readonly queueItemCreatedBefore?: Date;
       readonly timing?: ChatCallbackPreCreateTimingCollector;
     },
@@ -4967,10 +4760,11 @@ export const drainQueuedUserMessagesForThread$ = command(
     if (!createQueuedRun) {
       return;
     }
-    const apiStartTime = now();
+    const apiStartTime = args.apiStartTime ?? now();
     await autoSendQueuedMessageForThread({
       db,
       chatThreadId: args.chatThreadId,
+      apiStartTime,
       userId: thread.userId,
       agentId: thread.agentId,
       queueItemCreatedBefore: args.queueItemCreatedBefore,

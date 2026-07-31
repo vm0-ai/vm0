@@ -4,6 +4,7 @@ import json
 import time
 import uuid
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from mitmproxy.flow import Error
@@ -36,7 +37,7 @@ from tests.upstream_connection_helpers import seed_server_binding
 
 
 class TestErrorHandler:
-    def test_error_clears_upstream_binding(self, real_flow, mitm_ctx):
+    def test_error_preserves_upstream_binding_until_server_disconnect(self, real_flow, mitm_ctx):
         flow = real_flow(
             with_response=False,
             client_ip="10.200.0.5",
@@ -55,6 +56,10 @@ class TestErrorHandler:
         with mitm_ctx():
             flow.error = Error("connection reset by peer")
             mitm_addon.error(flow)
+
+        assert flow.server_conn.id in upstream_destination_binding.binding_snapshot_for_tests()
+
+        mitm_addon.server_disconnected(SimpleNamespace(server=flow.server_conn))
 
         assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
@@ -137,7 +142,6 @@ class TestErrorHandler:
         assert entry["error"] == "connection reset by peer"
         assert entry["firewall_error"] == "connector_not_configured_for_run"
         assert entry["connector_diagnostic_slug"] == "fal"
-        assert entry["connector_diagnostic_type"] == "fal"
         assert entry["connector_diagnostic_env_names"] == ["FAL_TOKEN"]
         assert entry["connector_diagnostic_base"] == "https://fal.run"
 
@@ -177,7 +181,6 @@ class TestErrorHandler:
         assert entry["error"] == "connection reset by peer"
         assert entry["firewall_error"] == "connector_not_configured_for_run"
         assert entry["connector_diagnostic_slug"] == "fal"
-        assert entry["connector_diagnostic_type"] == "fal"
         assert entry["connector_diagnostic_env_names"] == ["FAL_TOKEN"]
         assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
         assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
@@ -220,7 +223,6 @@ class TestErrorHandler:
         assert entry["error"] == "connection reset by peer"
         assert entry["firewall_error"] == "connector_not_configured_for_run"
         assert entry["connector_diagnostic_slug"] == "fal"
-        assert entry["connector_diagnostic_type"] == "fal"
 
         [proxy_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
         assert proxy_entry["type"] == "connection_error"
@@ -257,7 +259,6 @@ class TestErrorHandler:
         assert entry["status"] == 0
         assert entry["request_size"] == len(b"partial request")
         assert entry["error"] == "connection reset by peer"
-        assert "connector_diagnostic_type" not in entry
         assert "firewall_error" not in entry
         assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
         assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
@@ -292,7 +293,6 @@ class TestErrorHandler:
         assert entry["status"] == 0
         assert entry["browser_user_agent"] is True
         assert entry["error"] == "connection reset by peer"
-        assert "connector_diagnostic_type" not in entry
         assert "firewall_error" not in entry
 
     async def test_authenticated_connector_candidate_error_keeps_original_error(
@@ -320,7 +320,6 @@ class TestErrorHandler:
         [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
         assert entry["status"] == 0
         assert entry["error"] == "connection reset by peer"
-        assert "connector_diagnostic_type" not in entry
         assert "firewall_error" not in entry
 
     def test_cleans_up_start_time(self, tmp_path, real_flow, mitm_ctx):

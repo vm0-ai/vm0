@@ -43,7 +43,7 @@ const mockLogDetails: LogDetail[] = [
     framework: "claude-code",
     modelProvider: null,
     selectedModel: null,
-    triggerSource: "cli",
+    triggerSource: "test",
     triggerAgentName: null,
     status: "completed",
     prompt: "Another prompt",

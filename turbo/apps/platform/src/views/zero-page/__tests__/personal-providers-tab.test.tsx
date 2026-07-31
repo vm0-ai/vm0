@@ -16,13 +16,17 @@ import {
   fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { initializeI18n } from "../../../i18n/index.ts";
+import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { clearMockNow, mockNow } from "../../../lib/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
-afterEach(() => {
+afterEach(async () => {
   clearMockNow();
+  document.documentElement.lang = DEFAULT_LOCALE;
+  await initializeI18n(DEFAULT_LOCALE);
 });
 
 function stalePersonalCodexProvider(): ModelProviderResponse {
@@ -590,6 +594,52 @@ describe("personal model providers settings", () => {
     }).format(new Date(resetAt));
     expect(
       within(claudeCodeRow).getByText(`${absoluteReset}にリセット`),
+    ).toBeInTheDocument();
+  });
+
+  it("localizes subscription reset dates and relative times in Spanish", async () => {
+    const timeZone = "Europe/Madrid";
+    mockBrowserTimeZone(timeZone);
+    mockNow(new Date("2030-01-01T00:48:00.000Z"));
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "member",
+    });
+    context.mocks.data.personalModelProviders([
+      connectedPersonalClaudeCodeProvider(),
+    ]);
+    context.mocks.data.userPreferences({
+      locale: "es-ES",
+      supportedLocales: ["en-US", "es-ES"],
+    });
+
+    await openModelSettings("Modelos", true);
+
+    const claudeCodeRow = await screen.findByTestId(
+      "oauth-card-claude-code-oauth-token",
+    );
+    expect(document.documentElement.lang).toBe("es-ES");
+    expect(within(claudeCodeRow).getByText("5h")).toBeInTheDocument();
+    expect(within(claudeCodeRow).getByText("88% restante")).toBeInTheDocument();
+    expect(within(claudeCodeRow).getByText("en 4h 12m")).toBeInTheDocument();
+    expect(within(claudeCodeRow).getByText("Semana")).toBeInTheDocument();
+    expect(within(claudeCodeRow).getByText("76% restante")).toBeInTheDocument();
+    expect(within(claudeCodeRow).getByText("en 5d 23h")).toBeInTheDocument();
+
+    const resetAt = "2030-01-01T05:00:00.000Z";
+    const absoluteReset = new Intl.DateTimeFormat("es-ES", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone,
+      timeZoneName: "short",
+    }).format(new Date(resetAt));
+    expect(
+      within(claudeCodeRow).getByText(`se restablece el ${absoluteReset}`),
     ).toBeInTheDocument();
   });
 

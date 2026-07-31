@@ -391,7 +391,6 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           LEFT JOIN \${otherUsers} ON \${condition}
           WHERE \${condition}
         )\`;
-        sql\`EXISTS (SELECT 1 FROM \${users} WHERE \${or(condition, condition)})\`;
         sql\`EXISTS (SELECT 1 FROM \${users} WHERE \${condition} FOR UPDATE)\`;
         sql\`EXISTS (SELECT 1 FROM \${users} WHERE \${condition}); SELECT 1\`;
       `,
@@ -2179,6 +2178,27 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
     },
     {
       code: `${drizzlePreamble}
+        import { eq, or, sql } from "drizzle-orm";
+        const condition = eq(users.id, 1);
+        db.select()
+          .from(users)
+          .where(
+            sql\`EXISTS (
+              SELECT 1
+              FROM \${users}
+              WHERE \${or(condition, condition)}
+            )\`,
+          );
+      `,
+      errors: [
+        {
+          messageId: "existencePredicate",
+          data: { helper: "exists" },
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
         import { eq, isNotNull, sql as query } from "drizzle-orm";
         import * as drizzle from "drizzle-orm";
         import { alias } from "drizzle-orm/pg-core";
@@ -2906,6 +2926,170 @@ ruleTester.run("prefer-drizzle-apis retained operands", preferDrizzleApis, {
     },
   ],
 });
+
+ruleTester.run(
+  "prefer-drizzle-apis column-encoded comparison values",
+  preferDrizzleApis,
+  {
+    valid: [
+      {
+        name: "direct values already use the column encoder",
+        code: `${drizzlePreamble}
+          import { eq, gt, gte, lt, lte, ne } from "drizzle-orm";
+          const cutoff = new Date();
+          eq(users.deletedAt, cutoff);
+          ne(users.deletedAt, cutoff);
+          gt(users.deletedAt, cutoff);
+          gte(users.deletedAt, cutoff);
+          lt(users.deletedAt, cutoff);
+          lte(users.deletedAt, cutoff);
+        `,
+      },
+      {
+        name: "sql operands and schema columns remain wrappers",
+        code: `${drizzlePreamble}
+          import { lt, sql, type SQL } from "drizzle-orm";
+          const cutoff = new Date();
+          class SqlDate extends Date {
+            getSQL(): SQL {
+              return sql\`now()\`;
+            }
+          }
+          lt(sql\`COALESCE(\${users.deletedAt}, now())\`, sql\`\${cutoff}\`);
+          lt(users.deletedAt, sql\`\${users.deletedAt}\`);
+          lt(users.deletedAt, sql\`\${sql\`now()\`}\`);
+          lt(
+            users.deletedAt,
+            sql\`\${sql.param(cutoff, users.deletedAt)}\`,
+          );
+          lt(users.deletedAt, sql\`\${sql.placeholder("cutoff")}\`);
+          lt(users.deletedAt, sql\`\${new SqlDate()}\`);
+        `,
+      },
+      {
+        name: "templates containing sql syntax remain opaque",
+        code: `${drizzlePreamble}
+          import { lt, sql } from "drizzle-orm";
+          const cutoff = new Date();
+          lt(users.deletedAt, sql\`\${cutoff}::timestamp\`);
+          lt(users.deletedAt, sql\`DATE_TRUNC('day', \${cutoff})\`);
+          lt(users.deletedAt, sql\`\${cutoff} + interval '1 day'\`);
+          lt(users.deletedAt, sql\`\${cutoff} + \${cutoff}\`);
+          lt(
+            users.deletedAt,
+            sql\`\${cutoff}\`.mapWith(users.deletedAt),
+          );
+          lt(users.deletedAt, sql\`\${cutoff}\`.as("cutoff"));
+        `,
+      },
+      {
+        name: "unproven value types remain opaque",
+        code: `${drizzlePreamble}
+          import { eq, lt, sql, type SQL } from "drizzle-orm";
+          declare const unknownCutoff: unknown;
+          declare const optionalCutoff: Date | undefined;
+          declare const dates: Date[];
+          declare const args: [typeof users.deletedAt, SQL];
+          const stringCutoff = "2026-07-30";
+          function compare<T>(cutoff: T): void {
+            lt(users.deletedAt, sql\`\${cutoff}\`);
+          }
+          lt(users.deletedAt, sql\`\${unknownCutoff}\`);
+          lt(users.deletedAt, sql\`\${optionalCutoff}\`);
+          lt(users.deletedAt, sql\`\${unknownCutoff as Date}\`);
+          lt(users.deletedAt, sql\`\${optionalCutoff!}\`);
+          lt(users.deletedAt, sql\`\${stringCutoff}\`);
+          eq(users.tags, sql\`\${dates}\`);
+          lt(...args);
+          void compare;
+        `,
+      },
+      {
+        name: "fake helper tag and column symbols remain opaque",
+        code: `${drizzlePreamble}
+          import {
+            lt as drizzleLt,
+            sql,
+            type SQL,
+          } from "drizzle-orm";
+          const cutoff = new Date();
+          function lt(left: unknown, right: unknown): unknown {
+            return { left, right };
+          }
+          function tag(
+            strings: TemplateStringsArray,
+            ...values: unknown[]
+          ): SQL {
+            return sql(strings, ...values);
+          }
+          declare const fakeColumn: {
+            readonly _: { readonly data: Date };
+            getSQL(): SQL;
+          };
+          lt(users.deletedAt, sql\`\${cutoff}\`);
+          drizzleLt(users.deletedAt, tag\`\${cutoff}\`);
+          drizzleLt(fakeColumn, sql\`\${cutoff}\`);
+        `,
+      },
+    ],
+    invalid: [
+      {
+        name: "all drizzle binary helpers restore the column encoder",
+        code: `${drizzlePreamble}
+          import { eq, gt, gte, lt, lte, ne, sql } from "drizzle-orm";
+          const cutoff = new Date();
+          eq(users.deletedAt, sql\`\${cutoff}\`);
+          ne(users.deletedAt, sql\`\${cutoff}\`);
+          gt(users.deletedAt, sql\`\${cutoff}\`);
+          gte(users.deletedAt, sql\`\${cutoff}\`);
+          lt(users.deletedAt, sql\`\${cutoff}\`);
+          lte(users.deletedAt, sql\`\${cutoff}\`);
+        `,
+        errors: [
+          { messageId: "columnEncodedValue", data: { helper: "eq" } },
+          { messageId: "columnEncodedValue", data: { helper: "ne" } },
+          { messageId: "columnEncodedValue", data: { helper: "gt" } },
+          { messageId: "columnEncodedValue", data: { helper: "gte" } },
+          { messageId: "columnEncodedValue", data: { helper: "lt" } },
+          { messageId: "columnEncodedValue", data: { helper: "lte" } },
+        ],
+      },
+      {
+        name: "real helper tag and column aliases remain supported",
+        code: `${drizzlePreamble}
+          import { lt as before, sql as query } from "drizzle-orm";
+          const deletedAt = users.deletedAt;
+          const cutoff = new Date();
+          before(deletedAt, query\`\${cutoff}\`);
+        `,
+        errors: [{ messageId: "columnEncodedValue", data: { helper: "lt" } }],
+      },
+      {
+        name: "primitive column values restore their column encoders",
+        code: `${drizzlePreamble}
+          import { eq, ne, sql } from "drizzle-orm";
+          const id = 1;
+          const name = "name";
+          eq(users.id, sql\`\${id}\`);
+          ne(users.name, sql\`\${name}\`);
+        `,
+        errors: [
+          { messageId: "columnEncodedValue", data: { helper: "eq" } },
+          { messageId: "columnEncodedValue", data: { helper: "ne" } },
+        ],
+      },
+      {
+        name: "namespace imports remain supported",
+        code: `${drizzlePreamble}
+          import * as drizzle from "drizzle-orm";
+          const cutoff = new Date();
+          drizzle.lt(users.deletedAt, drizzle.sql\`\${cutoff}\`);
+        `,
+        errors: [{ messageId: "columnEncodedValue", data: { helper: "lt" } }],
+      },
+    ],
+  },
+);
 
 ruleTester.run("prefer-drizzle-apis source-local analysis", preferDrizzleApis, {
   valid: [

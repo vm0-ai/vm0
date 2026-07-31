@@ -108,7 +108,6 @@ export const apiAgentsHandlers = [
     const enabledConnectorSlugs =
       mockEnabledConnectorSlugsByAgent.get(params.id) ?? [];
     return respond(200, {
-      enabledTypes: enabledConnectorSlugs,
       enabledConnectorSlugs,
     });
   }),
@@ -129,7 +128,6 @@ export const apiAgentsHandlers = [
     );
     mockEnabledConnectorSlugsByAgent.set(params.id, enabledConnectorSlugs);
     return respond(200, {
-      enabledTypes: enabledConnectorSlugs,
       enabledConnectorSlugs,
     });
   }),
@@ -180,7 +178,6 @@ export const apiAgentsHandlers = [
   // GET /api/zero/agents/:id/draft
   mockApi(zeroAgentDraftContract.get, ({ respond }) => {
     return respond(200, {
-      draftContent: null,
       draftUserMessage: null,
       draftAttachments: null,
     });
@@ -252,7 +249,6 @@ export const apiAgentsHandlers = [
   // GET /api/zero/chat-threads/:id/draft
   mockApi(chatThreadDraftContract.get, ({ respond }) => {
     return respond(200, {
-      draftContent: null,
       draftUserMessage: null,
       draftAttachments: null,
     });

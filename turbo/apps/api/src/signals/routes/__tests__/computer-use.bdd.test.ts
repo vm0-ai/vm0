@@ -352,11 +352,17 @@ describe("FILE-03 desktop computer-use runtime", () => {
     });
   });
 
-  it("materializes a canonical thread for an in-flight Teams authorization request", async () => {
+  it("uses chat-thread authorization for a canonical Teams run", async () => {
     const orgId = `org_${randomUUID()}`;
     const actor = bdd.user({ orgId });
-    const run = await seedZeroRun({ actor, triggerSource: "teams" });
-    expect(run.threadId).toBeNull();
+    const run = await seedZeroRun({
+      actor,
+      triggerSource: "teams",
+      canonicalThread: true,
+    });
+    if (!run.threadId) {
+      throw new Error("Expected canonical Teams run to use a chat thread");
+    }
 
     const host = await api.startComputerUseHost(actor, {
       hostName: "Canonical Teams Desktop",
@@ -372,7 +378,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
     const created = await api.createComputerUseAuthorizationRequest({
       bearer: token,
     });
-    expect(created.source).toBe("teams");
+    expect(created.source).toBe("chat");
 
     const requestToken = requestTokenFromUrl(created.authorizationUrl);
     const applied = await api.applyComputerUseAuthorizationRequest(
@@ -382,7 +388,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
     );
     expect(applied).toStrictEqual({
       ok: true,
-      source: "teams",
+      source: "chat",
       computerUseHostId: host.hostId,
     });
     await expect(readComputerUseRunState(run.runId)).resolves.toStrictEqual({

@@ -61,7 +61,6 @@ function createMockOauthDeviceAuthConnector(
   const now = "2026-01-01T00:00:00Z";
   return {
     id: crypto.randomUUID(),
-    type: connectorSlug,
     slug: connectorSlug,
     authMethod: "oauth",
     externalId: `mock-${connectorSlug}-external-id`,
@@ -82,7 +81,6 @@ function defaultOauthDeviceAuthSessionStartResponse(
   return {
     sessionId: "00000000-0000-4000-8000-000000000001",
     sessionToken: `mock-${connectorSlug}-oauth-device-session-token`,
-    type: connectorSlug,
     connectorSlug,
     status: "pending",
     userCode: "VM0-DEVICE",
@@ -99,7 +97,6 @@ function createMockLocalGrantConnector(
 ): ConnectorResponse {
   return {
     id: crypto.randomUUID(),
-    type: connectorSlug,
     slug: connectorSlug,
     authMethod,
     externalId: null,
@@ -121,7 +118,6 @@ function createMockExternalCodeConnector(
   const now = "2026-01-01T00:00:00.000Z";
   return {
     id: crypto.randomUUID(),
-    type: connectorSlug,
     slug: connectorSlug,
     authMethod,
     externalId: `mock-${connectorSlug}-account`,
@@ -142,7 +138,6 @@ function defaultExternalCodeSessionStartResponse(
   return {
     sessionId: "00000000-0000-4000-8000-000000000002",
     sessionToken: `mock-${connectorSlug}-external-code-session-token`,
-    type: connectorSlug,
     connectorSlug,
     status: "pending",
     authorizationUrl: `https://oauth.test/${connectorSlug}/external-code`,
@@ -162,7 +157,7 @@ export function resetMockConnectors(): void {
 function upsertMockConnector(connector: ConnectorResponse): void {
   mockConnectors = [
     ...mockConnectors.filter((c) => {
-      return c.type !== connector.type;
+      return c.slug !== connector.slug;
     }),
     connector,
   ];
@@ -262,7 +257,6 @@ function mockConnectorCatalogStatusItem(
   }
 
   return {
-    connectorRef: definition.connectorSlug,
     slug: definition.connectorSlug,
     label: definition.label,
     description: definition.description,
@@ -288,7 +282,7 @@ function mockConnectorCatalogStatusItem(
 function mockConnectorCatalogStatus(): PublicConnectorCatalogStatusItem[] {
   const connectorsBySlug = new Map(
     mockConnectors.map((connector) => {
-      return [connector.type, connector];
+      return [connector.slug, connector];
     }),
   );
   const featureStates = mockFeatureStates();
@@ -315,13 +309,7 @@ function mockConnectorCatalogStatus(): PublicConnectorCatalogStatusItem[] {
 export const apiConnectorsHandlers = [
   mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
     return respond(200, {
-      connectors: mockConnectors.map((connector) => {
-        return {
-          ...connector,
-          slug: connector.slug ?? connector.type,
-        };
-      }),
-      configuredTypes: [...testConnectorSlugs],
+      connectors: mockConnectors,
       configuredConnectorSlugs: [...testConnectorSlugs],
       connectorProvidedBindings: [],
     });
@@ -394,7 +382,7 @@ export const apiConnectorsHandlers = [
   mockApi(zeroConnectorsBySlugContract.delete, ({ params, respond }) => {
     const connectorSlug = params.connectorSlug;
     const existing = mockConnectors.find((c) => {
-      return c.type === connectorSlug;
+      return c.slug === connectorSlug;
     });
 
     if (!existing) {
@@ -404,7 +392,7 @@ export const apiConnectorsHandlers = [
     }
 
     mockConnectors = mockConnectors.filter((c) => {
-      return c.type !== connectorSlug;
+      return c.slug !== connectorSlug;
     });
     return respond(204);
   }),
@@ -448,8 +436,6 @@ export const apiConnectorsHandlers = [
       const response = {
         ...defaultOauthDeviceAuthSessionStartResponse(params.connectorSlug),
         ...mockOauthDeviceAuthSessionStartResponse,
-        type:
-          mockOauthDeviceAuthSessionStartResponse?.type ?? params.connectorSlug,
         connectorSlug:
           mockOauthDeviceAuthSessionStartResponse?.connectorSlug ??
           params.connectorSlug,
@@ -489,8 +475,6 @@ export const apiConnectorsHandlers = [
       return respond(200, {
         ...defaultExternalCodeSessionStartResponse(params.connectorSlug),
         ...mockExternalCodeSessionStartResponse,
-        type:
-          mockExternalCodeSessionStartResponse?.type ?? params.connectorSlug,
         connectorSlug:
           mockExternalCodeSessionStartResponse?.connectorSlug ??
           params.connectorSlug,

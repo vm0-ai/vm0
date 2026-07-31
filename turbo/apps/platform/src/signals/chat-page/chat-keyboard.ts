@@ -15,7 +15,6 @@ import {
 } from "./chat-thread-rename.ts";
 import { chatThreadMetaMap$ } from "./chat-thread-event-sourcing.ts";
 import { CHAT_THREAD_EMOJI_OPTIONS } from "./chat-thread-title.ts";
-import type { ScrollStepDirection } from "../auto-scroll.ts";
 import { onRef } from "../utils.ts";
 import { openChatThreadEmojiMenu$ } from "../zero-page/zero-sidebar-state.ts";
 import {
@@ -31,16 +30,8 @@ import { scrollToThread$ } from "./sidebar-chat-thread-scroll.ts";
 
 type ChatThreadPane = "main" | "side";
 
-function plainArrowScrollDirection(
-  event: KeyboardEvent,
-): ScrollStepDirection | null {
-  if (matchShortcut("arrowup", event)) {
-    return "up";
-  }
-  if (matchShortcut("arrowdown", event)) {
-    return "down";
-  }
-  return null;
+function isPlainArrowScroll(event: KeyboardEvent): boolean {
+  return matchShortcut("arrowup", event) || matchShortcut("arrowdown", event);
 }
 
 function containerContainsTarget(
@@ -157,8 +148,10 @@ function setupKeyboardScrollPrepareListener({
       if (event.defaultPrevented) {
         return;
       }
-      const direction = plainArrowScrollDirection(event);
-      if (!direction || !isKeyboardScrollAllowedTarget(root, event.target)) {
+      if (
+        !isPlainArrowScroll(event) ||
+        !isKeyboardScrollAllowedTarget(root, event.target)
+      ) {
         return;
       }
       const thread = resolveKeyboardScrollThread(
@@ -423,11 +416,7 @@ export const focusChatThreadContainer$ = command(
 );
 
 const scrollCurrentThread$ = command(
-  (
-    { set },
-    thread: ChatThreadSignals,
-    position: "top" | "bottom" | ScrollStepDirection,
-  ): boolean => {
+  ({ set }, thread: ChatThreadSignals, position: "top" | "bottom"): boolean => {
     if (position === "top") {
       set(thread.scrollToTop$);
       return true;
@@ -436,7 +425,7 @@ const scrollCurrentThread$ = command(
       set(thread.scrollToBottom$);
       return true;
     }
-    return set(thread.scrollBy$, position);
+    return false;
   },
 );
 
@@ -540,7 +529,12 @@ export const setChatKeyboardScrollRoot$ = onRef(
         return get(currentRightThread$);
       },
       prepareScroll(thread) {
-        set(thread.prepareKeyboardScroll$);
+        const scrollContainer = get(thread.containerEl$)?.querySelector(
+          "[data-scroll-container]",
+        );
+        if (scrollContainer instanceof HTMLElement) {
+          scrollContainer.focus({ preventScroll: true });
+        }
       },
     });
   }),

@@ -227,6 +227,12 @@ const mockChatEventOverrides = {
       revokesEventId,
     };
   },
+  "browser.started": () => {
+    return { content: null };
+  },
+  "browser.stopped": () => {
+    return { content: null };
+  },
   "goal.changed": (message) => {
     return {
       content: null,

@@ -346,7 +346,6 @@
       "agent": "Agente",
       "agentphone": "AgentPhone",
       "agentWithName": "Agente ({{name}})",
-      "cli": "CLI",
       "email": "E-mail",
       "feishu": "Feishu",
       "github": "GitHub",
@@ -1038,10 +1037,9 @@
     "openNewPage": "Abrir este navegador em uma nova página",
     "panel": {
       "notLive": "Navegador não está ao vivo",
-      "resume": "Retomar navegador",
-      "resumeDescription": "Ao retomar, o perfil de login e o armazenamento salvos são restaurados. As páginas e abas anteriores não são recuperadas.",
-      "resuming": "Retomando…",
-      "suspended": "Navegador suspenso"
+      "start": "Iniciar navegador",
+      "startDescription": "Ao iniciar, o perfil de login e o armazenamento salvos são restaurados quando disponíveis, e as abas salvas são reabertas quando possível.",
+      "starting": "Iniciando…"
     },
     "reclaimHint_one": "O Zero mantém este navegador enquanto o painel está aberto e o recupera após {{formattedCount}} minuto de inatividade.",
     "reclaimHint_many": "O Zero mantém este navegador enquanto o painel está aberto e o recupera após {{formattedCount}} minutos de inatividade.",
@@ -1051,6 +1049,7 @@
       "starting": "Iniciando",
       "stopped": "Parado"
     },
+    "stop": "Parar navegador",
     "title": "Navegador ao vivo",
     "unavailable": {
       "description": "Este navegador não pertence a este chat ou foi removido.",
@@ -1314,6 +1313,18 @@
       "providerDeletedSuffix": "para continuar.",
       "providerIncompatibleAction": "Iniciar uma nova sessão",
       "providerIncompatiblePrefix": "Esta sessão foi iniciada com um provedor de modelo diferente e não pode continuar com o atual.",
+      "recovery": {
+        "capacityDescription": "Este modelo está temporariamente sem capacidade. Tente novamente em alguns minutos ou troque de modelo agora.",
+        "capacityTitle": "O modelo {{framework}} está ocupado",
+        "claudeCode": "Claude Code",
+        "codex": "Codex",
+        "resetAndTryAgain": "Redefinir e tentar novamente",
+        "resetsAt": "Redefine {{time}}",
+        "selectModel": "Trocar modelo",
+        "tryAgain": "Tentar novamente",
+        "usageDescription": "Você pode continuar quando o limite de uso for redefinido ou trocar de modelo agora.",
+        "usageTitle": "Limite do {{framework}} atingido"
+      },
       "runCancelled": "Pausado no meio do raciocínio — retome quando quiser."
     },
     "feedback": {
@@ -1421,6 +1432,7 @@
       "automationEvent": "Evento de automação",
       "automationEventDescription": "Aguarda atrás das mensagens na fila e é executado quando a execução atual termina.",
       "cancelGoal": "Cancelar objetivo",
+      "cancellationRecoveryPending": "Finalizando a execução cancelada antes de continuar o trabalho na fila.",
       "event_one": "{{count}} evento",
       "event_many": "{{count}} eventos",
       "event_other": "{{count}} eventos",
@@ -4207,6 +4219,41 @@
           "signIn": "Entrar com o ChatGPT"
         }
       },
+      "gateways": {
+        "actions": "Ações do gateway",
+        "add": "Adicionar provedor",
+        "addTitle": "Adicionar provedor de modelo",
+        "apiBaseUrl": "URL base da API",
+        "apiBaseUrlPlaceholder": "https://gateway.example.com",
+        "apiKey": "Chave de API",
+        "deleteConfirm": "Excluir esta conexão de provedor de modelo? As rotas de modelo que a utilizam ficarão indisponíveis.",
+        "description": "Conecte um gateway gerenciado pelo administrador via Anthropic Messages, OpenAI Responses ou ambos.",
+        "dialogDescription": "Configure cada protocolo com a URL base da API usada pelo Claude Code ou Codex.",
+        "editTitle": "Editar provedor de modelo",
+        "empty": "Nenhum provedor de modelo personalizado configurado.",
+        "errors": {
+          "invalidMappings": "Os mapeamentos de modelo devem ser um objeto JSON cujos valores sejam nomes de modelos upstream.",
+          "missingProtocol": "Ative pelo menos um protocolo.",
+          "missingSecret": "Insira uma chave de API."
+        },
+        "headerName": "Cabeçalho de autenticação",
+        "headerValue": "Modelo do valor do cabeçalho",
+        "keepKey": "Deixe em branco para manter a chave atual",
+        "modelMappings": "Mapeamentos de modelo (JSON)",
+        "name": "Nome",
+        "presets": {
+          "custom": "Personalizado",
+          "fireworks": "Fireworks AI",
+          "openrouter": "OpenRouter",
+          "vercel": "Vercel AI Gateway"
+        },
+        "protocols": {
+          "anthropicMessages": "Anthropic Messages",
+          "openaiResponses": "OpenAI Responses"
+        },
+        "requestPreview": "Requisições",
+        "title": "Conexões de provedor"
+      },
       "personal": {
         "actionForProvider": "{{action}} {{provider}}",
         "claudeDescription": "Conecte o login do Claude Code para usar rotas de modelos baseadas no Claude.",
@@ -4266,16 +4313,21 @@
         "defaultModel": "Modelo padrão",
         "defaultModelDescription": "Usado quando uma tarefa não escolhe um modelo próprio.",
         "dialogDescription": "Defina como os membros acessam este modelo.",
+        "gateway": "Gateway personalizado",
+        "gatewayDescription": "Direcione por uma conexão de provedor definida pelo administrador.",
+        "gatewayProvider": "Conexão de provedor",
         "getKey": "Obter uma chave",
         "invalidRoute": "Rota inválida",
         "missingProvider": "Provedor ausente",
         "model": "Modelo",
         "noAvailableModels": "Nenhum modelo disponível",
+        "noMappedGateway": "Nenhuma conexão de provedor mapeia este modelo.",
         "providedBy": "Disponibilizado por",
         "provider": "Provedor",
         "providerApiKey": "Chave de API da {{provider}}",
         "secretStored": "Armazenado nos segredos do espaço de trabalho.",
         "selectDefaultModel": "Selecionar um modelo padrão",
+        "selectGateway": "Selecionar uma conexão de provedor",
         "selectModel": "Selecionar um modelo",
         "selectProvider": "Selecionar um provedor",
         "workspaceDescription": "Disponível para todos neste espaço de trabalho.",
@@ -4354,8 +4406,15 @@
         "label": "Idioma",
         "options": {
           "english": "English",
+          "french": "Français",
+          "german": "Deutsch",
+          "hindi": "हिन्दी",
+          "indonesian": "Bahasa Indonesia",
+          "italian": "Italiano",
           "japanese": "日本語",
-          "portugueseBrazil": "Português (Brasil)"
+          "korean": "한국어",
+          "portugueseBrazil": "Português (Brasil)",
+          "spanish": "Español"
         },
         "title": "Idioma"
       },
@@ -4424,6 +4483,7 @@
       "delete": "Excluir",
       "discard": "Descartar",
       "disconnect": "Desconectar",
+      "edit": "Editar",
       "loading": "Carregando",
       "moreOptions": "Mais opções",
       "reconnect": "Reconectar",
@@ -4639,7 +4699,6 @@
       "agent": "Agente",
       "automation": "Automação",
       "chat": "Conversa",
-      "cli": "CLI",
       "email": "E-mail",
       "github": "GitHub",
       "other": "Outro",

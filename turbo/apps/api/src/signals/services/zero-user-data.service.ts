@@ -64,7 +64,14 @@ function parseUserLocale(value: unknown): UserLocale | null {
     value === null ||
     value === "en-US" ||
     value === "pt-BR" ||
-    value === "ja-JP"
+    value === "ja-JP" ||
+    value === "ko-KR" ||
+    value === "id-ID" ||
+    value === "de-DE" ||
+    value === "es-ES" ||
+    value === "it-IT" ||
+    value === "fr-FR" ||
+    value === "hi-IN"
   ) {
     return value;
   }
@@ -183,23 +190,18 @@ export function userModelPreference({
 
 interface UpdateUserPreferencesArgs extends UserScopedQuery {
   readonly preferences: UpdateUserPreferencesRequest;
-  readonly allowBrazilianPortuguese?: boolean;
-  readonly allowJapanese?: boolean;
+  readonly allowedLocales?: readonly UserLocale[];
 }
 
 type UpdateUserPreferencesResult =
   | { readonly ok: true; readonly data: UserPreferencesResponse }
   | { readonly ok: false; readonly message: string };
 
-function isUserPreferencesUpdateAllowed(
-  args: UpdateUserPreferencesArgs,
+function isPreferenceLocaleAllowed(
+  locale: UserLocale | undefined,
+  allowedLocales: readonly UserLocale[] | undefined,
 ): boolean {
-  const { locale, timezone } = args.preferences;
-  return (
-    (locale !== "pt-BR" || args.allowBrazilianPortuguese === true) &&
-    (locale !== "ja-JP" || args.allowJapanese === true) &&
-    (timezone === undefined || isValidTimeZone(timezone))
-  );
+  return locale === undefined || (allowedLocales ?? ["en-US"]).includes(locale);
 }
 
 export const updateUserPreferences$ = command(
@@ -209,7 +211,16 @@ export const updateUserPreferences$ = command(
     signal: AbortSignal,
   ): Promise<UpdateUserPreferencesResult> => {
     const preferences = args.preferences;
-    if (!isUserPreferencesUpdateAllowed(args)) {
+    if (!isPreferenceLocaleAllowed(preferences.locale, args.allowedLocales)) {
+      return {
+        ok: false,
+        message: "Invalid request",
+      };
+    }
+    if (
+      preferences.timezone !== undefined &&
+      !isValidTimeZone(preferences.timezone)
+    ) {
       return {
         ok: false,
         message: "Invalid request",

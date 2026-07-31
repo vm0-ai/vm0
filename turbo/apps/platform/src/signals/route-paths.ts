@@ -17,7 +17,7 @@ export const ROUTES = {
   prompt: "/prompt",
   works: "/works",
   artifacts: "/artifacts",
-  browser: "/browsers/:browserId",
+  browser: "/browsers/:browserThreadId",
   browserAuthorize: "/browser/authorize/:requestToken",
   ideas: "/ideas",
   connectors: "/connectors",

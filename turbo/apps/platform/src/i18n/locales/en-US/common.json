@@ -332,7 +332,6 @@
       "agent": "Agent",
       "agentphone": "AgentPhone",
       "agentWithName": "Agent ({{name}})",
-      "cli": "CLI",
       "email": "Email",
       "feishu": "Feishu",
       "github": "GitHub",
@@ -1016,10 +1015,9 @@
     "openNewPage": "Open this browser in a new page",
     "panel": {
       "notLive": "Browser not live",
-      "resume": "Resume browser",
-      "resumeDescription": "Resuming restores the saved login profile and storage. The previous pages and tabs do not come back.",
-      "resuming": "Resuming…",
-      "suspended": "Browser suspended"
+      "start": "Start browser",
+      "startDescription": "Starting restores the saved login profile and storage when available, and reopens saved tabs when possible.",
+      "starting": "Starting…"
     },
     "reclaimHint_one": "Zero keeps this browser while this panel is open, and reclaims it after {{formattedCount}} idle minute.",
     "reclaimHint_other": "Zero keeps this browser while this panel is open, and reclaims it after {{formattedCount}} idle minutes.",
@@ -1028,6 +1026,7 @@
       "starting": "Starting",
       "stopped": "Stopped"
     },
+    "stop": "Stop browser",
     "title": "Live browser",
     "unavailable": {
       "description": "This browser does not belong to this chat or has been removed.",
@@ -1287,6 +1286,18 @@
       "providerDeletedSuffix": "to continue.",
       "providerIncompatibleAction": "Start a new session",
       "providerIncompatiblePrefix": "This session was started with a different model provider and can't be continued with the current one.",
+      "recovery": {
+        "capacityDescription": "This model is temporarily at capacity. Try again in a few minutes, or switch models now.",
+        "capacityTitle": "{{framework}} model is busy",
+        "claudeCode": "Claude Code",
+        "codex": "Codex",
+        "resetAndTryAgain": "Reset and try again",
+        "resetsAt": "Resets {{time}}",
+        "selectModel": "Switch model",
+        "tryAgain": "Try again",
+        "usageDescription": "You can continue when your usage limit resets, or switch models now.",
+        "usageTitle": "{{framework}} limit reached"
+      },
       "runCancelled": "Paused mid-thought — pick it back up whenever."
     },
     "feedback": {
@@ -1390,6 +1401,7 @@
       "automationEvent": "Automation event",
       "automationEventDescription": "Waits behind queued messages and runs once the current run finishes.",
       "cancelGoal": "Cancel goal",
+      "cancellationRecoveryPending": "Finalizing the cancelled run before queued work continues.",
       "event_one": "{{count}} event",
       "event_other": "{{count}} events",
       "goal": "Goal",
@@ -4140,6 +4152,41 @@
           "signIn": "Sign in with ChatGPT"
         }
       },
+      "gateways": {
+        "actions": "Gateway actions",
+        "add": "Add provider",
+        "addTitle": "Add model provider",
+        "apiBaseUrl": "API base URL",
+        "apiBaseUrlPlaceholder": "https://gateway.example.com",
+        "apiKey": "API key",
+        "deleteConfirm": "Delete this model provider connection? Model routes using it will become unavailable.",
+        "description": "Connect an admin-managed gateway through Anthropic Messages, OpenAI Responses, or both.",
+        "dialogDescription": "Configure each protocol with the API base URL used by Claude Code or Codex.",
+        "editTitle": "Edit model provider",
+        "empty": "No custom model providers configured.",
+        "errors": {
+          "invalidMappings": "Model mappings must be a JSON object whose values are upstream model names.",
+          "missingProtocol": "Enable at least one protocol.",
+          "missingSecret": "Enter an API key."
+        },
+        "headerName": "Authentication header",
+        "headerValue": "Header value template",
+        "keepKey": "Leave blank to keep the current key",
+        "modelMappings": "Model mappings (JSON)",
+        "name": "Name",
+        "presets": {
+          "custom": "Custom",
+          "fireworks": "Fireworks AI",
+          "openrouter": "OpenRouter",
+          "vercel": "Vercel AI Gateway"
+        },
+        "protocols": {
+          "anthropicMessages": "Anthropic Messages",
+          "openaiResponses": "OpenAI Responses"
+        },
+        "requestPreview": "Requests",
+        "title": "Provider connections"
+      },
       "personal": {
         "actionForProvider": "{{action}} {{provider}}",
         "claudeDescription": "Connect with Claude Code login for Claude-backed model routes.",
@@ -4199,16 +4246,21 @@
         "defaultModel": "Default model",
         "defaultModelDescription": "Used when a task doesn't choose its own model.",
         "dialogDescription": "Decide how members access this model.",
+        "gateway": "Custom gateway",
+        "gatewayDescription": "Route through an admin-defined provider connection.",
+        "gatewayProvider": "Provider connection",
         "getKey": "Get a key",
         "invalidRoute": "Invalid route",
         "missingProvider": "Missing provider",
         "model": "Model",
         "noAvailableModels": "No available models",
+        "noMappedGateway": "No provider connection maps this model.",
         "providedBy": "Provided by",
         "provider": "Provider",
         "providerApiKey": "{{provider}} API key",
         "secretStored": "Stored in workspace secrets.",
         "selectDefaultModel": "Select a default model",
+        "selectGateway": "Select a provider connection",
         "selectModel": "Select a model",
         "selectProvider": "Select a provider",
         "workspaceDescription": "Available to everyone in this workspace.",
@@ -4285,8 +4337,15 @@
         "label": "Language",
         "options": {
           "english": "English",
+          "french": "Français",
+          "german": "Deutsch",
+          "hindi": "हिन्दी",
+          "indonesian": "Bahasa Indonesia",
+          "italian": "Italiano",
           "japanese": "日本語",
-          "portugueseBrazil": "Português (Brasil)"
+          "korean": "한국어",
+          "portugueseBrazil": "Português (Brasil)",
+          "spanish": "Español"
         },
         "title": "Language"
       },
@@ -4355,6 +4414,7 @@
       "delete": "Delete",
       "discard": "Discard",
       "disconnect": "Disconnect",
+      "edit": "Edit",
       "loading": "Loading",
       "moreOptions": "More options",
       "reconnect": "Reconnect",
@@ -4566,7 +4626,6 @@
       "agent": "Agent",
       "automation": "Automation",
       "chat": "Chat",
-      "cli": "CLI",
       "email": "Email",
       "github": "GitHub",
       "other": "Other",

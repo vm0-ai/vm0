@@ -1246,7 +1246,7 @@ async function insertGitHubChatInput(args: {
   readonly promptParts: ReturnType<typeof buildPromptParts>;
   readonly reactionId: string | undefined;
   readonly currentTime: Date;
-}): Promise<{ readonly chatMessageId: string; readonly inserted: boolean }> {
+}): Promise<{ readonly chatEventId: string; readonly inserted: boolean }> {
   const issueNumber = args.params.issue.number;
   const encryptedParams = await encryptQueuedUserMessageRunParams(
     {
@@ -1268,7 +1268,7 @@ async function insertGitHubChatInput(args: {
     { orgId: args.target.orgId, userId: args.params.vm0UserId },
   );
 
-  const chatMessageId = uuidv5(
+  const chatEventId = uuidv5(
     [
       args.route.installationId,
       args.params.repo,
@@ -1282,7 +1282,7 @@ async function insertGitHubChatInput(args: {
     const event = await insertChatEvent(
       tx,
       {
-        id: chatMessageId,
+        id: chatEventId,
         chatThreadId: args.route.chatThreadId,
         eventType: "input.prompt",
         userMessage: createUserMessageDocument({ text: args.prompt }),
@@ -1307,11 +1307,11 @@ async function insertGitHubChatInput(args: {
       tx,
       args.route.chatThreadId,
       args.currentTime,
-      chatMessageId,
+      chatEventId,
     );
     return true;
   });
-  return { chatMessageId, inserted };
+  return { chatEventId, inserted };
 }
 
 const dispatchGithubAgentRun$ = command(
@@ -1385,7 +1385,7 @@ const dispatchGithubAgentRun$ = command(
     });
     signal.throwIfAborted();
 
-    const { chatMessageId, inserted } = await insertGitHubChatInput({
+    const { chatEventId, inserted } = await insertGitHubChatInput({
       db,
       route,
       params,
@@ -1429,7 +1429,7 @@ const dispatchGithubAgentRun$ = command(
 
     L.debug("GitHub comment queued on canonical chat thread", {
       chatThreadId: route.chatThreadId,
-      chatMessageId,
+      chatEventId,
       repo: params.repo,
       issueNumber,
       subjectKind: params.subjectKind,

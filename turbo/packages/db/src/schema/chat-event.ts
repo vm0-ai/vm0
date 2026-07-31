@@ -19,7 +19,6 @@ import type {
   ChatEventAttachFiles,
   ChatEventGenerationTemplate,
   ChatEventGoalEvent,
-  ChatEventGoalSnapshot,
   ChatEventRecommendedFollowups,
   ChatEventUserMessage,
   ChatEventUsagePayload,
@@ -110,9 +109,7 @@ export const chatEvents = pgTable(
       "slack" | "feishu" | "automation" | "goal"
     >(),
     contextId: uuid("context_id"),
-    automationId: uuid("automation_id"),
     triggerSource: text("trigger_source").$type<TriggerSource>(),
-    triggerBrief: text("trigger_brief"),
     content: text("content"),
     /** Canonical rich user-message document for user input events. */
     userMessage: jsonb("user_message").$type<ChatEventUserMessage>(),
@@ -125,13 +122,10 @@ export const chatEvents = pgTable(
     /** Strictly increasing position within the owning chat thread. */
     seqId: bigint("seq_id", { mode: "number" }).notNull(),
     goalEvent: jsonb("goal_event").$type<ChatEventGoalEvent>(),
-    goalSnapshot: jsonb("goal_snapshot").$type<ChatEventGoalSnapshot>(),
     attachFiles: jsonb("attach_files").$type<ChatEventAttachFiles>(),
     generationTemplate: jsonb(
       "generation_template",
     ).$type<ChatEventGenerationTemplate>(),
-    slackMessagePermalink: text("slack_message_permalink"),
-    feishuChatOpenUrl: text("feishu_chat_open_url"),
     recommendedFollowups: jsonb(
       "recommended_followups",
     ).$type<ChatEventRecommendedFollowups>(),
@@ -159,8 +153,8 @@ export const chatEvents = pgTable(
       index("idx_chat_events_run_group_id")
         .on(table.runGroupId)
         .where(sql`${table.runGroupId} IS NOT NULL`),
-      index("chat_events_input_automation_idx")
-        .on(table.automationId)
+      index("chat_events_input_automation_context_idx")
+        .on(table.contextId)
         .where(sql`${table.eventType} = 'input.automation'`),
       index("chat_events_pending_queue_idx")
         .on(table.chatThreadId, table.createdAt, table.id)
@@ -206,6 +200,8 @@ export const chatEvents = pgTable(
           'queue.automation_resumed',
           'control.interrupt',
           'control.revoke',
+          'browser.started',
+          'browser.stopped',
           'goal.changed',
           'usage.recorded'
         )`,

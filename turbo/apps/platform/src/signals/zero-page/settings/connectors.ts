@@ -48,13 +48,7 @@ import {
   zeroClient$,
   type ZeroClientFactory,
 } from "../../api-client.ts";
-import {
-  jsonParseOr,
-  resetSignal,
-  setLoop,
-  tapError,
-  withCleanup,
-} from "../../utils.ts";
+import { resetSignal, setLoop, tapError, withCleanup } from "../../utils.ts";
 import { setAblyPayloadLoop$ } from "../../realtime.ts";
 import { localStorageSignals } from "../../external/local-storage.ts";
 import { subagents$ } from "../../agent.ts";
@@ -64,23 +58,11 @@ import { IN_VITEST } from "../../../env.ts";
 import { connectorRedirectingPath } from "../../connectors-page/connector-redirecting.ts";
 import { isConnectorChangedPayloadFor } from "../../connector-change.ts";
 import { i18n } from "../../../i18n/index.ts";
-import {
-  normalizeConnectorListResponse,
-  normalizeEnabledConnectorSlugs,
-  type PlatformConnector,
-  type PlatformConnectorCatalogStatusItem,
+import type {
+  PlatformConnector,
+  PlatformConnectorCatalogStatusItem,
 } from "../../connector-domain.ts";
 
-const HIDDEN_CONNECTOR_SLUGS_STORAGE_KEY =
-  "vm0.connections.hiddenConnectorSlugs";
-const LEGACY_HIDDEN_CONNECTOR_SLUGS_STORAGE_KEY = "vm0.connections.hiddenTypes";
-
-const { get$: hiddenConnectorSlugsRaw$, set$: setHiddenConnectorSlugsRaw$ } =
-  localStorageSignals(HIDDEN_CONNECTOR_SLUGS_STORAGE_KEY);
-const {
-  get$: legacyHiddenConnectorSlugsRaw$,
-  clear$: clearLegacyHiddenConnectorSlugs$,
-} = localStorageSignals(LEGACY_HIDDEN_CONNECTOR_SLUGS_STORAGE_KEY);
 const { set$: setConnectorAppOauthCallbackMetadata$ } = localStorageSignals(
   CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY,
 );
@@ -421,38 +403,6 @@ export const allConnectorCatalogItems$ = computed(async (get) => {
 
   return items;
 });
-
-// ---------------------------------------------------------------------------
-// Hidden connector slugs (removed from list by user; persisted in localStorage)
-// ---------------------------------------------------------------------------
-
-export const migrateHiddenConnectorSlugsStorage$ = command(({ get, set }) => {
-  const legacy = get(legacyHiddenConnectorSlugsRaw$);
-  if (legacy === null) {
-    return;
-  }
-  if (get(hiddenConnectorSlugsRaw$) === null) {
-    set(setHiddenConnectorSlugsRaw$, legacy);
-  }
-  set(clearLegacyHiddenConnectorSlugs$);
-});
-
-const hiddenConnectorSlugs$ = computed((get): Set<ConnectorSlug> => {
-  // TODO(#23823): Remove the legacy hidden-connector storage fallback.
-  const raw =
-    get(hiddenConnectorSlugsRaw$) ?? get(legacyHiddenConnectorSlugsRaw$);
-  if (!raw) {
-    return new Set();
-  }
-  return new Set(jsonParseOr<ConnectorSlug[]>(raw, []));
-});
-
-const setHiddenConnectorSlugs$ = command(
-  ({ set }, connectorSlugs: readonly ConnectorSlug[]) => {
-    set(setHiddenConnectorSlugsRaw$, JSON.stringify(connectorSlugs));
-    set(clearLegacyHiddenConnectorSlugs$);
-  },
-);
 
 // ---------------------------------------------------------------------------
 // Search filter
@@ -882,7 +832,7 @@ const authorizeConnectorForVisibleAgents$ = command(
 
 const finishConnectorConnection$ = command(
   async (
-    { get, set },
+    { set },
     connectorSlug: ConnectorSlug,
     options: FinishConnectorConnectionOptions,
     signal: AbortSignal,
@@ -899,10 +849,6 @@ const finishConnectorConnection$ = command(
     if (options.agentId) {
       set(reloadAgentConnectorAuthorizations$);
     }
-
-    const hidden = new Set(get(hiddenConnectorSlugs$));
-    hidden.delete(connectorSlug);
-    set(setHiddenConnectorSlugs$, [...hidden]);
 
     if (options.toastMessage !== null) {
       toast.success(
@@ -2129,7 +2075,7 @@ function createConnectorOAuthAuthCodeChangedCommand(
       client.list({ fetchOptions: { signal: sig } }),
       [200],
     );
-    const polled = normalizeConnectorListResponse(result.body).connectors;
+    const polled = result.body.connectors;
     const current = polled.find((c) => {
       return connectorMatchesAuthMethod(c, connectorSlug, authMethod);
     });
@@ -2155,9 +2101,7 @@ function createConnectorOAuthAuthCodeChangedCommand(
       );
       return (
         authorization.status === 200 &&
-        normalizeEnabledConnectorSlugs(authorization.body).includes(
-          connectorSlug,
-        )
+        authorization.body.enabledConnectorSlugs.includes(connectorSlug)
       );
     }
     return false;

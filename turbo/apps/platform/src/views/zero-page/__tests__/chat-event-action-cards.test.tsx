@@ -45,18 +45,11 @@ function catalogPermissionDetail(
   overrides: Partial<PublicConnectorCatalogPermissionDetail> &
     Pick<
       PublicConnectorCatalogPermissionDetail,
-      "connectorRef" | "label" | "permissions"
+      "connectorSlug" | "label" | "permissions"
     >,
 ): PublicConnectorCatalogPermissionDetail {
-  const {
-    connectorRef: connectorSlug,
-    label,
-    permissions,
-    icon,
-    ...rest
-  } = overrides;
+  const { connectorSlug, label, permissions, icon, ...rest } = overrides;
   return {
-    connectorRef: connectorSlug,
     connectorSlug,
     label,
     icon: icon ?? {
@@ -93,7 +86,7 @@ function applyUserConnectorUpdate(
 }
 
 function connectedConnector(
-  overrides: Pick<ConnectorResponse, "type" | "authMethod"> &
+  overrides: Pick<ConnectorResponse, "slug" | "authMethod"> &
     Partial<ConnectorResponse>,
 ): ConnectorResponse {
   return {
@@ -108,17 +101,15 @@ function connectedConnector(
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
     ...overrides,
-    slug: overrides.slug ?? overrides.type,
   };
 }
 
 function publicConnectorStatusItem(
   overrides: Partial<PublicConnectorCatalogStatusItem> &
-    Pick<PublicConnectorCatalogStatusItem, "connectorRef" | "label">,
+    Pick<PublicConnectorCatalogStatusItem, "slug" | "label">,
 ): PublicConnectorCatalogStatusItem {
-  const { connectorRef: connectorSlug, label, icon, ...rest } = overrides;
+  const { slug: connectorSlug, label, icon, ...rest } = overrides;
   return {
-    connectorRef: connectorSlug,
     slug: connectorSlug,
     label,
     description: `${label} public help text`,
@@ -162,7 +153,6 @@ function mockAgentConnectorAuthorizations(
   let enabledConnectorSlugs: string[] = [...initialConnectorSlugs];
   context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
     return respond(200, {
-      enabledTypes: enabledConnectorSlugs,
       enabledConnectorSlugs,
     });
   });
@@ -172,7 +162,6 @@ function mockAgentConnectorAuthorizations(
       body,
     );
     return respond(200, {
-      enabledTypes: enabledConnectorSlugs,
       enabledConnectorSlugs,
     });
   });
@@ -329,7 +318,7 @@ function mailFollowUpScenario(args: {
   };
 
   mockConnectorCatalogStatus([
-    publicConnectorStatusItem({ connectorRef: "gmail", label: "Gmail" }),
+    publicConnectorStatusItem({ slug: "gmail", label: "Gmail" }),
   ]);
   context.mocks.api(zeroMailContract.getDraft, ({ respond }) => {
     return respond(200, {
@@ -403,6 +392,149 @@ function selectMailText(element: HTMLElement): void {
 }
 
 describe("chat event action cards", () => {
+  it("keeps connector action card height stable while catalog metadata loads", async () => {
+    const threadId = `${THREAD_ID}-connector-loading-height`;
+    const connectorUrl = `${window.location.origin}/connectors/slack/authorize?agentId=${AGENT_ID}`;
+    let catalogRequestStarted = false;
+    let resolveCatalog = (): void => {
+      throw new Error("Catalog request did not start");
+    };
+    context.mocks.api(
+      zeroConnectorCatalogContract.status,
+      async ({ deferred, respond }) => {
+        const catalogDeferred = deferred<void>();
+        resolveCatalog = () => {
+          catalogDeferred.resolve();
+        };
+        catalogRequestStarted = true;
+        await catalogDeferred.promise;
+        return respond(200, {
+          connectors: [
+            publicConnectorStatusItem({
+              slug: "slack",
+              label: "Slack",
+            }),
+          ],
+        });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Connector loading height",
+      chatEvents: [
+        {
+          id: `${threadId}-message`,
+          role: "assistant",
+          content: connectorUrl,
+          runId: `${threadId}-run`,
+          createdAt: "2026-07-30T10:00:00.000Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const loadingCard = await screen.findByTestId(
+      "connector-action-card-loading",
+    );
+    expect(loadingCard).toHaveClass("h-[136px]", "sm:h-[88px]");
+    await waitFor(() => {
+      expect(catalogRequestStarted).toBeTruthy();
+    });
+    resolveCatalog();
+
+    const connectorCard = await screen.findByTestId("connector-action-card");
+    expect(connectorCard).toHaveClass("h-[136px]", "sm:h-[88px]");
+    expect(
+      screen.queryByTestId("connector-action-card-loading"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps sent mail card height stable while draft data loads", async () => {
+    const threadId = `${THREAD_ID}-mail-loading-height`;
+    const mailDraftId = "c0000000-0000-4000-a000-000000000091";
+    const mailDraftUrl = `https://app.vm0.ai/mail/drafts/${mailDraftId}`;
+    const createdAt = "2026-07-30T10:00:00.000Z";
+    let draftRequestStarted = false;
+    let resolveDraft = (): void => {
+      throw new Error("Draft request did not start");
+    };
+    mockConnectorCatalogStatus([
+      publicConnectorStatusItem({ slug: "gmail", label: "Gmail" }),
+    ]);
+    context.mocks.api(
+      zeroMailContract.getDraft,
+      async ({ deferred, respond }) => {
+        const draftDeferred = deferred<void>();
+        resolveDraft = () => {
+          draftDeferred.resolve();
+        };
+        draftRequestStarted = true;
+        await draftDeferred.promise;
+        return respond(200, {
+          mailDraftId,
+          mailDraftUrl,
+          mailDraft: {
+            version: 3,
+            provider: "gmail",
+            from: "sender@example.com",
+            to: ["recipient@example.com"],
+            cc: [],
+            bcc: [],
+            subject: MAIL_FOLLOW_UP_SUBJECT,
+            body: "Mail body",
+            status: "sent",
+            detailAvailable: true,
+            gmailDraftId: "gmail-draft-id",
+            gmailThreadId: "gmail-thread-id",
+            gmailMessageId: "gmail-message-id",
+            sentGmailMessageId: "gmail-sent-message-id",
+            sentAt: createdAt,
+            references: [],
+            attachments: [],
+            createdAt,
+            updatedAt: createdAt,
+          },
+        });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Mail loading height",
+      chatEvents: [
+        {
+          id: `${threadId}-message`,
+          role: "assistant",
+          content: mailDraftUrl,
+          runId: `${threadId}-run`,
+          createdAt,
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ZeroMailReplyFollowUp]: true,
+      },
+    });
+
+    const loadingCard = await screen.findByTestId("mail-draft-card-loading");
+    expect(loadingCard).toHaveClass("h-[76px]");
+    await waitFor(() => {
+      expect(draftRequestStarted).toBeTruthy();
+    });
+    resolveDraft();
+
+    await screen.findByText(MAIL_FOLLOW_UP_SUBJECT);
+    const mailCard = document.querySelector("[data-mail-draft-card]");
+    expect(mailCard).toHaveClass("h-[76px]");
+    expect(
+      screen.queryByTestId("mail-draft-card-loading"),
+    ).not.toBeInTheDocument();
+  });
+
   it("opens a shared mail draft without reloading and refreshes after sending", async () => {
     const user = userEvent.setup({ delay: null });
     const clipboard = context.mocks.browser.clipboardWriteText();
@@ -439,7 +571,7 @@ describe("chat event action cards", () => {
 
     mockConnectorCatalogStatus([
       publicConnectorStatusItem({
-        connectorRef: "gmail",
+        slug: "gmail",
         label: "Gmail",
         icon: {
           url: "https://icons.example.test/gmail-catalog.svg",
@@ -846,7 +978,7 @@ describe("chat event action cards", () => {
     const untrustedUrl = `https://evil.example.test/connectors/slack/authorize?agentId=${AGENT_ID}`;
     mockConnectorCatalogStatus([
       publicConnectorStatusItem({
-        connectorRef: "slack",
+        slug: "slack",
         label: "Slack",
       }),
     ]);
@@ -1084,7 +1216,7 @@ describe("chat event action cards", () => {
 
     mockConnectorCatalogStatus([
       publicConnectorStatusItem({
-        connectorRef: "gmail",
+        slug: "gmail",
         label: "Gmail",
       }),
     ]);
@@ -1299,7 +1431,7 @@ describe("chat event action cards", () => {
 
     context.mocks.data.connectors([
       connectedConnector({
-        type: "gmail",
+        slug: "gmail",
         authMethod: "oauth",
         connectionStatus: "reconnect-required",
         reconnectReason: "authorization_expired_or_revoked",
@@ -1309,7 +1441,7 @@ describe("chat event action cards", () => {
       return respond(200, {
         connectors: [
           publicConnectorStatusItem({
-            connectorRef: "gmail",
+            slug: "gmail",
             label: "Gmail",
             connected: true,
             connectionStatus: reconnectRequired
@@ -1352,7 +1484,7 @@ describe("chat event action cards", () => {
         reconnectRequired = false;
         context.mocks.data.connectors([
           connectedConnector({
-            type: "gmail",
+            slug: "gmail",
             authMethod: "oauth",
             externalEmail: "sender@example.com",
             updatedAt: "2026-01-01T00:00:01Z",
@@ -1427,7 +1559,7 @@ describe("chat event action cards", () => {
       return respond(200, {
         connectors: [
           publicConnectorStatusItem({
-            connectorRef: "github",
+            slug: "github",
             label: "GitHub",
             connected,
             connectionStatus: connected ? "connected" : "not-connected",
@@ -1456,7 +1588,7 @@ describe("chat event action cards", () => {
     });
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
       return respond(200, {
-        enabledTypes: authorized ? ["github"] : [],
+        enabledConnectorSlugs: authorized ? ["github"] : [],
       });
     });
     context.mocks.api(
@@ -1472,7 +1604,7 @@ describe("chat event action cards", () => {
         authorized = true;
         context.mocks.data.connectors([
           connectedConnector({
-            type: "github",
+            slug: "github",
             authMethod: "oauth",
             externalUsername: "octocat",
             updatedAt: "2026-01-01T00:00:01Z",
@@ -1537,7 +1669,7 @@ describe("chat event action cards", () => {
       return respond(200, {
         connectors: [
           publicConnectorStatusItem({
-            connectorRef: "stripe",
+            slug: "stripe",
             label: "Public Stripe",
             connected,
             connectionStatus: connected ? "connected" : "not-connected",
@@ -1557,7 +1689,7 @@ describe("chat event action cards", () => {
     });
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
       return respond(200, {
-        enabledTypes: authorized ? ["stripe"] : [],
+        enabledConnectorSlugs: authorized ? ["stripe"] : [],
       });
     });
     context.mocks.api(
@@ -1574,7 +1706,7 @@ describe("chat event action cards", () => {
         authorized = true;
         return respond(
           200,
-          connectedConnector({ type: "stripe", authMethod: "api" }),
+          connectedConnector({ slug: "stripe", authMethod: "api" }),
         );
       },
     );
@@ -1719,7 +1851,7 @@ describe("chat event action cards", () => {
 
     context.mocks.data.connectors([
       connectedConnector({
-        type: "gmail",
+        slug: "gmail",
         authMethod: "oauth",
         connectionStatus: "reconnect-required",
         reconnectReason: "authorization_expired_or_revoked",
@@ -1730,7 +1862,7 @@ describe("chat event action cards", () => {
       return respond(200, {
         connectors: [
           publicConnectorStatusItem({
-            connectorRef: "gmail",
+            slug: "gmail",
             label: "Gmail",
             connected: true,
             connectionStatus: reconnectRequired
@@ -1843,14 +1975,13 @@ describe("chat event action cards", () => {
     pauseReadyRefresh = true;
     context.mocks.data.connectors([
       connectedConnector({
-        type: "gmail",
+        slug: "gmail",
         authMethod: "oauth",
         updatedAt: "2026-01-01T00:00:01Z",
       }),
     ]);
     triggerAblyEvent("connector:changed", {
       connectorSlug: "gmail",
-      connectorRef: "slack",
     });
 
     await refreshStarted.promise;
@@ -1942,7 +2073,6 @@ describe("chat event action cards", () => {
 
     context.mocks.data.connectors([
       connectedConnector({
-        type: "slack",
         slug: "github",
         authMethod: "oauth",
         externalUsername: "octocat",
@@ -1950,7 +2080,6 @@ describe("chat event action cards", () => {
     ]);
     mockConnectorCatalogStatus([
       publicConnectorStatusItem({
-        connectorRef: "slack",
         slug: "github",
         label: "Catalog GitHub",
         description: "Catalog GitHub server help text",
@@ -1975,7 +2104,7 @@ describe("chat event action cards", () => {
         expect(params.connectorSlug).toBe("slack");
         return respond(200, {
           permissions: catalogPermissionDetail({
-            connectorRef: "slack",
+            connectorSlug: "slack",
             label: "Catalog Slack",
             permissions: [
               {
@@ -1998,7 +2127,6 @@ describe("chat event action cards", () => {
         return respond(200, [
           {
             agentId: body.agentId,
-            connectorRef: body.connectorSlug,
             connectorSlug: body.connectorSlug,
             permission: grant.permission,
             action: grant.action,
@@ -2107,8 +2235,8 @@ describe("chat event action cards", () => {
   it("renders and confirms multiple permission cards from one assistant event", async () => {
     mockNow();
     const user = userEvent.setup({ delay: null });
-    const createPermissionUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=google-sheets&permission=spreadsheets.create&action=allow&expiresIn=1h`;
-    const writePermissionUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=google-sheets&permission=values.write&action=allow&expiresIn=1h`;
+    const createPermissionUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=google-sheets&permission=spreadsheets.create&action=allow&expiresIn=1h`;
+    const writePermissionUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=google-sheets&permission=values.write&action=allow&expiresIn=1h`;
     const capturedPermissionGrantBodies: unknown[] = [];
 
     context.mocks.api(
@@ -2117,7 +2245,7 @@ describe("chat event action cards", () => {
         expect(params.connectorSlug).toBe("google-sheets");
         return respond(200, {
           permissions: catalogPermissionDetail({
-            connectorRef: "google-sheets",
+            connectorSlug: "google-sheets",
             label: "Google Sheets",
             permissions: [
               {
@@ -2144,7 +2272,6 @@ describe("chat event action cards", () => {
         return respond(200, [
           {
             agentId: body.agentId,
-            connectorRef: body.connectorSlug,
             connectorSlug: body.connectorSlug,
             permission: grant.permission,
             action: grant.action,
@@ -2254,7 +2381,7 @@ describe("chat event action cards", () => {
     const user = userEvent.setup({ delay: null });
     const threadId = `${THREAD_ID}-single-permission`;
     const callbackPrompt = "Re-check Slack access, then continue";
-    const permissionUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=channels.read&action=allow&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`;
+    const permissionUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=slack&permission=channels.read&action=allow&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`;
     const sentPrompts: {
       prompt: string;
       threadId?: string;
@@ -2266,7 +2393,7 @@ describe("chat event action cards", () => {
       ({ respond }) => {
         return respond(200, {
           permissions: catalogPermissionDetail({
-            connectorRef: "slack",
+            connectorSlug: "slack",
             label: "Slack",
             permissions: [
               {
@@ -2288,7 +2415,6 @@ describe("chat event action cards", () => {
         return respond(200, [
           {
             agentId: body.agentId,
-            connectorRef: body.connectorSlug,
             connectorSlug: body.connectorSlug,
             permission: grant.permission,
             action: grant.action,
@@ -2358,14 +2484,14 @@ describe("chat event action cards", () => {
 
     context.mocks.data.connectors([
       connectedConnector({
-        type: "github",
+        slug: "github",
         authMethod: "oauth",
         externalUsername: "octocat",
       }),
     ]);
     mockConnectorCatalogStatus([
       publicConnectorStatusItem({
-        connectorRef: "github",
+        slug: "github",
         label: "GitHub",
         connected: true,
         connectionStatus: "connected",
@@ -2421,7 +2547,7 @@ describe("chat event action cards", () => {
     const visibleConnectorAuthorizeUrl = `${window.location.origin}/connectors/slack/authorize?agentId=${AGENT_ID}`;
     mockConnectorCatalogStatus([
       publicConnectorStatusItem({
-        connectorRef: "slack",
+        slug: "slack",
         label: "Catalog Slack",
         description: "Catalog Slack server help text",
       }),
@@ -2478,7 +2604,7 @@ describe("chat event action cards", () => {
       return respond(200, {
         connectors: [
           publicConnectorStatusItem({
-            connectorRef: "future-connector",
+            slug: "future-connector",
             label: "Catalog Future Connector",
             description: "Catalog future connector help text",
             connected,
@@ -2507,7 +2633,7 @@ describe("chat event action cards", () => {
     });
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
       return respond(200, {
-        enabledTypes: authorized ? ["future-connector"] : [],
+        enabledConnectorSlugs: authorized ? ["future-connector"] : [],
       });
     });
     context.mocks.api(
@@ -2521,7 +2647,7 @@ describe("chat event action cards", () => {
         return respond(
           200,
           connectedConnector({
-            type: "future-connector",
+            slug: "future-connector",
             authMethod: body.authMethod,
           }),
         );
@@ -2587,7 +2713,7 @@ describe("chat event action cards", () => {
   });
 
   it("fails closed when permission action metadata is hidden", async () => {
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=hidden-connector&permission=hidden.permission&action=allow&expiresIn=1h`;
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=hidden-connector&permission=hidden.permission&action=allow&expiresIn=1h`;
     context.mocks.api(
       zeroConnectorCatalogContract.permissions,
       ({ respond }) => {
@@ -2639,13 +2765,13 @@ describe("chat event action cards", () => {
 
   it("shows already allowed permission action cards as read-only after refresh", async () => {
     mockNow();
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=youtube&permission=videos.write&action=allow&expiresIn=24h`;
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=youtube&permission=videos.write&action=allow&expiresIn=24h`;
     let applyRequests = 0;
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, [
         {
           agentId: AGENT_ID,
-          connectorRef: "youtube",
+          connectorSlug: "youtube",
           permission: "videos.write",
           action: "allow",
           expiresAt: isoFromNowMs(7 * 24 * 60 * 60 * 1000),
@@ -2704,13 +2830,13 @@ describe("chat event action cards", () => {
 
   it("lets users re-confirm expired allow permission action cards", async () => {
     mockNow();
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=youtube&permission=videos.write&action=allow&expiresIn=24h`;
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=youtube&permission=videos.write&action=allow&expiresIn=24h`;
     let applyRequests = 0;
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, [
         {
           agentId: AGENT_ID,
-          connectorRef: "youtube",
+          connectorSlug: "youtube",
           permission: "videos.write",
           action: "allow",
           expiresAt: isoFromNowMs(-60 * 1000),
@@ -2724,7 +2850,7 @@ describe("chat event action cards", () => {
       return respond(200, [
         {
           agentId: AGENT_ID,
-          connectorRef: "youtube",
+          connectorSlug: "youtube",
           permission: "videos.write",
           action: "allow",
           expiresAt: isoFromNowMs(24 * 60 * 60 * 1000),
@@ -2781,13 +2907,13 @@ describe("chat event action cards", () => {
   });
 
   it("shows already denied permission action cards as read-only after refresh", async () => {
-    const permissionDenyUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=admin.analytics%3Aread&action=deny`;
+    const permissionDenyUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=slack&permission=admin.analytics%3Aread&action=deny`;
     let applyRequests = 0;
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, [
         {
           agentId: AGENT_ID,
-          connectorRef: "slack",
+          connectorSlug: "slack",
           permission: "admin.analytics:read",
           action: "deny",
           expiresAt: null,
@@ -2843,7 +2969,7 @@ describe("chat event action cards", () => {
 
   it("reloads permission cards when a connectorPermissionUpdated event arrives", async () => {
     mockNow();
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=youtube&permission=videos.write&action=allow&expiresIn=24h`;
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=youtube&permission=videos.write&action=allow&expiresIn=24h`;
     let grantAllowed = false;
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
       return respond(
@@ -2852,7 +2978,7 @@ describe("chat event action cards", () => {
           ? [
               {
                 agentId: AGENT_ID,
-                connectorRef: "youtube",
+                connectorSlug: "youtube",
                 permission: "videos.write",
                 action: "allow" as const,
                 expiresAt: isoFromNowMs(24 * 60 * 60 * 1000),
@@ -3094,7 +3220,7 @@ describe("chat event action cards", () => {
   it("automatically retries permission action loading before showing an error", async () => {
     mockNow();
     const user = userEvent.setup({ delay: null });
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=gmail&permission=messages.write&action=allow&expiresIn=1h`;
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=gmail&permission=messages.write&action=allow&expiresIn=1h`;
     let listRequests = 0;
     let capturedBody: unknown = null;
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
@@ -3115,7 +3241,6 @@ describe("chat event action cards", () => {
         return respond(200, [
           {
             agentId: body.agentId,
-            connectorRef: body.connectorSlug,
             connectorSlug: body.connectorSlug,
             permission: grant.permission,
             action: grant.action,
@@ -3190,7 +3315,7 @@ describe("chat event action cards", () => {
   });
 
   it("shows permission status loading outside the action button", async () => {
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=gmail&permission=messages.write&action=allow&expiresIn=1h`;
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=gmail&permission=messages.write&action=allow&expiresIn=1h`;
     let resolveList: () => void = () => {
       throw new Error("Permission grant list request did not start");
     };
@@ -3256,7 +3381,7 @@ describe("chat event action cards", () => {
   });
 
   it("does not retry non-transient permission action loading failures", async () => {
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=gmail&permission=messages.write&action=allow&expiresIn=1h`;
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=gmail&permission=messages.write&action=allow&expiresIn=1h`;
     let listRequests = 0;
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
       listRequests += 1;
@@ -3315,7 +3440,7 @@ describe("chat event action cards", () => {
 
   it("shows permission save failures outside the action button", async () => {
     const user = userEvent.setup({ delay: null });
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=gmail&permission=messages.write&action=allow&expiresIn=1h`;
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=gmail&permission=messages.write&action=allow&expiresIn=1h`;
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, []);
     });
@@ -3377,7 +3502,7 @@ describe("chat event action cards", () => {
   it("keeps permission success visible while permission grants reload", async () => {
     mockNow();
     const user = userEvent.setup({ delay: null });
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=gmail&permission=messages.write&action=allow&expiresIn=1h`;
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=gmail&permission=messages.write&action=allow&expiresIn=1h`;
     let listRequests = 0;
     let storedGrants: UserPermissionGrantResponse[] = [];
     let resolveReload: () => void = () => {
@@ -3410,7 +3535,6 @@ describe("chat event action cards", () => {
         storedGrants = [
           {
             agentId: body.agentId,
-            connectorRef: body.connectorSlug,
             connectorSlug: body.connectorSlug,
             permission: grant.permission,
             action: grant.action,
@@ -3473,7 +3597,7 @@ describe("chat event action cards", () => {
   it("lets users change permission duration before confirming", async () => {
     mockNow();
     const user = userEvent.setup({ delay: null });
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`;
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`;
     let capturedBody: unknown = null;
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, []);
@@ -3489,7 +3613,6 @@ describe("chat event action cards", () => {
         return respond(200, [
           {
             agentId: body.agentId,
-            connectorRef: body.connectorSlug,
             connectorSlug: body.connectorSlug,
             permission: grant.permission,
             action: grant.action,
@@ -3561,7 +3684,7 @@ describe("chat event action cards", () => {
   it("lets users confirm unknown endpoint permissions from assistant events", async () => {
     mockNow();
     const user = userEvent.setup({ delay: null });
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=cloudflare&permission=${UNKNOWN_PERMISSION_GRANT}&action=allow&expiresIn=1h`;
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=cloudflare&permission=${UNKNOWN_PERMISSION_GRANT}&action=allow&expiresIn=1h`;
     let capturedBody: unknown = null;
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, []);
@@ -3577,7 +3700,6 @@ describe("chat event action cards", () => {
         return respond(200, [
           {
             agentId: body.agentId,
-            connectorRef: body.connectorSlug,
             connectorSlug: body.connectorSlug,
             permission: grant.permission,
             action: grant.action,
@@ -3645,13 +3767,13 @@ describe("chat event action cards", () => {
     });
   });
 
-  it("lets users deny a permission request from an assistant event", async () => {
+  it("lets users deny a historical ref permission action", async () => {
     const user = userEvent.setup({ delay: null });
     const permissionDenyUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=admin.analytics%3Aread&action=deny`;
     let grants: UserPermissionGrantResponse[] = [
       {
         agentId: AGENT_ID,
-        connectorRef: "slack",
+        connectorSlug: "slack",
         permission: "admin.analytics:read",
         action: "allow",
         expiresAt: null,
@@ -3672,7 +3794,6 @@ describe("chat event action cards", () => {
         expect(body.mode).toBe("patch");
         const grant: UserPermissionGrantResponse = {
           agentId: body.agentId,
-          connectorRef: body.connectorSlug,
           connectorSlug: body.connectorSlug,
           permission: appliedGrant.permission,
           action: appliedGrant.action,
@@ -3733,20 +3854,16 @@ describe("chat event action cards", () => {
   it("renders trusted browser universal links as compact cards with an open action", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "c0000000-0000-4000-a000-000000000080";
-    const browserId = "c0000000-0000-4000-a000-000000000081";
     const liveUrl =
       "https://live.browser-use.com/?wss=test-browser-session-token";
     let browser: ZeroBrowserSession = {
-      id: browserId,
+      threadId,
       name: "booking",
       status: "active",
-      viewerUrl: `https://app.vm0.ai/browsers/${browserId}`,
+      viewerUrl: `https://app.vm0.ai/browsers/${threadId}`,
       liveUrl,
       proxyCountryCode: null,
       timeoutMinutes: 240,
-      maxCredits: 1,
-      grossCredits: 0,
-      creditsCharged: 0,
       idleExpiresAt: "2026-07-24T10:10:00.000Z",
       suspendedAt: null,
       suspensionReason: null,
@@ -3754,19 +3871,18 @@ describe("chat event action cards", () => {
       updatedAt: "2026-07-24T10:00:00.000Z",
     };
     let browserRequests = 0;
-    context.mocks.api(zeroBrowserContract.get, ({ params, query, respond }) => {
-      expect(params.browserId).toBe(browserId);
-      expect(query.chatThreadId).toBe(threadId);
+    context.mocks.api(zeroBrowserContract.get, ({ params, respond }) => {
+      expect(params.threadId).toBe(threadId);
       browserRequests += 1;
       return respond(200, { browser });
     });
     let leaseRequests = 0;
-    context.mocks.api(zeroBrowserContract.leaseById, ({ respond }) => {
+    context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
       leaseRequests += 1;
       return respond(200, { browser });
     });
 
-    const untrustedUrl = `https://evil.example.test/browsers/${browserId}`;
+    const untrustedUrl = `https://evil.example.test/browsers/${threadId}`;
     mockChatLifecycle(context, {
       threadId,
       threadTitle: "Managed browser card",
@@ -3775,8 +3891,8 @@ describe("chat event action cards", () => {
           id: "c0000000-0000-4000-a000-000000000082",
           role: "assistant",
           content: [
-            `https://app.vm0.ai/browsers/${browserId}`,
-            `[Open browser](/browsers/${browserId})`,
+            `https://app.vm0.ai/browsers/${threadId}`,
+            `[Open browser](/browsers/${threadId})`,
             `[Untrusted browser](${untrustedUrl})`,
           ].join("\n"),
           runId: "c0000000-0000-4000-a000-000000000085",
@@ -3788,6 +3904,7 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     await waitFor(() => {
@@ -3841,7 +3958,7 @@ describe("chat event action cards", () => {
       suspensionReason: "idle",
       updatedAt: "2026-07-24T10:12:00.000Z",
     };
-    triggerAblyEvent("browserSessionChanged", { browserId });
+    triggerAblyEvent("browserSessionChanged", { threadId });
 
     await waitFor(() => {
       for (const card of cards) {
@@ -3852,7 +3969,7 @@ describe("chat event action cards", () => {
         expect(card).toHaveTextContent("Stopped");
         expect(card).not.toHaveTextContent("credits charged");
       }
-      expect(screen.getByText("Browser suspended")).toBeInTheDocument();
+      expect(screen.getByText("Browser not live")).toBeInTheDocument();
       expect(
         document.querySelector('iframe[title="Live browser: booking"]'),
       ).toBeNull();
@@ -3869,7 +3986,7 @@ describe("chat event action cards", () => {
       suspensionReason: null,
       updatedAt: "2026-07-24T10:12:01.000Z",
     };
-    triggerAblyEvent("browserSessionChanged", { browserId });
+    triggerAblyEvent("browserSessionChanged", { threadId });
 
     await waitFor(() => {
       for (const card of cards) {

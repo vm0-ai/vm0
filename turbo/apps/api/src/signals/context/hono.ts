@@ -10,11 +10,13 @@ import {
 
 const innerHonoContext$ = state<Context>({} as Context);
 const innerRoute$ = state<AppRoute | null>(null);
+const innerApiStartTime$ = state<number | null>(null);
 
 export const initHono$ = command(
-  ({ set }, context: Context, route: AppRoute): void => {
+  ({ set }, context: Context, route: AppRoute, apiStartTime: number): void => {
     set(innerHonoContext$, context);
     set(innerRoute$, route);
+    set(innerApiStartTime$, apiStartTime);
   },
 );
 
@@ -63,6 +65,14 @@ export const route$ = computed((get): AppRoute => {
     throw new Error("route accessed outside a request scope");
   }
   return route;
+});
+
+export const apiStartTime$ = computed((get): number => {
+  const apiStartTime = get(innerApiStartTime$);
+  if (apiStartTime === null) {
+    throw new Error("api start time accessed outside a request scope");
+  }
+  return apiStartTime;
 });
 
 export const rawPathParams$ = computed((get) => {

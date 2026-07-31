@@ -52,10 +52,7 @@ function telegramTypingTargetForCallback(args: {
       (args.payload as Record<string, unknown>).telegramDelivery,
     );
   }
-  if (
-    args.internalKind !== "telegram" &&
-    args.internalKind !== "telegram:chat"
-  ) {
+  if (args.internalKind !== "telegram:chat") {
     return undefined;
   }
   return parseTelegramTypingTarget(args.payload);

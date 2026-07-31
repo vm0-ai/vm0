@@ -122,19 +122,14 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     computer_use_host_id: z.uuid(),
   }),
   z.object({
+    action: z.literal("set-browser-tab-snapshot-as-previous-api"),
+    thread_id: z.uuid(),
+    tab_urls: z.array(z.string().max(8192)).max(50),
+  }),
+  z.object({
     action: z.literal("set-runner-job-context-profile-as-previous-api"),
     run_id: z.uuid(),
     profile: z.string(),
-  }),
-  z.object({
-    action: z.literal("read-browser-profile-as-previous-api"),
-    browser_id: z.uuid(),
-    user_id: z.string(),
-    org_id: z.string(),
-  }),
-  z.object({
-    action: z.literal("set-browser-instance-as-previous-api"),
-    browser_id: z.uuid(),
   }),
 ]);
 
@@ -156,12 +151,6 @@ export const testRuntimeStateActionResponseSchema = z.object({
   file_id: z.uuid().optional(),
   hosted_site_id: z.uuid().optional(),
   hosted_deployment_scope_blocked: z.boolean().optional(),
-  previous_api_browser_profile: z
-    .object({
-      browser_profile_id: z.uuid(),
-      provider_profile_id: z.uuid(),
-    })
-    .optional(),
   storage_persistence: z
     .object({
       run_canonical: z.boolean(),

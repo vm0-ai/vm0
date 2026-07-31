@@ -2169,7 +2169,7 @@ describe("chat composer models", () => {
         if (authorizationRequestCount > 1) {
           await withSignal(unexpectedReload.promise);
         }
-        return respond(200, { enabledTypes: ["github"] });
+        return respond(200, { enabledConnectorSlugs: ["github"] });
       },
     );
 
@@ -2228,9 +2228,9 @@ describe("chat composer models", () => {
         authorizationAgentIds.push(params.id);
         if (params.id === OTHER_AGENT_ID) {
           await withSignal(otherAgentAuthorization.promise);
-          return respond(200, { enabledTypes: ["slack"] });
+          return respond(200, { enabledConnectorSlugs: ["slack"] });
         }
-        return respond(200, { enabledTypes: ["github"] });
+        return respond(200, { enabledConnectorSlugs: ["github"] });
       },
     );
 
@@ -2297,7 +2297,7 @@ describe("chat composer models", () => {
         if (authorizationRequestCount === 1) {
           await withSignal(initialAuthorization.promise);
         }
-        return respond(200, { enabledTypes: enabledConnectorSlugs });
+        return respond(200, { enabledConnectorSlugs });
       },
     );
     context.mocks.api(
@@ -2308,7 +2308,7 @@ describe("chat composer models", () => {
           enabledConnectorSlugs,
           body,
         );
-        return respond(200, { enabledTypes: enabledConnectorSlugs });
+        return respond(200, { enabledConnectorSlugs });
       },
     );
 
@@ -2385,7 +2385,7 @@ describe("chat composer models", () => {
     context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
       authorizationAgentIds.push(params.id);
       return respond(200, {
-        enabledTypes: enabledByAgent.get(params.id) ?? [],
+        enabledConnectorSlugs: enabledByAgent.get(params.id) ?? [],
       });
     });
     context.mocks.api(
@@ -2406,7 +2406,7 @@ describe("chat composer models", () => {
           body,
         );
         enabledByAgent.set(params.id, enabledConnectorSlugs);
-        return respond(200, { enabledTypes: enabledConnectorSlugs });
+        return respond(200, { enabledConnectorSlugs });
       },
     );
     context.mocks.api(

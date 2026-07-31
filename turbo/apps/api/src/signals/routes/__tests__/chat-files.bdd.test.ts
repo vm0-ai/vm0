@@ -44,10 +44,10 @@ describe("CHAT-01 chat thread lifecycle", () => {
     let detail = await api.readThread(actor, created.id);
     expect(detail).toStrictEqual({
       lastReadAt: expect.any(String),
+      cancellationRecoveryPending: false,
     });
     await expect(api.readThreadDraft(actor, created.id)).resolves.toStrictEqual(
       {
-        draftContent: null,
         draftUserMessage: null,
         draftAttachments: null,
       },
@@ -329,7 +329,6 @@ describe("CHAT-02 chat messages and visible validation", () => {
 
     const threadId = sent.body.threadId;
     await expect(api.readThreadDraft(actor, threadId)).resolves.toStrictEqual({
-      draftContent: null,
       draftUserMessage: null,
       draftAttachments: null,
     });
@@ -373,6 +372,8 @@ describe("CHAT-02 chat messages and visible validation", () => {
         },
       ],
     });
+    expect(rejectedUserMessage).not.toHaveProperty("automationId");
+    expect(rejectedUserMessage).not.toHaveProperty("triggerBrief");
     expect(assistantMessage?.content).toContain("Insufficient credits");
     expect(assistantMessage?.error).toBe("insufficient_credits");
 

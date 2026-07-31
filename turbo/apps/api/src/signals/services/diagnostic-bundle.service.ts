@@ -258,7 +258,7 @@ function collectConnectors(
 ): Computed<
   Promise<
     readonly {
-      readonly type: unknown;
+      readonly slug: unknown;
       readonly authMethod: unknown;
       readonly connectionStatus: unknown;
       readonly externalUsername: unknown;
@@ -340,7 +340,7 @@ function collectActivityLogs(
 
 function safeConnectorSummaries(
   connectors: readonly {
-    readonly type: unknown;
+    readonly slug: unknown;
     readonly authMethod: unknown;
     readonly connectionStatus: unknown;
     readonly externalUsername: unknown;
@@ -348,7 +348,7 @@ function safeConnectorSummaries(
 ): Record<string, unknown>[] {
   return connectors.map((connector) => {
     return {
-      type: connector.type,
+      type: connector.slug,
       authMethod: connector.authMethod,
       connectionStatus: connector.connectionStatus,
       externalUsername: connector.externalUsername,
@@ -616,33 +616,7 @@ function collectNetworkLog(
         },
       )) ?? [];
 
-    return networkLogs.flatMap((event) => {
-      const canonical = event.connector_diagnostic_slug;
-      const legacy = event.connector_diagnostic_type;
-      if (
-        typeof canonical === "string" &&
-        typeof legacy === "string" &&
-        canonical !== legacy
-      ) {
-        return [];
-      }
-
-      const connectorDiagnosticSlug =
-        typeof canonical === "string"
-          ? canonical
-          : typeof legacy === "string"
-            ? legacy
-            : undefined;
-      return connectorDiagnosticSlug === undefined
-        ? [event]
-        : [
-            {
-              ...event,
-              connector_diagnostic_slug: connectorDiagnosticSlug,
-              connector_diagnostic_type: connectorDiagnosticSlug,
-            },
-          ];
-    });
+    return networkLogs;
   });
 }
 

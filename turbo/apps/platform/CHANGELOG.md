@@ -1,5 +1,196 @@
 # Changelog
 
+## [0.669.1](https://github.com/vm0-ai/vm0/compare/app-v0.669.0...app-v0.669.1) (2026-07-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.496.4
+
+## [0.669.0](https://github.com/vm0-ai/vm0/compare/app-v0.668.0...app-v0.669.0) (2026-07-31)
+
+
+### Features
+
+* **platform:** explain cancellation recovery before queued continuation ([#24138](https://github.com/vm0-ai/vm0/issues/24138)) ([e69feb8](https://github.com/vm0-ai/vm0/commit/e69feb8210a878f3a5f130766e67274d7115b57b))
+
+
+### Refactoring
+
+* **platform:** remove obsolete hidden connector storage ([#24161](https://github.com/vm0-ai/vm0/issues/24161)) ([d3b7633](https://github.com/vm0-ai/vm0/commit/d3b76335a4508c1d4df2b64f53b360dd39e72d2a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.258.0
+    * @vm0/core bumped to 8.496.3
+
+## [0.668.0](https://github.com/vm0-ai/vm0/compare/app-v0.667.1...app-v0.668.0) (2026-07-31)
+
+
+### Features
+
+* source thread browser state from chat events ([#23854](https://github.com/vm0-ai/vm0/issues/23854)) ([34def5b](https://github.com/vm0-ai/vm0/commit/34def5bba28b1a9f639fcbc872d7e22ad823a902))
+
+
+### Refactoring
+
+* **observability:** remove legacy connector debug dimensions ([#24137](https://github.com/vm0-ai/vm0/issues/24137)) ([77c077f](https://github.com/vm0-ai/vm0/commit/77c077f8d2e514ad1c2611d742700c3c5a5b2ae6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.257.0
+    * @vm0/core bumped to 8.496.2
+
+## [0.667.1](https://github.com/vm0-ai/vm0/compare/app-v0.667.0...app-v0.667.1) (2026-07-31)
+
+
+### Refactoring
+
+* remove cli trigger source ([#24148](https://github.com/vm0-ai/vm0/issues/24148)) ([e0563be](https://github.com/vm0-ai/vm0/commit/e0563be2c7e2c103abbc9a7083d51dc18d6e81b4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.256.1
+    * @vm0/core bumped to 8.496.1
+
+## [0.667.0](https://github.com/vm0-ai/vm0/compare/app-v0.666.1...app-v0.667.0) (2026-07-30)
+
+
+### Features
+
+* **platform:** support hindi locale ([#24081](https://github.com/vm0-ai/vm0/issues/24081)) ([fad755d](https://github.com/vm0-ai/vm0/commit/fad755d3d47c8af94f19355c9673149fcf8e1c37)), closes [#24000](https://github.com/vm0-ai/vm0/issues/24000)
+
+
+### Bug Fixes
+
+* **platform:** enable japanese locale rollout controls ([#24072](https://github.com/vm0-ai/vm0/issues/24072)) ([9242716](https://github.com/vm0-ai/vm0/commit/9242716f2afd37a318d3b89493b8af370c7dfe8e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.256.0
+    * @vm0/core bumped to 8.496.0
+
+## [0.666.1](https://github.com/vm0-ai/vm0/compare/app-v0.666.0...app-v0.666.1) (2026-07-30)
+
+
+### Bug Fixes
+
+* **platform:** keep current model in capacity recovery picker ([#24129](https://github.com/vm0-ai/vm0/issues/24129)) ([3762abe](https://github.com/vm0-ai/vm0/commit/3762abebcdbb020fc59a766a1b4ad4c712b7b4fb))
+* **platform:** make chat scroll restoration deterministic ([#23982](https://github.com/vm0-ai/vm0/issues/23982)) ([da18931](https://github.com/vm0-ai/vm0/commit/da1893169f04ea0da57da7c5cb4697379d29394b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.255.1
+    * @vm0/core bumped to 8.495.1
+
+## [0.666.0](https://github.com/vm0-ai/vm0/compare/app-v0.665.0...app-v0.666.0) (2026-07-30)
+
+
+### Features
+
+* **platform:** support italian locale ([#24056](https://github.com/vm0-ai/vm0/issues/24056)) ([21d5c14](https://github.com/vm0-ai/vm0/commit/21d5c1459b5a044d3973fa9431ea3ce80c4deacd))
+* **platform:** support spanish locale ([#24052](https://github.com/vm0-ai/vm0/issues/24052)) ([e6bb124](https://github.com/vm0-ai/vm0/commit/e6bb12414447aad1817787f4b3c1b01010a3102f))
+
+
+### Refactoring
+
+* **api:** remove legacy connector client schema aliases ([#24108](https://github.com/vm0-ai/vm0/issues/24108)) ([cfde606](https://github.com/vm0-ai/vm0/commit/cfde606e0e7dc755e8ff3e407b0b0cf79f19a3cc))
+* **insights:** remove legacy connector type ([#24101](https://github.com/vm0-ai/vm0/issues/24101)) ([e6de42c](https://github.com/vm0-ai/vm0/commit/e6de42c3e36d3bbe904b976dff3efd46b1152d9f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.255.0
+    * @vm0/core bumped to 8.495.0
+
+## [0.665.0](https://github.com/vm0-ai/vm0/compare/app-v0.664.0...app-v0.665.0) (2026-07-30)
+
+
+### Features
+
+* **platform:** support german locale ([#24048](https://github.com/vm0-ai/vm0/issues/24048)) ([260d04f](https://github.com/vm0-ai/vm0/commit/260d04fbdaf377e81b5e5cbe64d5d7809abd42f7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.254.0
+    * @vm0/core bumped to 8.494.0
+
+## [0.664.0](https://github.com/vm0-ai/vm0/compare/app-v0.663.0...app-v0.664.0) (2026-07-30)
+
+
+### Features
+
+* add admin-defined model gateway connections ([#23807](https://github.com/vm0-ai/vm0/issues/23807)) ([0632cb4](https://github.com/vm0-ai/vm0/commit/0632cb4e4dfda2c844a2531d6c13a3dd74b86e29))
+* **platform:** support indonesian locale ([#24046](https://github.com/vm0-ai/vm0/issues/24046)) ([3b13623](https://github.com/vm0-ai/vm0/commit/3b13623006743c44d874e51ed0b482084ccbe704))
+* **platform:** support korean locale ([#24054](https://github.com/vm0-ai/vm0/issues/24054)) ([244943c](https://github.com/vm0-ai/vm0/commit/244943cd45119c7a4975234e657ff9a7fbe5d963))
+
+
+### Bug Fixes
+
+* **platform:** keep pwa chat composer pinned above the keyboard ([#23986](https://github.com/vm0-ai/vm0/issues/23986)) ([28259bd](https://github.com/vm0-ai/vm0/commit/28259bd1e653e6bac02aa27d6eda17576a09fa67))
+* **platform:** stabilize chat artifact image cards ([#24084](https://github.com/vm0-ai/vm0/issues/24084)) ([72696c7](https://github.com/vm0-ai/vm0/commit/72696c733cdb1b66192df8a1c4e1589d26a4ffab))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.253.0
+    * @vm0/core bumped to 8.493.0
+
+## [0.663.0](https://github.com/vm0-ai/vm0/compare/app-v0.662.2...app-v0.663.0) (2026-07-30)
+
+
+### Features
+
+* add short artifact keys ([#24005](https://github.com/vm0-ai/vm0/issues/24005)) ([663a97c](https://github.com/vm0-ai/vm0/commit/663a97c855dbfacff7169a71e1fd67dba6ba9a02))
+* **api:** force app.vm0.ai clients to upgrade to v0.662.2 ([#24095](https://github.com/vm0-ai/vm0/issues/24095)) ([a103766](https://github.com/vm0-ai/vm0/commit/a1037666b25837be5e0a817fb39e2c30dd3d7d6c))
+* enable composer skill search and slack dm routing globally ([#24064](https://github.com/vm0-ai/vm0/issues/24064)) ([04cc800](https://github.com/vm0-ai/vm0/commit/04cc800e6d28b91e0f8999298ee7c2ac3128d5fe))
+* **feishu:** add custom connector oauth ([#24027](https://github.com/vm0-ai/vm0/issues/24027)) ([f494eca](https://github.com/vm0-ai/vm0/commit/f494ecacc72d12d551e1eee27662a88e6cc2d0cd))
+* **platform:** add chat limit recovery actions ([#24050](https://github.com/vm0-ai/vm0/issues/24050)) ([966e2a8](https://github.com/vm0-ai/vm0/commit/966e2a8e18f7d07616b76a288892cd04059c53f7))
+
+
+### Bug Fixes
+
+* **chat:** expand mobile composer for two-line placeholder ([#24018](https://github.com/vm0-ai/vm0/issues/24018)) ([7ad8624](https://github.com/vm0-ai/vm0/commit/7ad862447eb9eca27841af99b810677199092889))
+* **platform:** show assistant image navigation before artifacts load ([#23762](https://github.com/vm0-ai/vm0/issues/23762)) ([6674e90](https://github.com/vm0-ai/vm0/commit/6674e906aef006cd3083cec133ca516c12c2d41a))
+
+
+### Refactoring
+
+* **contracts:** add test trigger source reader support ([#24094](https://github.com/vm0-ai/vm0/issues/24094)) ([0f255cc](https://github.com/vm0-ai/vm0/commit/0f255ccba50905674d682c0525e113d3c8329383))
+* remove artifacts feature switch ([#24093](https://github.com/vm0-ai/vm0/issues/24093)) ([c097899](https://github.com/vm0-ai/vm0/commit/c09789958545e0161a49e5b67ad760bba88ccdde))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.252.0
+    * @vm0/core bumped to 8.492.0
+
 ## [0.662.2](https://github.com/vm0-ai/vm0/compare/app-v0.662.1...app-v0.662.2) (2026-07-30)
 
 

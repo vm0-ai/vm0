@@ -18,9 +18,7 @@ import { compatibleStoredExecutionContextSchema } from "@vm0/api-contracts/contr
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import {
-  browserProfiles,
-  browserSessionInstances,
-  browserSessionResizeStates,
+  browserSessionTabSnapshots,
   browserSessions,
 } from "@vm0/db/schema/browser-session";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -31,13 +29,14 @@ import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, eq, sql, type SQL } from "drizzle-orm";
+import { eq, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
 import { executeRawRows } from "../../lib/db-raw-rows";
 import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
+import { nowDate } from "../external/time";
 import {
   resetSecretKmsClientForTests,
   setSecretKmsClientForTests,
@@ -50,6 +49,7 @@ import {
   onRejection,
   settleIncludingAbort,
 } from "../utils";
+import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -850,6 +850,49 @@ type PreviousApiRunnerJobContextProfileAction = Extract<
   { action: "set-runner-job-context-profile-as-previous-api" }
 >;
 
+type PreviousApiBrowserTabSnapshotAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "set-browser-tab-snapshot-as-previous-api" }
+>;
+
+async function setBrowserTabSnapshotAsPreviousApi(
+  db: Db,
+  body: PreviousApiBrowserTabSnapshotAction,
+  signal: AbortSignal,
+) {
+  // Older snapshots may already contain duplicate URLs. No current production
+  // API can reproduce that persisted input after capture-side deduplication.
+  const [browser] = await db
+    .select({ userId: browserSessions.userId })
+    .from(browserSessions)
+    .where(eq(browserSessions.chatThreadId, body.thread_id))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!browser) {
+    throw new Error("Expected a managed browser for previous API tab snapshot");
+  }
+  const encryptedTabUrls = await encryptPersistentSecretValue(
+    JSON.stringify(body.tab_urls),
+    { userId: browser.userId },
+  );
+  signal.throwIfAborted();
+  await db
+    .insert(browserSessionTabSnapshots)
+    .values({
+      chatThreadId: body.thread_id,
+      encryptedTabUrls,
+    })
+    .onConflictDoUpdate({
+      target: browserSessionTabSnapshots.chatThreadId,
+      set: {
+        encryptedTabUrls,
+        updatedAt: nowDate(),
+      },
+    });
+  signal.throwIfAborted();
+  return { status: 200 as const, body: { ok: true as const } };
+}
+
 async function setRunnerJobContextProfileAsPreviousApi(
   db: Db,
   body: PreviousApiRunnerJobContextProfileAction,
@@ -876,117 +919,13 @@ async function setRunnerJobContextProfileAsPreviousApi(
   return { status: 200 as const, body: { ok: true as const } };
 }
 
-type PreviousApiBrowserProfileAction = Extract<
-  TestRuntimeStateActionBody,
-  { action: "read-browser-profile-as-previous-api" }
->;
-
-type PreviousApiBrowserInstanceAction = Extract<
-  TestRuntimeStateActionBody,
-  { action: "set-browser-instance-as-previous-api" }
->;
-
-async function setBrowserInstanceAsPreviousApi(
-  db: Db,
-  body: PreviousApiBrowserInstanceAction,
-  signal: AbortSignal,
-) {
-  const [instance] = await db
-    .select({
-      providerSessionId: browserSessionInstances.providerSessionId,
-    })
-    .from(browserSessionInstances)
-    .where(
-      and(
-        eq(browserSessionInstances.browserSessionId, body.browser_id),
-        eq(browserSessionInstances.status, "active"),
-      ),
-    )
-    .limit(1);
-  signal.throwIfAborted();
-  if (!instance) {
-    throw new Error("Expected an active previous API browser instance");
-  }
-  // Previous API inserts have no companion row. The migration consistency
-  // suite executes that binary's real insert shape after migration 0734.
-  const [deleted] = await db
-    .delete(browserSessionResizeStates)
-    .where(
-      eq(
-        browserSessionResizeStates.providerSessionId,
-        instance.providerSessionId,
-      ),
-    )
-    .returning({
-      providerSessionId: browserSessionResizeStates.providerSessionId,
-    });
-  signal.throwIfAborted();
-  if (!deleted) {
-    throw new Error("Expected a current API browser resize state");
-  }
-  return { status: 200 as const, body: { ok: true as const } };
-}
-
-async function readBrowserProfileAsPreviousApi(
-  db: Db,
-  body: PreviousApiBrowserProfileAction,
-  signal: AbortSignal,
-) {
-  // Keep this query limited to the columns and owner checks understood by the
-  // API version immediately before browser_thread_profiles existed.
-  const [browser] = await db
-    .select({ browserProfileId: browserSessions.browserProfileId })
-    .from(browserSessions)
-    .where(
-      and(
-        eq(browserSessions.id, body.browser_id),
-        eq(browserSessions.orgId, body.org_id),
-        eq(browserSessions.userId, body.user_id),
-      ),
-    )
-    .limit(1);
-  signal.throwIfAborted();
-  if (!browser) {
-    throw new Error("Expected a browser session for previous API read");
-  }
-  const [profile] = await db
-    .select({
-      id: browserProfiles.id,
-      providerProfileId: browserProfiles.providerProfileId,
-    })
-    .from(browserProfiles)
-    .where(
-      and(
-        eq(browserProfiles.id, browser.browserProfileId),
-        eq(browserProfiles.orgId, body.org_id),
-        eq(browserProfiles.userId, body.user_id),
-      ),
-    )
-    .limit(1);
-  signal.throwIfAborted();
-  if (!profile) {
-    throw new Error("Expected a browser profile for previous API read");
-  }
-  return {
-    status: 200 as const,
-    body: {
-      ok: true as const,
-      previous_api_browser_profile: {
-        browser_profile_id: profile.id,
-        provider_profile_id: profile.providerProfileId,
-      },
-    },
-  };
-}
-
 type CompatibilityFixtureAction =
   | LegacyArtifactCatalogFileAction
   | PreviousApiHostedSiteAction
   | PreviousApiHostedDeploymentAction
   | PreviousApiComputerAccessAction
+  | PreviousApiBrowserTabSnapshotAction
   | PreviousApiRunnerJobContextProfileAction
-  | PreviousApiBrowserProfileAction
-  | PreviousApiBrowserInstanceAction
   | ConnectorPermissionBaselineMutationAction;
 
 function isCompatibilityFixtureAction(
@@ -997,9 +936,8 @@ function isCompatibilityFixtureAction(
     "insert-hosted-site-as-previous-api",
     "insert-hosted-deployment-as-previous-api",
     "set-computer-use-host-as-previous-api",
+    "set-browser-tab-snapshot-as-previous-api",
     "set-runner-job-context-profile-as-previous-api",
-    "read-browser-profile-as-previous-api",
-    "set-browser-instance-as-previous-api",
     "mutate-runner-job-connector-permission-baseline",
   ].includes(body.action);
 }
@@ -1022,14 +960,11 @@ async function compatibilityFixtureActionResponse(
     case "set-computer-use-host-as-previous-api": {
       return await setComputerUseHostAsPreviousApi(db, body, signal);
     }
+    case "set-browser-tab-snapshot-as-previous-api": {
+      return await setBrowserTabSnapshotAsPreviousApi(db, body, signal);
+    }
     case "set-runner-job-context-profile-as-previous-api": {
       return await setRunnerJobContextProfileAsPreviousApi(db, body, signal);
-    }
-    case "read-browser-profile-as-previous-api": {
-      return await readBrowserProfileAsPreviousApi(db, body, signal);
-    }
-    case "set-browser-instance-as-previous-api": {
-      return await setBrowserInstanceAsPreviousApi(db, body, signal);
     }
     case "mutate-runner-job-connector-permission-baseline": {
       await mutateRunnerJobConnectorPermissionBaseline(db, body, signal);

@@ -70,10 +70,10 @@ function usageRows(): UsageRecordRow[] {
       } satisfies UsageRecordRow;
     }),
     {
-      source: "cli",
+      source: "agent",
       threadId: null,
-      runId: "run-cli-audit",
-      title: "Extended CLI audit",
+      runId: "run-agent-audit",
+      title: "Extended agent audit",
       credits: 3100,
       tokens: 7300,
       breakdown: [],
@@ -191,7 +191,7 @@ describe("personal usage settings", () => {
       expect(screen.getByText("Slack customer follow-up")).toBeInTheDocument();
     });
     expect(screen.getByText("980")).toBeInTheDocument();
-    expect(screen.queryByText("Extended CLI audit")).not.toBeInTheDocument();
+    expect(screen.queryByText("Extended agent audit")).not.toBeInTheDocument();
     expect(screen.queryByText("All sources")).not.toBeInTheDocument();
     expect(requestedRanges).toContain("today");
 
@@ -228,7 +228,7 @@ describe("personal usage settings", () => {
     click(screen.getByText("Load more"));
 
     await waitFor(() => {
-      expect(screen.getByText("Extended CLI audit")).toBeInTheDocument();
+      expect(screen.getByText("Extended agent audit")).toBeInTheDocument();
     });
 
     click(screen.getByText("Today"));

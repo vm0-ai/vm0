@@ -94,7 +94,7 @@ async fn cancelled_job_not_parked() {
         .await
         .expect("wait_process should enter before cancellation");
     let cancel_handle = wait_cancel_handle(&cancel_tokens, run_id, Duration::from_secs(5)).await;
-    cancel_handle.cancel().await;
+    cancel_handle.request_hard_cancellation().await;
 
     let c = env
         .handle

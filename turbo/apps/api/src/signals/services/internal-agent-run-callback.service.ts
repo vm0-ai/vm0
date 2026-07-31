@@ -21,7 +21,6 @@ export const handleAgentInternalCallback$ = command(
     const [run] = await db
       .select({
         prompt: agentRuns.prompt,
-        lastEventSequence: agentRuns.lastEventSequence,
       })
       .from(agentRuns)
       .where(eq(agentRuns.id, callback.runId))
@@ -32,10 +31,7 @@ export const handleAgentInternalCallback$ = command(
       return;
     }
 
-    const resultText = await getRunOutputText(callback.runId, {
-      knownLastEventSequence: run.lastEventSequence,
-      signal,
-    });
+    const resultText = await getRunOutputText(db, callback.runId, signal);
     signal.throwIfAborted();
 
     await set(

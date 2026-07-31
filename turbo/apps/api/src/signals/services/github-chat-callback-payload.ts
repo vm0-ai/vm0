@@ -15,5 +15,5 @@ export type GitHubDeliveryTarget = z.infer<typeof githubDeliveryTargetSchema>;
 
 export const githubChatCallbackPayloadSchema =
   githubDeliveryTargetSchema.extend({
-    chatMessageId: z.string().uuid(),
+    chatEventId: z.string().uuid(),
   });

@@ -131,7 +131,6 @@ function expectConnectorErrorRedirect(
 ): void {
   const url = redirectLocation(response);
   expect(url.pathname).toBe("/connector/error");
-  expect(url.searchParams.get("type")).toBe(args.connectorSlug);
   expect(url.searchParams.get("connectorSlug")).toBe(args.connectorSlug);
   expect(url.searchParams.get("message")).toBe(args.message);
 }
@@ -334,10 +333,10 @@ describe("Steam OpenID connector", () => {
       [200],
     );
     const steam = visible.body.connectors.find((connector) => {
-      return connector.connectorRef === "steam";
+      return connector.slug === "steam";
     });
     expect(steam).toMatchObject({
-      connectorRef: "steam",
+      slug: "steam",
       connected: false,
       authMethods: [
         expect.objectContaining({
@@ -374,7 +373,7 @@ describe("Steam OpenID connector", () => {
       [200],
     );
     expect(connector.body).toMatchObject({
-      type: "steam",
+      slug: "steam",
       authMethod: "openid",
       externalId: STEAM_ID,
       externalUsername: STEAM_ID,

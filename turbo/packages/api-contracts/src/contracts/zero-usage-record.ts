@@ -16,7 +16,6 @@ export const usageRecordSourceSchema = z.enum([
   "email",
   "agentphone",
   "github",
-  "cli",
   "agent",
   "other",
 ]);

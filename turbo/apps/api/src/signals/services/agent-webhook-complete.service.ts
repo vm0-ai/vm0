@@ -6,13 +6,17 @@ import { webhookCompleteContract } from "@vm0/api-contracts/contracts/webhooks";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 
 import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
-import { nowDate } from "../../lib/time";
+import { now, nowDate } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
-import { publishRunChangedForUserSafely } from "../external/realtime";
+import {
+  publishChatThreadDetailChangedSafely,
+  publishRunChangedForUserSafely,
+} from "../external/realtime";
 import { tapError } from "../utils";
 import {
   chatCallbackIdForRun,
@@ -36,11 +40,27 @@ interface CompleteAgentRunInput {
 }
 
 interface TerminalSideEffectsInput {
+  readonly kind: "terminal";
   readonly runId: string;
   readonly orgId: string;
   readonly status: TerminalStatus;
   readonly error?: string;
 }
+
+interface CancellationRecoverySideEffectsInput {
+  readonly kind: "cancellation-recovery";
+  readonly runId: string;
+  readonly userId: string;
+  readonly chatThreadId: string | null;
+}
+
+type CompleteSideEffectsInput =
+  | TerminalSideEffectsInput
+  | CancellationRecoverySideEffectsInput;
+
+type DispatchCompleteSideEffectsInput = CompleteSideEffectsInput & {
+  readonly apiStartTime?: number;
+};
 
 interface CompletionResponse {
   readonly status: 200 | 404;
@@ -55,13 +75,15 @@ interface CompletionResponse {
           readonly code: "NOT_FOUND";
         };
       };
-  readonly sideEffects?: TerminalSideEffectsInput;
+  readonly sideEffects?: CompleteSideEffectsInput;
 }
 
 interface RunRecord {
+  readonly cancellationRecoveryCompleted: boolean | null;
   readonly orgId: string;
   readonly status: string;
   readonly userId: string;
+  readonly chatThreadId: string | null;
 }
 
 const L = logger("webhook:complete");
@@ -108,20 +130,6 @@ async function persistLastEventSequence(
     .where(and(eq(agentRuns.id, runId), eq(agentRuns.userId, userId)));
 }
 
-async function readCompletionResponseStatus(
-  db: Db,
-  runId: string,
-  userId: string,
-): Promise<TerminalStatus> {
-  const [currentRun] = await db
-    .select({ status: agentRuns.status })
-    .from(agentRuns)
-    .where(and(eq(agentRuns.id, runId), eq(agentRuns.userId, userId)))
-    .limit(1);
-
-  return currentRun?.status === "completed" ? "completed" : "failed";
-}
-
 async function transitionRunStatus(
   db: Db,
   runId: string,
@@ -161,6 +169,7 @@ function successResponse(
       status,
     },
     sideEffects: {
+      kind: "terminal",
       runId,
       orgId,
       status,
@@ -169,20 +178,80 @@ function successResponse(
   };
 }
 
-async function currentStatusResponse(
+async function handleLostTerminalTransition(
   db: Db,
   input: CompleteAgentRunInput,
+  signal: AbortSignal,
 ): Promise<CompletionResponse> {
+  const [currentRun] = await db
+    .select({
+      orgId: agentRuns.orgId,
+      status: agentRuns.status,
+      userId: agentRuns.userId,
+      cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
+      chatThreadId: zeroRuns.chatThreadId,
+    })
+    .from(agentRuns)
+    .leftJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+    .where(
+      and(
+        eq(agentRuns.id, input.body.runId),
+        eq(agentRuns.userId, input.auth.userId),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+
+  if (currentRun?.status === "cancelled") {
+    return await handleCancelledCompletion(db, input, currentRun, signal);
+  }
+
   return {
     status: 200,
     body: {
       success: true,
-      status: await readCompletionResponseStatus(
-        db,
-        input.body.runId,
-        input.auth.userId,
-      ),
+      status: currentRun?.status === "completed" ? "completed" : "failed",
     },
+  };
+}
+
+async function handleCancelledCompletion(
+  db: Db,
+  input: CompleteAgentRunInput,
+  run: RunRecord,
+  signal: AbortSignal,
+): Promise<CompletionResponse> {
+  if (run.cancellationRecoveryCompleted === false) {
+    await db
+      .update(agentRuns)
+      .set({ cancellationRecoveryCompleted: true })
+      .where(
+        and(
+          eq(agentRuns.id, input.body.runId),
+          eq(agentRuns.userId, input.auth.userId),
+          eq(agentRuns.status, "cancelled"),
+          eq(agentRuns.cancellationRecoveryCompleted, false),
+        ),
+      );
+    signal.throwIfAborted();
+  }
+
+  return {
+    status: 200,
+    body: {
+      success: true,
+      status: "failed",
+    },
+    ...(run.cancellationRecoveryCompleted !== null
+      ? {
+          sideEffects: {
+            kind: "cancellation-recovery" as const,
+            runId: input.body.runId,
+            userId: run.userId,
+            chatThreadId: run.chatThreadId,
+          },
+        }
+      : {}),
   };
 }
 
@@ -209,7 +278,7 @@ async function handleMissingCheckpoint(
   signal.throwIfAborted();
 
   if (!transitioned) {
-    return await currentStatusResponse(db, input);
+    return await handleLostTerminalTransition(db, input, signal);
   }
 
   await publishRunChangedForUserSafely(run.userId, input.body.runId, {
@@ -269,7 +338,7 @@ async function handleSuccessfulCompletion(
   signal.throwIfAborted();
 
   if (!transitioned) {
-    return await currentStatusResponse(db, input);
+    return await handleLostTerminalTransition(db, input, signal);
   }
 
   await publishRunChangedForUserSafely(run.userId, input.body.runId, {
@@ -304,7 +373,7 @@ async function handleFailedCompletion(
   signal.throwIfAborted();
 
   if (!transitioned) {
-    return await currentStatusResponse(db, input);
+    return await handleLostTerminalTransition(db, input, signal);
   }
 
   await publishRunChangedForUserSafely(run.userId, input.body.runId, {
@@ -323,9 +392,39 @@ async function handleFailedCompletion(
 export const dispatchCompleteSideEffects$ = command(
   async (
     { set },
-    input: TerminalSideEffectsInput,
+    input: DispatchCompleteSideEffectsInput,
     signal: AbortSignal,
   ): Promise<void> => {
+    const apiStartTime = input.apiStartTime ?? now();
+    if (input.kind === "cancellation-recovery") {
+      if (input.chatThreadId !== null) {
+        await publishChatThreadDetailChangedSafely(
+          input.userId,
+          input.chatThreadId,
+        );
+        signal.throwIfAborted();
+      }
+      await tapError(
+        set(
+          drainChatThreadQueueForRun$,
+          {
+            runId: input.runId,
+            dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+            apiStartTime,
+          },
+          signal,
+        ),
+        (error) => {
+          L.error("Failed to drain chat thread queue after recovery", {
+            runId: input.runId,
+            error,
+          });
+        },
+      );
+      signal.throwIfAborted();
+      return;
+    }
+
     const db = set(writeDb$);
     const callbackStatus =
       input.status === "completed" ? "completed" : "failed";
@@ -361,6 +460,7 @@ export const dispatchCompleteSideEffects$ = command(
           {
             runId: input.runId,
             dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+            apiStartTime,
           },
           signal,
         ),
@@ -416,8 +516,11 @@ export const completeAgentRun$ = command(
         orgId: agentRuns.orgId,
         status: agentRuns.status,
         userId: agentRuns.userId,
+        cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
+        chatThreadId: zeroRuns.chatThreadId,
       })
       .from(agentRuns)
+      .leftJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
       .where(
         and(
           eq(agentRuns.id, input.body.runId),
@@ -453,6 +556,10 @@ export const completeAgentRun$ = command(
           status: run.status === "completed" ? "completed" : "failed",
         },
       };
+    }
+
+    if (run.status === "cancelled") {
+      return await handleCancelledCompletion(db, input, run, signal);
     }
 
     if (input.body.exitCode === 0) {

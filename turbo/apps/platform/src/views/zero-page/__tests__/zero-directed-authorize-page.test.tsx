@@ -42,7 +42,7 @@ function publicStatusItem(args: {
 }): PublicConnectorCatalogStatusItem {
   const connected = args.connected ?? false;
   return {
-    connectorRef: args.connectorSlug,
+    slug: args.connectorSlug,
     label: args.label,
     description: args.description ?? `${args.label} public description`,
     icon: {
@@ -81,7 +81,7 @@ function mockPublicConnectorStatus(
 function connectorResponse(connectorSlug: ConnectorSlug): ConnectorResponse {
   return {
     id: crypto.randomUUID(),
-    type: connectorSlug,
+    slug: connectorSlug,
     authMethod: "oauth",
     externalId: null,
     externalUsername: null,
@@ -208,7 +208,7 @@ describe("directed connector authorize page", () => {
   it("does not reuse optimistic authorization across agents", async () => {
     mockConnectedConnector("gmail");
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledTypes: [] });
+      return respond(200, { enabledConnectorSlugs: [] });
     });
 
     detachedSetupPage({
@@ -251,9 +251,9 @@ describe("directed connector authorize page", () => {
         if (params.id === SECOND_AGENT_ID) {
           secondAgentRequested = true;
           await secondAgentResponse.promise;
-          return respond(200, { enabledTypes: [] });
+          return respond(200, { enabledConnectorSlugs: [] });
         }
-        return respond(200, { enabledTypes: ["gmail"] });
+        return respond(200, { enabledConnectorSlugs: ["gmail"] });
       },
     );
 
@@ -338,7 +338,7 @@ describe("directed connector authorize page", () => {
     let authorized = false;
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
       return respond(200, {
-        enabledTypes: authorized ? ["axiom"] : [],
+        enabledConnectorSlugs: authorized ? ["axiom"] : [],
       });
     });
     context.mocks.api(
@@ -351,7 +351,7 @@ describe("directed connector authorize page", () => {
         authorized = true;
         return respond(200, {
           id: crypto.randomUUID(),
-          type: "axiom",
+          slug: "axiom",
           authMethod: body.authMethod,
           externalId: null,
           externalUsername: null,
@@ -458,7 +458,7 @@ describe("directed connector authorize page", () => {
         context.mocks.data.connectors([
           {
             id: crypto.randomUUID(),
-            type: "steam",
+            slug: "steam",
             authMethod: "openid",
             externalId: null,
             externalUsername: null,
@@ -474,7 +474,9 @@ describe("directed connector authorize page", () => {
       },
     });
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledTypes: authorized ? ["steam"] : [] });
+      return respond(200, {
+        enabledConnectorSlugs: authorized ? ["steam"] : [],
+      });
     });
     mockPublicConnectorStatus([
       publicStatusItem({
@@ -531,7 +533,7 @@ describe("directed connector authorize page", () => {
         authorized = true;
         return respond(200, {
           id: crypto.randomUUID(),
-          type: "stripe",
+          slug: "stripe",
           authMethod: body.authMethod,
           externalId: null,
           externalUsername: null,
@@ -546,7 +548,9 @@ describe("directed connector authorize page", () => {
       },
     );
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledTypes: authorized ? ["stripe"] : [] });
+      return respond(200, {
+        enabledConnectorSlugs: authorized ? ["stripe"] : [],
+      });
     });
     mockPublicConnectorStatus([
       publicStatusItem({
@@ -587,7 +591,7 @@ describe("directed connector authorize page", () => {
     const { authWindow } = mockConnectorOauthStart();
     let updateCalls = 0;
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledTypes: [] });
+      return respond(200, { enabledConnectorSlugs: [] });
     });
     context.mocks.api(
       zeroUserConnectorsContract.update,
@@ -596,7 +600,6 @@ describe("directed connector authorize page", () => {
         const enabledConnectorSlugs =
           body.operation === "remove" ? [] : body.enabledConnectorSlugs;
         return respond(200, {
-          enabledTypes: enabledConnectorSlugs,
           enabledConnectorSlugs,
         });
       },

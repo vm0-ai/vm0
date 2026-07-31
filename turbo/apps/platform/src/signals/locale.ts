@@ -79,21 +79,27 @@ export const syncLocalePreference$ = command(
     const preferences = await get(userPreferences$);
     signal.throwIfAborted();
     const supportedLocales = preferences.supportedLocales;
+    if (preferences.locale === undefined || supportedLocales === undefined) {
+      return;
+    }
     if (
-      preferences.locale === undefined ||
-      supportedLocales === undefined ||
-      (!supportedLocales.includes("pt-BR") &&
-        !supportedLocales.includes("ja-JP"))
+      supportedLocales.every((supportedLocale) => {
+        return supportedLocale === DEFAULT_LOCALE;
+      })
     ) {
+      await set(
+        applyLocalePreference$,
+        clerk.organization.id,
+        DEFAULT_LOCALE,
+        signal,
+      );
       return;
     }
 
-    const documentLocale = resolveDocumentLocale();
-    const locale =
-      preferences.locale ??
-      (supportedLocales.includes(documentLocale)
-        ? documentLocale
-        : DEFAULT_LOCALE);
+    const preferredLocale = preferences.locale ?? resolveDocumentLocale();
+    const locale = supportedLocales.includes(preferredLocale)
+      ? preferredLocale
+      : DEFAULT_LOCALE;
     await set(applyLocalePreference$, clerk.organization.id, locale, signal);
 
     if (preferences.locale === null) {
@@ -108,6 +114,12 @@ export const updateLocalePreference$ = command(
     signal.throwIfAborted();
     if (!clerk.user || !clerk.organization) {
       throw new Error("Language preferences require an active workspace");
+    }
+
+    const availableLocales = await get(availableLocalePreferences$);
+    signal.throwIfAborted();
+    if (!availableLocales.includes(locale)) {
+      throw new Error(`Unsupported locale: ${locale}`);
     }
 
     await set(applyLocalePreference$, clerk.organization.id, locale, signal);

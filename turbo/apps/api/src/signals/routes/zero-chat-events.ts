@@ -84,6 +84,7 @@ import {
 import {
   cancelRun$,
   dispatchCancelSideEffects$,
+  shouldDispatchCancelSideEffects,
   type CancelRunResult,
 } from "../services/zero-run-cancel.service";
 import { scheduleChatThreadTitleGeneration } from "../services/zero-chat-title.service";
@@ -1542,6 +1543,7 @@ async function resolveThread(params: {
         selectedModel: runConfiguration.modelPin.selectedModel,
         modelProvider:
           runConfiguration.providerAdmission.effectiveModelProvider ?? null,
+        modelProviderId: runConfiguration.modelPin.modelProviderId,
         cliAgentType: runConfiguration.providerAdmission.cliAgentType,
       },
     }),
@@ -2151,7 +2153,7 @@ const handleInterruptSend$ = command(
     if (!isCancelResult(cancelResult)) {
       return cancelResult;
     }
-    if (!cancelResult.alreadyCancelled) {
+    if (shouldDispatchCancelSideEffects(cancelResult)) {
       const backgroundSignal = new AbortController().signal;
       waitUntil(
         bestEffort(
@@ -3060,6 +3062,7 @@ function buildCreateZeroRunArgs(params: {
     threadSessionRoute: {
       selectedModel: modelPin.selectedModel,
       modelProvider: providerAdmission.effectiveModelProvider ?? null,
+      modelProviderId: modelPin.modelProviderId,
       cliAgentType: providerAdmission.cliAgentType,
     },
     codexServiceTier,

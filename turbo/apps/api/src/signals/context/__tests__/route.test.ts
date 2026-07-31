@@ -4,7 +4,9 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { mockNow } from "../../../lib/time";
 import { ROUTES } from "../../route";
+import { apiStartTime$ } from "../hono";
 
 const context = testContext();
 const c = initContract();
@@ -23,6 +25,7 @@ const routeTestContract = c.router({
     responses: {
       200: z.object({
         aborted: z.boolean(),
+        apiStartTime: z.number().optional(),
         sameSignal: z.boolean(),
       }),
     },
@@ -110,6 +113,34 @@ describe("honoSignalHandler", () => {
     const response = await accept(client.command(), [200]);
 
     expect(response.body).toStrictEqual({ aborted: false, sameSignal: true });
+  });
+
+  it("captures the API start time before asynchronous handler work", async () => {
+    mockNow(100);
+    const handler$ = command(async ({ get }, signal: AbortSignal) => {
+      await Promise.resolve();
+      signal.throwIfAborted();
+      mockNow(200);
+      return {
+        status: 200 as const,
+        body: {
+          aborted: signal.aborted,
+          apiStartTime: get(apiStartTime$),
+          sameSignal: signal === context.signal,
+        },
+      };
+    });
+    const client = setupApp({
+      context,
+      routes: [
+        ...ROUTES,
+        { route: routeTestContract.command, handler: handler$ },
+      ],
+    })(routeTestContract);
+
+    const response = await accept(client.command(), [200]);
+
+    expect(response.body.apiStartTime).toBe(100);
   });
 
   it("returns response-like objects without contract validation", async () => {

@@ -42,9 +42,10 @@ import {
   type ChatEventRecommendedFollowups,
   type ChatEventUserMessage,
   type ChatEventGoalEvent,
-  type ChatEventGoalSnapshot,
 } from "@vm0/db/schema/chat-event";
+import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
+import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
 import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
@@ -117,13 +118,13 @@ import {
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { cancellationRecoveryPendingForThread } from "./zero-chat-active-run.service";
 
 const nullableTriggerSourceDecoder = nullableDriverValueDecoder(
   zodEnumDriverValueDecoder(triggerSourceSchema),
 );
 const nullableTextDecoder = nullableDriverValueDecoder(pgTextDecoder);
 const matchedChatEvent = alias(chatEvents, "matched_chat_event");
-const revokedChatEvent = alias(chatEvents, "revoked_chat_event");
 const hostedRunUploadedFiles = alias(runUploadedFiles, "hosted_files");
 const HOSTED_ARTIFACT_KINDS = ["hosted-site", "presentation-html"] as const;
 
@@ -145,7 +146,7 @@ type ChatEventRow = {
   readonly usagePayload: ChatEventUsagePayload | null;
   readonly runEventId: string | null;
   readonly goalEvent: ChatEventGoalEvent | null;
-  readonly goalSnapshot: ChatEventGoalSnapshot | null;
+  readonly goalObjectiveBrief: string | null;
   readonly error: string | null;
   readonly runLifecycleEvent: string | null;
   readonly seqId: number;
@@ -295,12 +296,9 @@ const eventColumns = {
   thinking: chatEvents.thinking,
   runId: effectiveChatEventRunId(),
   runGroupId: chatEvents.runGroupId,
-  automationId: chatEvents.automationId,
-  triggerBrief: chatEvents.triggerBrief,
   usagePayload: chatEvents.usagePayload,
   runEventId: chatEvents.runEventId,
   goalEvent: chatEvents.goalEvent,
-  goalSnapshot: chatEvents.goalSnapshot,
   error: chatEvents.error,
   runLifecycleEvent: chatEvents.runLifecycleEvent,
   seqId: chatEvents.seqId,
@@ -409,26 +407,17 @@ function selectChatEventsWithMetadata(db: Pick<Db, "select">) {
   return db
     .select({
       ...eventColumns,
+      automationId: chatAutomationContext.automationId,
+      triggerBrief: chatAutomationContext.triggerBrief,
       triggerSource: sql`COALESCE(
         ${chatEvents.triggerSource},
         ${metadata.runTriggerSource}
       )`
         .mapWith(nullableTriggerSourceDecoder)
         .as("trigger_source"),
-      slackMessagePermalink: sql`COALESCE(
-        ${chatSlackContext.messagePermalink},
-        ${chatEvents.slackMessagePermalink},
-        ${revokedChatEvent.slackMessagePermalink}
-      )`
-        .mapWith(nullableTextDecoder)
-        .as("slack_message_permalink"),
-      feishuChatOpenUrl: sql`COALESCE(
-        ${chatFeishuContext.chatOpenUrl},
-        ${chatEvents.feishuChatOpenUrl},
-        ${revokedChatEvent.feishuChatOpenUrl}
-      )`
-        .mapWith(nullableTextDecoder)
-        .as("feishu_chat_open_url"),
+      slackMessagePermalink: chatSlackContext.messagePermalink,
+      feishuChatOpenUrl: chatFeishuContext.chatOpenUrl,
+      goalObjectiveBrief: chatGoalContext.objectiveBrief,
       workflowId: metadata.workflowId,
       workflowAgentId: metadata.workflowAgentId,
       workflowName: metadata.workflowName,
@@ -450,8 +439,11 @@ function selectChatEventsWithMetadata(db: Pick<Db, "select">) {
     .from(chatEvents)
     .leftJoinLateral(metadata, sql`true`)
     .leftJoin(
-      revokedChatEvent,
-      eq(revokedChatEvent.id, chatEvents.revokesEventId),
+      chatAutomationContext,
+      and(
+        eq(chatEvents.contextType, "automation"),
+        eq(chatAutomationContext.id, chatEvents.contextId),
+      ),
     )
     .leftJoin(
       chatSlackContext,
@@ -465,6 +457,13 @@ function selectChatEventsWithMetadata(db: Pick<Db, "select">) {
       and(
         eq(chatEvents.contextType, "feishu"),
         eq(chatFeishuContext.id, chatEvents.contextId),
+      ),
+    )
+    .leftJoin(
+      chatGoalContext,
+      and(
+        eq(chatEvents.contextType, "goal"),
+        eq(chatGoalContext.id, chatEvents.contextId),
       ),
     );
 }
@@ -597,7 +596,6 @@ export function zeroChatThreadDraft(args: {
     }
 
     return {
-      draftContent: null,
       draftUserMessage: thread.draftUserMessage,
       draftAttachments: thread.draftAttachments
         ? [...thread.draftAttachments]
@@ -828,7 +826,10 @@ function baseChatEventFromRow(
     feishuChatOpenUrl: row.feishuChatOpenUrl ?? undefined,
     isGoalRun: row.isGoalRun || undefined,
     runEventId: row.runEventId ?? undefined,
-    goalSnapshot: row.goalSnapshot ?? undefined,
+    goalSnapshot:
+      row.goalObjectiveBrief === null
+        ? undefined
+        : { objectiveBrief: row.goalObjectiveBrief },
     revokesEventId: row.revokesEventId ?? undefined,
     seqId: row.seqId,
     sequenceNumber: row.sequenceNumber,
@@ -884,7 +885,7 @@ const chatEventBuilders = {
       eventType: "input.goal",
       content: null,
       goalSnapshot: requiredChatEventField(
-        row.goalSnapshot,
+        event.goalSnapshot ?? null,
         row.eventType,
         "goalSnapshot",
       ),
@@ -1016,6 +1017,20 @@ const chatEventBuilders = {
       ),
     };
   },
+  "browser.started": (_row, event) => {
+    return {
+      ...event,
+      eventType: "browser.started",
+      content: null,
+    };
+  },
+  "browser.stopped": (_row, event) => {
+    return {
+      ...event,
+      eventType: "browser.stopped",
+      content: null,
+    };
+  },
   "goal.changed": (row, event) => {
     return {
       ...event,
@@ -1142,9 +1157,14 @@ export function zeroChatThreadDetail(args: {
     if (!thread) {
       return null;
     }
+    const cancellationRecoveryPending =
+      await cancellationRecoveryPendingForThread(get(db$), {
+        threadId: args.threadId,
+      });
 
     return {
       lastReadAt: thread.lastReadAt?.toISOString() ?? null,
+      cancellationRecoveryPending,
     };
   });
 }

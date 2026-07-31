@@ -16,12 +16,7 @@ import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-co
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { getClientConfig, handleError } from "../core/client-factory";
 
-export type ZeroUserPermissionGrant = Omit<
-  UserPermissionGrantResponse,
-  "connectorRef" | "connectorSlug"
-> & {
-  readonly connectorSlug: ConnectorSlug;
-};
+export type ZeroUserPermissionGrant = UserPermissionGrantResponse;
 
 export async function createZeroAgent(
   body: ZeroAgentRequest,
@@ -85,7 +80,7 @@ export async function getZeroAgentUserConnectors(
   const client = initClient(zeroUserConnectorsContract, config);
   const result = await client.get({ params: { id } });
   if (result.status === 200) {
-    return result.body.enabledConnectorSlugs ?? result.body.enabledTypes;
+    return result.body.enabledConnectorSlugs;
   }
   handleError(
     result,
@@ -133,12 +128,7 @@ export async function listZeroUserPermissionGrants(
   const client = initClient(zeroUserPermissionGrantsContract, config);
   const result = await client.list({ query: { agentId } });
   if (result.status === 200) {
-    return result.body.map(({ connectorRef, connectorSlug, ...grant }) => {
-      return {
-        ...grant,
-        connectorSlug: connectorSlug ?? connectorRef,
-      };
-    });
+    return result.body;
   }
   handleError(
     result,

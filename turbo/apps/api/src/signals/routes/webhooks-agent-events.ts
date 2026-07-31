@@ -52,9 +52,9 @@ const receiveEvents$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const result = deadlineResult.value;
-  if ("acceptedPayload" in result && result.acceptedPayload !== undefined) {
+  if ("acceptedEvents" in result && result.acceptedEvents !== undefined) {
     waitUntil(
-      set(dispatchOptionalAgentEventConsumers$, result.acceptedPayload, signal),
+      set(dispatchOptionalAgentEventConsumers$, result.acceptedEvents, signal),
     );
   }
   return result.response;

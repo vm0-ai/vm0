@@ -640,8 +640,8 @@ async fn handle_ably_message_with_network_policy_refresh(
     if let Some(run_id) = parse_cancel_notification(msg) {
         let handle = cancel_tokens.handle(run_id).await;
         if let Some(handle) = handle {
-            info!(run_id = %run_id, "ably: cancel notification, killing job");
-            handle.cancel().await;
+            info!(run_id = %run_id, "ably: cancel notification, requesting cooperative cancellation");
+            handle.request_cooperative_user_cancellation().await;
         }
         return;
     }
@@ -1746,6 +1746,7 @@ mod tests {
         let tokens = RunCancellationRegistry::new();
         let registration = tokens.register(run_id).await.unwrap();
         let token = registration.token();
+        let signals = registration.handle().signals();
         let wakeups = PollWakeups::new(true);
         let direct_candidates = direct_candidate_inbox();
         let profiles = default_profiles();
@@ -1754,6 +1755,8 @@ mod tests {
         handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
 
         assert!(token.is_cancelled());
+        assert!(signals.cooperative_user().is_cancelled());
+        assert!(!signals.hard().is_cancelled());
         assert_no_direct_candidate(&direct_candidates).await;
     }
 

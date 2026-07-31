@@ -21,7 +21,7 @@ const context = testContext();
 const user = userEvent.setup();
 
 function inspectFile(
-  triggerSource: NonNullable<LogDetail["triggerSource"]> = "cli",
+  triggerSource: NonNullable<LogDetail["triggerSource"]> = "test",
 ): File {
   const meta: Partial<LogDetail> = {
     id: "b0000000-0000-4000-a000-000000000777",
@@ -140,7 +140,7 @@ function inspectFile(
       latency_ms: 87,
       request_size: 24,
       response_size: 512,
-      connector_diagnostic_type: "slack-connector",
+      connector_diagnostic_slug: "slack-connector",
     },
   ];
 
@@ -163,7 +163,7 @@ function inspectPayload(displayName: string, text: string) {
     meta: {
       displayName,
       status: "completed",
-      triggerSource: "cli",
+      triggerSource: "test",
       createdAt: "2026-03-10T14:56:00Z",
       startedAt: "2026-03-10T14:56:01Z",
       completedAt: "2026-03-10T14:56:02Z",
@@ -210,7 +210,7 @@ function codexInspectFile(): File {
     framework: "codex",
     modelProvider: null,
     selectedModel: null,
-    triggerSource: "cli",
+    triggerSource: "test",
     triggerAgentName: null,
     status: "failed",
     prompt: "Inspect Codex adapter events",
@@ -514,11 +514,11 @@ describe("activity inspect page", () => {
       expect(screen.queryByText("github-connector")).not.toBeInTheDocument();
     });
 
-    const legacyNetworkRow = networkRows[2];
-    if (!legacyNetworkRow) {
-      throw new Error("Expected a legacy network log row");
+    const secondNetworkRow = networkRows[2];
+    if (!secondNetworkRow) {
+      throw new Error("Expected a second network log row");
     }
-    await user.click(legacyNetworkRow);
+    await user.click(secondNetworkRow);
     await waitFor(() => {
       expect(screen.getByText("slack-connector")).toBeInTheDocument();
     });

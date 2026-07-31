@@ -111,7 +111,7 @@ describe("release-please API deployment graph", () => {
     expect(promoteApiProductionHeader).not.toContain("api_release_created");
   });
 
-  it("runs API release migrations immediately before promotion", () => {
+  it("prepares API promotion before release migrations", () => {
     const workflow = readText(".github/workflows/release-please.yml");
     const promoteApiProductionJob = workflowJobBlock(
       workflow,
@@ -119,6 +119,9 @@ describe("release-please API deployment graph", () => {
     );
     const migrationStep = promoteApiProductionJob.indexOf(
       "- name: Run Production Migrations",
+    );
+    const deploymentToolchainStep = promoteApiProductionJob.indexOf(
+      "- name: Initialize API deployment toolchain",
     );
     const promotionStep = promoteApiProductionJob.indexOf(
       "- name: Promote API Deployment",
@@ -130,8 +133,27 @@ describe("release-please API deployment graph", () => {
     expect(
       promoteApiProductionJob.match(/\.\/\.github\/actions\/toolchain-init/g),
     ).toHaveLength(1);
+    expect(
+      promoteApiProductionJob.match(/\.\/\.github\/actions\/vercel-setup/g),
+    ).toHaveLength(1);
+    expect(deploymentToolchainStep).toBeGreaterThan(-1);
     expect(migrationStep).toBeGreaterThan(-1);
+    expect(migrationStep).toBeGreaterThan(deploymentToolchainStep);
     expect(promotionStep).toBeGreaterThan(migrationStep);
+    expect(promoteApiProductionJob).toContain('skip-setup: "true"');
+  });
+
+  it("keeps Vercel setup enabled for other promotion callers", () => {
+    const action = readText(".github/actions/vercel-promote/action.yml");
+    const skipSetupInputStart = action.indexOf("  skip-setup:\n");
+    const outputsStart = action.indexOf("\noutputs:\n");
+
+    expect(skipSetupInputStart).toBeGreaterThan(-1);
+    expect(outputsStart).toBeGreaterThan(skipSetupInputStart);
+    expect(action.slice(skipSetupInputStart, outputsStart)).toContain(
+      'default: "false"',
+    );
+    expect(action).toContain(`if: \${{ inputs.skip-setup != 'true' }}`);
   });
 
   it("promotes App after the API production lifecycle", () => {

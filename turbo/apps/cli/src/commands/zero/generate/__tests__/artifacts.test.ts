@@ -71,9 +71,18 @@ describe("zero generate source-backed artifact commands", () => {
 
       const stdout = output();
       expect(stdout).toContain(`# Zero generate ${command}`);
-      expect(stdout).toContain("federated generation source-selection packet");
+      expect(stdout).toContain("generation source-selection packet");
+      expect(stdout).not.toContain("federated");
       expect(stdout).toContain(prompt);
       expect(stdout).toContain(template);
+      expect(stdout).toContain(
+        "Default Git Source: `nexu-io/open-design@3fb620af423534643677c7c6fae76be088fa770a`",
+      );
+      expect(stdout).not.toContain("Sources:");
+      expect(stdout).not.toContain("vm0-ai/vm0-skills");
+      expect(stdout).toContain(
+        "For a candidate without `source.archive`, resolve `source.path` only from the pinned Git Source above. Do not run `zero resource pull` for it.",
+      );
       expect(stdout).toContain(`Artifact kind: ${command}`);
       expect(stdout).toContain("## Artifact Output Model");
       expect(stdout).toContain(

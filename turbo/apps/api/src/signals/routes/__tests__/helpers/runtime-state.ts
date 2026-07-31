@@ -372,41 +372,16 @@ export async function setComputerUseHostAsPreviousApi(
   });
 }
 
-export async function readBrowserProfileAsPreviousApi(
+export async function setBrowserTabSnapshotAsPreviousApi(
   context: TestContext,
   args: {
-    readonly browserId: string;
-    readonly userId: string;
-    readonly orgId: string;
+    readonly threadId: string;
+    readonly tabUrls: readonly string[];
   },
-): Promise<{
-  readonly browserProfileId: string;
-  readonly providerProfileId: string;
-}> {
-  const response = await postAction(context, {
-    action: "read-browser-profile-as-previous-api",
-    browser_id: args.browserId,
-    user_id: args.userId,
-    org_id: args.orgId,
-  });
-  if (!response.previous_api_browser_profile) {
-    throw new Error(
-      "readBrowserProfileAsPreviousApi missing previous_api_browser_profile",
-    );
-  }
-  return {
-    browserProfileId: response.previous_api_browser_profile.browser_profile_id,
-    providerProfileId:
-      response.previous_api_browser_profile.provider_profile_id,
-  };
-}
-
-export async function setBrowserInstanceAsPreviousApi(
-  context: TestContext,
-  browserId: string,
 ): Promise<void> {
   await postAction(context, {
-    action: "set-browser-instance-as-previous-api",
-    browser_id: browserId,
+    action: "set-browser-tab-snapshot-as-previous-api",
+    thread_id: args.threadId,
+    tab_urls: [...args.tabUrls],
   });
 }

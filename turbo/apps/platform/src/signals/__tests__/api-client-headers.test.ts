@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest";
 import { HttpResponse } from "msw";
 import {
   addClientCapabilityToVersion,
+  CLIENT_CAPABILITY_ES_ES_LOCALE,
+  CLIENT_CAPABILITY_FR_FR_LOCALE,
+  CLIENT_CAPABILITY_HI_IN_LOCALE,
+  CLIENT_CAPABILITY_IT_IT_LOCALE,
   CLIENT_CAPABILITY_JA_JP_LOCALE,
+  CLIENT_CAPABILITY_KO_KR_LOCALE,
+  CLIENT_CAPABILITY_ID_ID_LOCALE,
+  CLIENT_CAPABILITY_DE_DE_LOCALE,
   CLIENT_CAPABILITY_PT_BR_LOCALE,
   CLIENT_FORCE_UPGRADE_STATUS,
 } from "@vm0/api-contracts/contracts/client-headers";
@@ -27,9 +34,35 @@ const context = testContext();
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+const EXPECTED_CLIENT_VERSION_WITHOUT_FRENCH = addClientCapabilityToVersion(
+  addClientCapabilityToVersion(
+    addClientCapabilityToVersion(
+      addClientCapabilityToVersion(
+        addClientCapabilityToVersion(
+          addClientCapabilityToVersion(
+            addClientCapabilityToVersion(
+              "0.540.0",
+              CLIENT_CAPABILITY_PT_BR_LOCALE,
+            ),
+            CLIENT_CAPABILITY_JA_JP_LOCALE,
+          ),
+          CLIENT_CAPABILITY_KO_KR_LOCALE,
+        ),
+        CLIENT_CAPABILITY_ID_ID_LOCALE,
+      ),
+      CLIENT_CAPABILITY_DE_DE_LOCALE,
+    ),
+    CLIENT_CAPABILITY_ES_ES_LOCALE,
+  ),
+  CLIENT_CAPABILITY_IT_IT_LOCALE,
+);
+const EXPECTED_CLIENT_VERSION_WITHOUT_HINDI = addClientCapabilityToVersion(
+  EXPECTED_CLIENT_VERSION_WITHOUT_FRENCH,
+  CLIENT_CAPABILITY_FR_FR_LOCALE,
+);
 const EXPECTED_CLIENT_VERSION = addClientCapabilityToVersion(
-  addClientCapabilityToVersion("0.540.0", CLIENT_CAPABILITY_PT_BR_LOCALE),
-  CLIENT_CAPABILITY_JA_JP_LOCALE,
+  EXPECTED_CLIENT_VERSION_WITHOUT_HINDI,
+  CLIENT_CAPABILITY_HI_IN_LOCALE,
 );
 
 interface ObservedClientHeaders {
@@ -81,7 +114,7 @@ describe("api client headers", () => {
       zeroUserConnectorsContract.get,
       ({ request, respond }) => {
         observedHeaders.push(observedClientHeaders(request));
-        return respond(200, { enabledTypes: [] });
+        return respond(200, { enabledConnectorSlugs: [] });
       },
     );
 
@@ -245,7 +278,7 @@ describe("api client headers", () => {
         observedBypassHeaders.push(
           request.headers.get("x-vercel-protection-bypass"),
         );
-        return respond(200, { enabledTypes: [] });
+        return respond(200, { enabledConnectorSlugs: [] });
       },
     );
     context.mocks.http.get("*/api/zero/preview-bypass-test", ({ request }) => {

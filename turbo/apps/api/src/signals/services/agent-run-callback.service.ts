@@ -15,10 +15,6 @@ import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { handleAgentInternalCallback$ } from "./internal-agent-run-callback.service";
 import {
-  handleAgentPhoneInternalCallback$,
-  handleAgentPhoneInternalCallbackWithoutCcstate,
-} from "./internal-agentphone-run-callback.service";
-import {
   handleChatInternalCallback$,
   handleChatInternalCallbackWithoutCcstate,
 } from "./internal-chat-run-callback.service";
@@ -30,10 +26,6 @@ import {
   handleFeishuOrgInternalCallback$,
   handleFeishuOrgInternalCallbackWithoutCcstate,
 } from "./internal-feishu-org-run-callback.service";
-import {
-  handleTelegramInternalCallback$,
-  handleTelegramInternalCallbackWithoutCcstate,
-} from "./internal-telegram-run-callback.service";
 import {
   internalRunCallbackKindForRecord,
   type InternalRunCallbackDispatchResult,
@@ -70,6 +62,7 @@ interface DispatchRunCallbacksInput {
   readonly status: TerminalCallbackStatus;
   readonly result?: Record<string, unknown>;
   readonly error?: string;
+  readonly redriveChatCallbackId?: string;
 }
 
 interface DispatchSingleCallbackInput {
@@ -124,13 +117,6 @@ const dispatchInternalCallback$ = command(
       case "agent": {
         await set(handleAgentInternalCallback$, input.envelope, signal);
         return { success: true };
-      }
-      case "agentphone": {
-        return await set(
-          handleAgentPhoneInternalCallback$,
-          input.envelope,
-          signal,
-        );
       }
       case "agentphone:chat": {
         return {
@@ -201,13 +187,6 @@ const dispatchInternalCallback$ = command(
           success: false,
           error: "Telegram chat delivery callbacks are inline-only",
         };
-      }
-      case "telegram": {
-        return await set(
-          handleTelegramInternalCallback$,
-          input.envelope,
-          signal,
-        );
       }
       case "workflow-automation:cron":
       case "workflow-automation:loop": {
@@ -371,7 +350,7 @@ export const dispatchRunCallbacks$ = command(
     input: DispatchRunCallbacksInput,
     signal: AbortSignal,
   ): Promise<DispatchResult[]> => {
-    const { db, runId, status, result, error } = input;
+    const { db, runId, status, result, error, redriveChatCallbackId } = input;
     const [run] = await db
       .select({
         orgId: agentRuns.orgId,
@@ -402,10 +381,18 @@ export const dispatchRunCallbacks$ = command(
       .where(
         and(
           eq(agentRunCallbacks.runId, runId),
-          or(
-            eq(agentRunCallbacks.status, "pending"),
-            eq(agentRunCallbacks.status, "failed"),
-          ),
+          redriveChatCallbackId === undefined
+            ? undefined
+            : and(
+                eq(agentRunCallbacks.id, redriveChatCallbackId),
+                eq(agentRunCallbacks.internalKind, "chat"),
+              ),
+          redriveChatCallbackId === undefined
+            ? or(
+                eq(agentRunCallbacks.status, "pending"),
+                eq(agentRunCallbacks.status, "failed"),
+              )
+            : undefined,
           or(
             isNull(agentRunCallbacks.internalKind),
             notInArray(agentRunCallbacks.internalKind, [
@@ -450,21 +437,23 @@ export const dispatchRunCallbacks$ = command(
       signal.throwIfAborted();
       results.push(dispatchResult);
     }
-    await tapError(
-      set(
-        continueGoalIfIdle$,
-        {
-          db,
-          runId,
-          dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+    if (redriveChatCallbackId === undefined) {
+      await tapError(
+        set(
+          continueGoalIfIdle$,
+          {
+            db,
+            runId,
+            dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+          },
+          signal,
+        ),
+        (error) => {
+          L.error("Goal continuation dispatch failed", { runId, error });
         },
-        signal,
-      ),
-      (error) => {
-        L.error("Goal continuation dispatch failed", { runId, error });
-      },
-    );
-    signal.throwIfAborted();
+      );
+      signal.throwIfAborted();
+    }
     return results;
   },
 );
@@ -539,12 +528,6 @@ async function dispatchInternalCallbackWithoutCcstate(
     case "agent": {
       return { success: true };
     }
-    case "agentphone": {
-      return await handleAgentPhoneInternalCallbackWithoutCcstate(
-        input.db,
-        callbackEnvelope(input),
-      );
-    }
     case "agentphone:chat": {
       return {
         success: false,
@@ -598,12 +581,6 @@ async function dispatchInternalCallbackWithoutCcstate(
         success: false,
         error: "Telegram chat delivery callbacks are inline-only",
       };
-    }
-    case "telegram": {
-      return await handleTelegramInternalCallbackWithoutCcstate(
-        input.db,
-        callbackEnvelope(input),
-      );
     }
     case "workflow-automation:cron":
     case "workflow-automation:loop": {

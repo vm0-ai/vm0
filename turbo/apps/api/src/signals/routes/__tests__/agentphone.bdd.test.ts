@@ -111,10 +111,29 @@ async function completeSandboxRun(
   sandboxToken: string,
   runId: string,
   exitCode: number,
-  error?: string,
+  options: {
+    readonly error?: string;
+    readonly resultText?: string;
+  } = {},
 ): Promise<void> {
   const webhooks = createWebhookCallbackApi(context);
   const sandboxHeaders = { authorization: `Bearer ${sandboxToken}` };
+  if (options.resultText !== undefined) {
+    await webhooks.requestAgentEvents(
+      {
+        runId,
+        events: [
+          {
+            type: "result",
+            sequenceNumber: 0,
+            result: options.resultText,
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+  }
   if (exitCode === 0) {
     // Successful completion requires a checkpoint, like a real sandbox.
     await webhooks.requestAgentCheckpoint(
@@ -131,7 +150,12 @@ async function completeSandboxRun(
     );
   }
   await webhooks.requestAgentComplete(
-    { runId, exitCode, ...(error === undefined ? {} : { error }) },
+    {
+      runId,
+      exitCode,
+      ...(options.error === undefined ? {} : { error: options.error }),
+      ...(options.resultText === undefined ? {} : { lastEventSequence: 0 }),
+    },
     sandboxHeaders,
     [200],
   );
@@ -336,10 +360,10 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     // Completion converts markdown output to iMessage plain text, without
     // an audit link or a non-default-agent footer.
     const beforeCompletion = sends.messages.length;
-    ap.mockCompletionRunOutput(MARKDOWN_RUN_OUTPUT);
-    await completeSandboxRun(run1.sandboxToken, run1.runId, 0);
+    await completeSandboxRun(run1.sandboxToken, run1.runId, 0, {
+      resultText: MARKDOWN_RUN_OUTPUT,
+    });
     await waitForSendCount(sends, beforeCompletion + 1);
-    ap.restoreCompletionRunOutput();
     const completionReply = lastSend(sends);
     expect(completionReply.toNumber).toBe(phone);
     expect(completionReply.conversationId).toBeUndefined();
@@ -405,12 +429,9 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     });
     const run4 = await claimDispatchedRun(runnerGroup);
     const beforeRun4Completion = sends.messages.length;
-    await completeSandboxRun(
-      run4.sandboxToken,
-      run4.runId,
-      1,
-      "AgentPhone bdd route failure",
-    );
+    await completeSandboxRun(run4.sandboxToken, run4.runId, 1, {
+      error: "AgentPhone bdd route failure",
+    });
     await waitForSendCount(sends, beforeRun4Completion + 1);
     expect(lastSend(sends).body).toBe(
       "Oops, something went wrong. Please try again later.",

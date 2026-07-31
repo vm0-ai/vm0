@@ -40,7 +40,6 @@ interface RunContext {
   readonly orgId: string;
   readonly prompt: string;
   readonly agentId: string;
-  readonly lastEventSequence: number | null;
   readonly chatThreadId: string | null;
 }
 
@@ -71,7 +70,6 @@ async function loadRun(db: Db, runId: string): Promise<RunContext | undefined> {
       orgId: agentRuns.orgId,
       prompt: agentRuns.prompt,
       agentId: agentSessions.agentComposeId,
-      lastEventSequence: agentRuns.lastEventSequence,
       chatThreadId: zeroRuns.chatThreadId,
     })
     .from(agentRuns)
@@ -208,10 +206,7 @@ async function handleFeishuCallback(
   const output =
     args.callback.status === "failed"
       ? undefined
-      : await getRunOutputText(args.callback.runId, {
-          knownLastEventSequence: run.lastEventSequence,
-          signal: args.signal,
-        });
+      : await getRunOutputText(args.db, args.callback.runId, args.signal);
   args.signal.throwIfAborted();
   const errorText =
     args.callback.status === "failed"

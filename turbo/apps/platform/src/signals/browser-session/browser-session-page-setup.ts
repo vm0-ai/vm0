@@ -16,11 +16,11 @@ import { i18n } from "../../i18n/index.ts";
 
 export const setupBrowserSessionPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const browserId = String(get(pathParams$)?.browserId ?? "");
-    const descriptor = parseBrowserSessionUrl(`/browsers/${browserId}`);
+    const threadId = String(get(pathParams$)?.browserThreadId ?? "");
+    const descriptor = parseBrowserSessionUrl(`/browsers/${threadId}`);
     set(
       setBrowserSessionPageSignals$,
-      descriptor ? createBrowserSessionSignals(null, descriptor) : null,
+      descriptor ? createBrowserSessionSignals(descriptor) : null,
     );
     set(updatePage$, createElement(BrowserSessionPage), "minimal");
     set(

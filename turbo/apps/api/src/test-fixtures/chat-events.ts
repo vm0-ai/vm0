@@ -1,11 +1,15 @@
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
+import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
+import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
 import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatEvents } from "@vm0/db/schema/chat-event";
+import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { and, count, eq, isNull, like, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
@@ -42,8 +46,11 @@ interface ChatEventContextFixture {
   readonly revokesEventId: string | null;
   readonly contextType: string | null;
   readonly contextId: string | null;
+  readonly automationId: string | null;
+  readonly triggerBrief: string | null;
   readonly slackMessagePermalink: string | null;
   readonly feishuChatOpenUrl: string | null;
+  readonly goalObjectiveBrief: string | null;
 }
 
 export async function readChatEventContextFixture(
@@ -64,22 +71,39 @@ export async function readChatEventContextFixture(
   }
 
   const contextId = event.contextId ?? event.id;
-  const [[slackContext], [feishuContext]] = await Promise.all([
-    db()
-      .select({ messagePermalink: chatSlackContext.messagePermalink })
-      .from(chatSlackContext)
-      .where(eq(chatSlackContext.id, contextId))
-      .limit(1),
-    db()
-      .select({ chatOpenUrl: chatFeishuContext.chatOpenUrl })
-      .from(chatFeishuContext)
-      .where(eq(chatFeishuContext.id, contextId))
-      .limit(1),
-  ]);
+  const [[automationContext], [slackContext], [feishuContext], [goalContext]] =
+    await Promise.all([
+      db()
+        .select({
+          automationId: chatAutomationContext.automationId,
+          triggerBrief: chatAutomationContext.triggerBrief,
+        })
+        .from(chatAutomationContext)
+        .where(eq(chatAutomationContext.id, contextId))
+        .limit(1),
+      db()
+        .select({ messagePermalink: chatSlackContext.messagePermalink })
+        .from(chatSlackContext)
+        .where(eq(chatSlackContext.id, contextId))
+        .limit(1),
+      db()
+        .select({ chatOpenUrl: chatFeishuContext.chatOpenUrl })
+        .from(chatFeishuContext)
+        .where(eq(chatFeishuContext.id, contextId))
+        .limit(1),
+      db()
+        .select({ objectiveBrief: chatGoalContext.objectiveBrief })
+        .from(chatGoalContext)
+        .where(eq(chatGoalContext.id, contextId))
+        .limit(1),
+    ]);
   return {
     ...event,
+    automationId: automationContext?.automationId ?? null,
+    triggerBrief: automationContext?.triggerBrief ?? null,
     slackMessagePermalink: slackContext?.messagePermalink ?? null,
     feishuChatOpenUrl: feishuContext?.chatOpenUrl ?? null,
+    goalObjectiveBrief: goalContext?.objectiveBrief ?? null,
   };
 }
 
@@ -117,6 +141,29 @@ export async function findPendingChatEventInputParamsByPromptFixture(
     });
   });
   return row ?? null;
+}
+
+/**
+ * Makes one pending queue item fail while loading its private run parameters.
+ * Product APIs cannot persist malformed encrypted state.
+ */
+export async function invalidatePendingChatEventInputParamsFixture(
+  eventId: string,
+): Promise<void> {
+  const rows = await db()
+    .insert(chatEventInputParams)
+    .values({
+      eventId,
+      encryptedParams: "invalid-encrypted-queue-params",
+    })
+    .onConflictDoUpdate({
+      target: chatEventInputParams.eventId,
+      set: { encryptedParams: "invalid-encrypted-queue-params" },
+    })
+    .returning({ eventId: chatEventInputParams.eventId });
+  if (rows.length !== 1) {
+    throw new Error("Expected one pending queue item to become invalid");
+  }
 }
 
 export async function replayPendingChatInputQueueEventFixture(args: {
@@ -229,6 +276,90 @@ export async function completeRunWithoutCallbacksFixture(args: {
   if (updated.length !== 1) {
     throw new Error("Expected one running run to complete without callbacks");
   }
+}
+
+/**
+ * Holds checkpoint reads after `/complete` has loaded its run but before its
+ * terminal compare-and-set. Product APIs cannot pause at this race boundary.
+ */
+export async function holdCheckpointReadsFixture(args: {
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly blockedWaiterCount: () => Promise<number>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const pidRows = await executeRawRows(
+      tx,
+      sql`
+        SELECT pg_backend_pid() AS "pid"
+      `,
+      databasePidRowSchema,
+    );
+    const holderPid = pidRows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the checkpoint lock holder pid");
+    }
+    await tx.execute(sql`LOCK TABLE ${checkpoints} IN ACCESS EXCLUSIVE MODE`);
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    blockedWaiterCount: async () => {
+      return await directBlockedWaiterCount(holderPid);
+    },
+  };
+}
+
+/**
+ * Reproduces a crash after the canonical chat callback was acknowledged but
+ * before its detached terminal processing became durable. Product APIs cannot
+ * delete append-only events, so this fixture removes only the exact cancelled
+ * lifecycle row after verifying that the chat callback is already delivered.
+ */
+export async function removeAcknowledgedCancellationLifecycleFixture(args: {
+  readonly runId: string;
+}): Promise<void> {
+  await db().transaction(async (tx) => {
+    const [callback] = await tx
+      .select({ status: agentRunCallbacks.status })
+      .from(agentRunCallbacks)
+      .where(
+        and(
+          eq(agentRunCallbacks.runId, args.runId),
+          eq(agentRunCallbacks.internalKind, "chat"),
+        ),
+      )
+      .limit(1);
+    if (callback?.status !== "delivered") {
+      throw new Error("Expected an acknowledged canonical chat callback");
+    }
+
+    await tx.execute(sql`SET LOCAL session_replication_role = replica`);
+    const removed = await tx
+      .delete(chatEvents)
+      .where(
+        and(
+          eq(chatEvents.runId, args.runId),
+          eq(chatEvents.eventType, "run.cancelled"),
+        ),
+      )
+      .returning({ id: chatEvents.id });
+    if (removed.length !== 1) {
+      throw new Error("Expected one cancelled lifecycle event");
+    }
+  });
 }
 
 async function transitiveBlockedWaiterCount(

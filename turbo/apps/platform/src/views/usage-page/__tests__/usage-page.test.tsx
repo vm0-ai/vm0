@@ -238,7 +238,10 @@ describe("/usage page", () => {
   });
 
   it("localizes usage copy, counts, and numeric totals in Japanese", async () => {
-    context.mocks.data.userPreferences({ locale: "ja-JP" });
+    context.mocks.data.userPreferences({
+      locale: "ja-JP",
+      supportedLocales: ["en-US", "ja-JP"],
+    });
     context.mocks.api(zeroUsageInsightContract.get, ({ respond }) => {
       return respond(200, usageInsightTodayFixture);
     });
@@ -271,6 +274,133 @@ describe("/usage page", () => {
     click(screen.getByLabelText("日付範囲"));
     expect(
       screen.getByRole("option", { name: "過去7日間" }),
+    ).toBeInTheDocument();
+  });
+
+  it("localizes usage copy, plurals, and numeric totals in German", async () => {
+    context.mocks.data.userPreferences({ locale: "de-DE" });
+    context.mocks.api(zeroUsageInsightContract.get, ({ query, respond }) => {
+      return respond(
+        200,
+        query.range === "7d"
+          ? usageInsightLast7DaysSourceFixture
+          : usageInsightTodayFixture,
+      );
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/usage",
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe("de-DE");
+      expect(
+        screen.getByRole("heading", { level: 1, name: "Nutzung" }),
+      ).toBeInTheDocument();
+      expect(
+        within(screen.getByRole("region", { name: "Credit-Summen" })).getByText(
+          "1300",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("1 Automatisierung hat 300 Credits verwendet"),
+      ).toBeVisible();
+      expect(
+        screen.getByText("1 Chat hat 200 Credits verwendet"),
+      ).toBeVisible();
+      expect(screen.getByText("Chat")).toBeVisible();
+    });
+
+    click(screen.getByLabelText("Datumsbereich"));
+    click(screen.getByRole("option", { name: "Letzte 7 Tage" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/^3 Automatisierungen haben /u),
+      ).toBeInTheDocument();
+      expect(screen.getByText("+1 weitere Automatisierung")).toBeVisible();
+      expect(screen.getByText(/^3 Chats haben /u)).toBeInTheDocument();
+      expect(screen.getByText("+1 weiterer Chat")).toBeVisible();
+    });
+  });
+
+  it("localizes usage copy, plurals, and numeric totals in Spanish", async () => {
+    context.mocks.data.userPreferences({ locale: "es-ES" });
+    context.mocks.api(zeroUsageInsightContract.get, ({ respond }) => {
+      return respond(200, usageInsightTodayFixture);
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/usage",
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe("es-ES");
+      expect(
+        screen.getByRole("heading", { level: 1, name: "Uso" }),
+      ).toBeInTheDocument();
+      expect(
+        within(
+          screen.getByRole("region", { name: "Total de créditos" }),
+        ).getByText(/1,3\s+mil/u),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("1 automatización usó 300 créditos"),
+      ).toBeVisible();
+      expect(screen.getByText("1 conversación usó 200 créditos")).toBeVisible();
+      expect(screen.getAllByText("Chat")).not.toHaveLength(0);
+    });
+
+    click(screen.getByLabelText("Rango de fechas"));
+    expect(
+      screen.getByRole("option", { name: "Últimos 7 días" }),
+    ).toBeInTheDocument();
+  });
+
+  it("localizes usage copy, plurals, and numeric totals in Hindi", async () => {
+    context.mocks.data.userPreferences({ locale: "hi-IN" });
+    context.mocks.api(zeroUsageInsightContract.get, ({ respond }) => {
+      return respond(200, usageInsightTodayFixture);
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/usage",
+      featureSwitches: {
+        [FeatureSwitchKey.LanguagePreference]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(document.documentElement.lang).toBe("hi-IN");
+      expect(
+        screen.getByRole("heading", { level: 1, name: "उपयोग" }),
+      ).toBeInTheDocument();
+      expect(
+        within(screen.getByRole("region", { name: "कुल क्रेडिट" })).getByText(
+          /1\.3\s+हज़ार/u,
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("1 ऑटोमेशन ने 300 क्रेडिट का उपयोग किया"),
+      ).toBeVisible();
+      expect(
+        screen.getByText("1 चैट ने 200 क्रेडिट का उपयोग किया"),
+      ).toBeVisible();
+      expect(screen.getAllByText("चैट")).not.toHaveLength(0);
+    });
+
+    click(screen.getByLabelText("तिथि सीमा"));
+    expect(
+      screen.getByRole("option", { name: "पिछले 7 दिन" }),
     ).toBeInTheDocument();
   });
 });

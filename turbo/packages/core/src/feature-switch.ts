@@ -37,6 +37,11 @@ export interface FeatureSwitchContext {
   readonly overrides?: Partial<Record<FeatureSwitchKey, boolean>>;
 }
 
+const CUSTOM_MODEL_GATEWAY_ORG_ID_HASHES = [
+  ...STAFF_ORG_ID_HASHES,
+  "a6e60503", // geo rollout workspace
+] as const;
+
 /**
  * Registry of all feature switches
  */
@@ -238,14 +243,62 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description:
       "Allow pt-BR preference writes after incompatible API readers and rollback candidates have drained.",
-    enabled: false,
+    enabled: true,
     userOverridable: false,
   },
   [FeatureSwitchKey.JapaneseLocale]: {
     maintainer: "yuma@vm0.ai",
     description:
       "Allow ja-JP preference writes after incompatible API readers and rollback candidates have drained.",
-    enabled: false,
+    enabled: true,
+  },
+  [FeatureSwitchKey.KoreanLocale]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Allow ko-KR preference writes after incompatible API readers and rollback candidates have drained.",
+    enabled: true,
+    userOverridable: false,
+  },
+  [FeatureSwitchKey.IndonesianLocale]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Allow id-ID preference writes after incompatible API readers and rollback candidates have drained.",
+    enabled: true,
+    userOverridable: false,
+  },
+  [FeatureSwitchKey.GermanLocale]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Allow de-DE preference writes after incompatible API readers and rollback candidates have drained.",
+    enabled: true,
+    userOverridable: false,
+  },
+  [FeatureSwitchKey.SpanishLocale]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Allow es-ES preference writes after incompatible API readers and rollback candidates have drained.",
+    enabled: true,
+    userOverridable: false,
+  },
+  [FeatureSwitchKey.ItalianLocale]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Allow it-IT preference writes after incompatible API readers and rollback candidates have drained.",
+    enabled: true,
+    userOverridable: false,
+  },
+  [FeatureSwitchKey.FrenchLocale]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Allow fr-FR preference writes after incompatible API readers and rollback candidates have drained.",
+    enabled: true,
+    userOverridable: false,
+  },
+  [FeatureSwitchKey.HindiLocale]: {
+    maintainer: "yuma@vm0.ai",
+    description:
+      "Allow hi-IN preference writes after incompatible API readers and rollback candidates have drained.",
+    enabled: true,
     userOverridable: false,
   },
   [FeatureSwitchKey.Banking]: {
@@ -355,6 +408,14 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
     userOverridable: true,
   },
+  [FeatureSwitchKey.CustomModelGateways]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Enable admin-defined Anthropic Messages and OpenAI Responses model gateway connections.",
+    enabled: false,
+    enabledOrgIdHashes: CUSTOM_MODEL_GATEWAY_ORG_ID_HASHES,
+    userOverridable: false,
+  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
     description:
@@ -374,6 +435,21 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show chat thread title results from the local event-driven thread cache in the command-shift-a conversation picker.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ChatErrorRecovery]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Replace supported Codex and Claude Code limit errors with recovery actions in chat.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.PwaChatKeyboardGestures]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Keep the PWA chat composer pinned above the software keyboard and support swipe-to-dismiss gestures.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    userOverridable: false,
   },
   [FeatureSwitchKey.ChatThreadSidebarAutoOpen]: {
     maintainer: "ethan@vm0.ai",

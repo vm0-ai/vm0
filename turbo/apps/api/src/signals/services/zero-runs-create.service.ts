@@ -70,11 +70,7 @@ import type { QueueFirstRunAssociation } from "./zero-chat-queued-event.service"
 import { buildZeroChatMessagingToolPrompt } from "./zero-chat-messaging-tool-prompt";
 
 type ZeroRunCreateBody = z.infer<typeof zeroRunCreateBodySchema>;
-type ZeroRunOrigin =
-  | "zero_run"
-  | "workflow_automation"
-  | "goal_continuation"
-  | "zero_integration";
+type ZeroRunOrigin = "zero_run" | "workflow_automation" | "goal_continuation";
 export type ZeroPreCreateSource =
   | "chat_callback_auto_send"
   | "workflow_slash_command";
@@ -185,8 +181,9 @@ interface CreateZeroRunCommandArgs {
 
 interface CreateQueueFirstZeroRunCommandArgs extends Omit<
   CreateZeroRunCommandArgs,
-  "zeroRunModelPin"
+  "chatThreadId" | "zeroRunModelPin"
 > {
+  readonly chatThreadId: string;
   readonly queueFirstAssociation: QueueFirstRunAssociation;
   readonly zeroRunModelPin: ZeroRunModelPin;
 }
@@ -198,40 +195,19 @@ type AnyCreateZeroRunCommandArgs =
 function assertThreadBoundZeroRunHasQueueAssociation(
   args: AnyCreateZeroRunCommandArgs,
 ): void {
-  if (
-    args.chatThreadId !== undefined &&
-    (!("queueFirstAssociation" in args) || !args.queueFirstAssociation)
-  ) {
-    throw new Error("Thread-bound Zero run requires a queue-first association");
+  if (!("queueFirstAssociation" in args)) {
+    if (args.chatThreadId !== undefined) {
+      throw new Error(
+        "Thread-bound Zero run requires a queue-first association",
+      );
+    }
+    return;
   }
-}
-
-interface CreateZeroIntegrationRunCommandArgs {
-  readonly userId: string;
-  readonly orgId: string;
-  readonly agentId: string;
-  readonly sessionId?: string;
-  readonly prompt: string;
-  readonly appendSystemPrompt?: string;
-  readonly triggerSource: TriggerSource;
-  readonly callbacks?: readonly RunCallback[];
-  readonly apiStartTime: number;
-  readonly userInfoExtras?: Pick<
-    UserInfo,
-    | "slackDisplayName"
-    | "slackUserId"
-    | "feishuDisplayName"
-    | "feishuOpenId"
-    | "teamsUserDisplayName"
-    | "teamsUserPrincipalName"
-    | "teamsUserId"
-    | "telegramDisplayName"
-    | "telegramUsername"
-    | "telegramUserId"
-    | "telegramLanguage"
-    | "agentphoneHandle"
-  >;
-  readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
+  if (args.queueFirstAssociation.threadId !== args.chatThreadId) {
+    throw new Error(
+      "Queue-first association must target the run's chat thread",
+    );
+  }
 }
 
 function forbidden(message: string) {
@@ -365,8 +341,8 @@ function buildAgentToolsPrompt(args: {
     "- Browser access: `agent-browser` provides rendered-page inspection and interaction. For one known public URL when you only need page content, prefer `zero scrape <url> --format markdown`; use `agent-browser` when you need browser state, authentication, JavaScript, screenshots, or interaction.",
     ...(args.zeroBrowserAvailable && args.cloudBrowserEnabled === true
       ? [
-          "- Zero Browser and Zero Computer Use are separate surfaces. `zero browser use` creates, reuses, or resumes a remote browser owned by the current chat thread, attaches it to `agent-browser`, and gives the user an authenticated `/browsers/:id` live view they can take over. `zero computer-use` drives apps on a desktop host the user connected separately. Running `agent-browser` on its own drives a local browser inside this sandbox: it creates no Zero Browser session and no user-viewable link.",
-          "- Zero Browser lifetime: `zero browser use` and `zero browser lease` each extend the session's idle lease by a fixed 10 minutes and report when Zero will reclaim it. The session survives the end of this run, so a later run in the same thread attaches to the same live window and the user can keep working in it. Call `zero browser lease` while a long task keeps the browser idle; the reclaimed session can still be resumed from the saved login profile.",
+          "- Zero Browser and Zero Computer Use are separate surfaces. `zero browser use` creates, reuses, or resumes a remote browser owned by the current chat thread, attaches it to `agent-browser`, and gives the user an authenticated `/browsers/:threadId` live view they can take over. `zero computer-use` drives apps on a desktop host the user connected separately. Running `agent-browser` on its own drives a local browser inside this sandbox: it creates no Zero Browser session and no user-viewable link.",
+          "- Zero Browser lifetime: `zero browser use` and `zero browser lease` each extend the session's idle lease by a fixed 10 minutes and report when Zero will reclaim it. The session survives the end of this run, so a later run in the same thread attaches to the same live window and the user can keep working in it. Call `zero browser lease` while a long task keeps the browser idle; a reclaimed session can still resume its saved login profile and reopen its last captured HTTP(S) tab URLs on a best-effort basis.",
         ]
       : []),
     ...(args.zeroBrowserAvailable && args.cloudBrowserEnabled === false
@@ -479,17 +455,6 @@ function buildAppendSystemPrompt(args: {
     }),
     buildCurrentUserPrompt(args.userInfo),
   ]
-    .filter((part): part is string => {
-      return Boolean(part);
-    })
-    .join("\n\n");
-}
-
-function mergeAppendSystemPrompt(
-  base: string,
-  appendSystemPrompt: string | undefined,
-): string {
-  return [base, appendSystemPrompt]
     .filter((part): part is string => {
       return Boolean(part);
     })
@@ -719,37 +684,6 @@ function createRunBody(args: {
   };
 }
 
-function createIntegrationRunBody(args: {
-  readonly prompt: string;
-  readonly sessionId: string | undefined;
-  readonly agent: ZeroAgentRunRecord;
-  readonly featureSwitchContext: FeatureSwitchContext;
-  readonly userInfo: UserInfo;
-  readonly permissionPolicies: FirewallPolicies | null | undefined;
-  readonly triggerSource: TriggerSource;
-  readonly appendSystemPrompt: string | undefined;
-}) {
-  return {
-    prompt: args.prompt,
-    agentComposeId: args.agent.id,
-    sessionId: args.sessionId,
-    permissionPolicies: args.permissionPolicies ?? undefined,
-    triggerSource: args.triggerSource,
-    appendSystemPrompt: mergeAppendSystemPrompt(
-      buildAppendSystemPrompt({
-        agent: args.agent,
-        featureSwitchContext: args.featureSwitchContext,
-        userInfo: args.userInfo,
-        triggerSource: args.triggerSource,
-        cloudBrowserEnabled: undefined,
-      }),
-      args.appendSystemPrompt,
-    ),
-    disallowedTools: [...DISALLOWED_TOOLS],
-    vars: { ZERO_AGENT_ID: args.agent.id },
-  };
-}
-
 function callbacksForAutomationAgent(triggerAgentId: string | undefined) {
   return triggerAgentId
     ? [
@@ -973,59 +907,7 @@ function buildZeroCreateAgentRunArgs(args: {
   };
 }
 
-function buildZeroIntegrationCreateAgentRunArgs(args: {
-  readonly command: CreateZeroIntegrationRunCommandArgs;
-  readonly agent: ZeroAgentRunRecord;
-  readonly featureSwitchContext: FeatureSwitchContext;
-  readonly userInfo: UserInfo;
-  readonly runPermissionPolicies: FirewallPolicies | null | undefined;
-  readonly workflows: readonly RunWorkflowRef[];
-  readonly allowedConnectorSlugs: readonly ConnectorSlug[];
-  readonly allowedCustomConnectorIds: readonly string[];
-  readonly customConnectorGrants: readonly AgentCustomConnectorGrant[];
-  readonly timing: ApiDispatchTimingCollector;
-}): CreateAgentRunArgs {
-  const command = args.command;
-  return {
-    userId: command.userId,
-    orgId: command.orgId,
-    body: createIntegrationRunBody({
-      prompt: command.prompt,
-      sessionId: command.sessionId,
-      agent: args.agent,
-      featureSwitchContext: args.featureSwitchContext,
-      userInfo: { ...args.userInfo, ...command.userInfoExtras },
-      permissionPolicies: args.runPermissionPolicies,
-      triggerSource: command.triggerSource,
-      appendSystemPrompt: command.appendSystemPrompt,
-    }),
-    apiStartTime: command.apiStartTime,
-    modelProviderId: optionalAgentSetting(args.agent.modelProviderId),
-    selectedModelOverride: optionalAgentSetting(args.agent.selectedModel),
-    extraEnvironment: buildZeroRunExtraEnvironment({
-      agentId: args.agent.id,
-      chatThreadId: undefined,
-      codexServiceTier: undefined,
-    }),
-    callbacks: command.callbacks,
-    includeZeroTokenSecret: true,
-    enforceVm0Credits: true,
-    queueOnConcurrencyLimit: true,
-    injectSkillVolumes: { workflows: args.workflows },
-    connectorScope: {
-      allowedConnectorSlugs: args.allowedConnectorSlugs,
-      allowedCustomConnectorIds: args.allowedCustomConnectorIds,
-      customConnectorGrants: args.customConnectorGrants,
-      source: "zero_agent",
-    },
-    validateEnvironmentReferences: false,
-    dispatchFailedCallbacks: command.dispatchFailedCallbacks,
-    timing: args.timing,
-    timingDimensions: zeroRunTimingDimensions({ origin: "zero_integration" }),
-  };
-}
-
-interface ZeroRunAfterPreCreateBase {
+interface ZeroRunAfterPreCreate {
   readonly agent: ZeroAgentRunRecord;
   readonly userInfo: UserInfo;
   readonly featureSwitchContext: FeatureSwitchContext;
@@ -1037,38 +919,16 @@ interface ZeroRunAfterPreCreateBase {
   readonly customConnectorGrants: readonly AgentCustomConnectorGrant[];
   readonly timing: ApiDispatchTimingCollector;
   readonly cloudBrowserEnabled: boolean | undefined;
-}
-
-interface RegularZeroRunAfterPreCreate extends ZeroRunAfterPreCreateBase {
-  readonly kind: "regular";
   readonly command: AnyCreateZeroRunCommandArgs;
   readonly triggerAgentId: string | undefined;
   readonly threadSessionResolution?: ChatThreadSessionResolution;
-}
-
-interface IntegrationZeroRunAfterPreCreate extends ZeroRunAfterPreCreateBase {
-  readonly kind: "integration";
-  readonly command: CreateZeroIntegrationRunCommandArgs;
-}
-
-type ZeroRunAfterPreCreate =
-  | RegularZeroRunAfterPreCreate
-  | IntegrationZeroRunAfterPreCreate;
-
-function buildZeroCreateAgentRunArgsForKind(
-  input: ZeroRunAfterPreCreate,
-): CreateAgentRunArgs {
-  if (input.kind === "regular") {
-    return buildZeroCreateAgentRunArgs(input);
-  }
-  return buildZeroIntegrationCreateAgentRunArgs(input);
 }
 
 async function resolveThreadSessionForZeroRun(
   db: Db,
   input: ZeroRunAfterPreCreate,
 ): Promise<ZeroRunAfterPreCreate> {
-  if (input.kind === "integration" || !input.command.chatThreadId) {
+  if (!input.command.chatThreadId) {
     return input;
   }
   if (!input.command.threadSessionRoute) {
@@ -1111,7 +971,7 @@ const createAgentRunAfterZeroPreCreate$ = command(
         input.timing,
         "api_dispatch_pre_create_zero_build_create_run_args",
         () => {
-          return buildZeroCreateAgentRunArgsForKind(attemptInput);
+          return buildZeroCreateAgentRunArgs(attemptInput);
         },
       );
       signal.throwIfAborted();
@@ -1151,80 +1011,6 @@ const createAgentRunAfterZeroPreCreate$ = command(
       signal.throwIfAborted();
     }
     throw new Error("Chat thread session changed during every run preparation");
-  },
-);
-
-export const createZeroIntegrationRun$ = command(
-  async (
-    { set },
-    args: CreateZeroIntegrationRunCommandArgs,
-    signal: AbortSignal,
-  ) => {
-    const timing = zeroServiceEntryTiming({
-      apiStartTime: args.apiStartTime,
-    });
-    const db = set(writeDb$);
-    const agent = await measureZeroPreCreate(
-      timing,
-      "api_dispatch_pre_create_zero_load_agent",
-      async () => {
-        return await loadZeroAgent(db, args.agentId);
-      },
-    );
-    signal.throwIfAborted();
-    if (!agent || agent.orgId !== args.orgId) {
-      return notFound("Agent not found");
-    }
-
-    if (agent.visibility === "private" && agent.owner !== args.userId) {
-      return forbidden("Only the private agent owner can run this agent");
-    }
-
-    const {
-      userInfo,
-      featureSwitchContext,
-      allowedConnectorSlugs,
-      allowedCustomConnectorIds,
-      customConnectorGrants,
-      workflows,
-      runPermissionPolicies,
-      connectorCatalogSnapshot,
-    } = await loadZeroRunPostAuthorizationContext(
-      db,
-      {
-        userId: args.userId,
-        orgId: args.orgId,
-        agentId: agent.id,
-        triggerRunId: undefined,
-        apiStartTime: args.apiStartTime,
-        timing,
-      },
-      signal,
-    );
-
-    const result = await set(
-      createAgentRunAfterZeroPreCreate$,
-      {
-        kind: "integration",
-        command: args,
-        agent,
-        userInfo,
-        featureSwitchContext,
-        runPermissionPolicies,
-        connectorCatalogSnapshot,
-        workflows,
-        allowedConnectorSlugs,
-        allowedCustomConnectorIds,
-        customConnectorGrants,
-        timing,
-        cloudBrowserEnabled: undefined,
-      },
-      signal,
-    );
-    if (isQueueFirstRunClaimLost(result)) {
-      throw new Error("Integration run unexpectedly lost a queue-first claim");
-    }
-    return result;
   },
 );
 
@@ -1304,7 +1090,6 @@ const createZeroRunInternal$ = command(
     return await set(
       createAgentRunAfterZeroPreCreate$,
       {
-        kind: "regular",
         command: args,
         agent,
         userInfo,
@@ -1324,7 +1109,11 @@ const createZeroRunInternal$ = command(
   },
 );
 
-export const createZeroRun$ = command(
+/**
+ * Test-fixture adapter for exercising run behavior that has no production
+ * entry point. Production run sources must use createQueueFirstZeroRun$.
+ */
+export const createTestFixtureZeroRun$ = command(
   async ({ set }, args: CreateZeroRunCommandArgs, signal: AbortSignal) => {
     const result = await set(createZeroRunInternal$, args, signal);
     if (isQueueFirstRunClaimLost(result)) {

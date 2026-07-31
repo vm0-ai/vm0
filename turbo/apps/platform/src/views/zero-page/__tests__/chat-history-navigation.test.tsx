@@ -774,6 +774,10 @@ describe("chat lifecycle", () => {
 
     const threadRegion = screen.getByLabelText("Chat thread");
     threadRegion.focus();
+    fireEvent.keyDown(threadRegion, { key: "ArrowUp" });
+    expect(document.activeElement).toBe(scrollContainer);
+
+    threadRegion.focus();
     fireEvent.keyDown(threadRegion, { key: "ArrowUp", ctrlKey: true });
     expect(scrollContainer.scrollTop).toBe(0);
     fireEvent.scroll(scrollContainer);
@@ -999,7 +1003,7 @@ describe("chat lifecycle", () => {
   });
 
   it("moves between chat threads with keyboard shortcuts", async () => {
-    const resizeObserver = mockResizeObserver();
+    mockResizeObserver();
     mockKeyboardNavigationThreads();
 
     detachedSetupPage({
@@ -1016,20 +1020,6 @@ describe("chat lifecycle", () => {
     });
 
     const threadRegion = screen.getByLabelText("Chat thread");
-    const initialScrollContainer = chatScrollContainer();
-    setScrollMetrics(initialScrollContainer, {
-      scrollHeight: 1200,
-      clientHeight: 300,
-    });
-    initialScrollContainer.scrollTop = 900;
-    fireEvent.scroll(initialScrollContainer);
-    fireEvent.wheel(initialScrollContainer);
-    initialScrollContainer.scrollTop = 480;
-    fireEvent.scroll(initialScrollContainer);
-    await waitFor(() => {
-      expect(screen.getByLabelText("Scroll to bottom")).toBeInTheDocument();
-    });
-
     threadRegion.focus();
     fireEvent.keyDown(threadRegion, {
       key: "ArrowUp",
@@ -1062,15 +1052,6 @@ describe("chat lifecycle", () => {
     expect(context.store.get(pathname$)).toBe(
       `/chats/${KEYBOARD_CURRENT_THREAD_ID}`,
     );
-
-    const restoredScrollContainer = chatScrollContainer();
-    setScrollMetrics(restoredScrollContainer, {
-      scrollHeight: 1200,
-      clientHeight: 300,
-    });
-    resizeObserver.automationAll();
-    expect(restoredScrollContainer.scrollTop).toBe(480);
-    expect(screen.getByLabelText("Scroll to bottom")).toBeInTheDocument();
 
     const currentThreadRegion = screen.getByLabelText("Chat thread");
     currentThreadRegion.focus();

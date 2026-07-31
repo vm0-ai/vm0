@@ -10,7 +10,18 @@ const c = initContract();
 export const sendModeSchema = z.enum(["enter", "cmd-enter"]);
 export type SendMode = z.infer<typeof sendModeSchema>;
 
-export const SUPPORTED_USER_LOCALES = ["en-US", "pt-BR", "ja-JP"] as const;
+export const SUPPORTED_USER_LOCALES = [
+  "en-US",
+  "pt-BR",
+  "ja-JP",
+  "ko-KR",
+  "id-ID",
+  "de-DE",
+  "es-ES",
+  "it-IT",
+  "fr-FR",
+  "hi-IN",
+] as const;
 export const userLocaleSchema = z.enum(SUPPORTED_USER_LOCALES);
 export type UserLocale = z.infer<typeof userLocaleSchema>;
 

@@ -1,4 +1,3 @@
-import type { ChatEventGoalSnapshot } from "@vm0/db/schema/chat-event";
 import { command } from "ccstate";
 
 import { logger } from "../../lib/log";
@@ -183,6 +182,7 @@ const launchQueuedGoal$ = command(
     args: {
       readonly event: PendingGoalQueueEvent;
       readonly goal: GoalQueueTarget;
+      readonly apiStartTime?: number;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
     },
     signal: AbortSignal,
@@ -207,9 +207,6 @@ const launchQueuedGoal$ = command(
       }),
     };
     const prompt = buildGoalContinuationPrompt(normalizedGoal);
-    const goalSnapshot: ChatEventGoalSnapshot = {
-      objectiveBrief: normalizedGoal.objectiveBrief,
-    };
     const result = await set(
       createQueueFirstZeroRun$,
       {
@@ -226,7 +223,7 @@ const launchQueuedGoal$ = command(
             ? { modelProvider: effectiveModelProvider }
             : {}),
         },
-        apiStartTime: now(),
+        apiStartTime: args.apiStartTime ?? now(),
         triggerSource: "workflow-event",
         chatThreadId: normalizedGoal.threadId,
         modelProviderId: modelPin.modelProviderId ?? undefined,
@@ -236,6 +233,7 @@ const launchQueuedGoal$ = command(
         threadSessionRoute: {
           selectedModel: modelPin.selectedModel,
           modelProvider: effectiveModelProvider ?? null,
+          modelProviderId: modelPin.modelProviderId,
           cliAgentType,
         },
         codexServiceTier,
@@ -255,7 +253,6 @@ const launchQueuedGoal$ = command(
           goalId: normalizedGoal.goalId,
           orgId: normalizedGoal.orgId,
           userId: normalizedGoal.userId,
-          objectiveBrief: goalSnapshot.objectiveBrief,
         },
         zeroRunModelPin: {
           modelProvider: effectiveModelProvider ?? null,
@@ -284,6 +281,7 @@ export const drainGoalQueueForThread$ = command(
     { set },
     args: {
       readonly chatThreadId: string;
+      readonly apiStartTime?: number;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
       readonly queueItemCreatedBefore?: Date;
     },
@@ -314,6 +312,7 @@ export const drainGoalQueueForThread$ = command(
         {
           event,
           goal,
+          apiStartTime: args.apiStartTime,
           dispatchFailedCallbacks: args.dispatchFailedCallbacks,
         },
         signal,

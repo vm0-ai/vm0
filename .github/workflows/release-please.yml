@@ -967,6 +967,13 @@ jobs:
         if: ${{ needs.release-please.outputs.api_release_created == 'true' }}
         uses: ./.github/actions/toolchain-init
 
+      - name: Initialize API deployment toolchain
+        uses: ./.github/actions/vercel-setup
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_API }}
+
       - name: Notify Slack - Migration Starting
         id: migration-slack-start
         if: ${{ needs.release-please.outputs.api_release_created == 'true' && vars.SLACK_RELEASE_CHANNEL_ID != '' }}
@@ -1123,6 +1130,7 @@ jobs:
           vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_API }}
           deployment-url: ${{ needs.build-api-production.outputs.deployment_url }}
+          skip-setup: "true"
 
       - name: Resolve Vercel dashboard URL
         id: vercel-dashboard

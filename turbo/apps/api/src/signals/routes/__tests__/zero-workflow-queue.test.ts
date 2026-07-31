@@ -8,15 +8,16 @@ import {
   chatEventsContract,
   chatThreadEventsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { RUNNER_CANCELLATION_RECOVERY_CAPABILITY } from "@vm0/api-contracts/contracts/runners";
 import { zeroModelProvidersByTypeContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
-import { onTestFinished } from "vitest";
+import { onTestFinished, test as vitestTest } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { mockNow, now } from "../../../lib/time";
+import { mockNow, now, withNowScopeForTest } from "../../../lib/time";
 import {
   createActiveGoalQueueEventFixture,
   readGoalQueueStateFixture,
@@ -40,6 +41,7 @@ import {
   completeRunWithoutCallbacksFixture,
   holdChatEventQueueAdmissionLockFixture,
   holdOrgAdmissionLockFixture,
+  readChatEventContextFixture,
   readChatEventInputParamsFixture,
   setQueuedUserMessageCreatedAtFixture,
   setWorkflowQueueEventCreatedAtFixture,
@@ -57,6 +59,16 @@ const CRON_CLEANUP_SANDBOXES_ROUTE = "/api/cron/cleanup-sandboxes";
 const CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE =
   "/api/cron/execute-workflow-automations";
 const CRON_SECRET = "test-cron-secret";
+
+function it(name: string, test: () => Promise<void>, timeout?: number): void {
+  vitestTest(
+    name,
+    async () => {
+      await withNowScopeForTest(test);
+    },
+    timeout,
+  );
+}
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
@@ -264,6 +276,14 @@ async function completeRunThroughSandbox(scenario: Scenario, runId: string) {
   await runsApi.heartbeatRunner(scenario.runnerGroup);
   const claim = await runsApi.claimRunnerJob(runId);
   const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
+  const stagedOutputEvents = chatCallbacks.consumeMockChatOutputEvents();
+  if (stagedOutputEvents.length > 0) {
+    await webhooksApi.requestAgentEvents(
+      { runId, events: stagedOutputEvents },
+      sandboxHeaders,
+      [200],
+    );
+  }
   await webhooksApi.requestAgentCheckpoint(
     {
       runId,
@@ -277,7 +297,19 @@ async function completeRunThroughSandbox(scenario: Scenario, runId: string) {
     [200],
   );
   await webhooksApi.requestAgentComplete(
-    { runId, exitCode: 0 },
+    {
+      runId,
+      exitCode: 0,
+      ...(stagedOutputEvents.length === 0
+        ? {}
+        : {
+            lastEventSequence: Math.max(
+              ...stagedOutputEvents.map((event) => {
+                return event.sequenceNumber;
+              }),
+            ),
+          }),
+    },
     sandboxHeaders,
     [200],
   );
@@ -607,6 +639,43 @@ describe("workflow queue", () => {
     ).resolves.toBeNull();
   });
 
+  it("keeps workflow events queued until cancellation recovery completes", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    const firstRunId = await expectAcceptedRunId(
+      await postWorkflowWebhook(automation, "first"),
+      automation.threadId,
+    );
+    await runsApi.heartbeatRunner(scenario.runnerGroup);
+    const firstClaim = await runsApi.claimRunnerJob(firstRunId, {
+      capabilities: [RUNNER_CANCELLATION_RECOVERY_CAPABILITY],
+    });
+    expectAcceptedWithoutRun(
+      await postWorkflowWebhook(automation, "wait for recovery"),
+    );
+
+    await runsApi.requestCancelRun(scenario.actor, firstRunId, [200]);
+    await flushWaitUntilForTest();
+    await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
+      firstRunId,
+    ]);
+
+    await webhooksApi.requestAgentComplete(
+      { runId: firstRunId, exitCode: 1, error: "Run cancelled" },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+    await flushWaitUntilForTest();
+    const runIds = await workflowRunIds(automation.threadId);
+    expect(runIds).toHaveLength(2);
+    const secondRunId = runIds[1];
+    if (!secondRunId) {
+      throw new Error("Expected cancellation recovery to launch a second run");
+    }
+    await runsApi.requestCancelRun(scenario.actor, secondRunId, [200]);
+    await flushWaitUntilForTest();
+  });
+
   it("labels a queued schedule tick with the time it fired, not the time it drained", async () => {
     // Keep this global cron scan before schedules created by parallel test files.
     mockNow(Date.UTC(2020, 0, 2));
@@ -639,6 +708,25 @@ describe("workflow queue", () => {
     const firedAt = Date.parse(created.body.nextRunAt) + 60_000;
     mockNow(firedAt);
     await executeDueWorkflowAutomations();
+    const pendingTick = (
+      await pendingWorkflowEvents(webhookAutomation.threadId)
+    ).find((event) => {
+      return event.automationId === created.body.id;
+    });
+    if (!pendingTick) {
+      throw new Error("Expected the schedule tick to remain pending");
+    }
+    const admittedTriggerBrief = pendingTick.triggerBrief;
+    if (admittedTriggerBrief === null) {
+      throw new Error("Expected the admitted schedule tick trigger brief");
+    }
+    const pendingContext = await readChatEventContextFixture(pendingTick.id);
+    expect(pendingContext).toMatchObject({
+      contextType: "automation",
+      contextId: expect.any(String),
+      automationId: created.body.id,
+      triggerBrief: admittedTriggerBrief,
+    });
 
     // A later, unrelated drain pass launches the tick. Its trigger line must
     // still report the fire time, not this drain time.
@@ -647,6 +735,25 @@ describe("workflow queue", () => {
     await completeRunThroughSandbox(scenario, busyRunId);
     const runIds = await workflowRunIds(webhookAutomation.threadId);
     expect(runIds).toHaveLength(2);
+    const claimedTick = (
+      await wf.readThreadEvents(webhookAutomation.threadId)
+    ).find((event) => {
+      return event.eventType === "input.prompt" && event.runId === runIds[1];
+    });
+    if (!claimedTick) {
+      throw new Error("Expected the schedule tick to be claimed");
+    }
+    expect(claimedTick.workflowSnapshot?.triggerBrief).toBe(
+      admittedTriggerBrief,
+    );
+    await expect(
+      readChatEventContextFixture(claimedTick.id),
+    ).resolves.toMatchObject({
+      contextType: "automation",
+      contextId: pendingContext?.contextId,
+      automationId: created.body.id,
+      triggerBrief: admittedTriggerBrief,
+    });
 
     await runsApi.heartbeatRunner(scenario.runnerGroup);
     const claim = await runsApi.claimRunnerJob(runIds[1]!);
@@ -673,12 +780,28 @@ describe("workflow queue", () => {
       "# Current context",
       "You are running because a signed workflow webhook automation received an HTTP POST.",
     ].join("\n");
+    const legacyTriggerBrief =
+      "Legacy workflow delivery exact-trigger-brief-24111";
     await admitPreviousDeploymentWorkflowEventFixture({
       automationId: automation.automationId,
       chatThreadId: automation.threadId,
       agentId: scenario.agentId,
       appendSystemPrompt: legacyAppendSystemPrompt,
+      triggerBrief: legacyTriggerBrief,
     });
+    const [legacyEvent] = await pendingWorkflowEvents(automation.threadId);
+    if (!legacyEvent) {
+      throw new Error("Expected the previous-deployment event");
+    }
+    await expect(
+      pendingWorkflowEvents(automation.threadId),
+    ).resolves.toStrictEqual([
+      expect.objectContaining({
+        id: legacyEvent.id,
+        automationId: automation.automationId,
+        triggerBrief: legacyTriggerBrief,
+      }),
+    ]);
 
     await completeRunThroughSandbox(scenario, busyRunId);
     const runIds = await workflowRunIds(automation.threadId);
@@ -686,6 +809,14 @@ describe("workflow queue", () => {
 
     await runsApi.heartbeatRunner(scenario.runnerGroup);
     const claim = await runsApi.claimRunnerJob(runIds[1]!);
+    const claimedEvent = (await wf.readThreadEvents(automation.threadId)).find(
+      (event) => {
+        return event.eventType === "input.prompt" && event.runId === runIds[1];
+      },
+    );
+    expect(claimedEvent?.workflowSnapshot?.triggerBrief).toBe(
+      legacyTriggerBrief,
+    );
     // The row carries no prompt, so it renders the way its writer intended
     // rather than picking up a schedule trigger line.
     expect(claim.prompt).toBe(`/${WORKFLOW_NAME}`);
@@ -758,6 +889,7 @@ describe("workflow queue", () => {
     if (!coalescedEvent) {
       throw new Error("Expected one coalesced schedule queue event");
     }
+    expect(coalescedEvent.automationId).toBe(created.body.id);
     await expect(
       readChatEventInputParamsFixture(coalescedEvent.id),
     ).resolves.toMatchObject({
@@ -809,6 +941,44 @@ describe("workflow queue", () => {
     await expect(
       pendingWorkflowEvents(automation.threadId),
     ).resolves.toHaveLength(1);
+  });
+
+  it("keeps claimed automation context after the automation is deleted", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    const runId = await expectAcceptedRunId(
+      await postWorkflowWebhook(automation, "preserve historical context"),
+      automation.threadId,
+    );
+    const claimedEvent = (await wf.readThreadEvents(automation.threadId)).find(
+      (event) => {
+        return event.eventType === "input.prompt" && event.runId === runId;
+      },
+    );
+    if (!claimedEvent) {
+      throw new Error("Expected the workflow event to be claimed");
+    }
+    const contextBeforeDelete = await readChatEventContextFixture(
+      claimedEvent.id,
+    );
+    expect(contextBeforeDelete).toMatchObject({
+      contextType: "automation",
+      contextId: expect.any(String),
+      automationId: automation.automationId,
+    });
+
+    await accept(
+      automationsClient().delete({
+        headers: authHeaders(),
+        params: { id: automation.automationId },
+      }),
+      [204],
+    );
+
+    await expect(
+      readChatEventContextFixture(claimedEvent.id),
+    ).resolves.toStrictEqual(contextBeforeDelete);
+    await runsApi.requestCancelRun(scenario.actor, runId, [200]);
   });
 
   it("propagates queue encryption failure while persistence remains necessary", async () => {

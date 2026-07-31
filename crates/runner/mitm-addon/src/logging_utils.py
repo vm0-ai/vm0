@@ -193,11 +193,6 @@ def add_firewall_metadata(flow: http.HTTPFlow, log_entry: dict) -> None:
             connector_diagnostic_slug,
         ),
         (
-            # TODO(#23838): Remove this legacy projection after the rollout gate.
-            "connector_diagnostic_type",
-            connector_diagnostic_slug,
-        ),
-        (
             "connector_diagnostic_reason",
             _metadata_optional_str(meta, metadata_keys.CONNECTOR_DIAGNOSTIC_REASON),
         ),

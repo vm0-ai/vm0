@@ -1,5 +1,6 @@
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -139,10 +140,17 @@ async function pendingTickExistsForAutomation(
 ): Promise<boolean> {
   const [tick] = await db
     .select({ id: chatEvents.id })
-    .from(chatEvents)
+    .from(chatAutomationContext)
+    .innerJoin(
+      chatEvents,
+      and(
+        eq(chatEvents.contextType, "automation"),
+        eq(chatEvents.contextId, chatAutomationContext.id),
+      ),
+    )
     .where(
       and(
-        eq(chatEvents.automationId, automationId),
+        eq(chatAutomationContext.automationId, automationId),
         chatEventTypeIn(["input.automation"]),
         isNull(chatEvents.runId),
         notExists(
@@ -310,10 +318,10 @@ export async function loadNextWorkflowQueueEvent(
       .select({
         id: chatEvents.id,
         userId: chatThreads.userId,
-        automationId: chatEvents.automationId,
+        automationId: chatAutomationContext.automationId,
         chatThreadId: chatEvents.chatThreadId,
         triggerSource: chatEvents.triggerSource,
-        triggerBrief: chatEvents.triggerBrief,
+        triggerBrief: chatAutomationContext.triggerBrief,
         encryptedParams: chatEventInputParams.encryptedParams,
         createdAt: chatEvents.createdAt,
       })
@@ -322,6 +330,13 @@ export async function loadNextWorkflowQueueEvent(
       .leftJoin(
         chatEventInputParams,
         eq(chatEventInputParams.eventId, chatEvents.id),
+      )
+      .leftJoin(
+        chatAutomationContext,
+        and(
+          eq(chatEvents.contextType, "automation"),
+          eq(chatAutomationContext.id, chatEvents.contextId),
+        ),
       )
       .where(eq(chatEvents.id, head.id))
       .limit(1);
@@ -348,11 +363,18 @@ async function loadAutomationRejectionPayload(
 ) {
   const [event] = await db
     .select({
-      automationId: chatEvents.automationId,
+      automationId: chatAutomationContext.automationId,
       triggerSource: chatEvents.triggerSource,
-      triggerBrief: chatEvents.triggerBrief,
+      triggerBrief: chatAutomationContext.triggerBrief,
     })
     .from(chatEvents)
+    .leftJoin(
+      chatAutomationContext,
+      and(
+        eq(chatEvents.contextType, "automation"),
+        eq(chatAutomationContext.id, chatEvents.contextId),
+      ),
+    )
     .where(eq(chatEvents.id, eventId))
     .limit(1);
   return event ?? null;
@@ -507,12 +529,19 @@ export async function listPendingWorkflowQueueEvents(
   const rows = await db
     .select({
       id: chatEvents.id,
-      automationId: chatEvents.automationId,
+      automationId: chatAutomationContext.automationId,
       triggerSource: chatEvents.triggerSource,
-      triggerBrief: chatEvents.triggerBrief,
+      triggerBrief: chatAutomationContext.triggerBrief,
       createdAt: chatEvents.createdAt,
     })
     .from(chatEvents)
+    .leftJoin(
+      chatAutomationContext,
+      and(
+        eq(chatEvents.contextType, "automation"),
+        eq(chatAutomationContext.id, chatEvents.contextId),
+      ),
+    )
     .where(inArray(chatEvents.id, automationIds));
   const byId = new Map(
     rows.flatMap((event) => {

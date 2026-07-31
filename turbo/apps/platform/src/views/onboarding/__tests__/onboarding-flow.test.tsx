@@ -59,7 +59,7 @@ function mockGithubCatalogItem(
   icon: PublicConnectorCatalogStatusItem["icon"],
 ): void {
   const github: PublicConnectorCatalogStatusItem = {
-    connectorRef: "github",
+    slug: "github",
     label: "Catalog GitHub",
     description: "Connect Catalog GitHub to continue",
     icon,
@@ -383,7 +383,7 @@ describe("onboarding flow", () => {
     context.mocks.data.connectors([
       {
         id: "11111111-1111-4111-8111-111111111112",
-        type: "notion",
+        slug: "notion",
         authMethod: "oauth",
         externalId: "notion-user-1",
         externalUsername: "notion-user",
@@ -471,7 +471,7 @@ describe("onboarding flow", () => {
     context.mocks.data.connectors([
       {
         id: "11111111-1111-4111-8111-111111111111",
-        type: "github",
+        slug: "github",
         authMethod: "oauth",
         externalId: "github-user-1",
         externalUsername: "octocat",
@@ -506,7 +506,7 @@ describe("onboarding flow", () => {
         expect(body.agentId).toBeUndefined();
         return respond(200, {
           id: "11111111-1111-4111-8111-111111111112",
-          type: "ahrefs",
+          slug: "ahrefs",
           authMethod: "api-token",
           externalId: null,
           externalUsername: null,

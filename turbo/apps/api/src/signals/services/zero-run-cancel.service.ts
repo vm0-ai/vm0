@@ -1,18 +1,21 @@
 import { command } from "ccstate";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
 
-import { writeDb$ } from "../external/db";
-import { nowDate } from "../external/time";
+import { writeDb$, type Db } from "../external/db";
 import {
   publishCancelToRunnerGroup,
+  publishChatThreadDetailChangedSafely,
   publishOrgSignal,
   publishUserSignal,
 } from "../external/realtime";
 import { logger } from "../../lib/log";
 import { notFound, runNotCancellable } from "../../lib/error";
+import { now } from "../../lib/time";
 import { tapError } from "../utils";
 import {
   chatCallbackIdForRun,
@@ -26,12 +29,15 @@ import { drainOrgQueue$ } from "./zero-run-queue.service";
 const L = logger("ZeroRunCancel");
 
 export interface CancelRunResult {
+  readonly apiStartTime: number;
   readonly runId: string;
   readonly previousStatus: string;
   readonly userId: string;
   readonly orgId: string;
   readonly sandboxId: string | null;
   readonly runnerGroup: string | null;
+  readonly chatThreadId: string | null;
+  readonly cancellationRecoveryCompleted: boolean | null;
   readonly alreadyCancelled: boolean;
 }
 
@@ -46,10 +52,12 @@ function isActiveStatus(status: string): status is ActiveStatus {
 }
 
 /**
- * Cancel a run. Idempotent for already-cancelled runs (returns success
- * without dispatching side effects). Returns notFound if the run doesn't
- * exist or is owned by another (org, user) tuple. Returns
- * runNotCancellable for non-cancellable terminal statuses.
+ * Cancel a run. Idempotent for already-cancelled runs. Recovery-capable
+ * cancellations may redrive only their retry-safe callback and thread-drain
+ * side effects; legacy cancellations return success without side effects.
+ * Returns notFound if the run doesn't exist or is owned by another (org,
+ * user) tuple. Returns runNotCancellable for non-cancellable terminal
+ * statuses.
  *
  * The transactional shape locks the run row first, classifies the
  * current status under that lock, then updates status and removes
@@ -62,11 +70,13 @@ export const cancelRun$ = command(
       readonly runId: string;
       readonly userId: string;
       readonly orgId: string;
+      readonly apiStartTime?: number;
     },
     signal: AbortSignal,
   ): Promise<
     NotFoundResponse | RunNotCancellableResponse | CancelRunResult
   > => {
+    const apiStartTime = args.apiStartTime ?? now();
     const writeDb = set(writeDb$);
 
     const result = await writeDb.transaction(async (tx) => {
@@ -78,6 +88,8 @@ export const cancelRun$ = command(
           orgId: agentRuns.orgId,
           sandboxId: agentRuns.sandboxId,
           runnerGroup: agentRuns.runnerGroup,
+          cancellationRecoveryCompleted:
+            agentRuns.cancellationRecoveryCompleted,
         })
         .from(agentRuns)
         .where(
@@ -92,14 +104,23 @@ export const cancelRun$ = command(
         return notFound(`No such run: '${args.runId}'`);
       }
 
+      const [zeroRun] = await tx
+        .select({ chatThreadId: zeroRuns.chatThreadId })
+        .from(zeroRuns)
+        .where(eq(zeroRuns.id, args.runId))
+        .limit(1);
+
       if (run.status === "cancelled") {
         return {
+          apiStartTime,
           runId: args.runId,
           previousStatus: run.status,
           userId: run.userId,
           orgId: run.orgId,
           sandboxId: run.sandboxId,
           runnerGroup: run.runnerGroup,
+          chatThreadId: zeroRun?.chatThreadId ?? null,
+          cancellationRecoveryCompleted: run.cancellationRecoveryCompleted,
           alreadyCancelled: true,
         };
       }
@@ -112,7 +133,10 @@ export const cancelRun$ = command(
 
       const [updated] = await tx
         .update(agentRuns)
-        .set({ status: "cancelled", completedAt: nowDate() })
+        .set({
+          status: "cancelled",
+          completedAt: new Date(apiStartTime),
+        })
         .where(
           and(eq(agentRuns.id, args.runId), eq(agentRuns.status, run.status)),
         )
@@ -127,12 +151,15 @@ export const cancelRun$ = command(
         .where(eq(runnerJobQueue.runId, args.runId));
 
       return {
+        apiStartTime,
         runId: args.runId,
         previousStatus: run.status,
         userId: run.userId,
         orgId: run.orgId,
         sandboxId: run.sandboxId,
         runnerGroup: run.runnerGroup,
+        chatThreadId: zeroRun?.chatThreadId ?? null,
+        cancellationRecoveryCompleted: run.cancellationRecoveryCompleted,
         alreadyCancelled: false,
       };
     });
@@ -141,6 +168,49 @@ export const cancelRun$ = command(
     return result;
   },
 );
+
+export function shouldDispatchCancelSideEffects(
+  result: CancelRunResult,
+): boolean {
+  return (
+    !result.alreadyCancelled || result.cancellationRecoveryCompleted !== null
+  );
+}
+
+async function cancellationLifecyclePublished(
+  db: Db,
+  runId: string,
+): Promise<boolean> {
+  const [event] = await db
+    .select({ id: chatEvents.id })
+    .from(chatEvents)
+    .where(
+      and(
+        eq(chatEvents.runId, runId),
+        eq(chatEvents.runLifecycleEvent, "cancelled"),
+      ),
+    )
+    .limit(1);
+  return event !== undefined;
+}
+
+async function publishCancellationRecoveryEntered(
+  result: CancelRunResult,
+  signal: AbortSignal,
+): Promise<void> {
+  if (
+    result.alreadyCancelled ||
+    result.cancellationRecoveryCompleted === null ||
+    result.chatThreadId === null
+  ) {
+    return;
+  }
+  await publishChatThreadDetailChangedSafely(
+    result.userId,
+    result.chatThreadId,
+  );
+  signal.throwIfAborted();
+}
 
 /**
  * Post-cancel side effects:
@@ -168,11 +238,17 @@ export const dispatchCancelSideEffects$ = command(
     result: CancelRunResult,
     signal: AbortSignal,
   ): Promise<void> => {
-    if (result.alreadyCancelled) {
+    if (!shouldDispatchCancelSideEffects(result)) {
       return;
     }
+    const recoveryRedrive = result.alreadyCancelled;
     const db = set(writeDb$);
-    if (result.previousStatus === "running" && result.runnerGroup) {
+    await publishCancellationRecoveryEntered(result, signal);
+    if (
+      !recoveryRedrive &&
+      result.previousStatus === "running" &&
+      result.runnerGroup
+    ) {
       await tapError(
         publishCancelToRunnerGroup(result.runnerGroup, result.runId),
         (error) => {
@@ -185,48 +261,68 @@ export const dispatchCancelSideEffects$ = command(
       );
       signal.throwIfAborted();
     }
-    await tapError(publishOrgSignal(result.orgId, "queue:changed"), (error) => {
-      L.error("Failed to publish queue changed after run cancellation", {
-        runId: result.runId,
-        orgId: result.orgId,
-        error,
-      });
-    });
-    signal.throwIfAborted();
-    await tapError(
-      publishUserSignal([result.userId], `run:changed:${result.runId}`, {
-        status: "cancelled",
-      }),
-      (error) => {
-        L.error("Failed to publish cancelled run changed signal", {
-          runId: result.runId,
-          userId: result.userId,
-          error,
-        });
-      },
-    );
-    signal.throwIfAborted();
+    if (!recoveryRedrive) {
+      await tapError(
+        publishOrgSignal(result.orgId, "queue:changed"),
+        (error) => {
+          L.error("Failed to publish queue changed after run cancellation", {
+            runId: result.runId,
+            orgId: result.orgId,
+            error,
+          });
+        },
+      );
+      signal.throwIfAborted();
+      await tapError(
+        publishUserSignal([result.userId], `run:changed:${result.runId}`, {
+          status: "cancelled",
+        }),
+        (error) => {
+          L.error("Failed to publish cancelled run changed signal", {
+            runId: result.runId,
+            userId: result.userId,
+            error,
+          });
+        },
+      );
+      signal.throwIfAborted();
+    }
 
     const chatCallbackId = await chatCallbackIdForRun(db, result.runId);
     signal.throwIfAborted();
-    const callbackResults = await tapError(
-      set(
-        dispatchRunCallbacks$,
-        {
-          db,
-          runId: result.runId,
-          status: "failed",
-          error: "Run cancelled",
-        },
-        signal,
-      ),
-      (error) => {
-        L.error("Failed to dispatch cancel callbacks", {
-          runId: result.runId,
-          error,
-        });
-      },
-    );
+    // Once the callback's durable lifecycle marker exists, replay would only
+    // repeat its pre-marker work. The direct scheduler redrive below is enough.
+    const redriveChatCallbackId =
+      recoveryRedrive &&
+      chatCallbackId !== undefined &&
+      !(await cancellationLifecyclePublished(db, result.runId))
+        ? chatCallbackId
+        : undefined;
+    signal.throwIfAborted();
+    const callbackResults =
+      recoveryRedrive && redriveChatCallbackId === undefined
+        ? []
+        : await tapError(
+            set(
+              dispatchRunCallbacks$,
+              {
+                db,
+                runId: result.runId,
+                status: "failed",
+                error: "Run cancelled",
+                ...(redriveChatCallbackId !== undefined
+                  ? { redriveChatCallbackId }
+                  : {}),
+              },
+              signal,
+            ),
+            (error) => {
+              L.error("Failed to dispatch cancel callbacks", {
+                runId: result.runId,
+                error,
+              });
+            },
+          );
     signal.throwIfAborted();
 
     const chatCallbackDrained = callbackResults?.some((callbackResult) => {
@@ -234,13 +330,14 @@ export const dispatchCancelSideEffects$ = command(
         callbackResult.callbackId === chatCallbackId && callbackResult.success
       );
     });
-    if (!chatCallbackDrained) {
+    if (result.cancellationRecoveryCompleted !== null || !chatCallbackDrained) {
       await tapError(
         set(
           drainChatThreadQueueForRun$,
           {
             runId: result.runId,
             dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+            apiStartTime: result.apiStartTime,
           },
           signal,
         ),
@@ -252,6 +349,10 @@ export const dispatchCancelSideEffects$ = command(
         },
       );
       signal.throwIfAborted();
+    }
+
+    if (recoveryRedrive) {
+      return;
     }
 
     // Promote one queued run to pending; the runner picks it up on its

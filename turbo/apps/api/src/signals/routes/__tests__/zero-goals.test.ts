@@ -9,6 +9,7 @@ import {
   readGoalQueueStateFixture,
   readGoalThreadFixture,
 } from "../../../test-fixtures/goal-queue";
+import { readChatEventContextFixture } from "../../../test-fixtures/chat-events";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { now } from "../../external/time";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
@@ -274,15 +275,37 @@ describe("zero goals", () => {
       seqId: expect.any(Number),
       createdAt: expect.any(String),
     });
-    expect(page.events).toContainEqual(
-      expect.objectContaining({
-        eventType: "input.prompt",
-        runId: goalRunId,
-        revokesEventId: goalEventId,
-        isGoalRun: true,
-        goalSnapshot: { objectiveBrief: "bootstrap autonomously" },
-      }),
+    const claimedGoalEvent = page.events.find((event) => {
+      return (
+        event.eventType === "input.prompt" &&
+        event.runId === goalRunId &&
+        event.revokesEventId === goalEventId
+      );
+    });
+    expect(claimedGoalEvent).toMatchObject({
+      eventType: "input.prompt",
+      runId: goalRunId,
+      revokesEventId: goalEventId,
+      isGoalRun: true,
+      goalSnapshot: { objectiveBrief: "bootstrap autonomously" },
+    });
+    if (!claimedGoalEvent) {
+      throw new Error("Expected the claimed goal event");
+    }
+    const admittedContext = await readChatEventContextFixture(goalEventId);
+    const claimedContext = await readChatEventContextFixture(
+      claimedGoalEvent.id,
     );
+    expect(admittedContext).toMatchObject({
+      contextType: "goal",
+      contextId: expect.any(String),
+      goalObjectiveBrief: "bootstrap autonomously",
+    });
+    expect(claimedContext).toMatchObject({
+      contextType: "goal",
+      contextId: admittedContext?.contextId,
+      goalObjectiveBrief: "bootstrap autonomously",
+    });
     expect(state.runIds).toHaveLength(1);
 
     await api.requestCancelRun(actor, goalRunId, [200]);

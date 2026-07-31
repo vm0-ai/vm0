@@ -36,24 +36,20 @@ vi.mock("os", async (importOriginal) => {
 });
 
 const THREAD_ID = "c0000000-0000-4000-a000-000000000010";
-const BROWSER_ID = "c0000000-0000-4000-a000-000000000011";
 const CDP_URL = "wss://connect.browser-use.com/?token=secret-cdp-token";
 
 function browser(status: "active" | "suspended" = "active") {
   return {
-    id: BROWSER_ID,
+    threadId: THREAD_ID,
     name: "booking",
     status,
-    viewerUrl: `https://app.vm0.ai/browsers/${BROWSER_ID}`,
+    viewerUrl: `https://app.vm0.ai/browsers/${THREAD_ID}`,
     liveUrl:
       status === "active"
         ? "https://live.browser-use.com/?wss=secret-live-token"
         : null,
     proxyCountryCode: null,
     timeoutMinutes: 240,
-    maxCredits: 1,
-    grossCredits: 0,
-    creditsCharged: 0,
     idleExpiresAt: status === "active" ? "2026-07-24T10:10:00.000Z" : null,
     suspendedAt: status === "suspended" ? "2026-07-24T10:05:00.000Z" : null,
     suspensionReason: status === "suspended" ? ("idle" as const) : null,
@@ -99,12 +95,12 @@ describe("zero browser command", () => {
     await fs.rm(TEST_HOME, { recursive: true, force: true });
   });
 
-  it("exposes only use, lease, resume, new, status, and view lifecycle commands", () => {
+  it("exposes only thread-keyed lifecycle commands", () => {
     expect(
       zeroBrowserCommand.commands.map((command) => {
         return command.name();
       }),
-    ).toStrictEqual(["use", "lease", "resume", "new", "status", "view"]);
+    ).toStrictEqual(["use", "lease", "new", "status", "view"]);
   });
 
   it("creates a fresh browser and passes its CDP URL directly to agent-browser", async () => {
@@ -117,7 +113,7 @@ describe("zero browser command", () => {
           requestBody = await request.json();
           authorization = request.headers.get("authorization");
           return HttpResponse.json(
-            { browser: browser(), cdpUrl: CDP_URL },
+            { browser: browser(), cdpUrl: CDP_URL, lifecycleEventId: null },
             { status: 201 },
           );
         },
@@ -144,7 +140,7 @@ describe("zero browser command", () => {
     );
     const output = consoleLog.mock.calls.flat().join("\n");
     expect(output).toContain(
-      `[Open live browser](https://app.vm0.ai/browsers/${BROWSER_ID})`,
+      `[Open live browser](https://app.vm0.ai/browsers/${THREAD_ID})`,
     );
     expect(output).not.toContain(CDP_URL);
   });
@@ -155,7 +151,11 @@ describe("zero browser command", () => {
       http.post("http://localhost:3000/api/zero/browsers/use", () => {
         useRequests += 1;
         return HttpResponse.json(
-          { browser: browser("active"), cdpUrl: CDP_URL },
+          {
+            browser: browser("active"),
+            cdpUrl: CDP_URL,
+            lifecycleEventId: null,
+          },
           { status: 200 },
         );
       }),
@@ -172,28 +172,6 @@ describe("zero browser command", () => {
     const output = consoleLog.mock.calls.flat().join("\n");
     expect(output).toContain("2026-07-24T10:10:00.000Z");
     expect(output).not.toContain(CDP_URL);
-  });
-
-  it("keeps resume as a compatibility alias of use", async () => {
-    let useRequests = 0;
-    server.use(
-      http.post("http://localhost:3000/api/zero/browsers/use", () => {
-        useRequests += 1;
-        return HttpResponse.json(
-          { browser: browser("active"), cdpUrl: CDP_URL },
-          { status: 200 },
-        );
-      }),
-    );
-
-    await zeroBrowserCommand.parseAsync(["node", "cli", "resume"]);
-
-    expect(useRequests).toBe(1);
-    expect(spawnSyncMock).toHaveBeenCalledWith(
-      "agent-browser",
-      ["--session", "zero-browser", "connect", CDP_URL],
-      { stdio: "ignore" },
-    );
   });
 
   it("extends the lease by a fixed window and reports the new reclaim time", async () => {
@@ -227,7 +205,7 @@ describe("zero browser command", () => {
     server.use(
       http.post("http://localhost:3000/api/zero/browsers", () => {
         return HttpResponse.json(
-          { browser: browser(), cdpUrl: CDP_URL },
+          { browser: browser(), cdpUrl: CDP_URL, lifecycleEventId: null },
           { status: 201 },
         );
       }),
@@ -256,13 +234,10 @@ describe("zero browser command", () => {
     };
     expect(parsedOutput).toMatchObject({
       browser: {
-        id: BROWSER_ID,
-        viewerUrl: `https://app.vm0.ai/browsers/${BROWSER_ID}`,
+        threadId: THREAD_ID,
+        viewerUrl: `https://app.vm0.ai/browsers/${THREAD_ID}`,
       },
       agentBrowserSession: "zero-browser",
     });
-    expect(parsedOutput.browser).not.toHaveProperty("maxCredits");
-    expect(parsedOutput.browser).not.toHaveProperty("grossCredits");
-    expect(parsedOutput.browser).not.toHaveProperty("creditsCharged");
   });
 });

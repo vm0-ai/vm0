@@ -67,7 +67,7 @@ const externalCodeSessionSelection = Object.freeze({
   userId: connectorExternalCodeSessions.userId,
   agentId: connectorExternalCodeSessions.agentId,
   authorizeAgent: connectorExternalCodeSessions.authorizeAgent,
-  connectorType: connectorExternalCodeSessions.connectorSlug,
+  connectorSlug: connectorExternalCodeSessions.connectorSlug,
   authMethod: connectorExternalCodeSessions.authMethod,
   status: connectorExternalCodeSessions.status,
   sessionTokenHash: connectorExternalCodeSessions.sessionTokenHash,
@@ -81,12 +81,7 @@ const externalCodeSessionSelection = Object.freeze({
   completedAt: connectorExternalCodeSessions.completedAt,
 });
 
-type ExternalCodeSessionRow = Omit<
-  typeof connectorExternalCodeSessions.$inferSelect,
-  "connectorSlug"
-> & {
-  readonly connectorType: typeof connectorExternalCodeSessions.$inferSelect.connectorSlug;
-};
+type ExternalCodeSessionRow = typeof connectorExternalCodeSessions.$inferSelect;
 
 type ExternalCodeSessionOwner = {
   readonly connectorSlug: ConnectorSlug;
@@ -857,7 +852,6 @@ export const startConnectorExternalCodeSession$ = command(
     const body: ConnectorExternalCodeSessionStartResponse = {
       sessionId: session.id,
       sessionToken,
-      type: resolved.connectorSlug,
       connectorSlug: resolved.connectorSlug,
       status: "pending",
       authorizationUrl: startResult.authorizationUrl,

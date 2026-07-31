@@ -1,4 +1,15 @@
-import { enUS, jaJP, ptBR } from "@clerk/localizations";
+import {
+  deDE,
+  enUS,
+  esES,
+  frFR,
+  hiIN,
+  idID,
+  itIT,
+  jaJP,
+  koKR,
+  ptBR,
+} from "@clerk/localizations";
 import type { TFunction } from "i18next";
 import type { SupportedLocale } from "../../i18n/resources.ts";
 import type { BrandName } from "../../signals/branding.ts";
@@ -9,7 +20,25 @@ export function getClerkLocalization(
   t: TFunction<"common">,
 ) {
   const localization =
-    locale === "pt-BR" ? ptBR : locale === "ja-JP" ? jaJP : enUS;
+    locale === "pt-BR"
+      ? ptBR
+      : locale === "ja-JP"
+        ? jaJP
+        : locale === "ko-KR"
+          ? koKR
+          : locale === "id-ID"
+            ? idID
+            : locale === "de-DE"
+              ? deDE
+              : locale === "es-ES"
+                ? esES
+                : locale === "it-IT"
+                  ? itIT
+                  : locale === "fr-FR"
+                    ? frFR
+                    : locale === "hi-IN"
+                      ? hiIN
+                      : enUS;
   return {
     ...localization,
     unstable__errors: {

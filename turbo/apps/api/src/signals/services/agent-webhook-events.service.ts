@@ -12,7 +12,11 @@ import type { SandboxAuth } from "../../types/auth";
 import { publishRunChangedForUserSafely } from "../external/realtime";
 import { refreshAgentPhoneTypingEvents$ } from "./agent-event-consumer-agentphone-typing.service";
 import { ingestAxiomEvents } from "./agent-event-consumer-axiom.service";
-import { processChatAssistantEvents$ } from "./agent-event-consumer-chat-assistant.service";
+import {
+  materializeRunOutputEvents$,
+  publishMaterializedChatProjection,
+  type MaterializedChatProjection,
+} from "./agent-event-consumer-run-output.service";
 import { refreshTelegramTypingEvents$ } from "./agent-event-consumer-telegram-typing.service";
 import { settle, tapError } from "../utils";
 
@@ -47,11 +51,12 @@ interface PreparedConsumer {
   readonly events: readonly AgentEvent[];
 }
 
+interface AcceptedAgentEvents {
+  readonly payload: EventConsumerPayload;
+  readonly chatProjection: MaterializedChatProjection | null;
+}
+
 const OPTIONAL_EVENT_CONSUMERS: readonly DispatchableConsumer[] = [
-  {
-    name: "chat-assistant",
-    command$: processChatAssistantEvents$,
-  },
   {
     name: "telegram-typing",
     command$: refreshTelegramTypingEvents$,
@@ -128,10 +133,37 @@ const runOptionalEventConsumer$ = command(
 export const dispatchOptionalAgentEventConsumers$ = command(
   async (
     { set },
-    payload: EventConsumerPayload,
+    accepted: AcceptedAgentEvents,
     signal: AbortSignal,
   ): Promise<void> => {
     const startedAt = now();
+    const { payload } = accepted;
+    const axiomTrace = tapError(ingestAxiomEvents(payload, signal), (error) => {
+      L.error("Optional Axiom trace delivery failed", {
+        runId: payload.runId,
+        ...eventRange(payload.events),
+        error,
+      });
+    });
+
+    if (accepted.chatProjection) {
+      await tapError(
+        publishMaterializedChatProjection(
+          payload,
+          accepted.chatProjection,
+          signal,
+        ),
+        (error) => {
+          L.error("Optional materialized chat publication failed", {
+            runId: payload.runId,
+            ...eventRange(payload.events),
+            error,
+          });
+        },
+      );
+      signal.throwIfAborted();
+    }
+
     const consumers = OPTIONAL_EVENT_CONSUMERS.map(
       (consumer): PreparedConsumer | null => {
         const matchingEvents = consumer.eventTypes
@@ -163,6 +195,8 @@ export const dispatchOptionalAgentEventConsumers$ = command(
       range,
     );
     signal.throwIfAborted();
+    await axiomTrace;
+    signal.throwIfAborted();
     L.debug(
       `Optional events ${range.firstSequence}-${range.lastSequence} dispatched for run ${payload.runId} (${now() - startedAt}ms)`,
     );
@@ -170,7 +204,7 @@ export const dispatchOptionalAgentEventConsumers$ = command(
 );
 
 export const receiveAgentEvents$ = command(
-  async (_context, params: ReceiveAgentEventsParams, signal: AbortSignal) => {
+  async ({ set }, params: ReceiveAgentEventsParams, signal: AbortSignal) => {
     const payload = immutableEventPayload(params.auth, params.body);
     const range = eventRange(payload.events);
     const startedAt = now();
@@ -178,13 +212,15 @@ export const receiveAgentEvents$ = command(
     L.debug(
       `Delivering events ${range.firstSequence}-${range.lastSequence} for run ${payload.runId}`,
     );
-    const ingestResult = await settle(ingestAxiomEvents(payload, signal));
+    const projectionResult = await settle(
+      set(materializeRunOutputEvents$, payload, signal),
+    );
     signal.throwIfAborted();
-    if (!ingestResult.ok) {
-      L.error("Required Axiom event delivery failed", {
+    if (!projectionResult.ok) {
+      L.error("Required database run output projection failed", {
         runId: payload.runId,
         ...range,
-        error: ingestResult.error,
+        error: projectionResult.error,
       });
       return {
         response: eventDeliveryUnavailable(
@@ -204,7 +240,10 @@ export const receiveAgentEvents$ = command(
           ...range,
         },
       },
-      acceptedPayload: payload,
+      acceptedEvents: {
+        payload,
+        chatProjection: projectionResult.value,
+      },
     };
   },
 );

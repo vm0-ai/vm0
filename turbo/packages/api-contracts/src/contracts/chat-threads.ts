@@ -620,6 +620,20 @@ const controlRevokeEventSchema = chatEventBaseSchema
   })
   .strict();
 
+const browserStartedEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("browser.started"),
+    content: z.null(),
+  })
+  .strict();
+
+const browserStoppedEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("browser.stopped"),
+    content: z.null(),
+  })
+  .strict();
+
 const goalChangedEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("goal.changed"),
@@ -653,6 +667,8 @@ const chatEventSchema = z.discriminatedUnion("eventType", [
   runCancelledEventSchema,
   controlInterruptEventSchema,
   controlRevokeEventSchema,
+  browserStartedEventSchema,
+  browserStoppedEventSchema,
   goalChangedEventSchema,
   usageRecordedEventSchema,
 ]);
@@ -680,6 +696,11 @@ const chatThreadDetailSchema = z.object({
    * is newer than this timestamp.
    */
   lastReadAt: z.string().nullable(),
+  /**
+   * A capable cancelled run is still preserving its resumable session before
+   * same-thread continuation can start. Optional during API/Platform rollout.
+   */
+  cancellationRecoveryPending: z.boolean().optional(),
 });
 
 const chatThreadMetadataSchema = z.object({
@@ -693,12 +714,6 @@ const chatThreadMetadataSchema = z.object({
 
 const chatThreadDraftSchema = z
   .object({
-    /**
-     * Response-only compatibility projection for older App bundles. Optional
-     * so this App version tolerates its removal after becoming the minimum
-     * supported version.
-     */
-    draftContent: z.string().nullable().optional(),
     draftUserMessage: userMessageDocumentSchema.nullable(),
     draftAttachments: z.array(persistedAttachmentSchema).nullable(),
   })
@@ -978,7 +993,7 @@ export const chatThreadByIdContract = c.router({
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get chat thread read state",
+    summary: "Get private chat thread state",
   },
   patch: {
     method: "PATCH",

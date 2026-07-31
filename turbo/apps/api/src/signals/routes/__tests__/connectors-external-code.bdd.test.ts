@@ -4,14 +4,6 @@
  * Feature-switched connectors are enabled per test actor through
  * POST /api/zero/feature-switches. External provider endpoints are mocked with
  * MSW at the HTTP boundary.
- *
- * Not rebuilt here:
- * - The legacy corrupted-provider-state trigger (direct ciphertext UPDATE) is
- *   not API-constructible; the same markClaimError/terminal-error statements
- *   are reached through an STS identity-lookup failure instead.
- * - The legacy abort-after-provider-success commit race drove the service
- *   command directly with a custom aborting KMS client; its persistence path
- *   is statement-identical to the happy-path completion covered here.
  */
 
 import { Buffer } from "node:buffer";
@@ -314,7 +306,6 @@ describe("CONN-02: external-code session lifecycle", () => {
 
     const session = await connectorsApi.startExternalCode(actor, "aws", "cli");
     expect(session).toMatchObject({
-      type: "aws",
       connectorSlug: "aws",
       status: "pending",
       expiresIn: 600,
@@ -377,7 +368,6 @@ describe("CONN-02: external-code session lifecycle", () => {
       redirectUri: AWS_REDIRECT_URI,
     });
     expect(complete.connector).toMatchObject({
-      type: "aws",
       slug: "aws",
       authMethod: "cli",
       externalId: "123456789012",
@@ -402,7 +392,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     const listed = await connectorsApi.listConnectors(actor);
     expect(
       listed.connectors.find((connector) => {
-        return connector.type === "aws";
+        return connector.slug === "aws";
       })?.id,
     ).toBe(complete.connector.id);
     for (const name of [
@@ -412,7 +402,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     ]) {
       expect(listed.connectorProvidedBindings).toContainEqual(
         expect.objectContaining({
-          connectorType: "aws",
+          connectorSlug: "aws",
           authMethod: "cli",
           namespace: "secrets",
           name,
@@ -422,7 +412,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     for (const name of ["AWS_REGION", "AWS_DEFAULT_REGION"]) {
       expect(listed.connectorProvidedBindings).toContainEqual(
         expect.objectContaining({
-          connectorType: "aws",
+          connectorSlug: "aws",
           authMethod: "cli",
           namespace: "vars",
           name,
@@ -455,7 +445,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     });
     expect(replay.connector.id).toBe(complete.connector.id);
     expect(replay.connector).toMatchObject({
-      type: "aws",
+      slug: "aws",
       authMethod: "cli",
       externalId: "123456789012",
     });
@@ -524,7 +514,7 @@ describe("CONN-02: external-code session lifecycle", () => {
       code: awsVerificationCode(second.authorizationUrl),
     });
     expect(retried.connector).toMatchObject({
-      type: "aws",
+      slug: "aws",
       authMethod: "cli",
       externalId: "123456789012",
     });
@@ -586,7 +576,7 @@ describe("CONN-02: external-code session lifecycle", () => {
       "api",
     );
     expect(session).toMatchObject({
-      type: "nintendo-store",
+      connectorSlug: "nintendo-store",
       status: "pending",
       expiresIn: 600,
     });
@@ -640,7 +630,7 @@ describe("CONN-02: external-code session lifecycle", () => {
       },
     ]);
     expect(complete.connector).toMatchObject({
-      type: "nintendo-store",
+      slug: "nintendo-store",
       authMethod: "api",
       externalId: "bdd-nintendo-account-id",
       externalUsername: "bdd-nintendo-player",
@@ -659,7 +649,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     const listed = await connectorsApi.listConnectors(actor);
     expect(listed.connectorProvidedBindings).toContainEqual(
       expect.objectContaining({
-        connectorType: "nintendo-store",
+        connectorSlug: "nintendo-store",
         authMethod: "api",
         namespace: "secrets",
         name: "NINTENDO_STORE_TOKEN",
@@ -667,7 +657,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     );
     expect(listed.connectorProvidedBindings).toContainEqual(
       expect.objectContaining({
-        connectorType: "nintendo-store",
+        connectorSlug: "nintendo-store",
         authMethod: "api",
         namespace: "vars",
         name: "NINTENDO_STORE_LOCALE",
@@ -704,7 +694,7 @@ describe("CONN-02: external-code session lifecycle", () => {
       "api",
     );
     expect(session).toMatchObject({
-      type: "nintendo-switch-parental-controls",
+      connectorSlug: "nintendo-switch-parental-controls",
       status: "pending",
       expiresIn: 600,
     });
@@ -758,7 +748,7 @@ describe("CONN-02: external-code session lifecycle", () => {
       },
     });
     expect(complete.connector).toMatchObject({
-      type: "nintendo-switch-parental-controls",
+      slug: "nintendo-switch-parental-controls",
       authMethod: "api",
       externalId: "bdd-switch-parental-controls-account-id",
       externalUsername: "bdd-nintendo-parent",
@@ -784,7 +774,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     ]) {
       expect(listed.connectorProvidedBindings).toContainEqual(
         expect.objectContaining({
-          connectorType: "nintendo-switch-parental-controls",
+          connectorSlug: "nintendo-switch-parental-controls",
           authMethod: "api",
           namespace: "secrets",
           name,
@@ -797,7 +787,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     ]) {
       expect(listed.connectorProvidedBindings).toContainEqual(
         expect.objectContaining({
-          connectorType: "nintendo-switch-parental-controls",
+          connectorSlug: "nintendo-switch-parental-controls",
           authMethod: "api",
           namespace: "vars",
           name,
@@ -938,7 +928,7 @@ describe("CONN-02: external-code session lifecycle", () => {
     provider.releaseTokenResponse();
     const heldComplete = await heldCompletePromise;
     expect(heldComplete.connector).toMatchObject({
-      type: "aws",
+      slug: "aws",
       authMethod: "cli",
       externalId: "123456789012",
     });
@@ -953,7 +943,7 @@ describe("CONN-02: external-code session lifecycle", () => {
         code: awsVerificationCode(second.authorizationUrl),
       },
     );
-    expect(secondComplete.connector.type).toBe("aws");
+    expect(secondComplete.connector.slug).toBe("aws");
     expect(provider.tokenRequests).toHaveLength(2);
 
     await connectorsApi.deleteConnectorBySlug(actor, "aws");

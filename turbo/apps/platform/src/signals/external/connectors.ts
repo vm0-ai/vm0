@@ -8,10 +8,6 @@ import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-ident
 import { zeroClient$ } from "../api-client";
 import { accept } from "../../lib/accept.ts";
 import { featureSwitch$ } from "./feature-switch.ts";
-import {
-  normalizeConnectorCatalogStatusResponse,
-  normalizeConnectorListResponse,
-} from "../connector-domain.ts";
 
 /**
  * Reload trigger for connector signals.
@@ -33,7 +29,7 @@ export const connectors$ = computed(async (get) => {
   const createClient = get(zeroClient$);
   const client = createClient(zeroConnectorsMainContract);
   const result = await accept(client.list(), [200]);
-  return normalizeConnectorListResponse(result.body);
+  return result.body;
 });
 
 /**
@@ -46,7 +42,7 @@ export const connectorCatalogStatus$ = computed(async (get) => {
   const createClient = get(zeroClient$);
   const client = createClient(zeroConnectorCatalogContract);
   const result = await accept(client.status(), [200]);
-  return normalizeConnectorCatalogStatusResponse(result.body);
+  return result.body;
 });
 
 export const connectorCatalogStatusBySlug$ = computed(async (get) => {

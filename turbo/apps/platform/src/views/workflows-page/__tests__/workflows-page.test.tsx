@@ -844,7 +844,7 @@ function mockConnectedAutomationConnectors(): void {
   context.mocks.data.connectors([
     {
       id: "10000000-0000-4000-a000-000000000001",
-      type: "slack",
+      slug: "slack",
       authMethod: "oauth",
       externalId: "slack-workspace",
       externalUsername: "workspace",
@@ -858,7 +858,7 @@ function mockConnectedAutomationConnectors(): void {
     },
     {
       id: "10000000-0000-4000-a000-000000000002",
-      type: "gmail",
+      slug: "gmail",
       authMethod: "oauth",
       externalId: "gmail-user",
       externalUsername: "user@example.com",
@@ -1482,6 +1482,36 @@ describe("workflow localization", () => {
       last: "Última",
       next: "Próxima",
     },
+    {
+      locale: "fr-FR",
+      listTitle: "Workflows",
+      detailTitle: "Workflow",
+      openWorkflow: "Ouvrir Sales Research",
+      automationsTab: "Automatisations",
+      scheduleTitle: "Chaque jour de semaine à 6:00",
+      eventTitle: "Nouveau message Gmail",
+      eventSummary:
+        'de contient "@acme.com"; objet ne contient pas "newsletter"',
+      last: "Dernière",
+      next: "Prochaine",
+    },
+    {
+      locale: "hi-IN",
+      listTitle: "वर्कफ़्लो",
+      detailTitle: "वर्कफ़्लो",
+      openWorkflow: "Sales Research खोलें",
+      automationsTab: "ऑटोमेशन",
+      scheduleTitle: `हर कार्यदिवस ${new Intl.DateTimeFormat("hi-IN", {
+        hour: "numeric",
+        minute: "2-digit",
+        timeZone: "UTC",
+      }).format(new Date(Date.UTC(2024, 0, 1, 6)))} बजे`,
+      eventTitle: "Gmail नया संदेश",
+      eventSummary:
+        'प्रेषक में "@acme.com" शामिल है; विषय में "newsletter" शामिल नहीं है',
+      last: "अंतिम",
+      next: "अगला",
+    },
   ] as const;
 
   it.each(localeCases)(
@@ -1639,35 +1669,34 @@ describe("workflow detail page", () => {
         return respond(200, {
           connectors: [
             {
-              connectorRef: "google-drive",
+              connectorSlug: "google-drive",
               label: "Google Drive",
               icon: connectorIcon("google-drive"),
               reason: "The workflow reads account documents.",
               status: "connected",
             },
             {
-              connectorRef: "github",
+              connectorSlug: "github",
               label: "GitHub",
               icon: connectorIcon("github"),
               reason: "A GitHub automation requires this connector.",
               status: "unavailable",
             },
             {
-              connectorRef: "slack",
+              connectorSlug: "slack",
               label: "Slack",
               icon: connectorIcon("slack"),
               reason: "The workflow posts a summary to Slack.",
               status: "not-enabled-for-agent",
             },
             {
-              connectorRef: "notion",
+              connectorSlug: "notion",
               label: "Notion",
               icon: connectorIcon("notion"),
               reason: "The workflow updates a Notion page.",
               status: "scope-mismatch",
             },
             {
-              connectorRef: "slack",
               connectorSlug: "gmail",
               label: "Gmail",
               reason: "The workflow reads outreach replies.",
@@ -1679,7 +1708,7 @@ describe("workflow detail page", () => {
               },
             },
             {
-              connectorRef: "linear",
+              connectorSlug: "linear",
               label: "Linear",
               icon: connectorIcon("linear"),
               reason: "The workflow creates follow-up issues.",
@@ -1835,7 +1864,7 @@ describe("workflow detail page", () => {
         return respond(200, {
           connectors: [
             {
-              connectorRef: "gmail",
+              connectorSlug: "gmail",
               label: "Gmail",
               icon: connectorIcon("gmail"),
               reason: "The workflow reads outreach replies.",

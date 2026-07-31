@@ -28,7 +28,6 @@ import { workflowAutomationCanFire } from "./zero-workflow-automation-access.ser
 import { loadComputerUseHostGrantForAutoSend } from "./zero-chat-computer-use-host.service";
 import {
   workflowAutomationAppendSystemPrompt,
-  workflowAutomationPrompt,
   type WorkflowAutomationContext,
 } from "./workflow-automation-context.service";
 
@@ -305,6 +304,7 @@ function workflowThreadSessionRoute(
   return {
     selectedModel: modelContext.modelPin.selectedModel,
     modelProvider: modelContext.effectiveModelProvider ?? null,
+    modelProviderId: modelContext.modelPin.modelProviderId,
     cliAgentType: modelContext.cliAgentType,
   };
 }

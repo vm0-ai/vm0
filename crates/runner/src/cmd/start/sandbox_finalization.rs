@@ -1146,7 +1146,7 @@ mod tests {
             RunCleanupDisposition::IdlePoolOwned,
         );
 
-        assert!(cancel.cancel().await);
+        assert!(cancel.request_hard_cancellation().await);
 
         assert_eq!(
             fixture.idle_pool.lock().await.len(),
@@ -1984,7 +1984,7 @@ mod tests {
         let fixture = FinalizeTestFixture::new().await;
         let network_log_session = fixture.network_log_session().await;
         let cancel = RunCancellationHandle::new();
-        cancel.cancel().await;
+        cancel.request_hard_cancellation().await;
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
 
@@ -2069,7 +2069,7 @@ mod tests {
                 .expect("park should enter gate"),
             1
         );
-        cancel.cancel().await;
+        cancel.request_hard_cancellation().await;
         park_gate.release_one();
         assert_eq!(
             destroy_gate
@@ -2147,7 +2147,7 @@ mod tests {
         observer
             .wait_before_idle_pool_ownership_transfer(run_id, Duration::from_secs(5))
             .await;
-        cancel.cancel().await;
+        cancel.request_hard_cancellation().await;
         assert!(
             !fixture
                 .network_log_manager

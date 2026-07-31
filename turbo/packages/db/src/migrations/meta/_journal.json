@@ -5349,6 +5349,104 @@
       "when": 1785412068303,
       "tag": "0763_add_chat_display_contexts",
       "breakpoints": true
+    },
+    {
+      "idx": 764,
+      "version": "7",
+      "when": 1785413569071,
+      "tag": "0764_real_quicksilver",
+      "breakpoints": true
+    },
+    {
+      "idx": 765,
+      "version": "7",
+      "when": 1785416430642,
+      "tag": "0765_drop_chat_event_display_links",
+      "breakpoints": true
+    },
+    {
+      "idx": 766,
+      "version": "7",
+      "when": 1785418902022,
+      "tag": "0766_charming_iron_lad",
+      "breakpoints": true
+    },
+    {
+      "idx": 767,
+      "version": "7",
+      "when": 1785420940243,
+      "tag": "0767_add_chat_automation_context",
+      "breakpoints": true
+    },
+    {
+      "idx": 768,
+      "version": "7",
+      "when": 1785421224125,
+      "tag": "0768_contract_chat_event_property_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 769,
+      "version": "7",
+      "when": 1785425635301,
+      "tag": "0769_remove_insights_connector_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 770,
+      "version": "7",
+      "when": 1785426927542,
+      "tag": "0770_good_shape",
+      "breakpoints": true
+    },
+    {
+      "idx": 771,
+      "version": "7",
+      "when": 1785429520422,
+      "tag": "0771_rich_cargill",
+      "breakpoints": true
+    },
+    {
+      "idx": 772,
+      "version": "7",
+      "when": 1785453848022,
+      "tag": "0772_drop_chat_event_automation_context",
+      "breakpoints": true
+    },
+    {
+      "idx": 773,
+      "version": "7",
+      "when": 1785455456136,
+      "tag": "0773_delete_historical_cli_runs",
+      "breakpoints": true
+    },
+    {
+      "idx": 774,
+      "version": "7",
+      "when": 1785456385514,
+      "tag": "0774_drop_legacy_chat_event_seq_allocator",
+      "breakpoints": true
+    },
+    {
+      "idx": 775,
+      "version": "7",
+      "when": 1785458655096,
+      "tag": "0775_supreme_tarantula",
+      "breakpoints": true
+    },
+    {
+      "idx": 776,
+      "version": "7",
+      "when": 1785464060617,
+      "tag": "0776_add_chat_goal_context",
+      "breakpoints": true
+    },
+    {
+      "idx": 777,
+      "version": "7",
+      "when": 1785467152361,
+      "tag": "0777_drop_chat_event_goal_snapshot",
+      "breakpoints": true
     }
   ]
 }

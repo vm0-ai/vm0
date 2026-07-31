@@ -261,6 +261,30 @@ export default [
     },
   },
   {
+    files: ["src/**/*.ts"],
+    ignores: [
+      "src/**/__tests__/**/*.ts",
+      "src/**/*.test.ts",
+      "src/test-fixtures/thread-bound-run-admission.ts",
+      "src/signals/routes/test-zero-run-fixture.ts",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["**/zero-runs-create.service"],
+              importNames: ["createTestFixtureZeroRun$"],
+              message:
+                "Production run sources must use createQueueFirstZeroRun$ so every run is bound to a chat thread.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // Keep finite persisted/state-machine contract matrices as narrow
     // exceptions. Route tests cover constructible behavior, while these exact
     // transition inputs are not available through production APIs.
@@ -283,6 +307,12 @@ export default [
               group: ["./routes/test-*", "./routes/test-*/**"],
               message: productionRouteTestImportMessage,
             },
+            {
+              group: ["**/zero-runs-create.service"],
+              importNames: ["createTestFixtureZeroRun$"],
+              message:
+                "Production run sources must use createQueueFirstZeroRun$ so every run is bound to a chat thread.",
+            },
           ],
           paths: [
             {
@@ -300,6 +330,10 @@ export default [
       // Central test lifecycle owns connection-pool teardown; it does not
       // construct or assert API behavior.
       "src/__tests__/test-context.ts",
+      // A pre-0764 database cannot be constructed through a production API.
+      // This focused rollout test only redirects the real route to PostgreSQL's
+      // empty template database; setup is internal, but assertions remain HTTP.
+      "src/signals/routes/__tests__/zero-model-provider-gateways-rollout.test.ts",
     ],
     rules: {
       "no-restricted-imports": [

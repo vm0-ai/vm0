@@ -1,94 +1,40 @@
-import type { Locator } from "@playwright/test";
-
 import { expect, test } from "../fixtures";
 import { deriveAppUrl } from "../playwright.config";
 
 const appUrl = deriveAppUrl(process.env.VM0_API_BACKEND_URL!);
 
-async function elementHeight(locator: Locator): Promise<number> {
-  const bounds = await locator.boundingBox();
-  if (bounds === null) {
-    throw new Error("Composer bounds are unavailable");
-  }
-  return bounds.height;
-}
-
-test("send a chat message, cap long drafts, and preserve template height", async ({
+test("send a chat message and receive an assistant response", async ({
   page,
 }) => {
-  // Navigate to chat page (default agent)
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
 
-  // Wait for composer to be ready. Since the workflow cutover
-  // (vm0-ai/vm0#19959) the composer is a tiptap contenteditable: the
-  // placeholder is an overlay div, not a textarea attribute.
-  await expect(page.getByText(/Ask me to automate/)).toBeVisible({
-    timeout: 20_000,
-  });
   const composer = page.locator('[contenteditable="true"]').first();
   await expect(composer).toBeVisible({ timeout: 20_000 });
 
-  // Send a message — mock claude executes this as bash
-  const marker = `e2e-${Date.now()}`;
-  await composer.fill(`echo ${marker}`);
+  const modelPicker = page.locator(".zero-composer").getByRole("combobox");
+  await modelPicker.click();
+  await page.getByRole("option", { name: /^GPT 5\.6 Terra\b/ }).click();
+  await expect(
+    page
+      .locator(".zero-composer")
+      .getByRole("combobox", { name: "GPT 5.6 Terra", exact: true }),
+  ).toBeVisible();
+
+  const prompt = "Reply with exactly: Hello from Zero. Do not use tools.";
+  await composer.fill(prompt);
   await page.getByRole("button", { name: "Send", exact: true }).click();
 
-  // Verify user message appears
-  await expect(
-    page.locator('[data-role="user"]').last().getByText(marker),
-  ).toBeVisible({ timeout: 10_000 });
-
-  // Wait for assistant response — 120s because the full pipeline runs:
-  // runner picks up job → starts VM sandbox → mock claude executes → response streams back.
-  // Requires USE_MOCK_CLAUDE=true in CI. Expected latency: 60–90s.
-  await expect(page.locator('[data-role="assistant"]').first()).toBeVisible({
-    timeout: 120_000,
+  const userMessage = page.locator('[data-role="user"]').last();
+  await expect(userMessage.getByText(prompt, { exact: true })).toBeVisible({
+    timeout: 10_000,
   });
 
-  // The completed run leaves us on a chat-thread composer, whose responsive
-  // minimum height is two lines on mobile and three lines on desktop.
-  await expect.poll(() => elementHeight(composer)).toBe(96);
-
-  const longDraft = Array.from(
-    { length: 40 },
-    (_, index) => `draft line ${index + 1}`,
-  ).join("\n");
-  await page.setViewportSize({ width: 1280, height: 1000 });
-  await composer.fill(longDraft);
-  await expect.poll(() => elementHeight(composer)).toBe(320);
-  await expect
-    .poll(() =>
-      composer.evaluate(
-        (element) => element.scrollHeight > element.clientHeight,
-      ),
-    )
-    .toBe(true);
-  await composer.evaluate((element) => {
-    element.scrollTop = element.scrollHeight;
-  });
-  await expect
-    .poll(() => composer.evaluate((element) => element.scrollTop > 0))
-    .toBe(true);
-
-  await page.setViewportSize({ width: 390, height: 600 });
-  await expect.poll(() => elementHeight(composer)).toBe(240);
-
-  await composer.fill("");
-  await page.setViewportSize({ width: 1280, height: 720 });
-  await expect.poll(() => elementHeight(composer)).toBe(96);
-
-  await page.getByRole("button", { name: "Template", exact: true }).click();
-  await page
-    .getByRole("button", { name: /^Select template / })
-    .first()
-    .click();
-
-  await expect.poll(() => elementHeight(composer)).toBe(134);
-
-  await page.setViewportSize({ width: 390, height: 844 });
-  await expect.poll(() => elementHeight(composer)).toBe(106);
-
-  await page.getByRole("button", { name: /^Remove template / }).click();
-  await expect.poll(() => elementHeight(composer)).toBe(68);
+  const assistantReply = page
+    .locator('[data-role="assistant"]:not([data-thinking-indicator])')
+    .locator(".zero-chat-bubble-assistant")
+    .filter({ hasText: /\S/ })
+    .last();
+  await expect(assistantReply).toBeVisible({ timeout: 120_000 });
+  await expect(assistantReply).not.toContainText("Oops, something went wrong");
 });

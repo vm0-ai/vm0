@@ -1,5 +1,6 @@
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
+import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import {
   chatEvents,
@@ -164,7 +165,6 @@ export type QueueFirstRunAssociation =
       readonly goalId: string;
       readonly orgId: string;
       readonly userId: string;
-      readonly objectiveBrief: string;
     };
 
 export type QueueFirstRunClaimResult =
@@ -422,7 +422,6 @@ async function claimGoalQueueFirstRunAssociation(
     userMessage: createUserMessageDocument({ text: args.prompt }),
     runId: args.runId,
     runGroupId: args.goalId,
-    goalSnapshot: { objectiveBrief: args.objectiveBrief },
     triggerSource: "workflow-event",
   });
   if (!claimed) {
@@ -436,9 +435,20 @@ async function claimGoalQueueFirstRunAssociation(
  * transaction. Successful launches acquire the organization admission lock
  * first; failed launches do not acquire that lock or create active state.
  */
+function queueFirstRunAdmissionBlocked(
+  db: DbTransaction,
+  args: { readonly apiStartTime: number; readonly threadId: string },
+): Promise<boolean> {
+  return chatThreadAdmissionBlocked(db, {
+    threadId: args.threadId,
+    apiStartTime: args.apiStartTime,
+  });
+}
+
 export async function claimQueueFirstRunAssociation(
   db: DbTransaction,
   args: QueueFirstRunAssociation & {
+    readonly apiStartTime: number;
     readonly runId: string;
     readonly timing: ApiDispatchTimingCollector;
   },
@@ -460,7 +470,7 @@ export async function claimQueueFirstRunAssociation(
         return { kind: "lost" };
       }
 
-      if (await chatThreadAdmissionBlocked(db, { threadId: args.threadId })) {
+      if (await queueFirstRunAdmissionBlocked(db, args)) {
         outcome = "lost";
         return { kind: "lost" };
       }
@@ -481,10 +491,17 @@ export async function claimQueueFirstRunAssociation(
         const head = pending[0];
         const [automationEvent] = await db
           .select({
-            automationId: chatEvents.automationId,
+            automationId: chatAutomationContext.automationId,
             triggerSource: chatEvents.triggerSource,
           })
           .from(chatEvents)
+          .leftJoin(
+            chatAutomationContext,
+            and(
+              eq(chatEvents.contextType, "automation"),
+              eq(chatAutomationContext.id, chatEvents.contextId),
+            ),
+          )
           .where(eq(chatEvents.id, args.eventId))
           .limit(1);
         if (

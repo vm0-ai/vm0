@@ -14,6 +14,7 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
   NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
+  RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
   type Job as RunnerJob,
 } from "@vm0/api-contracts/contracts/runners";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -1111,17 +1112,6 @@ async function sendChatRunMessage(
   return { runId: sent.body.runId, threadId: sent.body.threadId };
 }
 
-function assistantOutputEvent(
-  sequenceNumber: number,
-  text: string,
-): Record<string, unknown> {
-  return {
-    eventType: "assistant",
-    sequenceNumber,
-    eventData: { message: { content: [{ type: "text", text }] } },
-  };
-}
-
 describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks", () => {
   it("emits api dispatch timing for direct dispatch runs", async () => {
     const api = createRunsApi(context);
@@ -1542,11 +1532,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     }
   });
 
-  it("retains direct plan admission and emits direct create timing", async () => {
+  it("retains direct plan admission and emits create timing", async () => {
     const api = createRunsApi(context);
     const { actor } = await entitledRunActor();
-    const prompt = "direct route api dispatch timing should not leak prompt";
-    const composeName = `bdd-direct-route-timing-${randomUUID().slice(0, 8)}`;
+    const prompt = "direct service dispatch timing should not leak prompt";
+    const composeName = `bdd-direct-service-timing-${randomUUID().slice(0, 8)}`;
     const compose = await api.createCompose(actor, {
       version: "1",
       agents: {
@@ -1609,14 +1599,9 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       ["api_dispatch_check_org_tier"],
       "top_level",
     );
-    expectApiDispatchActions(
+    expectNoApiDispatchActions(
       timingEvents,
       API_DISPATCH_DIRECT_PRE_CREATE_ACTION_TYPES,
-    );
-    expectApiDispatchSpanKind(
-      timingEvents,
-      API_DISPATCH_DIRECT_PRE_CREATE_ACTION_TYPES,
-      "nested",
     );
     expectApiDispatchSpanKind(
       timingEvents,
@@ -9581,6 +9566,46 @@ describe("RUN-03: cancellation of dispatched and terminal runs", () => {
     expect(repeated.status).toBe(200);
   });
 
+  it("does not redeliver ordinary callbacks when cancellation recovery is redriven", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const callbackUrl = "https://callback.example/cancellation-recovery";
+    let callbackRequests = 0;
+    server.use(
+      http.post(callbackUrl, () => {
+        callbackRequests += 1;
+        return HttpResponse.text("retry later", { status: 503 });
+      }),
+    );
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "cancel without redelivering ordinary callbacks",
+      modelProvider: "anthropic-api-key",
+    });
+    await callbackStore.set(
+      seedAgentRunCallback$,
+      {
+        runId: run.runId,
+        url: callbackUrl,
+        payload: {},
+      },
+      context.signal,
+    );
+    await api.heartbeatRunner(runnerGroup);
+    await api.claimRunnerJob(run.runId, {
+      capabilities: [RUNNER_CANCELLATION_RECOVERY_CAPABILITY],
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await flushWaitUntilForTest();
+    expect(callbackRequests).toBe(1);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await flushWaitUntilForTest();
+    expect(callbackRequests).toBe(1);
+  });
+
   it("serializes concurrent claim and cancellation without deadlock", async () => {
     const api = createRunsApi(context);
     const { actor, agentId } = await entitledRunActor();
@@ -10472,7 +10497,7 @@ describe("HOOK-01: callback authentication failures", () => {
 });
 
 describe("HOOK-02: event-consumer dispatch failures", () => {
-  it("surfaces required event-consumer failures and recovers on retry", async () => {
+  it("keeps Axiom trace failures outside the required event ACK", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -10511,16 +10536,16 @@ describe("HOOK-02: event-consumer dispatch failures", () => {
         },
       ),
     );
-    const failed = await webhooks.requestAgentEvents(
+    const acceptedWithTraceFailure = await webhooks.requestAgentEvents(
       {
         runId: run.runId,
         events: [{ type: "system", sequenceNumber: 0 }],
       },
       sandboxHeaders,
-      [503],
+      [200],
     );
-    expectApiError(failed.body);
-    expect(failed.body.error.code).toBe("EVENT_DELIVERY_UNAVAILABLE");
+    expect(acceptedWithTraceFailure.status).toBe(200);
+    await flushWaitUntilForTest();
     expect(ingestRequests).toBe(1);
 
     const recovered = await webhooks.requestAgentEvents(
@@ -10532,12 +10557,13 @@ describe("HOOK-02: event-consumer dispatch failures", () => {
       [200],
     );
     expect(recovered.status).toBe(200);
+    await flushWaitUntilForTest();
     expect(ingestRequests).toBe(2);
   });
 });
 
 describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () => {
-  it("acknowledges late assistant events when completion cleanup already wrote the run sequence", async () => {
+  it("uses DB output acknowledged before completion and ignores a late duplicate", async () => {
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
     const webhooks = createWebhookCallbackApi(context);
@@ -10555,9 +10581,23 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     const sandboxHeaders = {
       authorization: `Bearer ${claim.sandboxToken}`,
     };
-    chatCallbacks.mockChatOutputEvents([
-      assistantOutputEvent(0, "cleanup-first assistant text"),
-    ]);
+    await webhooks.requestAgentEvents(
+      {
+        runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 0,
+            message: {
+              id: "msg_bdd_cleanup_first",
+              content: [{ type: "text", text: "cleanup-first assistant text" }],
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
 
     const historyHash = createHash("sha256")
       .update(`bdd cleanup-first session history ${runId}`)
@@ -11671,7 +11711,7 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
             model_catalog_cache_status: "model_catalog_cold_stored",
             model_catalog_cache_upstream_encoding: "br",
             model_catalog_cache_entry_age_ms: 4000,
-            connector_diagnostic_type: "github",
+            connector_diagnostic_slug: "github",
           },
           {
             timestamp: nowDate().toISOString(),
@@ -11688,7 +11728,6 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
             firewall_name: "blocked-service",
             firewall_error: "connector_not_configured",
             connector_diagnostic_slug: "slack",
-            connector_diagnostic_type: "slack",
           },
         ],
         sandboxOperations: [
@@ -11729,7 +11768,6 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
         model_catalog_cache_upstream_encoding: "br",
         model_catalog_cache_entry_age_ms: 4000,
         connector_diagnostic_slug: "github",
-        connector_diagnostic_type: "github",
       }),
       expect.objectContaining({
         runId: created.runId,
@@ -11737,32 +11775,8 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
         host: "blocked.example.test",
         firewall_error: "connector_not_configured",
         connector_diagnostic_slug: "slack",
-        connector_diagnostic_type: "slack",
       }),
     ]);
-    const networkIngestCallCount = telemetryIngests.filter((call) => {
-      return call.dataset === "sandbox-telemetry-network";
-    }).length;
-    const conflictingTelemetry = await webhooks.requestAgentTelemetryUnchecked(
-      {
-        runId: created.runId,
-        networkLogs: [
-          {
-            timestamp: nowDate().toISOString(),
-            connector_diagnostic_slug: "github",
-            connector_diagnostic_type: "gitlab",
-          },
-        ],
-      },
-      sandboxHeaders,
-      [400],
-    );
-    expectApiError(conflictingTelemetry.body);
-    expect(
-      telemetryIngests.filter((call) => {
-        return call.dataset === "sandbox-telemetry-network";
-      }),
-    ).toHaveLength(networkIngestCallCount);
 
     let failedTelemetryRequests = 0;
     server.use(

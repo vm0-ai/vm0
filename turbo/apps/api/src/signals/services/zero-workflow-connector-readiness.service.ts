@@ -309,13 +309,13 @@ export const detectWorkflowConnectorReadiness$ = command(
 
     const statusBySlug = new Map(
       statusCatalog.connectors.map((connector) => {
-        return [connector.connectorRef, connector];
+        return [connector.slug, connector];
       }),
     );
     const modelCatalog: ModelCatalogEntry[] = statusCatalog.connectors.map(
       (connector) => {
         return {
-          connectorRef: connector.connectorRef,
+          connectorRef: connector.slug,
           label: connector.label,
           description: connector.description,
         };
@@ -352,7 +352,6 @@ export const detectWorkflowConnectorReadiness$ = command(
           );
         }
         connectors.push({
-          connectorRef: connectorSlug,
           connectorSlug,
           label: fallbackMetadata.label,
           icon: fallbackMetadata.icon,
@@ -362,7 +361,6 @@ export const detectWorkflowConnectorReadiness$ = command(
         continue;
       }
       connectors.push({
-        connectorRef: connectorSlug,
         connectorSlug,
         label: catalogEntry.label,
         icon: catalogEntry.icon,

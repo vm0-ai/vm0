@@ -467,16 +467,16 @@ describe("realtime signals", () => {
     await waitFor(() => {
       expect(catchUps).toBe(1);
     });
-    context.mocks.ably.trigger(topic, { connectorRef: "gmail" });
+    context.mocks.ably.trigger(topic, { connectorSlug: "gmail" });
     await waitFor(() => {
-      expect(payloads).toStrictEqual([{ connectorRef: "gmail" }]);
+      expect(payloads).toStrictEqual([{ connectorSlug: "gmail" }]);
     });
 
     context.mocks.ably.triggerReconnect();
     await waitFor(() => {
       expect(catchUps).toBe(2);
     });
-    expect(payloads).toStrictEqual([{ connectorRef: "gmail" }]);
+    expect(payloads).toStrictEqual([{ connectorSlug: "gmail" }]);
 
     subscriber.abort(abortError("test done"));
     await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
@@ -711,6 +711,7 @@ describe("realtime signals", () => {
         {
           threadId,
           handlers: {
+            onThreadDetailChanged$: keepAliveLoop$,
             onAutomationsChanged$: keepAliveLoop$,
             onArtifactsChanged$: keepAliveLoop$,
             onWorkflowsChanged$: keepAliveLoop$,

@@ -344,6 +344,7 @@ async function completeSlackTriggeredRun(args: {
   readonly sandboxToken: string;
   readonly cliAgentType: string;
   readonly assistantText?: string;
+  readonly codexAgentMessageText?: string;
   readonly resultText?: string;
 }): Promise<void> {
   const sandboxHeaders = {
@@ -361,9 +362,10 @@ async function completeSlackTriggeredRun(args: {
     sandboxHeaders,
     [200],
   );
-  if (args.assistantText || args.resultText) {
-    const assistantEvents = args.assistantText
-      ? [
+  const assistantEvents =
+    args.assistantText === undefined
+      ? []
+      : [
           {
             type: "assistant" as const,
             sequenceNumber: 0,
@@ -372,57 +374,55 @@ async function completeSlackTriggeredRun(args: {
               content: [{ type: "text" as const, text: args.assistantText }],
             },
           },
-        ]
-      : [];
-    const resultSequenceNumber = assistantEvents.length;
-    const resultEvents = args.resultText
-      ? [
+        ];
+  const codexEvents =
+    args.codexAgentMessageText === undefined
+      ? []
+      : [
+          {
+            type: "item.completed" as const,
+            sequenceNumber: assistantEvents.length,
+            item: {
+              id: `item_bdd_slack_${args.runId}`,
+              type: "agent_message" as const,
+              text: args.codexAgentMessageText,
+            },
+          },
+        ];
+  const resultEvents =
+    args.resultText === undefined
+      ? []
+      : [
           {
             type: "result" as const,
-            sequenceNumber: resultSequenceNumber,
+            sequenceNumber: assistantEvents.length + codexEvents.length,
             result: args.resultText,
           },
-        ]
-      : [];
-    chatCallbacks.mockChatOutputEvents([
-      ...assistantEvents.map((event) => {
-        return {
-          eventType: event.type,
-          sequenceNumber: event.sequenceNumber,
-          eventData: { message: event.message },
-        };
-      }),
-      ...resultEvents.map((event) => {
-        return {
-          eventType: event.type,
-          sequenceNumber: event.sequenceNumber,
-          eventData: { result: event.result },
-        };
-      }),
-    ]);
+        ];
+  const outputEvents = [...assistantEvents, ...codexEvents, ...resultEvents];
+  if (outputEvents.length > 0) {
     await webhooks.requestAgentEvents(
       {
         runId: args.runId,
-        events: [...assistantEvents, ...resultEvents],
+        events: outputEvents,
       },
       sandboxHeaders,
       [200],
     );
   }
-  const lastEventSequence =
-    args.resultText !== undefined ? (args.assistantText ? 1 : 0) : 0;
   await webhooks.requestAgentComplete(
     {
       runId: args.runId,
       exitCode: 0,
-      ...(args.assistantText || args.resultText ? { lastEventSequence } : {}),
+      ...(outputEvents.length > 0
+        ? { lastEventSequence: outputEvents.length - 1 }
+        : {}),
     },
     sandboxHeaders,
     [200],
   );
-  if (args.resultText) {
+  if (args.resultText !== undefined) {
     await flushWaitUntilForTest();
-    chatCallbacks.mockChatOutputEvents([]);
   }
 }
 
@@ -717,6 +717,25 @@ describe("INT-01: Slack integration and Slack app routes", () => {
     );
     expectSlackEphemeral(unknown.body);
     expect(unknown.body.blocks.length).toBeGreaterThan(0);
+
+    for (const requiredField of [
+      "team_id",
+      "channel_id",
+      "user_id",
+      "trigger_id",
+    ]) {
+      const missingFieldParams = new URLSearchParams(commandBody("help"));
+      missingFieldParams.delete(requiredField);
+      const missingFieldBody = missingFieldParams.toString();
+      const missingField = await integrations.requestSlackCommand(
+        missingFieldBody,
+        integrations.signedSlackIngressHeaders(missingFieldBody),
+        [400],
+      );
+      expect(missingField.body).toStrictEqual({
+        error: "Missing required Slack command fields",
+      });
+    }
 
     const emptyActionPayload = new URLSearchParams({
       payload: JSON.stringify({
@@ -3669,7 +3688,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
       });
     });
 
-    integrations.mockSlackRunResultOutput("SLACK_BDD_OUTPUT");
     let failedMessagePublishCount = 0;
     let failedThreadListPublishCount = 0;
     context.mocks.ably.publish.mockImplementation((topic: unknown) => {
@@ -3690,6 +3708,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       runId: run1Id,
       sandboxToken: claim1.sandboxToken,
       cliAgentType: "claude-code",
+      resultText: "SLACK_BDD_OUTPUT",
     });
     await flushWaitUntilAndAssert(() => {
       expect(context.mocks.slack.chat.postMessage).toHaveBeenLastCalledWith(
@@ -3730,11 +3749,11 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     const run2Id = await pollSlackRun(runnerGroup);
     const claim2 = await runs.claimRunnerJob(run2Id);
-    integrations.mockSlackRunAgentMessageOutput("final codex answer");
     await completeSlackTriggeredRun({
       runId: run2Id,
       sandboxToken: claim2.sandboxToken,
       cliAgentType: "claude-code",
+      codexAgentMessageText: "final codex answer",
     });
     await flushWaitUntilAndAssert(() => {
       expect(context.mocks.slack.chat.postMessage).toHaveBeenLastCalledWith(
@@ -3764,12 +3783,12 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     const run3Id = await pollSlackRun(runnerGroup);
     const claim3 = await runs.claimRunnerJob(run3Id);
-    integrations.mockSlackRunResultOutput("SECOND_OPINION_OUTPUT");
     context.mocks.slack.chat.postMessage.mockClear();
     await completeSlackTriggeredRun({
       runId: run3Id,
       sandboxToken: claim3.sandboxToken,
       cliAgentType: "claude-code",
+      resultText: "SECOND_OPINION_OUTPUT",
     });
     await flushWaitUntilAndAssert(() => {
       expect(slackPostMessageCallsJson()).toContain(
@@ -3842,7 +3861,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     const run6Id = await pollSlackRun(runnerGroup);
     const claim6 = await runs.claimRunnerJob(run6Id);
-    integrations.mockSlackRunResultOutput("UNDELIVERED_OUTPUT");
     context.mocks.slack.chat.postMessage.mockRejectedValueOnce(
       Object.assign(new Error("channel_not_found"), {
         data: { ok: false, error: "channel_not_found" },
@@ -3852,6 +3870,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       runId: run6Id,
       sandboxToken: claim6.sandboxToken,
       cliAgentType: "claude-code",
+      resultText: "UNDELIVERED_OUTPUT",
     });
     await flushWaitUntilAndAssert(() => {
       expect(context.mocks.slack.chat.postMessage).toHaveBeenLastCalledWith(
@@ -3917,11 +3936,11 @@ describe("INT-01: Slack app deep webhook flows", () => {
       });
     });
 
-    integrations.mockSlackRunResultOutput("NO_MODEL_FOOTER_OUTPUT");
     await completeSlackTriggeredRun({
       runId: run1Id,
       sandboxToken: claim1.sandboxToken,
       cliAgentType: "claude-code",
+      resultText: "NO_MODEL_FOOTER_OUTPUT",
     });
     await flushWaitUntilAndAssert(() => {
       expect(context.mocks.slack.chat.postMessage).toHaveBeenLastCalledWith(
