@@ -30,6 +30,44 @@ const setMermaidDiagramResult$ = command(
   },
 );
 
+// A rendered entry holds the whole diagram as a data URL, so entries are
+// refcounted by mounted canvas and dropped once the last one detaches.
+const internalMermaidDiagramRefCountByKey$ = state<Record<string, number>>({});
+
+const retainMermaidDiagramResult$ = command(({ get, set }, key: string) => {
+  const refCount = get(internalMermaidDiagramRefCountByKey$)[key] ?? 0;
+  set(internalMermaidDiagramRefCountByKey$, (current) => {
+    return { ...current, [key]: refCount + 1 };
+  });
+  set(setMermaidDiagramResult$, key, { status: "rendering" });
+});
+
+function withoutKey<T>(current: Record<string, T>, key: string) {
+  if (!(key in current)) {
+    return current;
+  }
+  const next = { ...current };
+  delete next[key];
+  return next;
+}
+
+const releaseMermaidDiagramResult$ = command(({ get, set }, key: string) => {
+  const refCount = get(internalMermaidDiagramRefCountByKey$)[key] ?? 0;
+  if (refCount > 1) {
+    set(internalMermaidDiagramRefCountByKey$, (current) => {
+      return { ...current, [key]: refCount - 1 };
+    });
+    return;
+  }
+
+  set(internalMermaidDiagramRefCountByKey$, (current) => {
+    return withoutKey(current, key);
+  });
+  set(internalMermaidDiagramResultByKey$, (current) => {
+    return withoutKey(current, key);
+  });
+});
+
 // mermaid costs ~170 KB gzipped for the first diagram, so it is only fetched
 // once a diagram actually needs rendering.
 const mermaidModule$ = state<Promise<typeof import("mermaid")> | undefined>(
@@ -147,7 +185,15 @@ const renderMermaidDiagram$ = command(
     const theme = el.dataset.mermaidTheme === "dark" ? "dark" : "light";
     const key = mermaidDiagramKey(code, theme);
 
-    set(setMermaidDiagramResult$, key, { status: "rendering" });
+    set(retainMermaidDiagramResult$, key);
+    signal.addEventListener(
+      "abort",
+      () => {
+        set(releaseMermaidDiagramResult$, key);
+      },
+      { once: true },
+    );
+
     const mermaid = await set(loadMermaid$, theme, signal);
     const sequence = get(renderSequence$) + 1;
     set(renderSequence$, sequence);
