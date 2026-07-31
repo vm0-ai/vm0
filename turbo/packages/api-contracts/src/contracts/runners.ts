@@ -511,10 +511,6 @@ export const resumeSessionSchema = z.union([
   resumeSessionRefSchema,
 ]);
 
-// Capability names are intentionally open-ended so a newer runner can claim
-// jobs through an older API; the API ignores capabilities it does not know.
-export const runnerClaimCapabilitySchema = z.string().min(1);
-
 export const secretConnectorMetadataSchema = z.object({
   sourceType: z.enum(["connector", "model-provider", "platform-secret"]),
   sourceUserId: z.string().optional(),
@@ -701,7 +697,6 @@ export const runnersJobClaimContract = c.router({
     }),
     body: z.object({
       telemetry: runnerClaimTelemetrySchema.optional(),
-      capabilities: z.array(runnerClaimCapabilitySchema).optional(),
     }),
     responses: {
       200: executionContextSchema,
@@ -881,5 +876,3 @@ export type SessionHistorySizeBucket = z.infer<
 export type SessionAffinityResource = z.infer<
   typeof sessionAffinityResourceSchema
 >;
-
-export type RunnerClaimCapability = z.infer<typeof runnerClaimCapabilitySchema>;

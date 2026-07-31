@@ -550,31 +550,6 @@ export async function removeAcknowledgedCancellationLifecycleFixture(args: {
   });
 }
 
-/**
- * Reproduces a historical running claim without cancellation recovery.
- * Current product claims always initialize recovery as pending.
- */
-export async function markCancellationRecoveryUnsupportedFixture(args: {
-  readonly runId: string;
-}): Promise<void> {
-  const updated = await db()
-    .update(agentRuns)
-    .set({ cancellationRecoveryCompleted: null })
-    .where(
-      and(
-        eq(agentRuns.id, args.runId),
-        eq(agentRuns.status, "running"),
-        eq(agentRuns.cancellationRecoveryCompleted, false),
-      ),
-    )
-    .returning({ id: agentRuns.id });
-  if (updated.length !== 1) {
-    throw new Error(
-      "Expected one recovery-pending running claim to become historical",
-    );
-  }
-}
-
 async function transitiveBlockedWaiterCount(
   holderPid: number,
 ): Promise<number> {
