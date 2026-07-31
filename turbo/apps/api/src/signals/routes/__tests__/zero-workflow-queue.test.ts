@@ -970,6 +970,75 @@ describe("workflow queue", () => {
     ).resolves.toHaveLength(1);
   });
 
+  it("uses full PostgreSQL timestamp precision for workflow queue FIFO", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    const firstBrief = "First precise workflow event";
+    const firstEventId = await admitPreviousDeploymentWorkflowEventFixture({
+      automationId: automation.automationId,
+      chatThreadId: automation.threadId,
+      agentId: scenario.agentId,
+      appendSystemPrompt: firstBrief,
+      triggerBrief: firstBrief,
+    });
+    const secondBrief = "Second precise workflow event";
+    const secondEventId = await admitPreviousDeploymentWorkflowEventFixture({
+      automationId: automation.automationId,
+      chatThreadId: automation.threadId,
+      agentId: scenario.agentId,
+      appendSystemPrompt: secondBrief,
+      triggerBrief: secondBrief,
+    });
+    const firstSortsBeforeSecond =
+      firstEventId.localeCompare(secondEventId) < 0;
+    const databaseFirst = firstSortsBeforeSecond
+      ? { id: secondEventId, brief: secondBrief }
+      : { id: firstEventId, brief: firstBrief };
+    const databaseSecond = firstSortsBeforeSecond
+      ? { id: firstEventId, brief: firstBrief }
+      : { id: secondEventId, brief: secondBrief };
+
+    // Both values become the same JavaScript Date. The database-first event
+    // deliberately has the lexicographically later UUID, so a millisecond
+    // conversion followed by an id sort would choose the wrong queue head.
+    await setWorkflowQueueEventCreatedAtFixture({
+      eventId: databaseFirst.id,
+      createdAt: "2019-12-31 23:54:00.000100",
+    });
+    await setWorkflowQueueEventCreatedAtFixture({
+      eventId: databaseSecond.id,
+      createdAt: "2019-12-31 23:54:00.000900",
+    });
+
+    const result = await postWorkflowWebhook(
+      automation,
+      "drain the precise workflow queue",
+    );
+    expectAcceptedWithoutRun(result);
+
+    const [runId] = await workflowRunIds(automation.threadId);
+    if (!runId) {
+      throw new Error(
+        "Expected the database-first queue event to create a run",
+      );
+    }
+    const claimedEvent = (await wf.readThreadEvents(automation.threadId)).find(
+      (event) => {
+        return event.runId === runId && event.eventType === "input.prompt";
+      },
+    );
+    expect(
+      claimedEvent
+        ? chatEventAutomationPart(claimedEvent)?.automationBrief
+        : undefined,
+    ).toBe(databaseFirst.brief);
+    expect(
+      (await pendingWorkflowEvents(automation.threadId)).map((event) => {
+        return event.id;
+      }),
+    ).toContain(databaseSecond.id);
+  });
+
   it("retries when an earlier workflow event becomes queue head during launch", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);

@@ -475,17 +475,22 @@ export async function replayPendingChatInputQueueEventFixture(args: {
 
 /**
  * Move one exact workflow event into historical state without waiting for real
- * time to pass. Product APIs cannot construct an already-stale queue item.
+ * time to pass. A string preserves PostgreSQL precision beyond JavaScript
+ * milliseconds. Product APIs cannot construct an already-stale queue item.
  */
 export async function setWorkflowQueueEventCreatedAtFixture(args: {
   readonly eventId: string;
-  readonly createdAt: Date;
+  readonly createdAt: Date | string;
 }): Promise<void> {
+  const createdAt =
+    typeof args.createdAt === "string"
+      ? sql`CAST(${args.createdAt} AS timestamp)`
+      : args.createdAt;
   const updated = await db().transaction(async (tx) => {
     await tx.execute(sql`SET LOCAL session_replication_role = replica`);
     return await tx
       .update(chatEvents)
-      .set({ createdAt: args.createdAt })
+      .set({ createdAt })
       .where(
         and(
           eq(chatEvents.id, args.eventId),
