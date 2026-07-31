@@ -1,8 +1,7 @@
 import type { IDBPDatabase } from "idb";
 import {
-  chatEventResponseSchema,
-  isCanonicalChatEventResponse,
   type ChatEvent,
+  chatEventSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { logger } from "../log.ts";
 import {
@@ -33,9 +32,8 @@ interface ChatEventWriteStore {
   ): Promise<void>;
 }
 
-function canonicalStoredEvent(raw: unknown): ChatEvent | null {
-  const event = chatEventResponseSchema.parse(raw);
-  return isCanonicalChatEventResponse(event) ? event : null;
+function storedChatEvent(raw: unknown): ChatEvent {
+  return chatEventSchema.parse(raw);
 }
 
 function storedEvent(threadId: string, event: ChatEvent): StoredChatEvent {
@@ -63,22 +61,15 @@ function createEventReadStore(
       const tx = db.transaction(storeName, "readonly");
       const index = tx.store.index(CHAT_MESSAGES_ORDER_INDEX);
       const range = threadOrderRange(threadId);
-      const readCanonicalBound = async (
+      const readBound = async (
         direction: IDBCursorDirection,
       ): Promise<ChatEvent | null> => {
-        let cursor = await index.openCursor(range, direction);
-        while (cursor) {
-          const event = canonicalStoredEvent(cursor.value);
-          if (event) {
-            return event;
-          }
-          cursor = await cursor.continue();
-        }
-        return null;
+        const cursor = await index.openCursor(range, direction);
+        return cursor ? storedChatEvent(cursor.value) : null;
       };
       const [first, last] = await Promise.all([
-        readCanonicalBound("next"),
-        readCanonicalBound("prev"),
+        readBound("next"),
+        readBound("prev"),
       ]);
       signal?.throwIfAborted();
       const bounds = { first, last };
@@ -98,10 +89,7 @@ function createEventReadStore(
       const range = threadOrderRange(threadId);
       const storedEvents = await index.getAll(range);
       signal?.throwIfAborted();
-      const events = storedEvents.flatMap((raw) => {
-        const event = canonicalStoredEvent(raw);
-        return event ? [event] : [];
-      });
+      const events = storedEvents.map(storedChatEvent);
       L.debug("readLatest:done", { threadId, count: events.length });
       return events;
     },

@@ -1,6 +1,6 @@
-import type { ChatEventResponse } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
 
-export function chatEventDisplayText(event: ChatEventResponse): string | null {
+export function chatEventDisplayText(event: ChatEvent): string | null {
   switch (event.eventType) {
     case "input.prompt":
     case "input.rejected": {

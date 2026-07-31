@@ -4060,28 +4060,6 @@ async function validateChatEventTypeBackfillAndContract(): Promise<void> {
               'Gmail label applied',
               'encrypted-queue-params',
               NULL
-            ),
-            (
-              $1,
-              'assistant',
-              NULL,
-              'queue.automation_paused',
-              NULL,
-              NULL,
-              NULL,
-              NULL,
-              'Provider unavailable'
-            ),
-            (
-              $1,
-              'assistant',
-              NULL,
-              'queue.automation_resumed',
-              NULL,
-              NULL,
-              NULL,
-              NULL,
-              NULL
             )
           RETURNING "id", "event_type" AS "eventType"
         `,
@@ -4091,11 +4069,7 @@ async function validateChatEventTypeBackfillAndContract(): Promise<void> {
         consumerEvents.rows.map(({ eventType }) => {
           return eventType;
         }),
-        [
-          "input.automation",
-          "queue.automation_paused",
-          "queue.automation_resumed",
-        ],
+        ["input.automation"],
       );
 
       const automationEventId = consumerEvents.rows[0]?.id;
@@ -4206,7 +4180,7 @@ async function validateChatEventTypeBackfillAndContract(): Promise<void> {
   }
 
   console.log(
-    "   ✅ Rollout-tail rows are classified, automation queue leaves are accepted, and append-only protection remains active\n",
+    "   ✅ Rollout-tail rows are classified, automation inputs are accepted, and append-only protection remains active\n",
   );
 }
 
@@ -4330,47 +4304,6 @@ async function validateChatEventQueueContraction(): Promise<void> {
           triggerSource: "slack",
         },
       ]);
-      await client.query(
-        `
-          INSERT INTO "chat_messages" (
-            "chat_thread_id",
-            "run_id",
-            "event_type",
-            "role",
-            "content",
-            "error"
-          )
-          VALUES (
-            $1,
-            NULL,
-            'queue.automation_paused',
-            'assistant',
-            NULL,
-            'contraction fixture pause'
-          )
-        `,
-        [threadId],
-      );
-
-      const projectedPause = await client.query<{
-        pauseReason: string;
-        queuePausedAt: Date;
-      }>(
-        `
-          SELECT
-            "queue_paused_at" AS "queuePausedAt",
-            "pause_reason" AS "pauseReason"
-          FROM "chat_threads"
-          WHERE "id" = $1
-        `,
-        [threadId],
-      );
-      assert.equal(
-        projectedPause.rows[0]?.pauseReason,
-        "contraction fixture pause",
-      );
-      assert.ok(projectedPause.rows[0]?.queuePausedAt instanceof Date);
-
       await applyMigrationsUpToInTransaction(
         client,
         CHAT_EVENT_QUEUE_CONTRACTION_MIGRATION,
@@ -4532,12 +4465,6 @@ async function validateChatEventQueueContraction(): Promise<void> {
           eventType: "input.prompt",
           triggerSource: "slack",
         },
-        {
-          content: null,
-          encryptedParams: null,
-          eventType: "queue.automation_paused",
-          triggerSource: null,
-        },
       ]);
 
       await expectAppendOnlyUpdateRejected(client, {
@@ -4553,7 +4480,7 @@ async function validateChatEventQueueContraction(): Promise<void> {
   }
 
   console.log(
-    "   ✅ Canonical queue events survive while one-release DELETE compatibility is verified and then fully retired\n",
+    "   ✅ Canonical queued inputs survive queue schema contraction and compatibility retirement\n",
   );
 }
 

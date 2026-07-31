@@ -9,9 +9,9 @@ use super::active_sessions::{ActiveCliAgentSessions, active_cli_agent_session_id
 use crate::config::ProfileConfig;
 use crate::error::{RunnerError, RunnerResult};
 use crate::idle_pool::IdlePool;
+use crate::lifecycle::RunnerMode;
 use crate::provider::JobProvider;
 use crate::resource_budget::ResourceBudget;
-use crate::status::RunnerMode;
 use crate::types::{
     HeartbeatState, HeldSessionState, MAX_HELD_SESSION_STATES, MAX_WORKSPACE_CACHES_PER_SESSION,
 };

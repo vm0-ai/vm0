@@ -1,7 +1,7 @@
 import {
   chatThreadEventsContract,
   chatThreadMetadataContract,
-  type ChatEventResponse,
+  type ChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroWorkflowsCollectionContract,
@@ -209,9 +209,7 @@ export function createWorkflowsBddApi(context: TestContext) {
       return response.body.selectedModel;
     },
 
-    async readThreadEvents(
-      threadId: string,
-    ): Promise<readonly ChatEventResponse[]> {
+    async readThreadEvents(threadId: string): Promise<readonly ChatEvent[]> {
       const client = setupApp({ context })(chatThreadEventsContract);
       const response = await accept(
         client.list({
