@@ -4743,7 +4743,7 @@ function createScrollRenderRequestReady(
       get(events.thinkingIndicatorMode$),
       get(events.historyBackfillProgress$),
       get(events.hasEvents$),
-      get(events.hasNewEvents$),
+      request.position === null ? Promise.resolve() : get(events.hasNewEvents$),
     ]);
     return get(pendingScrollRenderRequest$);
   });
