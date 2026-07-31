@@ -1264,7 +1264,6 @@ async function insertGitHubChatInput(args: {
         triggerReactionId: args.reactionId,
         triggerCommentBody: args.params.comment?.body,
       },
-      apiStartTime: args.params.apiStartTime,
     },
     { orgId: args.target.orgId, userId: args.params.vm0UserId },
   );

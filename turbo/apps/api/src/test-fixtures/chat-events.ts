@@ -25,6 +25,7 @@ import {
   insertChatEvent,
   replaceChatEvent,
 } from "../signals/services/zero-chat-event.service";
+import { encryptQueuedUserMessageRunParams } from "../signals/services/zero-chat-queued-event.service";
 import { createChatEventSourcePart } from "../signals/services/chat-event-annotation.service";
 import { createUserMessageDocument } from "../signals/services/zero-chat-user-message.service";
 import { createDeferredPromise, onRejection } from "../signals/utils";
@@ -429,6 +430,46 @@ export async function invalidatePendingChatEventInputParamsFixture(
     .returning({ eventId: chatEventInputParams.eventId });
   if (rows.length !== 1) {
     throw new Error("Expected one pending queue item to become invalid");
+  }
+}
+
+export async function writeLegacyQueuedUserMessageParamsFixture(args: {
+  readonly eventId: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly prompt: string;
+  readonly appendSystemPrompt: string;
+  readonly realAgentInPreview?: boolean;
+  readonly apiStartTime?: number;
+  readonly attachFileMetadata?: typeof chatEventInputParams.$inferInsert.attachFileMetadata;
+}): Promise<void> {
+  const encryptedParams = await encryptQueuedUserMessageRunParams(
+    {
+      version: 1,
+      prompt: args.prompt,
+      appendSystemPrompt: args.appendSystemPrompt,
+      realAgentInPreview: args.realAgentInPreview,
+      apiStartTime: args.apiStartTime,
+    },
+    { orgId: args.orgId, userId: args.userId },
+  );
+  const rows = await db()
+    .insert(chatEventInputParams)
+    .values({
+      eventId: args.eventId,
+      encryptedParams,
+      attachFileMetadata: args.attachFileMetadata,
+    })
+    .onConflictDoUpdate({
+      target: chatEventInputParams.eventId,
+      set: {
+        encryptedParams,
+        attachFileMetadata: args.attachFileMetadata,
+      },
+    })
+    .returning({ eventId: chatEventInputParams.eventId });
+  if (rows.length !== 1) {
+    throw new Error("Expected one pending queue item to receive legacy params");
   }
 }
 

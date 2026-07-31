@@ -88,6 +88,7 @@ import {
   replayPendingChatInputQueueEventFixture,
   replaceBddVm0ApiKeys,
   replaceThreadSessionBindingFixture,
+  writeLegacyQueuedUserMessageParamsFixture,
 } from "../../../test-fixtures/chat-events";
 
 /**
@@ -4758,6 +4759,7 @@ describe("CHAT-02: generation templates and attachments", () => {
         },
       ],
     };
+    chat.mockCompletedUploadObject(actor, fileId, "brief.pdf", 42);
 
     const sent = await sendChatRun(actor, {
       agentId,
@@ -4920,6 +4922,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const fileId = randomUUID();
+    chat.mockCompletedUploadObject(actor, fileId, "api-input.txt", 12);
     const sent = await sendChatRun(actor, {
       agentId,
       prompt: "plain API attachment",
@@ -5442,6 +5445,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const fileId = randomUUID();
     const filename = "diagram final 100%.png";
+    chat.mockCompletedUploadObject(actor, fileId, filename, 42);
 
     const run = await sendChatRun(actor, {
       agentId,
@@ -5517,6 +5521,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
         },
       ],
     };
+    chat.mockCompletedUploadObject(actor, fileId, "ordered.txt", 12);
     const queued = await chat.requestSendEvent(
       actor,
       {
@@ -5587,6 +5592,10 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     const fileId = randomUUID();
     const secondFileId = randomUUID();
     const queuedId = randomUUID();
+    chat.mockCompletedUploadObjects(actor, [
+      { id: fileId, filename: "notes.txt", size: 12 },
+      { id: secondFileId, filename: "details.json", size: 24 },
+    ]);
     const queued = await chat.requestSendEvent(
       actor,
       {
@@ -5613,24 +5622,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
       [201],
     );
     expect(queued.body).toMatchObject({ runId: null });
-    await expect(
-      readChatEventInputParamsFixture(queuedId),
-    ).resolves.toMatchObject({
-      eventId: queuedId,
-      encryptedParams: expect.any(String),
-      attachFileMetadata: [
-        expect.objectContaining({
-          id: fileId,
-          filename: "notes.txt",
-          contentType: "text/plain",
-        }),
-        expect.objectContaining({
-          id: secondFileId,
-          filename: "details.json",
-          contentType: "application/json",
-        }),
-      ],
-    });
+    await expect(readChatEventInputParamsFixture(queuedId)).resolves.toBeNull();
     // Completing the anchor run promotes the queued message into a fresh
     // run whose prompt carries the resolved attachment references.
     chatCallbacks.mockChatOutputEvents([]);
@@ -6084,9 +6076,16 @@ describe("CHAT-02: shared user message queue", () => {
     await cancelChatRun(actor, runId);
   }, 90_000);
 
-  it("preserves real-agent preview mode across queued auto-sends", async () => {
+  it("derives real-agent preview mode when queued messages are claimed", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    const actorWithOrg = { ...actor, orgId: actor.orgId };
+    await updateFeatureSwitchesForUser(context, actorWithOrg, {
+      [FeatureSwitchKey.RealAgentInPreview]: false,
+    });
 
     const anchor = await sendChatRun(actor, {
       agentId,
@@ -6096,6 +6095,12 @@ describe("CHAT-02: shared user message queue", () => {
 
     const previewMessageId = randomUUID();
     const previewFileId = randomUUID();
+    chat.mockCompletedUploadObject(
+      actor,
+      previewFileId,
+      "preview-notes.txt",
+      18,
+    );
     const previewQueued = await chat.requestSendEvent(
       actor,
       {
@@ -6116,22 +6121,9 @@ describe("CHAT-02: shared user message queue", () => {
       [201],
     );
     expect(previewQueued.body).toMatchObject({ runId: null });
-    const previewParams =
-      await readChatEventInputParamsFixture(previewMessageId);
-    expect(previewParams).toMatchObject({
-      eventId: previewMessageId,
-      encryptedParams: expect.any(String),
-      attachFileMetadata: [
-        expect.objectContaining({
-          id: previewFileId,
-          filename: "preview-notes.txt",
-          contentType: "text/plain",
-        }),
-      ],
-    });
-    if (!previewParams) {
-      throw new Error("Expected the original preview queue params");
-    }
+    await expect(
+      readChatEventInputParamsFixture(previewMessageId),
+    ).resolves.toBeNull();
 
     const replayedPreviewMessageId = randomUUID();
     await replayPendingChatInputQueueEventFixture({
@@ -6143,10 +6135,7 @@ describe("CHAT-02: shared user message queue", () => {
     ).resolves.toBeNull();
     await expect(
       readChatEventInputParamsFixture(replayedPreviewMessageId),
-    ).resolves.toStrictEqual({
-      ...previewParams,
-      eventId: replayedPreviewMessageId,
-    });
+    ).resolves.toBeNull();
     const mockMessageId = randomUUID();
     const mockQueued = await chat.requestSendEvent(
       actor,
@@ -6155,6 +6144,7 @@ describe("CHAT-02: shared user message queue", () => {
         threadId: anchor.threadId,
         prompt: "queued preview mock run",
         clientEventId: mockMessageId,
+        realAgentInPreview: true,
       },
       [201],
     );
@@ -6162,6 +6152,10 @@ describe("CHAT-02: shared user message queue", () => {
     await expect(
       readChatEventInputParamsFixture(mockMessageId),
     ).resolves.toBeNull();
+
+    await updateFeatureSwitchesForUser(context, actorWithOrg, {
+      [FeatureSwitchKey.RealAgentInPreview]: true,
+    });
 
     // Terminal callbacks and the cleanup safety sweep use the same queued
     // auto-send builder; finishing the anchor guarantees that builder owns both.
@@ -6197,6 +6191,9 @@ describe("CHAT-02: shared user message queue", () => {
     await expect(
       readChatEventInputParamsFixture(replayedPreviewMessageId),
     ).resolves.toBeNull();
+    await updateFeatureSwitchesForUser(context, actorWithOrg, {
+      [FeatureSwitchKey.RealAgentInPreview]: false,
+    });
     await cancelChatRun(actor, previewRunId, previewClaim.sandboxHeaders);
 
     const mockMessages = await waitForThreadMessages(
@@ -6222,6 +6219,99 @@ describe("CHAT-02: shared user message queue", () => {
     expect(mockClaim.claim.prompt).toBe("queued preview mock run");
     expect(mockClaim.claim.realAgentInPreview).toBeUndefined();
     await cancelChatRun(actor, mockRunId);
+  }, 90_000);
+
+  it("falls back to legacy queued launch fields until the backlog drains", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    const actorWithOrg = { ...actor, orgId: actor.orgId };
+    await updateFeatureSwitchesForUser(context, actorWithOrg, {
+      [FeatureSwitchKey.RealAgentInPreview]: false,
+    });
+
+    const anchor = await sendChatRun(actor, {
+      agentId,
+      prompt: "legacy fallback queue anchor",
+    });
+    const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
+    const messageId = randomUUID();
+    const fileId = randomUUID();
+    const legacyApiStartTime = now() - 30_000;
+    const prompt = "legacy queued launch material";
+    const queued = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt,
+        clientEventId: messageId,
+        attachFiles: [
+          {
+            id: fileId,
+            filename: "legacy.txt",
+            contentType: "text/plain",
+            size: 14,
+          },
+        ],
+      },
+      [201],
+    );
+    expect(queued.body).toMatchObject({ runId: null });
+    await writeLegacyQueuedUserMessageParamsFixture({
+      eventId: messageId,
+      orgId: actor.orgId,
+      userId: actor.userId,
+      prompt,
+      appendSystemPrompt: "",
+      realAgentInPreview: true,
+      apiStartTime: legacyApiStartTime,
+      attachFileMetadata: [
+        {
+          id: fileId,
+          filename: "legacy.txt",
+          contentType: "text/plain",
+          size: 14,
+          objectKey: `artifacts/${actor.userId}/${fileId}/legacy.txt`,
+        },
+      ],
+    });
+
+    chatCallbacks.mockChatOutputEvents([]);
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    const messages = await waitForThreadMessages(
+      actor,
+      anchor.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesEventId === messageId &&
+            typeof message.runId === "string"
+          );
+        });
+      },
+    );
+    const claimedMessage = userMessages(messages.events).find((message) => {
+      return message.revokesEventId === messageId;
+    });
+    const runId = claimedMessage?.runId;
+    if (!claimedMessage || !runId) {
+      throw new Error("Expected the legacy queued message to auto-send");
+    }
+
+    const claim = await claimChatRun(runnerGroup, runId);
+    expect(claim.claim.apiStartTime).toBe(legacyApiStartTime);
+    expect(claim.claim.realAgentInPreview).toBeTruthy();
+    expect(claim.claim.prompt).toContain(`[ID] ${fileId}`);
+    await expect(
+      readChatEventInputParamsFixture(messageId),
+    ).resolves.toBeNull();
+    await expect(
+      readChatEventInputParamsFixture(claimedMessage.id),
+    ).resolves.toBeNull();
+    await cancelChatRun(actor, runId, claim.sandboxHeaders);
   }, 90_000);
 
   it("appends a claimed queued message after messages that are still queued", async () => {

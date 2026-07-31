@@ -17,6 +17,19 @@ setup_file() {
         skip "ANTHROPIC_API_KEY not set — required for real Claude calls"
     fi
 
+    local serial_credentials="/tmp/e2e-api-credentials-serial.json"
+    E2E_API_TOKEN=$(jq -er '.token | select(type == "string" and length > 0)' "$serial_credentials")
+    E2E_API_URL=$(jq -er '.apiUrl | select(type == "string" and length > 0)' "$serial_credentials")
+    export E2E_API_TOKEN E2E_API_URL
+
+    # This file uses the isolated serial identity so its claim-time preview
+    # switch cannot race other runner chunks. Mirror the runner bootstrap's
+    # model-first defaults for that otherwise uninitialized workspace.
+    e2e_api_curl "/api/zero/model-policies" \
+        -X PUT \
+        -d '{"policies":[{"model":"claude-opus-4-7","isDefault":false,"defaultProviderType":"vm0","credentialScope":"org","modelProviderId":null},{"model":"claude-sonnet-4-6","isDefault":true,"defaultProviderType":"vm0","credentialScope":"org","modelProviderId":null},{"model":"deepseek-v4-pro","isDefault":false,"defaultProviderType":"vm0","credentialScope":"org","modelProviderId":null},{"model":"gpt-5.5","isDefault":false,"defaultProviderType":"vm0","credentialScope":"org","modelProviderId":null}]}' \
+        >/dev/null
+
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
     export TEST_DIR="$(mktemp -d)"
     export RUN_AGENT_NAME="e2e-billable-runner-${UNIQUE_ID}"
@@ -85,7 +98,7 @@ teardown_file() {
 }
 
 @test "t54-1: vm0 meta-provider — firewall billable" {
-    zero_chat_run_with_model \
+    with_real_agent_preview_claim zero_chat_run_with_model \
         "$AGENT_ID" \
         "Reply with exactly: DONE" \
         "claude-sonnet-4-6" \

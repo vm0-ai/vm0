@@ -16,6 +16,7 @@ import { runOutputMaterializations } from "@vm0/db/schema/run-output-materializa
 import {
   chatEventTerminalPredicate,
   chatEvents,
+  type ChatEventAttachFileMetadata,
   type ChatEventGenerationTemplate,
   type ChatEventRecommendedFollowups,
   type ChatEventUserMessage,
@@ -138,6 +139,7 @@ import {
   discardUnclaimedUserMessageInTransaction,
   failQueuedUserMessage,
   loadNextUnclaimedQueuedUserMessage,
+  resolveAttachFileMetadata$,
   type QueuedUserMessage,
 } from "./zero-chat-queued-event.service";
 import { handleMorningBriefEmailInternalCallback } from "./internal-morning-brief-run-callback.service";
@@ -402,7 +404,7 @@ type CreatedQueuedRun = {
 
 type CreateQueuedRun = (
   input: CreateQueuedChatRunInput,
-  apiStartTime: number,
+  admissionTime: number,
   signal: AbortSignal,
 ) => Promise<CreatedQueuedRun | null>;
 
@@ -581,6 +583,7 @@ interface CreateQueuedChatRunInput {
     readonly displayName: string;
   } | null;
   readonly triggerSource: QueuedUserMessage["triggerSource"];
+  readonly attachFileMetadata: readonly ChatEventAttachFileMetadata[] | null;
   readonly realAgentInPreview?: boolean;
   readonly slackDelivery?: {
     readonly channelId: string;
@@ -598,7 +601,7 @@ interface CreateQueuedChatRunInput {
     readonly secret: string;
     readonly payload: unknown;
   };
-  readonly apiStartTime?: number;
+  readonly apiStartTime: number;
   readonly userInfoExtras?: {
     readonly slackDisplayName?: string;
     readonly slackUserId?: string;
@@ -746,7 +749,7 @@ function generateCallbackSecret(): string {
 
 function buildQueuedCreateZeroRunArgs(
   input: CreateQueuedChatRunInput,
-  apiStartTime: number,
+  admissionTime: number,
   dispatchFailedCallbacks?: DispatchFailedRunCallbacks,
 ) {
   return {
@@ -756,7 +759,7 @@ function buildQueuedCreateZeroRunArgs(
       orgId: input.orgId,
       orgRole: "member" as const,
     },
-    apiStartTime,
+    apiStartTime: input.apiStartTime,
     chatThreadId: input.threadId,
     computerUseHostId: input.computerUseHostGrant?.hostId,
     modelProviderId: input.modelPin.modelProviderId ?? undefined,
@@ -819,6 +822,10 @@ function buildQueuedCreateZeroRunArgs(
       kind: "user_message" as const,
       threadId: input.threadId,
       eventId: input.queuedMessage.id,
+      orgId: input.orgId,
+      userId: input.userId,
+      admissionTime,
+      attachFileMetadata: input.attachFileMetadata,
       ...(input.morningBriefDelivery
         ? {
             morningBriefDeliveryId: input.morningBriefDelivery.deliveryId,
@@ -2592,6 +2599,12 @@ interface CreateQueuedChatRunInputArgs {
   readonly agent: AgentForAutoSend;
   readonly queuedMessage: QueuedUserMessage;
   readonly timing?: ChatCallbackPreCreateTimingCollector;
+  readonly signal: AbortSignal;
+  readonly resolveAttachFileMetadata: (
+    userId: string,
+    attachFiles: readonly string[] | null,
+    signal: AbortSignal,
+  ) => Promise<ChatEventAttachFileMetadata[] | null>;
 }
 
 function loadQueuedMessageSessionState(
@@ -2780,13 +2793,10 @@ function queuedMessageAdmissionFailure(
 }
 
 function queuedMessageApiStartTime(
-  triggerSource: QueuedUserMessage["triggerSource"],
+  queuedMessage: QueuedUserMessage,
   sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
-): number | undefined {
-  if (triggerSource === "workflow-schedule") {
-    return undefined;
-  }
-  return sourceParams?.apiStartTime;
+): number {
+  return sourceParams?.apiStartTime ?? queuedMessage.createdAt.getTime();
 }
 
 function queuedIntegrationDeliveries(
@@ -2865,6 +2875,14 @@ async function buildCreateQueuedChatRunInput(
 
   const [startNewSession, loadedIncompleteContext, featureSwitchContext] =
     await loadQueuedMessageSessionState(args, modelRoute);
+  const attachFileMetadata = args.queuedMessage.attachFileMetadata
+    ? [...args.queuedMessage.attachFileMetadata]
+    : await args.resolveAttachFileMetadata(
+        args.userId,
+        args.queuedMessage.attachFiles,
+        args.signal,
+      );
+  args.signal.throwIfAborted();
   const inlineTemplatesEnabled = isFeatureEnabled(
     FeatureSwitchKey.StructuredPromptInlineTemplates,
     featureSwitchContext,
@@ -2939,12 +2957,15 @@ async function buildCreateQueuedChatRunInput(
     codexServiceTier: modelRoute.codexServiceTier,
     computerUseHostGrant,
     triggerSource: args.queuedMessage.triggerSource,
-    realAgentInPreview: sourceParams?.realAgentInPreview,
+    attachFileMetadata,
+    realAgentInPreview:
+      sourceParams?.realAgentInPreview ??
+      isFeatureEnabled(
+        FeatureSwitchKey.RealAgentInPreview,
+        featureSwitchContext,
+      ),
     ...queuedIntegrationDeliveries(sourceParams),
-    apiStartTime: queuedMessageApiStartTime(
-      args.queuedMessage.triggerSource,
-      sourceParams,
-    ),
+    apiStartTime: queuedMessageApiStartTime(args.queuedMessage, sourceParams),
     userInfoExtras: sourceParams?.userInfoExtras,
   };
 }
@@ -3417,7 +3438,7 @@ async function handleQueuedMessageAdmissionFailure(args: {
 }
 
 interface AutoSendQueuedMessageArgs {
-  readonly apiStartTime?: number;
+  readonly admissionTime: number;
   readonly createRun: (
     input: CreateQueuedChatRunInput,
   ) => Promise<CreatedQueuedRun | null>;
@@ -3428,6 +3449,7 @@ interface AutoSendQueuedMessageArgs {
   readonly queueItemCreatedBefore?: Date;
   readonly timing: ChatCallbackPreCreateTimingCollector;
   readonly signal: AbortSignal;
+  readonly resolveAttachFileMetadata: CreateQueuedChatRunInputArgs["resolveAttachFileMetadata"];
   readonly formatIntegrationRunError: ChatCallbackDependencies["formatIntegrationRunError"];
   readonly deliverSlackAdmissionFailure: ChatCallbackDependencies["deliverSlackAdmissionFailure"];
   readonly deliverTeamsAdmissionFailure: ChatCallbackDependencies["deliverTeamsAdmissionFailure"];
@@ -3442,8 +3464,22 @@ function chatThreadAdmissionBlockedForAutoSend(
 ): Promise<boolean> {
   return chatThreadAdmissionBlocked(args.db, {
     threadId,
-    apiStartTime: args.apiStartTime,
+    apiStartTime: args.admissionTime,
   });
+}
+
+function autoSendAdmissionBlocked(
+  args: AutoSendQueuedMessageArgs,
+  threadId: string,
+): Promise<boolean> {
+  return measureChatCallbackPreCreateTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_chat_callback_auto_send_check_active_run",
+    "nested",
+    () => {
+      return chatThreadAdmissionBlockedForAutoSend(args, threadId);
+    },
+  );
 }
 
 /**
@@ -3501,20 +3537,15 @@ async function autoSendQueuedMessageForThread(
         agent,
         queuedMessage,
         timing: args.timing,
+        signal: args.signal,
+        resolveAttachFileMetadata: args.resolveAttachFileMetadata,
       });
     },
   );
   if (!runInput) {
     return;
   }
-  const activeRunExists = await measureChatCallbackPreCreateTiming(
-    args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_auto_send_check_active_run",
-    "nested",
-    () => {
-      return chatThreadAdmissionBlockedForAutoSend(args, threadId);
-    },
-  );
+  const activeRunExists = await autoSendAdmissionBlocked(args, threadId);
   if (activeRunExists) {
     return;
   }
@@ -4654,10 +4685,10 @@ const buildChatCallbackDependencies$ = command(
     };
     const dependencies: ChatCallbackDependencies = {
       ...baseDependencies,
-      createQueuedRun: async (runInput, apiStartTime, inputSignal) => {
+      createQueuedRun: async (runInput, admissionTime, inputSignal) => {
         const createArgs = buildQueuedCreateZeroRunArgs(
           runInput,
-          apiStartTime,
+          admissionTime,
           buildQueuedChatDispatchFailedCallbacks({
             dependencies: baseDependencies,
             runInput,
@@ -4753,16 +4784,23 @@ export const drainQueuedUserMessagesForThread$ = command(
     if (!createQueuedRun) {
       return;
     }
-    const apiStartTime = args.apiStartTime ?? now();
+    const admissionTime = args.apiStartTime ?? now();
     await autoSendQueuedMessageForThread({
       db,
       chatThreadId: args.chatThreadId,
-      apiStartTime,
+      admissionTime,
       userId: thread.userId,
       agentId: thread.agentId,
       queueItemCreatedBefore: args.queueItemCreatedBefore,
       timing: args.timing ?? new ChatCallbackPreCreateTimingCollector(),
       signal,
+      resolveAttachFileMetadata: (userId, attachFiles, inputSignal) => {
+        return set(
+          resolveAttachFileMetadata$,
+          { userId, attachFiles },
+          inputSignal,
+        );
+      },
       formatIntegrationRunError: dependencies.formatIntegrationRunError,
       deliverSlackAdmissionFailure: dependencies.deliverSlackAdmissionFailure,
       deliverTeamsAdmissionFailure: dependencies.deliverTeamsAdmissionFailure,
@@ -4776,11 +4814,7 @@ export const drainQueuedUserMessagesForThread$ = command(
           input,
           signal,
           createRun: (runInput) => {
-            return createQueuedRun(
-              runInput,
-              runInput.apiStartTime ?? apiStartTime,
-              signal,
-            );
+            return createQueuedRun(runInput, admissionTime, signal);
           },
         });
       },

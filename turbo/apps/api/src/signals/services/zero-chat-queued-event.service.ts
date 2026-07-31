@@ -1,5 +1,6 @@
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import type { ChatEventType } from "@vm0/api-contracts/contracts/chat-events";
+import { command } from "ccstate";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
@@ -9,6 +10,10 @@ import {
   type ChatEventGenerationTemplate,
   type ChatEventUserMessage,
 } from "@vm0/db/schema/chat-event";
+import {
+  CANONICAL_ASSET_VERSION,
+  runUploadedFiles,
+} from "@vm0/db/schema/run-uploaded-file";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { morningBriefDeliveries } from "@vm0/db/schema/morning-brief";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
@@ -33,7 +38,7 @@ import {
   pgBooleanDecoder,
   pgNullDecoder,
 } from "../../lib/db-structured-result";
-import type { Db } from "../external/db";
+import { db$, type Db } from "../external/db";
 import {
   listPendingChatQueueEvents,
   loadPendingChatQueueEvent,
@@ -63,6 +68,8 @@ import { githubDeliveryTargetSchema } from "./github-chat-callback-payload";
 import { teamsDeliveryTargetSchema } from "./teams-chat-callback-payload";
 import { telegramDeliveryTargetSchema } from "./telegram-chat-callback-payload";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
+import { resolveArtifactObject$ } from "./artifact-storage.service";
+import { attachCanonicalWebInputAssetsToEvent } from "./canonical-asset.service";
 
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
@@ -154,6 +161,7 @@ const queueFirstReplacementTargetFields = {
 
 export interface QueuedUserMessage {
   readonly id: string;
+  readonly createdAt: Date;
   readonly userMessage: ChatEventUserMessage;
   readonly attachFiles: readonly string[] | null;
   readonly attachFileMetadata: readonly ChatEventAttachFileMetadata[] | null;
@@ -179,6 +187,12 @@ export type QueueFirstRunAssociation =
       readonly kind: "user_message";
       readonly threadId: string;
       readonly eventId: string;
+      readonly orgId: string;
+      readonly userId: string;
+      readonly admissionTime: number;
+      readonly attachFileMetadata:
+        | readonly ChatEventAttachFileMetadata[]
+        | null;
       readonly morningBriefDeliveryId?: string;
     }
   | {
@@ -256,6 +270,56 @@ export async function decryptQueuedUserMessageRunParams(
   return queuedUserMessageRunParamsSchema.parse(JSON.parse(raw) as unknown);
 }
 
+export const resolveAttachFileMetadata$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly userId: string;
+      readonly attachFiles: readonly string[] | null;
+    },
+    signal: AbortSignal,
+  ): Promise<ChatEventAttachFileMetadata[] | null> => {
+    if (!args.attachFiles || args.attachFiles.length === 0) {
+      return null;
+    }
+    const db = get(db$);
+    const metadata: ChatEventAttachFileMetadata[] = [];
+    for (const id of args.attachFiles) {
+      const [object, [asset]] = await Promise.all([
+        set(resolveArtifactObject$, { userId: args.userId, id }, signal),
+        db
+          .select({
+            filename: runUploadedFiles.filename,
+            contentType: runUploadedFiles.contentType,
+            size: runUploadedFiles.sizeBytes,
+          })
+          .from(runUploadedFiles)
+          .where(
+            and(
+              eq(runUploadedFiles.userId, args.userId),
+              eq(runUploadedFiles.assetVersion, CANONICAL_ASSET_VERSION),
+              eq(runUploadedFiles.idempotencyScope, "web-input"),
+              eq(runUploadedFiles.idempotencyKey, id),
+            ),
+          )
+          .limit(1),
+      ]);
+      signal.throwIfAborted();
+      if (!object) {
+        throw new Error(`Queued attachment not found: ${id}`);
+      }
+      metadata.push({
+        id,
+        filename: asset?.filename ?? object.filename,
+        contentType: asset?.contentType ?? object.contentType,
+        size: asset?.size ?? object.size,
+        objectKey: object.key,
+      });
+    }
+    return metadata;
+  },
+);
+
 /** Whether the outer ChatEvent row is an unclaimed, unrevoked prompt. */
 export function queuedUserMessageExists(db: Pick<Db, "select">): SQL {
   return exists(
@@ -297,6 +361,7 @@ export async function loadNextUnclaimedQueuedUserMessage(
   const [event] = await db
     .select({
       id: chatEvents.id,
+      createdAt: chatEvents.createdAt,
       userMessage: chatEvents.userMessage,
       attachFiles: chatEvents.attachFiles,
       attachFileMetadata: queuedAttachFileMetadata,
@@ -432,9 +497,7 @@ async function resolveUserQueueFirstClaimSnapshot(
       userMessage: head.userMessage,
       runId: args.runId,
       attachFiles: head.attachFiles ? [...head.attachFiles] : null,
-      attachFileMetadata: head.attachFileMetadata
-        ? [...head.attachFileMetadata]
-        : null,
+      attachFileMetadata: null,
       generationTemplate: head.generationTemplate,
       ...(head.triggerSource ? { triggerSource: head.triggerSource } : {}),
     },
@@ -630,11 +693,11 @@ async function resolveQueueFirstClaimSnapshot(
 
 function queueFirstRunAdmissionBlocked(
   db: DbTransaction,
-  args: { readonly apiStartTime: number; readonly threadId: string },
+  args: { readonly admissionTime: number; readonly threadId: string },
 ): Promise<boolean> {
   return chatThreadAdmissionBlocked(db, {
     threadId: args.threadId,
-    apiStartTime: args.apiStartTime,
+    apiStartTime: args.admissionTime,
   });
 }
 
@@ -646,7 +709,7 @@ function queueFirstRunAdmissionBlocked(
 export async function resolveQueueFirstRunAdmission(
   db: DbTransaction,
   args: {
-    readonly apiStartTime: number;
+    readonly admissionTime: number;
     readonly sessionSnapshotState: QueueFirstRunSessionSnapshotState;
     readonly threadAlreadyLocked?: true;
     readonly threadId: string;
@@ -748,6 +811,20 @@ export async function claimQueueFirstRunAssociation(
         }
         outcome = "lost";
         return { kind: "lost" };
+      }
+      if (
+        args.kind === "user_message" &&
+        "triggerSource" in snapshot.replacement &&
+        snapshot.replacement.triggerSource === "web" &&
+        args.attachFileMetadata
+      ) {
+        await attachCanonicalWebInputAssetsToEvent(db, {
+          eventId: claimed.id,
+          chatThreadId: args.threadId,
+          userId: args.userId,
+          orgId: args.orgId,
+          files: args.attachFileMetadata,
+        });
       }
 
       outcome = "claimed";

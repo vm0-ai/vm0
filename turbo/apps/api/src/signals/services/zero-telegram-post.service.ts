@@ -1841,7 +1841,6 @@ async function persistTelegramChatMessage(args: {
       prompt: args.prompt,
       appendSystemPrompt,
       telegramDelivery: delivery,
-      apiStartTime: args.source.apiStartTime,
       userInfoExtras: args.userInfoExtras,
     },
     {

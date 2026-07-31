@@ -1117,7 +1117,7 @@ describe("CHAT-02: completed chat callback", () => {
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
 
-  it("uses the dequeue API start when a queued message auto-sends", async () => {
+  it("uses the queued event creation time when a message auto-sends", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -1134,7 +1134,7 @@ describe("CHAT-02: completed chat callback", () => {
       clearMockNow();
     });
 
-    await queueChatEvent(actor, {
+    const queuedEventId = await queueChatEvent(actor, {
       agentId,
       threadId: first.threadId,
       prompt: queuedPrompt,
@@ -1169,10 +1169,17 @@ describe("CHAT-02: completed chat callback", () => {
     if (!claimed?.runId) {
       throw new Error("Expected the queued Web message to auto-send");
     }
+    const queuedMessage = userMessages(afterAutoSend.events).find((message) => {
+      return message.id === queuedEventId;
+    });
+    if (!queuedMessage) {
+      throw new Error("Expected the original queued Web message");
+    }
+    const apiStartedAt = Date.parse(queuedMessage.createdAt);
 
     const acknowledgedAt = dequeuedAt + 7000;
     const secondClaim = await claimChatRunJob(runnerGroup, claimed.runId);
-    expect(secondClaim.apiStartTime).toBe(dequeuedAt);
+    expect(secondClaim.apiStartTime).toBe(apiStartedAt);
     const secondHeaders = {
       authorization: `Bearer ${secondClaim.sandboxToken}`,
     };
@@ -1201,7 +1208,7 @@ describe("CHAT-02: completed chat callback", () => {
     expect(firstAssistantEventsForRun(claimed.runId)).toStrictEqual([
       expect.objectContaining({
         _time: new Date(acknowledgedAt).toISOString(),
-        duration_ms: acknowledgedAt - dequeuedAt,
+        duration_ms: acknowledgedAt - apiStartedAt,
         run_id: claimed.runId,
       }),
     ]);

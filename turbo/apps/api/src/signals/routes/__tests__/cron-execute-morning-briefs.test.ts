@@ -1643,7 +1643,7 @@ describe("cron execute morning briefs", () => {
       throw new Error("Expected the old-format queue item to drain");
     }
     await expect(readRunApiStart(context, claimed.runId)).resolves.toBe(
-      new Date(AFTER_SEVEN_LOCAL).toISOString(),
+      new Date(BEFORE_SEVEN_LOCAL).toISOString(),
     );
     const runInput = await completeMorningBriefRun(scenario, claimed.runId, 0);
     expect(runInput.prompt).toBe(realPrompt);

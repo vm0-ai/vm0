@@ -5858,7 +5858,10 @@ async function resolveQueueFirstAdmissionForLaunch(args: {
     throw new Error("Queue-first association must match the run chat thread");
   }
   return await resolveQueueFirstRunAdmission(args.tx, {
-    apiStartTime: args.createArgs.apiStartTime,
+    admissionTime:
+      association.kind === "user_message"
+        ? association.admissionTime
+        : args.createArgs.apiStartTime,
     sessionSnapshotState: args.sessionSnapshotState,
     threadId: association.threadId,
     timing: args.timing,

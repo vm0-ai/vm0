@@ -1568,7 +1568,6 @@ async function persistAgentPhoneChatMessage(args: {
         args.threadContext,
       ),
       agentphoneDelivery: agentPhoneDeliveryTarget(args),
-      apiStartTime: args.apiStartTime,
       userInfoExtras: args.userInfoExtras,
     },
     {
