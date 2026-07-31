@@ -41,7 +41,7 @@ export function deriveServiceOrigin(
 }
 
 export function deriveAppUrl(sourceUrl: string): string {
-  return process.env.VM0_APP_URL ?? deriveServiceOrigin(sourceUrl, "app");
+  return process.env.ZERO_APP_URL ?? deriveServiceOrigin(sourceUrl, "app");
 }
 
 export const STORAGE_STATE = path.join(__dirname, ".auth/storage-state.json");

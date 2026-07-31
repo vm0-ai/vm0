@@ -46,9 +46,15 @@ export function toPlatformUrl(apiUrl: string): URL {
 }
 
 export async function getPlatformOrigin(): Promise<string> {
-  const appUrl = process.env.VM0_APP_URL;
+  const appUrl = process.env.ZERO_APP_URL;
   if (appUrl) {
     return new URL(appUrl).origin;
+  }
+
+  // Keep the previous direct-CLI override until ZERO_APP_URL adoption is complete.
+  const legacyAppUrl = process.env.VM0_APP_URL;
+  if (legacyAppUrl) {
+    return new URL(legacyAppUrl).origin;
   }
 
   const apiUrl = await getApiUrl();
