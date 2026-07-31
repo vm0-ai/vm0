@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { clearMockNow, mockNow, now, nowDate } from "../time";
+import {
+  clearMockNow,
+  mockNow,
+  now,
+  nowDate,
+  withMockNowForTest,
+  withNowScopeForTest,
+} from "../time";
 
 describe("time", () => {
   it("returns a mocked timestamp", () => {
@@ -29,5 +36,40 @@ describe("time", () => {
     clearMockNow();
 
     expect(now()).not.toBe(123);
+  });
+
+  it("isolates scoped clocks across concurrent async work", async () => {
+    const [first, second] = await Promise.all([
+      withMockNowForTest(123, async () => {
+        await Promise.resolve();
+        mockNow(124);
+        await Promise.resolve();
+        return now();
+      }),
+      withMockNowForTest(456, async () => {
+        await Promise.resolve();
+        expect(now()).toBe(456);
+        await Promise.resolve();
+        return now();
+      }),
+    ]);
+
+    expect(first).toBe(124);
+    expect(second).toBe(456);
+  });
+
+  it("isolates a real-time scope from the legacy global override", async () => {
+    mockNow(123);
+
+    await withNowScopeForTest(async () => {
+      expect(now()).not.toBe(123);
+      mockNow(456);
+      await Promise.resolve();
+      expect(now()).toBe(456);
+      clearMockNow();
+      expect(now()).not.toBe(123);
+    });
+
+    expect(now()).toBe(123);
   });
 });
