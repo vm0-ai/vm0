@@ -13,6 +13,7 @@ import http_network_log
 import matching
 import registry
 from logging_utils import log_proxy_entry
+from runtime_url_parsing import split_runtime_url
 from url_utils import AuthorityValidationError
 
 _BUILTIN_HOST_POLICY_DENIED_ERROR: Final = "builtin_host_policy_denied"
@@ -238,7 +239,7 @@ def set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallBl
         result.permissions[0] if len(result.permissions) == 1 else ""
     )
     original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
-    diagnostic_parts = urllib.parse.urlsplit(original_url)
+    diagnostic_parts = split_runtime_url(original_url)
     diagnostic_url = urllib.parse.urlunsplit(
         (diagnostic_parts.scheme, diagnostic_parts.netloc, diagnostic_parts.path, "", "")
     )
@@ -285,7 +286,7 @@ def set_firewall_ambiguous_response(
     flow.metadata[metadata_keys.CONNECTOR_ROUTE_REASON] = result.reason
     flow.metadata[metadata_keys.CONNECTOR_ROUTE_CANDIDATES] = candidates
     original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
-    diagnostic_parts = urllib.parse.urlsplit(original_url)
+    diagnostic_parts = split_runtime_url(original_url)
     diagnostic_url = urllib.parse.urlunsplit(
         (diagnostic_parts.scheme, diagnostic_parts.netloc, diagnostic_parts.path, "", "")
     )

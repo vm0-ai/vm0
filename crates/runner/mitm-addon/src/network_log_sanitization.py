@@ -2,6 +2,8 @@
 
 import urllib.parse
 
+from runtime_url_parsing import split_runtime_url
+
 _URLSPLIT_LEADING_STRIP_CHARACTERS = "".join(chr(codepoint) for codepoint in range(0x21))
 _URLSPLIT_REMOVABLE_CHARACTERS = "\t\r\n"
 _SPECIAL_URL_SCHEMES = ("http", "https")
@@ -86,7 +88,7 @@ def sanitize_url_for_network_log(value: str) -> str:
     """
     normalized_value = _normalize_for_urlsplit(value)
     try:
-        parts = urllib.parse.urlsplit(normalized_value)
+        parts = split_runtime_url(normalized_value)
     except ValueError:
         return _sanitize_url_text_fallback_for_network_log(normalized_value)
 

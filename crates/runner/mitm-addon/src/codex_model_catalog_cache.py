@@ -17,6 +17,7 @@ from mitmproxy import http
 
 import body_decoding
 import flow_metadata
+from runtime_url_parsing import split_runtime_url
 
 FRESH_SECONDS = 60.0
 MAX_ENTRY_BYTES = 1024 * 1024
@@ -208,7 +209,7 @@ def _credential_digest(flow: http.HTTPFlow) -> bytes | None:
 
 def _split_expected_url(original_url: str) -> urllib.parse.SplitResult | None:
     try:
-        parsed = urllib.parse.urlsplit(original_url)
+        parsed = split_runtime_url(original_url)
         port = parsed.port
     except ValueError:
         return None
