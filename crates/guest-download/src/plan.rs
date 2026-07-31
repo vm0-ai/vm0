@@ -182,7 +182,7 @@ fn append_storage_download_tasks(tasks: &mut Vec<DownloadTask>, entries: &[Stora
             ),
             url.clone(),
             download_mount_path.to_string(),
-            entry.instructions_target_filename.as_deref(),
+            entry.instructions_target_filename.is_some(),
         ));
     }
 }
@@ -319,7 +319,7 @@ mod tests {
                 "storage 1 mountPath=/data vasStorageName=data vasVersionId=storage-v1 urlScheme=https cached=false".into(),
                 "https://s3/storage.tar.gz".into(),
                 "/data".into(),
-                None,
+                false,
             )
         );
         assert_eq!(
@@ -434,7 +434,7 @@ mod tests {
                 "storage 1 mountPath=/home/user/.codex vasStorageName=unknown vasVersionId=unknown urlScheme=https cached=false".into(),
                 "https://s3/instructions.tar.gz".into(),
                 "/home/user/.vm0/guest-agent/runs/run-1/storage-instructions/0".into(),
-                Some("AGENTS.md"),
+                true,
             )
         );
     }
@@ -460,7 +460,7 @@ mod tests {
                 "storage 1 mountPath=/data vasStorageName=unknown vasVersionId=unknown urlScheme=https cached=false".into(),
                 "https://s3/data.tar.gz".into(),
                 "/data".into(),
-                None,
+                false,
             )
         );
     }
@@ -549,7 +549,7 @@ mod tests {
                 ),
                 "https://s3/storage.tar.gz".into(),
                 mount_path,
-                None,
+                false,
             )],
         );
     }
