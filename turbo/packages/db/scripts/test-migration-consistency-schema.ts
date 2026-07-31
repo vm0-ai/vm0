@@ -11817,6 +11817,259 @@ async function validateChatAutomationContextBackfill(): Promise<void> {
   }
 }
 
+async function validateChatGoalContextBackfill(): Promise<void> {
+  console.log("=== Validate chat goal context backfill ===\n");
+  const testDb = "migration_chat_goal_context_backfill_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const agentComposeId = "00000000-0000-4000-8000-000000077601";
+  const threadId = "00000000-0000-4000-8000-000000077602";
+  const goalId = "00000000-0000-4000-8000-000000077603";
+  const contextId = "00000000-0000-4000-8000-000000077610";
+  const claimedEventId = "00000000-0000-4000-8000-000000077611";
+  const rejectedEventId = "00000000-0000-4000-8000-000000077612";
+  const runId = "00000000-0000-4000-8000-000000077613";
+  const objectiveBrief = "Preserve one objective snapshot across the chain";
+
+  const migrationSql = await fs.readFile(
+    path.join(MIGRATIONS_DIR, "0776_add_chat_goal_context.sql"),
+    "utf8",
+  );
+  assert.doesNotMatch(migrationSql, /\bLOCK TABLE\b/u);
+  assert.match(migrationSql, /\brevokes_event_id\b/u);
+  assert.doesNotMatch(migrationSql, /\brevokes_message_id\b/u);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 775);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES (
+            $1,
+            'goal-context-test-user',
+            'goal-context-test',
+            'goal-context-test-org'
+          )
+        `,
+        [agentComposeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id",
+            "user_id",
+            "agent_compose_id",
+            "title"
+          )
+          VALUES (
+            $1,
+            'goal-context-test-user',
+            $2,
+            'goal context test'
+          )
+        `,
+        [threadId, agentComposeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "run_id",
+            "run_group_id",
+            "event_type",
+            "user_message",
+            "error",
+            "goal_snapshot",
+            "revokes_event_id",
+            "seq_id",
+            "created_at"
+          )
+          VALUES
+            (
+              $2,
+              $1,
+              NULL,
+              $5,
+              'input.goal',
+              NULL,
+              NULL,
+              jsonb_build_object('objectiveBrief', $6::text),
+              NULL,
+              1,
+              '2026-07-31 00:00:00'
+            ),
+            (
+              $3,
+              $1,
+              $7,
+              $5,
+              'input.prompt',
+              '{"version":1,"parts":[{"type":"text","text":"Claimed goal"}]}'::jsonb,
+              NULL,
+              jsonb_build_object('objectiveBrief', $6::text),
+              $2,
+              2,
+              '2026-07-31 00:00:01'
+            ),
+            (
+              $4,
+              $1,
+              NULL,
+              $5,
+              'input.rejected',
+              '{"version":1,"parts":[{"type":"text","text":"Rejected goal"}]}'::jsonb,
+              'Goal run rejected',
+              jsonb_build_object('objectiveBrief', $6::text),
+              $3,
+              3,
+              '2026-07-31 00:00:02'
+            )
+        `,
+        [
+          threadId,
+          contextId,
+          claimedEventId,
+          rejectedEventId,
+          goalId,
+          objectiveBrief,
+          runId,
+        ],
+      );
+
+      await applyMigrationsUpTo(client, 776);
+
+      const contexts = await client.query<{
+        chatThreadId: string;
+        id: string;
+        objectiveBrief: string;
+      }>(`
+        SELECT
+          "id",
+          "chat_thread_id" AS "chatThreadId",
+          "objective_brief" AS "objectiveBrief"
+        FROM "chat_goal_context"
+        ORDER BY "id"
+      `);
+      assert.deepEqual(contexts.rows, [
+        {
+          id: contextId,
+          chatThreadId: threadId,
+          objectiveBrief,
+        },
+      ]);
+
+      const pointers = await client.query<{
+        contextId: string | null;
+        contextType: string | null;
+        id: string;
+      }>(
+        `
+          SELECT
+            "id",
+            "context_type" AS "contextType",
+            "context_id" AS "contextId"
+          FROM "chat_events"
+          WHERE "id" IN ($1, $2, $3)
+          ORDER BY "seq_id"
+        `,
+        [contextId, claimedEventId, rejectedEventId],
+      );
+      assert.deepEqual(pointers.rows, [
+        { id: contextId, contextType: "goal", contextId },
+        { id: claimedEventId, contextType: "goal", contextId },
+        { id: rejectedEventId, contextType: "goal", contextId },
+      ]);
+
+      const foreignKeys = await client.query<{
+        columnName: string;
+        deleteRule: string;
+        referencedTable: string;
+      }>(`
+        SELECT
+          "kcu"."column_name" AS "columnName",
+          "rc"."delete_rule" AS "deleteRule",
+          "ccu"."table_name" AS "referencedTable"
+        FROM "information_schema"."table_constraints" AS "tc"
+        INNER JOIN "information_schema"."key_column_usage" AS "kcu"
+          ON "tc"."constraint_name" = "kcu"."constraint_name"
+          AND "tc"."constraint_schema" = "kcu"."constraint_schema"
+        INNER JOIN "information_schema"."referential_constraints" AS "rc"
+          ON "tc"."constraint_name" = "rc"."constraint_name"
+          AND "tc"."constraint_schema" = "rc"."constraint_schema"
+        INNER JOIN "information_schema"."constraint_column_usage" AS "ccu"
+          ON "rc"."unique_constraint_name" = "ccu"."constraint_name"
+          AND "rc"."unique_constraint_schema" = "ccu"."constraint_schema"
+        WHERE "tc"."table_schema" = 'public'
+          AND "tc"."table_name" = 'chat_goal_context'
+          AND "tc"."constraint_type" = 'FOREIGN KEY'
+        ORDER BY "kcu"."column_name"
+      `);
+      assert.deepEqual(foreignKeys.rows, [
+        {
+          columnName: "chat_thread_id",
+          deleteRule: "CASCADE",
+          referencedTable: "chat_threads",
+        },
+      ]);
+
+      const indexes = await client.query<{ indexName: string }>(`
+        SELECT "indexname" AS "indexName"
+        FROM "pg_indexes"
+        WHERE "schemaname" = 'public'
+          AND "tablename" = 'chat_goal_context'
+        ORDER BY "indexname"
+      `);
+      assert.deepEqual(indexes.rows, [{ indexName: "chat_goal_context_pkey" }]);
+
+      await expectDatabaseError(client, {
+        code: "23502",
+        messageIncludes: "objective_brief",
+        query: `
+          INSERT INTO "chat_goal_context" (
+            "chat_thread_id",
+            "objective_brief"
+          )
+          VALUES ($1, NULL)
+        `,
+        values: [threadId],
+      });
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_events",
+        query: `
+          UPDATE "chat_events"
+          SET "context_id" = NULL
+          WHERE "id" = $1
+        `,
+        rowId: contextId,
+      });
+
+      await client.query(`DELETE FROM "chat_threads" WHERE "id" = $1`, [
+        threadId,
+      ]);
+      const remainingContexts = await client.query<{ count: string }>(`
+        SELECT count(*)::text AS "count"
+        FROM "chat_goal_context"
+      `);
+      assert.deepEqual(remainingContexts.rows, [{ count: "0" }]);
+
+      console.log(
+        "   ✅ One goal context backfills across a three-row revoke chain",
+      );
+      console.log(
+        "   ✅ Goal context has no secondary index and cascades only with its thread\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateGithubIssueSessionContraction(): Promise<void> {
   console.log("=== Validate legacy GitHub issue session contraction ===\n");
   const testDb = "migration_github_issue_session_contraction_test";
@@ -13030,6 +13283,7 @@ async function main(): Promise<void> {
     await validateGithubIssueSessionContraction();
     await validateChatDisplayContextBackfill();
     await validateChatAutomationContextBackfill();
+    await validateChatGoalContextBackfill();
     await validateOrgPlanEntitlementBackfill();
     await validateModelObservationContractCleanup();
     await validateChatEventTypeBackfillAndContract();

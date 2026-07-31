@@ -5433,6 +5433,13 @@
       "when": 1785458655096,
       "tag": "0775_supreme_tarantula",
       "breakpoints": true
+    },
+    {
+      "idx": 776,
+      "version": "7",
+      "when": 1785464060617,
+      "tag": "0776_add_chat_goal_context",
+      "breakpoints": true
     }
   ]
 }

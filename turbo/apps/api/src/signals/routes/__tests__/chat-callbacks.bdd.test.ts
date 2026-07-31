@@ -28,6 +28,7 @@ import {
   holdCheckpointReadsFixture,
   holdChatEventInsertTransactionFixture,
   invalidatePendingChatEventInputParamsFixture,
+  readChatEventContextFixture,
   removeAcknowledgedCancellationLifecycleFixture,
 } from "../../../test-fixtures/chat-events";
 import { testContext } from "../../../__tests__/test-context";
@@ -1691,6 +1692,9 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     expect(paused.body.status).toBe("paused");
     const [goalEventId] = await goalQueueEventIds(first.threadId);
     expect(goalEventId).toBeDefined();
+    if (!goalEventId) {
+      throw new Error("Expected the invalidated goal queue event");
+    }
     releaseRunPreparation.release();
 
     const events = await waitForThreadMessages(
@@ -1724,6 +1728,18 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       throw new Error("Expected the invalidated goal event to be rejected");
     }
     expect(chatEventDisplayText(rejected)).toBe(objectiveBrief);
+    const admittedContext = await readChatEventContextFixture(goalEventId);
+    const rejectedContext = await readChatEventContextFixture(rejected.id);
+    expect(admittedContext).toMatchObject({
+      contextType: "goal",
+      contextId: expect.any(String),
+      goalObjectiveBrief: objectiveBrief,
+    });
+    expect(rejectedContext).toMatchObject({
+      contextType: "goal",
+      contextId: admittedContext?.contextId,
+      goalObjectiveBrief: objectiveBrief,
+    });
     await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
   }, 90_000);
 
