@@ -5419,6 +5419,13 @@
       "when": 1785455456136,
       "tag": "0773_delete_historical_cli_runs",
       "breakpoints": true
+    },
+    {
+      "idx": 774,
+      "version": "7",
+      "when": 1785456385514,
+      "tag": "0774_drop_legacy_chat_event_seq_allocator",
+      "breakpoints": true
     }
   ]
 }

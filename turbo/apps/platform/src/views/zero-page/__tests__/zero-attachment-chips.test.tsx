@@ -789,6 +789,60 @@ describe("zero attachment chips", () => {
     ).toBeTruthy();
   });
 
+  it("keeps the user image preview frame stable while the image loads", async () => {
+    const imageUrl = "https://cdn.vm7.io/artifacts/test/stable-photo/photo.png";
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-stable-photo",
+          role: "user",
+          content: "Review this image",
+          attachFiles: [
+            {
+              id: "attachment-stable-photo",
+              filename: "photo.png",
+              contentType: "image/png",
+              size: 2048,
+              url: imageUrl,
+            },
+          ],
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    const image = await screen.findByAltText("photo.png");
+    const preview = image.closest("a");
+    if (!preview) {
+      throw new Error("Chat image preview link not found");
+    }
+    const spacer = preview.querySelector('span[aria-hidden="true"]');
+    expect(preview).toHaveClass(
+      "relative",
+      "inline-flex",
+      "aspect-[10/9]",
+      "w-[50px]",
+    );
+    expect(spacer).toHaveClass("block", "h-full", "w-full");
+    expect(
+      within(preview).getByTestId("chat-image-preview-loading"),
+    ).toHaveClass("absolute", "inset-0");
+    expect(image).toHaveClass("absolute", "inset-0", "opacity-0");
+
+    fireEvent.load(image);
+
+    await waitFor(() => {
+      expect(
+        within(preview).queryByTestId("chat-image-preview-loading"),
+      ).not.toBeInTheDocument();
+    });
+    expect(preview.querySelector('span[aria-hidden="true"]')).toBe(spacer);
+    expect(image).not.toHaveClass("opacity-0");
+  });
+
   it("renders a canonical Slack input with the standard attachment UI", async () => {
     const assetId = "a0000000-0000-4000-a000-000000000051";
     mockChatLifecycle(context, {
@@ -2344,9 +2398,29 @@ describe("zero attachment chips", () => {
     if (!preview) {
       throw new Error("Markdown image preview button not found");
     }
+    const spacer = preview.querySelector('span[aria-hidden="true"]');
+    expect(preview).toHaveClass(
+      "relative",
+      "inline-flex",
+      "aspect-[10/9]",
+      "w-[200px]",
+    );
+    expect(spacer).toHaveClass("block", "h-full", "w-full");
+    expect(
+      within(preview).getByTestId("markdown-image-preview-loading"),
+    ).toHaveClass("absolute", "inset-0");
     expect(image).toHaveAttribute("src", imageUrl);
+    expect(image).toHaveClass("absolute", "inset-0", "opacity-0");
 
     fireEvent.load(image);
+
+    await waitFor(() => {
+      expect(
+        within(preview).queryByTestId("markdown-image-preview-loading"),
+      ).not.toBeInTheDocument();
+    });
+    expect(preview.querySelector('span[aria-hidden="true"]')).toBe(spacer);
+    expect(image).not.toHaveClass("opacity-0");
     click(preview);
 
     const lightbox = await screen.findByTestId("attachment-lightbox");
