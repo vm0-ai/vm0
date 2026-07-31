@@ -114,6 +114,7 @@ export async function mutateRunnerJobConnectorPermissionBaseline(
   mode:
     | "remove"
     | "malformed"
+    | "legacy-capability"
     | "catalog-mismatch"
     | "authority-mismatch"
     | "inconsistent"
