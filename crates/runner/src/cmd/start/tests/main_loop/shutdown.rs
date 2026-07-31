@@ -216,6 +216,69 @@ async fn dns_stderr_read_error_stops_runner_and_kills_child() {
 }
 
 #[tokio::test]
+async fn dns_monitor_task_panic_stops_runner_and_cancels_active_job() {
+    let wait_gate = sandbox_mock::MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    let (mut config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
+    let (_stdin, pid, starttime) = install_controllable_dns(&mut config).await;
+    let panic_trigger = config
+        .shutdown
+        .dns_handle
+        .replace_monitor_with_panic_trigger_for_test()
+        .await;
+    let run_handle = tokio::spawn(run(config));
+
+    wait_discover_entered(&env, Duration::from_secs(2)).await;
+    let run_id = RunId::new_v4();
+    push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+    let token = wait_cancel_token(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+    wait_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("wait_process should enter the lifecycle gate");
+
+    assert!(
+        env.handle
+            .wait_heartbeat_in_flight(0, Duration::from_secs(2))
+            .await,
+        "ordinary heartbeats should be idle before the DNS monitor panic",
+    );
+    env.handle.block_heartbeats();
+    panic_trigger.notify_one();
+
+    tokio::time::timeout(Duration::from_secs(2), token.cancelled())
+        .await
+        .expect("DNS monitor panic should cancel the active job");
+    assert!(
+        env.cancel.is_cancelled(),
+        "DNS monitor panic should stop discovery",
+    );
+    assert!(
+        env.handle
+            .wait_heartbeat_in_flight(1, Duration::from_secs(2))
+            .await,
+        "DNS monitor panic should drive runner teardown",
+    );
+    assert!(
+        !run_handle.is_finished(),
+        "blocked final heartbeat should hold teardown open",
+    );
+    assert_child_reaped("dns", pid, starttime).await;
+
+    env.handle.unblock_heartbeats();
+    assert_run_error_contains(run_handle, "dns monitor task failed").await;
+    wait_cancel_token_removed(&env.cancel_tokens, run_id, Duration::from_secs(5)).await;
+
+    let completions = env.handle.completions.lock().unwrap();
+    let completion = completions
+        .iter()
+        .find(|completion| completion.run_id == run_id)
+        .expect("cancelled job should report completion");
+    assert_eq!(completion.error.as_deref(), Some("cancelled by user"));
+}
+
+#[tokio::test]
 async fn normal_shutdown_cancels_dns_and_reaps_child_without_error() {
     let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let (_stdin, pid, starttime) = install_controllable_dns(&mut config).await;

@@ -130,6 +130,47 @@ impl DnsProxy {
     ) -> std::io::Result<Self> {
         Self::from_started_child(child, 0, network_log_manager).await
     }
+
+    /// Replace the stderr monitor with a task that panics when triggered.
+    #[cfg(test)]
+    pub(crate) async fn replace_monitor_with_panic_trigger_for_test(
+        &mut self,
+    ) -> std::sync::Arc<tokio::sync::Notify> {
+        let task = self.task.take().expect("DNS monitor task should exist");
+        task.abort();
+        let error = task
+            .await
+            .expect_err("aborted DNS monitor task should return a join error");
+        assert!(
+            error.is_cancelled(),
+            "aborted DNS monitor task should be cancelled: {error}",
+        );
+
+        let token = self.cancel.clone();
+        let trigger = std::sync::Arc::new(tokio::sync::Notify::new());
+        let task_trigger = std::sync::Arc::clone(&trigger);
+        let (drain, mut drain_rx) = NetworkLogDrainProducer::channel("dns");
+        self.drain = drain;
+        self.task = Some(tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = token.cancelled() => {
+                        return DrainableLineReaderExit::Cancelled;
+                    }
+                    request = drain_rx.recv() => {
+                        let Some(request) = request else {
+                            return DrainableLineReaderExit::DrainChannelClosed;
+                        };
+                        request.ack();
+                    }
+                    _ = task_trigger.notified() => {
+                        panic!("simulated DNS monitor task panic");
+                    }
+                }
+            }
+        }));
+        trigger
+    }
 }
 
 impl Drop for DnsProxy {
