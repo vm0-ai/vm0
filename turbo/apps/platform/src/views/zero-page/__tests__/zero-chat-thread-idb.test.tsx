@@ -37,6 +37,55 @@ const USER_MESSAGE = "Summarize the launch plan";
 const ASSISTANT_MESSAGE = "Here is the result";
 const IDB_USER_ID = "zero-chat-thread-idb-user";
 const IDB_ORG_ID = "zero-chat-thread-idb-org";
+const CHAT_VIEWPORT_HEIGHT = 300;
+const CHAT_SCROLL_HEIGHT = 1000;
+
+function isChatScrollContainer(element: HTMLElement): boolean {
+  return Object.hasOwn(element.dataset, "scrollContainer");
+}
+
+function installChatScrollLayout(): void {
+  const scrollTopByContainer = new WeakMap<HTMLElement, number>();
+
+  vi.spyOn(HTMLElement.prototype, "scrollTop", "get").mockImplementation(
+    function getScrollTop(this: HTMLElement): number {
+      if (!isChatScrollContainer(this)) {
+        return 0;
+      }
+      return scrollTopByContainer.get(this) ?? 0;
+    },
+  );
+  vi.spyOn(HTMLElement.prototype, "scrollTop", "set").mockImplementation(
+    function setScrollTop(this: HTMLElement, value: number): void {
+      if (!isChatScrollContainer(this)) {
+        return;
+      }
+      const maxScrollTop = CHAT_SCROLL_HEIGHT - CHAT_VIEWPORT_HEIGHT;
+      scrollTopByContainer.set(
+        this,
+        Math.max(0, Math.min(value, maxScrollTop)),
+      );
+    },
+  );
+  vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockImplementation(
+    function getScrollHeight(this: HTMLElement): number {
+      return isChatScrollContainer(this) ? CHAT_SCROLL_HEIGHT : 0;
+    },
+  );
+  vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockImplementation(
+    function getClientHeight(this: HTMLElement): number {
+      return isChatScrollContainer(this) ? CHAT_VIEWPORT_HEIGHT : 0;
+    },
+  );
+}
+
+function chatScrollContainer(): HTMLElement {
+  const container = document.querySelector("[data-scroll-container]");
+  if (!(container instanceof HTMLElement)) {
+    throw new Error("Chat scroll container not found");
+  }
+  return container;
+}
 
 async function primeRuntimeChatDb(): Promise<
   Awaited<ReturnType<typeof openChatIdb>>
@@ -224,6 +273,54 @@ describe("zero chat thread IndexedDB fallback", () => {
       await expect(
         screen.findByText("Cached initial deck"),
       ).resolves.toBeInTheDocument();
+    } finally {
+      if (!releaseCatchUp.settled()) {
+        releaseCatchUp.resolve();
+      }
+      runtimeDb.close();
+    }
+  });
+
+  it("scrolls cached messages to the bottom while remote catch-up is blocked", async () => {
+    prepareDefaultAgent();
+    mockCurrentThreadDetail();
+    mockSidebarThread();
+    installChatScrollLayout();
+
+    const runtimeDb = await primeRuntimeChatDb();
+    for (let index = 0; index < 8; index++) {
+      await runtimeDb.put(CHAT_MESSAGES_STORE, {
+        id: `cached-scroll-message-${index}`,
+        threadId: THREAD_ID,
+        eventType: "output.message",
+        content: `Cached scroll message ${index}`,
+        runId: `cached-scroll-run-${index}`,
+        seqId: index + 1,
+        createdAt: new Date(Date.UTC(2026, 2, 10, 0, index)).toISOString(),
+      });
+    }
+
+    const catchUpRequested = context.mocks.deferred<void>();
+    const releaseCatchUp = context.mocks.deferred<void>();
+    context.mocks.api(chatThreadEventsContract.list, async ({ respond }) => {
+      catchUpRequested.resolve();
+      await releaseCatchUp.promise;
+      return respond(200, { events: [] });
+    });
+
+    try {
+      setupChatPage();
+      await catchUpRequested.promise;
+      await expect(
+        screen.findByText("Cached scroll message 7"),
+      ).resolves.toBeInTheDocument();
+
+      await waitFor(() => {
+        expect(releaseCatchUp.settled()).toBeFalsy();
+        expect(chatScrollContainer().scrollTop).toBe(
+          CHAT_SCROLL_HEIGHT - CHAT_VIEWPORT_HEIGHT,
+        );
+      });
     } finally {
       if (!releaseCatchUp.settled()) {
         releaseCatchUp.resolve();
