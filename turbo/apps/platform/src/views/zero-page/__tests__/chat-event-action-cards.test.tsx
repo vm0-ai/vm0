@@ -796,11 +796,9 @@ describe("chat event action cards", () => {
     expect(
       within(sidebar).getByText(/bcc hidden@example\.com/u),
     ).toBeInTheDocument();
-    expect(
-      within(sidebar).getByRole("link", { name: "Open in Gmail" }),
-    ).toHaveAttribute(
+    expect(linkByText("Open in Gmail", sidebar)).toHaveAttribute(
       "href",
-      "https://mail.google.com/mail/u/sender%40example.com/#drafts?compose=gmail-message-id",
+      "https://mail.google.com/mail/?authuser=sender%40example.com#drafts?compose=gmail-message-id",
     );
     const messageSection = sidebar.querySelector<HTMLElement>(
       "[data-feedback-source]",
@@ -933,11 +931,9 @@ describe("chat event action cards", () => {
       sidebar = screen.getByTestId("mail-draft-sidebar");
       expect(within(sidebar).getByText("Sent")).toBeInTheDocument();
     });
-    expect(
-      within(sidebar).getByRole("link", { name: "Open in Gmail" }),
-    ).toHaveAttribute(
+    expect(linkByText("Open in Gmail", sidebar)).toHaveAttribute(
       "href",
-      "https://mail.google.com/mail/u/sender%40example.com/#all/gmail-thread-id",
+      "https://mail.google.com/mail/?authuser=sender%40example.com#all/gmail-thread-id",
     );
     expect(queryButtonByText("Send", sidebar)).toBeNull();
     const sentMessageSection = sidebar.querySelector<HTMLElement>(

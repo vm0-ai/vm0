@@ -1124,8 +1124,8 @@ function MailDraftDetail({
   const gmailAccount = encodeURIComponent(draft.from);
   const openInGmail =
     draft.status === "draft"
-      ? `https://mail.google.com/mail/u/${gmailAccount}/#drafts?compose=${encodeURIComponent(draft.gmailMessageId)}`
-      : `https://mail.google.com/mail/u/${gmailAccount}/#all/${encodeURIComponent(draft.gmailThreadId)}`;
+      ? `https://mail.google.com/mail/?authuser=${gmailAccount}#drafts?compose=${encodeURIComponent(draft.gmailMessageId)}`
+      : `https://mail.google.com/mail/?authuser=${gmailAccount}#all/${encodeURIComponent(draft.gmailThreadId)}`;
 
   const onDelete = () => {
     const deleteAndClose = async () => {
