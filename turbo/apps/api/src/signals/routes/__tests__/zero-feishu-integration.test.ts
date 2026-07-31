@@ -2700,12 +2700,65 @@ describe("Feishu integration", () => {
       });
     expect(completedThreadReply?.replyInThread).toBeTruthy();
 
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, "return to the main Feishu DM"),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const mainDmRun = await findRun(actor, "return to the main Feishu DM");
+    await runsApi.heartbeatRunner(runnerGroup);
+    const mainDmClaim = await runsApi.claimRunnerJob(mainDmRun.id);
+    expect(mainDmClaim.resumeSession?.sessionId).toBe(mainSessionId);
+    await runsApi.requestCancelRun(actor, mainDmRun.id, [200]);
+    await flushWaitUntilForTest();
+
+    const client = setupApp({ context })(zeroFeishuConnectContract);
+    await accept(
+      client.removeInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId: fixture.installationId },
+      }),
+      [200],
+    );
+  });
+
+  it("resumes Feishu DM thread sessions and keeps control replies in-thread", async () => {
+    const fixture = await setupFeishuRunFixture();
+    const { actor, runnerGroup, appId, callbackUrl } = fixture;
+    await connectFixtureUser(fixture);
+    const rootMessageId = `om_${randomUUID()}`;
+    const feishuThreadId = `omt_${randomUUID()}`;
+    const threadMessageId = `om_${randomUUID()}`;
+    await postEvent(
+      callbackUrl,
+      directMessage(appId, "start a Feishu thread session", "ou_feishu_user", {
+        messageId: threadMessageId,
+        rootId: rootMessageId,
+        threadId: feishuThreadId,
+      }),
+      { encrypted: true },
+    );
+    await flushWaitUntilForTest();
+    const threadRun = await findRun(actor, "start a Feishu thread session");
+    await runsApi.heartbeatRunner(runnerGroup);
+    const threadClaim = await runsApi.claimRunnerJob(threadRun.id);
+    expect(threadClaim.resumeSession).toBeNull();
+    const threadSessionId = randomUUID();
+    await completeRunSession({
+      runId: threadRun.id,
+      sandboxToken: threadClaim.sandboxToken,
+      sessionId: threadSessionId,
+      history: `bdd resumed feishu thread history ${threadRun.id}`,
+      assistantText: "Initial resumed Feishu thread answer",
+    });
+
     const threadHelpMessageId = `om_${randomUUID()}`;
     await postEvent(
       callbackUrl,
       directMessage(appId, "/help", "ou_feishu_user", {
         messageId: threadHelpMessageId,
-        rootId: mainMessageId,
+        rootId: rootMessageId,
         threadId: feishuThreadId,
       }),
       { encrypted: true },
@@ -2724,7 +2777,7 @@ describe("Feishu integration", () => {
       callbackUrl,
       directMessage(
         appId,
-        "continue in the original Feishu thread",
+        "continue the Feishu thread session",
         "ou_feishu_user",
         {
           threadId: feishuThreadId,
@@ -2735,7 +2788,7 @@ describe("Feishu integration", () => {
     await flushWaitUntilForTest();
     const threadFollowUpRun = await findRun(
       actor,
-      "continue in the original Feishu thread",
+      "continue the Feishu thread session",
     );
     await runsApi.heartbeatRunner(runnerGroup);
     const threadFollowUpClaim = await runsApi.claimRunnerJob(
@@ -2743,19 +2796,6 @@ describe("Feishu integration", () => {
     );
     expect(threadFollowUpClaim.resumeSession?.sessionId).toBe(threadSessionId);
     await runsApi.requestCancelRun(actor, threadFollowUpRun.id, [200]);
-    await flushWaitUntilForTest();
-
-    await postEvent(
-      callbackUrl,
-      directMessage(appId, "return to the main Feishu DM"),
-      { encrypted: true },
-    );
-    await flushWaitUntilForTest();
-    const mainDmRun = await findRun(actor, "return to the main Feishu DM");
-    await runsApi.heartbeatRunner(runnerGroup);
-    const mainDmClaim = await runsApi.claimRunnerJob(mainDmRun.id);
-    expect(mainDmClaim.resumeSession?.sessionId).toBe(mainSessionId);
-    await runsApi.requestCancelRun(actor, mainDmRun.id, [200]);
     await flushWaitUntilForTest();
 
     const client = setupApp({ context })(zeroFeishuConnectContract);
