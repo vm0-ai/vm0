@@ -2,6 +2,7 @@ mod exec_control;
 mod exec_control_result;
 mod exec_output;
 mod exec_result;
+mod exec_result_properties;
 mod exec_start;
 mod exec_start_properties;
 mod exec_started_cancel;
