@@ -58,10 +58,34 @@ trap cleanup EXIT
 
 test_home="$tmp/home"
 data_dir="$tmp/vm0-runner"
+test_bin="$tmp/bin"
 runner_name=v999.0.0
 runner_dir="$data_dir/bin/$runner_name"
 invocation_log="$data_dir/runner-invocations"
-mkdir -p "$test_home" "$data_dir/locks" "$data_dir/runners/$runner_name" "$runner_dir"
+gc_arrivals="$data_dir/gc-arrivals"
+mkdir -p \
+  "$test_home" \
+  "$test_bin" \
+  "$data_dir/locks" \
+  "$data_dir/runners/$runner_name" \
+  "$gc_arrivals" \
+  "$runner_dir"
+
+ln -s "$(command -v flock)" "$test_bin/real-flock"
+cat > "$test_bin/flock" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "${1:-}" != "--exclusive" ] || [ -z "${2:-}" ]; then
+  echo "unexpected flock invocation: $*" >&2
+  exit 1
+fi
+
+data_dir="$(cd "$(dirname "$2")/.." && pwd)"
+touch "$data_dir/gc-arrivals/$BASHPID"
+exec "$(dirname "$0")/real-flock" "$@"
+EOF
+chmod +x "$test_bin/flock"
 
 fake_runner="$runner_dir/runner"
 cat > "$fake_runner" <<'EOF'
@@ -95,7 +119,23 @@ case "${1:-}" in
       exit 1
     fi
     trap 'rmdir "$active_dir"' EXIT
-    sleep 1
+
+    arrivals_ready=false
+    for ((attempt = 0; attempt < 1000; attempt++)); do
+      arrival_count=$(
+        find "$data_dir/gc-arrivals" -mindepth 1 -maxdepth 1 -type f -print |
+          wc -l
+      )
+      if [ "$arrival_count" -ge 2 ]; then
+        arrivals_ready=true
+        break
+      fi
+      /bin/sleep 0.01
+    done
+    if [ "$arrivals_ready" != "true" ]; then
+      echo "timed out waiting for both gc lock contenders" >&2
+      exit 1
+    fi
     exit 0
     ;;
 esac
@@ -116,7 +156,8 @@ assert_contains "$promote_playbook" "include_tasks: ../tasks/garbage-collect-run
 assert_contains "$rollback_playbook" "include_tasks: ../tasks/garbage-collect-runner.yml"
 assert_contains "$gc_task" "{{ data_dir }}/locks/deployment-gc.lock"
 
-if ! HOME="$test_home" \
+if ! PATH="$test_bin:$PATH" \
+  HOME="$test_home" \
   ANSIBLE_CONFIG="$ansible_config" \
   ANSIBLE_NOCOLOR=1 \
   ansible-playbook \
