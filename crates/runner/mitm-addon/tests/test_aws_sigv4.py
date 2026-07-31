@@ -51,11 +51,17 @@ def _aws_s3_example_credentials() -> AwsSigV4Credentials:
 
 def _header_auth_headers(
     amz_date: str = DEFAULT_SIGV4_TIMESTAMP,
+    *,
+    authorization: str | None = None,
 ) -> list[tuple[str, str]]:
     return [
         (
             "Authorization",
-            aws_sigv4_authorization(date=amz_date[:8]),
+            (
+                aws_sigv4_authorization(date=amz_date[:8])
+                if authorization is None
+                else authorization
+            ),
         ),
         ("X-Amz-Date", amz_date),
         ("Host", STS_HOST),
@@ -109,6 +115,54 @@ def _presigned_url(
     timestamp: str = DEFAULT_SIGV4_TIMESTAMP,
 ) -> str:
     return aws_sigv4_presigned_url(host, date=timestamp[:8], timestamp=timestamp)
+
+
+_REJECTED_SIGNING_CONTEXTS = (
+    pytest.param(
+        _presigned_url(STS_HOST),
+        _header_auth_headers(),
+        "Ambiguous AWS auth location",
+        id="mixed-header-query-auth",
+    ),
+    pytest.param(
+        f"https://{STS_HOST}/",
+        _header_auth_headers(authorization=aws_sigv4_authorization(algorithm="AWS4-HMAC-SHA1")),
+        "Unsupported AWS signing algorithm",
+        id="unsupported-algorithm",
+    ),
+    pytest.param(
+        f"https://{STS_HOST}/",
+        _header_auth_headers(authorization=aws_sigv4_authorization(service="s3express")),
+        "S3 Express signing is not supported by this runner",
+        id="s3express",
+    ),
+)
+
+
+@pytest.mark.parametrize(("url", "headers", "error"), _REJECTED_SIGNING_CONTEXTS)
+def test_request_requires_body_for_signing_rejects_invalid_signing_context(
+    url: str,
+    headers: list[tuple[str, str]],
+    error: str,
+) -> None:
+    with pytest.raises(AwsSigV4SigningError, match=error):
+        request_requires_body_for_signing(url=url, headers=headers)
+
+
+@pytest.mark.parametrize(("url", "headers", "error"), _REJECTED_SIGNING_CONTEXTS)
+def test_sign_request_rejects_invalid_signing_context(
+    url: str,
+    headers: list[tuple[str, str]],
+    error: str,
+) -> None:
+    with pytest.raises(AwsSigV4SigningError, match=error):
+        sign_request(
+            method="GET",
+            url=url,
+            headers=headers,
+            body=None,
+            credentials=_credentials(),
+        )
 
 
 @pytest.mark.parametrize(

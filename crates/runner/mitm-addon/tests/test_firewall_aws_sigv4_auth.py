@@ -398,6 +398,29 @@ async def test_re_signs_query_sigv4_request_preserves_literal_plus(
     assert query["EncodedPlus"] == "c+d"
 
 
+async def test_mixed_header_query_sigv4_request_fails_closed(
+    real_flow,
+    headers,
+    tmp_path,
+    mitm_ctx,
+):
+    authorization = aws_sigv4_authorization()
+    flow = real_flow(
+        with_response=False,
+        host=STS_HOST,
+        path=aws_sigv4_presigned_query_path(),
+        method="GET",
+        request_headers=headers(
+            *aws_sigv4_header_auth_headers(authorization=authorization),
+        ),
+    )
+
+    result = await handle_firewall_request_with_auth_endpoint(flow, tmp_path, mitm_ctx)
+
+    assert_sigv4_failed_closed(result, flow, "Ambiguous AWS auth location")
+    assert flow.request.headers["authorization"] == authorization
+
+
 async def test_sigv4a_request_fails_closed(real_flow, headers, tmp_path, mitm_ctx):
     flow = real_flow(
         with_response=False,
