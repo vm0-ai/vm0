@@ -18,7 +18,8 @@ use super::fs::{
 use super::metadata::WorkspaceImageFileIdentity;
 use super::types::{
     WorkspaceSessionHistorySidecar, WorkspaceSessionHistorySidecarMiss,
-    WorkspaceSessionHistorySidecarPromotionSource, WorkspaceSessionHistorySidecarRepresentation,
+    WorkspaceSessionHistorySidecarPromotionSource, WorkspaceSessionHistorySidecarPublication,
+    WorkspaceSessionHistorySidecarRepresentation,
 };
 use super::{SessionWorkspaceCache, entry::CacheEntryPaths};
 
@@ -144,20 +145,18 @@ impl SessionWorkspaceCache {
         &self,
         cache_key: &str,
         run_id: RunId,
-        source: Option<&WorkspaceSessionHistorySidecarPromotionSource>,
+        publication: WorkspaceSessionHistorySidecarPublication<'_>,
     ) -> RunnerResult<()> {
         let paths = self.entry_paths(cache_key);
-        match source {
-            Some(source) => {
-                if let Err(error) = self
-                    .publish_session_history_sidecar_source(cache_key, run_id, &paths, source)
-                    .await
-                {
-                    let _ = self.prune_session_history_sidecar(cache_key).await;
-                    return Err(error);
-                }
+        match publication {
+            WorkspaceSessionHistorySidecarPublication::PreserveExisting => {}
+            WorkspaceSessionHistorySidecarPublication::Replace(source) => {
+                self.publish_session_history_sidecar_source(cache_key, run_id, &paths, source)
+                    .await?;
             }
-            None => self.prune_session_history_sidecar(cache_key).await?,
+            WorkspaceSessionHistorySidecarPublication::Prune => {
+                self.prune_session_history_sidecar(cache_key).await?;
+            }
         }
         Ok(())
     }
@@ -199,14 +198,12 @@ impl SessionWorkspaceCache {
             || source.encoded_size > RESUME_SESSION_HISTORY_MAX_BYTES
         {
             let _ = remove_workspace_cache_path_if_exists(&source.tmp_path).await;
-            self.prune_session_history_sidecar(cache_key).await?;
             return Ok(());
         }
         let Some(sidecar_metadata) =
             WorkspaceSessionHistorySidecarMetadata::from_source(source, &tmp_metadata)
         else {
             let _ = remove_workspace_cache_path_if_exists(&source.tmp_path).await;
-            self.prune_session_history_sidecar(cache_key).await?;
             return Ok(());
         };
         ensure_workspace_cache_entry_dir(paths.entry_dir()).await?;

@@ -244,6 +244,7 @@ function runnerHeartbeatBody(
     readonly allocatedMemoryMb?: RunnerHeartbeatBody["allocatedMemoryMb"];
     readonly runningCount?: RunnerHeartbeatBody["runningCount"];
     readonly heldSessionStates?: RunnerHeartbeatBody["heldSessionStates"];
+    readonly heldWorkspaceStates?: RunnerHeartbeatBody["heldWorkspaceStates"];
     readonly mode?: RunnerHeartbeatBody["mode"];
   } = {},
 ): RunnerHeartbeatBody {
@@ -261,6 +262,9 @@ function runnerHeartbeatBody(
     runningCount: args.runningCount ?? 0,
     admittableProfiles: args.admittableProfiles ?? ["vm0/default"],
     heldSessionStates: args.heldSessionStates ?? [],
+    ...(args.heldWorkspaceStates
+      ? { heldWorkspaceStates: args.heldWorkspaceStates }
+      : {}),
     mode: args.mode ?? "running",
   };
 }
@@ -1088,6 +1092,7 @@ export function createRunsApi(context: TestContext) {
         readonly allocatedMemoryMb?: RunnerHeartbeatBody["allocatedMemoryMb"];
         readonly runningCount?: RunnerHeartbeatBody["runningCount"];
         readonly heldSessionStates?: RunnerHeartbeatBody["heldSessionStates"];
+        readonly heldWorkspaceStates?: RunnerHeartbeatBody["heldWorkspaceStates"];
         readonly mode?: RunnerHeartbeatBody["mode"];
       } = {},
     ) {

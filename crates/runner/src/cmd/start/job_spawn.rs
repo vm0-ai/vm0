@@ -16,7 +16,7 @@ use tracing::{error, warn};
 
 use super::active_sessions::{ActiveReuseKeyGuard, ActiveReuseKeys};
 use super::factory_lifecycle::SharedFactory;
-use super::heartbeat::HeldSessionStateSnapshot;
+use super::heartbeat::WorkspaceCacheStateSnapshot;
 use super::idle_lifecycle::SharedIdlePool;
 use super::job_lifecycle::{
     ActiveBudgetLease, CompletionPayload, CompletionReady, RunCleanupDisposition, RunCleanupState,
@@ -76,7 +76,7 @@ pub(super) struct SpawnContext {
     /// Best-effort signal for the main loop to ask mitmproxy to flush usage.
     pub(super) usage_flush_tx: mpsc::Sender<()>,
     pub(super) active_reuse_keys: ActiveReuseKeys,
-    pub(super) held_session_snapshot: HeldSessionStateSnapshot,
+    pub(super) workspace_cache_snapshot: WorkspaceCacheStateSnapshot,
     pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
     #[cfg(test)]
     pub(super) outer_job_panic: Option<OuterJobPanicPoint>,
@@ -243,7 +243,7 @@ struct FinalizationPhase {
     idle_pool: SharedIdlePool,
     status: Arc<StatusTracker>,
     park_notify: Arc<tokio::sync::Notify>,
-    held_session_snapshot: HeldSessionStateSnapshot,
+    workspace_cache_snapshot: WorkspaceCacheStateSnapshot,
     parking_gate: ParkingGate,
     network_log_drain: NetworkLogDrainCoordinator,
     cancel: RunCancellationHandle,
@@ -277,7 +277,7 @@ impl FinalizationPhase {
             idle_pool,
             status,
             park_notify,
-            held_session_snapshot,
+            workspace_cache_snapshot,
             parking_gate,
             network_log_drain,
             cancel,
@@ -338,7 +338,7 @@ impl FinalizationPhase {
                 idle_pool,
                 status,
                 park_notify,
-                held_session_snapshot,
+                workspace_cache_snapshot,
                 parking_gate,
                 network_log_drain,
                 exit_code,
@@ -539,7 +539,7 @@ pub(super) fn spawn_job(
     let status = Arc::clone(&ctx.status);
     let idle_pool = Arc::clone(&ctx.idle_pool);
     let park_notify = Arc::clone(&ctx.park_notify);
-    let held_session_snapshot = ctx.held_session_snapshot.clone();
+    let workspace_cache_snapshot = ctx.workspace_cache_snapshot.clone();
     let usage_flush_tx = ctx.usage_flush_tx.clone();
     let parking_gate = ctx.parking_gate.clone();
     let cleanup_state = RunCleanupState::new();
@@ -613,7 +613,7 @@ pub(super) fn spawn_job(
         idle_pool: Arc::clone(&idle_pool),
         status: Arc::clone(&status),
         park_notify: Arc::clone(&park_notify),
-        held_session_snapshot,
+        workspace_cache_snapshot,
         parking_gate,
         network_log_drain: exec_config.network_log_drain.clone(),
         cancel: job_cancel.clone(),
@@ -885,7 +885,7 @@ mod tests {
                 idle_pool: Arc::clone(&self.idle_pool),
                 status: Arc::clone(&self.status),
                 park_notify: Arc::clone(&self.park_notify),
-                held_session_snapshot: HeldSessionStateSnapshot::new(),
+                workspace_cache_snapshot: WorkspaceCacheStateSnapshot::new(),
                 parking_gate: self.parking_gate.clone(),
                 network_log_drain: NetworkLogDrainCoordinator::noop(),
                 cancel: RunCancellationHandle::new(),

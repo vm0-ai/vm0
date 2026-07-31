@@ -3429,6 +3429,31 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       sessionAffinityResource(canonicalHeartbeatHolder.job),
     ).toBeUndefined();
 
+    await api.requestHeartbeatRunner(true, [200], {
+      runnerId: affinityRunnerId,
+      group: runnerGroup,
+      snapshotGeneration: 1,
+      snapshotSequence: nextAffinitySnapshotSequence(),
+      admittableProfiles: ["vm0/default"],
+      heldSessionStates: [],
+      heldWorkspaceStates: [
+        {
+          reuseKey,
+          lastCompletedAt: nowDate().toISOString(),
+          workspaceCaches: [
+            { profile: "vm0/default", workspaceAffinityVersion: 1 },
+          ],
+        },
+      ],
+    });
+    const workspaceOnlyHolder = await pollFollowUp(
+      "continue with a workspace-only holder",
+    );
+    expect(sessionAffinityResource(workspaceOnlyHolder.job)).toBe(
+      "workspaceCache",
+    );
+    expect(workspaceOnlyHolder.job?.cliAgentSessionId).toBe(cliAgentSessionId);
+
     await heartbeatHolder({
       admittableProfiles: ["vm0/default"],
       workspaceCaches: [

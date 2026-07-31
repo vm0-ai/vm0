@@ -2,7 +2,7 @@ use super::super::super::*;
 use super::super::support::{
     MockRunEnv, context_with_session, mock_run_config_with_overrides, push_job, seed_idle_pool,
     shutdown, test_profiles, wait_budget_count, wait_cancel_handle, wait_cancel_token_removed,
-    wait_status_idle_sessions_and_active_runs, wait_workspace_cache_sessions,
+    wait_status_idle_sessions_and_active_runs, wait_workspace_cache_reuse_keys,
 };
 use super::support::assert_no_completion_for_run;
 
@@ -167,10 +167,10 @@ async fn assert_workspace_cache_after_park_cleanup(
     assert_eq!(counter.unpark_call_count(), expected_unpark_calls);
     assert_eq!(counter.destroy_call_count(), 1);
     if expect_cache {
-        wait_workspace_cache_sessions(&workspace_cache, &[session_id], Duration::from_secs(2))
+        wait_workspace_cache_reuse_keys(&workspace_cache, &[session_id], Duration::from_secs(2))
             .await;
     } else {
-        let held = workspace_cache.held_session_states().await;
+        let held = workspace_cache.held_workspace_states().await;
         assert!(held.is_empty());
     }
 
@@ -516,7 +516,7 @@ async fn assert_workspace_cache_after_late_cancellation(
     .await;
 
     assert_post_destroy_cleanup(&budget, &idle_pool, Some(&cancel_tokens), run_id, 0, 0).await;
-    wait_workspace_cache_sessions(&workspace_cache, &[session_id], Duration::from_secs(2)).await;
+    wait_workspace_cache_reuse_keys(&workspace_cache, &[session_id], Duration::from_secs(2)).await;
 
     shutdown(&env, run_handle).await;
 }

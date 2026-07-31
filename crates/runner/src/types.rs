@@ -10,6 +10,7 @@ use crate::ids::RunId;
 use crate::storage_manifest::StorageManifest;
 
 pub(crate) const MAX_HELD_SESSION_STATES: usize = 1024;
+pub(crate) const MAX_HELD_WORKSPACE_STATES: usize = 1024;
 pub(crate) const MAX_WORKSPACE_CACHES_PER_REUSE_KEY: usize = 8;
 pub(crate) const MAX_WORKSPACE_CACHES_PER_HEARTBEAT: usize = 1024;
 pub(crate) const WORKSPACE_AFFINITY_VERSION: u8 = 1;
@@ -1352,7 +1353,15 @@ pub struct HeldSessionState {
     pub last_completed_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reusable_sandbox: Option<ReusableSandboxState>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+}
+
+/// Workspace cache state owned by a runner reuse key rather than a provider
+/// session identity.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct HeldWorkspaceState {
+    pub reuse_key: String,
+    pub last_completed_at: String,
     pub workspace_caches: Vec<WorkspaceCacheState>,
 }
 
@@ -1372,6 +1381,8 @@ pub struct HeartbeatState {
     pub running_count: usize,
     pub admittable_profiles: Vec<String>,
     pub held_session_states: Vec<HeldSessionState>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub held_workspace_states: Vec<HeldWorkspaceState>,
     pub mode: String,
 }
 
@@ -2153,6 +2164,10 @@ mod tests {
                         "11111111-1111-4111-8111-111111111111".parse().unwrap(),
                     ),
                 }),
+            }],
+            held_workspace_states: vec![HeldWorkspaceState {
+                reuse_key: "thread:thread-abc".into(),
+                last_completed_at: "2026-05-28T00:00:00.000Z".into(),
                 workspace_caches: vec![WorkspaceCacheState {
                     profile: "vm0/large".into(),
                     workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
@@ -2181,7 +2196,14 @@ mod tests {
                 "reusableSandbox": {
                     "profile": "vm0/default",
                     "historyGenerationRunId": "11111111-1111-4111-8111-111111111111"
-                },
+                }
+            }])
+        );
+        assert_eq!(
+            json["heldWorkspaceStates"],
+            json!([{
+                "reuseKey": "thread:thread-abc",
+                "lastCompletedAt": "2026-05-28T00:00:00.000Z",
                 "workspaceCaches": [{
                     "profile": "vm0/large",
                     "workspaceAffinityVersion": 1
@@ -2208,14 +2230,11 @@ mod tests {
                 .as_ref()
                 .is_some_and(|sandbox| sandbox.history_generation_run_id.is_none())
         );
-        assert!(state.workspace_caches.is_empty());
-
         let serialized = serde_json::to_value(state).unwrap();
         assert!(
             serialized["reusableSandbox"]
                 .get("historyGenerationRunId")
                 .is_none()
         );
-        assert!(serialized.get("workspaceCaches").is_none());
     }
 }

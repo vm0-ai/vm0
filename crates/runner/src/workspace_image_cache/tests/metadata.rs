@@ -32,7 +32,7 @@ async fn prepare_removes_symlink_cache_entry_without_following_it() {
         cache_scope: cache.inner.cache_scope.clone(),
         profile_name: TEST_PROFILE_NAME.into(),
         reuse_key: session_id.into(),
-        cli_agent_session_id: session_id.into(),
+        cli_agent_session_id: Some(session_id.into()),
         working_dir: "/workspace".into(),
         last_completed_at: "2026-05-01T00:00:00.000Z".into(),
         last_used_at: "2026-05-01T00:00:00.000Z".into(),
@@ -145,7 +145,7 @@ async fn metadata_validation_rejects_metadata_mismatch() {
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
                 reuse_key: "other".into(),
-                cli_agent_session_id: "other".into(),
+                cli_agent_session_id: Some("other".into()),
                 working_dir: "/workspace".into(),
                 last_completed_at: local_timestamp(),
                 last_used_at: local_timestamp(),
@@ -203,7 +203,7 @@ async fn write_metadata_replaces_stale_tmp_symlink_without_following_it() {
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
                 reuse_key: "sess-1".into(),
-                cli_agent_session_id: "sess-1".into(),
+                cli_agent_session_id: Some("sess-1".into()),
                 working_dir: "/workspace".into(),
                 last_completed_at: "2026-05-01T00:00:00.000Z".into(),
                 last_used_at: "2026-05-01T00:01:00.000Z".into(),
@@ -255,7 +255,7 @@ async fn prepare_removes_invalid_metadata_entry_and_allows_repromotion() {
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
                 reuse_key: "other".into(),
-                cli_agent_session_id: "other".into(),
+                cli_agent_session_id: Some("other".into()),
                 working_dir: "/workspace".into(),
                 last_completed_at: local_timestamp(),
                 last_used_at: local_timestamp(),
@@ -315,8 +315,8 @@ async fn prepare_removes_invalid_metadata_entry_and_allows_repromotion() {
         .read_metadata_file(&paths.session_workspace_cache_metadata(&key))
         .await
         .unwrap();
-    assert_eq!(metadata.cli_agent_session_id, "sess-1");
-    assert_eq!(cache.held_session_states().await.len(), 1);
+    assert_eq!(metadata.cli_agent_session_id.as_deref(), Some("sess-1"));
+    assert_eq!(cache.held_workspace_states().await.len(), 1);
 }
 
 #[tokio::test]
@@ -347,7 +347,7 @@ async fn metadata_validation_rejects_replaced_current_image() {
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
                 reuse_key: "sess-1".into(),
-                cli_agent_session_id: "sess-1".into(),
+                cli_agent_session_id: Some("sess-1".into()),
                 working_dir: "/workspace".into(),
                 last_completed_at: local_timestamp(),
                 last_used_at: local_timestamp(),
@@ -382,7 +382,7 @@ async fn metadata_validation_rejects_replaced_current_image() {
 
     assert!(err.to_string().contains("current image identity mismatch"));
     assert!(
-        cache.held_session_states().await.is_empty(),
+        cache.held_workspace_states().await.is_empty(),
         "stale metadata/current pairs must not be advertised for affinity",
     );
 }
@@ -417,7 +417,7 @@ async fn metadata_validation_rejects_symlink_current_image() {
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
                 reuse_key: "sess-1".into(),
-                cli_agent_session_id: "sess-1".into(),
+                cli_agent_session_id: Some("sess-1".into()),
                 working_dir: "/workspace".into(),
                 last_completed_at: local_timestamp(),
                 last_used_at: local_timestamp(),
@@ -447,7 +447,7 @@ async fn metadata_validation_rejects_symlink_current_image() {
 
     assert!(err.to_string().contains("current image is not a file"));
     assert!(
-        cache.held_session_states().await.is_empty(),
+        cache.held_workspace_states().await.is_empty(),
         "symlink current image entries must not be advertised for affinity",
     );
 

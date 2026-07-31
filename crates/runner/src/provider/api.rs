@@ -1335,6 +1335,7 @@ fn is_static_json_field(field: &str) -> bool {
             | "historyRef"
             | "hostPolicy"
             | "heldSessionStates"
+            | "heldWorkspaceStates"
             | "instructionsTargetFilename"
             | "issued"
             | "job"
@@ -1763,8 +1764,8 @@ mod tests {
                 reuse_key: "held-session-test".to_string(),
                 last_completed_at: "2026-07-08T00:00:00.000Z".to_string(),
                 reusable_sandbox: None,
-                workspace_caches: Vec::new(),
             }],
+            held_workspace_states: Vec::new(),
             mode: "running".to_string(),
         }
     }

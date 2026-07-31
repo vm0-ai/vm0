@@ -405,7 +405,7 @@ async fn shared_cache_is_scoped_by_runner_group() {
     assert_eq!(checkout.result(), WorkspaceCacheCheckoutResult::Miss);
     assert!(checkout.source_image.is_none());
     assert!(
-        cache_b.held_session_states().await.is_empty(),
+        cache_b.held_workspace_states().await.is_empty(),
         "a runner must not advertise workspace cache entries from another group"
     );
 }
@@ -446,7 +446,7 @@ async fn cache_hit_checkout_and_same_filesystem_promotion_do_not_require_copy_he
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
                 reuse_key: "sess-1".into(),
-                cli_agent_session_id: "sess-1".into(),
+                cli_agent_session_id: Some("sess-1".into()),
                 working_dir: "/workspace".into(),
                 last_completed_at: "2026-05-01T00:00:00.000Z".into(),
                 last_used_at: "2026-05-01T00:00:00.000Z".into(),
@@ -557,7 +557,7 @@ async fn active_lease_hides_cached_session_until_dropped() {
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
                 reuse_key: "sess-1".into(),
-                cli_agent_session_id: "sess-1".into(),
+                cli_agent_session_id: Some("sess-1".into()),
                 working_dir: "/workspace".into(),
                 last_completed_at: "2026-05-01T00:00:00.000Z".into(),
                 last_used_at: local_timestamp(),
@@ -574,7 +574,7 @@ async fn active_lease_hides_cached_session_until_dropped() {
         .await
         .unwrap();
 
-    assert_eq!(cache.held_session_states().await.len(), 1);
+    assert_eq!(cache.held_workspace_states().await.len(), 1);
 
     let lease = cache
         .lease_active(WorkspaceImageActiveLeaseRequest {
@@ -591,7 +591,7 @@ async fn active_lease_hides_cached_session_until_dropped() {
         })
         .await;
 
-    assert!(cache.held_session_states().await.is_empty());
+    assert!(cache.held_workspace_states().await.is_empty());
     drop(lease);
-    assert_eq!(cache.held_session_states().await.len(), 1);
+    assert_eq!(cache.held_workspace_states().await.len(), 1);
 }

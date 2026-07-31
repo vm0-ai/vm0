@@ -286,16 +286,16 @@ async fn parked_workspace_promotion_unparks_and_freezes_before_publish() {
     assert!(!freeze_command.contains("pkill"));
     assert!(!freeze_command.contains("killall"));
     assert!(
-        fixture.cache.held_session_states().await.is_empty(),
+        fixture.cache.held_workspace_states().await.is_empty(),
         "a frozen image must not be published before the caller stops the sandbox"
     );
 
     let promoted = prepared.publish().await;
 
     assert!(promoted);
-    let states = fixture.cache.held_session_states().await;
+    let states = fixture.cache.held_workspace_states().await;
     assert_eq!(states.len(), 1);
-    assert_eq!(states[0].session_id, fixture.session_id);
+    assert_eq!(states[0].reuse_key, fixture.session_id);
 }
 
 #[tokio::test]
@@ -636,7 +636,7 @@ async fn parked_workspace_promotion_unpark_error_skips_cache() {
     assert!(prepared.is_none());
     assert_eq!(overrides.unpark_call_count(), 1);
     assert!(overrides.exec_calls().is_empty());
-    assert!(fixture.cache.held_session_states().await.is_empty());
+    assert!(fixture.cache.held_workspace_states().await.is_empty());
 }
 
 #[tokio::test]
@@ -726,7 +726,7 @@ async fn parked_workspace_promotion_unpark_panic_skips_cache() {
     assert!(prepared.is_none());
     assert_eq!(overrides.unpark_call_count(), 1);
     assert!(overrides.exec_calls().is_empty());
-    assert!(fixture.cache.held_session_states().await.is_empty());
+    assert!(fixture.cache.held_workspace_states().await.is_empty());
 }
 
 #[tokio::test]
@@ -751,7 +751,7 @@ async fn parked_workspace_promotion_guest_freeze_failure_skips_cache() {
     assert!(prepared.is_none());
     assert_eq!(overrides.unpark_call_count(), 1);
     assert_eq!(overrides.exec_calls().len(), 1);
-    assert!(fixture.cache.held_session_states().await.is_empty());
+    assert!(fixture.cache.held_workspace_states().await.is_empty());
     let event = captured_event(
         &events,
         "workspace image cache promotion skipped because guest freeze failed",
@@ -774,7 +774,7 @@ async fn parked_workspace_promotion_guest_exec_panic_skips_cache() {
             .await;
 
     assert!(prepared.is_none());
-    assert!(fixture.cache.held_session_states().await.is_empty());
+    assert!(fixture.cache.held_workspace_states().await.is_empty());
 }
 
 async fn capture_promotion_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)

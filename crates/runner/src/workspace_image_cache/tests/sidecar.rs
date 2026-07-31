@@ -7,7 +7,9 @@ use sha2::{Digest, Sha256};
 use tokio::fs;
 
 use super::super::fs::workspace_cache_path_allocated_bytes;
-use super::super::types::WorkspaceSessionHistorySidecarMiss;
+use super::super::types::{
+    WorkspaceSessionHistorySidecarMiss, WorkspaceSessionHistorySidecarPublication,
+};
 use super::super::{
     SessionWorkspaceCache, WorkspaceSessionHistorySidecarPromotionSource,
     WorkspaceSessionHistorySidecarRepresentation,
@@ -45,7 +47,11 @@ async fn publish_test_session_history_sidecar(
         restored_session_identity: identity.clone(),
     };
     cache
-        .publish_session_history_sidecar(cache_key, run_id, Some(&source))
+        .publish_session_history_sidecar(
+            cache_key,
+            run_id,
+            WorkspaceSessionHistorySidecarPublication::Replace(&source),
+        )
         .await
         .unwrap();
     identity
@@ -76,7 +82,7 @@ async fn session_history_sidecar_publish_and_probe_hit() {
         serde_json::from_slice(&fs::read(&metadata_path).await.unwrap()).unwrap();
     assert!(metadata.get("historyGenerationRunId").is_none());
     assert!(metadata.get("allocatedBytes").is_none());
-    let held_states = cache.held_session_states().await;
+    let held_states = cache.held_workspace_states().await;
     assert_eq!(
         held_states[0].workspace_caches[0].profile,
         TEST_PROFILE_NAME
@@ -260,7 +266,7 @@ async fn invalid_session_history_sidecars_are_rejected_by_probe() {
 }
 
 #[tokio::test]
-async fn session_history_sidecar_publish_none_prunes_existing_sidecar() {
+async fn session_history_sidecar_explicit_prune_removes_existing_sidecar() {
     let (_dir, _paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
     let session_id = "sess-sidecar-prune";
@@ -278,7 +284,11 @@ async fn session_history_sidecar_publish_none_prunes_existing_sidecar() {
         publish_test_session_history_sidecar(&cache, &cache_key, run_id, session_id, history).await;
 
     cache
-        .publish_session_history_sidecar(&cache_key, RunId::new_v4(), None)
+        .publish_session_history_sidecar(
+            &cache_key,
+            RunId::new_v4(),
+            WorkspaceSessionHistorySidecarPublication::Prune,
+        )
         .await
         .unwrap();
 
@@ -292,7 +302,7 @@ async fn session_history_sidecar_publish_none_prunes_existing_sidecar() {
 }
 
 #[tokio::test]
-async fn session_history_sidecar_invalid_source_prunes_existing_sidecar() {
+async fn session_history_sidecar_invalid_replacement_preserves_existing_sidecar() {
     let (_dir, _paths, cache) = local_cache().await;
     let run_id = RunId::new_v4();
     let session_id = "sess-sidecar-invalid-source-prune";
@@ -318,17 +328,105 @@ async fn session_history_sidecar_invalid_source_prunes_existing_sidecar() {
     };
 
     cache
-        .publish_session_history_sidecar(&cache_key, RunId::new_v4(), Some(&invalid_source))
+        .publish_session_history_sidecar(
+            &cache_key,
+            RunId::new_v4(),
+            WorkspaceSessionHistorySidecarPublication::Replace(&invalid_source),
+        )
+        .await
+        .unwrap();
+
+    let sidecar = cache
+        .probe_session_history_sidecar(&cache_key, &identity)
+        .await
+        .unwrap();
+    assert_eq!(fs::read(sidecar.path).await.unwrap(), history);
+}
+
+#[tokio::test]
+async fn session_history_sidecar_preserve_keeps_existing_sidecar() {
+    let (_dir, _paths, cache) = local_cache().await;
+    let run_id = RunId::new_v4();
+    let session_id = "sess-sidecar-preserve";
+    let history = br#"{"type":"message","content":"old"}"#;
+    let cache_key = write_current_cache_entry(
+        &cache,
+        run_id,
+        session_id,
+        CANONICAL_WORKING_DIR,
+        "2026-05-01T00:00:00.000Z",
+        "2026-05-01T00:00:00.000Z",
+    )
+    .await;
+    let identity =
+        publish_test_session_history_sidecar(&cache, &cache_key, run_id, session_id, history).await;
+
+    cache
+        .publish_session_history_sidecar(
+            &cache_key,
+            RunId::new_v4(),
+            WorkspaceSessionHistorySidecarPublication::PreserveExisting,
+        )
+        .await
+        .unwrap();
+
+    let sidecar = cache
+        .probe_session_history_sidecar(&cache_key, &identity)
+        .await
+        .unwrap();
+    assert_eq!(fs::read(sidecar.path).await.unwrap(), history);
+}
+
+#[tokio::test]
+async fn session_history_sidecar_verified_replacement_supersedes_previous_identity() {
+    let (_dir, _paths, cache) = local_cache().await;
+    let run_id = RunId::new_v4();
+    let cache_key = write_current_cache_entry(
+        &cache,
+        run_id,
+        "session-a",
+        CANONICAL_WORKING_DIR,
+        "2026-05-01T00:00:00.000Z",
+        "2026-05-01T00:00:00.000Z",
+    )
+    .await;
+    let history_a = br#"{"type":"message","content":"a"}"#;
+    let identity_a =
+        publish_test_session_history_sidecar(&cache, &cache_key, run_id, "session-a", history_a)
+            .await;
+    let history_b = br#"{"type":"message","content":"b"}"#;
+    let identity_b = test_restored_session_identity("session-b", history_b);
+    let replacement_run_id = RunId::new_v4();
+    let tmp_path = cache.session_workspace_cache_tmp_sidecar(&cache_key, replacement_run_id);
+    fs::write(&tmp_path, history_b).await.unwrap();
+    let replacement = WorkspaceSessionHistorySidecarPromotionSource {
+        tmp_path,
+        representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
+        encoded_size: history_b.len() as u64,
+        restored_session_identity: identity_b.clone(),
+    };
+
+    cache
+        .publish_session_history_sidecar(
+            &cache_key,
+            replacement_run_id,
+            WorkspaceSessionHistorySidecarPublication::Replace(&replacement),
+        )
         .await
         .unwrap();
 
     assert_eq!(
         cache
-            .probe_session_history_sidecar(&cache_key, &identity)
+            .probe_session_history_sidecar(&cache_key, &identity_a)
             .await
             .unwrap_err(),
-        WorkspaceSessionHistorySidecarMiss::Missing
+        WorkspaceSessionHistorySidecarMiss::IdentityMismatch
     );
+    let sidecar_b = cache
+        .probe_session_history_sidecar(&cache_key, &identity_b)
+        .await
+        .unwrap();
+    assert_eq!(fs::read(sidecar_b.path).await.unwrap(), history_b);
 }
 
 #[tokio::test]

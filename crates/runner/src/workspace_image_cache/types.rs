@@ -131,6 +131,13 @@ pub(crate) struct WorkspaceSessionHistorySidecarPromotionSource {
     pub(crate) restored_session_identity: crate::restored_session_identity::RestoredSessionIdentity,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum WorkspaceSessionHistorySidecarPublication<'a> {
+    PreserveExisting,
+    Replace(&'a WorkspaceSessionHistorySidecarPromotionSource),
+    Prune,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum WorkspaceSessionHistorySidecarMiss {
     NoCacheHit,

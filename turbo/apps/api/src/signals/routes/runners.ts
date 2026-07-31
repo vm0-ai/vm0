@@ -14,6 +14,7 @@ import {
   type CompatibleStoredExecutionContext,
   type ExecutionContext,
   type HeldSessionState,
+  type HeldWorkspaceState,
   type SessionHistoryDownloadSource,
   type StoredConnectorPermissionBaseline,
   type StoredExecutionContext,
@@ -27,7 +28,10 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { blobs } from "@vm0/db/schema/blob";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { runnerState } from "@vm0/db/schema/runner-state";
+import {
+  runnerState,
+  type RunnerHeldSessionState as PersistedRunnerHeldSessionState,
+} from "@vm0/db/schema/runner-state";
 import {
   and,
   desc,
@@ -407,6 +411,28 @@ function canonicalizeHeldSessionStates(
   });
 }
 
+function canonicalizeHeldWorkspaceStates(
+  states: readonly HeldWorkspaceState[] | undefined,
+): PersistedRunnerHeldSessionState[] | undefined {
+  return states?.map((state) => {
+    return {
+      reuseKey: state.reuseKey,
+      lastCompletedAt: new Date(state.lastCompletedAt).toISOString(),
+      workspaceCaches: state.workspaceCaches.map((workspaceCache) => {
+        return {
+          profile: workspaceCache.profile,
+          ...(workspaceCache.workspaceAffinityVersion
+            ? {
+                workspaceAffinityVersion:
+                  workspaceCache.workspaceAffinityVersion,
+              }
+            : {}),
+        };
+      }),
+    };
+  });
+}
+
 const heartbeatBody$ = bodyResultOf(runnersHeartbeatContract.heartbeat);
 
 const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -426,8 +452,10 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return badRequestMessage("Invalid runner group");
   }
 
-  const heldSessionStates =
-    canonicalizeHeldSessionStates(body.data.heldSessionStates) ?? [];
+  const heldSessionStates: PersistedRunnerHeldSessionState[] = [
+    ...(canonicalizeHeldSessionStates(body.data.heldSessionStates) ?? []),
+    ...(canonicalizeHeldWorkspaceStates(body.data.heldWorkspaceStates) ?? []),
+  ];
   const admittableProfiles = body.data.admittableProfiles;
   const currentDate = nowDate();
   const snapshotOrder = {

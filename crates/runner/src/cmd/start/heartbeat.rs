@@ -13,9 +13,10 @@ use crate::lifecycle::RunnerMode;
 use crate::provider::JobProvider;
 use crate::resource_budget::ResourceBudget;
 use crate::types::{
-    HeartbeatState, HeldSessionState, MAX_HELD_SESSION_STATES, MAX_WORKSPACE_CACHES_PER_REUSE_KEY,
+    HeartbeatState, HeldSessionState, HeldWorkspaceState, MAX_HELD_SESSION_STATES,
+    MAX_WORKSPACE_CACHES_PER_REUSE_KEY,
 };
-use crate::workspace_image_cache::{SessionWorkspaceCache, cap_workspace_held_session_states};
+use crate::workspace_image_cache::{SessionWorkspaceCache, cap_held_workspace_states};
 
 /// Period between routine heartbeat ticks sent to the server. First tick is
 /// deferred by one period via `interval_at`.
@@ -36,7 +37,7 @@ pub(super) struct HeartbeatContext<'a> {
     provider: &'a dyn JobProvider,
     workspace_cache: Option<SessionWorkspaceCache>,
     active_reuse_keys: &'a ActiveReuseKeys,
-    held_session_snapshot: HeldSessionStateSnapshot,
+    workspace_cache_snapshot: WorkspaceCacheStateSnapshot,
 }
 
 pub(super) struct HeartbeatContextInit<'a> {
@@ -50,7 +51,7 @@ pub(super) struct HeartbeatContextInit<'a> {
     pub(super) provider: &'a dyn JobProvider,
     pub(super) workspace_cache: Option<SessionWorkspaceCache>,
     pub(super) active_reuse_keys: &'a ActiveReuseKeys,
-    pub(super) held_session_snapshot: HeldSessionStateSnapshot,
+    pub(super) workspace_cache_snapshot: WorkspaceCacheStateSnapshot,
 }
 
 impl<'a> HeartbeatContext<'a> {
@@ -66,7 +67,7 @@ impl<'a> HeartbeatContext<'a> {
             provider: init.provider,
             workspace_cache: init.workspace_cache,
             active_reuse_keys: init.active_reuse_keys,
-            held_session_snapshot: init.held_session_snapshot,
+            workspace_cache_snapshot: init.workspace_cache_snapshot,
         }
     }
 }
@@ -176,7 +177,7 @@ impl<'a> HeartbeatController<'a> {
     }
 }
 
-/// Shared, bounded view of held sessions backed by the workspace cache.
+/// Shared, bounded view of reusable workspaces backed by the workspace cache.
 ///
 /// A runner shares one snapshot between heartbeat, discovery, and sandbox
 /// finalization. Heartbeats refresh it from an asynchronous cache scan, while
@@ -185,17 +186,17 @@ impl<'a> HeartbeatController<'a> {
 /// promotion committed while that scan was in flight.
 ///
 /// The mutex protects only the in-memory states and refresh metadata. Cache
-/// scans run without holding it. Stored states retain active sessions; active
-/// and just-claimed sessions are filtered only when a current held-session
+/// scans run without holding it. Stored states retain active reuse keys; active
+/// and just-claimed reuse keys are filtered only when a current workspace
 /// view is assembled for heartbeat emission or local discovery.
 #[derive(Clone, Default)]
-pub(super) struct HeldSessionStateSnapshot {
-    inner: Arc<Mutex<HeldSessionStateSnapshotInner>>,
+pub(super) struct WorkspaceCacheStateSnapshot {
+    inner: Arc<Mutex<WorkspaceCacheStateSnapshotInner>>,
 }
 
 #[derive(Default)]
-struct HeldSessionStateSnapshotInner {
-    workspace_cache_states: Vec<HeldSessionState>,
+struct WorkspaceCacheStateSnapshotInner {
+    workspace_cache_states: Vec<HeldWorkspaceState>,
     workspace_cache_loaded: bool,
     workspace_cache_revision: u64,
 }
@@ -203,14 +204,14 @@ struct HeldSessionStateSnapshotInner {
 /// Revision captured before a workspace-cache scan.
 ///
 /// This is an opaque marker, not a lock guard. Pass it back to
-/// [`HeldSessionStateSnapshot::finish_workspace_cache_refresh`] after the
+/// [`WorkspaceCacheStateSnapshot::finish_workspace_cache_refresh`] after the
 /// asynchronous scan so the commit can detect intervening snapshot updates.
 #[derive(Clone, Copy)]
 pub(super) struct WorkspaceCacheSnapshotRefresh {
     revision: u64,
 }
 
-impl HeldSessionStateSnapshot {
+impl WorkspaceCacheStateSnapshot {
     /// Creates a snapshot whose workspace-cache contents are not yet known.
     pub(super) fn new() -> Self {
         Self::default()
@@ -243,12 +244,12 @@ impl HeldSessionStateSnapshot {
     /// this prevents an older scan from discarding a newly promoted cache.
     ///
     /// Finishing a refresh marks the snapshot loaded and advances its revision.
-    /// Active-session filtering is deferred until a current view is assembled.
+    /// Active-key filtering is deferred until a current view is assembled.
     pub(super) fn finish_workspace_cache_refresh(
         &self,
         refresh: WorkspaceCacheSnapshotRefresh,
-        states: Vec<HeldSessionState>,
-    ) -> Vec<HeldSessionState> {
+        states: Vec<HeldWorkspaceState>,
+    ) -> Vec<HeldWorkspaceState> {
         let mut inner = self.lock_inner();
         inner.workspace_cache_states = if inner.workspace_cache_revision == refresh.revision {
             states
@@ -263,11 +264,11 @@ impl HeldSessionStateSnapshot {
 
     /// Incorporates a successful workspace-cache promotion into the snapshot.
     ///
-    /// The promoted state is merged with any existing state for the session,
+    /// The promoted state is merged with any existing state for the reuse key,
     /// then the snapshot's deterministic ordering and bounds are reapplied.
     /// Advancing the revision ensures that an in-flight refresh merges this
     /// update instead of replacing it with an older scan result.
-    pub(super) fn upsert_workspace_cache_state(&self, state: HeldSessionState) {
+    pub(super) fn upsert_workspace_cache_state(&self, state: HeldWorkspaceState) {
         let mut inner = self.lock_inner();
         inner.workspace_cache_loaded = true;
         match inner
@@ -275,19 +276,19 @@ impl HeldSessionStateSnapshot {
             .iter_mut()
             .find(|existing| existing.reuse_key == state.reuse_key)
         {
-            Some(existing) => merge_held_session_state(existing, state),
+            Some(existing) => merge_held_workspace_state(existing, state),
             None => inner.workspace_cache_states.push(state),
         }
         cap_workspace_cache_snapshot_states(&mut inner.workspace_cache_states);
         inner.workspace_cache_revision = inner.workspace_cache_revision.wrapping_add(1);
     }
 
-    /// Reports whether the workspace-cache snapshot may contain this session.
+    /// Reports whether the workspace-cache snapshot may contain this reuse key.
     ///
     /// Before the first load, absence has not been established, so every
-    /// session might be present. Once loaded, this becomes a membership check
+    /// reuse key might be present. Once loaded, this becomes a membership check
     /// against the stored states. Discovery uses a possible match to request an
-    /// immediate affinity heartbeat after claiming the session.
+    /// immediate affinity heartbeat after claiming the key.
     pub(super) fn might_contain_workspace_cache_reuse_key(&self, reuse_key: &str) -> bool {
         let inner = self.lock_inner();
         !inner.workspace_cache_loaded
@@ -297,27 +298,25 @@ impl HeldSessionStateSnapshot {
                 .any(|state| state.reuse_key == reuse_key)
     }
 
-    /// Builds the current held-session view from idle and cached state.
+    /// Builds the current workspace-cache view.
     ///
     /// Active reuse keys and `extra_active_reuse_key` are filtered while
     /// assembling this view, without removing them from the stored snapshot.
     /// The shared merge path also applies heartbeat ordering and limits.
-    pub(super) fn current_held_session_states(
+    pub(super) fn current_held_workspace_states(
         &self,
-        idle_states: Vec<HeldSessionState>,
         active_reuse_keys: &ActiveReuseKeys,
         extra_active_reuse_key: Option<&str>,
-    ) -> Vec<HeldSessionState> {
+    ) -> Vec<HeldWorkspaceState> {
         let workspace_cache_states = self.lock_inner().workspace_cache_states.clone();
-        merge_current_held_session_states(
-            idle_states,
+        filter_current_held_workspace_states(
             workspace_cache_states,
             active_reuse_keys,
             extra_active_reuse_key,
         )
     }
 
-    fn lock_inner(&self) -> MutexGuard<'_, HeldSessionStateSnapshotInner> {
+    fn lock_inner(&self) -> MutexGuard<'_, WorkspaceCacheStateSnapshotInner> {
         self.inner
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -346,27 +345,27 @@ pub(super) async fn send_heartbeat(
         mode,
     );
     drop(pool);
-    let workspace_cache_states = refresh_workspace_cache_held_session_snapshot(
-        &hb.held_session_snapshot,
+    let workspace_cache_states = refresh_workspace_cache_snapshot(
+        &hb.workspace_cache_snapshot,
         hb.workspace_cache.as_ref(),
         hb.profiles,
     )
     .await;
-    state.held_session_states = merge_current_held_session_states(
-        state.held_session_states,
-        workspace_cache_states,
-        hb.active_reuse_keys,
-        None,
-    );
+    state.held_session_states =
+        filter_current_held_session_states(state.held_session_states, hb.active_reuse_keys, None);
+    state.held_workspace_states =
+        filter_current_held_workspace_states(workspace_cache_states, hb.active_reuse_keys, None);
     info!(
         mode = ?mode,
         running = state.running_count,
         sessions = state.held_session_states.len(),
+        workspace_states = state.held_workspace_states.len(),
         "heartbeat"
     );
     debug!(
         sessions = state.held_session_states.len(),
-        "heartbeat held session states"
+        workspace_states = state.held_workspace_states.len(),
+        "heartbeat held reusable states"
     );
     hb.provider.heartbeat(&state).await;
 }
@@ -376,20 +375,20 @@ pub(super) async fn send_heartbeat(
 /// The revision is captured before the asynchronous scan, and no snapshot
 /// mutex is held across the await. The returned value is the committed
 /// snapshot, which may also contain updates merged from concurrent promotions.
-pub(super) async fn refresh_workspace_cache_held_session_snapshot(
-    snapshot: &HeldSessionStateSnapshot,
+pub(super) async fn refresh_workspace_cache_snapshot(
+    snapshot: &WorkspaceCacheStateSnapshot,
     workspace_cache: Option<&SessionWorkspaceCache>,
     profiles: &BTreeMap<String, ProfileConfig>,
-) -> Vec<HeldSessionState> {
+) -> Vec<HeldWorkspaceState> {
     let refresh = snapshot.begin_workspace_cache_refresh();
-    let states = workspace_cache_held_session_states(workspace_cache, profiles).await;
+    let states = workspace_cache_states(workspace_cache, profiles).await;
     snapshot.finish_workspace_cache_refresh(refresh, states)
 }
 
-async fn workspace_cache_held_session_states(
+async fn workspace_cache_states(
     workspace_cache: Option<&SessionWorkspaceCache>,
     profiles: &BTreeMap<String, ProfileConfig>,
-) -> Vec<HeldSessionState> {
+) -> Vec<HeldWorkspaceState> {
     let Some(cache) = workspace_cache else {
         return Vec::new();
     };
@@ -404,13 +403,12 @@ async fn workspace_cache_held_session_states(
         })
         .collect::<BTreeMap<_, _>>();
     cache
-        .held_session_states_for_profiles(&profile_image_sizes_bytes)
+        .held_workspace_states_for_profiles(&profile_image_sizes_bytes)
         .await
 }
 
-fn merge_current_held_session_states(
-    idle_states: Vec<HeldSessionState>,
-    cache_states: Vec<HeldSessionState>,
+fn filter_current_held_session_states(
+    states: Vec<HeldSessionState>,
     active_reuse_key_registry: &ActiveReuseKeys,
     extra_active_reuse_key: Option<&str>,
 ) -> Vec<HeldSessionState> {
@@ -418,33 +416,33 @@ fn merge_current_held_session_states(
     if let Some(reuse_key) = extra_active_reuse_key {
         active_reuse_keys.insert(reuse_key.to_owned());
     }
-    merge_held_session_states(idle_states, cache_states, &active_reuse_keys)
+    let mut states = states
+        .into_iter()
+        .filter(|state| !active_reuse_keys.contains(&state.reuse_key))
+        .collect::<Vec<_>>();
+    states.sort_unstable_by(|a, b| {
+        b.last_completed_at
+            .cmp(&a.last_completed_at)
+            .then_with(|| a.reuse_key.cmp(&b.reuse_key))
+    });
+    states.truncate(MAX_HELD_SESSION_STATES);
+    states.sort_unstable_by(|a, b| a.reuse_key.cmp(&b.reuse_key));
+    states
 }
 
-fn merge_held_session_states(
-    idle_states: Vec<HeldSessionState>,
-    cache_states: Vec<HeldSessionState>,
-    active_reuse_keys: &std::collections::HashSet<String>,
-) -> Vec<HeldSessionState> {
-    let mut by_reuse_key = std::collections::BTreeMap::<String, HeldSessionState>::new();
-    for state in idle_states {
-        if active_reuse_keys.contains(&state.reuse_key) {
-            continue;
-        }
-        by_reuse_key.insert(state.reuse_key.clone(), state);
+fn filter_current_held_workspace_states(
+    states: Vec<HeldWorkspaceState>,
+    active_reuse_key_registry: &ActiveReuseKeys,
+    extra_active_reuse_key: Option<&str>,
+) -> Vec<HeldWorkspaceState> {
+    let mut active_reuse_keys = active_reuse_keys(active_reuse_key_registry);
+    if let Some(reuse_key) = extra_active_reuse_key {
+        active_reuse_keys.insert(reuse_key.to_owned());
     }
-    for state in cache_states {
-        if active_reuse_keys.contains(&state.reuse_key) {
-            continue;
-        }
-        match by_reuse_key.get_mut(&state.reuse_key) {
-            Some(existing) => merge_held_session_state(existing, state),
-            None => {
-                by_reuse_key.insert(state.reuse_key.clone(), state);
-            }
-        }
-    }
-    let mut states: Vec<HeldSessionState> = by_reuse_key.into_values().collect();
+    let mut states = states
+        .into_iter()
+        .filter(|state| !active_reuse_keys.contains(&state.reuse_key))
+        .collect::<Vec<_>>();
     let observed_sessions = states.len();
     let observed_workspace_caches = states
         .iter()
@@ -455,7 +453,7 @@ fn merge_held_session_states(
             .cmp(&a.last_completed_at)
             .then_with(|| a.reuse_key.cmp(&b.reuse_key))
     });
-    states.truncate(MAX_HELD_SESSION_STATES);
+    states = cap_held_workspace_states(states);
     let retained_workspace_caches = states
         .iter()
         .map(|state| state.workspace_caches.len())
@@ -466,20 +464,16 @@ fn merge_held_session_states(
             retained_sessions = states.len(),
             observed_workspace_caches,
             retained_workspace_caches,
-            "heartbeat held session state truncated"
+            "heartbeat held workspace state truncated"
         );
     }
     states.sort_unstable_by(|a, b| a.reuse_key.cmp(&b.reuse_key));
     states
 }
 
-fn merge_held_session_state(existing: &mut HeldSessionState, mut incoming: HeldSessionState) {
+fn merge_held_workspace_state(existing: &mut HeldWorkspaceState, mut incoming: HeldWorkspaceState) {
     if incoming.last_completed_at > existing.last_completed_at {
-        existing.session_id = incoming.session_id.clone();
         existing.last_completed_at = incoming.last_completed_at;
-    }
-    if existing.reusable_sandbox.is_none() {
-        existing.reusable_sandbox = incoming.reusable_sandbox;
     }
     for incoming_workspace in incoming.workspace_caches.drain(..) {
         match existing
@@ -506,13 +500,13 @@ fn merge_held_session_state(existing: &mut HeldSessionState, mut incoming: HeldS
 }
 
 fn merge_workspace_cache_snapshot_states(
-    existing_states: Vec<HeldSessionState>,
-    refreshed_states: Vec<HeldSessionState>,
-) -> Vec<HeldSessionState> {
-    let mut by_reuse_key = std::collections::BTreeMap::<String, HeldSessionState>::new();
+    existing_states: Vec<HeldWorkspaceState>,
+    refreshed_states: Vec<HeldWorkspaceState>,
+) -> Vec<HeldWorkspaceState> {
+    let mut by_reuse_key = std::collections::BTreeMap::<String, HeldWorkspaceState>::new();
     for state in refreshed_states.into_iter().chain(existing_states) {
         match by_reuse_key.get_mut(&state.reuse_key) {
-            Some(existing) => merge_held_session_state(existing, state),
+            Some(existing) => merge_held_workspace_state(existing, state),
             None => {
                 by_reuse_key.insert(state.reuse_key.clone(), state);
             }
@@ -521,13 +515,13 @@ fn merge_workspace_cache_snapshot_states(
     by_reuse_key.into_values().collect()
 }
 
-fn cap_workspace_cache_snapshot_states(states: &mut Vec<HeldSessionState>) {
+fn cap_workspace_cache_snapshot_states(states: &mut Vec<HeldWorkspaceState>) {
     let observed_sessions = states.len();
     let observed_workspace_caches = states
         .iter()
         .map(|state| state.workspace_caches.len())
         .sum::<usize>();
-    *states = cap_workspace_held_session_states(std::mem::take(states));
+    *states = cap_held_workspace_states(std::mem::take(states));
     let retained_workspace_caches = states
         .iter()
         .map(|state| state.workspace_caches.len())
@@ -538,7 +532,7 @@ fn cap_workspace_cache_snapshot_states(states: &mut Vec<HeldSessionState>) {
             retained_sessions = states.len(),
             observed_workspace_caches,
             retained_workspace_caches,
-            "workspace cache held session snapshot truncated"
+            "workspace cache snapshot truncated"
         );
     }
 }
@@ -606,6 +600,7 @@ pub(super) fn collect_heartbeat_state(
         running_count,
         admittable_profiles,
         held_session_states: idle_pool.held_session_states(),
+        held_workspace_states: Vec::new(),
         mode: match mode {
             RunnerMode::Starting => "starting".to_string(),
             RunnerMode::Running => "running".to_string(),
@@ -623,10 +618,9 @@ mod tests {
     use crate::idle_pool::{
         IdlePoolConfig, ParkResult, ParkedIdleCandidate, test_support::ParkedIdleCandidateBuilder,
     };
-    use crate::ids::RunId;
     use crate::paths::RunnerPaths;
     use crate::provider::mock::MockJobProvider;
-    use crate::types::WorkspaceCacheState;
+    use crate::types::{MAX_HELD_WORKSPACE_STATES, WorkspaceCacheState};
     use crate::workspace_image_cache::{
         WorkspaceCacheTerminalStatus, WorkspaceImageLeaseIdentity, WorkspaceImagePrepareRequest,
     };
@@ -671,7 +665,7 @@ mod tests {
         .build()
     }
 
-    fn refresh_snapshot(snapshot: &HeldSessionStateSnapshot, states: Vec<HeldSessionState>) {
+    fn refresh_snapshot(snapshot: &WorkspaceCacheStateSnapshot, states: Vec<HeldWorkspaceState>) {
         let refresh = snapshot.begin_workspace_cache_refresh();
         snapshot.finish_workspace_cache_refresh(refresh, states);
     }
@@ -680,6 +674,21 @@ mod tests {
         WorkspaceCacheState {
             profile: profile.to_owned(),
             workspace_affinity_version: Some(crate::types::WORKSPACE_AFFINITY_VERSION),
+        }
+    }
+
+    fn held_workspace_state(
+        reuse_key: &str,
+        last_completed_at: &str,
+        profiles: &[&str],
+    ) -> HeldWorkspaceState {
+        HeldWorkspaceState {
+            reuse_key: reuse_key.to_owned(),
+            last_completed_at: last_completed_at.to_owned(),
+            workspace_caches: profiles
+                .iter()
+                .map(|profile| workspace_cache(profile))
+                .collect(),
         }
     }
 
@@ -878,8 +887,8 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn send_heartbeat_logs_held_session_count_without_raw_session_state() {
-        let session_id = "sess-sensitive-heartbeat-17975";
+    async fn send_heartbeat_logs_state_counts_without_raw_reuse_state() {
+        let reuse_key = "thread:sensitive-heartbeat-17975";
         let idle_pool = Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
             default_timeout: Duration::from_secs(300),
             max_idle: 1,
@@ -888,12 +897,12 @@ mod tests {
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
         let cache = SessionWorkspaceCache::new(paths.clone());
-        seed_workspace_cache_state(&cache, &paths, session_id, "2026-06-01T00:00:00.000Z").await;
+        seed_workspace_cache_state(&cache, &paths, reuse_key, "2026-06-01T00:00:00.000Z").await;
         let profiles = test_profiles();
         let budget = ResourceBudget::new(8, 32768, 1.0, 4);
         let active_reuse_keys = super::super::active_sessions::new_active_reuse_keys();
         let (provider, _) = MockJobProvider::new(tokio_util::sync::CancellationToken::new());
-        let held_session_snapshot = HeldSessionStateSnapshot::new();
+        let workspace_cache_snapshot = WorkspaceCacheStateSnapshot::new();
         let hb = HeartbeatContext::new(HeartbeatContextInit {
             idle_pool: &idle_pool,
             runner_id: "runner-1",
@@ -905,29 +914,36 @@ mod tests {
             provider: provider.as_ref(),
             workspace_cache: Some(cache),
             active_reuse_keys: &active_reuse_keys,
-            held_session_snapshot: held_session_snapshot.clone(),
+            workspace_cache_snapshot: workspace_cache_snapshot.clone(),
         });
 
         let ((), events) =
             capture_heartbeat_events(send_heartbeat(&hb, RunnerMode::Running, 42)).await;
 
-        let debug_event = captured_event(&events, "heartbeat held session states");
+        let debug_event = captured_event(&events, "heartbeat held reusable states");
         assert_eq!(
             debug_event.fields.get("sessions").map(String::as_str),
+            Some("0")
+        );
+        assert_eq!(
+            debug_event
+                .fields
+                .get("workspace_states")
+                .map(String::as_str),
             Some("1")
         );
         for event in &events {
             for (field, value) in &event.fields {
                 assert!(
-                    !value.contains(session_id),
-                    "captured field {field} leaked raw session id {session_id:?}: {event:#?}"
+                    !value.contains(reuse_key),
+                    "captured field {field} leaked raw reuse key {reuse_key:?}: {event:#?}"
                 );
             }
         }
         let cached_states =
-            held_session_snapshot.current_held_session_states(Vec::new(), &active_reuse_keys, None);
+            workspace_cache_snapshot.current_held_workspace_states(&active_reuse_keys, None);
         assert_eq!(cached_states.len(), 1);
-        assert_eq!(cached_states[0].session_id, session_id);
+        assert_eq!(cached_states[0].reuse_key, reuse_key);
         assert_eq!(
             cached_states[0].workspace_caches,
             vec![workspace_cache("vm0/default")]
@@ -935,7 +951,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn workspace_cache_held_session_states_filters_claimed_session_after_merge() {
+    async fn workspace_cache_states_filter_claimed_reuse_key() {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
@@ -944,114 +960,53 @@ mod tests {
         seed_workspace_cache_state(&cache, &paths, "sess-claimed", "2026-06-01T00:00:01.000Z")
             .await;
         let active_reuse_keys = super::super::active_sessions::new_active_reuse_keys();
-        let idle = vec![HeldSessionState {
-            session_id: "sess-idle".into(),
-            reuse_key: "sess-idle".into(),
-            last_completed_at: "2026-06-01T00:00:02.000Z".into(),
-            reusable_sandbox: None,
-            workspace_caches: Vec::new(),
-        }];
-
         let profiles = test_profiles();
-        let cache_states = workspace_cache_held_session_states(Some(&cache), &profiles).await;
-        let states = merge_current_held_session_states(
-            idle,
+        let cache_states = workspace_cache_states(Some(&cache), &profiles).await;
+        let states = filter_current_held_workspace_states(
             cache_states,
             &active_reuse_keys,
             Some("sess-claimed"),
         );
 
         assert!(
-            states.iter().any(|state| state.session_id == "sess-idle"),
-            "idle session should remain advertised"
+            states.iter().any(|state| state.reuse_key == "sess-cache"),
+            "unrelated workspace cache should remain advertised"
         );
         assert!(
-            states.iter().any(|state| state.session_id == "sess-cache"),
-            "unrelated workspace cache session should remain advertised"
-        );
-        assert!(
-            !states
-                .iter()
-                .any(|state| state.session_id == "sess-claimed"),
-            "currently claimed session should be filtered until the run finishes"
+            !states.iter().any(|state| state.reuse_key == "sess-claimed"),
+            "currently claimed reuse key should be filtered until the run finishes"
         );
     }
 
     #[tokio::test]
-    async fn held_session_snapshot_merges_cached_states_and_filters_active_reuse_keys() {
-        let snapshot = HeldSessionStateSnapshot::new();
+    async fn workspace_cache_snapshot_filters_active_reuse_keys() {
+        let snapshot = WorkspaceCacheStateSnapshot::new();
         refresh_snapshot(
             &snapshot,
             vec![
-                HeldSessionState {
-                    session_id: "sess-cache".into(),
-                    reuse_key: "sess-cache".into(),
-                    last_completed_at: "2026-06-01T00:00:02.000Z".into(),
-                    reusable_sandbox: None,
-                    workspace_caches: vec![workspace_cache("vm0/default")],
-                },
-                HeldSessionState {
-                    session_id: "sess-claimed".into(),
-                    reuse_key: "sess-claimed".into(),
-                    last_completed_at: "2026-06-01T00:00:03.000Z".into(),
-                    reusable_sandbox: None,
-                    workspace_caches: vec![workspace_cache("vm0/default")],
-                },
-                HeldSessionState {
-                    session_id: "sess-active".into(),
-                    reuse_key: "sess-active".into(),
-                    last_completed_at: "2026-06-01T00:00:04.000Z".into(),
-                    reusable_sandbox: None,
-                    workspace_caches: vec![workspace_cache("vm0/default")],
-                },
+                held_workspace_state("sess-cache", "2026-06-01T00:00:02.000Z", &["vm0/default"]),
+                held_workspace_state("sess-claimed", "2026-06-01T00:00:03.000Z", &["vm0/default"]),
+                held_workspace_state("sess-active", "2026-06-01T00:00:04.000Z", &["vm0/default"]),
             ],
         );
         let active_reuse_keys = super::super::active_sessions::new_active_reuse_keys();
         super::super::active_sessions::insert_active_reuse_key(&active_reuse_keys, "sess-active");
-        let idle = vec![
-            HeldSessionState {
-                session_id: "sess-cache".into(),
-                reuse_key: "sess-cache".into(),
-                last_completed_at: "2026-06-01T00:00:01.000Z".into(),
-                reusable_sandbox: None,
-                workspace_caches: Vec::new(),
-            },
-            HeldSessionState {
-                session_id: "sess-idle".into(),
-                reuse_key: "sess-idle".into(),
-                last_completed_at: "2026-06-01T00:00:05.000Z".into(),
-                reusable_sandbox: None,
-                workspace_caches: Vec::new(),
-            },
-        ];
-
         let states =
-            snapshot.current_held_session_states(idle, &active_reuse_keys, Some("sess-claimed"));
+            snapshot.current_held_workspace_states(&active_reuse_keys, Some("sess-claimed"));
 
         assert_eq!(
             states,
-            vec![
-                HeldSessionState {
-                    session_id: "sess-cache".into(),
-                    reuse_key: "sess-cache".into(),
-                    last_completed_at: "2026-06-01T00:00:02.000Z".into(),
-                    reusable_sandbox: None,
-                    workspace_caches: vec![workspace_cache("vm0/default")],
-                },
-                HeldSessionState {
-                    session_id: "sess-idle".into(),
-                    reuse_key: "sess-idle".into(),
-                    last_completed_at: "2026-06-01T00:00:05.000Z".into(),
-                    reusable_sandbox: None,
-                    workspace_caches: Vec::new(),
-                },
-            ]
+            vec![held_workspace_state(
+                "sess-cache",
+                "2026-06-01T00:00:02.000Z",
+                &["vm0/default"],
+            )]
         );
     }
 
     #[test]
-    fn held_session_snapshot_treats_unloaded_workspace_cache_as_unknown() {
-        let snapshot = HeldSessionStateSnapshot::new();
+    fn workspace_cache_snapshot_treats_unloaded_cache_as_unknown() {
+        let snapshot = WorkspaceCacheStateSnapshot::new();
 
         assert!(
             !snapshot.workspace_cache_loaded(),
@@ -1074,13 +1029,11 @@ mod tests {
 
         refresh_snapshot(
             &snapshot,
-            vec![HeldSessionState {
-                session_id: "sess-cache".into(),
-                reuse_key: "sess-cache".into(),
-                last_completed_at: "2026-06-01T00:00:02.000Z".into(),
-                reusable_sandbox: None,
-                workspace_caches: vec![workspace_cache("vm0/default")],
-            }],
+            vec![held_workspace_state(
+                "sess-cache",
+                "2026-06-01T00:00:02.000Z",
+                &["vm0/default"],
+            )],
         );
         assert!(
             snapshot.might_contain_workspace_cache_reuse_key("sess-cache"),
@@ -1089,73 +1042,59 @@ mod tests {
     }
 
     #[test]
-    fn held_session_snapshot_upsert_caps_workspace_cache_states() {
-        let snapshot = HeldSessionStateSnapshot::new();
-        for index in 0..=MAX_HELD_SESSION_STATES {
-            snapshot.upsert_workspace_cache_state(HeldSessionState {
-                session_id: format!("sess-{index:04}"),
+    fn workspace_cache_snapshot_upsert_caps_states() {
+        let snapshot = WorkspaceCacheStateSnapshot::new();
+        for index in 0..=MAX_HELD_WORKSPACE_STATES {
+            snapshot.upsert_workspace_cache_state(HeldWorkspaceState {
                 reuse_key: format!("sess-{index:04}"),
                 last_completed_at: timestamp_for_index(index),
-                reusable_sandbox: None,
                 workspace_caches: vec![workspace_cache("vm0/default")],
             });
         }
 
         let active_reuse_keys = super::super::active_sessions::new_active_reuse_keys();
-        let states = snapshot.current_held_session_states(Vec::new(), &active_reuse_keys, None);
+        let states = snapshot.current_held_workspace_states(&active_reuse_keys, None);
 
-        assert_eq!(states.len(), MAX_HELD_SESSION_STATES);
+        assert_eq!(states.len(), MAX_HELD_WORKSPACE_STATES);
         assert!(
-            !states.iter().any(|state| state.session_id == "sess-0000"),
+            !states.iter().any(|state| state.reuse_key == "sess-0000"),
             "oldest upserted workspace-cache state should be dropped at the cap"
         );
         assert!(
             states
                 .iter()
-                .any(|state| state.session_id == format!("sess-{MAX_HELD_SESSION_STATES:04}")),
+                .any(|state| state.reuse_key == format!("sess-{MAX_HELD_WORKSPACE_STATES:04}")),
             "newest upserted workspace-cache state should be retained at the cap"
         );
     }
 
     #[test]
-    fn held_session_snapshot_refresh_preserves_concurrent_upsert() {
-        let snapshot = HeldSessionStateSnapshot::new();
-        let original = HeldSessionState {
-            session_id: "sess-shared".into(),
-            reuse_key: "sess-shared".into(),
-            last_completed_at: "2026-06-01T00:00:01.000Z".into(),
-            reusable_sandbox: None,
-            workspace_caches: vec![workspace_cache("vm0/default")],
-        };
-        let promoted = HeldSessionState {
-            session_id: "sess-shared".into(),
-            reuse_key: "sess-shared".into(),
-            last_completed_at: "2026-06-01T00:00:02.000Z".into(),
-            reusable_sandbox: None,
-            workspace_caches: vec![workspace_cache("vm0/large")],
-        };
+    fn workspace_cache_snapshot_refresh_preserves_concurrent_upsert() {
+        let snapshot = WorkspaceCacheStateSnapshot::new();
+        let original =
+            held_workspace_state("sess-shared", "2026-06-01T00:00:01.000Z", &["vm0/default"]);
+        let promoted =
+            held_workspace_state("sess-shared", "2026-06-01T00:00:02.000Z", &["vm0/large"]);
         refresh_snapshot(&snapshot, vec![original.clone()]);
 
         let refresh = snapshot.begin_workspace_cache_refresh();
         snapshot.upsert_workspace_cache_state(promoted.clone());
         let refreshed = snapshot.finish_workspace_cache_refresh(refresh, vec![original.clone()]);
-        let merged = HeldSessionState {
-            session_id: "sess-shared".into(),
-            reuse_key: "sess-shared".into(),
-            last_completed_at: "2026-06-01T00:00:02.000Z".into(),
-            reusable_sandbox: None,
-            workspace_caches: vec![workspace_cache("vm0/default"), workspace_cache("vm0/large")],
-        };
+        let merged = held_workspace_state(
+            "sess-shared",
+            "2026-06-01T00:00:02.000Z",
+            &["vm0/default", "vm0/large"],
+        );
         assert_eq!(refreshed, vec![merged.clone()]);
 
         let active_reuse_keys = super::super::active_sessions::new_active_reuse_keys();
-        let states = snapshot.current_held_session_states(Vec::new(), &active_reuse_keys, None);
+        let states = snapshot.current_held_workspace_states(&active_reuse_keys, None);
         assert_eq!(states, vec![merged]);
 
         let refresh = snapshot.begin_workspace_cache_refresh();
         snapshot.finish_workspace_cache_refresh(refresh, vec![original.clone()]);
 
-        let states = snapshot.current_held_session_states(Vec::new(), &active_reuse_keys, None);
+        let states = snapshot.current_held_workspace_states(&active_reuse_keys, None);
         assert_eq!(states, vec![original]);
     }
 
@@ -1164,134 +1103,48 @@ mod tests {
     }
 
     #[test]
-    fn merge_held_session_states_filters_active_reuse_keys() {
-        let idle = vec![HeldSessionState {
-            session_id: "sess-active-idle".into(),
-            reuse_key: "sess-active-idle".into(),
-            last_completed_at: "2026-06-01T00:00:01.000Z".into(),
-            reusable_sandbox: None,
-            workspace_caches: Vec::new(),
-        }];
-        let cache = vec![HeldSessionState {
-            session_id: "sess-active".into(),
-            reuse_key: "sess-active".into(),
-            last_completed_at: "2026-06-01T00:00:00.000Z".into(),
-            reusable_sandbox: None,
-            workspace_caches: vec![workspace_cache("vm0/default")],
-        }];
-        let active = std::collections::HashSet::from([
-            "sess-active".to_string(),
-            "sess-active-idle".to_string(),
-        ]);
+    fn held_session_states_filter_active_reuse_keys() {
+        let active_reuse_keys = super::super::active_sessions::new_active_reuse_keys();
+        super::super::active_sessions::insert_active_reuse_key(&active_reuse_keys, "thread-active");
+        let states = vec![
+            HeldSessionState {
+                session_id: "provider-session-active".into(),
+                reuse_key: "thread-active".into(),
+                last_completed_at: "2026-06-01T00:00:01.000Z".into(),
+                reusable_sandbox: None,
+            },
+            HeldSessionState {
+                session_id: "provider-session-held".into(),
+                reuse_key: "thread-held".into(),
+                last_completed_at: "2026-06-01T00:00:02.000Z".into(),
+                reusable_sandbox: None,
+            },
+        ];
 
-        let merged = merge_held_session_states(idle, cache, &active);
+        let filtered =
+            filter_current_held_session_states(states, &active_reuse_keys, Some("thread-claimed"));
 
-        assert!(merged.is_empty());
+        assert_eq!(filtered.len(), 1);
+        assert_eq!(filtered[0].session_id, "provider-session-held");
     }
 
     #[test]
-    fn merge_held_session_states_keeps_newest_duplicate() {
-        let idle = vec![HeldSessionState {
-            session_id: "sess-1".into(),
-            reuse_key: "sess-1".into(),
-            last_completed_at: "2026-06-01T00:00:00.000Z".into(),
-            reusable_sandbox: Some(crate::types::ReusableSandboxState {
-                profile: "vm0/default".into(),
-                history_generation_run_id: Some(RunId::new_v4()),
-            }),
-            workspace_caches: Vec::new(),
-        }];
-        let cache = vec![HeldSessionState {
-            session_id: "sess-1".into(),
-            reuse_key: "sess-1".into(),
-            last_completed_at: "2026-06-01T00:00:01.000Z".into(),
-            reusable_sandbox: None,
-            workspace_caches: vec![workspace_cache("vm0/default")],
-        }];
+    fn merge_held_workspace_state_keeps_newest_timestamp_and_capability() {
+        let mut existing =
+            held_workspace_state("thread-1", "2026-06-01T00:00:02.000Z", &["vm0/default"]);
+        existing.workspace_caches[0].workspace_affinity_version = None;
+        let incoming = held_workspace_state(
+            "thread-1",
+            "2026-06-01T00:00:01.000Z",
+            &["vm0/default", "vm0/large"],
+        );
 
-        let merged = merge_held_session_states(idle, cache, &std::collections::HashSet::new());
+        merge_held_workspace_state(&mut existing, incoming);
 
-        assert_eq!(merged.len(), 1);
-        assert_eq!(merged[0].session_id, "sess-1");
-        assert_eq!(merged[0].last_completed_at, "2026-06-01T00:00:01.000Z");
+        assert_eq!(existing.last_completed_at, "2026-06-01T00:00:02.000Z");
         assert_eq!(
-            merged[0]
-                .reusable_sandbox
-                .as_ref()
-                .map(|state| state.profile.as_str()),
-            Some("vm0/default")
-        );
-        assert!(
-            merged[0]
-                .reusable_sandbox
-                .as_ref()
-                .and_then(|state| state.history_generation_run_id)
-                .is_some(),
-            "newer workspace-cache timestamps must preserve idle generation metadata"
-        );
-        assert_eq!(
-            merged[0].workspace_caches,
-            vec![workspace_cache("vm0/default")]
-        );
-    }
-
-    #[test]
-    fn merge_held_session_states_prefers_idle_on_equal_timestamp() {
-        let idle = vec![HeldSessionState {
-            session_id: "sess-1".into(),
-            reuse_key: "sess-1".into(),
-            last_completed_at: "2026-06-01T00:00:00.000Z".into(),
-            reusable_sandbox: Some(crate::types::ReusableSandboxState {
-                profile: "vm0/default".into(),
-                history_generation_run_id: None,
-            }),
-            workspace_caches: Vec::new(),
-        }];
-        let cache = vec![HeldSessionState {
-            session_id: "sess-1".into(),
-            reuse_key: "sess-1".into(),
-            last_completed_at: "2026-06-01T00:00:00.000Z".into(),
-            reusable_sandbox: None,
-            workspace_caches: vec![workspace_cache("vm0/default")],
-        }];
-
-        let merged = merge_held_session_states(idle, cache, &std::collections::HashSet::new());
-
-        assert_eq!(merged.len(), 1);
-        assert_eq!(merged[0].last_completed_at, "2026-06-01T00:00:00.000Z");
-    }
-
-    #[test]
-    fn merge_held_session_states_preserves_workspace_affinity_capability() {
-        let legacy = HeldSessionState {
-            session_id: "sess-capability".into(),
-            reuse_key: "sess-capability".into(),
-            last_completed_at: "2026-06-01T00:00:00.000Z".into(),
-            reusable_sandbox: None,
-            workspace_caches: vec![WorkspaceCacheState {
-                profile: "vm0/default".into(),
-                workspace_affinity_version: None,
-            }],
-        };
-        let capable = HeldSessionState {
-            session_id: "sess-capability".into(),
-            reuse_key: "sess-capability".into(),
-            last_completed_at: "2026-06-01T00:00:01.000Z".into(),
-            reusable_sandbox: None,
-            workspace_caches: vec![workspace_cache("vm0/default")],
-        };
-
-        let merged = merge_held_session_states(
-            vec![legacy],
-            vec![capable],
-            &std::collections::HashSet::new(),
-        );
-
-        assert_eq!(merged.len(), 1);
-        assert_eq!(merged[0].workspace_caches.len(), 1);
-        assert_eq!(
-            merged[0].workspace_caches[0].workspace_affinity_version,
-            Some(crate::types::WORKSPACE_AFFINITY_VERSION)
+            existing.workspace_caches,
+            vec![workspace_cache("vm0/default"), workspace_cache("vm0/large")]
         );
     }
 

@@ -4,7 +4,7 @@ use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use tokio::fs;
 
 use super::super::fs::{allocated_bytes, local_timestamp};
-use super::super::lifecycle::cap_workspace_held_session_states;
+use super::super::lifecycle::cap_held_workspace_states;
 use super::super::metadata::{
     WorkspaceCacheMetadata, WorkspaceCacheState, WorkspaceImageFileIdentity, WorkspaceTrust,
 };
@@ -24,7 +24,7 @@ use crate::ids::RunId;
 use crate::paths::{RunnerPaths, scoped_session_workspace_cache_key, session_workspace_cache_key};
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
 use crate::types::{
-    HeldSessionState, MAX_HELD_SESSION_STATES, MAX_WORKSPACE_CACHES_PER_HEARTBEAT,
+    HeldWorkspaceState, MAX_HELD_WORKSPACE_STATES, MAX_WORKSPACE_CACHES_PER_HEARTBEAT,
     MAX_WORKSPACE_CACHES_PER_REUSE_KEY, WORKSPACE_AFFINITY_VERSION,
     WorkspaceCacheState as HeldWorkspaceCacheState,
 };
@@ -99,56 +99,50 @@ fn workspace_scoped_fingerprints_do_not_match_prefix_traps() {
 }
 
 #[test]
-fn cap_workspace_held_session_states_dedupes_and_keeps_newest() {
-    let mut states: Vec<HeldSessionState> = (0..=MAX_HELD_SESSION_STATES)
-        .map(|index| HeldSessionState {
-            session_id: format!("sess-{index:04}"),
+fn cap_held_workspace_states_dedupes_and_keeps_newest() {
+    let mut states: Vec<HeldWorkspaceState> = (0..=MAX_HELD_WORKSPACE_STATES)
+        .map(|index| HeldWorkspaceState {
             reuse_key: format!("sess-{index:04}"),
             last_completed_at: timestamp_for_index(index),
-            reusable_sandbox: None,
             workspace_caches: vec![HeldWorkspaceCacheState {
                 profile: TEST_PROFILE_NAME.to_owned(),
                 workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
             }],
         })
         .collect();
-    states.push(HeldSessionState {
-        session_id: "sess-0001".into(),
+    states.push(HeldWorkspaceState {
         reuse_key: "sess-0001".into(),
-        last_completed_at: timestamp_for_index(MAX_HELD_SESSION_STATES + 1),
-        reusable_sandbox: None,
+        last_completed_at: timestamp_for_index(MAX_HELD_WORKSPACE_STATES + 1),
         workspace_caches: vec![HeldWorkspaceCacheState {
             profile: TEST_PROFILE_NAME.to_owned(),
             workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
         }],
     });
 
-    let capped = cap_workspace_held_session_states(states);
+    let capped = cap_held_workspace_states(states);
 
-    assert_eq!(capped.len(), MAX_HELD_SESSION_STATES);
+    assert_eq!(capped.len(), MAX_HELD_WORKSPACE_STATES);
     assert!(
-        !capped.iter().any(|state| state.session_id == "sess-0000"),
+        !capped.iter().any(|state| state.reuse_key == "sess-0000"),
         "oldest advertised cache state should be dropped"
     );
     assert!(capped.iter().any(|state| {
-        state.session_id == "sess-0001"
-            && state.last_completed_at == timestamp_for_index(MAX_HELD_SESSION_STATES + 1)
+        state.reuse_key == "sess-0001"
+            && state.last_completed_at == timestamp_for_index(MAX_HELD_WORKSPACE_STATES + 1)
     }));
     assert!(
         capped
             .iter()
-            .any(|state| state.session_id == format!("sess-{MAX_HELD_SESSION_STATES:04}"))
+            .any(|state| state.reuse_key == format!("sess-{MAX_HELD_WORKSPACE_STATES:04}"))
     );
 }
 
 #[test]
-fn cap_workspace_held_session_states_bounds_nested_resources() {
+fn cap_held_workspace_states_bounds_nested_resources() {
     let per_session = (0..=MAX_WORKSPACE_CACHES_PER_REUSE_KEY)
-        .map(|index| HeldSessionState {
-            session_id: "sess-multi".into(),
+        .map(|index| HeldWorkspaceState {
             reuse_key: "sess-multi".into(),
             last_completed_at: timestamp_for_index(index),
-            reusable_sandbox: None,
             workspace_caches: vec![HeldWorkspaceCacheState {
                 profile: format!("vm0/profile-{index:02}"),
                 workspace_affinity_version: Some(WORKSPACE_AFFINITY_VERSION),
@@ -156,7 +150,7 @@ fn cap_workspace_held_session_states_bounds_nested_resources() {
         })
         .collect();
 
-    let capped = cap_workspace_held_session_states(per_session);
+    let capped = cap_held_workspace_states(per_session);
 
     assert_eq!(capped.len(), 1);
     assert_eq!(
@@ -167,11 +161,9 @@ fn cap_workspace_held_session_states_bounds_nested_resources() {
     assert_eq!(capped[0].last_completed_at, timestamp_for_index(8));
 
     let global = (0..=MAX_WORKSPACE_CACHES_PER_HEARTBEAT / 8)
-        .map(|index| HeldSessionState {
-            session_id: format!("sess-{index:04}"),
+        .map(|index| HeldWorkspaceState {
             reuse_key: format!("sess-{index:04}"),
             last_completed_at: timestamp_for_index(index),
-            reusable_sandbox: None,
             workspace_caches: (0..8)
                 .map(|profile| HeldWorkspaceCacheState {
                     profile: format!("vm0/profile-{profile}"),
@@ -181,7 +173,7 @@ fn cap_workspace_held_session_states_bounds_nested_resources() {
         })
         .collect();
 
-    let capped = cap_workspace_held_session_states(global);
+    let capped = cap_held_workspace_states(global);
 
     assert_eq!(
         capped
@@ -191,13 +183,13 @@ fn cap_workspace_held_session_states_bounds_nested_resources() {
         MAX_WORKSPACE_CACHES_PER_HEARTBEAT
     );
     assert!(
-        !capped.iter().any(|state| state.session_id == "sess-0000"),
+        !capped.iter().any(|state| state.reuse_key == "sess-0000"),
         "oldest session should be dropped at the global workspace cap"
     );
 }
 
 #[tokio::test]
-async fn held_session_states_for_profiles_filters_and_aggregates_current_identities() {
+async fn held_workspace_states_for_profiles_filters_and_aggregates_current_identities() {
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().join("runner"));
     fs::create_dir_all(paths.base_dir()).await.unwrap();
@@ -241,15 +233,13 @@ async fn held_session_states_for_profiles_filters_and_aggregates_current_identit
         ("vm0/large", image_size),
         ("vm0/noncanonical", image_size),
     ]);
-    let states = cache.held_session_states_for_profiles(&configured).await;
+    let states = cache.held_workspace_states_for_profiles(&configured).await;
 
     assert_eq!(
         states,
-        vec![HeldSessionState {
-            session_id: session_id.into(),
+        vec![HeldWorkspaceState {
             reuse_key: session_id.into(),
             last_completed_at: "2026-05-01T00:00:02.000Z".into(),
-            reusable_sandbox: None,
             workspace_caches: vec![
                 HeldWorkspaceCacheState {
                     profile: "vm0/default".into(),
@@ -264,14 +254,16 @@ async fn held_session_states_for_profiles_filters_and_aggregates_current_identit
     );
 
     let default_only = BTreeMap::from([("vm0/default", image_size)]);
-    let states = cache.held_session_states_for_profiles(&default_only).await;
+    let states = cache
+        .held_workspace_states_for_profiles(&default_only)
+        .await;
     assert_eq!(states[0].workspace_caches.len(), 1);
     assert_eq!(states[0].workspace_caches[0].profile, "vm0/default");
 
     let wrong_size = BTreeMap::from([("vm0/default", image_size + 1)]);
     assert!(
         cache
-            .held_session_states_for_profiles(&wrong_size)
+            .held_workspace_states_for_profiles(&wrong_size)
             .await
             .is_empty()
     );
@@ -406,7 +398,7 @@ async fn prepare_normalizes_working_dir_for_cache_identity() {
 }
 
 #[tokio::test]
-async fn held_session_states_rejects_metadata_under_wrong_cache_key() {
+async fn held_workspace_states_reject_metadata_under_wrong_cache_key() {
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().to_path_buf());
     let cache = SessionWorkspaceCache::new(paths.clone());
@@ -433,7 +425,7 @@ async fn held_session_states_rejects_metadata_under_wrong_cache_key() {
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
                 reuse_key: "sess-other".into(),
-                cli_agent_session_id: "sess-other".into(),
+                cli_agent_session_id: Some("sess-other".into()),
                 working_dir: "/workspace".into(),
                 last_completed_at: local_timestamp(),
                 last_used_at: local_timestamp(),
@@ -451,13 +443,13 @@ async fn held_session_states_rejects_metadata_under_wrong_cache_key() {
         .unwrap();
 
     assert!(
-        cache.held_session_states().await.is_empty(),
+        cache.held_workspace_states().await.is_empty(),
         "metadata must not be advertised from a cache key derived from another session"
     );
 }
 
 #[tokio::test]
-async fn held_session_states_rejects_unsafe_working_dir_metadata() {
+async fn held_workspace_states_reject_unsafe_working_dir_metadata() {
     let dir = tempfile::tempdir().unwrap();
     let paths = RunnerPaths::new(dir.path().to_path_buf());
     let cache = SessionWorkspaceCache::new(paths.clone());
@@ -479,7 +471,7 @@ async fn held_session_states_rejects_unsafe_working_dir_metadata() {
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
                 reuse_key: "sess-1".into(),
-                cli_agent_session_id: "sess-1".into(),
+                cli_agent_session_id: Some("sess-1".into()),
                 working_dir: "/".into(),
                 last_completed_at: local_timestamp(),
                 last_used_at: local_timestamp(),
@@ -497,7 +489,7 @@ async fn held_session_states_rejects_unsafe_working_dir_metadata() {
         .unwrap();
 
     assert!(
-        cache.held_session_states().await.is_empty(),
+        cache.held_workspace_states().await.is_empty(),
         "unsafe working dirs must not be advertised for affinity",
     );
 }

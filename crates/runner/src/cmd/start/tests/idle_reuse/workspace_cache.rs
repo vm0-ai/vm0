@@ -26,10 +26,10 @@ fn reusable_candidate(
         .with_session_affinity_resource(Some(SessionAffinityResource::ReusableSandbox))
 }
 
-async fn wait_heartbeat_with_session_after(
+async fn wait_heartbeat_with_workspace_after(
     handle: &crate::provider::mock::MockProviderHandle,
     mut cursor: usize,
-    session_id: &str,
+    reuse_key: &str,
     timeout: Duration,
 ) -> bool {
     let deadline = tokio::time::Instant::now() + timeout;
@@ -38,9 +38,9 @@ async fn wait_heartbeat_with_session_after(
             let heartbeats = handle.heartbeats.lock().unwrap_or_else(|e| e.into_inner());
             if heartbeats[cursor..].iter().any(|state| {
                 state
-                    .held_session_states
+                    .held_workspace_states
                     .iter()
-                    .any(|state| state.session_id == session_id)
+                    .any(|state| state.reuse_key == reuse_key)
             }) {
                 return true;
             }
@@ -117,9 +117,14 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
     );
 
     assert!(
-        wait_heartbeat_with_session_after(&env.handle, before, session_id, Duration::from_secs(5))
-            .await,
-        "immediate heartbeat should advertise the promoted workspace cache session",
+        wait_heartbeat_with_workspace_after(
+            &env.handle,
+            before,
+            session_id,
+            Duration::from_secs(5),
+        )
+        .await,
+        "immediate heartbeat should advertise the promoted workspace cache",
     );
 
     let second_gate = sandbox_mock::MockLifecycleGate::new();
@@ -154,11 +159,11 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
     assert!(
         post_claim_heartbeats.iter().any(|heartbeat| {
             heartbeat
-                .held_session_states
+                .held_workspace_states
                 .iter()
-                .all(|state| state.session_id != session_id)
+                .all(|state| state.reuse_key != session_id)
         }),
-        "post-claim heartbeat should stop advertising the active workspace cache session; heartbeats: {post_claim_heartbeats:?}",
+        "post-claim heartbeat should stop advertising the active workspace cache; heartbeats: {post_claim_heartbeats:?}",
     );
     overrides.clear_wait_process_lifecycle_gate();
     second_gate.release_one();
@@ -226,7 +231,7 @@ async fn workspace_promotion_mismatch_destroys_stale_idle_vm_and_fresh_creates()
     wait_idle_pool_sessions(&idle_pool, &[session_id], Duration::from_secs(5)).await;
     wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
     assert!(
-        workspace_cache.held_session_states().await.is_empty(),
+        workspace_cache.held_workspace_states().await.is_empty(),
         "mismatched stale idle VM must be destroyed without publishing its workspace image"
     );
 

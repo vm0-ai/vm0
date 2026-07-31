@@ -17,7 +17,7 @@ use super::support::{
 use crate::ids::RunId;
 use crate::paths::{HomePaths, RunnerPaths, session_workspace_cache_key};
 use crate::storage_fingerprints::StorageFingerprints;
-use crate::types::MAX_HELD_SESSION_STATES;
+use crate::types::MAX_HELD_WORKSPACE_STATES;
 
 #[tokio::test]
 async fn global_gc_preserves_other_group_cache_entries_when_under_budget() {
@@ -73,7 +73,7 @@ async fn global_gc_preserves_other_group_cache_entries_when_under_budget() {
 
     cache_b.gc(false).await.unwrap();
 
-    assert_eq!(cache_a.held_session_states().await.len(), 1);
+    assert_eq!(cache_a.held_workspace_states().await.len(), 1);
 }
 
 #[tokio::test]
@@ -235,8 +235,8 @@ async fn global_gc_evicts_old_entry_from_other_group_under_free_space_pressure()
             .exists(),
         "newer candidate from the current group should be retained once pressure is relieved"
     );
-    assert!(cache_a.held_session_states().await.is_empty());
-    assert_eq!(cache_b.held_session_states().await.len(), 1);
+    assert!(cache_a.held_workspace_states().await.is_empty());
+    assert_eq!(cache_b.held_workspace_states().await.len(), 1);
 }
 
 #[tokio::test]
@@ -282,7 +282,7 @@ async fn global_gc_prunes_oldest_entries_above_limit_across_runner_groups() {
     )
     .await;
     let mut newest_key = String::new();
-    for index in 1..=MAX_HELD_SESSION_STATES {
+    for index in 1..=MAX_HELD_WORKSPACE_STATES {
         let session_id = format!("sess-b-{index:04}");
         let timestamp = timestamp_for_index(index);
         let key = write_current_cache_entry(
@@ -294,7 +294,7 @@ async fn global_gc_prunes_oldest_entries_above_limit_across_runner_groups() {
             &timestamp,
         )
         .await;
-        if index == MAX_HELD_SESSION_STATES {
+        if index == MAX_HELD_WORKSPACE_STATES {
             newest_key = key;
         }
     }
@@ -316,12 +316,12 @@ async fn global_gc_prunes_oldest_entries_above_limit_across_runner_groups() {
     );
     assert_eq!(
         cache_b.gc_candidates().await.unwrap().len(),
-        MAX_HELD_SESSION_STATES
+        MAX_HELD_WORKSPACE_STATES
     );
-    assert!(cache_a.held_session_states().await.is_empty());
+    assert!(cache_a.held_workspace_states().await.is_empty());
     assert_eq!(
-        cache_b.held_session_states().await.len(),
-        MAX_HELD_SESSION_STATES
+        cache_b.held_workspace_states().await.len(),
+        MAX_HELD_WORKSPACE_STATES
     );
 }
 
@@ -341,7 +341,7 @@ fn gc_budget_satisfied_counts_only_candidate_deletes_after_pre_cleanup() {
     assert!(!gc_budget_satisfied(
         true,
         75,
-        MAX_HELD_SESSION_STATES,
+        MAX_HELD_WORKSPACE_STATES,
         stats_after_pre_cleanup,
         budget,
         0,
@@ -349,7 +349,7 @@ fn gc_budget_satisfied_counts_only_candidate_deletes_after_pre_cleanup() {
     assert!(gc_budget_satisfied(
         true,
         75,
-        MAX_HELD_SESSION_STATES,
+        MAX_HELD_WORKSPACE_STATES,
         stats_after_pre_cleanup,
         budget,
         10,
@@ -368,7 +368,7 @@ fn gc_budget_satisfied_enforces_entry_cap_even_without_disk_pressure() {
     assert!(!gc_budget_satisfied(
         false,
         50,
-        MAX_HELD_SESSION_STATES + 1,
+        MAX_HELD_WORKSPACE_STATES + 1,
         FsStats {
             total_bytes: 200,
             available_bytes: 100,
@@ -398,7 +398,7 @@ async fn gc_candidate_detects_replaced_image_with_same_timestamp() {
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
                 reuse_key: "sess-1".into(),
-                cli_agent_session_id: "sess-1".into(),
+                cli_agent_session_id: Some("sess-1".into()),
                 working_dir: "/workspace".into(),
                 last_completed_at: "2026-05-01T00:00:00.000Z".into(),
                 last_used_at: "2026-05-01T00:00:00.000Z".into(),
@@ -454,7 +454,7 @@ async fn gc_counts_busy_entry_when_pruning_above_held_session_limit() {
     let mut oldest_key = String::new();
     let mut second_oldest_key = String::new();
     let mut newest_key = String::new();
-    for index in 0..=MAX_HELD_SESSION_STATES {
+    for index in 0..=MAX_HELD_WORKSPACE_STATES {
         let session_id = format!("sess-{index:04}");
         let timestamp = timestamp_for_index(index);
         let key = write_current_cache_entry(
@@ -472,7 +472,7 @@ async fn gc_counts_busy_entry_when_pruning_above_held_session_limit() {
         if index == 1 {
             second_oldest_key = key.clone();
         }
-        if index == MAX_HELD_SESSION_STATES {
+        if index == MAX_HELD_WORKSPACE_STATES {
             newest_key = key;
         }
     }
@@ -504,11 +504,11 @@ async fn gc_counts_busy_entry_when_pruning_above_held_session_limit() {
     );
     assert_eq!(
         cache.gc_candidates().await.unwrap().len(),
-        MAX_HELD_SESSION_STATES
+        MAX_HELD_WORKSPACE_STATES
     );
     assert_eq!(
-        cache.held_session_states().await.len(),
-        MAX_HELD_SESSION_STATES
+        cache.held_workspace_states().await.len(),
+        MAX_HELD_WORKSPACE_STATES
     );
 }
 
@@ -724,7 +724,7 @@ async fn gc_removes_current_directory_even_when_metadata_matches() {
                 cache_scope: cache.inner.cache_scope.clone(),
                 profile_name: TEST_PROFILE_NAME.into(),
                 reuse_key: session_id.into(),
-                cli_agent_session_id: session_id.into(),
+                cli_agent_session_id: Some(session_id.into()),
                 working_dir: working_dir.into(),
                 last_completed_at: "2026-05-01T00:00:00.000Z".into(),
                 last_used_at: "2026-05-01T00:00:00.000Z".into(),
@@ -778,7 +778,7 @@ async fn gc_counts_nested_current_directory_bytes() {
                 cache_scope: cache.inner.cache_scope.clone(),
                 profile_name: TEST_PROFILE_NAME.into(),
                 reuse_key: session_id.into(),
-                cli_agent_session_id: session_id.into(),
+                cli_agent_session_id: Some(session_id.into()),
                 working_dir: working_dir.into(),
                 last_completed_at: "2026-05-01T00:00:00.000Z".into(),
                 last_used_at: "2026-05-01T00:00:00.000Z".into(),

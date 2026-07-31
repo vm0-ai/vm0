@@ -38,7 +38,7 @@ use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::run_cancellation::{RunCancellationRegistration, RunCancellationRegistry};
 use crate::status::StatusTracker;
 use crate::types::{
-    ExecutionContext, HeldSessionState, SandboxReuseResult, SessionAffinityResource,
+    ExecutionContext, HeldWorkspaceState, SandboxReuseResult, SessionAffinityResource,
     WORKSPACE_AFFINITY_VERSION, reuse_key_kind,
 };
 
@@ -502,8 +502,8 @@ async fn prepare_affinity_protected_candidate(
                 });
             }
 
-            let held_session_states = current_local_held_session_states(ctx).await;
-            let has_capable_workspace = held_session_states
+            let held_workspace_states = current_local_held_workspace_states(ctx);
+            let has_capable_workspace = held_workspace_states
                 .iter()
                 .filter(|state| state.reuse_key == reuse_key)
                 .flat_map(|state| &state.workspace_caches)
@@ -543,16 +543,10 @@ fn diagnostic_reuse_key_fingerprint(reuse_key: &str) -> String {
     short_digest(reuse_key)
 }
 
-async fn current_local_held_session_states(
-    ctx: &DiscoveredJobContext<'_>,
-) -> Vec<HeldSessionState> {
-    let idle_states = {
-        let pool = ctx.idle_pool.lock().await;
-        pool.held_session_states()
-    };
+fn current_local_held_workspace_states(ctx: &DiscoveredJobContext<'_>) -> Vec<HeldWorkspaceState> {
     ctx.spawn_ctx
-        .held_session_snapshot
-        .current_held_session_states(idle_states, &ctx.spawn_ctx.active_reuse_keys, None)
+        .workspace_cache_snapshot
+        .current_held_workspace_states(&ctx.spawn_ctx.active_reuse_keys, None)
 }
 
 async fn acquire_local_admission_resource(
@@ -884,7 +878,7 @@ async fn try_reuse_from_pool(
     let claimed_workspace_cache_reuse_key = ctx.spawn_ctx.exec_config.workspace_cache.is_some()
         && ctx
             .spawn_ctx
-            .held_session_snapshot
+            .workspace_cache_snapshot
             .might_contain_workspace_cache_reuse_key(reuse_key);
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::HeldSessionStateRefresh, started_at);
     let needs_session_affinity_refresh = took_idle_session || claimed_workspace_cache_reuse_key;
