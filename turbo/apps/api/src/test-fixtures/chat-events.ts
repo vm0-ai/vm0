@@ -41,6 +41,9 @@ const VM0_BDD_API_KEY_PREFIXES = [
 const databasePidRowSchema = z.object({ pid: z.int() });
 const waiterCountRowSchema = z.object({ waiterCount: z.int() });
 const blockedByPidRowSchema = z.object({ blocked: z.boolean() });
+const blockedQueryRowSchema = z.object({ query: z.string() });
+
+type ChatThreadBlockedStatementKind = "select_for_update" | "update" | "other";
 
 interface ChatEventInputParamsFixture {
   readonly eventId: string;
@@ -662,6 +665,91 @@ async function directBlockedWaiterCount(holderPid: number): Promise<number> {
     waiterCountRowSchema,
   );
   return rows[0]?.waiterCount ?? 0;
+}
+
+async function firstDirectBlockedStatementKind(
+  holderPid: number,
+): Promise<ChatThreadBlockedStatementKind | null> {
+  const rows = await executeRawRows(
+    db(),
+    sql`
+      SELECT activity.query AS "query"
+      FROM pg_stat_activity AS activity
+      WHERE ${holderPid} = ANY(pg_blocking_pids(activity.pid))
+      ORDER BY activity.query_start, activity.pid
+      LIMIT 1
+    `,
+    blockedQueryRowSchema,
+  );
+  const query = rows[0]?.query.toLowerCase().replaceAll(/\s+/g, " ").trim();
+  if (!query) {
+    return null;
+  }
+  if (
+    query.startsWith("select") &&
+    query.includes('from "chat_threads"') &&
+    query.includes("for update")
+  ) {
+    return "select_for_update";
+  }
+  if (query.startsWith('update "chat_threads"')) {
+    return "update";
+  }
+  return "other";
+}
+
+/**
+ * Holds one thread row so route tests can observe the first product statement
+ * that requires a write-oriented lock. Product APIs cannot pause at this
+ * boundary, and the fixture does not change the held row.
+ */
+export async function holdChatThreadRowLockFixture(args: {
+  readonly threadId: string;
+  readonly signal: AbortSignal;
+}): Promise<{
+  readonly release: () => void;
+  readonly done: Promise<void>;
+  readonly firstBlockedStatementKind: () => Promise<ChatThreadBlockedStatementKind | null>;
+}> {
+  const started = createDeferredPromise<number>(args.signal);
+  const released = createDeferredPromise<void>(args.signal);
+  const done = db().transaction(async (tx) => {
+    const [thread] = await tx
+      .select({ id: chatThreads.id })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, args.threadId))
+      .for("update")
+      .limit(1);
+    if (!thread) {
+      throw new Error("Expected the chat thread row");
+    }
+    const pidRows = await executeRawRows(
+      tx,
+      sql`
+        SELECT pg_backend_pid() AS "pid"
+      `,
+      databasePidRowSchema,
+    );
+    const holderPid = pidRows[0]?.pid;
+    if (!holderPid) {
+      throw new Error("Expected the chat thread lock holder pid");
+    }
+    started.resolve(holderPid);
+    await released.promise;
+  });
+  const holderPid = await started.promise;
+
+  return {
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+    done,
+    firstBlockedStatementKind: async () => {
+      return await firstDirectBlockedStatementKind(holderPid);
+    },
+  };
 }
 
 async function pidIsBlocked(waiterPid: number): Promise<boolean> {

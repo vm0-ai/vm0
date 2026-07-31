@@ -80,6 +80,7 @@ import {
   hasVm0ApiKeyLabel,
   holdChatEventFixture,
   holdChatEventQueueItemFixture,
+  holdChatThreadRowLockFixture,
   holdOrgAdmissionLockFixture,
   holdThreadSessionBindingClearFixture,
   holdThreadSessionConversationChangesFixture,
@@ -2453,6 +2454,39 @@ describe("CHAT-02: model-first provider policies", () => {
     await cancelChatRun(actor, run.runId);
   });
 
+  it("resolves an unchanged existing thread without waiting for its row lock", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const thread = await chat.createThread(actor, { agentId });
+    const threadLock = await holdChatThreadRowLockFixture({
+      threadId: thread.id,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      threadLock.release();
+      await threadLock.done;
+    });
+
+    const sentPromise = sendChatRun(actor, {
+      agentId,
+      threadId: thread.id,
+      prompt: "continue without reconciling the thread model",
+    });
+    await expect.poll(threadLock.firstBlockedStatementKind).toBe("update");
+
+    threadLock.release();
+    const sent = await sentPromise;
+    await threadLock.done;
+    expect(apiDispatchTimingEventsForRun(sent.runId)).toContainEqual(
+      expect.objectContaining({
+        op_type:
+          "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_thread",
+        model_resolution_path: "read_only",
+      }),
+    );
+    await cancelChatRun(actor, sent.runId);
+  }, 90_000);
+
   it("recovers a removed thread model through the current workspace route", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
@@ -2491,11 +2525,33 @@ describe("CHAT-02: model-first provider policies", () => {
       },
     ]);
 
-    const recovered = await sendChatRun(actor, {
+    const threadLock = await holdChatThreadRowLockFixture({
+      threadId: first.threadId,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      threadLock.release();
+      await threadLock.done;
+    });
+    const recoveredPromise = sendChatRun(actor, {
       agentId,
       threadId: first.threadId,
       prompt: "continue through the current workspace default",
     });
+    await expect
+      .poll(threadLock.firstBlockedStatementKind)
+      .toBe("select_for_update");
+
+    threadLock.release();
+    const recovered = await recoveredPromise;
+    await threadLock.done;
+    expect(apiDispatchTimingEventsForRun(recovered.runId)).toContainEqual(
+      expect.objectContaining({
+        op_type:
+          "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_resolve_thread",
+        model_resolution_path: "locked_reconciliation",
+      }),
+    );
     const recoveredClaim = await claimChatRun(runnerGroup, recovered.runId);
     expect(recoveredClaim.claim.cliAgentType).toBe("codex");
     expect(recoveredClaim.claim.resumeSession).toBeNull();
