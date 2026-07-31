@@ -168,10 +168,7 @@ function priceUsageEvents(
   );
   const pricedEvents: PricedUsageEvent[] = [];
   for (const record of records) {
-    if (
-      (record.kind === "model" || record.kind === "browser") &&
-      record.grossCredits !== null
-    ) {
+    if (record.kind === "model" && record.grossCredits !== null) {
       pricedEvents.push({
         record,
         grossCredits: record.grossCredits,
@@ -305,7 +302,7 @@ async function processOrgUsageEventsInTransaction(
   ];
 
   const pricingRecords = pendingRecords.some((record) => {
-    return record.grossCredits === null;
+    return record.kind !== "model" || record.grossCredits === null;
   })
     ? await tx.select().from(usagePricing)
     : [];

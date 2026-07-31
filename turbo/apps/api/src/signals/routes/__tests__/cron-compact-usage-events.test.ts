@@ -257,6 +257,9 @@ describe("usage event compaction cron", () => {
     ).resolves.toStrictEqual({
       id: usageEventId,
       status: "compacted",
+      grossCredits: null,
+      creditsCharged: 7,
+      billingError: null,
     });
 
     mocks.clerk.session(fixture.userId, fixture.orgId);
