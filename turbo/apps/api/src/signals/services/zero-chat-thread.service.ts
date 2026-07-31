@@ -13,7 +13,6 @@ import {
   type ChatThreadDetail,
   type CodexServiceTier,
   type ChatEvent,
-  type ChatEventResponse,
   type PersistedAttachment,
   type ResolvedAttachFile,
   type UserMessageDocument,
@@ -932,7 +931,7 @@ type ChatEventBuilder = (
   row: ChatEventRow,
   event: ChatEventBase,
   attachFiles: readonly ResolvedAttachFile[] | undefined,
-) => ChatEventResponse;
+) => ChatEvent;
 
 const chatEventBuilders = {
   "input.prompt": (row, event, attachFiles) => {
@@ -1145,32 +1144,14 @@ const chatEventBuilders = {
       ),
     };
   },
-  // Historical rows from the retired queue pause/resume behavior. These have
-  // no writer anymore but still occupy seqIds, so the read path serves them
-  // as-is instead of filtering and leaving holes in the event stream.
-  "queue.automation_paused": (row, event) => {
-    return {
-      ...event,
-      eventType: "queue.automation_paused",
-      content: null,
-      pauseReason: row.error ?? null,
-    };
-  },
-  "queue.automation_resumed": (_row, event) => {
-    return {
-      ...event,
-      eventType: "queue.automation_resumed",
-      content: null,
-    };
-  },
-} satisfies Record<ChatEventResponse["eventType"], ChatEventBuilder>;
+} satisfies Record<ChatEvent["eventType"], ChatEventBuilder>;
 
 function toChatEvent(
   userId: string,
   row: ChatEventRow,
   canonicalAttachments: readonly ResolvedAttachFile[],
-): Computed<Promise<ChatEventResponse>> {
-  return computed(async (get): Promise<ChatEventResponse> => {
+): Computed<Promise<ChatEvent>> {
+  return computed(async (get): Promise<ChatEvent> => {
     const attachFiles = await get(
       chatEventAttachFiles(userId, row, canonicalAttachments),
     );
@@ -2277,7 +2258,7 @@ export function zeroChatThreadEventsPage(args: {
   readonly sinceId: string | undefined;
   readonly beforeId: string | undefined;
   readonly limit: number;
-}): Computed<Promise<readonly ChatEventResponse[] | null>> {
+}): Computed<Promise<readonly ChatEvent[] | null>> {
   return computed(async (get) => {
     const db = get(db$);
     const [owned] = await db
@@ -2366,7 +2347,7 @@ export function zeroChatThreadEventsPage(args: {
 function chatEventsWithAssets(args: {
   readonly userId: string;
   readonly rows: readonly ChatEventRow[];
-}): Computed<Promise<readonly ChatEventResponse[]>> {
+}): Computed<Promise<readonly ChatEvent[]>> {
   return computed(async (get) => {
     const canonicalByEvent = await canonicalEventAttachments(
       get(db$),
@@ -2389,7 +2370,7 @@ export function zeroChatThreadEventById(args: {
   readonly threadId: string;
   readonly userId: string;
   readonly eventId: string;
-}): Computed<Promise<ChatEventResponse | null>> {
+}): Computed<Promise<ChatEvent | null>> {
   return computed(async (get) => {
     const owned = await get(ownedChatThread(args.threadId, args.userId));
     if (!owned) {

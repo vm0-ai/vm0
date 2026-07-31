@@ -2,7 +2,7 @@ import { waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import {
   chatThreadEventsContract,
-  type ChatEventResponse,
+  type ChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -18,7 +18,7 @@ const PAGE_SIZE = 50;
 // fetched and flushed into the persistent message state.
 const GATED_BEFORE_SEQ_ID = 51;
 
-function eventForSeq(seqId: number): ChatEventResponse {
+function eventForSeq(seqId: number): ChatEvent {
   if (seqId === TOTAL_MESSAGES) {
     return {
       id: `00000000-0000-4000-8000-${String(seqId).padStart(12, "0")}`,
@@ -46,11 +46,8 @@ function eventForSeq(seqId: number): ChatEventResponse {
   };
 }
 
-function eventsInRange(
-  fromSeqId: number,
-  toSeqId: number,
-): ChatEventResponse[] {
-  const events: ChatEventResponse[] = [];
+function eventsInRange(fromSeqId: number, toSeqId: number): ChatEvent[] {
+  const events: ChatEvent[] = [];
   for (let seqId = fromSeqId; seqId <= toSeqId; seqId++) {
     events.push(eventForSeq(seqId));
   }

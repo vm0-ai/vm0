@@ -172,11 +172,6 @@ export const chatEvents = pgTable(
         .where(
           sql`${table.runId} IS NULL AND ${table.eventType} IN ('input.prompt', 'input.automation', 'input.goal')`,
         ),
-      index("chat_events_automation_pause_idx")
-        .on(table.chatThreadId, table.seqId.desc())
-        .where(
-          sql`${table.eventType} IN ('queue.automation_paused', 'queue.automation_resumed')`,
-        ),
       uniqueIndex("chat_events_run_seq_unique").on(
         table.runId,
         table.sequenceNumber,
@@ -212,8 +207,6 @@ export const chatEvents = pgTable(
           'run.completed',
           'run.failed',
           'run.cancelled',
-          'queue.automation_paused',
-          'queue.automation_resumed',
           'control.interrupt',
           'control.revoke',
           'browser.started',

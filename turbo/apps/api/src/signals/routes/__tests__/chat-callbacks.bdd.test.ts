@@ -5,7 +5,7 @@ import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import type {
   AttachFile,
   GenerationTemplateRequest,
-  ChatEventResponse,
+  ChatEvent,
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { cronBrowserReconcileContract } from "@vm0/api-contracts/contracts/cron";
@@ -125,7 +125,7 @@ const FORBIDDEN_CHAT_CALLBACK_PRE_CREATE_TIMING_KEYS = [
 ] as const;
 
 type UserMessage = Extract<
-  ChatEventResponse,
+  ChatEvent,
   {
     eventType:
       | "input.prompt"
@@ -135,21 +135,15 @@ type UserMessage = Extract<
       | "control.revoke";
   }
 >;
-type AssistantMessage = Exclude<ChatEventResponse, UserMessage>;
-type PromptMessage = Extract<ChatEventResponse, { eventType: "input.prompt" }>;
-type OutputMessage = Extract<
-  ChatEventResponse,
-  { eventType: "output.message" }
->;
+type AssistantMessage = Exclude<ChatEvent, UserMessage>;
+type PromptMessage = Extract<ChatEvent, { eventType: "input.prompt" }>;
+type OutputMessage = Extract<ChatEvent, { eventType: "output.message" }>;
 type LifecycleEvent = "completed" | "failed" | "cancelled";
 type LifecycleChatEvent<Event extends LifecycleEvent> = Extract<
-  ChatEventResponse,
+  ChatEvent,
   { eventType: `run.${Event}` }
 >;
-type FollowupsEvent = Extract<
-  ChatEventResponse,
-  { eventType: "output.followups" }
->;
+type FollowupsEvent = Extract<ChatEvent, { eventType: "output.followups" }>;
 type TestOrgRole = "admin" | "member";
 
 interface EntitledChatActor {
@@ -409,7 +403,7 @@ function cliAgentSessionIdForChatRun(runId: string): string {
 async function waitForThreadMessages(
   actor: ApiTestUser,
   threadId: string,
-  predicate: (messages: readonly ChatEventResponse[]) => boolean,
+  predicate: (messages: readonly ChatEvent[]) => boolean,
 ) {
   let page: Awaited<ReturnType<typeof chat.listThreadEvents>> | undefined;
   await expect
@@ -618,19 +612,17 @@ async function failChatRun(
   );
 }
 
-function assistantMessages(
-  messages: readonly ChatEventResponse[],
-): AssistantMessage[] {
+function assistantMessages(messages: readonly ChatEvent[]): AssistantMessage[] {
   return messages.filter((message): message is AssistantMessage => {
     return !isUserMessage(message);
   });
 }
 
-function userMessages(messages: readonly ChatEventResponse[]): UserMessage[] {
+function userMessages(messages: readonly ChatEvent[]): UserMessage[] {
   return messages.filter(isUserMessage);
 }
 
-function isUserMessage(message: ChatEventResponse): message is UserMessage {
+function isUserMessage(message: ChatEvent): message is UserMessage {
   switch (message.eventType) {
     case "input.prompt":
     case "input.automation":
@@ -658,7 +650,7 @@ function isGoalContinuationUserMessage(
 }
 
 function eventBackedContents(
-  messages: readonly ChatEventResponse[],
+  messages: readonly ChatEvent[],
   runId: string,
 ): OutputMessage[] {
   return messages.filter((message): message is OutputMessage => {
@@ -667,7 +659,7 @@ function eventBackedContents(
 }
 
 function lifecycleMarkers<Event extends LifecycleEvent>(
-  messages: readonly ChatEventResponse[],
+  messages: readonly ChatEvent[],
   runId: string,
   event: Event,
 ): LifecycleChatEvent<Event>[] {
@@ -677,7 +669,7 @@ function lifecycleMarkers<Event extends LifecycleEvent>(
 }
 
 function recommendedFollowupEvents(
-  messages: readonly ChatEventResponse[],
+  messages: readonly ChatEvent[],
   runId: string,
 ): FollowupsEvent[] {
   return messages.filter((message): message is FollowupsEvent => {
