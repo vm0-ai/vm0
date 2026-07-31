@@ -2008,7 +2008,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(run2.result?.agentSessionId).toBe(webSessionId);
   });
 
-  it("forks Slack DM threads without replacing the main session", async () => {
+  it("keeps Slack DM sessions scoped to the selected agent", async () => {
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
     runs.acceptStorageDownloads();
@@ -2042,45 +2042,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       runId: firstRunId,
       sandboxToken: firstClaim.sandboxToken,
       cliAgentType: firstClaim.cliAgentType,
-      assistantText: "Main Slack DM answer",
     });
-    await flushWaitUntilForTest();
-    expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        channel: channelId,
-        thread_ts: firstMessageTs,
-        text: "Main Slack DM answer",
-      }),
-    );
-
-    const secondMessageTs = "2950.000200";
-    await integrations.postSlackEvent(teamId, {
-      type: "message",
-      channel_type: "im",
-      user: slackUserId,
-      text: "continue the main Slack DM",
-      ts: secondMessageTs,
-      channel: channelId,
-    });
-    const secondRunId = await pollSlackRun(runnerGroup);
-    const secondClaim = await runs.claimRunnerJob(secondRunId);
-    expect(secondClaim.resumeSession?.sessionId).toBe(
-      `bdd-slack-cli-${firstRunId}`,
-    );
-    await completeSlackTriggeredRun({
-      runId: secondRunId,
-      sandboxToken: secondClaim.sandboxToken,
-      cliAgentType: secondClaim.cliAgentType,
-      assistantText: "Continued main Slack DM answer",
-    });
-    await flushWaitUntilForTest();
-    expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        channel: channelId,
-        thread_ts: secondMessageTs,
-        text: "Continued main Slack DM answer",
-      }),
-    );
 
     const alternateAgent = await bdd.createAgent(actor, {
       displayName: "BDD alternate Slack DM agent",
@@ -2098,7 +2060,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       channel_type: "im",
       user: slackUserId,
       text: "use an alternate Slack DM agent",
-      ts: "2950.000250",
+      ts: "2950.000200",
       channel: channelId,
     });
     const alternateRunId = await pollSlackRun(runnerGroup);
@@ -2109,7 +2071,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
       sandboxToken: alternateClaim.sandboxToken,
       cliAgentType: alternateClaim.cliAgentType,
     });
-    await flushWaitUntilForTest();
     await integrations.postSlackInteractive(
       integrations.agentPickerSubmission({
         workspaceId: teamId,
@@ -2119,13 +2080,80 @@ describe("INT-01: Slack app deep webhook flows", () => {
       }),
     );
 
+    const returnMessageTs = "2950.000300";
+    await integrations.postSlackEvent(teamId, {
+      type: "message",
+      channel_type: "im",
+      user: slackUserId,
+      text: "return to the default Slack DM agent",
+      ts: returnMessageTs,
+      channel: channelId,
+    });
+    const returnToDefaultRunId = await pollSlackRun(runnerGroup);
+    const returnToDefaultClaim =
+      await runs.claimRunnerJob(returnToDefaultRunId);
+    expect(returnToDefaultClaim.resumeSession?.sessionId).toBe(
+      `bdd-slack-cli-${firstRunId}`,
+    );
+    await completeSlackTriggeredRun({
+      runId: returnToDefaultRunId,
+      sandboxToken: returnToDefaultClaim.sandboxToken,
+      cliAgentType: returnToDefaultClaim.cliAgentType,
+      assistantText: "Returned main Slack DM answer",
+    });
+    await flushWaitUntilForTest();
+    expect(context.mocks.slack.chat.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: channelId,
+        thread_ts: returnMessageTs,
+        text: "Returned main Slack DM answer",
+      }),
+    );
+  });
+
+  it("forks Slack DM threads without replacing the main session", async () => {
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    integrations.configureSlackAppMocks();
+    integrations.acceptSlackSessionHistoryDownloads();
+    const runnerGroup = runs.configureRunnerGroup();
+    await runs.grantProEntitlement(actor);
+    await integrations.configureSlackRunModelPolicies(actor);
+    await bdd.readOnboardingStatus(actor);
+    const slackUserId = uniqueSlackUserId();
+    const { teamId } = await integrations.installSlackWorkspace(actor, {
+      installerSlackUserId: slackUserId,
+    });
+    integrations.clearSlackCallHistory();
+
+    const channelId = "D_BDD_THREAD_SESSION_ROUTING";
+    const mainMessageTs = "2960.000100";
+    await integrations.postSlackEvent(teamId, {
+      type: "message",
+      channel_type: "im",
+      user: slackUserId,
+      text: "remember the main Slack DM",
+      ts: mainMessageTs,
+      channel: channelId,
+    });
+    const mainRunId = await pollSlackRun(runnerGroup);
+    const mainClaim = await runs.claimRunnerJob(mainRunId);
+    expect(mainClaim.resumeSession).toBeNull();
+    await completeSlackTriggeredRun({
+      runId: mainRunId,
+      sandboxToken: mainClaim.sandboxToken,
+      cliAgentType: mainClaim.cliAgentType,
+    });
+
     await integrations.postSlackEvent(teamId, {
       type: "message",
       channel_type: "im",
       user: slackUserId,
       text: "open a Slack DM thread",
-      ts: "2950.000300",
-      thread_ts: secondMessageTs,
+      ts: "2960.000200",
+      thread_ts: mainMessageTs,
       channel: channelId,
     });
     const threadRunId = await pollSlackRun(runnerGroup);
@@ -2136,15 +2164,14 @@ describe("INT-01: Slack app deep webhook flows", () => {
       sandboxToken: threadClaim.sandboxToken,
       cliAgentType: threadClaim.cliAgentType,
     });
-    await flushWaitUntilForTest();
 
     await integrations.postSlackEvent(teamId, {
       type: "message",
       channel_type: "im",
       user: slackUserId,
       text: "continue the Slack DM thread",
-      ts: "2950.000400",
-      thread_ts: secondMessageTs,
+      ts: "2960.000300",
+      thread_ts: mainMessageTs,
       channel: channelId,
     });
     const threadFollowUpRunId = await pollSlackRun(runnerGroup);
@@ -2157,20 +2184,19 @@ describe("INT-01: Slack app deep webhook flows", () => {
       sandboxToken: threadFollowUpClaim.sandboxToken,
       cliAgentType: threadFollowUpClaim.cliAgentType,
     });
-    await flushWaitUntilForTest();
 
     await integrations.postSlackEvent(teamId, {
       type: "message",
       channel_type: "im",
       user: slackUserId,
       text: "return to the main Slack DM",
-      ts: "2950.000500",
+      ts: "2960.000400",
       channel: channelId,
     });
     const returnToMainRunId = await pollSlackRun(runnerGroup);
     const returnToMainClaim = await runs.claimRunnerJob(returnToMainRunId);
     expect(returnToMainClaim.resumeSession?.sessionId).toBe(
-      `bdd-slack-cli-${secondRunId}`,
+      `bdd-slack-cli-${mainRunId}`,
     );
   });
 
