@@ -2,7 +2,7 @@ import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
 
 type ChatEventAnnotation = NonNullable<ChatEvent["annotation"]>;
 
-export type ChatEventAnnotationContext =
+type ChatEventAnnotationContext =
   | {
       readonly kind: "slack";
       readonly messagePermalink: string | null;
