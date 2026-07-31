@@ -58,7 +58,7 @@ use crate::http::{HttpClient, HttpClientConfig};
 use crate::idle_pool::{IdlePool, IdlePoolConfig, ParkingGate};
 use crate::kmsg_log;
 use crate::lock;
-use crate::network_log_drain::NetworkLogDrainCoordinator;
+use crate::network_log_drain::{DrainableLineReaderExit, NetworkLogDrainCoordinator};
 use crate::network_log_manager::NetworkLogManager;
 use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
 use crate::prefetch;
@@ -1188,7 +1188,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     } = proxy;
     let ShutdownHandles {
         mut kmsg_handle,
-        dns_handle,
+        mut dns_handle,
         mut memory_prefetch,
     } = shutdown;
 
@@ -1589,6 +1589,47 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     ).await;
                 }
                 kmsg_handle.kill_and_reap_child().await;
+            }
+            result = dns_handle.wait() => {
+                let mode = lifecycle.current_mode();
+                if !matches!(mode, RunnerMode::Stopping | RunnerMode::Stopped) {
+                    let message = match &result {
+                        Ok(DrainableLineReaderExit::Cancelled) => {
+                            "dns monitor exited unexpectedly: Cancelled".to_string()
+                        }
+                        Ok(DrainableLineReaderExit::DrainChannelClosed) => {
+                            "dns monitor exited unexpectedly: DrainChannelClosed".to_string()
+                        }
+                        Ok(DrainableLineReaderExit::Eof { during_drain }) => {
+                            format!(
+                                "dns monitor exited unexpectedly: Eof {{ during_drain: {during_drain} }}"
+                            )
+                        }
+                        Ok(DrainableLineReaderExit::ReadError {
+                            during_drain,
+                            error,
+                        }) => {
+                            format!(
+                                "dns monitor exited unexpectedly: ReadError {{ during_drain: {during_drain}, error: {error} }}"
+                            )
+                        }
+                        Err(error) => format!("dns monitor task failed: {error}"),
+                    };
+                    error!(
+                        component = "dns",
+                        ?mode,
+                        result = ?result,
+                        "required runner component exited"
+                    );
+                    terminal_error = Some(RunnerError::Internal(message));
+                    handle_stopping_signal(
+                        "dns-monitor",
+                        &provider_state.cancel,
+                        &provider_state.cancel_tokens,
+                        &lifecycle,
+                    ).await;
+                }
+                dns_handle.kill_and_reap_child().await;
             }
             // Reap completed jobs promptly in all live modes. Without this,
             // normal Running mode can retain completed JoinSet entries and
