@@ -1,11 +1,11 @@
 """Bound completed WebSocket history for registered mitmproxy flows.
 
-Mitmproxy shares each flow's message list with every addon in the current
-WebSocket hook chain. Registered flows therefore defer trimming until that
-chain finishes, while unregistered flows keep mitmproxy's normal history. The
-callback retains the latest complete message present when it runs. This bounds
-completed-message history, not pre-hook message assembly or the size of the
-retained message.
+Mitmproxy shares each flow's message list across addon hook dispatch. Registered
+flows therefore defer trimming to the event loop, preserving unchanged history
+for subsequent synchronous addon hooks in the same dispatch. Unregistered flows
+keep mitmproxy's normal history. The callback retains the latest complete
+message present when it runs. This bounds completed-message history, not
+pre-hook message assembly or the size of the retained message.
 
 See ``tests/test_websocket_retention.py`` and
 ``tests/test_deferred_scheduler.py`` for the executable contract.
@@ -23,9 +23,9 @@ def schedule_message_trim(flow: http.HTTPFlow) -> None:
     """Schedule one deferred history trim for a registered WebSocket flow.
 
     Flows without a run ID or WebSocket are left unchanged. Repeated calls
-    coalesce into one pending callback, leaving history intact for the rest of
-    the current hook chain. The callback mutates the existing message list in
-    place and keeps whichever message is latest when it runs instead of
+    coalesce into one pending callback, leaving history intact until control
+    returns to the event loop. The callback mutates the existing message list
+    in place and keeps whichever message is latest when it runs instead of
     capturing the message that triggered scheduling.
     """
     if not flow_metadata.run_id(flow.metadata) or flow.websocket is None:
