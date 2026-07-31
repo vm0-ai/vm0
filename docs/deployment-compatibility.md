@@ -52,6 +52,13 @@ briefly run against the migrated schema. Migrations must be backward-compatible
 with the currently deployed backend until that backend is no longer serving
 traffic.
 
+Migrations marked with `-- vm0:non-transactional` run one statement at a time
+outside a transaction. Successfully executed statements are not rolled back
+after a later failure, and the entire migration runs again on retry, so every
+statement must be idempotent under a full retry from the beginning. Migration
+`0778` demonstrates the required pattern with
+`DROP INDEX CONCURRENTLY IF EXISTS` followed by `CREATE INDEX CONCURRENTLY`.
+
 This is a traffic-promotion guarantee, not a guarantee that no deployment
 preparation has happened yet. Staged Vercel builds, runner rootfs/snapshot
 builds, host provisioning, and other non-serving preparation jobs may complete
