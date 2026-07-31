@@ -12,6 +12,7 @@ use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 #[cfg(unix)]
 use std::os::fd::AsRawFd;
+use std::os::unix::net::UnixListener;
 use std::path::Path;
 use std::process::{Command, ExitCode, Stdio};
 #[cfg(unix)]
@@ -24,8 +25,13 @@ use std::time::Duration;
 
 const REAPABLE_HANG_DURATION: Duration = Duration::from_secs(3600);
 const ACTIVE_INPUT_READY_RESULT: &str = "READY_FOR_ACTIVE_INPUT";
-const TERMINATION_READY_EVENT: &str =
-    r#"{"type":"stream_event","event":{"type":"vm0_mock_termination_ready"}}"#;
+const TERMINATION_READY_EVENT: &str = "vm0_mock_termination_ready";
+const POST_RESULT_READY_EVENT: &str = "vm0_mock_post_result_ready";
+const POST_RESULT_ACTIVITY_ONE_EVENT: &str = "vm0_mock_post_result_activity_1_ready";
+const POST_RESULT_ACTIVITY_TWO_EVENT: &str = "vm0_mock_post_result_activity_2_ready";
+const POST_RESULT_LIVENESS_EVENT: &str = "vm0_mock_post_result_stale_deadline_survived";
+const POST_RESULT_RELEASE_ONE_SOCKET: &str = ".vm0-post-result-release-1.sock";
+const POST_RESULT_RELEASE_TWO_SOCKET: &str = ".vm0-post-result-release-2.sock";
 const STREAM_JSON_SHELL_OUTPUT_LIMIT_BYTES: usize = 1024 * 1024;
 const STREAM_JSON_SHELL_READ_BUFFER_BYTES: usize = 8 * 1024;
 // Integration contract with guest-agent's ordinary stdout framing policy.
@@ -400,8 +406,30 @@ fn emit_termination_ready_fence() {
     if let Ok(home) = std::env::var("HOME") {
         let _ = std::fs::write(format!("{home}/.vm0-mock-sigterm-ignored"), b"");
     }
-    println!("{TERMINATION_READY_EVENT}");
+    emit_stream_event_fence(TERMINATION_READY_EVENT);
+}
+
+fn emit_stream_event_fence(event_type: &str) {
+    println!(
+        "{}",
+        json!({"type": "stream_event", "event": {"type": event_type}})
+    );
     let _ = std::io::stdout().flush();
+}
+
+fn emit_fence_and_wait_for_release(
+    event_type: &str,
+    release_socket_name: &str,
+) -> Result<(), String> {
+    let home = std::env::var("HOME").map_err(|error| format!("read HOME: {error}"))?;
+    let release_socket = Path::new(&home).join(release_socket_name);
+    let listener = UnixListener::bind(&release_socket)
+        .map_err(|error| format!("bind {}: {error}", release_socket.display()))?;
+    emit_stream_event_fence(event_type);
+    listener
+        .accept()
+        .map_err(|error| format!("accept {}: {error}", release_socket.display()))?;
+    Ok(())
 }
 
 fn hang_until_reaped() {
@@ -513,10 +541,22 @@ fn run_hang_after_result_scenario(output_format: &str, deaf: bool) -> ExitCode {
 fn run_hang_after_result_then_event_scenario(output_format: &str) -> ExitCode {
     if output_format == "stream-json" {
         let session_id = emit_result_pair(false, "Done.");
-        thread::sleep(Duration::from_millis(1_000));
+        if let Err(error) =
+            emit_fence_and_wait_for_release(POST_RESULT_READY_EVENT, POST_RESULT_RELEASE_ONE_SOCKET)
+        {
+            eprintln!("{error}");
+            return ExitCode::from(1);
+        }
         let mut transcript = JsonlTranscript::default();
         transcript.emit_value(assistant_text_event(&session_id, "post-result event"));
-        let _ = std::io::stdout().flush();
+        if let Err(error) = emit_fence_and_wait_for_release(
+            POST_RESULT_ACTIVITY_ONE_EVENT,
+            POST_RESULT_RELEASE_TWO_SOCKET,
+        ) {
+            eprintln!("{error}");
+            return ExitCode::from(1);
+        }
+        emit_stream_event_fence(POST_RESULT_LIVENESS_EVENT);
         hang_until_reaped();
     }
     ExitCode::SUCCESS
@@ -525,15 +565,29 @@ fn run_hang_after_result_then_event_scenario(output_format: &str) -> ExitCode {
 fn run_hang_after_result_periodic_events_scenario(output_format: &str) -> ExitCode {
     if output_format == "stream-json" {
         let session_id = emit_result_pair(false, "Done.");
-        let mut transcript = JsonlTranscript::default();
-        for index in 0..20 {
-            thread::sleep(Duration::from_millis(250));
-            transcript.emit_value(assistant_text_event(
-                &session_id,
-                &format!("post-result periodic event {index}"),
-            ));
-            let _ = std::io::stdout().flush();
+        if let Err(error) =
+            emit_fence_and_wait_for_release(POST_RESULT_READY_EVENT, POST_RESULT_RELEASE_ONE_SOCKET)
+        {
+            eprintln!("{error}");
+            return ExitCode::from(1);
         }
+        let mut transcript = JsonlTranscript::default();
+        transcript.emit_value(assistant_text_event(
+            &session_id,
+            "post-result periodic event 0",
+        ));
+        if let Err(error) = emit_fence_and_wait_for_release(
+            POST_RESULT_ACTIVITY_ONE_EVENT,
+            POST_RESULT_RELEASE_TWO_SOCKET,
+        ) {
+            eprintln!("{error}");
+            return ExitCode::from(1);
+        }
+        transcript.emit_value(assistant_text_event(
+            &session_id,
+            "post-result periodic event 1",
+        ));
+        emit_stream_event_fence(POST_RESULT_ACTIVITY_TWO_EVENT);
         hang_until_reaped();
     }
     ExitCode::SUCCESS

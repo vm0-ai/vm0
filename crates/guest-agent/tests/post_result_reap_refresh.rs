@@ -20,15 +20,50 @@ async fn post_result_reap_refreshes_quiet_deadline_on_meaningful_event()
 
     let masker = guest_agent::masker::SecretMasker::from_raw("");
     let heartbeat = common::spawn_dummy_heartbeat();
+    let event_offset = Duration::from_secs(1);
+    let stale_deadline_after_event = runtime
+        .config
+        .post_result_sigterm_grace
+        .checked_sub(event_offset)
+        .expect("the meaningful event should precede the original quiet deadline");
+    let refreshed_deadline_after_stale = runtime
+        .config
+        .post_result_sigterm_grace
+        .checked_sub(stale_deadline_after_event)
+        .expect("the refreshed quiet deadline should follow the original deadline");
+    let release_one = tmp.path().join(common::MOCK_POST_RESULT_RELEASE_ONE_SOCKET);
+    let release_two = tmp.path().join(common::MOCK_POST_RESULT_RELEASE_TWO_SOCKET);
+    let checkpoints = [
+        common::VirtualTimeCheckpoint::new(
+            runtime.paths.agent_log_file(),
+            common::MOCK_POST_RESULT_READY_EVENT,
+            event_offset,
+        )
+        .release_after_advance(&release_one),
+        common::VirtualTimeCheckpoint::new(
+            runtime.paths.agent_log_file(),
+            common::MOCK_POST_RESULT_ACTIVITY_ONE_EVENT,
+            stale_deadline_after_event,
+        )
+        .release_after_advance(&release_two),
+        common::VirtualTimeCheckpoint::new(
+            runtime.paths.agent_log_file(),
+            common::MOCK_POST_RESULT_LIVENESS_EVENT,
+            refreshed_deadline_after_stale,
+        ),
+    ];
 
+    // Poll at the original quiet deadline before releasing the liveness
+    // fence, so a missing live deadline reset terminates the mock early.
     let result = tokio::time::timeout(
         Duration::from_secs(12),
-        common::execute_cli_for_runtime(&runtime, &masker, heartbeat),
+        common::execute_with_virtual_time_checkpoints(
+            common::execute_cli_for_runtime(&runtime, &masker, heartbeat),
+            &checkpoints,
+        ),
     )
     .await
-    .expect("execute_cli did not return within 12s");
-
-    let result = result.expect("execute_cli returned Err");
+    .expect("execute_cli did not return within 12s")??;
     assert_eq!(result.exit_code, common::SIGTERM_EXIT);
     let termination = result
         .cli_termination
