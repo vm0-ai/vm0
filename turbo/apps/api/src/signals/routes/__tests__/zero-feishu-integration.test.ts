@@ -18,6 +18,7 @@ import {
   zeroCustomConnectorSecretContract,
   zeroCustomConnectorsContract,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { zeroFeishuConnectContract } from "@vm0/api-contracts/contracts/zero-feishu-connect";
 import { zeroFeishuOauthContract } from "@vm0/api-contracts/contracts/zero-feishu-oauth";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -2106,6 +2107,19 @@ describe("Feishu integration", () => {
       connectorList.body.connectors[0],
       "Expected connected Feishu custom connector",
     );
+    const customConnectorGrants = await accept(
+      setupApp({ context })(zeroAgentCustomConnectorsContract).get({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { id: defaultAgentId },
+      }),
+      [200],
+    );
+    expect(customConnectorGrants.body.grants).toStrictEqual([
+      {
+        customConnectorId: managedConnector.id,
+        permissionNames: [],
+      },
+    ]);
     const fileKey = `file_v2_${"a".repeat(1400)}`;
     await postEvent(
       callbackUrl,
@@ -2156,10 +2170,98 @@ describe("Feishu integration", () => {
                 Authorization: expect.stringContaining("secrets."),
               },
             },
+            permissions: expect.arrayContaining([
+              expect.objectContaining({
+                name: "standard:use",
+                rules: expect.arrayContaining([
+                  "GET /authen/v1/user_info",
+                  "GET /docx/{path*}",
+                ]),
+              }),
+              expect.objectContaining({
+                name: "messages:send-as-user",
+                rules: expect.arrayContaining([
+                  "POST /im/v1/messages",
+                  "POST /im/v1/messages/{message_id}/forward",
+                  "DELETE /im/v1/messages/{message_id}",
+                ]),
+              }),
+              expect.objectContaining({
+                name: "resources:delete",
+                rules: expect.arrayContaining([
+                  "DELETE /drive/{path*}",
+                  "DELETE /docx/{path*}",
+                ]),
+              }),
+              expect.objectContaining({
+                name: "sharing:manage",
+                rules: expect.arrayContaining([
+                  "PATCH /drive/v2/permissions/{path*}",
+                ]),
+              }),
+              expect.objectContaining({
+                name: "chats:manage",
+                rules: expect.arrayContaining([
+                  "POST /im/v1/chats/{chat_id}/members",
+                ]),
+              }),
+              expect.objectContaining({
+                name: "comments:write",
+                rules: expect.arrayContaining([
+                  "POST /drive/v1/files/{file_token}/comments",
+                ]),
+              }),
+              expect.objectContaining({
+                name: "calendar:write",
+                rules: expect.arrayContaining([
+                  "POST /calendar/v4/calendars/{calendar_id}/events",
+                ]),
+              }),
+              expect.objectContaining({
+                name: "tasks:write",
+                rules: expect.arrayContaining(["POST /task/v2/{path*}"]),
+              }),
+            ]),
           },
         ],
       },
     });
+    expect(claim.networkPolicies?.[internalName]).toStrictEqual({
+      allow: [],
+      deny: [
+        "messages:send-as-user",
+        "resources:delete",
+        "sharing:manage",
+        "chats:manage",
+        "comments:write",
+        "calendar:write",
+        "tasks:write",
+      ],
+      ask: ["standard:use"],
+      unknownPolicy: "deny",
+    });
+    const permissionGrant = await accept(
+      setupApp({ context })(zeroAgentCustomConnectorsContract).update({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { id: defaultAgentId },
+        body: {
+          grants: [
+            {
+              customConnectorId: managedConnector.id,
+              permissionNames: ["messages:send-as-user"],
+            },
+          ],
+          operation: "replace",
+        },
+      }),
+      [200],
+    );
+    expect(permissionGrant.body.grants).toStrictEqual([
+      {
+        customConnectorId: managedConnector.id,
+        permissionNames: ["messages:send-as-user"],
+      },
+    ]);
     expect(
       expectCanonicalStorageManifest(claim.storageManifest)?.storageMounts.some(
         (storage) => {

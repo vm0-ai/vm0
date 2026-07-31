@@ -187,6 +187,7 @@ import {
   loadCustomConnectorPermissionBundle,
   type CustomConnectorPermissionBundle,
 } from "./custom-connector-permission-bundle.service";
+import { effectiveCustomConnectorPermissionBundleRef } from "./feishu-custom-connector-permissions";
 import {
   prepareAgentRunStorage,
   type PreparedAgentRunStorage,
@@ -3727,6 +3728,46 @@ interface BuildCustomConnectorRuntimeContextArgs {
   readonly timing?: ApiDispatchTimingCollector;
 }
 
+async function loadEffectiveCustomConnectorPermissionBundle(args: {
+  readonly row: CustomConnectorRuntimeDataRows[number];
+  readonly snapshot: ConnectorRuntimeSnapshot;
+}): Promise<CustomConnectorPermissionBundle | null | undefined> {
+  const ref = effectiveCustomConnectorPermissionBundleRef({
+    slug: args.row.connector.slug,
+    authMode: args.row.connector.authMode,
+    oauthProviderAdapter:
+      args.row.connector.oauthConfig?.providerAdapter ?? null,
+    prefixTemplates: args.row.connector.prefixTemplates,
+    permissionBundleRef: args.row.connector.permissionBundleRef,
+  });
+  return ref
+    ? ((await loadCustomConnectorPermissionBundle({
+        snapshot: args.snapshot,
+        ref,
+      })) ?? undefined)
+    : null;
+}
+
+function buildCustomConnectorPermissionPolicy(args: {
+  readonly bundle: CustomConnectorPermissionBundle;
+  readonly selectedPermissionNames: readonly string[];
+}): FirewallPolicy {
+  const selectedPermissionNames = new Set(args.selectedPermissionNames);
+  return {
+    policies: Object.fromEntries(
+      [...args.bundle.permissionNames].map((permissionName) => {
+        return [
+          permissionName,
+          selectedPermissionNames.has(permissionName)
+            ? "allow"
+            : (args.bundle.defaultPolicies[permissionName] ?? "deny"),
+        ];
+      }),
+    ),
+    unknownPolicy: "deny",
+  };
+}
+
 async function buildCustomConnectorRuntimeContext(
   args: BuildCustomConnectorRuntimeContextArgs,
 ): Promise<CustomConnectorRuntimeContext> {
@@ -3780,13 +3821,10 @@ async function buildCustomConnectorRuntimeContext(
       stats.recordNoAuthInjectionConnector();
       continue;
     }
-    const permissionBundle = row.connector.permissionBundleRef
-      ? await loadCustomConnectorPermissionBundle({
-          snapshot: args.connectorCatalogSnapshot,
-          ref: row.connector.permissionBundleRef,
-        })
-      : null;
-    if (row.connector.permissionBundleRef && !permissionBundle) {
+    const permissionBundle = await loadEffectiveCustomConnectorPermissionBundle(
+      { row, snapshot: args.connectorCatalogSnapshot },
+    );
+    if (permissionBundle === undefined) {
       continue;
     }
     const apis = await buildCustomConnectorRuntimeApis({
@@ -3808,20 +3846,12 @@ async function buildCustomConnectorRuntimeContext(
       apis,
     });
     if (permissionBundle) {
-      const selectedPermissionNames = new Set(
-        grantByConnectorId.get(row.connector.id) ?? [],
-      );
-      permissionPolicies[customConnectorInternalName(row.connector.id)] = {
-        policies: Object.fromEntries(
-          [...permissionBundle.permissionNames].map((permissionName) => {
-            return [
-              permissionName,
-              selectedPermissionNames.has(permissionName) ? "allow" : "deny",
-            ];
-          }),
-        ),
-        unknownPolicy: "deny",
-      };
+      permissionPolicies[customConnectorInternalName(row.connector.id)] =
+        buildCustomConnectorPermissionPolicy({
+          bundle: permissionBundle,
+          selectedPermissionNames:
+            grantByConnectorId.get(row.connector.id) ?? [],
+        });
     }
     if (row.connector.skillMarkdown !== null) {
       skills.push({
