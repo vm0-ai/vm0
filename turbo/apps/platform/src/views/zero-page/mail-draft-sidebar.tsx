@@ -1121,9 +1121,11 @@ function MailDraftDetail({
     deleteLoadable.state === "loading" ||
     sendLoadable.state === "loading" ||
     followUpSubmitting;
-  const openInGmail = draft.gmailThreadId
-    ? `https://mail.google.com/mail/u/0/#all/${encodeURIComponent(draft.gmailThreadId)}`
-    : null;
+  const gmailAccount = encodeURIComponent(draft.from);
+  const openInGmail =
+    draft.status === "draft"
+      ? `https://mail.google.com/mail/u/${gmailAccount}/#drafts?compose=${encodeURIComponent(draft.gmailMessageId)}`
+      : `https://mail.google.com/mail/u/${gmailAccount}/#all/${encodeURIComponent(draft.gmailThreadId)}`;
 
   const onDelete = () => {
     const deleteAndClose = async () => {
@@ -1180,16 +1182,14 @@ function MailDraftDetail({
           <span />
         )}
         <div className="flex items-center gap-2">
-          {openInGmail ? (
-            <Button asChild variant="outline" size="sm">
-              <a href={openInGmail} target="_blank" rel="noreferrer">
-                <IconExternalLink size={15} />
-                {t(($) => {
-                  return $.chat.mail.openInGmail;
-                })}
-              </a>
-            </Button>
-          ) : null}
+          <Button asChild variant="outline" size="sm">
+            <a href={openInGmail} target="_blank" rel="noreferrer">
+              <IconExternalLink size={15} />
+              {t(($) => {
+                return $.chat.mail.openInGmail;
+              })}
+            </a>
+          </Button>
           {active ? (
             <Button type="button" size="sm" disabled={pending} onClick={onSend}>
               {sendLoadable.state === "loading" ? (
