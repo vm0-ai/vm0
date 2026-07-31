@@ -318,25 +318,11 @@ export function createChatCallbacksApi(context: TestContext) {
     },
 
     /**
-     * Stages output for the current /events DB projection and keeps the Axiom
-     * query fake available for the temporary previous-writer compatibility
-     * path. Run-context queries replay the snapshot the API itself ingested at
-     * run creation.
+     * Stages output for the current /events DB projection. Run-context queries
+     * replay the snapshot the API itself ingested at run creation.
      */
     mockChatOutputEvents(events: readonly Record<string, unknown>[]): void {
       stagedOutputEvents = events.map(webhookEventFromAxiomFixture);
-      mockOutputEventQuery(events);
-    },
-
-    /**
-     * Reproduces output already acknowledged by the previous API writer:
-     * queryable from its required Axiom ingest, but not staged for the current
-     * /events route and therefore absent from the new DB text projection.
-     */
-    mockPreviousApiChatOutputEvents(
-      events: readonly Record<string, unknown>[],
-    ): void {
-      stagedOutputEvents = [];
       mockOutputEventQuery(events);
     },
 
