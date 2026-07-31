@@ -404,7 +404,7 @@ type CreatedQueuedRun = {
 
 type CreateQueuedRun = (
   input: CreateQueuedChatRunInput,
-  apiStartTime: number,
+  admissionTime: number,
   signal: AbortSignal,
 ) => Promise<CreatedQueuedRun | null>;
 
@@ -749,7 +749,7 @@ function generateCallbackSecret(): string {
 
 function buildQueuedCreateZeroRunArgs(
   input: CreateQueuedChatRunInput,
-  apiStartTime: number,
+  admissionTime: number,
   dispatchFailedCallbacks?: DispatchFailedRunCallbacks,
 ) {
   return {
@@ -759,7 +759,7 @@ function buildQueuedCreateZeroRunArgs(
       orgId: input.orgId,
       orgRole: "member" as const,
     },
-    apiStartTime,
+    apiStartTime: input.apiStartTime,
     chatThreadId: input.threadId,
     computerUseHostId: input.computerUseHostGrant?.hostId,
     modelProviderId: input.modelPin.modelProviderId ?? undefined,
@@ -824,6 +824,7 @@ function buildQueuedCreateZeroRunArgs(
       eventId: input.queuedMessage.id,
       orgId: input.orgId,
       userId: input.userId,
+      admissionTime,
       attachFileMetadata: input.attachFileMetadata,
       ...(input.morningBriefDelivery
         ? {
@@ -3437,6 +3438,7 @@ async function handleQueuedMessageAdmissionFailure(args: {
 }
 
 interface AutoSendQueuedMessageArgs {
+  readonly admissionTime: number;
   readonly createRun: (
     input: CreateQueuedChatRunInput,
   ) => Promise<CreatedQueuedRun | null>;
@@ -3459,34 +3461,23 @@ interface AutoSendQueuedMessageArgs {
 function chatThreadAdmissionBlockedForAutoSend(
   args: AutoSendQueuedMessageArgs,
   threadId: string,
-  apiStartTime: number,
 ): Promise<boolean> {
   return chatThreadAdmissionBlocked(args.db, {
     threadId,
-    apiStartTime,
+    apiStartTime: args.admissionTime,
   });
 }
 
-function autoSendAdmissionBlocked(args: {
-  readonly autoSend: AutoSendQueuedMessageArgs;
-  readonly queuedMessage: QueuedUserMessage;
-  readonly runInput: Exclude<
-    Awaited<ReturnType<typeof buildCreateQueuedChatRunInput>>,
-    null
-  >;
-}): Promise<boolean> {
+function autoSendAdmissionBlocked(
+  args: AutoSendQueuedMessageArgs,
+  threadId: string,
+): Promise<boolean> {
   return measureChatCallbackPreCreateTiming(
-    args.autoSend.timing,
+    args.timing,
     "api_dispatch_pre_create_zero_chat_callback_auto_send_check_active_run",
     "nested",
     () => {
-      return chatThreadAdmissionBlockedForAutoSend(
-        args.autoSend,
-        args.autoSend.chatThreadId,
-        "kind" in args.runInput
-          ? args.queuedMessage.createdAt.getTime()
-          : args.runInput.apiStartTime,
-      );
+      return chatThreadAdmissionBlockedForAutoSend(args, threadId);
     },
   );
 }
@@ -3554,11 +3545,7 @@ async function autoSendQueuedMessageForThread(
   if (!runInput) {
     return;
   }
-  const activeRunExists = await autoSendAdmissionBlocked({
-    autoSend: args,
-    queuedMessage,
-    runInput,
-  });
+  const activeRunExists = await autoSendAdmissionBlocked(args, threadId);
   if (activeRunExists) {
     return;
   }
@@ -4698,10 +4685,10 @@ const buildChatCallbackDependencies$ = command(
     };
     const dependencies: ChatCallbackDependencies = {
       ...baseDependencies,
-      createQueuedRun: async (runInput, apiStartTime, inputSignal) => {
+      createQueuedRun: async (runInput, admissionTime, inputSignal) => {
         const createArgs = buildQueuedCreateZeroRunArgs(
           runInput,
-          apiStartTime,
+          admissionTime,
           buildQueuedChatDispatchFailedCallbacks({
             dependencies: baseDependencies,
             runInput,
@@ -4797,9 +4784,11 @@ export const drainQueuedUserMessagesForThread$ = command(
     if (!createQueuedRun) {
       return;
     }
+    const admissionTime = args.apiStartTime ?? now();
     await autoSendQueuedMessageForThread({
       db,
       chatThreadId: args.chatThreadId,
+      admissionTime,
       userId: thread.userId,
       agentId: thread.agentId,
       queueItemCreatedBefore: args.queueItemCreatedBefore,
@@ -4825,7 +4814,7 @@ export const drainQueuedUserMessagesForThread$ = command(
           input,
           signal,
           createRun: (runInput) => {
-            return createQueuedRun(runInput, runInput.apiStartTime, signal);
+            return createQueuedRun(runInput, admissionTime, signal);
           },
         });
       },

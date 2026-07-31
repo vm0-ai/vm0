@@ -10,6 +10,10 @@ import {
   type ChatEventGenerationTemplate,
   type ChatEventUserMessage,
 } from "@vm0/db/schema/chat-event";
+import {
+  CANONICAL_ASSET_VERSION,
+  runUploadedFiles,
+} from "@vm0/db/schema/run-uploaded-file";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { morningBriefDeliveries } from "@vm0/db/schema/morning-brief";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
@@ -34,7 +38,7 @@ import {
   pgBooleanDecoder,
   pgNullDecoder,
 } from "../../lib/db-structured-result";
-import type { Db } from "../external/db";
+import { db$, type Db } from "../external/db";
 import {
   listPendingChatQueueEvents,
   loadPendingChatQueueEvent,
@@ -185,6 +189,7 @@ export type QueueFirstRunAssociation =
       readonly eventId: string;
       readonly orgId: string;
       readonly userId: string;
+      readonly admissionTime: number;
       readonly attachFileMetadata:
         | readonly ChatEventAttachFileMetadata[]
         | null;
@@ -267,7 +272,7 @@ export async function decryptQueuedUserMessageRunParams(
 
 export const resolveAttachFileMetadata$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       readonly userId: string;
       readonly attachFiles: readonly string[] | null;
@@ -277,22 +282,37 @@ export const resolveAttachFileMetadata$ = command(
     if (!args.attachFiles || args.attachFiles.length === 0) {
       return null;
     }
+    const db = get(db$);
     const metadata: ChatEventAttachFileMetadata[] = [];
     for (const id of args.attachFiles) {
-      const object = await set(
-        resolveArtifactObject$,
-        { userId: args.userId, id },
-        signal,
-      );
+      const [object, [asset]] = await Promise.all([
+        set(resolveArtifactObject$, { userId: args.userId, id }, signal),
+        db
+          .select({
+            filename: runUploadedFiles.filename,
+            contentType: runUploadedFiles.contentType,
+            size: runUploadedFiles.sizeBytes,
+          })
+          .from(runUploadedFiles)
+          .where(
+            and(
+              eq(runUploadedFiles.userId, args.userId),
+              eq(runUploadedFiles.assetVersion, CANONICAL_ASSET_VERSION),
+              eq(runUploadedFiles.idempotencyScope, "web-input"),
+              eq(runUploadedFiles.idempotencyKey, id),
+            ),
+          )
+          .limit(1),
+      ]);
       signal.throwIfAborted();
       if (!object) {
         throw new Error(`Queued attachment not found: ${id}`);
       }
       metadata.push({
         id,
-        filename: object.filename,
-        contentType: object.contentType,
-        size: object.size,
+        filename: asset?.filename ?? object.filename,
+        contentType: asset?.contentType ?? object.contentType,
+        size: asset?.size ?? object.size,
         objectKey: object.key,
       });
     }
@@ -673,11 +693,11 @@ async function resolveQueueFirstClaimSnapshot(
 
 function queueFirstRunAdmissionBlocked(
   db: DbTransaction,
-  args: { readonly apiStartTime: number; readonly threadId: string },
+  args: { readonly admissionTime: number; readonly threadId: string },
 ): Promise<boolean> {
   return chatThreadAdmissionBlocked(db, {
     threadId: args.threadId,
-    apiStartTime: args.apiStartTime,
+    apiStartTime: args.admissionTime,
   });
 }
 
@@ -689,7 +709,7 @@ function queueFirstRunAdmissionBlocked(
 export async function resolveQueueFirstRunAdmission(
   db: DbTransaction,
   args: {
-    readonly apiStartTime: number;
+    readonly admissionTime: number;
     readonly sessionSnapshotState: QueueFirstRunSessionSnapshotState;
     readonly threadAlreadyLocked?: true;
     readonly threadId: string;

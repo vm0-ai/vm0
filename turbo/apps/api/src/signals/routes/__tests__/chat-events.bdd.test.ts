@@ -5592,8 +5592,10 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     const fileId = randomUUID();
     const secondFileId = randomUUID();
     const queuedId = randomUUID();
-    chat.mockCompletedUploadObject(actor, fileId, "notes.txt", 12);
-    chat.mockCompletedUploadObject(actor, secondFileId, "details.json", 24);
+    chat.mockCompletedUploadObjects(actor, [
+      { id: fileId, filename: "notes.txt", size: 12 },
+      { id: secondFileId, filename: "details.json", size: 24 },
+    ]);
     const queued = await chat.requestSendEvent(
       actor,
       {
@@ -6308,7 +6310,7 @@ describe("CHAT-02: shared user message queue", () => {
     ).resolves.toBeNull();
     await expect(
       readChatEventInputParamsFixture(claimedMessage.id),
-    ).resolves.toMatchObject({ attachFileMetadata: null });
+    ).resolves.toBeNull();
     await cancelChatRun(actor, runId, claim.sandboxHeaders);
   }, 90_000);
 

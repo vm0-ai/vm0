@@ -1134,7 +1134,7 @@ describe("CHAT-02: completed chat callback", () => {
       clearMockNow();
     });
 
-    await queueChatEvent(actor, {
+    const queuedEventId = await queueChatEvent(actor, {
       agentId,
       threadId: first.threadId,
       prompt: queuedPrompt,
@@ -1169,10 +1169,17 @@ describe("CHAT-02: completed chat callback", () => {
     if (!claimed?.runId) {
       throw new Error("Expected the queued Web message to auto-send");
     }
+    const queuedMessage = userMessages(afterAutoSend.events).find((message) => {
+      return message.id === queuedEventId;
+    });
+    if (!queuedMessage) {
+      throw new Error("Expected the original queued Web message");
+    }
+    const apiStartedAt = Date.parse(queuedMessage.createdAt);
 
     const acknowledgedAt = dequeuedAt + 7000;
     const secondClaim = await claimChatRunJob(runnerGroup, claimed.runId);
-    expect(secondClaim.apiStartTime).toBe(queuedAt);
+    expect(secondClaim.apiStartTime).toBe(apiStartedAt);
     const secondHeaders = {
       authorization: `Bearer ${secondClaim.sandboxToken}`,
     };
@@ -1201,7 +1208,7 @@ describe("CHAT-02: completed chat callback", () => {
     expect(firstAssistantEventsForRun(claimed.runId)).toStrictEqual([
       expect.objectContaining({
         _time: new Date(acknowledgedAt).toISOString(),
-        duration_ms: acknowledgedAt - dequeuedAt,
+        duration_ms: acknowledgedAt - apiStartedAt,
         run_id: claimed.runId,
       }),
     ]);

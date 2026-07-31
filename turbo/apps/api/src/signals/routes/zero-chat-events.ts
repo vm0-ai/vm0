@@ -3172,7 +3172,7 @@ const createNormalChatRun$ = command(
     },
     signal: AbortSignal,
   ) => {
-    const { args, prepared } = params;
+    const { args, prepared, queueFirstEventId } = params;
     const createNormalRunStartedAt = now();
     const { modelPin, providerAdmission } = prepared.runConfiguration;
     if (providerAdmission.error) {
@@ -3188,7 +3188,7 @@ const createNormalChatRun$ = command(
           args.zeroPreCreateSource,
           prepared.thread.isNewThread,
         ),
-        queueFirstEventId: params.queueFirstEventId,
+        queueFirstEventId,
       });
     }
 
@@ -3197,12 +3197,12 @@ const createNormalChatRun$ = command(
       prepared.thread.threadId,
     );
     signal.throwIfAborted();
-    if (!queuedMessage || queuedMessage.id !== params.queueFirstEventId) {
+    if (!queuedMessage || queuedMessage.id !== queueFirstEventId) {
       return await resolveQueueFirstEventAfterLostClaim({
         db: prepared.db,
         threadId: prepared.thread.threadId,
         userId: args.userId,
-        eventId: params.queueFirstEventId,
+        eventId: queueFirstEventId,
       });
     }
     const attachFileMetadata = queuedMessage.attachFileMetadata
@@ -3234,8 +3234,6 @@ const createNormalChatRun$ = command(
     });
     signal.throwIfAborted();
 
-    const queueFirstEventId = params.queueFirstEventId;
-
     if (args.timing) {
       args.timing.recordElapsed(
         "api_dispatch_pre_create_zero_web_chat_create_normal_run",
@@ -3254,6 +3252,7 @@ const createNormalChatRun$ = command(
           eventId: queueFirstEventId,
           orgId: args.orgId,
           userId: args.userId,
+          admissionTime: args.apiStartTime,
           attachFileMetadata,
         },
       },

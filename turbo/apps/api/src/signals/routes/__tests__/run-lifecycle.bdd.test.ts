@@ -10771,6 +10771,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     }
     const apiStartedAt = Date.parse(apiStartedAtIso);
     const acknowledgedAt = apiStartedAt + 4321;
+    mockNow(apiStartedAt);
     await flushWaitUntilForTest();
     expect(
       sandboxOperationEventsForRunByAction(
@@ -10802,8 +10803,6 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     context.mocks.ably.publish.mockRejectedValueOnce(
       new Error("first chat assistant publish failed"),
     );
-    mockNow(apiStartedAt);
-
     await webhooks.requestAgentEvents(
       {
         runId,
@@ -11091,6 +11090,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     }
     const apiStartedAt = Date.parse(apiStartedAtIso);
     const acknowledgedAt = apiStartedAt + 5000;
+    mockNow(apiStartedAt);
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(runId);
     await flushWaitUntilForTest();
@@ -11211,6 +11211,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     }
     const apiStartedAt = Date.parse(apiStartedAtIso);
     const acknowledgedAt = apiStartedAt + 2468;
+    mockNow(apiStartedAt);
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(runId);
     await flushWaitUntilForTest();
