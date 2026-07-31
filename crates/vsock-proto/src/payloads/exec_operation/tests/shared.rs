@@ -18,6 +18,7 @@ pub(super) fn write_u32_at(payload: &mut [u8], offset: usize, value: u32) {
 pub(super) struct ExecCapturedOutputLayout {
     pub tag_offset: usize,
     pub flags_offset: Option<usize>,
+    pub bytes_len_offset: Option<usize>,
     pub bytes_offset: Option<usize>,
     pub end_offset: usize,
 }
@@ -28,6 +29,7 @@ impl ExecCapturedOutputLayout {
             ExecCapturedOutput::Discarded => Self {
                 tag_offset: start_offset,
                 flags_offset: None,
+                bytes_len_offset: None,
                 bytes_offset: None,
                 end_offset: start_offset + 1,
             },
@@ -37,6 +39,7 @@ impl ExecCapturedOutputLayout {
                 Self {
                     tag_offset: start_offset,
                     flags_offset: Some(start_offset + 1),
+                    bytes_len_offset: Some(start_offset + 2),
                     bytes_offset: Some(bytes_offset),
                     end_offset: bytes_offset + bytes.len(),
                 }
@@ -49,6 +52,8 @@ pub(super) struct ExecResultLayout {
     pub termination_tag_offset: usize,
     pub exit_code_offset: Option<usize>,
     pub stdout: ExecCapturedOutputLayout,
+    pub stderr: ExecCapturedOutputLayout,
+    pub diagnostic_len_offset: usize,
     pub diagnostic_offset: usize,
     pub diagnostic_end_offset: usize,
 }
@@ -84,6 +89,7 @@ impl ExecResultLayout {
         let stderr = ExecCapturedOutputLayout::new(offset, stderr);
         offset = stderr.end_offset;
 
+        let diagnostic_len_offset = offset;
         offset += 2;
 
         let diagnostic_offset = offset;
@@ -93,6 +99,8 @@ impl ExecResultLayout {
             termination_tag_offset,
             exit_code_offset,
             stdout,
+            stderr,
+            diagnostic_len_offset,
             diagnostic_offset,
             diagnostic_end_offset,
         }
