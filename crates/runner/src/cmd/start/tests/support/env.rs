@@ -1,10 +1,11 @@
 use super::super::super::signals::{
-    LifecycleController, handle_drain_signal, handle_resume_signal, handle_stopping_signal,
+    handle_drain_signal, handle_resume_signal, handle_stopping_signal,
 };
 use super::super::super::*;
 use std::collections::BTreeMap;
 
 use crate::executor;
+use crate::lifecycle::LifecycleController;
 use crate::provider::mock::{MockJobProvider, MockProviderHandle};
 use crate::run_cancellation::RunCancellationRegistry;
 use sandbox_mock::MockSandboxRuntime;
