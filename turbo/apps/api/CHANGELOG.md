@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.361.1](https://github.com/vm0-ai/vm0/compare/api-v1.361.0...api-v1.361.1) (2026-07-31)
+
+
+### Bug Fixes
+
+* apply context-tiered pricing to managed models ([#24266](https://github.com/vm0-ai/vm0/issues/24266)) ([0f487e5](https://github.com/vm0-ai/vm0/commit/0f487e5b7631b4dbfde8c7bc3f706b829d74e364))
+
+
+### Refactoring
+
+* **connectors:** remove legacy catalog compatibility refs ([#24324](https://github.com/vm0-ai/vm0/issues/24324)) ([ca59b0b](https://github.com/vm0-ai/vm0/commit/ca59b0b941f31da480d2e3ffa3cbe583cb52fe59))
+* **runner:** remove retired claim capability surface ([#24325](https://github.com/vm0-ai/vm0/issues/24325)) ([a7685e3](https://github.com/vm0-ai/vm0/commit/a7685e306da319ac85d2c4d23fc366719768b025))
+
+
+### Performance Improvements
+
+* **api:** stop blocked stale-session preparation retries ([#24317](https://github.com/vm0-ai/vm0/issues/24317)) ([48fc1ed](https://github.com/vm0-ai/vm0/commit/48fc1edec5b804c410e7eaa7b2bed5582726ad4b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.259.2
+    * @vm0/core bumped to 8.498.1
+    * @vm0/db bumped to 1.159.2
+
 ## [1.361.0](https://github.com/vm0-ai/vm0/compare/api-v1.360.0...api-v1.361.0) (2026-07-31)
 
 

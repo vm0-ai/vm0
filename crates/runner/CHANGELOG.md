@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.151.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.1...runner-rs-v0.151.2) (2026-07-31)
+
+
+### Bug Fixes
+
+* apply context-tiered pricing to managed models ([#24266](https://github.com/vm0-ai/vm0/issues/24266)) ([0f487e5](https://github.com/vm0-ai/vm0/commit/0f487e5b7631b4dbfde8c7bc3f706b829d74e364))
+* **runner:** retry network policy refresh transport failures ([#24323](https://github.com/vm0-ai/vm0/issues/24323)) ([bf87328](https://github.com/vm0-ai/vm0/commit/bf87328fcdb95e39e423d3e1ddf7f1fd7b3afc3e))
+
 ## [0.151.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.0...runner-rs-v0.151.1) (2026-07-31)
 
 

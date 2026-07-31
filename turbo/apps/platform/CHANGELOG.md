@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.673.0](https://github.com/vm0-ai/vm0/compare/app-v0.672.0...app-v0.673.0) (2026-07-31)
+
+
+### Features
+
+* keep the current model selectable in the error recovery picker ([#24322](https://github.com/vm0-ai/vm0/issues/24322)) ([c8f9dd2](https://github.com/vm0-ai/vm0/commit/c8f9dd2151588d2420ee7b51d2290b8e27c52344))
+
+
+### Refactoring
+
+* **connectors:** remove legacy catalog compatibility refs ([#24324](https://github.com/vm0-ai/vm0/issues/24324)) ([ca59b0b](https://github.com/vm0-ai/vm0/commit/ca59b0b941f31da480d2e3ffa3cbe583cb52fe59))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.259.2
+    * @vm0/core bumped to 8.498.1
+
 ## [0.672.0](https://github.com/vm0-ai/vm0/compare/app-v0.671.2...app-v0.672.0) (2026-07-31)
 
 
