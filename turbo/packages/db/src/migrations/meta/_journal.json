@@ -5503,6 +5503,13 @@
       "when": 1785489578000,
       "tag": "0785_backfill_chat_event_user_message_parts",
       "breakpoints": true
+    },
+    {
+      "idx": 786,
+      "version": "7",
+      "when": 1785495667349,
+      "tag": "0786_add_deepseek_v4_flash",
+      "breakpoints": true
     }
   ]
 }
