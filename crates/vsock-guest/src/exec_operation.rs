@@ -70,10 +70,7 @@ use crate::shell_command::{
     truncate_command_preview,
 };
 use crate::threading::{SystemThreadSpawner, ThreadSpawner};
-use crate::wait::{
-    DRAIN_DEADLINE_SECS, WaitOutcome, await_drain_deadline,
-    wait_with_kill_timeout_or_cancelled_either,
-};
+use crate::wait::{WaitOutcome, await_drain_deadline, wait_with_kill_timeout_or_cancelled_either};
 use crate::writer::GuestWriter;
 
 const THREAD_EXEC_OPERATION_WORKER: &str = "vsock-exec-operation-worker";
@@ -220,6 +217,7 @@ pub(crate) struct ExecOperationWorkerRequest {
     exec_control_guard: Option<ExecControlGuard>,
     exec_control_bootstrap_endpoint: Option<String>,
     process_containment_mode: ProcessContainmentMode,
+    drain_deadline: Duration,
 }
 
 impl ExecOperationWorkerRequest {
@@ -227,6 +225,7 @@ impl ExecOperationWorkerRequest {
         seq: u32,
         decoded: vsock_proto::DecodedExecStart<'_>,
         process_containment_mode: ProcessContainmentMode,
+        drain_deadline: Duration,
     ) -> io::Result<Self> {
         let lifecycle = match decoded.lifecycle {
             ExecLifecyclePolicy::OneShot => ExecOperationLifecycle::OneShot,
@@ -281,6 +280,7 @@ impl ExecOperationWorkerRequest {
             exec_control_guard: None,
             exec_control_bootstrap_endpoint: None,
             process_containment_mode,
+            drain_deadline,
         })
     }
 
@@ -717,14 +717,16 @@ impl RunningExec {
             drain_cancel.store(true, Ordering::Release);
         }
 
-        let completed = await_drain_deadline(&drain_done_rx, 2, &drain_cancel);
+        let completed =
+            await_drain_deadline(&drain_done_rx, 2, &drain_cancel, request.drain_deadline);
         if completed < 2 {
             log(
                 "WARN",
                 &format!(
-                    "exec operation: drain deadline reached seq={} label={} after {DRAIN_DEADLINE_SECS}s",
+                    "exec operation: drain deadline reached seq={} label={} after {:?}",
                     request.seq,
-                    truncate_command_preview(&request.label)
+                    truncate_command_preview(&request.label),
+                    request.drain_deadline,
                 ),
             );
         }
@@ -1713,6 +1715,7 @@ mod tests {
             exec_control_guard: None,
             exec_control_bootstrap_endpoint: None,
             process_containment_mode: ProcessContainmentMode::BuildConfigured,
+            drain_deadline: crate::wait::DRAIN_DEADLINE,
         }
     }
 

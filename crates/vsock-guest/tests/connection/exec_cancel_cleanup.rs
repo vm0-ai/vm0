@@ -269,9 +269,10 @@ fn exec_operation_different_sequences_run_concurrently_and_cancel_independently(
 fn exec_operation_returns_when_orphaned_grandchild_holds_stdout() {
     use std::time::Instant;
 
-    let (handle, mut host_stream) = start_guest_connection();
+    let (handle, mut host_stream) =
+        start_guest_connection_with_exec_drain_deadline(Duration::from_millis(500));
     host_stream
-        .set_read_timeout(Some(Duration::from_secs(15)))
+        .set_read_timeout(Some(Duration::from_secs(DRAIN_DEADLINE_SECS + 5)))
         .unwrap();
     let orphan = OrphanProcessGuard::new("orphan-exec-operation-sleep");
     let command = orphan_sleep_command("orphan-exec-operation", orphan.pid_path());
@@ -295,8 +296,8 @@ fn exec_operation_returns_when_orphaned_grandchild_holds_stdout() {
         String::from_utf8_lossy(&stdout),
     );
     assert!(
-        elapsed < Duration::from_secs(DRAIN_DEADLINE_SECS + 5),
-        "exec result should arrive within drain deadline, took {elapsed:?}",
+        elapsed < Duration::from_secs(DRAIN_DEADLINE_SECS),
+        "test exec result should arrive before the production drain deadline, took {elapsed:?}",
     );
 
     finish_guest_connection(handle, host_stream);
