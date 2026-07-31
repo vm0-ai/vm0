@@ -152,7 +152,7 @@ pub(in super::super) async fn wait_workspace_cache_reuse_keys(
 ) {
     let mut expected: Vec<String> = expected
         .iter()
-        .map(|session| (*session).to_string())
+        .map(|reuse_key| (*reuse_key).to_string())
         .collect();
     expected.sort_unstable();
     wait_for_probe(timeout, || async {
