@@ -168,10 +168,14 @@ impl JobProvider for LocalProvider {
         };
 
         let environment_merge = merge_local_environments(req.environment, req.secret_environment);
+        let reuse_key = req
+            .session_id
+            .as_ref()
+            .map(|session_id| format!("session:{session_id}"));
 
         let context = ExecutionContext {
             run_id,
-            reuse_key: None,
+            reuse_key,
             prompt: req.prompt,
             append_system_prompt: None,
             vars: req.vars,
