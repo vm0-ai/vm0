@@ -143,14 +143,17 @@ impl Iterator for BlockSpans {
 /// COW (Copy-on-Write) layer with write buffering.
 ///
 /// Reads check: write buffer -> dirty COW file -> base image.
-/// Writes accumulate in an in-memory buffer that is flushed to the COW file
-/// when the buffer exceeds the flush threshold.
+/// Writes accumulate in an in-memory buffer. [`CowLayer::write`] reports when
+/// buffered bytes reach or exceed the flush threshold, but does not flush them.
+/// Callers choose when to invoke [`CowLayer::flush`].
+/// [`crate::cow_io::CowIo::write`] acts on the signal and flushes automatically.
 pub struct CowLayer {
     /// Read-only base image file.
     base_fd: File,
-    /// Path for the sparse COW file (created on first flush).
+    /// Path for the sparse COW file (opened or created when buffered writes are
+    /// flushed).
     cow_path: std::path::PathBuf,
-    /// Open file handle for the COW file (lazily opened on first flush).
+    /// Open COW file handle (lazily opened when buffered writes are flushed).
     cow_fd: Option<File>,
     /// 1 bit per block: set if the block has been written (and flushed to COW file).
     dirty: BitVec,
@@ -158,7 +161,8 @@ pub struct CowLayer {
     write_buffer: BTreeMap<u64, Vec<u8>>,
     /// Current buffer usage in bytes.
     buffer_bytes: usize,
-    /// Flush when buffer_bytes exceeds this threshold.
+    /// Report that flushing is needed when buffer usage reaches or exceeds this
+    /// threshold.
     flush_threshold: usize,
     /// Block size in bytes.
     block_size: usize,
@@ -171,17 +175,21 @@ pub struct CowLayer {
 impl CowLayer {
     /// Create a new COW layer.
     ///
-    /// If a bitmap sidecar file (`{cow_path}.bitmap`) exists, the dirty bitmap
-    /// is restored from it and the COW file is opened eagerly. This enables
-    /// snapshot restore: a previous `save_bitmap()` + `destroy_keep_cow()` cycle
-    /// preserves the COW state, and a subsequent `new()` with the same paths
-    /// picks it up automatically.
+    /// If a bitmap sidecar file (`{cow_path}.bitmap`) exists, its dirty bitmap
+    /// is restored. When the bitmap contains dirty blocks, the COW file is
+    /// opened eagerly and validated to cover them. An empty restored bitmap
+    /// leaves the COW file unopened until buffered writes are flushed. This
+    /// enables snapshot restore: a previous `save_bitmap()` +
+    /// `destroy_keep_cow()` cycle preserves the COW state, and a subsequent
+    /// `new()` with the same paths picks it up automatically.
     ///
     /// `base_path`: read-only base image file
-    /// `cow_path`: path for the sparse COW file (created on first flush)
+    /// `cow_path`: path for the sparse COW file (opened or created when buffered
+    /// writes are flushed)
     /// `size`: total device size in bytes
     /// `block_size`: block size (typically 4096)
-    /// `flush_threshold`: flush write buffer when it exceeds this size in bytes
+    /// `flush_threshold`: `write()` reports that a flush is needed when buffer
+    /// usage reaches or exceeds this size in bytes
     ///
     /// # Errors
     ///
@@ -191,7 +199,9 @@ impl CowLayer {
     /// are not supported.
     ///
     /// Returns an I/O error if the base image cannot be opened, or if an
-    /// existing bitmap sidecar or its associated COW file cannot be restored.
+    /// existing bitmap sidecar cannot be inspected or loaded. When the restored
+    /// bitmap contains dirty blocks, also returns an I/O error if the associated
+    /// COW file cannot be opened or does not cover those blocks.
     pub fn new(
         base_path: &Path,
         cow_path: &Path,
@@ -309,7 +319,10 @@ impl CowLayer {
         Ok(())
     }
 
-    /// Write `data` at `offset`. Returns `true` if the buffer needs flushing.
+    /// Buffer `data` at `offset` and report whether the buffer needs flushing.
+    ///
+    /// Returns `true` when buffered bytes reach or exceed `flush_threshold`.
+    /// This method does not invoke [`CowLayer::flush`].
     pub fn write(&mut self, offset: u64, data: &[u8]) -> Result<bool> {
         self.check_bounds(offset, data.len() as u64)?;
 
