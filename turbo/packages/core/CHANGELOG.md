@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.500.0](https://github.com/vm0-ai/vm0/compare/core-v8.499.0...core-v8.500.0) (2026-07-31)
+
+
+### Features
+
+* **app:** render mermaid code blocks as diagrams ([#24290](https://github.com/vm0-ai/vm0/issues/24290)) ([e83ae59](https://github.com/vm0-ai/vm0/commit/e83ae59001537cdc86c8a7aac343474209c56a19))
+* open clicked artifacts in the existing artifact sidebar ([#24302](https://github.com/vm0-ai/vm0/issues/24302)) ([5c9fad6](https://github.com/vm0-ai/vm0/commit/5c9fad6d09d1b8a252589eba0c2048a0b0e0adcc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.260.1
+
 ## [8.499.0](https://github.com/vm0-ai/vm0/compare/core-v8.498.1...core-v8.499.0) (2026-07-31)
 
 
