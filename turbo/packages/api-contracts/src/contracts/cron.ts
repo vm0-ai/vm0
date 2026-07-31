@@ -209,6 +209,7 @@ const cronAggregateModelStatsResponseSchema = z.object({
   processedHours: z.number().int().nonnegative(),
   processedObservations: z.number().int().nonnegative(),
   updatedStats: z.number().int().nonnegative(),
+  deletedObservations: z.number().int().nonnegative(),
 });
 
 export const cronAggregateUsageContract = c.router({

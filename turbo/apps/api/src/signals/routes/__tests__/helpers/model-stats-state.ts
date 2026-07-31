@@ -149,6 +149,24 @@ export async function insertZeroTokenModelStatsObservation(
   });
 }
 
+export async function insertAppliedModelStatsObservations(
+  context: TestContext,
+  args: {
+    readonly idempotencyKeys: readonly string[];
+    readonly model: string;
+    readonly observedAt: Date;
+    readonly aggregatedAt: Date;
+  },
+): Promise<void> {
+  await postAction(context, {
+    action: "insert-applied-observations",
+    idempotency_keys: [...args.idempotencyKeys],
+    model: args.model,
+    observed_at: args.observedAt.toISOString(),
+    aggregated_at: args.aggregatedAt.toISOString(),
+  });
+}
+
 export async function deleteModelStatsObservations(
   context: TestContext,
   idempotencyKeys: readonly string[],

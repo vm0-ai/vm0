@@ -75,6 +75,7 @@ const aggregateModelStatsRoute$ = command(
         processedHours: result.processedHours,
         processedObservations: result.processedObservations,
         updatedStats: result.updatedStats,
+        deletedObservations: result.deletedObservations,
       },
     };
   },

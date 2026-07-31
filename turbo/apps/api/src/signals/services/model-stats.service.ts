@@ -1,12 +1,14 @@
 import { command } from "ccstate";
 import {
   and,
+  asc,
   count,
   desc,
   eq,
   gt,
   gte,
   inArray,
+  isNotNull,
   isNull,
   lt,
   or,
@@ -37,6 +39,8 @@ import { nowDate } from "../external/time";
 import { lockModelStatsAggregation } from "./model-stats-aggregation-lock.service";
 
 const HOUR_MS = 60 * 60_000;
+const MODEL_USAGE_OBSERVATION_CLEANUP_BATCH_SIZE = 1000;
+const MODEL_USAGE_OBSERVATION_CLEANUP_MAX_BATCHES = 10;
 export const MODEL_RANKING_PERIODS = ["today", "week", "month"] as const;
 const L = logger("CronAggregateModelStats");
 
@@ -74,6 +78,7 @@ interface ModelStatsProcessingResult {
   readonly processedHours: number;
   readonly processedObservations: number;
   readonly updatedStats: number;
+  readonly deletedObservations: number;
 }
 
 interface ModelStatsHourProcessingResult {
@@ -373,6 +378,51 @@ async function processOldestPendingModelStatsHour(
   return result;
 }
 
+async function cleanupAppliedModelUsageObservations(
+  db: Db,
+  cutoff: Date,
+  signal: AbortSignal,
+): Promise<number> {
+  let deletedObservations = 0;
+
+  for (
+    let batch = 0;
+    batch < MODEL_USAGE_OBSERVATION_CLEANUP_MAX_BATCHES;
+    batch += 1
+  ) {
+    signal.throwIfAborted();
+    const candidates = db
+      .select({
+        idempotencyKey: modelUsageObservation.idempotencyKey,
+      })
+      .from(modelUsageObservation)
+      .where(
+        and(
+          isNotNull(modelUsageObservation.aggregatedAt),
+          lt(modelUsageObservation.observedAt, cutoff),
+        ),
+      )
+      .orderBy(
+        asc(modelUsageObservation.observedAt),
+        asc(modelUsageObservation.idempotencyKey),
+      )
+      .limit(MODEL_USAGE_OBSERVATION_CLEANUP_BATCH_SIZE)
+      .for("update", { skipLocked: true });
+    const { rowCount } = await db
+      .delete(modelUsageObservation)
+      .where(inArray(modelUsageObservation.idempotencyKey, candidates));
+    signal.throwIfAborted();
+
+    const batchDeleted = rowCount ?? 0;
+    deletedObservations += batchDeleted;
+    if (batchDeleted < MODEL_USAGE_OBSERVATION_CLEANUP_BATCH_SIZE) {
+      break;
+    }
+  }
+
+  return deletedObservations;
+}
+
 async function selectModelRankings(
   db: Db,
   period: ModelRankingPeriod,
@@ -472,6 +522,7 @@ export const aggregateModelStats$ = command(
     const startedAt = performance.now();
     const processedAt = nowDate();
     const cutoff = utcHourStart(processedAt);
+    const cleanupCutoff = new Date(processedAt.getTime() - HOUR_MS);
     let processedHours = 0;
     let processedObservations = 0;
     let updatedStats = 0;
@@ -498,9 +549,17 @@ export const aggregateModelStats$ = command(
       updatedStats += result.updatedStats;
     }
 
+    const deletedObservations = await cleanupAppliedModelUsageObservations(
+      db,
+      cleanupCutoff,
+      signal,
+    );
+    signal.throwIfAborted();
+
     const durationMs = Math.round(performance.now() - startedAt);
     L.debug("model stats processing completed", {
       cutoff: cutoff.toISOString(),
+      cleanupCutoff: cleanupCutoff.toISOString(),
       firstProcessedHour: firstProcessedHour?.toISOString() ?? null,
       lastProcessedHour: lastProcessedHour?.toISOString() ?? null,
       oldestCompleteBacklogAgeHours:
@@ -510,6 +569,7 @@ export const aggregateModelStats$ = command(
       processedHours,
       processedObservations,
       updatedStats,
+      deletedObservations,
       remainingCompletePendingObservations: 0,
       durationMs,
     });
@@ -519,6 +579,7 @@ export const aggregateModelStats$ = command(
       processedHours,
       processedObservations,
       updatedStats,
+      deletedObservations,
     };
   },
 );

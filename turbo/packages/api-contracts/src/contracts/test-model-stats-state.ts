@@ -39,6 +39,13 @@ export const testModelStatsStateActionBodySchema = z.discriminatedUnion(
       observed_at: z.iso.datetime(),
     }),
     z.object({
+      action: z.literal("insert-applied-observations"),
+      idempotency_keys: idempotencyKeysSchema,
+      model: z.string(),
+      observed_at: z.iso.datetime(),
+      aggregated_at: z.iso.datetime(),
+    }),
+    z.object({
       action: z.literal("delete-observations"),
       idempotency_keys: idempotencyKeysSchema,
     }),

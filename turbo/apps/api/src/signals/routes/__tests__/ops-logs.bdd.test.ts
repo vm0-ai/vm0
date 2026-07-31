@@ -30,6 +30,7 @@ import {
   deleteModelStatsObservations,
   holdModelStatsAggregationLock,
   holdModelStatsObservationLock,
+  insertAppliedModelStatsObservations,
   insertZeroTokenModelStatsObservation,
   readModelStatsAggregationLockState,
   readModelStatsObservationLockState,
@@ -294,7 +295,7 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       2 + (Math.floor(seed / 84) % 26),
     );
     const aggregateAt = dayStart + 4 * HOUR_MS;
-    const mainObservedAt = dayStart + 2 * HOUR_MS + 10 * 60_000;
+    const mainObservedAt = dayStart + 3 * HOUR_MS + 10 * 60_000;
     const previousObservedAt = dayStart - DAY_MS + 22 * HOUR_MS + 30 * 60_000;
     const windowEndIso = new Date(aggregateAt).toISOString();
     const todayStartIso = new Date(dayStart).toISOString();
@@ -348,6 +349,9 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       0,
     );
     expect(baselineAggregate.body.updatedStats).toBeGreaterThanOrEqual(0);
+    expect(baselineAggregate.body.deletedObservations).toBeGreaterThanOrEqual(
+      0,
+    );
 
     const baseline = await api.readModelRankings("today");
     expect(baseline.headers.get("cache-control")).toBe(
@@ -508,10 +512,6 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
           aggregatedAt: windowEndIso,
         },
         {
-          idempotencyKey: previousIdempotencyKey,
-          aggregatedAt: windowEndIso,
-        },
-        {
           idempotencyKey: zeroTokenIdempotencyKey,
           aggregatedAt: windowEndIso,
         },
@@ -521,6 +521,11 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
         },
       ]),
     );
+    expect(
+      initialObservationStates.some((observation) => {
+        return observation.idempotencyKey === previousIdempotencyKey;
+      }),
+    ).toBeFalsy();
 
     // A delayed delivery in an already-processed hour remains pending and is
     // added exactly once by the next cron request.
@@ -616,12 +621,7 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     });
     await expect(
       readModelStatsObservations(context, [oldPendingIdempotencyKey]),
-    ).resolves.toStrictEqual([
-      {
-        idempotencyKey: oldPendingIdempotencyKey,
-        aggregatedAt: windowEndIso,
-      },
-    ]);
+    ).resolves.toStrictEqual([]);
     await expect(api.readModelRankings("today")).resolves.toMatchObject({
       body: reprocessed.body,
     });
@@ -820,22 +820,19 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     );
 
     const resumed = await api.requestAggregateModelStats("valid", [200]);
-    expect(resumed.body).toStrictEqual({
+    expect(resumed.body).toMatchObject({
       success: true,
       cutoff: windowEndIso,
       processedHours: 1,
       processedObservations: 1,
       updatedStats: 0,
     });
+    expect(resumed.body.deletedObservations).toBeGreaterThanOrEqual(2);
     const resumedStates = await readModelStatsObservations(context, [
       firstCancellationIdempotencyKey,
       secondCancellationIdempotencyKey,
     ]);
-    expect(
-      resumedStates.every((observation) => {
-        return observation.aggregatedAt === windowEndIso;
-      }),
-    ).toBeTruthy();
+    expect(resumedStates).toStrictEqual([]);
 
     // A failed increment must roll back every statistic mutation. 1,024 maximum
     // safe integers still fit in PostgreSQL bigint; the 1,025th overflows SUM.
@@ -906,8 +903,8 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       }),
     );
 
-    // Applied observations remain retained during the incremental soak. A
-    // later run processes the formerly current hour without deleting history.
+    // A later run processes the formerly current hour before cleaning every
+    // applied observation whose receipt-time retry lifetime has expired.
     const laterAggregateAt = dayStart + 33 * DAY_MS + 4 * HOUR_MS;
     mockNow(laterAggregateAt);
     const laterProcessing = await api.requestAggregateModelStats(
@@ -923,7 +920,8 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       1,
     );
     expect(laterProcessing.body.updatedStats).toBeGreaterThanOrEqual(1);
-    const retainedStates = await readModelStatsObservations(context, [
+    expect(laterProcessing.body.deletedObservations).toBeGreaterThanOrEqual(5);
+    const cleanedStates = await readModelStatsObservations(context, [
       compactIdempotencyKey,
       previousIdempotencyKey,
       zeroTokenIdempotencyKey,
@@ -934,12 +932,7 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       firstCancellationIdempotencyKey,
       secondCancellationIdempotencyKey,
     ]);
-    expect(retainedStates).toHaveLength(9);
-    expect(
-      retainedStates.every((observation) => {
-        return observation.aggregatedAt !== null;
-      }),
-    ).toBeTruthy();
+    expect(cleanedStates).toStrictEqual([]);
 
     mockNow(aggregateAt);
     const noOp = await api.requestAggregateModelStats("valid", [200]);
@@ -949,9 +942,204 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
       processedHours: 0,
       processedObservations: 0,
       updatedStats: 0,
+      deletedObservations: 0,
     });
     const unchanged = await api.readModelRankings("today");
     expect(unchanged.body).toStrictEqual(afterConcurrent.body);
+  });
+
+  it("cleans expired applied observations in bounded batches", async () => {
+    const api = createOpsLogsApi(context);
+    const runs = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const model = "claude-sonnet-4-6";
+    const seed = Number.parseInt(randomUUID().slice(0, 8), 16);
+    const dayStart = Date.UTC(
+      1970 + (seed % 7),
+      Math.floor(seed / 7) % 12,
+      2 + (Math.floor(seed / 84) % 26),
+    );
+    const exactBoundaryObservedAt = dayStart + 3 * HOUR_MS + 15 * 60_000;
+    const overBoundaryObservedAt = exactBoundaryObservedAt - 1;
+    const underBoundaryObservedAt = exactBoundaryObservedAt + 1;
+    const projectionAt = dayStart + 4 * HOUR_MS;
+    const cleanupAt = exactBoundaryObservedAt + HOUR_MS;
+    const oldPendingAt = cleanupAt - 769 * HOUR_MS;
+    const fixtureObservationKeys: string[] = [];
+
+    onTestFinished(async () => {
+      if (fixtureObservationKeys.length > 0) {
+        await deleteModelStatsFixture(context, {
+          idempotencyKeys: fixtureObservationKeys,
+          models: [model],
+          windowStart: new Date(oldPendingAt - HOUR_MS),
+          windowEnd: new Date(dayStart + DAY_MS),
+        });
+      }
+    });
+
+    const { actor, agentId } = await entitledRunActor();
+    const created = await runs.createRun(actor, {
+      agentId,
+      prompt: "clean model usage observations",
+      modelProvider: "anthropic-api-key",
+    });
+    const sandboxHeaders = {
+      authorization: `Bearer ${runs.sandboxTokenForRun(actor, created.runId)}`,
+    };
+    await runs.requestCancelRun(actor, created.runId, [200]);
+
+    async function sendObservation(
+      idempotencyKey: string,
+      inputTokens: number,
+    ): Promise<void> {
+      await webhooks.requestAgentModelUsageObservationV2(
+        {
+          runId: created.runId,
+          events: [
+            {
+              idempotencyKey,
+              model,
+              inputTokens,
+              outputTokens: 0,
+              cacheReadInputTokens: 0,
+              cacheCreationInputTokens: 0,
+            },
+          ],
+        },
+        sandboxHeaders,
+        [200],
+      );
+    }
+
+    mockNow(projectionAt);
+    await api.requestAggregateModelStats("valid", [200]);
+
+    const overBoundaryIdempotencyKey = randomUUID();
+    const exactBoundaryIdempotencyKey = randomUUID();
+    const underBoundaryIdempotencyKey = randomUUID();
+    fixtureObservationKeys.push(
+      overBoundaryIdempotencyKey,
+      exactBoundaryIdempotencyKey,
+      underBoundaryIdempotencyKey,
+    );
+
+    mockNow(overBoundaryObservedAt);
+    await sendObservation(overBoundaryIdempotencyKey, 11);
+    mockNow(exactBoundaryObservedAt);
+    await sendObservation(exactBoundaryIdempotencyKey, 13);
+    mockNow(underBoundaryObservedAt);
+    await sendObservation(underBoundaryIdempotencyKey, 17);
+
+    mockNow(projectionAt);
+    const projected = await api.requestAggregateModelStats("valid", [200]);
+    expect(projected.body).toMatchObject({
+      success: true,
+      cutoff: new Date(projectionAt).toISOString(),
+      processedHours: 1,
+      processedObservations: 3,
+      updatedStats: 1,
+      deletedObservations: 0,
+    });
+    const rankingBeforeCleanup = await api.readModelRankings("today");
+
+    // A retry after projection but within one hour still finds the original
+    // UUID ledger row and cannot create new pending work.
+    await sendObservation(exactBoundaryIdempotencyKey, 13);
+    await expect(
+      readModelStatsObservations(context, [exactBoundaryIdempotencyKey]),
+    ).resolves.toStrictEqual([
+      {
+        idempotencyKey: exactBoundaryIdempotencyKey,
+        aggregatedAt: new Date(projectionAt).toISOString(),
+      },
+    ]);
+
+    const oldPendingIdempotencyKey = randomUUID();
+    fixtureObservationKeys.push(oldPendingIdempotencyKey);
+    mockNow(oldPendingAt);
+    await sendObservation(oldPendingIdempotencyKey, 19);
+
+    mockNow(cleanupAt);
+    const cleaned = await api.requestAggregateModelStats("valid", [200]);
+    expect(cleaned.body).toStrictEqual({
+      success: true,
+      cutoff: new Date(dayStart + 4 * HOUR_MS).toISOString(),
+      processedHours: 1,
+      processedObservations: 1,
+      updatedStats: 1,
+      deletedObservations: 2,
+    });
+    const boundaryStates = await readModelStatsObservations(context, [
+      overBoundaryIdempotencyKey,
+      exactBoundaryIdempotencyKey,
+      underBoundaryIdempotencyKey,
+      oldPendingIdempotencyKey,
+    ]);
+    expect(boundaryStates).toHaveLength(2);
+    expect(boundaryStates).toStrictEqual(
+      expect.arrayContaining([
+        {
+          idempotencyKey: exactBoundaryIdempotencyKey,
+          aggregatedAt: new Date(projectionAt).toISOString(),
+        },
+        {
+          idempotencyKey: underBoundaryIdempotencyKey,
+          aggregatedAt: new Date(projectionAt).toISOString(),
+        },
+      ]),
+    );
+    const rankingAfterCleanup = await api.readModelRankings("today");
+    expect(rankingAfterCleanup.body).toStrictEqual(rankingBeforeCleanup.body);
+
+    // Once the one-hour guarantee has expired and cleanup removed the ledger
+    // row, the same UUID is accepted as a new current-hour observation.
+    await sendObservation(overBoundaryIdempotencyKey, 11);
+    await expect(
+      readModelStatsObservations(context, [overBoundaryIdempotencyKey]),
+    ).resolves.toStrictEqual([
+      {
+        idempotencyKey: overBoundaryIdempotencyKey,
+        aggregatedAt: null,
+      },
+    ]);
+
+    const cleanupBatchIdempotencyKeys = Array.from({ length: 10_001 }, () => {
+      return randomUUID();
+    });
+    fixtureObservationKeys.push(...cleanupBatchIdempotencyKeys);
+    await insertAppliedModelStatsObservations(context, {
+      idempotencyKeys: cleanupBatchIdempotencyKeys,
+      model,
+      observedAt: new Date(dayStart + 2 * HOUR_MS),
+      aggregatedAt: new Date(projectionAt),
+    });
+
+    const firstBatch = await api.requestAggregateModelStats("valid", [200]);
+    expect(firstBatch.body).toStrictEqual({
+      success: true,
+      cutoff: new Date(dayStart + 4 * HOUR_MS).toISOString(),
+      processedHours: 0,
+      processedObservations: 0,
+      updatedStats: 0,
+      deletedObservations: 10_000,
+    });
+    await expect(
+      readModelStatsObservations(context, cleanupBatchIdempotencyKeys),
+    ).resolves.toHaveLength(1);
+
+    const finalBatch = await api.requestAggregateModelStats("valid", [200]);
+    expect(finalBatch.body).toStrictEqual({
+      success: true,
+      cutoff: new Date(dayStart + 4 * HOUR_MS).toISOString(),
+      processedHours: 0,
+      processedObservations: 0,
+      updatedStats: 0,
+      deletedObservations: 1,
+    });
+    await expect(
+      readModelStatsObservations(context, cleanupBatchIdempotencyKeys),
+    ).resolves.toStrictEqual([]);
   });
 });
 
