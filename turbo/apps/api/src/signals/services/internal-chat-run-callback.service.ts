@@ -4379,8 +4379,8 @@ async function handleChatInternalCallback(args: {
   // record delivery; it does not retry and nothing downstream reads the body.
   // The frontend learns about new messages through Ably realtime signals, not
   // this HTTP response. So acknowledge immediately and run the heavy terminal
-  // processing (Axiom watermark wait, message persistence, LLM generation,
-  // push delivery) in the background, mirroring webhooks-agent-complete. Use a
+  // processing (message persistence, LLM generation, and push delivery) in the
+  // background, mirroring webhooks-agent-complete. Use a
   // detached signal so request cancellation cannot interrupt the idempotency
   // marker -> queued auto-send sequence after the callback is acknowledged.
   const backgroundSignal = new AbortController().signal;

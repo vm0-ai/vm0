@@ -3093,7 +3093,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     context.mocks.axiom.query.mockClear();
     context.mocks.axiom.query.mockImplementation((apl: unknown) => {
       const query = typeof apl === "string" ? apl : "";
-      if (query.includes("['agent-run-events']")) {
+      if (query.includes("agent-run-events")) {
         throw new Error("Incomplete DB output should not query Axiom");
       }
       return Promise.resolve([]);
