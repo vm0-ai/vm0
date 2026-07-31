@@ -421,13 +421,15 @@ function DiagnosticsContent({
           ) : (
             <div className="flex min-w-0 flex-col gap-2">
               {filteredAuthMethods.map((method) => {
+                const connectorSlug =
+                  method.connectorSlug ?? method.connectorRef;
                 return (
                   <div
-                    key={`${method.connectorRef}:${method.authMethodId}`}
+                    key={`${connectorSlug}:${method.authMethodId}`}
                     className="min-w-0 rounded-lg bg-muted/40 px-3 py-2"
                   >
                     <code className="block break-all text-xs font-medium text-foreground">
-                      {method.connectorRef} / {method.authMethodId}
+                      {connectorSlug} / {method.authMethodId}
                     </code>
                     <div className="mt-1 text-xs text-muted-foreground">
                       {method.reasons.map(formatEnumValue).join(", ")}

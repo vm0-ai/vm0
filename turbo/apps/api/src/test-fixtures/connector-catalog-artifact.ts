@@ -56,7 +56,7 @@ function providerCapability(
   const capability = getConnectorAuthProviderRegistrationCapabilities().find(
     (candidate) => {
       return (
-        candidate.connectorRef === connectorSlug &&
+        candidate.connectorSlug === connectorSlug &&
         candidate.authMethodId === authMethodId
       );
     },

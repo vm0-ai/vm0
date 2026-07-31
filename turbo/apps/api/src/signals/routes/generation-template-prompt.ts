@@ -4,7 +4,6 @@ import {
   findPresentationRunbookPackage,
   findVideoTemplate,
   findWebsiteTemplatePackage,
-  hasR2Archive,
   resolvePresentationRunbookColorToken,
   type PresentationRunbookPackage,
   type WebsiteTemplatePackage,
@@ -69,17 +68,8 @@ type GenerationTemplatePromptResult =
       readonly message: string;
     };
 
-interface BuildGenerationTemplatePromptOptions {
-  /**
-   * When true, archive-enabled image styles resolve through private R2.
-   * When false, the existing vm0-skills GitHub source remains unchanged.
-   */
-  readonly imageStyleR2Enabled?: boolean;
-}
-
 export function buildGenerationTemplatePrompt(
   generationTemplate: GenerationTemplateInput | null | undefined,
-  options?: BuildGenerationTemplatePromptOptions,
 ): GenerationTemplatePromptResult {
   if (!generationTemplate) {
     return { status: "resolved", prompt: "" };
@@ -89,10 +79,7 @@ export function buildGenerationTemplatePrompt(
     return buildVideoGenerationTemplatePrompt(generationTemplate);
   }
   if (generationTemplate.type === "illustration") {
-    return buildIllustrationGenerationTemplatePrompt(
-      generationTemplate,
-      options,
-    );
+    return buildIllustrationGenerationTemplatePrompt(generationTemplate);
   }
   if (generationTemplate.type === "workflow") {
     return buildWorkflowGenerationTemplatePrompt(generationTemplate);
@@ -120,14 +107,13 @@ function stripGenerationTemplateContext(prompt: string): string {
 
 export function buildGenerationTemplatesPrompt(
   generationTemplates: readonly GenerationTemplateInput[],
-  options?: BuildGenerationTemplatePromptOptions,
 ): GenerationTemplatePromptResult {
   if (generationTemplates.length === 0) {
     return { status: "resolved", prompt: "" };
   }
   const details: string[] = [];
   for (const [index, generationTemplate] of generationTemplates.entries()) {
-    const built = buildGenerationTemplatePrompt(generationTemplate, options);
+    const built = buildGenerationTemplatePrompt(generationTemplate);
     if (built.status === "invalid") {
       return built;
     }
@@ -302,7 +288,6 @@ function buildVideoGenerationTemplatePrompt(
 
 function buildIllustrationGenerationTemplatePrompt(
   generationTemplate: IllustrationGenerationTemplateInput,
-  options?: BuildGenerationTemplatePromptOptions,
 ): GenerationTemplatePromptResult {
   const imageStyle = findImageStyle(
     generationTemplate.selection.illustrationStyleId,
@@ -310,21 +295,10 @@ function buildIllustrationGenerationTemplatePrompt(
   if (!imageStyle) {
     return { status: "invalid", message: "Unknown generation image style" };
   }
-  const useR2 =
-    options?.imageStyleR2Enabled === true && hasR2Archive(imageStyle);
-  const styleSource = useR2
-    ? `private R2 registry resource ${imageStyle.id}`
-    : imageStyle.source.repo && imageStyle.source.ref
-      ? `${imageStyle.source.repo}@${imageStyle.source.ref}:${imageStyle.source.path}`
-      : imageStyle.source.path;
-  const compileCommand = [
-    `zero generate image --provider built-in --style ${imageStyle.id}`,
-    '--prompt "<user request>" --compile',
-    ...(useR2 ? ["--style-source r2"] : []),
-  ].join(" ");
-  const sourceInstruction = useR2
-    ? "Follow the returned packet completely, including pulling the private R2 package and reading its extracted SKILL.md. If the R2 source is unavailable, stop without generating; do not fall back to GitHub."
-    : `Follow the returned packet completely, including reading its style source (${styleSource}) and SKILL.md. If the source is unavailable, stop without generating.`;
+  const styleSource = `private R2 registry resource ${imageStyle.id}`;
+  const compileCommand = `zero generate image --provider built-in --style ${imageStyle.id} --prompt "<user request>" --compile --style-source r2`;
+  const sourceInstruction =
+    "Follow the returned packet completely, including pulling the private R2 package and reading its extracted SKILL.md. If the R2 source is unavailable, stop without generating; do not fall back to GitHub.";
 
   return {
     status: "resolved",

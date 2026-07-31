@@ -245,8 +245,13 @@ class UsageWebhookServer:
                 return None
 
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+        server = self._server
+
+        def serve_forever() -> None:
+            server.serve_forever(poll_interval=0.01)
+
         self._thread = threading.Thread(
-            target=self._server.serve_forever,
+            target=serve_forever,
             name="usage-webhook-test-server",
             daemon=True,
         )

@@ -5454,6 +5454,20 @@
       "when": 1785471957131,
       "tag": "0778_expand_chat_event_terminal_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 779,
+      "version": "7",
+      "when": 1785474465696,
+      "tag": "0779_add_external_chat_contexts",
+      "breakpoints": true
+    },
+    {
+      "idx": 780,
+      "version": "7",
+      "when": 1785476680923,
+      "tag": "0780_backfill_slack_context_identifiers",
+      "breakpoints": true
     }
   ]
 }

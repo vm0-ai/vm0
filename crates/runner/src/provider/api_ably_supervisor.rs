@@ -637,11 +637,20 @@ async fn handle_ably_message_with_network_policy_refresh(
 ) {
     let notification_received_at = StdInstant::now();
 
-    if let Some(run_id) = parse_cancel_notification(msg) {
+    if let Some(notification) = parse_cancel_notification(msg) {
+        let run_id = notification.run_id;
         let handle = cancel_tokens.handle(run_id).await;
         if let Some(handle) = handle {
-            info!(run_id = %run_id, "ably: cancel notification, requesting cooperative cancellation");
-            handle.request_cooperative_user_cancellation().await;
+            match notification.mode {
+                CancelNotificationMode::Cooperative => {
+                    info!(run_id = %run_id, "ably: cancel notification, requesting cooperative cancellation");
+                    handle.request_cooperative_user_cancellation().await;
+                }
+                CancelNotificationMode::Hard => {
+                    info!(run_id = %run_id, "ably: cancel notification, requesting hard cancellation");
+                    handle.request_hard_cancellation().await;
+                }
+            }
         }
         return;
     }
@@ -801,18 +810,48 @@ fn log_direct_candidate_pruned(
     );
 }
 
-fn parse_cancel_notification(msg: &ably_subscriber::Message) -> Option<RunId> {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CancelNotificationMode {
+    Cooperative,
+    Hard,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct CancelNotification {
+    run_id: RunId,
+    mode: CancelNotificationMode,
+}
+
+fn parse_cancel_notification(msg: &ably_subscriber::Message) -> Option<CancelNotification> {
     if msg.name.as_deref() != Some("cancel") {
         return None;
     }
     let raw = msg.data.get("runId").and_then(|v| v.as_str())?;
-    match raw.parse() {
-        Ok(id) => Some(id),
+    let run_id = match raw.parse() {
+        Ok(id) => id,
         Err(e) => {
             warn!(value = %raw, error = %e, "ably: invalid cancel runId");
-            None
+            return None;
         }
-    }
+    };
+    let mode = match msg.data.get("mode") {
+        Some(serde_json::Value::String(mode)) if mode == "cooperative" => {
+            CancelNotificationMode::Cooperative
+        }
+        Some(serde_json::Value::String(mode)) if mode == "hard" => CancelNotificationMode::Hard,
+        Some(mode) => {
+            warn!(
+                run_id = %run_id,
+                mode = %mode,
+                "ably: unknown cancel mode, using hard cancellation"
+            );
+            CancelNotificationMode::Hard
+        }
+        // Older APIs omitted the mode. Defaulting to hard preserves their
+        // pre-capability cancellation behavior during mixed deployments.
+        None => CancelNotificationMode::Hard,
+    };
+    Some(CancelNotification { run_id, mode })
 }
 
 fn parse_network_policy_refresh_notification(
@@ -1741,7 +1780,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cancel_notification_cancels_token_without_discovery() {
+    async fn cooperative_cancel_notification_uses_cooperative_signal_without_discovery() {
         let run_id: RunId = "00000000-0000-0000-0000-000000000002".parse().unwrap();
         let tokens = RunCancellationRegistry::new();
         let registration = tokens.register(run_id).await.unwrap();
@@ -1750,13 +1789,79 @@ mod tests {
         let wakeups = PollWakeups::new(true);
         let direct_candidates = direct_candidate_inbox();
         let profiles = default_profiles();
-        let msg = make_message(Some("cancel"), serde_json::json!({ "runId": run_id }));
+        let msg = make_message(
+            Some("cancel"),
+            serde_json::json!({ "runId": run_id, "mode": "cooperative" }),
+        );
 
         handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
 
         assert!(token.is_cancelled());
         assert!(signals.cooperative_user().is_cancelled());
         assert!(!signals.hard().is_cancelled());
+        assert_no_direct_candidate(&direct_candidates).await;
+    }
+
+    #[tokio::test]
+    async fn hard_cancel_notification_uses_hard_signal_without_discovery() {
+        let run_id: RunId = "00000000-0000-0000-0000-000000000002".parse().unwrap();
+        let tokens = RunCancellationRegistry::new();
+        let registration = tokens.register(run_id).await.unwrap();
+        let signals = registration.handle().signals();
+        let wakeups = PollWakeups::new(true);
+        let direct_candidates = direct_candidate_inbox();
+        let profiles = default_profiles();
+        let msg = make_message(
+            Some("cancel"),
+            serde_json::json!({ "runId": run_id, "mode": "hard" }),
+        );
+
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
+
+        assert!(signals.any().is_cancelled());
+        assert!(signals.hard().is_cancelled());
+        assert!(!signals.cooperative_user().is_cancelled());
+        assert_no_direct_candidate(&direct_candidates).await;
+    }
+
+    #[tokio::test]
+    async fn legacy_cancel_notification_defaults_to_hard_signal() {
+        let run_id: RunId = "00000000-0000-0000-0000-000000000002".parse().unwrap();
+        let tokens = RunCancellationRegistry::new();
+        let registration = tokens.register(run_id).await.unwrap();
+        let signals = registration.handle().signals();
+        let wakeups = PollWakeups::new(true);
+        let direct_candidates = direct_candidate_inbox();
+        let profiles = default_profiles();
+        let msg = make_message(Some("cancel"), serde_json::json!({ "runId": run_id }));
+
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
+
+        assert!(signals.any().is_cancelled());
+        assert!(signals.hard().is_cancelled());
+        assert!(!signals.cooperative_user().is_cancelled());
+        assert_no_direct_candidate(&direct_candidates).await;
+    }
+
+    #[tokio::test]
+    async fn unknown_cancel_notification_mode_defaults_to_hard_signal() {
+        let run_id: RunId = "00000000-0000-0000-0000-000000000002".parse().unwrap();
+        let tokens = RunCancellationRegistry::new();
+        let registration = tokens.register(run_id).await.unwrap();
+        let signals = registration.handle().signals();
+        let wakeups = PollWakeups::new(true);
+        let direct_candidates = direct_candidate_inbox();
+        let profiles = default_profiles();
+        let msg = make_message(
+            Some("cancel"),
+            serde_json::json!({ "runId": run_id, "mode": "future-mode" }),
+        );
+
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
+
+        assert!(signals.any().is_cancelled());
+        assert!(signals.hard().is_cancelled());
+        assert!(!signals.cooperative_user().is_cancelled());
         assert_no_direct_candidate(&direct_candidates).await;
     }
 
@@ -2149,9 +2254,16 @@ mod tests {
     fn parse_cancel_notification_valid() {
         let msg = make_message(
             Some("cancel"),
-            serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000002" }),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000002",
+                "mode": "cooperative"
+            }),
         );
-        let run_id = parse_cancel_notification(&msg).unwrap();
-        assert_eq!(run_id.to_string(), "00000000-0000-0000-0000-000000000002");
+        let notification = parse_cancel_notification(&msg).unwrap();
+        assert_eq!(
+            notification.run_id.to_string(),
+            "00000000-0000-0000-0000-000000000002"
+        );
+        assert_eq!(notification.mode, CancelNotificationMode::Cooperative);
     }
 }

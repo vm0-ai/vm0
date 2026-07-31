@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.272.4](https://github.com/vm0-ai/vm0/compare/cli-v9.272.3...cli-v9.272.4) (2026-07-31)
+
+
+### Refactoring
+
+* **connectors:** use slug identity in firewall policies ([#24229](https://github.com/vm0-ai/vm0/issues/24229)) ([3ed0961](https://github.com/vm0-ai/vm0/commit/3ed0961ec336d2c84be219db715e0254930e91ee))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.258.2
+    * @vm0/connectors bumped to 1.202.2
+    * @vm0/core bumped to 8.497.1
+
 ## [9.272.3](https://github.com/vm0-ai/vm0/compare/cli-v9.272.2...cli-v9.272.3) (2026-07-31)
 
 

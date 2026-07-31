@@ -1289,6 +1289,12 @@ async function insertGitHubChatInput(args: {
         runId: null,
         triggerSource: "github",
         encryptedParams,
+        githubContext: {
+          repo: args.params.repo,
+          subjectNumber: issueNumber,
+          subjectKind: args.params.subjectKind,
+          triggerCommentId: args.params.commentId ?? null,
+        },
         createdAt: args.currentTime,
       },
       "id",

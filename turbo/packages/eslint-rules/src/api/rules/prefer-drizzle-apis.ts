@@ -48,6 +48,7 @@ import { createExecuteRawRowsMatcher } from "../execute-raw-rows.ts";
 import {
   analyzeSql,
   analyzeSqlSource,
+  isDrizzleTransactionConfigSql,
   sqlTagMightContainHelper,
   type SqlAnalysis,
   type SqlAnalysisContext,
@@ -169,6 +170,8 @@ export const preferDrizzleApis = createRule({
         "Use a Drizzle select builder for this complete schema-backed query.",
       scalarCteQueryBuilder:
         "Use Drizzle $with(...), select(), and joins for this complete scalar CTE projection.",
+      transactionConfig:
+        "Use Drizzle transaction configuration APIs for this equivalent SET TRANSACTION statement.",
       unstableGrouping:
         "Group by a reusable expression or real input field instead of a repeated expression, positional ordinal, or computed output alias.",
       structuredScalarQuery:
@@ -536,6 +539,46 @@ export const preferDrizzleApis = createRule({
         isDrizzleSymbol(checker, receiverType.getSymbol()) &&
         update?.declarations?.some(isDrizzlePgCoreDeclaration) === true
       );
+    }
+
+    function isDrizzlePgTransaction(node: TSESTree.Expression): boolean {
+      const receiver = services.esTreeNodeToTSNodeMap.get(node);
+      const receiverType = checker.getTypeAtLocation(receiver);
+      const setTransaction = resolvedSymbol(
+        checker,
+        checker.getPropertyOfType(receiverType, "setTransaction"),
+      );
+      return (
+        setTransaction?.declarations?.some(isDrizzlePgCoreDeclaration) === true
+      );
+    }
+
+    function inspectTransactionConfigCall(node: TSESTree.CallExpression): void {
+      if (
+        node.parent.type !== AST_NODE_TYPES.AwaitExpression ||
+        node.parent.argument !== node ||
+        node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+        node.callee.object.type === AST_NODE_TYPES.Super ||
+        memberName(node.callee) !== "execute" ||
+        node.arguments.length !== 1
+      ) {
+        return;
+      }
+      const query = node.arguments[0];
+      if (
+        query?.type !== AST_NODE_TYPES.TaggedTemplateExpression ||
+        !isDrizzleTransactionConfigSql(
+          query,
+          checker,
+          services,
+          sqlSourceComposer,
+        ) ||
+        !isDrizzleMethodCall(node, "execute") ||
+        !isDrizzlePgTransaction(node.callee.object)
+      ) {
+        return;
+      }
+      context.report({ node: query, messageId: "transactionConfig" });
     }
 
     function methodReturnsDrizzleProperty(
@@ -2586,6 +2629,7 @@ export const preferDrizzleApis = createRule({
     return {
       CallExpression(node: TSESTree.CallExpression): void {
         inspectRawQueryCall(node);
+        inspectTransactionConfigCall(node);
         inspectPredicateCall(node);
         inspectColumnEncodedComparisonValue(node);
         inspectSqlJoinCall(node);

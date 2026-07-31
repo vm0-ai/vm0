@@ -2338,8 +2338,10 @@ describe("Feishu integration", () => {
           version: 1,
           parts: [{ type: "text", text: "do the Feishu task" }],
         },
-        feishuChatOpenUrl:
-          "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_dm",
+        annotation: {
+          kind: "feishu",
+          href: "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_dm",
+        },
       }),
     );
     await runsApi.heartbeatRunner(runnerGroup);
@@ -2407,7 +2409,8 @@ describe("Feishu integration", () => {
         return (
           event.eventType === "input.prompt" &&
           event.revokesEventId !== undefined &&
-          event.feishuChatOpenUrl ===
+          event.annotation?.kind === "feishu" &&
+          event.annotation.href ===
             "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_dm"
         );
       },
@@ -2424,13 +2427,13 @@ describe("Feishu integration", () => {
     expect(claimedFeishuContext).toMatchObject({
       contextType: "feishu",
       contextId: expect.any(String),
-      feishuChatOpenUrl:
+      feishuOpenUrl:
         "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_dm",
     });
     expect(pendingFeishuContext).toMatchObject({
       contextType: "feishu",
       contextId: claimedFeishuContext?.contextId,
-      feishuChatOpenUrl:
+      feishuOpenUrl:
         "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_dm",
     });
     const completedReply = [...outboundMessages].reverse().find((message) => {
