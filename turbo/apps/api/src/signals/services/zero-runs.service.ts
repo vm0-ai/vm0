@@ -1,8 +1,5 @@
 import { computed, type Computed } from "ccstate";
-import {
-  triggerSourceSchema,
-  type TriggerSource,
-} from "@vm0/api-contracts/contracts/logs";
+import { triggerSourceSchema } from "@vm0/api-contracts/contracts/logs";
 import { isOrgTier, type OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import {
   ALL_RUN_STATUSES,
@@ -217,7 +214,10 @@ function queueItem(
   emails: ReadonlyMap<string, string>,
 ): QueueItem {
   const isOwner = run.runUserId === userId;
-  const triggerSource = triggerSourceSchema.parse(run.triggerSource ?? "cli");
+  const triggerSource =
+    run.triggerSource === null
+      ? null
+      : triggerSourceSchema.parse(run.triggerSource);
   return {
     position: index + 1,
     agentName: isOwner ? (run.agentName ?? "unknown") : null,
@@ -227,7 +227,7 @@ function queueItem(
     isOwner,
     runId: isOwner ? run.id : null,
     prompt: isOwner ? truncatePrompt(run.prompt) : null,
-    triggerSource: isOwner ? (triggerSource as TriggerSource) : null,
+    triggerSource: isOwner ? triggerSource : null,
     sessionLink:
       isOwner && run.continuedFromSessionId
         ? `/chat/${run.continuedFromSessionId}`

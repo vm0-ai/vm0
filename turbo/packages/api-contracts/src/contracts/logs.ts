@@ -52,7 +52,6 @@ export const triggerSourceSchema = z.enum([
   "telegram",
   "agentphone",
   "github",
-  "cli",
   "test",
   "agent",
   "webhook",
