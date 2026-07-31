@@ -378,6 +378,7 @@ async function validateCurrentBrowserApiBeforeBillingMigration(): Promise<void> 
 
 const BROWSER_USAGE_COMPATIBILITY_PREVIOUS_MIGRATION = 782;
 const BROWSER_USAGE_COMPATIBILITY_MIGRATION = 783;
+const BROWSER_USAGE_CONTRACTION_MIGRATION = 787;
 
 const browserUsageCompatibilityFixture = {
   sessionId: "00000000-0000-4000-8000-000000078201",
@@ -399,6 +400,9 @@ const browserUsageCompatibilityFixture = {
   allocationId: "00000000-0000-4000-8000-000000078217",
   rollupId: "00000000-0000-4000-8000-000000078218",
   idempotencyOnlyChatThreadId: "00000000-0000-4000-8000-000000078219",
+  declarationFirstProviderSessionId: "00000000-0000-4000-8000-000000078220",
+  declarationFirstChatThreadId: "00000000-0000-4000-8000-000000078221",
+  declarationFirstRunId: "00000000-0000-4000-8000-000000078222",
 } as const;
 
 async function seedBrowserUsageCompatibilityFixture(
@@ -580,7 +584,7 @@ async function seedBrowserUsageCompatibilityFixture(
           7,
           8,
           9,
-          NULL,
+          $11,
           NULL,
           '2026-01-05T00:30:00Z',
           '2026-01-05T00:40:00Z',
@@ -600,6 +604,7 @@ async function seedBrowserUsageCompatibilityFixture(
       fixture.idempotencyOnlyChatThreadId,
       fixture.idempotencyOnlyRunId,
       fixture.idempotencyOnlyBillingRunId,
+      fixture.idempotencyOnlyEventId,
     ],
   );
   await client.query(
@@ -734,7 +739,7 @@ async function seedBrowserUsageCompatibilityFixture(
   );
 }
 
-async function readBrowserUsageCompatibilityHistory(
+async function readBrowserUsageAccountingHistory(
   client: Client,
 ): Promise<unknown> {
   const fixture = browserUsageCompatibilityFixture;
@@ -750,22 +755,13 @@ async function readBrowserUsageCompatibilityHistory(
             WHERE "id" IN ($1, $2)
           ) AS "event"
         ),
-        'instances',
-        (
-          SELECT coalesce(jsonb_agg(to_jsonb("instance") ORDER BY "instance"."provider_session_id"), '[]'::jsonb)
-          FROM (
-            SELECT *
-            FROM "browser_session_instances"
-            WHERE "provider_session_id" IN ($3, $4)
-          ) AS "instance"
-        ),
         'rollups',
         (
           SELECT coalesce(jsonb_agg(to_jsonb("rollup") ORDER BY "rollup"."id"), '[]'::jsonb)
           FROM (
             SELECT *
             FROM "usage_event_hourly_rollup"
-            WHERE "id" = $5
+            WHERE "id" = $3
           ) AS "rollup"
         ),
         'entitlements',
@@ -774,7 +770,7 @@ async function readBrowserUsageCompatibilityHistory(
           FROM (
             SELECT *
             FROM "org_usage_allowance_entitlements"
-            WHERE "id" = $6
+            WHERE "id" = $4
           ) AS "entitlement"
         ),
         'windows',
@@ -783,7 +779,7 @@ async function readBrowserUsageCompatibilityHistory(
           FROM (
             SELECT *
             FROM "org_usage_allowance_windows"
-            WHERE "id" IN ($7, $8)
+            WHERE "id" IN ($5, $6)
           ) AS "window"
         ),
         'allocations',
@@ -792,7 +788,7 @@ async function readBrowserUsageCompatibilityHistory(
           FROM (
             SELECT *
             FROM "usage_allowance_allocations"
-            WHERE "id" = $9
+            WHERE "id" = $7
           ) AS "allocation"
         )
       ) AS "state"
@@ -800,8 +796,6 @@ async function readBrowserUsageCompatibilityHistory(
     [
       fixture.explicitEventId,
       fixture.idempotencyOnlyEventId,
-      fixture.explicitProviderSessionId,
-      fixture.idempotencyOnlyProviderSessionId,
       fixture.rollupId,
       fixture.entitlementId,
       fixture.shortWindowId,
@@ -814,11 +808,82 @@ async function readBrowserUsageCompatibilityHistory(
   return state;
 }
 
+async function readBrowserUsageCurrentBrowserState(
+  client: Client,
+): Promise<unknown> {
+  const fixture = browserUsageCompatibilityFixture;
+  const result = await client.query<{ state: unknown }>(
+    `
+      SELECT jsonb_build_object(
+        'session',
+        (
+          SELECT to_jsonb("session")
+          FROM (
+            SELECT
+              "id",
+              "chat_thread_id",
+              "run_id",
+              "org_id",
+              "user_id",
+              "name",
+              "browser_profile_id",
+              "browser_thread_profile_id",
+              "status",
+              "proxy_country_code",
+              "timeout_minutes",
+              "suspended_at",
+              "suspension_reason",
+              "created_at",
+              "updated_at"
+            FROM "browser_sessions"
+            WHERE "id" = $1
+          ) AS "session"
+        ),
+        'instances',
+        (
+          SELECT coalesce(
+            jsonb_agg(to_jsonb("instance") ORDER BY "instance"."provider_session_id"),
+            '[]'::jsonb
+          )
+          FROM (
+            SELECT
+              "provider_session_id",
+              "browser_session_id",
+              "chat_thread_id",
+              "run_id",
+              "status",
+              "timeout_at",
+              "started_at",
+              "last_touched_at",
+              "idle_expires_at",
+              "stop_requested_at",
+              "finished_at",
+              "created_at",
+              "updated_at"
+            FROM "browser_session_instances"
+            WHERE "provider_session_id" IN ($2, $3)
+          ) AS "instance"
+        )
+      ) AS "state"
+    `,
+    [
+      fixture.sessionId,
+      fixture.explicitProviderSessionId,
+      fixture.idempotencyOnlyProviderSessionId,
+    ],
+  );
+  const state = result.rows[0]?.state;
+  assert.notEqual(state, undefined);
+  return state;
+}
+
 async function readBrowserUsageCompatibilityControls(client: Client): Promise<{
+  readonly budgetCount: number;
   readonly suspensionReason: string | null;
   readonly pricingCount: number;
 }> {
   const result = await client.query<{
+    budgetCount: number;
     suspensionReason: string | null;
     pricingCount: number;
   }>(
@@ -829,6 +894,11 @@ async function readBrowserUsageCompatibilityControls(client: Client): Promise<{
           FROM "browser_sessions"
           WHERE "id" = $1
         ) AS "suspensionReason",
+        (
+          SELECT count(*)::integer
+          FROM "browser_sessions"
+          WHERE "suspension_reason" = 'budget'
+        ) AS "budgetCount",
         (
           SELECT count(*)::integer
           FROM "usage_pricing"
@@ -846,9 +916,9 @@ async function readBrowserUsageCompatibilityControls(client: Client): Promise<{
   return controls;
 }
 
-async function validateBrowserUsageCompatibilityCutover(): Promise<void> {
-  console.log("=== Validate managed-browser usage compatibility cutover ===\n");
-  const testDb = "migration_browser_usage_compatibility_cutover_test";
+async function validateBrowserUsageCompatibilityContraction(): Promise<void> {
+  console.log("=== Validate managed-browser usage contraction ===\n");
+  const testDb = "migration_browser_usage_compatibility_contraction_test";
   const testDbUrl = createTestDbUrl(testDb);
   const fixture = browserUsageCompatibilityFixture;
 
@@ -862,9 +932,9 @@ async function validateBrowserUsageCompatibilityCutover(): Promise<void> {
     await client.connect();
     try {
       await seedBrowserUsageCompatibilityFixture(client);
-      const historicalState =
-        await readBrowserUsageCompatibilityHistory(client);
+      const accountingState = await readBrowserUsageAccountingHistory(client);
       assert.deepEqual(await readBrowserUsageCompatibilityControls(client), {
+        budgetCount: 1,
         suspensionReason: "budget",
         pricingCount: 1,
       });
@@ -889,12 +959,13 @@ async function validateBrowserUsageCompatibilityCutover(): Promise<void> {
         ),
       );
       assert.deepEqual(await readBrowserUsageCompatibilityControls(client), {
+        budgetCount: 1,
         suspensionReason: "budget",
         pricingCount: 1,
       });
       assert.deepEqual(
-        await readBrowserUsageCompatibilityHistory(client),
-        historicalState,
+        await readBrowserUsageAccountingHistory(client),
+        accountingState,
       );
       const rejectedMigrationRecord = await client.query<{ count: number }>(
         `
@@ -922,12 +993,13 @@ async function validateBrowserUsageCompatibilityCutover(): Promise<void> {
       );
 
       assert.deepEqual(await readBrowserUsageCompatibilityControls(client), {
+        budgetCount: 0,
         suspensionReason: "reconcile",
         pricingCount: 0,
       });
       assert.deepEqual(
-        await readBrowserUsageCompatibilityHistory(client),
-        historicalState,
+        await readBrowserUsageAccountingHistory(client),
+        accountingState,
       );
       const resolvedEvent = await client.query<{
         status: string;
@@ -955,20 +1027,102 @@ async function validateBrowserUsageCompatibilityCutover(): Promise<void> {
         },
       ]);
 
+      const currentBrowserState =
+        await readBrowserUsageCurrentBrowserState(client);
+      const declarationFirstInstance = await client.query<{
+        providerSessionId: string;
+        status: string;
+      }>(
+        `
+          INSERT INTO "browser_session_instances" (
+            "provider_session_id",
+            "chat_thread_id",
+            "run_id",
+            "status",
+            "timeout_at",
+            "started_at",
+            "last_touched_at",
+            "idle_expires_at",
+            "created_at",
+            "updated_at"
+          )
+          VALUES (
+            $1,
+            $2,
+            $3,
+            'active',
+            '2026-01-06T04:00:00Z',
+            '2026-01-06T00:00:00Z',
+            '2026-01-06T00:30:00Z',
+            '2026-01-06T00:40:00Z',
+            '2026-01-06T00:00:00Z',
+            '2026-01-06T00:00:00Z'
+          )
+          RETURNING
+            "provider_session_id" AS "providerSessionId",
+            "status"
+        `,
+        [
+          fixture.declarationFirstProviderSessionId,
+          fixture.declarationFirstChatThreadId,
+          fixture.declarationFirstRunId,
+        ],
+      );
+      assert.deepEqual(declarationFirstInstance.rows, [
+        {
+          providerSessionId: fixture.declarationFirstProviderSessionId,
+          status: "active",
+        },
+      ]);
+
+      await applyMigrationsUpToInTransaction(
+        client,
+        BROWSER_USAGE_CONTRACTION_MIGRATION,
+      );
+
+      assert.deepEqual(await readBrowserUsageCompatibilityControls(client), {
+        budgetCount: 0,
+        suspensionReason: "reconcile",
+        pricingCount: 0,
+      });
+      assert.deepEqual(
+        await readBrowserUsageAccountingHistory(client),
+        accountingState,
+      );
+      assert.deepEqual(
+        await readBrowserUsageCurrentBrowserState(client),
+        currentBrowserState,
+      );
+
+      const updatedDeclarationFirstInstance = await client.query<{
+        finishedAt: string | null;
+        status: string;
+      }>(
+        `
+          UPDATE "browser_session_instances"
+          SET
+            "status" = 'stopped',
+            "finished_at" = '2026-01-06T01:00:00Z',
+            "updated_at" = '2026-01-06T01:00:00Z'
+          WHERE "provider_session_id" = $1
+          RETURNING
+            "status",
+            "finished_at"::text AS "finishedAt"
+        `,
+        [fixture.declarationFirstProviderSessionId],
+      );
+      assert.deepEqual(updatedDeclarationFirstInstance.rows, [
+        { status: "stopped", finishedAt: "2026-01-06 01:00:00" },
+      ]);
+
       const physicalColumns = await client.query<{
         tableName: string;
         columnName: string;
-        dataType: string;
-        isNullable: string;
-        columnDefault: string | null;
       }>(
         `
           SELECT
             "table_name" AS "tableName",
-            "column_name" AS "columnName",
-            "data_type" AS "dataType",
-            "is_nullable" AS "isNullable",
-            "column_default" AS "columnDefault"
+            "column_name" AS "columnName"
           FROM "information_schema"."columns"
           WHERE "table_schema" = 'public'
             AND (
@@ -999,99 +1153,7 @@ async function validateBrowserUsageCompatibilityCutover(): Promise<void> {
           ORDER BY "table_name", "column_name"
         `,
       );
-      assert.deepEqual(physicalColumns.rows, [
-        {
-          tableName: "browser_session_instances",
-          columnName: "billing_run_id",
-          dataType: "uuid",
-          isNullable: "YES",
-          columnDefault: null,
-        },
-        {
-          tableName: "browser_session_instances",
-          columnName: "browser_cost_microusd",
-          dataType: "bigint",
-          isNullable: "NO",
-          columnDefault: "0",
-        },
-        {
-          tableName: "browser_session_instances",
-          columnName: "credits_charged",
-          dataType: "bigint",
-          isNullable: "YES",
-          columnDefault: null,
-        },
-        {
-          tableName: "browser_session_instances",
-          columnName: "gross_credits",
-          dataType: "bigint",
-          isNullable: "NO",
-          columnDefault: "0",
-        },
-        {
-          tableName: "browser_session_instances",
-          columnName: "pricing_unit_price",
-          dataType: "bigint",
-          isNullable: "NO",
-          columnDefault: "0",
-        },
-        {
-          tableName: "browser_session_instances",
-          columnName: "pricing_unit_size",
-          dataType: "bigint",
-          isNullable: "NO",
-          columnDefault: "1",
-        },
-        {
-          tableName: "browser_session_instances",
-          columnName: "proxy_cost_microusd",
-          dataType: "bigint",
-          isNullable: "NO",
-          columnDefault: "0",
-        },
-        {
-          tableName: "browser_session_instances",
-          columnName: "proxy_used_mb",
-          dataType: "text",
-          isNullable: "NO",
-          columnDefault: "'0'::text",
-        },
-        {
-          tableName: "browser_session_instances",
-          columnName: "settled_at",
-          dataType: "timestamp without time zone",
-          isNullable: "YES",
-          columnDefault: null,
-        },
-        {
-          tableName: "browser_session_instances",
-          columnName: "usage_event_id",
-          dataType: "uuid",
-          isNullable: "YES",
-          columnDefault: null,
-        },
-        {
-          tableName: "browser_sessions",
-          columnName: "credits_charged",
-          dataType: "bigint",
-          isNullable: "NO",
-          columnDefault: "0",
-        },
-        {
-          tableName: "browser_sessions",
-          columnName: "gross_credits",
-          dataType: "bigint",
-          isNullable: "NO",
-          columnDefault: "0",
-        },
-        {
-          tableName: "browser_sessions",
-          columnName: "max_credits",
-          dataType: "integer",
-          isNullable: "NO",
-          columnDefault: "1",
-        },
-      ]);
+      assert.deepEqual(physicalColumns.rows, []);
       const usageForeignKey = await client.query<{ deleteRule: string }>(
         `
           SELECT "delete_rule" AS "deleteRule"
@@ -1101,15 +1163,36 @@ async function validateBrowserUsageCompatibilityCutover(): Promise<void> {
               'browser_session_instances_usage_event_id_usage_event_id_fk'
         `,
       );
-      assert.deepEqual(usageForeignKey.rows, [{ deleteRule: "SET NULL" }]);
+      assert.deepEqual(usageForeignKey.rows, []);
       const appliedMigrationRecord = await client.query<{ count: number }>(
         `
           SELECT count(*)::integer AS "count"
           FROM "__drizzle_migrations"
-          WHERE "hash" = '0783_remove_browser_usage_compatibility'
+          WHERE "hash" = '0787_drop_legacy_browser_billing_storage'
         `,
       );
       assert.equal(appliedMigrationRecord.rows[0]?.count, 1);
+
+      const deletedCompactedEvent = await client.query<{ id: string }>(
+        `
+          DELETE FROM "usage_event"
+          WHERE "id" = $1
+          RETURNING "id"
+        `,
+        [fixture.idempotencyOnlyEventId],
+      );
+      assert.deepEqual(deletedCompactedEvent.rows, [
+        { id: fixture.idempotencyOnlyEventId },
+      ]);
+      const retainedBrowserInstance = await client.query<{ count: number }>(
+        `
+          SELECT count(*)::integer AS "count"
+          FROM "browser_session_instances"
+          WHERE "provider_session_id" = $1
+        `,
+        [fixture.idempotencyOnlyProviderSessionId],
+      );
+      assert.deepEqual(retainedBrowserInstance.rows, [{ count: 1 }]);
     } finally {
       await client.end();
     }
@@ -1118,7 +1201,7 @@ async function validateBrowserUsageCompatibilityCutover(): Promise<void> {
   }
 
   console.log(
-    "   ✅ pending usage rejects atomically, compatibility data normalizes, and finalized accounting remains unchanged\n",
+    "   ✅ usage compatibility normalizes, contracts physically, and preserves finalized accounting\n",
   );
 }
 
@@ -1230,7 +1313,8 @@ async function validateThreadBrowserIdentityAfterMigration(
     );
     assert.deepEqual(pricing.rows, [{ count: 0 }]);
 
-    // Previous-API statement shapes must remain legal after the migration.
+    // The declaration-first API statement shapes must remain legal after the
+    // physical billing contraction.
     await client.query(
       `
         INSERT INTO "browser_profiles" (
@@ -1255,8 +1339,7 @@ async function validateThreadBrowserIdentityAfterMigration(
           "browser_profile_id",
           "status",
           "proxy_country_code",
-          "timeout_minutes",
-          "max_credits"
+          "timeout_minutes"
         )
         VALUES (
           $1,
@@ -1264,19 +1347,17 @@ async function validateThreadBrowserIdentityAfterMigration(
           NULL,
           'browser-drain-org',
           'browser-drain-user',
-          'previous-api-start',
+          'declaration-first-api-start',
           $3,
           'creating',
           NULL,
-          240,
-          500
+          240
         )
       `,
       [legacyBrowserSessionId, legacyChatThreadId, legacyBrowserProfileId],
     );
-    const legacyInstance = await client.query<{
-      pricingUnitPrice: string;
-      pricingUnitSize: string;
+    const declarationFirstInstance = await client.query<{
+      browserSessionId: string | null;
     }>(
       `
         INSERT INTO "browser_session_instances" (
@@ -1285,8 +1366,6 @@ async function validateThreadBrowserIdentityAfterMigration(
           "chat_thread_id",
           "run_id",
           "status",
-          "pricing_unit_price",
-          "pricing_unit_size",
           "timeout_at",
           "started_at",
           "last_touched_at",
@@ -1298,16 +1377,12 @@ async function validateThreadBrowserIdentityAfterMigration(
           $3,
           $4,
           'active',
-          0,
-          1,
           now() + interval '240 minutes',
           now(),
           now(),
           now() + interval '10 minutes'
         )
-        RETURNING
-          "pricing_unit_price"::text AS "pricingUnitPrice",
-          "pricing_unit_size"::text AS "pricingUnitSize"
+        RETURNING "browser_session_id" AS "browserSessionId"
       `,
       [
         legacyProviderSessionId,
@@ -1316,12 +1391,12 @@ async function validateThreadBrowserIdentityAfterMigration(
         legacyRunId,
       ],
     );
-    assert.deepEqual(legacyInstance.rows, [
-      { pricingUnitPrice: "0", pricingUnitSize: "1" },
+    assert.deepEqual(declarationFirstInstance.rows, [
+      { browserSessionId: legacyBrowserSessionId },
     ]);
 
-    // Current-API inserts intentionally omit every legacy identity and billing
-    // field while the physical compatibility columns remain.
+    // Current thread-keyed inserts intentionally omit compatibility identity
+    // fields while those separate objects remain available to the prior API.
     await client.query(
       `
         INSERT INTO "browser_thread_profiles" (
@@ -1401,7 +1476,7 @@ async function validateThreadBrowserIdentityAfterMigration(
       lifecycleConstraint.rows[0]?.definition ?? "",
       /browser\.stopped/u,
     );
-    console.log("   ✅ previous browser API statements remain valid");
+    console.log("   ✅ declaration-first browser API statements remain valid");
     console.log("   ✅ current thread-keyed browser inserts omit legacy IDs");
     console.log(
       "   ✅ browser lifecycle events and tab snapshots are available\n",
@@ -15319,7 +15394,7 @@ async function main(): Promise<void> {
     await validateCustomModelGatewayRolloutCompatibility();
     await validateHostedSiteChatScopeRollout();
     await validateCurrentBrowserApiBeforeBillingMigration();
-    await validateBrowserUsageCompatibilityCutover();
+    await validateBrowserUsageCompatibilityContraction();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
