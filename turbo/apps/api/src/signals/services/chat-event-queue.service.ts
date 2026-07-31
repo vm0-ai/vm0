@@ -44,14 +44,22 @@ export function pendingChatQueueEventCondition(db: ChatQueueReadDb) {
   );
 }
 
-/** Database-native class priority shared by queue reads and atomic claims. */
-export function chatQueueEventPriority(): SQL {
+function chatQueueEventPriority(): SQL {
   return sql`CASE ${chatEvents.eventType}
     WHEN 'input.prompt' THEN 0
     WHEN 'input.automation' THEN 1
     WHEN 'input.goal' THEN 2
     ELSE 3
   END`;
+}
+
+/** Complete database-native order shared by queue reads and atomic claims. */
+export function chatQueueEventOrderBy(): readonly [SQL, SQL, SQL] {
+  return [
+    chatQueueEventPriority(),
+    asc(chatEvents.createdAt),
+    asc(chatEvents.id),
+  ];
 }
 
 /**
@@ -81,11 +89,7 @@ export async function listPendingChatQueueEvents(
         createdBefore ? lt(chatEvents.createdAt, createdBefore) : undefined,
       ),
     )
-    .orderBy(
-      chatQueueEventPriority(),
-      asc(chatEvents.createdAt),
-      asc(chatEvents.id),
-    );
+    .orderBy(...chatQueueEventOrderBy());
 
   return rows.flatMap((event) => {
     if (

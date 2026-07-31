@@ -21,16 +21,7 @@ import {
   zeroWorkflowAutomations,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
-import {
-  and,
-  asc,
-  eq,
-  exists,
-  isNull,
-  notExists,
-  sql,
-  type SQL,
-} from "drizzle-orm";
+import { and, eq, exists, isNull, notExists, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
@@ -40,7 +31,7 @@ import {
 } from "../../lib/db-structured-result";
 import { db$, type Db } from "../external/db";
 import {
-  chatQueueEventPriority,
+  chatQueueEventOrderBy,
   listPendingChatQueueEvents,
   loadPendingChatQueueEvent,
   lockChatQueueThread,
@@ -461,11 +452,7 @@ async function resolveUserQueueFirstClaimSnapshot(
         pendingChatQueueEventCondition(db),
       ),
     )
-    .orderBy(
-      chatQueueEventPriority(),
-      asc(chatEvents.createdAt),
-      asc(chatEvents.id),
-    )
+    .orderBy(...chatQueueEventOrderBy())
     .for("update", { of: chatEvents })
     .limit(1);
   if (!head || head.eventType !== "input.prompt" || head.id !== args.eventId) {
@@ -528,11 +515,7 @@ async function resolveWorkflowQueueFirstClaimSnapshot(
         pendingChatQueueEventCondition(db),
       ),
     )
-    .orderBy(
-      chatQueueEventPriority(),
-      asc(chatEvents.createdAt),
-      asc(chatEvents.id),
-    )
+    .orderBy(...chatQueueEventOrderBy())
     .for("update", { of: chatEvents })
     .limit(1);
   if (
@@ -618,11 +601,7 @@ async function resolveGoalQueueFirstClaimSnapshot(
         pendingChatQueueEventCondition(db),
       ),
     )
-    .orderBy(
-      chatQueueEventPriority(),
-      asc(chatEvents.createdAt),
-      asc(chatEvents.id),
-    )
+    .orderBy(...chatQueueEventOrderBy())
     .for("update", { of: chatEvents })
     .limit(1);
   if (
