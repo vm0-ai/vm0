@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.671.0](https://github.com/vm0-ai/vm0/compare/app-v0.670.1...app-v0.671.0) (2026-07-31)
+
+
+### Features
+
+* **platform:** show cross-agent threads in composer mentions ([#24207](https://github.com/vm0-ai/vm0/issues/24207)) ([d00fd1c](https://github.com/vm0-ai/vm0/commit/d00fd1c220c5402f43a3929e4aa5ffc8aa4ca386))
+
+
+### Refactoring
+
+* **chat:** retire automation pause events ([#24256](https://github.com/vm0-ai/vm0/issues/24256)) ([51b8186](https://github.com/vm0-ai/vm0/commit/51b81868c8779f14c8a59deac2452aee1eca2790))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.258.3
+    * @vm0/core bumped to 8.497.2
+
 ## [0.670.1](https://github.com/vm0-ai/vm0/compare/app-v0.670.0...app-v0.670.1) (2026-07-31)
 
 

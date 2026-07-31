@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.359.2](https://github.com/vm0-ai/vm0/compare/api-v1.359.1...api-v1.359.2) (2026-07-31)
+
+
+### Refactoring
+
+* **chat:** retire automation pause events ([#24256](https://github.com/vm0-ai/vm0/issues/24256)) ([51b8186](https://github.com/vm0-ai/vm0/commit/51b81868c8779f14c8a59deac2452aee1eca2790))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.258.3
+    * @vm0/core bumped to 8.497.2
+    * @vm0/db bumped to 1.158.5
+
 ## [1.359.1](https://github.com/vm0-ai/vm0/compare/api-v1.359.0...api-v1.359.1) (2026-07-31)
 
 
