@@ -18,15 +18,17 @@
 //!
 //! A typed terminal-run response removes the entire run from refresh tracking,
 //! cancels its scheduled work, and fail-closes every still-matching connector
-//! policy. Ambiguous API failures retain the connector-scoped fail-closed path.
+//! policy. A first transport failure is retried once while the current policy
+//! remains installed. Any final API failure retains the connector-scoped
+//! fail-closed path.
 //!
 //! The safety contract is to trigger fail-closed patching when freshness cannot
-//! be established for an active connector. Queue overflow, API refresh failure,
-//! omitted requested connectors, duplicate requested connectors, malformed
-//! `nextRefreshAt`, and registry patch errors trigger fail-closed patching for
-//! the affected connector when it is still active. Registry writes always
-//! re-check source IP, run id, and connector slug so a stale refresh task cannot
-//! patch a later run that reused the same source IP.
+//! be established for an active connector. Queue overflow, final API refresh
+//! failure, omitted requested connectors, duplicate requested connectors,
+//! malformed `nextRefreshAt`, and registry patch errors trigger fail-closed
+//! patching for the affected connector when it is still active. Registry writes
+//! always re-check source IP, run id, and connector slug so a stale refresh task
+//! cannot patch a later run that reused the same source IP.
 //!
 //! Not every stale or shutdown path fails closed. Inactive runs and unknown
 //! connector slugs are ignored. Extra unrequested response connectors are ignored.
@@ -56,6 +58,7 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use super::api::{ApiClient, NetworkPolicyRefreshOutcome};
+use crate::error::RunnerError;
 use crate::ids::RunId;
 use crate::proxy::ProxyRegistryHandle;
 use crate::types::{NetworkPolicy, NetworkPolicyRefresh};
@@ -430,12 +433,40 @@ impl NetworkPolicyRefreshCore {
         run_id: RunId,
         active_connector_slugs: &[String],
     ) -> bool {
-        let response = match self
-            .inner
-            .api
-            .refresh_network_policies(run_id, active_connector_slugs)
-            .await
-        {
+        let mut transport_retry_attempted = false;
+        let response = loop {
+            let response = self
+                .inner
+                .api
+                .refresh_network_policies(run_id, active_connector_slugs)
+                .await;
+            if !transport_retry_attempted && let Err(RunnerError::ApiTransport(error)) = &response {
+                transport_retry_attempted = true;
+                let request = &error.request;
+                warn!(
+                    run_id = %run_id,
+                    connector_count = active_connector_slugs.len(),
+                    connector_slugs = ?active_connector_slugs,
+                    error = %error,
+                    endpoint = request.endpoint_label,
+                    method = %request.method,
+                    host = %request.host,
+                    path = %request.path,
+                    client_request_id = %request.client_request_id,
+                    client_session_id = %request.client_session_id,
+                    client_version = %request.client_version,
+                    failure_kind = error.failure_kind.as_str(),
+                    error_summary = %error.summary,
+                    attempt = 1,
+                    max_attempts = 2,
+                    will_retry = true,
+                    "network policy refresh transport failed, retrying"
+                );
+                continue;
+            }
+            break response;
+        };
+        let response = match response {
             Ok(NetworkPolicyRefreshOutcome::Refreshed(response)) => response,
             Ok(NetworkPolicyRefreshOutcome::RunTerminal) => {
                 self.reconcile_terminal_run(run_id).await;
@@ -447,6 +478,7 @@ impl NetworkPolicyRefreshCore {
                     connector_count = active_connector_slugs.len(),
                     connector_slugs = ?active_connector_slugs,
                     error = %error,
+                    transport_retry_attempted,
                     "network policy refresh failed"
                 );
                 self.fail_closed_active_connectors(run_id, active_connector_slugs)
@@ -913,6 +945,8 @@ mod tests {
 
     use httpmock::{Method::POST, MockServer};
     use serde_json::json;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
     use tracing::instrument::WithSubscriber;
     use tracing_subscriber::prelude::*;
     use tracing_test_support::{CapturedEvent, CapturedEvents};
@@ -935,6 +969,56 @@ mod tests {
 
     fn api_client_for_server(server: &MockServer) -> ApiClient {
         api_client_for_url(server.base_url())
+    }
+
+    async fn accept_http_request(listener: &TcpListener) -> (tokio::net::TcpStream, String) {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut request = Vec::new();
+        let mut buf = [0_u8; 1024];
+        let header_end = loop {
+            let n = socket.read(&mut buf).await.unwrap();
+            if n == 0 {
+                break request.len();
+            }
+            request.extend_from_slice(&buf[..n]);
+            if let Some(header_end) = request
+                .windows(4)
+                .position(|window| window == b"\r\n\r\n")
+                .map(|position| position + 4)
+            {
+                break header_end;
+            }
+        };
+        let headers = String::from_utf8_lossy(&request[..header_end]);
+        let content_length = headers
+            .lines()
+            .find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                if name.eq_ignore_ascii_case("content-length") {
+                    value.trim().parse::<usize>().ok()
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(0);
+        let request_len = header_end + content_length;
+        while request.len() < request_len {
+            let n = socket.read(&mut buf).await.unwrap();
+            if n == 0 {
+                break;
+            }
+            request.extend_from_slice(&buf[..n]);
+        }
+        (socket, String::from_utf8_lossy(&request).into_owned())
+    }
+
+    fn assert_network_policy_refresh_request(request: &str, run_id: &RunId) {
+        let expected = format!("POST /api/runners/runs/{run_id}/network-policy-refresh HTTP/1.1");
+        assert_eq!(request.lines().next(), Some(expected.as_str()));
+        assert!(
+            request.ends_with(r#"{"connectorSlugs":["slack"]}"#),
+            "unexpected network policy refresh request: {request}"
+        );
     }
 
     fn core_without_worker(
@@ -2013,19 +2097,180 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn transport_network_policy_refresh_error_remains_failure() {
+    async fn transport_network_policy_refresh_error_retries_and_recovers() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
         let run_id = RunId::nil();
         let harness = NetworkPolicyRefreshHarness::new_with_api(
-            api_client_for_url("http://127.0.0.1:0".to_string()),
+            api_client_for_url(api_url),
             run_id,
             &["slack"],
         )
         .await;
+        let registry_path = harness.registry_path.clone();
+        let source_ip = harness.source_ip.clone();
+        let response_body = json!({
+            "refreshes": [{
+                "connectorSlug": "slack",
+                "networkPolicy": {
+                    "allow": ["chat:write", "files:write"],
+                    "deny": [],
+                    "ask": ["channels:read"],
+                    "unknownPolicy": "allow",
+                },
+                "nextRefreshAt": "2999-01-01T00:00:00.000Z",
+            }],
+        })
+        .to_string();
+        let server_task = tokio::spawn(async move {
+            let (first_socket, first_request) = accept_http_request(&listener).await;
+            drop(first_socket);
 
-        let (_, events) = capture_network_policy_events(harness.refresh_slack()).await;
+            let (mut second_socket, second_request) = accept_http_request(&listener).await;
+            let registry_json: serde_json::Value = serde_json::from_str(
+                &tokio::fs::read_to_string(&registry_path)
+                    .await
+                    .expect("registry should be readable before retry response"),
+            )
+            .expect("registry should be valid JSON before retry response");
+            let policy_before_retry_response =
+                registry_json["vms"][&source_ip]["networkPolicies"]["slack"].clone();
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                response_body.len(),
+                response_body
+            );
+            second_socket.write_all(response.as_bytes()).await.unwrap();
+            (first_request, second_request, policy_before_retry_response)
+        });
 
+        let (_, events) = tokio::time::timeout(
+            Duration::from_secs(1),
+            capture_network_policy_events(harness.refresh_slack()),
+        )
+        .await
+        .expect("network policy refresh retry should complete");
+        let (first_request, second_request, policy_before_retry_response) =
+            tokio::time::timeout(Duration::from_secs(1), server_task)
+                .await
+                .expect("network policy refresh server should finish")
+                .expect("network policy refresh server task should succeed");
+
+        assert_network_policy_refresh_request(&first_request, &run_id);
+        assert_network_policy_refresh_request(&second_request, &run_id);
+        assert_eq!(
+            policy_before_retry_response,
+            json!({
+                "allow": ["chat:write"],
+                "deny": ["files:write"],
+                "ask": ["channels:read"],
+                "unknownPolicy": "allow",
+            })
+        );
+        assert_eq!(
+            harness.slack_policy().await,
+            json!({
+                "allow": ["chat:write", "files:write"],
+                "deny": [],
+                "ask": ["channels:read"],
+                "unknownPolicy": "allow",
+            })
+        );
+        assert!(
+            harness
+                .handle
+                .core
+                .inner
+                .active_runs
+                .lock()
+                .await
+                .get(&run_id)
+                .is_some_and(|active| active.refresh_tasks.contains_key("slack")),
+            "successful retry should install the returned refresh schedule"
+        );
+        let retry = captured_event(&events, "network policy refresh transport failed, retrying");
+        assert_connector_field(retry, "connector_slugs", "[\"slack\"]");
+        assert_connector_field(retry, "attempt", "1");
+        assert_connector_field(retry, "max_attempts", "2");
+        assert_connector_field(retry, "will_retry", "true");
+        for field in ["failure_kind", "client_request_id", "client_session_id"] {
+            assert!(
+                retry
+                    .fields
+                    .get(field)
+                    .is_some_and(|value| !value.is_empty()),
+                "retry event should include {field}: {retry:#?}"
+            );
+        }
+        for message in [
+            "network policy refresh failed",
+            "failed closed network policy after network policy refresh failure",
+        ] {
+            assert!(
+                events.iter().all(|event| {
+                    event
+                        .fields
+                        .get("message")
+                        .is_none_or(|actual| actual != message)
+                }),
+                "successful retry should not emit {message}: {events:#?}"
+            );
+        }
+        harness.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn persistent_transport_network_policy_refresh_error_fails_closed_after_retry() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        let run_id = RunId::nil();
+        let harness = NetworkPolicyRefreshHarness::new_with_api(
+            api_client_for_url(api_url),
+            run_id,
+            &["slack"],
+        )
+        .await;
+        let server_task = tokio::spawn(async move {
+            let (first_socket, first_request) = accept_http_request(&listener).await;
+            drop(first_socket);
+            let (second_socket, second_request) = accept_http_request(&listener).await;
+            drop(second_socket);
+            [first_request, second_request]
+        });
+
+        let (_, events) = tokio::time::timeout(
+            Duration::from_secs(1),
+            capture_network_policy_events(harness.refresh_slack()),
+        )
+        .await
+        .expect("persistent network policy refresh failure should complete");
+        let [first_request, second_request] =
+            tokio::time::timeout(Duration::from_secs(1), server_task)
+                .await
+                .expect("network policy refresh server should finish")
+                .expect("network policy refresh server task should succeed");
+
+        assert_network_policy_refresh_request(&first_request, &run_id);
+        assert_network_policy_refresh_request(&second_request, &run_id);
         assert_fail_closed_policy(&harness.slack_policy().await);
-        captured_event(&events, "network policy refresh failed");
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| {
+                    event.fields.get("message").is_some_and(|message| {
+                        message == "network policy refresh transport failed, retrying"
+                    })
+                })
+                .count(),
+            1,
+            "persistent failure should retry exactly once: {events:#?}"
+        );
+        let failure = captured_event(&events, "network policy refresh failed");
+        assert_connector_field(failure, "transport_retry_attempted", "true");
+        captured_event(
+            &events,
+            "failed closed network policy after network policy refresh failure",
+        );
         assert!(
             harness
                 .handle
