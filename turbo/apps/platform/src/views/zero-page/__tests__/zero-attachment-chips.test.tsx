@@ -2318,6 +2318,14 @@ describe("zero attachment chips", () => {
       userSelect: "none",
       width: "100%",
     });
+
+    click(screen.getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("opens markdown and csv previews parsed from chat message links", async () => {
@@ -2351,6 +2359,14 @@ describe("zero attachment chips", () => {
     await waitFor(() => {
       expect(screen.getByTestId("attachment-lightbox")).toBeInTheDocument();
       expect(screen.getByText("activation")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Close"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("attachment-lightbox"),
+      ).not.toBeInTheDocument();
     });
   });
 
