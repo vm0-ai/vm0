@@ -89,6 +89,7 @@ import {
   tryNormalizeSessionHistoryBlobEncoding,
 } from "../services/session-history-blobs";
 import {
+  runnerReuseKeyTelemetryKind,
   runnerSessionAffinityPollPriority,
   runnerSessionAffinityLookupError,
   runnerSessionAffinityProtection,
@@ -505,6 +506,7 @@ function recordPollTimingMetrics(args: {
   readonly sessionAffinity: string;
   readonly sessionAffinityResource: string;
   readonly historyGenerationAffinity: string;
+  readonly reuseKeyKind: "thread" | "session" | "none";
   readonly queueCreatedAtMs: number;
   readonly pollRequestStartedAtMs: number;
   readonly pendingJobLookupStartedAtMs: number;
@@ -518,6 +520,7 @@ function recordPollTimingMetrics(args: {
     session_affinity: args.sessionAffinity,
     session_affinity_resource: args.sessionAffinityResource,
     history_generation_affinity: args.historyGenerationAffinity,
+    reuse_key_kind: args.reuseKeyKind,
   };
   if (args.pollReason) {
     dimensions.poll_reason = args.pollReason;
@@ -655,7 +658,6 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!pendingJob) {
     return { status: 200 as const, body: { job: null } };
   }
-
   const affinity =
     (await tapError(
       runnerSessionAffinityProtection({
@@ -677,7 +679,6 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       },
     )) ?? runnerSessionAffinityLookupError();
   signal.throwIfAborted();
-  const pollResponseAtMs = now();
   recordPollTimingMetrics({
     runId: pendingJob.runId,
     runnerGroup: group,
@@ -687,11 +688,12 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     sessionAffinity: affinity.status,
     sessionAffinityResource: runnerSessionAffinityTelemetryResource(affinity),
     historyGenerationAffinity: affinity.historyGenerationStatus,
+    reuseKeyKind: runnerReuseKeyTelemetryKind(pendingJob.reuseKey),
     queueCreatedAtMs: pendingJob.createdAt.getTime(),
     pollRequestStartedAtMs,
     pendingJobLookupStartedAtMs,
     pendingJobLookupFinishedAtMs,
-    pollResponseAtMs,
+    pollResponseAtMs: now(),
   });
 
   return {

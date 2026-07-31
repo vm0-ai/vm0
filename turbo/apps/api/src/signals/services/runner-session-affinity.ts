@@ -368,3 +368,12 @@ export function runnerSessionAffinityTelemetryResource(
 ): "reusableSandbox" | "workspaceCache" | "none" {
   return affinity.resource ?? "none";
 }
+
+export function runnerReuseKeyTelemetryKind(
+  reuseKey: string | null,
+): "thread" | "session" | "none" {
+  if (reuseKey === null) {
+    return "none";
+  }
+  return reuseKey.startsWith("thread:") ? "thread" : "session";
+}
