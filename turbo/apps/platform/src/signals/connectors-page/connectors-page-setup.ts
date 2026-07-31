@@ -6,10 +6,9 @@ import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
-import { migrateHiddenConnectorSlugsStorage$ } from "../zero-page/settings/connectors.ts";
+
 export const setupConnectorsPage$ = command(
   async ({ set }, signal: AbortSignal) => {
-    set(migrateHiddenConnectorSlugsStorage$);
     set(updatePage$, createElement(ZeroConnectorsPage), "sidebar");
     set(
       updateDocumentTitle$,
