@@ -158,7 +158,7 @@ export function createHtmlArtifactAuthoringPacket(
     "",
     "## Candidate Registry Slice",
     `Registry: \`${candidateSlice.registryVersion}\``,
-    `Source: \`${candidateSlice.source.repo}@${candidateSlice.source.ref}\``,
+    `Default Git Source: \`${candidateSlice.source.repo}@${candidateSlice.source.ref}\``,
     "",
     "```json",
     JSON.stringify(candidateSlice.candidates, null, 2),

@@ -53,7 +53,7 @@ describe("zero generate website command", () => {
     expect(stdout).toContain("## Stage 1: Resource Selection");
     expect(stdout).toContain("## Candidate Registry Slice");
     expect(stdout).toContain(
-      "Source: `nexu-io/open-design@3fb620af423534643677c7c6fae76be088fa770a`",
+      "Default Git Source: `nexu-io/open-design@3fb620af423534643677c7c6fae76be088fa770a`",
     );
     expect(stdout).not.toContain("Sources:");
     expect(stdout).not.toContain("vm0-ai/vm0-skills");
