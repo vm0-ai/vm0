@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.672.0](https://github.com/vm0-ai/vm0/compare/app-v0.671.2...app-v0.672.0) (2026-07-31)
+
+
+### Features
+
+* **mail:** enable reply follow-up and improve gmail handoff ([#24155](https://github.com/vm0-ai/vm0/issues/24155)) ([10e9949](https://github.com/vm0-ai/vm0/commit/10e9949ff98f5c50f50d5f2ec0307b80d87b4587))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.259.1
+    * @vm0/core bumped to 8.498.0
+
 ## [0.671.2](https://github.com/vm0-ai/vm0/compare/app-v0.671.1...app-v0.671.2) (2026-07-31)
 
 
