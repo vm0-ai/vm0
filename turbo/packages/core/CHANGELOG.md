@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.496.3](https://github.com/vm0-ai/vm0/compare/core-v8.496.2...core-v8.496.3) (2026-07-31)
+
+
+### Refactoring
+
+* **api:** retire the agent session read endpoint ([#24164](https://github.com/vm0-ai/vm0/issues/24164)) ([f76fc80](https://github.com/vm0-ai/vm0/commit/f76fc805f64da464ce910d0975f2d87c9516062c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.258.0
+
 ## [8.496.2](https://github.com/vm0-ai/vm0/compare/core-v8.496.1...core-v8.496.2) (2026-07-31)
 
 
