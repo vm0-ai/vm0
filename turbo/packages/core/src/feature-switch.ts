@@ -538,7 +538,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description:
       "Enable Zero Mail reply follow-up after all API deployments can read Gmail event configurations with threadId.",
-    enabled: false,
+    enabled: true,
     userOverridable: false,
   },
   [FeatureSwitchKey.ZeroBrowser]: {
