@@ -1432,7 +1432,7 @@
       "automationEvent": "Evento di automazione",
       "automationEventDescription": "Attende dietro i messaggi in coda ed esegue una volta terminata l'esecuzione corrente.",
       "cancelGoal": "Annulla obiettivo",
-      "cancellationRecoveryPending": "Preparazione della sessione annullata prima di continuare il lavoro in coda.",
+      "cancellationRecoveryPending": "Finalizzazione dell'esecuzione annullata prima di continuare il lavoro in coda.",
       "event_one": "{{count}} evento",
       "event_many": "{{count}} eventi",
       "event_other": "{{count}} eventi",

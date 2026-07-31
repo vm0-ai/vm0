@@ -1432,7 +1432,7 @@
       "automationEvent": "Evento de automação",
       "automationEventDescription": "Aguarda atrás das mensagens na fila e é executado quando a execução atual termina.",
       "cancelGoal": "Cancelar objetivo",
-      "cancellationRecoveryPending": "Preparando a sessão cancelada antes de continuar o trabalho na fila.",
+      "cancellationRecoveryPending": "Finalizando a execução cancelada antes de continuar o trabalho na fila.",
       "event_one": "{{count}} evento",
       "event_many": "{{count}} eventos",
       "event_other": "{{count}} eventos",

@@ -1401,7 +1401,7 @@
       "automationEvent": "Peristiwa otomatisasi",
       "automationEventDescription": "Menunggu di belakang pesan yang menunggu dan dijalankan setelah eksekusi saat ini selesai.",
       "cancelGoal": "Batalkan tujuan",
-      "cancellationRecoveryPending": "Menyiapkan sesi yang dibatalkan sebelum melanjutkan pekerjaan dalam antrean.",
+      "cancellationRecoveryPending": "Menyelesaikan eksekusi yang dibatalkan sebelum melanjutkan pekerjaan dalam antrean.",
       "event_one": "{{count}} peristiwa",
       "event_other": "{{count}} peristiwa",
       "goal": "Tujuan",

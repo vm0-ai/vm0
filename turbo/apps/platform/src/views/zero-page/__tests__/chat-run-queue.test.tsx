@@ -35,7 +35,7 @@ const THREAD_ID = "b0000000-0000-4000-a000-000000000901";
 const CHAT_PATH = `/chats/${THREAD_ID}`;
 const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
 const CANCELLATION_RECOVERY_COPY =
-  "Preparing the cancelled session before queued work continues.";
+  "Finalizing the cancelled run before queued work continues.";
 
 afterEach(async () => {
   await i18n.changeLanguage("en-US");
@@ -373,7 +373,7 @@ describe("chat run queue", () => {
 
     await expect(
       screen.findByText(
-        "Preparando a sessão cancelada antes de continuar o trabalho na fila.",
+        "Finalizando a execução cancelada antes de continuar o trabalho na fila.",
       ),
     ).resolves.toBeInTheDocument();
   });
