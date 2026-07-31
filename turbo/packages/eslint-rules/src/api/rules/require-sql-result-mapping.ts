@@ -365,7 +365,10 @@ export const requireSqlResultMapping = createRule({
     const services = ESLintUtils.getParserServices(context);
     const checker = services.program.getTypeChecker();
     const resultMethodNameByType = new Map<Type, string | null>();
-    const resultMethodHintVariables = new Set<TSESLint.Scope.Variable>();
+    const resultMethodHintByVariable = new Map<
+      TSESLint.Scope.Variable,
+      boolean
+    >();
     const resultMethodHintVariablesInProgress =
       new Set<TSESLint.Scope.Variable>();
 
@@ -951,9 +954,7 @@ export const requireSqlResultMapping = createRule({
       let scope: TSESLint.Scope.Scope | null =
         context.sourceCode.getScope(node);
       while (scope !== null) {
-        const variable = scope.variables.find((candidate) => {
-          return candidate.name === name;
-        });
+        const variable = scope.set.get(name);
         if (variable !== undefined) {
           return variable;
         }
@@ -965,12 +966,15 @@ export const requireSqlResultMapping = createRule({
     function variableHasResultMethodHint(
       variable: TSESLint.Scope.Variable,
     ): boolean {
-      if (resultMethodHintVariables.has(variable)) {
-        return true;
+      const cachedResult = resultMethodHintByVariable.get(variable);
+      if (cachedResult !== undefined) {
+        return cachedResult;
       }
       if (resultMethodHintVariablesInProgress.has(variable)) {
         return false;
       }
+      const isOutermostAnalysis =
+        resultMethodHintVariablesInProgress.size === 0;
       resultMethodHintVariablesInProgress.add(variable);
 
       for (const definition of variable.defs) {
@@ -982,7 +986,7 @@ export const requireSqlResultMapping = createRule({
           continue;
         }
         if (hasResultMethodHint(context.sourceCode.getText(definition.node))) {
-          resultMethodHintVariables.add(variable);
+          resultMethodHintByVariable.set(variable, true);
           resultMethodHintVariablesInProgress.delete(variable);
           return true;
         }
@@ -995,13 +999,16 @@ export const requireSqlResultMapping = createRule({
             referencedVariable !== null &&
             variableHasResultMethodHint(referencedVariable)
           ) {
-            resultMethodHintVariables.add(variable);
+            resultMethodHintByVariable.set(variable, true);
             resultMethodHintVariablesInProgress.delete(variable);
             return true;
           }
         }
       }
       resultMethodHintVariablesInProgress.delete(variable);
+      if (isOutermostAnalysis) {
+        resultMethodHintByVariable.set(variable, false);
+      }
       return false;
     }
 
