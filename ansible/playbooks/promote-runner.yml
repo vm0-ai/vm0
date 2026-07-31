@@ -29,6 +29,9 @@
   become: true
 
   vars:
+    # Connection failures can replay the current task. Keep remote tasks
+    # convergent or protect their complete operation with a stable lock.
+    ansible_ssh_retries: 1
     runner_name: "v{{ runner_version }}"
     data_dir: /var/lib/vm0-runner
     bin_dir: "{{ data_dir }}/bin/{{ runner_name }}"
@@ -97,7 +100,7 @@
       ignore_errors: true
 
     - name: Garbage collect old artifacts
-      command: "{{ bin_dir }}/runner gc --keep-latest 6 --protect-version {{ runner_name }}"
+      include_tasks: ../tasks/garbage-collect-runner.yml
 
     # ========================================
     # Phase 6: Final health check

@@ -505,7 +505,7 @@
     #
     # gc respects `--protect-version` so the rollback target is never swept.
     - name: Garbage collect old artifacts
-      command: "{{ bin_dir }}/runner gc --keep-latest 6 --protect-version {{ runner_name }}"
+      include_tasks: ../tasks/garbage-collect-runner.yml
 
     - name: Verify runner health after cleanup
       command: "{{ bin_dir }}/runner doctor --name {{ runner_name }}"
