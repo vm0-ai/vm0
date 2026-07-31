@@ -29,6 +29,8 @@ use uuid::Uuid;
 const LOG_TAG: &str = "sandbox:guest-agent";
 const HTTP_TOO_MANY_REQUESTS: u16 = 429;
 const DEFAULT_RETRY_DELAY: Duration = Duration::from_secs(1);
+#[cfg(debug_assertions)]
+const TEST_DISABLE_HTTP_RETRY_DELAY_ENV: &str = "VM0_TEST_DISABLE_HTTP_RETRY_DELAY";
 const GUEST_AGENT_CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Content-safe facts published before one event request is awaited.
@@ -184,7 +186,21 @@ impl HttpClient {
                 api: None,
             });
         };
-        Self::build(Some(api), DEFAULT_RETRY_DELAY)
+        let retry_delay = {
+            #[cfg(debug_assertions)]
+            {
+                if std::env::var_os(TEST_DISABLE_HTTP_RETRY_DELAY_ENV).is_some() {
+                    Duration::ZERO
+                } else {
+                    DEFAULT_RETRY_DELAY
+                }
+            }
+            #[cfg(not(debug_assertions))]
+            {
+                DEFAULT_RETRY_DELAY
+            }
+        };
+        Self::build(Some(api), retry_delay)
     }
 
     pub fn has_api(&self) -> bool {
