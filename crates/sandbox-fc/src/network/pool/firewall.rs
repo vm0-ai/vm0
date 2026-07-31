@@ -146,7 +146,7 @@ pub(super) async fn delete_ipv4_rules_by_comment(comment: &str) -> NamespaceDele
 }
 
 /// Delete pool-scoped IPv4 and IPv6 firewall rules with the exact `comment`.
-pub(super) async fn delete_pool_firewall_rules_by_comment(comment: &str) -> NamespaceDeleteOutcome {
+async fn delete_pool_firewall_rules_by_comment(comment: &str) -> NamespaceDeleteOutcome {
     FirewallSnapshot::capture()
         .await
         .delete_rules_with_comments(&BTreeSet::from([comment.to_string()]))
