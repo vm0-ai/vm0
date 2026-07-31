@@ -21,6 +21,7 @@ use std::time::Duration;
 use futures_util::future::BoxFuture;
 use guest_contracts::diagnostics::FailureDiagnostic;
 use sandbox::{Sandbox, SandboxFactory, SandboxId};
+#[cfg(test)]
 use tokio_util::sync::CancellationToken;
 
 mod active_input;
@@ -60,8 +61,10 @@ pub(crate) use telemetry::{RunnerPreSpawnPhase, RunnerPreSpawnTiming};
 use telemetry::{RunnerSpawnTiming, record_api_latency, record_reuse_result};
 
 use crate::ids::RunId;
-use api_contracts::generated::constants::runners::paths::{
-    CANONICAL_GUEST_HOME_DIR, CANONICAL_WORKING_DIR,
+use crate::run_cancellation::RunCancellationSignals;
+use api_contracts::generated::constants::runners::{
+    RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
+    paths::{CANONICAL_GUEST_HOME_DIR, CANONICAL_WORKING_DIR},
 };
 
 /// Maximum guest-side runtime budget for a single agent process (2 hours).
@@ -80,7 +83,7 @@ const JOB_FINALIZATION_GRACE_TIMEOUT: Duration = Duration::from_secs(90);
 /// supervised-process cleanup, its 5s stdout/stderr drain deadline, and normal
 /// scheduling overhead before it sends terminal proof.
 const JOB_TERMINAL_GRACE_TIMEOUT: Duration = Duration::from_secs(10);
-/// Maximum time to spend writing the guest cancel frame after a user cancel.
+/// Maximum time to spend writing a guest control or cancellation frame.
 const PROCESS_CANCEL_WRITE_TIMEOUT: Duration = Duration::from_secs(1);
 /// Grace period for the guest to report a terminal status after cancel is sent.
 /// This covers vsock-guest's bounded supervised-process cleanup (500ms TERM
@@ -90,6 +93,7 @@ const PROCESS_CANCEL_TERMINAL_GRACE_TIMEOUT: Duration = Duration::from_secs(8);
 const PROCESS_CANCEL_TIMEOUTS: ProcessCancelTimeouts = ProcessCancelTimeouts {
     write: PROCESS_CANCEL_WRITE_TIMEOUT,
     terminal_grace: PROCESS_CANCEL_TERMINAL_GRACE_TIMEOUT,
+    cooperative_grace: Duration::from_millis(RUNNER_CANCELLATION_RECOVERY_GRACE_MS),
 };
 /// Exit code when a process is killed by SIGKILL (128 + 9).
 const EXIT_SIGKILL: i32 = 137;
@@ -451,7 +455,7 @@ pub async fn execute_job(
         dispatch,
         config,
         params,
-        cancel,
+        RunCancellationSignals::hard_only(cancel),
         ExecutionHooks::none(),
     )
     .await
@@ -463,7 +467,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
     dispatch: NewSandboxDispatch,
     config: &ExecutorConfig,
     params: &JobParams,
-    cancel: CancellationToken,
+    cancellation: RunCancellationSignals,
     hooks: ExecutionHooks,
 ) -> (ExecuteOutcome, JobTelemetry) {
     let ExecutionHooks {
@@ -506,7 +510,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
             params,
             &mut telemetry,
             NewSandboxHooks {
-                controls: RunControls::new(cancel, active_input_source)
+                controls: RunControls::from_cancellation(cancellation, active_input_source)
                     .with_spawn_timing(spawn_timing)
                     .with_session_history_restore_plan(session_history_restore_plan),
                 sandbox_prepared: sandbox_prepared.as_ref(),
@@ -550,7 +554,7 @@ pub async fn execute_job_reuse(
         context,
         config,
         params,
-        cancel,
+        RunCancellationSignals::hard_only(cancel),
         ExecutionHooks::none(),
     )
     .await
@@ -561,7 +565,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
     context: ExecutionContext,
     config: &ExecutorConfig,
     params: &JobParams,
-    cancel: CancellationToken,
+    cancellation: RunCancellationSignals,
     hooks: ExecutionHooks,
 ) -> (ExecuteOutcome, JobTelemetry) {
     let ExecutionHooks {
@@ -671,7 +675,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
             config,
             &prev_storage,
             &mut telemetry,
-            RunControls::new(cancel, active_input_source)
+            RunControls::from_cancellation(cancellation, active_input_source)
                 .with_spawn_timing(spawn_timing)
                 .with_session_history_restore_plan(session_history_restore_plan),
         )

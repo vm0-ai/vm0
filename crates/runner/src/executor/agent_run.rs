@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::pin::Pin;
 use std::time::{Duration, Instant};
 
 use guest_contracts::diagnostics::{CliTerminationReason, FailureDiagnostic};
@@ -14,8 +15,9 @@ use guest_contracts::session_history_identity::{
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ,
 };
 use sandbox::{
-    EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, GuestProcessHandle, ProcessControlMode,
-    ProcessOutputMode, Sandbox, StartProcessRequest,
+    EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, GuestProcessCancelHandle,
+    GuestProcessControlHandle, GuestProcessHandle, ProcessControlMode, ProcessOutputMode, Sandbox,
+    StartProcessRequest,
 };
 use shell_quote::quote_shell_arg;
 use tokio::io::AsyncReadExt;
@@ -85,6 +87,7 @@ const SESSION_HISTORY_MATERIALIZATION_WAIT_TELEMETRY_ERROR: &str =
 const STORAGE_CACHE_POPULATE_FAILED: &str = "storage-cache-populate-failed";
 const STORAGE_DOWNLOAD_FAILED: &str = "storage-download-failed";
 const SESSION_HISTORY_IDENTITY_VERIFY_TIMEOUT: Duration = Duration::from_secs(5);
+const USER_CANCELLATION_CONTROL_PAYLOAD: &[u8] = br#"{"type":"user-cancellation"}"#;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SessionHistoryIdentityReason {
@@ -692,9 +695,11 @@ async fn read_final_session_history_identity(
         .ok_or(SessionHistoryIdentityReason::FinalizeUnverifiableMetadata)
 }
 
+#[derive(Clone, Copy)]
 pub(super) struct ProcessCancelTimeouts {
     pub(super) write: Duration,
     pub(super) terminal_grace: Duration,
+    pub(super) cooperative_grace: Duration,
 }
 
 pub(super) struct AgentExecutionResult {
@@ -780,6 +785,285 @@ pub(super) fn cancelled_agent_process_exit(
     exit.termination = ExecTermination::Cancelled;
     exit.stream_overflowed = stream_overflowed;
     exit
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CancellationDisposition {
+    None,
+    Cooperative,
+    HardFallback,
+}
+
+impl CancellationDisposition {
+    fn observed(self) -> bool {
+        self != Self::None
+    }
+
+    fn used_hard_fallback(self) -> bool {
+        self == Self::HardFallback
+    }
+}
+
+struct ProcessWaitOutcome {
+    result: sandbox::Result<sandbox::ProcessExit>,
+    cancellation: CancellationDisposition,
+    abort_stdout_drain: bool,
+}
+
+impl ProcessWaitOutcome {
+    fn normal(result: sandbox::Result<sandbox::ProcessExit>) -> Self {
+        let abort_stdout_drain = result.is_err();
+        Self {
+            result,
+            cancellation: CancellationDisposition::None,
+            abort_stdout_drain,
+        }
+    }
+
+    fn cooperative(exit: sandbox::ProcessExit) -> Self {
+        Self {
+            result: Ok(exit),
+            cancellation: CancellationDisposition::Cooperative,
+            abort_stdout_drain: false,
+        }
+    }
+
+    fn hard_fallback(
+        guest_process_pid: u32,
+        stream_overflowed: bool,
+        abort_stdout_drain: bool,
+    ) -> Self {
+        Self {
+            result: Ok(cancelled_agent_process_exit(
+                guest_process_pid,
+                stream_overflowed,
+            )),
+            cancellation: CancellationDisposition::HardFallback,
+            abort_stdout_drain,
+        }
+    }
+}
+
+async fn request_guest_process_cancel(
+    run_id: crate::ids::RunId,
+    guest_process_pid: u32,
+    process_cancel: &mut Option<GuestProcessCancelHandle>,
+    timeout: Duration,
+) -> bool {
+    let Some(process_cancel) = process_cancel.take() else {
+        warn!(
+            run_id = %run_id,
+            pid = guest_process_pid,
+            "sandbox does not support guest process cancellation"
+        );
+        return false;
+    };
+    match process_cancel.cancel(timeout).await {
+        Ok(()) => true,
+        Err(error) => {
+            warn!(
+                run_id = %run_id,
+                pid = guest_process_pid,
+                error = %error,
+                "failed to send guest process cancellation"
+            );
+            false
+        }
+    }
+}
+
+async fn force_cancel_guest_process<F>(
+    run_id: crate::ids::RunId,
+    guest_process_pid: u32,
+    process_cancel: &mut Option<GuestProcessCancelHandle>,
+    process_cancel_timeouts: ProcessCancelTimeouts,
+    mut wait_process: Pin<&mut F>,
+) -> ProcessWaitOutcome
+where
+    F: Future<Output = sandbox::Result<sandbox::ProcessExit>>,
+{
+    if !request_guest_process_cancel(
+        run_id,
+        guest_process_pid,
+        process_cancel,
+        process_cancel_timeouts.write,
+    )
+    .await
+    {
+        return ProcessWaitOutcome::hard_fallback(guest_process_pid, false, true);
+    }
+
+    match tokio::time::timeout(
+        process_cancel_timeouts.terminal_grace,
+        wait_process.as_mut(),
+    )
+    .await
+    {
+        Ok(Ok(exit)) => {
+            info!(
+                run_id = %run_id,
+                pid = guest_process_pid,
+                "cancelled guest process reached terminal status"
+            );
+            ProcessWaitOutcome::hard_fallback(guest_process_pid, exit.stream_overflowed, false)
+        }
+        Ok(Err(error)) => {
+            warn!(
+                run_id = %run_id,
+                pid = guest_process_pid,
+                error = %error,
+                "guest process wait failed after cancellation"
+            );
+            ProcessWaitOutcome::hard_fallback(guest_process_pid, false, true)
+        }
+        Err(_) => {
+            warn!(
+                run_id = %run_id,
+                pid = guest_process_pid,
+                timeout_ms = process_cancel_timeouts.terminal_grace.as_millis(),
+                "timed out waiting for cancelled guest process"
+            );
+            ProcessWaitOutcome::hard_fallback(guest_process_pid, false, true)
+        }
+    }
+}
+
+async fn send_cooperative_user_cancellation(
+    run_id: crate::ids::RunId,
+    process_control: Option<&GuestProcessControlHandle>,
+    hard_cancel: &CancellationToken,
+    timeout: Duration,
+) -> bool {
+    let Some(process_control) = process_control else {
+        warn!(
+            run_id = %run_id,
+            "guest process does not support cooperative user cancellation"
+        );
+        return false;
+    };
+    let message_id = format!("user-cancellation:{run_id}");
+    tokio::select! {
+        biased;
+        () = hard_cancel.cancelled() => false,
+        result = process_control.control(
+            &message_id,
+            USER_CANCELLATION_CONTROL_PAYLOAD,
+            timeout,
+        ) => {
+            match result {
+                Ok(ack) if ack.message_id == message_id => true,
+                Ok(ack) => {
+                    warn!(
+                        run_id = %run_id,
+                        expected_message_id = %message_id,
+                        acknowledged_message_id = %ack.message_id,
+                        "guest acknowledged the wrong user-cancellation message"
+                    );
+                    false
+                }
+                Err(error) => {
+                    warn!(
+                        run_id = %run_id,
+                        error = %error,
+                        "failed to send cooperative user cancellation"
+                    );
+                    false
+                }
+            }
+        }
+    }
+}
+
+async fn wait_for_cooperative_user_cancellation<F>(
+    run_id: crate::ids::RunId,
+    guest_process_pid: u32,
+    process_control: Option<&GuestProcessControlHandle>,
+    process_cancel: &mut Option<GuestProcessCancelHandle>,
+    hard_cancel: &CancellationToken,
+    process_cancel_timeouts: ProcessCancelTimeouts,
+    mut wait_process: Pin<&mut F>,
+) -> ProcessWaitOutcome
+where
+    F: Future<Output = sandbox::Result<sandbox::ProcessExit>>,
+{
+    if !send_cooperative_user_cancellation(
+        run_id,
+        process_control,
+        hard_cancel,
+        process_cancel_timeouts.write,
+    )
+    .await
+    {
+        return force_cancel_guest_process(
+            run_id,
+            guest_process_pid,
+            process_cancel,
+            process_cancel_timeouts,
+            wait_process,
+        )
+        .await;
+    }
+
+    tokio::select! {
+        biased;
+        result = wait_process.as_mut() => {
+            match result {
+                Ok(exit) => {
+                    info!(
+                        run_id = %run_id,
+                        pid = guest_process_pid,
+                        "guest completed cooperative user cancellation"
+                    );
+                    ProcessWaitOutcome::cooperative(exit)
+                }
+                Err(error) => {
+                    warn!(
+                        run_id = %run_id,
+                        pid = guest_process_pid,
+                        error = %error,
+                        "guest process wait failed during cooperative cancellation"
+                    );
+                    request_guest_process_cancel(
+                        run_id,
+                        guest_process_pid,
+                        process_cancel,
+                        process_cancel_timeouts.write,
+                    )
+                    .await;
+                    ProcessWaitOutcome::hard_fallback(guest_process_pid, false, true)
+                }
+            }
+        }
+        () = hard_cancel.cancelled() => {
+            info!(
+                run_id = %run_id,
+                "hard cancellation preempted cooperative user cancellation"
+            );
+            force_cancel_guest_process(
+                run_id,
+                guest_process_pid,
+                process_cancel,
+                process_cancel_timeouts,
+                wait_process,
+            )
+            .await
+        }
+        () = tokio::time::sleep(process_cancel_timeouts.cooperative_grace) => {
+            warn!(
+                run_id = %run_id,
+                timeout_ms = process_cancel_timeouts.cooperative_grace.as_millis(),
+                "cooperative user cancellation timed out"
+            );
+            force_cancel_guest_process(
+                run_id,
+                guest_process_pid,
+                process_cancel,
+                process_cancel_timeouts,
+                wait_process,
+            )
+            .await
+        }
+    }
 }
 
 fn wait_process_timed_out(error: &sandbox::SandboxError) -> bool {
@@ -880,6 +1164,8 @@ pub(super) struct RunStart<'a> {
 
 pub(super) struct RunControls {
     pub(super) cancel: CancellationToken,
+    pub(super) cooperative_user_cancel: CancellationToken,
+    pub(super) hard_cancel: CancellationToken,
     pub(super) active_input_source: Option<ActiveInputSource>,
     pub(super) spawn_timing: Option<RunnerSpawnTiming>,
     pub(super) session_history_restore_plan: SessionHistoryRestorePlan,
@@ -953,12 +1239,25 @@ impl PreparedGuestRuntime {
 }
 
 impl RunControls {
+    #[cfg(test)]
     pub(super) fn new(
         cancel: CancellationToken,
         active_input_source: Option<ActiveInputSource>,
     ) -> Self {
+        Self::from_cancellation(
+            crate::run_cancellation::RunCancellationSignals::hard_only(cancel),
+            active_input_source,
+        )
+    }
+
+    pub(super) fn from_cancellation(
+        cancellation: crate::run_cancellation::RunCancellationSignals,
+        active_input_source: Option<ActiveInputSource>,
+    ) -> Self {
         Self {
-            cancel,
+            cancel: cancellation.any(),
+            cooperative_user_cancel: cancellation.cooperative_user(),
+            hard_cancel: cancellation.hard(),
             active_input_source,
             spawn_timing: None,
             session_history_restore_plan: SessionHistoryRestorePlan::Default,
@@ -1253,6 +1552,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
 ) -> RunnerResult<AgentExecutionResult> {
     let RunControls {
         cancel,
+        cooperative_user_cancel,
+        hard_cancel,
         active_input_source,
         spawn_timing,
         session_history_restore_plan,
@@ -1817,10 +2118,11 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     // Claude Code process has a PID now — record end-to-end startup latency.
     record_api_latency("api_to_spawn", context, telemetry);
 
+    let process_control = handle.control_handle();
     let active_input_forwarder = super::active_input::ActiveInputForwarder::start(
         context.run_id,
         active_input_source,
-        handle.control_handle(),
+        process_control.clone(),
         cancel.clone(),
     );
 
@@ -1834,94 +2136,58 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         background_fill.start(telemetry);
     }
 
-    // 6. Wait for exit (or cancellation). On cancel, ask the guest to cancel the
-    // supervised process and briefly wait for its terminal status so the vsock
-    // operation can be removed before sandbox cleanup closes the connection.
+    // 6. Wait for exit or cancellation. A user request first asks guest-agent
+    // to checkpoint recovery state and exit; hard cancellation and bounded
+    // fallback use the existing supervised-process cancellation path.
     let guest_process_pid = handle.guest_pid;
-    let process_cancel = handle.take_cancel_handle();
+    let mut process_cancel = handle.take_cancel_handle();
     let wait_process = sandbox.wait_process(handle, job_terminal_wait_timeout());
     tokio::pin!(wait_process);
-    let (result, wait_cancelled, abort_stdout_drain) = model_catalog_prefetch
+    let wait_outcome = model_catalog_prefetch
         .race(async {
             tokio::select! {
                 biased;
-                result = &mut wait_process => {
-                    let abort_stdout_drain = result.is_err();
-                    (result, false, abort_stdout_drain)
+                result = wait_process.as_mut() => {
+                    ProcessWaitOutcome::normal(result)
                 }
-                () = cancel.cancelled() => {
-                    info!(run_id = %context.run_id, "cancel received, cancelling guest process");
-                    let cancelled_exit = || -> sandbox::Result<sandbox::ProcessExit> {
-                        Ok(cancelled_agent_process_exit(guest_process_pid, false))
-                    };
-                    match process_cancel {
-                        Some(process_cancel) => match process_cancel.cancel(process_cancel_timeouts.write).await {
-                            Ok(()) => {
-                                match tokio::time::timeout(
-                                    process_cancel_timeouts.terminal_grace,
-                                    &mut wait_process,
-                                )
-                                .await
-                                {
-                                    Ok(Ok(exit)) => {
-                                        info!(
-                                            run_id = %context.run_id,
-                                            pid = guest_process_pid,
-                                            "cancelled guest process reached terminal status"
-                                        );
-                                        (
-                                            Ok(cancelled_agent_process_exit(
-                                                guest_process_pid,
-                                                exit.stream_overflowed,
-                                            )),
-                                            true,
-                                            false,
-                                        )
-                                    }
-                                    Ok(Err(error)) => {
-                                        warn!(
-                                            run_id = %context.run_id,
-                                            pid = guest_process_pid,
-                                            error = %error,
-                                            "guest process wait failed after cancellation"
-                                        );
-                                        (cancelled_exit(), true, true)
-                                    }
-                                    Err(_) => {
-                                        warn!(
-                                            run_id = %context.run_id,
-                                            pid = guest_process_pid,
-                                            timeout_ms = process_cancel_timeouts.terminal_grace.as_millis(),
-                                            "timed out waiting for cancelled guest process"
-                                        );
-                                        (cancelled_exit(), true, true)
-                                    }
-                                }
-                            }
-                            Err(error) => {
-                                warn!(
-                                    run_id = %context.run_id,
-                                    pid = guest_process_pid,
-                                    error = %error,
-                                    "failed to send guest process cancellation"
-                                );
-                                (cancelled_exit(), true, true)
-                            }
-                        },
-                        None => {
-                            warn!(
-                                run_id = %context.run_id,
-                                pid = guest_process_pid,
-                                "sandbox does not support guest process cancellation"
-                            );
-                            (cancelled_exit(), true, true)
-                        }
-                    }
+                () = hard_cancel.cancelled() => {
+                    info!(run_id = %context.run_id, "hard cancellation received, cancelling guest process");
+                    force_cancel_guest_process(
+                        context.run_id,
+                        guest_process_pid,
+                        &mut process_cancel,
+                        process_cancel_timeouts,
+                        wait_process.as_mut(),
+                    )
+                    .await
+                }
+                () = cooperative_user_cancel.cancelled() => {
+                    info!(
+                        run_id = %context.run_id,
+                        "user cancellation received, requesting guest recovery"
+                    );
+                    wait_for_cooperative_user_cancellation(
+                        context.run_id,
+                        guest_process_pid,
+                        process_control.as_ref(),
+                        &mut process_cancel,
+                        &hard_cancel,
+                        process_cancel_timeouts,
+                        wait_process.as_mut(),
+                    )
+                    .await
                 }
             }
         })
         .await;
     model_catalog_prefetch.record_outcome(telemetry);
+    let ProcessWaitOutcome {
+        result,
+        cancellation,
+        abort_stdout_drain,
+    } = wait_outcome;
+    let cancellation_observed = cancellation.observed();
+    let used_hard_cancellation_fallback = cancellation.used_hard_fallback();
 
     if let Some(forwarder) = active_input_forwarder {
         forwarder.stop().await;
@@ -2023,10 +2289,10 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         stdout_stream_diagnostics,
     );
 
-    // Check for OOM kill when process was terminated by SIGKILL.
-    // Skip when cancelled — the SIGKILL exit code is synthetic and dmesg
-    // would run against a sandbox that hasn't been stopped yet.
-    if !wait_cancelled && process_exit_oom_candidate(&exit) {
+    // Check for OOM kill when process was terminated by SIGKILL. Skip only
+    // after hard fallback, where the SIGKILL exit code is synthetic. A
+    // cooperative guest exit remains real process evidence.
+    if !used_hard_cancellation_fallback && process_exit_oom_candidate(&exit) {
         let dmesg_req = ExecRequest {
             cmd: "dmesg | tail -20 2>/dev/null",
             timeout: Duration::from_secs(5),
@@ -2067,8 +2333,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         }
     }
 
-    let failure = if wait_cancelled {
-        // Skip guest file reads — sandbox hasn't been stopped yet.
+    let failure = if cancellation_observed {
+        // Cancellation remains authoritative over guest failure files. Hard
+        // fallback may also leave the guest process without terminal proof.
         Some(ExecutionFailure::cancelled())
     } else if process_failed(&exit) {
         let failure_exit_code = process_failure_exit_code(&exit);
@@ -2083,13 +2350,13 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             None
         };
         let should_log_bootstrap_diagnostics = should_log_agent_bootstrap_abnormal_exit_diagnostics(
-            wait_cancelled,
+            cancellation_observed,
             &exit,
             failure_diagnostic.as_ref(),
             guest_error.as_deref(),
         );
         let should_collect_resource_diagnostics = should_collect_agent_abnormal_exit_diagnostics(
-            wait_cancelled,
+            cancellation_observed,
             &exit,
             &stderr,
             failure_diagnostic.as_ref(),
@@ -2097,7 +2364,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         );
         let should_collect_sigkill_resource_diagnostics =
             should_collect_unattributed_sigkill_resource_diagnostics(
-                wait_cancelled,
+                cancellation_observed,
                 &exit,
                 failure_diagnostic.as_ref(),
             );

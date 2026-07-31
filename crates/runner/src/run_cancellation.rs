@@ -33,9 +33,18 @@ pub(crate) struct RunCancellationHandle {
     inner: Arc<RunCancellationInner>,
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct RunCancellationSignals {
+    any: CancellationToken,
+    cooperative_user: CancellationToken,
+    hard: CancellationToken,
+}
+
 #[derive(Debug)]
 struct RunCancellationInner {
     token: CancellationToken,
+    cooperative_user_token: CancellationToken,
+    hard_token: CancellationToken,
     transfer_gate: Arc<Mutex<()>>,
 }
 
@@ -58,7 +67,7 @@ impl RunCancellationRegistry {
             state.hard_stopping
         };
         if hard_stopping {
-            handle.cancel().await;
+            handle.request_hard_cancellation().await;
         }
         Ok(RunCancellationRegistration {
             registry: self.clone(),
@@ -127,8 +136,8 @@ impl RunCancellationRegistration {
         self.handle.is_cancelled()
     }
 
-    pub(crate) async fn cancel(&self) -> bool {
-        self.handle.cancel().await
+    pub(crate) async fn request_hard_cancellation(&self) -> bool {
+        self.handle.request_hard_cancellation().await
     }
 
     pub(crate) async fn unregister(&self) -> bool {
@@ -149,6 +158,8 @@ impl RunCancellationHandle {
         Self {
             inner: Arc::new(RunCancellationInner {
                 token: CancellationToken::new(),
+                cooperative_user_token: CancellationToken::new(),
+                hard_token: CancellationToken::new(),
                 transfer_gate: Arc::new(Mutex::new(())),
             }),
         }
@@ -162,11 +173,28 @@ impl RunCancellationHandle {
         self.inner.token.is_cancelled()
     }
 
-    pub(crate) async fn cancel(&self) -> bool {
+    pub(crate) fn signals(&self) -> RunCancellationSignals {
+        RunCancellationSignals {
+            any: self.inner.token.clone(),
+            cooperative_user: self.inner.cooperative_user_token.clone(),
+            hard: self.inner.hard_token.clone(),
+        }
+    }
+
+    pub(crate) async fn request_cooperative_user_cancellation(&self) -> bool {
         let _transfer_guard = self.inner.transfer_gate.lock().await;
-        let was_cancelled = self.inner.token.is_cancelled();
+        let was_requested = self.inner.cooperative_user_token.is_cancelled();
+        self.inner.cooperative_user_token.cancel();
         self.inner.token.cancel();
-        !was_cancelled
+        !was_requested
+    }
+
+    pub(crate) async fn request_hard_cancellation(&self) -> bool {
+        let _transfer_guard = self.inner.transfer_gate.lock().await;
+        let was_requested = self.inner.hard_token.is_cancelled();
+        self.inner.hard_token.cancel();
+        self.inner.token.cancel();
+        !was_requested
     }
 
     pub(crate) async fn transfer_guard(&self) -> OwnedMutexGuard<()> {
@@ -179,6 +207,29 @@ impl RunCancellationHandle {
 
     fn same_registration(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.inner, &other.inner)
+    }
+}
+
+impl RunCancellationSignals {
+    pub(crate) fn any(&self) -> CancellationToken {
+        self.any.clone()
+    }
+
+    pub(crate) fn cooperative_user(&self) -> CancellationToken {
+        self.cooperative_user.clone()
+    }
+
+    pub(crate) fn hard(&self) -> CancellationToken {
+        self.hard.clone()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn hard_only(cancel: CancellationToken) -> Self {
+        Self {
+            any: cancel.clone(),
+            cooperative_user: CancellationToken::new(),
+            hard: cancel,
+        }
     }
 }
 
@@ -198,7 +249,12 @@ mod tests {
             DuplicateRunCancellationRegistration,
         );
 
-        registry.handle(run_id).await.unwrap().cancel().await;
+        registry
+            .handle(run_id)
+            .await
+            .unwrap()
+            .request_hard_cancellation()
+            .await;
         assert!(token.is_cancelled());
     }
 
@@ -208,14 +264,17 @@ mod tests {
         let run_id = RunId::new_v4();
         let registration = registry.register(run_id).await.unwrap();
         let token = registration.token();
+        let signals = registration.handle().signals();
 
         let handles = registry.begin_hard_stop().await;
 
         assert_eq!(handles.len(), 1);
         assert_eq!(handles[0].0, run_id);
         assert!(!token.is_cancelled());
-        handles[0].1.cancel().await;
+        handles[0].1.request_hard_cancellation().await;
         assert!(token.is_cancelled());
+        assert!(signals.hard().is_cancelled());
+        assert!(!signals.cooperative_user().is_cancelled());
     }
 
     #[tokio::test]
@@ -226,6 +285,30 @@ mod tests {
         let registration = registry.register(RunId::new_v4()).await.unwrap();
 
         assert!(registration.is_cancelled());
+        assert!(registration.handle().signals().hard().is_cancelled());
+        assert!(
+            !registration
+                .handle()
+                .signals()
+                .cooperative_user()
+                .is_cancelled()
+        );
+    }
+
+    #[tokio::test]
+    async fn cooperative_user_and_hard_cancellation_are_independent_monotonic_signals() {
+        let handle = RunCancellationHandle::new();
+        let signals = handle.signals();
+
+        assert!(handle.request_cooperative_user_cancellation().await);
+        assert!(!handle.request_cooperative_user_cancellation().await);
+        assert!(signals.any().is_cancelled());
+        assert!(signals.cooperative_user().is_cancelled());
+        assert!(!signals.hard().is_cancelled());
+
+        assert!(handle.request_hard_cancellation().await);
+        assert!(!handle.request_hard_cancellation().await);
+        assert!(signals.hard().is_cancelled());
     }
 
     #[tokio::test]
@@ -238,7 +321,12 @@ mod tests {
         let replacement_token = replacement.token();
 
         assert!(!stale.unregister().await);
-        registry.handle(run_id).await.unwrap().cancel().await;
+        registry
+            .handle(run_id)
+            .await
+            .unwrap()
+            .request_hard_cancellation()
+            .await;
 
         assert!(replacement_token.is_cancelled());
     }
