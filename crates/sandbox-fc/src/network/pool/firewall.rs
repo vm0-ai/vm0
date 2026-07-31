@@ -347,7 +347,7 @@ struct FirewallRestoreTable {
 
 struct FirewallRestoreSelection {
     tables: Vec<FirewallRestoreTable>,
-    sources_complete: bool,
+    source_outcome: NamespaceDeleteOutcome,
 }
 
 #[derive(Clone, Copy)]
@@ -499,7 +499,7 @@ fn select_firewall_restore_tables<'a>(
 ) -> FirewallRestoreSelection {
     let mut selection = FirewallRestoreSelection {
         tables: Vec::new(),
-        sources_complete: true,
+        source_outcome: NamespaceDeleteOutcome::Deleted,
     };
     for snapshot in snapshots {
         match &snapshot.rules_by_pool {
@@ -509,7 +509,9 @@ fn select_firewall_restore_tables<'a>(
                     rules: select_rules(rules_by_pool),
                 });
             }
-            SnapshotSource::Abandoned => selection.sources_complete = false,
+            SnapshotSource::Abandoned => {
+                selection.source_outcome = NamespaceDeleteOutcome::Abandoned;
+            }
         }
     }
     selection
@@ -550,14 +552,7 @@ async fn delete_firewall_restore_selection(
     selection: FirewallRestoreSelection,
 ) -> NamespaceDeleteOutcome {
     let outcome = delete_firewall_rules_with_restore(command, selection.tables).await;
-    NamespaceDeleteOutcome::combine([
-        outcome,
-        if selection.sources_complete {
-            NamespaceDeleteOutcome::Deleted
-        } else {
-            NamespaceDeleteOutcome::Abandoned
-        },
-    ])
+    NamespaceDeleteOutcome::combine([outcome, selection.source_outcome])
 }
 
 async fn delete_firewall_rules_with_restore(
@@ -770,12 +765,8 @@ done < "$3" > "$PAYLOAD"
         assert_eq!(outcome, NamespaceDeleteOutcome::Abandoned);
     }
 
-    #[tokio::test]
-    #[cfg(unix)]
-    async fn incomplete_snapshot_deletes_captured_rules_and_remains_abandoned() {
-        let dir = tempfile::tempdir().unwrap();
-        let (command, payload) = restore_capture_command(dir.path());
-
+    #[test]
+    fn incomplete_snapshot_preserves_captured_delete_payload_and_remains_abandoned() {
         let captured = FirewallTableSnapshot {
             table: "raw",
             rules_by_pool: SnapshotSource::Captured(BTreeMap::from([(
@@ -789,11 +780,9 @@ done < "$3" > "$PAYLOAD"
         };
         let selection = firewall_restore_tables_for_pool([&captured, &abandoned], 0);
 
-        let outcome = delete_firewall_restore_selection(command.to_str().unwrap(), selection).await;
-
-        assert_eq!(outcome, NamespaceDeleteOutcome::Abandoned);
+        assert_eq!(selection.source_outcome, NamespaceDeleteOutcome::Abandoned);
         assert_eq!(
-            std::fs::read_to_string(payload).unwrap(),
+            firewall_restore_payload(&selection.tables, FirewallRestoreMode::Delete).unwrap(),
             "*raw\n-D PREROUTING -m comment --comment vm0-ns-00-00 -j DROP\nCOMMIT\n"
         );
     }
