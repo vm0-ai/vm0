@@ -66,6 +66,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   scrape: "scrape:read",
   "people-search": "people-search:read",
   "web-search": "web-search:read",
+  recognize: "image-recognition:write",
   finance: "finance:read",
   banking: "banking:read",
 };
@@ -74,7 +75,10 @@ const COMMAND_FEATURE_SWITCH_MAP: Readonly<
   Partial<Record<string, FeatureSwitchKey>>
 > = {
   browser: FeatureSwitchKey.ZeroBrowser,
+  recognize: FeatureSwitchKey.ZeroImageRecognition,
 };
+
+const RUN_ONLY_COMMANDS = new Set(["recognize"]);
 
 type FeatureSwitchOverrides = Partial<Record<FeatureSwitchKey, boolean>>;
 
@@ -355,6 +359,13 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     },
   },
   {
+    name: "recognize",
+    description: "Recognize one image through a managed multimodal model",
+    load: async () => {
+      return (await import("./commands/zero/recognize")).zeroRecognizeCommand;
+    },
+  },
+  {
     name: "finance",
     description: "Query financial instruments through managed zero finance",
     load: async () => {
@@ -392,7 +403,7 @@ function shouldHideCommand(
   if (!isCommandFeatureEnabled(name, payload, featureSwitchOverrides)) {
     return true;
   }
-  if (!payload) return false;
+  if (!payload) return RUN_ONLY_COMMANDS.has(name);
   const requiredCap = COMMAND_CAPABILITY_MAP[name];
   if (requiredCap === undefined) return true;
   if (requiredCap === null) return false;
@@ -569,6 +580,12 @@ export function buildZeroHelpText(
     ...commandExampleIfVisible(
       "web-search",
       '  Search the public web? zero web-search "latest news" --json',
+      payload,
+      featureSwitchOverrides,
+    ),
+    ...commandExampleIfVisible(
+      "recognize",
+      '  Recognize an image?    zero recognize --file ./image.png --prompt "Describe it"',
       payload,
       featureSwitchOverrides,
     ),

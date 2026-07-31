@@ -37,6 +37,7 @@ import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
+import { verifyZeroToken } from "../../auth/tokens";
 import {
   deleteUsagePricingRows,
   seedOrgMetadata,
@@ -5456,6 +5457,132 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     expect(claim.modelUsageProvider).toBe(selectedModel);
 
     await api.requestCancelRun(actor, sent.body.runId, [200]);
+  });
+
+  it("offers image recognition only for enabled image-unsupported models", async () => {
+    const api = createRunsApi(context);
+    const chat = createChatFilesBddApi(context);
+    const connectors = createConnectorBddApi(context);
+    const unsupportedModel = "deepseek-v4-flash";
+    const supportedModel = "claude-sonnet-4-6";
+    const unknownModel = "gpt-5.6-sol";
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const { providerId: anthropicProviderId } =
+      await api.ensureOrgModelProvider(actor);
+    const { providerId: deepseekProviderId } = await api.createOrgModelProvider(
+      actor,
+      {
+        type: "deepseek-codex",
+        secret: "recognition-deepseek-key",
+      },
+    );
+    const { providerId: openaiProviderId } = await api.createOrgModelProvider(
+      actor,
+      {
+        type: "openai-api-key",
+        secret: "recognition-openai-key",
+      },
+    );
+
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: unsupportedModel,
+        isDefault: true,
+        defaultProviderType: "deepseek-codex",
+        credentialScope: "org",
+        modelProviderId: deepseekProviderId,
+      },
+      {
+        model: supportedModel,
+        isDefault: false,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: anthropicProviderId,
+      },
+      {
+        model: unknownModel,
+        isDefault: false,
+        defaultProviderType: "openai-api-key",
+        credentialScope: "org",
+        modelProviderId: openaiProviderId,
+      },
+    ]);
+
+    async function claimModel(model: string) {
+      const sent = await chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          prompt: `recognition eligibility for ${model}`,
+          model,
+        },
+        [201],
+      );
+      if (sent.status !== 201 || sent.body.runId === null) {
+        throw new Error(`Expected ${model} to create a run`);
+      }
+      await api.heartbeatRunner(runnerGroup);
+      return {
+        claim: await api.claimRunnerJob(sent.body.runId),
+        runId: sent.body.runId,
+      };
+    }
+
+    const disabledUnsupported = await claimModel(unsupportedModel);
+    const disabledToken = disabledUnsupported.claim.environment?.ZERO_TOKEN;
+    if (!disabledToken) {
+      throw new Error("Expected the disabled run to expose ZERO_TOKEN");
+    }
+    expect(disabledUnsupported.claim.appendSystemPrompt ?? "").not.toContain(
+      "zero recognize",
+    );
+    expect(verifyZeroToken(disabledToken)?.capabilities).not.toContain(
+      "image-recognition:write",
+    );
+    await api.requestCancelRun(actor, disabledUnsupported.runId, [200]);
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ZeroImageRecognition]: true,
+    });
+
+    const enabledUnsupported = await claimModel(unsupportedModel);
+    const enabledToken = enabledUnsupported.claim.environment?.ZERO_TOKEN;
+    if (!enabledToken) {
+      throw new Error("Expected the enabled run to expose ZERO_TOKEN");
+    }
+    expect(enabledUnsupported.claim.appendSystemPrompt ?? "").toContain(
+      'zero recognize --file <image-path> --prompt "<instruction>"',
+    );
+    expect(verifyZeroToken(enabledToken)?.capabilities).toContain(
+      "image-recognition:write",
+    );
+    await api.requestCancelRun(actor, enabledUnsupported.runId, [200]);
+
+    const enabledSupported = await claimModel(supportedModel);
+    const supportedToken = enabledSupported.claim.environment?.ZERO_TOKEN;
+    if (!supportedToken) {
+      throw new Error("Expected the supported-model run to expose ZERO_TOKEN");
+    }
+    expect(enabledSupported.claim.appendSystemPrompt ?? "").not.toContain(
+      "zero recognize",
+    );
+    expect(verifyZeroToken(supportedToken)?.capabilities).not.toContain(
+      "image-recognition:write",
+    );
+    await api.requestCancelRun(actor, enabledSupported.runId, [200]);
+
+    const enabledUnknown = await claimModel(unknownModel);
+    const unknownToken = enabledUnknown.claim.environment?.ZERO_TOKEN;
+    if (!unknownToken) {
+      throw new Error("Expected the unknown-model run to expose ZERO_TOKEN");
+    }
+    expect(enabledUnknown.claim.appendSystemPrompt ?? "").not.toContain(
+      "zero recognize",
+    );
+    expect(verifyZeroToken(unknownToken)?.capabilities).not.toContain(
+      "image-recognition:write",
+    );
+    await api.requestCancelRun(actor, enabledUnknown.runId, [200]);
   });
 
   it("injects codex multi-auth provider credentials and proves them via firewall auth", async () => {

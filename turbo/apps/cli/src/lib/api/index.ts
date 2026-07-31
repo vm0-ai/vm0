@@ -259,6 +259,7 @@ export {
   callZeroWebSearch,
   type ZeroWebSearchResponse,
 } from "./domains/zero-web-search";
+export { callZeroRecognition } from "./domains/zero-recognition";
 export {
   callZeroFinanceChart,
   callZeroFinanceProfile,
