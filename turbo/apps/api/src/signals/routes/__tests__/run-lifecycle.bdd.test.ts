@@ -3595,6 +3595,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         expect(events[0]).toStrictEqual(
           expect.objectContaining({
             session_affinity_resource: resource,
+            reuse_key_kind: "session",
           }),
         );
       }
@@ -3800,6 +3801,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           session_affinity: "protected",
           session_affinity_resource: "reusableSandbox",
           history_generation_affinity: "protected",
+          reuse_key_kind: "session",
         }),
       );
     }
@@ -4522,6 +4524,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
           session_affinity: "no_session",
           session_affinity_resource: "none",
           history_generation_affinity: "no_session",
+          reuse_key_kind: "none",
         }),
       );
     }

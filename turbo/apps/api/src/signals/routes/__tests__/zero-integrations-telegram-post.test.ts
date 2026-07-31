@@ -1301,6 +1301,17 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       sessionAffinityResource: "reusableSandbox",
       affinityProtectedUntil: expect.any(String),
     });
+    for (const actionType of [
+      "runner_notification_queue_to_entry",
+      "runner_poll_pending_job_lookup",
+    ]) {
+      expect(sandboxOperationEventsForRun(runId)).toContainEqual(
+        expect.objectContaining({
+          op_type: actionType,
+          reuse_key_kind: "thread",
+        }),
+      );
+    }
 
     const claim = await runsApi.claimRunnerJob(runId);
     expect(claim.reuseKey).toBe(reuseKey);

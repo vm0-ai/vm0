@@ -4,7 +4,6 @@
 //! owns the spawned task body: executor orchestration, provider completion,
 //! deferred telemetry/network-log uploads, and outer-task panic cleanup.
 
-use std::borrow::Cow;
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -505,7 +504,7 @@ pub(super) fn spawn_job(
     } = request;
     let (context, completion_auth, active_input_source) = claimed.into_parts();
     let run_id = context.run_id;
-    let reuse_key = context.reuse_key().map(Cow::into_owned);
+    let reuse_key = context.reuse_key().map(str::to_owned);
     let cli_agent_session_id = if executor::validate_resume_session_id(&context).is_ok() {
         context.cli_agent_session_id().map(String::from)
     } else {

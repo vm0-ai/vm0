@@ -1,6 +1,5 @@
 //! [`JobProvider`] backed by an Ably control plane + HTTP polling + REST API.
 
-use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -552,7 +551,7 @@ impl JobProvider for ApiProvider {
                         return None;
                     }
                     let run_id = job.run_id;
-                    let reuse_key = job.reuse_key().map(Cow::into_owned);
+                    let reuse_key = job.reuse_key().map(str::to_owned);
                     let cli_agent_session_id = job.cli_agent_session_id;
                     let history_generation_run_id = job.history_generation_run_id;
                     let history_generation_affinity_protected_until =

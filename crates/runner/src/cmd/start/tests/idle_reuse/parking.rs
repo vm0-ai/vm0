@@ -20,6 +20,7 @@ fn context_with_session_opt(
 ) -> crate::types::ExecutionContext {
     let mut ctx = minimal_context(run_id);
     if let Some(sid) = session_id {
+        ctx.reuse_key = Some(format!("session:{sid}"));
         ctx.resume_session = Some(crate::types::ResumeSession::inline(
             sid.to_string(),
             String::new(),

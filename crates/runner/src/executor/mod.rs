@@ -599,9 +599,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
     let expected_promotion_reuse_key = if resume_session_error.is_some() {
         idle_reuse_key.as_str()
     } else {
-        claimed_reuse_key
-            .as_deref()
-            .unwrap_or(idle_reuse_key.as_str())
+        claimed_reuse_key.unwrap_or(idle_reuse_key.as_str())
     };
     let workspace_image = match resolve_reused_workspace_promotion(
         config.workspace_cache.as_ref(),
@@ -643,7 +641,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
                         run_id,
                         sandbox_id,
                         profile_name: &params.profile_name,
-                        reuse_key: claimed_reuse_key.as_deref(),
+                        reuse_key: claimed_reuse_key,
                         cli_agent_session_id: context.cli_agent_session_id(),
                         working_dir: CANONICAL_WORKING_DIR,
                         image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,

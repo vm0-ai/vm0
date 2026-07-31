@@ -44,12 +44,14 @@ async fn discover_exposes_session_affinity_before_claim() {
 
     let candidate = provider.discover().await.unwrap();
     assert_eq!(candidate.cli_agent_session_id(), Some("session-123"));
+    assert_eq!(candidate.reuse_key(), Some("session:session-123"));
 
     let claimed = provider.claim(candidate).await.unwrap();
     assert_eq!(
         claimed.context().cli_agent_session_id(),
         Some("session-123")
     );
+    assert_eq!(claimed.context().reuse_key(), Some("session:session-123"));
 }
 
 #[tokio::test]
