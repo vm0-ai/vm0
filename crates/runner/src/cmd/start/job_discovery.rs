@@ -3,7 +3,6 @@
 //! `run()` owns the provider discovery future and reactor scheduling. This
 //! module owns the body that turns a discovered job into a claimed spawned job.
 
-use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -171,7 +170,7 @@ pub(super) async fn handle_discovered_job(
     // briefly advertise stale workspace-cache affinity for an active session.
     let active_reuse_key_guard = ActiveReuseKeyGuard::new(
         ctx.spawn_ctx.active_reuse_keys.clone(),
-        claimed.context().reuse_key().map(Cow::into_owned),
+        claimed.context().reuse_key().map(str::to_owned),
     );
 
     let (reuse_entry, active_lease, reuse_result, idle_snapshot, needs_session_affinity_refresh) =
