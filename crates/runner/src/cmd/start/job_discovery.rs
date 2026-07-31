@@ -880,7 +880,8 @@ async fn try_reuse_from_pool(
             .spawn_ctx
             .workspace_cache_snapshot
             .might_contain_workspace_cache_reuse_key(reuse_key);
-    pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::HeldSessionStateRefresh, started_at);
+    pre_spawn_timing
+        .record_phase_elapsed(RunnerPreSpawnPhase::WorkspaceCacheStateLookup, started_at);
     let needs_session_affinity_refresh = took_idle_session || claimed_workspace_cache_reuse_key;
     match taken {
         Some(entry)
