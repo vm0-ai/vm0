@@ -854,8 +854,8 @@ fn parse_cancel_notification(msg: &ably_subscriber::Message) -> Option<CancelNot
             );
             CancelNotificationMode::Hard
         }
-        // Older APIs omitted the mode. Defaulting to hard preserves their
-        // pre-capability cancellation behavior during mixed deployments.
+        // Default to hard cancellation when the API omits the mode so a
+        // malformed or stale notification still stops the run safely.
         None => CancelNotificationMode::Hard,
     };
     Some(CancelNotification { run_id, mode })

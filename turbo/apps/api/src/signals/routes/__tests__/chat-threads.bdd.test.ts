@@ -9,7 +9,6 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
-import { RUNNER_CANCELLATION_RECOVERY_CAPABILITY } from "@vm0/api-contracts/contracts/runners";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import { describe, expect, it, onTestFinished } from "vitest";
 
@@ -1324,9 +1323,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       prompt: "delete cascade anchor",
     });
     await api.heartbeatRunner(runnerGroup);
-    await api.claimRunnerJob(main.runId, {
-      capabilities: [RUNNER_CANCELLATION_RECOVERY_CAPABILITY],
-    });
+    await api.claimRunnerJob(main.runId);
 
     await expect(chat.listActiveChatThreadIds(actor)).resolves.toContain(
       main.threadId,
