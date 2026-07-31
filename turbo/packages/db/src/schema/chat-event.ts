@@ -140,6 +140,11 @@ export const chatEvents = pgTable(
       index("idx_chat_events_thread_run_finish_created")
         .on(table.chatThreadId, table.createdAt.desc())
         .where(sql`${table.runLifecycleEvent} IS NOT NULL`),
+      index("idx_chat_events_thread_run_terminal_created")
+        .on(table.chatThreadId, table.createdAt.desc())
+        .where(
+          sql`${table.eventType} IN ('run.completed', 'run.failed', 'run.cancelled')`,
+        ),
       index("idx_chat_events_run_id").on(table.runId),
       index("chat_events_usage_run_id_idx")
         .on(table.runId)
@@ -177,6 +182,11 @@ export const chatEvents = pgTable(
       uniqueIndex("chat_events_run_lifecycle_unique")
         .on(table.runId)
         .where(sql`${table.runLifecycleEvent} IS NOT NULL`),
+      uniqueIndex("chat_events_run_terminal_unique")
+        .on(table.runId)
+        .where(
+          sql`${table.eventType} IN ('run.completed', 'run.failed', 'run.cancelled')`,
+        ),
       uniqueIndex("chat_events_run_thinking_unique")
         .on(table.runId)
         .where(sql`${table.thinking} IS NOT NULL`),
