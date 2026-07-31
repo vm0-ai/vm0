@@ -1117,7 +1117,7 @@ describe("CHAT-02: completed chat callback", () => {
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
 
-  it("uses the dequeue API start when a queued message auto-sends", async () => {
+  it("uses the queued event creation time when a message auto-sends", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -1172,7 +1172,7 @@ describe("CHAT-02: completed chat callback", () => {
 
     const acknowledgedAt = dequeuedAt + 7000;
     const secondClaim = await claimChatRunJob(runnerGroup, claimed.runId);
-    expect(secondClaim.apiStartTime).toBe(dequeuedAt);
+    expect(secondClaim.apiStartTime).toBe(queuedAt);
     const secondHeaders = {
       authorization: `Bearer ${secondClaim.sandboxToken}`,
     };

@@ -1658,7 +1658,6 @@ async function persistTeamsChatMessage(args: {
         threadContext: args.promptContext.text,
       }),
       teamsDelivery: delivery,
-      apiStartTime: args.apiStartTime,
       userInfoExtras: {
         teamsUserDisplayName: args.activity.sender.name ?? undefined,
         teamsUserPrincipalName:

@@ -298,7 +298,6 @@ async function persistCanonicalFeishuIngress(args: {
       version: 1,
       prompt: args.message.text,
       appendSystemPrompt: args.appendSystemPrompt,
-      apiStartTime: args.ingress.createdAt.getTime(),
       feishuDelivery: {
         installationId: args.message.installationId,
         connectionId: args.connection.id,

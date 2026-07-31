@@ -119,9 +119,10 @@ import {
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
 import {
   discardUnclaimedUserMessage,
-  encryptQueuedUserMessageRunParams,
+  loadNextUnclaimedQueuedUserMessage,
   loadNextUnclaimedQueuedUserMessageId,
   lockUserMessageQueueThread,
+  resolveAttachFileMetadata$,
 } from "../services/zero-chat-queued-event.service";
 import {
   appendChatThreadEvent,
@@ -661,7 +662,7 @@ function attachFileIds(
   return ids && ids.length > 0 ? ids : null;
 }
 
-const resolveAttachFileMetadata$ = command(
+const resolveIncomingAttachFileMetadata$ = command(
   async (
     { set },
     args: {
@@ -1593,7 +1594,6 @@ function appendUnassociatedUserMessage(params: {
   readonly touchThreadSort: boolean;
   readonly userMessage: UserMessageDocument;
   readonly generationTemplate: IncomingGenerationTemplate;
-  readonly encryptedParams: string | undefined;
   readonly revokesEventId: string | undefined;
 }): Promise<ClientEventIdResolution> {
   return params.db.transaction(async (tx) => {
@@ -1620,9 +1620,7 @@ function appendUnassociatedUserMessage(params: {
       userMessage: params.userMessage,
       runId: null,
       triggerSource: "web",
-      encryptedParams: params.encryptedParams,
       attachFiles: fileIds,
-      attachFileMetadata: fileMetadata,
       generationTemplate: params.generationTemplate,
     };
     const inserted = params.revokesEventId
@@ -2490,7 +2488,7 @@ const prepareNormalSend$ = command(
       return computerAccess;
     }
     const attachFileMetadata = await set(
-      resolveAttachFileMetadata$,
+      resolveIncomingAttachFileMetadata$,
       {
         userId: args.userId,
         attachFiles: runtimeBody.attachFiles,
@@ -2530,17 +2528,6 @@ async function queueUnassociatedNormalEvent(params: {
   /** Set when this call inserted a queue-first message. */
   readonly queuedEventId: string | undefined;
 }> {
-  const encryptedParams = params.body.realAgentInPreview
-    ? await encryptQueuedUserMessageRunParams(
-        {
-          version: 1,
-          prompt: params.prepared.body.agentPrompt,
-          appendSystemPrompt: buildWebChatPrompt(),
-          realAgentInPreview: true,
-        },
-        { orgId: params.orgId, userId: params.userId },
-      )
-    : undefined;
   const resolution = await appendUnassociatedUserMessage({
     db: params.prepared.db,
     threadId: params.prepared.thread.threadId,
@@ -2554,7 +2541,6 @@ async function queueUnassociatedNormalEvent(params: {
     touchThreadSort: params.touchThreadSort,
     userMessage: params.body.userMessage,
     generationTemplate: params.body.generationTemplate,
-    encryptedParams,
     revokesEventId: params.body.revokesEventId,
   });
   if (resolution.kind === "queued" && resolution.inserted) {
@@ -3038,6 +3024,7 @@ function codexServiceTierForRun(params: {
 function buildCreateZeroRunArgs(params: {
   readonly args: NormalSendArgs;
   readonly prepared: PreparedNormalSend;
+  readonly realAgentInPreviewEnabled: boolean;
 }) {
   const { args, prepared } = params;
   const { modelPin, providerAdmission, codexServiceTier } =
@@ -3080,7 +3067,7 @@ function buildCreateZeroRunArgs(params: {
       ...(providerAdmission.effectiveModelProvider
         ? { modelProvider: providerAdmission.effectiveModelProvider }
         : {}),
-      ...(args.body.realAgentInPreview ? { realAgentInPreview: true } : {}),
+      ...(params.realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
     },
     triggerSource: "web" as const,
     dispatchFailedCallbacks: dispatchFailedRunCallbacks,
@@ -3100,6 +3087,7 @@ function buildCreateZeroRunArgs(params: {
 async function buildTimedCreateZeroRunArgs(params: {
   readonly args: NormalSendArgs;
   readonly prepared: PreparedNormalSend;
+  readonly realAgentInPreviewEnabled: boolean;
 }): Promise<ReturnType<typeof buildCreateZeroRunArgs>> {
   return await measureApiDispatchTiming(
     params.args.timing,
@@ -3204,9 +3192,45 @@ const createNormalChatRun$ = command(
       });
     }
 
+    const queuedMessage = await loadNextUnclaimedQueuedUserMessage(
+      prepared.db,
+      prepared.thread.threadId,
+    );
+    signal.throwIfAborted();
+    if (!queuedMessage || queuedMessage.id !== params.queueFirstEventId) {
+      return await resolveQueueFirstEventAfterLostClaim({
+        db: prepared.db,
+        threadId: prepared.thread.threadId,
+        userId: args.userId,
+        eventId: params.queueFirstEventId,
+      });
+    }
+    const attachFileMetadata = queuedMessage.attachFileMetadata
+      ? [...queuedMessage.attachFileMetadata]
+      : await set(
+          resolveAttachFileMetadata$,
+          {
+            userId: args.userId,
+            attachFiles: queuedMessage.attachFiles,
+          },
+          signal,
+        );
+    signal.throwIfAborted();
+
+    const featureSwitchContext = await loadUserFeatureSwitchContext(
+      prepared.db,
+      args.orgId,
+      args.userId,
+    );
+    signal.throwIfAborted();
+
     const createRunArgs = await buildTimedCreateZeroRunArgs({
       args,
       prepared,
+      realAgentInPreviewEnabled: isFeatureEnabled(
+        FeatureSwitchKey.RealAgentInPreview,
+        featureSwitchContext,
+      ),
     });
     signal.throwIfAborted();
 
@@ -3223,10 +3247,14 @@ const createNormalChatRun$ = command(
       createQueueFirstZeroRun$,
       {
         ...createRunArgs,
+        apiStartTime: queuedMessage.createdAt.getTime(),
         queueFirstAssociation: {
           kind: "user_message",
           threadId: prepared.thread.threadId,
           eventId: queueFirstEventId,
+          orgId: args.orgId,
+          userId: args.userId,
+          attachFileMetadata,
         },
       },
       signal,
