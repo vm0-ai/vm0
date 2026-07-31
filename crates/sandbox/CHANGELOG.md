@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.33](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.32...sandbox-v0.19.33) (2026-07-31)
+
+
+### Documentation
+
+* **sandbox:** clarify workspace seed ownership ([#24210](https://github.com/vm0-ai/vm0/issues/24210)) ([0c38adc](https://github.com/vm0-ai/vm0/commit/0c38adc08bbedcb7e18bb93f061df83446971b17))
+
 ## [0.19.32](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.31...sandbox-v0.19.32) (2026-07-27)
 
 

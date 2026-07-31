@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.359.0](https://github.com/vm0-ai/vm0/compare/api-v1.358.1...api-v1.359.0) (2026-07-31)
+
+
+### Features
+
+* **platform:** enable multilingual locale rollout ([#24189](https://github.com/vm0-ai/vm0/issues/24189)) ([618bf9b](https://github.com/vm0-ai/vm0/commit/618bf9b4e379a8f3678314185b041faafdf07580))
+
+
+### Refactoring
+
+* **api:** remove legacy github callback field ([#24199](https://github.com/vm0-ai/vm0/issues/24199)) ([f7133ea](https://github.com/vm0-ai/vm0/commit/f7133ea133817d6ccb9b91dbee31c3c5366a29fa))
+
+
+### Performance Improvements
+
+* **api:** clean up applied model usage observations ([#24196](https://github.com/vm0-ai/vm0/issues/24196)) ([0586cb2](https://github.com/vm0-ai/vm0/commit/0586cb2f3f2cb44f9d3048d2b664074550909cc1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.258.1
+    * @vm0/core bumped to 8.497.0
+    * @vm0/db bumped to 1.158.3
+
 ## [1.358.1](https://github.com/vm0-ai/vm0/compare/api-v1.358.0...api-v1.358.1) (2026-07-31)
 
 
