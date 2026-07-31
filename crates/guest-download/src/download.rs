@@ -2,9 +2,7 @@ use crate::LOG_TAG;
 use crate::archive;
 use crate::error::DownloadError;
 use crate::source;
-use crate::telemetry::{
-    DownloadIdentity, DownloadRunTelemetry, DownloadTaskTelemetry, RemoteArchiveTaskMetrics,
-};
+use crate::telemetry::{DownloadRunTelemetry, DownloadTaskTelemetry, RemoteArchiveTaskMetrics};
 use guest_common::{log_error, log_info, log_warn};
 use std::any::Any;
 use std::collections::VecDeque;
@@ -69,26 +67,23 @@ impl DownloadTask {
 }
 
 struct PendingDownload {
-    identity: DownloadIdentity,
+    id: usize,
     task: DownloadTask,
 }
 
 impl PendingDownload {
-    fn new(sequence: usize, task: DownloadTask) -> Self {
-        Self {
-            identity: task.telemetry.identity(sequence),
-            task,
-        }
+    fn new(id: usize, task: DownloadTask) -> Self {
+        Self { id, task }
     }
 }
 
 struct ActiveDownload {
-    identity: DownloadIdentity,
+    id: usize,
     mount_path: PathBuf,
 }
 
 struct DownloadCompletion {
-    identity: DownloadIdentity,
+    id: usize,
     outcome: DownloadOutcome,
 }
 
@@ -139,7 +134,9 @@ fn download_all_parallel_with_runner(tasks: Vec<DownloadTask>, task_runner: Task
             &mut active,
             &completion_tx,
             task_runner,
-            &mut telemetry,
+            &mut |pending_id, pending_path, active_id, active_path| {
+                telemetry.record_conflict(pending_id, pending_path, active_id, active_path);
+            },
         );
 
         while !active.is_empty() {
@@ -151,7 +148,7 @@ fn download_all_parallel_with_runner(tasks: Vec<DownloadTask>, task_runner: Task
                 }
             };
 
-            active.retain(|download| download.identity != completion.identity);
+            active.retain(|download| download.id != completion.id);
 
             match completion.outcome {
                 DownloadOutcome::Finished(success) => {
@@ -171,7 +168,9 @@ fn download_all_parallel_with_runner(tasks: Vec<DownloadTask>, task_runner: Task
                 &mut active,
                 &completion_tx,
                 task_runner,
-                &mut telemetry,
+                &mut |pending_id, pending_path, active_id, active_path| {
+                    telemetry.record_conflict(pending_id, pending_path, active_id, active_path);
+                },
             );
         }
 
@@ -187,21 +186,19 @@ fn start_ready_downloads<'scope, 'env: 'scope>(
     active: &mut Vec<ActiveDownload>,
     completion_tx: &mpsc::Sender<DownloadCompletion>,
     task_runner: TaskRunner,
-    telemetry: &mut DownloadRunTelemetry,
+    on_conflict: &mut impl FnMut(usize, &Path, usize, &Path),
 ) {
     while active.len() < MAX_CONCURRENT {
-        let Some((index, mount_path)) = find_startable_download(pending, active, telemetry) else {
+        let Some((index, mount_path)) = find_startable_download(pending, active, on_conflict)
+        else {
             break;
         };
         let Some(download) = pending.remove(index) else {
             log_error!(LOG_TAG, "Download scheduler selected a missing task");
             break;
         };
-        let identity = download.identity;
-        active.push(ActiveDownload {
-            identity,
-            mount_path,
-        });
+        let id = download.id;
+        active.push(ActiveDownload { id, mount_path });
 
         let completion_tx = completion_tx.clone();
         scope.spawn(move || {
@@ -209,7 +206,7 @@ fn start_ready_downloads<'scope, 'env: 'scope>(
                 .map(DownloadOutcome::Finished)
                 .unwrap_or_else(|e| DownloadOutcome::Panicked(panic_message(e.as_ref())));
 
-            let _ = completion_tx.send(DownloadCompletion { identity, outcome });
+            let _ = completion_tx.send(DownloadCompletion { id, outcome });
         });
     }
 }
@@ -217,7 +214,7 @@ fn start_ready_downloads<'scope, 'env: 'scope>(
 fn find_startable_download(
     pending: &VecDeque<PendingDownload>,
     active: &[ActiveDownload],
-    telemetry: &mut DownloadRunTelemetry,
+    on_conflict: &mut impl FnMut(usize, &Path, usize, &Path),
 ) -> Option<(usize, PathBuf)> {
     // Scan the pending queue instead of using strict FIFO so an active
     // parent/child mount-path conflict does not leave a slot idle when a later
@@ -225,16 +222,11 @@ fn find_startable_download(
     for (index, download) in pending.iter().enumerate() {
         let mount_path = &download.task.normalized_mount_path;
 
-        if let Some(active_download) = active
+        if let Some(blocking) = active
             .iter()
             .find(|active_download| mount_paths_conflict(mount_path, &active_download.mount_path))
         {
-            telemetry.record_conflict(
-                download.identity,
-                mount_path,
-                active_download.identity,
-                &active_download.mount_path,
-            );
+            on_conflict(download.id, mount_path, blocking.id, &blocking.mount_path);
             continue;
         }
 
@@ -385,30 +377,6 @@ fn download_and_extract(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
-    use std::sync::{Mutex, MutexGuard};
-
-    static SANDBOX_OP_TEST_LOCK: Mutex<()> = Mutex::new(());
-
-    struct SandboxOpsLogGuard {
-        _lock: MutexGuard<'static, ()>,
-    }
-
-    impl SandboxOpsLogGuard {
-        fn set(path: impl AsRef<Path>) -> Self {
-            let lock = SANDBOX_OP_TEST_LOCK
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            guest_common::telemetry::set_sandbox_ops_log_file(path);
-            Self { _lock: lock }
-        }
-    }
-
-    impl Drop for SandboxOpsLogGuard {
-        fn drop(&mut self) {
-            guest_common::telemetry::clear_sandbox_ops_log_file();
-        }
-    }
 
     fn task_at(path: &str) -> DownloadTask {
         DownloadTask::storage(
@@ -419,13 +387,8 @@ mod tests {
         )
     }
 
-    fn instruction_task_at(path: &str) -> DownloadTask {
-        DownloadTask::storage(
-            format!("task {path}"),
-            "file:///tmp/archive.tar.gz".to_owned(),
-            path.to_owned(),
-            true,
-        )
+    fn pending_at(id: usize, path: &str) -> PendingDownload {
+        PendingDownload::new(id, task_at(path))
     }
 
     #[test]
@@ -503,82 +466,50 @@ mod tests {
     }
 
     #[test]
-    fn find_startable_download_skips_conflicts_for_later_independent_tasks() {
-        let tasks = vec![
-            task_at("/tmp/mount"),
-            DownloadTask::storage(
-                "blocked child".to_owned(),
-                "file:///tmp/archive.tar.gz".to_owned(),
-                "/tmp/mount/child".to_owned(),
-                false,
-            ),
-            DownloadTask::artifact(
-                "independent".to_owned(),
-                "https://example.com/archive.tar.gz".to_owned(),
-                "/tmp/other".to_owned(),
-            ),
-        ];
-        let mut telemetry = DownloadRunTelemetry::start(
-            tasks
-                .iter()
-                .map(|task| (task.telemetry, task.normalized_mount_path.as_path())),
-        );
-        let mut tasks = tasks.into_iter();
-        let active_task = tasks.next().expect("active task");
+    fn find_startable_download_observes_conflict_and_selects_later_task() {
+        let pending = VecDeque::from([
+            pending_at(3, "/tmp/mount/child"),
+            pending_at(4, "/tmp/other"),
+        ]);
         let active = vec![ActiveDownload {
-            identity: active_task.telemetry.identity(0),
-            mount_path: active_task.normalized_mount_path,
+            id: 2,
+            mount_path: normalize_mount_path("/tmp/mount"),
         }];
-        let pending = tasks
-            .enumerate()
-            .map(|(index, task)| PendingDownload::new(index + 1, task))
-            .collect();
+        let mut conflicts = Vec::new();
 
-        let startable = find_startable_download(&pending, &active, &mut telemetry);
+        let selected =
+            find_startable_download(&pending, &active, &mut |pending_id, _, active_id, _| {
+                conflicts.push((pending_id, active_id));
+            });
 
-        assert_eq!(startable.map(|(index, _)| index), Some(1));
+        assert_eq!(conflicts, [(3, 2)]);
+        assert_eq!(selected.map(|(index, _)| index), Some(1));
     }
 
     #[test]
-    fn download_all_parallel_records_conflict_shape_actions() {
-        let dir = tempfile::tempdir().unwrap();
-        let ops_path = dir.path().join("sandbox-ops.jsonl");
-        let _ops_guard = SandboxOpsLogGuard::set(&ops_path);
+    fn find_startable_download_reports_first_active_conflict_on_each_scan() {
+        let pending = VecDeque::from([pending_at(4, "/tmp/mount/child")]);
+        let active = vec![
+            ActiveDownload {
+                id: 2,
+                mount_path: normalize_mount_path("/tmp/mount"),
+            },
+            ActiveDownload {
+                id: 3,
+                mount_path: normalize_mount_path("/tmp/mount/child"),
+            },
+        ];
+        let mut conflicts = Vec::new();
 
-        fn runner(_task: DownloadTask) -> bool {
-            true
+        for _ in 0..2 {
+            let selected =
+                find_startable_download(&pending, &active, &mut |pending_id, _, active_id, _| {
+                    conflicts.push((pending_id, active_id));
+                });
+            assert_eq!(selected, None);
         }
 
-        let success = download_all_parallel_with_runner(
-            vec![
-                instruction_task_at("/home/user/.codex"),
-                task_at("/home/user/.codex/skills/workflow"),
-            ],
-            runner,
-        );
-
-        assert!(success);
-        let ops = std::fs::read_to_string(&ops_path).unwrap();
-        assert!(ops.contains(r#""action_type":"guest_download_task_count_2""#));
-        assert!(ops.contains(r#""action_type":"guest_download_skill_child_task_count_1""#));
-        assert!(ops.contains(
-            r#""action_type":"guest_download_framework_home_instructions_task_present""#
-        ));
-        assert!(
-            ops.contains(
-                r#""action_type":"guest_download_potential_parent_child_overlap_count_1""#
-            )
-        );
-        assert!(ops.contains(r#""action_type":"guest_download_mount_conflict_deferral_count_1""#));
-        assert!(ops.contains(
-            r#""action_type":"guest_download_instructions_skill_conflict_deferral_count_1""#
-        ));
-        assert!(
-            ops.contains(r#""action_type":"guest_download_exact_path_conflict_deferral_count_0""#)
-        );
-        assert!(ops.contains(
-            r#""action_type":"guest_download_other_parent_child_conflict_deferral_count_0""#
-        ));
+        assert_eq!(conflicts, [(4, 2), (4, 2)]);
     }
 
     #[test]
