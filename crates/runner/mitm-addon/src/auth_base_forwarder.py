@@ -36,6 +36,7 @@ from authority_utils import (
 )
 from host_normalization import normalize_idna_hostname
 from http_header_syntax import has_forbidden_header_value_control, is_http_header_name
+from runtime_url_parsing import split_runtime_url
 
 HOP_BY_HOP: frozenset[str] = frozenset(
     (
@@ -882,7 +883,7 @@ async def _resolve_validated_addresses(
 
 
 def _prepare_forward_request(url: str) -> _PreparedForwardRequest:
-    parsed = urllib.parse.urlsplit(url)
+    parsed = split_runtime_url(url)
     _connection_factory(parsed.scheme.lower())
     _reject_userinfo(parsed)
     host = _normalized_forward_request_host(parsed)

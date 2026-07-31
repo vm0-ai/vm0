@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from http_header_syntax import has_forbidden_header_value_control, is_http_header_name
+from runtime_url_parsing import split_runtime_url
 
 _AWS4_REQUEST = "aws4_request"
 _HMAC_ALGORITHM = "AWS4-HMAC-SHA256"
@@ -219,7 +220,7 @@ def _parse_url_for_signing(url: str) -> _SigningUrl:
     if _has_malformed_percent_encoding(url):
         raise AwsSigV4SigningError("AWS request URL is malformed")
     try:
-        parts = urllib.parse.urlsplit(url)
+        parts = split_runtime_url(url)
     except ValueError as e:
         raise AwsSigV4SigningError("AWS request URL is malformed") from e
     return _SigningUrl(

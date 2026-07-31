@@ -1,6 +1,7 @@
 """Response hook integration tests for network and proxy logging."""
 
 import time
+import urllib.parse
 from pathlib import Path
 
 import pytest
@@ -279,6 +280,38 @@ def test_network_log_target_url_strips_query_and_fragment(
     assert entry["url"] == expected_url
     assert flow.metadata[metadata_keys.ORIGINAL_URL] == raw_url
     assert flow.metadata[metadata_keys.NETWORK_LOG_TARGET]["url"] == raw_url
+
+
+def test_network_log_does_not_cache_runtime_url(tmp_path, real_flow, mitm_ctx):
+    raw_url = f"https://target.example.com/path?payload={'x' * 200_000}#fragment"
+    flow = real_flow(with_response=False, host="target.example.com")
+    log_path = str(tmp_path / "network.jsonl")
+    flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
+    flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+    flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
+    http_network_log.set_target(
+        flow,
+        url=raw_url,
+        host="target.example.com",
+        port=443,
+    )
+    flow.response = tutils.tresp(status_code=200, headers=header_map({"content-length": "0"}))
+
+    urllib.parse.urlsplit.cache_clear()
+    try:
+        urllib.parse.urlsplit("https://stable-config.example.com")
+        stable_cache = urllib.parse.urlsplit.cache_info()
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        assert urllib.parse.urlsplit.cache_info() == stable_cache
+    finally:
+        urllib.parse.urlsplit.cache_clear()
+
+    [entry] = read_jsonl_entries_after_flush(Path(log_path))
+    assert entry["url"] == "https://target.example.com/path"
 
 
 @pytest.mark.parametrize(

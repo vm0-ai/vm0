@@ -54,6 +54,7 @@ from firewall_auth_config import (
     auth_config_injects_ordinary_upstream_credentials,
 )
 from logging_utils import log_proxy_entry
+from runtime_url_parsing import split_runtime_url
 from url_syntax import has_unsafe_runtime_url_syntax
 from url_utils import build_rewrite_url
 
@@ -398,14 +399,14 @@ def _trusted_aws_sigv4_url(flow: http.HTTPFlow) -> str:
         raise AwsSigV4SigningError("AWS request URL is malformed")
 
     try:
-        original = urllib.parse.urlsplit(url)
+        original = split_runtime_url(url)
     except ValueError as e:
         raise AwsSigV4SigningError("AWS request URL is malformed") from e
 
     if has_unsafe_runtime_url_syntax(flow.request.path, allow_backslash=True):
         raise AwsSigV4SigningError("AWS request URL is malformed")
     try:
-        current_query = urllib.parse.urlsplit(flow.request.path).query
+        current_query = split_runtime_url(flow.request.path).query
     except ValueError as e:
         raise AwsSigV4SigningError("AWS request URL is malformed") from e
     if current_query == original.query:

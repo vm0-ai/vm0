@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
+import runtime_url_parsing
 from aws_sigv4 import (
     AwsSigV4Credentials,
     AwsSigV4SigningError,
@@ -279,8 +280,12 @@ def test_sign_request_splits_input_url_once(
     url: str,
     headers: list[tuple[str, str]],
 ) -> None:
-    real_urlsplit = urllib.parse.urlsplit
-    with patch.object(urllib.parse, "urlsplit", wraps=real_urlsplit) as urlsplit:
+    real_urlsplit = runtime_url_parsing._uncached_urlsplit
+    with patch.object(
+        runtime_url_parsing,
+        "_uncached_urlsplit",
+        wraps=real_urlsplit,
+    ) as urlsplit:
         sign_request(
             method="GET",
             url=url,
