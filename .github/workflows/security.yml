@@ -234,6 +234,7 @@ jobs:
             .github/scripts/tests/cloudflare-ssh-command-test.sh \
             .github/scripts/tests/cloudflare-ssh-preconnect-test.sh \
             .github/scripts/tests/cloudflare-ssh-proxy-test.sh \
+            .github/scripts/tests/runner-promotion-ansible-test.sh \
             .github/scripts/tests/run-semgrep-test.sh \
             .github/scripts/tests/semgrep-results-test.sh \
             .github/scripts/tests/runner-behavior-balloon-test.sh \
