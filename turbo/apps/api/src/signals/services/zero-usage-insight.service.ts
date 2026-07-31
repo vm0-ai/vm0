@@ -44,14 +44,9 @@ import {
   type FinalizedUsageRelation,
 } from "./finalized-usage-relation";
 import { normalizeFinalizedUsagePeriod } from "./finalized-usage-time";
+import { MODEL_TOKEN_CATEGORIES } from "./model-token-categories";
 
 const MODEL_USAGE_KIND = "model";
-const MODEL_TOKEN_CATEGORIES = [
-  "tokens.input",
-  "tokens.output",
-  "tokens.cache_read",
-  "tokens.cache_creation",
-] as const;
 const CHANNEL_SOURCES = ["email", "slack"] as const;
 const channelSourceDecoder = zodEnumDriverValueDecoder(z.enum(CHANNEL_SOURCES));
 

@@ -45,7 +45,20 @@ const GOOGLE_GEOCODING_URL =
 const MODEL_TOKEN_CATEGORIES = {
   input: "tokens.input",
   output: "tokens.output",
+  inputLongContext: "tokens.input.long_context",
+  outputLongContext: "tokens.output.long_context",
+  cacheReadLongContext: "tokens.cache_read.long_context",
+  cacheCreationLongContext: "tokens.cache_creation.long_context",
 } as const;
+
+interface ModelTokenCounts {
+  readonly input?: number;
+  readonly output?: number;
+  readonly inputLongContext?: number;
+  readonly outputLongContext?: number;
+  readonly cacheReadLongContext?: number;
+  readonly cacheCreationLongContext?: number;
+}
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
@@ -255,12 +268,10 @@ async function recordModelUsage(
   actor: ApiTestUser,
   runId: string,
   model: string,
-  tokens: { readonly input?: number; readonly output?: number },
+  tokens: ModelTokenCounts,
 ): Promise<void> {
   const events = (
-    Object.keys(
-      MODEL_TOKEN_CATEGORIES,
-    ) as (keyof typeof MODEL_TOKEN_CATEGORIES)[]
+    Object.keys(MODEL_TOKEN_CATEGORIES) as (keyof ModelTokenCounts)[]
   ).flatMap((key) => {
     const quantity = tokens[key];
     if (!quantity) {
@@ -734,8 +745,10 @@ describe("GET /api/zero/usage/record", () => {
       createdAt: createdAt(10),
     });
     await recordModelUsage(fixture.actor, webhookRun.runId, model, {
-      input: 25,
-      output: 5,
+      inputLongContext: 25,
+      outputLongContext: 5,
+      cacheReadLongContext: 7,
+      cacheCreationLongContext: 3,
     });
 
     await billing.processOrgUsageEvents(fixture.actor);
@@ -756,8 +769,8 @@ describe("GET /api/zero/usage/record", () => {
       threadId: null,
       runId: webhookRun.runId,
       title: "Webhook triggered run",
-      credits: 30,
-      tokens: 30,
+      credits: 40,
+      tokens: 40,
     });
   });
 

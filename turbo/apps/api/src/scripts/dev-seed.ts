@@ -117,12 +117,41 @@ const GPT_5_6_SOL_PRICING: readonly UsagePricingRow[] = [
   ["tokens.output", usd(30), 1_000_000],
 ];
 
-const GPT_5_6_LUNA_PRICING: readonly UsagePricingRow[] = [
-  ["tokens.input", usd(1), 1_000_000],
-  ["tokens.cache_read", usd(0.1), 1_000_000],
-  ["tokens.cache_creation", usd(1.25), 1_000_000],
-  ["tokens.output", usd(6), 1_000_000],
+const GPT_5_6_TERRA_PRICING: readonly UsagePricingRow[] = [
+  ["tokens.input", usd(2), 1_000_000],
+  ["tokens.cache_read", usd(0.2), 1_000_000],
+  ["tokens.cache_creation", usd(2.5), 1_000_000],
+  ["tokens.output", usd(12), 1_000_000],
 ];
+
+const GPT_5_6_LUNA_PRICING: readonly UsagePricingRow[] = [
+  ["tokens.input", usd(0.2), 1_000_000],
+  ["tokens.cache_read", usd(0.02), 1_000_000],
+  ["tokens.cache_creation", usd(0.25), 1_000_000],
+  ["tokens.output", usd(1.2), 1_000_000],
+];
+
+const GPT_5_5_PRICING: readonly UsagePricingRow[] = [
+  ["tokens.input", usd(5), 1_000_000],
+  ["tokens.cache_read", usd(0.5), 1_000_000],
+  ["tokens.output", usd(30), 1_000_000],
+];
+
+function withOpenAiLongContextPricing(
+  rows: readonly UsagePricingRow[],
+): readonly UsagePricingRow[] {
+  return [
+    ...rows,
+    ...rows.map(([category, unitPrice, unitSize]) => {
+      const multiplier = category === "tokens.output" ? 1.5 : 2;
+      return [
+        `${category}.long_context`,
+        unitPrice * multiplier,
+        unitSize,
+      ] as const;
+    }),
+  ];
+}
 
 function buildSeedSkillValues(
   names: readonly string[],
@@ -403,24 +432,28 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.cache_read", usd(0.145), 1_000_000],
     ["tokens.cache_creation", 0, 1_000_000],
   ]),
-  // OpenAI API pricing retrieved 2026-05-06 from:
-  // https://openai.com/api/pricing/
+  // OpenAI API pricing retrieved 2026-07-31 from:
   // https://developers.openai.com/api/docs/pricing
-  // GPT-5.6 preview pricing retrieved 2026-07-09 from:
-  // https://openai.com/index/previewing-gpt-5-6-sol/
-  ...usageGroup("model", "gpt-5.6-sol", GPT_5_6_SOL_PRICING),
-  ...usageGroup("model", "gpt-5.6-terra", [
-    ["tokens.input", usd(2.5), 1_000_000],
-    ["tokens.cache_read", usd(0.25), 1_000_000],
-    ["tokens.cache_creation", usd(3.125), 1_000_000],
-    ["tokens.output", usd(15), 1_000_000],
-  ]),
-  ...usageGroup("model", "gpt-5.6-luna", GPT_5_6_LUNA_PRICING),
-  ...usageGroup("model", "gpt-5.5", [
-    ["tokens.input", usd(5), 1_000_000],
-    ["tokens.cache_read", usd(0.5), 1_000_000],
-    ["tokens.output", usd(30), 1_000_000],
-  ]),
+  ...usageGroup(
+    "model",
+    "gpt-5.6-sol",
+    withOpenAiLongContextPricing(GPT_5_6_SOL_PRICING),
+  ),
+  ...usageGroup(
+    "model",
+    "gpt-5.6-terra",
+    withOpenAiLongContextPricing(GPT_5_6_TERRA_PRICING),
+  ),
+  ...usageGroup(
+    "model",
+    "gpt-5.6-luna",
+    withOpenAiLongContextPricing(GPT_5_6_LUNA_PRICING),
+  ),
+  ...usageGroup(
+    "model",
+    "gpt-5.5",
+    withOpenAiLongContextPricing(GPT_5_5_PRICING),
+  ),
   // OpenRouter-backed edit helpers. Pricing retrieved 2026-07-10 from:
   // https://developers.openai.com/api/docs/models/gpt-4.1-mini
   // https://ai.google.dev/gemini-api/docs/pricing

@@ -638,12 +638,27 @@ describe("GET /api/zero/usage/insight", () => {
     await reportRunUsage(actor, runId, [
       { kind: "model", category: "tokens.input", quantity: 100, credits: 10 },
       { kind: "model", category: "tokens.output", quantity: 50, credits: 0 },
-      { kind: "model", category: "tokens.input", quantity: 30, credits: 3 },
-      { kind: "model", category: "tokens.output", quantity: 20, credits: 2 },
-      { kind: "model", category: "tokens.cache_read", quantity: 5, credits: 1 },
       {
         kind: "model",
-        category: "tokens.cache_creation",
+        category: "tokens.input.long_context",
+        quantity: 30,
+        credits: 3,
+      },
+      {
+        kind: "model",
+        category: "tokens.output.long_context",
+        quantity: 20,
+        credits: 2,
+      },
+      {
+        kind: "model",
+        category: "tokens.cache_read.long_context",
+        quantity: 5,
+        credits: 1,
+      },
+      {
+        kind: "model",
+        category: "tokens.cache_creation.long_context",
         quantity: 10,
         credits: 4,
       },

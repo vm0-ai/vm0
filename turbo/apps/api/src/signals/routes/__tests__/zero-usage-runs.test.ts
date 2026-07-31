@@ -35,6 +35,10 @@ const MODEL_TOKEN_CATEGORIES = {
   output: "tokens.output",
   cacheRead: "tokens.cache_read",
   cacheCreation: "tokens.cache_creation",
+  inputLongContext: "tokens.input.long_context",
+  outputLongContext: "tokens.output.long_context",
+  cacheReadLongContext: "tokens.cache_read.long_context",
+  cacheCreationLongContext: "tokens.cache_creation.long_context",
 } as const;
 
 interface ModelTokenCounts {
@@ -42,6 +46,10 @@ interface ModelTokenCounts {
   readonly output?: number;
   readonly cacheRead?: number;
   readonly cacheCreation?: number;
+  readonly inputLongContext?: number;
+  readonly outputLongContext?: number;
+  readonly cacheReadLongContext?: number;
+  readonly cacheCreationLongContext?: number;
 }
 
 function authHeaders() {
@@ -329,8 +337,10 @@ describe("GET /api/zero/usage/runs", () => {
       createdAt: createdAt(1),
     });
     await recordModelUsage(actor, included.runId, model, {
-      input: 123,
-      output: 45,
+      inputLongContext: 123,
+      outputLongContext: 45,
+      cacheReadLongContext: 11,
+      cacheCreationLongContext: 7,
     });
     await recordModelUsage(actor, excluded.runId, model, {
       input: 999,
@@ -360,7 +370,8 @@ describe("GET /api/zero/usage/runs", () => {
       model,
       inputTokens: 123,
       outputTokens: 45,
-      creditsCharged: 168,
+      cacheTokens: 18,
+      creditsCharged: 186,
     });
   });
 
@@ -523,7 +534,9 @@ describe("GET /api/zero/usage/runs", () => {
     await seedModelPricing(model);
     for (const member of members) {
       const run = await createBillableRun(member);
-      await recordModelUsage(member, run.runId, model, { output: 10 });
+      await recordModelUsage(member, run.runId, model, {
+        outputLongContext: 10,
+      });
     }
     await billing.processOrgUsageEvents(actor);
     mockClerkUserLookup();
@@ -533,16 +546,22 @@ describe("GET /api/zero/usage/runs", () => {
       tz: "UTC",
     });
 
-    expect(
-      response.body.members.map((member) => {
-        return member.userId;
-      }),
-    ).toStrictEqual(
+    expect(response.body.members).toStrictEqual(
       members
         .map((member) => {
           return member.userId;
         })
-        .sort(),
+        .sort()
+        .map((userId) => {
+          return expect.objectContaining({
+            userId,
+            inputTokens: 0,
+            outputTokens: 10,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
+            creditsCharged: 10,
+          });
+        }),
     );
   });
 

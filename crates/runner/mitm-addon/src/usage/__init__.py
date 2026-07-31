@@ -72,6 +72,7 @@ from .providers.connectors import (
 from .providers.model_provider import (
     has_positive_model_provider_usage,
     is_model_provider_usage_observable,
+    release_model_provider_usage_tiers,
     report_model_provider_usage,
     report_model_provider_usage_observation,
     report_model_provider_usage_source,
@@ -107,6 +108,7 @@ __all__ = [
     "merge_openai_responses_usage_result",
     "needs_connector_response_buffer_fallback",
     "read_usage_flush_request_id",
+    "release_model_provider_usage_tiers",
     "report_connector_usage",
     "report_model_provider_usage",
     "report_model_provider_usage_observation",
