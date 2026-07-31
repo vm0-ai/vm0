@@ -131,7 +131,7 @@ const unifiedRunRequestSchema = z
     // Settings JSON to pass to Claude CLI (passed as --settings)
     settings: z.string().optional(),
 
-    // How the run was triggered (defaults to "cli" on the server if not provided)
+    // How the run was triggered (defaults to "web" on the server if not provided)
     triggerSource: triggerSourceSchema.optional(),
 
     // Per-permission policies (e.g., { "github": { "actions:read": "allow" } })

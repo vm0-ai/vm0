@@ -65,11 +65,6 @@ export function getTriggerSourceLabel(
         return $.activity.sources.github;
       });
     }
-    case "cli": {
-      return i18n.t(($) => {
-        return $.activity.sources.cli;
-      });
-    }
     case "test": {
       return i18n.t(($) => {
         return $.activity.sources.test;

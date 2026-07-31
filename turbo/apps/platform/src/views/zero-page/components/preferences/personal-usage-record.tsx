@@ -10,7 +10,6 @@ import {
   IconMessageCircle,
   IconPhone,
   IconRobot,
-  IconTerminal2,
 } from "@tabler/icons-react";
 import type { OrgMember } from "@vm0/api-contracts/contracts/org-members";
 import type {
@@ -64,7 +63,6 @@ const SOURCE_ICONS = {
   email: IconMail,
   agentphone: IconPhone,
   github: IconBrandGithub,
-  cli: IconTerminal2,
   agent: IconRobot,
   other: IconRobot,
 } as const satisfies Record<UsageRecordSource, typeof IconMessageCircle>;
@@ -206,11 +204,6 @@ function sourceLabel(source: UsageRecordSource): string {
     case "github": {
       return i18n.t(($) => {
         return $.usage.sources.github;
-      });
-    }
-    case "cli": {
-      return i18n.t(($) => {
-        return $.usage.sources.cli;
       });
     }
     case "agent": {
