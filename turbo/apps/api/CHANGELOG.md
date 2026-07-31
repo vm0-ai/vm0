@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.359.3](https://github.com/vm0-ai/vm0/compare/api-v1.359.2...api-v1.359.3) (2026-07-31)
+
+
+### Refactoring
+
+* **connectors:** use slug catalog compatibility evaluations ([#24267](https://github.com/vm0-ai/vm0/issues/24267)) ([277f082](https://github.com/vm0-ai/vm0/commit/277f082819f55313babb9271ddb14911e33ef1af))
+
+
+### Performance Improvements
+
+* **api:** shorten organization admission lock ([#24265](https://github.com/vm0-ai/vm0/issues/24265)) ([248d19e](https://github.com/vm0-ai/vm0/commit/248d19ede1b320c5415eb9effad1e4453ce6841a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.258.4
+    * @vm0/core bumped to 8.497.3
+    * @vm0/db bumped to 1.158.6
+
 ## [1.359.2](https://github.com/vm0-ai/vm0/compare/api-v1.359.1...api-v1.359.2) (2026-07-31)
 
 
