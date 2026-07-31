@@ -11,7 +11,7 @@ import { setLogErrorHandler } from "./signals/log.ts";
 import { detach, Reason } from "./signals/utils.ts";
 import { setupRouter } from "./views/main.tsx";
 
-// (no-op Platform release marker refreshed again on 2026-07-28)
+// (no-op Platform release marker refreshed again on 2026-07-31)
 
 // Initialize Sentry before bootstrap so errors during startup are captured
 initSentry();
