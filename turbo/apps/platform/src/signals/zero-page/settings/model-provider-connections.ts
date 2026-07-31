@@ -17,7 +17,7 @@ import {
   updateModelProviderConnection$,
 } from "../../external/model-provider-connections.ts";
 import { featureSwitch$ } from "../../external/feature-switch.ts";
-import { jsonParseOr } from "../../utils.ts";
+import { jsonParseOr, resetSignal } from "../../utils.ts";
 
 export type ModelProviderConnectionTemplate =
   | "custom"
@@ -149,10 +149,18 @@ function templateDraft(
   };
 }
 
-const internalConnectionDraft$ = state<ConnectionDraft>({
-  ...templateDraft("custom"),
-  open: false,
-});
+function closedDraft(): ConnectionDraft {
+  return {
+    ...templateDraft("custom"),
+    open: false,
+  };
+}
+
+const internalConnectionDraft$ = state<ConnectionDraft>(closedDraft());
+const internalConnectionDialogSignal$ = state<AbortSignal | null>(null);
+const resetConnectionDialogSignal$ = resetSignal();
+
+export { internalConnectionDialogSignal$ as modelProviderConnectionDialogSignal$ };
 
 const internalPendingDeleteConnection$ =
   state<ModelProviderConnectionResponse | null>(null);
@@ -165,14 +173,43 @@ export const pendingDeleteModelProviderConnection$ = computed((get) => {
   return get(internalPendingDeleteConnection$);
 });
 
+const resetConnectionDialogState$ = command(({ set }) => {
+  set(internalConnectionDialogSignal$, null);
+  set(internalConnectionDraft$, closedDraft());
+});
+
+const openConnectionDialog$ = command(
+  ({ set }, draft: ConnectionDraft, settingsDialogSignal: AbortSignal) => {
+    settingsDialogSignal.throwIfAborted();
+    const signal = set(resetConnectionDialogSignal$, settingsDialogSignal);
+    signal.addEventListener(
+      "abort",
+      () => {
+        set(resetConnectionDialogState$);
+      },
+      { once: true },
+    );
+    set(internalConnectionDialogSignal$, signal);
+    set(internalConnectionDraft$, draft);
+  },
+);
+
 export const openCreateModelProviderConnection$ = command(
-  ({ set }, template: ModelProviderConnectionTemplate) => {
-    set(internalConnectionDraft$, templateDraft(template));
+  (
+    { set },
+    template: ModelProviderConnectionTemplate,
+    settingsDialogSignal: AbortSignal,
+  ) => {
+    set(openConnectionDialog$, templateDraft(template), settingsDialogSignal);
   },
 );
 
 export const openEditModelProviderConnection$ = command(
-  ({ set }, connection: ModelProviderConnectionResponse) => {
+  (
+    { set },
+    connection: ModelProviderConnectionResponse,
+    settingsDialogSignal: AbortSignal,
+  ) => {
     const surface = (protocol: ModelProviderSurfaceProtocol): SurfaceDraft => {
       const current = connection.surfaces.find((candidate) => {
         return candidate.protocol === protocol;
@@ -187,23 +224,24 @@ export const openEditModelProviderConnection$ = command(
           }
         : emptySurface();
     };
-    set(internalConnectionDraft$, {
-      open: true,
-      editingId: connection.id,
-      displayName: connection.displayName,
-      secret: "",
-      messages: surface("anthropic-messages"),
-      responses: surface("openai-responses"),
-      error: null,
-    });
+    set(
+      openConnectionDialog$,
+      {
+        open: true,
+        editingId: connection.id,
+        displayName: connection.displayName,
+        secret: "",
+        messages: surface("anthropic-messages"),
+        responses: surface("openai-responses"),
+        error: null,
+      },
+      settingsDialogSignal,
+    );
   },
 );
 
 export const closeModelProviderConnection$ = command(({ set }) => {
-  set(internalConnectionDraft$, {
-    ...templateDraft("custom"),
-    open: false,
-  });
+  set(resetConnectionDialogSignal$);
 });
 
 export const openDeleteModelProviderConnection$ = command(
