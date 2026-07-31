@@ -32,10 +32,10 @@ interface ConstraintInfo {
   constraint_def: string;
 }
 
-// Browser billing is in the first half of a two-release column contraction:
-// current code no longer declares these columns, but the physical columns must
-// remain until the previous API version drains. Remove this allowlist together
-// with the physical columns in the follow-up contraction migration.
+// Managed-browser billing is in the declaration-first half of a two-release
+// contraction. The replacement API omits these fields, while the physical
+// objects remain for the preceding API and rollback window. Remove this
+// allowlist with the physical objects in the follow-up contraction.
 const TRANSITIONAL_BROWSER_BILLING_COLUMNS = new Set([
   "browser_sessions.max_credits",
   "browser_sessions.gross_credits",

@@ -1,6 +1,5 @@
 import { sql } from "drizzle-orm";
 import {
-  bigint,
   index,
   integer,
   pgTable,
@@ -17,7 +16,6 @@ import type {
 
 import { agentRuns } from "./agent-run";
 import { chatThreads } from "./chat-thread";
-import { usageEvent } from "./usage-event";
 
 /**
  * Compatibility store for the API version that predates thread-scoped browser
@@ -98,16 +96,6 @@ export const browserSessions = pgTable(
       .notNull(),
     proxyCountryCode: varchar("proxy_country_code", { length: 2 }),
     timeoutMinutes: integer("timeout_minutes").notNull(),
-    // Browser billing was removed from current code in an earlier expand
-    // release. Keep these defaulted columns modeled until both that API and the
-    // browser-ID API have drained.
-    maxCredits: integer("max_credits").default(1).notNull(),
-    grossCredits: bigint("gross_credits", { mode: "number" })
-      .default(0)
-      .notNull(),
-    creditsCharged: bigint("credits_charged", { mode: "number" })
-      .default(0)
-      .notNull(),
     suspendedAt: timestamp("suspended_at"),
     suspensionReason: varchar("suspension_reason", {
       length: 20,
@@ -184,32 +172,6 @@ export const browserSessionInstances = pgTable(
       .notNull(),
     timeoutAt: timestamp("timeout_at").notNull(),
     startedAt: timestamp("started_at").notNull(),
-    // Transitional billing columns retained for the previous API.
-    billingRunId: uuid("billing_run_id"),
-    browserCostMicrousd: bigint("browser_cost_microusd", { mode: "number" })
-      .default(0)
-      .notNull(),
-    proxyCostMicrousd: bigint("proxy_cost_microusd", { mode: "number" })
-      .default(0)
-      .notNull(),
-    proxyUsedMb: text("proxy_used_mb").default("0").notNull(),
-    pricingUnitPrice: bigint("pricing_unit_price", { mode: "number" })
-      .default(0)
-      .notNull(),
-    pricingUnitSize: bigint("pricing_unit_size", { mode: "number" })
-      .default(1)
-      .notNull(),
-    grossCredits: bigint("gross_credits", { mode: "number" })
-      .default(0)
-      .notNull(),
-    creditsCharged: bigint("credits_charged", { mode: "number" }),
-    usageEventId: uuid("usage_event_id").references(
-      () => {
-        return usageEvent.id;
-      },
-      { onDelete: "set null" },
-    ),
-    settledAt: timestamp("settled_at"),
     // Idle lease. Any run or open viewer touches the instance, and the
     // reconciler reclaims it once the lease expires. updatedAt cannot carry
     // this because the reconciler bumps updatedAt on every healthy pass.

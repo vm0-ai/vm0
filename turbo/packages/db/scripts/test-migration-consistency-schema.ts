@@ -376,6 +376,752 @@ async function validateCurrentBrowserApiBeforeBillingMigration(): Promise<void> 
   }
 }
 
+const BROWSER_USAGE_COMPATIBILITY_PREVIOUS_MIGRATION = 782;
+const BROWSER_USAGE_COMPATIBILITY_MIGRATION = 783;
+
+const browserUsageCompatibilityFixture = {
+  sessionId: "00000000-0000-4000-8000-000000078201",
+  chatThreadId: "00000000-0000-4000-8000-000000078202",
+  pendingEventId: "00000000-0000-4000-8000-000000078203",
+  pendingIdempotencyKey: "00000000-0000-4000-8000-000000078204",
+  explicitEventId: "00000000-0000-4000-8000-000000078205",
+  explicitIdempotencyKey: "00000000-0000-4000-8000-000000078206",
+  idempotencyOnlyEventId: "00000000-0000-4000-8000-000000078207",
+  idempotencyOnlyProviderSessionId: "00000000-0000-4000-8000-000000078208",
+  explicitProviderSessionId: "00000000-0000-4000-8000-000000078209",
+  explicitRunId: "00000000-0000-4000-8000-000000078210",
+  idempotencyOnlyRunId: "00000000-0000-4000-8000-000000078211",
+  explicitBillingRunId: "00000000-0000-4000-8000-000000078212",
+  idempotencyOnlyBillingRunId: "00000000-0000-4000-8000-000000078213",
+  entitlementId: "00000000-0000-4000-8000-000000078214",
+  shortWindowId: "00000000-0000-4000-8000-000000078215",
+  weeklyWindowId: "00000000-0000-4000-8000-000000078216",
+  allocationId: "00000000-0000-4000-8000-000000078217",
+  rollupId: "00000000-0000-4000-8000-000000078218",
+  idempotencyOnlyChatThreadId: "00000000-0000-4000-8000-000000078219",
+} as const;
+
+async function seedBrowserUsageCompatibilityFixture(
+  client: Client,
+): Promise<void> {
+  const fixture = browserUsageCompatibilityFixture;
+  await client.query(
+    `
+      INSERT INTO "browser_sessions" (
+        "id",
+        "chat_thread_id",
+        "org_id",
+        "user_id",
+        "name",
+        "status",
+        "timeout_minutes",
+        "suspended_at",
+        "suspension_reason",
+        "created_at",
+        "updated_at"
+      )
+      VALUES (
+        $1,
+        $2,
+        'browser-usage-cutover-org',
+        'browser-usage-cutover-user',
+        'browser-usage-cutover',
+        'suspended',
+        240,
+        '2026-01-02T00:00:00Z',
+        'budget',
+        '2026-01-01T00:00:00Z',
+        '2026-01-02T00:00:00Z'
+      )
+    `,
+    [fixture.sessionId, fixture.chatThreadId],
+  );
+  await client.query(
+    `
+      INSERT INTO "usage_event" (
+        "id",
+        "idempotency_key",
+        "org_id",
+        "user_id",
+        "kind",
+        "provider",
+        "category",
+        "quantity",
+        "gross_credits",
+        "credits_charged",
+        "status",
+        "billing_error",
+        "created_at",
+        "processed_at"
+      )
+      VALUES
+        (
+          $1,
+          $2,
+          'browser-usage-cutover-org',
+          'browser-usage-cutover-user',
+          'browser',
+          'browser-use',
+          'provider_cost_usd_micros',
+          100,
+          17,
+          NULL,
+          'pending',
+          NULL,
+          '2026-01-03T00:00:00Z',
+          NULL
+        ),
+        (
+          $3,
+          $4,
+          'browser-usage-cutover-org',
+          'browser-usage-cutover-user',
+          'browser',
+          'browser-use',
+          'provider_cost_usd_micros',
+          200,
+          25,
+          20,
+          'processed',
+          NULL,
+          '2026-01-03T01:00:00Z',
+          '2026-01-03T02:00:00Z'
+        ),
+        (
+          $5,
+          $6,
+          'browser-usage-cutover-org',
+          'browser-usage-cutover-user',
+          'browser',
+          'browser-use',
+          'provider_cost_usd_micros',
+          300,
+          35,
+          30,
+          'compacted',
+          'fallback_pricing',
+          '2026-01-03T03:00:00Z',
+          '2026-01-03T04:00:00Z'
+        )
+    `,
+    [
+      fixture.pendingEventId,
+      fixture.pendingIdempotencyKey,
+      fixture.explicitEventId,
+      fixture.explicitIdempotencyKey,
+      fixture.idempotencyOnlyEventId,
+      fixture.idempotencyOnlyProviderSessionId,
+    ],
+  );
+  await client.query(
+    `
+      INSERT INTO "browser_session_instances" (
+        "provider_session_id",
+        "browser_session_id",
+        "chat_thread_id",
+        "run_id",
+        "status",
+        "timeout_at",
+        "started_at",
+        "billing_run_id",
+        "browser_cost_microusd",
+        "proxy_cost_microusd",
+        "proxy_used_mb",
+        "pricing_unit_price",
+        "pricing_unit_size",
+        "gross_credits",
+        "credits_charged",
+        "usage_event_id",
+        "settled_at",
+        "last_touched_at",
+        "idle_expires_at",
+        "finished_at",
+        "created_at",
+        "updated_at"
+      )
+      VALUES
+        (
+          $1,
+          $2,
+          $3,
+          $4,
+          'stopped',
+          '2026-01-04T04:00:00Z',
+          '2026-01-04T00:00:00Z',
+          $5,
+          101,
+          202,
+          '3.5',
+          4,
+          5,
+          6,
+          7,
+          $6,
+          '2026-01-04T01:00:00Z',
+          '2026-01-04T00:30:00Z',
+          '2026-01-04T00:40:00Z',
+          '2026-01-04T01:00:00Z',
+          '2026-01-04T00:00:00Z',
+          '2026-01-04T01:00:00Z'
+        ),
+        (
+          $7,
+          $2,
+          $8,
+          $9,
+          'stopped',
+          '2026-01-05T04:00:00Z',
+          '2026-01-05T00:00:00Z',
+          $10,
+          303,
+          404,
+          '5.5',
+          6,
+          7,
+          8,
+          9,
+          NULL,
+          NULL,
+          '2026-01-05T00:30:00Z',
+          '2026-01-05T00:40:00Z',
+          '2026-01-05T01:00:00Z',
+          '2026-01-05T00:00:00Z',
+          '2026-01-05T01:00:00Z'
+        )
+    `,
+    [
+      fixture.explicitProviderSessionId,
+      fixture.sessionId,
+      fixture.chatThreadId,
+      fixture.explicitRunId,
+      fixture.explicitBillingRunId,
+      fixture.explicitEventId,
+      fixture.idempotencyOnlyProviderSessionId,
+      fixture.idempotencyOnlyChatThreadId,
+      fixture.idempotencyOnlyRunId,
+      fixture.idempotencyOnlyBillingRunId,
+    ],
+  );
+  await client.query(
+    `
+      INSERT INTO "org_usage_allowance_entitlements" (
+        "id",
+        "org_id",
+        "short_window_seconds",
+        "short_window_units",
+        "weekly_window_seconds",
+        "weekly_window_units",
+        "effective_at",
+        "created_at",
+        "updated_at"
+      )
+      VALUES (
+        $1,
+        'browser-usage-cutover-org',
+        18000,
+        100,
+        604800,
+        200,
+        '2026-01-01T00:00:00Z',
+        '2026-01-01T00:00:00Z',
+        '2026-01-01T00:00:00Z'
+      )
+    `,
+    [fixture.entitlementId],
+  );
+  await client.query(
+    `
+      INSERT INTO "org_usage_allowance_windows" (
+        "id",
+        "org_id",
+        "entitlement_id",
+        "kind",
+        "starts_at",
+        "expires_at",
+        "unit_limit",
+        "consumed_units",
+        "created_at",
+        "updated_at"
+      )
+      VALUES
+        (
+          $1,
+          'browser-usage-cutover-org',
+          $3,
+          'short',
+          '2026-01-01T00:00:00Z',
+          '2026-01-01T05:00:00Z',
+          100,
+          3,
+          '2026-01-01T00:00:00Z',
+          '2026-01-01T00:00:00Z'
+        ),
+        (
+          $2,
+          'browser-usage-cutover-org',
+          $3,
+          'weekly',
+          '2026-01-01T00:00:00Z',
+          '2026-01-08T00:00:00Z',
+          200,
+          3,
+          '2026-01-01T00:00:00Z',
+          '2026-01-01T00:00:00Z'
+        )
+    `,
+    [fixture.shortWindowId, fixture.weeklyWindowId, fixture.entitlementId],
+  );
+  await client.query(
+    `
+      INSERT INTO "usage_allowance_allocations" (
+        "id",
+        "usage_event_id",
+        "org_id",
+        "short_window_id",
+        "weekly_window_id",
+        "units_applied",
+        "created_at"
+      )
+      VALUES (
+        $1,
+        $2,
+        'browser-usage-cutover-org',
+        $3,
+        $4,
+        3,
+        '2026-01-03T02:00:00Z'
+      )
+    `,
+    [
+      fixture.allocationId,
+      fixture.explicitEventId,
+      fixture.shortWindowId,
+      fixture.weeklyWindowId,
+    ],
+  );
+  await client.query(
+    `
+      INSERT INTO "usage_event_hourly_rollup" (
+        "id",
+        "processed_hour",
+        "org_id",
+        "user_id",
+        "kind",
+        "provider",
+        "category",
+        "short_window_id",
+        "weekly_window_id",
+        "quantity",
+        "credits_charged",
+        "allowance_units"
+      )
+      VALUES (
+        $1,
+        '2026-01-03T02:00:00Z',
+        'browser-usage-cutover-org',
+        'browser-usage-cutover-user',
+        'browser',
+        'browser-use',
+        'provider_cost_usd_micros',
+        $2,
+        $3,
+        200,
+        20,
+        3
+      )
+    `,
+    [fixture.rollupId, fixture.shortWindowId, fixture.weeklyWindowId],
+  );
+}
+
+async function readBrowserUsageCompatibilityHistory(
+  client: Client,
+): Promise<unknown> {
+  const fixture = browserUsageCompatibilityFixture;
+  const result = await client.query<{ state: unknown }>(
+    `
+      SELECT jsonb_build_object(
+        'events',
+        (
+          SELECT coalesce(jsonb_agg(to_jsonb("event") ORDER BY "event"."id"), '[]'::jsonb)
+          FROM (
+            SELECT *
+            FROM "usage_event"
+            WHERE "id" IN ($1, $2)
+          ) AS "event"
+        ),
+        'instances',
+        (
+          SELECT coalesce(jsonb_agg(to_jsonb("instance") ORDER BY "instance"."provider_session_id"), '[]'::jsonb)
+          FROM (
+            SELECT *
+            FROM "browser_session_instances"
+            WHERE "provider_session_id" IN ($3, $4)
+          ) AS "instance"
+        ),
+        'rollups',
+        (
+          SELECT coalesce(jsonb_agg(to_jsonb("rollup") ORDER BY "rollup"."id"), '[]'::jsonb)
+          FROM (
+            SELECT *
+            FROM "usage_event_hourly_rollup"
+            WHERE "id" = $5
+          ) AS "rollup"
+        ),
+        'entitlements',
+        (
+          SELECT coalesce(jsonb_agg(to_jsonb("entitlement") ORDER BY "entitlement"."id"), '[]'::jsonb)
+          FROM (
+            SELECT *
+            FROM "org_usage_allowance_entitlements"
+            WHERE "id" = $6
+          ) AS "entitlement"
+        ),
+        'windows',
+        (
+          SELECT coalesce(jsonb_agg(to_jsonb("window") ORDER BY "window"."id"), '[]'::jsonb)
+          FROM (
+            SELECT *
+            FROM "org_usage_allowance_windows"
+            WHERE "id" IN ($7, $8)
+          ) AS "window"
+        ),
+        'allocations',
+        (
+          SELECT coalesce(jsonb_agg(to_jsonb("allocation") ORDER BY "allocation"."id"), '[]'::jsonb)
+          FROM (
+            SELECT *
+            FROM "usage_allowance_allocations"
+            WHERE "id" = $9
+          ) AS "allocation"
+        )
+      ) AS "state"
+    `,
+    [
+      fixture.explicitEventId,
+      fixture.idempotencyOnlyEventId,
+      fixture.explicitProviderSessionId,
+      fixture.idempotencyOnlyProviderSessionId,
+      fixture.rollupId,
+      fixture.entitlementId,
+      fixture.shortWindowId,
+      fixture.weeklyWindowId,
+      fixture.allocationId,
+    ],
+  );
+  const state = result.rows[0]?.state;
+  assert.notEqual(state, undefined);
+  return state;
+}
+
+async function readBrowserUsageCompatibilityControls(client: Client): Promise<{
+  readonly suspensionReason: string | null;
+  readonly pricingCount: number;
+}> {
+  const result = await client.query<{
+    suspensionReason: string | null;
+    pricingCount: number;
+  }>(
+    `
+      SELECT
+        (
+          SELECT "suspension_reason"
+          FROM "browser_sessions"
+          WHERE "id" = $1
+        ) AS "suspensionReason",
+        (
+          SELECT count(*)::integer
+          FROM "usage_pricing"
+          WHERE "kind" = 'browser'
+            AND "provider" = 'browser-use'
+            AND "category" = 'provider_cost_usd_micros'
+            AND "unit_price" = 0
+            AND "unit_size" = 1
+        ) AS "pricingCount"
+    `,
+    [browserUsageCompatibilityFixture.sessionId],
+  );
+  const controls = result.rows[0];
+  assert.ok(controls);
+  return controls;
+}
+
+async function validateBrowserUsageCompatibilityCutover(): Promise<void> {
+  console.log("=== Validate managed-browser usage compatibility cutover ===\n");
+  const testDb = "migration_browser_usage_compatibility_cutover_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const fixture = browserUsageCompatibilityFixture;
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(
+      testDbUrl,
+      BROWSER_USAGE_COMPATIBILITY_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await seedBrowserUsageCompatibilityFixture(client);
+      const historicalState =
+        await readBrowserUsageCompatibilityHistory(client);
+      assert.deepEqual(await readBrowserUsageCompatibilityControls(client), {
+        suspensionReason: "budget",
+        pricingCount: 1,
+      });
+
+      let rejection: unknown;
+      try {
+        await applyMigrationsUpToInTransaction(
+          client,
+          BROWSER_USAGE_COMPATIBILITY_MIGRATION,
+        );
+      } catch (error) {
+        rejection = error;
+      }
+      assert.ok(
+        rejection instanceof Error,
+        "expected pending browser usage to reject the migration",
+      );
+      assert.equal(databaseErrorCode(rejection), "P0001");
+      assert.ok(
+        rejection.message.includes(
+          "cannot remove browser usage compatibility while pending browser usage events exist",
+        ),
+      );
+      assert.deepEqual(await readBrowserUsageCompatibilityControls(client), {
+        suspensionReason: "budget",
+        pricingCount: 1,
+      });
+      assert.deepEqual(
+        await readBrowserUsageCompatibilityHistory(client),
+        historicalState,
+      );
+      const rejectedMigrationRecord = await client.query<{ count: number }>(
+        `
+          SELECT count(*)::integer AS "count"
+          FROM "__drizzle_migrations"
+          WHERE "hash" = '0783_remove_browser_usage_compatibility'
+        `,
+      );
+      assert.equal(rejectedMigrationRecord.rows[0]?.count, 0);
+
+      await client.query(
+        `
+          UPDATE "usage_event"
+          SET
+            "status" = 'processed',
+            "credits_charged" = "gross_credits",
+            "processed_at" = '2026-01-03T00:30:00Z'
+          WHERE "id" = $1
+        `,
+        [fixture.pendingEventId],
+      );
+      await applyMigrationsUpToInTransaction(
+        client,
+        BROWSER_USAGE_COMPATIBILITY_MIGRATION,
+      );
+
+      assert.deepEqual(await readBrowserUsageCompatibilityControls(client), {
+        suspensionReason: "reconcile",
+        pricingCount: 0,
+      });
+      assert.deepEqual(
+        await readBrowserUsageCompatibilityHistory(client),
+        historicalState,
+      );
+      const resolvedEvent = await client.query<{
+        status: string;
+        grossCredits: string | null;
+        creditsCharged: string | null;
+        processedAt: string | null;
+      }>(
+        `
+          SELECT
+            "status",
+            "gross_credits"::text AS "grossCredits",
+            "credits_charged"::text AS "creditsCharged",
+            "processed_at"::text AS "processedAt"
+          FROM "usage_event"
+          WHERE "id" = $1
+        `,
+        [fixture.pendingEventId],
+      );
+      assert.deepEqual(resolvedEvent.rows, [
+        {
+          status: "processed",
+          grossCredits: "17",
+          creditsCharged: "17",
+          processedAt: "2026-01-03 00:30:00",
+        },
+      ]);
+
+      const physicalColumns = await client.query<{
+        tableName: string;
+        columnName: string;
+        dataType: string;
+        isNullable: string;
+        columnDefault: string | null;
+      }>(
+        `
+          SELECT
+            "table_name" AS "tableName",
+            "column_name" AS "columnName",
+            "data_type" AS "dataType",
+            "is_nullable" AS "isNullable",
+            "column_default" AS "columnDefault"
+          FROM "information_schema"."columns"
+          WHERE "table_schema" = 'public'
+            AND (
+              (
+                "table_name" = 'browser_sessions'
+                AND "column_name" IN (
+                  'max_credits',
+                  'gross_credits',
+                  'credits_charged'
+                )
+              )
+              OR (
+                "table_name" = 'browser_session_instances'
+                AND "column_name" IN (
+                  'billing_run_id',
+                  'browser_cost_microusd',
+                  'proxy_cost_microusd',
+                  'proxy_used_mb',
+                  'pricing_unit_price',
+                  'pricing_unit_size',
+                  'gross_credits',
+                  'credits_charged',
+                  'usage_event_id',
+                  'settled_at'
+                )
+              )
+            )
+          ORDER BY "table_name", "column_name"
+        `,
+      );
+      assert.deepEqual(physicalColumns.rows, [
+        {
+          tableName: "browser_session_instances",
+          columnName: "billing_run_id",
+          dataType: "uuid",
+          isNullable: "YES",
+          columnDefault: null,
+        },
+        {
+          tableName: "browser_session_instances",
+          columnName: "browser_cost_microusd",
+          dataType: "bigint",
+          isNullable: "NO",
+          columnDefault: "0",
+        },
+        {
+          tableName: "browser_session_instances",
+          columnName: "credits_charged",
+          dataType: "bigint",
+          isNullable: "YES",
+          columnDefault: null,
+        },
+        {
+          tableName: "browser_session_instances",
+          columnName: "gross_credits",
+          dataType: "bigint",
+          isNullable: "NO",
+          columnDefault: "0",
+        },
+        {
+          tableName: "browser_session_instances",
+          columnName: "pricing_unit_price",
+          dataType: "bigint",
+          isNullable: "NO",
+          columnDefault: "0",
+        },
+        {
+          tableName: "browser_session_instances",
+          columnName: "pricing_unit_size",
+          dataType: "bigint",
+          isNullable: "NO",
+          columnDefault: "1",
+        },
+        {
+          tableName: "browser_session_instances",
+          columnName: "proxy_cost_microusd",
+          dataType: "bigint",
+          isNullable: "NO",
+          columnDefault: "0",
+        },
+        {
+          tableName: "browser_session_instances",
+          columnName: "proxy_used_mb",
+          dataType: "text",
+          isNullable: "NO",
+          columnDefault: "'0'::text",
+        },
+        {
+          tableName: "browser_session_instances",
+          columnName: "settled_at",
+          dataType: "timestamp without time zone",
+          isNullable: "YES",
+          columnDefault: null,
+        },
+        {
+          tableName: "browser_session_instances",
+          columnName: "usage_event_id",
+          dataType: "uuid",
+          isNullable: "YES",
+          columnDefault: null,
+        },
+        {
+          tableName: "browser_sessions",
+          columnName: "credits_charged",
+          dataType: "bigint",
+          isNullable: "NO",
+          columnDefault: "0",
+        },
+        {
+          tableName: "browser_sessions",
+          columnName: "gross_credits",
+          dataType: "bigint",
+          isNullable: "NO",
+          columnDefault: "0",
+        },
+        {
+          tableName: "browser_sessions",
+          columnName: "max_credits",
+          dataType: "integer",
+          isNullable: "NO",
+          columnDefault: "1",
+        },
+      ]);
+      const usageForeignKey = await client.query<{ deleteRule: string }>(
+        `
+          SELECT "delete_rule" AS "deleteRule"
+          FROM "information_schema"."referential_constraints"
+          WHERE "constraint_schema" = 'public'
+            AND "constraint_name" =
+              'browser_session_instances_usage_event_id_usage_event_id_fk'
+        `,
+      );
+      assert.deepEqual(usageForeignKey.rows, [{ deleteRule: "SET NULL" }]);
+      const appliedMigrationRecord = await client.query<{ count: number }>(
+        `
+          SELECT count(*)::integer AS "count"
+          FROM "__drizzle_migrations"
+          WHERE "hash" = '0783_remove_browser_usage_compatibility'
+        `,
+      );
+      assert.equal(appliedMigrationRecord.rows[0]?.count, 1);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+
+  console.log(
+    "   ✅ pending usage rejects atomically, compatibility data normalizes, and finalized accounting remains unchanged\n",
+  );
+}
+
 async function validateThreadBrowserIdentityAfterMigration(
   dbUrl: string,
 ): Promise<void> {
@@ -473,26 +1219,16 @@ async function validateThreadBrowserIdentityAfterMigration(
       { tableName: "browser_thread_profiles", columnName: "id" },
     ]);
 
-    const pricing = await client.query<{
-      unitPrice: string;
-      unitSize: string;
-    }>(
+    const pricing = await client.query<{ count: number }>(
       `
-        SELECT
-          "unit_price"::text AS "unitPrice",
-          "unit_size"::text AS "unitSize"
+        SELECT count(*)::integer AS "count"
         FROM "usage_pricing"
         WHERE "kind" = 'browser'
           AND "provider" = 'browser-use'
           AND "category" = 'provider_cost_usd_micros'
-        LIMIT 1
       `,
     );
-    assert.deepEqual(pricing.rows, [{ unitPrice: "0", unitSize: "1" }]);
-    const pricingRow = pricing.rows[0];
-    if (!pricingRow) {
-      throw new Error("Previous browser API pricing lookup returned no row");
-    }
+    assert.deepEqual(pricing.rows, [{ count: 0 }]);
 
     // Previous-API statement shapes must remain legal after the migration.
     await client.query(
@@ -562,8 +1298,8 @@ async function validateThreadBrowserIdentityAfterMigration(
           $3,
           $4,
           'active',
-          $5::bigint,
-          $6::bigint,
+          0,
+          1,
           now() + interval '240 minutes',
           now(),
           now(),
@@ -578,8 +1314,6 @@ async function validateThreadBrowserIdentityAfterMigration(
         legacyBrowserSessionId,
         legacyChatThreadId,
         legacyRunId,
-        pricingRow.unitPrice,
-        pricingRow.unitSize,
       ],
     );
     assert.deepEqual(legacyInstance.rows, [
@@ -13896,6 +14630,7 @@ async function main(): Promise<void> {
     await validateCustomModelGatewayRolloutCompatibility();
     await validateHostedSiteChatScopeRollout();
     await validateCurrentBrowserApiBeforeBillingMigration();
+    await validateBrowserUsageCompatibilityCutover();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

@@ -13,6 +13,7 @@ mod instructions;
 mod manifest;
 mod plan;
 mod source;
+mod telemetry;
 
 use guest_common::{log_error, log_info, telemetry::record_sandbox_op};
 use guest_contracts::storage_manifest::Manifest;

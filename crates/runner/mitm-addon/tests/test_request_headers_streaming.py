@@ -207,6 +207,74 @@ def test_capture_enabled_body_over_stream_limit_installs_request_stream(
     assert metadata_keys.REQUEST_STREAM_BUFFER in flow.metadata
 
 
+def test_capture_enabled_preserves_preexisting_callable_stream(tmp_path, real_flow, mitm_ctx):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="example.com",
+        method="POST",
+    )
+
+    def existing_stream(chunk: bytes) -> bytes:
+        return b"existing:" + chunk
+
+    flow.request.stream = existing_stream
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.requestheaders(flow)
+
+    assert flow.request.stream is existing_stream
+    assert _request_stream(flow)(b"request body") == b"existing:request body"
+    assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+    assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
+
+
+def test_capture_enabled_repeated_configuration_preserves_stream_state(
+    tmp_path, real_flow, mitm_ctx
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="example.com",
+        method="POST",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.requestheaders(flow)
+        callback = _request_stream(flow)
+        assert callback(b"first chunk") == b"first chunk"
+        assert flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER] == bytearray(b"first chunk")
+        assert flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER_STATE] == {
+            "truncated": False,
+            "total_bytes": len(b"first chunk"),
+        }
+
+        mitm_addon.requestheaders(flow)
+
+    assert flow.request.stream is callback
+    assert flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER] == bytearray(b"first chunk")
+    assert flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER_STATE] == {
+        "truncated": False,
+        "total_bytes": len(b"first chunk"),
+    }
+    assert callback(b"second chunk") == b"second chunk"
+    assert flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER] == bytearray(
+        b"first chunksecond chunk"
+    )
+    assert flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER_STATE] == {
+        "truncated": False,
+        "total_bytes": len(b"first chunksecond chunk"),
+    }
+
+
 def test_capture_enabled_replaces_boolean_stream_with_capture_callback(
     tmp_path, real_flow, mitm_ctx, headers
 ):

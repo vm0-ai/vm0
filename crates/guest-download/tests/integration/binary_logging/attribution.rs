@@ -16,6 +16,14 @@ fn operation<'a>(ops: &'a [Value], action: &str) -> Option<&'a Value> {
     ops.iter().find(|entry| entry["action_type"] == action)
 }
 
+fn action_precedes(actions: &[String], earlier: &str, later: &str) -> bool {
+    let earlier_index = actions.iter().position(|action| action == earlier);
+    let later_index = actions.iter().position(|action| action == later);
+    earlier_index
+        .zip(later_index)
+        .is_some_and(|(earlier_index, later_index)| earlier_index < later_index)
+}
+
 fn deterministic_bytes(len: usize) -> Vec<u8> {
     let mut state = 0x1234_5678_u32;
     (0..len)
@@ -116,6 +124,42 @@ fn binary_records_download_scheduler_attribution() {
             "artifact_download",
             "download_total",
         ],
+    );
+    assert!(
+        action_precedes(&actions, "guest_download_task_count_2", "storage_download"),
+        "expected batch attribution before task attribution in {actions:?}"
+    );
+    assert!(
+        action_precedes(
+            &actions,
+            "storage_download",
+            "storage_download_remote_request_to_response_headers"
+        ),
+        "expected task total before remote attribution in {actions:?}"
+    );
+    assert!(
+        action_precedes(
+            &actions,
+            "storage_download_remote_attempt_count_1",
+            "guest_download_mount_conflict_deferral_count_1"
+        ),
+        "expected remote attribution before conflict totals in {actions:?}"
+    );
+    assert!(
+        action_precedes(
+            &actions,
+            "artifact_download",
+            "guest_download_mount_conflict_deferral_count_1"
+        ),
+        "expected task attribution before conflict totals in {actions:?}"
+    );
+    assert!(
+        action_precedes(
+            &actions,
+            "guest_download_mount_conflict_deferral_count_1",
+            "download_total"
+        ),
+        "expected conflict totals before run total in {actions:?}"
     );
     assert!(
         !actions
@@ -251,6 +295,15 @@ fn binary_records_remote_artifact_attribution_and_compressed_byte_bucket() {
             "artifact_download_remote_attempt_count_1",
         ],
     );
+    for remote_action in actions
+        .iter()
+        .filter(|action| action.starts_with(ARTIFACT_REMOTE_PREFIX))
+    {
+        assert!(
+            action_precedes(&actions, "artifact_download", remote_action),
+            "expected artifact total before {remote_action} in {actions:?}"
+        );
+    }
     assert!(
         !actions
             .iter()

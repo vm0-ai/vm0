@@ -48,6 +48,7 @@ interface InsertUsageEventArgs {
   readonly category?: string;
   readonly quantity?: number;
   readonly status?: string;
+  readonly grossCredits?: number | null;
   readonly creditsCharged?: number;
   readonly idempotencyKey?: string;
   readonly billingError?: string | null;
@@ -71,6 +72,9 @@ interface UsageCompactionStorageCounts {
 interface UsageEventState {
   readonly id: string;
   readonly status: string;
+  readonly grossCredits: number | null;
+  readonly creditsCharged: number | null;
+  readonly billingError: string | null;
 }
 
 interface UsageAllowanceWindowPair {
@@ -286,6 +290,7 @@ export const insertUsageEvent$ = command(
       category: args.category,
       quantity: args.quantity,
       status: args.status,
+      gross_credits: args.grossCredits,
       credits_charged: args.creditsCharged,
       idempotency_key: args.idempotencyKey,
       billing_error: args.billingError,
@@ -372,12 +377,21 @@ export const readUsageEventState$ = command(
       action: "read-usage-event-state",
       idempotency_key: idempotencyKey,
     });
-    if (!response.usage_event_id || !response.usage_event_status) {
+    if (
+      !response.usage_event_id ||
+      !response.usage_event_status ||
+      response.usage_event_gross_credits === undefined ||
+      response.usage_event_credits_charged === undefined ||
+      response.usage_event_billing_error === undefined
+    ) {
       throw new Error("readUsageEventState$: response missing event state");
     }
     return {
       id: response.usage_event_id,
       status: response.usage_event_status,
+      grossCredits: response.usage_event_gross_credits,
+      creditsCharged: response.usage_event_credits_charged,
+      billingError: response.usage_event_billing_error,
     };
   },
 );
