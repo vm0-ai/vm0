@@ -95,6 +95,11 @@ tests must not resolve a different mitmproxy version from production.
 | `test_addon_configuration.py`                           | Addon option registration and configuration updates                                                                  |
 | `test_builtin_host_policy_contract.py`                  | Cross-stage malformed built-in host policy contracts                                                                 |
 | `test_connection_endpoints.py`                          | Connection endpoint shape validation and IPv6 tuple normalization                                                    |
+| `codex_model_catalog_cache_helpers.py`                  | Shared Codex catalog flow, response, and cache lifecycle test builders                                               |
+| `test_codex_model_catalog_cache_coordination.py`        | Codex catalog prefetch, single-flight, wait, cancellation, and active-request capacity behavior                      |
+| `test_codex_model_catalog_cache_hooks.py`               | Codex catalog request admission, firewall hook integration, telemetry, and cleanup                                   |
+| `test_codex_model_catalog_cache_lifecycle.py`           | Codex catalog partitioning, expiry, ETag invalidation, and stored-entry eviction                                     |
+| `test_codex_model_catalog_cache_responses.py`           | Codex catalog response cacheability, decoding, framing, validation, and replay                                       |
 | `test_request_handler_passthrough.py`                   | Request pass-through, auto-allow, and browser user-agent passthrough decisions                                       |
 | `test_request_handler_authority_validation.py`          | Request-hook Host/SNI/`:authority` validation and denial effects                                                     |
 | `test_request_handler_builtin_host_policy.py`           | Request-hook runtime built-in host-policy enforcement and compiled-policy reuse                                      |
