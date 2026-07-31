@@ -1129,6 +1129,12 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   // Invoking a workflow is exactly typing its slash command in chat.
   const prompt = workflowSlashPrompt(workflow);
+  const body = {
+    prompt,
+    userMessage: createUserMessageDocument({ text: prompt }),
+    agentId: agent.id,
+    threadId: chatThreadId,
+  };
   timing.recordElapsed(
     "api_dispatch_pre_create_zero_workflow_slash_prepare_normal_send",
     "nested",
@@ -1138,12 +1144,7 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     sendNormalEvent$,
     {
       auth,
-      body: {
-        prompt,
-        userMessage: createUserMessageDocument({ text: prompt }),
-        agentId: agent.id,
-        threadId: chatThreadId,
-      },
+      body,
       userId: auth.userId,
       orgId: auth.orgId,
       apiStartTime,
