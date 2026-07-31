@@ -163,6 +163,15 @@ export const requireExecuteRowSchema = createRule({
     },
   },
   create(context) {
+    // ESTree decodes escaped identifiers and string literals, so a backslash
+    // may be part of a source spelling of "execute".
+    if (
+      !context.sourceCode.text.includes("execute") &&
+      !context.sourceCode.text.includes("\\")
+    ) {
+      return {};
+    }
+
     const services = ESLintUtils.getParserServices(context);
     const checker = services.program.getTypeChecker();
 
