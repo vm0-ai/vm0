@@ -105,7 +105,6 @@ type ChatEventInputPayload = Pick<
   ChatEventInsert,
   "attachFiles" | "generationTemplate"
 > & {
-  readonly attachFileMetadata?: typeof chatEventInputParams.$inferInsert.attachFileMetadata;
   readonly userMessage: NonNullable<ChatEventInsert["userMessage"]>;
 };
 
@@ -311,9 +310,6 @@ export interface LoadedChatEventReplacementTarget extends StoredChatEventContext
   readonly createdAt: Date;
   readonly eventType: NonNullable<ChatEventInsert["eventType"]>;
   readonly encryptedParams: string | null;
-  readonly attachFileMetadata:
-    | typeof chatEventInputParams.$inferSelect.attachFileMetadata
-    | null;
 }
 
 type NewDisplayContext =
@@ -383,14 +379,9 @@ function isPendingInputEvent(values: NewChatEvent): boolean {
   );
 }
 
-function eventInputParams(values: NewChatEvent):
-  | {
-      readonly encryptedParams: string;
-      readonly attachFileMetadata:
-        | typeof chatEventInputParams.$inferInsert.attachFileMetadata
-        | undefined;
-    }
-  | undefined {
+function eventInputParams(
+  values: NewChatEvent,
+): { readonly encryptedParams: string } | undefined {
   if (
     !isPendingInputEvent(values) ||
     !("encryptedParams" in values) ||
@@ -398,11 +389,7 @@ function eventInputParams(values: NewChatEvent):
   ) {
     return undefined;
   }
-  return {
-    encryptedParams: values.encryptedParams,
-    attachFileMetadata:
-      "attachFileMetadata" in values ? values.attachFileMetadata : undefined,
-  };
+  return { encryptedParams: values.encryptedParams };
 }
 
 async function insertEventInputParams(
@@ -417,7 +404,6 @@ async function insertEventInputParams(
   await tx.insert(chatEventInputParams).values({
     eventId,
     encryptedParams: params.encryptedParams,
-    attachFileMetadata: params.attachFileMetadata,
   });
 }
 
@@ -833,7 +819,6 @@ export async function replaceChatEvent(
       contextType: chatEvents.contextType,
       contextId: chatEvents.contextId,
       encryptedParams: chatEventInputParams.encryptedParams,
-      attachFileMetadata: chatEventInputParams.attachFileMetadata,
     })
     .from(chatEvents)
     .leftJoin(
@@ -881,10 +866,6 @@ export async function replaceLoadedChatEvent(
             "encryptedParams" in replacement && replacement.encryptedParams
               ? replacement.encryptedParams
               : target.encryptedParams,
-          attachFileMetadata:
-            "attachFileMetadata" in replacement
-              ? replacement.attachFileMetadata
-              : target.attachFileMetadata,
         }
       : replacement;
   const replacementId = replacement.id ?? randomUUID();

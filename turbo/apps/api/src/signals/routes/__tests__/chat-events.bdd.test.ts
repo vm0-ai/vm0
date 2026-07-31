@@ -88,7 +88,6 @@ import {
   replayPendingChatInputQueueEventFixture,
   replaceBddVm0ApiKeys,
   replaceThreadSessionBindingFixture,
-  writeLegacyQueuedUserMessageParamsFixture,
 } from "../../../test-fixtures/chat-events";
 
 /**
@@ -6219,99 +6218,6 @@ describe("CHAT-02: shared user message queue", () => {
     expect(mockClaim.claim.prompt).toBe("queued preview mock run");
     expect(mockClaim.claim.realAgentInPreview).toBeUndefined();
     await cancelChatRun(actor, mockRunId);
-  }, 90_000);
-
-  it("falls back to legacy queued launch fields until the backlog drains", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    const actorWithOrg = { ...actor, orgId: actor.orgId };
-    await updateFeatureSwitchesForUser(context, actorWithOrg, {
-      [FeatureSwitchKey.RealAgentInPreview]: false,
-    });
-
-    const anchor = await sendChatRun(actor, {
-      agentId,
-      prompt: "legacy fallback queue anchor",
-    });
-    const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
-    const messageId = randomUUID();
-    const fileId = randomUUID();
-    const legacyApiStartTime = now() - 30_000;
-    const prompt = "legacy queued launch material";
-    const queued = await chat.requestSendEvent(
-      actor,
-      {
-        agentId,
-        threadId: anchor.threadId,
-        prompt,
-        clientEventId: messageId,
-        attachFiles: [
-          {
-            id: fileId,
-            filename: "legacy.txt",
-            contentType: "text/plain",
-            size: 14,
-          },
-        ],
-      },
-      [201],
-    );
-    expect(queued.body).toMatchObject({ runId: null });
-    await writeLegacyQueuedUserMessageParamsFixture({
-      eventId: messageId,
-      orgId: actor.orgId,
-      userId: actor.userId,
-      prompt,
-      appendSystemPrompt: "",
-      realAgentInPreview: true,
-      apiStartTime: legacyApiStartTime,
-      attachFileMetadata: [
-        {
-          id: fileId,
-          filename: "legacy.txt",
-          contentType: "text/plain",
-          size: 14,
-          objectKey: `artifacts/${actor.userId}/${fileId}/legacy.txt`,
-        },
-      ],
-    });
-
-    chatCallbacks.mockChatOutputEvents([]);
-    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
-    const messages = await waitForThreadMessages(
-      actor,
-      anchor.threadId,
-      (items) => {
-        return userMessages(items).some((message) => {
-          return (
-            message.revokesEventId === messageId &&
-            typeof message.runId === "string"
-          );
-        });
-      },
-    );
-    const claimedMessage = userMessages(messages.events).find((message) => {
-      return message.revokesEventId === messageId;
-    });
-    const runId = claimedMessage?.runId;
-    if (!claimedMessage || !runId) {
-      throw new Error("Expected the legacy queued message to auto-send");
-    }
-
-    const claim = await claimChatRun(runnerGroup, runId);
-    expect(claim.claim.apiStartTime).toBe(legacyApiStartTime);
-    expect(claim.claim.realAgentInPreview).toBeTruthy();
-    expect(claim.claim.prompt).toContain(`[ID] ${fileId}`);
-    await expect(
-      readChatEventInputParamsFixture(messageId),
-    ).resolves.toBeNull();
-    await expect(
-      readChatEventInputParamsFixture(claimedMessage.id),
-    ).resolves.toBeNull();
-    await cancelChatRun(actor, runId, claim.sandboxHeaders);
   }, 90_000);
 
   it("appends a claimed queued message after messages that are still queued", async () => {

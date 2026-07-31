@@ -2792,13 +2792,6 @@ function queuedMessageAdmissionFailure(
   );
 }
 
-function queuedMessageApiStartTime(
-  queuedMessage: QueuedUserMessage,
-  sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
-): number {
-  return sourceParams?.apiStartTime ?? queuedMessage.createdAt.getTime();
-}
-
 function queuedIntegrationDeliveries(
   sourceParams: Awaited<ReturnType<typeof decryptQueuedUserMessageRunParams>>,
 ): Pick<
@@ -2875,13 +2868,11 @@ async function buildCreateQueuedChatRunInput(
 
   const [startNewSession, loadedIncompleteContext, featureSwitchContext] =
     await loadQueuedMessageSessionState(args, modelRoute);
-  const attachFileMetadata = args.queuedMessage.attachFileMetadata
-    ? [...args.queuedMessage.attachFileMetadata]
-    : await args.resolveAttachFileMetadata(
-        args.userId,
-        args.queuedMessage.attachFiles,
-        args.signal,
-      );
+  const attachFileMetadata = await args.resolveAttachFileMetadata(
+    args.userId,
+    args.queuedMessage.attachFiles,
+    args.signal,
+  );
   args.signal.throwIfAborted();
   const inlineTemplatesEnabled = isFeatureEnabled(
     FeatureSwitchKey.StructuredPromptInlineTemplates,
@@ -2958,14 +2949,12 @@ async function buildCreateQueuedChatRunInput(
     computerUseHostGrant,
     triggerSource: args.queuedMessage.triggerSource,
     attachFileMetadata,
-    realAgentInPreview:
-      sourceParams?.realAgentInPreview ??
-      isFeatureEnabled(
-        FeatureSwitchKey.RealAgentInPreview,
-        featureSwitchContext,
-      ),
+    realAgentInPreview: isFeatureEnabled(
+      FeatureSwitchKey.RealAgentInPreview,
+      featureSwitchContext,
+    ),
     ...queuedIntegrationDeliveries(sourceParams),
-    apiStartTime: queuedMessageApiStartTime(args.queuedMessage, sourceParams),
+    apiStartTime: args.queuedMessage.createdAt.getTime(),
     userInfoExtras: sourceParams?.userInfoExtras,
   };
 }
