@@ -85,15 +85,6 @@ function outputDirForSite(site: string): string {
   return `./generated/mockups/${site}`;
 }
 
-function formatCandidateSource(
-  source: ResourceCandidateSlice["sources"][number],
-): string {
-  if ("repo" in source) {
-    return `- \`${source.repo}@${source.ref}\``;
-  }
-  return `- ${source.description}`;
-}
-
 export function createHtmlArtifactAuthoringPacket(
   options: HtmlArtifactAuthoringOptions,
 ): HtmlArtifactAuthoringPacket {
@@ -147,14 +138,14 @@ export function createHtmlArtifactAuthoringPacket(
   const instructions = [
     `# Zero generate ${options.kind}`,
     "",
-    "This is a federated generation source-selection packet for the current agent.",
+    "This is a generation source-selection packet for the current agent.",
     `Zero is not generating this ${title} on the server. You select resources, resolve them, and author the artifact.`,
     "",
     "## User Prompt",
     options.prompt,
     "",
     "## Stage 1: Resource Selection",
-    "- Choose generation resources from the bundled federated registry slice below.",
+    "- Choose generation resources from the bundled registry slice below.",
     "- Select one template, one or more skills, and zero or one design system.",
     "- Choose only IDs present in this packet; do not invent registry IDs.",
     "- Prefer compatible resources, but the user prompt is the highest-priority signal.",
@@ -167,8 +158,7 @@ export function createHtmlArtifactAuthoringPacket(
     "",
     "## Candidate Registry Slice",
     `Registry: \`${candidateSlice.registryVersion}\``,
-    "Sources:",
-    ...candidateSlice.sources.map(formatCandidateSource),
+    `Default Git Source: \`${candidateSlice.source.repo}@${candidateSlice.source.ref}\``,
     "",
     "```json",
     JSON.stringify(candidateSlice.candidates, null, 2),
@@ -176,8 +166,8 @@ export function createHtmlArtifactAuthoringPacket(
     "",
     "## Stage 2: Resolve Selected Resources",
     "- First resolve every required resource listed above, then resolve every selected resource before authoring.",
-    "- Each candidate carries a `source` object with `path` and optional `repo`/`ref`; when `repo`/`ref` are omitted, fall back to the registry-level source above.",
-    "- If `source.archive` is present, pull the private R2 archive with `zero resource pull <resource-id> --dir ./generated/resources`; the CLI requests an authenticated short-lived download URL, verifies the digest, and then extracts `source.path`.",
+    "- For a candidate without `source.archive`, resolve `source.path` only from the pinned Git Source above. Do not run `zero resource pull` for it.",
+    "- For a candidate with `source.archive`, run `zero resource pull <candidate-id> --dir ./generated/resources` with that candidate's `id`, then resolve it at `./generated/resources/<source.path>`. Do not look for it in the Git Source.",
     "- For directory refs, inspect the most relevant files such as `SKILL.md`, `DESIGN.md`, `README.md`, tokens, examples, and templates.",
     "- If a source file cannot be fetched, state that limitation and fall back to the registry metadata for that resource.",
     "",

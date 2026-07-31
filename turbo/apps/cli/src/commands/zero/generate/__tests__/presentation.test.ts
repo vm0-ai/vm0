@@ -45,9 +45,7 @@ describe("zero generate presentation command", () => {
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain("# Zero generate presentation");
     expect(stdout).toContain("direct HTML presentation authoring packet");
-    expect(stdout).not.toContain(
-      "federated generation source-selection packet",
-    );
+    expect(stdout).not.toContain("generation source-selection packet");
     expect(stdout).not.toContain("## Stage 1: Resource Selection");
     expect(stdout).not.toContain("## Candidate Registry Slice");
     expect(stdout).toContain("API migration plan");
