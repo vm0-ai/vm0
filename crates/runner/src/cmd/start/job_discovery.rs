@@ -3,7 +3,6 @@
 //! `run()` owns the provider discovery future and reactor scheduling. This
 //! module owns the body that turns a discovered job into a claimed spawned job.
 
-use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -171,7 +170,7 @@ pub(super) async fn handle_discovered_job(
     // briefly advertise stale workspace-cache affinity for an active session.
     let active_reuse_key_guard = ActiveReuseKeyGuard::new(
         ctx.spawn_ctx.active_reuse_keys.clone(),
-        claimed.context().reuse_key().map(Cow::into_owned),
+        claimed.context().reuse_key().map(str::to_owned),
     );
 
     let (reuse_entry, active_lease, reuse_result, idle_snapshot, needs_session_affinity_refresh) =
@@ -686,8 +685,7 @@ async fn activate_reserved_idle(
     let reserved_reuse_key = reservation.reuse_key().to_owned();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
 
-    if !resume_session_valid || requested_reuse_key.as_deref() != Some(reserved_reuse_key.as_str())
-    {
+    if !resume_session_valid || requested_reuse_key != Some(reserved_reuse_key.as_str()) {
         let reuse_result = if requested_reuse_key.is_none() || !resume_session_valid {
             SandboxReuseResult::NoSessionId
         } else {
@@ -876,7 +874,7 @@ async fn try_reuse_from_pool(
     // so unpark does not block other take/park operations.
     let (taken, snapshot) = {
         let mut pool = ctx.idle_pool.lock().await;
-        let taken = pool.take(&reuse_key);
+        let taken = pool.take(reuse_key);
         let snapshot = taken.as_ref().map(|_| pool.status_snapshot());
         (taken, snapshot)
     };
@@ -887,7 +885,7 @@ async fn try_reuse_from_pool(
         && ctx
             .spawn_ctx
             .held_session_snapshot
-            .might_contain_workspace_cache_reuse_key(&reuse_key);
+            .might_contain_workspace_cache_reuse_key(reuse_key);
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::HeldSessionStateRefresh, started_at);
     let needs_session_affinity_refresh = took_idle_session || claimed_workspace_cache_reuse_key;
     match taken {
@@ -909,8 +907,8 @@ async fn try_reuse_from_pool(
                 if let Err(mismatch) = validation {
                     warn!(
                         run_id = %run_id,
-                        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reuse_key),
-                        reuse_key_kind = reuse_key_kind(&reuse_key),
+                        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
+                        reuse_key_kind = reuse_key_kind(reuse_key),
                         profile = %profile_name,
                         mismatch = mismatch.as_str(),
                         "workspace promotion identity mismatch, destroying idle VM and falling through to fresh create"
@@ -939,8 +937,8 @@ async fn try_reuse_from_pool(
                 } => {
                     info!(
                         run_id = %run_id,
-                        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reuse_key),
-                        reuse_key_kind = reuse_key_kind(&reuse_key),
+                        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
+                        reuse_key_kind = reuse_key_kind(reuse_key),
                         "reusing idle VM for reuse key"
                     );
                     // Idle entry already holds budget. Drop the speculative
@@ -958,8 +956,8 @@ async fn try_reuse_from_pool(
                 IdleUnparkResult::Failed { destroy_job, error } => {
                     warn!(
                         run_id = %run_id,
-                        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reuse_key),
-                        reuse_key_kind = reuse_key_kind(&reuse_key),
+                        reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
+                        reuse_key_kind = reuse_key_kind(reuse_key),
                         error = %error,
                         "unpark failed, destroying idle VM and falling through to fresh create"
                     );
@@ -977,8 +975,8 @@ async fn try_reuse_from_pool(
         Some(stale) if stale.profile_name() == profile_name => {
             info!(
                 run_id = %run_id,
-                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reuse_key),
-                reuse_key_kind = reuse_key_kind(&reuse_key),
+                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
+                reuse_key_kind = reuse_key_kind(reuse_key),
                 profile = %profile_name,
                 "idle VM device rate limiter mismatch, destroying"
             );
@@ -998,8 +996,8 @@ async fn try_reuse_from_pool(
         Some(stale) => {
             info!(
                 run_id = %run_id,
-                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reuse_key),
-                reuse_key_kind = reuse_key_kind(&reuse_key),
+                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
+                reuse_key_kind = reuse_key_kind(reuse_key),
                 old_profile = %stale.profile_name(),
                 new_profile = %profile_name,
                 "idle VM profile mismatch, destroying"
@@ -1020,8 +1018,8 @@ async fn try_reuse_from_pool(
         None => {
             info!(
                 run_id = %run_id,
-                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(&reuse_key),
-                reuse_key_kind = reuse_key_kind(&reuse_key),
+                reuse_key_fingerprint = %diagnostic_reuse_key_fingerprint(reuse_key),
+                reuse_key_kind = reuse_key_kind(reuse_key),
                 "no idle VM found for reuse key"
             );
             (

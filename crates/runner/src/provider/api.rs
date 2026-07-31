@@ -1,6 +1,5 @@
 //! [`JobProvider`] backed by an Ably control plane + HTTP polling + REST API.
 
-use std::borrow::Cow;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -552,7 +551,7 @@ impl JobProvider for ApiProvider {
                         return None;
                     }
                     let run_id = job.run_id;
-                    let reuse_key = job.reuse_key().map(Cow::into_owned);
+                    let reuse_key = job.reuse_key().map(str::to_owned);
                     let cli_agent_session_id = job.cli_agent_session_id;
                     let history_generation_run_id = job.history_generation_run_id;
                     let history_generation_affinity_protected_until =
@@ -2223,7 +2222,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn discover_returns_http_poll_job_after_wakeup() {
+    async fn discover_http_poll_does_not_infer_reuse_key_from_cli_session() {
         let server = MockServer::start_async().await;
         let run_id: RunId = "00000000-0000-0000-0000-000000000003".parse().unwrap();
         let history_generation_run_id: RunId =
@@ -2258,6 +2257,7 @@ mod tests {
 
         assert_eq!(discovered.run_id(), run_id);
         assert_eq!(discovered.profile_name(), "vm0/large");
+        assert!(discovered.reuse_key().is_none());
         assert_eq!(discovered.cli_agent_session_id(), Some("sess-poll"));
         assert_eq!(
             discovered.history_generation_run_id(),
@@ -3443,6 +3443,10 @@ mod tests {
             "test-region"
         );
         assert_eq!(context.storage_manifest.as_ref().unwrap().storages.len(), 1);
+        assert_eq!(
+            context.reuse_key(),
+            Some("thread:00000000-0000-4000-8000-000000020986")
+        );
         assert_eq!(context.cli_agent_session_id(), Some("fixture-session-id"));
         assert_eq!(
             context.environment.as_ref().unwrap()["FIXTURE_MODEL"],
@@ -3574,6 +3578,46 @@ mod tests {
         assert_eq!(context.prompt, "previous response");
         assert!(context.append_system_prompt.is_none());
         assert!(context.billable_firewalls.is_empty());
+        claim_mock.assert_calls_async(1).await;
+    }
+
+    #[tokio::test]
+    async fn api_provider_claim_does_not_infer_reuse_key_from_resume_session() {
+        let server = MockServer::start_async().await;
+        let run_id = RunId::nil();
+        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
+        let claim_mock = server
+            .mock_async(|when, then| {
+                when.method(POST).path(claim_path.as_str());
+                then.status(200).json_body(serde_json::json!({
+                    "runId": run_id,
+                    "prompt": "response without reuse key",
+                    "sandboxToken": "no-reuse-key-sandbox-token",
+                    "cliAgentType": "claude_code",
+                    "resumeSession": {
+                        "sessionId": "sess-claim",
+                        "sessionHistory": "{}"
+                    }
+                }));
+            })
+            .await;
+        let provider = api_provider_for_test(
+            server.base_url(),
+            CancellationToken::new(),
+            Arc::new(PollWakeups::new(false)),
+        );
+
+        let claimed = provider
+            .claim(JobCandidate::new(
+                run_id,
+                crate::profile::DEFAULT_PROFILE.to_string(),
+            ))
+            .await
+            .expect("claim response without reuse key should decode");
+        let context = claimed.context();
+
+        assert_eq!(context.cli_agent_session_id(), Some("sess-claim"));
+        assert!(context.reuse_key().is_none());
         claim_mock.assert_calls_async(1).await;
     }
 

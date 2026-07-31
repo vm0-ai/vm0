@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -48,16 +47,6 @@ pub struct Job {
     pub session_affinity_resource: Option<SessionAffinityResource>,
 }
 
-fn deployment_compatible_reuse_key<'a>(
-    reuse_key: Option<&'a str>,
-    cli_agent_session_id: Option<&'a str>,
-) -> Option<Cow<'a, str>> {
-    reuse_key.map(Cow::Borrowed).or_else(|| {
-        // TODO(deployment-compatibility): Remove this fallback after the next release.
-        cli_agent_session_id.map(|session_id| Cow::Owned(format!("session:{session_id}")))
-    })
-}
-
 pub(crate) fn reuse_key_kind(reuse_key: &str) -> &'static str {
     if reuse_key.starts_with("thread:") {
         "thread"
@@ -67,11 +56,8 @@ pub(crate) fn reuse_key_kind(reuse_key: &str) -> &'static str {
 }
 
 impl Job {
-    pub(crate) fn reuse_key(&self) -> Option<Cow<'_, str>> {
-        deployment_compatible_reuse_key(
-            self.reuse_key.as_deref(),
-            self.cli_agent_session_id.as_deref(),
-        )
+    pub(crate) fn reuse_key(&self) -> Option<&str> {
+        self.reuse_key.as_deref()
     }
 }
 
@@ -1262,8 +1248,8 @@ where
 }
 
 impl ExecutionContext {
-    pub(crate) fn reuse_key(&self) -> Option<Cow<'_, str>> {
-        deployment_compatible_reuse_key(self.reuse_key.as_deref(), self.cli_agent_session_id())
+    pub(crate) fn reuse_key(&self) -> Option<&str> {
+        self.reuse_key.as_deref()
     }
 
     /// Extract the Claude/Codex CLI agent session id from `resume_session`.
@@ -1480,26 +1466,6 @@ mod tests {
             Some(SessionAffinityResource::WorkspaceCache)
         );
         assert!(job.reuse_key().is_none());
-    }
-
-    #[test]
-    fn job_reuse_key_prefers_snapshot_and_falls_back_to_cli_session() {
-        let explicit: Job = serde_json::from_value(json!({
-            "runId": "550e8400-e29b-41d4-a716-446655440000",
-            "experimentalProfile": "browser",
-            "cliAgentSessionId": "cli-session",
-            "reuseKey": "thread:chat-thread"
-        }))
-        .unwrap();
-        assert_eq!(explicit.reuse_key().as_deref(), Some("thread:chat-thread"));
-
-        let fallback: Job = serde_json::from_value(json!({
-            "runId": "550e8400-e29b-41d4-a716-446655440000",
-            "experimentalProfile": "browser",
-            "cliAgentSessionId": "cli-session"
-        }))
-        .unwrap();
-        assert_eq!(fallback.reuse_key().as_deref(), Some("session:cli-session"));
     }
 
     #[test]

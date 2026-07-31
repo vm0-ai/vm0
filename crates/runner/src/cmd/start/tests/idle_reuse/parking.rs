@@ -8,33 +8,32 @@ use super::super::support::{
 use crate::types::SandboxReuseResult;
 
 // -----------------------------------------------------------------------
-// Test 9: idle pool park/take is gated on session ID availability
+// Test 9: idle pool park/take is gated on reuse-key availability
 //
-// With a session ID, the VM is parked after execution; without one,
-// the VM is destroyed (no key to re-find it under).
+// With a reuse key, the VM is parked after execution; a CLI session ID alone
+// does not provide a key to re-find it under.
 // -----------------------------------------------------------------------
 
-fn context_with_session_opt(
+fn context_with_session_reuse_key(
     run_id: RunId,
-    session_id: Option<&str>,
+    session_id: &str,
 ) -> crate::types::ExecutionContext {
     let mut ctx = minimal_context(run_id);
-    if let Some(sid) = session_id {
-        ctx.resume_session = Some(crate::types::ResumeSession::inline(
-            sid.to_string(),
-            String::new(),
-        ));
-    }
+    ctx.reuse_key = Some(format!("session:{session_id}"));
+    ctx.resume_session = Some(crate::types::ResumeSession::inline(
+        session_id.to_string(),
+        String::new(),
+    ));
     ctx
 }
 
 #[tokio::test(start_paused = true)]
-async fn job_with_session_parks_vm() {
+async fn job_with_reuse_key_parks_vm() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
-    let ctx = context_with_session_opt(run_id, Some("sess-1"));
+    let ctx = context_with_session_reuse_key(run_id, "sess-1");
     push_job(&env, run_id, "vm0/default", Some(ctx));
 
     let c = env
@@ -53,13 +52,16 @@ async fn job_with_session_parks_vm() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn job_without_session_does_not_park() {
+async fn job_without_reuse_key_does_not_park() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
     let run_handle = tokio::spawn(run(config));
 
     let run_id = RunId::new_v4();
-    // No session — parking requires a session ID.
-    let ctx = context_with_session_opt(run_id, None);
+    let mut ctx = minimal_context(run_id);
+    ctx.resume_session = Some(crate::types::ResumeSession::inline(
+        "sess-1".to_string(),
+        String::new(),
+    ));
     push_job(&env, run_id, "vm0/default", Some(ctx));
 
     let c = env
@@ -70,11 +72,7 @@ async fn job_without_session_does_not_park() {
     assert_eq!(c.unwrap().exit_code, 0);
 
     let pool = env.idle_pool.lock().await;
-    assert_eq!(
-        pool.len(),
-        0,
-        "VM should NOT be parked without a session ID"
-    );
+    assert_eq!(pool.len(), 0, "VM should NOT be parked without a reuse key");
     drop(pool);
 
     shutdown(&env, run_handle).await;

@@ -1,5 +1,13 @@
 use super::*;
 
+fn set_session_identity(context: &mut crate::types::ExecutionContext, session_id: &str) {
+    context.reuse_key = Some(format!("session:{session_id}"));
+    context.resume_session = Some(ResumeSession::inline(
+        session_id.into(),
+        r#"{"type":"init"}"#.into(),
+    ));
+}
+
 #[tokio::test]
 async fn workspace_mount_retry_starts_a_new_codex_catalog_prefetch_owner() {
     let dir = tempfile::tempdir().unwrap();
@@ -17,10 +25,7 @@ async fn workspace_mount_retry_starts_a_new_codex_catalog_prefetch_owner() {
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = codex_oauth_context();
     let session_id = "00000000-0000-4000-8000-000000023425";
-    ctx.resume_session = Some(ResumeSession::inline(
-        session_id.into(),
-        r#"{"type":"init"}"#.into(),
-    ));
+    set_session_identity(&mut ctx, session_id);
     let params = JobParams {
         workspace_disk_mb: 16,
         ..default_params()
@@ -95,10 +100,7 @@ async fn execute_inner_retries_fresh_after_workspace_cache_hit_create_failure() 
         storages: vec![storage],
         artifacts: Vec::new(),
     });
-    ctx.resume_session = Some(ResumeSession::inline(
-        "sess-cache-hit".into(),
-        r#"{"type":"init"}"#.into(),
-    ));
+    set_session_identity(&mut ctx, "sess-cache-hit");
     let params = JobParams {
         workspace_disk_mb: 16,
         ..default_params()
@@ -200,10 +202,7 @@ async fn execute_inner_dns_readiness_retry_replaces_consumed_workspace_cache_hit
     }));
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession::inline(
-        "sess-cache-dns-retry".into(),
-        r#"{"type":"init"}"#.into(),
-    ));
+    set_session_identity(&mut ctx, "sess-cache-dns-retry");
     let params = JobParams {
         workspace_disk_mb: 16,
         ..default_params()
@@ -281,10 +280,7 @@ async fn process_timeout_invalidates_consumed_workspace_cache_without_fallback()
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let session_id = "sess-cache-dns-process-timeout";
     let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession::inline(
-        session_id.into(),
-        r#"{"type":"init"}"#.into(),
-    ));
+    set_session_identity(&mut ctx, session_id);
     let params = JobParams {
         workspace_disk_mb: 16,
         ..default_params()
@@ -379,10 +375,7 @@ async fn dns_replacement_records_completion_when_fresh_storage_prepare_fails() {
     let storage_fingerprints =
         crate::storage_fingerprints::StorageFingerprints::from_manifest(&manifest);
     ctx.storage_manifest = Some(manifest);
-    ctx.resume_session = Some(ResumeSession::inline(
-        "sess-cache-dns-prepare-failure".into(),
-        r#"{"type":"init"}"#.into(),
-    ));
+    set_session_identity(&mut ctx, "sess-cache-dns-prepare-failure");
     let params = JobParams {
         workspace_disk_mb: 16,
         ..default_params()
@@ -448,10 +441,7 @@ async fn execute_inner_cache_hit_retry_requires_completed_cleanup() {
     overrides.push_destroy_panic("simulated destroy panic");
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession::inline(
-        "sess-cache-cleanup-uncertain".into(),
-        r#"{"type":"init"}"#.into(),
-    ));
+    set_session_identity(&mut ctx, "sess-cache-cleanup-uncertain");
     let params = JobParams {
         workspace_disk_mb: 16,
         ..default_params()
@@ -498,10 +488,7 @@ async fn execute_inner_uses_workspace_cache_when_configured() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession::inline(
-        "sess-cache-default".into(),
-        r#"{"type":"init"}"#.into(),
-    ));
+    set_session_identity(&mut ctx, "sess-cache-default");
     let params = JobParams {
         workspace_disk_mb: 16,
         ..default_params()
@@ -570,10 +557,7 @@ async fn execute_inner_records_workspace_cache_lock_busy_prepare_telemetry() {
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = minimal_context();
     let session_id = "sess-cache-lock-busy-prepare";
-    ctx.resume_session = Some(ResumeSession::inline(
-        session_id.into(),
-        r#"{"type":"init"}"#.into(),
-    ));
+    set_session_identity(&mut ctx, session_id);
     let params = JobParams {
         workspace_disk_mb: 16,
         ..default_params()
@@ -640,10 +624,7 @@ async fn execute_inner_does_not_retry_workspace_cache_hit_after_proxy_register_f
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession::inline(
-        "sess-register-fail".into(),
-        r#"{"type":"init"}"#.into(),
-    ));
+    set_session_identity(&mut ctx, "sess-register-fail");
     let params = JobParams {
         workspace_disk_mb: 16,
         ..default_params()
@@ -736,10 +717,7 @@ async fn execute_job_reuse_uses_workspace_cache_when_configured() {
     let (idle_sandbox, _lease) = make_reusable_idle_sandbox(sandbox, source_ip, session_id).await;
 
     let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession::inline(
-        session_id.into(),
-        r#"{"type":"init"}"#.into(),
-    ));
+    set_session_identity(&mut ctx, session_id);
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (reuse_outcome, _telemetry) =
@@ -790,10 +768,7 @@ async fn cached_reuse_workspace_promotion_identity_mismatch_stops_before_agent()
     .await;
 
     let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession::inline(
-        session_id.into(),
-        r#"{"type":"init"}"#.into(),
-    ));
+    set_session_identity(&mut ctx, session_id);
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (reuse_outcome, _telemetry) =
@@ -846,10 +821,7 @@ async fn execute_job_reuse_without_workspace_cache_config_invalidates_held_cache
             .await;
 
     let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession::inline(
-        session_id.into(),
-        r#"{"type":"init"}"#.into(),
-    ));
+    set_session_identity(&mut ctx, session_id);
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (reuse_outcome, _telemetry) =
@@ -905,10 +877,7 @@ async fn unconfigured_cache_reuse_stops_when_cache_invalidation_fails() {
     tokio::fs::create_dir(&current_image).await.unwrap();
 
     let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession::inline(
-        session_id.into(),
-        r#"{"type":"init"}"#.into(),
-    ));
+    set_session_identity(&mut ctx, session_id);
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (reuse_outcome, _telemetry) =
@@ -948,10 +917,7 @@ async fn cached_reuse_validation_failure_keeps_workspace_cache_hidden() {
             .await;
 
     let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession::inline(
-        session_id.into(),
-        r#"{"type":"init"}"#.into(),
-    ));
+    set_session_identity(&mut ctx, session_id);
     ctx.environment = Some(HashMap::from([(
         "OPENAI_API_KEY".into(),
         "sk-proj-real-openai-secret".into(),

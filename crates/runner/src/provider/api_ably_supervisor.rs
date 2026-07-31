@@ -692,12 +692,7 @@ async fn handle_ably_message_with_network_policy_refresh(
                         notif.run_id,
                         profile.to_owned(),
                         notification_received_at,
-                        notif.reuse_key.map(str::to_owned).or_else(|| {
-                            // TODO(deployment-compatibility): Remove this fallback after the next release.
-                            notif
-                                .cli_agent_session_id
-                                .map(|session_id| format!("session:{session_id}"))
-                        }),
+                        notif.reuse_key.map(str::to_owned),
                         notif.cli_agent_session_id.map(str::to_owned),
                         notif.affinity_protected_until.map(str::to_owned),
                     )
@@ -1896,6 +1891,7 @@ mod tests {
             serde_json::json!({
                 "runId": "00000000-0000-0000-0000-000000000001",
                 "profile": "vm0/default",
+                "reuseKey": "thread:ably-thread",
                 "cliAgentSessionId": "sess-ably",
                 "historyGenerationRunId": "00000000-0000-0000-0000-000000000098",
                 "historyGenerationAffinityProtectedUntil": "2999-01-01T00:00:00.000Z",
@@ -1913,7 +1909,7 @@ mod tests {
         );
         assert_eq!(candidate.profile_name(), "vm0/default");
         let candidate = candidate.into_job_candidate();
-        assert_eq!(candidate.reuse_key(), Some("session:sess-ably"));
+        assert_eq!(candidate.reuse_key(), Some("thread:ably-thread"));
         assert_eq!(candidate.cli_agent_session_id(), Some("sess-ably"));
         assert_eq!(
             candidate.history_generation_run_id(),
@@ -1927,6 +1923,30 @@ mod tests {
         );
         assert_no_direct_candidate(&direct_candidates).await;
         assert!(!wakeups.snapshot().await.poll_now);
+    }
+
+    #[tokio::test]
+    async fn job_notification_does_not_infer_reuse_key_from_cli_session() {
+        let tokens = RunCancellationRegistry::new();
+        let wakeups = PollWakeups::new(true);
+        let direct_candidates = direct_candidate_inbox();
+        let profiles = default_profiles();
+        let msg = make_message(
+            Some("job"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000001",
+                "profile": "vm0/default",
+                "cliAgentSessionId": "sess-ably"
+            }),
+        );
+
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
+
+        let candidate = pop_direct_candidate(&direct_candidates)
+            .await
+            .into_job_candidate();
+        assert!(candidate.reuse_key().is_none());
+        assert_eq!(candidate.cli_agent_session_id(), Some("sess-ably"));
     }
 
     #[tokio::test]
