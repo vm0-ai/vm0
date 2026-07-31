@@ -316,6 +316,15 @@ def block_public_destination_denied(
     reason: str,
     send_response: bool = True,
 ) -> None:
+    """Record a public-destination denial and optionally install its local response.
+
+    Both modes disable request streaming, record the DENY decision with the
+    ``unsafe_public_destination`` error and firewall base/name, and emit the redacted
+    public-destination proxy warning. When ``send_response`` is ``True``, this also installs
+    the JSON HTTP 403 response. When it is ``False``, the function leaves ``flow.response``
+    unchanged and does not terminate the flow; the caller must terminate it and prevent
+    later request dispatch.
+    """
     proxy_log_path = flow_metadata.proxy_log_path(flow.metadata)
     flow.request.stream = False
     flow_metadata.set_firewall_decision(
