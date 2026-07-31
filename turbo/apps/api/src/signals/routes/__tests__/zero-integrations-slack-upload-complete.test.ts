@@ -15,7 +15,7 @@ import {
   integrationsSlackUploadInitContract,
   integrationsSlackUploadMaterializeContract,
 } from "@vm0/api-contracts/contracts/integrations";
-import type { ChatEventResponse } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -46,10 +46,7 @@ import {
 } from "./helpers/zero-usage-insight";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
-type CompletedChatEvent = Extract<
-  ChatEventResponse,
-  { eventType: "run.completed" }
->;
+type CompletedChatEvent = Extract<ChatEvent, { eventType: "run.completed" }>;
 
 const context = testContext();
 const store = createStore();

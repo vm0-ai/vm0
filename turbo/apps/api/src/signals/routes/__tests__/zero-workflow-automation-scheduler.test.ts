@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import type { ChatEventResponse } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   zeroAgentsByIdContract,
@@ -161,7 +161,7 @@ interface WorkflowRunMessage {
   readonly automationId: string | undefined;
   readonly hasLegacyTriggerId: boolean;
   readonly triggerBrief: string | null | undefined;
-  readonly workflowSnapshot: ChatEventResponse["workflowSnapshot"];
+  readonly workflowSnapshot: ChatEvent["workflowSnapshot"];
 }
 
 /**

@@ -4,7 +4,7 @@ import { createStore } from "ccstate";
 import { cronCompactChatThreadSnapshotsContract } from "@vm0/api-contracts/contracts/cron";
 import {
   chatThreadsContract,
-  type ChatEventResponse,
+  type ChatEvent,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
@@ -96,7 +96,7 @@ const CHAT_THREAD_SNAPSHOT_CRON_SECRET = "chat-thread-snapshot-cron-secret";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 type UserMessage = Extract<
-  ChatEventResponse,
+  ChatEvent,
   {
     eventType:
       | "input.prompt"
@@ -106,7 +106,7 @@ type UserMessage = Extract<
       | "control.revoke";
   }
 >;
-type AssistantMessage = Exclude<ChatEventResponse, UserMessage>;
+type AssistantMessage = Exclude<ChatEvent, UserMessage>;
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
 
 async function compactChatThreadSnapshots() {
@@ -203,7 +203,7 @@ function zeroTokenFromClaim(claim: RunnerClaim): string {
 async function waitForThreadMessages(
   actor: ApiTestUser,
   threadId: string,
-  predicate: (messages: readonly ChatEventResponse[]) => boolean,
+  predicate: (messages: readonly ChatEvent[]) => boolean,
 ) {
   let page: Awaited<ReturnType<typeof chat.listThreadEvents>> | undefined;
   await expect
@@ -221,7 +221,7 @@ async function waitForThreadMessages(
 async function waitForThreadEvents(
   actor: ApiTestUser,
   threadId: string,
-  predicate: (events: readonly ChatEventResponse[]) => boolean,
+  predicate: (events: readonly ChatEvent[]) => boolean,
 ) {
   let page: Awaited<ReturnType<typeof chat.listThreadEvents>> | undefined;
   await expect
@@ -302,19 +302,17 @@ async function cancelChatRun(actor: ApiTestUser, runId: string): Promise<void> {
   await waitForRunStatus(actor, runId, "cancelled");
 }
 
-function assistantMessages(
-  messages: readonly ChatEventResponse[],
-): AssistantMessage[] {
+function assistantMessages(messages: readonly ChatEvent[]): AssistantMessage[] {
   return messages.filter((message): message is AssistantMessage => {
     return !isUserMessage(message);
   });
 }
 
-function userMessages(messages: readonly ChatEventResponse[]): UserMessage[] {
+function userMessages(messages: readonly ChatEvent[]): UserMessage[] {
   return messages.filter(isUserMessage);
 }
 
-function isUserMessage(message: ChatEventResponse): message is UserMessage {
+function isUserMessage(message: ChatEvent): message is UserMessage {
   switch (message.eventType) {
     case "input.prompt":
     case "input.automation":
@@ -329,10 +327,7 @@ function isUserMessage(message: ChatEventResponse): message is UserMessage {
   }
 }
 
-type UsageRecordedEvent = Extract<
-  ChatEventResponse,
-  { eventType: "usage.recorded" }
->;
+type UsageRecordedEvent = Extract<ChatEvent, { eventType: "usage.recorded" }>;
 
 async function usageEventsForRun(
   actor: ApiTestUser,

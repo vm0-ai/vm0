@@ -1,7 +1,7 @@
 import { createHash, createHmac, randomInt, randomUUID } from "node:crypto";
 
 import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import type { ChatEventResponse } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
 import { HttpResponse, http } from "msw";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
@@ -66,7 +66,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function requireCanonicalSlackInputAssetId(
-  events: readonly ChatEventResponse[],
+  events: readonly ChatEvent[],
 ): string {
   const assetId = events
     .flatMap((event) => {
@@ -82,7 +82,7 @@ function requireCanonicalSlackInputAssetId(
 }
 
 async function expectClaimedSlackDisplayContext(
-  events: readonly ChatEventResponse[],
+  events: readonly ChatEvent[],
   messagePermalink: string,
 ): Promise<void> {
   const claimedMessage = events.find((message) => {
@@ -113,9 +113,9 @@ async function expectClaimedSlackDisplayContext(
 }
 
 function slackInputMessageByText(
-  events: readonly ChatEventResponse[],
+  events: readonly ChatEvent[],
   text: string,
-): ChatEventResponse | undefined {
+): ChatEvent | undefined {
   return events.find((message) => {
     if (
       message.eventType !== "input.prompt" &&

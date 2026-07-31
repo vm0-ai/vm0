@@ -1,4 +1,4 @@
-import type { ChatEventResponse } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
@@ -12,7 +12,7 @@ const bdd = createBddApi(context);
 const chat = createChatFilesBddApi(context);
 const runs = createRunsApi(context);
 
-function eventText(event: ChatEventResponse): string | undefined {
+function eventText(event: ChatEvent): string | undefined {
   if (
     event.eventType !== "input.prompt" &&
     event.eventType !== "input.rejected"
@@ -25,9 +25,9 @@ function eventText(event: ChatEventResponse): string | undefined {
 }
 
 function annotationForText(
-  events: readonly ChatEventResponse[],
+  events: readonly ChatEvent[],
   text: string,
-): ChatEventResponse["annotation"] {
+): ChatEvent["annotation"] {
   return events.find((event) => {
     return eventText(event) === text;
   })?.annotation;

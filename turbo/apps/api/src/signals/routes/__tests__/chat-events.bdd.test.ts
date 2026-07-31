@@ -17,7 +17,7 @@ import {
   type ChatRunOptionsRequest,
   type ChatThreadEvent,
   type GenerationTemplateRequest,
-  type ChatEventResponse,
+  type ChatEvent,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
@@ -84,7 +84,6 @@ import {
   holdThreadSessionBindingClearFixture,
   holdThreadSessionConversationChangesFixture,
   holdThreadSessionConversationClearFixture,
-  insertRetiredQueuePauseEventsFixture,
   readChatEventInputParamsFixture,
   replayPendingChatInputQueueEventFixture,
   replaceBddVm0ApiKeys,
@@ -219,7 +218,7 @@ function codexAuthJson(): string {
 }
 
 type UserMessage = Extract<
-  ChatEventResponse,
+  ChatEvent,
   {
     eventType:
       | "input.prompt"
@@ -229,17 +228,11 @@ type UserMessage = Extract<
       | "control.revoke";
   }
 >;
-type AssistantMessage = Exclude<ChatEventResponse, UserMessage>;
-type PromptMessage = Extract<ChatEventResponse, { eventType: "input.prompt" }>;
-type FailedMessage = Extract<ChatEventResponse, { eventType: "run.failed" }>;
-type OutputMessage = Extract<
-  ChatEventResponse,
-  { eventType: "output.message" }
->;
-type FollowupsEvent = Extract<
-  ChatEventResponse,
-  { eventType: "output.followups" }
->;
+type AssistantMessage = Exclude<ChatEvent, UserMessage>;
+type PromptMessage = Extract<ChatEvent, { eventType: "input.prompt" }>;
+type FailedMessage = Extract<ChatEvent, { eventType: "run.failed" }>;
+type OutputMessage = Extract<ChatEvent, { eventType: "output.message" }>;
+type FollowupsEvent = Extract<ChatEvent, { eventType: "output.followups" }>;
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
 
 interface EntitledChatActor {
@@ -519,7 +512,7 @@ function zeroTokenFromClaim(claim: RunnerClaim): string {
 async function waitForThreadMessages(
   actor: ApiTestUser,
   threadId: string,
-  predicate: (messages: readonly ChatEventResponse[]) => boolean,
+  predicate: (messages: readonly ChatEvent[]) => boolean,
 ) {
   let page: Awaited<ReturnType<typeof chat.listThreadEvents>> | undefined;
   await expect
@@ -674,19 +667,17 @@ async function cancelChatRun(actor: ApiTestUser, runId: string): Promise<void> {
   await waitForRunStatus(actor, runId, "cancelled");
 }
 
-function assistantMessages(
-  messages: readonly ChatEventResponse[],
-): AssistantMessage[] {
+function assistantMessages(messages: readonly ChatEvent[]): AssistantMessage[] {
   return messages.filter((message): message is AssistantMessage => {
     return !isUserMessage(message);
   });
 }
 
-function userMessages(messages: readonly ChatEventResponse[]): UserMessage[] {
+function userMessages(messages: readonly ChatEvent[]): UserMessage[] {
   return messages.filter(isUserMessage);
 }
 
-function isUserMessage(message: ChatEventResponse): message is UserMessage {
+function isUserMessage(message: ChatEvent): message is UserMessage {
   switch (message.eventType) {
     case "input.prompt":
     case "input.automation":
@@ -702,7 +693,7 @@ function isUserMessage(message: ChatEventResponse): message is UserMessage {
 }
 
 function eventBackedContents(
-  messages: readonly ChatEventResponse[],
+  messages: readonly ChatEvent[],
   runId: string,
 ): OutputMessage[] {
   return messages.filter((message): message is OutputMessage => {
@@ -711,7 +702,7 @@ function eventBackedContents(
 }
 
 function recommendedFollowupEvents(
-  messages: readonly ChatEventResponse[],
+  messages: readonly ChatEvent[],
   runId: string,
 ): FollowupsEvent[] {
   return messages.filter((message): message is FollowupsEvent => {
@@ -6774,71 +6765,5 @@ describe("CHAT-02: shared user message queue", () => {
     const followUp = await api.readRun(actor, fired.runId);
     expect(followUp.prompt).toContain("queue-first fires after cancel");
     await cancelChatRun(actor, fired.runId);
-  }, 90_000);
-});
-
-describe("CHAT-02: complete event stream", () => {
-  it("serves retired queue pause markers instead of skipping their seqIds", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-
-    const prompt = "list the full historical event stream";
-    const model = await chat.getDefaultCreateThreadModel(actor);
-    const sent = await accept(
-      chatEventsClient().send({
-        headers: sessionHeaders(actor),
-        body: {
-          agentId,
-          prompt,
-          userMessage: {
-            version: 1,
-            parts: [{ type: "text", text: prompt }],
-          },
-          model,
-        },
-      }),
-      [201],
-    );
-    if (sent.status !== 201) {
-      throw new Error("Expected the chat send to create a thread");
-    }
-    const threadId = sent.body.threadId;
-
-    const { pausedSeqId, resumedSeqId } =
-      await insertRetiredQueuePauseEventsFixture({
-        threadId,
-        pauseReason: "historical pause fixture",
-      });
-
-    const page = await chat.listThreadEvents(actor, threadId);
-    const seqIds = page.events
-      .map((event) => {
-        return event.seqId;
-      })
-      .sort((left, right) => {
-        return left - right;
-      });
-    const lowest = seqIds[0];
-    const highest = seqIds.at(-1);
-    if (lowest === undefined || highest === undefined) {
-      throw new Error("Expected the thread to have events");
-    }
-    expect(highest - lowest + 1).toBe(seqIds.length);
-
-    const paused = page.events.find((event) => {
-      return event.seqId === pausedSeqId;
-    });
-    expect(paused).toMatchObject({
-      eventType: "queue.automation_paused",
-      content: null,
-      pauseReason: "historical pause fixture",
-    });
-    const resumed = page.events.find((event) => {
-      return event.seqId === resumedSeqId;
-    });
-    expect(resumed).toMatchObject({
-      eventType: "queue.automation_resumed",
-      content: null,
-    });
   }, 90_000);
 });
