@@ -143,7 +143,7 @@ describe("zero generate website command", () => {
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(
-      "https://static.vm0.io/html-resources/148123fe587c1218b3019916484955c30c98289031ba4e7799bd04dfba305fa5/website.json",
+      "https://static.vm0.io/html-resources/9e005c4ace807d67338dfa701877df10175a4d2a1c677dea1414aba76867493d/website.json",
     );
     expect(stdout).not.toContain("## Candidate Registry Slice");
     expect(stdout).not.toContain('"id": "template:black-slabs"');

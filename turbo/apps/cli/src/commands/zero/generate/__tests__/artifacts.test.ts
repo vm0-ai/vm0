@@ -185,7 +185,7 @@ describe("zero generate source-backed artifact commands", () => {
 
       const stdout = output();
       expect(stdout).toContain(
-        `https://static.vm0.io/html-resources/148123fe587c1218b3019916484955c30c98289031ba4e7799bd04dfba305fa5/${command}.json`,
+        `https://static.vm0.io/html-resources/9e005c4ace807d67338dfa701877df10175a4d2a1c677dea1414aba76867493d/${command}.json`,
       );
       expect(stdout).not.toContain("/website.json");
       expect(stdout).not.toContain("## Candidate Registry Slice");
@@ -193,9 +193,7 @@ describe("zero generate source-backed artifact commands", () => {
       expect(stdout).toContain(
         "Resolve and download only resources selected from the index.",
       );
-      expect(stdout).toContain(
-        "run its exact `source.pull.command`, then use `source.pull.resolvedPath`.",
-      );
+      expect(stdout).not.toContain("source.pull");
       expect(stdout).not.toContain("built-in R2 template packages");
     },
   );

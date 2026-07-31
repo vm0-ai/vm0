@@ -77,8 +77,10 @@ const ON_DEMAND_SELECTION_INSTRUCTIONS = [
   "Select resources only when they are useful for the request. There is no fixed selection count for any resource type.",
   "After selecting, resolve and download only the selected resources. Do not fetch unselected candidates.",
   "For a selected entry without source.archive, resolve source.path from this index's pinned source.repo@source.ref.",
-  "For a selected entry with source.archive, run its exact source.pull.command and then use source.pull.resolvedPath. Do not construct or guess a direct R2 URL.",
 ] as const;
+
+const WEBSITE_ARCHIVE_SELECTION_INSTRUCTION =
+  "For a selected entry with source.archive, run its exact source.pull.command and then use source.pull.resolvedPath. Do not construct or guess a direct R2 URL.";
 
 function readOption(name: string): string | undefined {
   const optionIndex = process.argv.indexOf(name);
@@ -117,6 +119,11 @@ function toIndexEntry(
   }
   if (!entry.source.path) {
     throw new Error(`${entry.id} has no source.path`);
+  }
+  if (entry.source.archive && target !== "website") {
+    throw new Error(
+      `${entry.id} has an archive source outside the website target`,
+    );
   }
   if (entry.source.repo || entry.source.ref) {
     throw new Error(`${entry.id} overrides the fixed Git source with repo/ref`);
@@ -171,7 +178,13 @@ function buildTargetIndex(target: HtmlResourceTarget): HtmlResourceIndex {
     source: candidateSlice.source,
     selectionPolicy: {
       mode: "on-demand",
-      instructions: ON_DEMAND_SELECTION_INSTRUCTIONS,
+      instructions:
+        target === "website"
+          ? [
+              ...ON_DEMAND_SELECTION_INSTRUCTIONS,
+              WEBSITE_ARCHIVE_SELECTION_INSTRUCTION,
+            ]
+          : ON_DEMAND_SELECTION_INSTRUCTIONS,
     },
     templates: buildCandidateGroup(
       target,
