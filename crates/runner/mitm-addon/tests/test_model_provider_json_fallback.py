@@ -70,10 +70,16 @@ class TestModelProviderJsonFallback:
     def test_openai_non_streaming_json_fallback(self, tmp_path, real_flow):
         """Legacy JSON fallback should use OpenAI Responses mapping."""
         provider_case = OPENAI_RESPONSES_CASE
-        cache_write_tokens = 15
+        input_tokens = 272_001
+        output_tokens = 20
+        cached_tokens = 70_000
+        cache_write_tokens = 2_001
         flow = model_provider_flow(real_flow, tmp_path, provider_case)
         body = standard_success_payload(
             provider_case,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cached_tokens=cached_tokens,
             cache_write_tokens=cache_write_tokens,
         )
         set_response_stream_buffer(flow, body)
@@ -89,6 +95,9 @@ class TestModelProviderJsonFallback:
         extracted = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]
         expected = expected_model_usage(
             provider_case,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cached_tokens=cached_tokens,
             cache_write_tokens=cache_write_tokens,
         )
         assert extracted["message_id"] == expected["message_id"]
@@ -100,10 +109,12 @@ class TestModelProviderJsonFallback:
         events = webhook.usage_events()
         by_category = {event["category"]: event["quantity"] for event in events}
         assert len(events) == len(by_category)
-        assert by_category == expected_event_quantities(
-            provider_case,
-            cache_write_tokens=cache_write_tokens,
-        )
+        assert by_category == {
+            "tokens.input.long_context": 200_000,
+            "tokens.output.long_context": output_tokens,
+            "tokens.cache_read.long_context": cached_tokens,
+            "tokens.cache_creation.long_context": cache_write_tokens,
+        }
 
     def test_anthropic_json_fallback_parse_error_logs_proxy_warning(self, tmp_path, real_flow):
         """Legacy JSON fallback parse failures should be observable."""

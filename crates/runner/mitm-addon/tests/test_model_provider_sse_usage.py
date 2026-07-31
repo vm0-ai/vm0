@@ -130,6 +130,32 @@ class TestModelProviderSseUsage:
             "tokens.cache_creation": 15,
         }
 
+    def test_full_pipeline_openai_sse_reports_long_context_items(self, tmp_path, real_flow):
+        flow = _openai_responses_sse_flow(tmp_path, real_flow)
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(
+            b"event: response.completed\n"
+            b'data: {"response":{"model":"gpt-5.5",'
+            b'"usage":{"input_tokens":272001,"output_tokens":20,'
+            b'"input_tokens_details":{"cached_tokens":70000,'
+            b'"cache_write_tokens":2001}}}}\n\n'
+        )
+
+        webhook = self._run_response(flow)
+
+        assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == {
+            "tokens.input.long_context": 200_000,
+            "tokens.output.long_context": 20,
+            "tokens.cache_read.long_context": 70_000,
+            "tokens.cache_creation.long_context": 2_001,
+        }
+        assert compact_observation_quantities(webhook.model_usage_observation_events()) == {
+            "tokens.input": 200_000,
+            "tokens.output": 20,
+            "tokens.cache_read": 70_000,
+            "tokens.cache_creation": 2_001,
+        }
+
     def test_full_pipeline_openai_sse_reports_usage_with_oversized_type(self, tmp_path, real_flow):
         flow = _openai_responses_sse_flow(tmp_path, real_flow)
         mitm_addon.responseheaders(flow)
