@@ -3122,13 +3122,13 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
     const bdd = createBddApi(context);
     const actor = bdd.user();
 
-    const unknownType = await connectorsApi.completeOauthCallback("invalid", {
+    const unknownSlug = await connectorsApi.completeOauthCallback("invalid", {
       code: "code-123",
       state: "state-123",
     });
-    expectConnectorErrorRedirect(unknownType, {
+    expectConnectorErrorRedirect(unknownSlug, {
       connectorSlug: "invalid",
-      message: "Unknown connector type",
+      message: "Unknown connector slug",
     });
 
     const manualOnly = await connectorsApi.completeOauthCallback("cloudinary", {

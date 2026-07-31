@@ -1935,7 +1935,7 @@ class TestHandleFirewallRequest:
     async def test_connector_not_configured_without_name_omits_connectors(
         self, real_flow, headers, mitm_ctx, tmp_path
     ):
-        """Connector references are only returned when the firewall name is known."""
+        """Connector slugs are only returned when the firewall name is known."""
         flow = _firewall_flow(real_flow)
         api_entry = _api_entry()
         vm_info = _vm_info(tmp_path)
@@ -1968,7 +1968,7 @@ class TestHandleFirewallRequest:
         assert "connectors" not in body
 
     async def test_missing_vars_only_returns_424(self, real_flow, headers, mitm_ctx, tmp_path):
-        """When connector not configured, return 424 with connector ref."""
+        """When connector is not configured, return 424 with its slug."""
         flow = _firewall_flow(real_flow)
         api_entry = _api_entry(base="https://hcti.io")
         vm_info = _vm_info(tmp_path)

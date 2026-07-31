@@ -5,9 +5,9 @@ export interface WorkflowTemplateItem {
   // Persona group used to organize the template picker. One of
   // WORKFLOW_TEMPLATE_CATEGORIES.
   readonly category: string;
-  // Connector types shown as icons on the card. Typed loosely because the
-  // catalog is curated by hand; the picker filters these to the connector
-  // types that actually have an icon (isConnectorIconType).
+  // Connector slugs shown as icons on the card. Typed loosely because the
+  // catalog is curated by hand; the picker filters these to entries with an
+  // icon.
   readonly connectors: readonly string[];
   readonly promptGuidance: string;
 }

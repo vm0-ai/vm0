@@ -54,7 +54,7 @@ function statusItemFromConnector(connector: Record<string, unknown>) {
 function stubConnector(
   body: Record<string, unknown>,
   status = 200,
-  type = "github",
+  connectorSlug = "github",
 ) {
   if (status === 200) {
     return stubConnectorCatalogStatus([statusItemFromConnector(body)]);
@@ -62,7 +62,7 @@ function stubConnector(
   if (status === 404) {
     return stubConnectorCatalogStatus([
       catalogStatusItem({
-        connectorSlug: type,
+        connectorSlug,
         authMethods: [authCodeMethod("oauth")],
       }),
     ]);

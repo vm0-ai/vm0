@@ -40,7 +40,7 @@ export const zeroUserConnectorsContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get enabled connector types for user on agent",
+    summary: "Get enabled connector slugs for user on agent",
   },
   update: {
     method: "PUT",
@@ -55,7 +55,7 @@ export const zeroUserConnectorsContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Update enabled connector types for user on agent",
+    summary: "Update enabled connector slugs for user on agent",
   },
 });
 export type ZeroUserConnectorsContract = typeof zeroUserConnectorsContract;

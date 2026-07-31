@@ -299,7 +299,7 @@ export type ConnectorSearchResponse = z.infer<
 
 /**
  * Zero contract for GET /api/zero/connectors/search
- * Returns all available connector type definitions with optional keyword search
+ * Returns all available connectors with optional keyword search
  */
 export const zeroConnectorsSearchContract = c.router({
   search: {
@@ -313,7 +313,7 @@ export const zeroConnectorsSearchContract = c.router({
       403: apiErrorSchema,
       503: apiErrorSchema,
     },
-    summary: "Search available connector types",
+    summary: "Search available connectors by slug",
   },
 });
 

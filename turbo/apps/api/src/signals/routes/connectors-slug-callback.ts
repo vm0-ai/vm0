@@ -270,7 +270,7 @@ function resolveConnectorWithGrant(args: {
       response: redirectWithError(
         args.origin,
         args.connectorSlug,
-        "Unknown connector type",
+        "Unknown connector slug",
       ),
     };
   }

@@ -239,7 +239,7 @@ function publicGrant(
 
 function publicConnector(connector: ConnectorCatalogArtifactConnector) {
   return {
-    connectorRef: connector.slug,
+    slug: connector.slug,
     label: connector.label,
     description: connector.description,
     category: connector.category,

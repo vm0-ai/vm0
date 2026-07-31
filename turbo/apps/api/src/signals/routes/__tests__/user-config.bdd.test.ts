@@ -234,7 +234,7 @@ describe("AUTH-03 agent user connectors", () => {
     );
     expectApiError(invalid.body);
     expect(invalid.body.error).toStrictEqual({
-      message: "Invalid connector types: not-a-connector",
+      message: "Invalid connector slugs: not-a-connector",
       code: "VALIDATION_ERROR",
     });
 
