@@ -35,11 +35,10 @@ import {
 } from "./zero-chat-queue-marker.service";
 import { recordFirstAssistantEventEligibility } from "./zero-chat-first-assistant-event-metric.service";
 import {
-  activePaidConcurrencySlots,
   cappedBaseConcurrencyLimit,
+  loadOrgConcurrencyState,
   totalConcurrencyLimit,
 } from "./org-concurrency-entitlements.service";
-import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 import { tapError } from "../utils";
 
 const L = logger("ZeroRunQueue");
@@ -49,16 +48,21 @@ const QUEUED_RUN_EXPIRED_REASON = "Queued run expired (exceeded queue TTL)";
 const QUEUED_RUN_LAUNCH_ORPHAN_REASON =
   "Queued run timed out before queue entry was persisted";
 
-async function effectiveOrgConcurrencyLimit(
+async function effectiveOrgConcurrencyState(
   db: Pick<Db, "select">,
   orgId: string,
-): Promise<number> {
-  const capabilities = await loadOrgPlanCapabilities(db, orgId);
-  const baseLimit = cappedBaseConcurrencyLimit(
-    capabilities?.baseConcurrencyLimit ?? 0,
-  );
-  const paidSlots = await activePaidConcurrencySlots(db, orgId);
-  return totalConcurrencyLimit({ baseLimit, paidSlots });
+): Promise<{ readonly activeRunCount: number; readonly limit: number }> {
+  const at = nowDate();
+  const state = await loadOrgConcurrencyState(db, {
+    orgId,
+    at,
+    activePendingAfter: new Date(at.getTime() - PENDING_RUN_TTL_MS),
+  });
+  const baseLimit = cappedBaseConcurrencyLimit(state.baseConcurrencyLimit);
+  return {
+    activeRunCount: state.activeRunCount,
+    limit: totalConcurrencyLimit({ baseLimit, paidSlots: state.paidSlots }),
+  };
 }
 
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -143,29 +147,6 @@ async function timedOutQueuedRunsWithMarkerNotifications(
   return timedOutRuns;
 }
 
-async function activeConcurrencyCount(
-  db: Pick<Db, "select">,
-  orgId: string,
-): Promise<number> {
-  const staleThreshold = new Date(now() - PENDING_RUN_TTL_MS);
-  const [activeRow] = await db
-    .select({ count: count() })
-    .from(agentRuns)
-    .where(
-      and(
-        eq(agentRuns.orgId, orgId),
-        or(
-          eq(agentRuns.status, "running"),
-          and(
-            eq(agentRuns.status, "pending"),
-            activePendingRunPredicate(staleThreshold),
-          ),
-        ),
-      ),
-    );
-  return Number(activeRow?.count ?? 0);
-}
-
 async function insertPromotedRunnerJob(
   tx: DbTransaction,
   args: {
@@ -228,10 +209,8 @@ async function loadDrainCandidates(
   return await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${orgId}))`);
 
-    const limit = await effectiveOrgConcurrencyLimit(tx, orgId);
-
-    const activeCount = await activeConcurrencyCount(tx, orgId);
-    if (activeCount >= limit) {
+    const concurrency = await effectiveOrgConcurrencyState(tx, orgId);
+    if (concurrency.activeRunCount >= concurrency.limit) {
       return [];
     }
 
@@ -265,10 +244,8 @@ async function promoteQueuedCandidate(
       sql`SELECT pg_advisory_xact_lock(hashtext(${args.orgId}))`,
     );
 
-    const limit = await effectiveOrgConcurrencyLimit(tx, args.orgId);
-
-    const activeCount = await activeConcurrencyCount(tx, args.orgId);
-    if (activeCount >= limit) {
+    const concurrency = await effectiveOrgConcurrencyState(tx, args.orgId);
+    if (concurrency.activeRunCount >= concurrency.limit) {
       return { status: "full" };
     }
 
