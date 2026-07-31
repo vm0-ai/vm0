@@ -10755,9 +10755,8 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     failIfChatCallbackRouteIsFetched();
-    const apiStartedAt = Date.parse("2026-07-23T08:00:00.000Z");
-    const acknowledgedAt = apiStartedAt + 4321;
-    mockNow(apiStartedAt);
+    const requestedAt = Date.parse("2026-07-23T08:00:00.000Z");
+    mockNow(requestedAt);
     onTestFinished(() => {
       clearMockNow();
     });
@@ -10766,6 +10765,12 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       agentId,
       prompt: "bdd assistant events",
     });
+    const apiStartedAtIso = await readRunApiStart(context, runId);
+    if (apiStartedAtIso === null) {
+      throw new Error("Expected chat run to have an API start time");
+    }
+    const apiStartedAt = Date.parse(apiStartedAtIso);
+    const acknowledgedAt = apiStartedAt + 4321;
     await flushWaitUntilForTest();
     expect(
       sandboxOperationEventsForRunByAction(
@@ -10774,7 +10779,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       ),
     ).toStrictEqual([
       {
-        _time: new Date(apiStartedAt).toISOString(),
+        _time: apiStartedAtIso,
         source: "api",
         op_type: "first_assistant_message_eligible",
         sandbox_type: "runner",
@@ -10797,6 +10802,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     context.mocks.ably.publish.mockRejectedValueOnce(
       new Error("first chat assistant publish failed"),
     );
+    mockNow(apiStartedAt);
 
     await webhooks.requestAgentEvents(
       {
@@ -10832,7 +10838,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       ),
     ).toStrictEqual([
       {
-        _time: new Date(apiStartedAt).toISOString(),
+        _time: apiStartedAtIso,
         source: "api",
         op_type: "api_to_first_assistant_message",
         sandbox_type: "runner",
@@ -10889,7 +10895,7 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       ),
     ).toStrictEqual([
       {
-        _time: new Date(apiStartedAt).toISOString(),
+        _time: apiStartedAtIso,
         source: "api",
         op_type: "api_to_first_assistant_message",
         sandbox_type: "runner",
@@ -11069,9 +11075,8 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     failIfChatCallbackRouteIsFetched();
-    const apiStartedAt = Date.parse("2026-07-23T08:30:00.000Z");
-    const acknowledgedAt = apiStartedAt + 5000;
-    mockNow(apiStartedAt);
+    const requestedAt = Date.parse("2026-07-23T08:30:00.000Z");
+    mockNow(requestedAt);
     onTestFinished(() => {
       clearMockNow();
     });
@@ -11080,6 +11085,12 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       agentId,
       prompt: "bdd concurrent assistant acknowledgements",
     });
+    const apiStartedAtIso = await readRunApiStart(context, runId);
+    if (apiStartedAtIso === null) {
+      throw new Error("Expected chat run to have an API start time");
+    }
+    const apiStartedAt = Date.parse(apiStartedAtIso);
+    const acknowledgedAt = apiStartedAt + 5000;
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(runId);
     await flushWaitUntilForTest();
@@ -11184,9 +11195,8 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
     const webhooks = createWebhookCallbackApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     failIfChatCallbackRouteIsFetched();
-    const apiStartedAt = Date.parse("2026-07-23T09:00:00.000Z");
-    const acknowledgedAt = apiStartedAt + 2468;
-    mockNow(apiStartedAt);
+    const requestedAt = Date.parse("2026-07-23T09:00:00.000Z");
+    mockNow(requestedAt);
     onTestFinished(() => {
       clearMockNow();
     });
@@ -11195,6 +11205,12 @@ describe("HOOK-02/CHAT-02: assistant events reach optional chat consumers", () =
       agentId,
       prompt: "bdd Codex first assistant output",
     });
+    const apiStartedAtIso = await readRunApiStart(context, runId);
+    if (apiStartedAtIso === null) {
+      throw new Error("Expected chat run to have an API start time");
+    }
+    const apiStartedAt = Date.parse(apiStartedAtIso);
+    const acknowledgedAt = apiStartedAt + 2468;
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(runId);
     await flushWaitUntilForTest();
