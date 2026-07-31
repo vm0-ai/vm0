@@ -343,6 +343,18 @@ async function openModelSettings(): Promise<void> {
   });
 }
 
+async function openSettingsFromAccountMenu(): Promise<HTMLElement> {
+  const accountName = await screen.findByText("Test User");
+  const accountButton = accountName.closest("button");
+  if (!accountButton) {
+    throw new Error("Account menu trigger not found");
+  }
+  click(accountButton);
+  const menu = await screen.findByRole("menu");
+  click(within(menu).getByText("Settings"));
+  return screen.findByRole("dialog", { name: "Settings" });
+}
+
 async function openAddApiKeyModelDialog(): Promise<void> {
   mockAdminOrg();
   context.mocks.data.orgModelProviders([]);
@@ -456,6 +468,69 @@ describe("organization model providers settings", () => {
     expect(
       screen.queryByRole("heading", { name: "Provider connections" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("clears a gateway draft when settings closes", async () => {
+    mockAdminOrg();
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([]);
+    mockGatewayConnectionLifecycle();
+
+    await openProvidersTab(true);
+
+    const connectionsHeading = await screen.findByRole("heading", {
+      name: "Provider connections",
+    });
+    const connectionsSection = connectionsHeading.closest("section");
+    if (!(connectionsSection instanceof HTMLElement)) {
+      throw new Error("Provider connections section not found");
+    }
+    const settingsDialog = screen.getByRole("dialog", { name: "Settings" });
+
+    click(within(connectionsSection).getByText("Add provider"));
+    click(menuItemByText("Vercel AI Gateway"));
+    const addDialog = await screen.findByRole("dialog", {
+      name: "Add model provider",
+    });
+    await fill(
+      within(addDialog).getByLabelText("API key"),
+      "vck-sensitive-draft",
+    );
+
+    click(within(settingsDialog).getByLabelText("Close"));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Settings" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("dialog", { name: "Add model provider" }),
+      ).not.toBeInTheDocument();
+    });
+
+    const reopenedSettingsDialog = await openSettingsFromAccountMenu();
+    click(buttonByText("Models", reopenedSettingsDialog));
+    await expect(
+      screen.findByRole("heading", { name: "Models" }),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByRole("dialog", { name: "Add model provider" }),
+    ).not.toBeInTheDocument();
+
+    const reopenedConnectionsHeading = await screen.findByRole("heading", {
+      name: "Provider connections",
+    });
+    const reopenedConnectionsSection =
+      reopenedConnectionsHeading.closest("section");
+    if (!(reopenedConnectionsSection instanceof HTMLElement)) {
+      throw new Error("Provider connections section not found");
+    }
+    click(within(reopenedConnectionsSection).getByText("Add provider"));
+    click(menuItemByText("Vercel AI Gateway"));
+
+    const reopenedAddDialog = await screen.findByRole("dialog", {
+      name: "Add model provider",
+    });
+    expect(within(reopenedAddDialog).getByLabelText("API key")).toHaveValue("");
   });
 
   it("manages a gateway lifecycle and assigns it to a model route", async () => {

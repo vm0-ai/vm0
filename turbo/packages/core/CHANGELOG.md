@@ -1,5 +1,58 @@
 # Changelog
 
+## [8.497.1](https://github.com/vm0-ai/vm0/compare/core-v8.497.0...core-v8.497.1) (2026-07-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.258.2
+
+## [8.497.0](https://github.com/vm0-ai/vm0/compare/core-v8.496.4...core-v8.497.0) (2026-07-31)
+
+
+### Features
+
+* **platform:** enable multilingual locale rollout ([#24189](https://github.com/vm0-ai/vm0/issues/24189)) ([618bf9b](https://github.com/vm0-ai/vm0/commit/618bf9b4e379a8f3678314185b041faafdf07580))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.258.1
+
+## [8.496.4](https://github.com/vm0-ai/vm0/compare/core-v8.496.3...core-v8.496.4) (2026-07-31)
+
+
+### Bug Fixes
+
+* **cli:** distinguish git and r2 html resources ([#24162](https://github.com/vm0-ai/vm0/issues/24162)) ([e6d586a](https://github.com/vm0-ai/vm0/commit/e6d586ad665df39b55057f602689c1d141545ac1))
+
+## [8.496.3](https://github.com/vm0-ai/vm0/compare/core-v8.496.2...core-v8.496.3) (2026-07-31)
+
+
+### Refactoring
+
+* **api:** retire the agent session read endpoint ([#24164](https://github.com/vm0-ai/vm0/issues/24164)) ([f76fc80](https://github.com/vm0-ai/vm0/commit/f76fc805f64da464ce910d0975f2d87c9516062c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.258.0
+
+## [8.496.2](https://github.com/vm0-ai/vm0/compare/core-v8.496.1...core-v8.496.2) (2026-07-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.257.0
+
 ## [8.496.1](https://github.com/vm0-ai/vm0/compare/core-v8.496.0...core-v8.496.1) (2026-07-31)
 
 

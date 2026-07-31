@@ -171,7 +171,7 @@ export function parsePermissionActionUrl(
   if (!path) {
     return null;
   }
-  // TODO(#23823): Remove the legacy serialized-action query fallback.
+  // Historical permission links may use ref from before CLI 9.270.1.
   const connectorSlug =
     url.searchParams.get("connectorSlug") ?? url.searchParams.get("ref");
   const permission = url.searchParams.get("permission");

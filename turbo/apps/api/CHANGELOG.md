@@ -1,5 +1,125 @@
 # Changelog
 
+## [1.359.1](https://github.com/vm0-ai/vm0/compare/api-v1.359.0...api-v1.359.1) (2026-07-31)
+
+
+### Bug Fixes
+
+* **runner:** distinguish cancellation intent ([#24217](https://github.com/vm0-ai/vm0/issues/24217)) ([ce76a6d](https://github.com/vm0-ai/vm0/commit/ce76a6d1fc3c332da622f390be9119f58275cc30))
+
+
+### Refactoring
+
+* **chat:** project source annotations from context ([#24230](https://github.com/vm0-ai/vm0/issues/24230)) ([f686803](https://github.com/vm0-ai/vm0/commit/f6868038b1953cfe1c588d74890ab8053044eadf))
+* **connectors:** use slug identity in firewall policies ([#24229](https://github.com/vm0-ai/vm0/issues/24229)) ([3ed0961](https://github.com/vm0-ai/vm0/commit/3ed0961ec336d2c84be219db715e0254930e91ee))
+
+
+### Performance Improvements
+
+* **api:** reduce workflow slash pre-admission latency ([#24216](https://github.com/vm0-ai/vm0/issues/24216)) ([cd91f46](https://github.com/vm0-ai/vm0/commit/cd91f460b78c261f40e429b2c0626e693dd84a64))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.258.2
+    * @vm0/connectors bumped to 1.202.2
+    * @vm0/core bumped to 8.497.1
+    * @vm0/db bumped to 1.158.4
+
+## [1.359.0](https://github.com/vm0-ai/vm0/compare/api-v1.358.1...api-v1.359.0) (2026-07-31)
+
+
+### Features
+
+* **platform:** enable multilingual locale rollout ([#24189](https://github.com/vm0-ai/vm0/issues/24189)) ([618bf9b](https://github.com/vm0-ai/vm0/commit/618bf9b4e379a8f3678314185b041faafdf07580))
+
+
+### Refactoring
+
+* **api:** remove legacy github callback field ([#24199](https://github.com/vm0-ai/vm0/issues/24199)) ([f7133ea](https://github.com/vm0-ai/vm0/commit/f7133ea133817d6ccb9b91dbee31c3c5366a29fa))
+
+
+### Performance Improvements
+
+* **api:** clean up applied model usage observations ([#24196](https://github.com/vm0-ai/vm0/issues/24196)) ([0586cb2](https://github.com/vm0-ai/vm0/commit/0586cb2f3f2cb44f9d3048d2b664074550909cc1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.258.1
+    * @vm0/core bumped to 8.497.0
+    * @vm0/db bumped to 1.158.3
+
+## [1.358.1](https://github.com/vm0-ai/vm0/compare/api-v1.358.0...api-v1.358.1) (2026-07-31)
+
+
+### Refactoring
+
+* **api:** replace scalar existence probes with builders ([#24136](https://github.com/vm0-ai/vm0/issues/24136)) ([7ff711e](https://github.com/vm0-ai/vm0/commit/7ff711e4758f40c03b64be8f1da6597a76926db1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.496.4
+    * @vm0/db bumped to 1.158.2
+
+## [1.358.0](https://github.com/vm0-ai/vm0/compare/api-v1.357.0...api-v1.358.0) (2026-07-31)
+
+
+### Features
+
+* **platform:** explain cancellation recovery before queued continuation ([#24138](https://github.com/vm0-ai/vm0/issues/24138)) ([e69feb8](https://github.com/vm0-ai/vm0/commit/e69feb8210a878f3a5f130766e67274d7115b57b))
+
+
+### Refactoring
+
+* **api:** rename GitHub chat event identifiers ([#24163](https://github.com/vm0-ai/vm0/issues/24163)) ([240143f](https://github.com/vm0-ai/vm0/commit/240143f24fe334ff039b5b5d08d469e149a874cf))
+* **api:** retire the agent session read endpoint ([#24164](https://github.com/vm0-ai/vm0/issues/24164)) ([f76fc80](https://github.com/vm0-ai/vm0/commit/f76fc805f64da464ce910d0975f2d87c9516062c))
+* **db:** add chat goal context ([#24160](https://github.com/vm0-ai/vm0/issues/24160)) ([67ce15b](https://github.com/vm0-ai/vm0/commit/67ce15bd3e74748abe572aed6779b8aa9505f486))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.258.0
+    * @vm0/core bumped to 8.496.3
+    * @vm0/db bumped to 1.158.1
+
+## [1.357.0](https://github.com/vm0-ai/vm0/compare/api-v1.356.2...api-v1.357.0) (2026-07-31)
+
+
+### Features
+
+* source thread browser state from chat events ([#23854](https://github.com/vm0-ai/vm0/issues/23854)) ([34def5b](https://github.com/vm0-ai/vm0/commit/34def5bba28b1a9f639fcbc872d7e22ad823a902))
+
+
+### Refactoring
+
+* **api:** remove legacy axiom output bridge ([#24147](https://github.com/vm0-ai/vm0/issues/24147)) ([b22b99d](https://github.com/vm0-ai/vm0/commit/b22b99de3829464873a309e3f17132a43a30aca5))
+* **connectors:** remove legacy authorization state reader ([#24135](https://github.com/vm0-ai/vm0/issues/24135)) ([2924137](https://github.com/vm0-ai/vm0/commit/2924137d49442af25a73d19f8526d4ca968f0bfc))
+* **observability:** remove legacy connector debug dimensions ([#24137](https://github.com/vm0-ai/vm0/issues/24137)) ([77c077f](https://github.com/vm0-ai/vm0/commit/77c077f8d2e514ad1c2611d742700c3c5a5b2ae6))
+
+
+### Performance Improvements
+
+* **api:** incrementally project model statistics ([#24139](https://github.com/vm0-ai/vm0/issues/24139)) ([50ee908](https://github.com/vm0-ai/vm0/commit/50ee90878c70cb7fd1b99cb909a291ab9fd9c7e0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.257.0
+    * @vm0/core bumped to 8.496.2
+    * @vm0/db bumped to 1.158.0
+
 ## [1.356.2](https://github.com/vm0-ai/vm0/compare/api-v1.356.1...api-v1.356.2) (2026-07-31)
 
 

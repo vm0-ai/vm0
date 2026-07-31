@@ -5,7 +5,6 @@ import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-co
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { createApp } from "../../../app-factory";
 import {
   deleteFeatureSwitchesForUser,
   updateFeatureSwitchesForUser,
@@ -65,7 +64,7 @@ describe("GET /api/zero/agents/:id/user-connectors", () => {
     await deleteFeatureSwitchesForUser(context, actor);
   });
 
-  it("updates canonical connector slugs and rejects legacy aliases", async () => {
+  it("updates canonical connector slugs", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
@@ -108,18 +107,5 @@ describe("GET /api/zero/agents/:id/user-connectors", () => {
     expect(new Set(added.body.enabledConnectorSlugs)).toStrictEqual(
       new Set(["github", "slack"]),
     );
-
-    const legacy = await createApp({ signal: context.signal }).request(
-      `/api/zero/agents/${created.body.agentId}/user-connectors`,
-      {
-        method: "PUT",
-        headers: {
-          authorization: "Bearer clerk-session",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ enabledTypes: ["github"] }),
-      },
-    );
-    expect(legacy.status).toBe(400);
   });
 });

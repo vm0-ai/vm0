@@ -186,16 +186,13 @@ runs:
           add_env ENV "$deploy_env"
           add_env BRAZILIAN_PORTUGUESE_LOCALE_ROLLOUT_ENABLED "true"
           add_env JAPANESE_LOCALE_ROLLOUT_ENABLED "true"
+          add_env KOREAN_LOCALE_ROLLOUT_ENABLED "true"
+          add_env INDONESIAN_LOCALE_ROLLOUT_ENABLED "true"
+          add_env GERMAN_LOCALE_ROLLOUT_ENABLED "true"
+          add_env SPANISH_LOCALE_ROLLOUT_ENABLED "true"
+          add_env ITALIAN_LOCALE_ROLLOUT_ENABLED "true"
+          add_env FRENCH_LOCALE_ROLLOUT_ENABLED "true"
           add_env HINDI_LOCALE_ROLLOUT_ENABLED "true"
-          # Keep production writes disabled until every rollback candidate can
-          # parse persisted id-ID preferences. Preview deploys are isolated and
-          # remain enabled for end-to-end rollout coverage.
-          if [[ "$INPUT_ENVIRONMENT" == "preview" ]]; then
-            add_env INDONESIAN_LOCALE_ROLLOUT_ENABLED "true"
-            add_env GERMAN_LOCALE_ROLLOUT_ENABLED "true"
-            add_env FRENCH_LOCALE_ROLLOUT_ENABLED "true"
-          fi
-          add_env ITALIAN_LOCALE_ROLLOUT_ENABLED "$(first_non_empty "$(repo_var ITALIAN_LOCALE_ROLLOUT_ENABLED)" "false")"
           if [[ "$INPUT_ENVIRONMENT" == "production" ]]; then
             add_secret CLOUDFLARE_BROWSER_RENDERING_API_TOKEN CLOUDFLARE_BROWSER_RENDERING_API_TOKEN
             add_secret ARTIFACT_PREVIEW_WAF_SECRET ARTIFACT_PREVIEW_WAF_SECRET

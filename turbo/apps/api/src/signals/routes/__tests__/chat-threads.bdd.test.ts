@@ -9,6 +9,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
+import { RUNNER_CANCELLATION_RECOVERY_CAPABILITY } from "@vm0/api-contracts/contracts/runners";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import { describe, expect, it, onTestFinished } from "vitest";
 
@@ -1327,7 +1328,10 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       agentId,
       prompt: "delete cascade anchor",
     });
-    await claimChatRun(runnerGroup, main.runId);
+    await api.heartbeatRunner(runnerGroup);
+    await api.claimRunnerJob(main.runId, {
+      capabilities: [RUNNER_CANCELLATION_RECOVERY_CAPABILITY],
+    });
 
     await expect(chat.listActiveChatThreadIds(actor)).resolves.toContain(
       main.threadId,
@@ -1362,10 +1366,17 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(peerDelete.body.error.code).toBe("NOT_FOUND");
     await expect(chat.readThread(actor, main.threadId)).resolves.toStrictEqual({
       lastReadAt: null,
+      cancellationRecoveryPending: false,
     });
 
+    context.mocks.ably.publish.mockClear();
     const deleted = await chat.requestDeleteThread(actor, main.threadId, [204]);
     expect(deleted.body).toBeUndefined();
+    await flushWaitUntilForTest();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith("cancel", {
+      runId: main.runId,
+      mode: "hard",
+    });
 
     expect((await api.readRun(actor, main.runId)).status).toBe("cancelled");
     expect((await api.readRun(actor, sibling.runId)).status).toBe("completed");

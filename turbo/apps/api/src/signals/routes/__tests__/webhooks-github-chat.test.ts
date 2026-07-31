@@ -19,12 +19,14 @@ import {
 } from "../../../test-fixtures/github-chat";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createGithubBddApi, newGithubUserId } from "./helpers/api-bdd-github";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
 const bdd = createBddApi(context);
+const chat = createChatFilesBddApi(context);
 const github = createGithubBddApi(context);
 const runs = createRunsApi(context);
 const webhooks = createWebhookCallbackApi(context);
@@ -323,6 +325,26 @@ describe("GitHub canonical chat threads", () => {
         expectedResumeSessionId: previousCliSession,
       });
     }
+    if (!firstRun?.chatThreadId) {
+      throw new Error("Expected the first GitHub run chat thread");
+    }
+    const firstThreadEvents = await chat.listThreadEvents(
+      fixture.actorA,
+      firstRun.chatThreadId,
+    );
+    expect(firstThreadEvents.events).toContainEqual(
+      expect.objectContaining({
+        eventType: "input.prompt",
+        annotation: {
+          kind: "github",
+          href: `https://github.com/${REPO}/issues/${subjectNumber}#issuecomment-10001`,
+        },
+        userMessage: {
+          version: 1,
+          parts: [{ type: "text", text: "A turn 1" }],
+        },
+      }),
+    );
 
     await sendGitHubComment({
       fixture,

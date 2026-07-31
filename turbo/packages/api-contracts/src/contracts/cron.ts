@@ -203,13 +203,13 @@ const cronRefreshStoragePresignedUrlsResponseSchema = z.object({
   workflowSkill: storagePresignedUrlRefreshResultSchema,
 });
 
-export const CRON_AGGREGATE_MODEL_STATS_MAX_HOURS = 24 * 32;
-
 const cronAggregateModelStatsResponseSchema = z.object({
   success: z.literal(true),
-  windowStart: z.string(),
-  windowEnd: z.string(),
-  aggregated: z.number(),
+  cutoff: z.iso.datetime(),
+  processedHours: z.number().int().nonnegative(),
+  processedObservations: z.number().int().nonnegative(),
+  updatedStats: z.number().int().nonnegative(),
+  deletedObservations: z.number().int().nonnegative(),
 });
 
 export const cronAggregateUsageContract = c.router({
@@ -465,14 +465,7 @@ export const cronAggregateModelStatsContract = c.router({
     method: "GET",
     path: "/api/cron/aggregate-model-stats",
     headers: authHeadersSchema,
-    query: z.object({
-      hours: z.coerce
-        .number()
-        .int()
-        .min(1)
-        .max(CRON_AGGREGATE_MODEL_STATS_MAX_HOURS)
-        .optional(),
-    }),
+    query: z.object({}).strict(),
     responses: {
       200: cronAggregateModelStatsResponseSchema,
       401: apiErrorSchema,

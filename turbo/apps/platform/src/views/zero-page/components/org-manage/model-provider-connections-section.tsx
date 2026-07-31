@@ -34,6 +34,7 @@ import {
 import {
   closeDeleteModelProviderConnection$,
   closeModelProviderConnection$,
+  modelProviderConnectionDialogSignal$,
   modelProviderConnectionDraft$,
   openCreateModelProviderConnection$,
   openDeleteModelProviderConnection$,
@@ -45,6 +46,7 @@ import {
   updateModelProviderSurfaceField$,
   type ModelProviderConnectionTemplate,
 } from "../../../../signals/zero-page/settings/model-provider-connections.ts";
+import { settingsDialogSignal$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { SettingsSectionHeading } from "../settings/settings-section-heading.tsx";
@@ -53,7 +55,11 @@ const ZERO_BORDER = {
   border: "0.7px solid hsl(var(--gray-400))",
 } as const;
 
-function AddConnectionMenu() {
+function AddConnectionMenu({
+  settingsDialogSignal,
+}: {
+  settingsDialogSignal: AbortSignal;
+}) {
   const { t } = useTranslation();
   const openCreate = useSet(openCreateModelProviderConnection$);
   const templateLabels: Record<ModelProviderConnectionTemplate, string> = {
@@ -97,7 +103,7 @@ function AddConnectionMenu() {
             <DropdownMenuItem
               key={template}
               onSelect={() => {
-                openCreate(template);
+                openCreate(template, settingsDialogSignal);
               }}
             >
               {templateLabels[template]}
@@ -111,8 +117,10 @@ function AddConnectionMenu() {
 
 function ConnectionCard({
   connection,
+  settingsDialogSignal,
 }: {
   connection: ModelProviderConnectionResponse;
+  settingsDialogSignal: AbortSignal;
 }) {
   const { t } = useTranslation();
   const openEdit = useSet(openEditModelProviderConnection$);
@@ -158,7 +166,7 @@ function ConnectionCard({
         <DropdownMenuContent align="end">
           <DropdownMenuItem
             onSelect={() => {
-              openEdit(connection);
+              openEdit(connection, settingsDialogSignal);
             }}
           >
             <IconPencil size={14} />
@@ -420,8 +428,8 @@ function ConnectionDialogFields({ error }: { error: string | null }) {
 function ConnectionDialog() {
   const { t } = useTranslation();
   const draft = useGet(modelProviderConnectionDraft$);
+  const dialogSignal = useGet(modelProviderConnectionDialogSignal$);
   const close = useSet(closeModelProviderConnection$);
-  const pageSignal = useGet(pageSignal$);
   const [saveLoadable, save] = useLoadableSet(saveModelProviderConnection$);
   const saving = saveLoadable.state === "loading";
   const errorKey = draft.error;
@@ -473,9 +481,11 @@ function ConnectionDialog() {
             })}
           </Button>
           <Button
-            disabled={saving}
+            disabled={saving || !dialogSignal}
             onClick={() => {
-              detach(save(pageSignal), Reason.DomCallback);
+              if (dialogSignal) {
+                detach(save(dialogSignal), Reason.DomCallback);
+              }
             }}
           >
             {t(($) => {
@@ -490,10 +500,14 @@ function ConnectionDialog() {
 
 export function ModelProviderConnectionsSection() {
   const { t } = useTranslation();
+  const settingsDialogSignal = useGet(settingsDialogSignal$);
   const loadable = useLoadable(modelProviderConnections$);
   const last = useLastResolved(modelProviderConnections$);
   const connections =
     loadable.state === "hasData" ? loadable.data : (last ?? []);
+  if (!settingsDialogSignal) {
+    return null;
+  }
   return (
     <section className="flex flex-col gap-4">
       <SettingsSectionHeading
@@ -503,7 +517,9 @@ export function ModelProviderConnectionsSection() {
         description={t(($) => {
           return $.settings.models.gateways.description;
         })}
-        action={<AddConnectionMenu />}
+        action={
+          <AddConnectionMenu settingsDialogSignal={settingsDialogSignal} />
+        }
       />
       {connections.length === 0 ? (
         <p className="rounded-xl bg-muted/20 px-4 py-5 text-sm text-muted-foreground">
@@ -515,7 +531,11 @@ export function ModelProviderConnectionsSection() {
         <div className="grid gap-2">
           {connections.map((connection) => {
             return (
-              <ConnectionCard key={connection.id} connection={connection} />
+              <ConnectionCard
+                key={connection.id}
+                connection={connection}
+                settingsDialogSignal={settingsDialogSignal}
+              />
             );
           })}
         </div>

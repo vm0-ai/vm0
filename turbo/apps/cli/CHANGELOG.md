@@ -1,5 +1,70 @@
 # Changelog
 
+## [9.272.4](https://github.com/vm0-ai/vm0/compare/cli-v9.272.3...cli-v9.272.4) (2026-07-31)
+
+
+### Refactoring
+
+* **connectors:** use slug identity in firewall policies ([#24229](https://github.com/vm0-ai/vm0/issues/24229)) ([3ed0961](https://github.com/vm0-ai/vm0/commit/3ed0961ec336d2c84be219db715e0254930e91ee))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.258.2
+    * @vm0/connectors bumped to 1.202.2
+    * @vm0/core bumped to 8.497.1
+
+## [9.272.3](https://github.com/vm0-ai/vm0/compare/cli-v9.272.2...cli-v9.272.3) (2026-07-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.258.1
+    * @vm0/core bumped to 8.497.0
+
+## [9.272.2](https://github.com/vm0-ai/vm0/compare/cli-v9.272.1...cli-v9.272.2) (2026-07-31)
+
+
+### Bug Fixes
+
+* **cli:** distinguish git and r2 html resources ([#24162](https://github.com/vm0-ai/vm0/issues/24162)) ([e6d586a](https://github.com/vm0-ai/vm0/commit/e6d586ad665df39b55057f602689c1d141545ac1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.496.4
+
+## [9.272.1](https://github.com/vm0-ai/vm0/compare/cli-v9.272.0...cli-v9.272.1) (2026-07-31)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.258.0
+    * @vm0/core bumped to 8.496.3
+
+## [9.272.0](https://github.com/vm0-ai/vm0/compare/cli-v9.271.6...cli-v9.272.0) (2026-07-31)
+
+
+### Features
+
+* source thread browser state from chat events ([#23854](https://github.com/vm0-ai/vm0/issues/23854)) ([34def5b](https://github.com/vm0-ai/vm0/commit/34def5bba28b1a9f639fcbc872d7e22ad823a902))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.257.0
+    * @vm0/core bumped to 8.496.2
+
 ## [9.271.6](https://github.com/vm0-ai/vm0/compare/cli-v9.271.5...cli-v9.271.6) (2026-07-31)
 
 

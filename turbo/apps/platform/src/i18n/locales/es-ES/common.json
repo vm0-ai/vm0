@@ -1394,11 +1394,17 @@
     "newChat": "Nuevo chat",
     "origins": {
       "feishu": "Feishu",
+      "github": "GitHub",
       "openChat": "Abrir chat",
       "openFeishuChat": "Abrir el chat original en Feishu",
+      "openGithubMessage": "Abrir la incidencia o solicitud de cambios original en GitHub",
       "openMessage": "Abrir mensaje",
       "openSlackMessage": "Abrir el mensaje original en Slack",
-      "slack": "Slack"
+      "openTeamsMessage": "Abrir el mensaje original en Microsoft Teams",
+      "openTelegramMessage": "Abrir el mensaje original en Telegram",
+      "slack": "Slack",
+      "teams": "Microsoft Teams",
+      "telegram": "Telegram"
     },
     "permissions": {
       "actionDescription": "{{action}} {{permissionName}}",
@@ -1432,6 +1438,7 @@
       "automationEvent": "Evento de automatización",
       "automationEventDescription": "Espera detrás de los mensajes en cola y se ejecuta cuando termina la ejecución actual.",
       "cancelGoal": "Cancelar objetivo",
+      "cancellationRecoveryPending": "Finalizando la ejecución cancelada antes de continuar con el trabajo en cola.",
       "event_one": "{{count}} evento",
       "event_many": "{{count}} eventos",
       "event_other": "{{count}} eventos",

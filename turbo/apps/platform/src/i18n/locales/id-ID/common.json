@@ -1365,11 +1365,17 @@
     "newChat": "Chat baru",
     "origins": {
       "feishu": "Feishu",
+      "github": "GitHub",
       "openChat": "Buka chat",
       "openFeishuChat": "Buka chat asli di Feishu",
+      "openGithubMessage": "Buka masalah atau pull request asli di GitHub",
       "openMessage": "Buka pesan",
       "openSlackMessage": "Buka pesan asli di Slack",
-      "slack": "Slack"
+      "openTeamsMessage": "Buka pesan asli di Microsoft Teams",
+      "openTelegramMessage": "Buka pesan asli di Telegram",
+      "slack": "Slack",
+      "teams": "Microsoft Teams",
+      "telegram": "Telegram"
     },
     "permissions": {
       "actionDescription": "{{action}} {{permissionName}}",
@@ -1401,6 +1407,7 @@
       "automationEvent": "Peristiwa otomatisasi",
       "automationEventDescription": "Menunggu di belakang pesan yang menunggu dan dijalankan setelah eksekusi saat ini selesai.",
       "cancelGoal": "Batalkan tujuan",
+      "cancellationRecoveryPending": "Menyelesaikan eksekusi yang dibatalkan sebelum melanjutkan pekerjaan dalam antrean.",
       "event_one": "{{count}} peristiwa",
       "event_other": "{{count}} peristiwa",
       "goal": "Tujuan",

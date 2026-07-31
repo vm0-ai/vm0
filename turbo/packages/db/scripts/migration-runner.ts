@@ -8,6 +8,8 @@ type DbMigration = {
   readonly created_at: string | number | null;
 };
 
+export const NON_TRANSACTIONAL_MIGRATION_MARKER = "-- vm0:non-transactional";
+
 export async function applyPendingMigrations(sql: postgres.Sql): Promise<void> {
   const migrations = readMigrationFiles({
     migrationsFolder: DRIZZLE_MIGRATE_OUT,
@@ -35,6 +37,25 @@ export async function applyPendingMigrations(sql: postgres.Sql): Promise<void> {
       lastDbMigration &&
       Number(lastDbMigration.created_at) >= migration.folderMillis
     ) {
+      continue;
+    }
+
+    if (
+      migration.sql.some((statement) => {
+        return statement.includes(NON_TRANSACTIONAL_MIGRATION_MARKER);
+      })
+    ) {
+      for (const statement of migration.sql) {
+        if (statement.trim().length === 0) {
+          continue;
+        }
+        await sql.unsafe(statement);
+      }
+
+      await sql`
+        INSERT INTO "drizzle"."__drizzle_migrations" ("hash", "created_at")
+        VALUES (${migration.hash}, ${migration.folderMillis})
+      `;
       continue;
     }
 

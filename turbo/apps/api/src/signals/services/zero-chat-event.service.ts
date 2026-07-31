@@ -8,9 +8,16 @@ import {
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
-import { chatEvents } from "@vm0/db/schema/chat-event";
+import {
+  chatEvents,
+  type ChatEventGoalSnapshot,
+} from "@vm0/db/schema/chat-event";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
+import { chatGithubContext } from "@vm0/db/schema/chat-github-context";
+import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
 import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
+import { chatTeamsContext } from "@vm0/db/schema/chat-teams-context";
+import { chatTelegramContext } from "@vm0/db/schema/chat-telegram-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatEventAssetRefs } from "@vm0/db/schema/run-uploaded-file";
 import { eq, isNotNull, sql } from "drizzle-orm";
@@ -32,21 +39,74 @@ type ChatEventIdentity = Pick<
 
 type ChatEventDisplayContext =
   | {
-      readonly slackMessagePermalink: string | null;
-      readonly feishuChatOpenUrl?: never;
+      readonly slackContext: {
+        readonly messagePermalink: string | null;
+        readonly channelId: string;
+        readonly messageTs: string;
+      };
+      readonly feishuContext?: never;
+      readonly teamsContext?: never;
+      readonly telegramContext?: never;
+      readonly githubContext?: never;
     }
   | {
-      readonly slackMessagePermalink?: never;
-      readonly feishuChatOpenUrl: string;
+      readonly slackContext?: never;
+      readonly feishuContext: {
+        readonly chatOpenUrl: string;
+      };
+      readonly teamsContext?: never;
+      readonly telegramContext?: never;
+      readonly githubContext?: never;
     }
   | {
-      readonly slackMessagePermalink?: never;
-      readonly feishuChatOpenUrl?: never;
+      readonly slackContext?: never;
+      readonly feishuContext?: never;
+      readonly teamsContext: {
+        readonly tenantId: string;
+        readonly teamId: string | null;
+        readonly channelId: string | null;
+        readonly conversationId: string;
+        readonly conversationType: string | null;
+        readonly activityId: string | null;
+      };
+      readonly telegramContext?: never;
+      readonly githubContext?: never;
+    }
+  | {
+      readonly slackContext?: never;
+      readonly feishuContext?: never;
+      readonly teamsContext?: never;
+      readonly telegramContext: {
+        readonly chatId: string;
+        readonly messageId: string;
+        readonly isDm: boolean;
+        readonly messageThreadId: number | null;
+      };
+      readonly githubContext?: never;
+    }
+  | {
+      readonly slackContext?: never;
+      readonly feishuContext?: never;
+      readonly teamsContext?: never;
+      readonly telegramContext?: never;
+      readonly githubContext: {
+        readonly repo: string;
+        readonly subjectNumber: number;
+        readonly subjectKind: "issue" | "pull_request";
+        readonly triggerCommentId: string | null;
+      };
+    }
+  | {
+      readonly slackContext?: never;
+      readonly feishuContext?: never;
+      readonly teamsContext?: never;
+      readonly telegramContext?: never;
+      readonly githubContext?: never;
     };
 
 type ChatEventInputPayload = Pick<
   ChatEventInsert,
-  "attachFiles" | "generationTemplate" | "goalSnapshot"
+  "attachFiles" | "generationTemplate"
 > & {
   readonly attachFileMetadata?: typeof chatEventInputParams.$inferInsert.attachFileMetadata;
   readonly userMessage: NonNullable<ChatEventInsert["userMessage"]>;
@@ -79,7 +139,7 @@ type InputGoalEvent = ChatEventIdentity & {
   readonly eventType: "input.goal";
   readonly content?: null;
   readonly runGroupId: string;
-  readonly goalSnapshot: NonNullable<ChatEventInsert["goalSnapshot"]>;
+  readonly goalSnapshot: ChatEventGoalSnapshot;
 };
 
 type InputRejectedEvent = ChatEventIdentity &
@@ -248,7 +308,9 @@ type NewDisplayContext =
       readonly type: "slack";
       readonly id: string;
       readonly chatThreadId: string;
-      readonly messagePermalink: string;
+      readonly messagePermalink: string | null;
+      readonly channelId: string;
+      readonly messageTs: string;
     }
   | {
       readonly type: "feishu";
@@ -257,11 +319,46 @@ type NewDisplayContext =
       readonly chatOpenUrl: string;
     }
   | {
+      readonly type: "teams";
+      readonly id: string;
+      readonly chatThreadId: string;
+      readonly tenantId: string;
+      readonly teamId: string | null;
+      readonly channelId: string | null;
+      readonly conversationId: string;
+      readonly conversationType: string | null;
+      readonly activityId: string | null;
+    }
+  | {
+      readonly type: "telegram";
+      readonly id: string;
+      readonly chatThreadId: string;
+      readonly chatId: string;
+      readonly messageId: string;
+      readonly isDm: boolean;
+      readonly messageThreadId: number | null;
+    }
+  | {
+      readonly type: "github";
+      readonly id: string;
+      readonly chatThreadId: string;
+      readonly repo: string;
+      readonly subjectNumber: number;
+      readonly subjectKind: "issue" | "pull_request";
+      readonly triggerCommentId: string | null;
+    }
+  | {
       readonly type: "automation";
       readonly id: string;
       readonly chatThreadId: string;
       readonly automationId: string;
       readonly triggerBrief: string | null;
+    }
+  | {
+      readonly type: "goal";
+      readonly id: string;
+      readonly chatThreadId: string;
+      readonly objectiveBrief: string;
     };
 
 function isPendingInputEvent(values: NewChatEvent): boolean {
@@ -315,27 +412,60 @@ function newDisplayContext(
   eventId: string,
   values: NewChatEvent,
 ): NewDisplayContext | undefined {
-  const slackMessagePermalink =
-    "slackMessagePermalink" in values
-      ? values.slackMessagePermalink
-      : undefined;
-  if (slackMessagePermalink !== null && slackMessagePermalink !== undefined) {
+  const slackContext =
+    "slackContext" in values ? values.slackContext : undefined;
+  if (slackContext !== undefined) {
     return {
       type: "slack",
       id: eventId,
       chatThreadId: values.chatThreadId,
-      messagePermalink: slackMessagePermalink,
+      messagePermalink: slackContext.messagePermalink,
+      channelId: slackContext.channelId,
+      messageTs: slackContext.messageTs,
     };
   }
 
-  const feishuChatOpenUrl =
-    "feishuChatOpenUrl" in values ? values.feishuChatOpenUrl : undefined;
-  if (feishuChatOpenUrl !== undefined) {
+  const feishuContext =
+    "feishuContext" in values ? values.feishuContext : undefined;
+  if (feishuContext !== undefined) {
     return {
       type: "feishu",
       id: eventId,
       chatThreadId: values.chatThreadId,
-      chatOpenUrl: feishuChatOpenUrl,
+      chatOpenUrl: feishuContext.chatOpenUrl,
+    };
+  }
+
+  const teamsContext =
+    "teamsContext" in values ? values.teamsContext : undefined;
+  if (teamsContext !== undefined) {
+    return {
+      type: "teams",
+      id: eventId,
+      chatThreadId: values.chatThreadId,
+      ...teamsContext,
+    };
+  }
+
+  const telegramContext =
+    "telegramContext" in values ? values.telegramContext : undefined;
+  if (telegramContext !== undefined) {
+    return {
+      type: "telegram",
+      id: eventId,
+      chatThreadId: values.chatThreadId,
+      ...telegramContext,
+    };
+  }
+
+  const githubContext =
+    "githubContext" in values ? values.githubContext : undefined;
+  if (githubContext !== undefined) {
+    return {
+      type: "github",
+      id: eventId,
+      chatThreadId: values.chatThreadId,
+      ...githubContext,
     };
   }
 
@@ -349,6 +479,17 @@ function newDisplayContext(
       automationId,
       triggerBrief:
         "triggerBrief" in values ? (values.triggerBrief ?? null) : null,
+    };
+  }
+
+  const goalSnapshot =
+    "goalSnapshot" in values ? values.goalSnapshot : undefined;
+  if (goalSnapshot !== null && goalSnapshot !== undefined) {
+    return {
+      type: "goal",
+      id: eventId,
+      chatThreadId: values.chatThreadId,
+      objectiveBrief: goalSnapshot.objectiveBrief,
     };
   }
 
@@ -401,6 +542,8 @@ async function insertDisplayContext(
       id: context.id,
       chatThreadId: context.chatThreadId,
       messagePermalink: context.messagePermalink,
+      channelId: context.channelId,
+      messageTs: context.messageTs,
       createdAt,
     });
     return;
@@ -414,11 +557,58 @@ async function insertDisplayContext(
     });
     return;
   }
-  await tx.insert(chatAutomationContext).values({
+  if (context.type === "teams") {
+    await tx.insert(chatTeamsContext).values({
+      id: context.id,
+      chatThreadId: context.chatThreadId,
+      tenantId: context.tenantId,
+      teamId: context.teamId,
+      channelId: context.channelId,
+      conversationId: context.conversationId,
+      conversationType: context.conversationType,
+      activityId: context.activityId,
+      createdAt,
+    });
+    return;
+  }
+  if (context.type === "telegram") {
+    await tx.insert(chatTelegramContext).values({
+      id: context.id,
+      chatThreadId: context.chatThreadId,
+      chatId: context.chatId,
+      messageId: context.messageId,
+      isDm: context.isDm,
+      messageThreadId: context.messageThreadId,
+      createdAt,
+    });
+    return;
+  }
+  if (context.type === "github") {
+    await tx.insert(chatGithubContext).values({
+      id: context.id,
+      chatThreadId: context.chatThreadId,
+      repo: context.repo,
+      subjectNumber: context.subjectNumber,
+      subjectKind: context.subjectKind,
+      triggerCommentId: context.triggerCommentId,
+      createdAt,
+    });
+    return;
+  }
+  if (context.type === "automation") {
+    await tx.insert(chatAutomationContext).values({
+      id: context.id,
+      chatThreadId: context.chatThreadId,
+      automationId: context.automationId,
+      triggerBrief: context.triggerBrief,
+      createdAt,
+    });
+    return;
+  }
+  await tx.insert(chatGoalContext).values({
     id: context.id,
     chatThreadId: context.chatThreadId,
-    automationId: context.automationId,
-    triggerBrief: context.triggerBrief,
+    objectiveBrief: context.objectiveBrief,
     createdAt,
   });
 }
@@ -430,8 +620,12 @@ function persistedChatEventValues(
   >,
 ): PersistedChatEvent {
   const runLifecycleEvent = chatEventRunLifecycle(values.eventType);
-  return {
+  const { goalSnapshot: _goalSnapshot, ...persistedValues } = {
+    goalSnapshot: undefined,
     ...values,
+  };
+  return {
+    ...persistedValues,
     ...overrides,
     ...(values.eventType === "input.prompt" ||
     values.eventType === "input.rejected" ||

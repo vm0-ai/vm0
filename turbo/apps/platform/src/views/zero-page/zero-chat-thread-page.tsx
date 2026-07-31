@@ -86,6 +86,7 @@ import {
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
 import type {
+  ChatEvent as ChatEventContract,
   ChatEventUsagePayload,
   FeedbackNotePart,
   ChatFollowupsEvent,
@@ -2635,28 +2636,6 @@ function ChatThreadEmptyState({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-function ChatThreadScrollCommitMarker({
-  thread,
-}: {
-  thread: ChatThreadSignals;
-}) {
-  const requestLoadable = useLoadable(thread.scrollRenderRequestReady$);
-  const commitScroll = useSet(thread.scrollCommitOnRef$);
-  if (requestLoadable.state !== "hasData" || !requestLoadable.data) {
-    return null;
-  }
-  const request = requestLoadable.data;
-  return (
-    <span
-      key={request.revision}
-      ref={commitScroll}
-      data-chat-scroll-commit-revision={request.revision}
-      aria-hidden
-      className="hidden"
-    />
-  );
-}
-
 function ChatThreadEventsMain({ thread }: { thread: ChatThreadSignals }) {
   const renderedGroupsReady =
     useLastResolved(thread.visibleRenderedChatGroupsReady$) ?? false;
@@ -2673,7 +2652,6 @@ function ChatThreadEventsMain({ thread }: { thread: ChatThreadSignals }) {
         <ChatHistoryBackfillSkeleton thread={thread} />
         <ChatThreadRenderedEventGroups thread={thread} />
         <ChatThreadThinkingIndicator thread={thread} />
-        <ChatThreadScrollCommitMarker thread={thread} />
       </div>
     </main>
   );
@@ -4280,6 +4258,8 @@ function ChatThreadComposer({
   connectorReadState: ComposerConnectorReadState;
 }) {
   const queuedEventItems = useQueuedEventItems(thread);
+  const cancellationRecoveryPending =
+    useLastResolved(thread.cancellationRecoveryPending$) ?? false;
   const hasEventsResolved = useLastResolved(thread.hasEvents$);
   const hasEvents = hasEventsResolved ?? false;
   const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
@@ -4364,6 +4344,7 @@ function ChatThreadComposer({
     submitBlocker: submitBlockerProps,
     queuedItems,
     onRemoveQueuedItem,
+    cancellationRecoveryPending,
     ...workflowEvents,
     activeGoal,
     onCancelActiveGoal,
@@ -6988,80 +6969,103 @@ function generationTemplateTypeLabel(
   });
 }
 
-function SlackUserMessageOrigin({
-  permalink,
+const annotationIconImgs = {
+  feishu: settingsIconAssetUrl("lark"),
+  teams: settingsIconAssetUrl("teams"),
+  telegram: settingsIconAssetUrl("telegram"),
+  github: settingsIconAssetUrl("github"),
+} as const;
+
+function MessageAnnotation({
+  annotation,
 }: {
-  permalink: string | undefined;
+  annotation: NonNullable<ChatEventContract["annotation"]>;
 }) {
   const { t } = useTranslation();
-  if (!permalink) {
-    return null;
-  }
-  return (
-    <a
-      href={permalink}
-      target="_blank"
-      rel="noreferrer"
-      aria-label={t(($) => {
-        return $.chat.origins.openSlackMessage;
-      })}
-      className="mb-1.5 inline-flex h-7 max-w-[85%] items-center gap-1.5 self-end rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
-    >
-      <IconBrandSlack size={15} stroke={1.8} className="shrink-0" />
-      <span className="shrink-0">
-        {t(($) => {
+  const sourceLabel =
+    annotation.kind === "slack"
+      ? t(($) => {
           return $.chat.origins.slack;
-        })}
-      </span>
-      <span className="shrink-0">·</span>
-      <span className="min-w-0 truncate">
-        {t(($) => {
+        })
+      : annotation.kind === "feishu"
+        ? t(($) => {
+            return $.chat.origins.feishu;
+          })
+        : annotation.kind === "teams"
+          ? t(($) => {
+              return $.chat.origins.teams;
+            })
+          : annotation.kind === "telegram"
+            ? t(($) => {
+                return $.chat.origins.telegram;
+              })
+            : t(($) => {
+                return $.chat.origins.github;
+              });
+  const openLabel =
+    annotation.kind === "feishu"
+      ? t(($) => {
+          return $.chat.origins.openChat;
+        })
+      : t(($) => {
           return $.chat.origins.openMessage;
-        })}
-      </span>
-      <IconArrowUpRight size={12} stroke={1.5} className="shrink-0" />
-    </a>
+        });
+  const ariaLabel =
+    annotation.kind === "slack"
+      ? t(($) => {
+          return $.chat.origins.openSlackMessage;
+        })
+      : annotation.kind === "feishu"
+        ? t(($) => {
+            return $.chat.origins.openFeishuChat;
+          })
+        : annotation.kind === "teams"
+          ? t(($) => {
+              return $.chat.origins.openTeamsMessage;
+            })
+          : annotation.kind === "telegram"
+            ? t(($) => {
+                return $.chat.origins.openTelegramMessage;
+              })
+            : t(($) => {
+                return $.chat.origins.openGithubMessage;
+              });
+  const content = (
+    <>
+      {annotation.kind === "slack" ? (
+        <IconBrandSlack size={15} stroke={1.8} className="shrink-0" />
+      ) : (
+        <img
+          src={annotationIconImgs[annotation.kind]}
+          alt=""
+          className="size-[15px] shrink-0 object-contain"
+        />
+      )}
+      <span className="shrink-0">{sourceLabel}</span>
+      {annotation.href ? (
+        <>
+          <span className="shrink-0">·</span>
+          <span className="min-w-0 truncate">{openLabel}</span>
+          <IconArrowUpRight size={12} stroke={1.5} className="shrink-0" />
+        </>
+      ) : null}
+    </>
   );
-}
-
-const feishuIconImg = settingsIconAssetUrl("lark");
-
-function FeishuUserMessageOrigin({
-  chatOpenUrl,
-}: {
-  chatOpenUrl: string | undefined;
-}) {
-  const { t } = useTranslation();
-  if (!chatOpenUrl) {
-    return null;
+  const className =
+    "mb-1.5 inline-flex h-7 max-w-[85%] items-center gap-1.5 self-end " +
+    "rounded-md px-1.5 text-xs font-medium text-muted-foreground";
+  if (!annotation.href) {
+    return <div className={className}>{content}</div>;
   }
   return (
     <a
-      href={chatOpenUrl}
+      href={annotation.href}
       target="_blank"
       rel="noreferrer"
-      aria-label={t(($) => {
-        return $.chat.origins.openFeishuChat;
-      })}
-      className="mb-1.5 inline-flex h-7 max-w-[85%] items-center gap-1.5 self-end rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
+      aria-label={ariaLabel}
+      className={`${className} transition-colors hover:bg-gray-50 hover:text-foreground`}
     >
-      <img
-        src={feishuIconImg}
-        alt=""
-        className="size-[15px] shrink-0 object-contain"
-      />
-      <span className="shrink-0">
-        {t(($) => {
-          return $.chat.origins.feishu;
-        })}
-      </span>
-      <span className="shrink-0">·</span>
-      <span className="min-w-0 truncate">
-        {t(($) => {
-          return $.chat.origins.openChat;
-        })}
-      </span>
-      <IconArrowUpRight size={12} stroke={1.5} className="shrink-0" />
+      {content}
     </a>
   );
 }
@@ -7946,8 +7950,9 @@ function PagedUserMessage({
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
-          <SlackUserMessageOrigin permalink={event.slackMessagePermalink} />
-          <FeishuUserMessageOrigin chatOpenUrl={event.feishuChatOpenUrl} />
+          {event.annotation ? (
+            <MessageAnnotation annotation={event.annotation} />
+          ) : null}
           {canonicalUserMessage ? (
             <UserMessageContent
               document={canonicalUserMessage}

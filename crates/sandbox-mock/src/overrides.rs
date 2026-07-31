@@ -103,6 +103,8 @@ pub(crate) struct ProcessOverrideState {
     pub(crate) start_process_stdout_chunks: Mutex<VecDeque<Vec<ProcessOutputChunk>>>,
     /// Whether factory-created sandboxes expose a process cancel handle.
     pub(crate) process_cancel_supported: Mutex<bool>,
+    /// Whether factory-created sandboxes expose a process-control handle.
+    pub(crate) process_control_supported: Mutex<bool>,
     /// Recorded process cancel calls across all sandboxes built from this
     /// override set.
     pub(crate) process_cancel_calls: Mutex<Vec<ProcessCancelCall>>,
@@ -135,6 +137,7 @@ impl Default for ProcessOverrideState {
             start_process_calls: Mutex::new(Vec::new()),
             start_process_stdout_chunks: Mutex::new(VecDeque::new()),
             process_cancel_supported: Mutex::new(true),
+            process_control_supported: Mutex::new(true),
             process_cancel_calls: Mutex::new(Vec::new()),
             process_cancel_notify: tokio::sync::Notify::new(),
             process_cancel_errors: Mutex::new(VecDeque::new()),
@@ -493,6 +496,14 @@ impl MockSandboxOverrides {
     /// Configure whether future `start_process` handles include a cancel handle.
     pub fn set_process_cancel_supported(&self, supported: bool) {
         *self.process.process_cancel_supported.lock_ignoring_poison() = supported;
+    }
+
+    /// Configure whether future `start_process` handles include a control handle.
+    pub fn set_process_control_supported(&self, supported: bool) {
+        *self
+            .process
+            .process_control_supported
+            .lock_ignoring_poison() = supported;
     }
 
     /// Return recorded process-cancel calls across all sandboxes built from

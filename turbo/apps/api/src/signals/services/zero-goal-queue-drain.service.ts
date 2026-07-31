@@ -1,4 +1,3 @@
-import type { ChatEventGoalSnapshot } from "@vm0/db/schema/chat-event";
 import { command } from "ccstate";
 
 import { logger } from "../../lib/log";
@@ -208,9 +207,6 @@ const launchQueuedGoal$ = command(
       }),
     };
     const prompt = buildGoalContinuationPrompt(normalizedGoal);
-    const goalSnapshot: ChatEventGoalSnapshot = {
-      objectiveBrief: normalizedGoal.objectiveBrief,
-    };
     const result = await set(
       createQueueFirstZeroRun$,
       {
@@ -257,7 +253,6 @@ const launchQueuedGoal$ = command(
           goalId: normalizedGoal.goalId,
           orgId: normalizedGoal.orgId,
           userId: normalizedGoal.userId,
-          objectiveBrief: goalSnapshot.objectiveBrief,
         },
         zeroRunModelPin: {
           modelProvider: effectiveModelProvider ?? null,

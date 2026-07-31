@@ -616,33 +616,7 @@ function collectNetworkLog(
         },
       )) ?? [];
 
-    return networkLogs.flatMap((event) => {
-      const canonical = event.connector_diagnostic_slug;
-      const legacy = event.connector_diagnostic_type;
-      if (
-        typeof canonical === "string" &&
-        typeof legacy === "string" &&
-        canonical !== legacy
-      ) {
-        return [];
-      }
-
-      const connectorDiagnosticSlug =
-        typeof canonical === "string"
-          ? canonical
-          : typeof legacy === "string"
-            ? legacy
-            : undefined;
-      return connectorDiagnosticSlug === undefined
-        ? [event]
-        : [
-            {
-              ...event,
-              connector_diagnostic_slug: connectorDiagnosticSlug,
-              connector_diagnostic_type: connectorDiagnosticSlug,
-            },
-          ];
-    });
+    return networkLogs;
   });
 }
 

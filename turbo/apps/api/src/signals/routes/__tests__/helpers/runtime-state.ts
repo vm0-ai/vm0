@@ -286,22 +286,6 @@ export async function insertHostedDeploymentAsPreviousApi(
   return response.hosted_deployment_scope_blocked ?? false;
 }
 
-export async function insertRunOutputAsPreviousApi(
-  context: TestContext,
-  args: {
-    readonly runId: string;
-    readonly processedThroughSequence: number;
-    readonly latestResultSequence: number;
-  },
-): Promise<void> {
-  await postAction(context, {
-    action: "insert-run-output-as-previous-api",
-    run_id: args.runId,
-    processed_through_sequence: args.processedThroughSequence,
-    latest_result_sequence: args.latestResultSequence,
-  });
-}
-
 export async function clearRunApiStart(
   context: TestContext,
   runId: string,

@@ -1365,11 +1365,17 @@
     "newChat": "नई चैट",
     "origins": {
       "feishu": "Feishu",
+      "github": "GitHub",
       "openChat": "चैट खोलें",
       "openFeishuChat": "Feishu में मूल चैट खोलें",
+      "openGithubMessage": "GitHub में मूल इश्यू या पुल अनुरोध खोलें",
       "openMessage": "संदेश खोलें",
       "openSlackMessage": "मूल संदेश को Slack में खोलें",
-      "slack": "Slack"
+      "openTeamsMessage": "Microsoft Teams में मूल संदेश खोलें",
+      "openTelegramMessage": "Telegram में मूल संदेश खोलें",
+      "slack": "Slack",
+      "teams": "Microsoft Teams",
+      "telegram": "Telegram"
     },
     "permissions": {
       "actionDescription": "{{action}} {{permissionName}}",
@@ -1401,6 +1407,7 @@
       "automationEvent": "ऑटोमेशन घटना",
       "automationEventDescription": "पंक्तिबद्ध संदेशों के पीछे प्रतीक्षा करता है और वर्तमान रन समाप्त होने पर चलता है।",
       "cancelGoal": "लक्ष्य रद्द करें",
+      "cancellationRecoveryPending": "पंक्तिबद्ध कार्य जारी रखने से पहले रद्द किए गए रन को अंतिम रूप दिया जा रहा है।",
       "event_one": "{{count}} घटना",
       "event_other": "{{count}} घटनाएँ",
       "goal": "लक्ष्य",

@@ -243,6 +243,7 @@ interface NormalSendArgs {
   readonly userId: string;
   readonly orgId: string;
   readonly apiStartTime: number;
+  readonly preloadedAgent?: AgentForChatSend;
   readonly timing?: ApiDispatchTimingCollector;
   readonly zeroPreCreateSource?: ZeroPreCreateSource;
 }
@@ -280,7 +281,6 @@ interface NormalSendFeatureSwitches {
   readonly artifactKeyV2Enabled: boolean;
   readonly codexFastModeEnabled: boolean;
   readonly userMessageInlineTemplatesEnabled: boolean;
-  readonly imageStyleR2Enabled: boolean;
 }
 
 interface RuntimeNormalSendBody extends Omit<NormalSendBody, "userMessage"> {
@@ -1054,10 +1054,6 @@ async function resolveNormalSendFeatureSwitches(
     ),
     userMessageInlineTemplatesEnabled: isFeatureEnabled(
       FeatureSwitchKey.StructuredPromptInlineTemplates,
-      context,
-    ),
-    imageStyleR2Enabled: isFeatureEnabled(
-      FeatureSwitchKey.ImageStyleR2,
       context,
     ),
   };
@@ -2146,6 +2142,7 @@ const handleInterruptSend$ = command(
         runId: args.body.interruptsRunId,
         userId: args.userId,
         orgId: args.orgId,
+        runnerCancellationMode: "cooperative",
       },
       signal,
     );
@@ -2183,9 +2180,15 @@ function loadTimedAuthorizedAgent(
     "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_load_and_authorize_agent",
     "nested",
     async () => {
-      const agent = await loadAgentForChatSend(db, args.body.agentId);
+      const agent =
+        args.preloadedAgent ??
+        (await loadAgentForChatSend(db, args.body.agentId));
       signal.throwIfAborted();
-      if (!agent || agent.orgId !== args.orgId) {
+      if (
+        !agent ||
+        agent.id !== args.body.agentId ||
+        agent.orgId !== args.orgId
+      ) {
         return notFound("Agent not found");
       }
       if (agent.visibility === "private" && agent.owner !== args.userId) {
@@ -2479,7 +2482,6 @@ const prepareNormalSend$ = command(
         runtimeBody.userMessageGenerationTemplates.length > 0
           ? runtimeBody.userMessageGenerationTemplates
           : undefined,
-      imageStyleR2Enabled: featureSwitches.imageStyleR2Enabled,
     });
     const persistedExplicitSelection =
       await maybePersistTimedExplicitModelFirstSelection(args, db);

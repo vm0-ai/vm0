@@ -124,7 +124,7 @@ describe("POST /api/test/agent-runs", () => {
     await runs.requestCancelRun(actor, response.body.runId, [200]);
   });
 
-  it("preserves result-only output acknowledged by a previous non-chat writer", async () => {
+  it("uses DB-only output when the projection is unavailable", async () => {
     mockEnv("ENV", "development");
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
     const { actor, composeId } = await seedDirectRunActor();
@@ -133,7 +133,7 @@ describe("POST /api/test/agent-runs", () => {
       http.post(OPENROUTER_COMPLETIONS_URL, async ({ request }) => {
         summaryRequests.push(await request.json());
         return HttpResponse.json({
-          choices: [{ message: { content: "Legacy output summarized" } }],
+          choices: [{ message: { content: "Empty output summarized" } }],
         });
       }),
     );
@@ -143,7 +143,7 @@ describe("POST /api/test/agent-runs", () => {
         headers: authenticate(actor),
         body: {
           agentComposeId: composeId,
-          prompt: "complete through a rolling API deploy",
+          prompt: "complete without projected output",
         },
       }),
       [201],
@@ -162,30 +162,20 @@ describe("POST /api/test/agent-runs", () => {
       authorization: `Bearer ${claim.sandboxToken}`,
     };
     context.mocks.axiom.query.mockImplementation((apl: unknown) => {
-      return Promise.resolve(
-        typeof apl === "string" && apl.includes("agent-run-events")
-          ? [
-              {
-                eventType: "result",
-                sequenceNumber: 0,
-                eventData: {
-                  result: "Previous non-chat writer result",
-                },
-              },
-            ]
-          : [],
-      );
+      if (typeof apl === "string" && apl.includes("agent-run-events")) {
+        throw new Error("Missing DB output should not query Axiom");
+      }
+      return Promise.resolve([]);
     });
-
-    const historyHash = createHash("sha256")
-      .update(`previous non-chat writer ${response.body.runId}`)
-      .digest("hex");
+    context.mocks.axiom.query.mockClear();
     await webhooks.requestAgentCheckpoint(
       {
         runId: response.body.runId,
         cliAgentType: "claude-code",
-        cliAgentSessionId: `legacy-${response.body.runId}`,
-        cliAgentSessionHistoryHash: historyHash,
+        cliAgentSessionId: `db-only-${response.body.runId}`,
+        cliAgentSessionHistoryHash: createHash("sha256")
+          .update(`db-only output ${response.body.runId}`)
+          .digest("hex"),
       },
       sandboxHeaders,
       [200],
@@ -202,18 +192,8 @@ describe("POST /api/test/agent-runs", () => {
     await flushWaitUntilForTest();
 
     expect(JSON.stringify(summaryRequests)).toContain(
-      "Previous non-chat writer result",
+      "complete without projected output",
     );
-    expect(
-      context.mocks.axiom.query.mock.calls.some((call) => {
-        const apl = call[0];
-        return (
-          typeof apl === "string" &&
-          apl.includes("agent-run-events") &&
-          apl.includes('eventType == "result"')
-        );
-      }),
-    ).toBeTruthy();
   });
 
   it("returns 404 when the test endpoint is not allowed", async () => {

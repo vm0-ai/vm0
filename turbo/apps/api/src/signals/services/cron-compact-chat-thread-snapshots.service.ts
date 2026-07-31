@@ -8,6 +8,7 @@ import {
   gt,
   isNull,
   lt,
+  notExists,
   or,
   sql,
   type SQL,
@@ -31,7 +32,7 @@ interface SnapshotCompactionStats {
   readonly eventsPruned: number;
 }
 
-type SnapshotRootDb = Pick<Db, "execute" | "transaction">;
+type SnapshotRootDb = Pick<Db, "execute" | "select" | "transaction">;
 const CHAT_THREAD_EVENT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const DEFAULT_CHAT_THREAD_SNAPSHOT_BATCH_SIZE = 500;
 const CHAT_THREAD_SNAPSHOT_STALE_MS = 24 * 60 * 60 * 1000;
@@ -122,7 +123,7 @@ function candidateScopesCte(staleCutoff: Date, batchSize: number): SQL {
   `;
 }
 
-function rebuiltCte(): SQL {
+function rebuiltCte(db: Pick<Db, "select">): SQL {
   return sql`
     rebuilt AS (
       SELECT
@@ -198,14 +199,17 @@ function rebuiltCte(): SQL {
         FROM jsonb_array_elements(
           COALESCE(${snapshot.chatThreads}, '[]'::jsonb)
         ) AS old_thread(thread)
-        WHERE NOT EXISTS (
-          SELECT 1
-          FROM ${agentComposes} ${agent}
-          WHERE ${and(
-            eq(agent.id, sql`(old_thread.thread ->> 'agentId')::uuid`),
-            eq(agent.orgId, sql`scope.org_id`),
-          )}
-          )
+        WHERE ${notExists(
+          db
+            .select({ id: agent.id })
+            .from(agent)
+            .where(
+              and(
+                eq(agent.id, sql`(old_thread.thread ->> 'agentId')::uuid`),
+                eq(agent.orgId, sql`scope.org_id`),
+              ),
+            ),
+        )}
         ) deleted_agent_threads ON true
     )
   `;
@@ -243,15 +247,18 @@ function upsertedCte(updatedAt: Date): SQL {
   `;
 }
 
-function compactChatThreadSnapshotBatchSql(args: {
-  readonly updatedAt: Date;
-  readonly staleCutoff: Date;
-  readonly batchSize: number;
-}): SQL {
+function compactChatThreadSnapshotBatchSql(
+  db: Pick<Db, "select">,
+  args: {
+    readonly updatedAt: Date;
+    readonly staleCutoff: Date;
+    readonly batchSize: number;
+  },
+): SQL {
   return sql`
     WITH ${allScopesCte(args.staleCutoff)},
     ${candidateScopesCte(args.staleCutoff, args.batchSize)},
-    ${rebuiltCte()},
+    ${rebuiltCte(db)},
     ${upsertedCte(args.updatedAt)}
     SELECT
       ${count()}::int AS "scopes",
@@ -273,7 +280,7 @@ async function compactChatThreadSnapshotBatch(
   );
   const rows = await executeRawRows(
     db,
-    compactChatThreadSnapshotBatchSql({
+    compactChatThreadSnapshotBatchSql(db, {
       updatedAt,
       staleCutoff,
       batchSize: chatThreadSnapshotBatchSize(),

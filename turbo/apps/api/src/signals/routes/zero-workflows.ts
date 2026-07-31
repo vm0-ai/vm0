@@ -28,6 +28,10 @@ import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import { db$, writeDb$, type Db } from "../external/db";
 import { publishChatThreadWorkflowsChangedSafely } from "../external/realtime";
 import {
+  ApiDispatchTimingCollector,
+  measureApiDispatchTiming,
+} from "../services/api-dispatch-timing.service";
+import {
   conflict,
   connectorReadinessTimeout,
   notFound,
@@ -40,7 +44,10 @@ import { requireAgentPermission } from "../../lib/require-agent-permission";
 import { uploadVolumeServerSide$ } from "../services/storage-volume-upload.service";
 import { deleteZeroWorkflow$ } from "../services/zero-workflow-delete.service";
 import { zeroWorkflowDetail } from "../services/zero-workflow-detail.service";
-import { ensureWorkflowUserAutomationThread } from "../services/zero-workflow-user-automation-thread.service";
+import {
+  ensureWorkflowUserAutomationThread,
+  loadWorkflowUserAutomationThreadId,
+} from "../services/zero-workflow-user-automation-thread.service";
 import { updateZeroWorkflow$ } from "../services/zero-workflow-update.service";
 import { detectWorkflowConnectorReadiness$ } from "../services/zero-workflow-connector-readiness.service";
 import { createUserMessageDocument } from "../services/zero-chat-user-message.service";
@@ -1083,34 +1090,66 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return forbidden("Only the private agent owner can run this agent");
   }
 
-  const now = nowDate();
-  const chatThreadId = await writeDb.transaction(async (tx) => {
-    return await ensureWorkflowUserAutomationThread(tx, {
-      orgId: auth.orgId,
-      userId: auth.userId,
-      workflowId: workflow.id,
-      agentId: agent.id,
-      workflowTitle: workflow.displayName ?? workflow.name,
-      currentTime: now,
-    });
-  });
+  const currentTime = nowDate();
+  const apiStartTime = currentTime.getTime();
+  const timing = new ApiDispatchTimingCollector();
+  const mappedChatThreadId = await measureApiDispatchTiming(
+    timing,
+    "api_dispatch_pre_create_zero_workflow_slash_load_thread_mapping",
+    "nested",
+    async () => {
+      return await loadWorkflowUserAutomationThreadId(writeDb, {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        workflowId: workflow.id,
+      });
+    },
+  );
+  signal.throwIfAborted();
+  const chatThreadId =
+    mappedChatThreadId ??
+    (await measureApiDispatchTiming(
+      timing,
+      "api_dispatch_pre_create_zero_workflow_slash_ensure_thread",
+      "nested",
+      async () => {
+        return await writeDb.transaction(async (tx) => {
+          return await ensureWorkflowUserAutomationThread(tx, {
+            orgId: auth.orgId,
+            userId: auth.userId,
+            workflowId: workflow.id,
+            agentId: agent.id,
+            workflowTitle: workflow.displayName ?? workflow.name,
+            currentTime,
+          });
+        });
+      },
+    ));
   signal.throwIfAborted();
 
   // Invoking a workflow is exactly typing its slash command in chat.
   const prompt = workflowSlashPrompt(workflow);
+  const body = {
+    prompt,
+    userMessage: createUserMessageDocument({ text: prompt }),
+    agentId: agent.id,
+    threadId: chatThreadId,
+  };
+  timing.recordElapsed(
+    "api_dispatch_pre_create_zero_workflow_slash_prepare_normal_send",
+    "nested",
+    apiStartTime,
+  );
   const result = await set(
     sendNormalEvent$,
     {
       auth,
-      body: {
-        prompt,
-        userMessage: createUserMessageDocument({ text: prompt }),
-        agentId: agent.id,
-        threadId: chatThreadId,
-      },
+      body,
       userId: auth.userId,
       orgId: auth.orgId,
-      apiStartTime: now.getTime(),
+      apiStartTime,
+      preloadedAgent: agent,
+      timing,
       zeroPreCreateSource: "workflow_slash_command",
     },
     signal,

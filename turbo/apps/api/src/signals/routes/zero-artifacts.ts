@@ -1,11 +1,9 @@
 import { command } from "ccstate";
-import { and, eq, exists, sql, type SQL } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { artifactsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { imageArtifactEditSnapshots } from "@vm0/db/schema/image-artifact-edit-snapshot";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
-import { z } from "zod";
 
-import { executeRawRows } from "../../lib/db-raw-rows";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, queryOf } from "../context/request";
@@ -14,8 +12,6 @@ import { zeroArtifacts$ } from "../services/zero-chat-thread.service";
 import { nowDate } from "../../lib/time";
 import { notFound } from "../../lib/error";
 import type { RouteEntry } from "../route-entry";
-
-const artifactAccessRowSchema = z.object({ canAccess: z.boolean() });
 
 interface UserArtifactUrlAccessArgs {
   readonly artifactUrl: string;
@@ -27,37 +23,23 @@ function artifactNotFound() {
   return notFound("Artifact not found");
 }
 
-function uploadedArtifactAccessCondition(
+async function userCanAccessArtifactUrl(
   db: Pick<Db, "select">,
   args: UserArtifactUrlAccessArgs,
-): SQL {
-  return exists(
-    db
-      .select({ id: runUploadedFiles.id })
-      .from(runUploadedFiles)
-      .where(
-        and(
-          eq(runUploadedFiles.userId, args.userId),
-          eq(runUploadedFiles.orgId, args.orgId),
-          eq(runUploadedFiles.url, args.artifactUrl),
-        ),
-      ),
-  );
-}
-
-async function userCanAccessArtifactUrl(
-  db: Db,
-  args: UserArtifactUrlAccessArgs,
 ): Promise<boolean> {
-  const rows = await executeRawRows(
-    db,
-    sql`
-      SELECT ${uploadedArtifactAccessCondition(db, args)} AS "canAccess"
-    `,
-    artifactAccessRowSchema,
-  );
+  const [artifact] = await db
+    .select({ id: runUploadedFiles.id })
+    .from(runUploadedFiles)
+    .where(
+      and(
+        eq(runUploadedFiles.userId, args.userId),
+        eq(runUploadedFiles.orgId, args.orgId),
+        eq(runUploadedFiles.url, args.artifactUrl),
+      ),
+    )
+    .limit(1);
 
-  return rows[0]?.canAccess === true;
+  return artifact !== undefined;
 }
 
 async function deleteImageEditSnapshotRow(

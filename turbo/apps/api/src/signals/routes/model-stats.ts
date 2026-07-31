@@ -9,7 +9,6 @@ import { queryOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
 import {
   aggregateModelStats$,
-  DEFAULT_MODEL_STATS_REPROCESS_HOURS,
   MODEL_RANKING_PERIODS,
   readPublicModelRankings$,
 } from "../services/model-stats.service";
@@ -46,7 +45,6 @@ export const modelStatsContract = c.router({
   },
 });
 
-const aggregateQuery$ = queryOf(cronAggregateModelStatsContract.aggregate);
 const rankingsQuery$ = queryOf(modelStatsContract.rankings);
 
 function unauthorized() {
@@ -68,19 +66,16 @@ const aggregateModelStatsRoute$ = command(
       return unauthorized();
     }
 
-    const query = get(aggregateQuery$);
-    const result = await set(
-      aggregateModelStats$,
-      query.hours ?? DEFAULT_MODEL_STATS_REPROCESS_HOURS,
-      signal,
-    );
+    const result = await set(aggregateModelStats$, signal);
     return {
       status: 200 as const,
       body: {
         success: true as const,
-        windowStart: result.windowStart.toISOString(),
-        windowEnd: result.windowEnd.toISOString(),
-        aggregated: result.aggregated,
+        cutoff: result.cutoff.toISOString(),
+        processedHours: result.processedHours,
+        processedObservations: result.processedObservations,
+        updatedStats: result.updatedStats,
+        deletedObservations: result.deletedObservations,
       },
     };
   },

@@ -195,178 +195,10 @@ describe("connector client response contracts", () => {
       connectorChangedPayloadSchema.parse({ connectorSlug: "github" }),
     ).toStrictEqual({ connectorSlug: "github" });
   });
-
-  it("parses the previous expanded responses and strips legacy aliases", () => {
-    expect(
-      connectorResponseSchema.parse({ ...connector, type: "github" }),
-    ).toStrictEqual(connector);
-    expect(
-      connectorListResponseSchema.parse({
-        connectors: [{ ...connector, type: "github" }],
-        configuredTypes: ["github"],
-        configuredConnectorSlugs: ["github"],
-        connectorProvidedBindings: [
-          {
-            connectorType: "github",
-            connectorSlug: "github",
-            authMethod: "oauth",
-            namespace: "secrets",
-            name: "GITHUB_TOKEN",
-            optional: false,
-            source: { kind: "connector-secret", name: "accessToken" },
-          },
-        ],
-      }),
-    ).toStrictEqual({
-      connectors: [connector],
-      configuredConnectorSlugs: ["github"],
-      connectorProvidedBindings: [
-        {
-          connectorSlug: "github",
-          authMethod: "oauth",
-          namespace: "secrets",
-          name: "GITHUB_TOKEN",
-          optional: false,
-          source: { kind: "connector-secret", name: "accessToken" },
-        },
-      ],
-    });
-    expect(
-      connectorOauthDeviceAuthSessionStartResponseSchema.parse({
-        sessionId: "00000000-0000-4000-a000-000000000003",
-        sessionToken: "session-token",
-        type: "github",
-        connectorSlug: "github",
-        status: "pending",
-        userCode: "ABCD-EFGH",
-        verificationUri: "https://example.test/device",
-        expiresIn: 600,
-        interval: 5,
-      }),
-    ).not.toHaveProperty("type");
-    expect(
-      connectorExternalCodeSessionStartResponseSchema.parse({
-        sessionId: "00000000-0000-4000-a000-000000000004",
-        sessionToken: "session-token",
-        type: "aws",
-        connectorSlug: "aws",
-        status: "pending",
-        authorizationUrl: "https://example.test/authorize",
-        expiresIn: 600,
-      }),
-    ).not.toHaveProperty("type");
-    expect(
-      zeroConnectorsSearchContract.search.responses[200].parse({
-        connectors: [
-          {
-            id: "github",
-            slug: "github",
-            label: "GitHub",
-            description: "GitHub connector",
-            authMethods: ["oauth"],
-          },
-        ],
-      }),
-    ).toStrictEqual({
-      connectors: [
-        {
-          slug: "github",
-          label: "GitHub",
-          description: "GitHub connector",
-          authMethods: ["oauth"],
-        },
-      ],
-    });
-    expect(
-      zeroConnectorCatalogContract.list.responses[200].parse({
-        connectors: [{ ...catalogItem, connectorRef: "github" }],
-      }),
-    ).toStrictEqual({ connectors: [catalogItem] });
-    expect(
-      zeroConnectorCatalogContract.permissions.responses[200].parse({
-        permissions: {
-          connectorRef: "github",
-          connectorSlug: "github",
-          label: "GitHub",
-          icon: catalogItem.icon,
-          permissionCount: 0,
-          permissions: [],
-          categories: null,
-          defaultPolicy: {
-            permissionDefault: "ask",
-            unknownPolicy: "ask",
-          },
-        },
-      }),
-    ).not.toHaveProperty("permissions.connectorRef");
-    expect(
-      connectorCheckDiagnosticResultSchema.parse({
-        outcome: "ambiguous",
-        candidates: [
-          { connectorSlug: "github", connectorRef: "github", label: "GitHub" },
-          { connectorSlug: "gitlab", connectorRef: "gitlab", label: "GitLab" },
-        ],
-      }),
-    ).toStrictEqual({
-      outcome: "ambiguous",
-      candidates: [
-        { connectorSlug: "github", label: "GitHub" },
-        { connectorSlug: "gitlab", label: "GitLab" },
-      ],
-    });
-    expect(
-      userConnectorEnabledSlugsSchema.parse({
-        enabledTypes: ["github"],
-        enabledConnectorSlugs: ["github"],
-      }),
-    ).toStrictEqual({ enabledConnectorSlugs: ["github"] });
-    expect(
-      userPermissionGrantResponseSchema.parse({
-        agentId: AGENT_ID,
-        connectorRef: "github",
-        connectorSlug: "github",
-        permission: "contents:read",
-        action: "allow",
-        expiresAt: null,
-        createdAt: "2026-07-29T00:00:00.000Z",
-        updatedAt: "2026-07-29T00:00:00.000Z",
-      }),
-    ).not.toHaveProperty("connectorRef");
-    expect(
-      zeroWorkflowConnectorReadinessResponseSchema.parse({
-        connectors: [
-          {
-            connectorSlug: "github",
-            connectorRef: "github",
-            label: "GitHub",
-            icon: catalogItem.icon,
-            reason: "Connect GitHub",
-            status: "not-connected",
-          },
-        ],
-      }),
-    ).toStrictEqual({
-      connectors: [
-        {
-          connectorSlug: "github",
-          label: "GitHub",
-          icon: catalogItem.icon,
-          reason: "Connect GitHub",
-          status: "not-connected",
-        },
-      ],
-    });
-    expect(
-      connectorChangedPayloadSchema.parse({
-        connectorRef: "github",
-        connectorSlug: "github",
-      }),
-    ).toStrictEqual({ connectorSlug: "github" });
-  });
 });
 
 describe("connector client request contracts", () => {
-  it("accepts canonical connector check requests and rejects legacy aliases", () => {
+  it("accepts canonical connector check requests", () => {
     const base = {
       mode: "url" as const,
       method: "GET",
@@ -380,22 +212,9 @@ describe("connector client request contracts", () => {
       }),
     ).toStrictEqual({ ...base, connectorSlug: "github" });
     expect(connectorCheckRequestSchema.parse(base)).toStrictEqual(base);
-    expect(
-      connectorCheckRequestSchema.safeParse({
-        ...base,
-        connectorRef: "github",
-      }).success,
-    ).toBe(false);
-    expect(
-      connectorCheckRequestSchema.safeParse({
-        ...base,
-        connectorSlug: "github",
-        connectorRef: "github",
-      }).success,
-    ).toBe(false);
   });
 
-  it("accepts canonical user connector updates and rejects legacy aliases", () => {
+  it("accepts canonical user connector updates", () => {
     expect(
       userConnectorUpdateSchema.parse({
         enabledConnectorSlugs: ["github"],
@@ -405,21 +224,9 @@ describe("connector client request contracts", () => {
       enabledConnectorSlugs: ["github"],
       operation: "add",
     });
-    expect(userConnectorUpdateSchema.safeParse({}).success).toBe(false);
-    expect(
-      userConnectorUpdateSchema.safeParse({
-        enabledTypes: ["github"],
-      }).success,
-    ).toBe(false);
-    expect(
-      userConnectorUpdateSchema.safeParse({
-        enabledConnectorSlugs: ["github"],
-        enabledTypes: ["github"],
-      }).success,
-    ).toBe(false);
   });
 
-  it("accepts canonical permission grants and rejects legacy aliases", () => {
+  it("accepts canonical permission grants", () => {
     const base = {
       agentId: AGENT_ID,
       mode: "patch" as const,
@@ -432,22 +239,6 @@ describe("connector client request contracts", () => {
         connectorSlug: "github",
       }),
     ).toStrictEqual({ ...base, connectorSlug: "github" });
-    expect(applyUserPermissionGrantsRequestSchema.safeParse(base).success).toBe(
-      false,
-    );
-    expect(
-      applyUserPermissionGrantsRequestSchema.safeParse({
-        ...base,
-        connectorRef: "github",
-      }).success,
-    ).toBe(false);
-    expect(
-      applyUserPermissionGrantsRequestSchema.safeParse({
-        ...base,
-        connectorSlug: "github",
-        connectorRef: "github",
-      }).success,
-    ).toBe(false);
   });
 });
 

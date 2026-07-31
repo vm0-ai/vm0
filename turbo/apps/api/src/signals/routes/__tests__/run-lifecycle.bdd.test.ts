@@ -9561,6 +9561,10 @@ describe("RUN-03: cancellation of dispatched and terminal runs", () => {
         );
       })
       .toBe(true);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith("cancel", {
+      runId: run.runId,
+      mode: "hard",
+    });
 
     const repeated = await api.requestCancelRun(actor, run.runId, [200]);
     expect(repeated.status).toBe(200);
@@ -9600,6 +9604,10 @@ describe("RUN-03: cancellation of dispatched and terminal runs", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
     await flushWaitUntilForTest();
     expect(callbackRequests).toBe(1);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith("cancel", {
+      runId: run.runId,
+      mode: "cooperative",
+    });
 
     await api.requestCancelRun(actor, run.runId, [200]);
     await flushWaitUntilForTest();
@@ -11711,7 +11719,7 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
             model_catalog_cache_status: "model_catalog_cold_stored",
             model_catalog_cache_upstream_encoding: "br",
             model_catalog_cache_entry_age_ms: 4000,
-            connector_diagnostic_type: "github",
+            connector_diagnostic_slug: "github",
           },
           {
             timestamp: nowDate().toISOString(),
@@ -11728,7 +11736,6 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
             firewall_name: "blocked-service",
             firewall_error: "connector_not_configured",
             connector_diagnostic_slug: "slack",
-            connector_diagnostic_type: "slack",
           },
         ],
         sandboxOperations: [
@@ -11769,7 +11776,6 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
         model_catalog_cache_upstream_encoding: "br",
         model_catalog_cache_entry_age_ms: 4000,
         connector_diagnostic_slug: "github",
-        connector_diagnostic_type: "github",
       }),
       expect.objectContaining({
         runId: created.runId,
@@ -11777,32 +11783,8 @@ describe("CHAIN-RUN: sandbox snapshot and telemetry reporting through run webhoo
         host: "blocked.example.test",
         firewall_error: "connector_not_configured",
         connector_diagnostic_slug: "slack",
-        connector_diagnostic_type: "slack",
       }),
     ]);
-    const networkIngestCallCount = telemetryIngests.filter((call) => {
-      return call.dataset === "sandbox-telemetry-network";
-    }).length;
-    const conflictingTelemetry = await webhooks.requestAgentTelemetryUnchecked(
-      {
-        runId: created.runId,
-        networkLogs: [
-          {
-            timestamp: nowDate().toISOString(),
-            connector_diagnostic_slug: "github",
-            connector_diagnostic_type: "gitlab",
-          },
-        ],
-      },
-      sandboxHeaders,
-      [400],
-    );
-    expectApiError(conflictingTelemetry.body);
-    expect(
-      telemetryIngests.filter((call) => {
-        return call.dataset === "sandbox-telemetry-network";
-      }),
-    ).toHaveLength(networkIngestCallCount);
 
     let failedTelemetryRequests = 0;
     server.use(

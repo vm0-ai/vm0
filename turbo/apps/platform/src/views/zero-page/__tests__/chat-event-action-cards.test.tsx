@@ -2243,8 +2243,8 @@ describe("chat event action cards", () => {
   it("renders and confirms multiple permission cards from one assistant event", async () => {
     mockNow();
     const user = userEvent.setup({ delay: null });
-    const createPermissionUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=google-sheets&permission=spreadsheets.create&action=allow&expiresIn=1h`;
-    const writePermissionUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=google-sheets&permission=values.write&action=allow&expiresIn=1h`;
+    const createPermissionUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=google-sheets&permission=spreadsheets.create&action=allow&expiresIn=1h`;
+    const writePermissionUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=google-sheets&permission=values.write&action=allow&expiresIn=1h`;
     const capturedPermissionGrantBodies: unknown[] = [];
 
     context.mocks.api(
@@ -2389,7 +2389,7 @@ describe("chat event action cards", () => {
     const user = userEvent.setup({ delay: null });
     const threadId = `${THREAD_ID}-single-permission`;
     const callbackPrompt = "Re-check Slack access, then continue";
-    const permissionUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=channels.read&action=allow&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`;
+    const permissionUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=slack&permission=channels.read&action=allow&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`;
     const sentPrompts: {
       prompt: string;
       threadId?: string;
@@ -2721,7 +2721,7 @@ describe("chat event action cards", () => {
   });
 
   it("fails closed when permission action metadata is hidden", async () => {
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=hidden-connector&permission=hidden.permission&action=allow&expiresIn=1h`;
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=hidden-connector&permission=hidden.permission&action=allow&expiresIn=1h`;
     context.mocks.api(
       zeroConnectorCatalogContract.permissions,
       ({ respond }) => {
@@ -2773,7 +2773,7 @@ describe("chat event action cards", () => {
 
   it("shows already allowed permission action cards as read-only after refresh", async () => {
     mockNow();
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=youtube&permission=videos.write&action=allow&expiresIn=24h`;
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=youtube&permission=videos.write&action=allow&expiresIn=24h`;
     let applyRequests = 0;
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, [
@@ -2838,7 +2838,7 @@ describe("chat event action cards", () => {
 
   it("lets users re-confirm expired allow permission action cards", async () => {
     mockNow();
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=youtube&permission=videos.write&action=allow&expiresIn=24h`;
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=youtube&permission=videos.write&action=allow&expiresIn=24h`;
     let applyRequests = 0;
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, [
@@ -2915,7 +2915,7 @@ describe("chat event action cards", () => {
   });
 
   it("shows already denied permission action cards as read-only after refresh", async () => {
-    const permissionDenyUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=admin.analytics%3Aread&action=deny`;
+    const permissionDenyUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=slack&permission=admin.analytics%3Aread&action=deny`;
     let applyRequests = 0;
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, [
@@ -2977,7 +2977,7 @@ describe("chat event action cards", () => {
 
   it("reloads permission cards when a connectorPermissionUpdated event arrives", async () => {
     mockNow();
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=youtube&permission=videos.write&action=allow&expiresIn=24h`;
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=youtube&permission=videos.write&action=allow&expiresIn=24h`;
     let grantAllowed = false;
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
       return respond(
@@ -3228,7 +3228,7 @@ describe("chat event action cards", () => {
   it("automatically retries permission action loading before showing an error", async () => {
     mockNow();
     const user = userEvent.setup({ delay: null });
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=gmail&permission=messages.write&action=allow&expiresIn=1h`;
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=gmail&permission=messages.write&action=allow&expiresIn=1h`;
     let listRequests = 0;
     let capturedBody: unknown = null;
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
@@ -3323,7 +3323,7 @@ describe("chat event action cards", () => {
   });
 
   it("shows permission status loading outside the action button", async () => {
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=gmail&permission=messages.write&action=allow&expiresIn=1h`;
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=gmail&permission=messages.write&action=allow&expiresIn=1h`;
     let resolveList: () => void = () => {
       throw new Error("Permission grant list request did not start");
     };
@@ -3389,7 +3389,7 @@ describe("chat event action cards", () => {
   });
 
   it("does not retry non-transient permission action loading failures", async () => {
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=gmail&permission=messages.write&action=allow&expiresIn=1h`;
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=gmail&permission=messages.write&action=allow&expiresIn=1h`;
     let listRequests = 0;
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
       listRequests += 1;
@@ -3448,7 +3448,7 @@ describe("chat event action cards", () => {
 
   it("shows permission save failures outside the action button", async () => {
     const user = userEvent.setup({ delay: null });
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=gmail&permission=messages.write&action=allow&expiresIn=1h`;
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=gmail&permission=messages.write&action=allow&expiresIn=1h`;
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, []);
     });
@@ -3510,7 +3510,7 @@ describe("chat event action cards", () => {
   it("keeps permission success visible while permission grants reload", async () => {
     mockNow();
     const user = userEvent.setup({ delay: null });
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=gmail&permission=messages.write&action=allow&expiresIn=1h`;
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=gmail&permission=messages.write&action=allow&expiresIn=1h`;
     let listRequests = 0;
     let storedGrants: UserPermissionGrantResponse[] = [];
     let resolveReload: () => void = () => {
@@ -3605,7 +3605,7 @@ describe("chat event action cards", () => {
   it("lets users change permission duration before confirming", async () => {
     mockNow();
     const user = userEvent.setup({ delay: null });
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`;
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`;
     let capturedBody: unknown = null;
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, []);
@@ -3692,7 +3692,7 @@ describe("chat event action cards", () => {
   it("lets users confirm unknown endpoint permissions from assistant events", async () => {
     mockNow();
     const user = userEvent.setup({ delay: null });
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=cloudflare&permission=${UNKNOWN_PERMISSION_GRANT}&action=allow&expiresIn=1h`;
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=cloudflare&permission=${UNKNOWN_PERMISSION_GRANT}&action=allow&expiresIn=1h`;
     let capturedBody: unknown = null;
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, []);
@@ -3775,7 +3775,7 @@ describe("chat event action cards", () => {
     });
   });
 
-  it("lets users deny a permission request from an assistant event", async () => {
+  it("lets users deny a historical ref permission action", async () => {
     const user = userEvent.setup({ delay: null });
     const permissionDenyUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=admin.analytics%3Aread&action=deny`;
     let grants: UserPermissionGrantResponse[] = [

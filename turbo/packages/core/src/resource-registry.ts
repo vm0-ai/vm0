@@ -78,21 +78,11 @@ export interface VideoTemplateRegistryEntry extends Omit<
 
 export interface ResourceCandidateSlice {
   readonly registryVersion: string;
+  /** Pinned Git source for every candidate without `source.archive`. */
   readonly source: {
     readonly repo: string;
     readonly ref: string;
   };
-  readonly sources: readonly (
-    | {
-        readonly type?: "git";
-        readonly repo: string;
-        readonly ref: string;
-      }
-    | {
-        readonly type: "r2-archive";
-        readonly description: string;
-      }
-  )[];
   readonly candidates: {
     readonly skills: readonly RegistryEntry[];
     readonly templates: readonly RegistryEntry[];
@@ -198,25 +188,15 @@ function imageStyleArchiveSha256(slug: string): string {
   return sha256;
 }
 
-function vm0ImageStyleSource(
-  slug: string,
-  r2ArchiveAvailable = true,
-): ResourceSourceRef {
-  const archiveSha256 = r2ArchiveAvailable
-    ? imageStyleArchiveSha256(slug)
-    : undefined;
+function vm0ImageStyleSource(slug: string): ResourceSourceRef {
   return {
     repo: VM0_SKILLS_REPO,
     ref: VM0_SKILLS_REF,
     path: `illustration-template/${slug}`,
-    ...(archiveSha256
-      ? {
-          archive: {
-            type: "tar.gz" as const,
-            sha256: archiveSha256,
-          },
-        }
-      : {}),
+    archive: {
+      type: "tar.gz",
+      sha256: imageStyleArchiveSha256(slug),
+    },
   };
 }
 
@@ -3948,10 +3928,6 @@ export function findImageStyle(id: string): RegistryEntry | undefined {
   });
 }
 
-export function hasR2Archive(entry: RegistryEntry): boolean {
-  return entry.source.archive !== undefined;
-}
-
 const VIDEO_TEMPLATE_ID_ALIASES: Readonly<Record<string, string>> = {
   "athletic-motivation": "video-template:sports-performance-ad",
   "video-template:athletic-motivation": "video-template:sports-performance-ad",
@@ -4059,21 +4035,6 @@ export function selectResourceCandidates(
       repo: RESOURCE_REGISTRY_REPO,
       ref: RESOURCE_REGISTRY_COMMIT,
     },
-    sources: [
-      {
-        repo: RESOURCE_REGISTRY_REPO,
-        ref: RESOURCE_REGISTRY_COMMIT,
-      },
-      {
-        repo: VM0_SKILLS_REPO,
-        ref: VM0_SKILLS_REF,
-      },
-      {
-        type: "r2-archive",
-        description:
-          "Private R2-backed resource archives resolved through authenticated `zero resource pull` requests",
-      },
-    ],
     candidates: {
       skills: listSkills(target),
       templates: listTemplates(target),

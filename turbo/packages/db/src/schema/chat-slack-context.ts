@@ -12,6 +12,8 @@ export const chatSlackContext = pgTable("chat_slack_context", {
       },
       { onDelete: "cascade" },
     ),
-  messagePermalink: text("message_permalink").notNull(),
+  messagePermalink: text("message_permalink"),
+  channelId: text("channel_id"),
+  messageTs: text("message_ts"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

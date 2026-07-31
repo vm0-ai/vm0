@@ -3,13 +3,16 @@ import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../external/db";
 import {
   publishCancelToRunnerGroup,
+  publishChatThreadDetailChangedSafely,
   publishOrgSignal,
   publishUserSignal,
+  type RunnerCancellationMode,
 } from "../external/realtime";
 import { logger } from "../../lib/log";
 import { notFound, runNotCancellable } from "../../lib/error";
@@ -34,7 +37,9 @@ export interface CancelRunResult {
   readonly orgId: string;
   readonly sandboxId: string | null;
   readonly runnerGroup: string | null;
+  readonly chatThreadId: string | null;
   readonly cancellationRecoveryCompleted: boolean | null;
+  readonly runnerCancellationMode: RunnerCancellationMode;
   readonly alreadyCancelled: boolean;
 }
 
@@ -67,6 +72,7 @@ export const cancelRun$ = command(
       readonly runId: string;
       readonly userId: string;
       readonly orgId: string;
+      readonly runnerCancellationMode: RunnerCancellationMode;
       readonly apiStartTime?: number;
     },
     signal: AbortSignal,
@@ -101,6 +107,12 @@ export const cancelRun$ = command(
         return notFound(`No such run: '${args.runId}'`);
       }
 
+      const [zeroRun] = await tx
+        .select({ chatThreadId: zeroRuns.chatThreadId })
+        .from(zeroRuns)
+        .where(eq(zeroRuns.id, args.runId))
+        .limit(1);
+
       if (run.status === "cancelled") {
         return {
           apiStartTime,
@@ -110,7 +122,9 @@ export const cancelRun$ = command(
           orgId: run.orgId,
           sandboxId: run.sandboxId,
           runnerGroup: run.runnerGroup,
+          chatThreadId: zeroRun?.chatThreadId ?? null,
           cancellationRecoveryCompleted: run.cancellationRecoveryCompleted,
+          runnerCancellationMode: args.runnerCancellationMode,
           alreadyCancelled: true,
         };
       }
@@ -148,7 +162,9 @@ export const cancelRun$ = command(
         orgId: run.orgId,
         sandboxId: run.sandboxId,
         runnerGroup: run.runnerGroup,
+        chatThreadId: zeroRun?.chatThreadId ?? null,
         cancellationRecoveryCompleted: run.cancellationRecoveryCompleted,
+        runnerCancellationMode: args.runnerCancellationMode,
         alreadyCancelled: false,
       };
     });
@@ -183,6 +199,54 @@ async function cancellationLifecyclePublished(
   return event !== undefined;
 }
 
+async function publishCancellationRecoveryEntered(
+  result: CancelRunResult,
+  signal: AbortSignal,
+): Promise<void> {
+  if (
+    result.alreadyCancelled ||
+    result.cancellationRecoveryCompleted === null ||
+    result.chatThreadId === null
+  ) {
+    return;
+  }
+  await publishChatThreadDetailChangedSafely(
+    result.userId,
+    result.chatThreadId,
+  );
+  signal.throwIfAborted();
+}
+
+async function publishRunnerCancellation(
+  result: CancelRunResult,
+  signal: AbortSignal,
+): Promise<void> {
+  if (
+    result.alreadyCancelled ||
+    result.previousStatus !== "running" ||
+    !result.runnerGroup
+  ) {
+    return;
+  }
+  // A null marker means the claim did not negotiate the API recovery barrier,
+  // so cooperative cancellation is unsafe even when the caller requested it.
+  const mode =
+    result.cancellationRecoveryCompleted === null
+      ? "hard"
+      : result.runnerCancellationMode;
+  await tapError(
+    publishCancelToRunnerGroup(result.runnerGroup, result.runId, mode),
+    (error) => {
+      L.error("Failed to publish cancel to runner group", {
+        runId: result.runId,
+        runnerGroup: result.runnerGroup,
+        error,
+      });
+    },
+  );
+  signal.throwIfAborted();
+}
+
 /**
  * Post-cancel side effects:
  *  - Notify the runner group to halt the cancelled run (if it was
@@ -214,23 +278,8 @@ export const dispatchCancelSideEffects$ = command(
     }
     const recoveryRedrive = result.alreadyCancelled;
     const db = set(writeDb$);
-    if (
-      !recoveryRedrive &&
-      result.previousStatus === "running" &&
-      result.runnerGroup
-    ) {
-      await tapError(
-        publishCancelToRunnerGroup(result.runnerGroup, result.runId),
-        (error) => {
-          L.error("Failed to publish cancel to runner group", {
-            runId: result.runId,
-            runnerGroup: result.runnerGroup,
-            error,
-          });
-        },
-      );
-      signal.throwIfAborted();
-    }
+    await publishCancellationRecoveryEntered(result, signal);
+    await publishRunnerCancellation(result, signal);
     if (!recoveryRedrive) {
       await tapError(
         publishOrgSignal(result.orgId, "queue:changed"),

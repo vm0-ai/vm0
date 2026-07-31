@@ -14,14 +14,14 @@ test("send a chat message and receive an assistant response", async ({
 
   const modelPicker = page.locator(".zero-composer").getByRole("combobox");
   await modelPicker.click();
-  await page.getByRole("option", { name: /^GPT 5\.6 Luna\b/ }).click();
+  await page.getByRole("option", { name: /^GPT 5\.6 Terra\b/ }).click();
   await expect(
     page
       .locator(".zero-composer")
-      .getByRole("combobox", { name: "GPT 5.6 Luna", exact: true }),
+      .getByRole("combobox", { name: "GPT 5.6 Terra", exact: true }),
   ).toBeVisible();
 
-  const prompt = `e2e-${Date.now()}`;
+  const prompt = "Reply with exactly: Hello from Zero. Do not use tools.";
   await composer.fill(prompt);
   await page.getByRole("button", { name: "Send", exact: true }).click();
 

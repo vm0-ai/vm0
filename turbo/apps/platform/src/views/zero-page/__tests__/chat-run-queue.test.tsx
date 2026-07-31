@@ -1,16 +1,19 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
-import type {
-  ChatRunOptionsRequest,
-  PersistedAttachment,
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  chatThreadByIdContract,
+  type ChatRunOptionsRequest,
+  type PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type {
   ModelProviderResponse,
   OrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { i18n } from "../../../i18n/index.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { triggerAblyEvent, triggerAblyReconnect } from "../../../mocks/ably.ts";
 import {
   click,
   detachedSetupPage,
@@ -31,6 +34,13 @@ const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000901";
 const CHAT_PATH = `/chats/${THREAD_ID}`;
 const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
+const CANCELLATION_RECOVERY_COPY =
+  "Finalizing the cancelled run before queued work continues.";
+
+afterEach(async () => {
+  await i18n.changeLanguage("en-US");
+  document.documentElement.lang = "en-US";
+});
 
 interface ModelSelectionRequest {
   readonly modelProviderId: string;
@@ -135,7 +145,239 @@ function mockActiveRunThread(
   });
 }
 
+function mockCancellationRecoveryQueue(options?: {
+  readonly includeAutomation?: boolean;
+  readonly onRecallEventAppend?: (body: {
+    revokesEventId: string;
+    clientEventId: string;
+  }) => void;
+}): void {
+  mockChatLifecycle(context, {
+    threadId: THREAD_ID,
+    chatEvents: [
+      {
+        id: `${THREAD_ID}-cancelled-user`,
+        role: "user",
+        content: "Start work that will be cancelled",
+        runId: "run-cancelled",
+        createdAt: "2026-07-30T10:00:00Z",
+      },
+      {
+        id: `${THREAD_ID}-cancelled-assistant`,
+        role: "assistant",
+        content: "Run cancelled",
+        error: "Run cancelled",
+        runId: "run-cancelled",
+        runLifecycleEvent: "cancelled",
+        createdAt: "2026-07-30T10:00:01Z",
+      },
+      {
+        id: `${THREAD_ID}-queued-user`,
+        role: "user",
+        content: "Continue after recovery",
+        runId: undefined,
+        createdAt: "2026-07-30T10:00:02Z",
+      },
+      ...(options?.includeAutomation
+        ? [
+            {
+              id: `${THREAD_ID}-queued-automation`,
+              eventType: "input.automation" as const,
+              content: null,
+              automationId: "e0000001-0000-4000-a000-000000000001",
+              triggerSource: "workflow-event" as const,
+              triggerBrief: "Process the queued automation",
+              runId: undefined,
+              createdAt: "2026-07-30T10:00:03Z",
+            },
+          ]
+        : []),
+    ],
+    onRecallEventAppend: options?.onRecallEventAppend,
+  });
+}
+
 describe("chat run queue", () => {
+  it("falls back to generic queue guidance for a previous API response", async () => {
+    mockCancellationRecoveryQueue();
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, { lastReadAt: null });
+    });
+
+    detachedSetupPage({ context, path: CHAT_PATH });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Queued message")).toHaveTextContent(
+        "Continue after recovery",
+      );
+    });
+    expect(
+      screen.queryByText(CANCELLATION_RECOVERY_COPY),
+    ).not.toBeInTheDocument();
+
+    click(screen.getByLabelText("About this queued message"));
+    await expect(
+      screen.findByText(
+        "Waits in line and sends once the current run finishes.",
+      ),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.queryByText(CANCELLATION_RECOVERY_COPY),
+    ).not.toBeInTheDocument();
+  });
+
+  it("treats missing thread detail as no reported recovery", async () => {
+    mockCancellationRecoveryQueue();
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(404, {
+        error: { message: "Thread not found", code: "NOT_FOUND" },
+      });
+    });
+
+    detachedSetupPage({ context, path: CHAT_PATH });
+
+    await expect(
+      screen.findByLabelText("Queued message"),
+    ).resolves.toHaveTextContent("Continue after recovery");
+    expect(
+      screen.queryByText(CANCELLATION_RECOVERY_COPY),
+    ).not.toBeInTheDocument();
+  });
+
+  it("explains recovery without disabling queued work or the composer", async () => {
+    const recalledEventIds: string[] = [];
+    mockCancellationRecoveryQueue({
+      includeAutomation: true,
+      onRecallEventAppend: ({ revokesEventId }) => {
+        recalledEventIds.push(revokesEventId);
+      },
+    });
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, {
+        lastReadAt: null,
+        cancellationRecoveryPending: true,
+      });
+    });
+
+    detachedSetupPage({ context, path: CHAT_PATH });
+
+    const recoveryStatus = await screen.findByText(CANCELLATION_RECOVERY_COPY);
+    expect(recoveryStatus).toHaveAttribute("role", "status");
+    expect(recoveryStatus).toHaveAttribute("aria-live", "polite");
+    expect(
+      screen.getByText("Paused mid-thought — pick it back up whenever."),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Queued message")).toHaveTextContent(
+      "Continue after recovery",
+    );
+    expect(screen.getByLabelText("Pending automation event")).toHaveTextContent(
+      "Process the queued automation",
+    );
+    expect(screen.getByRole("textbox", { name: "Message" })).toBeEnabled();
+
+    click(screen.getByLabelText("About this queued message"));
+    await waitFor(() => {
+      expect(screen.getAllByText(CANCELLATION_RECOVERY_COPY)).toHaveLength(2);
+    });
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    click(screen.getByLabelText("About this automation event"));
+    await waitFor(() => {
+      expect(screen.getAllByText(CANCELLATION_RECOVERY_COPY)).toHaveLength(2);
+    });
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    click(screen.getByLabelText("Remove queued message"));
+    await waitFor(() => {
+      expect(recalledEventIds).toContain(`${THREAD_ID}-queued-user`);
+    });
+    click(screen.getByLabelText("Skip automation event"));
+    await waitFor(() => {
+      expect(recalledEventIds).toContain(`${THREAD_ID}-queued-automation`);
+    });
+  });
+
+  it("catches recovery changes after the initial detail read", async () => {
+    let detailReads = 0;
+    mockCancellationRecoveryQueue();
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
+      detailReads += 1;
+      return respond(200, {
+        lastReadAt: null,
+        cancellationRecoveryPending: detailReads > 1,
+      });
+    });
+
+    detachedSetupPage({ context, path: CHAT_PATH });
+
+    await expect(
+      screen.findByText(CANCELLATION_RECOVERY_COPY),
+    ).resolves.toBeInTheDocument();
+    expect(detailReads).toBeGreaterThanOrEqual(2);
+  });
+
+  it("reloads recovery state on detail events and reconnect", async () => {
+    let cancellationRecoveryPending = false;
+    let detailReads = 0;
+    mockCancellationRecoveryQueue();
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
+      detailReads += 1;
+      return respond(200, {
+        lastReadAt: null,
+        cancellationRecoveryPending,
+      });
+    });
+
+    detachedSetupPage({ context, path: CHAT_PATH });
+
+    await waitFor(() => {
+      expect(detailReads).toBeGreaterThan(0);
+      expect(screen.getByLabelText("Queued message")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText(CANCELLATION_RECOVERY_COPY),
+    ).not.toBeInTheDocument();
+
+    cancellationRecoveryPending = true;
+    triggerAblyEvent(`chatThreadDetailChanged:${THREAD_ID}`);
+    await expect(
+      screen.findByText(CANCELLATION_RECOVERY_COPY),
+    ).resolves.toBeInTheDocument();
+
+    cancellationRecoveryPending = false;
+    triggerAblyEvent(`chatThreadDetailChanged:${THREAD_ID}`);
+    await waitFor(() => {
+      expect(
+        screen.queryByText(CANCELLATION_RECOVERY_COPY),
+      ).not.toBeInTheDocument();
+    });
+
+    cancellationRecoveryPending = true;
+    triggerAblyReconnect();
+    await expect(
+      screen.findByText(CANCELLATION_RECOVERY_COPY),
+    ).resolves.toBeInTheDocument();
+  });
+
+  it("localizes cancellation recovery guidance", async () => {
+    context.mocks.data.userPreferences({ locale: "pt-BR" });
+    mockCancellationRecoveryQueue();
+    context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
+      return respond(200, {
+        lastReadAt: null,
+        cancellationRecoveryPending: true,
+      });
+    });
+
+    detachedSetupPage({ context, path: CHAT_PATH });
+
+    await expect(
+      screen.findByText(
+        "Finalizando a execução cancelada antes de continuar o trabalho na fila.",
+      ),
+    ).resolves.toBeInTheDocument();
+  });
+
   it("labels a queued message from its userMessage projection", async () => {
     mockChatLifecycle(context, {
       threadId: THREAD_ID,

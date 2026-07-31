@@ -243,62 +243,62 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@vm0.ai",
     description:
       "Allow pt-BR preference writes after incompatible API readers and rollback candidates have drained.",
-    enabled: false,
+    enabled: true,
     userOverridable: false,
   },
   [FeatureSwitchKey.JapaneseLocale]: {
     maintainer: "yuma@vm0.ai",
     description:
       "Allow ja-JP preference writes after incompatible API readers and rollback candidates have drained.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.KoreanLocale]: {
     maintainer: "yuma@vm0.ai",
     description:
       "Allow ko-KR preference writes after incompatible API readers and rollback candidates have drained.",
-    enabled: false,
+    enabled: true,
     userOverridable: false,
   },
   [FeatureSwitchKey.IndonesianLocale]: {
     maintainer: "yuma@vm0.ai",
     description:
       "Allow id-ID preference writes after incompatible API readers and rollback candidates have drained.",
-    enabled: false,
+    enabled: true,
     userOverridable: false,
   },
   [FeatureSwitchKey.GermanLocale]: {
     maintainer: "yuma@vm0.ai",
     description:
       "Allow de-DE preference writes after incompatible API readers and rollback candidates have drained.",
-    enabled: false,
+    enabled: true,
     userOverridable: false,
   },
   [FeatureSwitchKey.SpanishLocale]: {
     maintainer: "linghan@vm0.ai",
     description:
       "Allow es-ES preference writes after incompatible API readers and rollback candidates have drained.",
-    enabled: false,
+    enabled: true,
     userOverridable: false,
   },
   [FeatureSwitchKey.ItalianLocale]: {
     maintainer: "linghan@vm0.ai",
     description:
       "Allow it-IT preference writes after incompatible API readers and rollback candidates have drained.",
-    enabled: false,
+    enabled: true,
     userOverridable: false,
   },
   [FeatureSwitchKey.FrenchLocale]: {
     maintainer: "yuma@vm0.ai",
     description:
       "Allow fr-FR preference writes after incompatible API readers and rollback candidates have drained.",
-    enabled: false,
+    enabled: true,
     userOverridable: false,
   },
   [FeatureSwitchKey.HindiLocale]: {
     maintainer: "yuma@vm0.ai",
     description:
       "Allow hi-IN preference writes after incompatible API readers and rollback candidates have drained.",
-    enabled: false,
+    enabled: true,
     userOverridable: false,
   },
   [FeatureSwitchKey.Banking]: {
@@ -524,12 +524,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@vm0.ai",
     description:
       "Generate poster images asynchronously when video artifacts are recorded.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.ImageStyleR2]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Resolve archive-enabled image styles from private R2 packages. When off, image style authoring continues reading vm0-skills from GitHub.",
     enabled: true,
   },
   [FeatureSwitchKey.WorkflowConnectorReadiness]: {

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.54](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.53...vsock-guest-v0.19.54) (2026-07-31)
+
+
+### Performance Improvements
+
+* **vsock-guest:** avoid production drain wait in orphan test ([#24209](https://github.com/vm0-ai/vm0/issues/24209)) ([2b37043](https://github.com/vm0-ai/vm0/commit/2b37043d8a0db3034b3f2b93084d590cf2e2e828))
+
 ## [0.19.53](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.52...vsock-guest-v0.19.53) (2026-07-30)
 
 ## [0.19.52](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.51...vsock-guest-v0.19.52) (2026-07-30)

@@ -8,7 +8,6 @@ use sandbox_fc::DNS_READINESS_HOSTNAME;
 use tokio::io::{AsyncBufRead, AsyncReadExt, AsyncSeekExt};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
-use tracing::warn;
 
 use crate::network_log_drain::{
     DrainableLineReaderExit, NetworkLogDrainRequest, run_drainable_line_reader,
@@ -72,7 +71,7 @@ pub(super) async fn tail_stderr(
     network_log_manager: NetworkLogManager,
     cancel: CancellationToken,
     drain_rx: mpsc::Receiver<NetworkLogDrainRequest>,
-) -> std::io::Result<()> {
+) -> DrainableLineReaderExit {
     tail_reader(
         tokio::io::BufReader::new(stderr),
         network_log_manager,
@@ -87,38 +86,17 @@ async fn tail_reader<R>(
     network_log_manager: NetworkLogManager,
     cancel: CancellationToken,
     drain_rx: mpsc::Receiver<NetworkLogDrainRequest>,
-) -> std::io::Result<()>
+) -> DrainableLineReaderExit
 where
     R: AsyncBufRead + Unpin,
 {
-    let exit = run_drainable_line_reader(reader, cancel.clone(), drain_rx, move |line| {
+    run_drainable_line_reader(reader, cancel, drain_rx, move |line| {
         let network_log_manager = network_log_manager.clone();
         async move {
             handle_dns_line(&network_log_manager, &line).await;
         }
     })
-    .await;
-
-    match exit {
-        DrainableLineReaderExit::Cancelled | DrainableLineReaderExit::DrainChannelClosed => Ok(()),
-        DrainableLineReaderExit::Eof { during_drain } => {
-            if !during_drain && !cancel.is_cancelled() {
-                warn!("dnsmasq exited unexpectedly (stderr EOF)");
-            }
-            Ok(())
-        }
-        DrainableLineReaderExit::ReadError {
-            during_drain,
-            error,
-        } => {
-            if during_drain {
-                Err(error)
-            } else {
-                warn!(error = %error, "dnsmasq stderr read error");
-                Ok(())
-            }
-        }
-    }
+    .await
 }
 
 async fn handle_dns_line(network_log_manager: &NetworkLogManager, line: &str) {
@@ -421,13 +399,10 @@ fn network_log_row(entry: &DnsLogEntry<'_>, timestamp: DateTime<Utc>) -> serde_j
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io;
-    use std::pin::Pin;
-    use std::task::{Context, Poll};
 
     use crate::ids::RunId;
     use crate::network_log_drain::{NetworkLogDrainContext, NetworkLogDrainProducer};
-    use tokio::io::{AsyncBufRead, AsyncRead, AsyncWriteExt, ReadBuf};
+    use tokio::io::AsyncWriteExt;
 
     fn assert_query_event(entry: &DnsLogEntry<'_>, expected_query_type: &str) {
         assert_eq!(entry.event.name(), "query");
@@ -931,59 +906,10 @@ mod tests {
         assert_eq!(parsed["dns_event"], "query");
 
         cancel.cancel();
+        assert!(matches!(
+            task.await.unwrap(),
+            DrainableLineReaderExit::Cancelled
+        ));
         drop(writer);
-        task.await.unwrap().unwrap();
-    }
-
-    #[tokio::test]
-    async fn tail_reader_returns_ok_on_normal_eof() {
-        let cancel = CancellationToken::new();
-        let (_producer, drain_rx) = NetworkLogDrainProducer::channel("dns-test");
-
-        let result = tail_reader(
-            tokio::io::BufReader::new(tokio::io::empty()),
-            NetworkLogManager::new(),
-            cancel,
-            drain_rx,
-        )
-        .await;
-
-        assert!(result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn tail_reader_returns_ok_on_normal_read_error() {
-        let cancel = CancellationToken::new();
-        let (_producer, drain_rx) = NetworkLogDrainProducer::channel("dns-test");
-
-        let result = tail_reader(FailingReader, NetworkLogManager::new(), cancel, drain_rx).await;
-
-        assert!(result.is_ok());
-    }
-
-    struct FailingReader;
-
-    impl AsyncRead for FailingReader {
-        fn poll_read(
-            self: Pin<&mut Self>,
-            _cx: &mut Context<'_>,
-            _buf: &mut ReadBuf<'_>,
-        ) -> Poll<io::Result<()>> {
-            Poll::Ready(Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "test read error",
-            )))
-        }
-    }
-
-    impl AsyncBufRead for FailingReader {
-        fn poll_fill_buf(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<&[u8]>> {
-            Poll::Ready(Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "test read error",
-            )))
-        }
-
-        fn consume(self: Pin<&mut Self>, _amt: usize) {}
     }
 }

@@ -1,15 +1,16 @@
 import { command } from "ccstate";
 import {
   and,
+  asc,
   count,
   desc,
   eq,
   gt,
   gte,
   inArray,
+  isNotNull,
   isNull,
   lt,
-  min,
   or,
   sql,
   sum,
@@ -32,13 +33,16 @@ import {
   pgInt8ToSafeIntegerDecoder,
   pgTextDecoder,
 } from "../../lib/db-structured-result";
+import { logger } from "../../lib/log";
 import { type Db, writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 import { lockModelStatsAggregation } from "./model-stats-aggregation-lock.service";
 
 const HOUR_MS = 60 * 60_000;
-export const DEFAULT_MODEL_STATS_REPROCESS_HOURS = 24;
+const MODEL_USAGE_OBSERVATION_CLEANUP_BATCH_SIZE = 1000;
+const MODEL_USAGE_OBSERVATION_CLEANUP_MAX_BATCHES = 10;
 export const MODEL_RANKING_PERIODS = ["today", "week", "month"] as const;
+const L = logger("CronAggregateModelStats");
 
 type ModelRankingPeriod = (typeof MODEL_RANKING_PERIODS)[number];
 
@@ -69,18 +73,24 @@ function getModelStatsModelIds(): string[] {
   ];
 }
 
-interface ModelStatsAggregationResult {
-  readonly windowStart: Date;
-  readonly windowEnd: Date;
-  readonly aggregated: number;
+interface ModelStatsProcessingResult {
+  readonly cutoff: Date;
+  readonly processedHours: number;
+  readonly processedObservations: number;
+  readonly updatedStats: number;
+  readonly deletedObservations: number;
 }
 
-const modelStatsAggregationRowSchema = z.object({
-  windowStart: pgTimestampWithoutTimezoneToDateSchema,
-  windowEnd: pgTimestampWithoutTimezoneToDateSchema,
-  aggregated: z.int().nonnegative(),
-  markedObservations: z.int().nonnegative(),
-  deleted: z.int().nonnegative(),
+interface ModelStatsHourProcessingResult {
+  readonly hourStart: Date | null;
+  readonly processedObservations: number;
+  readonly updatedStats: number;
+}
+
+const modelStatsHourProcessingRowSchema = z.object({
+  hourStart: pgTimestampWithoutTimezoneToDateSchema.nullable(),
+  processedObservations: z.int().nonnegative(),
+  updatedStats: z.int().nonnegative(),
 });
 
 function utcHourStart(date: Date): Date {
@@ -175,86 +185,104 @@ function modelStatWindowSum(
   )::bigint`.mapWith(pgInt8ToSafeIntegerDecoder);
 }
 
-interface ModelStatsAggregationSqlArgs {
+interface ModelStatsHourProcessingSqlArgs {
   readonly modelStatsModelIds: string[];
   readonly observationModelExpr: SQLWrapper;
-  readonly preparedAt: string;
-  readonly requestedWindowStart: string;
-  readonly windowEnd: string;
+  readonly processedAt: string;
+  readonly cutoff: string;
 }
 
-function modelStatsSourceCtes(args: ModelStatsAggregationSqlArgs): SQL {
+function modelStatsHourClaimCtes(args: ModelStatsHourProcessingSqlArgs): SQL {
   return sql`
-    oldest_pending AS MATERIALIZED (
+    oldest_pending_hour AS MATERIALIZED (
         SELECT
-          ${min(modelUsageObservation.observedAt)} AS oldest_observed_at
+          date_trunc(
+            'hour',
+            ${modelUsageObservation.observedAt}
+          )::timestamp AS hour_start
         FROM ${modelUsageObservation}
         WHERE ${and(
           isNull(modelUsageObservation.aggregatedAt),
+          lt(modelUsageObservation.observedAt, sql`${args.cutoff}::timestamp`),
+        )}
+        ORDER BY ${modelUsageObservation.observedAt}
+        LIMIT 1
+      ),
+      claimed_observations AS (
+        UPDATE ${modelUsageObservation}
+        SET aggregated_at = ${args.processedAt}::timestamp
+        FROM oldest_pending_hour
+        WHERE ${and(
+          isNull(modelUsageObservation.aggregatedAt),
+          gte(
+            modelUsageObservation.observedAt,
+            sql`oldest_pending_hour.hour_start`,
+          ),
           lt(
             modelUsageObservation.observedAt,
-            sql`${args.windowEnd}::timestamp`,
+            sql`oldest_pending_hour.hour_start + INTERVAL '1 hour'`,
           ),
         )}
-      ),
-      bounds AS MATERIALIZED (
-        SELECT
-          LEAST(
-            ${args.requestedWindowStart}::timestamp,
-            COALESCE(
-              date_trunc('hour', oldest_pending.oldest_observed_at)::timestamp,
-              ${args.requestedWindowStart}::timestamp
-            )
-          )::timestamp AS window_start,
-          ${args.windowEnd}::timestamp AS window_end
-        FROM oldest_pending
-      ),
-      usage_rows AS MATERIALIZED (
-        SELECT
-          date_trunc('hour', ${modelUsageObservation.observedAt})::timestamp AS hour_start,
+        RETURNING
           ${args.observationModelExpr} AS model,
           ${modelUsageObservation.inputTokens}::bigint AS input_tokens,
           ${modelUsageObservation.outputTokens}::bigint AS output_tokens,
-          ${modelUsageObservation.cacheReadInputTokens}::bigint AS cache_read_input_tokens,
-          ${modelUsageObservation.cacheCreationInputTokens}::bigint AS cache_creation_input_tokens
-        FROM ${modelUsageObservation}
-        CROSS JOIN bounds
-        WHERE ${and(
-          gte(modelUsageObservation.observedAt, sql`bounds.window_start`),
-          lt(modelUsageObservation.observedAt, sql`bounds.window_end`),
-          inArray(modelUsageObservation.model, args.modelStatsModelIds),
-          or(
-            gt(modelUsageObservation.inputTokens, sql`0`),
-            gt(modelUsageObservation.outputTokens, sql`0`),
-            gt(modelUsageObservation.cacheReadInputTokens, sql`0`),
-            gt(modelUsageObservation.cacheCreationInputTokens, sql`0`),
-          ),
-        )}
-      ),
-      aggregated AS (
-        SELECT
-          hour_start,
-          model,
-          COALESCE(SUM(input_tokens), 0)::bigint AS input_tokens,
-          COALESCE(SUM(output_tokens), 0)::bigint AS output_tokens,
-          COALESCE(SUM(cache_read_input_tokens), 0)::bigint AS cache_read_input_tokens,
-          COALESCE(SUM(cache_creation_input_tokens), 0)::bigint AS cache_creation_input_tokens,
-          (
-            COALESCE(SUM(input_tokens), 0)
-            + COALESCE(SUM(output_tokens), 0)
-            + COALESCE(SUM(cache_read_input_tokens), 0)
-            + COALESCE(SUM(cache_creation_input_tokens), 0)
-          )::bigint AS total_tokens
-        FROM usage_rows
-        WHERE model <> ''
-        GROUP BY hour_start, model
+          ${modelUsageObservation.cacheReadInputTokens}::bigint
+            AS cache_read_input_tokens,
+          ${modelUsageObservation.cacheCreationInputTokens}::bigint
+            AS cache_creation_input_tokens
       )
   `;
 }
 
-function modelStatsMutationCtes(args: ModelStatsAggregationSqlArgs): SQL {
+function modelStatsHourProjectionCtes(
+  args: ModelStatsHourProcessingSqlArgs,
+): SQL {
   return sql`
-    upserted_stats AS (
+    aggregated AS MATERIALIZED (
+        SELECT
+          oldest_pending_hour.hour_start,
+          claimed_observations.model,
+          COALESCE(SUM(claimed_observations.input_tokens), 0)::bigint
+            AS input_tokens,
+          COALESCE(SUM(claimed_observations.output_tokens), 0)::bigint
+            AS output_tokens,
+          COALESCE(
+            SUM(claimed_observations.cache_read_input_tokens),
+            0
+          )::bigint AS cache_read_input_tokens,
+          COALESCE(
+            SUM(claimed_observations.cache_creation_input_tokens),
+            0
+          )::bigint AS cache_creation_input_tokens,
+          (
+            COALESCE(SUM(claimed_observations.input_tokens), 0)
+            + COALESCE(SUM(claimed_observations.output_tokens), 0)
+            + COALESCE(
+              SUM(claimed_observations.cache_read_input_tokens),
+              0
+            )
+            + COALESCE(
+              SUM(claimed_observations.cache_creation_input_tokens),
+              0
+            )
+          )::bigint AS total_tokens
+        FROM claimed_observations
+        CROSS JOIN oldest_pending_hour
+        WHERE ${and(
+          inArray(sql`claimed_observations.model`, args.modelStatsModelIds),
+          or(
+            gt(sql`claimed_observations.input_tokens`, sql`0`),
+            gt(sql`claimed_observations.output_tokens`, sql`0`),
+            gt(sql`claimed_observations.cache_read_input_tokens`, sql`0`),
+            gt(sql`claimed_observations.cache_creation_input_tokens`, sql`0`),
+          ),
+        )}
+        GROUP BY
+          oldest_pending_hour.hour_start,
+          claimed_observations.model
+      ),
+      upserted_stats AS (
         INSERT INTO ${modelStat} (
           "hour_start",
           "model",
@@ -274,95 +302,125 @@ function modelStatsMutationCtes(args: ModelStatsAggregationSqlArgs): SQL {
           total_tokens
         FROM aggregated
         ON CONFLICT (hour_start, model) DO UPDATE SET
-          input_tokens = EXCLUDED.input_tokens,
-          output_tokens = EXCLUDED.output_tokens,
-          cache_read_input_tokens = EXCLUDED.cache_read_input_tokens,
-          cache_creation_input_tokens = EXCLUDED.cache_creation_input_tokens,
-          total_tokens = EXCLUDED.total_tokens,
+          input_tokens =
+            ${modelStat.inputTokens} + EXCLUDED.input_tokens,
+          output_tokens =
+            ${modelStat.outputTokens} + EXCLUDED.output_tokens,
+          cache_read_input_tokens =
+            ${modelStat.cacheReadInputTokens}
+            + EXCLUDED.cache_read_input_tokens,
+          cache_creation_input_tokens =
+            ${modelStat.cacheCreationInputTokens}
+            + EXCLUDED.cache_creation_input_tokens,
+          total_tokens =
+            ${modelStat.totalTokens} + EXCLUDED.total_tokens,
           updated_at = NOW()
         RETURNING id
-      ),
-      deleted_stats AS (
-        DELETE FROM ${modelStat}
-        USING bounds
-        WHERE
-          ${and(
-            gte(modelStat.hourStart, sql`bounds.window_start`),
-            lt(modelStat.hourStart, sql`bounds.window_end`),
-            inArray(modelStat.model, args.modelStatsModelIds),
-          )}
-          AND NOT EXISTS (
-            SELECT 1
-            FROM aggregated
-            WHERE
-              aggregated.hour_start = ${modelStat.hourStart}
-              AND aggregated.model = ${modelStat.model}
-          )
-        RETURNING ${modelStat.id}
-      ),
-      marked_observations AS (
-        UPDATE ${modelUsageObservation}
-        SET aggregated_at = ${args.preparedAt}::timestamp
-        FROM bounds
-        WHERE ${and(
-          isNull(modelUsageObservation.aggregatedAt),
-          gte(modelUsageObservation.observedAt, sql`bounds.window_start`),
-          lt(modelUsageObservation.observedAt, sql`bounds.window_end`),
-        )}
-        RETURNING ${modelUsageObservation.idempotencyKey}
       )
   `;
 }
 
-function modelStatsAggregationSql(args: ModelStatsAggregationSqlArgs): SQL {
+function modelStatsHourProcessingSql(
+  args: ModelStatsHourProcessingSqlArgs,
+): SQL {
   return sql`
     WITH
-    ${modelStatsSourceCtes(args)},
-    ${modelStatsMutationCtes(args)}
+      ${modelStatsHourClaimCtes(args)},
+      ${modelStatsHourProjectionCtes(args)}
     SELECT
-      bounds.window_start AS "windowStart",
-      bounds.window_end AS "windowEnd",
-      (SELECT ${count()}::int FROM upserted_stats) AS "aggregated",
-      (SELECT ${count()}::int FROM marked_observations)
-        AS "markedObservations",
-      (SELECT ${count()}::int FROM deleted_stats) AS "deleted"
-    FROM bounds
+      (
+        SELECT oldest_pending_hour.hour_start
+        FROM oldest_pending_hour
+      ) AS "hourStart",
+      (
+        SELECT ${count()}::int
+        FROM claimed_observations
+      ) AS "processedObservations",
+      (
+        SELECT ${count()}::int
+        FROM upserted_stats
+      ) AS "updatedStats"
   `;
 }
 
-async function prepareModelStats(
+async function processOldestPendingModelStatsHour(
   db: Db,
-  requestedWindowStart: Date,
-  windowEnd: Date,
-  preparedAt: Date,
+  cutoff: Date,
+  processedAt: Date,
   signal: AbortSignal,
-): Promise<ModelStatsAggregationResult> {
-  const query = modelStatsAggregationSql({
+): Promise<ModelStatsHourProcessingResult> {
+  const query = modelStatsHourProcessingSql({
     modelStatsModelIds: getModelStatsModelIds(),
     observationModelExpr: modelUsageObservationModelExpression(),
-    preparedAt: utcTimestampParam(preparedAt),
-    requestedWindowStart: utcTimestampParam(requestedWindowStart),
-    windowEnd: utcTimestampParam(windowEnd),
+    processedAt: utcTimestampParam(processedAt),
+    cutoff: utcTimestampParam(cutoff),
   });
 
-  return await db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     await lockModelStatsAggregation(tx);
     signal.throwIfAborted();
     const rows = await executeRawRows(
       tx,
       query,
-      modelStatsAggregationRowSchema,
+      modelStatsHourProcessingRowSchema,
     );
     signal.throwIfAborted();
 
-    const [result] = rows;
-    if (rows.length !== 1 || !result) {
+    const [row] = rows;
+    if (rows.length !== 1 || !row) {
       throw new Error(
-        "Model stats aggregation returned an unexpected summary row count",
+        "Model stats processing returned an unexpected summary row count",
       );
     }
-    return result;
+    return row;
   });
+  signal.throwIfAborted();
+  return result;
+}
+
+async function cleanupAppliedModelUsageObservations(
+  db: Db,
+  cutoff: Date,
+  signal: AbortSignal,
+): Promise<number> {
+  let deletedObservations = 0;
+
+  for (
+    let batch = 0;
+    batch < MODEL_USAGE_OBSERVATION_CLEANUP_MAX_BATCHES;
+    batch += 1
+  ) {
+    signal.throwIfAborted();
+    const candidates = db
+      .select({
+        idempotencyKey: modelUsageObservation.idempotencyKey,
+      })
+      .from(modelUsageObservation)
+      .where(
+        and(
+          isNotNull(modelUsageObservation.aggregatedAt),
+          lt(modelUsageObservation.observedAt, cutoff),
+        ),
+      )
+      .orderBy(
+        asc(modelUsageObservation.observedAt),
+        asc(modelUsageObservation.idempotencyKey),
+      )
+      .limit(MODEL_USAGE_OBSERVATION_CLEANUP_BATCH_SIZE)
+      .for("update", { skipLocked: true });
+    const { rowCount } = await db
+      .delete(modelUsageObservation)
+      .where(inArray(modelUsageObservation.idempotencyKey, candidates));
+    signal.throwIfAborted();
+
+    const batchDeleted = rowCount ?? 0;
+    deletedObservations += batchDeleted;
+    if (batchDeleted < MODEL_USAGE_OBSERVATION_CLEANUP_BATCH_SIZE) {
+      break;
+    }
+  }
+
+  return deletedObservations;
 }
 
 async function selectModelRankings(
@@ -459,27 +517,70 @@ async function selectModelRankings(
 }
 
 export const aggregateModelStats$ = command(
-  async (
-    { set },
-    hours: number,
-    signal: AbortSignal,
-  ): Promise<ModelStatsAggregationResult> => {
+  async ({ set }, signal: AbortSignal): Promise<ModelStatsProcessingResult> => {
     const db = set(writeDb$);
-    const preparedAt = nowDate();
-    const windowEnd = utcHourStart(preparedAt);
-    const windowStart = new Date(windowEnd.getTime() - hours * HOUR_MS);
+    const startedAt = performance.now();
+    const processedAt = nowDate();
+    const cutoff = utcHourStart(processedAt);
+    const cleanupCutoff = new Date(processedAt.getTime() - HOUR_MS);
+    let processedHours = 0;
+    let processedObservations = 0;
+    let updatedStats = 0;
+    let firstProcessedHour: Date | null = null;
+    let lastProcessedHour: Date | null = null;
 
-    signal.throwIfAborted();
-    const result = await prepareModelStats(
+    while (true) {
+      signal.throwIfAborted();
+      const result = await processOldestPendingModelStatsHour(
+        db,
+        cutoff,
+        processedAt,
+        signal,
+      );
+      signal.throwIfAborted();
+      if (!result.hourStart) {
+        break;
+      }
+
+      firstProcessedHour ??= result.hourStart;
+      lastProcessedHour = result.hourStart;
+      processedHours++;
+      processedObservations += result.processedObservations;
+      updatedStats += result.updatedStats;
+    }
+
+    const deletedObservations = await cleanupAppliedModelUsageObservations(
       db,
-      windowStart,
-      windowEnd,
-      preparedAt,
+      cleanupCutoff,
       signal,
     );
     signal.throwIfAborted();
 
-    return result;
+    const durationMs = Math.round(performance.now() - startedAt);
+    L.debug("model stats processing completed", {
+      cutoff: cutoff.toISOString(),
+      cleanupCutoff: cleanupCutoff.toISOString(),
+      firstProcessedHour: firstProcessedHour?.toISOString() ?? null,
+      lastProcessedHour: lastProcessedHour?.toISOString() ?? null,
+      oldestCompleteBacklogAgeHours:
+        firstProcessedHour === null
+          ? 0
+          : (cutoff.getTime() - firstProcessedHour.getTime()) / HOUR_MS,
+      processedHours,
+      processedObservations,
+      updatedStats,
+      deletedObservations,
+      remainingCompletePendingObservations: 0,
+      durationMs,
+    });
+
+    return {
+      cutoff,
+      processedHours,
+      processedObservations,
+      updatedStats,
+      deletedObservations,
+    };
   },
 );
 

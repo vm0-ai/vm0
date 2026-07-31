@@ -23,10 +23,10 @@ describe("/api/zero/feature-switches", () => {
 
     await accept(client().delete({ headers }), [200]);
     mockOptionalEnv("JAPANESE_LOCALE_ROLLOUT_ENABLED", "true");
-    const defaultDisabled = await accept(client().get({ headers }), [200]);
+    const defaultEnabled = await accept(client().get({ headers }), [200]);
     expect(
-      defaultDisabled.body.effectiveSwitches[FeatureSwitchKey.JapaneseLocale],
-    ).toBeFalsy();
+      defaultEnabled.body.effectiveSwitches[FeatureSwitchKey.JapaneseLocale],
+    ).toBeTruthy();
 
     const enabled = await accept(
       client().update({

@@ -6,6 +6,7 @@ mod temp_paths;
 
 pub(crate) use connection::{
     finish_guest_connection, join_guest_connection, start_guest_connection,
+    start_guest_connection_with_exec_drain_deadline,
 };
 pub(crate) use exec::{
     DRAIN_DEADLINE_SECS, LARGE_ENV_COMMAND, LONG_RUNNING_EXEC_TIMEOUT_MS, assert_large_env_stdout,

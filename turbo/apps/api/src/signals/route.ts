@@ -1,7 +1,6 @@
 import { buildInfoContract } from "@vm0/api-contracts/contracts/build-info";
 import { healthContract } from "@vm0/api-contracts/contracts/health";
 
-import { agentSessionsRoutes } from "./routes/agent-sessions-id";
 import { authMeRoutes } from "./routes/auth-me";
 import { cliAuthRoutes } from "./routes/cli-auth";
 import { E2E_ROUTES } from "./e2e-routes";
@@ -228,7 +227,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...webhooksAgentEventsRoutes,
   ...webhooksAgentFirewallAuthRoutes,
   ...webhooksAgentStorageRoutes,
-  ...agentSessionsRoutes,
   ...connectorsSlugCallbackRoutes,
   ...cronAggregateInsightsRoutes,
   ...cronAggregateUsageRoutes,

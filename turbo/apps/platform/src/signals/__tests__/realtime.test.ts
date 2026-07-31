@@ -711,6 +711,7 @@ describe("realtime signals", () => {
         {
           threadId,
           handlers: {
+            onThreadDetailChanged$: keepAliveLoop$,
             onAutomationsChanged$: keepAliveLoop$,
             onArtifactsChanged$: keepAliveLoop$,
             onWorkflowsChanged$: keepAliveLoop$,

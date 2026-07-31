@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.150.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.150.4...runner-rs-v0.150.5) (2026-07-31)
+
+
+### Bug Fixes
+
+* **runner:** distinguish cancellation intent ([#24217](https://github.com/vm0-ai/vm0/issues/24217)) ([ce76a6d](https://github.com/vm0-ai/vm0/commit/ce76a6d1fc3c332da622f390be9119f58275cc30))
+
+
+### Performance Improvements
+
+* **python:** bound x ndjson row inspection work ([#24227](https://github.com/vm0-ai/vm0/issues/24227)) ([e182d2c](https://github.com/vm0-ai/vm0/commit/e182d2c7a869f8bab849c71c8312019111c648aa))
+
+## [0.150.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.150.3...runner-rs-v0.150.4) (2026-07-31)
+
+
+### Bug Fixes
+
+* **runner:** activate cooperative cancellation recovery ([#24200](https://github.com/vm0-ai/vm0/issues/24200)) ([69710c6](https://github.com/vm0-ai/vm0/commit/69710c639bfc0f6645c94df634dd277fe2a8b0e3))
+* **runner:** stop when dnsmasq exits ([#24197](https://github.com/vm0-ai/vm0/issues/24197)) ([33d5952](https://github.com/vm0-ai/vm0/commit/33d5952c61c0981ae9632f88d044cd4c882451d4))
+
+
+### Documentation
+
+* **python:** document public destination denial response modes ([#24190](https://github.com/vm0-ai/vm0/issues/24190)) ([c484213](https://github.com/vm0-ai/vm0/commit/c484213df65c6f057b8596c1d9d8ae9cc2503384))
+
+
+### Refactoring
+
+* **runner:** split idle reuse tests by behavior ([#24195](https://github.com/vm0-ai/vm0/issues/24195)) ([23d0a1d](https://github.com/vm0-ai/vm0/commit/23d0a1dd1877cc16d7fceab0d197b37066111d2c))
+
+## [0.150.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.150.2...runner-rs-v0.150.3) (2026-07-31)
+
+
+### Refactoring
+
+* **observability:** remove legacy connector debug dimensions ([#24137](https://github.com/vm0-ai/vm0/issues/24137)) ([77c077f](https://github.com/vm0-ai/vm0/commit/77c077f8d2e514ad1c2611d742700c3c5a5b2ae6))
+
 ## [0.150.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.150.1...runner-rs-v0.150.2) (2026-07-30)
 
 ## [0.150.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.150.0...runner-rs-v0.150.1) (2026-07-30)

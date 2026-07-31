@@ -44,6 +44,7 @@ import { now, nowDate } from "../../lib/time";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$, type Db } from "../external/db";
 import {
+  publishChatThreadDetailChangedSafely,
   publishChatThreadMessageCreatedSafely,
   publishThreadListChanged,
   publishThreadListChangedSafely,
@@ -110,7 +111,6 @@ import {
   type CanonicalSlackThreadStatusTarget,
 } from "./canonical-slack-thread-status.service";
 import { saveRunSummary, saveRunSummary$ } from "./run-summary.service";
-import { queryPreviousWriterChatOutput } from "./legacy-run-output-compat.service";
 import type { ChatRunFinishedEvent } from "./chat-run-finished-workflow-event.service";
 import {
   insertAssistantEvents,
@@ -177,7 +177,6 @@ type ChatCallbackPreCreateTimingActionType =
   | "api_dispatch_pre_create_zero_chat_callback_load_db_output_state"
   | "api_dispatch_pre_create_zero_chat_callback_db_output_complete"
   | "api_dispatch_pre_create_zero_chat_callback_db_output_incomplete"
-  | "api_dispatch_pre_create_zero_chat_callback_legacy_output_compat"
   | "api_dispatch_pre_create_zero_chat_callback_insert_assistant_items"
   | "api_dispatch_pre_create_zero_chat_callback_insert_lifecycle_marker"
   | "api_dispatch_pre_create_zero_chat_callback_load_followup_context"
@@ -365,7 +364,6 @@ interface DbCompletedChatOutputState {
   readonly kind: "complete" | "incomplete";
   readonly latestAssistant: AssistantEventItem | null;
   readonly resultFallback: ResultEventItem | null;
-  readonly legacyCompatibility: "full" | "result" | null;
 }
 
 interface CompletedChatOutputLoad {
@@ -540,7 +538,7 @@ interface ChatCallbackDependencies {
       readonly orgId: string;
       readonly agentId: string;
       readonly target: GitHubDeliveryTarget;
-      readonly chatMessageId: string;
+      readonly chatEventId: string;
     },
     signal: AbortSignal,
   ) => Promise<void>;
@@ -562,6 +560,7 @@ interface ChatRunInfo {
   readonly prompt: string;
   readonly error: string | null;
   readonly lastEventSequence: number | null;
+  readonly cancellationRecoveryCompleted: boolean | null;
 }
 
 interface CreateQueuedChatRunInput {
@@ -893,7 +892,6 @@ async function loadDbCompletedChatOutputState(args: {
       kind: "complete",
       latestAssistant: null,
       resultFallback: null,
-      legacyCompatibility: null,
     };
   }
 
@@ -930,14 +928,6 @@ async function loadDbCompletedChatOutputState(args: {
         : "incomplete",
     latestAssistant,
     resultFallback,
-    legacyCompatibility:
-      !state || state.processedThroughSequence < args.lastEventSequence
-        ? "full"
-        : state.latestResultSequence !== null &&
-            state.latestResultSequence <= args.lastEventSequence &&
-            state.latestResultText === null
-          ? "result"
-          : null,
   };
 }
 
@@ -984,56 +974,6 @@ async function loadCompletedChatOutput(args: {
       runId: args.runId,
       lastEventSequence: args.lastEventSequence,
     });
-  }
-
-  if (
-    dbOutputState.legacyCompatibility !== null &&
-    args.lastEventSequence !== null
-  ) {
-    const lastEventSequence = args.lastEventSequence;
-    log.warn("Using temporary previous-writer chat output compatibility read", {
-      runId: args.runId,
-      lastEventSequence,
-      mode: dbOutputState.legacyCompatibility,
-    });
-    const legacyOutput = await measureChatCallbackPreCreateTiming(
-      args.timing,
-      "api_dispatch_pre_create_zero_chat_callback_legacy_output_compat",
-      "nested",
-      () => {
-        return queryPreviousWriterChatOutput(
-          args.runId,
-          lastEventSequence,
-          args.signal,
-        );
-      },
-    );
-    args.signal.throwIfAborted();
-    const legacyLatestAssistant =
-      legacyOutput.assistantItems[legacyOutput.assistantItems.length - 1] ??
-      null;
-    const latestAssistant =
-      legacyLatestAssistant !== null &&
-      (dbOutputState.latestAssistant === null ||
-        legacyLatestAssistant.sequenceNumber >
-          dbOutputState.latestAssistant.sequenceNumber)
-        ? legacyLatestAssistant
-        : dbOutputState.latestAssistant;
-    const resultFallback =
-      legacyOutput.resultFallback !== null &&
-      (dbOutputState.resultFallback === null ||
-        legacyOutput.resultFallback.sequenceNumber >
-          dbOutputState.resultFallback.sequenceNumber)
-        ? legacyOutput.resultFallback
-        : dbOutputState.resultFallback;
-    return {
-      assistantItemsToInsert:
-        dbOutputState.legacyCompatibility === "full"
-          ? legacyOutput.assistantItems
-          : [],
-      latestAssistant,
-      resultFallback,
-    };
   }
 
   return {
@@ -1314,7 +1254,7 @@ async function insertGitHubChatDeliveryCallback(args: {
   readonly runId: string;
   readonly sourceCallbackId?: string;
   readonly target: GitHubDeliveryTarget;
-  readonly chatMessageId: string;
+  readonly chatEventId: string;
 }): Promise<string> {
   const callbackCondition = args.sourceCallbackId
     ? and(
@@ -1343,7 +1283,7 @@ async function insertGitHubChatDeliveryCallback(args: {
       encryptedSecret: sourceCallback.encryptedSecret,
       payload: {
         ...args.target,
-        chatMessageId: args.chatMessageId,
+        chatEventId: args.chatEventId,
       },
     })
     .returning({ id: agentRunCallbacks.id });
@@ -1359,6 +1299,7 @@ async function insertAssistantErrorEvent(args: {
   readonly threadId: string;
   readonly userId: string;
   readonly lifecycleEvent: "failed" | "cancelled";
+  readonly cancellationRecoveryCapable: boolean;
   readonly getFormattedError: () => Promise<string>;
   readonly slackDelivery?: SlackDeliveryTarget;
   readonly feishuDelivery?: FeishuDeliveryTarget;
@@ -1438,7 +1379,7 @@ async function insertAssistantErrorEvent(args: {
           runId: args.runId,
           sourceCallbackId: args.sourceCallbackId,
           target: args.githubDelivery,
-          chatMessageId: event.id,
+          chatEventId: event.id,
         })
       : undefined;
     await touchChatThreadLastMessageAt(tx, args.threadId, event.createdAt);
@@ -1457,6 +1398,9 @@ async function insertAssistantErrorEvent(args: {
 
   await publishChatThreadMessageCreatedSafely(args.userId, args.threadId);
   await publishThreadListChangedSafely(args.userId);
+  if (args.lifecycleEvent === "cancelled" && args.cancellationRecoveryCapable) {
+    await publishChatThreadDetailChangedSafely(args.userId, args.threadId);
+  }
   return {
     displayErrorMessage,
     inserted: true,
@@ -1706,7 +1650,7 @@ async function insertRunLifecycleMarkerTransaction(args: {
           runId: input.runId,
           sourceCallbackId: input.sourceCallbackId,
           target: input.githubDelivery,
-          chatMessageId: deliveryEvent.id,
+          chatEventId: deliveryEvent.id,
         })
       : undefined;
   await touchChatThreadLastMessageAt(
@@ -2077,6 +2021,7 @@ async function handleFailedChatCallback(args: {
   readonly runId: string;
   readonly chatThread: ChatThreadForRunRow;
   readonly errorMessage: string;
+  readonly cancellationRecoveryCapable: boolean;
   readonly getFormattedError: () => Promise<string>;
   readonly slackDelivery?: SlackDeliveryTarget;
   readonly feishuDelivery?: FeishuDeliveryTarget;
@@ -2096,6 +2041,7 @@ async function handleFailedChatCallback(args: {
     threadId: args.chatThread.chatThreadId,
     userId: args.chatThread.userId,
     lifecycleEvent,
+    cancellationRecoveryCapable: args.cancellationRecoveryCapable,
     getFormattedError: args.getFormattedError,
     slackDelivery: args.slackDelivery,
     feishuDelivery: args.feishuDelivery,
@@ -2872,7 +2818,6 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
   readonly userMessageProjection:
     | ReturnType<typeof projectUserMessage>
     | undefined;
-  readonly imageStyleR2Enabled: boolean;
   readonly inlineTemplatesEnabled: boolean;
 }) {
   return measureChatCallbackPreCreateTiming(
@@ -2887,7 +2832,6 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
         explicitTemplates: args.inlineTemplatesEnabled
           ? args.userMessageProjection?.generationTemplates
           : undefined,
-        imageStyleR2Enabled: args.imageStyleR2Enabled,
       });
     },
   );
@@ -2956,10 +2900,6 @@ async function buildCreateQueuedChatRunInput(
     await resolveQueuedMessageGenerationTemplatePrompt({
       input: args,
       userMessageProjection,
-      imageStyleR2Enabled: isFeatureEnabled(
-        FeatureSwitchKey.ImageStyleR2,
-        featureSwitchContext,
-      ),
       inlineTemplatesEnabled,
     });
   const computerUseHostGrant = await measureChatCallbackPreCreateTiming(
@@ -3374,7 +3314,7 @@ async function handleGitHubQueuedMessageAdmissionFailure(args: {
         orgId: args.failure.orgId,
         agentId: args.failure.agentId,
         target: args.failure.githubDelivery,
-        chatMessageId: failed.assistantEventId,
+        chatEventId: failed.assistantEventId,
       },
       args.signal,
     ),
@@ -3678,6 +3618,7 @@ async function loadTerminalChatCallback(args: {
       prompt: agentRuns.prompt,
       error: agentRuns.error,
       lastEventSequence: agentRuns.lastEventSequence,
+      cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
     })
     .from(agentRuns)
     .where(eq(agentRuns.id, args.runId))
@@ -3827,6 +3768,8 @@ async function prepareFailedTerminalChatCallbackWork(args: {
         runId: args.runId,
         chatThread: args.chatThread,
         errorMessage: args.errorMessage,
+        cancellationRecoveryCapable:
+          args.run.cancellationRecoveryCompleted !== null,
         getFormattedError: () => {
           return args.dependencies.formatRunError(
             {
@@ -4452,8 +4395,8 @@ async function handleChatInternalCallback(args: {
   // record delivery; it does not retry and nothing downstream reads the body.
   // The frontend learns about new messages through Ably realtime signals, not
   // this HTTP response. So acknowledge immediately and run the heavy terminal
-  // processing (Axiom watermark wait, message persistence, LLM generation,
-  // push delivery) in the background, mirroring webhooks-agent-complete. Use a
+  // processing (message persistence, LLM generation, and push delivery) in the
+  // background, mirroring webhooks-agent-complete. Use a
   // detached signal so request cancellation cannot interrupt the idempotency
   // marker -> queued auto-send sequence after the callback is acknowledged.
   const backgroundSignal = new AbortController().signal;

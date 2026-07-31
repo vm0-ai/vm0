@@ -19,6 +19,16 @@ export const testModelStatsStateActionBodySchema = z.discriminatedUnion(
       action: z.literal("release-aggregation-lock"),
     }),
     z.object({
+      action: z.literal("hold-observation-lock"),
+      idempotency_key: z.uuid(),
+    }),
+    z.object({
+      action: z.literal("read-observation-lock-state"),
+    }),
+    z.object({
+      action: z.literal("release-observation-lock"),
+    }),
+    z.object({
       action: z.literal("read-observations"),
       idempotency_keys: idempotencyKeysSchema,
     }),
@@ -27,6 +37,13 @@ export const testModelStatsStateActionBodySchema = z.discriminatedUnion(
       idempotency_key: z.uuid(),
       model: z.string(),
       observed_at: z.iso.datetime(),
+    }),
+    z.object({
+      action: z.literal("insert-applied-observations"),
+      idempotency_keys: idempotencyKeysSchema,
+      model: z.string(),
+      observed_at: z.iso.datetime(),
+      aggregated_at: z.iso.datetime(),
     }),
     z.object({
       action: z.literal("delete-observations"),
@@ -51,6 +68,7 @@ export const testModelStatsStateActionResponseSchema = z.object({
   ok: z.literal(true),
   aggregation_lock_held: z.boolean().optional(),
   aggregation_lock_waiter_count: z.number().int().nonnegative().optional(),
+  observation_lock_held: z.boolean().optional(),
   observations: z.array(testModelStatsObservationSchema).optional(),
 });
 

@@ -248,17 +248,13 @@ open_auth_form() {
   fi
 
   if [[ "$sign_in_state" == "password" ]]; then
-    wait_for_browser_target --fn \
-      "document.body.innerText.toLowerCase().includes('use another method')
-        || document.body.innerText.toLowerCase().includes('forgot password')"
-    if [[ "$(agent-browser eval \
-      "document.body.innerText.toLowerCase().includes('use another method')")" == "true" ]]; then
-      agent-browser find text "Use another method" click
-      wait_for_browser_target --text "Email code"
-      agent-browser find text "Email code" click
-    else
-      agent-browser find text "Forgot password" click
-    fi
+    # Clerk renders the forgot-password action before the alternate methods
+    # finish mounting. Wait for the control this test actually consumes so a
+    # partial password form cannot send the flow down a transient branch.
+    wait_for_browser_target --text "Use another method"
+    agent-browser find text "Use another method" click
+    wait_for_browser_target --text "Email code"
+    agent-browser find text "Email code" click
   fi
 
   enter_otp "$OTP" "sign-in"

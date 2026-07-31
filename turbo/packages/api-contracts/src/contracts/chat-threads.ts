@@ -420,6 +420,13 @@ const goalSnapshotSchema = z.object({
   objectiveBrief: z.string().min(1),
 });
 
+const chatEventAnnotationSchema = z
+  .object({
+    kind: z.enum(["slack", "feishu", "teams", "telegram", "github"]),
+    href: z.string().url().optional(),
+  })
+  .strict();
+
 const chatEventBaseSchema = z.object({
   id: z.string(),
   threadId: z.string(),
@@ -427,8 +434,7 @@ const chatEventBaseSchema = z.object({
   runId: z.string().optional(),
   runGroupId: z.string().optional(),
   triggerSource: triggerSourceSchema.optional(),
-  slackMessagePermalink: z.string().url().optional(),
-  feishuChatOpenUrl: z.string().url().optional(),
+  annotation: chatEventAnnotationSchema.optional(),
   isGoalRun: z.boolean().optional(),
   runEventId: z.string().optional(),
   goalSnapshot: goalSnapshotSchema.optional(),
@@ -487,8 +493,7 @@ const inputGoalEventSchema = chatEventBaseSchema
     runId: z.never().optional(),
     runGroupId: z.never().optional(),
     triggerSource: z.never().optional(),
-    slackMessagePermalink: z.never().optional(),
-    feishuChatOpenUrl: z.never().optional(),
+    annotation: z.never().optional(),
     isGoalRun: z.never().optional(),
     runEventId: z.never().optional(),
     goalSnapshot: goalSnapshotSchema,
@@ -696,6 +701,11 @@ const chatThreadDetailSchema = z.object({
    * is newer than this timestamp.
    */
   lastReadAt: z.string().nullable(),
+  /**
+   * A capable cancelled run is still preserving its resumable session before
+   * same-thread continuation can start. Optional during API/Platform rollout.
+   */
+  cancellationRecoveryPending: z.boolean().optional(),
 });
 
 const chatThreadMetadataSchema = z.object({
@@ -988,7 +998,7 @@ export const chatThreadByIdContract = c.router({
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get chat thread read state",
+    summary: "Get private chat thread state",
   },
   patch: {
     method: "PATCH",

@@ -19,7 +19,6 @@ import type {
   ChatEventAttachFiles,
   ChatEventGenerationTemplate,
   ChatEventGoalEvent,
-  ChatEventGoalSnapshot,
   ChatEventRecommendedFollowups,
   ChatEventUserMessage,
   ChatEventUsagePayload,
@@ -107,7 +106,13 @@ export const chatEvents = pgTable(
      * enforced by the NewChatEvent TypeScript write union, not by SQL.
      */
     contextType: text("context_type").$type<
-      "slack" | "feishu" | "automation" | "goal"
+      | "slack"
+      | "feishu"
+      | "teams"
+      | "telegram"
+      | "github"
+      | "automation"
+      | "goal"
     >(),
     contextId: uuid("context_id"),
     triggerSource: text("trigger_source").$type<TriggerSource>(),
@@ -123,7 +128,6 @@ export const chatEvents = pgTable(
     /** Strictly increasing position within the owning chat thread. */
     seqId: bigint("seq_id", { mode: "number" }).notNull(),
     goalEvent: jsonb("goal_event").$type<ChatEventGoalEvent>(),
-    goalSnapshot: jsonb("goal_snapshot").$type<ChatEventGoalSnapshot>(),
     attachFiles: jsonb("attach_files").$type<ChatEventAttachFiles>(),
     generationTemplate: jsonb(
       "generation_template",
@@ -142,6 +146,11 @@ export const chatEvents = pgTable(
       index("idx_chat_events_thread_run_finish_created")
         .on(table.chatThreadId, table.createdAt.desc())
         .where(sql`${table.runLifecycleEvent} IS NOT NULL`),
+      index("idx_chat_events_thread_run_terminal_created")
+        .on(table.chatThreadId, table.createdAt.desc())
+        .where(
+          sql`${table.eventType} IN ('run.completed', 'run.failed', 'run.cancelled')`,
+        ),
       index("idx_chat_events_run_id").on(table.runId),
       index("chat_events_usage_run_id_idx")
         .on(table.runId)
@@ -179,6 +188,11 @@ export const chatEvents = pgTable(
       uniqueIndex("chat_events_run_lifecycle_unique")
         .on(table.runId)
         .where(sql`${table.runLifecycleEvent} IS NOT NULL`),
+      uniqueIndex("chat_events_run_terminal_unique")
+        .on(table.runId)
+        .where(
+          sql`${table.eventType} IN ('run.completed', 'run.failed', 'run.cancelled')`,
+        ),
       uniqueIndex("chat_events_run_thinking_unique")
         .on(table.runId)
         .where(sql`${table.thinking} IS NOT NULL`),
@@ -224,7 +238,15 @@ export const chatEvents = pgTable(
       ),
       check(
         "chat_events_context_type_check",
-        sql`${table.contextType} IN ('slack', 'feishu', 'automation', 'goal')`,
+        sql`${table.contextType} IN (
+          'slack',
+          'feishu',
+          'teams',
+          'telegram',
+          'github',
+          'automation',
+          'goal'
+        )`,
       ),
     ];
   },

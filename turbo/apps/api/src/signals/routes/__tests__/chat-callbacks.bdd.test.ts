@@ -28,6 +28,7 @@ import {
   holdCheckpointReadsFixture,
   holdChatEventInsertTransactionFixture,
   invalidatePendingChatEventInputParamsFixture,
+  readChatEventContextFixture,
   removeAcknowledgedCancellationLifecycleFixture,
 } from "../../../test-fixtures/chat-events";
 import { testContext } from "../../../__tests__/test-context";
@@ -48,7 +49,6 @@ import {
   generateDataKeyOutput,
   useSecretKmsProbe,
 } from "./helpers/secret-kms-probe";
-import { insertRunOutputAsPreviousApi } from "./helpers/runtime-state";
 
 /**
  * CHAT-02 / HOOK-01: signed chat run callbacks through real dispatch.
@@ -509,6 +509,19 @@ async function waitForQueuedEventReplacement(
     throw new Error("Expected the queued event to have one replacement run");
   }
   return runId;
+}
+
+async function expectCancellationRecoveryPending(
+  actor: ApiTestUser,
+  threadId: string,
+  expected: boolean,
+): Promise<void> {
+  await expect
+    .poll(async () => {
+      const detail = await chat.readThread(actor, threadId);
+      return detail.cancellationRecoveryPending;
+    })
+    .toBe(expected);
 }
 
 function cancellationRecoveryCronClient() {
@@ -1679,6 +1692,9 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
     expect(paused.body.status).toBe("paused");
     const [goalEventId] = await goalQueueEventIds(first.threadId);
     expect(goalEventId).toBeDefined();
+    if (!goalEventId) {
+      throw new Error("Expected the invalidated goal queue event");
+    }
     releaseRunPreparation.release();
 
     const events = await waitForThreadMessages(
@@ -1712,6 +1728,18 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       throw new Error("Expected the invalidated goal event to be rejected");
     }
     expect(chatEventDisplayText(rejected)).toBe(objectiveBrief);
+    const admittedContext = await readChatEventContextFixture(goalEventId);
+    const rejectedContext = await readChatEventContextFixture(rejected.id);
+    expect(admittedContext).toMatchObject({
+      contextType: "goal",
+      contextId: expect.any(String),
+      goalObjectiveBrief: objectiveBrief,
+    });
+    expect(rejectedContext).toMatchObject({
+      contextType: "goal",
+      contextId: admittedContext?.contextId,
+      goalObjectiveBrief: objectiveBrief,
+    });
     await expect(goalRunIds(first.threadId)).resolves.toHaveLength(0);
   }, 90_000);
 
@@ -2083,6 +2111,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       prompt: "continue after an unknown capability",
     });
 
+    context.mocks.ably.publish.mockClear();
     await api.requestCancelRun(actor, run.runId, [200]);
     const replacementRunId = await waitForQueuedEventReplacement(
       actor,
@@ -2090,6 +2119,11 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       queuedEventId,
     );
     expect(replacementRunId).not.toBe(run.runId);
+    await expectCancellationRecoveryPending(actor, run.threadId, false);
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      `chatThreadDetailChanged:${run.threadId}`,
+      null,
+    );
 
     await api.requestCancelRun(actor, replacementRunId, [200]);
     await waitForRunStatus(actor, replacementRunId, "cancelled");
@@ -2117,6 +2151,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       queuedEventId,
     );
     expect(replacementRunId).not.toBe(run.runId);
+    await expectCancellationRecoveryPending(actor, run.threadId, false);
 
     await api.requestCancelRun(actor, replacementRunId, [200]);
     await waitForRunStatus(actor, replacementRunId, "cancelled");
@@ -2150,6 +2185,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       queuedEventId,
     );
     expect(replacementRunId).not.toBe(queuedRun.runId);
+    await expectCancellationRecoveryPending(actor, queuedRun.threadId, false);
 
     await api.requestCancelRun(actor, replacementRunId, [200]);
     await waitForRunStatus(actor, replacementRunId, "cancelled");
@@ -2169,6 +2205,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
       "future-cancellation-recovery-v2",
     ]);
+    await expectCancellationRecoveryPending(actor, run.threadId, false);
     const queuedEventId = await queueChatEvent(actor, {
       agentId,
       threadId: run.threadId,
@@ -2187,10 +2224,25 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
         );
       }),
     ).toHaveLength(0);
-    context.mocks.ably.publish.mockClear();
-    context.mocks.ably.publish.mockRejectedValueOnce(
-      new Error("Injected recovery drain signal failure"),
+    await expectCancellationRecoveryPending(actor, run.threadId, true);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadDetailChanged:${run.threadId}`,
+      null,
     );
+    context.mocks.ably.publish.mockClear();
+    let rejectedRecoveryDrainSignal = false;
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (
+        !rejectedRecoveryDrainSignal &&
+        topic === `chatThreadMessageCreated:${run.threadId}`
+      ) {
+        rejectedRecoveryDrainSignal = true;
+        return Promise.reject(
+          new Error("Injected recovery drain signal failure"),
+        );
+      }
+      return Promise.resolve(undefined);
+    });
     const completion = await webhooks.requestAgentComplete(
       { runId: run.runId, exitCode: 1, error: "Run cancelled" },
       sandboxHeaders,
@@ -2204,6 +2256,11 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
     await waitForRunStatus(actor, run.runId, "cancelled");
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       `chatThreadMessageCreated:${run.threadId}`,
+      null,
+    );
+    await expectCancellationRecoveryPending(actor, run.threadId, false);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadDetailChanged:${run.threadId}`,
       null,
     );
     const replacementRunId = await waitForQueuedEventReplacement(
@@ -2261,6 +2318,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       [200],
     );
     await flushWaitUntilForTest();
+    await expectCancellationRecoveryPending(actor, run.threadId, true);
     const beforeRedrive = await chat.listThreadEvents(actor, run.threadId);
     expect(
       lifecycleMarkers(beforeRedrive.events, run.runId, "cancelled"),
@@ -2284,6 +2342,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
     expect(
       lifecycleMarkers(afterRedrive.events, run.runId, "cancelled"),
     ).toHaveLength(1);
+    await expectCancellationRecoveryPending(actor, run.threadId, false);
 
     await api.requestCancelRun(actor, replacementRunId, [200]);
     await waitForRunStatus(actor, replacementRunId, "cancelled");
@@ -2320,6 +2379,11 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
         });
       })
       .toBe(true);
+    await expectCancellationRecoveryPending(actor, run.threadId, true);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadDetailChanged:${run.threadId}`,
+      null,
+    );
     const completion = await webhooks.requestAgentComplete(
       { runId: run.runId, exitCode: 1, error: "Run cancelled" },
       sandboxHeaders,
@@ -2340,6 +2404,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
         );
       }),
     ).toHaveLength(0);
+    await expectCancellationRecoveryPending(actor, run.threadId, true);
 
     const duplicateCompletion = await webhooks.requestAgentComplete(
       { runId: run.runId, exitCode: 1, error: "Run cancelled" },
@@ -2362,6 +2427,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
     expect(
       lifecycleMarkers(afterLifecycle.events, run.runId, "cancelled"),
     ).toHaveLength(1);
+    await expectCancellationRecoveryPending(actor, run.threadId, false);
 
     await api.requestCancelRun(actor, replacementRunId, [200]);
     await waitForRunStatus(actor, replacementRunId, "cancelled");
@@ -2443,6 +2509,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
 
     await api.requestCancelRun(actor, run.runId, [200]);
     await flushWaitUntilForTest();
+    await expectCancellationRecoveryPending(actor, run.threadId, true);
     const whileFresh = await chat.listThreadEvents(actor, run.threadId);
     expect(
       lifecycleMarkers(whileFresh.events, run.runId, "cancelled"),
@@ -2472,7 +2539,9 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
         );
       }),
     ).toHaveLength(0);
+    await expectCancellationRecoveryPending(actor, run.threadId, true);
 
+    context.mocks.ably.publish.mockClear();
     mockNow(startedAt + CANCELLATION_RECOVERY_STALE_AFTER_MS + 1);
     await accept(
       cancellationRecoveryCronClient().reconcile({
@@ -2486,6 +2555,11 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       actor,
       run.threadId,
       queuedEventId,
+    );
+    await expectCancellationRecoveryPending(actor, run.threadId, false);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadDetailChanged:${run.threadId}`,
+      null,
     );
 
     await api.requestCancelRun(actor, replacementRunId, [200]);
@@ -3081,27 +3155,24 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     expect(firstAssistantEventsForRun(resultOnly.runId)).toHaveLength(1);
   }, 90_000);
 
-  it("bridges a result-only chat event acknowledged by the previous API writer", async () => {
+  it("completes with DB-only output when the projection is incomplete", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const run = await startChatRun(actor, {
       agentId,
-      prompt: "mixed-version result-only chat run",
+      prompt: "complete without projected output",
     });
     const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
 
-    chatCallbacks.mockPreviousApiChatOutputEvents([
-      resultEvent(0, "Result preserved across the rolling deploy"),
-    ]);
-    // No current public route can reproduce the prior writer's row: it stored
-    // the result sequence but not the result/output text.
-    await insertRunOutputAsPreviousApi(context, {
-      runId: run.runId,
-      processedThroughSequence: 0,
-      latestResultSequence: 0,
-    });
     context.mocks.axiom.query.mockClear();
+    context.mocks.axiom.query.mockImplementation((apl: unknown) => {
+      const query = typeof apl === "string" ? apl : "";
+      if (query.includes("agent-run-events")) {
+        throw new Error("Incomplete DB output should not query Axiom");
+      }
+      return Promise.resolve([]);
+    });
 
     await completeChatRunOk(run.runId, sandboxHeaders, {
       lastEventSequence: 0,
@@ -3110,16 +3181,13 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       actor,
       run.threadId,
       (threadMessages) => {
-        return eventBackedContents(threadMessages, run.runId).length === 1;
+        return (
+          lifecycleMarkers(threadMessages, run.runId, "completed").length === 1
+        );
       },
     );
 
-    expect(
-      eventBackedContents(messages.events, run.runId).map((message) => {
-        return message.content;
-      }),
-    ).toStrictEqual(["Result preserved across the rolling deploy"]);
-    expect(chatOutputAxiomQueryCalls()).toHaveLength(1);
+    expect(eventBackedContents(messages.events, run.runId)).toHaveLength(0);
   }, 90_000);
 
   it("extracts assistant output from Codex items and result fallbacks, skips non-events, and acknowledges progress without reading events", async () => {

@@ -74,6 +74,56 @@ pub fn verify_final_session_history_identity_file(
     verify_final_session_history_identity(&identity)
 }
 
+/// Export a verified final session-history sidecar from one source snapshot.
+///
+/// The bounded metadata at `metadata_path` is validated before the declared
+/// framework and decoded history size are checked against the marker shape and
+/// guest resume budget. The resolved history source is then consumed once: the
+/// decoded size and SHA-256 identity are verified from the same snapshot that
+/// supplies the exported bytes.
+///
+/// History is exported as [`SessionHistorySidecarRepresentation::Raw`] after
+/// decoding unless it is native Codex zstd whose encoded form fits the export
+/// budget. That native representation is preserved as
+/// [`SessionHistorySidecarRepresentation::CodexZstd`]; an oversized encoded
+/// form falls back to decoded raw history. Identity size and hash fields always
+/// describe decoded history, while
+/// [`SessionHistorySidecarExportMetadata::encoded_size`] is the exact length of
+/// the selected output representation.
+///
+/// After verification, `export_path` is created or truncated through
+/// [`crate::paths::write_private`] and inherits that helper's platform-specific
+/// runtime-private permission and symlink handling. The write is not
+/// transactional: callers must consume the sidecar only after this function
+/// returns successfully, because an output error may leave a created,
+/// truncated, or partial file.
+///
+/// The guest `export-session-history-sidecar` helper serializes the returned
+/// metadata for runner, which uses the representation and exact encoded length
+/// to validate and copy the exported file.
+///
+/// # Returns
+///
+/// On success, returns the representation and exact byte length written to
+/// `export_path`.
+///
+/// # Errors
+///
+/// Returns:
+///
+/// - [`FinalSessionHistoryIdentityVerifyError::MetadataRead`] when metadata
+///   cannot be read.
+/// - [`FinalSessionHistoryIdentityVerifyError::InvalidMetadata`] when metadata
+///   violates the shared identity contract.
+/// - [`FinalSessionHistoryIdentityVerifyError::FrameworkMismatch`] when the
+///   framework does not match the marker shape.
+/// - [`FinalSessionHistoryIdentityVerifyError::HistoryTooLarge`] when the
+///   declared decoded size exceeds the guest resume budget.
+/// - [`FinalSessionHistoryIdentityVerifyError::HistoryRead`] when the history
+///   cannot be resolved, read, or decoded, or when the output file cannot be
+///   created or written.
+/// - [`FinalSessionHistoryIdentityVerifyError::HistoryMismatch`] when the
+///   decoded size or SHA-256 identity differs from metadata.
 pub fn export_final_session_history_sidecar_file(
     metadata_path: impl AsRef<Path>,
     export_path: impl AsRef<Path>,
@@ -217,7 +267,7 @@ pub enum FinalSessionHistoryIdentityVerifyError {
     FrameworkMismatch,
     /// Metadata does not match the identity runner expected to verify.
     ExpectedIdentityMismatch,
-    /// Session history bytes could not be read.
+    /// Session history could not be read or an exported sidecar could not be written.
     HistoryRead(AgentError),
     /// Session history size or hash does not match metadata.
     HistoryMismatch,

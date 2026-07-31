@@ -1365,11 +1365,17 @@
     "newChat": "새 채팅",
     "origins": {
       "feishu": "Feishu",
+      "github": "GitHub",
       "openChat": "오픈 채팅",
       "openFeishuChat": "Feishu에서 원본 채팅 열기",
+      "openGithubMessage": "GitHub에서 원본 이슈 또는 풀 리퀘스트 열기",
       "openMessage": "메시지 열기",
       "openSlackMessage": "Slack에서 원본 메시지 열기",
-      "slack": "Slack"
+      "openTeamsMessage": "Microsoft Teams에서 원본 메시지 열기",
+      "openTelegramMessage": "Telegram에서 원본 메시지 열기",
+      "slack": "Slack",
+      "teams": "Microsoft Teams",
+      "telegram": "Telegram"
     },
     "permissions": {
       "actionDescription": "{{action}} {{permissionName}}",
@@ -1401,6 +1407,7 @@
       "automationEvent": "자동화 이벤트",
       "automationEventDescription": "대기 중인 메시지 뒤에서 대기하며 현재 실행이 끝나면 한 번 실행됩니다.",
       "cancelGoal": "목표 취소",
+      "cancellationRecoveryPending": "대기 중인 작업을 계속하기 전에 취소된 실행을 마무리하고 있습니다.",
       "event_one": "{{count}}개 이벤트",
       "event_other": "{{count}}개 이벤트",
       "goal": "목표",

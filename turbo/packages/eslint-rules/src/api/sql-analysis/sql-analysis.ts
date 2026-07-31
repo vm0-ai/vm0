@@ -32,6 +32,7 @@ import {
   drizzleCallName,
   getDrizzleColumnMetadata,
   getDrizzleTableMetadataForWrite,
+  isDefinitelyPresentDrizzleBooleanHelper,
   isDrizzleArrayParameter,
   isDrizzleColumnType,
   isDrizzleArrayOperandType,
@@ -114,6 +115,7 @@ export interface SqlCapabilityChecks {
   hasDirectResultMapping(node: TSESTree.Expression): boolean;
   hasParameterListOrigin(node: TSESTree.Expression): boolean;
   isInlineParameterList(node: TSESTree.Expression): boolean;
+  isSelectExistence(node: TSESTree.Expression): boolean;
 }
 
 const NO_CAPABILITY_CHECKS: SqlCapabilityChecks = {
@@ -130,6 +132,9 @@ const NO_CAPABILITY_CHECKS: SqlCapabilityChecks = {
     return false;
   },
   isInlineParameterList(): boolean {
+    return false;
+  },
+  isSelectExistence(): boolean {
     return false;
   },
 };
@@ -204,9 +209,11 @@ interface SqlMarker {
   readonly isArrayOperand: boolean;
   readonly isBoundScalar: boolean;
   readonly isColumn: boolean;
+  readonly isDefinitelyPresentWrapper: boolean;
   readonly isNumber: boolean;
   readonly isPatternOperand: boolean;
   readonly isSelect: boolean;
+  readonly isSelectExistence: boolean;
   readonly isStringOrWrapper: boolean;
   readonly isAnalyzableWriteInterpolation: boolean;
   readonly isTable: boolean;
@@ -798,6 +805,17 @@ function markerIsWrapper(
   return isDrizzleWrapperType(checker, checker.getTypeAtLocation(tsNode));
 }
 
+function markerIsDefinitelyPresentWrapper(
+  node: TSESTree.Expression,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+): boolean {
+  return (
+    markerIsWrapper(node, checker, services) ||
+    isDefinitelyPresentDrizzleBooleanHelper(checker, services, node)
+  );
+}
+
 function isOptionalDrizzleWrapperType(
   type: Type,
   checker: TypeChecker,
@@ -1135,6 +1153,7 @@ function parseSqlVariant(
   checker: TypeChecker,
   services: ParserServicesWithTypeInformation,
   schemaTarget: SqlSchemaTarget | undefined,
+  capabilities: SqlCapabilityChecks = NO_CAPABILITY_CHECKS,
 ): ParsedSql | null {
   const literals = variant.chunks.flatMap((chunk) => {
     return chunk.kind === "literal" ? [chunk.text] : [];
@@ -1181,10 +1200,12 @@ function parseSqlVariant(
     let cachedBoundScalar: boolean | undefined;
     let cachedColumn: boolean | undefined;
     let cachedColumnMetadata: SqlMarker["columnMetadata"] | null | undefined;
+    let cachedDefinitelyPresentWrapper: boolean | undefined;
     let cachedExpressionSymbol: TypeScriptSymbol | null | undefined;
     let cachedNumber: boolean | undefined;
     let cachedPatternOperand: boolean | undefined;
     let cachedSelect: boolean | undefined;
+    let cachedSelectExistence: boolean | undefined;
     let cachedAnalyzableWriteInterpolation: boolean | undefined;
     let cachedStringOrWrapper: boolean | undefined;
     let cachedTable: boolean | undefined;
@@ -1236,6 +1257,14 @@ function parseSqlVariant(
         cachedColumn ??= markerIsColumn(expression, checker, services);
         return cachedColumn;
       },
+      get isDefinitelyPresentWrapper(): boolean {
+        cachedDefinitelyPresentWrapper ??= markerIsDefinitelyPresentWrapper(
+          expression,
+          checker,
+          services,
+        );
+        return cachedDefinitelyPresentWrapper;
+      },
       get isNumber(): boolean {
         cachedNumber ??= markerIsNumber(expression, checker, services);
         return cachedNumber;
@@ -1251,6 +1280,10 @@ function parseSqlVariant(
       get isSelect(): boolean {
         cachedSelect ??= markerIsSelect(expression, checker, services);
         return cachedSelect;
+      },
+      get isSelectExistence(): boolean {
+        cachedSelectExistence ??= capabilities.isSelectExistence(expression);
+        return cachedSelectExistence;
       },
       get isAnalyzableWriteInterpolation(): boolean {
         cachedAnalyzableWriteInterpolation ??=
@@ -1347,6 +1380,169 @@ function parseSqlVariant(
     sourceRanges: rendered.sourceRanges,
     statement,
   };
+}
+
+const TRANSACTION_CONFIG_STATEMENT_KEYS = new Set(["args", "kind", "name"]);
+const TRANSACTION_CONFIG_PARSED_STATEMENT_KEYS = new Set(["stmt", "stmt_len"]);
+const TRANSACTION_CONFIG_STATEMENT_WRAPPER_KEYS = new Set(["VariableSetStmt"]);
+const TRANSACTION_CONFIG_DEFINITION_KEYS = new Set([
+  "arg",
+  "defaction",
+  "defname",
+  "location",
+]);
+const TRANSACTION_CONFIG_DEFINITION_WRAPPER_KEYS = new Set(["DefElem"]);
+const TRANSACTION_CONFIG_CONSTANT_KEYS = new Set(["location", "sval"]);
+const TRANSACTION_CONFIG_CONSTANT_WRAPPER_KEYS = new Set(["A_Const"]);
+const TRANSACTION_CONFIG_INTEGER_KEYS = new Set(["ival", "location"]);
+const TRANSACTION_CONFIG_INTEGER_VALUE_KEYS = new Set(["ival"]);
+const TRANSACTION_CONFIG_STRING_VALUE_KEYS = new Set(["sval"]);
+const TRANSACTION_CONFIG_PREFIX = /^\s*SET\s+TRANSACTION\b/iu;
+const TRANSACTION_ISOLATION_LEVELS = new Set([
+  "read committed",
+  "read uncommitted",
+  "repeatable read",
+  "serializable",
+]);
+
+function transactionIsolationConstant(value: unknown): boolean {
+  const constant = recordProperty(value, "A_Const");
+  const string = recordProperty(constant, "sval");
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, TRANSACTION_CONFIG_CONSTANT_WRAPPER_KEYS) &&
+    constant !== undefined &&
+    hasOnlyKeys(constant, TRANSACTION_CONFIG_CONSTANT_KEYS) &&
+    typeof constant.location === "number" &&
+    string !== undefined &&
+    hasOnlyKeys(string, TRANSACTION_CONFIG_STRING_VALUE_KEYS) &&
+    typeof string.sval === "string" &&
+    TRANSACTION_ISOLATION_LEVELS.has(string.sval)
+  );
+}
+
+function transactionBooleanConstant(value: unknown): boolean {
+  const constant = recordProperty(value, "A_Const");
+  const integer = recordProperty(constant, "ival");
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, TRANSACTION_CONFIG_CONSTANT_WRAPPER_KEYS) &&
+    constant !== undefined &&
+    hasOnlyKeys(constant, TRANSACTION_CONFIG_INTEGER_KEYS) &&
+    typeof constant.location === "number" &&
+    integer !== undefined &&
+    hasOnlyKeys(integer, TRANSACTION_CONFIG_INTEGER_VALUE_KEYS) &&
+    (integer.ival === undefined || integer.ival === 0 || integer.ival === 1)
+  );
+}
+
+function transactionConfigCharacteristicName(
+  value: unknown,
+): string | undefined {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, TRANSACTION_CONFIG_DEFINITION_WRAPPER_KEYS)
+  ) {
+    return undefined;
+  }
+  const definition = recordProperty(value, "DefElem");
+  if (
+    definition === undefined ||
+    !hasOnlyKeys(definition, TRANSACTION_CONFIG_DEFINITION_KEYS) ||
+    definition.defaction !== "DEFELEM_UNSPEC" ||
+    typeof definition.defname !== "string" ||
+    typeof definition.location !== "number"
+  ) {
+    return undefined;
+  }
+  const valid =
+    definition.defname === "transaction_isolation"
+      ? transactionIsolationConstant(definition.arg)
+      : definition.defname === "transaction_read_only" ||
+          definition.defname === "transaction_deferrable"
+        ? transactionBooleanConstant(definition.arg)
+        : false;
+  return valid ? definition.defname : undefined;
+}
+
+function isTransactionConfigStatement(value: unknown): boolean {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, TRANSACTION_CONFIG_PARSED_STATEMENT_KEYS) ||
+    (value.stmt_len !== undefined && typeof value.stmt_len !== "number")
+  ) {
+    return false;
+  }
+  const statement = recordProperty(value, "stmt");
+  if (
+    statement === undefined ||
+    !hasOnlyKeys(statement, TRANSACTION_CONFIG_STATEMENT_WRAPPER_KEYS)
+  ) {
+    return false;
+  }
+  const set = recordProperty(statement, "VariableSetStmt");
+  if (
+    set === undefined ||
+    !hasOnlyKeys(set, TRANSACTION_CONFIG_STATEMENT_KEYS) ||
+    set.kind !== "VAR_SET_MULTI" ||
+    set.name !== "TRANSACTION" ||
+    !Array.isArray(set.args) ||
+    set.args.length === 0 ||
+    set.args.length > 3
+  ) {
+    return false;
+  }
+  const characteristics = set.args.map(transactionConfigCharacteristicName);
+  return (
+    characteristics.every((name): name is string => name !== undefined) &&
+    new Set(characteristics).size === characteristics.length
+  );
+}
+
+export function isDrizzleTransactionConfigSql(
+  node: TSESTree.TaggedTemplateExpression,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+  composer: SqlSourceComposer,
+): boolean {
+  const firstQuasi = node.quasi.quasis[0];
+  if (
+    node.quasi.expressions.length !== 0 ||
+    firstQuasi === undefined ||
+    !TRANSACTION_CONFIG_PREFIX.test(
+      firstQuasi.value.cooked ?? firstQuasi.value.raw,
+    )
+  ) {
+    return false;
+  }
+  const source = composer.compose(node);
+  if (
+    source === null ||
+    source.hasLocalExpansion ||
+    source.expandedTemplates.size !== 1 ||
+    !source.expandedTemplates.has(node) ||
+    source.variants.length !== 1
+  ) {
+    return false;
+  }
+  const variant = source.variants[0];
+  if (
+    variant === undefined ||
+    variant.chunks.some((chunk) => {
+      return chunk.kind !== "literal";
+    })
+  ) {
+    return false;
+  }
+  const parsed = parseSqlVariant(
+    variant,
+    "statement",
+    false,
+    checker,
+    services,
+    undefined,
+  );
+  return parsed !== null && isTransactionConfigStatement(parsed.statement);
 }
 
 function stringNodeValue(value: unknown): string | undefined {
@@ -3248,7 +3444,7 @@ function relationMatch(
   value: unknown,
   markers: ReadonlyMap<string, SqlMarker>,
 ): RelationMatch | undefined {
-  const direct = relationMarker(value, markers);
+  const direct = schemaRelationMarker(value, markers);
   if (direct !== undefined) {
     return {
       joinedConditions: [],
@@ -3270,7 +3466,7 @@ function relationMatch(
     return undefined;
   }
   const left = relationMatch(join.larg, markers);
-  const right = relationMarker(join.rarg, markers);
+  const right = schemaRelationMarker(join.rarg, markers);
   const condition = columnMarker(join.quals, markers);
   if (left === undefined || right === undefined || condition === undefined) {
     return undefined;
@@ -3399,10 +3595,10 @@ function isHandBuiltExistenceSelect(
       return marker.isTable;
     }) &&
     relation.joinedConditions.every((marker) => {
-      return marker.isWrapper;
+      return marker.isDefinitelyPresentWrapper;
     }) &&
     predicates?.every((marker) => {
-      return marker.isWrapper;
+      return marker.isDefinitelyPresentWrapper;
     }) === true
   );
 }
@@ -3595,7 +3791,7 @@ function schemaJoinGraph(
   value: unknown,
   markers: ReadonlyMap<string, SqlMarker>,
 ): SchemaJoinGraph | undefined {
-  const table = relationMarker(value, markers);
+  const table = schemaRelationMarker(value, markers);
   if (table !== undefined) {
     return table.isTable ? { conditions: [], joinCount: 0 } : undefined;
   }
@@ -3612,7 +3808,7 @@ function schemaJoinGraph(
     return undefined;
   }
   const left = schemaJoinGraph(join.larg, markers);
-  const right = relationMarker(join.rarg, markers);
+  const right = schemaRelationMarker(join.rarg, markers);
   if (left === undefined || right?.isTable !== true) {
     return undefined;
   }
@@ -3620,6 +3816,30 @@ function schemaJoinGraph(
     conditions: [...left.conditions, join.quals],
     joinCount: left.joinCount + 1,
   };
+}
+
+function schemaRelationMarker(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+): SqlMarker | undefined {
+  const direct = relationMarker(value, markers);
+  if (direct !== undefined) {
+    return direct;
+  }
+  const range = rangeVarPayload(value);
+  const aliasName =
+    range === undefined ? undefined : directRelationAliasName(range.alias);
+  if (range === undefined || aliasName === undefined) {
+    return undefined;
+  }
+  const relation = markers.get(range.relname);
+  const alias = markers.get(aliasName);
+  const tableAlias = alias?.tableAlias;
+  return relation?.isTable === true &&
+    alias?.isTable === true &&
+    tableAlias?.sourceSymbol === relation.expressionSymbol
+    ? alias
+    : undefined;
 }
 
 const PAGINATED_SELECT_KEYS = new Set([
@@ -3632,7 +3852,7 @@ const PAGINATED_SELECT_KEYS = new Set([
   "whereClause",
 ]);
 
-function isPaginatedJoinedSelect(
+function isPaginatedSchemaSelect(
   select: Record<string, unknown>,
   markers: ReadonlyMap<string, SqlMarker>,
 ): boolean {
@@ -3661,14 +3881,13 @@ function isPaginatedJoinedSelect(
   const relation = schemaJoinGraph(select.fromClause[0], markers);
   if (
     relation === undefined ||
-    relation.joinCount === 0 ||
     !relation.conditions.every((condition) => {
       return markersMatch(condition, markers, (marker) => {
-        return marker.isWrapper;
+        return marker.isDefinitelyPresentWrapper;
       });
     }) ||
     !markersMatch(select.whereClause, markers, (marker) => {
-      return marker.isWrapper;
+      return marker.isDefinitelyPresentWrapper;
     })
   ) {
     return false;
@@ -3708,15 +3927,22 @@ function isPaginatedExistsSelect(
     return false;
   }
   const target = recordProperty(select.targetList[0], "ResTarget");
+  if (
+    target === undefined ||
+    typeof target.name !== "string" ||
+    !hasOnlyKeys(target, new Set(["location", "name", "val"]))
+  ) {
+    return false;
+  }
+  if (columnMarker(target.val, markers)?.isSelectExistence === true) {
+    return true;
+  }
   const subLink = exactSubLink(target?.val);
   const inner = recordProperty(subLink?.subselect, "SelectStmt");
   return (
-    target !== undefined &&
-    typeof target.name === "string" &&
-    hasOnlyKeys(target, new Set(["location", "name", "val"])) &&
     subLink?.subLinkType === "EXISTS_SUBLINK" &&
     inner !== undefined &&
-    isPaginatedJoinedSelect(inner, markers)
+    isPaginatedSchemaSelect(inner, markers)
   );
 }
 
@@ -5803,6 +6029,7 @@ function replacementBoundaryForFinding(
         checker,
         services,
         schemaTarget,
+        capabilities,
       );
       if (
         parsed === null ||
@@ -6388,6 +6615,7 @@ export function analyzeSql(
           checker,
           services,
           schemaTarget,
+          capabilities,
         );
         if (parsed === null) {
           variants.length = 0;

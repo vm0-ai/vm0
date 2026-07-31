@@ -19,6 +19,7 @@ from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.x_flow_helpers import (
     json_body_that_exceeds_integer_digit_limit,
     json_body_that_exceeds_nesting_limit,
+    json_body_that_exceeds_x_ndjson_work_limit,
     make_x_pipeline_flow,
     make_x_stream_pipeline_flow,
 )
@@ -365,6 +366,10 @@ class TestXConnectorResponsePipeline:
         [
             pytest.param(json_body_that_exceeds_nesting_limit(), id="excessive-nesting"),
             pytest.param(json_body_that_exceeds_integer_digit_limit(), id="integer-digit-limit"),
+            pytest.param(
+                json_body_that_exceeds_x_ndjson_work_limit(),
+                id="work-limit",
+            ),
         ],
     )
     def test_full_streaming_pipeline_continues_after_uninspectable_json_row(

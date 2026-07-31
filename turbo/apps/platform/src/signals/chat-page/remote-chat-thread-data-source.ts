@@ -1,4 +1,4 @@
-import { command, computed, type Command } from "ccstate";
+import { command, computed, state, type Command } from "ccstate";
 import {
   chatThreadByIdContract,
   chatThreadDraftContract,
@@ -335,6 +335,10 @@ function createSubscribeRealtime() {
       const ready = createDeferredPromise<void>(signal);
       const subscriptions: ChatRealtimeSubscription[] = [
         {
+          topic: `chatThreadDetailChanged:${threadId}`,
+          loopCommand$: handlers.onThreadDetailChanged$,
+        },
+        {
           topic: `chatThreadAutomationsChanged:${threadId}`,
           loopCommand$: handlers.onAutomationsChanged$,
         },
@@ -382,9 +386,26 @@ function createSubscribeRealtime() {
 }
 
 export function createRemoteChatThreadDataSource(threadId: string) {
+  const threadDetailReloadCounter$ = state(0);
   const subscribeRealtime$ = createSubscribeRealtime();
   const optimisticCreateUnsettled$ =
     optimisticChatThreadCreateUnsettled(threadId);
+
+  const cancellationRecoveryPending$ = computed(async (get) => {
+    if (get(optimisticCreateUnsettled$)) {
+      return false;
+    }
+    get(threadDetailReloadCounter$);
+    const client = get(zeroClient$)(chatThreadByIdContract);
+    const result = await accept(
+      client.get({ params: { id: threadId } }),
+      [200, 404],
+    );
+    if (result.status === 404) {
+      return false;
+    }
+    return result.body.cancellationRecoveryPending ?? false;
+  });
 
   const threadDraft$ = computed(async (get) => {
     if (get(optimisticCreateUnsettled$)) {
@@ -401,8 +422,16 @@ export function createRemoteChatThreadDataSource(threadId: string) {
     return chatThreadDraftSchema.parse(result.body);
   });
 
+  const reloadCancellationRecoveryPending$ = command(({ set }) => {
+    set(threadDetailReloadCounter$, (value) => {
+      return value + 1;
+    });
+  });
+
   return {
+    cancellationRecoveryPending$,
     threadDraft$,
+    reloadCancellationRecoveryPending$,
     patchDraft$,
     patchModelSelection$,
     patchComputerUseHost$,

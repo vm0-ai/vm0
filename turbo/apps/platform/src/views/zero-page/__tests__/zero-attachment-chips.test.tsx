@@ -852,8 +852,10 @@ describe("zero attachment chips", () => {
           id: "msg-canonical-slack-input",
           role: "user",
           content: "Review the source notes",
-          slackMessagePermalink:
-            "https://example.slack.com/archives/C123/p123456789",
+          annotation: {
+            kind: "slack",
+            href: "https://example.slack.com/archives/C123/p123456789",
+          },
           attachFiles: [
             {
               id: assetId,
@@ -895,8 +897,10 @@ describe("zero attachment chips", () => {
           id: "msg-failed-slack-input",
           role: "user",
           content: "Use this attachment",
-          slackMessagePermalink:
-            "https://example.slack.com/archives/C123/p123456790",
+          annotation: {
+            kind: "slack",
+            href: "https://example.slack.com/archives/C123/p123456790",
+          },
           attachFiles: [
             {
               id: assetId,

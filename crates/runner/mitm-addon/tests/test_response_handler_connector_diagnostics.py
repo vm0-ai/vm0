@@ -71,7 +71,6 @@ async def test_replaces_unauthenticated_connector_401_body(tmp_path, real_flow, 
     assert entry["status"] == 401
     assert entry["firewall_error"] == "connector_not_configured_for_run"
     assert entry["connector_diagnostic_slug"] == "fal"
-    assert entry["connector_diagnostic_type"] == "fal"
     assert entry["connector_diagnostic_reason"] == "not_configured_for_run"
     assert entry["connector_diagnostic_env_names"] == ["FAL_TOKEN"]
     assert entry["connector_diagnostic_base"] == "https://fal.run"
@@ -247,7 +246,6 @@ async def test_streamed_connector_401_with_user_auth_keeps_upstream_response(
     [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
     assert entry["status"] == 401
     assert entry["request_size"] == len(b"partial request")
-    assert "connector_diagnostic_type" not in entry
     assert "firewall_error" not in entry
 
 
@@ -285,7 +283,6 @@ async def test_streamed_connector_401_with_query_auth_keeps_upstream_response(
     [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
     assert entry["status"] == 401
     assert entry["request_size"] == len(b"partial request")
-    assert "connector_diagnostic_type" not in entry
     assert "firewall_error" not in entry
 
 
@@ -328,7 +325,6 @@ def test_streamed_connector_401_before_request_gets_diagnostic(tmp_path, real_fl
     assert entry["request_size"] == len(b"partial request")
     assert entry["firewall_error"] == "connector_not_configured_for_run"
     assert entry["connector_diagnostic_slug"] == "fal"
-    assert entry["connector_diagnostic_type"] == "fal"
     assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
     assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
 
@@ -370,7 +366,6 @@ def test_streamed_authenticated_connector_401_before_request_keeps_upstream_resp
     [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
     assert entry["status"] == 401
     assert entry["request_size"] == len(b"partial request")
-    assert "connector_diagnostic_type" not in entry
     assert "firewall_error" not in entry
     assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
     assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
@@ -409,7 +404,6 @@ def test_streamed_query_authenticated_connector_401_before_request_keeps_upstrea
     [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
     assert entry["status"] == 401
     assert entry["request_size"] == len(b"partial request")
-    assert "connector_diagnostic_type" not in entry
     assert "firewall_error" not in entry
     assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
     assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
@@ -456,7 +450,6 @@ def test_streamed_browser_connector_403_before_request_keeps_upstream_response(
     assert entry["status"] == 403
     assert entry["request_size"] == len(b"partial request")
     assert entry["browser_user_agent"] is True
-    assert "connector_diagnostic_type" not in entry
     assert "firewall_error" not in entry
     assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
     assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
@@ -498,7 +491,6 @@ def test_streamed_api_allow_response_before_request_logs_without_firewall_contex
     assert entry["request_size"] == len(b"partial request")
     assert entry["response_size"] == len(b"api auth error")
     assert "firewall_base" not in entry
-    assert "connector_diagnostic_type" not in entry
     assert "firewall_error" not in entry
     assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
     assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
@@ -677,7 +669,6 @@ async def test_preserves_connector_401_body_when_user_auth_is_present(
     assert flow.response.status_code == 401
     assert flow.response.content == b"upstream auth error"
     [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
-    assert "connector_diagnostic_type" not in entry
     assert "firewall_error" not in entry
 
 
@@ -707,7 +698,6 @@ async def test_preserves_model_provider_401_body_without_connector_diagnostic(
     assert flow.response.content == b'{"error":"provider auth error"}'
     [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
     assert entry["status"] == 401
-    assert "connector_diagnostic_type" not in entry
     assert "firewall_error" not in entry
 
 
@@ -735,7 +725,6 @@ async def test_preserves_connector_401_body_when_query_auth_is_present(
     assert flow.response.status_code == 401
     assert flow.response.content == b"upstream query auth error"
     [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
-    assert "connector_diagnostic_type" not in entry
     assert "firewall_error" not in entry
 
 
@@ -798,7 +787,6 @@ async def test_preserves_successful_connector_response_body(tmp_path, real_flow,
     assert flow.response.content == b'{"ok":true}'
     [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
     assert entry["status"] == 200
-    assert "connector_diagnostic_type" not in entry
 
 
 async def test_preserves_browser_403_body_for_connector_candidate(
@@ -832,4 +820,3 @@ async def test_preserves_browser_403_body_for_connector_candidate(
     assert flow.response.content == b"browser upstream body"
     [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
     assert entry["browser_user_agent"] is True
-    assert "connector_diagnostic_type" not in entry

@@ -12,46 +12,29 @@ const connectorSlug = "slack";
 const authMethod = "oauth";
 
 describe("connector OAuth device provider state", () => {
-  it.each([
-    {
-      format: "legacy",
-      serializedState: JSON.stringify({
-        connectorType: connectorSlug,
-        deviceCode: "device-code",
-        pollState: "poll-state",
-        unrelatedProperty: "ignored",
-      }),
-    },
-    {
-      format: "canonical",
-      serializedState: JSON.stringify({
-        connectorSlug,
-        deviceCode: "device-code",
-        pollState: "poll-state",
-        unrelatedProperty: "ignored",
-      }),
-    },
-  ])(
-    "normalizes $format state and preserves poll state",
-    ({ serializedState }) => {
-      expect(
-        parseConnectorOauthDeviceProviderState({
-          serializedState,
+  it("parses canonical state and preserves poll state", () => {
+    expect(
+      parseConnectorOauthDeviceProviderState({
+        serializedState: JSON.stringify({
           connectorSlug,
+          deviceCode: "device-code",
+          pollState: "poll-state",
+          unrelatedProperty: "ignored",
         }),
-      ).toStrictEqual({
         connectorSlug,
-        deviceCode: "device-code",
-        pollState: "poll-state",
-      });
-    },
-  );
+      }),
+    ).toStrictEqual({
+      connectorSlug,
+      deviceCode: "device-code",
+      pollState: "poll-state",
+    });
+  });
 
   it("preserves an absent poll state", () => {
     expect(
       parseConnectorOauthDeviceProviderState({
         serializedState: JSON.stringify({
-          connectorType: connectorSlug,
+          connectorSlug,
           deviceCode: "device-code",
         }),
         connectorSlug,
@@ -63,23 +46,10 @@ describe("connector OAuth device provider state", () => {
     });
   });
 
-  it.each([
-    {
-      identity: "zero",
-      serializedState: JSON.stringify({ deviceCode: "device-code" }),
-    },
-    {
-      identity: "dual",
-      serializedState: JSON.stringify({
-        connectorType: connectorSlug,
-        connectorSlug,
-        deviceCode: "device-code",
-      }),
-    },
-  ])("rejects $identity identity state", ({ serializedState }) => {
+  it("rejects state without a connector slug", () => {
     expect(() => {
       parseConnectorOauthDeviceProviderState({
-        serializedState,
+        serializedState: JSON.stringify({ deviceCode: "device-code" }),
         connectorSlug,
       });
     }).toThrow(ZodError);
@@ -94,7 +64,7 @@ describe("connector OAuth device provider state", () => {
         }),
         connectorSlug,
       });
-    }).toThrow("OAuth device provider state connector type mismatch");
+    }).toThrow("OAuth device provider state connector slug mismatch");
   });
 
   it("serializes and parses the exact canonical-only state with poll state", () => {
@@ -107,7 +77,6 @@ describe("connector OAuth device provider state", () => {
     expect(serializedState).toBe(
       '{"connectorSlug":"slack","deviceCode":"device-code","pollState":"poll-state"}',
     );
-    expect(serializedState).not.toContain("connectorType");
     expect(
       parseConnectorOauthDeviceProviderState({
         serializedState,
@@ -130,7 +99,6 @@ describe("connector OAuth device provider state", () => {
     expect(serializedState).toBe(
       '{"connectorSlug":"slack","deviceCode":"device-code"}',
     );
-    expect(serializedState).not.toContain("connectorType");
     expect(
       parseConnectorOauthDeviceProviderState({
         serializedState,
@@ -145,63 +113,32 @@ describe("connector OAuth device provider state", () => {
 });
 
 describe("connector external-code provider state", () => {
-  it.each([
-    {
-      format: "legacy",
-      serializedState: JSON.stringify({
-        connectorType: connectorSlug,
-        authMethod,
-        providerState: "provider-state",
-        unrelatedProperty: "ignored",
-      }),
-    },
-    {
-      format: "canonical",
-      serializedState: JSON.stringify({
-        connectorSlug,
-        authMethod,
-        providerState: "provider-state",
-        unrelatedProperty: "ignored",
-      }),
-    },
-  ])(
-    "normalizes $format state and preserves provider state",
-    ({ serializedState }) => {
-      expect(
-        parseConnectorExternalCodeProviderState({
-          serializedState,
+  it("parses canonical state and preserves provider state", () => {
+    expect(
+      parseConnectorExternalCodeProviderState({
+        serializedState: JSON.stringify({
           connectorSlug,
           authMethod,
+          providerState: "provider-state",
+          unrelatedProperty: "ignored",
         }),
-      ).toStrictEqual({
         connectorSlug,
         authMethod,
-        providerState: "provider-state",
-      });
-    },
-  );
+      }),
+    ).toStrictEqual({
+      connectorSlug,
+      authMethod,
+      providerState: "provider-state",
+    });
+  });
 
-  it.each([
-    {
-      identity: "zero",
-      serializedState: JSON.stringify({
-        authMethod,
-        providerState: "provider-state",
-      }),
-    },
-    {
-      identity: "dual",
-      serializedState: JSON.stringify({
-        connectorType: connectorSlug,
-        connectorSlug,
-        authMethod,
-        providerState: "provider-state",
-      }),
-    },
-  ])("rejects $identity identity state", ({ serializedState }) => {
+  it("rejects state without a connector slug", () => {
     expect(() => {
       parseConnectorExternalCodeProviderState({
-        serializedState,
+        serializedState: JSON.stringify({
+          authMethod,
+          providerState: "provider-state",
+        }),
         connectorSlug,
         authMethod,
       });
@@ -245,7 +182,6 @@ describe("connector external-code provider state", () => {
     expect(serializedState).toBe(
       '{"connectorSlug":"slack","authMethod":"oauth","providerState":"provider-state"}',
     );
-    expect(serializedState).not.toContain("connectorType");
     expect(
       parseConnectorExternalCodeProviderState({
         serializedState,
