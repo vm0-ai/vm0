@@ -11,7 +11,7 @@ import {
 import { RUNNER_CANCELLATION_RECOVERY_CAPABILITY } from "@vm0/api-contracts/contracts/runners";
 import { zeroModelProvidersByTypeContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
-import { it as vitestIt, onTestFinished } from "vitest";
+import { onTestFinished, test as vitestTest } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
@@ -60,18 +60,15 @@ const CRON_EXECUTE_WORKFLOW_AUTOMATIONS_ROUTE =
   "/api/cron/execute-workflow-automations";
 const CRON_SECRET = "test-cron-secret";
 
-const it = vitestIt.extend<{ clockScope: undefined }>({
-  clockScope: [
-    async ({}, use) => {
-      // Scope the auto fixture's test callback, rather than Vitest's runTest
-      // scheduler, so its worker continuation cannot inherit this clock.
-      await withNowScopeForTest(async () => {
-        await use(undefined);
-      });
+function it(name: string, test: () => Promise<void>, timeout?: number): void {
+  vitestTest(
+    name,
+    async () => {
+      await withNowScopeForTest(test);
     },
-    { auto: true },
-  ],
-});
+    timeout,
+  );
+}
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };

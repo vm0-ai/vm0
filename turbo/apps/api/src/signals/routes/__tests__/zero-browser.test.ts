@@ -11,14 +11,14 @@ import {
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { HttpResponse, http } from "msw";
-import { describe, expect, it as vitestIt } from "vitest";
+import { describe, expect, test as vitestTest } from "vitest";
 import { z } from "zod";
 
 import { createApp } from "../../../app-factory";
 import { browserUseCdpHandler } from "../../../__tests__/mocks";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
-import { mockNow, now, withMockNowForTest } from "../../../lib/time";
+import { mockNow, withMockNowForTest } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
@@ -37,24 +37,18 @@ const context = testContext();
 const computerUse = createComputerUseBddApi(context);
 const BROWSER_USE_API_URL = "https://api.browser-use.com/api/v3";
 const CRON_SECRET = "test-browser-reconcile-secret";
-// Keep the mocked application clock aligned with PostgreSQL's wall clock.
-// Runner queue claims reject jobs whose application-generated expiry is
-// already in the past from the database's perspective.
-const STARTED_AT_MS = now();
+const STARTED_AT_MS = Date.parse("2026-07-24T10:00:00.000Z");
 const MINUTE_MS = 60_000;
 
-const it = vitestIt.extend<{ mockClock: undefined }>({
-  mockClock: [
-    async ({}, use) => {
-      // Scope the auto fixture's test callback, rather than Vitest's runTest
-      // scheduler, so its worker continuation cannot inherit this clock.
-      await withMockNowForTest(STARTED_AT_MS, async () => {
-        await use(undefined);
-      });
+function it(name: string, test: () => Promise<void>, timeout?: number): void {
+  vitestTest(
+    name,
+    async () => {
+      await withMockNowForTest(STARTED_AT_MS, test);
     },
-    { auto: true },
-  ],
-});
+    timeout,
+  );
+}
 
 function isoAt(offsetMs: number): string {
   return new Date(STARTED_AT_MS + offsetMs).toISOString();
