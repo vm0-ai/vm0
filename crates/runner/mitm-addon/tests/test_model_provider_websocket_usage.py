@@ -579,6 +579,7 @@ class TestModelProviderWebSocketUsage:
         self, tmp_path, real_flow
     ):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.6-sol"
         mitm_addon.responseheaders(flow)
 
         webhook = self._run_websocket_messages_and_end(
@@ -588,7 +589,7 @@ class TestModelProviderWebSocketUsage:
                     "type": "response.completed",
                     "response": {
                         "id": "resp_ws_partition",
-                        "model": "gpt-5.5",
+                        "model": "gpt-5.6-sol",
                         "usage": {
                             "input_tokens": 300_000,
                             "output_tokens": 0,
@@ -602,7 +603,7 @@ class TestModelProviderWebSocketUsage:
                     "type": "response.done",
                     "response": {
                         "id": "resp_ws_partition",
-                        "model": "gpt-5.5",
+                        "model": "gpt-5.6-sol",
                         "usage": {
                             "input_tokens": 300_000,
                             "output_tokens": 40,
