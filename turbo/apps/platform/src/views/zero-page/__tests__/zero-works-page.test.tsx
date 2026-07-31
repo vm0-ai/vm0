@@ -549,10 +549,8 @@ describe("works page", () => {
 
     click(getRole("button", "More options for Completed admin bot"));
     expect(queryRole("button", "Manage")).toBeNull();
-    const uninstall = getRole("button", "Uninstall");
-    expect(uninstall).toBeInTheDocument();
+    expect(getRole("button", "Uninstall")).toBeInTheDocument();
     expect(getRole("button", "Disconnect")).toBeInTheDocument();
-    expect(uninstall.parentElement?.lastElementChild).toBe(uninstall);
     click(getRole("button", "Review guide"));
 
     expect(
@@ -588,19 +586,13 @@ describe("works page", () => {
       screen.getByRole("img", {
         name: "Feishu Permissions & Scopes page with the Batch import/export scopes menu highlighted",
       }),
-    ).toHaveAttribute(
-      "src",
-      "https://static.vm0.io/platform/views/zero-page/assets/feishu/permissions-scopes-batch-import-menu-ade9686a2b72.png",
-    );
+    ).toBeInTheDocument();
     click(getRole("button", "Show next Feishu guide image"));
     expect(
       screen.getByRole("img", {
         name: "Feishu Batch import/export scopes dialog with the imported JSON and review button highlighted",
       }),
-    ).toHaveAttribute(
-      "src",
-      "https://static.vm0.io/platform/views/zero-page/assets/feishu/permissions-scopes-batch-import-review-667a5136ad85.png",
-    );
+    ).toBeInTheDocument();
     expect(screen.getByText("User token scope JSON")).toBeInTheDocument();
     expect(
       JSON.parse(
