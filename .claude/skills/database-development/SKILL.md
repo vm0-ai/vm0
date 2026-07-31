@@ -131,18 +131,42 @@ integer precision is required. Do not coerce arbitrary `numeric` values with
 `Number` unless the domain contract explicitly permits the resulting precision;
 use a dedicated decoder that preserves or validates the required representation.
 
-Prefer schema-aware Drizzle builders and operators when they preserve the
-intended SQL semantics. Use the `sql` tag or `SQL` type without a compile-time
-result generic for constructs they cannot express cleanly. Compose dynamic SQL
-from tagged `sql` fragments so interpolated values remain driver parameters;
-`sql.raw(...)` bypasses parameter binding and is prohibited in API source except
-for the local development seed script. Raw SQL used only as a predicate, join
-condition, ordering or grouping expression, write value, discarded command, or
-`rowCount` command result does not produce a structured field and needs no
-result decoder. If a write query adds `.returning({...})`, map raw SQL in the
-returned fields independently of `.set({...})`. Likewise, raw SQL passed to
-`insert(...).select(...)` is the write source rather than a returned field; only
-a subsequent `returning(...)` introduces a result-mapping boundary.
+### Builder-First SQL Construction
+
+For each expression or statement, use the first applicable option that
+preserves or strengthens its complete database contract:
+
+1. Use a schema column directly when its decoder, nullability, alias, and
+   encoder are already correct.
+2. Use an exact helper exported by the installed Drizzle version.
+3. Use a complete schema-aware read or write builder when it preserves the
+   whole statement contract.
+4. Replace independently supported leaves with typed helpers inside an
+   otherwise irreducible PostgreSQL expression or statement.
+5. Use parameterized `sql`, or the `SQL` type without a result generic, when no
+   equal installed API exists.
+
+`api/prefer-drizzle-apis` deliberately reports only exact replacements in
+conventional, type-correct code. PostgreSQL parser acceptance proves syntax,
+not semantic equivalence. A capability must resolve real Drizzle symbols,
+source and column provenance, interpolation roles, installed API support, and
+every conventional source variant that it claims to cover. Unsupported syntax,
+indirect or ambiguous flow, types the analyzer cannot prove, and unproven
+semantics remain outside that diagnostic and may retain parameterized SQL,
+subject to the interpolation rules below. A clean lint run means that no
+implemented capability matched; it does not prove that every retained tag is
+permanently irreducible.
+
+Compose dynamic SQL from tagged `sql` fragments so interpolated values remain
+driver parameters. `sql.raw(...)` bypasses parameter binding and is prohibited
+in API source except for the local development seed script. Raw SQL used only
+as a predicate, join condition, ordering or grouping expression, write value,
+discarded command, or `rowCount` command result does not produce a structured
+field and needs no result decoder. If a write query adds `.returning({...})`,
+map raw SQL in the returned fields independently of `.set({...})`. Likewise,
+raw SQL passed to `insert(...).select(...)` is the write source rather than a
+returned field; only a subsequent `returning(...)` introduces a result-mapping
+boundary.
 
 Use typed operators such as `eq`, `gt`, `isNull`, `isNotNull`, `not`, `exists`,
 and `notExists` instead of an equivalent SQL tag. Use `like`, `notLike`,
@@ -177,6 +201,34 @@ that result would weaken a required concrete `SQL` contract.
 Keep SQL syntax that belongs to an operand inside that operand. For example,
 write ``gte(events.createdAt, sql`${timestamp}::timestamp`)`` rather than
 placing the cast after the interpolated `gte(...)` fragment.
+
+### SQL Conversion Equivalence
+
+Before replacing an SQL tag, verify the complete database contract, including:
+
+- statement and round-trip count;
+- generated SQL shape, parameter order and typing, driver bindings, and column
+  encoders;
+- runtime decoders, nullability, precision, aliases, cardinality, and error
+  behavior;
+- transaction, snapshot, and statement-clock boundaries;
+- locks, atomicity, concurrency behavior, and races;
+- planner-visible literals, index selection, normalized plans, buffers, and
+  memory; and
+- material query-construction, planning, and execution cost.
+
+Require exact generated SQL and ordered parameter representations when
+identical serialization is the intended contract. For a deliberate
+equivalent-syntax rewrite, compare the generated SQL and parameters, verify
+integration and database behavior, and inspect plans and resource use when they
+can materially change. Equal returned rows alone do not establish equivalence.
+
+Installed-version gaps such as database clocks, `COALESCE`, scalar `GREATEST`,
+JSONB operations, `EXCLUDED`, `DELETE ... USING`, no-`FROM` commands, and
+materialized or data-modifying CTEs are review examples, not permanent
+exemptions. Reevaluate them after Drizzle upgrades. Moving raw SQL into a
+project helper is not a builder conversion unless the helper adds a stronger
+static or runtime contract.
 
 Every remaining SQL-tag interpolation must have one unambiguous static role.
 Do not interpolate `any`, `unknown`, a value that can be `undefined`, an array or
