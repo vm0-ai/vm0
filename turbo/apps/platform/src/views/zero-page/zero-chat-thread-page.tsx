@@ -6245,8 +6245,6 @@ function AssistantRecoveryActions({
         triggerClassName="h-8 w-auto min-w-[9rem] bg-background text-sm"
         compactTrigger
         resolveDefaultSelection={false}
-        allowedFrameworks={recovery.actions.selectModel.allowedFrameworks}
-        excludedModel={recovery.actions.selectModel.excludedModel ?? undefined}
       />
       <Button
         type="button"

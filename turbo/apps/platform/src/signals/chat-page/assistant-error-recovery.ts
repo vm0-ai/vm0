@@ -34,10 +34,6 @@ export interface AssistantErrorRecovery {
     readonly tryAgain: {
       readonly notBefore: string | null;
     };
-    readonly selectModel: {
-      readonly allowedFrameworks: readonly ModelProviderFramework[];
-      readonly excludedModel: string | null;
-    };
     readonly resetAndTryAgain: {
       readonly resetsRemaining: number;
     } | null;
@@ -63,8 +59,6 @@ type SendMessageCommand = Command<
   Promise<boolean>,
   [string, SendMessageOptions | undefined, AbortSignal]
 >;
-
-const ALL_FRAMEWORKS = ["claude-code", "codex"] as const;
 
 function normalizedProviderMessage(error: string): string {
   return error.replace(/\s+/gu, " ").trim();
@@ -285,15 +279,6 @@ function usesPersonalSubscription(
   );
 }
 
-function allowedFrameworksForRecovery(
-  classified: ClassifiedAssistantError,
-): readonly ModelProviderFramework[] {
-  if (classified.kind !== "usage-limit" || classified.scope === "model") {
-    return ALL_FRAMEWORKS;
-  }
-  return classified.framework === "codex" ? ["claude-code"] : ["codex"];
-}
-
 function createAssistantErrorRecoveryComputed(
   visibleRenderedChatGroups$: Computed<Promise<ChatEventGroup[]>>,
   selectedModel$: Computed<string | null>,
@@ -360,13 +345,6 @@ function createAssistantErrorRecoveryComputed(
       actions: {
         tryAgain: {
           notBefore: retryAt,
-        },
-        selectModel: {
-          allowedFrameworks: allowedFrameworksForRecovery(classified),
-          excludedModel:
-            classified.kind === "usage-limit" && classified.scope === "model"
-              ? get(selectedModel$)
-              : null,
         },
         resetAndTryAgain,
       },
