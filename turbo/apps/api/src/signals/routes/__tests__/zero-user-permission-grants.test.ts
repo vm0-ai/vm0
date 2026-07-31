@@ -781,10 +781,7 @@ describe("zero user permission grants", () => {
         .sort(),
     ).toStrictEqual([UNKNOWN_PERMISSION_GRANT, SLACK_WRITE_PERMISSION].sort());
 
-    const firewallGrants = active.map((grant) => {
-      return { ...grant, connectorRef: grant.connectorSlug };
-    });
-    expect(permissionGrantsToFirewallPolicies(firewallGrants)).toStrictEqual({
+    expect(permissionGrantsToFirewallPolicies(active)).toStrictEqual({
       slack: {
         policies: { [SLACK_WRITE_PERMISSION]: "deny" },
         unknownPolicy: "deny",
