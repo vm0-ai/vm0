@@ -348,7 +348,7 @@ function safeConnectorSummaries(
 ): Record<string, unknown>[] {
   return connectors.map((connector) => {
     return {
-      type: connector.slug,
+      slug: connector.slug,
       authMethod: connector.authMethod,
       connectionStatus: connector.connectionStatus,
       externalUsername: connector.externalUsername,
