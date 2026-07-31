@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.674.0](https://github.com/vm0-ai/vm0/compare/app-v0.673.0...app-v0.674.0) (2026-07-31)
+
+
+### Features
+
+* add deepseek v4 flash responses support ([#24283](https://github.com/vm0-ai/vm0/issues/24283)) ([c6ac8c8](https://github.com/vm0-ai/vm0/commit/c6ac8c8a49e3cbb9586ac5bf1c64732dd4712a28))
+* move chat display metadata into user messages ([#24339](https://github.com/vm0-ai/vm0/issues/24339)) ([6bdb58a](https://github.com/vm0-ai/vm0/commit/6bdb58a6cf3859e8ec4dbc4e7b6df7b3b27c9e35))
+
+
+### Bug Fixes
+
+* **platform:** unify chat event loading and scroll effects ([#24335](https://github.com/vm0-ai/vm0/issues/24335)) ([96010a8](https://github.com/vm0-ai/vm0/commit/96010a882f8cc27087ac8a43f34a7fe6c5cb04fc))
+
+
+### Refactoring
+
+* **platform:** drop the legacy cache cleanup from the service worker ([#24360](https://github.com/vm0-ai/vm0/issues/24360)) ([393ac08](https://github.com/vm0-ai/vm0/commit/393ac08c6e9989cdf9d897eb9b825ee79f496c7b))
+* **platform:** stop intercepting fetch in the service worker ([#24350](https://github.com/vm0-ai/vm0/issues/24350)) ([6bc0533](https://github.com/vm0-ai/vm0/commit/6bc0533b814049d5381c20564def872e36897e74))
+* remove i18n rollout switches ([#24291](https://github.com/vm0-ai/vm0/issues/24291)) ([696032b](https://github.com/vm0-ai/vm0/commit/696032bd429b20aec580400e3526ffa92620663f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.260.0
+    * @vm0/core bumped to 8.499.0
+
 ## [0.673.0](https://github.com/vm0-ai/vm0/compare/app-v0.672.0...app-v0.673.0) (2026-07-31)
 
 

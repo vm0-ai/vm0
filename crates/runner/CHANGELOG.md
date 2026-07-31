@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.151.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.2...runner-rs-v0.151.3) (2026-07-31)
+
+
+### Refactoring
+
+* **connectors:** finish slug terminology cleanup ([#24361](https://github.com/vm0-ai/vm0/issues/24361)) ([084ee2d](https://github.com/vm0-ai/vm0/commit/084ee2d7d0c17dc1b5c126ea65e768cb595a8154))
+
+
+### Performance Improvements
+
+* **python:** avoid caching request urls ([#24354](https://github.com/vm0-ai/vm0/issues/24354)) ([1246a8c](https://github.com/vm0-ai/vm0/commit/1246a8cdfa220e71cb57224b1089ee1f1a0aa98b))
+
 ## [0.151.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.151.1...runner-rs-v0.151.2) (2026-07-31)
 
 
