@@ -322,10 +322,11 @@ export async function publishOrgSignal(
 export async function publishCancelToRunnerGroup(
   group: string,
   runId: string,
+  mode: "cooperative" | "hard",
 ): Promise<void> {
   const client = ablyClient();
   const channel = client.channels.get(`runner-group:${group}`);
-  await channel.publish("cancel", { runId });
+  await channel.publish("cancel", { runId, mode });
   L.debug(`Published cancel ${runId} to runner-group:${group}`);
 }
 

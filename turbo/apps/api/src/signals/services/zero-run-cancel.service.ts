@@ -212,6 +212,30 @@ async function publishCancellationRecoveryEntered(
   signal.throwIfAborted();
 }
 
+async function publishCooperativeRunnerCancellation(
+  result: CancelRunResult,
+  signal: AbortSignal,
+): Promise<void> {
+  if (
+    result.alreadyCancelled ||
+    result.previousStatus !== "running" ||
+    !result.runnerGroup
+  ) {
+    return;
+  }
+  await tapError(
+    publishCancelToRunnerGroup(result.runnerGroup, result.runId, "cooperative"),
+    (error) => {
+      L.error("Failed to publish cancel to runner group", {
+        runId: result.runId,
+        runnerGroup: result.runnerGroup,
+        error,
+      });
+    },
+  );
+  signal.throwIfAborted();
+}
+
 /**
  * Post-cancel side effects:
  *  - Notify the runner group to halt the cancelled run (if it was
@@ -244,23 +268,7 @@ export const dispatchCancelSideEffects$ = command(
     const recoveryRedrive = result.alreadyCancelled;
     const db = set(writeDb$);
     await publishCancellationRecoveryEntered(result, signal);
-    if (
-      !recoveryRedrive &&
-      result.previousStatus === "running" &&
-      result.runnerGroup
-    ) {
-      await tapError(
-        publishCancelToRunnerGroup(result.runnerGroup, result.runId),
-        (error) => {
-          L.error("Failed to publish cancel to runner group", {
-            runId: result.runId,
-            runnerGroup: result.runnerGroup,
-            error,
-          });
-        },
-      );
-      signal.throwIfAborted();
-    }
+    await publishCooperativeRunnerCancellation(result, signal);
     if (!recoveryRedrive) {
       await tapError(
         publishOrgSignal(result.orgId, "queue:changed"),

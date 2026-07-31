@@ -9561,6 +9561,10 @@ describe("RUN-03: cancellation of dispatched and terminal runs", () => {
         );
       })
       .toBe(true);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith("cancel", {
+      runId: run.runId,
+      mode: "cooperative",
+    });
 
     const repeated = await api.requestCancelRun(actor, run.runId, [200]);
     expect(repeated.status).toBe(200);
