@@ -24,7 +24,7 @@ pub(super) fn runner_base_dir(unit: &RunnerServiceUnit) -> Option<PathBuf> {
 /// Parsed snapshot of the runner's status.json.
 pub(super) struct RunnerStatusSnapshot {
     /// Mode string sourced verbatim from status.json. Valid values are the
-    /// lowercase serialization of [`crate::status::RunnerMode`]: `"starting"`,
+    /// lowercase serialization of [`crate::lifecycle::RunnerMode`]: `"starting"`,
     /// `"running"`, `"draining"`, `"stopping"`, `"stopped"`. Unknown values
     /// (e.g. from a newer runner writing a future variant) are preserved and
     /// routed to the normal refuse branch by [`decide_gate`].
@@ -90,7 +90,7 @@ enum GateDecision {
 /// 3. Otherwise refuse; `draining=true` when `mode == "draining"` so the
 ///    error message suggests waiting rather than re-running `drain`.
 ///
-/// Mode strings mirror [`crate::status::RunnerMode`] (serde lowercase).
+/// Mode strings mirror [`crate::lifecycle::RunnerMode`] (serde lowercase).
 fn decide_gate(status: &RunnerStatusSnapshot) -> GateDecision {
     if matches!(status.mode.as_str(), "stopped" | "stopping") {
         return GateDecision::Bypass;
