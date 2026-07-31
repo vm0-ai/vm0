@@ -1,4 +1,4 @@
-use crate::download::{ArchiveKind, DownloadTask, classify_download_task_kind};
+use crate::download::DownloadTask;
 use crate::instructions::{InstructionCleanup, InstructionNormalization};
 use crate::manifest::{ArtifactEntry, Manifest, StorageEntry};
 use std::path::Path;
@@ -62,13 +62,6 @@ impl ManifestEntryKind {
         match self {
             Self::Storage => "storage",
             Self::Artifact => "artifact",
-        }
-    }
-
-    fn archive_kind(self) -> ArchiveKind {
-        match self {
-            Self::Storage => ArchiveKind::Storage,
-            Self::Artifact => ArchiveKind::Artifact,
         }
     }
 
@@ -181,20 +174,15 @@ fn append_storage_download_tasks(tasks: &mut Vec<DownloadTask>, entries: &[Stora
         } else {
             entry.mount_path.as_str()
         };
-        let task_kind = classify_download_task_kind(
-            download_mount_path,
-            entry.instructions_target_filename.as_deref(),
-        );
-        tasks.push(DownloadTask::new_with_kind(
+        tasks.push(DownloadTask::storage(
             format_entry_label(
                 ManifestEntryKind::Storage,
                 idx + 1,
                 EntryLabel::storage(entry, url),
             ),
-            ManifestEntryKind::Storage.archive_kind(),
             url.clone(),
             download_mount_path.to_string(),
-            task_kind,
+            entry.instructions_target_filename.as_deref(),
         ));
     }
 }
@@ -210,17 +198,14 @@ fn append_artifact_download_tasks(tasks: &mut Vec<DownloadTask>, entries: &[Arti
         let Some(url) = entry.archive_url.as_ref() else {
             continue;
         };
-        let task_kind = classify_download_task_kind(&entry.mount_path, None);
-        tasks.push(DownloadTask::new_with_kind(
+        tasks.push(DownloadTask::artifact(
             format_entry_label(
                 ManifestEntryKind::Artifact,
                 idx + 1,
                 EntryLabel::artifact(entry, url),
             ),
-            ManifestEntryKind::Artifact.archive_kind(),
             url.clone(),
             entry.mount_path.clone(),
-            task_kind,
         ));
     }
 }
@@ -330,27 +315,25 @@ mod tests {
         assert_eq!(plan.download_tasks.len(), 3);
         assert_eq!(
             plan.download_tasks[0],
-            DownloadTask::new(
+            DownloadTask::storage(
                 "storage 1 mountPath=/data vasStorageName=data vasVersionId=storage-v1 urlScheme=https cached=false".into(),
-                ArchiveKind::Storage,
                 "https://s3/storage.tar.gz".into(),
                 "/data".into(),
+                None,
             )
         );
         assert_eq!(
             plan.download_tasks[1],
-            DownloadTask::new(
+            DownloadTask::artifact(
                 "artifact 1 mountPath=/workspace/a vasStorageName=workspace-a vasVersionId=artifact-v1 urlScheme=https cached=false missingRootPolicy=preserveParentVersion".into(),
-                ArchiveKind::Artifact,
                 "https://s3/a.tar.gz".into(),
                 "/workspace/a".into(),
             )
         );
         assert_eq!(
             plan.download_tasks[2],
-            DownloadTask::new(
+            DownloadTask::artifact(
                 "artifact 2 mountPath=/workspace/b vasStorageName=workspace-b vasVersionId=artifact-v2 urlScheme=file cached=false missingRootPolicy=fail".into(),
-                ArchiveKind::Artifact,
                 "file:///tmp/vm0-storage-cache/b.tar.gz".into(),
                 "/workspace/b".into(),
             )
@@ -447,12 +430,11 @@ mod tests {
         assert_eq!(plan.download_tasks.len(), 1);
         assert_eq!(
             plan.download_tasks[0],
-            DownloadTask::new_with_kind(
+            DownloadTask::storage(
                 "storage 1 mountPath=/home/user/.codex vasStorageName=unknown vasVersionId=unknown urlScheme=https cached=false".into(),
-                ArchiveKind::Storage,
                 "https://s3/instructions.tar.gz".into(),
                 "/home/user/.vm0/guest-agent/runs/run-1/storage-instructions/0".into(),
-                crate::download::DownloadTaskKind::FrameworkHomeInstructions,
+                Some("AGENTS.md"),
             )
         );
     }
@@ -474,12 +456,11 @@ mod tests {
         assert_eq!(plan.download_tasks.len(), 1);
         assert_eq!(
             plan.download_tasks[0],
-            DownloadTask::new_with_kind(
+            DownloadTask::storage(
                 "storage 1 mountPath=/data vasStorageName=unknown vasVersionId=unknown urlScheme=https cached=false".into(),
-                ArchiveKind::Storage,
                 "https://s3/data.tar.gz".into(),
                 "/data".into(),
-                crate::download::DownloadTaskKind::Other,
+                None,
             )
         );
     }
@@ -504,57 +485,6 @@ mod tests {
             [
                 InstructionCleanup::new("/home/user/.codex".into(), Some("AGENTS.md".into())),
                 InstructionCleanup::new("/home/user/.claude".into(), None),
-            ]
-        );
-    }
-
-    #[test]
-    fn run_plan_derives_download_task_kinds() {
-        let json = r#"{
-            "storageMounts": [
-                {
-                    "mountPath": "/home/user/.codex",
-                    "archiveUrl": "https://s3/instructions.tar.gz",
-                    "instructionsTargetFilename": "AGENTS.md"
-                },
-                {
-                    "mountPath": "/home/user/.codex/skills/workflow",
-                    "archiveUrl": "https://s3/codex-skill.tar.gz"
-                },
-                {
-                    "mountPath": "/home/user/.claude/skills/workflow",
-                    "archiveUrl": "https://s3/claude-skill.tar.gz"
-                },
-                {
-                    "mountPath": "/workspace/storage",
-                    "archiveUrl": "https://s3/storage.tar.gz"
-                },
-                {
-                    "mountPath": "/workspace",
-                    "archiveUrl": "https://s3/artifact.tar.gz",
-                    "writeback": true
-                },
-                {
-                    "mountPath": "/home/user/.codex/skills/cached",
-                    "archiveUrl": null,
-                    "cached": true,
-                    "writeback": true
-                }
-            ]
-        }"#;
-        let manifest: Manifest = serde_json::from_str(json).unwrap();
-
-        let plan = RunPlan::from_manifest(&manifest);
-
-        let kinds: Vec<_> = plan.download_tasks.iter().map(DownloadTask::kind).collect();
-        assert_eq!(
-            kinds,
-            [
-                crate::download::DownloadTaskKind::FrameworkHomeInstructions,
-                crate::download::DownloadTaskKind::FrameworkSkillChild,
-                crate::download::DownloadTaskKind::FrameworkSkillChild,
-                crate::download::DownloadTaskKind::Other,
-                crate::download::DownloadTaskKind::Other,
             ]
         );
     }
@@ -613,13 +543,13 @@ mod tests {
         assert_eq!(plan.preserved_paths, std::slice::from_ref(&mount_path));
         assert_eq!(
             plan.download_tasks,
-            [DownloadTask::new(
+            [DownloadTask::storage(
                 format!(
                     "storage 1 mountPath={mount_path} vasStorageName=storage vasVersionId=storage-v1 urlScheme=https cached=true"
                 ),
-                ArchiveKind::Storage,
                 "https://s3/storage.tar.gz".into(),
                 mount_path,
+                None,
             )],
         );
     }
@@ -653,11 +583,10 @@ mod tests {
         assert_eq!(plan.preserved_paths, std::slice::from_ref(&mount_path));
         assert_eq!(
             plan.download_tasks,
-            [DownloadTask::new(
+            [DownloadTask::artifact(
                 format!(
                     "artifact 1 mountPath={mount_path} vasStorageName=artifact vasVersionId=artifact-v1 urlScheme=https cached=true missingRootPolicy=fail"
                 ),
-                ArchiveKind::Artifact,
                 "https://s3/artifact.tar.gz".into(),
                 mount_path,
             )],
