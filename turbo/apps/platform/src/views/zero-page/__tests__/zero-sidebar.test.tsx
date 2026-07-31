@@ -2276,9 +2276,6 @@ describe("zero sidebar", () => {
     setupSidebarPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
-      },
     });
 
     const nav = await screen.findByRole("navigation", {
@@ -2305,7 +2302,6 @@ describe("zero sidebar", () => {
       context,
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
         [FeatureSwitchKey.ThreeColumnNav]: true,
       },
     });
@@ -2481,7 +2477,6 @@ describe("zero sidebar", () => {
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
       featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
         [FeatureSwitchKey.ThreeColumnNav]: true,
         [FeatureSwitchKey.ZeroDebug]: true,
       },
@@ -2541,7 +2536,6 @@ describe("zero sidebar", () => {
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
       featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
         [FeatureSwitchKey.ThreeColumnNav]: true,
         [FeatureSwitchKey.ZeroDebug]: true,
       },
@@ -2601,7 +2595,6 @@ describe("zero sidebar", () => {
       context,
       path: `/chats/${EXISTING_THREAD_ID}`,
       featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
         [FeatureSwitchKey.ThreeColumnNav]: true,
         [FeatureSwitchKey.ZeroDebug]: true,
       },
@@ -2655,7 +2648,6 @@ describe("zero sidebar", () => {
       context,
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
         [FeatureSwitchKey.ZeroDebug]: true,
       },
     });

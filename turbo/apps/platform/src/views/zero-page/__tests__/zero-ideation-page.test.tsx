@@ -3,7 +3,6 @@ import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -341,9 +340,6 @@ describe("zero ideation page", () => {
     detachedSetupPage({
       context,
       path: `/agents/${agentId}/chat`,
-      featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
-      },
     });
 
     await expect(
@@ -384,9 +380,6 @@ describe("zero ideation page", () => {
     detachedSetupPage({
       context,
       path: `/agents/${agentId}/ideas`,
-      featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
-      },
     });
 
     const localizedTitles = await screen.findAllByText("Ideias e casos de uso");

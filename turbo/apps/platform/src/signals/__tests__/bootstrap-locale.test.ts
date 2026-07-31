@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import indexHtml from "../../../index.html?raw";
 import { setupPage } from "../../__tests__/page-helper.ts";
@@ -172,7 +171,6 @@ describe("bootstrap locale", () => {
     await setupPage({
       context,
       path: "/error",
-      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: false },
       withoutRender: true,
     });
 
@@ -204,7 +202,6 @@ describe("bootstrap locale", () => {
     await setupPage({
       context,
       path: "/error",
-      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: false },
       withoutRender: true,
     });
 
@@ -325,7 +322,6 @@ describe("bootstrap locale", () => {
     await setupPage({
       context,
       path: "/error",
-      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: false },
       withoutRender: true,
     });
 
@@ -392,7 +388,6 @@ describe("bootstrap locale", () => {
     await setupPage({
       context,
       path: "/error",
-      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: false },
       withoutRender: true,
     });
 
@@ -466,7 +461,6 @@ describe("bootstrap locale", () => {
     await setupPage({
       context,
       path: "/error",
-      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: false },
       withoutRender: true,
     });
 
@@ -588,7 +582,6 @@ describe("bootstrap locale", () => {
     await setupPage({
       context,
       path: "/error",
-      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: false },
       withoutRender: true,
     });
 
@@ -641,7 +634,6 @@ describe("bootstrap locale", () => {
     await setupPage({
       context,
       path: "/error",
-      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: false },
       withoutRender: true,
     });
 
@@ -688,7 +680,6 @@ describe("bootstrap locale", () => {
     await setupPage({
       context,
       path: "/error",
-      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: false },
       withoutRender: true,
     });
 
@@ -723,7 +714,6 @@ describe("bootstrap locale", () => {
     await setupPage({
       context,
       path: "/error",
-      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: false },
       withoutRender: true,
     });
 

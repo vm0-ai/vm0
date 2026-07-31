@@ -1,6 +1,5 @@
 import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { beforeEach, describe, expect, it } from "vitest";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
@@ -89,9 +88,6 @@ describe("chat localization", () => {
 
       detachedSetupPage({
         context,
-        featureSwitches: {
-          [FeatureSwitchKey.LanguagePreference]: true,
-        },
         path: `/agents/${AGENT_ID}/chat`,
       });
 
@@ -127,9 +123,6 @@ describe("chat localization", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
-      },
       path: `/chats/${THREAD_ID}`,
     });
 
@@ -191,9 +184,6 @@ describe("chat localization", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
-      },
       path: `/chats/${THREAD_ID}`,
     });
 

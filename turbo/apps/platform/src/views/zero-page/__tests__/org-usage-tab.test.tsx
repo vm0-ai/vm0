@@ -2,7 +2,6 @@ import type { OrgMembersResponse } from "@vm0/api-contracts/contracts/org-member
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroOrgMembersContract } from "@vm0/api-contracts/contracts/zero-org-members";
 import { zeroUsageMembersContract } from "@vm0/api-contracts/contracts/zero-usage";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -220,9 +219,6 @@ describe("organization usage settings", () => {
     detachedSetupPage({
       context,
       path: "/?settings=usage",
-      featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
-      },
     });
 
     await waitFor(() => {

@@ -1,5 +1,4 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
@@ -59,7 +58,6 @@ describe("link navigation", () => {
     detachedSetupPage({
       context,
       path: "/missing-platform-route",
-      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: true },
     });
 
     await screen.findByRole("heading", { name: "Página não encontrada" });
@@ -92,7 +90,6 @@ describe("link navigation", () => {
     detachedSetupPage({
       context,
       path: "/_/error",
-      featureSwitches: { [FeatureSwitchKey.LanguagePreference]: true },
     });
 
     await waitFor(() => {

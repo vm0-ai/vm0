@@ -1,5 +1,4 @@
 import { zeroBillingInvoicesContract } from "@vm0/api-contracts/contracts/zero-billing";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
@@ -139,9 +138,6 @@ describe("organization invoices settings", () => {
     detachedSetupPage({
       context,
       path: "/?settings=invoices",
-      featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
-      },
     });
 
     const date = new Date(
@@ -167,9 +163,6 @@ describe("organization invoices settings", () => {
     detachedSetupPage({
       context,
       path: "/?settings=invoices",
-      featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
-      },
     });
 
     const date = new Date(
@@ -194,9 +187,6 @@ describe("organization invoices settings", () => {
     detachedSetupPage({
       context,
       path: "/?settings=invoices",
-      featureSwitches: {
-        [FeatureSwitchKey.LanguagePreference]: true,
-      },
     });
 
     const date = new Date(
