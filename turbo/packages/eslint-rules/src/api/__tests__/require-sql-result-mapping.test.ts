@@ -470,6 +470,15 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
         db.select(emptyFields);
       `,
     },
+    {
+      code: `${drizzlePreamble}
+        type Callback = () => void;
+        type AliasedCallback = Callback;
+        declare const callback: AliasedCallback;
+        callback();
+        callback();
+      `,
+    },
   ],
   invalid: [
     {
