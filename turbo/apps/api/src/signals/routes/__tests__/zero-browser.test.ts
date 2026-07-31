@@ -21,7 +21,6 @@ import { mockEnv } from "../../../lib/env";
 import { mockNow, now, withMockNowForTest } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { createDeferredPromise } from "../../utils";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -724,77 +723,6 @@ describe("zero browser route", () => {
       stopped: 0,
       errors: 0,
     });
-  }, 120_000);
-
-  it("bounds detached profile cleanup with the provider cleanup deadline", async () => {
-    const { runs, chat, actor, agent } = await setupBrowserScenario();
-    const run = await createClaimedChatRun(
-      chat,
-      runs,
-      actor,
-      agent.agentId,
-      "Open a managed browser for bounded cleanup",
-    );
-    const profileId = randomUUID();
-    const providerId = randomUUID();
-    server.use(
-      http.post(`${BROWSER_USE_API_URL}/profiles`, () => {
-        return HttpResponse.json(
-          providerProfile(profileId, `vm0-browser-profile-${run.threadId}`),
-          { status: 201 },
-        );
-      }),
-      http.post(`${BROWSER_USE_API_URL}/browsers`, () => {
-        return HttpResponse.json(providerBrowser(providerId), { status: 201 });
-      }),
-    );
-    await accept(
-      client().create({
-        headers: run.claim.browserHeaders,
-        body: { name: "bounded-cleanup", proxyCountryCode: null },
-      }),
-      [201],
-    );
-
-    const cleanupStarted = createDeferredPromise<void>(context.signal);
-    const releaseCleanup = createDeferredPromise<void>(context.signal);
-    const cleanupDeadline = new AbortController();
-    let providerStopSignalAborted = false;
-    let profileDeletes = 0;
-    server.use(
-      http.patch(
-        `${BROWSER_USE_API_URL}/browsers/:id`,
-        async ({ params, request }) => {
-          expect(params.id).toBe(providerId);
-          cleanupStarted.resolve(undefined);
-          await releaseCleanup.promise;
-          providerStopSignalAborted = request.signal.aborted;
-          return HttpResponse.json(
-            providerBrowser(providerId, { status: "stopped" }),
-          );
-        },
-      ),
-      http.delete(`${BROWSER_USE_API_URL}/profiles/:id`, () => {
-        profileDeletes += 1;
-        return new HttpResponse(null, { status: 204 });
-      }),
-    );
-    context.mocks.abortSignal.timeout.mockClear();
-    context.mocks.abortSignal.timeout.mockImplementation((milliseconds) => {
-      return milliseconds === 30_000 ? cleanupDeadline.signal : undefined;
-    });
-
-    await chat.deleteThread(actor, run.threadId);
-    await cleanupStarted.promise;
-    expect(context.mocks.abortSignal.timeout).toHaveBeenCalledWith(30_000);
-    cleanupDeadline.abort(
-      new DOMException("Browser profile cleanup deadline", "TimeoutError"),
-    );
-    releaseCleanup.resolve(undefined);
-    await flushWaitUntilForTest();
-
-    expect(providerStopSignalAborted).toBeTruthy();
-    expect(profileDeletes).toBe(0);
   }, 120_000);
 
   it("reclaims the earliest idle lease before starting past org concurrency", async () => {

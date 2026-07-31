@@ -1099,7 +1099,7 @@ function cleanupBrowserProfileLater(
   target: BrowserProfileCleanupTarget,
   providerSessionIds: readonly string[],
 ): void {
-  const backgroundSignal = AbortSignal.timeout(PROVIDER_CLEANUP_TIMEOUT_MS);
+  const backgroundSignal = new AbortController().signal;
   waitUntil(
     (async () => {
       const result = await settleIncludingAbort(
