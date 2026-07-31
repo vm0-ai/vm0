@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.496.4](https://github.com/vm0-ai/vm0/compare/core-v8.496.3...core-v8.496.4) (2026-07-31)
+
+
+### Bug Fixes
+
+* **cli:** distinguish git and r2 html resources ([#24162](https://github.com/vm0-ai/vm0/issues/24162)) ([e6d586a](https://github.com/vm0-ai/vm0/commit/e6d586ad665df39b55057f602689c1d141545ac1))
+
 ## [8.496.3](https://github.com/vm0-ai/vm0/compare/core-v8.496.2...core-v8.496.3) (2026-07-31)
 
 

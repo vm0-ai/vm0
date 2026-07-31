@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.358.1](https://github.com/vm0-ai/vm0/compare/api-v1.358.0...api-v1.358.1) (2026-07-31)
+
+
+### Refactoring
+
+* **api:** replace scalar existence probes with builders ([#24136](https://github.com/vm0-ai/vm0/issues/24136)) ([7ff711e](https://github.com/vm0-ai/vm0/commit/7ff711e4758f40c03b64be8f1da6597a76926db1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.496.4
+    * @vm0/db bumped to 1.158.2
+
 ## [1.358.0](https://github.com/vm0-ai/vm0/compare/api-v1.357.0...api-v1.358.0) (2026-07-31)
 
 

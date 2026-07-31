@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.272.2](https://github.com/vm0-ai/vm0/compare/cli-v9.272.1...cli-v9.272.2) (2026-07-31)
+
+
+### Bug Fixes
+
+* **cli:** distinguish git and r2 html resources ([#24162](https://github.com/vm0-ai/vm0/issues/24162)) ([e6d586a](https://github.com/vm0-ai/vm0/commit/e6d586ad665df39b55057f602689c1d141545ac1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.496.4
+
 ## [9.272.1](https://github.com/vm0-ai/vm0/compare/cli-v9.272.0...cli-v9.272.1) (2026-07-31)
 
 
