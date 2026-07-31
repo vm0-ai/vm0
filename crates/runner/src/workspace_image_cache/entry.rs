@@ -119,14 +119,14 @@ impl SessionWorkspaceCache {
     pub(super) fn scoped_cache_key(
         &self,
         profile_name: &str,
-        session_id: &str,
+        reuse_key: &str,
         working_dir: &str,
         image_size_bytes: u64,
     ) -> String {
         scoped_session_workspace_cache_key(
             &self.inner.cache_scope,
             profile_name,
-            session_id,
+            reuse_key,
             working_dir,
             image_size_bytes,
         )
@@ -140,7 +140,7 @@ impl SessionWorkspaceCache {
         scoped_session_workspace_cache_key(
             &metadata.cache_scope,
             &metadata.profile_name,
-            &metadata.session_id,
+            &metadata.reuse_key,
             &metadata.working_dir,
             metadata.logical_image_size_bytes,
         ) == cache_key

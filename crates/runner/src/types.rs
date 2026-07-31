@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -10,7 +11,7 @@ use crate::ids::RunId;
 use crate::storage_manifest::StorageManifest;
 
 pub(crate) const MAX_HELD_SESSION_STATES: usize = 1024;
-pub(crate) const MAX_WORKSPACE_CACHES_PER_SESSION: usize = 8;
+pub(crate) const MAX_WORKSPACE_CACHES_PER_REUSE_KEY: usize = 8;
 pub(crate) const MAX_WORKSPACE_CACHES_PER_HEARTBEAT: usize = 1024;
 pub(crate) const WORKSPACE_AFFINITY_VERSION: u8 = 1;
 
@@ -36,6 +37,8 @@ pub struct Job {
     #[serde(default)]
     pub cli_agent_session_id: Option<String>,
     #[serde(default)]
+    pub reuse_key: Option<String>,
+    #[serde(default)]
     pub history_generation_run_id: Option<RunId>,
     #[serde(default)]
     pub history_generation_affinity_protected_until: Option<String>,
@@ -43,6 +46,33 @@ pub struct Job {
     pub affinity_protected_until: Option<String>,
     #[serde(default)]
     pub session_affinity_resource: Option<SessionAffinityResource>,
+}
+
+fn deployment_compatible_reuse_key<'a>(
+    reuse_key: Option<&'a str>,
+    cli_agent_session_id: Option<&'a str>,
+) -> Option<Cow<'a, str>> {
+    reuse_key.map(Cow::Borrowed).or_else(|| {
+        // TODO(deployment-compatibility): Remove this fallback after the next release.
+        cli_agent_session_id.map(|session_id| Cow::Owned(format!("session:{session_id}")))
+    })
+}
+
+pub(crate) fn reuse_key_kind(reuse_key: &str) -> &'static str {
+    if reuse_key.starts_with("thread:") {
+        "thread"
+    } else {
+        "session"
+    }
+}
+
+impl Job {
+    pub(crate) fn reuse_key(&self) -> Option<Cow<'_, str>> {
+        deployment_compatible_reuse_key(
+            self.reuse_key.as_deref(),
+            self.cli_agent_session_id.as_deref(),
+        )
+    }
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
@@ -67,6 +97,8 @@ pub enum SessionAffinityResource {
 #[serde(rename_all = "camelCase")]
 pub struct ExecutionContext {
     pub run_id: RunId,
+    #[serde(default)]
+    pub reuse_key: Option<String>,
     pub prompt: String,
     #[serde(default)]
     pub append_system_prompt: Option<String>,
@@ -1230,6 +1262,10 @@ where
 }
 
 impl ExecutionContext {
+    pub(crate) fn reuse_key(&self) -> Option<Cow<'_, str>> {
+        deployment_compatible_reuse_key(self.reuse_key.as_deref(), self.cli_agent_session_id())
+    }
+
     /// Extract the Claude/Codex CLI agent session id from `resume_session`.
     ///
     /// Returns `Some` for continued sessions. For first runs this returns
@@ -1323,9 +1359,10 @@ pub struct WorkspaceCacheState {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct HeldSessionState {
-    /// Compatibility wire name is `sessionId`; semantically this is the
-    /// Claude/Codex CLI agent session id used for sandbox reuse affinity.
+    /// Compatibility wire name is `sessionId`; this remains the Claude/Codex
+    /// CLI agent session id for telemetry and diagnostics.
     pub session_id: String,
+    pub reuse_key: String,
     pub last_completed_at: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reusable_sandbox: Option<ReusableSandboxState>,
@@ -1442,6 +1479,27 @@ mod tests {
             job.session_affinity_resource,
             Some(SessionAffinityResource::WorkspaceCache)
         );
+        assert!(job.reuse_key().is_none());
+    }
+
+    #[test]
+    fn job_reuse_key_prefers_snapshot_and_falls_back_to_cli_session() {
+        let explicit: Job = serde_json::from_value(json!({
+            "runId": "550e8400-e29b-41d4-a716-446655440000",
+            "experimentalProfile": "browser",
+            "cliAgentSessionId": "cli-session",
+            "reuseKey": "thread:chat-thread"
+        }))
+        .unwrap();
+        assert_eq!(explicit.reuse_key().as_deref(), Some("thread:chat-thread"));
+
+        let fallback: Job = serde_json::from_value(json!({
+            "runId": "550e8400-e29b-41d4-a716-446655440000",
+            "experimentalProfile": "browser",
+            "cliAgentSessionId": "cli-session"
+        }))
+        .unwrap();
+        assert_eq!(fallback.reuse_key().as_deref(), Some("session:cli-session"));
     }
 
     #[test]
@@ -2120,6 +2178,7 @@ mod tests {
             admittable_profiles: vec!["vm0/default".into()],
             held_session_states: vec![HeldSessionState {
                 session_id: "session-abc".into(),
+                reuse_key: "thread:thread-abc".into(),
                 last_completed_at: "2026-05-28T00:00:00.000Z".into(),
                 reusable_sandbox: Some(ReusableSandboxState {
                     profile: "vm0/default".into(),
@@ -2150,6 +2209,7 @@ mod tests {
             json["heldSessionStates"],
             json!([{
                 "sessionId": "session-abc",
+                "reuseKey": "thread:thread-abc",
                 "lastCompletedAt": "2026-05-28T00:00:00.000Z",
                 "reusableSandbox": {
                     "profile": "vm0/default",
@@ -2168,6 +2228,7 @@ mod tests {
     fn held_session_state_accepts_minimal_shape_and_omits_absent_capability() {
         let state: HeldSessionState = serde_json::from_value(json!({
             "sessionId": "session-minimal",
+            "reuseKey": "session:session-minimal",
             "lastCompletedAt": "2026-05-28T00:00:00.000Z",
             "reusableSandbox": {
                 "profile": "vm0/default"

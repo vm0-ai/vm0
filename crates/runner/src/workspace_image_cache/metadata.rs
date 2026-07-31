@@ -38,7 +38,8 @@ pub(super) struct WorkspaceCacheMetadata {
     pub(super) key_version: u32,
     pub(super) cache_scope: String,
     pub(super) profile_name: String,
-    pub(super) session_id: String,
+    pub(super) reuse_key: String,
+    pub(super) cli_agent_session_id: String,
     pub(super) working_dir: String,
     pub(super) last_completed_at: String,
     pub(super) last_used_at: String,
@@ -75,7 +76,7 @@ impl SessionWorkspaceCache {
         &self,
         metadata_path: &Path,
         profile_name: &str,
-        session_id: &str,
+        reuse_key: &str,
         working_dir: &str,
         image_size_bytes: u64,
     ) -> RunnerResult<Option<WorkspaceCacheMetadata>> {
@@ -88,7 +89,7 @@ impl SessionWorkspaceCache {
         };
         let current_path = self.session_workspace_cache_current_image(&self.scoped_cache_key(
             profile_name,
-            session_id,
+            reuse_key,
             working_dir,
             image_size_bytes,
         ));
@@ -101,7 +102,7 @@ impl SessionWorkspaceCache {
             &metadata,
             &self.inner.cache_scope,
             profile_name,
-            session_id,
+            reuse_key,
             working_dir,
             image_size_bytes,
         )?;
@@ -188,7 +189,7 @@ fn validate_metadata(
     metadata: &WorkspaceCacheMetadata,
     cache_scope: &str,
     profile_name: &str,
-    session_id: &str,
+    reuse_key: &str,
     working_dir: &str,
     image_size_bytes: u64,
 ) -> RunnerResult<()> {
@@ -214,9 +215,9 @@ fn validate_metadata(
             "workspace metadata profile mismatch".into(),
         ));
     }
-    if metadata.session_id != session_id {
+    if metadata.reuse_key != reuse_key {
         return Err(RunnerError::Internal(
-            "workspace metadata session id mismatch".into(),
+            "workspace metadata reuse key mismatch".into(),
         ));
     }
     if metadata.working_dir != working_dir {

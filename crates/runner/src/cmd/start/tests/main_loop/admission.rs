@@ -18,6 +18,7 @@ const FUTURE_AFFINITY_PROTECTED_UNTIL: &str = "2999-01-01T00:00:00Z";
 fn affinity_protected_candidate(run_id: RunId, session_id: &str) -> crate::provider::JobCandidate {
     crate::provider::JobCandidate::new(run_id, "vm0/default".into()).with_affinity_metadata(
         Some(session_id.to_string()),
+        Some(session_id.to_string()),
         Some(FUTURE_AFFINITY_PROTECTED_UNTIL.to_string()),
     )
 }
@@ -45,6 +46,7 @@ fn generation_affinity_protected_candidate(
 ) -> crate::provider::JobCandidate {
     crate::provider::JobCandidate::new(run_id, "vm0/default".into())
         .with_affinity_metadata(
+            Some(session_id.to_string()),
             Some(session_id.to_string()),
             Some(FUTURE_AFFINITY_PROTECTED_UNTIL.to_string()),
         )
@@ -509,7 +511,11 @@ async fn affinity_protected_candidate_without_session_metadata_defers_before_cla
         .discover_tx
         .send(
             crate::provider::JobCandidate::new(run_id, "vm0/default".into())
-                .with_affinity_metadata(None, Some(FUTURE_AFFINITY_PROTECTED_UNTIL.to_string()))
+                .with_affinity_metadata(
+                    None,
+                    None,
+                    Some(FUTURE_AFFINITY_PROTECTED_UNTIL.to_string()),
+                )
                 .with_session_affinity_resource(Some(SessionAffinityResource::ReusableSandbox)),
         )
         .unwrap();

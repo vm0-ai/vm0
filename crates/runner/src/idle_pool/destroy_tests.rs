@@ -66,7 +66,7 @@ async fn make_idle_destroy_job_for(
     IdleDestroyJob {
         payload: make_idle_destroy_payload_for(sandbox_id, overrides, workspace_promotion).await,
         budget_lease,
-        cli_agent_session_id: "sess-destroy".into(),
+        reuse_key: "session:sess-destroy".into(),
         profile_name: "vm0/default".into(),
     }
 }

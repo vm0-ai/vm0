@@ -756,12 +756,14 @@ pub(super) async fn prepare_workspace_image(
 ) -> Option<WorkspaceImageLease> {
     let cache = config.workspace_cache.as_ref()?;
     let prepare_started = Instant::now();
+    let reuse_key = context.reuse_key();
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id: context.run_id,
                 sandbox_id,
                 profile_name,
+                reuse_key: reuse_key.as_deref(),
                 cli_agent_session_id: context.cli_agent_session_id(),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,

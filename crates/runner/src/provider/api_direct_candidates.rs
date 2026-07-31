@@ -18,6 +18,7 @@ pub(super) struct DirectJobCandidate {
     profile_name: String,
     discovered_at: StdInstant,
     enqueued_at: Option<StdInstant>,
+    reuse_key: Option<String>,
     cli_agent_session_id: Option<String>,
     session_affinity_resource: Option<SessionAffinityResource>,
     history_generation_run_id: Option<RunId>,
@@ -37,7 +38,7 @@ impl DirectJobCandidate {
         profile_name: String,
         discovered_at: StdInstant,
     ) -> Self {
-        Self::new_with_affinity_metadata(run_id, profile_name, discovered_at, None, None)
+        Self::new_with_affinity_metadata(run_id, profile_name, discovered_at, None, None, None)
     }
 
     #[cfg(test)]
@@ -48,7 +49,7 @@ impl DirectJobCandidate {
         enqueued_at: StdInstant,
     ) -> Self {
         let mut candidate =
-            Self::new_with_affinity_metadata(run_id, profile_name, discovered_at, None, None);
+            Self::new_with_affinity_metadata(run_id, profile_name, discovered_at, None, None, None);
         candidate.enqueued_at = Some(enqueued_at);
         candidate
     }
@@ -57,6 +58,7 @@ impl DirectJobCandidate {
         run_id: RunId,
         profile_name: String,
         discovered_at: StdInstant,
+        reuse_key: Option<String>,
         cli_agent_session_id: Option<String>,
         affinity_protected_until: Option<String>,
     ) -> Self {
@@ -65,6 +67,7 @@ impl DirectJobCandidate {
             profile_name,
             discovered_at,
             enqueued_at: None,
+            reuse_key,
             cli_agent_session_id,
             session_affinity_resource: None,
             history_generation_run_id: None,
@@ -130,7 +133,11 @@ impl DirectJobCandidate {
             .enqueued_at
             .map(|enqueued_at| dequeued_at.saturating_duration_since(enqueued_at));
         JobCandidate::new_with_discovered_at(self.run_id, self.profile_name, self.discovered_at)
-            .with_affinity_metadata(self.cli_agent_session_id, self.affinity_protected_until)
+            .with_affinity_metadata(
+                self.reuse_key,
+                self.cli_agent_session_id,
+                self.affinity_protected_until,
+            )
             .with_session_affinity_resource(self.session_affinity_resource)
             .with_history_generation_run_id(self.history_generation_run_id)
             .with_history_generation_affinity_protected_until(
@@ -149,6 +156,9 @@ impl DirectJobCandidate {
                 "ably: duplicate direct candidate profile mismatch, keeping first profile"
             );
             return;
+        }
+        if candidate.reuse_key.is_some() {
+            self.reuse_key = candidate.reuse_key;
         }
         if candidate.cli_agent_session_id.is_some() {
             self.cli_agent_session_id = candidate.cli_agent_session_id;
@@ -446,6 +456,7 @@ mod tests {
                     run_id,
                     "vm0/default".to_string(),
                     first_discovered_at,
+                    Some("session:sess-1".to_string()),
                     Some("sess-1".to_string()),
                     None,
                 )
@@ -466,6 +477,7 @@ mod tests {
                     run_id,
                     "vm0/default".to_string(),
                     second_discovered_at,
+                    None,
                     None,
                     Some("2999-01-01T00:00:00.000Z".to_string()),
                 )
@@ -493,6 +505,7 @@ mod tests {
                     run_id,
                     "vm0/default".to_string(),
                     second_discovered_at,
+                    None,
                     None,
                     None,
                 )

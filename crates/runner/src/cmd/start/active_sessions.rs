@@ -1,86 +1,59 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-pub(super) type ActiveCliAgentSessions = Arc<Mutex<HashMap<String, usize>>>;
+pub(super) type ActiveReuseKeys = Arc<Mutex<HashMap<String, usize>>>;
 
-pub(super) fn new_active_cli_agent_sessions() -> ActiveCliAgentSessions {
+pub(super) fn new_active_reuse_keys() -> ActiveReuseKeys {
     Arc::new(Mutex::new(HashMap::new()))
 }
 
-pub(super) fn insert_active_cli_agent_session(
-    active_cli_agent_sessions: &ActiveCliAgentSessions,
-    cli_agent_session_id: &str,
-) {
-    let mut counts = lock_counts(active_cli_agent_sessions);
-    *counts.entry(cli_agent_session_id.to_owned()).or_insert(0) += 1;
+pub(super) fn insert_active_reuse_key(active_reuse_keys: &ActiveReuseKeys, reuse_key: &str) {
+    let mut counts = lock_counts(active_reuse_keys);
+    *counts.entry(reuse_key.to_owned()).or_insert(0) += 1;
 }
 
-pub(super) fn remove_active_cli_agent_session(
-    active_cli_agent_sessions: &ActiveCliAgentSessions,
-    cli_agent_session_id: &str,
-) {
-    let mut counts = lock_counts(active_cli_agent_sessions);
-    let Some(count) = counts.get_mut(cli_agent_session_id) else {
+pub(super) fn remove_active_reuse_key(active_reuse_keys: &ActiveReuseKeys, reuse_key: &str) {
+    let mut counts = lock_counts(active_reuse_keys);
+    let Some(count) = counts.get_mut(reuse_key) else {
         return;
     };
     *count = count.saturating_sub(1);
     if *count == 0 {
-        counts.remove(cli_agent_session_id);
+        counts.remove(reuse_key);
     }
 }
 
-pub(super) fn active_cli_agent_session_ids(
-    active_cli_agent_sessions: &ActiveCliAgentSessions,
-) -> HashSet<String> {
-    lock_counts(active_cli_agent_sessions)
-        .keys()
-        .cloned()
-        .collect()
+pub(super) fn active_reuse_keys(active_reuse_keys: &ActiveReuseKeys) -> HashSet<String> {
+    lock_counts(active_reuse_keys).keys().cloned().collect()
 }
 
-pub(super) struct ActiveCliAgentSessionGuard {
-    active_cli_agent_sessions: ActiveCliAgentSessions,
-    cli_agent_session_id: Option<String>,
+pub(super) struct ActiveReuseKeyGuard {
+    active_reuse_keys: ActiveReuseKeys,
+    reuse_key: Option<String>,
 }
 
-impl ActiveCliAgentSessionGuard {
-    pub(super) fn new(
-        active_cli_agent_sessions: ActiveCliAgentSessions,
-        cli_agent_session_id: Option<String>,
-    ) -> Self {
-        if let Some(cli_agent_session_id) = cli_agent_session_id.as_deref() {
-            insert_active_cli_agent_session(&active_cli_agent_sessions, cli_agent_session_id);
+impl ActiveReuseKeyGuard {
+    pub(super) fn new(active_reuse_keys: ActiveReuseKeys, reuse_key: Option<String>) -> Self {
+        if let Some(reuse_key) = reuse_key.as_deref() {
+            insert_active_reuse_key(&active_reuse_keys, reuse_key);
         }
         Self {
-            active_cli_agent_sessions,
-            cli_agent_session_id,
+            active_reuse_keys,
+            reuse_key,
         }
-    }
-
-    pub(super) fn activate_late(&mut self, discovered_cli_agent_session_id: &str) {
-        if self.cli_agent_session_id.is_some() {
-            return;
-        }
-        insert_active_cli_agent_session(
-            &self.active_cli_agent_sessions,
-            discovered_cli_agent_session_id,
-        );
-        self.cli_agent_session_id = Some(discovered_cli_agent_session_id.to_owned());
     }
 }
 
-impl Drop for ActiveCliAgentSessionGuard {
+impl Drop for ActiveReuseKeyGuard {
     fn drop(&mut self) {
-        if let Some(cli_agent_session_id) = self.cli_agent_session_id.as_deref() {
-            remove_active_cli_agent_session(&self.active_cli_agent_sessions, cli_agent_session_id);
+        if let Some(reuse_key) = self.reuse_key.as_deref() {
+            remove_active_reuse_key(&self.active_reuse_keys, reuse_key);
         }
     }
 }
 
-fn lock_counts(
-    active_cli_agent_sessions: &ActiveCliAgentSessions,
-) -> MutexGuard<'_, HashMap<String, usize>> {
-    active_cli_agent_sessions
+fn lock_counts(active_reuse_keys: &ActiveReuseKeys) -> MutexGuard<'_, HashMap<String, usize>> {
+    active_reuse_keys
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
@@ -91,57 +64,28 @@ mod tests {
 
     #[test]
     fn active_sessions_are_ref_counted() {
-        let active_sessions = new_active_cli_agent_sessions();
-        insert_active_cli_agent_session(&active_sessions, "sess-1");
-        insert_active_cli_agent_session(&active_sessions, "sess-1");
+        let active_sessions = new_active_reuse_keys();
+        insert_active_reuse_key(&active_sessions, "session:sess-1");
+        insert_active_reuse_key(&active_sessions, "session:sess-1");
 
-        assert!(active_cli_agent_session_ids(&active_sessions).contains("sess-1"));
+        assert!(active_reuse_keys(&active_sessions).contains("session:sess-1"));
 
-        remove_active_cli_agent_session(&active_sessions, "sess-1");
-        assert!(active_cli_agent_session_ids(&active_sessions).contains("sess-1"));
+        remove_active_reuse_key(&active_sessions, "session:sess-1");
+        assert!(active_reuse_keys(&active_sessions).contains("session:sess-1"));
 
-        remove_active_cli_agent_session(&active_sessions, "sess-1");
-        assert!(!active_cli_agent_session_ids(&active_sessions).contains("sess-1"));
+        remove_active_reuse_key(&active_sessions, "session:sess-1");
+        assert!(!active_reuse_keys(&active_sessions).contains("session:sess-1"));
     }
 
     #[test]
-    fn active_cli_agent_session_guard_registers_and_unregisters_initial_session() {
-        let active_sessions = new_active_cli_agent_sessions();
+    fn active_reuse_key_guard_registers_and_unregisters_initial_key() {
+        let active_sessions = new_active_reuse_keys();
         let guard =
-            ActiveCliAgentSessionGuard::new(Arc::clone(&active_sessions), Some("sess-1".into()));
+            ActiveReuseKeyGuard::new(Arc::clone(&active_sessions), Some("thread:thread-1".into()));
 
-        assert!(active_cli_agent_session_ids(&active_sessions).contains("sess-1"));
+        assert!(active_reuse_keys(&active_sessions).contains("thread:thread-1"));
 
         drop(guard);
-        assert!(!active_cli_agent_session_ids(&active_sessions).contains("sess-1"));
-    }
-
-    #[test]
-    fn active_cli_agent_session_guard_can_mark_late_discovered_session_active() {
-        let active_sessions = new_active_cli_agent_sessions();
-        let mut guard = ActiveCliAgentSessionGuard::new(Arc::clone(&active_sessions), None);
-
-        guard.activate_late("sess-late");
-
-        assert!(active_cli_agent_session_ids(&active_sessions).contains("sess-late"));
-        drop(guard);
-        assert!(!active_cli_agent_session_ids(&active_sessions).contains("sess-late"));
-    }
-
-    #[test]
-    fn active_cli_agent_session_guard_keeps_original_session_when_late_id_is_seen() {
-        let active_sessions = new_active_cli_agent_sessions();
-        let mut guard = ActiveCliAgentSessionGuard::new(
-            Arc::clone(&active_sessions),
-            Some("sess-original".into()),
-        );
-
-        guard.activate_late("sess-late");
-
-        let ids = active_cli_agent_session_ids(&active_sessions);
-        assert!(ids.contains("sess-original"));
-        assert!(!ids.contains("sess-late"));
-        drop(guard);
-        assert!(!active_cli_agent_session_ids(&active_sessions).contains("sess-original"));
+        assert!(!active_reuse_keys(&active_sessions).contains("thread:thread-1"));
     }
 }

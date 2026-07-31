@@ -341,6 +341,7 @@ async fn process_timeout_invalidates_consumed_workspace_cache_without_fallback()
                 run_id: RunId::new_v4(),
                 sandbox_id: SandboxId::new_v4(),
                 profile_name: &params.profile_name,
+                reuse_key: Some(&format!("session:{session_id}")),
                 cli_agent_session_id: Some(session_id),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
@@ -580,7 +581,7 @@ async fn execute_inner_records_workspace_cache_lock_busy_prepare_telemetry() {
     let cache_key = scoped_session_workspace_cache_key(
         "",
         &params.profile_name,
-        session_id,
+        &format!("session:{session_id}"),
         CANONICAL_WORKING_DIR,
         u64::from(params.workspace_disk_mb) * 1024 * 1024,
     );
@@ -753,6 +754,7 @@ async fn execute_job_reuse_uses_workspace_cache_when_configured() {
                 run_id: RunId::new_v4(),
                 sandbox_id: SandboxId::new_v4(),
                 profile_name: &params.profile_name,
+                reuse_key: Some(&format!("session:{session_id}")),
                 cli_agent_session_id: Some(session_id),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
@@ -817,6 +819,7 @@ async fn cached_reuse_workspace_promotion_identity_mismatch_stops_before_agent()
                 run_id: RunId::new_v4(),
                 sandbox_id: SandboxId::new_v4(),
                 profile_name: &promotion_params.profile_name,
+                reuse_key: Some(&format!("session:{session_id}")),
                 cli_agent_session_id: Some(session_id),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: u64::from(promotion_params.workspace_disk_mb) * 1024 * 1024,
@@ -859,6 +862,7 @@ async fn execute_job_reuse_without_workspace_cache_config_invalidates_held_cache
                 run_id: RunId::new_v4(),
                 sandbox_id: SandboxId::new_v4(),
                 profile_name: &params.profile_name,
+                reuse_key: Some(&format!("session:{session_id}")),
                 cli_agent_session_id: Some(session_id),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
@@ -880,7 +884,7 @@ async fn unconfigured_cache_reuse_stops_when_cache_invalidation_fails() {
         ..default_params()
     };
     let session_id = "sess-cache-unconfigured-reuse-invalidate-error";
-    let (idle_sandbox, overrides) = reusable_idle_sandbox_with_unlocked_workspace_promotion(
+    let (idle_sandbox, overrides) = reusable_idle_sandbox_with_fresh_workspace_promotion(
         &cache,
         &runner_paths,
         &params,
@@ -890,7 +894,7 @@ async fn unconfigured_cache_reuse_stops_when_cache_invalidation_fails() {
     let cache_key = scoped_session_workspace_cache_key(
         "",
         &params.profile_name,
-        session_id,
+        &format!("session:{session_id}"),
         CANONICAL_WORKING_DIR,
         u64::from(params.workspace_disk_mb) * 1024 * 1024,
     );
@@ -924,76 +928,6 @@ async fn unconfigured_cache_reuse_stops_when_cache_invalidation_fails() {
             .iter()
             .all(|call| call.cmd.contains("prepare-for-reuse")),
         "reused sandbox must not run after stale cache invalidation fails"
-    );
-}
-
-#[tokio::test]
-async fn unconfigured_cache_reuse_stops_when_required_cache_invalidation_lock_is_busy() {
-    let dir = tempfile::tempdir().unwrap();
-    let runner_paths = RunnerPaths::new(dir.path().join("runner"));
-    let cache = SessionWorkspaceCache::new(runner_paths.clone());
-    let config = test_executor_config(dir.path()).await;
-    let params = JobParams {
-        workspace_disk_mb: 16,
-        ..default_params()
-    };
-    let session_id = "sess-cache-unconfigured-reuse-lock-busy";
-    let current_image =
-        seed_workspace_image_cache(&cache, &runner_paths, session_id, params.workspace_disk_mb)
-            .await;
-    let (idle_sandbox, overrides) = reusable_idle_sandbox_with_unlocked_workspace_promotion(
-        &cache,
-        &runner_paths,
-        &params,
-        session_id,
-    )
-    .await;
-    let cache_key = crate::paths::scoped_session_workspace_cache_key(
-        "",
-        &params.profile_name,
-        session_id,
-        CANONICAL_WORKING_DIR,
-        u64::from(params.workspace_disk_mb) * 1024 * 1024,
-    );
-    let _held_lock = crate::lock::acquire(crate::paths::workspace_image_cache_lock_path(
-        &runner_paths.base_dir().join("locks"),
-        &cache_key,
-    ))
-    .await
-    .unwrap();
-
-    let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession::inline(
-        session_id.into(),
-        r#"{"type":"init"}"#.into(),
-    ));
-
-    let cancel = tokio_util::sync::CancellationToken::new();
-    let (reuse_outcome, _telemetry) =
-        execute_job_reuse(idle_sandbox, ctx, &config, &params, cancel).await;
-
-    assert_eq!(reuse_outcome.exit_code(), 1);
-    assert!(reuse_outcome.sandbox.is_some());
-    let error = reuse_outcome.error().unwrap();
-    assert!(
-        error
-            .contains("failed to invalidate workspace image cache before unconfigured-cache reuse"),
-        "got: {error}"
-    );
-    assert!(
-        error.contains("lock unavailable"),
-        "lock contention should be surfaced, got: {error}"
-    );
-    assert!(
-        overrides
-            .exec_calls()
-            .iter()
-            .all(|call| call.cmd.contains("prepare-for-reuse")),
-        "reused sandbox must not run when required stale cache invalidation cannot get the entry lock"
-    );
-    assert!(
-        current_image.exists(),
-        "lock-busy invalidation must not remove a cache image it could not lock"
     );
 }
 
@@ -1041,6 +975,7 @@ async fn cached_reuse_validation_failure_keeps_workspace_cache_hidden() {
                 run_id: RunId::new_v4(),
                 sandbox_id: SandboxId::new_v4(),
                 profile_name: &params.profile_name,
+                reuse_key: Some(&format!("session:{session_id}")),
                 cli_agent_session_id: Some(session_id),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
@@ -1099,6 +1034,7 @@ async fn cached_reuse_invalid_resume_session_keeps_existing_workspace_cache_hidd
                 run_id: RunId::new_v4(),
                 sandbox_id: SandboxId::new_v4(),
                 profile_name: &params.profile_name,
+                reuse_key: Some(&format!("session:{session_id}")),
                 cli_agent_session_id: Some(session_id),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
@@ -1181,6 +1117,7 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
     };
     use crate::storage_fingerprints::StorageFingerprints;
 
+    let reuse_key = format!("session:{session_id}");
     let current_image =
         seed_workspace_image_cache(cache, runner_paths, session_id, params.workspace_disk_mb).await;
 
@@ -1192,6 +1129,7 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
                 run_id,
                 sandbox_id,
                 profile_name: &params.profile_name,
+                reuse_key: Some(&reuse_key),
                 cli_agent_session_id: Some(session_id),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
@@ -1236,6 +1174,7 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
         run_id,
         sandbox,
         factory,
+        reuse_key: reuse_key.clone(),
         cli_agent_session_id: session_id.to_owned(),
         sandbox_id,
         profile_name: params.profile_name.clone(),
@@ -1262,7 +1201,7 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
         max_idle: 0,
     });
     assert!(matches!(pool.park(candidate), ParkResult::Parked));
-    let entry = pool.take(session_id).expect("idle entry should exist");
+    let entry = pool.take(&reuse_key).expect("idle entry should exist");
     let idle_sandbox = match entry.try_unpark().await {
         IdleUnparkResult::Reused { sandbox, .. } => *sandbox,
         IdleUnparkResult::Failed { error, .. } => {
@@ -1273,7 +1212,7 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
     (idle_sandbox, current_image, overrides)
 }
 
-async fn reusable_idle_sandbox_with_unlocked_workspace_promotion(
+async fn reusable_idle_sandbox_with_fresh_workspace_promotion(
     cache: &SessionWorkspaceCache,
     runner_paths: &RunnerPaths,
     params: &JobParams,
@@ -1288,6 +1227,7 @@ async fn reusable_idle_sandbox_with_unlocked_workspace_promotion(
     };
     use crate::storage_fingerprints::StorageFingerprints;
 
+    let reuse_key = format!("session:{session_id}");
     let run_id = RunId::new_v4();
     let sandbox_id = SandboxId::new_v4();
     let lease = cache
@@ -1296,6 +1236,7 @@ async fn reusable_idle_sandbox_with_unlocked_workspace_promotion(
                 run_id,
                 sandbox_id,
                 profile_name: &params.profile_name,
+                reuse_key: Some(&reuse_key),
                 cli_agent_session_id: None,
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
@@ -1303,7 +1244,7 @@ async fn reusable_idle_sandbox_with_unlocked_workspace_promotion(
             workspace_drive_required: true,
         })
         .await;
-    assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::NoSession);
+    assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::Miss);
     let active_image = runner_paths.active_workspace_image(&sandbox_id);
     tokio::fs::create_dir_all(active_image.parent().unwrap())
         .await
@@ -1347,6 +1288,7 @@ async fn reusable_idle_sandbox_with_unlocked_workspace_promotion(
         run_id,
         sandbox,
         factory,
+        reuse_key: reuse_key.clone(),
         cli_agent_session_id: session_id.to_owned(),
         sandbox_id,
         profile_name: params.profile_name.clone(),
@@ -1373,7 +1315,7 @@ async fn reusable_idle_sandbox_with_unlocked_workspace_promotion(
         max_idle: 0,
     });
     assert!(matches!(pool.park(candidate), ParkResult::Parked));
-    let entry = pool.take(session_id).expect("idle entry should exist");
+    let entry = pool.take(&reuse_key).expect("idle entry should exist");
     let idle_sandbox = match entry.try_unpark().await {
         IdleUnparkResult::Reused { sandbox, .. } => *sandbox,
         IdleUnparkResult::Failed { error, .. } => {

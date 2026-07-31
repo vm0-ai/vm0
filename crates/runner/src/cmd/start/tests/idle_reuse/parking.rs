@@ -46,7 +46,7 @@ async fn job_with_session_parks_vm() {
 
     let pool = env.idle_pool.lock().await;
     assert_eq!(pool.len(), 1, "VM should be parked when session is present");
-    assert!(pool.held_sessions().contains(&"sess-1".to_string()));
+    assert!(pool.held_sessions().contains(&"session:sess-1".to_string()));
     drop(pool);
 
     shutdown(&env, run_handle).await;
@@ -213,6 +213,47 @@ async fn sequential_same_session_reuse_cycle() {
         "pool should have 1 entry after two sequential jobs"
     );
     assert_eq!(budget.allocated().2, 1, "only one VM should hold budget");
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn same_thread_reuses_vm_across_provider_session_change() {
+    let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let run_handle = tokio::spawn(run(config));
+    let reuse_key = "thread:chat-thread";
+
+    let first_run_id = RunId::new_v4();
+    let mut first_context = context_with_session(first_run_id, "provider-session-a");
+    first_context.reuse_key = Some(reuse_key.into());
+    push_job(&env, first_run_id, "vm0/default", Some(first_context));
+    assert!(
+        env.handle
+            .wait_completion(first_run_id, Duration::from_secs(5))
+            .await
+            .is_some()
+    );
+    wait_idle_pool_session_states(&idle_pool, &["provider-session-a"], Duration::from_secs(5))
+        .await;
+
+    let second_run_id = RunId::new_v4();
+    let mut second_context = context_with_session(second_run_id, "provider-session-b");
+    second_context.reuse_key = Some(reuse_key.into());
+    push_job(&env, second_run_id, "vm0/default", Some(second_context));
+    let completion = env
+        .handle
+        .wait_completion(second_run_id, Duration::from_secs(5))
+        .await
+        .expect("second job should complete");
+    assert_eq!(
+        completion.reuse_result,
+        Some(SandboxReuseResult::Reused),
+        "the thread reuse key should select the first job's parked VM"
+    );
+    wait_idle_pool_session_states(&idle_pool, &["provider-session-b"], Duration::from_secs(5))
+        .await;
+    wait_idle_pool_sessions(&idle_pool, &[reuse_key], Duration::from_secs(5)).await;
 
     shutdown(&env, run_handle).await;
 }

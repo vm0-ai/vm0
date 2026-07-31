@@ -36,12 +36,14 @@ pub(in crate::executor::tests) async fn seed_workspace_image_cache_with_fingerpr
 ) -> PathBuf {
     let sandbox_id = SandboxId::new_v4();
     let run_id = RunId::new_v4();
+    let reuse_key = format!("session:{session_id}");
     let lease = cache
         .prepare(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id,
                 sandbox_id,
                 profile_name: "vm0/default",
+                reuse_key: Some(&reuse_key),
                 cli_agent_session_id: Some(session_id),
                 working_dir: CANONICAL_WORKING_DIR,
                 image_size_bytes: u64::from(workspace_disk_mb) * 1024 * 1024,
@@ -77,7 +79,7 @@ pub(in crate::executor::tests) async fn seed_workspace_image_cache_with_fingerpr
     let cache_key = scoped_session_workspace_cache_key(
         "",
         "vm0/default",
-        session_id,
+        &reuse_key,
         CANONICAL_WORKING_DIR,
         u64::from(workspace_disk_mb) * 1024 * 1024,
     );

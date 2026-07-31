@@ -89,7 +89,7 @@ mod ownership;
 mod sandbox_finalization;
 mod signals;
 
-use active_sessions::new_active_cli_agent_sessions;
+use active_sessions::new_active_reuse_keys;
 use factory_lifecycle::{shutdown_factory_instances, shutdown_runtime, start_factories};
 use heartbeat::{
     HEARTBEAT_PERIOD, HeartbeatContext, HeartbeatContextInit, HeartbeatController,
@@ -1344,7 +1344,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // for the next 10-second tick.
     let park_notify = Arc::new(tokio::sync::Notify::new());
     let orphaned_active_runs = OrphanedActiveRuns::new();
-    let active_cli_agent_sessions = new_active_cli_agent_sessions();
+    let active_reuse_keys = new_active_reuse_keys();
     let held_session_snapshot = HeldSessionStateSnapshot::new();
     let mut orphan_reap_tick = tokio::time::interval_at(
         tokio::time::Instant::now() + Duration::from_secs(10),
@@ -1362,7 +1362,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         budget: &capacity.budget,
         provider: &*provider_state.provider,
         workspace_cache: exec_config.workspace_cache.clone(),
-        active_cli_agent_sessions: &active_cli_agent_sessions,
+        active_reuse_keys: &active_reuse_keys,
         held_session_snapshot: held_session_snapshot.clone(),
     });
     refresh_workspace_cache_held_session_snapshot(
@@ -1390,7 +1390,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         parking_gate: shared.parking_gate.clone(),
         park_notify: Arc::clone(&park_notify),
         usage_flush_tx,
-        active_cli_agent_sessions: active_cli_agent_sessions.clone(),
+        active_reuse_keys: active_reuse_keys.clone(),
         held_session_snapshot,
         device_rate_limits: capacity.device_rate_limits.clone(),
         #[cfg(test)]

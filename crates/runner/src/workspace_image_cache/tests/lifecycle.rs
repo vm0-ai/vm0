@@ -16,6 +16,63 @@ use crate::paths::{HomePaths, RunnerPaths, session_workspace_cache_key};
 use crate::storage_fingerprints::StorageFingerprints;
 
 #[tokio::test]
+async fn thread_cache_is_reusable_across_cli_session_rotation() {
+    let (_dir, paths, cache) = local_cache().await;
+    let reuse_key = "thread:chat-thread";
+    let first_run_id = RunId::new_v4();
+    let first_sandbox_id = sandbox::SandboxId::new_v4();
+    let first = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: first_run_id,
+                sandbox_id: first_sandbox_id,
+                profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some(reuse_key),
+                cli_agent_session_id: Some("provider-session-a"),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
+            workspace_drive_required: false,
+        })
+        .await;
+    assert_eq!(first.result(), WorkspaceCacheCheckoutResult::Miss);
+    let active_image = paths.active_workspace_image(&first_sandbox_id);
+    tokio::fs::create_dir_all(active_image.parent().unwrap())
+        .await
+        .unwrap();
+    tokio::fs::write(&active_image, b"image").await.unwrap();
+    assert!(
+        first
+            .promote(
+                first_run_id,
+                None,
+                WorkspaceCacheTerminalStatus::Success,
+                "2026-05-01T00:00:00.000Z".into(),
+                &StorageFingerprints::default(),
+            )
+            .await
+            .unwrap()
+    );
+
+    let rotated = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some(reuse_key),
+                cli_agent_session_id: Some("provider-session-b"),
+                working_dir: "/workspace",
+                image_size_bytes: 5,
+            },
+            workspace_drive_required: false,
+        })
+        .await;
+
+    assert_eq!(rotated.result(), WorkspaceCacheCheckoutResult::Hit);
+}
+
+#[tokio::test]
 async fn shared_cache_is_reusable_across_runner_base_dirs() {
     let dir = tempfile::tempdir().unwrap();
     let home = HomePaths::with_root(dir.path().join("home"));
@@ -41,6 +98,7 @@ async fn shared_cache_is_reusable_across_runner_base_dirs() {
                 run_id,
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some("sess-1"),
                 cli_agent_session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
@@ -73,6 +131,7 @@ async fn shared_cache_is_reusable_across_runner_base_dirs() {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some("sess-1"),
                 cli_agent_session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
@@ -127,6 +186,7 @@ async fn cache_hit_removes_metadata_and_returns_move_seed() {
                 run_id: RunId::new_v4(),
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some("sess-move-hit"),
                 cli_agent_session_id: Some("sess-move-hit"),
                 working_dir: "/workspace",
                 image_size_bytes: image_size,
@@ -172,6 +232,7 @@ async fn consumed_cache_hit_invalidation_tolerates_missing_current() {
                 run_id,
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some("sess-move-invalidate"),
                 cli_agent_session_id: Some("sess-move-invalidate"),
                 working_dir: "/workspace",
                 image_size_bytes: image_size,
@@ -215,6 +276,7 @@ async fn shared_cache_same_key_lock_blocks_other_runner_without_deadlock() {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some("sess-1"),
                 cli_agent_session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
@@ -230,6 +292,7 @@ async fn shared_cache_same_key_lock_blocks_other_runner_without_deadlock() {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some("sess-1"),
                 cli_agent_session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
@@ -256,6 +319,7 @@ async fn shared_cache_same_key_lock_blocks_other_runner_without_deadlock() {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some("sess-1"),
                 cli_agent_session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
@@ -296,6 +360,7 @@ async fn shared_cache_is_scoped_by_runner_group() {
                 run_id,
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some("sess-1"),
                 cli_agent_session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
@@ -328,6 +393,7 @@ async fn shared_cache_is_scoped_by_runner_group() {
                 run_id: RunId::new_v4(),
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some("sess-1"),
                 cli_agent_session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
@@ -379,7 +445,8 @@ async fn cache_hit_checkout_and_same_filesystem_promotion_do_not_require_copy_he
                 key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
-                session_id: "sess-1".into(),
+                reuse_key: "sess-1".into(),
+                cli_agent_session_id: "sess-1".into(),
                 working_dir: "/workspace".into(),
                 last_completed_at: "2026-05-01T00:00:00.000Z".into(),
                 last_used_at: "2026-05-01T00:00:00.000Z".into(),
@@ -414,6 +481,7 @@ async fn cache_hit_checkout_and_same_filesystem_promotion_do_not_require_copy_he
                 run_id,
                 sandbox_id,
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some("sess-1"),
                 cli_agent_session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: current_metadata.len(),
@@ -488,7 +556,8 @@ async fn active_lease_hides_cached_session_until_dropped() {
                 key_version: CACHE_KEY_VERSION,
                 cache_scope: String::new(),
                 profile_name: TEST_PROFILE_NAME.into(),
-                session_id: "sess-1".into(),
+                reuse_key: "sess-1".into(),
+                cli_agent_session_id: "sess-1".into(),
                 working_dir: "/workspace".into(),
                 last_completed_at: "2026-05-01T00:00:00.000Z".into(),
                 last_used_at: local_timestamp(),
@@ -513,6 +582,7 @@ async fn active_lease_hides_cached_session_until_dropped() {
                 run_id,
                 sandbox_id: sandbox::SandboxId::new_v4(),
                 profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some("sess-1"),
                 cli_agent_session_id: Some("sess-1"),
                 working_dir: "/workspace",
                 image_size_bytes: 5,
