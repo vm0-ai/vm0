@@ -228,8 +228,8 @@ async function publishRunnerCancellation(
   ) {
     return;
   }
-  // A null marker means the claim did not negotiate the API recovery barrier,
-  // so cooperative cancellation is unsafe even when the caller requested it.
+  // A null marker identifies a historical claim without the API recovery
+  // barrier, so cooperative cancellation is unsafe even when requested.
   const mode =
     result.cancellationRecoveryCompleted === null
       ? "hard"

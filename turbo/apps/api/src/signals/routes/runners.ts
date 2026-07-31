@@ -5,7 +5,6 @@ import {
   elapsedSinceApiStartMs,
   NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
   RESUME_SESSION_HISTORY_MAX_BYTES,
-  RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
   runnersNetworkPolicyRefreshContract,
   runnersBuiltinFirewallsResolveContract,
   runnersHeartbeatContract,
@@ -929,7 +928,6 @@ async function lockRunnerJob(
 async function transitionClaimedJobToRunning(
   db: Db,
   runId: string,
-  cancellationRecoverySupported: boolean,
   signal: AbortSignal,
   timing: ClaimRouteTimingCollector,
 ): Promise<ClaimTransitionResult> {
@@ -978,7 +976,7 @@ async function transitionClaimedJobToRunning(
               status = 'running',
               started_at = claim_clock."claimedAt",
               last_heartbeat_at = claim_clock."claimedAt",
-              cancellation_recovery_completed = ${cancellationRecoverySupported ? false : null}
+              cancellation_recovery_completed = false
             FROM locked_run
             INNER JOIN locked_job
               ON locked_job."runId" = locked_run."id"
@@ -2178,7 +2176,6 @@ const claimAuthorizedJob$ = command(
       readonly runId: string;
       readonly authType: RunnerAuthContext["type"];
       readonly jobWithRun: ClaimableJob;
-      readonly cancellationRecoverySupported: boolean;
       readonly telemetry: ClaimTimingTelemetry | undefined;
       readonly claimRequestStartedAtMs: number;
       readonly claimRouteTiming: ClaimRouteTimingCollector;
@@ -2250,7 +2247,6 @@ const claimAuthorizedJob$ = command(
         return await transitionClaimedJobToRunning(
           db,
           runId,
-          args.cancellationRecoverySupported,
           signal,
           claimRouteTiming,
         );
@@ -2318,10 +2314,6 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     runId,
     authType: auth.type,
     jobWithRun,
-    cancellationRecoverySupported:
-      body.data.capabilities?.includes(
-        RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
-      ) === true,
     telemetry: body.data.telemetry,
     claimRequestStartedAtMs,
     claimRouteTiming,

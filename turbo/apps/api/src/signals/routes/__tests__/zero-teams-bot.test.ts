@@ -30,6 +30,7 @@ import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createUserConfigBddApi } from "./helpers/api-bdd-user-config";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import {
   installTeamsForTest,
   removeTeamsForTest,
@@ -49,6 +50,7 @@ const authOrgApi = createAuthOrgAgentsBddApi(context);
 const computerUseApi = createComputerUseBddApi(context);
 const runsApi = createRunsApi(context);
 const userConfigApi = createUserConfigBddApi(context);
+const webhooksApi = createWebhookCallbackApi(context);
 const trackTeamsFixture = createFixtureTracker<TeamsConnectFixture>(
   async (fixture) => {
     await removeTeamsForTest(context.signal, fixture);
@@ -709,6 +711,18 @@ async function runIdForPrompt(
     throw new Error(`Expected Teams run for prompt: ${prompt}`);
   }
   return run.id;
+}
+
+async function completeCancelledRun(
+  runId: string,
+  sandboxToken: string,
+): Promise<void> {
+  await webhooksApi.requestAgentComplete(
+    { runId, exitCode: 1, error: "Run cancelled" },
+    { authorization: `Bearer ${sandboxToken}` },
+    [200],
+  );
+  await flushWaitUntilForTest();
 }
 
 function requestTokenFromUrl(authorizationUrl: string): string {
@@ -2025,8 +2039,9 @@ describe("POST /api/zero/teams/bot", () => {
     await readTeamsBotResponseAndFlush(initialResponse);
     const initialRunId = await runIdForPrompt(actor, "run before switching");
     await runsApi.heartbeatRunner(runnerGroup);
-    await runsApi.claimRunnerJob(initialRunId);
+    const initialClaim = await runsApi.claimRunnerJob(initialRunId);
     await runsApi.requestCancelRun(actor, initialRunId, [200]);
+    await completeCancelledRun(initialRunId, initialClaim.sandboxToken);
 
     const switchAgentResponse = await postTeamsActivity({
       activity: teamsPersonalMessageActivity({
@@ -2064,6 +2079,10 @@ describe("POST /api/zero/teams/bot", () => {
       "Your name is Teams switched agent.",
     );
     await runsApi.requestCancelRun(actor, switchedAgentRunId, [200]);
+    await completeCancelledRun(
+      switchedAgentRunId,
+      switchedAgentClaim.sandboxToken,
+    );
 
     const switchModelResponse = await postTeamsActivity({
       activity: teamsPersonalMessageActivity({
@@ -2805,6 +2824,7 @@ describe("POST /api/zero/teams/bot", () => {
       host.hostId,
     );
     await runsApi.requestCancelRun(actor, firstRunId, [200]);
+    await completeCancelledRun(firstRunId, firstClaim.sandboxToken);
 
     const secondResponse = await postTeamsActivity({
       activity: teamsPersonalThreadMessageActivity({

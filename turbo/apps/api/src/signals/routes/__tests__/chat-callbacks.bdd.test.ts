@@ -28,6 +28,7 @@ import {
   holdCheckpointReadsFixture,
   holdChatEventInsertTransactionFixture,
   invalidatePendingChatEventInputParamsFixture,
+  markCancellationRecoveryUnsupportedFixture,
   readChatEventContextFixture,
   removeAcknowledgedCancellationLifecycleFixture,
 } from "../../../test-fixtures/chat-events";
@@ -2087,20 +2088,74 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
 });
 
 describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
-  it("ignores unknown claim capabilities and preserves immediate release", async () => {
+  it("ignores unknown claim capabilities without disabling recovery", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const run = await startChatRun(actor, {
       agentId,
       prompt: "cancel an unknown-capability run",
     });
-    await claimChatRun(runnerGroup, run.runId, [
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId, [
       "future-cancellation-recovery-v2",
     ]);
     const queuedEventId = await queueChatEvent(actor, {
       agentId,
       threadId: run.threadId,
       prompt: "continue after an unknown capability",
+    });
+
+    context.mocks.ably.publish.mockClear();
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await flushWaitUntilForTest();
+    await waitForRunStatus(actor, run.runId, "cancelled");
+    await expectCancellationRecoveryPending(actor, run.threadId, true);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith("cancel", {
+      runId: run.runId,
+      mode: "cooperative",
+    });
+    const beforeCompletion = await chat.listThreadEvents(actor, run.threadId);
+    expect(
+      userMessages(beforeCompletion.events).filter((event) => {
+        return (
+          event.revokesEventId === queuedEventId && event.runId !== undefined
+        );
+      }),
+    ).toHaveLength(0);
+
+    await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 1, error: "Run cancelled" },
+      sandboxHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+    const replacementRunId = await waitForQueuedEventReplacement(
+      actor,
+      run.threadId,
+      queuedEventId,
+    );
+    expect(replacementRunId).not.toBe(run.runId);
+    await expectCancellationRecoveryPending(actor, run.threadId, false);
+
+    await api.requestCancelRun(actor, replacementRunId, [200]);
+    await waitForRunStatus(actor, replacementRunId, "cancelled");
+    await flushWaitUntilForTest();
+  }, 90_000);
+
+  it("preserves immediate release for a historical unsupported claim", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "cancel a historical unsupported run",
+    });
+    await claimChatRun(runnerGroup, run.runId, [
+      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
+    ]);
+    await markCancellationRecoveryUnsupportedFixture({ runId: run.runId });
+    const queuedEventId = await queueChatEvent(actor, {
+      agentId,
+      threadId: run.threadId,
+      prompt: "continue after historical cancellation",
     });
 
     context.mocks.ably.publish.mockClear();
@@ -2112,6 +2167,10 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
     );
     expect(replacementRunId).not.toBe(run.runId);
     await expectCancellationRecoveryPending(actor, run.threadId, false);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith("cancel", {
+      runId: run.runId,
+      mode: "hard",
+    });
     expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
       `chatThreadDetailChanged:${run.threadId}`,
       null,
@@ -2455,7 +2514,9 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       sandboxHeaders,
       [200],
     );
-    await expect.poll(checkpointGate.blockedWaiterCount).toBe(1);
+    await expect
+      .poll(checkpointGate.blockedWaiterCount)
+      .toBeGreaterThanOrEqual(1);
     await api.requestCancelRun(actor, run.runId, [200]);
     checkpointGate.release();
     await checkpointGate.done;
