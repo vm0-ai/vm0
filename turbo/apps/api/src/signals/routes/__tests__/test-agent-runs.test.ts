@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
 import { testAgentRunsContract } from "@vm0/api-contracts/contracts/test-agent-runs";
@@ -168,6 +168,18 @@ describe("POST /api/test/agent-runs", () => {
       return Promise.resolve([]);
     });
     context.mocks.axiom.query.mockClear();
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: response.body.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `db-only-${response.body.runId}`,
+        cliAgentSessionHistoryHash: createHash("sha256")
+          .update(`db-only output ${response.body.runId}`)
+          .digest("hex"),
+      },
+      sandboxHeaders,
+      [200],
+    );
     await webhooks.requestAgentComplete(
       {
         runId: response.body.runId,
