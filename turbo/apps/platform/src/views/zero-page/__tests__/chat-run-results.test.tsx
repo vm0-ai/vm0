@@ -1768,9 +1768,10 @@ describe("chat lifecycle", () => {
       expect(within(card).getByText(resetText)).toBeInTheDocument();
       click(within(card).getByRole("combobox", { name: "Switch model" }));
 
-      expect(
-        await screen.findByRole("option", { name: otherOption }),
-      ).toBeInTheDocument();
+      const alternative = await screen.findByRole("option", {
+        name: otherOption,
+      });
+      expect(alternative).toBeInTheDocument();
       expect(
         screen.getByRole("option", { name: currentOption }),
       ).toBeInTheDocument();
