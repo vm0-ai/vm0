@@ -128,8 +128,8 @@ for UNIT in "$UNIT_A" "$UNIT_B"; do
     || fail "$UNIT file remained after uninstall"
   [ ! -e "/run/systemd/system/${UNIT}.d/50-vm0-drain.conf" ] \
     || fail "$UNIT drain override remained after uninstall"
-  [ "$(sudo systemctl show "$UNIT" --property=NeedDaemonReload --value)" = "no" ] \
-    || fail "systemd remained dirty after uninstalling $UNIT"
+  [ "$(sudo systemctl show "$UNIT" --property=LoadState --value)" = "not-found" ] \
+    || fail "$UNIT remained loaded after uninstall"
 done
 
 SESSION_SCOPE="unit session-${XDG_SESSION_ID}.scope"
