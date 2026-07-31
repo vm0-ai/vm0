@@ -45,6 +45,43 @@ describe("POST /api/test/usage-settlement/process", () => {
     await expect(response.text()).resolves.toBe("Not found");
   });
 
+  it("returns 400 for an invalid run ID", async () => {
+    const app = createAppWithRoutes({
+      signal: context.signal,
+      routes: testUsageSettlementRoutes,
+    });
+
+    const response = await app.request(
+      testUsageSettlementContract.process.path,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ run_id: "not-a-run-id" }),
+      },
+    );
+
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 404 for an unknown run ID", async () => {
+    const app = createAppWithRoutes({
+      signal: context.signal,
+      routes: testUsageSettlementRoutes,
+    });
+
+    const response = await app.request(
+      testUsageSettlementContract.process.path,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ run_id: randomUUID() }),
+      },
+    );
+
+    expect(response.status).toBe(404);
+    await expect(response.text()).resolves.toBe("Not found");
+  });
+
   it("settles usage that arrives after an earlier run settlement", async () => {
     const fixture = await store.set(
       seedUsageInsightFixture$,

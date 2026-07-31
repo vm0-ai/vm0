@@ -10,7 +10,7 @@ export const testUsageSettlementRequestSchema = z.union([
     org_id: z.string().min(1),
   }),
   z.object({
-    run_id: z.string().min(1),
+    run_id: z.string().uuid(),
   }),
 ]);
 
