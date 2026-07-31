@@ -13134,7 +13134,7 @@ async function validateChatEventUserMessagePartBackfill(): Promise<void> {
 
   await createDatabase(testDb);
   try {
-    await runMigrationsUpTo(testDbUrl, 783);
+    await runMigrationsUpTo(testDbUrl, 784);
     const client = new Client({ connectionString: testDbUrl });
     await client.connect();
     try {
@@ -13365,7 +13365,7 @@ async function validateChatEventUserMessagePartBackfill(): Promise<void> {
         ],
       );
 
-      await applyMigrationsUpTo(client, 784);
+      await applyMigrationsUpTo(client, 785);
 
       const sourceRows = await client.query<{
         id: string;
