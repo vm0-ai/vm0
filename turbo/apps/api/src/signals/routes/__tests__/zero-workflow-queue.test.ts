@@ -654,6 +654,63 @@ describe("workflow queue", () => {
     ).resolves.toBeNull();
   });
 
+  it("preserves sub-millisecond FIFO order when draining workflow events", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    const busyRunId = await expectAcceptedRunId(
+      await postWorkflowWebhook(automation, "busy"),
+      automation.threadId,
+    );
+
+    expectAcceptedWithoutRun(
+      await postWorkflowWebhook(automation, "older pending event"),
+    );
+    expectAcceptedWithoutRun(
+      await postWorkflowWebhook(automation, "newer pending event"),
+    );
+    const pendingEvents = await pendingWorkflowEvents(automation.threadId);
+    expect(pendingEvents).toHaveLength(2);
+    const [lowerIdEvent, higherIdEvent] = [...pendingEvents].sort(
+      (left, right) => {
+        return left.id < right.id ? -1 : 1;
+      },
+    );
+    if (!lowerIdEvent || !higherIdEvent) {
+      throw new Error("Expected two pending workflow events");
+    }
+
+    // Make the lexicographically larger id the older event. Converting these
+    // database timestamps to JavaScript Date values collapses both to the same
+    // millisecond and would incorrectly make the lower id the queue head.
+    const sameMillisecond = new Date("2020-01-01T00:00:00.000Z");
+    await setWorkflowQueueEventCreatedAtFixture({
+      eventId: higherIdEvent.id,
+      createdAt: sameMillisecond,
+      microsecondOffset: 100,
+    });
+    await setWorkflowQueueEventCreatedAtFixture({
+      eventId: lowerIdEvent.id,
+      createdAt: sameMillisecond,
+      microsecondOffset: 900,
+    });
+
+    await completeRunThroughSandbox(scenario, busyRunId);
+    await expect(
+      wf.readThreadEvents(automation.threadId),
+    ).resolves.toContainEqual(
+      expect.objectContaining({
+        eventType: "input.prompt",
+        revokesEventId: higherIdEvent.id,
+        runId: expect.any(String),
+      }),
+    );
+    await expect(
+      pendingWorkflowEvents(automation.threadId),
+    ).resolves.toStrictEqual([
+      expect.objectContaining({ id: lowerIdEvent.id }),
+    ]);
+  });
+
   it("keeps workflow events queued until cancellation recovery completes", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);

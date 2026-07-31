@@ -1,7 +1,15 @@
-import { foldPendingChatQueueEvents } from "@vm0/api-contracts/contracts/chat-events";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { and, asc, eq, isNull, lt, notExists } from "drizzle-orm";
+import {
+  and,
+  asc,
+  eq,
+  isNull,
+  lt,
+  notExists,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 
 import type { Db } from "../external/db";
@@ -36,11 +44,22 @@ export function pendingChatQueueEventCondition(db: ChatQueueReadDb) {
   );
 }
 
+/** Database-native class priority shared by queue reads and atomic claims. */
+export function chatQueueEventPriority(): SQL {
+  return sql`CASE ${chatEvents.eventType}
+    WHEN 'input.prompt' THEN 0
+    WHEN 'input.automation' THEN 1
+    WHEN 'input.goal' THEN 2
+    ELSE 3
+  END`;
+}
+
 /**
- * Fold one thread's immutable input events into its pending queue. User input
+ * Read one thread's immutable input events as its pending queue. User input
  * keeps absolute priority over automation input, automation stays ahead of
  * goal continuation, then each class is FIFO by the original event timestamp
- * and id.
+ * and id. PostgreSQL must perform the ordering: JavaScript Date values discard
+ * database microseconds, while the atomic claim compares the full timestamp.
  */
 export async function listPendingChatQueueEvents(
   db: ChatQueueReadDb,
@@ -52,7 +71,6 @@ export async function listPendingChatQueueEvents(
       id: chatEvents.id,
       chatThreadId: chatEvents.chatThreadId,
       eventType: chatEvents.eventType,
-      runId: chatEvents.runId,
       createdAt: chatEvents.createdAt,
     })
     .from(chatEvents)
@@ -63,17 +81,13 @@ export async function listPendingChatQueueEvents(
         createdBefore ? lt(chatEvents.createdAt, createdBefore) : undefined,
       ),
     )
-    .orderBy(asc(chatEvents.createdAt), asc(chatEvents.id));
+    .orderBy(
+      chatQueueEventPriority(),
+      asc(chatEvents.createdAt),
+      asc(chatEvents.id),
+    );
 
-  const folded = foldPendingChatQueueEvents(
-    rows.map((row) => {
-      return {
-        ...row,
-        createdAt: row.createdAt.toISOString(),
-      };
-    }),
-  );
-  return folded.flatMap((event) => {
+  return rows.flatMap((event) => {
     if (
       event.eventType !== "input.prompt" &&
       event.eventType !== "input.automation" &&
@@ -86,7 +100,7 @@ export async function listPendingChatQueueEvents(
         id: event.id,
         chatThreadId: event.chatThreadId,
         eventType: event.eventType,
-        createdAt: new Date(event.createdAt),
+        createdAt: event.createdAt,
       },
     ];
   });

@@ -470,19 +470,22 @@ export async function replayPendingChatInputQueueEventFixture(args: {
   });
 }
 
-/**
- * Move one exact workflow event into historical state without waiting for real
- * time to pass. Product APIs cannot construct an already-stale queue item.
- */
+/** Set one exact workflow event's queue timestamp, including sub-ms ordering. */
 export async function setWorkflowQueueEventCreatedAtFixture(args: {
   readonly eventId: string;
   readonly createdAt: Date;
+  readonly microsecondOffset?: number;
 }): Promise<void> {
   const updated = await db().transaction(async (tx) => {
     await tx.execute(sql`SET LOCAL session_replication_role = replica`);
     return await tx
       .update(chatEvents)
-      .set({ createdAt: args.createdAt })
+      .set({
+        createdAt:
+          args.microsecondOffset === undefined
+            ? args.createdAt
+            : sql`${args.createdAt.toISOString()}::timestamp + ${args.microsecondOffset} * interval '1 microsecond'`,
+      })
       .where(
         and(
           eq(chatEvents.id, args.eventId),
