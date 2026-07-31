@@ -105,41 +105,34 @@ function addConnectorIconSearchParams(
   }
 }
 
-function connectorCallbackMetadataFromStorage(
+function connectorIconFromStorage(
   raw: string | null,
   connectorSlug: ConnectorSlug | null,
-): {
-  readonly connectorSlug: ConnectorSlug;
-  readonly icon: PublicConnectorCatalogIcon;
-} | null {
+): PublicConnectorCatalogIcon | undefined {
   if (!raw || !connectorSlug) {
-    return null;
+    return undefined;
   }
   const value = jsonParseOr<unknown>(raw, null);
-  if (typeof value !== "object" || value === null || !("icon" in value)) {
-    return null;
+  if (
+    typeof value !== "object" ||
+    value === null ||
+    !("connectorSlug" in value) ||
+    !("icon" in value)
+  ) {
+    return undefined;
   }
-  // TODO(#23823): Remove the legacy callback metadata fallback.
-  const storedConnectorSlug =
-    "connectorSlug" in value
-      ? value.connectorSlug
-      : "connectorRef" in value
-        ? value.connectorRef
-        : undefined;
-  const parsedConnectorSlug =
-    connectorSlugSchema.safeParse(storedConnectorSlug);
+  const parsedConnectorSlug = connectorSlugSchema.safeParse(
+    value.connectorSlug,
+  );
   const parsedIcon = publicConnectorCatalogIconSchema.safeParse(value.icon);
   if (
     !parsedConnectorSlug.success ||
     parsedConnectorSlug.data !== connectorSlug ||
     !parsedIcon.success
   ) {
-    return null;
+    return undefined;
   }
-  return {
-    connectorSlug: parsedConnectorSlug.data,
-    icon: parsedIcon.data,
-  };
+  return parsedIcon.data;
 }
 
 function resultFromPath(
@@ -235,12 +228,12 @@ export const setupConnectorCallbackPage$ = command(
       callbackConnectorSlug === "custom" ? null : callbackConnectorSlug;
     const label = connectorLabel(callbackConnectorSlug);
     const searchParams = get(searchParams$);
-    const storedMetadata = connectorCallbackMetadataFromStorage(
+    const storedConnectorIcon = connectorIconFromStorage(
       get(connectorAppOauthCallbackMetadataRaw$),
       connectorSlug,
     );
     const connectorIcon =
-      connectorIconFromSearchParams(searchParams) ?? storedMetadata?.icon;
+      connectorIconFromSearchParams(searchParams) ?? storedConnectorIcon;
     const pathResult = resultFromPath(
       typeof params?.status === "string" ? params.status : undefined,
       searchParams,
@@ -301,7 +294,7 @@ export const setupConnectorCallbackPage$ = command(
       { connectorSlug: callbackConnectorSlug, status: result.status },
       resultSearchParams,
     );
-    if (storedMetadata) {
+    if (storedConnectorIcon) {
       set(clearConnectorAppOauthCallbackMetadata$);
     }
   },

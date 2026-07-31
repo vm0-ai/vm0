@@ -37,7 +37,7 @@ export const permissionAllowAgentId$ = computed((get) => {
 
 export const permissionAllowConnectorSlug$ = computed((get) => {
   const searchParams = get(searchParams$);
-  // TODO(#23823): Remove the legacy serialized-action query fallback.
+  // Historical permission links may use ref from before CLI 9.270.1.
   return searchParams.get("connectorSlug") ?? searchParams.get("ref") ?? null;
 });
 

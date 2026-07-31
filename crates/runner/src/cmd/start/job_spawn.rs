@@ -12,7 +12,6 @@ use futures_util::FutureExt;
 use sandbox::SandboxId;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
-use tokio_util::sync::CancellationToken;
 use tracing::{error, warn};
 
 use super::active_sessions::{ActiveCliAgentSessionGuard, ActiveCliAgentSessions};
@@ -37,7 +36,9 @@ use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_logs;
 use crate::provider::{ClaimedJob, CompletionAuth, JobProvider};
 use crate::resource_budget::BudgetLease;
-use crate::run_cancellation::{RunCancellationHandle, RunCancellationRegistration};
+use crate::run_cancellation::{
+    RunCancellationHandle, RunCancellationRegistration, RunCancellationSignals,
+};
 use crate::status::StatusTracker;
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::telemetry::JobTelemetry;
@@ -105,7 +106,7 @@ struct ExecutorInvocation {
     reuse_result: SandboxReuseResult,
     pre_spawn_timing: RunnerPreSpawnTiming,
     session_history_restore_plan: SessionHistoryRestorePlan,
-    cancel: CancellationToken,
+    cancellation: RunCancellationSignals,
     sandbox_token: String,
     sandbox_prepared: Option<executor::SandboxPreparedNotifier>,
     active_input_source: Option<crate::active_input::ActiveInputSource>,
@@ -131,13 +132,14 @@ impl ExecutorInvocation {
             reuse_result,
             pre_spawn_timing,
             session_history_restore_plan,
-            cancel,
+            cancellation,
             sandbox_token,
             sandbox_prepared,
             active_input_source,
         } = self;
         let exec_config_for_panic = Arc::clone(&exec_config);
-        let cancel_for_executor = cancel.clone();
+        let cancel_for_outcome = cancellation.any();
+        let cancellation_for_executor = cancellation.clone();
 
         // Inner spawn isolates panics: if execute_job panics, the outer task
         // still reports completion and releases budget.
@@ -148,7 +150,7 @@ impl ExecutorInvocation {
                     context,
                     &exec_config,
                     &params,
-                    cancel_for_executor,
+                    cancellation_for_executor,
                     executor::ExecutionHooks {
                         sandbox_prepared: None,
                         active_input_source,
@@ -167,7 +169,7 @@ impl ExecutorInvocation {
                     },
                     &exec_config,
                     &params,
-                    cancel_for_executor,
+                    cancellation_for_executor,
                     executor::ExecutionHooks {
                         sandbox_prepared,
                         active_input_source,
@@ -181,7 +183,7 @@ impl ExecutorInvocation {
 
         match inner.await {
             Ok((mut outcome, telemetry)) => {
-                if cancel.is_cancelled() {
+                if cancel_for_outcome.is_cancelled() {
                     outcome.mark_cancelled();
                 }
                 let exit_code = outcome.exit_code();
@@ -586,7 +588,7 @@ pub(super) fn spawn_job(
         reuse_result,
         pre_spawn_timing,
         session_history_restore_plan,
-        cancel: job_cancel.token(),
+        cancellation: job_cancel.signals(),
         sandbox_token: sandbox_token.clone(),
         sandbox_prepared,
         active_input_source,

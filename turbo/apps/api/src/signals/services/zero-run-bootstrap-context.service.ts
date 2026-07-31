@@ -411,8 +411,7 @@ export function materializeZeroRunBootstrapContext(
           );
         }
         permissionGrants.push({
-          // TODO(#23619): Rename with the runner permission-grant payload.
-          connectorRef: row.name,
+          connectorSlug: row.name,
           permission: row.detail,
           action: row.action,
         });
@@ -430,7 +429,7 @@ export function materializeZeroRunBootstrapContext(
 
   permissionGrants.sort((left, right) => {
     return (
-      left.connectorRef.localeCompare(right.connectorRef) ||
+      left.connectorSlug.localeCompare(right.connectorSlug) ||
       left.permission.localeCompare(right.permission)
     );
   });

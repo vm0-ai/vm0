@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.150.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.150.3...runner-rs-v0.150.4) (2026-07-31)
+
+
+### Bug Fixes
+
+* **runner:** activate cooperative cancellation recovery ([#24200](https://github.com/vm0-ai/vm0/issues/24200)) ([69710c6](https://github.com/vm0-ai/vm0/commit/69710c639bfc0f6645c94df634dd277fe2a8b0e3))
+* **runner:** stop when dnsmasq exits ([#24197](https://github.com/vm0-ai/vm0/issues/24197)) ([33d5952](https://github.com/vm0-ai/vm0/commit/33d5952c61c0981ae9632f88d044cd4c882451d4))
+
+
+### Documentation
+
+* **python:** document public destination denial response modes ([#24190](https://github.com/vm0-ai/vm0/issues/24190)) ([c484213](https://github.com/vm0-ai/vm0/commit/c484213df65c6f057b8596c1d9d8ae9cc2503384))
+
+
+### Refactoring
+
+* **runner:** split idle reuse tests by behavior ([#24195](https://github.com/vm0-ai/vm0/issues/24195)) ([23d0a1d](https://github.com/vm0-ai/vm0/commit/23d0a1dd1877cc16d7fceab0d197b37066111d2c))
+
 ## [0.150.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.150.2...runner-rs-v0.150.3) (2026-07-31)
 
 

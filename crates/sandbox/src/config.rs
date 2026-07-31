@@ -101,11 +101,15 @@ pub struct DeviceRateLimits {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum WorkspaceDriveSeedImage {
     /// Copy the host-local ext4 image into this sandbox's active workspace
-    /// image. The source must remain intact and must never be mounted
-    /// read-write by the provider.
+    /// image. The caller retains ownership, and the source must remain intact
+    /// and must never be mounted read-write by the provider.
     Copy(PathBuf),
     /// Move the host-local ext4 image into this sandbox's active workspace
-    /// image. The source is consumed when sandbox preparation succeeds.
+    /// image. The caller retains ownership until the provider completes the
+    /// transfer and consumes the source from its original path. If the
+    /// transfer fails before that boundary, the source remains caller-owned.
+    /// After that boundary, a later sandbox-creation failure does not return
+    /// ownership or require the provider to restore the original path.
     Move(PathBuf),
 }
 

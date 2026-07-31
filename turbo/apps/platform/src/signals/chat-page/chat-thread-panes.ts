@@ -31,7 +31,6 @@ import {
   setCurrentRightThread$,
 } from "./chat-thread-pane-state.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
-import { setupChatThreadInitScroll$ } from "./setup-chat-thread-signals.ts";
 import { syncPrimaryThread$ } from "./sync-primary-thread.ts";
 import {
   autoOpenInitialThreadSidebar$,
@@ -211,7 +210,6 @@ const resolvePaneThread$ = command(
     });
     await Promise.all([
       set(loadDraft$, thread, isNew, signal),
-      set(setupChatThreadInitScroll$, thread, signal),
       set(thread.subscribeChatThread$, signal),
       set(autoOpenInitialThreadSidebar$, thread, signal),
       set(autoOpenThreadSidebar$, thread, signal),

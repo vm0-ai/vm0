@@ -52,7 +52,7 @@ describe("permission allow page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=approve`,
+      path: `/agents/${agentId}/permissions?connectorSlug=slack&permission=admin.analytics%3Aread&action=approve`,
       user: {
         id: "test-user-123",
         fullName: "Dana Analyst",
@@ -224,7 +224,7 @@ describe("permission allow page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${agentId}/permissions?ref=hidden-connector&permission=hidden.permission&action=allow`,
+      path: `/agents/${agentId}/permissions?connectorSlug=hidden-connector&permission=hidden.permission&action=allow`,
       user: {
         id: "test-user-123",
         fullName: "Dana Analyst",
@@ -240,7 +240,7 @@ describe("permission allow page", () => {
     expect(screen.queryByText("Confirm")).not.toBeInTheDocument();
   });
 
-  it("lets a user deny a connector permission without an expiry choice", async () => {
+  it("lets a user deny a connector permission from a legacy ref URL", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000002";
     let grants: UserPermissionGrantResponse[] = [
       {
@@ -359,7 +359,7 @@ describe("permission allow page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
+      path: `/agents/${agentId}/permissions?connectorSlug=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
       user: {
         id: "test-user-123",
         fullName: "Taylor Reviewer",
@@ -411,7 +411,7 @@ describe("permission allow page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
+      path: `/agents/${agentId}/permissions?connectorSlug=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
       user: {
         id: "test-user-123",
         fullName: "Taylor Reviewer",
@@ -461,7 +461,7 @@ describe("permission allow page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
+      path: `/agents/${agentId}/permissions?connectorSlug=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
       user: {
         id: "test-user-123",
         fullName: "Taylor Reviewer",
@@ -533,7 +533,7 @@ describe("permission allow page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
+      path: `/agents/${agentId}/permissions?connectorSlug=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
       user: {
         id: "test-user-123",
         fullName: "Taylor Reviewer",
@@ -580,7 +580,7 @@ describe("permission allow page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=deny`,
+      path: `/agents/${agentId}/permissions?connectorSlug=slack&permission=admin.analytics%3Aread&action=deny`,
       user: {
         id: "test-user-123",
         fullName: "Jordan Reviewer",
@@ -644,7 +644,7 @@ describe("permission allow page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${agentId}/permissions?ref=cloudflare&permission=__unknown__&action=allow&expiresIn=1h`,
+      path: `/agents/${agentId}/permissions?connectorSlug=cloudflare&permission=__unknown__&action=allow&expiresIn=1h`,
       user: {
         id: "test-user-123",
         fullName: "Casey Reviewer",
@@ -710,7 +710,7 @@ describe("permission allow page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${agentId}/permissions?ref=cloudflare&permission=__unknown__&action=allow&expiresIn=always`,
+      path: `/agents/${agentId}/permissions?connectorSlug=cloudflare&permission=__unknown__&action=allow&expiresIn=always`,
       user: {
         id: "test-user-123",
         fullName: "Riley Reviewer",
@@ -754,7 +754,7 @@ describe("permission allow page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
+      path: `/agents/${agentId}/permissions?connectorSlug=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
       user: {
         id: "test-user-123",
         fullName: "Avery Reviewer",
@@ -800,7 +800,7 @@ describe("permission allow page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
+      path: `/agents/${agentId}/permissions?connectorSlug=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
       user: {
         id: "test-user-123",
         fullName: "Quinn Reviewer",

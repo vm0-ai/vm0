@@ -705,35 +705,42 @@ impl Sandbox for MockSandbox {
         {
             *self.stdout_tx.lock_ignoring_poison() = Some(tx);
         }
-        let control = (request.control == ProcessControlMode::Enabled).then(|| {
-            let overrides = self.overrides.clone();
-            GuestProcessControlHandle::new(move |message_id, payload, timeout| {
-                let overrides = overrides.clone();
-                Box::pin(async move {
-                    if let Some(overrides) = overrides {
-                        overrides
-                            .process
-                            .process_control_calls
-                            .lock_ignoring_poison()
-                            .push(ProcessControlCall {
-                                message_id: message_id.clone(),
-                                payload,
-                                timeout,
-                            });
-                        overrides.process.process_control_notify.notify_waiters();
-                        if let Some((kind, message)) = overrides
-                            .process
-                            .process_control_errors
-                            .lock_ignoring_poison()
-                            .pop_front()
-                        {
-                            return Err(std::io::Error::new(kind, message));
-                        }
-                    }
-                    Ok(ProcessControlAck { message_id })
-                })
-            })
+        let process_control_supported = self.overrides.as_ref().is_none_or(|overrides| {
+            *overrides
+                .process
+                .process_control_supported
+                .lock_ignoring_poison()
         });
+        let control = (request.control == ProcessControlMode::Enabled && process_control_supported)
+            .then(|| {
+                let overrides = self.overrides.clone();
+                GuestProcessControlHandle::new(move |message_id, payload, timeout| {
+                    let overrides = overrides.clone();
+                    Box::pin(async move {
+                        if let Some(overrides) = overrides {
+                            overrides
+                                .process
+                                .process_control_calls
+                                .lock_ignoring_poison()
+                                .push(ProcessControlCall {
+                                    message_id: message_id.clone(),
+                                    payload,
+                                    timeout,
+                                });
+                            overrides.process.process_control_notify.notify_waiters();
+                            if let Some((kind, message)) = overrides
+                                .process
+                                .process_control_errors
+                                .lock_ignoring_poison()
+                                .pop_front()
+                            {
+                                return Err(std::io::Error::new(kind, message));
+                            }
+                        }
+                        Ok(ProcessControlAck { message_id })
+                    })
+                })
+            });
         let process_cancel = self.overrides.as_ref().and_then(|overrides| {
             if !*overrides
                 .process

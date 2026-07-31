@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.497.0](https://github.com/vm0-ai/vm0/compare/core-v8.496.4...core-v8.497.0) (2026-07-31)
+
+
+### Features
+
+* **platform:** enable multilingual locale rollout ([#24189](https://github.com/vm0-ai/vm0/issues/24189)) ([618bf9b](https://github.com/vm0-ai/vm0/commit/618bf9b4e379a8f3678314185b041faafdf07580))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.258.1
+
 ## [8.496.4](https://github.com/vm0-ai/vm0/compare/core-v8.496.3...core-v8.496.4) (2026-07-31)
 
 

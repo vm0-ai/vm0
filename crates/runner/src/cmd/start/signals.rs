@@ -375,7 +375,7 @@ pub(super) async fn handle_stopping_signal(
     let count = handles.len();
     for (run_id, handle) in handles {
         info!(run_id = %run_id, "cancelling active job for hard shutdown");
-        handle.cancel().await;
+        handle.request_hard_cancellation().await;
     }
     info!(active_jobs = count, "dispatched per-job cancellations");
     cancel.cancel();

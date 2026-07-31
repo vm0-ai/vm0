@@ -10,7 +10,8 @@ use tracing::{error, info, warn};
 
 use api_contracts::generated::{
     constants::runners::{
-        NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE, RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
+        NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE, RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
+        RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
     },
     routes,
 };
@@ -47,6 +48,7 @@ use sandbox::SandboxId;
 #[serde(rename_all = "camelCase")]
 struct ClaimRequestBody {
     telemetry: ClaimRequestTelemetry,
+    capabilities: [&'static str; 1],
 }
 
 #[derive(Serialize)]
@@ -1111,6 +1113,7 @@ fn claim_request_body(candidate: &JobCandidate) -> ClaimRequestBody {
     };
 
     ClaimRequestBody {
+        capabilities: [RUNNER_CANCELLATION_RECOVERY_CAPABILITY],
         telemetry: ClaimRequestTelemetry {
             discovery_source: candidate.discovery_source().map(JobDiscoverySource::as_str),
             job_discovered_to_claim_request_ms: claim_telemetry_duration_ms(
@@ -2005,7 +2008,10 @@ mod tests {
         assert!(!body.to_string().contains("historyHash"));
         assert!(!body.to_string().contains("cacheKey"));
         assert!(!body.to_string().contains("path"));
-        assert!(body.get("capabilities").is_none());
+        assert_eq!(
+            body["capabilities"],
+            serde_json::json!([RUNNER_CANCELLATION_RECOVERY_CAPABILITY])
+        );
     }
 
     #[test]

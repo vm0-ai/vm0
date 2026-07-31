@@ -235,7 +235,7 @@ function changedUserGrantPolicies({
   expiresInByPermission: GrantExpirationSelections;
 }): ChangedUserGrantPolicy[] {
   const initial = resolveFirewallMetadataPolicies(initialPolicies, [
-    { ...metadata, connectorRef: metadata.connectorSlug },
+    metadata,
   ])?.[connectorSlug];
   const current = policies[connectorSlug];
   const changes = new Map<string, ChangedUserGrantPolicy>();
@@ -275,10 +275,7 @@ function defaultFirewallPoliciesForConnector(
   metadata: PlatformConnectorPermissionMetadata,
 ): FirewallPolicies {
   return {
-    [metadata.connectorSlug]: expandFirewallMetadataDefaultPolicy({
-      ...metadata,
-      connectorRef: metadata.connectorSlug,
-    }),
+    [metadata.connectorSlug]: expandFirewallMetadataDefaultPolicy(metadata),
   };
 }
 

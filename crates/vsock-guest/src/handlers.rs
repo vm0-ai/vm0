@@ -19,7 +19,8 @@ use crate::shutdown::handle_shutdown;
 use crate::threading::{SystemThreadSpawner, ThreadSpawner, spawn_scoped_named};
 use crate::user::apply_write_file_identity;
 use crate::wait::{
-    WaitOutcome, await_drain_deadline, wait_with_kill_timeout_or_connection_cancelled,
+    DRAIN_DEADLINE, WaitOutcome, await_drain_deadline,
+    wait_with_kill_timeout_or_connection_cancelled,
 };
 
 const THREAD_WRITE_STDERR: &str = "vsock-write-stderr";
@@ -175,7 +176,7 @@ where
             Err(e) => {
                 cancel.store(true, std::sync::atomic::Ordering::Release);
                 kill_and_reap_child(child);
-                let _ = await_drain_deadline(&done_rx, 1, &cancel);
+                let _ = await_drain_deadline(&done_rx, 1, &cancel, DRAIN_DEADLINE);
                 let _ = stderr_handle.join();
                 return (false, format!("Failed to spawn stdin writer thread: {e}"));
             }
@@ -197,7 +198,7 @@ where
             Err(panic) => std::panic::resume_unwind(panic),
         };
 
-        let _ = await_drain_deadline(&done_rx, 1, &cancel);
+        let _ = await_drain_deadline(&done_rx, 1, &cancel, DRAIN_DEADLINE);
         let stderr = stderr_handle.join().unwrap_or_default();
 
         match outcome {

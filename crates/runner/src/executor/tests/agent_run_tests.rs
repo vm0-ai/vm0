@@ -40,7 +40,7 @@ use super::super::diagnostics::AgentStdoutStreamDiagnostics;
 use super::super::storage::guest_download_stdin_command;
 use super::super::telemetry::RunnerSpawnTiming;
 use super::super::{
-    EXIT_SIGKILL, PROCESS_CANCEL_WRITE_TIMEOUT, RestoredSessionIdentity,
+    EXIT_SIGKILL, PROCESS_CANCEL_TIMEOUTS, PROCESS_CANCEL_WRITE_TIMEOUT, RestoredSessionIdentity,
     SessionHistoryMaterializer, SessionHistoryRestoreFallback, SessionHistoryRestorePlan,
     effective_cli_framework,
 };
@@ -48,8 +48,8 @@ use super::support::{
     CancelAtProcessBoundarySandbox, OperationGateSandbox, ProcessCancellationPoint,
     RUN_IN_SANDBOX_TEST_TIMEOUT, SandboxGatePoint, api_artifact, api_storage,
     create_overridden_sandbox, minimal_context, sandbox_exec_error, sandbox_read_file_error,
-    spawn_run_in_sandbox_test, spawn_run_in_sandbox_test_with_timeouts, test_executor_config,
-    test_telemetry,
+    spawn_run_in_sandbox_test, spawn_run_in_sandbox_test_with_cancellation,
+    spawn_run_in_sandbox_test_with_timeouts, test_executor_config, test_telemetry,
 };
 use crate::active_input::ActiveInputSource;
 use crate::local_queue::{ActiveInputEntry, LocalQueue};
@@ -57,6 +57,7 @@ use crate::restored_session_identity::{
     RestoredSessionHistoryHashSizeRelationship, RestoredSessionHistoryPrefixAttribution,
     RestoredSessionIdentityMismatchReason,
 };
+use crate::run_cancellation::RunCancellationHandle;
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
 use crate::storage_manifest::StorageManifest;
 use crate::telemetry::SessionHistoryTelemetrySnapshot;
@@ -4217,6 +4218,281 @@ async fn run_in_sandbox_cancels_guest_process_and_waits_for_terminal_status() {
             stream_overflowed: true,
         }
     );
+    assert!(overrides.process_control_calls().is_empty());
+}
+
+#[tokio::test]
+async fn run_in_sandbox_requests_cooperative_user_cancellation() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let wait_gate = MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let ctx = minimal_context();
+    let run_id = ctx.run_id;
+    let cancellation = RunCancellationHandle::new();
+    let run_task = spawn_run_in_sandbox_test_with_cancellation(
+        sandbox,
+        ctx,
+        config,
+        cancellation.signals(),
+        PROCESS_CANCEL_TIMEOUTS,
+    );
+    wait_gate
+        .wait_entered(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
+        .await
+        .expect("run should enter process wait before cancellation");
+
+    cancellation.request_cooperative_user_cancellation().await;
+    assert!(
+        overrides
+            .wait_for_process_control_calls(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
+            .await
+    );
+    wait_gate.release_one();
+
+    let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    let calls = overrides.process_control_calls();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].message_id, format!("user-cancellation:{run_id}"));
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&calls[0].payload).unwrap(),
+        serde_json::json!({ "type": "user-cancellation" })
+    );
+    assert_eq!(calls[0].timeout, PROCESS_CANCEL_WRITE_TIMEOUT);
+    assert!(overrides.process_cancel_calls().is_empty());
+    assert_eq!(
+        result.failure.as_ref().map(|failure| failure.exit_code),
+        Some(EXIT_SIGKILL)
+    );
+}
+
+#[tokio::test]
+async fn run_in_sandbox_falls_back_when_cooperative_cancellation_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let wait_gate = MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    overrides.push_process_control_error("guest rejected cancellation");
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let ctx = minimal_context();
+    let cancellation = RunCancellationHandle::new();
+    let run_task = spawn_run_in_sandbox_test_with_cancellation(
+        sandbox,
+        ctx,
+        config,
+        cancellation.signals(),
+        PROCESS_CANCEL_TIMEOUTS,
+    );
+    wait_gate
+        .wait_entered(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
+        .await
+        .expect("run should enter process wait before cancellation");
+
+    cancellation.request_cooperative_user_cancellation().await;
+    assert!(
+        overrides
+            .wait_for_process_cancel_calls(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
+            .await
+    );
+
+    let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(overrides.process_control_calls().len(), 1);
+    assert_eq!(overrides.process_cancel_calls().len(), 1);
+    assert_eq!(
+        result.failure.as_ref().map(|failure| failure.exit_code),
+        Some(EXIT_SIGKILL)
+    );
+}
+
+#[tokio::test]
+async fn run_in_sandbox_falls_back_when_process_control_is_unavailable() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let wait_gate = MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    overrides.set_process_control_supported(false);
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let ctx = minimal_context();
+    let cancellation = RunCancellationHandle::new();
+    let run_task = spawn_run_in_sandbox_test_with_cancellation(
+        sandbox,
+        ctx,
+        config,
+        cancellation.signals(),
+        PROCESS_CANCEL_TIMEOUTS,
+    );
+    wait_gate
+        .wait_entered(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
+        .await
+        .expect("run should enter process wait before cancellation");
+
+    cancellation.request_cooperative_user_cancellation().await;
+    assert!(
+        overrides
+            .wait_for_process_cancel_calls(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
+            .await
+    );
+
+    let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert!(overrides.process_control_calls().is_empty());
+    assert_eq!(overrides.process_cancel_calls().len(), 1);
+    assert_eq!(
+        result.failure.as_ref().map(|failure| failure.exit_code),
+        Some(EXIT_SIGKILL)
+    );
+}
+
+#[tokio::test]
+async fn run_in_sandbox_forces_cancellation_when_cooperative_wait_fails() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let wait_gate = MockLifecycleGate::new();
+    let mut overrides = sandbox_mock::MockSandboxOverrides::new();
+    overrides.set_wait_process_error("wait failed during cooperative cancellation");
+    let overrides = Arc::new(overrides);
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let ctx = minimal_context();
+    let cancellation = RunCancellationHandle::new();
+    let run_task = spawn_run_in_sandbox_test_with_cancellation(
+        sandbox,
+        ctx,
+        config,
+        cancellation.signals(),
+        PROCESS_CANCEL_TIMEOUTS,
+    );
+    wait_gate
+        .wait_entered(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
+        .await
+        .expect("run should enter process wait before cancellation");
+
+    cancellation.request_cooperative_user_cancellation().await;
+    assert!(
+        overrides
+            .wait_for_process_control_calls(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
+            .await
+    );
+    wait_gate.release_one();
+
+    let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(overrides.process_control_calls().len(), 1);
+    assert_eq!(overrides.process_cancel_calls().len(), 1);
+    assert_eq!(
+        result.failure.as_ref().map(|failure| failure.exit_code),
+        Some(EXIT_SIGKILL)
+    );
+}
+
+#[tokio::test]
+async fn run_in_sandbox_falls_back_when_cooperative_grace_expires() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let wait_gate = MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let ctx = minimal_context();
+    let cancellation = RunCancellationHandle::new();
+    let run_task = spawn_run_in_sandbox_test_with_cancellation(
+        sandbox,
+        ctx,
+        config,
+        cancellation.signals(),
+        ProcessCancelTimeouts {
+            cooperative_grace: Duration::ZERO,
+            ..PROCESS_CANCEL_TIMEOUTS
+        },
+    );
+    wait_gate
+        .wait_entered(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
+        .await
+        .expect("run should enter process wait before cancellation");
+
+    cancellation.request_cooperative_user_cancellation().await;
+    assert!(
+        overrides
+            .wait_for_process_cancel_calls(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
+            .await
+    );
+
+    let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(overrides.process_control_calls().len(), 1);
+    assert_eq!(overrides.process_cancel_calls().len(), 1);
+    assert_eq!(
+        result.failure.as_ref().map(|failure| failure.exit_code),
+        Some(EXIT_SIGKILL)
+    );
+}
+
+#[tokio::test]
+async fn hard_cancellation_preempts_cooperative_recovery() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let wait_gate = MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let ctx = minimal_context();
+    let cancellation = RunCancellationHandle::new();
+    let run_task = spawn_run_in_sandbox_test_with_cancellation(
+        sandbox,
+        ctx,
+        config,
+        cancellation.signals(),
+        PROCESS_CANCEL_TIMEOUTS,
+    );
+    wait_gate
+        .wait_entered(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
+        .await
+        .expect("run should enter process wait before cancellation");
+
+    cancellation.request_cooperative_user_cancellation().await;
+    assert!(
+        overrides
+            .wait_for_process_control_calls(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
+            .await
+    );
+    cancellation.request_hard_cancellation().await;
+    assert!(
+        overrides
+            .wait_for_process_cancel_calls(1, RUN_IN_SANDBOX_TEST_TIMEOUT)
+            .await
+    );
+
+    let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(overrides.process_cancel_calls().len(), 1);
+    assert_eq!(
+        result.failure.as_ref().map(|failure| failure.exit_code),
+        Some(EXIT_SIGKILL)
+    );
 }
 
 #[tokio::test]
@@ -4342,6 +4618,7 @@ async fn run_in_sandbox_returns_cancelled_when_terminal_grace_times_out() {
         ProcessCancelTimeouts {
             write: PROCESS_CANCEL_WRITE_TIMEOUT,
             terminal_grace: Duration::ZERO,
+            cooperative_grace: Duration::ZERO,
         },
     );
     wait_gate
