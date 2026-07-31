@@ -4614,6 +4614,11 @@
       "description": "Esta versão do {{brandName}} não é mais compatível. Atualize a página para carregar a versão mais recente.",
       "title": "Atualização necessária"
     },
+    "mermaid": {
+      "diagramLabel": "Diagrama",
+      "expand": "Ampliar diagrama",
+      "viewSource": "Código do diagrama"
+    },
     "notFound": {
       "description": "A página que você procura não existe.",
       "title": "Página não encontrada"
