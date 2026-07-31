@@ -85,6 +85,7 @@ export enum FeatureSwitchKey {
   StrapiIntegration = "strapiIntegration",
   ArtifactKeyV2 = "artifactKeyV2",
   HostedArtifactVersions = "hostedArtifactVersions",
+  HtmlResourceIndex = "htmlResourceIndex",
   VideoArtifactPosters = "videoArtifactPosters",
   WorkflowConnectorReadiness = "workflowConnectorReadiness",
   ComposerConnectorPermissions = "composerConnectorPermissions",

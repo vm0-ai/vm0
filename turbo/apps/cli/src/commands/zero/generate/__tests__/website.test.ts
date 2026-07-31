@@ -9,8 +9,30 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import chalk from "chalk";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { generateCommand } from "../index";
 import { websiteCommand } from "../website";
+
+function buildZeroToken(
+  featureSwitchOverrides: Partial<Record<FeatureSwitchKey, boolean>>,
+): string {
+  const header = Buffer.from(JSON.stringify({ alg: "HS256" })).toString(
+    "base64url",
+  );
+  const payload = Buffer.from(
+    JSON.stringify({
+      userId: "user-1",
+      runId: "run-1",
+      orgId: "org-1",
+      scope: "zero",
+      capabilities: [],
+      featureSwitchOverrides,
+      iat: 1000,
+      exp: 2000,
+    }),
+  ).toString("base64url");
+  return `vm0_sandbox_${header}.${payload}.test-signature`;
+}
 
 describe("zero generate website command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
@@ -98,6 +120,44 @@ describe("zero generate website command", () => {
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(
       "zero host ./generated/mockups/clearpath --site clearpath --spa",
+    );
+  });
+
+  it("should use the static website resource index when enabled", async () => {
+    vi.stubEnv(
+      "ZERO_TOKEN",
+      buildZeroToken({
+        [FeatureSwitchKey.HtmlResourceIndex]: true,
+      }),
+    );
+
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "website",
+      "--prompt",
+      "observability launch site",
+      "--title",
+      "Clearpath",
+    ]);
+
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain(
+      "https://static.vm0.io/html-resources/9e005c4ace807d67338dfa701877df10175a4d2a1c677dea1414aba76867493d/website.json",
+    );
+    expect(stdout).not.toContain("## Candidate Registry Slice");
+    expect(stdout).not.toContain('"id": "template:black-slabs"');
+    expect(stdout).toContain(
+      "There is no fixed selection count for any resource type.",
+    );
+    expect(stdout).toContain(
+      "The Website index includes vm0 built-in R2 template packages as template entries with `source.archive`.",
+    );
+    expect(stdout).toContain(
+      "Each built-in Website template entry includes the exact pull command and extracted package path in `source.pull`.",
+    );
+    expect(stdout).toContain(
+      "run its exact `source.pull.command`, then use `source.pull.resolvedPath`.",
     );
   });
 
