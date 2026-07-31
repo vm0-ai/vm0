@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
+import builtin_connector_diagnostics
 import builtin_firewall_cache
 import registry
 from tests.registry_builtin_helpers import cache_firewall, write_catalog_cache
@@ -346,6 +347,52 @@ class TestRegistryBuiltinCatalogValidation:
         firewall["apis"][0]["permissions"][0]["rules"] = []
 
         _assert_cache_firewall_is_invalid(tmp_path, mitm_ctx, firewall)
+
+    @pytest.mark.parametrize("permission_name", ["all", "__unknown__"])
+    def test_reserved_permission_runner_catalog_cache_fails_closed(
+        self, tmp_path, mitm_ctx, permission_name
+    ):
+        registry_path = tmp_path / "registry.json"
+        cache_path = tmp_path / "builtin-firewall-catalog-cache.json"
+        firewall = cache_firewall("fallback", "https://cache.example.com")
+        firewall["apis"][0]["permissions"][0]["name"] = permission_name
+        write_catalog_cache(
+            cache_path,
+            digest="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            version="catalog-a",
+            firewalls={"fallback": firewall},
+        )
+        write_multi_vm_registry(
+            registry_path,
+            {"10.200.0.1": builtin_vm("run-fallback", "fallback")},
+        )
+
+        with mitm_ctx(
+            registry_path=str(registry_path),
+            builtin_firewall_catalog_cache_path=str(cache_path),
+        ):
+            cache_snapshot = builtin_firewall_cache.load_catalog_snapshot(str(cache_path))
+            assert cache_snapshot.dependency_file_key is not None
+            assert cache_snapshot.catalog is None
+            assert cache_snapshot.unavailable_reason == "cache_invalid"
+
+            diagnostic_snapshot = builtin_connector_diagnostics.load_diagnostic_snapshot(
+                cache_snapshot
+            )
+            assert diagnostic_snapshot.catalog_identity is None
+            assert diagnostic_snapshot.catalog is None
+            assert diagnostic_snapshot.unavailable_reason == "cache_invalid"
+
+            diagnostic_candidate = builtin_connector_diagnostics.find_candidate(
+                diagnostic_snapshot,
+                "https://cache.example.com/items",
+                "GET",
+                active_firewall_names=set(),
+            )
+            assert diagnostic_candidate is None
+
+            invalid_vm = assert_invalid_builtin_vm(registry_path)
+            assert "catalog cache unavailable: cache_invalid" in invalid_vm.message
 
     def test_malformed_rule_runner_catalog_cache_fails_closed(self, tmp_path, mitm_ctx):
         firewall = cache_firewall("fallback", "https://cache.example.com")
