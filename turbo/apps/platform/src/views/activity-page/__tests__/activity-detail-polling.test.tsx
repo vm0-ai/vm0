@@ -2550,7 +2550,7 @@ describe("activity detail polling", () => {
     const secondRunId = "a0000000-0000-4000-a000-000000000502";
     const firstCursor = "time:asc:2026-03-10T17%3A00%3A01Z:cursor-first-2";
     const secondCursor = "time:asc:2026-03-10T18%3A00%3A01Z:cursor-second-2";
-    const stalePage = Promise.withResolvers<void>();
+    const stalePage = context.mocks.deferred<void>();
     let firstSecondPageRequested = false;
 
     const logEntry = (timestamp: string, url: string): NetworkLogEntry => {
@@ -2710,8 +2710,8 @@ describe("activity detail polling", () => {
   it("does not render stale context after changing activity", async () => {
     const firstRunId = "a0000000-0000-4000-a000-000000000505";
     const secondRunId = "a0000000-0000-4000-a000-000000000506";
-    const secondContextResponse = Promise.withResolvers<void>();
-    const secondContextRequested = Promise.withResolvers<void>();
+    const secondContextResponse = context.mocks.deferred<void>();
+    const secondContextRequested = context.mocks.deferred<void>();
 
     context.mocks.data.composesList([]);
     context.mocks.api(logsByIdContract.getById, ({ params, respond }) => {
@@ -2793,8 +2793,8 @@ describe("activity detail polling", () => {
   it("does not render stale step messages after changing activity", async () => {
     const firstRunId = "a0000000-0000-4000-a000-000000000503";
     const secondRunId = "a0000000-0000-4000-a000-000000000504";
-    const secondEventsResponse = Promise.withResolvers<void>();
-    const secondEventsRequested = Promise.withResolvers<void>();
+    const secondEventsResponse = context.mocks.deferred<void>();
+    const secondEventsRequested = context.mocks.deferred<void>();
 
     const assistantTextEvent = (
       sequenceNumber: number,

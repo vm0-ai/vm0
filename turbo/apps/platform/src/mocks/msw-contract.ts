@@ -66,15 +66,13 @@ async function withSignal<T>(
   if (signal.aborted) {
     throw getAbortReason(signal);
   }
-  const { promise: aborted, reject } = Promise.withResolvers<never>();
-  const onAbort = () => {
-    reject(getAbortReason(signal));
-  };
-  signal.addEventListener("abort", onAbort, { once: true });
+  const aborted = createDeferredPromise<never>(signal);
   try {
-    return await Promise.race([promise, aborted]);
+    return await Promise.race([promise, aborted.promise]);
   } finally {
-    signal.removeEventListener("abort", onAbort);
+    if (!aborted.settled()) {
+      aborted.reject(getAbortReason(signal));
+    }
   }
 }
 

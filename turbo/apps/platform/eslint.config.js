@@ -189,10 +189,11 @@ export default [
       "ccstate/no-direct-local-storage": "off",
     },
   },
-  // Allow new Promise() in dedicated infrastructure helpers that wrap browser
-  // primitives. App code should continue using createDeferredPromise().
+  // Allow Promise primitives in the centralized deferred helper and dedicated
+  // browser wrappers. App code should continue using createDeferredPromise().
   {
     files: [
+      "src/signals/utils.ts",
       "src/polyfill.ts",
       "src/views/zero-page/components/org-manage/read-image-dimensions.ts",
     ],

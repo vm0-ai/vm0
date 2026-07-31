@@ -1861,8 +1861,8 @@ describe("chat event action cards", () => {
       configurable: true,
     });
     const openAuthWindow = context.mocks.browser.open(authWindow);
-    const refreshStarted = Promise.withResolvers<void>();
-    const completeRefresh = Promise.withResolvers<void>();
+    const refreshStarted = context.mocks.deferred<void>();
+    const completeRefresh = context.mocks.deferred<void>();
     let reconnectRequired = true;
     let pauseReadyRefresh = false;
     let catalogRequests = 0;

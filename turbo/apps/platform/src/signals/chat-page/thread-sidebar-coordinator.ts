@@ -1,10 +1,6 @@
 import { command, computed } from "ccstate";
 
 import {
-  chatThreadSidebarAutoOpenEnabled$,
-  zeroBrowserEnabled$,
-} from "../external/feature-switch.ts";
-import {
   classifyChatAttachment,
   previewAttachmentFromUrl,
 } from "./parse-body-blocks.ts";
@@ -13,13 +9,7 @@ import {
   currentRightThread$,
 } from "./chat-thread-pane-state.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
-import { CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY } from "./chat-thread-sidebar-layout.ts";
 import type { ArtifactRef, ThreadSidebarTarget } from "./thread-sidebar.ts";
-import {
-  threadSidebarAutoOpenCandidateKey,
-  type ThreadSidebarAutoOpenCandidate,
-} from "./thread-sidebar-auto-open.ts";
-import { settle } from "../utils.ts";
 
 // ---------------------------------------------------------------------------
 // Page-level coordinator for the thread-owned utility sidebar. Sidebar state
@@ -65,103 +55,6 @@ const openOnThread$ = command(
       }
     }
     set(thread.sidebar.open$, target);
-  },
-);
-
-function targetFromAutoOpenCandidate(
-  _candidate: ThreadSidebarAutoOpenCandidate,
-): ThreadSidebarTarget {
-  return { type: "browser" };
-}
-
-const autoOpenThreadSidebarFromBrowserLifecycle$ = command(
-  async (
-    { get, set },
-    thread: ChatThreadSignals,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    if (
-      !get(chatThreadSidebarAutoOpenEnabled$) ||
-      !get(zeroBrowserEnabled$) ||
-      typeof window === "undefined" ||
-      !window.matchMedia(CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY).matches
-    ) {
-      return;
-    }
-
-    const candidate = await get(thread.sidebarAutoOpenCandidate$);
-    signal.throwIfAborted();
-    if (!candidate) {
-      return;
-    }
-
-    const visible = [get(currentLeftThread$), get(currentRightThread$)].some(
-      (current) => {
-        return current === thread;
-      },
-    );
-    if (!visible) {
-      return;
-    }
-
-    const candidateKey = threadSidebarAutoOpenCandidateKey(candidate);
-    if (!set(thread.sidebar.claimAutoOpenCandidate$, candidateKey)) {
-      return;
-    }
-    if (
-      !get(chatThreadSidebarAutoOpenEnabled$) ||
-      !get(zeroBrowserEnabled$) ||
-      typeof window === "undefined" ||
-      !window.matchMedia(CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY).matches ||
-      get(activeThreadSidebar$) !== null
-    ) {
-      return;
-    }
-    set(openOnThread$, thread, targetFromAutoOpenCandidate(candidate));
-  },
-);
-
-export const autoOpenInitialThreadSidebar$ = command(
-  async (
-    { get, set },
-    thread: ChatThreadSignals,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    await get(thread.indexedDbEventsInitialized$);
-    signal.throwIfAborted();
-    // A lifecycle event in the locally cached/forward-synced window is
-    // authoritative because every newer remote event has already been merged.
-    // When that window has no lifecycle event and does not reach seqId 1,
-    // older history may still contain an unmatched browser.started, so finish
-    // the backfill before deciding that the browser is inactive.
-    const browserLifecycleAuthoritative = await get(
-      thread.initialBrowserLifecycleAuthoritative$,
-    );
-    signal.throwIfAborted();
-    if (!browserLifecycleAuthoritative) {
-      await get(thread.initialRemoteEventsComplete$);
-    }
-    signal.throwIfAborted();
-    const result = await settle(
-      set(autoOpenThreadSidebarFromBrowserLifecycle$, thread, signal),
-      signal,
-    );
-    set(thread.sidebar.enableEntryAnimations$);
-    if (!result.ok) {
-      throw result.error;
-    }
-  },
-);
-
-export const autoOpenThreadSidebar$ = command(
-  async (
-    { get, set },
-    thread: ChatThreadSignals,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    await get(thread.initialRemoteEventsReady$);
-    signal.throwIfAborted();
-    await set(autoOpenThreadSidebarFromBrowserLifecycle$, thread, signal);
   },
 );
 

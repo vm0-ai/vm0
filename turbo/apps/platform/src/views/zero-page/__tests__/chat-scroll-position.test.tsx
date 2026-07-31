@@ -461,6 +461,78 @@ function mockLiveThread({
   };
 }
 
+function mockBackfilledHistoryScroll({
+  threadId,
+  finalScrollHeight,
+}: {
+  readonly threadId: string;
+  readonly finalScrollHeight: number;
+}): {
+  readonly historyGate: ReturnType<typeof context.mocks.deferred<void>>;
+  readonly historyMessage: string;
+  readonly currentMessage: string;
+} {
+  const clientHeight = 300;
+  const currentMessageHeight = 80;
+  const historyGate = context.mocks.deferred<void>();
+  const historyMessage = `Backfilled history ${threadId}`;
+  const currentMessage = `Current tail ${threadId}`;
+  const currentEventId = `backfill-tail-current-${threadId}`;
+  mockChatLifecycle(context, {
+    threadId,
+    threadTitle: "Backfill tail",
+    historyEvents: [
+      {
+        id: `backfill-tail-history-${threadId}`,
+        role: "user",
+        content: historyMessage,
+        runId: `backfill-tail-history-run-${threadId}`,
+        createdAt: "2026-07-30T09:00:00Z",
+      },
+    ],
+    chatEvents: [
+      {
+        id: currentEventId,
+        role: "user",
+        content: currentMessage,
+        runId: `backfill-tail-current-run-${threadId}`,
+        createdAt: "2026-07-30T10:00:00Z",
+      },
+    ],
+    beforeHistoryGate: historyGate.promise,
+  });
+  const historyRendered = () => {
+    return document.body.textContent?.includes(historyMessage) ?? false;
+  };
+  installChatLayout(
+    new Map([
+      [
+        threadId,
+        {
+          clientHeight: () => {
+            return clientHeight;
+          },
+          scrollHeight: () => {
+            return historyRendered() ? finalScrollHeight : 160;
+          },
+          eventRect: (eventId) => {
+            if (eventId !== currentEventId) {
+              return undefined;
+            }
+            return {
+              top: historyRendered()
+                ? finalScrollHeight - currentMessageHeight
+                : 80,
+              height: currentMessageHeight,
+            };
+          },
+        },
+      ],
+    ]),
+  );
+  return { historyGate, historyMessage, currentMessage };
+}
+
 describe("chat scroll position", () => {
   it("does not scroll an empty thread", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000800";
@@ -495,6 +567,59 @@ describe("chat scroll position", () => {
       screen.findByText("Send a message to start the conversation"),
     ).resolves.toBeInTheDocument();
     expect(chatScrollContainer().scrollTop).toBe(0);
+  });
+
+  it("keeps scrollTop at zero when backfilled history does not fill the viewport", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000807";
+    const { historyGate, historyMessage, currentMessage } =
+      mockBackfilledHistoryScroll({ threadId, finalScrollHeight: 260 });
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    const container = await waitFor(() => {
+      expect(screen.getByText(currentMessage)).toBeInTheDocument();
+      expect(
+        document.querySelector("[data-history-backfill-skeleton]"),
+      ).not.toBeNull();
+      const current = chatScrollContainer();
+      expect(current.scrollTop).toBe(0);
+      return current;
+    });
+    historyGate.resolve();
+    await waitFor(() => {
+      expect(screen.getByText(historyMessage)).toBeInTheDocument();
+      expect(
+        document.querySelector("[data-history-backfill-skeleton]"),
+      ).toBeNull();
+      expect(container.scrollHeight).toBeLessThan(container.clientHeight);
+      expect(container.scrollTop).toBe(0);
+    });
+  });
+
+  it("scrolls to the bottom when backfilled history fills beyond the viewport", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000808";
+    const { historyGate, historyMessage, currentMessage } =
+      mockBackfilledHistoryScroll({ threadId, finalScrollHeight: 700 });
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    const container = await waitFor(() => {
+      expect(screen.getByText(currentMessage)).toBeInTheDocument();
+      expect(
+        document.querySelector("[data-history-backfill-skeleton]"),
+      ).not.toBeNull();
+      const current = chatScrollContainer();
+      expect(current.scrollTop).toBe(0);
+      return current;
+    });
+    historyGate.resolve();
+    await waitFor(() => {
+      expect(screen.getByText(historyMessage)).toBeInTheDocument();
+      expect(
+        document.querySelector("[data-history-backfill-skeleton]"),
+      ).toBeNull();
+      expect(container.scrollHeight).toBeGreaterThan(container.clientHeight);
+      expect(container.scrollTop).toBeGreaterThan(0);
+      expect(container.scrollTop).toBe(
+        container.scrollHeight - container.clientHeight,
+      );
+    });
   });
 
   it("follows the tail when a new message arrives while at the bottom", async () => {

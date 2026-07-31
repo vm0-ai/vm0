@@ -57,11 +57,10 @@ export interface ThreadSidebarSignals {
   readonly close$: Command<void, []>;
   /**
    * Whether the current sidebar session should animate into the split layout.
-   * The first local-message auto-open captures `false`; later opens capture
-   * `true` after that initial decision completes.
+   * The first IndexedDB-driven auto-open captures `false`; later opens capture
+   * `true` after the initial cache read completes.
    */
   readonly animateEntry$: Computed<boolean>;
-  readonly initialAutoOpenDecisionCompleted$: Computed<Promise<void>>;
   readonly enableEntryAnimations$: Command<void, []>;
   readonly editingAutomationId$: Computed<string | null>;
   readonly setEditingAutomationId$: Command<void, [string | null]>;
@@ -101,7 +100,6 @@ export function createThreadSidebarSignals(
   const internalFullscreen$ = state(false);
   const internalEditingAutomationId$ = state<string | null>(null);
   const internalClaimedAutoOpenCandidateKey$ = state<string | null>(null);
-  const initialAutoOpenDecision = Promise.withResolvers<void>();
   const resetSession$ = resetSignal();
 
   const artifactCatalog = createArtifactCatalogSignals({
@@ -172,12 +170,8 @@ export function createThreadSidebarSignals(
     animateEntry$: computed((get) => {
       return get(internalAnimateEntry$);
     }),
-    initialAutoOpenDecisionCompleted$: computed(() => {
-      return initialAutoOpenDecision.promise;
-    }),
     enableEntryAnimations$: command(({ set }) => {
       set(internalEntryAnimationsEnabled$, true);
-      initialAutoOpenDecision.resolve(undefined);
     }),
     editingAutomationId$: computed((get) => {
       return get(internalEditingAutomationId$);

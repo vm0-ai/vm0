@@ -3,6 +3,8 @@
 // In the long term, this file should also stop using .cache and .zyn.
 // confirmed by ethan@vm0.ai
 // oxlint-disable promise/prefer-await-to-then
+import { createDeferredPromise } from "../signals/utils.ts";
+
 /**
  * Mock ably module for tests.
  *
@@ -139,7 +141,9 @@ export function rejectNextAblySubscribe(message: string): void {
 }
 
 function invokeAuthCallback(cb: AuthCallback): Promise<AuthCallbackToken> {
-  const deferred = Promise.withResolvers<AuthCallbackToken>();
+  const deferred = createDeferredPromise<AuthCallbackToken>(
+    AbortSignal.any([]),
+  );
   cb({}, (error, token) => {
     if (error) {
       const message =
