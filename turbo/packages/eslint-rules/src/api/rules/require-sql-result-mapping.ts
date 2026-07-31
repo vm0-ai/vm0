@@ -15,7 +15,9 @@ import {
   isMethodDeclaration,
   isNonNullExpression,
   isObjectLiteralExpression,
+  isParameter,
   isParenthesizedExpression,
+  isPropertyAssignment,
   isPropertyAccessExpression,
   isSatisfiesExpression,
   isSpreadElement,
@@ -399,6 +401,7 @@ export const requireSqlResultMapping = createRule({
     const resultMethodHintVariablesInProgress =
       new Set<TSESLint.Scope.Variable>();
     const decoderProvenanceByNode = new WeakMap<Node, boolean>();
+    const schemaTableCallByNode = new WeakMap<Node, boolean>();
 
     function symbolAt(node: TSESTree.Node): TypeScriptSymbol | undefined {
       const tsNode = services.esTreeNodeToTSNodeMap.get(node);
@@ -488,11 +491,16 @@ export const requireSqlResultMapping = createRule({
 
     function reviewedDecoderFactorySymbol(
       node: Expression,
+      state: DecoderProvenanceState,
       visited: Set<TypeScriptSymbol>,
     ): TypeScriptSymbol | undefined {
+      state.steps += 1;
+      if (state.steps > MAX_DECODER_PROVENANCE_STEPS) {
+        return undefined;
+      }
       const transparent = transparentDecoderExpression(node);
       if (transparent !== undefined) {
-        return reviewedDecoderFactorySymbol(transparent, visited);
+        return reviewedDecoderFactorySymbol(transparent, state, visited);
       }
       if (
         isAsExpression(node) ||
@@ -527,6 +535,7 @@ export const requireSqlResultMapping = createRule({
       visited.add(symbol);
       const target = reviewedDecoderFactorySymbol(
         declaration.initializer,
+        state,
         visited,
       );
       visited.delete(symbol);
@@ -608,6 +617,103 @@ export const requireSqlResultMapping = createRule({
       readonly symbols: Set<TypeScriptSymbol>;
     }
 
+    function isSchemaTableCall(node: Expression): boolean {
+      const cached = schemaTableCallByNode.get(node);
+      if (cached !== undefined) {
+        return cached;
+      }
+      const symbol = isCallExpression(node)
+        ? expressionSymbol(node.expression)
+        : undefined;
+      const inspected =
+        symbol !== undefined &&
+        (symbol.getName() === "pgTable" || symbol.getName() === "table") &&
+        isDrizzleSymbol(checker, symbol);
+      schemaTableCallByNode.set(node, inspected);
+      return inspected;
+    }
+
+    function hasInspectableColumnContainerProvenance(
+      node: Expression,
+      state: DecoderProvenanceState,
+    ): boolean {
+      state.steps += 1;
+      if (state.steps > MAX_DECODER_PROVENANCE_STEPS) {
+        return false;
+      }
+      const transparent = transparentDecoderExpression(node);
+      if (transparent !== undefined) {
+        return hasInspectableColumnContainerProvenance(transparent, state);
+      }
+      if (
+        isAsExpression(node) ||
+        isTypeAssertionExpression(node) ||
+        isNonNullExpression(node)
+      ) {
+        return false;
+      }
+      if (isCallExpression(node)) {
+        return isSchemaTableCall(node);
+      }
+      const symbol = expressionSymbol(node);
+      const declaration = symbol?.valueDeclaration;
+      if (
+        declaration !== undefined &&
+        isParameter(declaration) &&
+        declaration.type === undefined
+      ) {
+        return true;
+      }
+      if (
+        symbol === undefined ||
+        declaration === undefined ||
+        !isVariableDeclaration(declaration) ||
+        !isConstVariable(declaration) ||
+        declaration.initializer === undefined ||
+        state.symbols.has(symbol)
+      ) {
+        return false;
+      }
+      state.symbols.add(symbol);
+      const inspected = hasInspectableColumnContainerProvenance(
+        declaration.initializer,
+        state,
+      );
+      state.symbols.delete(symbol);
+      return inspected;
+    }
+
+    function isSchemaColumnDeclaration(node: Node): boolean {
+      if (
+        !isPropertyAssignment(node) ||
+        !isObjectLiteralExpression(node.parent)
+      ) {
+        return false;
+      }
+      const tableCall = node.parent.parent;
+      if (
+        !isCallExpression(tableCall) ||
+        tableCall.arguments[1] !== node.parent
+      ) {
+        return false;
+      }
+      return isSchemaTableCall(tableCall);
+    }
+
+    function isInspectableSchemaColumn(
+      node: Expression,
+      state: DecoderProvenanceState,
+    ): boolean {
+      return (
+        (isPropertyAccessExpression(node) || isElementAccessExpression(node)) &&
+        isDrizzleColumnType(checker, checker.getTypeAtLocation(node), node) &&
+        expressionSymbol(node)?.declarations?.some(
+          isSchemaColumnDeclaration,
+        ) === true &&
+        hasInspectableColumnContainerProvenance(node.expression, state)
+      );
+    }
+
     function isReviewedDecoderFactoryCall(
       node: Expression,
       state: DecoderProvenanceState,
@@ -615,7 +721,11 @@ export const requireSqlResultMapping = createRule({
       if (!isCallExpression(node)) {
         return false;
       }
-      const target = reviewedDecoderFactorySymbol(node.expression, new Set());
+      const target = reviewedDecoderFactorySymbol(
+        node.expression,
+        state,
+        new Set(),
+      );
       if (target === undefined || node.arguments.length !== 1) {
         return false;
       }
@@ -656,10 +766,7 @@ export const requireSqlResultMapping = createRule({
         isNonNullExpression(node)
       ) {
         inspected = false;
-      } else if (
-        (isPropertyAccessExpression(node) || isElementAccessExpression(node)) &&
-        isDrizzleColumnType(checker, checker.getTypeAtLocation(node), node)
-      ) {
+      } else if (isInspectableSchemaColumn(node, state)) {
         inspected = true;
       } else if (isCallExpression(node)) {
         inspected = isReviewedDecoderFactoryCall(node, state);

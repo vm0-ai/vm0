@@ -596,6 +596,32 @@ ruleTester.run("require-sql-result-mapping", requireSqlResultMapping, {
     },
     {
       code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        const assertedContainer = {} as {
+          readonly decoder: typeof users.name;
+        };
+        const assertedTable = {} as typeof users;
+        db.select({
+          value: sql\`'value'\`.mapWith(assertedContainer.decoder),
+          tableValue: sql\`'value'\`.mapWith(assertedTable.name),
+        });
+      `,
+      errors: [
+        { messageId: "uninspectableResultDecoder" },
+        { messageId: "uninspectableResultDecoder" },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { sql, type DriverValueDecoder } from "drizzle-orm";
+        const first: DriverValueDecoder<string, unknown> = second;
+        const second: DriverValueDecoder<string, unknown> = first;
+        db.select({ value: sql\`'value'\`.mapWith(first) });
+      `,
+      errors: [{ messageId: "uninspectableResultDecoder" }],
+    },
+    {
+      code: `${drizzlePreamble}
         import { sql, type DriverValueDecoder } from "drizzle-orm";
         import { pgTextDecoder } from
           "../../apps/api/src/lib/db-structured-result";
