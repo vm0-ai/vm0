@@ -243,6 +243,7 @@ interface NormalSendArgs {
   readonly userId: string;
   readonly orgId: string;
   readonly apiStartTime: number;
+  readonly preloadedAgent?: AgentForChatSend;
   readonly timing?: ApiDispatchTimingCollector;
   readonly zeroPreCreateSource?: ZeroPreCreateSource;
 }
@@ -2183,9 +2184,15 @@ function loadTimedAuthorizedAgent(
     "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_load_and_authorize_agent",
     "nested",
     async () => {
-      const agent = await loadAgentForChatSend(db, args.body.agentId);
+      const agent =
+        args.preloadedAgent ??
+        (await loadAgentForChatSend(db, args.body.agentId));
       signal.throwIfAborted();
-      if (!agent || agent.orgId !== args.orgId) {
+      if (
+        !agent ||
+        agent.id !== args.body.agentId ||
+        agent.orgId !== args.orgId
+      ) {
         return notFound("Agent not found");
       }
       if (agent.visibility === "private" && agent.owner !== args.userId) {
