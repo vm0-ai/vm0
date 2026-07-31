@@ -238,6 +238,54 @@ function clipboardFileItem(file: File): DataTransferItem {
   } as DataTransferItem;
 }
 
+/**
+ * Seed one assistant message whose body carries every previewable link kind.
+ *
+ * Each test that renders this message asserts a subset of the resulting
+ * previews so no single test has to drive all eight open/close cycles within
+ * one test timeout.
+ */
+function setupBodyPreviewLinks(): void {
+  const audioUrl = "https://cdn.vm7.io/artifacts/test/body-audio/briefing.mp3";
+  const videoUrl = "https://cdn.vm7.io/artifacts/test/body-video/demo.mp4";
+  const imageUrl = "https://cdn.vm7.io/artifacts/test/body-image/chart.png";
+  const markdownUrl =
+    "https://cdn.vm7.io/artifacts/test/body-markdown/release-notes.md";
+  const csvUrl =
+    "https://cdn.vm7.io/artifacts/test/body-csv/launch-metrics.csv";
+  const pdfUrl = "https://cdn.vm7.io/artifacts/test/body-pdf/rollout-plan.pdf";
+  const htmlUrl =
+    "https://cdn.vm7.io/artifacts/test/body-html/launch-site.html";
+  const archiveUrl = "https://cdn.vm7.io/artifacts/test/body-file/archive.bin";
+  context.mocks.http.get(markdownUrl, () => {
+    return new Response("# Release notes\n\nBody link rollout is ready.", {
+      headers: { "Content-Type": "text/markdown" },
+    });
+  });
+  context.mocks.http.get(csvUrl, () => {
+    return new Response("metric,value\nactivation,87", {
+      headers: { "Content-Type": "text/csv" },
+    });
+  });
+  context.mocks.http.get(archiveUrl, () => {
+    return new Response(null, { status: 500 });
+  });
+  mockChatLifecycle(context, {
+    threadId: THREAD_ID,
+    chatEvents: [
+      {
+        id: "msg-body-preview-links",
+        role: "assistant",
+        content: `Generated preview links:\n\n${audioUrl}\n${videoUrl}\n${imageUrl}\n${markdownUrl}\n${csvUrl}\n${pdfUrl}\n[Launch site](${htmlUrl})\n${archiveUrl}`,
+        runId: "run-body-previews",
+        createdAt: "2026-03-10T00:00:00Z",
+      },
+    ],
+  });
+
+  detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+}
+
 describe("zero attachment chips", () => {
   it("shows pending upload progress for composer attachments", async () => {
     context.mocks.upload.pending({
@@ -2174,48 +2222,8 @@ describe("zero attachment chips", () => {
     });
   });
 
-  it("opens media and file previews parsed from chat message links", async () => {
-    const audioUrl =
-      "https://cdn.vm7.io/artifacts/test/body-audio/briefing.mp3";
-    const videoUrl = "https://cdn.vm7.io/artifacts/test/body-video/demo.mp4";
-    const imageUrl = "https://cdn.vm7.io/artifacts/test/body-image/chart.png";
-    const markdownUrl =
-      "https://cdn.vm7.io/artifacts/test/body-markdown/release-notes.md";
-    const csvUrl =
-      "https://cdn.vm7.io/artifacts/test/body-csv/launch-metrics.csv";
-    const pdfUrl =
-      "https://cdn.vm7.io/artifacts/test/body-pdf/rollout-plan.pdf";
-    const htmlUrl =
-      "https://cdn.vm7.io/artifacts/test/body-html/launch-site.html";
-    const archiveUrl =
-      "https://cdn.vm7.io/artifacts/test/body-file/archive.bin";
-    context.mocks.http.get(markdownUrl, () => {
-      return new Response("# Release notes\n\nBody link rollout is ready.", {
-        headers: { "Content-Type": "text/markdown" },
-      });
-    });
-    context.mocks.http.get(csvUrl, () => {
-      return new Response("metric,value\nactivation,87", {
-        headers: { "Content-Type": "text/csv" },
-      });
-    });
-    context.mocks.http.get(archiveUrl, () => {
-      return new Response(null, { status: 500 });
-    });
-    mockChatLifecycle(context, {
-      threadId: THREAD_ID,
-      chatEvents: [
-        {
-          id: "msg-body-preview-links",
-          role: "assistant",
-          content: `Generated preview links:\n\n${audioUrl}\n${videoUrl}\n${imageUrl}\n${markdownUrl}\n${csvUrl}\n${pdfUrl}\n[Launch site](${htmlUrl})\n${archiveUrl}`,
-          runId: "run-body-previews",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+  it("renders media and file previews parsed from chat message links", async () => {
+    setupBodyPreviewLinks();
 
     await waitFor(() => {
       expect(screen.getByText("Generated preview links:")).toBeInTheDocument();
@@ -2247,6 +2255,16 @@ describe("zero attachment chips", () => {
       "bg-black",
     );
     expect(bodyVideoPreview).not.toHaveClass("w-[50px]");
+  });
+
+  it("opens audio, video, and image previews parsed from chat message links", async () => {
+    setupBodyPreviewLinks();
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Open audio preview for briefing.mp3"),
+      ).toBeInTheDocument();
+    });
 
     click(screen.getByLabelText("Open audio preview for briefing.mp3"));
 
@@ -2300,13 +2318,15 @@ describe("zero attachment chips", () => {
       userSelect: "none",
       width: "100%",
     });
+  });
 
-    click(screen.getByLabelText("Close"));
+  it("opens markdown and csv previews parsed from chat message links", async () => {
+    setupBodyPreviewLinks();
 
     await waitFor(() => {
       expect(
-        screen.queryByTestId("attachment-lightbox"),
-      ).not.toBeInTheDocument();
+        screen.getByLabelText("Open markdown preview for release-notes.md"),
+      ).toBeInTheDocument();
     });
 
     click(screen.getByLabelText("Open markdown preview for release-notes.md"));
@@ -2332,13 +2352,15 @@ describe("zero attachment chips", () => {
       expect(screen.getByTestId("attachment-lightbox")).toBeInTheDocument();
       expect(screen.getByText("activation")).toBeInTheDocument();
     });
+  });
 
-    click(screen.getByLabelText("Close"));
+  it("opens pdf and html previews and reports download failures parsed from chat message links", async () => {
+    setupBodyPreviewLinks();
 
     await waitFor(() => {
       expect(
-        screen.queryByTestId("attachment-lightbox"),
-      ).not.toBeInTheDocument();
+        screen.getByLabelText("Open pdf preview for rollout-plan.pdf"),
+      ).toBeInTheDocument();
     });
 
     click(screen.getByLabelText("Open pdf preview for rollout-plan.pdf"));
