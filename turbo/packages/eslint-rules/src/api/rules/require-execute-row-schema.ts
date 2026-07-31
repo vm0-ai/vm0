@@ -163,6 +163,15 @@ export const requireExecuteRowSchema = createRule({
     },
   },
   create(context) {
+    // ESTree decodes escaped identifiers and string literals. Every spelling
+    // this rule recognizes either contains "execute" or uses a backslash escape.
+    if (
+      !context.sourceCode.text.includes("execute") &&
+      !context.sourceCode.text.includes("\\")
+    ) {
+      return {};
+    }
+
     const services = ESLintUtils.getParserServices(context);
     const checker = services.program.getTypeChecker();
 
