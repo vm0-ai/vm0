@@ -27,6 +27,7 @@ import websocket_framing
 
 _CLIENT_IP = "10.200.0.5"
 _HOST = "websocket.example.com"
+_PERMESSAGE_DEFLATE = "permessage-deflate"
 
 
 @dataclass
@@ -109,7 +110,7 @@ async def _handle_event(
 async def _start_websocket(
     addon_context: taddons.context,
     *,
-    compression: bool = False,
+    permessage_deflate: str | None = None,
     run_id: str | None = None,
 ) -> _RunningWebSocket:
     client = connection.Client(
@@ -135,8 +136,8 @@ async def _start_websocket(
         "Connection": "upgrade",
         "Upgrade": "websocket",
     }
-    if compression:
-        response_headers["Sec-WebSocket-Extensions"] = "permessage-deflate"
+    if permessage_deflate is not None:
+        response_headers["Sec-WebSocket-Extensions"] = permessage_deflate
     flow.response = http.Response.make(101, headers=response_headers)
     flow.websocket = WebSocketData()
     if run_id is not None:
@@ -153,12 +154,16 @@ async def _start_websocket(
     return running
 
 
-def _peer(*, from_client: bool, compression: bool = False) -> WsprotoConnection:
+def _peer(
+    *,
+    from_client: bool,
+    permessage_deflate: str | None = None,
+) -> WsprotoConnection:
     extensions: list[wsproto.extensions.Extension] = []
-    if compression:
-        permessage_deflate = wsproto.extensions.PerMessageDeflate()
-        permessage_deflate.finalize(permessage_deflate.name)
-        extensions.append(permessage_deflate)
+    if permessage_deflate is not None:
+        extension = wsproto.extensions.PerMessageDeflate()
+        extension.finalize(permessage_deflate)
+        extensions.append(extension)
     connection_type = (
         wsproto.ConnectionType.CLIENT if from_client else wsproto.ConnectionType.SERVER
     )
@@ -393,8 +398,14 @@ async def test_compression_preserves_context_takeover_and_is_connection_local(
         patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
         taddons.context(Proxyserver(), mitm_addon) as addon_context,
     ):
-        running = await _start_websocket(addon_context, compression=True)
-        peer = _peer(from_client=False, compression=True)
+        running = await _start_websocket(
+            addon_context,
+            permessage_deflate=_PERMESSAGE_DEFLATE,
+        )
+        peer = _peer(
+            from_client=False,
+            permessage_deflate=_PERMESSAGE_DEFLATE,
+        )
         first = await _handle_event(
             addon_context,
             running,
@@ -403,6 +414,15 @@ async def test_compression_preserves_context_takeover_and_is_connection_local(
                 peer.send(_message_event(b"shared-prefix-" * 32)),
             ),
         )
+        assert isinstance(
+            running.layer.server_ws,
+            websocket_framing._BoundedWebsocketConnection,
+        )
+        assert len(running.layer.server_ws._vm0_bounded_deflates) == 1
+        bounded_deflate = running.layer.server_ws._vm0_bounded_deflates[0]
+        first_decompressor = bounded_deflate._decompressor
+        assert first_decompressor is not None
+
         second = await _handle_event(
             addon_context,
             running,
@@ -411,6 +431,7 @@ async def test_compression_preserves_context_takeover_and_is_connection_local(
                 peer.send(_message_event(b"shared-prefix-" * 32 + b"second")),
             ),
         )
+        assert bounded_deflate._decompressor is first_decompressor
 
     assert wsproto.extensions.PerMessageDeflate is original_permessage_deflate
     assert len(_message_hooks(first)) == 1
@@ -422,6 +443,63 @@ async def test_compression_preserves_context_takeover_and_is_connection_local(
     ]
 
 
+@pytest.mark.parametrize(
+    ("from_client", "permessage_deflate"),
+    [
+        (True, f"{_PERMESSAGE_DEFLATE}; client_no_context_takeover"),
+        (False, f"{_PERMESSAGE_DEFLATE}; server_no_context_takeover"),
+    ],
+)
+async def test_compression_releases_negotiated_no_context_takeover_state(
+    tmp_path: Path,
+    from_client: bool,
+    permessage_deflate: str,
+) -> None:
+    contents = [
+        b"shared-prefix-" * 32,
+        b"shared-prefix-" * 32 + b"second",
+    ]
+
+    with (
+        patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+        taddons.context(Proxyserver(), mitm_addon) as addon_context,
+    ):
+        running = await _start_websocket(
+            addon_context,
+            permessage_deflate=permessage_deflate,
+        )
+        peer = _peer(
+            from_client=from_client,
+            permessage_deflate=permessage_deflate,
+        )
+        source_websocket = running.layer.client_ws if from_client else running.layer.server_ws
+        assert isinstance(
+            source_websocket,
+            websocket_framing._BoundedWebsocketConnection,
+        )
+        assert len(source_websocket._vm0_bounded_deflates) == 1
+        bounded_deflate = source_websocket._vm0_bounded_deflates[0]
+
+        for content in contents:
+            delivered = await _handle_event(
+                addon_context,
+                running,
+                events.DataReceived(
+                    _source_connection(running, from_client=from_client),
+                    peer.send(_message_event(content)),
+                ),
+            )
+
+            assert len(_message_hooks(delivered)) == 1
+            assert len(_data_sends(delivered)) == 1
+            assert running.flow.websocket is not None
+            assert running.flow.websocket.messages[-1].content == content
+            assert bounded_deflate._decompressor is None
+
+    assert running.flow.websocket is not None
+    assert [message.content for message in running.flow.websocket.messages] == contents
+
+
 @pytest.mark.parametrize("from_client", [True, False])
 async def test_malformed_compressed_frame_closes_only_the_rejected_flow(
     tmp_path: Path,
@@ -431,7 +509,10 @@ async def test_malformed_compressed_frame_closes_only_the_rejected_flow(
         patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
         taddons.context(Proxyserver(), mitm_addon) as addon_context,
     ):
-        rejected = await _start_websocket(addon_context, compression=True)
+        rejected = await _start_websocket(
+            addon_context,
+            permessage_deflate=_PERMESSAGE_DEFLATE,
+        )
         malformed = await _handle_event(
             addon_context,
             rejected,
@@ -441,8 +522,14 @@ async def test_malformed_compressed_frame_closes_only_the_rejected_flow(
             ),
         )
 
-        healthy = await _start_websocket(addon_context, compression=True)
-        healthy_peer = _peer(from_client=from_client, compression=True)
+        healthy = await _start_websocket(
+            addon_context,
+            permessage_deflate=_PERMESSAGE_DEFLATE,
+        )
+        healthy_peer = _peer(
+            from_client=from_client,
+            permessage_deflate=_PERMESSAGE_DEFLATE,
+        )
         delivered = await _handle_event(
             addon_context,
             healthy,
@@ -493,10 +580,13 @@ async def test_compressed_overflow_is_bounded_and_does_not_affect_another_flow(
     ):
         rejected = await _start_websocket(
             addon_context,
-            compression=True,
+            permessage_deflate=_PERMESSAGE_DEFLATE,
             run_id="run-rejected",
         )
-        compressed_peer = _peer(from_client=from_client, compression=True)
+        compressed_peer = _peer(
+            from_client=from_client,
+            permessage_deflate=_PERMESSAGE_DEFLATE,
+        )
         overflow = await _handle_event(
             addon_context,
             rejected,
