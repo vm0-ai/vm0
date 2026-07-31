@@ -1095,52 +1095,6 @@ describe("settings dialog", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders connector catalog diagnostics from a ref-only API", async () => {
-    context.mocks.api(
-      zeroConnectorCatalogContract.diagnostics,
-      ({ respond }) => {
-        return respond(200, {
-          state: "current",
-          active: {
-            catalogVersion: "2026-07-25.1",
-            catalogDigest: `sha256:${"a".repeat(64)}`,
-            activatedAt: "2026-07-25T01:00:00.000Z",
-          },
-          lastAttempt: null,
-          lastSuccessAt: "2026-07-25T01:00:00.000Z",
-          rejectedCandidate: null,
-          filtering: {
-            capabilityDigest: `sha256:${"b".repeat(64)}`,
-            evaluatedAt: "2026-07-25T01:00:00.000Z",
-            stale: false,
-            filteredAuthMethods: [
-              {
-                connectorRef: "legacy-github",
-                authMethodId: "oauth",
-                reasons: ["missing-revoke-provider"],
-              },
-            ],
-          },
-          credentialStorage: {
-            missingConnectorVersions: 0,
-            unownedConnectorSecrets: 0,
-            unownedConnectorVariables: 0,
-            unresolvedBridgeCredentials: 0,
-          },
-        });
-      },
-    );
-
-    await openDialog("admin", "debug");
-
-    const diagnostics = await screen.findByRole("region", {
-      name: "Connector catalog",
-    });
-    expect(
-      within(diagnostics).getByText("legacy-github / oauth"),
-    ).toBeInTheDocument();
-  });
-
   it("does not describe an uncached rejection as a fresh evaluation", async () => {
     context.mocks.api(
       zeroConnectorCatalogContract.diagnostics,

@@ -22,13 +22,11 @@ import {
   connectorCatalogSyncState,
 } from "@vm0/db/schema/connector-catalog";
 import type {
-  CanonicalConnectorCatalogCompatibilityEvaluation,
-  CanonicalConnectorCatalogFilteredAuthMethod,
   ConnectorCatalogCompatibilityEvaluationPayload,
-  LegacyConnectorCatalogCompatibilityEvaluation,
+  ConnectorCatalogCompatibilityFilteredAuthMethod,
 } from "@vm0/db/jsonb-contracts/connector-catalog";
 import { command } from "ccstate";
-import { and, eq, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { and, eq, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { optionalEnv } from "../../lib/env";
@@ -55,18 +53,7 @@ const COMPATIBILITY_REASON_ORDER = [
   "missing-platform-configuration",
 ] as const satisfies readonly ConnectorCatalogCompatibilityReason[];
 
-const legacyConnectorCatalogCompatibilityEvaluationSchema: z.ZodType<LegacyConnectorCatalogCompatibilityEvaluation> =
-  z.array(
-    z
-      .object({
-        connectorRef: connectorSlugSchema,
-        authMethodId: connectorAuthMethodIdSchema,
-        reasons: z.array(connectorCatalogCompatibilityReasonSchema).min(1),
-      })
-      .strict(),
-  );
-
-export const canonicalConnectorCatalogCompatibilityEvaluationSchema: z.ZodType<CanonicalConnectorCatalogCompatibilityEvaluation> =
+export const connectorCatalogCompatibilityEvaluationSchema: z.ZodType<ConnectorCatalogCompatibilityEvaluationPayload> =
   z
     .object({
       filteredAuthMethods: z.array(
@@ -81,25 +68,12 @@ export const canonicalConnectorCatalogCompatibilityEvaluationSchema: z.ZodType<C
     })
     .strict();
 
-const LEGACY_EXECUTABLE_CAPABILITY_EVALUATOR_VERSION = 1;
-const CANONICAL_EXECUTABLE_CAPABILITY_EVALUATOR_VERSION = 2;
-
-type LegacyConnectorAuthProviderRegistrationCapability = Omit<
-  ConnectorAuthProviderRegistrationCapability,
-  "connectorSlug"
-> & {
-  readonly connectorRef: string;
-};
+const EXECUTABLE_CAPABILITY_EVALUATOR_VERSION = 2;
 
 export interface ExecutableCapabilityState {
   readonly digest: string;
   readonly configuredNames: ReadonlySet<string>;
   readonly registrations: readonly ConnectorAuthProviderRegistrationCapability[];
-}
-
-export interface ExecutableCapabilityStates {
-  readonly legacy: ExecutableCapabilityState;
-  readonly canonical: ExecutableCapabilityState;
 }
 
 interface ExecutableCapabilityConfiguration {
@@ -133,9 +107,7 @@ function registrationKey(connectorSlug: string, authMethodId: string): string {
 
 function executableCapabilityDigest(args: {
   readonly evaluatorVersion: number;
-  readonly registrations:
-    | readonly ConnectorAuthProviderRegistrationCapability[]
-    | readonly LegacyConnectorAuthProviderRegistrationCapability[];
+  readonly registrations: readonly ConnectorAuthProviderRegistrationCapability[];
   readonly configuration: readonly ExecutableCapabilityConfiguration[];
 }): string {
   const preimage = JSON.stringify({
@@ -145,18 +117,6 @@ function executableCapabilityDigest(args: {
     configuration: args.configuration,
   });
   return `sha256:${createHash("sha256").update(preimage).digest("hex")}`;
-}
-
-function legacyRegistrationCapability(
-  registration: ConnectorAuthProviderRegistrationCapability,
-): LegacyConnectorAuthProviderRegistrationCapability {
-  return {
-    connectorRef: registration.connectorSlug,
-    authMethodId: registration.authMethodId,
-    handlers: registration.handlers,
-    contract: registration.contract,
-    requiredConfigurationNames: registration.requiredConfigurationNames,
-  };
 }
 
 function connectorCatalogExecutableCapabilityFacts(): ExecutableCapabilityFacts {
@@ -179,49 +139,17 @@ function connectorCatalogExecutableCapabilityFacts(): ExecutableCapabilityFacts 
   return { registrations, configuration, configuredNames };
 }
 
-function createExecutableCapabilityState(args: {
-  readonly facts: ExecutableCapabilityFacts;
-  readonly evaluatorVersion: number;
-  readonly digestRegistrations:
-    | readonly ConnectorAuthProviderRegistrationCapability[]
-    | readonly LegacyConnectorAuthProviderRegistrationCapability[];
-}): ExecutableCapabilityState {
-  return {
-    digest: executableCapabilityDigest({
-      evaluatorVersion: args.evaluatorVersion,
-      registrations: args.digestRegistrations,
-      configuration: args.facts.configuration,
-    }),
-    configuredNames: args.facts.configuredNames,
-    registrations: args.facts.registrations,
-  };
-}
-
-export function connectorCatalogExecutableCapabilityStates(): ExecutableCapabilityStates {
-  const facts = connectorCatalogExecutableCapabilityFacts();
-  return {
-    legacy: createExecutableCapabilityState({
-      facts,
-      evaluatorVersion: LEGACY_EXECUTABLE_CAPABILITY_EVALUATOR_VERSION,
-      digestRegistrations: facts.registrations.map(
-        legacyRegistrationCapability,
-      ),
-    }),
-    canonical: createExecutableCapabilityState({
-      facts,
-      evaluatorVersion: CANONICAL_EXECUTABLE_CAPABILITY_EVALUATOR_VERSION,
-      digestRegistrations: facts.registrations,
-    }),
-  };
-}
-
 export function connectorCatalogExecutableCapabilityState(): ExecutableCapabilityState {
   const facts = connectorCatalogExecutableCapabilityFacts();
-  return createExecutableCapabilityState({
-    facts,
-    evaluatorVersion: CANONICAL_EXECUTABLE_CAPABILITY_EVALUATOR_VERSION,
-    digestRegistrations: facts.registrations,
-  });
+  return {
+    digest: executableCapabilityDigest({
+      evaluatorVersion: EXECUTABLE_CAPABILITY_EVALUATOR_VERSION,
+      registrations: facts.registrations,
+      configuration: facts.configuration,
+    }),
+    configuredNames: facts.configuredNames,
+    registrations: facts.registrations,
+  };
 }
 
 export function connectorCatalogExecutableCapabilityDigest(): string {
@@ -368,7 +296,7 @@ function evaluateMethod(args: {
 function evaluateConnectorCatalogCompatibility(args: {
   readonly artifact: ConnectorCatalogArtifact;
   readonly capability: ExecutableCapabilityState;
-}): readonly CanonicalConnectorCatalogFilteredAuthMethod[] {
+}): readonly ConnectorCatalogCompatibilityFilteredAuthMethod[] {
   const registrations = new Map(
     args.capability.registrations.map((registration) => {
       return [
@@ -477,12 +405,42 @@ async function persistConnectorCatalogCompatibilityEvaluation(args: {
     });
 }
 
+async function deleteLegacyConnectorCatalogCompatibilityEvaluations(args: {
+  readonly db: Db;
+  readonly sourceId: string;
+  readonly identity: ConnectorCatalogCompatibilityIdentity;
+}): Promise<void> {
+  await args.db
+    .delete(connectorCatalogCompatibilityEvaluation)
+    .where(
+      and(
+        eq(connectorCatalogCompatibilityEvaluation.sourceId, args.sourceId),
+        eq(
+          connectorCatalogCompatibilityEvaluation.schemaVersion,
+          SUPPORTED_CONNECTOR_CATALOG_SCHEMA_VERSION,
+        ),
+        eq(
+          connectorCatalogCompatibilityEvaluation.catalogVersion,
+          args.identity.catalogVersion,
+        ),
+        eq(
+          connectorCatalogCompatibilityEvaluation.catalogDigest,
+          args.identity.catalogDigest,
+        ),
+        eq(
+          sql`jsonb_typeof(${connectorCatalogCompatibilityEvaluation.filteredAuthMethods})`,
+          "array",
+        ),
+      ),
+    );
+}
+
 export async function persistConnectorCatalogCompatibility(args: {
   readonly db: Db;
   readonly sourceId: string;
   readonly identity: ConnectorCatalogCompatibilityIdentity;
   readonly artifact: ConnectorCatalogArtifact;
-  readonly capabilities: ExecutableCapabilityStates;
+  readonly capability: ExecutableCapabilityState;
   readonly validator: ConnectorCatalogValidatorIdentity;
 }): Promise<void> {
   await deleteReplacedEvaluations({
@@ -492,34 +450,22 @@ export async function persistConnectorCatalogCompatibility(args: {
   });
   const filteredAuthMethods = evaluateConnectorCatalogCompatibility({
     artifact: args.artifact,
-    capability: args.capabilities.canonical,
+    capability: args.capability,
   });
   const evaluatedAt = nowDate();
-  const legacyPayload =
-    legacyConnectorCatalogCompatibilityEvaluationSchema.parse(
-      filteredAuthMethods.map((method) => {
-        return {
-          connectorRef: method.connectorSlug,
-          authMethodId: method.authMethodId,
-          reasons: method.reasons,
-        };
-      }),
-    );
-  const canonicalPayload =
-    canonicalConnectorCatalogCompatibilityEvaluationSchema.parse({
-      filteredAuthMethods,
-    });
-  await persistConnectorCatalogCompatibilityEvaluation({
-    ...args,
-    capabilityDigest: args.capabilities.legacy.digest,
-    evaluatedAt,
-    payload: legacyPayload,
+  const payload = connectorCatalogCompatibilityEvaluationSchema.parse({
+    filteredAuthMethods,
   });
   await persistConnectorCatalogCompatibilityEvaluation({
     ...args,
-    capabilityDigest: args.capabilities.canonical.digest,
+    capabilityDigest: args.capability.digest,
     evaluatedAt,
-    payload: canonicalPayload,
+    payload,
+  });
+  await deleteLegacyConnectorCatalogCompatibilityEvaluations({
+    db: args.db,
+    sourceId: args.sourceId,
+    identity: args.identity,
   });
 }
 
@@ -581,7 +527,7 @@ function staleFilteringStatus(
 async function reconcileCompatibility(args: {
   readonly db: Db;
   readonly sourceId: string;
-  readonly capabilities: ExecutableCapabilityStates;
+  readonly capability: ExecutableCapabilityState;
   readonly validator: ConnectorCatalogValidatorIdentity;
 }): Promise<void> {
   const hasState = await lockSyncState(args.db, args.sourceId);
@@ -593,14 +539,8 @@ async function reconcileCompatibility(args: {
     return;
   }
 
-  const capabilityStates = [
-    args.capabilities.legacy,
-    args.capabilities.canonical,
-  ];
-  const existing = await args.db
+  const [existing] = await args.db
     .select({
-      executableCapabilityDigest:
-        connectorCatalogCompatibilityEvaluation.executableCapabilityDigest,
       catalogValidationBackendVersion:
         connectorCatalogCompatibilityEvaluation.catalogValidationBackendVersion,
       catalogValidationBuildCommitSha:
@@ -622,34 +562,29 @@ async function reconcileCompatibility(args: {
           connectorCatalogCompatibilityEvaluation.catalogDigest,
           snapshot.catalogDigest,
         ),
-        inArray(
+        eq(
           connectorCatalogCompatibilityEvaluation.executableCapabilityDigest,
-          capabilityStates.map((capability) => {
-            return capability.digest;
-          }),
+          args.capability.digest,
         ),
       ),
-    );
-  const existingByDigest = new Map(
-    existing.map((evaluation) => {
-      return [evaluation.executableCapabilityDigest, evaluation];
-    }),
-  );
-  const allCurrentOrNewer = capabilityStates.every((capability) => {
-    const evaluation = existingByDigest.get(capability.digest);
-    return (
-      evaluation !== undefined &&
-      evaluation.catalogValidationBackendVersion !== null &&
-      connectorCatalogValidationAuthorityIsCurrentOrNewer({
-        authority: {
-          backendVersion: evaluation.catalogValidationBackendVersion,
-          buildCommitSha: evaluation.catalogValidationBuildCommitSha,
-        },
-        validator: args.validator,
-      })
-    );
-  });
-  if (allCurrentOrNewer) {
+    )
+    .limit(1);
+  if (
+    existing !== undefined &&
+    existing.catalogValidationBackendVersion !== null &&
+    connectorCatalogValidationAuthorityIsCurrentOrNewer({
+      authority: {
+        backendVersion: existing.catalogValidationBackendVersion,
+        buildCommitSha: existing.catalogValidationBuildCommitSha,
+      },
+      validator: args.validator,
+    })
+  ) {
+    await deleteLegacyConnectorCatalogCompatibilityEvaluations({
+      db: args.db,
+      sourceId: args.sourceId,
+      identity: snapshot,
+    });
     return;
   }
 
@@ -659,18 +594,17 @@ async function reconcileCompatibility(args: {
     sourceId: args.sourceId,
     identity: snapshot,
     artifact: decoded.artifact,
-    capabilities: args.capabilities,
+    capability: args.capability,
     validator: args.validator,
   });
 }
 
 function diagnosticFilteredAuthMethods(
-  filteredAuthMethods: readonly CanonicalConnectorCatalogFilteredAuthMethod[],
+  filteredAuthMethods: readonly ConnectorCatalogCompatibilityFilteredAuthMethod[],
 ): ConnectorCatalogFilteredAuthMethod[] {
   return filteredAuthMethods.map((method) => {
     return {
       connectorSlug: method.connectorSlug,
-      connectorRef: method.connectorSlug,
       authMethodId: method.authMethodId,
       reasons: [...method.reasons],
     };
@@ -724,7 +658,7 @@ async function compatibilityStatus(args: {
     evaluatedAt: result.evaluatedAt.toISOString(),
     stale: false,
     filteredAuthMethods: diagnosticFilteredAuthMethods(
-      canonicalConnectorCatalogCompatibilityEvaluationSchema.parse(
+      connectorCatalogCompatibilityEvaluationSchema.parse(
         result.filteredAuthMethods,
       ).filteredAuthMethods,
     ),
@@ -734,13 +668,13 @@ async function compatibilityStatus(args: {
 export const reconcileConnectorCatalogCompatibility$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
     const source = connectorCatalogSource();
-    const capabilities = connectorCatalogExecutableCapabilityStates();
+    const capability = connectorCatalogExecutableCapabilityState();
     const validator = currentConnectorCatalogValidatorIdentity();
     await set(writeDb$).transaction(async (tx) => {
       await reconcileCompatibility({
         db: tx,
         sourceId: source.sourceId,
-        capabilities,
+        capability,
         validator,
       });
     });

@@ -49,6 +49,7 @@ import {
   deleteApiTestConnectorCatalogCompatibility,
   deleteApiTestConnectorCatalogCompatibilityEvaluation,
   invalidateApiTestConnectorCatalogCompatibility,
+  insertApiTestLegacyConnectorCatalogCompatibilityEvaluation,
   mockApiTestConnectorProviderConfiguration,
   readApiTestConnectorCatalogCompatibilityEvaluations,
   readApiTestConnectorCatalogValidationAuthority,
@@ -102,10 +103,9 @@ const DIAGNOSTICS_ORG_ID = `org_${randomUUID()}`;
 const PRIVATE_VALUE = "SECRET_TOKEN";
 const DEFAULT_API_VERSION = apiPackage.version;
 const ZERO_DIGEST = `sha256:${"0".repeat(64)}`;
-const EXPECTED_LEGACY_CAPABILITY_DIGEST =
-  "sha256:53a770117015a00103988a57526a537a687f63dde3dd4c020a9265fed483cc09";
-const EXPECTED_CANONICAL_CAPABILITY_DIGEST =
+const EXPECTED_CAPABILITY_DIGEST =
   "sha256:f28faa130eeea8dbc27f816003b6fe162dc1792dd27f5e9173856c5bedb7eea7";
+const DRAINING_WRITER_CAPABILITY_DIGEST = `sha256:${"d".repeat(64)}`;
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SLACK_OAUTH_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
@@ -1475,23 +1475,6 @@ function expectRejectedBeforeAcceptance(
   });
 }
 
-function requireLegacyAndCanonicalEvaluations(
-  evaluations: Awaited<
-    ReturnType<typeof readApiTestConnectorCatalogCompatibilityEvaluations>
-  >,
-) {
-  const legacy = evaluations.find(({ payload }) => {
-    return Array.isArray(payload);
-  });
-  const canonical = evaluations.find(({ payload }) => {
-    return !Array.isArray(payload);
-  });
-  if (legacy === undefined || canonical === undefined) {
-    throw new Error("Expected legacy and canonical compatibility evaluations");
-  }
-  return { legacy, canonical };
-}
-
 beforeEach(() => {
   mockEnv("CRON_SECRET", CRON_SECRET);
   mockNow(new Date(FIRST_SYNC_TIME));
@@ -2034,11 +2017,7 @@ describe("connector catalog valid lifecycle", () => {
     await invalidateApiTestConnectorCatalogCompatibility();
     const corruptedEvaluations =
       await readApiTestConnectorCatalogCompatibilityEvaluations();
-    expect(corruptedEvaluations).toHaveLength(2);
-    const retainedLegacy = corruptedEvaluations.find(({ capabilityDigest }) => {
-      return capabilityDigest === EXPECTED_LEGACY_CAPABILITY_DIGEST;
-    });
-    expect(Array.isArray(retainedLegacy?.payload)).toBeTruthy();
+    expect(corruptedEvaluations).toHaveLength(1);
     const compatibilityResponse = await accept(
       setupApp({ context })(zeroConnectorCatalogContract).list({
         headers: { authorization: "Bearer clerk-session" },
@@ -2056,10 +2035,7 @@ describe("connector catalog valid lifecycle", () => {
     await deleteApiTestConnectorCatalogCompatibility();
     const remainingEvaluations =
       await readApiTestConnectorCatalogCompatibilityEvaluations();
-    expect(remainingEvaluations).toHaveLength(1);
-    expect(remainingEvaluations[0]?.capabilityDigest).toBe(
-      EXPECTED_LEGACY_CAPABILITY_DIGEST,
-    );
+    expect(remainingEvaluations).toHaveLength(0);
     const missingResponse = await accept(
       setupApp({ context })(zeroConnectorCatalogContract).list({
         headers: { authorization: "Bearer clerk-session" },
@@ -2383,7 +2359,6 @@ describe("connector catalog valid lifecycle", () => {
     expect(synced.body.filtering.filteredAuthMethods).toStrictEqual([
       {
         connectorSlug: "agora",
-        connectorRef: "agora",
         authMethodId: "legacy",
         reasons: ["missing-access-provider"],
       },
@@ -5029,38 +5004,28 @@ describe("connector catalog valid lifecycle", () => {
 });
 
 describe("connector catalog executable compatibility", () => {
-  it("writes deterministic empty legacy and canonical evaluations", async () => {
+  it("writes a deterministic empty compatibility evaluation", async () => {
     configureSource();
     mockApiTestConnectorProviderConfiguration();
     const release = buildRelease({
-      version: "2026-07-31.dual-empty-evaluations",
+      version: "2026-07-31.empty-evaluation",
     });
     serveObjects(catalogObjects([release], release));
 
     const synced = await syncCatalog();
     const evaluations =
       await readApiTestConnectorCatalogCompatibilityEvaluations();
-    expect(evaluations).toHaveLength(2);
-    const { legacy, canonical } =
-      requireLegacyAndCanonicalEvaluations(evaluations);
+    expect(evaluations).toHaveLength(1);
+    const [evaluation] = evaluations;
 
-    expect(legacy.capabilityDigest).toBe(EXPECTED_LEGACY_CAPABILITY_DIGEST);
-    expect(canonical.capabilityDigest).toBe(
-      EXPECTED_CANONICAL_CAPABILITY_DIGEST,
-    );
-    expect(canonical.capabilityDigest).not.toBe(legacy.capabilityDigest);
+    expect(evaluation?.capabilityDigest).toBe(EXPECTED_CAPABILITY_DIGEST);
     expect(synced.body.filtering).toStrictEqual({
-      capabilityDigest: canonical.capabilityDigest,
+      capabilityDigest: EXPECTED_CAPABILITY_DIGEST,
       evaluatedAt: FIRST_SYNC_TIME,
       stale: false,
       filteredAuthMethods: [],
     });
-    expect(legacy.payload).toStrictEqual([]);
-    expect(canonical.payload).toStrictEqual({ filteredAuthMethods: [] });
-    expect(canonical.validationAuthority).toStrictEqual(
-      legacy.validationAuthority,
-    );
-    expect(canonical.evaluatedAt).toBe(legacy.evaluatedAt);
+    expect(evaluation?.payload).toStrictEqual({ filteredAuthMethods: [] });
 
     zeroMocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
     const headers = { authorization: "Bearer clerk-session" };
@@ -5076,10 +5041,10 @@ describe("connector catalog executable compatibility", () => {
     );
   });
 
-  it("persists equal non-empty legacy and canonical filtering", async () => {
+  it("persists canonical non-empty filtering", async () => {
     configureSource();
     const release = buildRelease({
-      version: "2026-07-31.dual-filtered-evaluations",
+      version: "2026-07-31.filtered-evaluation",
       connectorSlug: "future-auth",
       mutateCatalog: (artifact) => {
         setArtifactAuthMethods(artifact, [
@@ -5095,21 +5060,10 @@ describe("connector catalog executable compatibility", () => {
     const synced = await syncCatalog();
     const evaluations =
       await readApiTestConnectorCatalogCompatibilityEvaluations();
-    expect(evaluations).toHaveLength(2);
-    const { legacy, canonical } =
-      requireLegacyAndCanonicalEvaluations(evaluations);
+    expect(evaluations).toHaveLength(1);
+    const [evaluation] = evaluations;
     const wireMethods = synced.body.filtering.filteredAuthMethods;
-    const expectedLegacy = wireMethods.map((method) => {
-      return {
-        connectorRef: method.connectorRef,
-        authMethodId: method.authMethodId,
-        reasons: method.reasons,
-      };
-    });
-    const expectedCanonical = wireMethods.map((method) => {
-      if (method.connectorSlug === undefined) {
-        throw new Error("Expected canonical diagnostics connector slug");
-      }
+    const expectedMethods = wireMethods.map((method) => {
       return {
         connectorSlug: method.connectorSlug,
         authMethodId: method.authMethodId,
@@ -5117,28 +5071,45 @@ describe("connector catalog executable compatibility", () => {
       };
     });
 
-    expect(legacy.payload).toStrictEqual(expectedLegacy);
-    expect(canonical.payload).toStrictEqual({
-      filteredAuthMethods: expectedCanonical,
+    expect(evaluation?.payload).toStrictEqual({
+      filteredAuthMethods: expectedMethods,
     });
-    expect(JSON.stringify(legacy.payload)).not.toContain("connectorSlug");
-    expect(JSON.stringify(canonical.payload)).not.toContain("connectorRef");
-    expect(canonical.validationAuthority).toStrictEqual(
-      legacy.validationAuthority,
-    );
-    expect(wireMethods).toStrictEqual(
-      expectedCanonical.map((method) => {
-        return {
-          connectorSlug: method.connectorSlug,
-          connectorRef: method.connectorSlug,
-          authMethodId: method.authMethodId,
-          reasons: method.reasons,
-        };
-      }),
-    );
+    expect(JSON.stringify(evaluation?.payload)).not.toContain("connectorRef");
+    expect(wireMethods).toStrictEqual(expectedMethods);
   });
 
-  it("fails closed and reconciles a missing canonical evaluation", async () => {
+  it("removes a draining writer array on current-authority reconciliation", async () => {
+    configureSource();
+    mockApiTestConnectorProviderConfiguration();
+    const release = buildRelease({
+      version: "2026-07-31.draining-writer-evaluation",
+    });
+    serveObjects(catalogObjects([release], release));
+    await syncCatalog();
+    const beforeLegacyWrite =
+      await readApiTestConnectorCatalogCompatibilityEvaluations();
+    expect(beforeLegacyWrite).toHaveLength(1);
+
+    await insertApiTestLegacyConnectorCatalogCompatibilityEvaluation(
+      DRAINING_WRITER_CAPABILITY_DIGEST,
+    );
+    const afterLegacyWrite =
+      await readApiTestConnectorCatalogCompatibilityEvaluations();
+    expect(afterLegacyWrite).toHaveLength(2);
+    expect(
+      afterLegacyWrite.filter(({ payload }) => {
+        return Array.isArray(payload);
+      }),
+    ).toHaveLength(1);
+
+    mockNow(new Date("2026-07-31T08:01:00.000Z"));
+    expect((await syncCatalog()).body.outcome).toBe("unchanged");
+    await expect(
+      readApiTestConnectorCatalogCompatibilityEvaluations(),
+    ).resolves.toStrictEqual(beforeLegacyWrite);
+  });
+
+  it("fails closed and reconciles a missing compatibility evaluation", async () => {
     configureSource();
     mockApiTestConnectorProviderConfiguration();
     const release = buildRelease({
@@ -5148,16 +5119,15 @@ describe("connector catalog executable compatibility", () => {
     await syncCatalog();
 
     await deleteApiTestConnectorCatalogCompatibilityEvaluation(
-      EXPECTED_CANONICAL_CAPABILITY_DIGEST,
+      EXPECTED_CAPABILITY_DIGEST,
     );
-    const [legacy] =
-      await readApiTestConnectorCatalogCompatibilityEvaluations();
-    expect(legacy?.capabilityDigest).toBe(EXPECTED_LEGACY_CAPABILITY_DIGEST);
-    expect(legacy?.payload).toStrictEqual([]);
+    await expect(
+      readApiTestConnectorCatalogCompatibilityEvaluations(),
+    ).resolves.toHaveLength(0);
 
     const stale = await readStatus();
     expect(stale.body.filtering).toStrictEqual({
-      capabilityDigest: EXPECTED_CANONICAL_CAPABILITY_DIGEST,
+      capabilityDigest: EXPECTED_CAPABILITY_DIGEST,
       evaluatedAt: null,
       stale: true,
       filteredAuthMethods: [],
@@ -5175,12 +5145,10 @@ describe("connector catalog executable compatibility", () => {
 
     expect(reconciled.body.outcome).toBe("unchanged");
     expect(reconciled.body.filtering.capabilityDigest).toBe(
-      EXPECTED_CANONICAL_CAPABILITY_DIGEST,
+      EXPECTED_CAPABILITY_DIGEST,
     );
-    expect(evaluations).toHaveLength(2);
-    const repaired = requireLegacyAndCanonicalEvaluations(evaluations);
-    expect(repaired.legacy.payload).toStrictEqual([]);
-    expect(repaired.canonical.payload).toStrictEqual({
+    expect(evaluations).toHaveLength(1);
+    expect(evaluations[0]?.payload).toStrictEqual({
       filteredAuthMethods: [],
     });
     expect(
@@ -5190,30 +5158,30 @@ describe("connector catalog executable compatibility", () => {
     });
   });
 
-  it("replaces both evaluation formats with a new catalog", async () => {
+  it("replaces the compatibility evaluation with a new catalog", async () => {
     configureSource();
     const first = buildRelease({
-      version: "2026-07-31.dual-replacement-1",
+      version: "2026-07-31.replacement-1",
     });
     serveObjects(catalogObjects([first], first));
     await syncCatalog();
     const firstEvaluations =
       await readApiTestConnectorCatalogCompatibilityEvaluations();
-    expect(firstEvaluations).toHaveLength(2);
+    expect(firstEvaluations).toHaveLength(1);
     const firstCatalogDigest = firstEvaluations[0]?.catalogDigest;
     if (firstCatalogDigest === undefined) {
       throw new Error("Expected initial compatibility evaluations");
     }
 
     const second = buildRelease({
-      version: "2026-07-31.dual-replacement-2",
+      version: "2026-07-31.replacement-2",
     });
     serveObjects(catalogObjects([first, second], second));
     const replaced = await syncCatalog();
     const replacementEvaluations =
       await readApiTestConnectorCatalogCompatibilityEvaluations();
 
-    expect(replacementEvaluations).toHaveLength(2);
+    expect(replacementEvaluations).toHaveLength(1);
     expect(
       replacementEvaluations.every((evaluation) => {
         return evaluation.catalogDigest === replaced.body.active?.catalogDigest;
@@ -5224,11 +5192,7 @@ describe("connector catalog executable compatibility", () => {
         return evaluation.catalogDigest === firstCatalogDigest;
       }),
     ).toBeFalsy();
-    const replacement = requireLegacyAndCanonicalEvaluations(
-      replacementEvaluations,
-    );
-    expect(replacement.legacy.payload).toStrictEqual([]);
-    expect(replacement.canonical.payload).toStrictEqual({
+    expect(replacementEvaluations[0]?.payload).toStrictEqual({
       filteredAuthMethods: [],
     });
   });
@@ -5291,15 +5255,12 @@ describe("connector catalog executable compatibility", () => {
     });
     const evaluations =
       await readApiTestConnectorCatalogCompatibilityEvaluations();
-    expect(evaluations).toHaveLength(2);
+    expect(evaluations).toHaveLength(1);
     expect(
       evaluations.map((evaluation) => {
         return evaluation.validationAuthority;
       }),
-    ).toStrictEqual([
-      { backendVersion: "1.319.0", buildCommitSha: null },
-      { backendVersion: "1.319.0", buildCommitSha: null },
-    ]);
+    ).toStrictEqual([{ backendVersion: "1.319.0", buildCommitSha: null }]);
   });
 
   it("prevents a draining older API release from downgrading validation authority", async () => {
@@ -5343,10 +5304,7 @@ describe("connector catalog executable compatibility", () => {
       evaluations.map((evaluation) => {
         return evaluation.validationAuthority;
       }),
-    ).toStrictEqual([
-      { backendVersion: "1.319.0", buildCommitSha: null },
-      { backendVersion: "1.319.0", buildCommitSha: null },
-    ]);
+    ).toStrictEqual([{ backendVersion: "1.319.0", buildCommitSha: null }]);
   });
 
   it("repairs accepted validation authority after a preview build", async () => {
@@ -5524,17 +5482,17 @@ describe("connector catalog executable compatibility", () => {
       stale: false,
       filteredAuthMethods: [
         {
-          connectorRef: "future-auth",
+          connectorSlug: "future-auth",
           authMethodId: "api-token",
           reasons: ["missing-access-provider"],
         },
         {
-          connectorRef: "future-auth",
+          connectorSlug: "future-auth",
           authMethodId: "cli",
           reasons: ["missing-revoke-provider"],
         },
         {
-          connectorRef: "future-auth",
+          connectorSlug: "future-auth",
           authMethodId: "oauth",
           reasons: ["missing-grant-provider"],
         },
@@ -5602,7 +5560,6 @@ describe("connector catalog executable compatibility", () => {
     ).toStrictEqual([
       {
         connectorSlug: "cloudflare",
-        connectorRef: "cloudflare",
         authMethodId: "future-web",
         reasons: ["missing-grant-provider", "provider-contract-mismatch"],
       },
@@ -5645,7 +5602,7 @@ describe("connector catalog executable compatibility", () => {
       stale: false,
       filteredAuthMethods: [
         {
-          connectorRef: release.connectorSlug,
+          connectorSlug: release.connectorSlug,
           authMethodId: "api-token",
           reasons: ["provider-contract-mismatch"],
         },
@@ -5710,7 +5667,7 @@ describe("connector catalog executable compatibility", () => {
       stale: false,
       filteredAuthMethods: [
         {
-          connectorRef: "steam",
+          connectorSlug: "steam",
           authMethodId: "openid",
           reasons: ["missing-platform-configuration"],
         },
@@ -5776,17 +5733,12 @@ describe("connector catalog executable compatibility", () => {
     );
     const rollingEvaluations =
       await readApiTestConnectorCatalogCompatibilityEvaluations();
-    expect(rollingEvaluations).toHaveLength(4);
+    expect(rollingEvaluations).toHaveLength(2);
     expect(
-      rollingEvaluations.filter(({ payload }) => {
-        return Array.isArray(payload);
-      }),
-    ).toHaveLength(2);
-    expect(
-      rollingEvaluations.filter(({ payload }) => {
+      rollingEvaluations.every(({ payload }) => {
         return !Array.isArray(payload);
       }),
-    ).toHaveLength(2);
+    ).toBeTruthy();
     expect(
       new Set(
         rollingEvaluations.map((evaluation) => {
@@ -5842,7 +5794,6 @@ describe("connector catalog executable compatibility", () => {
     expect(response.body.filtering.filteredAuthMethods).toStrictEqual([
       {
         connectorSlug: "steam",
-        connectorRef: "steam",
         authMethodId: "openid",
         reasons: ["provider-contract-mismatch"],
       },

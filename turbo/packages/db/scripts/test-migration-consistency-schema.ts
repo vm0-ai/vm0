@@ -14500,6 +14500,155 @@ async function validateHostedSiteChatScopeRollout(): Promise<void> {
   );
 }
 
+async function validateLegacyConnectorCatalogCompatibilityCleanup(): Promise<void> {
+  console.log(
+    "=== Validate legacy connector catalog compatibility cleanup ===\n",
+  );
+  const testDb = "migration_connector_catalog_compatibility_cleanup_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const sourceId = "migration-compatibility-cleanup";
+  const catalogDigest = `sha256:${"f".repeat(64)}`;
+  const capabilityDigests = {
+    populatedArray: `sha256:${"a".repeat(64)}`,
+    emptyArray: `sha256:${"b".repeat(64)}`,
+    populatedObject: `sha256:${"c".repeat(64)}`,
+    emptyObject: `sha256:${"d".repeat(64)}`,
+  } as const;
+  const populatedObject = {
+    filteredAuthMethods: [
+      {
+        connectorSlug: "github",
+        authMethodId: "oauth",
+        reasons: ["missing-revoke-provider"],
+      },
+    ],
+  };
+  const emptyObject = { filteredAuthMethods: [] };
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 783);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "connector_catalog_sync_state" (
+            "source_id",
+            "schema_version"
+          ) VALUES ($1, 2)
+        `,
+        [sourceId],
+      );
+      await client.query(
+        `
+          INSERT INTO "connector_catalog_compatibility_evaluation" (
+            "source_id",
+            "schema_version",
+            "catalog_version",
+            "catalog_digest",
+            "executable_capability_digest",
+            "catalog_validation_backend_version",
+            "catalog_validation_build_commit_sha",
+            "evaluated_at",
+            "filtered_auth_methods"
+          ) VALUES
+            ($1, 2, '2026-07-31.1', $2, $3, '1.0.0', NULL, '2026-07-31 08:00:00', $7::jsonb),
+            ($1, 2, '2026-07-31.1', $2, $4, '1.0.0', NULL, '2026-07-31 08:00:01', $8::jsonb),
+            ($1, 2, '2026-07-31.1', $2, $5, '1.0.0', NULL, '2026-07-31 08:00:02', $9::jsonb),
+            ($1, 2, '2026-07-31.1', $2, $6, '1.0.0', NULL, '2026-07-31 08:00:03', $10::jsonb)
+        `,
+        [
+          sourceId,
+          catalogDigest,
+          capabilityDigests.populatedArray,
+          capabilityDigests.emptyArray,
+          capabilityDigests.populatedObject,
+          capabilityDigests.emptyObject,
+          JSON.stringify([
+            {
+              connectorRef: "github",
+              authMethodId: "oauth",
+              reasons: ["missing-revoke-provider"],
+            },
+          ]),
+          JSON.stringify([]),
+          JSON.stringify(populatedObject),
+          JSON.stringify(emptyObject),
+        ],
+      );
+
+      const before = await client.query<{
+        capabilityDigest: string;
+        rootType: string;
+      }>(
+        `
+          SELECT
+            "executable_capability_digest" AS "capabilityDigest",
+            jsonb_typeof("filtered_auth_methods") AS "rootType"
+          FROM "connector_catalog_compatibility_evaluation"
+          ORDER BY "executable_capability_digest"
+        `,
+      );
+      assert.deepEqual(before.rows, [
+        {
+          capabilityDigest: capabilityDigests.populatedArray,
+          rootType: "array",
+        },
+        {
+          capabilityDigest: capabilityDigests.emptyArray,
+          rootType: "array",
+        },
+        {
+          capabilityDigest: capabilityDigests.populatedObject,
+          rootType: "object",
+        },
+        {
+          capabilityDigest: capabilityDigests.emptyObject,
+          rootType: "object",
+        },
+      ]);
+
+      await applyMigrationsUpToInTransaction(client, 784);
+
+      const after = await client.query<{
+        capabilityDigest: string;
+        payload: unknown;
+        rootType: string;
+      }>(
+        `
+          SELECT
+            "executable_capability_digest" AS "capabilityDigest",
+            "filtered_auth_methods" AS "payload",
+            jsonb_typeof("filtered_auth_methods") AS "rootType"
+          FROM "connector_catalog_compatibility_evaluation"
+          ORDER BY "executable_capability_digest"
+        `,
+      );
+      assert.deepEqual(after.rows, [
+        {
+          capabilityDigest: capabilityDigests.populatedObject,
+          payload: populatedObject,
+          rootType: "object",
+        },
+        {
+          capabilityDigest: capabilityDigests.emptyObject,
+          payload: emptyObject,
+          rootType: "object",
+        },
+      ]);
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+
+  console.log(
+    "   ✅ Populated and empty arrays are deleted while every canonical object digest is preserved\n",
+  );
+}
+
 async function validateTimestampOrdering(): Promise<void> {
   console.log("=== Phase 0.5: Validate Journal Timestamp Ordering ===\n");
 
@@ -14674,6 +14823,7 @@ async function main(): Promise<void> {
     await validateConnectorSlugRollout();
     await validateInsightsConnectorSlugExpansion();
     await validateInsightsConnectorTypeCleanup();
+    await validateLegacyConnectorCatalogCompatibilityCleanup();
 
     await validateStorageArchiveSizeFinalization();
     await validateStorageLegacyTypeContraction();

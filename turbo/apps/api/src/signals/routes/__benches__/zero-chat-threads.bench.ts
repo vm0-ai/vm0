@@ -42,7 +42,7 @@ import { writeDb$ } from "../../external/db";
 import { nowDate } from "../../external/time";
 import { appendChatThreadEvent } from "../../services/zero-chat-thread-event.service";
 import {
-  connectorCatalogExecutableCapabilityStates,
+  connectorCatalogExecutableCapabilityState,
   persistConnectorCatalogCompatibility,
 } from "../../services/connector-catalog-compatibility.service";
 import {
@@ -213,7 +213,7 @@ async function seedBenchConnectorCatalog(): Promise<void> {
   const catalogDigest = sha256Digest(rawBytes);
   const catalogGzip = encodeConnectorCatalogSnapshot(rawBytes);
   const source = connectorCatalogSource();
-  const capabilities = connectorCatalogExecutableCapabilityStates();
+  const capability = connectorCatalogExecutableCapabilityState();
   const activatedAt = nowDate();
   const db = store.set(writeDb$);
   const syncStateValues = {
@@ -281,7 +281,7 @@ async function seedBenchConnectorCatalog(): Promise<void> {
         catalogDigest,
       },
       artifact: BENCH_CONNECTOR_CATALOG,
-      capabilities,
+      capability,
       validator: currentConnectorCatalogValidatorIdentity(),
     });
   });
