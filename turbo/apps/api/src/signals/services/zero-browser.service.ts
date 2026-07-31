@@ -302,6 +302,35 @@ async function loadBrowserScreen(
     : null;
 }
 
+async function loadBrowserScreenHeightForThread(
+  db: Db,
+  chatThreadId: string,
+  signal: AbortSignal,
+): Promise<number> {
+  // Stopped instances retain their applied screen rows, so the latest one
+  // carries the thread's preferred height across provider replacements.
+  const [screen] = await db
+    .select({
+      width: browserSessionResizeStates.screenWidth,
+      height: browserSessionResizeStates.screenHeight,
+    })
+    .from(browserSessionResizeStates)
+    .innerJoin(
+      browserSessionInstances,
+      eq(
+        browserSessionInstances.providerSessionId,
+        browserSessionResizeStates.providerSessionId,
+      ),
+    )
+    .where(eq(browserSessionInstances.chatThreadId, chatThreadId))
+    .orderBy(desc(browserSessionInstances.createdAt))
+    .limit(1);
+  signal.throwIfAborted();
+  return screen?.width === ZERO_BROWSER_SCREEN_WIDTH
+    ? screen.height
+    : ZERO_BROWSER_INITIAL_SCREEN_HEIGHT;
+}
+
 // Extending the lease is unconditional and fixed-length: every toucher gets the
 // same 10 minutes from now, so leases cannot be stacked into a longer lifetime.
 async function touchInstanceLease(
@@ -377,13 +406,14 @@ async function persistBrowserScreen(
 async function createBrowserScreenState(
   tx: DbTransaction,
   providerSessionId: string,
+  screenHeight: number,
 ): Promise<BrowserScreen> {
   const [resizeState] = await tx
     .insert(browserSessionResizeStates)
     .values({
       providerSessionId,
       screenWidth: ZERO_BROWSER_SCREEN_WIDTH,
-      screenHeight: ZERO_BROWSER_INITIAL_SCREEN_HEIGHT,
+      screenHeight,
     })
     .returning({ height: browserSessionResizeStates.screenHeight });
   if (!resizeState) {
@@ -1204,6 +1234,7 @@ async function persistStartedProviderInstance(
     readonly provider: BrowserUseSession;
     readonly runId: string;
     readonly cleanupAfterStart: boolean;
+    readonly screenHeight: number;
   },
 ) {
   const status = args.cleanupAfterStart ? "stopped" : "active";
@@ -1228,7 +1259,11 @@ async function persistStartedProviderInstance(
     throw new Error("Failed to persist managed browser provider instance");
   }
   const screen = !args.cleanupAfterStart
-    ? await createBrowserScreenState(tx, instance.providerSessionId)
+    ? await createBrowserScreenState(
+        tx,
+        instance.providerSessionId,
+        args.screenHeight,
+      )
     : null;
   return { instance, screen };
 }
@@ -1240,6 +1275,7 @@ async function claimStartedProviderInstance(
     readonly context: BrowserRunContext;
     readonly provider: BrowserUseSession;
     readonly lifecycleEventId: string;
+    readonly screenHeight: number;
   },
 ) {
   const claimed = await db.transaction(async (tx) => {
@@ -1264,6 +1300,7 @@ async function claimStartedProviderInstance(
       provider: args.provider,
       runId: args.context.runId,
       cleanupAfterStart,
+      screenHeight: args.screenHeight,
     });
     if (cleanupAfterStart) {
       const [browser] = await tx
@@ -1343,6 +1380,7 @@ async function createAndClaimProviderInstance(
     readonly profile: Pick<BrowserThreadProfileRow, "providerProfileId">;
     readonly context: BrowserRunContext;
     readonly lifecycleEventId: string;
+    readonly screenHeight: number;
   },
 ) {
   const provider = await providerCall(
@@ -1370,12 +1408,26 @@ async function createAndClaimProviderInstance(
     );
   }
 
+  const resized = await providerCall(
+    resizeBrowserUseSession(
+      cdpUrl,
+      ZERO_BROWSER_SCREEN_WIDTH,
+      args.screenHeight,
+      AbortSignal.timeout(PROVIDER_CLEANUP_TIMEOUT_MS),
+    ),
+  );
+  if (resized.kind === "error") {
+    stopProviderSessionLater(provider.value.id);
+    return resized;
+  }
+
   const claimResult = await settleIncludingAbort(
     claimStartedProviderInstance(db, {
       browser: args.browser,
       context: args.context,
       provider: provider.value,
       lifecycleEventId: args.lifecycleEventId,
+      screenHeight: args.screenHeight,
     }),
   );
   if (!claimResult.ok) {
@@ -1422,12 +1474,18 @@ const startProviderInstance$ = command(
     }
     const profile = await loadBrowserProfileForBrowser(db, args.browser);
     signal.throwIfAborted();
+    const screenHeight = await loadBrowserScreenHeightForThread(
+      db,
+      args.context.chatThreadId,
+      signal,
+    );
 
     const started = await createAndClaimProviderInstance(db, {
       browser: args.browser,
       profile,
       context: args.context,
       lifecycleEventId: args.lifecycleEventId,
+      screenHeight,
     });
     signal.throwIfAborted();
     if (started.kind === "error") {
