@@ -5,7 +5,7 @@ import {
 } from "@vm0/api-contracts/contracts/test-model-stats-state";
 import { modelStat } from "@vm0/db/schema/model-stat";
 import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
-import { and, asc, count, gte, inArray, lt, sql } from "drizzle-orm";
+import { and, asc, count, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { executeRawRows } from "../../lib/db-raw-rows";
@@ -35,6 +35,18 @@ const aggregationLockGate = testOverride<ModelStatsAggregationLockGate | null>(
   },
 );
 
+interface ModelStatsObservationLockGate {
+  held: boolean;
+  readonly released: ReturnType<typeof createDeferredPromise<void>>;
+  readonly release: () => void;
+}
+
+const observationLockGate = testOverride<ModelStatsObservationLockGate | null>(
+  () => {
+    return null;
+  },
+);
+
 const lockHolderRowSchema = z.object({ holderPid: z.int() });
 const lockStateRowSchema = z.object({
   held: z.boolean(),
@@ -59,6 +71,27 @@ function createAggregationLockGate(
 function clearAggregationLockGate(gate: ModelStatsAggregationLockGate): void {
   if (aggregationLockGate.get() === gate) {
     aggregationLockGate.clear();
+  }
+}
+
+function createObservationLockGate(
+  signal: AbortSignal,
+): ModelStatsObservationLockGate {
+  const released = createDeferredPromise<void>(signal);
+  return {
+    held: false,
+    released,
+    release: () => {
+      if (!released.settled()) {
+        released.resolve(undefined);
+      }
+    },
+  };
+}
+
+function clearObservationLockGate(gate: ModelStatsObservationLockGate): void {
+  if (observationLockGate.get() === gate) {
+    observationLockGate.clear();
   }
 }
 
@@ -136,6 +169,37 @@ async function readAggregationLockState(
     throw new Error("Failed to read model stats aggregation lock state");
   }
   return state;
+}
+
+async function holdObservationLock(
+  db: Db,
+  idempotencyKey: string,
+  signal: AbortSignal,
+): Promise<void> {
+  if (observationLockGate.get()) {
+    throw new Error("A model stats observation lock gate is already active");
+  }
+  const gate = createObservationLockGate(signal);
+  observationLockGate.set(gate);
+  await onRejection(
+    db.transaction(async (tx) => {
+      const rows = await tx
+        .select({ idempotencyKey: modelUsageObservation.idempotencyKey })
+        .from(modelUsageObservation)
+        .where(eq(modelUsageObservation.idempotencyKey, idempotencyKey))
+        .for("update");
+      signal.throwIfAborted();
+      if (rows.length !== 1) {
+        throw new Error("Failed to lock model stats observation");
+      }
+      gate.held = true;
+      await gate.released.promise;
+    }),
+    () => {
+      clearObservationLockGate(gate);
+    },
+  );
+  clearObservationLockGate(gate);
 }
 
 async function readObservations(
@@ -234,6 +298,23 @@ async function mutateModelStatsState(
     }
     case "release-aggregation-lock": {
       aggregationLockGate.get()?.release();
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "hold-observation-lock": {
+      await holdObservationLock(db, body.idempotency_key, signal);
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "read-observation-lock-state": {
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          observation_lock_held: observationLockGate.get()?.held ?? false,
+        },
+      };
+    }
+    case "release-observation-lock": {
+      observationLockGate.get()?.release();
       return { status: 200 as const, body: { ok: true as const } };
     }
     case "read-observations": {
