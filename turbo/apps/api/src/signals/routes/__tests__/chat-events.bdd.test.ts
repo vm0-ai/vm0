@@ -25,7 +25,6 @@ import {
   getModelProviderFirewall,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
-import { RUNNER_CANCELLATION_RECOVERY_CAPABILITY } from "@vm0/api-contracts/contracts/runners";
 import {
   zeroModelProviderConnectionsByIdContract,
   zeroModelProviderConnectionsMainContract,
@@ -1197,9 +1196,7 @@ describe("CHAT-02: interrupting active chat runs", () => {
       prompt: "long task to interrupt",
     });
     await api.heartbeatRunner(runnerGroup);
-    const firstClaim = await api.claimRunnerJob(first.runId, {
-      capabilities: [RUNNER_CANCELLATION_RECOVERY_CAPABILITY],
-    });
+    const firstClaim = await api.claimRunnerJob(first.runId);
     context.mocks.ably.publish.mockClear();
 
     const interruptId = randomUUID();

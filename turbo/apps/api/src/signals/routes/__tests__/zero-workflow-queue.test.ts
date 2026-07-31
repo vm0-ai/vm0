@@ -8,7 +8,6 @@ import {
   chatEventsContract,
   chatThreadEventsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { RUNNER_CANCELLATION_RECOVERY_CAPABILITY } from "@vm0/api-contracts/contracts/runners";
 import { zeroModelProvidersByTypeContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { onTestFinished, test as vitestTest } from "vitest";
@@ -647,9 +646,7 @@ describe("workflow queue", () => {
       automation.threadId,
     );
     await runsApi.heartbeatRunner(scenario.runnerGroup);
-    const firstClaim = await runsApi.claimRunnerJob(firstRunId, {
-      capabilities: [RUNNER_CANCELLATION_RECOVERY_CAPABILITY],
-    });
+    const firstClaim = await runsApi.claimRunnerJob(firstRunId);
     expectAcceptedWithoutRun(
       await postWorkflowWebhook(automation, "wait for recovery"),
     );

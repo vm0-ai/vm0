@@ -9,10 +9,7 @@ import type {
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { cronBrowserReconcileContract } from "@vm0/api-contracts/contracts/cron";
-import {
-  CANCELLATION_RECOVERY_STALE_AFTER_MS,
-  RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
-} from "@vm0/api-contracts/contracts/runners";
+import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@vm0/api-contracts/contracts/runners";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
@@ -2148,9 +2145,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       agentId,
       prompt: "cancel a historical unsupported run",
     });
-    await claimChatRun(runnerGroup, run.runId, [
-      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
-    ]);
+    await claimChatRun(runnerGroup, run.runId);
     await markCancellationRecoveryUnsupportedFixture({ runId: run.runId });
     const queuedEventId = await queueChatEvent(actor, {
       agentId,
@@ -2252,10 +2247,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       agentId,
       prompt: "cancel before the recovery completion",
     });
-    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId, [
-      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
-      "future-cancellation-recovery-v2",
-    ]);
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
     await expectCancellationRecoveryPending(actor, run.threadId, false);
     const queuedEventId = await queueChatEvent(actor, {
       agentId,
@@ -2348,9 +2340,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       agentId,
       prompt: "cancel before losing detached terminal processing",
     });
-    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId, [
-      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
-    ]);
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
     const queuedEventId = await queueChatEvent(actor, {
       agentId,
       threadId: run.threadId,
@@ -2407,9 +2397,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       agentId,
       prompt: "delay the cancellation lifecycle callback",
     });
-    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId, [
-      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
-    ]);
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
     const queuedEventId = await queueChatEvent(actor, {
       agentId,
       threadId: run.threadId,
@@ -2492,9 +2480,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       agentId,
       prompt: "race completion with cancellation",
     });
-    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId, [
-      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
-    ]);
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
     await checkpointChatRun(run.runId, sandboxHeaders);
     const queuedEventId = await queueChatEvent(actor, {
       agentId,
@@ -2551,9 +2537,7 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       agentId,
       prompt: "cancel without a recovery completion",
     });
-    await claimChatRun(runnerGroup, run.runId, [
-      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
-    ]);
+    await claimChatRun(runnerGroup, run.runId);
     const queuedEventId = await queueChatEvent(actor, {
       agentId,
       threadId: run.threadId,
@@ -2638,12 +2622,8 @@ describe("CHAT-02/RUN-03: cancellation recovery barrier", () => {
       agentId,
       prompt: "cancel before a healthy recovery drain",
     });
-    await claimChatRun(runnerGroup, poisonedRun.runId, [
-      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
-    ]);
-    await claimChatRun(runnerGroup, healthyRun.runId, [
-      RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
-    ]);
+    await claimChatRun(runnerGroup, poisonedRun.runId);
+    await claimChatRun(runnerGroup, healthyRun.runId);
     const poisonedEventId = await queueChatEvent(actor, {
       agentId,
       threadId: poisonedRun.threadId,
