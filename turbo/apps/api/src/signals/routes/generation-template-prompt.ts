@@ -4,7 +4,6 @@ import {
   findPresentationRunbookPackage,
   findVideoTemplate,
   findWebsiteTemplatePackage,
-  hasR2Archive,
   resolvePresentationRunbookColorToken,
   type PresentationRunbookPackage,
   type WebsiteTemplatePackage,
@@ -296,20 +295,10 @@ function buildIllustrationGenerationTemplatePrompt(
   if (!imageStyle) {
     return { status: "invalid", message: "Unknown generation image style" };
   }
-  const useR2 = hasR2Archive(imageStyle);
-  const styleSource = useR2
-    ? `private R2 registry resource ${imageStyle.id}`
-    : imageStyle.source.repo && imageStyle.source.ref
-      ? `${imageStyle.source.repo}@${imageStyle.source.ref}:${imageStyle.source.path}`
-      : imageStyle.source.path;
-  const compileCommand = [
-    `zero generate image --provider built-in --style ${imageStyle.id}`,
-    '--prompt "<user request>" --compile',
-    ...(useR2 ? ["--style-source r2"] : []),
-  ].join(" ");
-  const sourceInstruction = useR2
-    ? "Follow the returned packet completely, including pulling the private R2 package and reading its extracted SKILL.md. If the R2 source is unavailable, stop without generating; do not fall back to GitHub."
-    : `Follow the returned packet completely, including reading its style source (${styleSource}) and SKILL.md. If the source is unavailable, stop without generating.`;
+  const styleSource = `private R2 registry resource ${imageStyle.id}`;
+  const compileCommand = `zero generate image --provider built-in --style ${imageStyle.id} --prompt "<user request>" --compile --style-source r2`;
+  const sourceInstruction =
+    "Follow the returned packet completely, including pulling the private R2 package and reading its extracted SKILL.md. If the R2 source is unavailable, stop without generating; do not fall back to GitHub.";
 
   return {
     status: "resolved",
