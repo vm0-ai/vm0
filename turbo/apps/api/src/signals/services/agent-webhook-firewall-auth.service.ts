@@ -232,11 +232,11 @@ function tokenRefreshFailed(
   failedAccessSourceKeys: readonly string[],
   failureReason?: FirewallAuthFailureReason,
 ): ResolveFirewallAuthResult {
-  const connectorList = failedAccessSourceKeys.join(", ");
+  const accessSourceList = failedAccessSourceKeys.join(", ");
   const message =
     failureReason === "upstream_provider"
-      ? `Access token refresh failed for: ${connectorList}. The upstream provider may be temporarily unavailable.`
-      : `Access token expired and refresh failed for: ${connectorList}. The connector may need to be reconnected.`;
+      ? `Access token refresh failed for: ${accessSourceList}. The upstream provider may be temporarily unavailable.`
+      : `Access token expired and refresh failed for: ${accessSourceList}. The connector may need to be reconnected.`;
   const error = {
     message,
     code: "TOKEN_REFRESH_FAILED",
@@ -563,10 +563,8 @@ const REFRESH_BUFFER_SECS = 60;
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 15 * 60;
 const TEMPLATE_RE = /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
-function getRefreshProviderKeySourceType(
-  providerKey: string,
-): AccessSecretSource {
-  return modelProviderTypeForProviderKey(providerKey)
+function inferAccessSourceType(accessSourceKey: string): AccessSecretSource {
+  return modelProviderTypeForProviderKey(accessSourceKey)
     ? "model-provider"
     : "connector";
 }
@@ -593,7 +591,7 @@ function resolveRefreshMetadata(
   metadata: SecretConnectorMetadata | undefined,
 ): SecretConnectorMetadata {
   const sourceType =
-    metadata?.sourceType ?? getRefreshProviderKeySourceType(accessSourceKey);
+    metadata?.sourceType ?? inferAccessSourceType(accessSourceKey);
   return {
     sourceType,
     sourceUserId:
@@ -2505,12 +2503,13 @@ function hasForbiddenModelProviderOwner(
     if (metadata.sourceType !== "model-provider") {
       continue;
     }
+    const providerKey = accessSourceKey;
 
     const ownerUserId = metadata.sourceUserId ?? ORG_SENTINEL_USER_ID;
     if (ownerUserId !== auth.userId && ownerUserId !== ORG_SENTINEL_USER_ID) {
       L.warn(`[${auth.runId}] Rejected forbidden model-provider owner`, {
         ownerUserId,
-        accessSourceKey,
+        providerKey,
         secretKey: key,
       });
       return true;
@@ -3249,7 +3248,7 @@ function connectorAccessCredentialStatus(
   });
 }
 
-function connectorAccessSourcesWithReconnectRequiredStatus(args: {
+function connectorSlugsWithReconnectRequiredStatus(args: {
   readonly secretConnectorMap: Record<string, string> | undefined;
   readonly secretConnectorMetadataMap:
     | Record<string, SecretConnectorMetadata>
@@ -3391,7 +3390,7 @@ async function prepareFirewallAuthResolutionContext(args: {
     return { ok: false, response: connectorNotConfigured() };
   }
   const reconnectRequiredConnectorSlugs =
-    connectorAccessSourcesWithReconnectRequiredStatus({
+    connectorSlugsWithReconnectRequiredStatus({
       secretConnectorMap: args.body.secretConnectorMap,
       secretConnectorMetadataMap: args.body.secretConnectorMetadataMap,
       referencedKeys: referenced.secrets,
