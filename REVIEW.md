@@ -68,6 +68,14 @@ gh api repos/vm0-ai/vm0/contents/docs/testing.md --jq '.content' | base64 -d
 
 #### Surface-Specific Practice Documents
 
+Fetch the event-sourcing rules when the PR changes persistent or optimistic
+events, client-generated event IDs, event reconciliation, event projections, or
+frontend rollback behavior:
+
+```bash
+gh api repos/vm0-ai/vm0/contents/docs/event-sourcing.md --jq '.content' | base64 -d
+```
+
 Fetch the React and ccstate execution, cache, and lifecycle practices when the
 PR touches `turbo/apps/platform`, React, ccstate, `computed`, commands, Store,
 signals, caches, effects, refs, or resource lifecycles:
@@ -191,6 +199,14 @@ Review the diff for:
 
 - Check the changed code against every practice document selected in Step 4
 - Cite the relevant practice document and rule for each practice-based finding
+
+**Event Sourcing and Optimistic UI**
+
+- Persistent events are authoritative and reconcile optimistic events by their
+  shared event ID.
+- Do not require failure-path rollback, removal, timeout cleanup, or other
+  fallback cleanup for optimistic events. A rare transient mismatch is recovered
+  by refreshing the page and reloading persistent state.
 
 **Testing Coverage**
 
@@ -328,6 +344,7 @@ Review posted: https://github.com/vm0-ai/vm0/pull/<number>#pullrequestreview-<re
 
 - Documentation index: https://github.com/vm0-ai/vm0/blob/main/docs/docs.md
 - Production-code quality: https://github.com/vm0-ai/vm0/blob/main/docs/bad-smell.md
+- Event sourcing and optimistic events: https://github.com/vm0-ai/vm0/blob/main/docs/event-sourcing.md
 - Testing standards: https://github.com/vm0-ai/vm0/blob/main/docs/testing.md
 - React effects and ccstate commands: https://github.com/vm0-ai/vm0/blob/main/docs/effect.md
 - React and ccstate cache practices: https://github.com/vm0-ai/vm0/blob/main/docs/cache.md

@@ -68,7 +68,6 @@ export interface BrowserLifecycleOptimisticEvents {
       },
     ]
   >;
-  readonly remove$: Command<void, [string]>;
 }
 
 export interface BrowserSessionCardSignalsRegistry {
@@ -212,13 +211,7 @@ function createStartBrowserSignals({
     set(startingState$, false);
     if (started.ok) {
       set(sessionOverride$, started.value.body.browser);
-      if (optimisticEvents && started.value.body.lifecycleEventId === null) {
-        set(optimisticEvents.remove$, eventId);
-      }
       return;
-    }
-    if (optimisticEvents) {
-      set(optimisticEvents.remove$, eventId);
     }
     set(reload$);
   });
@@ -282,13 +275,7 @@ function createStopBrowserSignals({
     set(stoppingState$, false);
     if (stopped.ok) {
       set(sessionOverride$, stopped.value.body.browser);
-      if (optimisticEvents && stopped.value.body.lifecycleEventId === null) {
-        set(optimisticEvents.remove$, eventId);
-      }
       return;
-    }
-    if (optimisticEvents) {
-      set(optimisticEvents.remove$, eventId);
     }
     set(reload$);
   });

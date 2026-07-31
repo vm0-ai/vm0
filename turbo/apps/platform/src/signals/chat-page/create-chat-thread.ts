@@ -42,7 +42,6 @@ import {
   createOptimisticChatEventEntry,
   createOptimisticChatEventsForThread,
   reconcileOptimisticChatEvents$,
-  removeOptimisticChatEvent$,
   type OptimisticChatEventEntry,
   type OptimisticChatEventInput,
 } from "./optimistic-chat-events.ts";
@@ -2704,9 +2703,6 @@ function createBrowserLifecycleOptimisticEvents(
           },
         }),
       );
-    }),
-    remove$: command(({ set }, eventId): void => {
-      set(removeOptimisticChatEvent$, { threadId, eventId });
     }),
   };
 }
