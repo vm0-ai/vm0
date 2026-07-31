@@ -2323,6 +2323,11 @@ describe("INT-01: Slack app deep webhook flows", () => {
                 type: "text",
                 text: "recover this event after admission conflict",
               },
+              {
+                type: "source",
+                kind: "slack",
+                href: "https://vm0.slack.com/archives/C_BDD_CANONICAL_RETRY_RECOVERY/p3100000300",
+              },
             ],
           },
         }),

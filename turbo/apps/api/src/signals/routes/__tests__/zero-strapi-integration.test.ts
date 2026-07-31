@@ -83,14 +83,14 @@ async function pendingWorkflowEvents(threadId: string) {
   );
 }
 
-async function workflowAutomationRuns(threadId: string, automationId: string) {
+async function workflowAutomationRuns(threadId: string, workflowId: string) {
   const events = await workflows.readThreadEvents(threadId);
   return events.filter((event) => {
     const automationPart = chatEventAutomationPart(event);
     return (
       event.eventType === "input.prompt" &&
       automationPart?.workflowName === WORKFLOW_NAME &&
-      automationPart.workflowId === automationId
+      automationPart.workflowId === workflowId
     );
   });
 }
@@ -461,7 +461,7 @@ describe("Strapi integration", () => {
 
     const runsForAutomation = await workflowAutomationRuns(
       automation.body.chatThreadId,
-      automation.body.id,
+      workflowId,
     );
     expect(runsForAutomation).toHaveLength(1);
     expect(
@@ -644,7 +644,7 @@ describe("Strapi integration", () => {
 
     const runsAfterRetry = await workflowAutomationRuns(
       automation.body.chatThreadId,
-      automation.body.id,
+      workflowId,
     );
     expect(runsAfterRetry).toHaveLength(1);
     const runId = runsAfterRetry[0]?.runId;
@@ -663,10 +663,7 @@ describe("Strapi integration", () => {
     });
     expect(
       (
-        await workflowAutomationRuns(
-          automation.body.chatThreadId,
-          automation.body.id,
-        )
+        await workflowAutomationRuns(automation.body.chatThreadId, workflowId)
       )[0]?.runId,
     ).toBe(runId);
   });

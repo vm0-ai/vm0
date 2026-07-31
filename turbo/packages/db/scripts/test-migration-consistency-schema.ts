@@ -13141,19 +13141,31 @@ async function validateChatEventUserMessagePartBackfill(): Promise<void> {
       await client.query(
         `
           INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
-          VALUES ($1, 'user-message-parts-user', 'user-message-parts-agent', 'user-message-parts-org');
-
+          VALUES ($1, 'user-message-parts-user', 'user-message-parts-agent', 'user-message-parts-org')
+        `,
+        [composeId],
+      );
+      await client.query(
+        `
           INSERT INTO "zero_agents" ("id", "org_id", "owner", "name")
-          VALUES ($1, 'user-message-parts-org', 'user-message-parts-user', 'user-message-parts-agent');
-
+          VALUES ($1, 'user-message-parts-org', 'user-message-parts-user', 'user-message-parts-agent')
+        `,
+        [composeId],
+      );
+      await client.query(
+        `
           INSERT INTO "chat_threads" (
             "id",
             "user_id",
             "agent_compose_id",
             "title"
           )
-          VALUES ($2, 'user-message-parts-user', $1, 'user-message parts test');
-
+          VALUES ($1, 'user-message-parts-user', $2, 'user-message parts test')
+        `,
+        [threadId, composeId],
+      );
+      await client.query(
+        `
           INSERT INTO "zero_workflows" (
             "id",
             "org_id",
@@ -13164,15 +13176,19 @@ async function validateChatEventUserMessagePartBackfill(): Promise<void> {
             "updated_by"
           )
           VALUES (
-            $3,
-            'user-message-parts-org',
             $1,
+            'user-message-parts-org',
+            $2,
             'daily-digest',
             'user-message-parts-user',
             'user-message-parts-user',
             'user-message-parts-user'
-          );
-
+          )
+        `,
+        [workflowId, composeId],
+      );
+      await client.query(
+        `
           INSERT INTO "zero_workflow_automations" (
             "id",
             "org_id",
@@ -13183,16 +13199,16 @@ async function validateChatEventUserMessagePartBackfill(): Promise<void> {
             "at_time"
           )
           VALUES (
-            $4,
+            $1,
             'user-message-parts-org',
-            $3,
+            $2,
             'user-message-parts-user',
             'schedule',
             'once',
             '2026-08-01 00:00:00'
           )
         `,
-        [composeId, threadId, workflowId, automationId],
+        [automationId, workflowId],
       );
 
       await client.query(
@@ -13204,15 +13220,23 @@ async function validateChatEventUserMessagePartBackfill(): Promise<void> {
             "channel_id",
             "message_ts"
           )
-          VALUES ($1, $6, 'https://vm0.slack.com/archives/C123/p456', 'C123', '456');
-
+          VALUES ($1, $2, 'https://vm0.slack.com/archives/C123/p456', 'C123', '456')
+        `,
+        [sourceFixtures[0].id, threadId],
+      );
+      await client.query(
+        `
           INSERT INTO "chat_feishu_context" (
             "id",
             "chat_thread_id",
             "chat_open_url"
           )
-          VALUES ($2, $6, 'https://applink.feishu.cn/client/chat/open?openChatId=oc_123');
-
+          VALUES ($1, $2, 'https://applink.feishu.cn/client/chat/open?openChatId=oc_123')
+        `,
+        [sourceFixtures[1].id, threadId],
+      );
+      await client.query(
+        `
           INSERT INTO "chat_teams_context" (
             "id",
             "chat_thread_id",
@@ -13221,8 +13245,12 @@ async function validateChatEventUserMessagePartBackfill(): Promise<void> {
             "conversation_type",
             "activity_id"
           )
-          VALUES ($3, $6, 'tenant-1', 'conversation-1', 'personal', 'activity-1');
-
+          VALUES ($1, $2, 'tenant-1', 'conversation-1', 'personal', 'activity-1')
+        `,
+        [sourceFixtures[2].id, threadId],
+      );
+      await client.query(
+        `
           INSERT INTO "chat_telegram_context" (
             "id",
             "chat_thread_id",
@@ -13230,8 +13258,12 @@ async function validateChatEventUserMessagePartBackfill(): Promise<void> {
             "message_id",
             "is_dm"
           )
-          VALUES ($4, $6, '123456', '789', true);
-
+          VALUES ($1, $2, '123456', '789', true)
+        `,
+        [sourceFixtures[3].id, threadId],
+      );
+      await client.query(
+        `
           INSERT INTO "chat_github_context" (
             "id",
             "chat_thread_id",
@@ -13240,14 +13272,9 @@ async function validateChatEventUserMessagePartBackfill(): Promise<void> {
             "subject_kind",
             "trigger_comment_id"
           )
-          VALUES ($5, $6, 'vm0-ai/vm0', 24319, 'pull_request', '98765')
+          VALUES ($1, $2, 'vm0-ai/vm0', 24319, 'pull_request', '98765')
         `,
-        [
-          ...sourceFixtures.map((fixture) => {
-            return fixture.id;
-          }),
-          threadId,
-        ],
+        [sourceFixtures[4].id, threadId],
       );
 
       for (const [index, fixture] of sourceFixtures.entries()) {
@@ -13289,8 +13316,12 @@ async function validateChatEventUserMessagePartBackfill(): Promise<void> {
             "automation_id",
             "trigger_brief"
           )
-          VALUES ($1, $2, $3, $4);
-
+          VALUES ($1, $2, $3, $4)
+        `,
+        [automationContextId, threadId, automationId, automationBrief],
+      );
+      await client.query(
+        `
           INSERT INTO "chat_events" (
             "id",
             "chat_thread_id",
@@ -13304,7 +13335,7 @@ async function validateChatEventUserMessagePartBackfill(): Promise<void> {
           VALUES
             ($1, $2, 'input.automation', 'automation', $1, 'workflow-event', NULL, 10),
             (
-              $5,
+              $3,
               $2,
               'input.prompt',
               'automation',
@@ -13314,7 +13345,7 @@ async function validateChatEventUserMessagePartBackfill(): Promise<void> {
               11
             ),
             (
-              $6,
+              $4,
               $2,
               'input.rejected',
               'automation',
@@ -13322,15 +13353,28 @@ async function validateChatEventUserMessagePartBackfill(): Promise<void> {
               'workflow-event',
               '{"version":1,"parts":[{"type":"text","text":"agent prompt copy"}]}'::jsonb,
               12
-            );
-
+            )
+        `,
+        [
+          automationContextId,
+          threadId,
+          automationClaimedId,
+          automationRejectedId,
+        ],
+      );
+      await client.query(
+        `
           INSERT INTO "chat_goal_context" (
             "id",
             "chat_thread_id",
             "objective_brief"
           )
-          VALUES ($7, $2, $8);
-
+          VALUES ($1, $2, $3)
+        `,
+        [goalContextId, threadId, goalBrief],
+      );
+      await client.query(
+        `
           INSERT INTO "chat_events" (
             "id",
             "chat_thread_id",
@@ -13341,28 +13385,18 @@ async function validateChatEventUserMessagePartBackfill(): Promise<void> {
             "seq_id"
           )
           VALUES
-            ($7, $2, 'input.goal', 'goal', $7, NULL, 20),
+            ($1, $2, 'input.goal', 'goal', $1, NULL, 20),
             (
-              $9,
+              $3,
               $2,
               'input.prompt',
               'goal',
-              $7,
+              $1,
               '{"version":1,"parts":[{"type":"text","text":"full goal agent prompt"}]}'::jsonb,
               21
             )
         `,
-        [
-          automationContextId,
-          threadId,
-          automationId,
-          automationBrief,
-          automationClaimedId,
-          automationRejectedId,
-          goalContextId,
-          goalBrief,
-          goalClaimedId,
-        ],
+        [goalContextId, threadId, goalClaimedId],
       );
 
       await applyMigrationsUpTo(client, 785);
