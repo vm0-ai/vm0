@@ -2515,7 +2515,12 @@ export const deleteChatThread$ = command(
     for (const run of deletion.activeRuns) {
       const result = await set(
         cancelRun$,
-        { runId: run.runId, userId: args.userId, orgId: run.orgId },
+        {
+          runId: run.runId,
+          userId: args.userId,
+          orgId: run.orgId,
+          runnerCancellationMode: "hard",
+        },
         signal,
       );
       signal.throwIfAborted();

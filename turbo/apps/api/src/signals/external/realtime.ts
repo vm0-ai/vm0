@@ -315,19 +315,21 @@ export async function publishOrgSignal(
   L.debug(`Published "${topic}" to org:${orgId}`);
 }
 
+export type RunnerCancellationMode = "cooperative" | "hard";
+
 /**
  * Notify a runner-group channel that a run should halt. The runner subscribes
- * to its group's channel and aborts the matching run on receipt.
+ * to its group's channel and applies the requested cancellation mode.
  */
 export async function publishCancelToRunnerGroup(
   group: string,
   runId: string,
-  mode: "cooperative" | "hard",
+  mode: RunnerCancellationMode,
 ): Promise<void> {
   const client = ablyClient();
   const channel = client.channels.get(`runner-group:${group}`);
   await channel.publish("cancel", { runId, mode });
-  L.debug(`Published cancel ${runId} to runner-group:${group}`);
+  L.debug(`Published ${mode} cancel ${runId} to runner-group:${group}`);
 }
 
 export async function publishNetworkPolicyRefreshToRunnerGroup(

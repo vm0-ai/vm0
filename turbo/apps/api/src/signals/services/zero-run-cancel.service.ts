@@ -12,6 +12,7 @@ import {
   publishChatThreadDetailChangedSafely,
   publishOrgSignal,
   publishUserSignal,
+  type RunnerCancellationMode,
 } from "../external/realtime";
 import { logger } from "../../lib/log";
 import { notFound, runNotCancellable } from "../../lib/error";
@@ -38,6 +39,7 @@ export interface CancelRunResult {
   readonly runnerGroup: string | null;
   readonly chatThreadId: string | null;
   readonly cancellationRecoveryCompleted: boolean | null;
+  readonly runnerCancellationMode: RunnerCancellationMode;
   readonly alreadyCancelled: boolean;
 }
 
@@ -70,6 +72,7 @@ export const cancelRun$ = command(
       readonly runId: string;
       readonly userId: string;
       readonly orgId: string;
+      readonly runnerCancellationMode: RunnerCancellationMode;
       readonly apiStartTime?: number;
     },
     signal: AbortSignal,
@@ -121,6 +124,7 @@ export const cancelRun$ = command(
           runnerGroup: run.runnerGroup,
           chatThreadId: zeroRun?.chatThreadId ?? null,
           cancellationRecoveryCompleted: run.cancellationRecoveryCompleted,
+          runnerCancellationMode: args.runnerCancellationMode,
           alreadyCancelled: true,
         };
       }
@@ -160,6 +164,7 @@ export const cancelRun$ = command(
         runnerGroup: run.runnerGroup,
         chatThreadId: zeroRun?.chatThreadId ?? null,
         cancellationRecoveryCompleted: run.cancellationRecoveryCompleted,
+        runnerCancellationMode: args.runnerCancellationMode,
         alreadyCancelled: false,
       };
     });
@@ -212,7 +217,7 @@ async function publishCancellationRecoveryEntered(
   signal.throwIfAborted();
 }
 
-async function publishCooperativeRunnerCancellation(
+async function publishRunnerCancellation(
   result: CancelRunResult,
   signal: AbortSignal,
 ): Promise<void> {
@@ -223,8 +228,14 @@ async function publishCooperativeRunnerCancellation(
   ) {
     return;
   }
+  // A null marker means the claim did not negotiate the API recovery barrier,
+  // so cooperative cancellation is unsafe even when the caller requested it.
+  const mode =
+    result.cancellationRecoveryCompleted === null
+      ? "hard"
+      : result.runnerCancellationMode;
   await tapError(
-    publishCancelToRunnerGroup(result.runnerGroup, result.runId, "cooperative"),
+    publishCancelToRunnerGroup(result.runnerGroup, result.runId, mode),
     (error) => {
       L.error("Failed to publish cancel to runner group", {
         runId: result.runId,
@@ -268,7 +279,7 @@ export const dispatchCancelSideEffects$ = command(
     const recoveryRedrive = result.alreadyCancelled;
     const db = set(writeDb$);
     await publishCancellationRecoveryEntered(result, signal);
-    await publishCooperativeRunnerCancellation(result, signal);
+    await publishRunnerCancellation(result, signal);
     if (!recoveryRedrive) {
       await tapError(
         publishOrgSignal(result.orgId, "queue:changed"),

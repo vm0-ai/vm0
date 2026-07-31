@@ -9563,7 +9563,7 @@ describe("RUN-03: cancellation of dispatched and terminal runs", () => {
       .toBe(true);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith("cancel", {
       runId: run.runId,
-      mode: "cooperative",
+      mode: "hard",
     });
 
     const repeated = await api.requestCancelRun(actor, run.runId, [200]);
@@ -9604,6 +9604,10 @@ describe("RUN-03: cancellation of dispatched and terminal runs", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
     await flushWaitUntilForTest();
     expect(callbackRequests).toBe(1);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith("cancel", {
+      runId: run.runId,
+      mode: "cooperative",
+    });
 
     await api.requestCancelRun(actor, run.runId, [200]);
     await flushWaitUntilForTest();
