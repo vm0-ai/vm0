@@ -45,6 +45,7 @@ const recognitionResponses = {
   403: apiErrorSchema,
   404: apiErrorSchema,
   413: apiErrorSchema,
+  500: apiErrorSchema,
   502: apiErrorSchema,
   503: apiErrorSchema,
 } as const;

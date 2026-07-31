@@ -1,12 +1,15 @@
 import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
-import { ZERO_RECOGNITION_MAX_FILE_BYTES } from "@vm0/api-contracts/contracts/zero-recognition";
+import {
+  ZERO_RECOGNITION_MAX_FILE_BYTES,
+  zeroRecognitionContract,
+} from "@vm0/api-contracts/contracts/zero-recognition";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import { zeroUsageRunsContract } from "@vm0/api-contracts/contracts/zero-usage-daily";
 import { HttpResponse, http } from "msw";
 
-import { createAppWithRoutes } from "../../../app-factory-core";
-import { testContext } from "../../../__tests__/test-context";
+import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { buildArtifactKey } from "../../../lib/file-url";
 import { mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
@@ -15,16 +18,9 @@ import {
   seedOrgMetadata,
   seedUsagePricingRows,
 } from "../../../test-fixtures/system-config-seeds";
-import { signSandboxJwtForTests } from "../../auth/tokens";
-import { now } from "../../external/time";
-import { zeroRecognitionRoutes } from "../zero-recognition";
-import { zeroUsageRunsRoutes } from "../zero-usage-runs";
-import { seedOrgMembership$ } from "./helpers/zero-org-membership";
-import {
-  seedCompose$,
-  seedRun$,
-  readUsageStorageCounts$,
-} from "./helpers/zero-usage-insight";
+import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { createRunsApi } from "./helpers/api-bdd-runs";
+import { readUsageStorageCounts$ } from "./helpers/zero-usage-insight";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -60,9 +56,8 @@ const RECOGNITION_PRICING_ROWS = [
   },
 ] as const;
 
-interface RecognitionActor {
+interface RecognitionActor extends ApiTestUser {
   readonly orgId: string;
-  readonly userId: string;
   readonly runId: string;
 }
 
@@ -73,48 +68,52 @@ interface StoredObject {
   readonly size: number;
 }
 
-function createApp() {
-  return createAppWithRoutes({
-    signal: context.signal,
-    routes: [...zeroRecognitionRoutes, ...zeroUsageRunsRoutes],
-  });
-}
-
 function zeroToken(
   actor: RecognitionActor,
   capabilities: readonly ZeroCapability[] = ["image-recognition:write"],
 ): string {
-  const seconds = Math.floor(now() / 1000);
-  return signSandboxJwtForTests({
-    scope: "zero",
-    userId: actor.userId,
-    orgId: actor.orgId,
-    runId: actor.runId,
+  return createRunsApi(context).zeroTokenForRunWithCapabilities(
+    actor,
+    actor.runId,
     capabilities,
-    iat: seconds,
-    exp: seconds + 60,
-  });
+  );
 }
 
 async function seedActor(): Promise<RecognitionActor> {
-  const orgId = randomUUID();
-  const userId = randomUUID();
-  await store.set(
-    seedOrgMembership$,
-    { orgId, userId, role: "admin" },
-    context.signal,
-  );
-  const { composeId } = await store.set(
-    seedCompose$,
-    { orgId, userId },
-    context.signal,
-  );
-  const { runId } = await store.set(
-    seedRun$,
-    { orgId, userId, composeId, triggerSource: "web" },
-    context.signal,
-  );
-  return { orgId, userId, runId };
+  const actor = createBddApi(context).user();
+  if (!actor.orgId) {
+    throw new Error("Recognition tests require an organization");
+  }
+  await seedOrgMetadata({
+    orgId: actor.orgId,
+    tier: "pro",
+    credits: STARTING_CREDITS,
+  });
+  const api = createRunsApi(context);
+  const name = `recognition-${randomUUID().slice(0, 8)}`;
+  const compose = await api.createCompose(actor, {
+    version: "1.0",
+    agents: {
+      [name]: {
+        framework: "claude-code",
+        environment: { ANTHROPIC_API_KEY: "recognition-test-key" },
+      },
+    },
+  });
+  const run = await api.createDirectRun(actor, {
+    agentComposeId: compose.composeId,
+    prompt: "Recognize an uploaded image",
+  });
+  context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+    data: [
+      {
+        role: actor.orgRole ?? "org:admin",
+        organization: { id: actor.orgId },
+        publicUserData: { userId: actor.userId },
+      },
+    ],
+  });
+  return { ...actor, orgId: actor.orgId, runId: run.runId };
 }
 
 function setStoredObjects(objects: readonly StoredObject[]): void {
@@ -130,28 +129,24 @@ function setStoredObjects(objects: readonly StoredObject[]): void {
 }
 
 function requestRecognition(args: {
-  readonly app: ReturnType<typeof createApp>;
   readonly token?: string;
   readonly fileId: string;
   readonly prompt?: string;
   readonly clientRequestId?: string;
-}): Promise<Response> {
-  return Promise.resolve(
-    args.app.request("/api/zero/recognize", {
-      method: "POST",
-      headers: {
-        ...(args.token ? { authorization: `Bearer ${args.token}` } : {}),
-        "content-type": "application/json",
-        ...(args.clientRequestId
-          ? { "x-vm0-client-request-id": args.clientRequestId }
-          : {}),
-      },
-      body: JSON.stringify({
-        fileId: args.fileId,
-        prompt: args.prompt ?? "Describe this image",
-      }),
-    }),
-  );
+}) {
+  const headers = {
+    ...(args.token ? { authorization: `Bearer ${args.token}` } : {}),
+    ...(args.clientRequestId
+      ? { "x-vm0-client-request-id": args.clientRequestId }
+      : {}),
+  };
+  return setupApp({ context })(zeroRecognitionContract).recognize({
+    headers,
+    body: {
+      fileId: args.fileId,
+      prompt: args.prompt ?? "Describe this image",
+    },
+  });
 }
 
 async function seedBilling(actor: RecognitionActor): Promise<void> {
@@ -167,27 +162,17 @@ function mockClerkUserLookup(): void {
   context.mocks.clerk.users.getUserList.mockResolvedValue({ data: [] });
 }
 
-async function readRunUsage(
-  app: ReturnType<typeof createApp>,
-  actor: RecognitionActor,
-) {
+async function readRunUsage(actor: RecognitionActor) {
   mockClerkUserLookup();
   mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
-  const response = await app.request(
-    `/api/zero/usage/runs?runId=${actor.runId}`,
-    { headers: { authorization: "Bearer clerk-session" } },
+  const response = await accept(
+    setupApp({ context })(zeroUsageRunsContract).get({
+      headers: { authorization: "Bearer clerk-session" },
+      query: { runId: actor.runId },
+    }),
+    [200],
   );
-  expect(response.status).toBe(200);
-  const body = (await response.json()) as {
-    runs: readonly {
-      runId: string;
-      inputTokens: number;
-      outputTokens: number;
-      cacheTokens: number;
-      creditsCharged: number;
-    }[];
-  };
-  return body.runs;
+  return response.body.runs;
 }
 
 async function expectNoUsage(actor: RecognitionActor): Promise<void> {
@@ -242,19 +227,17 @@ describe("POST /api/zero/recognize", () => {
     setStoredObjects([
       { userId: actor.userId, id: fileId, filename: "screen.png", size: 1024 },
     ]);
-    const app = createApp();
     const clientRequestId = randomUUID();
 
     for (let invocation = 0; invocation < 2; invocation += 1) {
       const response = await requestRecognition({
-        app,
         token: zeroToken(actor),
         fileId,
         prompt: "Read the warning",
         clientRequestId,
       });
       expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toStrictEqual({
+      expect(response.body).toStrictEqual({
         text: "A red warning banner is visible.",
         metadata: { creditsCharged: EXPECTED_CHARGE },
       });
@@ -286,7 +269,7 @@ describe("POST /api/zero/recognize", () => {
         context.signal,
       ),
     ).resolves.toStrictEqual({ raw: 6, hourly: 0 });
-    await expect(readRunUsage(app, actor)).resolves.toStrictEqual([
+    await expect(readRunUsage(actor)).resolves.toStrictEqual([
       expect.objectContaining({
         runId: actor.runId,
         inputTokens: 4000,
@@ -299,14 +282,12 @@ describe("POST /api/zero/recognize", () => {
 
   it("enforces Zero-only capability authorization before object access", async () => {
     const actor = await seedActor();
-    const app = createApp();
     const fileId = randomUUID();
 
-    const unauthenticated = await requestRecognition({ app, fileId });
+    const unauthenticated = await requestRecognition({ fileId });
     expect(unauthenticated.status).toBe(401);
 
     const missingCapability = await requestRecognition({
-      app,
       token: zeroToken(actor, ["file:write"]),
       fileId,
     });
@@ -314,7 +295,6 @@ describe("POST /api/zero/recognize", () => {
 
     mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
     const sessionResponse = await requestRecognition({
-      app,
       token: "clerk-session",
       fileId,
     });
@@ -324,7 +304,6 @@ describe("POST /api/zero/recognize", () => {
 
   it("rejects non-owned and invalid uploaded image metadata", async () => {
     const actor = await seedActor();
-    const app = createApp();
     const otherUserFileId = randomUUID();
     const gifId = randomUUID();
     const emptyId = randomUUID();
@@ -355,13 +334,13 @@ describe("POST /api/zero/recognize", () => {
     ] as const;
     for (const testCase of cases) {
       const response = await requestRecognition({
-        app,
         token,
         fileId: testCase.fileId,
       });
       expect(response.status).toBe(testCase.status);
-      const body = (await response.json()) as { error: { code: string } };
-      expect(body.error.code).toBe(testCase.code);
+      expect(response.body).toMatchObject({
+        error: { code: testCase.code },
+      });
     }
     await expectNoUsage(actor);
   });
@@ -380,12 +359,10 @@ describe("POST /api/zero/recognize", () => {
     setStoredObjects([
       { userId: actor.userId, id: fileId, filename: "screen.jpg", size: 100 },
     ]);
-    const app = createApp();
     await seedOrgMetadata({ orgId: actor.orgId, tier: "pro", credits: 0 });
     await seedUsagePricingRows(RECOGNITION_PRICING_ROWS);
 
     const noCredits = await requestRecognition({
-      app,
       token: zeroToken(actor),
       fileId,
     });
@@ -404,7 +381,6 @@ describe("POST /api/zero/recognize", () => {
       }),
     );
     const noPricing = await requestRecognition({
-      app,
       token: zeroToken(actor),
       fileId,
     });
@@ -436,12 +412,11 @@ describe("POST /api/zero/recognize", () => {
     ]);
 
     const response = await requestRecognition({
-      app: createApp(),
       token: zeroToken(actor),
       fileId,
     });
     expect(response.status).toBe(400);
-    const responseText = await response.text();
+    const responseText = JSON.stringify(response.body);
     expect(responseText).toContain("INVALID_IMAGE");
     expect(responseText).not.toContain("raw-provider-secret-detail");
     await expectNoUsage(actor);
@@ -469,12 +444,11 @@ describe("POST /api/zero/recognize", () => {
     ]);
 
     const response = await requestRecognition({
-      app: createApp(),
       token: zeroToken(actor),
       fileId,
     });
     expect(response.status).toBe(502);
-    await expect(response.json()).resolves.toMatchObject({
+    expect(response.body).toMatchObject({
       error: { code: "MISSING_PROVIDER_USAGE" },
     });
     await expectNoUsage(actor);
@@ -514,16 +488,14 @@ describe("POST /api/zero/recognize", () => {
     setStoredObjects([
       { userId: actor.userId, id: fileId, filename: "screen.png", size: 12 },
     ]);
-    const app = createApp();
 
     for (let invocation = 0; invocation < 2; invocation += 1) {
       const response = await requestRecognition({
-        app,
         token: zeroToken(actor),
         fileId,
       });
       expect(response.status).toBe(502);
-      await expect(response.json()).resolves.toMatchObject({
+      expect(response.body).toMatchObject({
         error: { code: "IMAGE_RECOGNITION_FAILED" },
       });
     }
@@ -561,12 +533,11 @@ describe("POST /api/zero/recognize", () => {
     ]);
 
     const response = await requestRecognition({
-      app: createApp(),
       token: zeroToken(actor),
       fileId,
     });
     expect(response.status).toBe(500);
-    await expect(response.text()).resolves.not.toContain(
+    expect(JSON.stringify(response.body)).not.toContain(
       "This text must not be returned",
     );
     await expect(
