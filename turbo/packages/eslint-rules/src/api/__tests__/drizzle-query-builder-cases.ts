@@ -1467,6 +1467,39 @@ const queryBuilderCases = {
   ],
   readValid: [
     {
+      name: "scalar existence keeps uncertain aliases and optional boolean trees opaque",
+      code: `${rawRowsImport}${schemaPreamble}
+        import { and, eq, sql, type SQL } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const mismatchedAlias = alias(runStates, "event");
+        declare const optionalPredicate: SQL | undefined;
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT EXISTS (
+              SELECT 1
+              FROM \${runs} \${mismatchedAlias}
+              WHERE \${eq(mismatchedAlias.id, threadId)}
+              LIMIT 1
+            ) AS visible
+          \`,
+          rowSchema,
+        );
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT EXISTS (
+              SELECT 1
+              FROM \${runs}
+              WHERE \${and(optionalPredicate)}
+              LIMIT 1
+            ) AS visible
+          \`,
+          rowSchema,
+        );
+      `,
+    },
+    {
       name: "typed existence wrappers keep non-row-select builders opaque",
       code: `${rawRowsImport}${structuredSelectionPreamble}
         import { count, eq, exists, sql } from "drizzle-orm";
@@ -2454,6 +2487,73 @@ const queryBuilderCases = {
     },
   ],
   readInvalid: [
+    {
+      name: "aliased compound scalar existence uses a row-presence builder",
+      code: `${rawRowsImport}${schemaPreamble}
+        import {
+          and,
+          eq,
+          isNotNull,
+          sql,
+          type SQL,
+        } from "drizzle-orm";
+        import { alias } from "drizzle-orm/pg-core";
+        const event = alias(runs, "event");
+        function eligibleRunPredicate(value: number): SQL {
+          return sql\`\${and(
+            eq(event.threadId, value),
+            isNotNull(event.id),
+          )}\`;
+        }
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT EXISTS (
+              SELECT 1
+              FROM \${runs} \${event}
+              WHERE \${eligibleRunPredicate(threadId)}
+              LIMIT 1
+            ) AS visible
+          \`,
+          rowSchema,
+        );
+      `,
+      errors: [
+        {
+          messageId: "existencePredicate",
+          data: { helper: "exists" },
+        },
+        { messageId: "existsQueryBuilder" },
+      ],
+    },
+    {
+      name: "fixed compound scalar existence uses a row-presence builder",
+      code: `${rawRowsImport}${schemaPreamble}
+        import { and, eq, isNotNull, sql } from "drizzle-orm";
+        await executeRawRows(
+          db,
+          sql\`
+            SELECT EXISTS (
+              SELECT 1
+              FROM \${runs}
+              WHERE \${and(
+                eq(runs.threadId, threadId),
+                isNotNull(runs.id),
+              )}
+              LIMIT 1
+            ) AS visible
+          \`,
+          rowSchema,
+        );
+      `,
+      errors: [
+        { messageId: "existsQueryBuilder" },
+        {
+          messageId: "existencePredicate",
+          data: { helper: "exists" },
+        },
+      ],
+    },
     {
       name: "single-table scalar existence uses a row-presence builder",
       code: `${rawRowsImport}${schemaPreamble}

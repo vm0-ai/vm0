@@ -32,6 +32,7 @@ import {
   drizzleCallName,
   getDrizzleColumnMetadata,
   getDrizzleTableMetadataForWrite,
+  isDefinitelyPresentDrizzleBooleanHelper,
   isDrizzleArrayParameter,
   isDrizzleColumnType,
   isDrizzleArrayOperandType,
@@ -208,6 +209,7 @@ interface SqlMarker {
   readonly isArrayOperand: boolean;
   readonly isBoundScalar: boolean;
   readonly isColumn: boolean;
+  readonly isDefinitelyPresentWrapper: boolean;
   readonly isNumber: boolean;
   readonly isPatternOperand: boolean;
   readonly isSelect: boolean;
@@ -803,6 +805,17 @@ function markerIsWrapper(
   return isDrizzleWrapperType(checker, checker.getTypeAtLocation(tsNode));
 }
 
+function markerIsDefinitelyPresentWrapper(
+  node: TSESTree.Expression,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+): boolean {
+  return (
+    markerIsWrapper(node, checker, services) ||
+    isDefinitelyPresentDrizzleBooleanHelper(checker, services, node)
+  );
+}
+
 function isOptionalDrizzleWrapperType(
   type: Type,
   checker: TypeChecker,
@@ -1187,6 +1200,7 @@ function parseSqlVariant(
     let cachedBoundScalar: boolean | undefined;
     let cachedColumn: boolean | undefined;
     let cachedColumnMetadata: SqlMarker["columnMetadata"] | null | undefined;
+    let cachedDefinitelyPresentWrapper: boolean | undefined;
     let cachedExpressionSymbol: TypeScriptSymbol | null | undefined;
     let cachedNumber: boolean | undefined;
     let cachedPatternOperand: boolean | undefined;
@@ -1242,6 +1256,14 @@ function parseSqlVariant(
       get isColumn(): boolean {
         cachedColumn ??= markerIsColumn(expression, checker, services);
         return cachedColumn;
+      },
+      get isDefinitelyPresentWrapper(): boolean {
+        cachedDefinitelyPresentWrapper ??= markerIsDefinitelyPresentWrapper(
+          expression,
+          checker,
+          services,
+        );
+        return cachedDefinitelyPresentWrapper;
       },
       get isNumber(): boolean {
         cachedNumber ??= markerIsNumber(expression, checker, services);
@@ -3259,7 +3281,7 @@ function relationMatch(
   value: unknown,
   markers: ReadonlyMap<string, SqlMarker>,
 ): RelationMatch | undefined {
-  const direct = relationMarker(value, markers);
+  const direct = schemaRelationMarker(value, markers);
   if (direct !== undefined) {
     return {
       joinedConditions: [],
@@ -3281,7 +3303,7 @@ function relationMatch(
     return undefined;
   }
   const left = relationMatch(join.larg, markers);
-  const right = relationMarker(join.rarg, markers);
+  const right = schemaRelationMarker(join.rarg, markers);
   const condition = columnMarker(join.quals, markers);
   if (left === undefined || right === undefined || condition === undefined) {
     return undefined;
@@ -3410,10 +3432,10 @@ function isHandBuiltExistenceSelect(
       return marker.isTable;
     }) &&
     relation.joinedConditions.every((marker) => {
-      return marker.isWrapper;
+      return marker.isDefinitelyPresentWrapper;
     }) &&
     predicates?.every((marker) => {
-      return marker.isWrapper;
+      return marker.isDefinitelyPresentWrapper;
     }) === true
   );
 }
@@ -3606,7 +3628,7 @@ function schemaJoinGraph(
   value: unknown,
   markers: ReadonlyMap<string, SqlMarker>,
 ): SchemaJoinGraph | undefined {
-  const table = relationMarker(value, markers);
+  const table = schemaRelationMarker(value, markers);
   if (table !== undefined) {
     return table.isTable ? { conditions: [], joinCount: 0 } : undefined;
   }
@@ -3623,7 +3645,7 @@ function schemaJoinGraph(
     return undefined;
   }
   const left = schemaJoinGraph(join.larg, markers);
-  const right = relationMarker(join.rarg, markers);
+  const right = schemaRelationMarker(join.rarg, markers);
   if (left === undefined || right?.isTable !== true) {
     return undefined;
   }
@@ -3631,6 +3653,30 @@ function schemaJoinGraph(
     conditions: [...left.conditions, join.quals],
     joinCount: left.joinCount + 1,
   };
+}
+
+function schemaRelationMarker(
+  value: unknown,
+  markers: ReadonlyMap<string, SqlMarker>,
+): SqlMarker | undefined {
+  const direct = relationMarker(value, markers);
+  if (direct !== undefined) {
+    return direct;
+  }
+  const range = rangeVarPayload(value);
+  const aliasName =
+    range === undefined ? undefined : directRelationAliasName(range.alias);
+  if (range === undefined || aliasName === undefined) {
+    return undefined;
+  }
+  const relation = markers.get(range.relname);
+  const alias = markers.get(aliasName);
+  const tableAlias = alias?.tableAlias;
+  return relation?.isTable === true &&
+    alias?.isTable === true &&
+    tableAlias?.sourceSymbol === relation.expressionSymbol
+    ? alias
+    : undefined;
 }
 
 const PAGINATED_SELECT_KEYS = new Set([
@@ -3674,11 +3720,11 @@ function isPaginatedSchemaSelect(
     relation === undefined ||
     !relation.conditions.every((condition) => {
       return markersMatch(condition, markers, (marker) => {
-        return marker.isWrapper;
+        return marker.isDefinitelyPresentWrapper;
       });
     }) ||
     !markersMatch(select.whereClause, markers, (marker) => {
-      return marker.isWrapper;
+      return marker.isDefinitelyPresentWrapper;
     })
   ) {
     return false;

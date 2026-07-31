@@ -391,7 +391,6 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
           LEFT JOIN \${otherUsers} ON \${condition}
           WHERE \${condition}
         )\`;
-        sql\`EXISTS (SELECT 1 FROM \${users} WHERE \${or(condition, condition)})\`;
         sql\`EXISTS (SELECT 1 FROM \${users} WHERE \${condition} FOR UPDATE)\`;
         sql\`EXISTS (SELECT 1 FROM \${users} WHERE \${condition}); SELECT 1\`;
       `,
@@ -2167,6 +2166,27 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
               FROM \${users}
               WHERE \${eq(users.id, 1)}
                 AND \${isNotNull(users.name)}
+            )\`,
+          );
+      `,
+      errors: [
+        {
+          messageId: "existencePredicate",
+          data: { helper: "exists" },
+        },
+      ],
+    },
+    {
+      code: `${drizzlePreamble}
+        import { eq, or, sql } from "drizzle-orm";
+        const condition = eq(users.id, 1);
+        db.select()
+          .from(users)
+          .where(
+            sql\`EXISTS (
+              SELECT 1
+              FROM \${users}
+              WHERE \${or(condition, condition)}
             )\`,
           );
       `,
