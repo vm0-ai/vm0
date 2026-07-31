@@ -239,7 +239,7 @@ async fn workspace_promotion_mismatch_destroys_stale_idle_vm_and_fresh_creates()
 }
 
 #[tokio::test]
-async fn reuse_take_preserves_cached_workspace_held_session_state() {
+async fn reuse_take_preserves_cached_workspace_snapshot_state() {
     let wait_gate = sandbox_mock::MockLifecycleGate::new();
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.set_wait_process_lifecycle_gate(wait_gate.clone());
@@ -305,7 +305,7 @@ async fn reuse_take_preserves_cached_workspace_held_session_state() {
         env.handle
             .wait_heartbeat_past(heartbeat_count, Duration::from_secs(5))
             .await,
-        "workspace cache promotion should refresh the held-session snapshot before claim"
+        "workspace cache promotion should refresh the workspace snapshot before claim"
     );
     let run_id = RunId::new_v4();
     push_job(

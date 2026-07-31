@@ -165,9 +165,9 @@ pub(super) async fn handle_discovered_job(
     let started_at = Instant::now();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::DeviceRateLimits, started_at);
 
-    // Hide the claimed session from heartbeat affinity before unpark or
+    // Hide the claimed reuse key from heartbeat affinity before unpark or
     // fallback cleanup can yield. Otherwise a concurrent heartbeat could
-    // briefly advertise stale workspace-cache affinity for an active session.
+    // briefly advertise stale workspace-cache affinity for an active run.
     let active_reuse_key_guard = ActiveReuseKeyGuard::new(
         ctx.spawn_ctx.active_reuse_keys.clone(),
         claimed.context().reuse_key().map(str::to_owned),

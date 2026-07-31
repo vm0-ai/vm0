@@ -1,4 +1,4 @@
-//! Local session workspace image cache.
+//! Local workspace image cache keyed by runner reuse identity.
 //!
 //! This cache stores reusable workspace drive images for reuse-key-backed runs.
 //! Each cache entry is keyed by cache scope, profile, reuse key, and logical

@@ -1086,7 +1086,7 @@ mod tests {
 
         assert!(
             super::super::active_sessions::active_reuse_keys(&active_reuse_keys).is_empty(),
-            "completion should release the active session guard before notifying"
+            "completion should release the active reuse-key guard before notifying"
         );
         assert!(
             fixture.park_notify.notified().now_or_never().is_some(),

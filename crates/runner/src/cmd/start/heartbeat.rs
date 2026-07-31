@@ -323,7 +323,7 @@ impl WorkspaceCacheStateSnapshot {
     }
 }
 
-/// Collect current runner state, refresh the local held-session snapshot, and
+/// Collect current runner state, refresh the local workspace-cache snapshot, and
 /// send a heartbeat to the server.
 pub(super) async fn send_heartbeat(
     hb: &HeartbeatContext<'_>,
@@ -699,7 +699,7 @@ mod tests {
     async fn seed_workspace_cache_state(
         cache: &SessionWorkspaceCache,
         paths: &RunnerPaths,
-        session_id: &str,
+        reuse_key: &str,
         completed_at: &str,
     ) {
         let run_id = crate::ids::RunId::new_v4();
@@ -710,8 +710,8 @@ mod tests {
                     run_id,
                     sandbox_id,
                     profile_name: "vm0/default",
-                    reuse_key: Some(session_id),
-                    cli_agent_session_id: Some(session_id),
+                    reuse_key: Some(reuse_key),
+                    cli_agent_session_id: None,
                     working_dir: CANONICAL_WORKING_DIR,
                     image_size_bytes: 1024 * 1024,
                 },
@@ -1041,7 +1041,7 @@ mod tests {
         );
         assert!(
             snapshot.might_contain_workspace_cache_reuse_key("sess-cache"),
-            "loaded matching snapshot should trigger refresh when that session is claimed"
+            "loaded matching snapshot should trigger refresh when that reuse key is claimed"
         );
     }
 
