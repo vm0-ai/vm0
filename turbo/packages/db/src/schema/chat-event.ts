@@ -19,7 +19,6 @@ import type {
   ChatEventAttachFiles,
   ChatEventGenerationTemplate,
   ChatEventGoalEvent,
-  ChatEventGoalSnapshot,
   ChatEventRecommendedFollowups,
   ChatEventUserMessage,
   ChatEventUsagePayload,
@@ -123,7 +122,6 @@ export const chatEvents = pgTable(
     /** Strictly increasing position within the owning chat thread. */
     seqId: bigint("seq_id", { mode: "number" }).notNull(),
     goalEvent: jsonb("goal_event").$type<ChatEventGoalEvent>(),
-    goalSnapshot: jsonb("goal_snapshot").$type<ChatEventGoalSnapshot>(),
     attachFiles: jsonb("attach_files").$type<ChatEventAttachFiles>(),
     generationTemplate: jsonb(
       "generation_template",

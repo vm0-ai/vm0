@@ -11828,15 +11828,28 @@ async function validateChatGoalContextBackfill(): Promise<void> {
   const claimedEventId = "00000000-0000-4000-8000-000000077611";
   const rejectedEventId = "00000000-0000-4000-8000-000000077612";
   const runId = "00000000-0000-4000-8000-000000077613";
+  const catchupContextId = "00000000-0000-4000-8000-000000077620";
+  const catchupClaimedEventId = "00000000-0000-4000-8000-000000077621";
+  const catchupRejectedEventId = "00000000-0000-4000-8000-000000077622";
+  const catchupRunId = "00000000-0000-4000-8000-000000077623";
   const objectiveBrief = "Preserve one objective snapshot across the chain";
+  const catchupObjectiveBrief =
+    "Catch up one objective snapshot before dropping the column";
 
   const migrationSql = await fs.readFile(
     path.join(MIGRATIONS_DIR, "0776_add_chat_goal_context.sql"),
     "utf8",
   );
+  const contractionSql = await fs.readFile(
+    path.join(MIGRATIONS_DIR, "0777_drop_chat_event_goal_snapshot.sql"),
+    "utf8",
+  );
   assert.doesNotMatch(migrationSql, /\bLOCK TABLE\b/u);
   assert.match(migrationSql, /\brevokes_event_id\b/u);
   assert.doesNotMatch(migrationSql, /\brevokes_message_id\b/u);
+  assert.doesNotMatch(contractionSql, /\bLOCK TABLE\b/u);
+  assert.match(contractionSql, /\brevokes_event_id\b/u);
+  assert.doesNotMatch(contractionSql, /\brevokes_message_id\b/u);
 
   await createDatabase(testDb);
   try {
@@ -12047,6 +12060,143 @@ async function validateChatGoalContextBackfill(): Promise<void> {
         rowId: contextId,
       });
 
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "run_id",
+            "run_group_id",
+            "event_type",
+            "user_message",
+            "error",
+            "goal_snapshot",
+            "revokes_event_id",
+            "seq_id",
+            "created_at"
+          )
+          VALUES
+            (
+              $2,
+              $1,
+              NULL,
+              $5,
+              'input.goal',
+              NULL,
+              NULL,
+              jsonb_build_object('objectiveBrief', $6::text),
+              NULL,
+              4,
+              '2026-07-31 00:00:03'
+            ),
+            (
+              $3,
+              $1,
+              $7,
+              $5,
+              'input.prompt',
+              '{"version":1,"parts":[{"type":"text","text":"Catch-up claimed goal"}]}'::jsonb,
+              NULL,
+              jsonb_build_object('objectiveBrief', $6::text),
+              $2,
+              5,
+              '2026-07-31 00:00:04'
+            ),
+            (
+              $4,
+              $1,
+              NULL,
+              $5,
+              'input.rejected',
+              '{"version":1,"parts":[{"type":"text","text":"Catch-up rejected goal"}]}'::jsonb,
+              'Catch-up goal run rejected',
+              jsonb_build_object('objectiveBrief', $6::text),
+              $3,
+              6,
+              '2026-07-31 00:00:05'
+            )
+        `,
+        [
+          threadId,
+          catchupContextId,
+          catchupClaimedEventId,
+          catchupRejectedEventId,
+          goalId,
+          catchupObjectiveBrief,
+          catchupRunId,
+        ],
+      );
+
+      await applyMigrationsUpTo(client, 777);
+
+      const finalContexts = await client.query<{
+        id: string;
+        objectiveBrief: string;
+      }>(`
+        SELECT
+          "id",
+          "objective_brief" AS "objectiveBrief"
+        FROM "chat_goal_context"
+        ORDER BY "id"
+      `);
+      assert.deepEqual(finalContexts.rows, [
+        { id: contextId, objectiveBrief },
+        { id: catchupContextId, objectiveBrief: catchupObjectiveBrief },
+      ]);
+
+      const catchupPointers = await client.query<{
+        contextId: string | null;
+        contextType: string | null;
+        id: string;
+      }>(
+        `
+          SELECT
+            "id",
+            "context_type" AS "contextType",
+            "context_id" AS "contextId"
+          FROM "chat_events"
+          WHERE "id" IN ($1, $2, $3)
+          ORDER BY "seq_id"
+        `,
+        [catchupContextId, catchupClaimedEventId, catchupRejectedEventId],
+      );
+      assert.deepEqual(catchupPointers.rows, [
+        {
+          id: catchupContextId,
+          contextType: "goal",
+          contextId: catchupContextId,
+        },
+        {
+          id: catchupClaimedEventId,
+          contextType: "goal",
+          contextId: catchupContextId,
+        },
+        {
+          id: catchupRejectedEventId,
+          contextType: "goal",
+          contextId: catchupContextId,
+        },
+      ]);
+
+      const legacyColumns = await client.query<{ count: string }>(`
+        SELECT count(*)::text AS "count"
+        FROM "information_schema"."columns"
+        WHERE "table_schema" = 'public'
+          AND "table_name" = 'chat_events'
+          AND "column_name" = 'goal_snapshot'
+      `);
+      assert.deepEqual(legacyColumns.rows, [{ count: "0" }]);
+
+      await expectAppendOnlyUpdateRejected(client, {
+        tableName: "chat_events",
+        query: `
+          UPDATE "chat_events"
+          SET "context_id" = NULL
+          WHERE "id" = $1
+        `,
+        rowId: catchupContextId,
+      });
+
       await client.query(`DELETE FROM "chat_threads" WHERE "id" = $1`, [
         threadId,
       ]);
@@ -12057,7 +12207,10 @@ async function validateChatGoalContextBackfill(): Promise<void> {
       assert.deepEqual(remainingContexts.rows, [{ count: "0" }]);
 
       console.log(
-        "   ✅ One goal context backfills across a three-row revoke chain",
+        "   ✅ One goal context backfills across each three-row revoke chain",
+      );
+      console.log(
+        "   ✅ The contraction catches up deployment-window rows and drops goal_snapshot",
       );
       console.log(
         "   ✅ Goal context has no secondary index and cascades only with its thread\n",
