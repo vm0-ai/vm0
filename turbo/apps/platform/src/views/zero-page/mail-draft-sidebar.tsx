@@ -1000,47 +1000,48 @@ function MailDraftDetails({
   const attachmentUrlsLoading = attachmentPreviewsLoadable.state === "loading";
   const attachments = draft.version === 3 ? draft.attachments : [];
   return (
-    <div
-      ref={setAttachmentScopeRef}
-      className="min-h-0 flex-1 overflow-y-auto px-5 py-5"
-    >
-      <MailMessageHeader close={close} draft={draft} />
-      <div className="py-5">
-        <MailDraftMessage
-          attachmentUrls={attachmentUrls}
-          attachmentUrlsLoading={attachmentUrlsLoading}
-          draft={draft}
-          signals={signals}
-        />
+    <div ref={setAttachmentScopeRef} className="flex min-h-0 flex-1 flex-col">
+      <div className="shrink-0 px-5 pt-5">
+        <MailMessageHeader close={close} draft={draft} />
       </div>
-      {attachments.length > 0 ? (
-        <div className="grid gap-2.5 border-t border-border/60 pt-4">
-          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {t(($) => {
-              return $.chat.attachments.title;
-            })}
-          </div>
-          <div className="flex flex-wrap gap-3">
-            {attachments.map((attachment) => {
-              const key = `${attachment.filename}-${attachment.contentType}-${attachment.size}`;
-              return attachment.partId ? (
-                <MailAttachmentPreview
-                  key={key}
-                  attachment={attachment}
-                  text$={attachmentPreviews?.text.get(attachment.partId)}
-                  url={
-                    attachmentUrlsLoading
-                      ? undefined
-                      : (attachmentUrls?.get(attachment.partId) ?? null)
-                  }
-                />
-              ) : (
-                <AttachmentSummary key={key} attachment={attachment} />
-              );
-            })}
-          </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
+        <div className="py-5">
+          <MailDraftMessage
+            attachmentUrls={attachmentUrls}
+            attachmentUrlsLoading={attachmentUrlsLoading}
+            draft={draft}
+            signals={signals}
+          />
         </div>
-      ) : null}
+        {attachments.length > 0 ? (
+          <div className="grid gap-2.5 border-t border-border/60 pt-4">
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              {t(($) => {
+                return $.chat.attachments.title;
+              })}
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {attachments.map((attachment) => {
+                const key = `${attachment.filename}-${attachment.contentType}-${attachment.size}`;
+                return attachment.partId ? (
+                  <MailAttachmentPreview
+                    key={key}
+                    attachment={attachment}
+                    text$={attachmentPreviews?.text.get(attachment.partId)}
+                    url={
+                      attachmentUrlsLoading
+                        ? undefined
+                        : (attachmentUrls?.get(attachment.partId) ?? null)
+                    }
+                  />
+                ) : (
+                  <AttachmentSummary key={key} attachment={attachment} />
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

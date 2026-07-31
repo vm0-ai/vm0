@@ -244,7 +244,7 @@ function SentMailDraftCard({
       data-mail-draft-card
       data-mail-draft-status={draft.status}
       className={cn(
-        "flex w-full max-w-xl overflow-hidden rounded-[var(--zero-card-radius)] border bg-card",
+        "flex w-full max-w-xl items-center overflow-hidden rounded-[var(--zero-card-radius)] border bg-card",
         MAIL_DRAFT_CARD_HEIGHT_CLASS,
         selected ? "border-ring/60 bg-muted/20" : "border-border/70",
       )}
@@ -278,7 +278,7 @@ function SentMailDraftCard({
         title={followUpDescription(followUpState)}
         disabled={followUpState !== "idle"}
         onClick={onFollowUp}
-        className="mr-3 shrink-0"
+        className="h-full shrink-0 rounded-none px-4 focus-visible:ring-inset focus-visible:ring-offset-0"
       >
         <FollowUpIcon state={followUpState} />
         {followUpButtonLabel(followUpState)}
