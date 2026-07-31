@@ -1018,7 +1018,7 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
       expect.stringContaining("test-oauth token refresh failed"),
       expect.objectContaining({
-        connectorType: "test-oauth",
+        accessSourceKey: "test-oauth",
         errorCode: "invalid_grant",
         failureReason: "reconnect_required",
         oauthError: "invalid_grant",
