@@ -25,6 +25,7 @@ import {
   getModelProviderFirewall,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
+import { RUNNER_CANCELLATION_RECOVERY_CAPABILITY } from "@vm0/api-contracts/contracts/runners";
 import {
   zeroModelProviderConnectionsByIdContract,
   zeroModelProviderConnectionsMainContract,
@@ -1171,13 +1172,18 @@ describe("CHAT-02: web chat send and client ids", () => {
 
 describe("CHAT-02: interrupting active chat runs", () => {
   it("interrupts an active run, guards interrupt ids, and feeds cancelled rounds into the next run", async () => {
-    const { actor, agentId } = await entitledChatActor();
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const first = await sendChatRun(actor, {
       agentId,
       prompt: "long task to interrupt",
     });
+    await api.heartbeatRunner(runnerGroup);
+    const firstClaim = await api.claimRunnerJob(first.runId, {
+      capabilities: [RUNNER_CANCELLATION_RECOVERY_CAPABILITY],
+    });
+    context.mocks.ably.publish.mockClear();
 
     const interruptId = randomUUID();
     const interrupted = await chat.requestSendEvent(
@@ -1195,6 +1201,17 @@ describe("CHAT-02: interrupting active chat runs", () => {
     }
     expect(interrupted.body.runId).toBeNull();
     await waitForRunStatus(actor, first.runId, "cancelled");
+    await flushWaitUntilForTest();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith("cancel", {
+      runId: first.runId,
+      mode: "cooperative",
+    });
+    await webhooks.requestAgentComplete(
+      { runId: first.runId, exitCode: 1 },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+    await flushWaitUntilForTest();
 
     const messages = await waitForThreadMessages(
       actor,

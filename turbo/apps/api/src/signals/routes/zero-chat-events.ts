@@ -2147,6 +2147,7 @@ const handleInterruptSend$ = command(
         runId: args.body.interruptsRunId,
         userId: args.userId,
         orgId: args.orgId,
+        runnerCancellationMode: "cooperative",
       },
       signal,
     );
