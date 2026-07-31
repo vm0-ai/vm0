@@ -1000,7 +1000,7 @@ mod tests {
                     None
                 }
             })
-            .unwrap_or(0);
+            .expect("request should include a valid Content-Length header");
         let request_len = header_end + content_length;
         while request.len() < request_len {
             let n = socket.read(&mut buf).await.unwrap();
