@@ -13299,7 +13299,9 @@ async function validateChatEventUserMessagePartBackfill(): Promise<void> {
                 'version',
                 1,
                 'parts',
-                jsonb_build_array(jsonb_build_object('type', 'text', 'text', $3))
+                jsonb_build_array(
+                  jsonb_build_object('type', 'text', 'text', $3::text)
+                )
               ),
               $4
             )

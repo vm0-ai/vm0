@@ -2173,6 +2173,11 @@ describe("Feishu integration", () => {
               filenameSnapshot: "quarterly-report.pdf",
               contentType: "application/pdf",
             },
+            {
+              type: "source",
+              kind: "feishu",
+              href: "https://applink.feishu.cn/client/chat/open?openChatId=oc_feishu_dm",
+            },
           ],
         },
       }),
