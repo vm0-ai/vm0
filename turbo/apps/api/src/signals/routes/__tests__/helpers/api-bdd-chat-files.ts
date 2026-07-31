@@ -18,7 +18,7 @@ import {
   chatThreadsContract,
   type AttachFile,
   type ArtifactsListResponse,
-  type ChatEventResponse,
+  type ChatEvent,
   type ChatSearchResponse,
   type ChatThreadArtifactRun,
   type ChatThreadDetail,
@@ -879,7 +879,7 @@ export function createChatFilesBddApi(context: TestContext) {
         readonly beforeId?: string;
         readonly limit?: number;
       } = {},
-    ): Promise<{ readonly events: readonly ChatEventResponse[] }> {
+    ): Promise<{ readonly events: readonly ChatEvent[] }> {
       const response = await accept(
         threadEventsClient().list({
           headers: authenticate(context, actor),
@@ -917,7 +917,7 @@ export function createChatFilesBddApi(context: TestContext) {
       actor: ApiTestUser,
       threadId: string,
       eventId: string,
-    ): Promise<ChatEventResponse> {
+    ): Promise<ChatEvent> {
       const response = await accept(
         threadEventsClient().get({
           headers: authenticate(context, actor),

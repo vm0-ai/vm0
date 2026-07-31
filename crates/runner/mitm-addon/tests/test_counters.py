@@ -355,6 +355,33 @@ class TestUsagePendingCounter:
             pending_path, flows=0, buffered=0, reports=0, flush_request_id="all-released"
         )
 
+    def test_buffered_report_lease_double_release_logs_without_decrementing_other_reports(
+        self, tmp_path
+    ):
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
+        first = usage.admit_buffered_report()
+        second = usage.admit_buffered_report()
+        assert_current_pending(
+            pending_path, flows=0, buffered=2, reports=0, flush_request_id="admitted"
+        )
+
+        mock_log = MagicMock()
+        with patch.object(usage.counters.ctx, "log", mock_log, create=True):
+            first.release()
+            first.release()
+
+        assert_current_pending(
+            pending_path, flows=0, buffered=1, reports=0, flush_request_id="first-released"
+        )
+        assert mock_log.error.call_count == 1
+        assert_counter_underflow_message(mock_log.error.call_args[0][0], "buffered_reports")
+
+        second.release()
+        assert_current_pending(
+            pending_path, flows=0, buffered=0, reports=0, flush_request_id="all-released"
+        )
+
     def test_reset_for_tests_reenables_counter_underflow_signal(self, tmp_path):
         usage.set_pending_path(str(tmp_path / "usage-pending-before-reset"))
 

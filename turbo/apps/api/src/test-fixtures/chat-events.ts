@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -5,8 +7,11 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
+import { chatGithubContext } from "@vm0/db/schema/chat-github-context";
 import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
 import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
+import { chatTeamsContext } from "@vm0/db/schema/chat-teams-context";
+import { chatTelegramContext } from "@vm0/db/schema/chat-telegram-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
@@ -20,6 +25,7 @@ import {
   insertChatEvent,
   replaceChatEvent,
 } from "../signals/services/zero-chat-event.service";
+import { createUserMessageDocument } from "../signals/services/zero-chat-user-message.service";
 import { createDeferredPromise, onRejection } from "../signals/utils";
 
 /**
@@ -48,63 +54,245 @@ interface ChatEventContextFixture {
   readonly contextId: string | null;
   readonly automationId: string | null;
   readonly triggerBrief: string | null;
-  readonly slackMessagePermalink: string | null;
-  readonly feishuChatOpenUrl: string | null;
+  readonly slackPermalink: string | null;
+  readonly slackChannelId: string | null;
+  readonly slackMessageTs: string | null;
+  readonly feishuOpenUrl: string | null;
+  readonly teamsTenantId: string | null;
+  readonly teamsChannelId: string | null;
+  readonly teamsActivityId: string | null;
+  readonly telegramChatId: string | null;
+  readonly telegramMessageId: string | null;
+  readonly telegramIsDm: boolean | null;
+  readonly githubRepo: string | null;
+  readonly githubSubjectNumber: number | null;
+  readonly githubSubjectKind: "issue" | "pull_request" | null;
+  readonly githubTriggerCommentId: string | null;
   readonly goalObjectiveBrief: string | null;
 }
 
 export async function readChatEventContextFixture(
   eventId: string,
 ): Promise<ChatEventContextFixture | null> {
+  const contextId = sql`COALESCE(${chatEvents.contextId}, ${chatEvents.id})`;
   const [event] = await db()
     .select({
       id: chatEvents.id,
       revokesEventId: chatEvents.revokesEventId,
       contextType: chatEvents.contextType,
       contextId: chatEvents.contextId,
+      automationId: chatAutomationContext.automationId,
+      triggerBrief: chatAutomationContext.triggerBrief,
+      slackPermalink: chatSlackContext.messagePermalink,
+      slackChannelId: chatSlackContext.channelId,
+      slackMessageTs: chatSlackContext.messageTs,
+      feishuOpenUrl: chatFeishuContext.chatOpenUrl,
+      teamsTenantId: chatTeamsContext.tenantId,
+      teamsChannelId: chatTeamsContext.channelId,
+      teamsActivityId: chatTeamsContext.activityId,
+      telegramChatId: chatTelegramContext.chatId,
+      telegramMessageId: chatTelegramContext.messageId,
+      telegramIsDm: chatTelegramContext.isDm,
+      githubRepo: chatGithubContext.repo,
+      githubSubjectNumber: chatGithubContext.subjectNumber,
+      githubSubjectKind: chatGithubContext.subjectKind,
+      githubTriggerCommentId: chatGithubContext.triggerCommentId,
+      goalObjectiveBrief: chatGoalContext.objectiveBrief,
     })
     .from(chatEvents)
+    .leftJoin(chatAutomationContext, eq(chatAutomationContext.id, contextId))
+    .leftJoin(chatSlackContext, eq(chatSlackContext.id, contextId))
+    .leftJoin(chatFeishuContext, eq(chatFeishuContext.id, contextId))
+    .leftJoin(chatTeamsContext, eq(chatTeamsContext.id, contextId))
+    .leftJoin(chatTelegramContext, eq(chatTelegramContext.id, contextId))
+    .leftJoin(chatGithubContext, eq(chatGithubContext.id, contextId))
+    .leftJoin(chatGoalContext, eq(chatGoalContext.id, contextId))
     .where(eq(chatEvents.id, eventId))
     .limit(1);
-  if (!event) {
-    return null;
-  }
+  return event ?? null;
+}
 
-  const contextId = event.contextId ?? event.id;
-  const [[automationContext], [slackContext], [feishuContext], [goalContext]] =
-    await Promise.all([
-      db()
-        .select({
-          automationId: chatAutomationContext.automationId,
-          triggerBrief: chatAutomationContext.triggerBrief,
-        })
-        .from(chatAutomationContext)
-        .where(eq(chatAutomationContext.id, contextId))
-        .limit(1),
-      db()
-        .select({ messagePermalink: chatSlackContext.messagePermalink })
-        .from(chatSlackContext)
-        .where(eq(chatSlackContext.id, contextId))
-        .limit(1),
-      db()
-        .select({ chatOpenUrl: chatFeishuContext.chatOpenUrl })
-        .from(chatFeishuContext)
-        .where(eq(chatFeishuContext.id, contextId))
-        .limit(1),
-      db()
-        .select({ objectiveBrief: chatGoalContext.objectiveBrief })
-        .from(chatGoalContext)
-        .where(eq(chatGoalContext.id, contextId))
-        .limit(1),
-    ]);
-  return {
-    ...event,
-    automationId: automationContext?.automationId ?? null,
-    triggerBrief: automationContext?.triggerBrief ?? null,
-    slackMessagePermalink: slackContext?.messagePermalink ?? null,
-    feishuChatOpenUrl: feishuContext?.chatOpenUrl ?? null,
-    goalObjectiveBrief: goalContext?.objectiveBrief ?? null,
-  };
+const annotationProjectionInputs = [
+  {
+    text: "slack linked",
+    triggerSource: "slack",
+    context: {
+      slackContext: {
+        messagePermalink:
+          "https://vm0.slack.com/archives/C123/p1753257600000100",
+        channelId: "C123",
+        messageTs: "1753257600.000100",
+      },
+    },
+  },
+  {
+    text: "feishu linked",
+    triggerSource: "feishu",
+    context: {
+      feishuContext: {
+        chatOpenUrl:
+          "https://applink.feishu.cn/client/chat/open?openChatId=oc_123",
+      },
+    },
+  },
+  {
+    text: "teams channel linked",
+    triggerSource: "teams",
+    context: {
+      teamsContext: {
+        tenantId: "tenant-1",
+        teamId: "team-1",
+        channelId: "19:channel@thread.tacv2",
+        conversationId: "19:conversation@thread.tacv2",
+        conversationType: "channel",
+        activityId: "activity-1",
+      },
+    },
+  },
+  {
+    text: "teams personal unlinked",
+    triggerSource: "teams",
+    context: {
+      teamsContext: {
+        tenantId: "tenant-1",
+        teamId: null,
+        channelId: null,
+        conversationId: "a:personal-conversation",
+        conversationType: "personal",
+        activityId: "activity-dm",
+      },
+    },
+  },
+  {
+    text: "telegram supergroup linked",
+    triggerSource: "telegram",
+    context: {
+      telegramContext: {
+        chatId: "-1001234567890",
+        messageId: "42",
+        isDm: false,
+        messageThreadId: 7,
+      },
+    },
+  },
+  {
+    text: "telegram dm unlinked",
+    triggerSource: "telegram",
+    context: {
+      telegramContext: {
+        chatId: "123456789",
+        messageId: "43",
+        isDm: true,
+        messageThreadId: null,
+      },
+    },
+  },
+  {
+    text: "telegram group unlinked",
+    triggerSource: "telegram",
+    context: {
+      telegramContext: {
+        chatId: "-123456789",
+        messageId: "44",
+        isDm: false,
+        messageThreadId: null,
+      },
+    },
+  },
+  {
+    text: "github issue comment linked",
+    triggerSource: "github",
+    context: {
+      githubContext: {
+        repo: "vm0-ai/vm0",
+        subjectNumber: 24_218,
+        subjectKind: "issue",
+        triggerCommentId: "123456",
+      },
+    },
+  },
+  {
+    text: "github pull request linked",
+    triggerSource: "github",
+    context: {
+      githubContext: {
+        repo: "vm0-ai/vm0",
+        subjectNumber: 24_219,
+        subjectKind: "pull_request",
+        triggerCommentId: null,
+      },
+    },
+  },
+] as const;
+
+export async function seedChatEventAnnotationProjectionFixture(
+  chatThreadId: string,
+): Promise<{
+  readonly claimedPendingId: string;
+  readonly rejectedPendingId: string;
+}> {
+  const claimedPendingId = randomUUID();
+  const rejectedPendingId = randomUUID();
+  await db().transaction(async (tx) => {
+    for (const input of annotationProjectionInputs) {
+      await insertChatEvent(tx, {
+        chatThreadId,
+        eventType: "input.prompt",
+        userMessage: createUserMessageDocument({ text: input.text }),
+        runId: null,
+        triggerSource: input.triggerSource,
+        ...input.context,
+      });
+    }
+
+    await insertChatEvent(tx, {
+      id: claimedPendingId,
+      chatThreadId,
+      eventType: "input.prompt",
+      userMessage: createUserMessageDocument({ text: "claimed annotation" }),
+      runId: null,
+      triggerSource: "github",
+      githubContext: {
+        repo: "vm0-ai/vm0",
+        subjectNumber: 24_218,
+        subjectKind: "issue",
+        triggerCommentId: "654321",
+      },
+    });
+    await replaceChatEvent(tx, claimedPendingId, {
+      chatThreadId,
+      eventType: "input.prompt",
+      userMessage: createUserMessageDocument({ text: "claimed annotation" }),
+      runId: randomUUID(),
+      triggerSource: "github",
+    });
+
+    await insertChatEvent(tx, {
+      id: rejectedPendingId,
+      chatThreadId,
+      eventType: "input.prompt",
+      userMessage: createUserMessageDocument({ text: "rejected annotation" }),
+      runId: null,
+      triggerSource: "teams",
+      teamsContext: {
+        tenantId: "tenant-2",
+        teamId: "team-2",
+        channelId: "19:reject@thread.tacv2",
+        conversationId: "19:reject-conversation@thread.tacv2",
+        conversationType: "channel",
+        activityId: "activity-rejected",
+      },
+    });
+    await replaceChatEvent(tx, rejectedPendingId, {
+      chatThreadId,
+      eventType: "input.rejected",
+      userMessage: createUserMessageDocument({ text: "rejected annotation" }),
+      runId: null,
+      error: "rejected for annotation coverage",
+      triggerSource: "teams",
+    });
+  });
+  return { claimedPendingId, rejectedPendingId };
 }
 
 export async function readChatEventInputParamsFixture(
@@ -1232,48 +1420,4 @@ export async function insertOutputEventWithConflictingLegacyPayloadFixture(args:
     return inserted;
   });
   return event;
-}
-
-/**
- * Appends the retired queue pause/resume marker rows exactly as the 0714
- * cutover backfill persisted them (reason in the error column). Product
- * writers intentionally cannot create these event types anymore; the fixture
- * proves the transcript read path serves the complete historical event stream
- * instead of skipping their seqIds.
- */
-export async function insertRetiredQueuePauseEventsFixture(args: {
-  readonly threadId: string;
-  readonly pauseReason: string;
-}): Promise<{ readonly pausedSeqId: number; readonly resumedSeqId: number }> {
-  return await db().transaction(async (tx) => {
-    const [thread] = await tx
-      .update(chatThreads)
-      .set({
-        lastChatEventSeqId: sql`${chatThreads.lastChatEventSeqId} + 2`,
-      })
-      .where(eq(chatThreads.id, args.threadId))
-      .returning({ lastSeqId: chatThreads.lastChatEventSeqId });
-    if (!thread) {
-      throw new Error(`Chat thread ${args.threadId} not found`);
-    }
-    const pausedSeqId = thread.lastSeqId - 1;
-    const resumedSeqId = thread.lastSeqId;
-    const retiredEventType = (eventType: string) => {
-      return eventType as (typeof chatEvents.$inferInsert)["eventType"];
-    };
-    await tx.insert(chatEvents).values([
-      {
-        chatThreadId: args.threadId,
-        eventType: retiredEventType("queue.automation_paused"),
-        error: args.pauseReason,
-        seqId: pausedSeqId,
-      },
-      {
-        chatThreadId: args.threadId,
-        eventType: retiredEventType("queue.automation_resumed"),
-        seqId: resumedSeqId,
-      },
-    ]);
-    return { pausedSeqId, resumedSeqId };
-  });
 }

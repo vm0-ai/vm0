@@ -101,9 +101,7 @@ export async function loadConnectorPermissionInfos(args: {
   );
   const resolvedPolicies = resolveFirewallMetadataPolicies(
     args.storedPolicies,
-    defaultPolicyMetadata.map(({ connectorSlug, ...metadata }) => {
-      return { ...metadata, connectorRef: connectorSlug };
-    }),
+    defaultPolicyMetadata,
   );
 
   return args.displayConnectorSlugs.map((connectorSlug) => {
@@ -118,21 +116,12 @@ export async function loadConnectorPermissionInfos(args: {
 export function connectorPermissionGrantsToFirewallPolicies(
   grants: readonly ZeroUserPermissionGrant[],
 ): FirewallPolicies | null {
-  return permissionGrantsToFirewallPolicies(
-    grants.map(({ connectorSlug, ...grant }) => {
-      return { ...grant, connectorRef: connectorSlug };
-    }),
-  );
+  return permissionGrantsToFirewallPolicies(grants);
 }
 
 export function hasConnectorFirewallMetadataPermission(
   metadata: ZeroConnectorCatalogPermissionDetail,
   permission: string,
 ): boolean {
-  return (
-    findFirewallMetadataPermission(
-      { ...metadata, connectorRef: metadata.connectorSlug },
-      permission,
-    ) !== null
-  );
+  return findFirewallMetadataPermission(metadata, permission) !== null;
 }

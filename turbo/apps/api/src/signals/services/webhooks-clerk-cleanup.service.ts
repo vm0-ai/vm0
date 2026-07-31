@@ -71,13 +71,16 @@ async function publishCancelBestEffort(
   if (!runnerGroup) {
     return;
   }
-  await tapError(publishCancelToRunnerGroup(runnerGroup, runId), (error) => {
-    L.warn("failed to publish run cancellation", {
-      runId,
-      runnerGroup,
-      error,
-    });
-  });
+  await tapError(
+    publishCancelToRunnerGroup(runnerGroup, runId, "hard"),
+    (error) => {
+      L.warn("failed to publish run cancellation", {
+        runId,
+        runnerGroup,
+        error,
+      });
+    },
+  );
 }
 
 async function cancelOrgRuns(db: Db, orgId: string): Promise<void> {

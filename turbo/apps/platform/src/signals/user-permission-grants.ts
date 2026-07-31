@@ -38,11 +38,7 @@ function userPermissionGrantsToActiveFirewallPolicies(
   checkedAtMs = now(),
 ): FirewallPolicies | null {
   return permissionGrantsToFirewallPolicies(
-    activeUserPermissionGrants(grants, checkedAtMs).map(
-      ({ connectorSlug, ...grant }) => {
-        return { ...grant, connectorRef: connectorSlug };
-      },
-    ),
+    activeUserPermissionGrants(grants, checkedAtMs),
   );
 }
 
@@ -56,11 +52,7 @@ export function activeUserPermissionGrantSnapshot(
   const activeGrants = activeUserPermissionGrants(grants, checkedAtMs);
   return {
     grants: activeGrants,
-    policies: permissionGrantsToFirewallPolicies(
-      activeGrants.map(({ connectorSlug, ...grant }) => {
-        return { ...grant, connectorRef: connectorSlug };
-      }),
-    ),
+    policies: permissionGrantsToFirewallPolicies(activeGrants),
   };
 }
 
@@ -72,12 +64,7 @@ export function resolveActiveUserPermissionGrantPolicy(
 ): FirewallPolicyValue | undefined {
   const policies = resolveFirewallMetadataPolicies(
     userPermissionGrantsToActiveFirewallPolicies(grants, checkedAtMs),
-    [
-      {
-        ...metadata,
-        connectorRef: metadata.connectorSlug,
-      },
-    ],
+    [metadata],
   )?.[metadata.connectorSlug];
   return permission === UNKNOWN_PERMISSION_GRANT
     ? policies?.unknownPolicy

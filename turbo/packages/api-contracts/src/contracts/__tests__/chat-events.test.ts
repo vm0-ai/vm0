@@ -14,7 +14,6 @@ import {
 } from "../chat-events";
 import {
   chatEventResponse,
-  chatEventResponseSchema,
   chatEventSchema,
   chatEventsContract,
   chatThreadEventsContract,
@@ -329,35 +328,7 @@ describe("ChatEvent catalog", () => {
     for (const event of chatEvents) {
       const response = chatEventResponse(event);
       expect(response).toStrictEqual(event);
-      expect(chatEventResponseSchema.parse(response)).toStrictEqual(response);
-    }
-  });
-
-  it("accepts retired automation pause markers only as read responses", () => {
-    const legacyMarkers = [
-      {
-        id: "legacy-automation-pause",
-        seqId: 20,
-        threadId: THREAD_ID,
-        eventType: "queue.automation_paused",
-        content: null,
-        pauseReason: "Previous frontend request",
-        createdAt: CREATED_AT,
-      },
-      {
-        id: "legacy-automation-resume",
-        seqId: 21,
-        threadId: THREAD_ID,
-        eventType: "queue.automation_resumed",
-        content: null,
-        createdAt: CREATED_AT,
-      },
-    ] as const;
-
-    for (const marker of legacyMarkers) {
-      expect(chatEventResponseSchema.parse(marker)).toStrictEqual(marker);
-      expect(chatEventSchema.safeParse(marker).success).toBe(false);
-      expect(CHAT_EVENT_TYPES).not.toContain(marker.eventType);
+      expect(chatEventSchema.parse(response)).toStrictEqual(response);
     }
   });
 
@@ -367,7 +338,7 @@ describe("ChatEvent catalog", () => {
       parts: [{ type: "text" as const, text: "Run the task" }],
     };
     expect(
-      chatEventResponseSchema.safeParse({
+      chatEventSchema.safeParse({
         ...chatEventResponse(chatEvents[0]!),
         userMessage: undefined,
         structuredPrompt: userMessage,

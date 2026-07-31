@@ -95,7 +95,7 @@ export function feishuBotOpenUrl(appId: string): string {
   return url.toString();
 }
 
-export function feishuChatOpenUrl(chatId: string): string {
+export function buildFeishuChatOpenUrl(chatId: string): string {
   const url = new URL("https://applink.feishu.cn/client/chat/open");
   url.searchParams.set("openChatId", chatId);
   return url.toString();

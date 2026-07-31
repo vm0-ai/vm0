@@ -903,6 +903,70 @@ class TestAuthBaseForwarderResourceCleanup:
 
         assert forwarder.forward_request_admission_state_for_tests() == (0, 0)
 
+    async def test_oversized_body_releases_supplied_admission_before_upstream_setup(self):
+        with (
+            patch.object(forwarder, "MAX_AUTH_BASE_REQUEST_BODY_BYTES", 4),
+            patch.object(forwarder, "MAX_ADMITTED_AUTH_BASE_FORWARDS", 1),
+            patch.object(forwarder, "MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES", 4),
+            fake_forwarder_upstream() as upstream,
+        ):
+            admission = forwarder.reserve_forward_request_admission(4)
+
+            with pytest.raises(forwarder.ForwardedRequestTooLargeError):
+                await forwarder.forward_request(
+                    "https://example.com",
+                    "POST",
+                    [],
+                    b"12345",
+                    admission=admission,
+                )
+
+            assert forwarder.forward_request_admission_state_for_tests() == (0, 0)
+            replacement = forwarder.reserve_forward_request_admission(4)
+            try:
+                assert forwarder.forward_request_admission_state_for_tests() == (1, 4)
+            finally:
+                forwarder.release_forward_request_admission(replacement)
+
+        assert forwarder.forward_request_admission_state_for_tests() == (0, 0)
+        assert upstream.resolve_calls == []
+        assert upstream.sockets == []
+        assert upstream.connect_calls == []
+
+    async def test_resize_saturation_releases_only_supplied_admission(self):
+        with (
+            patch.object(forwarder, "MAX_ADMITTED_AUTH_BASE_FORWARDS", 2),
+            patch.object(forwarder, "MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES", 4),
+            fake_forwarder_upstream() as upstream,
+        ):
+            unrelated = forwarder.reserve_forward_request_admission(3)
+            admission = forwarder.reserve_forward_request_admission(1)
+            replacement = None
+            try:
+                assert forwarder.forward_request_admission_state_for_tests() == (2, 4)
+
+                with pytest.raises(forwarder.AuthBaseForwardingSaturatedError):
+                    await forwarder.forward_request(
+                        "https://example.com",
+                        "POST",
+                        [],
+                        b"12",
+                        admission=admission,
+                    )
+
+                assert forwarder.forward_request_admission_state_for_tests() == (1, 3)
+                replacement = forwarder.reserve_forward_request_admission(1)
+                assert forwarder.forward_request_admission_state_for_tests() == (2, 4)
+            finally:
+                forwarder.release_forward_request_admission(unrelated)
+                if replacement is not None:
+                    forwarder.release_forward_request_admission(replacement)
+
+        assert forwarder.forward_request_admission_state_for_tests() == (0, 0)
+        assert upstream.resolve_calls == []
+        assert upstream.sockets == []
+        assert upstream.connect_calls == []
+
     async def test_closes_response_and_connection_on_success(self):
         with fake_forwarder_upstream(headers=[("Content-Type", "application/json")]) as upstream:
             status, body, _ = await forwarder.forward_request(

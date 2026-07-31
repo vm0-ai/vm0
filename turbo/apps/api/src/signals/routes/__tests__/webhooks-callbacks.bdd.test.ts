@@ -2,7 +2,10 @@ import { createHash, randomInt, randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
 import { LIMITED_FREE1_DEFAULT_RUN_MODEL } from "@vm0/api-contracts/contracts/model-providers";
-import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
+import {
+  RESUME_SESSION_HISTORY_MAX_BYTES,
+  RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
+} from "@vm0/api-contracts/contracts/runners";
 import { MAX_FILE_SIZE_BYTES } from "@vm0/api-contracts/contracts/storages";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
@@ -5182,6 +5185,9 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       modelProvider: "anthropic-api-key",
     });
     expect(run.status).toBe("pending");
+    await runs.claimRunnerJob(run.runId, {
+      capabilities: [RUNNER_CANCELLATION_RECOVERY_CAPABILITY],
+    });
     await store.set(
       insertUsageEvent$,
       {
@@ -5262,6 +5268,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       await compactionLock.done;
       await flushWaitUntilForTest();
     });
+    context.mocks.ably.publish.mockClear();
     api.verifyNextClerkWebhook({
       type: "user.deleted",
       data: { id: doomed.userId },
@@ -5279,6 +5286,10 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     compactionLock.release();
     await compactionLock.done;
     await flushWaitUntilForTest();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith("cancel", {
+      runId: run.runId,
+      mode: "hard",
+    });
     const firstCleanupS3Prefix = commandInput(
       context.mocks.s3.send.mock.calls[s3CallCountBeforeCleanup]?.[0],
     ).Prefix;

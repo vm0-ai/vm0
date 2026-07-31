@@ -40,12 +40,9 @@ interface FirewallPermissionPolicyMetadataBase {
   readonly defaultPolicy: FirewallPermissionPolicyDefaultMetadata;
 }
 
-export type FirewallPermissionPolicyMetadata =
-  FirewallPermissionPolicyMetadataBase &
-    // TODO(#23619): Rename with the catalog artifact metadata contract.
-    (| { readonly connectorRef: string; readonly type?: string }
-      | { readonly connectorRef?: undefined; readonly type: string }
-    );
+export interface FirewallPermissionPolicyMetadata extends FirewallPermissionPolicyMetadataBase {
+  readonly connectorSlug: string;
+}
 
 export interface FirewallMetadataPermissionGroup<T extends { name: string }> {
   readonly category: string;
@@ -58,16 +55,9 @@ export type FirewallPermissionGrantAction = Extract<
 >;
 
 export interface FirewallPermissionGrant {
-  // TODO(#23619): Rename with the permission-grant wire and storage fields.
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly permission: string;
   readonly action: FirewallPermissionGrantAction;
-}
-
-function metadataConnectorSlug(
-  metadata: FirewallPermissionPolicyMetadata,
-): string {
-  return metadata.connectorRef ?? metadata.type;
 }
 
 export { createFirewallMetadataPolicyResolver };
@@ -137,12 +127,11 @@ export function resolveFirewallMetadataPolicies(
 ): FirewallPolicies | null {
   let resolved: FirewallPolicies | null = stored;
   for (const detail of metadata) {
-    const connectorSlug = metadataConnectorSlug(detail);
     const defaults = expandFirewallMetadataDefaultPolicy(detail);
-    const existing = resolved?.[connectorSlug];
+    const existing = resolved?.[detail.connectorSlug];
     resolved = {
       ...resolved,
-      [connectorSlug]: {
+      [detail.connectorSlug]: {
         policies: { ...defaults.policies, ...existing?.policies },
         ...(existing?.unknownPolicy !== undefined
           ? { unknownPolicy: existing.unknownPolicy }
@@ -158,16 +147,16 @@ export function permissionGrantsToFirewallPolicies(
 ): FirewallPolicies | null {
   const policies: FirewallPolicies = {};
   for (const grant of grants) {
-    const current = policies[grant.connectorRef] ?? { policies: {} };
+    const current = policies[grant.connectorSlug] ?? { policies: {} };
     if (grant.permission === UNKNOWN_PERMISSION_GRANT) {
-      policies[grant.connectorRef] = {
+      policies[grant.connectorSlug] = {
         ...current,
         unknownPolicy: grant.action,
       };
       continue;
     }
     current.policies[grant.permission] = grant.action;
-    policies[grant.connectorRef] = current;
+    policies[grant.connectorSlug] = current;
   }
   return Object.keys(policies).length > 0 ? policies : null;
 }

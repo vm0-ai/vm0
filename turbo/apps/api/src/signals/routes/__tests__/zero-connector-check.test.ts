@@ -300,23 +300,6 @@ describe("POST /api/zero/connectors/diagnostics/check", () => {
     );
     expect(malformed.status).toBe(400);
 
-    const legacyIdentity = await createApp({
-      signal: context.signal,
-    }).request("/api/zero/connectors/diagnostics/check", {
-      method: "POST",
-      headers: {
-        authorization: "Bearer clerk-session",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        mode: "url",
-        method: "GET",
-        url: "https://api.github.com/repos/vm0-ai/vm0",
-        connectorRef: "github",
-      }),
-    });
-    expect(legacyIdentity.status).toBe(400);
-
     const invalidMethod = await checkWithSession(actor, {
       mode: "url",
       method: "TRACE",

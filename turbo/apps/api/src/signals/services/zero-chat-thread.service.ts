@@ -13,7 +13,6 @@ import {
   type ChatThreadDetail,
   type CodexServiceTier,
   type ChatEvent,
-  type ChatEventResponse,
   type PersistedAttachment,
   type ResolvedAttachFile,
   type UserMessageDocument,
@@ -45,8 +44,11 @@ import {
 } from "@vm0/db/schema/chat-event";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
+import { chatGithubContext } from "@vm0/db/schema/chat-github-context";
 import { chatGoalContext } from "@vm0/db/schema/chat-goal-context";
 import { chatSlackContext } from "@vm0/db/schema/chat-slack-context";
+import { chatTeamsContext } from "@vm0/db/schema/chat-teams-context";
+import { chatTelegramContext } from "@vm0/db/schema/chat-telegram-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
@@ -113,6 +115,7 @@ import { appendChatThreadEvent } from "./zero-chat-thread-event.service";
 import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
 import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
+import { projectChatEventAnnotation } from "./chat-event-annotation.service";
 import {
   projectUserMessage,
   requiredUserMessageForEvent,
@@ -137,11 +140,22 @@ type ChatEventRow = {
   readonly thinking: string | null;
   readonly runId: string | null;
   readonly runGroupId: string | null;
+  readonly contextType: typeof chatEvents.$inferSelect.contextType;
   readonly automationId: string | null;
   readonly triggerSource: TriggerSource | null;
   readonly triggerBrief: string | null;
-  readonly slackMessagePermalink: string | null;
-  readonly feishuChatOpenUrl: string | null;
+  readonly slackPermalink: string | null;
+  readonly feishuOpenUrl: string | null;
+  readonly teamsTenantId: string | null;
+  readonly teamsChannelId: string | null;
+  readonly teamsActivityId: string | null;
+  readonly telegramChatId: string | null;
+  readonly telegramMessageId: string | null;
+  readonly telegramIsDm: boolean | null;
+  readonly githubRepo: string | null;
+  readonly githubSubjectNumber: number | null;
+  readonly githubSubjectKind: "issue" | "pull_request" | null;
+  readonly githubTriggerCommentId: string | null;
   readonly isGoalRun: boolean;
   readonly usagePayload: ChatEventUsagePayload | null;
   readonly runEventId: string | null;
@@ -296,6 +310,7 @@ const eventColumns = {
   thinking: chatEvents.thinking,
   runId: effectiveChatEventRunId(),
   runGroupId: chatEvents.runGroupId,
+  contextType: chatEvents.contextType,
   usagePayload: chatEvents.usagePayload,
   runEventId: chatEvents.runEventId,
   goalEvent: chatEvents.goalEvent,
@@ -415,8 +430,18 @@ function selectChatEventsWithMetadata(db: Pick<Db, "select">) {
       )`
         .mapWith(nullableTriggerSourceDecoder)
         .as("trigger_source"),
-      slackMessagePermalink: chatSlackContext.messagePermalink,
-      feishuChatOpenUrl: chatFeishuContext.chatOpenUrl,
+      slackPermalink: chatSlackContext.messagePermalink,
+      feishuOpenUrl: chatFeishuContext.chatOpenUrl,
+      teamsTenantId: chatTeamsContext.tenantId,
+      teamsChannelId: chatTeamsContext.channelId,
+      teamsActivityId: chatTeamsContext.activityId,
+      telegramChatId: chatTelegramContext.chatId,
+      telegramMessageId: chatTelegramContext.messageId,
+      telegramIsDm: chatTelegramContext.isDm,
+      githubRepo: chatGithubContext.repo,
+      githubSubjectNumber: chatGithubContext.subjectNumber,
+      githubSubjectKind: chatGithubContext.subjectKind,
+      githubTriggerCommentId: chatGithubContext.triggerCommentId,
       goalObjectiveBrief: chatGoalContext.objectiveBrief,
       workflowId: metadata.workflowId,
       workflowAgentId: metadata.workflowAgentId,
@@ -457,6 +482,27 @@ function selectChatEventsWithMetadata(db: Pick<Db, "select">) {
       and(
         eq(chatEvents.contextType, "feishu"),
         eq(chatFeishuContext.id, chatEvents.contextId),
+      ),
+    )
+    .leftJoin(
+      chatTeamsContext,
+      and(
+        eq(chatEvents.contextType, "teams"),
+        eq(chatTeamsContext.id, chatEvents.contextId),
+      ),
+    )
+    .leftJoin(
+      chatTelegramContext,
+      and(
+        eq(chatEvents.contextType, "telegram"),
+        eq(chatTelegramContext.id, chatEvents.contextId),
+      ),
+    )
+    .leftJoin(
+      chatGithubContext,
+      and(
+        eq(chatEvents.contextType, "github"),
+        eq(chatGithubContext.id, chatEvents.contextId),
       ),
     )
     .leftJoin(
@@ -810,6 +856,49 @@ function workflowSnapshotFromRow(
   };
 }
 
+function annotationFromRow(
+  row: ChatEventRow,
+): ChatEvent["annotation"] | undefined {
+  if (row.contextType === "slack") {
+    return projectChatEventAnnotation({
+      kind: "slack",
+      messagePermalink: row.slackPermalink,
+    });
+  }
+  if (row.contextType === "feishu") {
+    return projectChatEventAnnotation({
+      kind: "feishu",
+      chatOpenUrl: row.feishuOpenUrl,
+    });
+  }
+  if (row.contextType === "teams") {
+    return projectChatEventAnnotation({
+      kind: "teams",
+      tenantId: row.teamsTenantId,
+      channelId: row.teamsChannelId,
+      activityId: row.teamsActivityId,
+    });
+  }
+  if (row.contextType === "telegram") {
+    return projectChatEventAnnotation({
+      kind: "telegram",
+      chatId: row.telegramChatId,
+      messageId: row.telegramMessageId,
+      isDm: row.telegramIsDm,
+    });
+  }
+  if (row.contextType === "github") {
+    return projectChatEventAnnotation({
+      kind: "github",
+      repo: row.githubRepo,
+      subjectNumber: row.githubSubjectNumber,
+      subjectKind: row.githubSubjectKind,
+      triggerCommentId: row.githubTriggerCommentId,
+    });
+  }
+  return undefined;
+}
+
 function baseChatEventFromRow(
   row: ChatEventRow,
   workflowSnapshot: NonNullable<ChatEvent["workflowSnapshot"]> | undefined,
@@ -822,8 +911,7 @@ function baseChatEventFromRow(
     runId: row.runId ?? undefined,
     runGroupId: row.runGroupId ?? undefined,
     triggerSource: row.triggerSource ?? undefined,
-    slackMessagePermalink: row.slackMessagePermalink ?? undefined,
-    feishuChatOpenUrl: row.feishuChatOpenUrl ?? undefined,
+    annotation: annotationFromRow(row),
     isGoalRun: row.isGoalRun || undefined,
     runEventId: row.runEventId ?? undefined,
     goalSnapshot:
@@ -843,7 +931,7 @@ type ChatEventBuilder = (
   row: ChatEventRow,
   event: ChatEventBase,
   attachFiles: readonly ResolvedAttachFile[] | undefined,
-) => ChatEventResponse;
+) => ChatEvent;
 
 const chatEventBuilders = {
   "input.prompt": (row, event, attachFiles) => {
@@ -1056,32 +1144,14 @@ const chatEventBuilders = {
       ),
     };
   },
-  // Historical rows from the retired queue pause/resume behavior. These have
-  // no writer anymore but still occupy seqIds, so the read path serves them
-  // as-is instead of filtering and leaving holes in the event stream.
-  "queue.automation_paused": (row, event) => {
-    return {
-      ...event,
-      eventType: "queue.automation_paused",
-      content: null,
-      pauseReason: row.error ?? null,
-    };
-  },
-  "queue.automation_resumed": (_row, event) => {
-    return {
-      ...event,
-      eventType: "queue.automation_resumed",
-      content: null,
-    };
-  },
-} satisfies Record<ChatEventResponse["eventType"], ChatEventBuilder>;
+} satisfies Record<ChatEvent["eventType"], ChatEventBuilder>;
 
 function toChatEvent(
   userId: string,
   row: ChatEventRow,
   canonicalAttachments: readonly ResolvedAttachFile[],
-): Computed<Promise<ChatEventResponse>> {
-  return computed(async (get): Promise<ChatEventResponse> => {
+): Computed<Promise<ChatEvent>> {
+  return computed(async (get): Promise<ChatEvent> => {
     const attachFiles = await get(
       chatEventAttachFiles(userId, row, canonicalAttachments),
     );
@@ -2188,7 +2258,7 @@ export function zeroChatThreadEventsPage(args: {
   readonly sinceId: string | undefined;
   readonly beforeId: string | undefined;
   readonly limit: number;
-}): Computed<Promise<readonly ChatEventResponse[] | null>> {
+}): Computed<Promise<readonly ChatEvent[] | null>> {
   return computed(async (get) => {
     const db = get(db$);
     const [owned] = await db
@@ -2277,7 +2347,7 @@ export function zeroChatThreadEventsPage(args: {
 function chatEventsWithAssets(args: {
   readonly userId: string;
   readonly rows: readonly ChatEventRow[];
-}): Computed<Promise<readonly ChatEventResponse[]>> {
+}): Computed<Promise<readonly ChatEvent[]>> {
   return computed(async (get) => {
     const canonicalByEvent = await canonicalEventAttachments(
       get(db$),
@@ -2300,7 +2370,7 @@ export function zeroChatThreadEventById(args: {
   readonly threadId: string;
   readonly userId: string;
   readonly eventId: string;
-}): Computed<Promise<ChatEventResponse | null>> {
+}): Computed<Promise<ChatEvent | null>> {
   return computed(async (get) => {
     const owned = await get(ownedChatThread(args.threadId, args.userId));
     if (!owned) {
@@ -2515,7 +2585,12 @@ export const deleteChatThread$ = command(
     for (const run of deletion.activeRuns) {
       const result = await set(
         cancelRun$,
-        { runId: run.runId, userId: args.userId, orgId: run.orgId },
+        {
+          runId: run.runId,
+          userId: args.userId,
+          orgId: run.orgId,
+          runnerCancellationMode: "hard",
+        },
         signal,
       );
       signal.throwIfAborted();

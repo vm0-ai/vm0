@@ -6,14 +6,13 @@ import { onRef } from "../utils.ts";
 const L = logger("AutoScroll");
 const AT_BOTTOM_THRESHOLD_PX = 10;
 const SCROLL_ANCHOR_ATTRIBUTE = "data-chat-scroll-anchor-event-id";
-const SCROLL_COMMIT_REVISION_ATTRIBUTE = "data-chat-scroll-commit-revision";
 
 export interface ThreadScrollPosition {
   readonly targetEventId: string;
   readonly viewportOffsetTop: number;
 }
 
-export interface ThreadScrollRenderRequest {
+interface ScrollAfterRenderRequest {
   readonly revision: number;
   readonly position: ThreadScrollPosition | null;
 }
@@ -23,12 +22,7 @@ interface ChatThreadScrollSignals {
     (() => void) | undefined,
     [HTMLElement | null]
   >;
-  readonly scrollCommitOnRef$: Command<
-    (() => void) | undefined,
-    [HTMLElement | null]
-  >;
   readonly threadScrollPosition$: Computed<ThreadScrollPosition | null>;
-  readonly pendingScrollRenderRequest$: Computed<ThreadScrollRenderRequest | null>;
   readonly awayFromBottom$: Computed<boolean>;
   readonly requestScrollAfterRender$: Command<
     void,
@@ -63,23 +57,6 @@ function scrollAnchorForEvent(
       return anchor.getAttribute(SCROLL_ANCHOR_ATTRIBUTE) === eventId;
     }) ?? null
   );
-}
-
-function scrollContainerForCommitMarker(marker: HTMLElement): HTMLElement {
-  const container = marker.closest("[data-scroll-container]");
-  if (!(container instanceof HTMLElement)) {
-    throw new Error("Chat scroll commit marker has no scroll container");
-  }
-  return container;
-}
-
-function scrollRenderRevision(marker: HTMLElement): number {
-  const value = marker.getAttribute(SCROLL_COMMIT_REVISION_ATTRIBUTE);
-  const revision = Number(value);
-  if (value === null || revision < 1 || !Number.isSafeInteger(revision)) {
-    throw new Error("Chat scroll commit marker has no valid revision");
-  }
-  return revision;
 }
 
 function scrollToPosition(
@@ -139,19 +116,13 @@ function sameScrollPosition(
 interface ScrollRuntime {
   initialized: boolean;
   resizeScheduled: boolean;
-  nextRenderRequestRevision: number;
+  latestRenderRequestRevision: number;
 }
 
-function createInternalScrollSignals(threadId: string, runtime: ScrollRuntime) {
+function createInternalScrollSignals(threadId: string) {
   const internalScrollContainer$ = state<HTMLElement | null>(null);
-  const internalScrollRenderRequest$ = state<ThreadScrollRenderRequest | null>(
-    null,
-  );
   const scrollContainer$ = computed((get) => {
     return get(internalScrollContainer$);
-  });
-  const pendingScrollRenderRequest$ = computed((get) => {
-    return get(internalScrollRenderRequest$);
   });
   const threadScrollPosition$ = computed((get) => {
     return get(threadScrollPositions$).get(threadId) ?? null;
@@ -180,29 +151,6 @@ function createInternalScrollSignals(threadId: string, runtime: ScrollRuntime) {
     next.delete(threadId);
     set(threadScrollPositions$, next);
   });
-  const requestScrollAfterRender$ = command(
-    ({ set }, position: ThreadScrollPosition | null) => {
-      runtime.nextRenderRequestRevision += 1;
-      const request: ThreadScrollRenderRequest = {
-        revision: runtime.nextRenderRequestRevision,
-        position,
-      };
-      L.debug("render scroll requested", {
-        threadId,
-        revision: request.revision,
-        targetEventId: position?.targetEventId ?? null,
-        viewportOffsetTop: position?.viewportOffsetTop ?? null,
-      });
-      set(internalScrollRenderRequest$, request);
-    },
-  );
-  const clearScrollRenderRequest$ = command(
-    ({ get, set }, revision: number) => {
-      if (get(internalScrollRenderRequest$)?.revision === revision) {
-        set(internalScrollRenderRequest$, null);
-      }
-    },
-  );
   const syncThreadScrollPosition$ = command(
     ({ set }, container: HTMLElement) => {
       if (isAtBottom(container)) {
@@ -239,11 +187,8 @@ function createInternalScrollSignals(threadId: string, runtime: ScrollRuntime) {
 
   return {
     scrollContainer$,
-    pendingScrollRenderRequest$,
     threadScrollPosition$,
     awayFromBottom$,
-    requestScrollAfterRender$,
-    clearScrollRenderRequest$,
     syncThreadScrollPosition$,
     clearThreadScrollPosition$,
     bindScrollContainer$,
@@ -301,36 +246,65 @@ function createScrollNavigationSignals(
     set(scrollToBottom$);
   });
 
-  const scrollCommitOnRef$ = onRef(
-    command(({ get, set }, marker: HTMLElement, signal: AbortSignal): void => {
-      signal.throwIfAborted();
-      const revision = scrollRenderRevision(marker);
-      const request = get(scroll.pendingScrollRenderRequest$);
-      if (!request || request.revision !== revision) {
-        L.debug("stale render scroll commit ignored", {
-          revision,
-          currentRevision: request?.revision ?? null,
+  const commitScrollAfterRender$ = command(
+    ({ get }, request: ScrollAfterRenderRequest): void => {
+      if (request.revision !== runtime.latestRenderRequestRevision) {
+        L.debug("stale render scroll ignored", {
+          revision: request.revision,
+          currentRevision: runtime.latestRenderRequestRevision,
         });
         return;
       }
-
-      const container = scrollContainerForCommitMarker(marker);
+      const container = get(scroll.scrollContainer$);
+      if (!container) {
+        L.debug("render scroll skipped without container", {
+          threadId,
+          revision: request.revision,
+        });
+        return;
+      }
+      if (scrollAnchors(container).length === 0) {
+        L.debug("render scroll skipped without messages", {
+          threadId,
+          revision: request.revision,
+        });
+        return;
+      }
       if (request.position) {
         scrollToPosition(container, request.position);
       } else {
-        set(scroll.clearThreadScrollPosition$);
         container.scrollTop = container.scrollHeight;
       }
       runtime.initialized = true;
-      set(scroll.clearScrollRenderRequest$, revision);
       L.debug("render scroll committed", {
         threadId,
-        revision,
+        revision: request.revision,
         targetEventId: request.position?.targetEventId ?? null,
         viewportOffsetTop: request.position?.viewportOffsetTop ?? null,
         scrollTop: container.scrollTop,
       });
-    }),
+    },
+  );
+  const requestScrollAfterRender$ = command(
+    ({ set }, position: ThreadScrollPosition | null): void => {
+      if (position === null) {
+        set(scroll.clearThreadScrollPosition$);
+      }
+      runtime.latestRenderRequestRevision += 1;
+      const request: ScrollAfterRenderRequest = {
+        revision: runtime.latestRenderRequestRevision,
+        position,
+      };
+      L.debug("render scroll requested", {
+        threadId,
+        revision: request.revision,
+        targetEventId: position?.targetEventId ?? null,
+        viewportOffsetTop: position?.viewportOffsetTop ?? null,
+      });
+      animationFrame(() => {
+        set(commitScrollAfterRender$, request);
+      });
+    },
   );
 
   return {
@@ -338,7 +312,7 @@ function createScrollNavigationSignals(
     scrollToBottom$,
     scrollToTop$,
     restoreAfterResize$,
-    scrollCommitOnRef$,
+    requestScrollAfterRender$,
   };
 }
 
@@ -420,9 +394,9 @@ export function createChatThreadScrollSignals(
   const runtime: ScrollRuntime = {
     initialized: false,
     resizeScheduled: false,
-    nextRenderRequestRevision: 0,
+    latestRenderRequestRevision: 0,
   };
-  const scroll = createInternalScrollSignals(threadId, runtime);
+  const scroll = createInternalScrollSignals(threadId);
   const navigation = createScrollNavigationSignals(threadId, scroll, runtime);
   const scrollContainerOnRef$ = createScrollContainerOnRef(
     threadId,
@@ -433,11 +407,9 @@ export function createChatThreadScrollSignals(
 
   return {
     scrollContainerOnRef$,
-    scrollCommitOnRef$: navigation.scrollCommitOnRef$,
     threadScrollPosition$: scroll.threadScrollPosition$,
-    pendingScrollRenderRequest$: scroll.pendingScrollRenderRequest$,
     awayFromBottom$: scroll.awayFromBottom$,
-    requestScrollAfterRender$: scroll.requestScrollAfterRender$,
+    requestScrollAfterRender$: navigation.requestScrollAfterRender$,
     scrollTo$: navigation.scrollTo$,
     scrollToTop$: navigation.scrollToTop$,
     scrollToBottom$: navigation.scrollToBottom$,

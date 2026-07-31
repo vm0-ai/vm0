@@ -1,6 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
 
 import {
   click,
@@ -114,76 +113,6 @@ function setupWorkflowQueuePage({
 }
 
 describe("workflow queue panel", () => {
-  it("ignores previous-API pause markers while rendering canonical pending events", async () => {
-    const automationId = "e0000001-0000-4000-a000-000000000001";
-    mockChatLifecycle(context, {
-      threadId: THREAD_ID,
-      threadTitle: "Previous API workflow queue",
-    });
-    context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
-      if (
-        query.sinceSeqId ||
-        query.beforeSeqId ||
-        query.sinceId ||
-        query.beforeId
-      ) {
-        return respond(200, { events: [] });
-      }
-      return respond(200, {
-        events: [
-          {
-            id: "legacy-pause",
-            threadId: THREAD_ID,
-            eventType: "queue.automation_paused",
-            content: null,
-            pauseReason: "Previous frontend request",
-            seqId: 1,
-            createdAt: "2026-07-10T01:00:00Z",
-          },
-          {
-            id: EVENT_ID_1,
-            threadId: THREAD_ID,
-            eventType: "input.automation",
-            content: null,
-            automationId,
-            triggerSource: "workflow-event",
-            triggerBrief: "Previous API event",
-            seqId: 2,
-            createdAt: "2026-07-10T01:01:00Z",
-          },
-          {
-            id: "legacy-resume",
-            threadId: THREAD_ID,
-            eventType: "queue.automation_resumed",
-            content: null,
-            seqId: 3,
-            createdAt: "2026-07-10T01:02:00Z",
-          },
-        ],
-      });
-    });
-    setMockWorkflowAutomations([
-      createMockWorkflowAutomation({
-        id: automationId,
-        chatThreadId: THREAD_ID,
-        kind: "event",
-        eventType: "gmail-new-message",
-      }),
-    ]);
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    const rows = await screen.findAllByLabelText("Pending automation event");
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toHaveTextContent("Previous API event");
-    expect(
-      screen.queryByText("Previous frontend request"),
-    ).not.toBeInTheDocument();
-  });
-
   it("shows messages, automation events, and the active goal in one bottom queue", async () => {
     setupWorkflowQueuePage();
 

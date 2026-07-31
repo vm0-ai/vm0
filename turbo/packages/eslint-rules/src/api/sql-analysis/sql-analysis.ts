@@ -1382,6 +1382,169 @@ function parseSqlVariant(
   };
 }
 
+const TRANSACTION_CONFIG_STATEMENT_KEYS = new Set(["args", "kind", "name"]);
+const TRANSACTION_CONFIG_PARSED_STATEMENT_KEYS = new Set(["stmt", "stmt_len"]);
+const TRANSACTION_CONFIG_STATEMENT_WRAPPER_KEYS = new Set(["VariableSetStmt"]);
+const TRANSACTION_CONFIG_DEFINITION_KEYS = new Set([
+  "arg",
+  "defaction",
+  "defname",
+  "location",
+]);
+const TRANSACTION_CONFIG_DEFINITION_WRAPPER_KEYS = new Set(["DefElem"]);
+const TRANSACTION_CONFIG_CONSTANT_KEYS = new Set(["location", "sval"]);
+const TRANSACTION_CONFIG_CONSTANT_WRAPPER_KEYS = new Set(["A_Const"]);
+const TRANSACTION_CONFIG_INTEGER_KEYS = new Set(["ival", "location"]);
+const TRANSACTION_CONFIG_INTEGER_VALUE_KEYS = new Set(["ival"]);
+const TRANSACTION_CONFIG_STRING_VALUE_KEYS = new Set(["sval"]);
+const TRANSACTION_CONFIG_PREFIX = /^\s*SET\s+TRANSACTION\b/iu;
+const TRANSACTION_ISOLATION_LEVELS = new Set([
+  "read committed",
+  "read uncommitted",
+  "repeatable read",
+  "serializable",
+]);
+
+function transactionIsolationConstant(value: unknown): boolean {
+  const constant = recordProperty(value, "A_Const");
+  const string = recordProperty(constant, "sval");
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, TRANSACTION_CONFIG_CONSTANT_WRAPPER_KEYS) &&
+    constant !== undefined &&
+    hasOnlyKeys(constant, TRANSACTION_CONFIG_CONSTANT_KEYS) &&
+    typeof constant.location === "number" &&
+    string !== undefined &&
+    hasOnlyKeys(string, TRANSACTION_CONFIG_STRING_VALUE_KEYS) &&
+    typeof string.sval === "string" &&
+    TRANSACTION_ISOLATION_LEVELS.has(string.sval)
+  );
+}
+
+function transactionBooleanConstant(value: unknown): boolean {
+  const constant = recordProperty(value, "A_Const");
+  const integer = recordProperty(constant, "ival");
+  return (
+    isRecord(value) &&
+    hasOnlyKeys(value, TRANSACTION_CONFIG_CONSTANT_WRAPPER_KEYS) &&
+    constant !== undefined &&
+    hasOnlyKeys(constant, TRANSACTION_CONFIG_INTEGER_KEYS) &&
+    typeof constant.location === "number" &&
+    integer !== undefined &&
+    hasOnlyKeys(integer, TRANSACTION_CONFIG_INTEGER_VALUE_KEYS) &&
+    (integer.ival === undefined || integer.ival === 0 || integer.ival === 1)
+  );
+}
+
+function transactionConfigCharacteristicName(
+  value: unknown,
+): string | undefined {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, TRANSACTION_CONFIG_DEFINITION_WRAPPER_KEYS)
+  ) {
+    return undefined;
+  }
+  const definition = recordProperty(value, "DefElem");
+  if (
+    definition === undefined ||
+    !hasOnlyKeys(definition, TRANSACTION_CONFIG_DEFINITION_KEYS) ||
+    definition.defaction !== "DEFELEM_UNSPEC" ||
+    typeof definition.defname !== "string" ||
+    typeof definition.location !== "number"
+  ) {
+    return undefined;
+  }
+  const valid =
+    definition.defname === "transaction_isolation"
+      ? transactionIsolationConstant(definition.arg)
+      : definition.defname === "transaction_read_only" ||
+          definition.defname === "transaction_deferrable"
+        ? transactionBooleanConstant(definition.arg)
+        : false;
+  return valid ? definition.defname : undefined;
+}
+
+function isTransactionConfigStatement(value: unknown): boolean {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, TRANSACTION_CONFIG_PARSED_STATEMENT_KEYS) ||
+    (value.stmt_len !== undefined && typeof value.stmt_len !== "number")
+  ) {
+    return false;
+  }
+  const statement = recordProperty(value, "stmt");
+  if (
+    statement === undefined ||
+    !hasOnlyKeys(statement, TRANSACTION_CONFIG_STATEMENT_WRAPPER_KEYS)
+  ) {
+    return false;
+  }
+  const set = recordProperty(statement, "VariableSetStmt");
+  if (
+    set === undefined ||
+    !hasOnlyKeys(set, TRANSACTION_CONFIG_STATEMENT_KEYS) ||
+    set.kind !== "VAR_SET_MULTI" ||
+    set.name !== "TRANSACTION" ||
+    !Array.isArray(set.args) ||
+    set.args.length === 0 ||
+    set.args.length > 3
+  ) {
+    return false;
+  }
+  const characteristics = set.args.map(transactionConfigCharacteristicName);
+  return (
+    characteristics.every((name): name is string => name !== undefined) &&
+    new Set(characteristics).size === characteristics.length
+  );
+}
+
+export function isDrizzleTransactionConfigSql(
+  node: TSESTree.TaggedTemplateExpression,
+  checker: TypeChecker,
+  services: ParserServicesWithTypeInformation,
+  composer: SqlSourceComposer,
+): boolean {
+  const firstQuasi = node.quasi.quasis[0];
+  if (
+    node.quasi.expressions.length !== 0 ||
+    firstQuasi === undefined ||
+    !TRANSACTION_CONFIG_PREFIX.test(
+      firstQuasi.value.cooked ?? firstQuasi.value.raw,
+    )
+  ) {
+    return false;
+  }
+  const source = composer.compose(node);
+  if (
+    source === null ||
+    source.hasLocalExpansion ||
+    source.expandedTemplates.size !== 1 ||
+    !source.expandedTemplates.has(node) ||
+    source.variants.length !== 1
+  ) {
+    return false;
+  }
+  const variant = source.variants[0];
+  if (
+    variant === undefined ||
+    variant.chunks.some((chunk) => {
+      return chunk.kind !== "literal";
+    })
+  ) {
+    return false;
+  }
+  const parsed = parseSqlVariant(
+    variant,
+    "statement",
+    false,
+    checker,
+    services,
+    undefined,
+  );
+  return parsed !== null && isTransactionConfigStatement(parsed.statement);
+}
+
 function stringNodeValue(value: unknown): string | undefined {
   const stringNode = recordProperty(value, "String");
   return stringNode !== undefined &&

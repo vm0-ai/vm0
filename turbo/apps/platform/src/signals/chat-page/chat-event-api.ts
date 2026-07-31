@@ -1,7 +1,6 @@
 import {
   chatEventsContract,
   chatThreadEventsContract,
-  isCanonicalChatEventResponse,
   type ChatEvent,
   type ChatEventSendBody,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -48,8 +47,5 @@ export async function listChatEvents(
     [200],
     signal,
   );
-  // A previous API can still return historical pause/resume queue markers
-  // during an app-first rollout. They are read-compatible wire leaves only;
-  // current queue state derives exclusively from canonical ChatEvents.
-  return result.body.events.filter(isCanonicalChatEventResponse);
+  return result.body.events;
 }

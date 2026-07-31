@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.670.1](https://github.com/vm0-ai/vm0/compare/app-v0.670.0...app-v0.670.1) (2026-07-31)
+
+
+### Bug Fixes
+
+* **platform:** align chat autoscroll with rendered messages ([#24220](https://github.com/vm0-ai/vm0/issues/24220)) ([9334b67](https://github.com/vm0-ai/vm0/commit/9334b67de24cb99465782e310fe83aac984ec5d1))
+
+
+### Refactoring
+
+* **chat:** project source annotations from context ([#24230](https://github.com/vm0-ai/vm0/issues/24230)) ([f686803](https://github.com/vm0-ai/vm0/commit/f6868038b1953cfe1c588d74890ab8053044eadf))
+* **connectors:** use slug identity in firewall policies ([#24229](https://github.com/vm0-ai/vm0/issues/24229)) ([3ed0961](https://github.com/vm0-ai/vm0/commit/3ed0961ec336d2c84be219db715e0254930e91ee))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.258.2
+    * @vm0/connectors bumped to 1.202.2
+    * @vm0/core bumped to 8.497.1
+
+## [0.670.0](https://github.com/vm0-ai/vm0/compare/app-v0.669.1...app-v0.670.0) (2026-07-31)
+
+
+### Features
+
+* **platform:** enable multilingual locale rollout ([#24189](https://github.com/vm0-ai/vm0/issues/24189)) ([618bf9b](https://github.com/vm0-ai/vm0/commit/618bf9b4e379a8f3678314185b041faafdf07580))
+
+
+### Refactoring
+
+* **platform:** remove legacy oauth callback metadata fallback ([#24194](https://github.com/vm0-ai/vm0/issues/24194)) ([6d7c31a](https://github.com/vm0-ai/vm0/commit/6d7c31a4dd95ba9364c153b15d06fb06927dc8da))
+* **platform:** remove optimistic event rollbacks ([#24193](https://github.com/vm0-ai/vm0/issues/24193)) ([f12a954](https://github.com/vm0-ai/vm0/commit/f12a9540f2debeb33848c8db8da0306201b3a732))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.258.1
+    * @vm0/core bumped to 8.497.0
+
 ## [0.669.1](https://github.com/vm0-ai/vm0/compare/app-v0.669.0...app-v0.669.1) (2026-07-31)
 
 

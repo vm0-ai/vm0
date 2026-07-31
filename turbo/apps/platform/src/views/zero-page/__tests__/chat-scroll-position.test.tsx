@@ -1,11 +1,12 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import {
   chatEventResponse,
   chatThreadEventsContract,
   type ChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { mockChatLifecycle } from "./chat-test-helpers.ts";
+import { mockChatLifecycle, sendMessageInUI } from "./chat-test-helpers.ts";
 import {
   normalizeMockChatEvents,
   type MockChatEventInput,
@@ -461,6 +462,41 @@ function mockLiveThread({
 }
 
 describe("chat scroll position", () => {
+  it("does not scroll an empty thread", async () => {
+    const threadId = "b0000000-0000-4000-a000-000000000800";
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Empty scroll thread",
+      chatEvents: [],
+    });
+    installImmediateAnimationFrames();
+    installChatLayout(
+      new Map([
+        [
+          threadId,
+          {
+            clientHeight: () => {
+              return 300;
+            },
+            scrollHeight: () => {
+              return 1000;
+            },
+            eventRect: () => {
+              return undefined;
+            },
+          },
+        ],
+      ]),
+    );
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    await expect(
+      screen.findByText("Send a message to start the conversation"),
+    ).resolves.toBeInTheDocument();
+    expect(chatScrollContainer().scrollTop).toBe(0);
+  });
+
   it("follows the tail when a new message arrives while at the bottom", async () => {
     const threadId = "b0000000-0000-4000-a000-000000000801";
     const initialEvents = simpleUserEvents(threadId, "tail-follow", 8);
@@ -512,6 +548,69 @@ describe("chat scroll position", () => {
     await waitFor(() => {
       expect(screen.getByText("tail-follow message 8")).toBeInTheDocument();
       expect(container.scrollTop).toBe(800);
+    });
+  });
+
+  it("follows the tail when the reader sends while away from the bottom", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000806";
+    const initialEvents = simpleUserEvents(threadId, "local-send-tail", 8);
+    const sendGate = context.mocks.deferred<void>();
+    let sent = false;
+    mockChatLifecycle(context, {
+      threadId,
+      chatEvents: initialEvents,
+      sendGate: sendGate.promise,
+      onRunCreate: () => {
+        sent = true;
+      },
+    });
+    installChatLayout(
+      new Map([
+        [
+          threadId,
+          {
+            clientHeight: () => {
+              return 300;
+            },
+            scrollHeight: () => {
+              return 1000;
+            },
+            eventRect: (eventId) => {
+              const index = Number(eventId.split("-").at(-1));
+              return Number.isFinite(index)
+                ? { top: index * 100, height: 80 }
+                : undefined;
+            },
+          },
+        ],
+      ]),
+    );
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const container = await waitFor(() => {
+      expect(screen.getByText("local-send-tail message 7")).toBeInTheDocument();
+      const current = chatScrollContainer();
+      expect(current.scrollTop).toBe(700);
+      return current;
+    });
+    scrollTo(container, 420);
+    expect(viewportOffsetTop("local-send-tail-4")).toBe(-20);
+
+    const composer = await screen.findByRole("textbox", { name: "Message" });
+    await sendMessageInUI(user, composer, "Send from history");
+
+    await waitFor(() => {
+      expect(screen.getByText("Send from history")).toBeInTheDocument();
+      expect(container.scrollTop).toBe(
+        container.scrollHeight - container.clientHeight,
+      );
+    });
+
+    sendGate.resolve();
+    await waitFor(() => {
+      expect(sent).toBeTruthy();
     });
   });
 
@@ -704,10 +803,9 @@ describe("chat scroll position", () => {
     });
   });
 
-  it("restores a thread after its old DOM collapses and an early frame has no target", async () => {
+  it("restores a thread after its old DOM collapses", async () => {
     let currentThreadTargetTop = 400;
     mockKeyboardNavigationThreads();
-    installImmediateAnimationFrames();
     context.mocks.api(
       chatThreadEventsContract.list,
       ({ params, query, respond }) => {

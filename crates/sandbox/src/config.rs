@@ -5,12 +5,13 @@ use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 
 /// Identity of a Firecracker VM sandbox — the workspace directory basename
-/// and socket directory name. Survives sandbox reuse: the first job creates
-/// the sandbox with this ID, and subsequent reuse jobs inherit it.
+/// and socket directory name. A newly created sandbox receives this ID, and
+/// subsequent reuse jobs retain it.
 ///
 /// Distinct from `RunId` (a per-job server identifier defined in the
-/// `runner` crate). The two are equal on the first run but diverge on
-/// sandbox reuse.
+/// `runner` crate). A new sandbox receives its ID independently of the current
+/// job's `RunId`. A reused sandbox keeps its existing `SandboxId` while the
+/// new job has its own `RunId`; the two identifiers are not interchangeable.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SandboxId(uuid::Uuid);
@@ -101,11 +102,15 @@ pub struct DeviceRateLimits {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum WorkspaceDriveSeedImage {
     /// Copy the host-local ext4 image into this sandbox's active workspace
-    /// image. The source must remain intact and must never be mounted
-    /// read-write by the provider.
+    /// image. The caller retains ownership, and the source must remain intact
+    /// and must never be mounted read-write by the provider.
     Copy(PathBuf),
     /// Move the host-local ext4 image into this sandbox's active workspace
-    /// image. The source is consumed when sandbox preparation succeeds.
+    /// image. The caller retains ownership until the provider completes the
+    /// transfer and consumes the source from its original path. If the
+    /// transfer fails before that boundary, the source remains caller-owned.
+    /// After that boundary, a later sandbox-creation failure does not return
+    /// ownership or require the provider to restore the original path.
     Move(PathBuf),
 }
 

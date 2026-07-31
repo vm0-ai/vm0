@@ -47,6 +47,7 @@ import { chatThreads } from "../src/schema/chat-thread";
 import { userConnectors } from "../src/schema/user-connector";
 import { userPermissionGrants } from "../src/schema/user-permission-grant";
 import { zeroRuns } from "../src/schema/zero-run";
+import { NON_TRANSACTIONAL_MIGRATION_MARKER } from "./migration-runner";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_DIR = path.join(dirname, "..");
@@ -1150,7 +1151,7 @@ async function validateChatEventContextPointerConstraints(
           '00000000-0000-4000-8000-000000074514',
           $1,
           'output.message',
-          'telegram',
+          'discord',
           '00000000-0000-4000-8000-000000074505',
           3
         )
@@ -1401,8 +1402,21 @@ async function applyMigrationsUpTo(
     );
 
     if (result.rows.length === 0) {
-      // Apply migration
-      await client.query(sql);
+      if (sql.includes(NON_TRANSACTIONAL_MIGRATION_MARKER)) {
+        const statements = sql
+          .split("--> statement-breakpoint")
+          .map((statement) => {
+            return statement.trim();
+          })
+          .filter((statement) => {
+            return statement.length > 0;
+          });
+        for (const statement of statements) {
+          await client.query(statement);
+        }
+      } else {
+        await client.query(sql);
+      }
       // Record in migrations table
       await client.query(
         `INSERT INTO "__drizzle_migrations" (hash, created_at) VALUES ($1, $2)`,
@@ -4046,28 +4060,6 @@ async function validateChatEventTypeBackfillAndContract(): Promise<void> {
               'Gmail label applied',
               'encrypted-queue-params',
               NULL
-            ),
-            (
-              $1,
-              'assistant',
-              NULL,
-              'queue.automation_paused',
-              NULL,
-              NULL,
-              NULL,
-              NULL,
-              'Provider unavailable'
-            ),
-            (
-              $1,
-              'assistant',
-              NULL,
-              'queue.automation_resumed',
-              NULL,
-              NULL,
-              NULL,
-              NULL,
-              NULL
             )
           RETURNING "id", "event_type" AS "eventType"
         `,
@@ -4077,11 +4069,7 @@ async function validateChatEventTypeBackfillAndContract(): Promise<void> {
         consumerEvents.rows.map(({ eventType }) => {
           return eventType;
         }),
-        [
-          "input.automation",
-          "queue.automation_paused",
-          "queue.automation_resumed",
-        ],
+        ["input.automation"],
       );
 
       const automationEventId = consumerEvents.rows[0]?.id;
@@ -4192,7 +4180,7 @@ async function validateChatEventTypeBackfillAndContract(): Promise<void> {
   }
 
   console.log(
-    "   ✅ Rollout-tail rows are classified, automation queue leaves are accepted, and append-only protection remains active\n",
+    "   ✅ Rollout-tail rows are classified, automation inputs are accepted, and append-only protection remains active\n",
   );
 }
 
@@ -4316,47 +4304,6 @@ async function validateChatEventQueueContraction(): Promise<void> {
           triggerSource: "slack",
         },
       ]);
-      await client.query(
-        `
-          INSERT INTO "chat_messages" (
-            "chat_thread_id",
-            "run_id",
-            "event_type",
-            "role",
-            "content",
-            "error"
-          )
-          VALUES (
-            $1,
-            NULL,
-            'queue.automation_paused',
-            'assistant',
-            NULL,
-            'contraction fixture pause'
-          )
-        `,
-        [threadId],
-      );
-
-      const projectedPause = await client.query<{
-        pauseReason: string;
-        queuePausedAt: Date;
-      }>(
-        `
-          SELECT
-            "queue_paused_at" AS "queuePausedAt",
-            "pause_reason" AS "pauseReason"
-          FROM "chat_threads"
-          WHERE "id" = $1
-        `,
-        [threadId],
-      );
-      assert.equal(
-        projectedPause.rows[0]?.pauseReason,
-        "contraction fixture pause",
-      );
-      assert.ok(projectedPause.rows[0]?.queuePausedAt instanceof Date);
-
       await applyMigrationsUpToInTransaction(
         client,
         CHAT_EVENT_QUEUE_CONTRACTION_MIGRATION,
@@ -4518,12 +4465,6 @@ async function validateChatEventQueueContraction(): Promise<void> {
           eventType: "input.prompt",
           triggerSource: "slack",
         },
-        {
-          content: null,
-          encryptedParams: null,
-          eventType: "queue.automation_paused",
-          triggerSource: null,
-        },
       ]);
 
       await expectAppendOnlyUpdateRejected(client, {
@@ -4539,7 +4480,7 @@ async function validateChatEventQueueContraction(): Promise<void> {
   }
 
   console.log(
-    "   ✅ Canonical queue events survive while one-release DELETE compatibility is verified and then fully retired\n",
+    "   ✅ Canonical queued inputs survive queue schema contraction and compatibility retirement\n",
   );
 }
 
@@ -11294,6 +11235,172 @@ async function validateChatDisplayContextBackfill(): Promise<void> {
   }
 }
 
+async function validateSlackContextIdentifierBackfill(): Promise<void> {
+  console.log("=== Validate Slack context identifier backfill ===\n");
+  const testDb = "migration_slack_context_identifier_backfill_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const agentComposeId = "00000000-0000-4000-8000-000000078001";
+  const threadId = "00000000-0000-4000-8000-000000078002";
+
+  const migrationSql = await fs.readFile(
+    path.join(MIGRATIONS_DIR, "0780_backfill_slack_context_identifiers.sql"),
+    "utf8",
+  );
+  assert.doesNotMatch(migrationSql, /\bLOCK TABLE\b/u);
+  assert.doesNotMatch(migrationSql, /\bchat_events\b/u);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 779);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES (
+            $1,
+            'slack-context-backfill-test-user',
+            'slack-context-backfill-test',
+            'slack-context-backfill-test-org'
+          )
+        `,
+        [agentComposeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id",
+            "user_id",
+            "agent_compose_id",
+            "title"
+          )
+          VALUES (
+            $1,
+            'slack-context-backfill-test-user',
+            $2,
+            'Slack context identifier backfill test'
+          )
+        `,
+        [threadId, agentComposeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_slack_context" (
+            "id",
+            "chat_thread_id",
+            "message_permalink",
+            "channel_id",
+            "message_ts"
+          )
+          VALUES
+            (
+              '00000000-0000-4000-8000-000000078010',
+              $1,
+              'https://workspace.slack.com/archives/C0123456789/p1699999999000100',
+              NULL,
+              NULL
+            ),
+            (
+              '00000000-0000-4000-8000-000000078011',
+              $1,
+              'https://workspace.slack.com/archives/G9876543210/p1700000000123456?thread_ts=1700000000.123456&cid=G9876543210',
+              NULL,
+              NULL
+            ),
+            (
+              '00000000-0000-4000-8000-000000078012',
+              $1,
+              'https://workspace.slack.com/messages/C0123456789/p1699999999000100',
+              NULL,
+              NULL
+            ),
+            (
+              '00000000-0000-4000-8000-000000078013',
+              $1,
+              NULL,
+              NULL,
+              NULL
+            ),
+            (
+              '00000000-0000-4000-8000-000000078014',
+              $1,
+              'https://workspace.slack.com/archives/CNEWVALUE/p1711111111222222',
+              'existing-channel',
+              '1688888888.000001'
+            ),
+            (
+              '00000000-0000-4000-8000-000000078015',
+              $1,
+              'https://workspace.slack.com/archives/C0123456789/p123456',
+              NULL,
+              NULL
+            )
+        `,
+        [threadId],
+      );
+
+      await applyMigrationsUpTo(client, 780);
+
+      const contexts = await client.query<{
+        channelId: string | null;
+        id: string;
+        messageTs: string | null;
+      }>(`
+        SELECT
+          "id",
+          "channel_id" AS "channelId",
+          "message_ts" AS "messageTs"
+        FROM "chat_slack_context"
+        ORDER BY "id"
+      `);
+      assert.deepEqual(contexts.rows, [
+        {
+          id: "00000000-0000-4000-8000-000000078010",
+          channelId: "C0123456789",
+          messageTs: "1699999999.000100",
+        },
+        {
+          id: "00000000-0000-4000-8000-000000078011",
+          channelId: "G9876543210",
+          messageTs: "1700000000.123456",
+        },
+        {
+          id: "00000000-0000-4000-8000-000000078012",
+          channelId: null,
+          messageTs: null,
+        },
+        {
+          id: "00000000-0000-4000-8000-000000078013",
+          channelId: null,
+          messageTs: null,
+        },
+        {
+          id: "00000000-0000-4000-8000-000000078014",
+          channelId: "existing-channel",
+          messageTs: "1688888888.000001",
+        },
+        {
+          id: "00000000-0000-4000-8000-000000078015",
+          channelId: null,
+          messageTs: null,
+        },
+      ]);
+
+      console.log(
+        "   ✅ Slack permalinks backfill exact channel and timestamp identifiers",
+      );
+      console.log(
+        "   ✅ Unparseable, missing, and already populated rows remain unchanged\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateChatAutomationContextBackfill(): Promise<void> {
   console.log("=== Validate chat automation context backfill ===\n");
   const testDb = "migration_chat_automation_context_backfill_test";
@@ -12214,6 +12321,338 @@ async function validateChatGoalContextBackfill(): Promise<void> {
       );
       console.log(
         "   ✅ Goal context has no secondary index and cascades only with its thread\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
+const CHAT_EVENT_TERMINAL_INDEX_EXPANSION_PREVIOUS_MIGRATION = 777;
+const CHAT_EVENT_TERMINAL_INDEX_EXPANSION_MIGRATION = 778;
+
+async function validateChatEventTerminalIndexExpansion(): Promise<void> {
+  console.log("=== Validate chat event terminal index expansion ===\n");
+  const testDb = "migration_chat_event_terminal_index_expansion_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const composeId = "00000000-0000-4000-8000-000000077801";
+  const threadId = "00000000-0000-4000-8000-000000077802";
+  const completedRunId = "00000000-0000-4000-8000-000000077803";
+  const failedRunId = "00000000-0000-4000-8000-000000077804";
+  const cancelledRunId = "00000000-0000-4000-8000-000000077805";
+  const queuedRunId = "00000000-0000-4000-8000-000000077806";
+  const completedEventId = "00000000-0000-4000-8000-000000077811";
+  const failedEventId = "00000000-0000-4000-8000-000000077812";
+  const cancelledEventId = "00000000-0000-4000-8000-000000077813";
+  const queuedEventId = "00000000-0000-4000-8000-000000077814";
+
+  const migrationSql = await fs.readFile(
+    path.join(MIGRATIONS_DIR, "0778_expand_chat_event_terminal_indexes.sql"),
+    "utf8",
+  );
+  assert.ok(migrationSql.startsWith(NON_TRANSACTIONAL_MIGRATION_MARKER));
+  assert.equal(
+    (migrationSql.match(/\bCREATE(?: UNIQUE)? INDEX CONCURRENTLY\b/gu) ?? [])
+      .length,
+    2,
+  );
+  assert.equal(
+    (migrationSql.match(/\bDROP INDEX CONCURRENTLY\b/gu) ?? []).length,
+    2,
+  );
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(
+      testDbUrl,
+      CHAT_EVENT_TERMINAL_INDEX_EXPANSION_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES (
+            $1,
+            'terminal-index-test-user',
+            'terminal-index-test',
+            'terminal-index-test-org'
+          )
+        `,
+        [composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id",
+            "user_id",
+            "agent_compose_id",
+            "title"
+          )
+          VALUES (
+            $1,
+            'terminal-index-test-user',
+            $2,
+            'terminal index test'
+          )
+        `,
+        [threadId, composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id",
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "run_lifecycle_event",
+            "seq_id",
+            "created_at"
+          )
+          VALUES
+            ($2, $1, $6, 'run.completed', 'completed', 1, '2026-07-31 00:00:00'),
+            ($3, $1, $7, 'run.failed', 'failed', 2, '2026-07-31 00:00:01'),
+            ($4, $1, $8, 'run.cancelled', 'cancelled', 3, '2026-07-31 00:00:02'),
+            ($5, $1, $9, 'run.queued', NULL, 4, '2026-07-31 00:00:03')
+        `,
+        [
+          threadId,
+          completedEventId,
+          failedEventId,
+          cancelledEventId,
+          queuedEventId,
+          completedRunId,
+          failedRunId,
+          cancelledRunId,
+          queuedRunId,
+        ],
+      );
+
+      const terminalRowsBefore = await client.query<{
+        eventTypeIds: string[];
+        lifecycleIds: string[];
+      }>(
+        `
+          SELECT
+            array_agg("id" ORDER BY "id")
+              FILTER (
+                WHERE "event_type" IN (
+                  'run.completed',
+                  'run.failed',
+                  'run.cancelled'
+                )
+              ) AS "eventTypeIds",
+            array_agg("id" ORDER BY "id")
+              FILTER (
+                WHERE "run_lifecycle_event" IS NOT NULL
+              ) AS "lifecycleIds"
+          FROM "chat_events"
+          WHERE "chat_thread_id" = $1
+        `,
+        [threadId],
+      );
+      assert.deepEqual(terminalRowsBefore.rows, [
+        {
+          eventTypeIds: [completedEventId, failedEventId, cancelledEventId],
+          lifecycleIds: [completedEventId, failedEventId, cancelledEventId],
+        },
+      ]);
+
+      const newIndexesBefore = await client.query<{ count: string }>(`
+        SELECT count(*)::text AS "count"
+        FROM "pg_class"
+        WHERE "relname" IN (
+          'chat_events_run_terminal_unique',
+          'idx_chat_events_thread_run_terminal_created'
+        )
+      `);
+      assert.deepEqual(newIndexesBefore.rows, [{ count: "0" }]);
+
+      await applyMigrationsUpTo(
+        client,
+        CHAT_EVENT_TERMINAL_INDEX_EXPANSION_MIGRATION,
+      );
+
+      const indexes = await client.query<{
+        indexName: string;
+        isUnique: boolean;
+        isValid: boolean;
+        predicate: string | null;
+      }>(`
+        SELECT
+          "index_class"."relname" AS "indexName",
+          "index"."indisunique" AS "isUnique",
+          "index"."indisvalid" AS "isValid",
+          pg_get_expr(
+            "index"."indpred",
+            "index"."indrelid"
+          ) AS "predicate"
+        FROM "pg_index" AS "index"
+        INNER JOIN "pg_class" AS "index_class"
+          ON "index_class"."oid" = "index"."indexrelid"
+        WHERE "index_class"."relname" IN (
+          'chat_events_run_lifecycle_unique',
+          'chat_events_run_terminal_unique',
+          'idx_chat_events_thread_run_finish_created',
+          'idx_chat_events_thread_run_terminal_created'
+        )
+        ORDER BY "index_class"."relname"
+      `);
+      assert.deepEqual(
+        indexes.rows.map((index) => {
+          return {
+            indexName: index.indexName,
+            isUnique: index.isUnique,
+            isValid: index.isValid,
+          };
+        }),
+        [
+          {
+            indexName: "chat_events_run_lifecycle_unique",
+            isUnique: true,
+            isValid: true,
+          },
+          {
+            indexName: "chat_events_run_terminal_unique",
+            isUnique: true,
+            isValid: true,
+          },
+          {
+            indexName: "idx_chat_events_thread_run_finish_created",
+            isUnique: false,
+            isValid: true,
+          },
+          {
+            indexName: "idx_chat_events_thread_run_terminal_created",
+            isUnique: false,
+            isValid: true,
+          },
+        ],
+      );
+      for (const index of indexes.rows) {
+        if (index.indexName.includes("terminal")) {
+          assert.match(index.predicate ?? "", /\bevent_type\b/u);
+          assert.doesNotMatch(
+            index.predicate ?? "",
+            /\brun_lifecycle_event\b/u,
+          );
+        } else {
+          assert.match(index.predicate ?? "", /\brun_lifecycle_event\b/u);
+        }
+      }
+
+      const terminalRowDifference = await client.query<{ id: string }>(`
+        (
+          SELECT "id"
+          FROM "chat_events"
+          WHERE "run_lifecycle_event" IS NOT NULL
+          EXCEPT
+          SELECT "id"
+          FROM "chat_events"
+          WHERE "event_type" IN (
+            'run.completed',
+            'run.failed',
+            'run.cancelled'
+          )
+        )
+        UNION ALL
+        (
+          SELECT "id"
+          FROM "chat_events"
+          WHERE "event_type" IN (
+            'run.completed',
+            'run.failed',
+            'run.cancelled'
+          )
+          EXCEPT
+          SELECT "id"
+          FROM "chat_events"
+          WHERE "run_lifecycle_event" IS NOT NULL
+        )
+      `);
+      assert.deepEqual(terminalRowDifference.rows, []);
+
+      const oldPredicateConflict = await client.query<{ id: string }>(
+        `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "run_lifecycle_event",
+            "seq_id"
+          )
+          VALUES ($1, $2, 'run.completed', 'completed', 5)
+          ON CONFLICT ("run_id")
+          WHERE "run_lifecycle_event" IS NOT NULL
+          DO NOTHING
+          RETURNING "id"
+        `,
+        [threadId, completedRunId],
+      );
+      assert.deepEqual(oldPredicateConflict.rows, []);
+
+      const newPredicateConflict = await client.query<{ id: string }>(
+        `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "run_lifecycle_event",
+            "seq_id"
+          )
+          VALUES ($1, $2, 'run.completed', 'completed', 6)
+          ON CONFLICT ("run_id")
+          WHERE "event_type" IN (
+            'run.completed',
+            'run.failed',
+            'run.cancelled'
+          )
+          DO NOTHING
+          RETURNING "id"
+        `,
+        [threadId, completedRunId],
+      );
+      assert.deepEqual(newPredicateConflict.rows, []);
+
+      await expectDatabaseError(client, {
+        code: "23505",
+        query: `
+          INSERT INTO "chat_events" (
+            "chat_thread_id",
+            "run_id",
+            "event_type",
+            "run_lifecycle_event",
+            "seq_id"
+          )
+          VALUES ($1, $2, 'run.completed', 'completed', 7)
+        `,
+        values: [threadId, completedRunId],
+      });
+
+      const duplicateTerminalRuns = await client.query<{ runId: string }>(`
+        SELECT "run_id" AS "runId"
+        FROM "chat_events"
+        WHERE "event_type" IN (
+          'run.completed',
+          'run.failed',
+          'run.cancelled'
+        )
+        GROUP BY "run_id"
+        HAVING count(*) > 1
+      `);
+      assert.deepEqual(duplicateTerminalRuns.rows, []);
+
+      console.log(
+        "   ✅ Old and event_type predicates select the same populated rows",
+      );
+      console.log(
+        "   ✅ Both valid unique indexes independently arbitrate duplicate terminal events",
+      );
+      console.log(
+        "   ✅ Concurrent retry-safe builds preserve the old index pair\n",
       );
     } finally {
       await client.end();
@@ -13435,8 +13874,10 @@ async function main(): Promise<void> {
     await validateFeishuThreadSessionContraction();
     await validateGithubIssueSessionContraction();
     await validateChatDisplayContextBackfill();
+    await validateSlackContextIdentifierBackfill();
     await validateChatAutomationContextBackfill();
     await validateChatGoalContextBackfill();
+    await validateChatEventTerminalIndexExpansion();
     await validateOrgPlanEntitlementBackfill();
     await validateModelObservationContractCleanup();
     await validateChatEventTypeBackfillAndContract();

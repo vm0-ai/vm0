@@ -31,11 +31,12 @@ use crate::idle_pool::{
     RestoreReservedIdleResult, ReusableIdleSandbox,
 };
 use crate::ids::RunId;
+use crate::lifecycle::RunnerMode;
 use crate::paths::short_digest;
 use crate::provider::{ClaimedJob, JobCandidate};
 use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::run_cancellation::{RunCancellationRegistration, RunCancellationRegistry};
-use crate::status::{RunnerMode, StatusTracker};
+use crate::status::StatusTracker;
 use crate::types::{
     ExecutionContext, HeldSessionState, SandboxReuseResult, SessionAffinityResource,
     WORKSPACE_AFFINITY_VERSION,

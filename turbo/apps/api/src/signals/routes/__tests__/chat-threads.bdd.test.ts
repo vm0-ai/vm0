@@ -4,11 +4,12 @@ import { createStore } from "ccstate";
 import { cronCompactChatThreadSnapshotsContract } from "@vm0/api-contracts/contracts/cron";
 import {
   chatThreadsContract,
-  type ChatEventResponse,
+  type ChatEvent,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
+import { RUNNER_CANCELLATION_RECOVERY_CAPABILITY } from "@vm0/api-contracts/contracts/runners";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import { describe, expect, it, onTestFinished } from "vitest";
 
@@ -95,7 +96,7 @@ const CHAT_THREAD_SNAPSHOT_CRON_SECRET = "chat-thread-snapshot-cron-secret";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 type UserMessage = Extract<
-  ChatEventResponse,
+  ChatEvent,
   {
     eventType:
       | "input.prompt"
@@ -105,7 +106,7 @@ type UserMessage = Extract<
       | "control.revoke";
   }
 >;
-type AssistantMessage = Exclude<ChatEventResponse, UserMessage>;
+type AssistantMessage = Exclude<ChatEvent, UserMessage>;
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
 
 async function compactChatThreadSnapshots() {
@@ -202,7 +203,7 @@ function zeroTokenFromClaim(claim: RunnerClaim): string {
 async function waitForThreadMessages(
   actor: ApiTestUser,
   threadId: string,
-  predicate: (messages: readonly ChatEventResponse[]) => boolean,
+  predicate: (messages: readonly ChatEvent[]) => boolean,
 ) {
   let page: Awaited<ReturnType<typeof chat.listThreadEvents>> | undefined;
   await expect
@@ -220,7 +221,7 @@ async function waitForThreadMessages(
 async function waitForThreadEvents(
   actor: ApiTestUser,
   threadId: string,
-  predicate: (events: readonly ChatEventResponse[]) => boolean,
+  predicate: (events: readonly ChatEvent[]) => boolean,
 ) {
   let page: Awaited<ReturnType<typeof chat.listThreadEvents>> | undefined;
   await expect
@@ -301,19 +302,17 @@ async function cancelChatRun(actor: ApiTestUser, runId: string): Promise<void> {
   await waitForRunStatus(actor, runId, "cancelled");
 }
 
-function assistantMessages(
-  messages: readonly ChatEventResponse[],
-): AssistantMessage[] {
+function assistantMessages(messages: readonly ChatEvent[]): AssistantMessage[] {
   return messages.filter((message): message is AssistantMessage => {
     return !isUserMessage(message);
   });
 }
 
-function userMessages(messages: readonly ChatEventResponse[]): UserMessage[] {
+function userMessages(messages: readonly ChatEvent[]): UserMessage[] {
   return messages.filter(isUserMessage);
 }
 
-function isUserMessage(message: ChatEventResponse): message is UserMessage {
+function isUserMessage(message: ChatEvent): message is UserMessage {
   switch (message.eventType) {
     case "input.prompt":
     case "input.automation":
@@ -328,10 +327,7 @@ function isUserMessage(message: ChatEventResponse): message is UserMessage {
   }
 }
 
-type UsageRecordedEvent = Extract<
-  ChatEventResponse,
-  { eventType: "usage.recorded" }
->;
+type UsageRecordedEvent = Extract<ChatEvent, { eventType: "usage.recorded" }>;
 
 async function usageEventsForRun(
   actor: ApiTestUser,
@@ -1327,7 +1323,10 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       agentId,
       prompt: "delete cascade anchor",
     });
-    await claimChatRun(runnerGroup, main.runId);
+    await api.heartbeatRunner(runnerGroup);
+    await api.claimRunnerJob(main.runId, {
+      capabilities: [RUNNER_CANCELLATION_RECOVERY_CAPABILITY],
+    });
 
     await expect(chat.listActiveChatThreadIds(actor)).resolves.toContain(
       main.threadId,
@@ -1365,8 +1364,14 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       cancellationRecoveryPending: false,
     });
 
+    context.mocks.ably.publish.mockClear();
     const deleted = await chat.requestDeleteThread(actor, main.threadId, [204]);
     expect(deleted.body).toBeUndefined();
+    await flushWaitUntilForTest();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith("cancel", {
+      runId: main.runId,
+      mode: "hard",
+    });
 
     expect((await api.readRun(actor, main.runId)).status).toBe("cancelled");
     expect((await api.readRun(actor, sibling.runId)).status).toBe("completed");

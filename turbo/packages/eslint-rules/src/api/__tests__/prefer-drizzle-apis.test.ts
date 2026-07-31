@@ -927,8 +927,90 @@ ruleTester.run("prefer-drizzle-apis", preferDrizzleApis, {
         db.select().from(users).orderBy(sql\`random()\`);
       `,
     },
+    {
+      name: "typed and unsupported transaction configurations stay valid",
+      code: `${drizzlePreamble}
+        import { sql, type SQL } from "drizzle-orm";
+        declare const lookalike: {
+          execute(query: SQL): Promise<void>;
+          setTransaction(config: { accessMode?: string }): Promise<void>;
+        };
+        declare const dynamicMode: string;
+        declare function fakeSql(
+          strings: TemplateStringsArray,
+        ): SQL;
+        await db.transaction(
+          async (tx) => {
+            await tx.setTransaction({
+              isolationLevel: "repeatable read",
+              accessMode: "read only",
+            });
+            await tx.execute(
+              sql\`SET LOCAL TRANSACTION ISOLATION LEVEL REPEATABLE READ\`,
+            );
+            await tx.execute(
+              sql\`SET SESSION CHARACTERISTICS AS TRANSACTION READ ONLY\`,
+            );
+            await tx.execute(
+              sql\`SET TRANSACTION SNAPSHOT 'snapshot-id'\`,
+            );
+            await tx.execute(
+              sql\`SET TRANSACTION READ ONLY, READ WRITE\`,
+            );
+            await tx.execute(sql\`SET TRANSACTION \${dynamicMode}\`);
+            await tx.execute(sql\`SET TRANSACTION\`);
+            await tx.execute(sql\`SET TRANSACTION READ ONLY; SELECT 1\`);
+            await tx.execute(fakeSql\`SET TRANSACTION READ ONLY\`);
+            const indirect = sql\`SET TRANSACTION READ ONLY\`;
+            await tx.execute(indirect);
+          },
+          {
+            isolationLevel: "repeatable read",
+            accessMode: "read only",
+          },
+        );
+        await db.execute(sql\`SET TRANSACTION READ ONLY\`);
+        await lookalike.execute(sql\`SET TRANSACTION READ ONLY\`);
+      `,
+    },
   ],
   invalid: [
+    {
+      name: "raw transaction configuration has a typed drizzle API",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        await db.transaction(async (tx) => {
+          await tx.execute(
+            sql\`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY\`,
+          );
+        });
+      `,
+      errors: [{ messageId: "transactionConfig" }],
+    },
+    {
+      name: "all supported transaction characteristics are recognized",
+      code: `${drizzlePreamble}
+        import { sql } from "drizzle-orm";
+        await db.transaction(async (tx) => {
+          await tx.execute(
+            sql\`SET TRANSACTION READ WRITE, ISOLATION LEVEL SERIALIZABLE, DEFERRABLE\`,
+          );
+          await tx.execute(
+            sql\`SET TRANSACTION ISOLATION LEVEL READ COMMITTED\`,
+          );
+          await tx.execute(
+            sql\`SET TRANSACTION ISOLATION LEVEL READ UNCOMMITTED\`,
+          );
+          await tx.execute(sql\`SET TRANSACTION NOT DEFERRABLE;\`);
+        });
+      `,
+      errors: [
+        { messageId: "transactionConfig" },
+        { messageId: "transactionConfig" },
+        { messageId: "transactionConfig" },
+        { messageId: "transactionConfig" },
+      ],
+    },
     {
       name: "directly nested identity column wrapper",
       code: `${drizzlePreamble}

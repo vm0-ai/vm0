@@ -1294,7 +1294,7 @@ impl IdlePool {
 
     /// Drain all entries from the pool. Parking permission is controlled by
     /// [`ParkingGate`] so soft-drain resume can reopen parking before
-    /// `RunnerMode::Running` becomes visible.
+    /// [`crate::lifecycle::RunnerMode::Running`] becomes visible.
     pub fn drain(&mut self) -> Vec<IdleDestroyJob> {
         let jobs: Vec<IdleDestroyJob> = self
             .entries
