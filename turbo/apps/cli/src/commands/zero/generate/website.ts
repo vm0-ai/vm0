@@ -7,6 +7,7 @@ import {
   findTemplate,
   listDesignSystems,
   listTemplates,
+  type RegistryEntry,
 } from "../shared/resource-registry";
 import {
   canonicalizeRegistryId,
@@ -23,21 +24,6 @@ interface WebsiteOptions {
   readonly designSystem?: string;
   readonly siteSlug?: string;
   readonly title?: string;
-}
-
-function selectedTemplateDetails(
-  template: ReturnType<typeof findTemplate> | undefined,
-): readonly string[] {
-  if (!template) {
-    return ["Selected template: agent decides"];
-  }
-  const details = [`Selected template: ${template.id} (${template.name})`];
-  if (template.source.archive) {
-    details.push(
-      `Selected template package: zero resource pull ${template.id} --dir ./generated/resources`,
-    );
-  }
-  return details;
 }
 
 function unknownDesignSystemError(id: string): Error {
@@ -146,28 +132,38 @@ ${formatRegistryListing(templates, "website templates")}`;
         resolvedTemplate = entry;
       }
 
-      const templateSelectionRules = resolvedTemplate
-        ? ["Use the explicitly selected template."]
-        : [
-            "For landing, marketing, official brand or product, and launch pages, select a vm0 built-in website template.",
-            "For other HTML or website requests, select an Open Design template based on intent; when ambiguous, prefer Open Design.",
-            "Built-in website candidates have `source.archive`; candidates without it are Open Design templates.",
-          ];
+      const selectedResources: RegistryEntry[] = [];
+      if (resolvedTemplate) {
+        selectedResources.push(resolvedTemplate);
+      }
+      if (resolvedDesignSystem) {
+        selectedResources.push(resolvedDesignSystem);
+      }
+      const templateSelectionRules =
+        selectedResources.length === 0
+          ? [
+              "For landing, marketing, official brand or product, and launch pages, select a vm0 built-in website template.",
+              "For other HTML or website requests, select an Open Design template based on intent; when ambiguous, prefer Open Design.",
+              "Built-in website candidates have `source.archive`; candidates without it are Open Design templates.",
+            ]
+          : [];
+      const resourceDetails =
+        selectedResources.length === 0
+          ? [
+              "Selected design system: agent decides",
+              "Selected template: agent decides",
+            ]
+          : [];
 
       const packet = createHtmlArtifactAuthoringPacket({
         kind: "website",
         prompt,
         slugSource: options.title,
         siteSlug: options.siteSlug,
-        selectedTemplate: resolvedTemplate,
+        selectedResources,
         details: [
           `Requested title/site name: ${options.title ?? "not specified"}`,
-          `Selected design system: ${
-            resolvedDesignSystem
-              ? `${resolvedDesignSystem.id} (${resolvedDesignSystem.name})`
-              : "agent decides"
-          }`,
-          ...selectedTemplateDetails(resolvedTemplate),
+          ...resourceDetails,
         ],
         artifactRules: [
           "Build the usable website as the first screen; do not output a landing-page plan.",

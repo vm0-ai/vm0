@@ -13,10 +13,26 @@ interface HtmlArtifactAuthoringOptions {
   readonly prompt: string;
   readonly slugSource?: string;
   readonly siteSlug?: string;
-  readonly selectedTemplate?: RegistryEntry;
+  readonly selectedResources?: readonly RegistryEntry[];
   readonly details: readonly string[];
   readonly artifactRules: readonly string[];
 }
+
+type HtmlArtifactResourceSelection =
+  | {
+      readonly mode: "selected";
+      readonly resources: readonly RegistryEntry[];
+    }
+  | {
+      readonly mode: "candidate";
+      readonly candidates: ResourceCandidateSlice["candidates"];
+      readonly outputSchema: {
+        readonly skills: "string[]";
+        readonly template: "string";
+        readonly designSystem: "string | null";
+        readonly rationale: "string";
+      };
+    };
 
 interface HtmlArtifactAuthoringPacket {
   readonly type: "generation-source-selection";
@@ -37,15 +53,7 @@ interface HtmlArtifactAuthoringPacket {
     readonly previewKind: "hosted-url";
     readonly outputDir: string;
   };
-  readonly selection: {
-    readonly candidates: ResourceCandidateSlice["candidates"];
-    readonly outputSchema: {
-      readonly skills: "string[]";
-      readonly template: "string";
-      readonly designSystem: "string | null";
-      readonly rationale: "string";
-    };
-  };
+  readonly selection: HtmlArtifactResourceSelection;
   readonly authoring: {
     readonly details: readonly string[];
     readonly artifactRules: readonly string[];
@@ -109,19 +117,88 @@ export function createHtmlArtifactAuthoringPacket(
   }`;
   const title = titleForKind(options.kind);
   const candidateSlice = selectResourceCandidates(options.kind);
-  const candidates: ResourceCandidateSlice["candidates"] = {
-    ...candidateSlice.candidates,
-    templates:
-      options.selectedTemplate === undefined
-        ? candidateSlice.candidates.templates
-        : [options.selectedTemplate],
-  };
+  const selectedResources = options.selectedResources ?? [];
+  const hasSelectedResources = selectedResources.length > 0;
   const selectionSchema = {
     skills: "string[]",
     template: "string",
     designSystem: "string | null",
     rationale: "string",
   } as const;
+  const selection: HtmlArtifactResourceSelection = hasSelectedResources
+    ? {
+        mode: "selected",
+        resources: selectedResources,
+      }
+    : {
+        mode: "candidate",
+        candidates: candidateSlice.candidates,
+        outputSchema: selectionSchema,
+      };
+  const packetIntroduction = hasSelectedResources
+    ? [
+        "This is a generation authoring packet for the current agent.",
+        `Zero is not generating this ${title} on the server. The registry resources are already selected; resolve them and author the artifact.`,
+      ]
+    : [
+        "This is a federated generation source-selection packet for the current agent.",
+        `Zero is not generating this ${title} on the server. You select resources, resolve them, and author the artifact.`,
+      ];
+  const resourceSelectionInstructions = hasSelectedResources
+    ? [
+        "## Selected Resources",
+        "- Use every resource listed below. Do not select or add other registry resources.",
+        "",
+        `Registry: \`${candidateSlice.registryVersion}\``,
+        `Source: \`${candidateSlice.source.repo}@${candidateSlice.source.ref}\``,
+        "",
+        "```json",
+        JSON.stringify(selectedResources, null, 2),
+        "```",
+        "",
+      ]
+    : [
+        "## Stage 1: Resource Selection",
+        "- Choose generation resources from the bundled federated registry slice below.",
+        "- Select one template, one or more skills, and zero or one design system.",
+        "- Choose only IDs present in this packet; do not invent registry IDs.",
+        "- Prefer compatible resources, but the user prompt is the highest-priority signal.",
+        "- Treat the selection JSON as internal working state, then continue to authoring.",
+        "",
+        "## Selection Output Schema",
+        "```json",
+        JSON.stringify(selectionSchema, null, 2),
+        "```",
+        "",
+        "## Candidate Registry Slice",
+        `Registry: \`${candidateSlice.registryVersion}\``,
+        "Sources:",
+        ...candidateSlice.sources.map(formatCandidateSource),
+        "",
+        "```json",
+        JSON.stringify(candidateSlice.candidates, null, 2),
+        "```",
+        "",
+      ];
+  const resourceResolutionInstructions = hasSelectedResources
+    ? [
+        "## Resolve Selected Resources",
+        "- Resolve every selected resource listed above before authoring.",
+        "- Each selected resource carries a `source` object with `path` and optional `repo`/`ref`; when `repo`/`ref` are omitted, fall back to the registry-level source above.",
+        "- If `source.archive` is present, pull the private R2 archive with `zero resource pull <resource-id> --dir ./generated/resources`; the CLI requests an authenticated short-lived download URL, verifies the digest, and then extracts `source.path`.",
+        "- For directory refs, inspect the most relevant files such as `SKILL.md`, `DESIGN.md`, `README.md`, tokens, examples, and templates.",
+        "- If a source file cannot be fetched, state that limitation and fall back to the registry metadata for that resource.",
+        "",
+      ]
+    : [
+        "## Stage 2: Resolve Selected Resources",
+        "- First resolve every required resource listed above, then resolve every selected resource before authoring.",
+        "- Each candidate carries a `source` object with `path` and optional `repo`/`ref`; when `repo`/`ref` are omitted, fall back to the registry-level source above.",
+        "- If `source.archive` is present, pull the private R2 archive with `zero resource pull <resource-id> --dir ./generated/resources`; the CLI requests an authenticated short-lived download URL, verifies the digest, and then extracts `source.path`.",
+        "- For directory refs, inspect the most relevant files such as `SKILL.md`, `DESIGN.md`, `README.md`, tokens, examples, and templates.",
+        "- If a source file cannot be fetched, state that limitation and fall back to the registry metadata for that resource.",
+        "",
+      ];
   const artifact = {
     outputMode: "primary-artifact-with-supporting-assets",
     primaryArtifact: {
@@ -156,41 +233,14 @@ export function createHtmlArtifactAuthoringPacket(
   const instructions = [
     `# Zero generate ${options.kind}`,
     "",
-    "This is a federated generation source-selection packet for the current agent.",
-    `Zero is not generating this ${title} on the server. You select resources, resolve them, and author the artifact.`,
+    ...packetIntroduction,
     "",
     "## User Prompt",
     options.prompt,
     "",
-    "## Stage 1: Resource Selection",
-    "- Choose generation resources from the bundled federated registry slice below.",
-    "- Select one template, one or more skills, and zero or one design system.",
-    "- Choose only IDs present in this packet; do not invent registry IDs.",
-    "- Prefer compatible resources, but the user prompt is the highest-priority signal.",
-    "- Treat the selection JSON as internal working state, then continue to authoring.",
-    "",
-    "## Selection Output Schema",
-    "```json",
-    JSON.stringify(selectionSchema, null, 2),
-    "```",
-    "",
-    "## Candidate Registry Slice",
-    `Registry: \`${candidateSlice.registryVersion}\``,
-    "Sources:",
-    ...candidateSlice.sources.map(formatCandidateSource),
-    "",
-    "```json",
-    JSON.stringify(candidates, null, 2),
-    "```",
-    "",
-    "## Stage 2: Resolve Selected Resources",
-    "- First resolve every required resource listed above, then resolve every selected resource before authoring.",
-    "- Each candidate carries a `source` object with `path` and optional `repo`/`ref`; when `repo`/`ref` are omitted, fall back to the registry-level source above.",
-    "- If `source.archive` is present, pull the private R2 archive with `zero resource pull <resource-id> --dir ./generated/resources`; the CLI requests an authenticated short-lived download URL, verifies the digest, and then extracts `source.path`.",
-    "- For directory refs, inspect the most relevant files such as `SKILL.md`, `DESIGN.md`, `README.md`, tokens, examples, and templates.",
-    "- If a source file cannot be fetched, state that limitation and fall back to the registry metadata for that resource.",
-    "",
-    "## Stage 3: Author Artifact",
+    ...resourceSelectionInstructions,
+    ...resourceResolutionInstructions,
+    hasSelectedResources ? "## Author Artifact" : "## Stage 3: Author Artifact",
     `Author a production-quality ${title} as a static HTML artifact using the selected generation resources.`,
     "",
     "## Artifact Output Model",
@@ -213,7 +263,9 @@ export function createHtmlArtifactAuthoringPacket(
     }),
     "",
     "## Authoring Rules",
-    "- Let the selected template define structure, the selected design system define visual language, and the selected skills define process.",
+    hasSelectedResources
+      ? "- Use each selected resource according to its role: templates define structure, design systems define visual language, and skills define process."
+      : "- Let the selected template define structure, the selected design system define visual language, and the selected skills define process.",
     "- Read the local codebase, brand assets, and existing design systems when the prompt depends on this repository.",
     "- Avoid generic AI design defaults: no stock SaaS gradients, no emoji-as-icons, no filler stats, no decorative chrome that does not help the artifact.",
     "- Build the actual artifact first, not a marketing explanation of the artifact.",
@@ -249,10 +301,7 @@ export function createHtmlArtifactAuthoringPacket(
     prompt: options.prompt,
     registryVersion: candidateSlice.registryVersion,
     artifact,
-    selection: {
-      candidates,
-      outputSchema: selectionSchema,
-    },
+    selection,
     authoring: {
       details: options.details,
       artifactRules: options.artifactRules,

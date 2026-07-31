@@ -101,10 +101,14 @@ describe("zero generate website command", () => {
     ]);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(stdout).toContain(
-      "Selected template: template:web-prototype (Web Prototype)",
-    );
-    expect(stdout).toContain("Use the explicitly selected template.");
+    expect(stdout).toContain("## Selected Resources");
+    expect(stdout).toContain('"id": "template:web-prototype"');
+    expect(stdout.match(/"kind":/gu)).toHaveLength(1);
+    expect(stdout).not.toContain("## Stage 1: Resource Selection");
+    expect(stdout).not.toContain("## Candidate Registry Slice");
+    expect(stdout).not.toContain('"id": "template:black-slabs"');
+    expect(stdout).not.toContain('"id": "skill:article-magazine"');
+    expect(stdout).not.toContain('"id": "design-system:apple"');
     expect(stdout).not.toContain(
       "For landing, marketing, official brand or product, and launch pages, select a vm0 built-in website template.",
     );
@@ -129,23 +133,23 @@ describe("zero generate website command", () => {
     ]);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(stdout).toContain(
-      "Selected template: template:dot-matrix (Dot Matrix)",
-    );
-    expect(stdout).toContain(
-      "Selected design system: design-system:stripe (Stripe)",
-    );
-    expect(stdout).toContain(
-      "Selected template package: zero resource pull template:dot-matrix --dir ./generated/resources",
-    );
+    expect(stdout).toContain("## Selected Resources");
     expect(stdout).toContain('"id": "template:dot-matrix"');
+    expect(stdout).toContain('"id": "design-system:stripe"');
     expect(stdout).toContain('"type": "tar.gz"');
     expect(stdout).toContain(
       '"sha256": "f489a51fb99d8fadff8712d0406df06ac1a530116ebe612ab3f8605daa2bcce2"',
     );
     expect(stdout.match(/"kind": "template"/gu)).toHaveLength(1);
+    expect(stdout.match(/"kind": "design-system"/gu)).toHaveLength(1);
+    expect(stdout.match(/"kind":/gu)).toHaveLength(2);
+    expect(stdout).not.toContain("## Stage 1: Resource Selection");
+    expect(stdout).not.toContain("## Selection Output Schema");
+    expect(stdout).not.toContain("## Candidate Registry Slice");
     expect(stdout).not.toContain('"id": "template:black-slabs"');
     expect(stdout).not.toContain('"id": "template:web-prototype"');
+    expect(stdout).not.toContain('"id": "skill:article-magazine"');
+    expect(stdout).not.toContain('"id": "design-system:apple"');
   });
 
   it("should accept the built-in website picker id for --template", async () => {
@@ -160,9 +164,9 @@ describe("zero generate website command", () => {
     ]);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(stdout).toContain(
-      "Selected template: template:black-slabs (Black Slabs)",
-    );
+    expect(stdout).toContain('"id": "template:black-slabs"');
+    expect(stdout.match(/"kind":/gu)).toHaveLength(1);
+    expect(stdout).not.toContain("## Candidate Registry Slice");
   });
 
   it("should reject a template that does not target website", async () => {

@@ -72,6 +72,8 @@ describe("zero generate source-backed artifact commands", () => {
       const stdout = output();
       expect(stdout).toContain(`# Zero generate ${command}`);
       expect(stdout).toContain("federated generation source-selection packet");
+      expect(stdout).toContain("## Stage 1: Resource Selection");
+      expect(stdout).toContain("## Candidate Registry Slice");
       expect(stdout).toContain(prompt);
       expect(stdout).toContain(template);
       expect(stdout).toContain(`Artifact kind: ${command}`);
@@ -311,15 +313,40 @@ describe("zero generate source-backed artifact commands", () => {
     ]);
 
     const stdout = output();
-    expect(stdout).toContain(
-      "Selected design system: design-system:apple (Apple)",
-    );
-    expect(stdout).toContain(
-      "Selected template: template:finance-report (Finance Report)",
-    );
+    expect(stdout).toContain("## Selected Resources");
     expect(stdout).toContain('"id": "template:finance-report"');
+    expect(stdout).toContain('"id": "design-system:apple"');
     expect(stdout.match(/"kind": "template"/gu)).toHaveLength(1);
+    expect(stdout.match(/"kind": "design-system"/gu)).toHaveLength(1);
+    expect(stdout.match(/"kind":/gu)).toHaveLength(2);
+    expect(stdout).not.toContain("## Stage 1: Resource Selection");
+    expect(stdout).not.toContain("## Selection Output Schema");
+    expect(stdout).not.toContain("## Candidate Registry Slice");
+    expect(stdout).not.toContain('"id": "skill:article-magazine"');
     expect(stdout).not.toContain('"id": "template:weekly-update"');
+    expect(stdout).not.toContain('"id": "design-system:shopify"');
+    expect(stdout).not.toContain("agent decides");
+  });
+
+  it("prints only an explicitly selected design system", async () => {
+    await generateCommand.parseAsync([
+      "node",
+      "cli",
+      "report",
+      "--prompt",
+      "Q2 finance report",
+      "--design-system",
+      "apple",
+    ]);
+
+    const stdout = output();
+    expect(stdout).toContain("## Selected Resources");
+    expect(stdout).toContain('"id": "design-system:apple"');
+    expect(stdout.match(/"kind":/gu)).toHaveLength(1);
+    expect(stdout).not.toContain('"kind": "template"');
+    expect(stdout).not.toContain('"kind": "skill"');
+    expect(stdout).not.toContain("## Stage 1: Resource Selection");
+    expect(stdout).not.toContain("## Candidate Registry Slice");
   });
 
   it("rejects an unknown template id on dashboard-design", async () => {

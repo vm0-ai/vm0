@@ -6,6 +6,7 @@ import {
   listDesignSystems,
   listTemplates,
   type GenerationTarget,
+  type RegistryEntry,
   toGenerationTarget,
 } from "./resource-registry";
 import {
@@ -151,25 +152,27 @@ ${formatRegistryListing(templates, `${config.target} templates`)}`;
           resolvedTemplate = entry;
         }
 
-        const extraDetails = [
-          `Selected design system: ${
-            resolvedDesignSystem
-              ? `${resolvedDesignSystem.id} (${resolvedDesignSystem.name})`
-              : "agent decides"
-          }`,
-          `Selected template: ${
-            resolvedTemplate
-              ? `${resolvedTemplate.id} (${resolvedTemplate.name})`
-              : "agent decides"
-          }`,
-        ];
+        const selectedResources: RegistryEntry[] = [];
+        if (resolvedTemplate) {
+          selectedResources.push(resolvedTemplate);
+        }
+        if (resolvedDesignSystem) {
+          selectedResources.push(resolvedDesignSystem);
+        }
+        const extraDetails =
+          selectedResources.length === 0
+            ? [
+                "Selected design system: agent decides",
+                "Selected template: agent decides",
+              ]
+            : [];
 
         const packet = createHtmlArtifactAuthoringPacket({
           kind: toGenerationTarget(config.target),
           prompt,
           slugSource: options.title,
           siteSlug: options.siteSlug,
-          selectedTemplate: resolvedTemplate,
+          selectedResources,
           details: [...config.details(options), ...extraDetails],
           artifactRules: config.artifactRules,
         });
