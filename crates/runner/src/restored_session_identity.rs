@@ -1,3 +1,20 @@
+//! Identity contracts for session history already restored in a sandbox.
+//!
+//! An incoming hash-backed resume request produces a requested
+//! [`RestoredSessionIdentity`] without verifier provenance. Final metadata read
+//! after a successful checkpoint produces a retained identity with the history
+//! size and paths needed to verify the parked sandbox's current history.
+//!
+//! The comparison layers intentionally answer different questions. Structural
+//! equality compares the framework and content identity while ignoring optional
+//! size and verifier state. [`RestoredSessionIdentity::is_verified_match_for_request`]
+//! additionally requires usable final-metadata provenance and enforces a
+//! requested size when present. Even that match only authorizes the runner to
+//! attempt the live guest verification required before restore can be skipped.
+//!
+//! Identity hashes and verifier paths are sensitive operational data. The
+//! custom [`Debug`](std::fmt::Debug) implementation keeps them redacted.
+
 use std::cmp::Ordering;
 use std::fmt;
 
@@ -13,6 +30,10 @@ use crate::types::ResumeSessionHistoryRefKind;
 const CLAUDE_CODE_RESTORE_FORMAT_VERSION: u8 = 1;
 const CODEX_RESTORE_FORMAT_VERSION: u8 = 1;
 
+/// CLI framework namespace used by a restored-session identity.
+///
+/// Each framework controls both session-id normalization and the restore
+/// format version included in structural comparisons.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RestoredSessionFramework {
     ClaudeCode,
@@ -20,6 +41,7 @@ pub(crate) enum RestoredSessionFramework {
 }
 
 impl RestoredSessionFramework {
+    /// Returns the current restore format version for this framework.
     pub(crate) const fn restore_format_version(self) -> u8 {
         match self {
             Self::ClaudeCode => CLAUDE_CODE_RESTORE_FORMAT_VERSION,
@@ -28,6 +50,12 @@ impl RestoredSessionFramework {
     }
 }
 
+/// Reason a resume request cannot use a retained identity.
+///
+/// [`RestoredSessionIdentity::mismatch_reason_for_request`] defines the stable
+/// precedence used when more than one field differs.
+/// [`Self::MissingRequestedIdentity`] is instead used when no requested
+/// identity can be constructed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RestoredSessionIdentityMismatchReason {
     Framework,
@@ -64,6 +92,12 @@ impl RestoredSessionIdentityMismatchReason {
     }
 }
 
+/// Requested history size relative to a retained size backed by usable
+/// final-metadata verifier provenance.
+///
+/// [`Self::SizeUnknown`] means either the retained identity cannot supply a
+/// usable final-metadata verification or the requested size is absent or
+/// outside the accepted session-history range.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RestoredSessionHistoryHashSizeRelationship {
     RequestedSmaller,
@@ -89,6 +123,17 @@ impl RestoredSessionHistoryHashSizeRelationship {
     }
 }
 
+/// Framework and history identity shared by resume requests and retained state.
+///
+/// Requested identities carry the optional size supplied by the request but no
+/// verifier. Identities accepted from final metadata carry a final size and
+/// verifier paths. Structural equality deliberately excludes both fields so
+/// callers can compare the common content identity independently of evidence
+/// availability; use [`Self::is_verified_match_for_request`] for a decision
+/// that requires retained verification provenance.
+///
+/// Custom [`Debug`](std::fmt::Debug) output redacts the session-id hash,
+/// history hash, and verifier paths.
 #[derive(Clone, Eq)]
 pub(crate) struct RestoredSessionIdentity {
     framework: RestoredSessionFramework,
@@ -108,6 +153,11 @@ enum RestoredSessionIdentityVerifier {
     },
 }
 
+/// Borrowed final-metadata inputs for live verification in a retained sandbox.
+///
+/// Presence of this projection means the identity has usable verifier
+/// provenance. It does not mean the guest's current metadata and history have
+/// already passed live verification.
 pub(crate) struct RestoredSessionFinalMetadataVerification<'a> {
     pub(crate) metadata_path: &'a str,
     pub(crate) runtime_dir: &'a str,
@@ -118,6 +168,10 @@ pub(crate) struct RestoredSessionFinalMetadataVerification<'a> {
     pub(crate) history_size_bytes: u64,
 }
 
+/// Size-bearing identity fields used by workspace-cache sidecars.
+///
+/// This projection requires a stored history size but does not require
+/// final-metadata verifier provenance.
 pub(crate) struct RestoredSessionIdentityFields<'a> {
     pub(crate) framework: FinalSessionHistoryFramework,
     pub(crate) session_id_hash: &'a str,
@@ -126,6 +180,10 @@ pub(crate) struct RestoredSessionIdentityFields<'a> {
     pub(crate) history_size_bytes: u64,
 }
 
+/// Retained history hash and size offered for later prefix verification.
+///
+/// These fields identify the possible prefix; they are not proof that the
+/// requested history actually starts with the retained bytes.
 #[derive(Clone)]
 pub(crate) struct RestoredSessionHistoryPrefixAttribution {
     history_hash: String,
@@ -133,6 +191,11 @@ pub(crate) struct RestoredSessionHistoryPrefixAttribution {
 }
 
 impl RestoredSessionIdentity {
+    /// Builds an unverified identity from a framework-normalized session id.
+    ///
+    /// Claude Code callers supply the raw session id, while Codex callers
+    /// supply the canonical thread id. The id is stored only as a SHA-256 hash.
+    /// This constructor never attaches final-metadata verifier provenance.
     pub(crate) fn new(
         framework: RestoredSessionFramework,
         identity_session_id: &str,
@@ -140,8 +203,6 @@ impl RestoredSessionIdentity {
         history_hash: impl Into<String>,
         history_size_bytes: Option<u64>,
     ) -> Self {
-        // Callers pass the framework-normalized identity id. Claude Code uses
-        // the raw session id; Codex uses the canonical thread id.
         Self {
             framework,
             restore_format_version: framework.restore_format_version(),
@@ -153,6 +214,11 @@ impl RestoredSessionIdentity {
         }
     }
 
+    /// Builds a retained identity from validated final checkpoint metadata.
+    ///
+    /// Returns `None` when the metadata is invalid or the supplied metadata
+    /// path and runtime directory cannot form a usable verification
+    /// projection.
     pub(crate) fn from_final_metadata(
         metadata: FinalSessionHistoryIdentity,
         metadata_path: impl Into<String>,
@@ -209,6 +275,12 @@ impl RestoredSessionIdentity {
         }
     }
 
+    /// Returns the inputs needed to verify final metadata inside the guest.
+    ///
+    /// The identity must contain a history size and final-metadata verifier,
+    /// and both the metadata path and runtime directory must be absolute. This
+    /// method only exposes verification inputs; the executor separately runs
+    /// and evaluates the live guest verification.
     pub(crate) fn final_metadata_verification(
         &self,
     ) -> Option<RestoredSessionFinalMetadataVerification<'_>> {
@@ -234,6 +306,10 @@ impl RestoredSessionIdentity {
         }
     }
 
+    /// Returns the size-bearing fields used to publish or validate a sidecar.
+    ///
+    /// Unlike [`Self::final_metadata_verification`], this does not require
+    /// verifier provenance or retained guest paths.
     pub(crate) fn cache_fields(&self) -> Option<RestoredSessionIdentityFields<'_>> {
         Some(RestoredSessionIdentityFields {
             framework: final_session_history_framework(self.framework),
@@ -244,10 +320,17 @@ impl RestoredSessionIdentity {
         })
     }
 
+    /// Returns whether final-metadata verification inputs are available.
     pub(crate) fn has_final_metadata_verification(&self) -> bool {
         self.final_metadata_verification().is_some()
     }
 
+    /// Returns the first request mismatch and any eligible prefix evidence.
+    ///
+    /// Prefix attribution is available only when the first mismatch is
+    /// `HistoryHash(RequestedLarger)` and this retained identity has usable
+    /// final-metadata verification. The returned hash and size remain inputs
+    /// for later byte-prefix verification.
     pub(crate) fn mismatch_reason_and_prefix_attribution(
         &self,
         requested: &Self,
@@ -270,6 +353,12 @@ impl RestoredSessionIdentity {
         (reason, prefix_attribution)
     }
 
+    /// Returns whether this retained identity is eligible for live verification.
+    ///
+    /// Eligibility requires structural equality, usable final-metadata
+    /// provenance on `self`, and an exact size match when `requested` supplies
+    /// a size. A missing requested size adds no size constraint. The caller
+    /// must still perform live guest verification before skipping restore.
     pub(crate) fn is_verified_match_for_request(&self, requested: &Self) -> bool {
         self == requested
             && self.has_final_metadata_verification()
@@ -278,6 +367,13 @@ impl RestoredSessionIdentity {
                 .is_none_or(|requested_size| self.history_size_bytes == Some(requested_size))
     }
 
+    /// Returns the first identity difference relevant to a resume request.
+    ///
+    /// Mismatches take precedence in this order: framework, restore format
+    /// version, session identity, history ref kind, history hash, then history
+    /// size. History size is a constraint only when `requested` supplies one,
+    /// so `None` can describe a structural match that is still not eligible
+    /// for a verified restore skip.
     pub(crate) fn mismatch_reason_for_request(
         &self,
         requested: &Self,
@@ -341,11 +437,19 @@ impl RestoredSessionHistoryPrefixAttribution {
         }
     }
 
+    /// Consumes the attribution into the possible prefix hash and size.
     pub(crate) fn into_parts(self) -> (String, u64) {
         (self.history_hash, self.history_size_bytes)
     }
 }
 
+/// Compares the structural content identity only.
+///
+/// Equality includes framework, restore format version, hashed normalized
+/// session identity, history ref kind, and history hash. It intentionally
+/// excludes history size and verifier provenance. Equality alone therefore
+/// cannot authorize a verified restore skip; use
+/// [`RestoredSessionIdentity::is_verified_match_for_request`] at that boundary.
 impl PartialEq for RestoredSessionIdentity {
     fn eq(&self, other: &Self) -> bool {
         self.framework == other.framework
@@ -356,6 +460,8 @@ impl PartialEq for RestoredSessionIdentity {
     }
 }
 
+/// Formats non-sensitive classification fields while redacting identity hashes
+/// and final-metadata verifier paths.
 impl fmt::Debug for RestoredSessionIdentity {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("RestoredSessionIdentity")
@@ -377,6 +483,7 @@ impl fmt::Debug for RestoredSessionIdentity {
     }
 }
 
+/// Read cap used to reject oversized final-identity metadata.
 pub(crate) const FINAL_SESSION_HISTORY_IDENTITY_READ_LIMIT: u64 =
     FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES + 1;
 
