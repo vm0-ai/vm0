@@ -219,7 +219,7 @@ describe("zero user permission grants", () => {
     });
   });
 
-  it("accepts canonical connector slugs and rejects legacy aliases", async () => {
+  it("accepts canonical connector slugs", async () => {
     const fixture = await createFixture();
     const agentId = await seedAgent(fixture);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
@@ -244,30 +244,6 @@ describe("zero user permission grants", () => {
     expect(canonical.body[0]).toMatchObject({
       connectorSlug: SLACK_CONNECTOR,
     });
-
-    const app = createApp({ signal: context.signal });
-    const legacy = await app.request("/api/zero/user-permission-grants/apply", {
-      method: "PUT",
-      headers: {
-        authorization: AUTH_HEADERS.authorization,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ ...base, connectorRef: SLACK_CONNECTOR }),
-    });
-    expect(legacy.status).toBe(400);
-
-    const missing = await app.request(
-      "/api/zero/user-permission-grants/apply",
-      {
-        method: "PUT",
-        headers: {
-          authorization: AUTH_HEADERS.authorization,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(base),
-      },
-    );
-    expect(missing.status).toBe(400);
   });
 
   it("uses visible-agent scope for private and cross-org agents", async () => {

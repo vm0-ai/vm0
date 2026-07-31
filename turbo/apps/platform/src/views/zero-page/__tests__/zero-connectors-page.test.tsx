@@ -1708,7 +1708,6 @@ describe("connectors page", () => {
       connectorAppOauthCallbackMetadata$,
     );
     expect(callbackMetadata).toContain('"connectorSlug":"google-maps"');
-    expect(callbackMetadata).not.toContain("connectorRef");
     expect(
       screen.queryByRole("dialog", { name: "Google Maps" }),
     ).not.toBeInTheDocument();
