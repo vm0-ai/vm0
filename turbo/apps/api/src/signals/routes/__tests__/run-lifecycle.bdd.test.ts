@@ -14,7 +14,6 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
   NETWORK_POLICY_REFRESH_RUN_TERMINAL_ERROR_CODE,
-  RUNNER_CANCELLATION_RECOVERY_CAPABILITY,
   type Job as RunnerJob,
 } from "@vm0/api-contracts/contracts/runners";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -9619,9 +9618,7 @@ describe("RUN-03: cancellation of dispatched and terminal runs", () => {
       context.signal,
     );
     await api.heartbeatRunner(runnerGroup);
-    await api.claimRunnerJob(run.runId, {
-      capabilities: [RUNNER_CANCELLATION_RECOVERY_CAPABILITY],
-    });
+    await api.claimRunnerJob(run.runId);
 
     await api.requestCancelRun(actor, run.runId, [200]);
     await flushWaitUntilForTest();
