@@ -42,9 +42,6 @@
 //! and aborts the worker task, preventing orphaned scheduled tasks from
 //! enqueueing stale registry refreshes.
 //!
-//! TODO(#23837): Remove the retained `connector_ref` / `connector_refs` tracing
-//! fields after the seven-day operational log compatibility window.
-
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
@@ -352,7 +349,6 @@ impl NetworkPolicyRefreshCore {
                     run_id = %request.run_id,
                     connector_count = request.connector_slugs.len(),
                     connector_slugs = ?request.connector_slugs,
-                    connector_refs = ?request.connector_slugs,
                     "network policy refresh queue full; failing closed after network policy refresh notification"
                 );
                 if let Some(cancel) = cancel {
@@ -372,7 +368,6 @@ impl NetworkPolicyRefreshCore {
                     run_id = %error.run_id,
                     connector_count = error.connector_slugs.len(),
                     connector_slugs = ?error.connector_slugs,
-                    connector_refs = ?error.connector_slugs,
                     "network policy refresh queue closed"
                 );
             }
@@ -396,7 +391,6 @@ impl NetworkPolicyRefreshCore {
                     run_id = %request.run_id,
                     connector_count = request.connector_slugs.len(),
                     connector_slugs = ?request.connector_slugs,
-                    connector_refs = ?request.connector_slugs,
                     "network policy refresh queue full; failing closed after scheduled refresh deadline"
                 );
                 self.fail_closed_active_connectors(request.run_id, &request.connector_slugs)
@@ -407,7 +401,6 @@ impl NetworkPolicyRefreshCore {
                     run_id = %error.run_id,
                     connector_count = error.connector_slugs.len(),
                     connector_slugs = ?error.connector_slugs,
-                    connector_refs = ?error.connector_slugs,
                     "network policy refresh queue closed"
                 );
             }
@@ -453,7 +446,6 @@ impl NetworkPolicyRefreshCore {
                     run_id = %run_id,
                     connector_count = active_connector_slugs.len(),
                     connector_slugs = ?active_connector_slugs,
-                    connector_refs = ?active_connector_slugs,
                     error = %error,
                     "network policy refresh failed"
                 );
@@ -473,9 +465,7 @@ impl NetworkPolicyRefreshCore {
                 warn!(
                     run_id = %run_id,
                     response_connector_slug = response_connector_slug,
-                    response_connector_ref = response_connector_slug,
                     requested_connector_slugs = ?active_connector_slugs,
-                    requested_connector_refs = ?active_connector_slugs,
                     "network policy refresh returned unexpected connector"
                 );
                 continue;
@@ -487,7 +477,6 @@ impl NetworkPolicyRefreshCore {
                 warn!(
                     run_id = %run_id,
                     connector_slug = response_connector_slug,
-                    connector_ref = response_connector_slug,
                     "network policy refresh returned duplicate connector"
                 );
                 duplicate_connector_slugs.insert(response_connector_slug);
@@ -506,7 +495,6 @@ impl NetworkPolicyRefreshCore {
                 warn!(
                     run_id = %run_id,
                     connector_slug = connector_slug,
-                    connector_ref = connector_slug,
                     "network policy refresh response omitted requested connector"
                 );
                 if let Some(snapshot) = self.active_snapshot(run_id, connector_slug).await {
@@ -535,7 +523,6 @@ impl NetworkPolicyRefreshCore {
                     info!(
                         run_id = %run_id,
                         connector_slug = connector_slug,
-                        connector_ref = connector_slug,
                         "refreshed network policy"
                     );
                     self.replace_schedule_deadline(run_id, connector_slug, deadline)
@@ -549,7 +536,6 @@ impl NetworkPolicyRefreshCore {
                     warn!(
                         run_id = %run_id,
                         connector_slug = connector_slug,
-                        connector_ref = connector_slug,
                         error = %error,
                         "failed to patch refreshed network policy"
                     );
@@ -584,7 +570,6 @@ impl NetworkPolicyRefreshCore {
                 warn!(
                     run_id = %run_id,
                     connector_slug = connector_slug,
-                    connector_ref = connector_slug,
                     error = %error,
                     "failed to close terminal run network policy"
                 );
@@ -865,7 +850,6 @@ fn log_fail_closed_network_policy_result(
             warn!(
                 run_id = %run_id,
                 connector_slug = connector_slug,
-                connector_ref = connector_slug,
                 "failed closed network policy after network policy refresh failure"
             );
         }
@@ -874,7 +858,6 @@ fn log_fail_closed_network_policy_result(
             warn!(
                 run_id = %run_id,
                 connector_slug = connector_slug,
-                connector_ref = connector_slug,
                 error = %error,
                 "failed to fail close network policy"
             );
@@ -1184,27 +1167,12 @@ mod tests {
             .unwrap_or_else(|| panic!("missing event {message}; events={events:#?}"))
     }
 
-    fn assert_matching_connector_fields(
-        event: &CapturedEvent,
-        canonical_field: &str,
-        legacy_field: &str,
-        expected: &str,
-    ) {
-        let canonical = event
+    fn assert_connector_field(event: &CapturedEvent, field: &str, expected: &str) {
+        let actual = event
             .fields
-            .get(canonical_field)
-            .unwrap_or_else(|| panic!("missing field {canonical_field}; event={event:#?}"));
-        let legacy = event
-            .fields
-            .get(legacy_field)
-            .unwrap_or_else(|| panic!("missing field {legacy_field}; event={event:#?}"));
-        assert_eq!(canonical, expected, "event={event:#?}");
-        assert_eq!(legacy, canonical, "event={event:#?}");
-        assert_eq!(
-            event.field_kinds.get(canonical_field),
-            event.field_kinds.get(legacy_field),
-            "field kinds differ; event={event:#?}"
-        );
+            .get(field)
+            .unwrap_or_else(|| panic!("missing field {field}; event={event:#?}"));
+        assert_eq!(actual, expected, "event={event:#?}");
     }
 
     fn active_run_network_policy_state(
@@ -1852,25 +1820,14 @@ mod tests {
             &events,
             "network policy refresh returned unexpected connector",
         );
-        assert_matching_connector_fields(
-            unexpected,
-            "response_connector_slug",
-            "response_connector_ref",
-            "github",
-        );
-        assert_matching_connector_fields(
-            unexpected,
-            "requested_connector_slugs",
-            "requested_connector_refs",
-            "[\"slack\"]",
-        );
-        assert_matching_connector_fields(
+        assert_connector_field(unexpected, "response_connector_slug", "github");
+        assert_connector_field(unexpected, "requested_connector_slugs", "[\"slack\"]");
+        assert_connector_field(
             captured_event(
                 &events,
                 "network policy refresh response omitted requested connector",
             ),
             "connector_slug",
-            "connector_ref",
             "slack",
         );
     }
@@ -1880,28 +1837,25 @@ mod tests {
         let (_, events) =
             capture_network_policy_events(assert_failed_network_policy_refresh_fail_closed()).await;
 
-        assert_matching_connector_fields(
+        assert_connector_field(
             captured_event(&events, "network policy refresh failed"),
             "connector_slugs",
-            "connector_refs",
             "[\"slack\"]",
         );
-        assert_matching_connector_fields(
+        assert_connector_field(
             captured_event(
                 &events,
                 "failed closed connector network policy in proxy registry",
             ),
             "connector_slug",
-            "connector_ref",
             "slack",
         );
-        assert_matching_connector_fields(
+        assert_connector_field(
             captured_event(
                 &events,
                 "failed closed network policy after network policy refresh failure",
             ),
             "connector_slug",
-            "connector_ref",
             "slack",
         );
     }
@@ -2113,19 +2067,17 @@ mod tests {
         let (_, events) = capture_network_policy_events(harness.refresh_slack()).await;
 
         refresh_mock.assert_calls(1);
-        assert_matching_connector_fields(
+        assert_connector_field(
             captured_event(
                 &events,
                 "patched connector network policy in proxy registry",
             ),
             "connector_slug",
-            "connector_ref",
             "slack",
         );
-        assert_matching_connector_fields(
+        assert_connector_field(
             captured_event(&events, "refreshed network policy"),
             "connector_slug",
-            "connector_ref",
             "slack",
         );
         harness.shutdown().await;

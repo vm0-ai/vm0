@@ -142,7 +142,6 @@ class TestErrorHandler:
         assert entry["error"] == "connection reset by peer"
         assert entry["firewall_error"] == "connector_not_configured_for_run"
         assert entry["connector_diagnostic_slug"] == "fal"
-        assert entry["connector_diagnostic_type"] == "fal"
         assert entry["connector_diagnostic_env_names"] == ["FAL_TOKEN"]
         assert entry["connector_diagnostic_base"] == "https://fal.run"
 
@@ -182,7 +181,6 @@ class TestErrorHandler:
         assert entry["error"] == "connection reset by peer"
         assert entry["firewall_error"] == "connector_not_configured_for_run"
         assert entry["connector_diagnostic_slug"] == "fal"
-        assert entry["connector_diagnostic_type"] == "fal"
         assert entry["connector_diagnostic_env_names"] == ["FAL_TOKEN"]
         assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
         assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
@@ -225,7 +223,6 @@ class TestErrorHandler:
         assert entry["error"] == "connection reset by peer"
         assert entry["firewall_error"] == "connector_not_configured_for_run"
         assert entry["connector_diagnostic_slug"] == "fal"
-        assert entry["connector_diagnostic_type"] == "fal"
 
         [proxy_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
         assert proxy_entry["type"] == "connection_error"
@@ -262,7 +259,6 @@ class TestErrorHandler:
         assert entry["status"] == 0
         assert entry["request_size"] == len(b"partial request")
         assert entry["error"] == "connection reset by peer"
-        assert "connector_diagnostic_type" not in entry
         assert "firewall_error" not in entry
         assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
         assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
@@ -297,7 +293,6 @@ class TestErrorHandler:
         assert entry["status"] == 0
         assert entry["browser_user_agent"] is True
         assert entry["error"] == "connection reset by peer"
-        assert "connector_diagnostic_type" not in entry
         assert "firewall_error" not in entry
 
     async def test_authenticated_connector_candidate_error_keeps_original_error(
@@ -325,7 +320,6 @@ class TestErrorHandler:
         [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
         assert entry["status"] == 0
         assert entry["error"] == "connection reset by peer"
-        assert "connector_diagnostic_type" not in entry
         assert "firewall_error" not in entry
 
     def test_cleans_up_start_time(self, tmp_path, real_flow, mitm_ctx):

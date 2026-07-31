@@ -442,7 +442,6 @@ async def test_inactive_builtin_connector_url_without_auth_gets_local_diagnostic
     assert entry["status"] == 424
     assert entry["firewall_error"] == "connector_not_configured_for_run"
     assert entry["connector_diagnostic_slug"] == "fal"
-    assert entry["connector_diagnostic_type"] == "fal"
     [proxy_entry, http_error_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
     assert proxy_entry["type"] == "connector_diagnostic"
     assert proxy_entry["connector"] == "fal"

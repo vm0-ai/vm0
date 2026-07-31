@@ -140,7 +140,7 @@ function inspectFile(
       latency_ms: 87,
       request_size: 24,
       response_size: 512,
-      connector_diagnostic_type: "slack-connector",
+      connector_diagnostic_slug: "slack-connector",
     },
   ];
 
@@ -514,11 +514,11 @@ describe("activity inspect page", () => {
       expect(screen.queryByText("github-connector")).not.toBeInTheDocument();
     });
 
-    const legacyNetworkRow = networkRows[2];
-    if (!legacyNetworkRow) {
-      throw new Error("Expected a legacy network log row");
+    const secondNetworkRow = networkRows[2];
+    if (!secondNetworkRow) {
+      throw new Error("Expected a second network log row");
     }
-    await user.click(legacyNetworkRow);
+    await user.click(secondNetworkRow);
     await waitFor(() => {
       expect(screen.getByText("slack-connector")).toBeInTheDocument();
     });
