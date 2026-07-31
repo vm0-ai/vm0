@@ -86,7 +86,6 @@ export enum FeatureSwitchKey {
   ArtifactKeyV2 = "artifactKeyV2",
   HostedArtifactVersions = "hostedArtifactVersions",
   VideoArtifactPosters = "videoArtifactPosters",
-  ImageStyleR2 = "imageStyleR2",
   WorkflowConnectorReadiness = "workflowConnectorReadiness",
   ComposerConnectorPermissions = "composerConnectorPermissions",
   ThreeColumnNav = "threeColumnNav",

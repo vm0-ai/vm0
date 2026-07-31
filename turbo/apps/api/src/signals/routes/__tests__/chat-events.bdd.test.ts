@@ -25,6 +25,7 @@ import {
   getModelProviderFirewall,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
+import { RUNNER_CANCELLATION_RECOVERY_CAPABILITY } from "@vm0/api-contracts/contracts/runners";
 import {
   zeroModelProviderConnectionsByIdContract,
   zeroModelProviderConnectionsMainContract,
@@ -1171,13 +1172,18 @@ describe("CHAT-02: web chat send and client ids", () => {
 
 describe("CHAT-02: interrupting active chat runs", () => {
   it("interrupts an active run, guards interrupt ids, and feeds cancelled rounds into the next run", async () => {
-    const { actor, agentId } = await entitledChatActor();
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const first = await sendChatRun(actor, {
       agentId,
       prompt: "long task to interrupt",
     });
+    await api.heartbeatRunner(runnerGroup);
+    const firstClaim = await api.claimRunnerJob(first.runId, {
+      capabilities: [RUNNER_CANCELLATION_RECOVERY_CAPABILITY],
+    });
+    context.mocks.ably.publish.mockClear();
 
     const interruptId = randomUUID();
     const interrupted = await chat.requestSendEvent(
@@ -1195,6 +1201,17 @@ describe("CHAT-02: interrupting active chat runs", () => {
     }
     expect(interrupted.body.runId).toBeNull();
     await waitForRunStatus(actor, first.runId, "cancelled");
+    await flushWaitUntilForTest();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith("cancel", {
+      runId: first.runId,
+      mode: "cooperative",
+    });
+    await webhooks.requestAgentComplete(
+      { runId: first.runId, exitCode: 1 },
+      { authorization: `Bearer ${firstClaim.sandboxToken}` },
+      [200],
+    );
+    await flushWaitUntilForTest();
 
     const messages = await waitForThreadMessages(
       actor,
@@ -4786,7 +4803,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, website.runId);
   }, 90_000);
 
-  it("uses R2 by default and preserves GitHub fallback through the user feature switch", async () => {
+  it("uses R2 for archive-backed styles", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const style = ILLUSTRATION_TEMPLATE_ITEMS.find((item) => {
@@ -4811,32 +4828,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expect(defaultR2Prompt).toContain("--compile --style-source r2");
     await cancelChatRun(actor, defaultR2Run.runId);
-
-    if (!actor.orgId) {
-      throw new Error("Expected an org-scoped actor");
-    }
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId: actor.orgId },
-      { [FeatureSwitchKey.ImageStyleR2]: false },
-    );
-
-    const githubRun = await sendChatRun(actor, {
-      agentId,
-      prompt: "draw a flower shop",
-      generationTemplate: {
-        type: "illustration",
-        selection: { illustrationStyleId: style.illustrationStyleId },
-      },
-    });
-    const githubPrompt =
-      (await api.readRun(actor, githubRun.runId)).appendSystemPrompt ?? "";
-    expect(githubPrompt).toContain(
-      "Style source: vm0-ai/vm0-skills@main:illustration-template/ink-storefront",
-    );
-    expect(githubPrompt).not.toContain("private R2 registry resource");
-    expect(githubPrompt).not.toContain("--style-source r2");
-    await cancelChatRun(actor, githubRun.runId);
   }, 90_000);
 
   it("is one-shot: a follow-up without re-attaching the style gets no template context", async () => {

@@ -11308,6 +11308,172 @@ async function validateChatDisplayContextBackfill(): Promise<void> {
   }
 }
 
+async function validateSlackContextIdentifierBackfill(): Promise<void> {
+  console.log("=== Validate Slack context identifier backfill ===\n");
+  const testDb = "migration_slack_context_identifier_backfill_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const agentComposeId = "00000000-0000-4000-8000-000000078001";
+  const threadId = "00000000-0000-4000-8000-000000078002";
+
+  const migrationSql = await fs.readFile(
+    path.join(MIGRATIONS_DIR, "0780_backfill_slack_context_identifiers.sql"),
+    "utf8",
+  );
+  assert.doesNotMatch(migrationSql, /\bLOCK TABLE\b/u);
+  assert.doesNotMatch(migrationSql, /\bchat_events\b/u);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpTo(testDbUrl, 779);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES (
+            $1,
+            'slack-context-backfill-test-user',
+            'slack-context-backfill-test',
+            'slack-context-backfill-test-org'
+          )
+        `,
+        [agentComposeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id",
+            "user_id",
+            "agent_compose_id",
+            "title"
+          )
+          VALUES (
+            $1,
+            'slack-context-backfill-test-user',
+            $2,
+            'Slack context identifier backfill test'
+          )
+        `,
+        [threadId, agentComposeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_slack_context" (
+            "id",
+            "chat_thread_id",
+            "message_permalink",
+            "channel_id",
+            "message_ts"
+          )
+          VALUES
+            (
+              '00000000-0000-4000-8000-000000078010',
+              $1,
+              'https://workspace.slack.com/archives/C0123456789/p1699999999000100',
+              NULL,
+              NULL
+            ),
+            (
+              '00000000-0000-4000-8000-000000078011',
+              $1,
+              'https://workspace.slack.com/archives/G9876543210/p1700000000123456?thread_ts=1700000000.123456&cid=G9876543210',
+              NULL,
+              NULL
+            ),
+            (
+              '00000000-0000-4000-8000-000000078012',
+              $1,
+              'https://workspace.slack.com/messages/C0123456789/p1699999999000100',
+              NULL,
+              NULL
+            ),
+            (
+              '00000000-0000-4000-8000-000000078013',
+              $1,
+              NULL,
+              NULL,
+              NULL
+            ),
+            (
+              '00000000-0000-4000-8000-000000078014',
+              $1,
+              'https://workspace.slack.com/archives/CNEWVALUE/p1711111111222222',
+              'existing-channel',
+              '1688888888.000001'
+            ),
+            (
+              '00000000-0000-4000-8000-000000078015',
+              $1,
+              'https://workspace.slack.com/archives/C0123456789/p123456',
+              NULL,
+              NULL
+            )
+        `,
+        [threadId],
+      );
+
+      await applyMigrationsUpTo(client, 780);
+
+      const contexts = await client.query<{
+        channelId: string | null;
+        id: string;
+        messageTs: string | null;
+      }>(`
+        SELECT
+          "id",
+          "channel_id" AS "channelId",
+          "message_ts" AS "messageTs"
+        FROM "chat_slack_context"
+        ORDER BY "id"
+      `);
+      assert.deepEqual(contexts.rows, [
+        {
+          id: "00000000-0000-4000-8000-000000078010",
+          channelId: "C0123456789",
+          messageTs: "1699999999.000100",
+        },
+        {
+          id: "00000000-0000-4000-8000-000000078011",
+          channelId: "G9876543210",
+          messageTs: "1700000000.123456",
+        },
+        {
+          id: "00000000-0000-4000-8000-000000078012",
+          channelId: null,
+          messageTs: null,
+        },
+        {
+          id: "00000000-0000-4000-8000-000000078013",
+          channelId: null,
+          messageTs: null,
+        },
+        {
+          id: "00000000-0000-4000-8000-000000078014",
+          channelId: "existing-channel",
+          messageTs: "1688888888.000001",
+        },
+        {
+          id: "00000000-0000-4000-8000-000000078015",
+          channelId: null,
+          messageTs: null,
+        },
+      ]);
+
+      console.log(
+        "   ✅ Slack permalinks backfill exact channel and timestamp identifiers",
+      );
+      console.log(
+        "   ✅ Unparseable, missing, and already populated rows remain unchanged\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateChatAutomationContextBackfill(): Promise<void> {
   console.log("=== Validate chat automation context backfill ===\n");
   const testDb = "migration_chat_automation_context_backfill_test";
@@ -13781,6 +13947,7 @@ async function main(): Promise<void> {
     await validateFeishuThreadSessionContraction();
     await validateGithubIssueSessionContraction();
     await validateChatDisplayContextBackfill();
+    await validateSlackContextIdentifierBackfill();
     await validateChatAutomationContextBackfill();
     await validateChatGoalContextBackfill();
     await validateChatEventTerminalIndexExpansion();

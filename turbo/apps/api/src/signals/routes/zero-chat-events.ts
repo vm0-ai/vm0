@@ -281,7 +281,6 @@ interface NormalSendFeatureSwitches {
   readonly artifactKeyV2Enabled: boolean;
   readonly codexFastModeEnabled: boolean;
   readonly userMessageInlineTemplatesEnabled: boolean;
-  readonly imageStyleR2Enabled: boolean;
 }
 
 interface RuntimeNormalSendBody extends Omit<NormalSendBody, "userMessage"> {
@@ -1055,10 +1054,6 @@ async function resolveNormalSendFeatureSwitches(
     ),
     userMessageInlineTemplatesEnabled: isFeatureEnabled(
       FeatureSwitchKey.StructuredPromptInlineTemplates,
-      context,
-    ),
-    imageStyleR2Enabled: isFeatureEnabled(
-      FeatureSwitchKey.ImageStyleR2,
       context,
     ),
   };
@@ -2147,6 +2142,7 @@ const handleInterruptSend$ = command(
         runId: args.body.interruptsRunId,
         userId: args.userId,
         orgId: args.orgId,
+        runnerCancellationMode: "cooperative",
       },
       signal,
     );
@@ -2486,7 +2482,6 @@ const prepareNormalSend$ = command(
         runtimeBody.userMessageGenerationTemplates.length > 0
           ? runtimeBody.userMessageGenerationTemplates
           : undefined,
-      imageStyleR2Enabled: featureSwitches.imageStyleR2Enabled,
     });
     const persistedExplicitSelection =
       await maybePersistTimedExplicitModelFirstSelection(args, db);

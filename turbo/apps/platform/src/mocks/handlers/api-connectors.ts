@@ -354,6 +354,7 @@ export const apiConnectorsHandlers = [
         stale: false,
         filteredAuthMethods: [
           {
+            connectorSlug: "github",
             connectorRef: "github",
             authMethodId: "oauth",
             reasons: ["missing-revoke-provider"],

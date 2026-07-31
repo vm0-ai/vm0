@@ -188,25 +188,15 @@ function imageStyleArchiveSha256(slug: string): string {
   return sha256;
 }
 
-function vm0ImageStyleSource(
-  slug: string,
-  r2ArchiveAvailable = true,
-): ResourceSourceRef {
-  const archiveSha256 = r2ArchiveAvailable
-    ? imageStyleArchiveSha256(slug)
-    : undefined;
+function vm0ImageStyleSource(slug: string): ResourceSourceRef {
   return {
     repo: VM0_SKILLS_REPO,
     ref: VM0_SKILLS_REF,
     path: `illustration-template/${slug}`,
-    ...(archiveSha256
-      ? {
-          archive: {
-            type: "tar.gz" as const,
-            sha256: archiveSha256,
-          },
-        }
-      : {}),
+    archive: {
+      type: "tar.gz",
+      sha256: imageStyleArchiveSha256(slug),
+    },
   };
 }
 
@@ -3936,10 +3926,6 @@ export function findImageStyle(id: string): RegistryEntry | undefined {
   return listImageStyles().find((entry) => {
     return entry.id === id;
   });
-}
-
-export function hasR2Archive(entry: RegistryEntry): boolean {
-  return entry.source.archive !== undefined;
 }
 
 const VIDEO_TEMPLATE_ID_ALIASES: Readonly<Record<string, string>> = {

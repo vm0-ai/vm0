@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.670.1](https://github.com/vm0-ai/vm0/compare/app-v0.670.0...app-v0.670.1) (2026-07-31)
+
+
+### Bug Fixes
+
+* **platform:** align chat autoscroll with rendered messages ([#24220](https://github.com/vm0-ai/vm0/issues/24220)) ([9334b67](https://github.com/vm0-ai/vm0/commit/9334b67de24cb99465782e310fe83aac984ec5d1))
+
+
+### Refactoring
+
+* **chat:** project source annotations from context ([#24230](https://github.com/vm0-ai/vm0/issues/24230)) ([f686803](https://github.com/vm0-ai/vm0/commit/f6868038b1953cfe1c588d74890ab8053044eadf))
+* **connectors:** use slug identity in firewall policies ([#24229](https://github.com/vm0-ai/vm0/issues/24229)) ([3ed0961](https://github.com/vm0-ai/vm0/commit/3ed0961ec336d2c84be219db715e0254930e91ee))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.258.2
+    * @vm0/connectors bumped to 1.202.2
+    * @vm0/core bumped to 8.497.1
+
 ## [0.670.0](https://github.com/vm0-ai/vm0/compare/app-v0.669.1...app-v0.670.0) (2026-07-31)
 
 

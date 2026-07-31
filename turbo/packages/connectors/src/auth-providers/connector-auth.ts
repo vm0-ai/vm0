@@ -238,11 +238,7 @@ export const CONNECTOR_GENERIC_AUTH_CAPABILITY_VERSIONS = {
 } as const;
 
 export interface ConnectorAuthProviderRegistrationCapability {
-  /**
-   * TODO(#23619): Rename only when the persisted capability digest identity
-   * migrates; this property is part of the deterministic digest preimage.
-   */
-  readonly connectorRef: string;
+  readonly connectorSlug: string;
   readonly authMethodId: string;
   readonly handlers: ConnectorAuthProviderRegistryCapability;
   readonly contract: ConnectorAuthProviderMethodContract;
@@ -377,7 +373,7 @@ function connectorAuthProviderRegistrationCapability(
   contract: ConnectorAuthProviderMethodContract,
 ): ConnectorAuthProviderRegistrationCapability {
   return {
-    connectorRef: registration.connectorSlug,
+    connectorSlug: registration.connectorSlug,
     authMethodId: registration.authMethodId,
     handlers: connectorAuthProviderRegistryCapability(registration.entry),
     contract,
@@ -1098,7 +1094,7 @@ export function getConnectorAuthProviderRegistrationCapabilities(): readonly Con
     );
   }).sort((left, right) => {
     return (
-      compareCapabilityStrings(left.connectorRef, right.connectorRef) ||
+      compareCapabilityStrings(left.connectorSlug, right.connectorSlug) ||
       compareCapabilityStrings(left.authMethodId, right.authMethodId)
     );
   });
