@@ -20,23 +20,20 @@ afterEach(async () => {
   document.documentElement.lang = "en-US";
 });
 
-const browserId = "c0000000-0000-4000-a000-000000000091";
+const threadId = "c0000000-0000-4000-a000-000000000091";
 const liveUrl = "https://live.browser-use.com/?wss=test-browser-page-token";
 
 function browserSession(
   overrides: Partial<ZeroBrowserSession> = {},
 ): ZeroBrowserSession {
   return {
-    id: browserId,
+    threadId,
     name: "booking",
     status: "active",
-    viewerUrl: `https://app.vm0.ai/browsers/${browserId}`,
+    viewerUrl: `https://app.vm0.ai/browsers/${threadId}`,
     liveUrl,
     proxyCountryCode: null,
     timeoutMinutes: 240,
-    maxCredits: 1,
-    grossCredits: 0,
-    creditsCharged: 0,
     idleExpiresAt: "2026-07-24T10:10:00.000Z",
     suspendedAt: null,
     suspensionReason: null,
@@ -50,17 +47,17 @@ describe("browser session page", () => {
   it.each([
     {
       locale: "en-US",
-      title: "Browser suspended",
-      resume: "Resume browser",
+      title: "Browser not live",
+      start: "Start browser",
     },
     {
       locale: "pt-BR",
-      title: "Navegador suspenso",
-      resume: "Retomar navegador",
+      title: "Navegador não está ao vivo",
+      start: "Iniciar navegador",
     },
   ] as const)(
     "localizes a suspended browser in $locale",
-    async ({ locale, title, resume }) => {
+    async ({ locale, title, start }) => {
       context.mocks.data.userPreferences({ locale });
       context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
         return respond(200, {
@@ -76,34 +73,40 @@ describe("browser session page", () => {
 
       detachedSetupPage({
         context,
-        path: `/browsers/${browserId}`,
-        featureSwitches: { [FeatureSwitchKey.LanguagePreference]: true },
+        path: `/browsers/${threadId}`,
+        featureSwitches: {
+          [FeatureSwitchKey.LanguagePreference]: true,
+          [FeatureSwitchKey.ZeroBrowser]: true,
+        },
       });
 
       await expect(screen.findByText(title)).resolves.toBeInTheDocument();
-      const resumeButton = queryAllByRoleFast("button").find((candidate) => {
-        return candidate.textContent === resume;
+      const startButton = queryAllByRoleFast("button").find((candidate) => {
+        return candidate.textContent === start;
       });
-      expect(resumeButton).toBeDefined();
+      expect(startButton).toBeDefined();
     },
   );
 
   it("loads the authenticated live viewer and keeps the browser leased while it is open", async () => {
     let leaseRequests = 0;
-    context.mocks.api(zeroBrowserContract.get, ({ params, query, respond }) => {
-      expect(params.browserId).toBe(browserId);
-      expect(query.chatThreadId).toBeUndefined();
+    context.mocks.api(zeroBrowserContract.get, ({ params, respond }) => {
+      expect(params.threadId).toBe(threadId);
       return respond(200, { browser: browserSession() });
     });
-    context.mocks.api(zeroBrowserContract.leaseById, ({ params, respond }) => {
-      expect(params.browserId).toBe(browserId);
-      leaseRequests += 1;
-      return respond(200, { browser: browserSession() });
-    });
+    context.mocks.api(
+      zeroBrowserContract.leaseByThread,
+      ({ params, respond }) => {
+        expect(params.threadId).toBe(threadId);
+        leaseRequests += 1;
+        return respond(200, { browser: browserSession() });
+      },
+    );
 
     detachedSetupPage({
       context,
-      path: `/browsers/${browserId}`,
+      path: `/browsers/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
     const frame = await screen.findByTitle("Live browser: booking");
@@ -114,7 +117,7 @@ describe("browser session page", () => {
     });
   });
 
-  it("offers a resume that restarts a reclaimed browser", async () => {
+  it("offers a start action that restarts a reclaimed browser", async () => {
     let getRequests = 0;
     context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
       getRequests += 1;
@@ -128,33 +131,41 @@ describe("browser session page", () => {
         }),
       });
     });
-    let resumeRequests = 0;
-    context.mocks.api(zeroBrowserContract.resumeById, ({ params, respond }) => {
-      expect(params.browserId).toBe(browserId);
-      resumeRequests += 1;
-      return respond(200, { browser: browserSession() });
-    });
-    context.mocks.api(zeroBrowserContract.leaseById, ({ respond }) => {
+    let startRequests = 0;
+    context.mocks.api(
+      zeroBrowserContract.start,
+      ({ body, params, respond }) => {
+        expect(params.threadId).toBe(threadId);
+        expect(body.eventId).toBeTypeOf("string");
+        startRequests += 1;
+        return respond(200, {
+          browser: browserSession(),
+          lifecycleEventId: body.eventId,
+        });
+      },
+    );
+    context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
       return respond(200, { browser: browserSession() });
     });
 
     detachedSetupPage({
       context,
-      path: `/browsers/${browserId}`,
+      path: `/browsers/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ZeroBrowser]: true },
     });
 
-    const resume = await waitFor(() => {
+    const start = await waitFor(() => {
       const button = queryAllByRoleFast("button").find((candidate) => {
-        return candidate.textContent === "Resume browser";
+        return candidate.textContent === "Start browser";
       });
       expect(button).toBeDefined();
       return button;
     });
     expect(getRequests).toBeGreaterThan(0);
-    resume?.click();
+    start?.click();
 
     const frame = await screen.findByTitle("Live browser: booking");
     expect(frame).toHaveAttribute("src", liveUrl);
-    expect(resumeRequests).toBe(1);
+    expect(startRequests).toBe(1);
   });
 });

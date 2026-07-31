@@ -183,6 +183,7 @@ const launchQueuedGoal$ = command(
     args: {
       readonly event: PendingGoalQueueEvent;
       readonly goal: GoalQueueTarget;
+      readonly apiStartTime?: number;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
     },
     signal: AbortSignal,
@@ -226,7 +227,7 @@ const launchQueuedGoal$ = command(
             ? { modelProvider: effectiveModelProvider }
             : {}),
         },
-        apiStartTime: now(),
+        apiStartTime: args.apiStartTime ?? now(),
         triggerSource: "workflow-event",
         chatThreadId: normalizedGoal.threadId,
         modelProviderId: modelPin.modelProviderId ?? undefined,
@@ -285,6 +286,7 @@ export const drainGoalQueueForThread$ = command(
     { set },
     args: {
       readonly chatThreadId: string;
+      readonly apiStartTime?: number;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
       readonly queueItemCreatedBefore?: Date;
     },
@@ -315,6 +317,7 @@ export const drainGoalQueueForThread$ = command(
         {
           event,
           goal,
+          apiStartTime: args.apiStartTime,
           dispatchFailedCallbacks: args.dispatchFailedCallbacks,
         },
         signal,

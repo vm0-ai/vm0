@@ -5848,6 +5848,7 @@ async function claimQueueFirstAssociationForLaunch(args: {
   }
   return await claimQueueFirstRunAssociation(args.tx, {
     ...association,
+    apiStartTime: args.createArgs.apiStartTime,
     runId: args.identity.runId,
     timing: args.timing,
   });

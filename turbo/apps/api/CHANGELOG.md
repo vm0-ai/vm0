@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.356.2](https://github.com/vm0-ai/vm0/compare/api-v1.356.1...api-v1.356.2) (2026-07-31)
+
+
+### Refactoring
+
+* remove cli trigger source ([#24148](https://github.com/vm0-ai/vm0/issues/24148)) ([e0563be](https://github.com/vm0-ai/vm0/commit/e0563be2c7e2c103abbc9a7083d51dc18d6e81b4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.256.1
+    * @vm0/core bumped to 8.496.1
+    * @vm0/db bumped to 1.157.6
+
 ## [1.356.1](https://github.com/vm0-ai/vm0/compare/api-v1.356.0...api-v1.356.1) (2026-07-31)
 
 

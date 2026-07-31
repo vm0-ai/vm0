@@ -186,12 +186,12 @@ export interface ChatThreadSignals {
   artifactSignalsForUrl: (url: string) => ArtifactSignals | undefined;
   agentReferenceSignalsForId: (agentId: string) => AgentReferenceSignals;
   mailDraftCardSignalsById$: Computed<ReadonlyMap<string, MailDraftSignals>>;
-  browserSessionCardSignalsById$: Computed<
-    ReadonlyMap<string, BrowserSessionSignals>
-  >;
-  latestBrowserSessionSignals$: Computed<BrowserSessionSignals | null>;
+  browserSessionSignals: BrowserSessionSignals;
   hasEvents$: Computed<Promise<boolean>>;
   hasNewEvents$: Computed<Promise<boolean>>;
+  initialRemoteEventsReady$: Computed<Promise<void>>;
+  initialBrowserLifecycleAuthoritative$: Computed<Promise<boolean>>;
+  initialRemoteEventsComplete$: Computed<Promise<void>>;
   hasQueuedEvents$: Computed<Promise<boolean>>;
   queuedEventItems$: Computed<Promise<readonly QueuedChatEventItem[]>>;
   emptyQueuedEventItems$: Computed<Promise<readonly QueuedChatEventItem[]>>;

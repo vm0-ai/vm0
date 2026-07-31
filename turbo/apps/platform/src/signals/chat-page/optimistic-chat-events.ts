@@ -45,6 +45,22 @@ export const appendOptimisticChatEvent$ = command(
   },
 );
 
+export const removeOptimisticChatEvent$ = command(
+  (
+    { set },
+    {
+      threadId,
+      eventId,
+    }: { readonly threadId: string; readonly eventId: string },
+  ) => {
+    set(internalOptimisticChatEvents$, (prev) => {
+      return prev.filter((entry) => {
+        return entry.threadId !== threadId || entry.event.id !== eventId;
+      });
+    });
+  },
+);
+
 export const reconcileOptimisticChatEvents$ = command(
   (
     { set },

@@ -375,25 +375,103 @@ async function validateCurrentBrowserApiBeforeBillingMigration(): Promise<void> 
   }
 }
 
-async function validatePreviousBrowserApiAfterBillingMigration(
+async function validateThreadBrowserIdentityAfterMigration(
   dbUrl: string,
 ): Promise<void> {
   console.log(
-    "=== Phase 2.4: Validate previous browser API after billing migration ===\n",
+    "=== Phase 2.4: Validate thread browser rollout compatibility ===\n",
   );
   const client = new Client({ connectionString: dbUrl });
   await client.connect();
 
-  const browserProfileId = "00000000-0000-4000-8000-000000073501";
-  const providerProfileId = "00000000-0000-4000-8000-000000073502";
-  const browserSessionId = "00000000-0000-4000-8000-000000073503";
-  const providerSessionId = "00000000-0000-4000-8000-000000073504";
-  const chatThreadId = "00000000-0000-4000-8000-000000073505";
-  const runId = "00000000-0000-4000-8000-000000073506";
+  const legacyBrowserProfileId = "00000000-0000-4000-8000-000000073501";
+  const legacyProviderProfileId = "00000000-0000-4000-8000-000000073502";
+  const legacyBrowserSessionId = "00000000-0000-4000-8000-000000073503";
+  const legacyProviderSessionId = "00000000-0000-4000-8000-000000073504";
+  const legacyChatThreadId = "00000000-0000-4000-8000-000000073505";
+  const legacyRunId = "00000000-0000-4000-8000-000000073506";
+  const threadProviderProfileId = "00000000-0000-4000-8000-000000077201";
+  const threadChatThreadId = "00000000-0000-4000-8000-000000077202";
+  const threadProviderSessionId = "00000000-0000-4000-8000-000000077203";
+  const threadRunId = "00000000-0000-4000-8000-000000077204";
 
   try {
-    // This is the lookup shape used by the previous API before every provider
-    // create or resume.
+    const tables = await client.query<{
+      browserProfiles: string | null;
+      tabSnapshots: string | null;
+    }>(
+      `
+        SELECT
+          to_regclass('public.browser_profiles')::text AS "browserProfiles",
+          to_regclass('public.browser_session_tab_snapshots')::text
+            AS "tabSnapshots"
+      `,
+    );
+    assert.deepEqual(tables.rows, [
+      {
+        browserProfiles: "browser_profiles",
+        tabSnapshots: "browser_session_tab_snapshots",
+      },
+    ]);
+
+    const columns = await client.query<{
+      columnName: string;
+      isNullable: string;
+      tableName: string;
+    }>(
+      `
+        SELECT
+          "table_name" AS "tableName",
+          "column_name" AS "columnName",
+          "is_nullable" AS "isNullable"
+        FROM "information_schema"."columns"
+        WHERE "table_schema" = 'public'
+          AND ("table_name", "column_name") IN (
+            ('browser_sessions', 'browser_profile_id'),
+            ('browser_session_instances', 'browser_session_id')
+          )
+        ORDER BY "table_name", "column_name"
+      `,
+    );
+    assert.deepEqual(columns.rows, [
+      {
+        tableName: "browser_session_instances",
+        columnName: "browser_session_id",
+        isNullable: "YES",
+      },
+      {
+        tableName: "browser_sessions",
+        columnName: "browser_profile_id",
+        isNullable: "YES",
+      },
+    ]);
+
+    const primaryKeys = await client.query<{
+      columnName: string;
+      tableName: string;
+    }>(
+      `
+        SELECT
+          "tc"."table_name" AS "tableName",
+          "kcu"."column_name" AS "columnName"
+        FROM "information_schema"."table_constraints" AS "tc"
+        INNER JOIN "information_schema"."key_column_usage" AS "kcu"
+          ON "tc"."constraint_name" = "kcu"."constraint_name"
+          AND "tc"."table_schema" = "kcu"."table_schema"
+        WHERE "tc"."table_schema" = 'public'
+          AND "tc"."constraint_type" = 'PRIMARY KEY'
+          AND "tc"."table_name" IN (
+            'browser_sessions',
+            'browser_thread_profiles'
+          )
+        ORDER BY "tc"."table_name", "kcu"."ordinal_position"
+      `,
+    );
+    assert.deepEqual(primaryKeys.rows, [
+      { tableName: "browser_sessions", columnName: "id" },
+      { tableName: "browser_thread_profiles", columnName: "id" },
+    ]);
+
     const pricing = await client.query<{
       unitPrice: string;
       unitSize: string;
@@ -415,6 +493,7 @@ async function validatePreviousBrowserApiAfterBillingMigration(
       throw new Error("Previous browser API pricing lookup returned no row");
     }
 
+    // Previous-API statement shapes must remain legal after the migration.
     await client.query(
       `
         INSERT INTO "browser_profiles" (
@@ -425,7 +504,7 @@ async function validatePreviousBrowserApiAfterBillingMigration(
         )
         VALUES ($1, 'browser-drain-org', 'browser-drain-user', $2)
       `,
-      [browserProfileId, providerProfileId],
+      [legacyBrowserProfileId, legacyProviderProfileId],
     );
     await client.query(
       `
@@ -456,9 +535,9 @@ async function validatePreviousBrowserApiAfterBillingMigration(
           500
         )
       `,
-      [browserSessionId, chatThreadId, browserProfileId],
+      [legacyBrowserSessionId, legacyChatThreadId, legacyBrowserProfileId],
     );
-    const started = await client.query<{
+    const legacyInstance = await client.query<{
       pricingUnitPrice: string;
       pricingUnitSize: string;
     }>(
@@ -494,25 +573,119 @@ async function validatePreviousBrowserApiAfterBillingMigration(
           "pricing_unit_size"::text AS "pricingUnitSize"
       `,
       [
-        providerSessionId,
-        browserSessionId,
-        chatThreadId,
-        runId,
+        legacyProviderSessionId,
+        legacyBrowserSessionId,
+        legacyChatThreadId,
+        legacyRunId,
         pricingRow.unitPrice,
         pricingRow.unitSize,
       ],
     );
-    assert.deepEqual(started.rows, [
+    assert.deepEqual(legacyInstance.rows, [
       { pricingUnitPrice: "0", pricingUnitSize: "1" },
     ]);
-    console.log("   ✅ previous API pricing lookup returns a zero-priced row");
-    console.log("   ✅ previous API provider-start write remains valid\n");
+
+    // Current-API inserts intentionally omit every legacy identity and billing
+    // field while the physical compatibility columns remain.
+    await client.query(
+      `
+        INSERT INTO "browser_thread_profiles" (
+          "chat_thread_id",
+          "org_id",
+          "user_id",
+          "provider_profile_id"
+        )
+        VALUES ($1, 'thread-browser-org', 'thread-browser-user', $2)
+      `,
+      [threadChatThreadId, threadProviderProfileId],
+    );
+    await client.query(
+      `
+        INSERT INTO "browser_sessions" (
+          "chat_thread_id",
+          "run_id",
+          "org_id",
+          "user_id",
+          "name",
+          "status",
+          "proxy_country_code",
+          "timeout_minutes"
+        )
+        VALUES (
+          $1,
+          NULL,
+          'thread-browser-org',
+          'thread-browser-user',
+          'thread-browser-start',
+          'creating',
+          NULL,
+          240
+        )
+      `,
+      [threadChatThreadId],
+    );
+    await client.query(
+      `
+        INSERT INTO "browser_session_instances" (
+          "provider_session_id",
+          "chat_thread_id",
+          "run_id",
+          "status",
+          "timeout_at",
+          "started_at",
+          "last_touched_at",
+          "idle_expires_at"
+        )
+        VALUES (
+          $1,
+          $2,
+          $3,
+          'active',
+          now() + interval '240 minutes',
+          now(),
+          now(),
+          now() + interval '10 minutes'
+        )
+      `,
+      [threadProviderSessionId, threadChatThreadId, threadRunId],
+    );
+
+    const lifecycleConstraint = await client.query<{ definition: string }>(
+      `
+        SELECT pg_get_constraintdef("oid") AS "definition"
+        FROM "pg_constraint"
+        WHERE "conname" = 'chat_events_event_type_check'
+      `,
+    );
+    assert.equal(lifecycleConstraint.rows.length, 1);
+    assert.match(
+      lifecycleConstraint.rows[0]?.definition ?? "",
+      /browser\.started/u,
+    );
+    assert.match(
+      lifecycleConstraint.rows[0]?.definition ?? "",
+      /browser\.stopped/u,
+    );
+    console.log("   ✅ previous browser API statements remain valid");
+    console.log("   ✅ current thread-keyed browser inserts omit legacy IDs");
+    console.log(
+      "   ✅ browser lifecycle events and tab snapshots are available\n",
+    );
   } finally {
-    await client.query(`DELETE FROM "browser_sessions" WHERE "id" = $1`, [
-      browserSessionId,
-    ]);
+    await client.query(
+      `DELETE FROM "browser_session_instances" WHERE "provider_session_id" IN ($1, $2)`,
+      [legacyProviderSessionId, threadProviderSessionId],
+    );
+    await client.query(
+      `DELETE FROM "browser_sessions" WHERE "chat_thread_id" IN ($1, $2)`,
+      [legacyChatThreadId, threadChatThreadId],
+    );
+    await client.query(
+      `DELETE FROM "browser_thread_profiles" WHERE "chat_thread_id" = $1`,
+      [threadChatThreadId],
+    );
     await client.query(`DELETE FROM "browser_profiles" WHERE "id" = $1`, [
-      browserProfileId,
+      legacyBrowserProfileId,
     ]);
     await client.end();
   }
@@ -12892,7 +13065,7 @@ async function main(): Promise<void> {
     await runMigrations(dbUrl1);
     console.log("   ✅ Consecutive database resets completed successfully\n");
 
-    await validatePreviousBrowserApiAfterBillingMigration(dbUrl1);
+    await validateThreadBrowserIdentityAfterMigration(dbUrl1);
     await validateChatEventSourcesAreAppendOnly(dbUrl1);
     await validateChatEventContextPointerConstraints(dbUrl1);
     await validateConnectorCatalogFinalConstraints(dbUrl1);
@@ -12925,7 +13098,7 @@ async function main(): Promise<void> {
       console.log("   ✅ Journal timestamps are strictly increasing");
       console.log("   ✅ Latest snapshot accurately reflects final DB state");
       console.log(
-        "   ✅ Previous browser API can start after billing migration",
+        "   ✅ Thread browser identity keeps previous-API rollout compatibility",
       );
       console.log(
         "   ✅ Current browser API can start before billing migration",

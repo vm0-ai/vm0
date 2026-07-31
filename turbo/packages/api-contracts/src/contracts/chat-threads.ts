@@ -620,6 +620,20 @@ const controlRevokeEventSchema = chatEventBaseSchema
   })
   .strict();
 
+const browserStartedEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("browser.started"),
+    content: z.null(),
+  })
+  .strict();
+
+const browserStoppedEventSchema = chatEventBaseSchema
+  .extend({
+    eventType: z.literal("browser.stopped"),
+    content: z.null(),
+  })
+  .strict();
+
 const goalChangedEventSchema = chatEventBaseSchema
   .extend({
     eventType: z.literal("goal.changed"),
@@ -653,6 +667,8 @@ const chatEventSchema = z.discriminatedUnion("eventType", [
   runCancelledEventSchema,
   controlInterruptEventSchema,
   controlRevokeEventSchema,
+  browserStartedEventSchema,
+  browserStoppedEventSchema,
   goalChangedEventSchema,
   usageRecordedEventSchema,
 ]);

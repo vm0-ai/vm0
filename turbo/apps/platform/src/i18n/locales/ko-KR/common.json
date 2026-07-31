@@ -1015,10 +1015,9 @@
     "openNewPage": "이 브라우저를 새 페이지에서 열기",
     "panel": {
       "notLive": "브라우저가 라이브 상태가 아닙니다",
-      "resume": "브라우저 재개",
-      "resumeDescription": "재개하면 저장된 로그인 프로필과 저장소가 복원됩니다. 이전 페이지와 탭은 복원되지 않습니다.",
-      "resuming": "재개 중…",
-      "suspended": "브라우저가 일시 중지됨"
+      "start": "브라우저 시작",
+      "startDescription": "시작하면 저장된 로그인 프로필과 저장소가 복원되고, 가능한 경우 저장된 탭이 다시 열립니다.",
+      "starting": "시작 중…"
     },
     "reclaimHint_one": "이 패널이 열려 있는 동안 Zero가 이 브라우저를 유지하며, {{formattedCount}}분 동안 유휴 시 회수합니다.",
     "reclaimHint_other": "이 패널이 열려 있는 동안 Zero가 이 브라우저를 유지하며, {{formattedCount}}분 동안 유휴 시 회수합니다.",
@@ -1027,6 +1026,7 @@
       "starting": "시작 중",
       "stopped": "중지됨"
     },
+    "stop": "브라우저 중지",
     "title": "라이브 브라우저",
     "unavailable": {
       "description": "이 브라우저는 이 채팅에 속하지 않거나 제거되었습니다.",

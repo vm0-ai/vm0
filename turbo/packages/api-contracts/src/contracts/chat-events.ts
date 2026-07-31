@@ -17,6 +17,8 @@ export const CHAT_EVENT_TYPES = [
   "run.cancelled",
   "control.interrupt",
   "control.revoke",
+  "browser.started",
+  "browser.stopped",
   "goal.changed",
   "usage.recorded",
 ] as const;
@@ -59,6 +61,8 @@ const VALID_CHAT_EVENT_REVOCATION_TARGETS = {
     "input.goal",
     "input.rejected",
   ],
+  "browser.started": [],
+  "browser.stopped": [],
   "goal.changed": [],
   "usage.recorded": [],
 } satisfies Record<ChatEventType, readonly ChatEventType[]>;
@@ -79,6 +83,8 @@ const CHAT_RUN_FOLD_STATES = {
   "run.cancelled": "cancelled",
   "control.interrupt": null,
   "control.revoke": null,
+  "browser.started": null,
+  "browser.stopped": null,
   "goal.changed": null,
   "usage.recorded": null,
 } satisfies Record<ChatEventType, ChatRunFoldState | null>;
@@ -123,6 +129,8 @@ export function chatEventCompatibilityRole(
     case "run.completed":
     case "run.failed":
     case "run.cancelled":
+    case "browser.started":
+    case "browser.stopped":
     case "goal.changed":
     case "usage.recorded":
       return "assistant";
@@ -151,6 +159,8 @@ export function chatEventRunLifecycle(
     case "run.dequeued":
     case "control.interrupt":
     case "control.revoke":
+    case "browser.started":
+    case "browser.stopped":
     case "goal.changed":
     case "usage.recorded":
       return null;
@@ -196,6 +206,12 @@ export function isChatOutputEventType(
   | "output.thinking"
   | "output.followups" {
   return eventType.startsWith("output.");
+}
+
+export function isBrowserLifecycleEventType(
+  eventType: ChatEventType,
+): eventType is "browser.started" | "browser.stopped" {
+  return eventType === "browser.started" || eventType === "browser.stopped";
 }
 
 export function isValidChatEventRevocation(

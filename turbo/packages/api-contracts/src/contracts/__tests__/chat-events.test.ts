@@ -178,8 +178,24 @@ const chatEvents = [
     createdAt: CREATED_AT,
   },
   {
-    id: "goal-changed",
+    id: "browser-started",
     seqId: 16,
+    threadId: THREAD_ID,
+    eventType: "browser.started",
+    content: null,
+    createdAt: CREATED_AT,
+  },
+  {
+    id: "browser-stopped",
+    seqId: 17,
+    threadId: THREAD_ID,
+    eventType: "browser.stopped",
+    content: null,
+    createdAt: CREATED_AT,
+  },
+  {
+    id: "goal-changed",
+    seqId: 18,
     threadId: THREAD_ID,
     eventType: "goal.changed",
     content: null,
@@ -192,7 +208,7 @@ const chatEvents = [
   },
   {
     id: "usage-recorded",
-    seqId: 17,
+    seqId: 19,
     threadId: THREAD_ID,
     eventType: "usage.recorded",
     runId: "run-1",
@@ -298,6 +314,15 @@ describe("ChatEvent catalog", () => {
         callbackSecret: "must-stay-server-side",
       }).success,
     ).toBe(false);
+    const browserStarted = chatEvents.find((event) => {
+      return event.eventType === "browser.started";
+    });
+    expect(
+      chatEventSchema.safeParse({
+        ...browserStarted,
+        browserId: "must-not-exist",
+      }).success,
+    ).toBe(false);
   });
 
   it("emits canonical responses for every registered leaf", () => {
@@ -312,7 +337,7 @@ describe("ChatEvent catalog", () => {
     const legacyMarkers = [
       {
         id: "legacy-automation-pause",
-        seqId: 18,
+        seqId: 20,
         threadId: THREAD_ID,
         eventType: "queue.automation_paused",
         content: null,
@@ -321,7 +346,7 @@ describe("ChatEvent catalog", () => {
       },
       {
         id: "legacy-automation-resume",
-        seqId: 19,
+        seqId: 21,
         threadId: THREAD_ID,
         eventType: "queue.automation_resumed",
         content: null,
