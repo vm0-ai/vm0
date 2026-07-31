@@ -23,16 +23,16 @@ async fn stuck_tool_reap_escalates_to_sigkill_when_sigterm_ignored()
     let masker = guest_agent::masker::SecretMasker::from_raw("");
     let heartbeat = common::spawn_dummy_heartbeat();
     let checkpoints = [
-        common::VirtualTimeCheckpoint {
-            file: runtime.paths.agent_log_file(),
-            needle: common::MOCK_TERMINATION_READY_EVENT,
-            advance: Duration::from_secs(5),
-        },
-        common::VirtualTimeCheckpoint {
-            file: runtime.paths.system_log_file(),
-            needle: "Tool timeout: WebFetch stuck for",
-            advance: runtime.config.post_result_sigkill_grace,
-        },
+        common::VirtualTimeCheckpoint::new(
+            runtime.paths.agent_log_file(),
+            common::MOCK_TERMINATION_READY_EVENT,
+            Duration::from_secs(5),
+        ),
+        common::VirtualTimeCheckpoint::new(
+            runtime.paths.system_log_file(),
+            "Tool timeout: WebFetch stuck for",
+            runtime.config.post_result_sigkill_grace,
+        ),
     ];
 
     // The mock fence proves WebFetch is tracked before the watchdog jump. The

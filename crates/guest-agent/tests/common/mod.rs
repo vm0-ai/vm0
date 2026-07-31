@@ -26,11 +26,13 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::io;
 use std::os::fd::{AsFd, AsRawFd, OwnedFd};
+use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU64, AtomicUsize, Ordering},
 };
+use std::task::Poll;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::io::unix::AsyncFd;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -53,6 +55,12 @@ pub const SIGKILL_EXIT: i32 = 137;
 pub const CLEAN_EXIT: i32 = 0;
 
 pub const MOCK_TERMINATION_READY_EVENT: &str = "vm0_mock_termination_ready";
+pub const MOCK_POST_RESULT_READY_EVENT: &str = "vm0_mock_post_result_ready";
+pub const MOCK_POST_RESULT_ACTIVITY_ONE_EVENT: &str = "vm0_mock_post_result_activity_1_ready";
+pub const MOCK_POST_RESULT_ACTIVITY_TWO_EVENT: &str = "vm0_mock_post_result_activity_2_ready";
+pub const MOCK_POST_RESULT_LIVENESS_EVENT: &str = "vm0_mock_post_result_stale_deadline_survived";
+pub const MOCK_POST_RESULT_RELEASE_ONE_SOCKET: &str = ".vm0-post-result-release-1.sock";
+pub const MOCK_POST_RESULT_RELEASE_TWO_SOCKET: &str = ".vm0-post-result-release-2.sock";
 
 /// Documented maximum number of stderr lines returned in
 /// `guest_agent::cli::CliExecutionResult`.
@@ -1017,9 +1025,26 @@ pub async fn execute_cli_with_cancellation_for_runtime(
 }
 
 pub struct VirtualTimeCheckpoint<'a> {
-    pub file: &'a str,
-    pub needle: &'a str,
-    pub advance: Duration,
+    file: &'a str,
+    needle: &'a str,
+    advance: Duration,
+    release_socket: Option<&'a Path>,
+}
+
+impl<'a> VirtualTimeCheckpoint<'a> {
+    pub fn new(file: &'a str, needle: &'a str, advance: Duration) -> Self {
+        Self {
+            file,
+            needle,
+            advance,
+            release_socket: None,
+        }
+    }
+
+    pub fn release_after_advance(mut self, release_socket: &'a Path) -> Self {
+        self.release_socket = Some(release_socket);
+        self
+    }
 }
 
 pub async fn execute_with_virtual_time_checkpoints<F>(
@@ -1039,7 +1064,7 @@ where
     }
 
     tokio::pin!(future);
-    for checkpoint in checkpoints {
+    for (index, checkpoint) in checkpoints.iter().enumerate() {
         tokio::select! {
             _ = &mut future => {
                 return Err(format!(
@@ -1063,7 +1088,35 @@ where
 
         tokio::time::pause();
         tokio::time::advance(checkpoint.advance).await;
+
+        let execution_poll =
+            std::future::poll_fn(|context| Poll::Ready(future.as_mut().poll(context))).await;
+        let release_result = if matches!(&execution_poll, Poll::Pending)
+            && let Some(release_socket) = checkpoint.release_socket
+        {
+            UnixStream::connect(release_socket)
+                .map(|_| ())
+                .map_err(|error| {
+                    format!(
+                        "release virtual-time checkpoint through {}: {error}",
+                        release_socket.display()
+                    )
+                })
+        } else {
+            Ok(())
+        };
         tokio::time::resume();
+        release_result?;
+
+        if let Poll::Ready(output) = execution_poll {
+            if index + 1 == checkpoints.len() && checkpoint.release_socket.is_none() {
+                return Ok(output);
+            }
+            return Err(format!(
+                "CLI execution completed after advancing time for {:?} before all checkpoint stages finished",
+                checkpoint.needle
+            ));
+        }
     }
 
     Ok(future.await)

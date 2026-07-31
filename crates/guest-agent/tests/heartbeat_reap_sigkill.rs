@@ -32,11 +32,11 @@ async fn heartbeat_failure_reap_escalates_to_sigkill_when_sigterm_ignored()
         ))
     });
 
-    let checkpoints = [common::VirtualTimeCheckpoint {
-        file: runtime.paths.system_log_file(),
-        needle: "Heartbeat failed, SIGTERM",
-        advance: runtime.config.post_result_sigkill_grace,
-    }];
+    let checkpoints = [common::VirtualTimeCheckpoint::new(
+        runtime.paths.system_log_file(),
+        "Heartbeat failed, SIGTERM",
+        runtime.config.post_result_sigkill_grace,
+    )];
 
     // The transition log and SIGKILL deadline are committed in one poll.
     // Keep the outer timeout as a real subprocess/reaping regression bound.

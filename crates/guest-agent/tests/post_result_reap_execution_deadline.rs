@@ -35,21 +35,21 @@ async fn execution_deadline_preserves_post_result_sigkill_pending()
         .checked_sub(execution_deadline_after_sigterm)
         .expect("SIGKILL deadline should follow the execution deadline");
     let checkpoints = [
-        common::VirtualTimeCheckpoint {
-            file: runtime.paths.agent_log_file(),
-            needle: common::MOCK_TERMINATION_READY_EVENT,
-            advance: runtime.config.post_result_sigterm_grace,
-        },
-        common::VirtualTimeCheckpoint {
-            file: runtime.paths.system_log_file(),
-            needle: "Post-result cleanup quiet_timeout reached",
-            advance: execution_deadline_after_sigterm,
-        },
-        common::VirtualTimeCheckpoint {
-            file: runtime.paths.system_log_file(),
-            needle: "Agent execution deadline reached during post-result SIGKILL grace",
-            advance: sigkill_deadline_after_execution,
-        },
+        common::VirtualTimeCheckpoint::new(
+            runtime.paths.agent_log_file(),
+            common::MOCK_TERMINATION_READY_EVENT,
+            runtime.config.post_result_sigterm_grace,
+        ),
+        common::VirtualTimeCheckpoint::new(
+            runtime.paths.system_log_file(),
+            "Post-result cleanup quiet_timeout reached",
+            execution_deadline_after_sigterm,
+        ),
+        common::VirtualTimeCheckpoint::new(
+            runtime.paths.system_log_file(),
+            "Agent execution deadline reached during post-result SIGKILL grace",
+            sigkill_deadline_after_execution,
+        ),
     ];
 
     // Each checkpoint proves the preceding state transition before virtual

@@ -26,15 +26,44 @@ async fn post_result_reap_total_cap_bounds_periodic_meaningful_events()
 
     let masker = guest_agent::masker::SecretMasker::from_raw("");
     let heartbeat = common::spawn_dummy_heartbeat();
+    let event_interval = Duration::from_secs(1);
+    let total_cap_after_events = runtime
+        .config
+        .post_result_total_cap
+        .checked_sub(event_interval)
+        .and_then(|remaining| remaining.checked_sub(event_interval))
+        .expect("the total cap should follow both meaningful events");
+    let release_one = tmp.path().join(common::MOCK_POST_RESULT_RELEASE_ONE_SOCKET);
+    let release_two = tmp.path().join(common::MOCK_POST_RESULT_RELEASE_TWO_SOCKET);
+    let checkpoints = [
+        common::VirtualTimeCheckpoint::new(
+            runtime.paths.agent_log_file(),
+            common::MOCK_POST_RESULT_READY_EVENT,
+            event_interval,
+        )
+        .release_after_advance(&release_one),
+        common::VirtualTimeCheckpoint::new(
+            runtime.paths.agent_log_file(),
+            common::MOCK_POST_RESULT_ACTIVITY_ONE_EVENT,
+            event_interval,
+        )
+        .release_after_advance(&release_two),
+        common::VirtualTimeCheckpoint::new(
+            runtime.paths.agent_log_file(),
+            common::MOCK_POST_RESULT_ACTIVITY_TWO_EVENT,
+            total_cap_after_events,
+        ),
+    ];
 
     let result = tokio::time::timeout(
         Duration::from_secs(8),
-        common::execute_cli_for_runtime(&runtime, &masker, heartbeat),
+        common::execute_with_virtual_time_checkpoints(
+            common::execute_cli_for_runtime(&runtime, &masker, heartbeat),
+            &checkpoints,
+        ),
     )
     .await
-    .expect("execute_cli did not return within 8s");
-
-    let result = result.expect("execute_cli returned Err");
+    .expect("execute_cli did not return within 8s")??;
     assert_eq!(result.exit_code, common::SIGTERM_EXIT);
     let termination = result
         .cli_termination
@@ -48,6 +77,6 @@ async fn post_result_reap_total_cap_bounds_periodic_meaningful_events()
         .find(|line| line.contains("post_result_cleanup_terminated"))
         .expect("post-result cleanup telemetry should be recorded");
     assert!(cleanup_line.contains("trigger=total_cap"), "{ops}");
-    assert!(!cleanup_line.contains("meaningful_events=0"), "{ops}");
+    assert!(cleanup_line.contains("meaningful_events=2"), "{ops}");
     Ok(())
 }
