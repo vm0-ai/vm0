@@ -809,6 +809,7 @@ async function upsertOrgModelProvider(
   body: {
     readonly type:
       | "anthropic-api-key"
+      | "deepseek-codex"
       | "deepseek-api-key"
       | "openai-api-key"
       | "openrouter-api-key"
@@ -2394,6 +2395,59 @@ describe("CHAT-02: model-first provider policies", () => {
       }
     }
   }, 90_000);
+
+  it("routes DeepSeek V4 Flash through the native Responses adapter", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const { providerId } = await upsertOrgModelProvider(actor, {
+      type: "deepseek-codex",
+      secret: "selected-deepseek-responses-key",
+    });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "deepseek-v4-flash",
+        isDefault: true,
+        defaultProviderType: "deepseek-codex",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "run with DeepSeek Responses",
+      model: "deepseek-v4-flash",
+    });
+    const { claim } = await claimChatRun(runnerGroup, run.runId);
+    const environment = claimEnvironment(claim);
+
+    expect(claim.cliAgentType).toBe("codex");
+    expect(environment.OPENAI_API_KEY).toBe(
+      modelProviderSecretPlaceholder("deepseek-codex", "DEEPSEEK_API_KEY"),
+    );
+    expect(environment.OPENAI_BASE_URL).toBe("https://api.deepseek.com");
+    expect(environment.OPENAI_MODEL).toBe("deepseek-v4-flash");
+    expect(environment.ANTHROPIC_MODEL).toBeUndefined();
+    expect(claim.codexRuntimeConfig).toMatchObject({
+      providerId: "vm0-model",
+      name: "DeepSeek",
+      baseUrl: "https://api.deepseek.com",
+      envKey: "OPENAI_API_KEY",
+      requiresOpenaiAuth: false,
+      wireApi: "responses",
+      supportsWebsockets: false,
+      modelCatalog: {
+        models: [
+          expect.objectContaining({
+            slug: "deepseek-v4-flash",
+            default_reasoning_level: "high",
+          }),
+        ],
+      },
+    });
+
+    await cancelChatRun(actor, run.runId);
+  });
 
   it("recovers a removed thread model through the current workspace route", async () => {
     const { actor, agentId, runnerGroup, providerId } =

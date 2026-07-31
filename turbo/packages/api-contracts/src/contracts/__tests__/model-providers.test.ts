@@ -5,6 +5,7 @@ import {
   hasModelSelection,
   getModels,
   getDefaultModel,
+  getModelProviderCodexRuntimeConfig,
   getModelProviderEnvBindings,
   getFrameworkForType,
   getVm0VisibleModels,
@@ -98,6 +99,7 @@ describe("model-first canonical catalog", () => {
       "claude-sonnet-5",
       "claude-sonnet-4-6",
       "deepseek-v4-pro",
+      "deepseek-v4-flash",
       "kimi-k3",
       "kimi-k2.7-code",
       "MiniMax-M3",
@@ -151,7 +153,7 @@ describe("model-first canonical catalog", () => {
       false,
     );
     expect(supportedRunModelSchema.safeParse("deepseek-v4-flash").success).toBe(
-      false,
+      true,
     );
     expect(supportedRunModelSchema.safeParse("MiniMax-M2.7").success).toBe(
       false,
@@ -365,7 +367,7 @@ describe("model-first canonical catalog", () => {
     expect(normalizeRunModelId("minimax/minimax-m2.7")).toBe(
       "minimax/minimax-m2.7",
     );
-    expect(isSupportedRunModel("deepseek-v4-flash")).toBe(false);
+    expect(isSupportedRunModel("deepseek-v4-flash")).toBe(true);
   });
 
   it("returns compatible provider types for canonical models", () => {
@@ -446,6 +448,10 @@ describe("model-first canonical catalog", () => {
     expect(getProvidersForModel("deepseek/deepseek-v4-pro")).toContain(
       "openrouter-api-key",
     );
+    expect(getProvidersForModel("deepseek-v4-flash")).toEqual([
+      "vm0",
+      "deepseek-codex",
+    ]);
     expect(getProvidersForModel("kimi-k3")).toEqual([
       "vm0",
       "moonshot-api-key",
@@ -659,6 +665,7 @@ describe("model-first canonical catalog", () => {
         "claude-opus-4-6": "$$$",
         "claude-sonnet-5": "$$",
         "deepseek-v4-pro": "$",
+        "deepseek-v4-flash": "$",
         "kimi-k3": "$$",
         "kimi-k2.7-code": "$",
         "glm-5.2": "$",
@@ -677,6 +684,7 @@ describe("model-first canonical catalog", () => {
     expect(getVm0ModelPriceTier("claude-opus-4-6")).toBe("$$$");
     expect(getVm0ModelPriceTier("claude-sonnet-5")).toBe("$$");
     expect(getVm0ModelPriceTier("deepseek-v4-pro")).toBe("$");
+    expect(getVm0ModelPriceTier("deepseek-v4-flash")).toBe("$");
     expect(getVm0ModelPriceTier("kimi-k3")).toBe("$$");
     expect(getVm0ModelPriceTier("kimi-k2.7-code")).toBe("$");
     expect(getVm0ModelPriceTier("glm-5.2")).toBe("$");
@@ -704,6 +712,7 @@ describe("getProviderBaseUrl", () => {
     ["moonshot-api-key", "https://api.moonshot.ai/anthropic"],
     ["minimax-api-key", "https://api.minimax.io/anthropic"],
     ["deepseek-api-key", "https://api.deepseek.com/anthropic"],
+    ["deepseek-codex", "https://api.deepseek.com"],
     ["zai-api-key", "https://api.z.ai/api/anthropic"],
     ["vercel-ai-gateway", "https://ai-gateway.vercel.sh"],
     ["openrouter-codex", "https://openrouter.ai/api/v1"],
@@ -729,6 +738,7 @@ describe("areProvidersCompatible", () => {
     "moonshot-api-key",
     "minimax-api-key",
     "deepseek-api-key",
+    "deepseek-codex",
     "zai-api-key",
     "vercel-ai-gateway",
   ];
@@ -895,6 +905,7 @@ describe("getVm0VisibleModels", () => {
     expect(models).toContain("mimo-v2.5");
     expect(models).toContain("hy3-preview");
     expect(models).toContain("deepseek-v4-pro");
+    expect(models).toContain("deepseek-v4-flash");
     expect(models).toContain("gpt-5.6-sol");
     expect(models).toContain("gpt-5.6-terra");
     expect(models).toContain("gpt-5.6-luna");
@@ -905,7 +916,6 @@ describe("getVm0VisibleModels", () => {
     expect(models).not.toContain("kimi-k2.6");
     expect(models).not.toContain("kimi-k2.5");
     expect(models).not.toContain("MiniMax-M2.7");
-    expect(models).not.toContain("deepseek-v4-flash");
   });
 });
 
@@ -959,6 +969,7 @@ describe("model image input support", () => {
     "hy3-preview",
     "tencent/hy3-preview",
     "deepseek-v4-pro",
+    "deepseek-v4-flash",
     "deepseek/deepseek-v4-pro",
     "MiniMax-M2.1",
   ])("marks %s as not image-input capable", (model) => {
@@ -1025,6 +1036,57 @@ describe("removed poor agent backend models", () => {
   it("uses DeepSeek Pro as the direct DeepSeek default", () => {
     expect(getModels("deepseek-api-key")).toEqual(["deepseek-v4-pro"]);
     expect(getDefaultModel("deepseek-api-key")).toBe("deepseek-v4-pro");
+  });
+});
+
+describe("deepseek-codex Responses provider", () => {
+  it("uses the Codex framework with the shared DeepSeek API key", () => {
+    expect(modelProviderTypeSchema.safeParse("deepseek-codex").success).toBe(
+      true,
+    );
+    expect(getSelectableProviderTypes()).toContain("deepseek-codex");
+    expect(getFrameworkForType("deepseek-codex")).toBe("codex");
+    expect(getSecretNameForType("deepseek-codex")).toBe("DEEPSEEK_API_KEY");
+    expect(getModels("deepseek-codex")).toEqual(["deepseek-v4-flash"]);
+    expect(getDefaultModel("deepseek-codex")).toBe("deepseek-v4-flash");
+  });
+
+  it("configures the VM0-owned DeepSeek Responses model catalog", () => {
+    expect(getModelProviderCodexRuntimeConfig("deepseek-codex")).toMatchObject({
+      providerId: "vm0-model",
+      name: "DeepSeek",
+      baseUrl: "https://api.deepseek.com",
+      envKey: "OPENAI_API_KEY",
+      requiresOpenaiAuth: false,
+      wireApi: "responses",
+      supportsWebsockets: false,
+      modelCatalog: {
+        models: [
+          expect.objectContaining({
+            slug: "deepseek-v4-flash",
+            default_reasoning_level: "high",
+            context_window: 1_048_576,
+            minimal_client_version: "0.144.0",
+            experimental_supported_tools: [],
+            supports_search_tool: true,
+            default_service_tier: null,
+            supports_reasoning_summaries: true,
+          }),
+        ],
+      },
+    });
+    expect(
+      getModelProviderCodexRuntimeConfig("deepseek-api-key"),
+    ).toBeUndefined();
+  });
+
+  it("scopes the firewall to the native Responses endpoint", () => {
+    const config = MODEL_PROVIDER_FIREWALL_CONFIGS["deepseek-codex"];
+    expect(config.apis).toHaveLength(1);
+    expect(config.apis[0]!.base).toBe("https://api.deepseek.com/responses");
+    expect(config.apis[0]!.auth.headers).toEqual({
+      Authorization: "Bearer ${{ secrets.DEEPSEEK_API_KEY }}",
+    });
   });
 });
 
@@ -1104,9 +1166,13 @@ describe("firewall base URL scoped to /v1/messages (#9560)", () => {
       const envBindings = getModelProviderEnvBindings(type);
       const actualBase = MODEL_PROVIDER_FIREWALL_CONFIGS[type].apis[0]!.base;
       if (getFrameworkForType(type) === "codex") {
-        const expectedBase =
+        const providerBase =
           envBindings?.OPENAI_BASE_URL?.replace(/\/+$/, "") ??
           "https://api.openai.com/v1/responses";
+        const expectedBase =
+          type === "deepseek-codex"
+            ? `${providerBase}/responses`
+            : providerBase;
         expect(actualBase).toBe(expectedBase);
         continue;
       }
@@ -1148,6 +1214,11 @@ describe("model provider firewall placeholders", () => {
       "deepseek-api-key",
       "DEEPSEEK_API_KEY",
       MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
+    ],
+    [
+      "deepseek-codex",
+      "DEEPSEEK_API_KEY",
+      MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
     ],
     [
       "zai-api-key",
@@ -1403,6 +1474,7 @@ describe("getFirewallBaseUrl regression — existing providers unchanged", () =>
     ["moonshot-api-key", "https://api.moonshot.ai/anthropic/v1/messages"],
     ["minimax-api-key", "https://api.minimax.io/anthropic/v1/messages"],
     ["deepseek-api-key", "https://api.deepseek.com/anthropic/v1/messages"],
+    ["deepseek-codex", "https://api.deepseek.com/responses"],
     ["zai-api-key", "https://api.z.ai/api/anthropic/v1/messages"],
     ["vercel-ai-gateway", "https://ai-gateway.vercel.sh/v1/messages"],
     ["openai-api-key", "https://api.openai.com/v1/responses"],

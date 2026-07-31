@@ -9,6 +9,7 @@ const PROVIDER_ICONS: Readonly<Record<ModelProviderType, string>> =
     "openrouter-api-key": settingsIconAssetUrl("openrouter"),
     "minimax-api-key": settingsIconAssetUrl("minimax"),
     "deepseek-api-key": settingsIconAssetUrl("deepseek"),
+    "deepseek-codex": settingsIconAssetUrl("deepseek"),
     "zai-api-key": settingsIconAssetUrl("chatglm"),
     "moonshot-api-key": settingsIconAssetUrl("kimi"),
     "vercel-ai-gateway": settingsIconAssetUrl("vercel"),

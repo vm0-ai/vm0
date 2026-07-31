@@ -5,6 +5,7 @@ export const MODEL_PROVIDER_TYPE_IDS = [
   "moonshot-api-key",
   "minimax-api-key",
   "deepseek-api-key",
+  "deepseek-codex",
   "zai-api-key",
   "vercel-ai-gateway",
   "openrouter-codex",

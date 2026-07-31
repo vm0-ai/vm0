@@ -71,6 +71,7 @@ export enum FeatureSwitchKey {
   ComposerUploadPopover = "composerUploadPopover",
   StructuredPromptInlineTemplates = "structuredPromptInlineTemplates",
   CustomModelGateways = "customModelGateways",
+  DeepSeekV4Flash = "deepSeekV4Flash",
 
   ZapierConnector = "zapierConnector",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",

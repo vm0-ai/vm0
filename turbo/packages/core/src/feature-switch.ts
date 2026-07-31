@@ -416,6 +416,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabledOrgIdHashes: CUSTOM_MODEL_GATEWAY_ORG_ID_HASHES,
     userOverridable: false,
   },
+  [FeatureSwitchKey.DeepSeekV4Flash]: {
+    maintainer: "ethan@vm0.ai",
+    description: "Show DeepSeek V4 Flash in the workspace Add model selector.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
     description:

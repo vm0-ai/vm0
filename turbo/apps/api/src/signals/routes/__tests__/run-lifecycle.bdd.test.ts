@@ -5363,6 +5363,76 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     await api.requestCancelRun(actor, sent.body.runId, [200]);
   });
 
+  it("claims vm0 DeepSeek V4 Flash runs with the Responses adapter", async () => {
+    const api = createRunsApi(context);
+    const chat = createChatFilesBddApi(context);
+    const selectedModel = "deepseek-v4-flash";
+    await seedVm0ManagedModelKey(selectedModel);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: selectedModel,
+        isDefault: true,
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+        modelProviderId: null,
+      },
+    ]);
+
+    const sent = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        prompt: "vm0 built-in DeepSeek Responses model provider",
+        model: selectedModel,
+      },
+      [201],
+    );
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected the DeepSeek chat send to create a run");
+    }
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(sent.body.runId);
+
+    expect(claim.cliAgentType).toBe("codex");
+    expect(claim.environment).toMatchObject({
+      OPENAI_API_KEY: modelProviderPlaceholder(
+        "deepseek-codex",
+        "DEEPSEEK_API_KEY",
+      ),
+      OPENAI_BASE_URL: "https://api.deepseek.com",
+      OPENAI_MODEL: selectedModel,
+    });
+    expect(claim.environment).not.toHaveProperty("ANTHROPIC_MODEL");
+    expect(claim.codexRuntimeConfig).toMatchObject({
+      providerId: "vm0-model",
+      name: "DeepSeek",
+      baseUrl: "https://api.deepseek.com",
+      envKey: "OPENAI_API_KEY",
+      wireApi: "responses",
+      supportsWebsockets: false,
+      modelCatalog: {
+        models: [
+          expect.objectContaining({
+            slug: selectedModel,
+            default_reasoning_level: "high",
+          }),
+        ],
+      },
+    });
+    expect(
+      claim.firewalls?.map((firewall) => {
+        return firewallEntryName(firewall);
+      }),
+    ).toContain("model-provider:deepseek-codex");
+    expect(claim.billableFirewalls).toContain("model-provider:deepseek-codex");
+    expect(claim.modelUsageProvider).toBe(selectedModel);
+
+    await api.requestCancelRun(actor, sent.body.runId, [200]);
+  });
+
   it("injects codex multi-auth provider credentials and proves them via firewall auth", async () => {
     const api = createRunsApi(context);
     const fw = createFirewallApi(context);
