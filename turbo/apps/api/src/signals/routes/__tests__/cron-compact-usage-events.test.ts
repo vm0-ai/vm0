@@ -217,7 +217,7 @@ describe("usage event compaction cron", () => {
       seededRawRows: RAW_SEED_LIMIT,
       selectedGrains: 1,
       rawRowsDeleted: RAW_SEED_LIMIT,
-      legacyCompactedBatchLimit: RAW_SEED_LIMIT,
+      legacyCompactedBatchLimit: LEGACY_COMPACTED_BATCH_LIMIT,
       selectedLegacyCompactedRows: 0,
       legacyCompactedRowsDeleted: 0,
       hourlyRowsDeleted: 0,
