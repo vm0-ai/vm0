@@ -3,11 +3,7 @@ import chalk from "chalk";
 import { generateWebImage } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 import { createStyledImageCompilationPacket } from "./image-style-authoring";
-import {
-  findImageStyle,
-  hasR2Archive,
-  listImageStyles,
-} from "./resource-registry";
+import { findImageStyle, listImageStyles } from "./resource-registry";
 import { formatRegistryListing } from "./resource-listing";
 import { dispatchGenerate } from "../generate/lib/dispatch";
 import type { GenerationType } from "../generate/lib/lister";
@@ -357,11 +353,6 @@ ${formatRegistryListing(styles, "image styles")}`;
           const style = findImageStyle(styleId);
           if (!style) {
             throw unknownStyleError(styleId, config.usageCommand);
-          }
-          if (options.styleSource === "r2" && !hasR2Archive(style)) {
-            throw new Error(
-              `Image style ${style.id} does not provide an R2 archive`,
-            );
           }
 
           const packet = createStyledImageCompilationPacket({
