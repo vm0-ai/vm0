@@ -12,7 +12,7 @@ use crate::threading::spawn_scoped_named;
 /// many seconds. If EOF is not received within this deadline, proceed to
 /// the terminal exec result anyway to prevent indefinite hangs when orphaned
 /// child processes hold pipe fds open.
-pub(crate) const DRAIN_DEADLINE_SECS: u64 = 5;
+pub(crate) const DRAIN_DEADLINE: Duration = Duration::from_secs(5);
 const WAIT_CANCEL_POLL_INTERVAL_MS: u64 = 50;
 const THREAD_WAIT_OBSERVER: &str = "vsock-wait-observer";
 
@@ -44,8 +44,9 @@ pub(crate) fn await_drain_deadline(
     done_rx: &mpsc::Receiver<()>,
     expected: usize,
     cancel: &AtomicBool,
+    drain_deadline: Duration,
 ) -> usize {
-    let deadline = Instant::now() + Duration::from_secs(DRAIN_DEADLINE_SECS);
+    let deadline = Instant::now() + drain_deadline;
     let mut completed = 0usize;
     while completed < expected {
         let remaining = deadline.saturating_duration_since(Instant::now());
