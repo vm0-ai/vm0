@@ -21,7 +21,7 @@ test("send a chat message and receive an assistant response", async ({
       .getByRole("combobox", { name: "GPT 5.6 Luna", exact: true }),
   ).toBeVisible();
 
-  const prompt = `e2e-${Date.now()}`;
+  const prompt = "Reply with exactly: Hello from Zero. Do not use tools.";
   await composer.fill(prompt);
   await page.getByRole("button", { name: "Send", exact: true }).click();
 
