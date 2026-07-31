@@ -1530,17 +1530,17 @@ pub(crate) fn cap_held_workspace_states(
     let mut by_reuse_key = BTreeMap::<String, ObservedWorkspaceState>::new();
     for state in states {
         let reuse_key = state.reuse_key.clone();
-        let session = by_reuse_key
+        let observed = by_reuse_key
             .entry(reuse_key)
             .or_insert_with(|| ObservedWorkspaceState {
                 last_completed_at: state.last_completed_at.clone(),
                 workspace_caches: BTreeMap::new(),
             });
-        if state.last_completed_at > session.last_completed_at {
-            session.last_completed_at = state.last_completed_at.clone();
+        if state.last_completed_at > observed.last_completed_at {
+            observed.last_completed_at = state.last_completed_at.clone();
         }
         for workspace_cache in state.workspace_caches {
-            match session
+            match observed
                 .workspace_caches
                 .entry(workspace_cache.profile.clone())
             {

@@ -139,7 +139,7 @@ fn cap_held_workspace_states_dedupes_and_keeps_newest() {
 
 #[test]
 fn cap_held_workspace_states_bounds_nested_resources() {
-    let per_session = (0..=MAX_WORKSPACE_CACHES_PER_REUSE_KEY)
+    let per_reuse_key = (0..=MAX_WORKSPACE_CACHES_PER_REUSE_KEY)
         .map(|index| HeldWorkspaceState {
             reuse_key: "sess-multi".into(),
             last_completed_at: timestamp_for_index(index),
@@ -150,7 +150,7 @@ fn cap_held_workspace_states_bounds_nested_resources() {
         })
         .collect();
 
-    let capped = cap_held_workspace_states(per_session);
+    let capped = cap_held_workspace_states(per_reuse_key);
 
     assert_eq!(capped.len(), 1);
     assert_eq!(
@@ -184,7 +184,7 @@ fn cap_held_workspace_states_bounds_nested_resources() {
     );
     assert!(
         !capped.iter().any(|state| state.reuse_key == "sess-0000"),
-        "oldest session should be dropped at the global workspace cap"
+        "oldest reuse key should be dropped at the global workspace cap"
     );
 }
 
@@ -195,13 +195,13 @@ async fn held_workspace_states_for_profiles_filters_and_aggregates_current_ident
     fs::create_dir_all(paths.base_dir()).await.unwrap();
     let cache = SessionWorkspaceCache::new(paths);
     let run_id = RunId::new_v4();
-    let session_id = "sess-multi-profile";
-    let image_size = format!("image-{session_id}").len() as u64;
+    let reuse_key = "thread:multi-profile";
+    let image_size = format!("image-{reuse_key}").len() as u64;
     write_current_cache_entry_for_profile(
         &cache,
         run_id,
         "vm0/default",
-        session_id,
+        reuse_key,
         CANONICAL_WORKING_DIR,
         "2026-05-01T00:00:01.000Z",
         "2026-05-01T00:00:01.000Z",
@@ -211,7 +211,7 @@ async fn held_workspace_states_for_profiles_filters_and_aggregates_current_ident
         &cache,
         run_id,
         "vm0/large",
-        session_id,
+        reuse_key,
         CANONICAL_WORKING_DIR,
         "2026-05-01T00:00:02.000Z",
         "2026-05-01T00:00:02.000Z",
@@ -221,7 +221,7 @@ async fn held_workspace_states_for_profiles_filters_and_aggregates_current_ident
         &cache,
         run_id,
         "vm0/noncanonical",
-        session_id,
+        reuse_key,
         "/workspace",
         "2026-05-01T00:00:03.000Z",
         "2026-05-01T00:00:03.000Z",
@@ -238,7 +238,7 @@ async fn held_workspace_states_for_profiles_filters_and_aggregates_current_ident
     assert_eq!(
         states,
         vec![HeldWorkspaceState {
-            reuse_key: session_id.into(),
+            reuse_key: reuse_key.into(),
             last_completed_at: "2026-05-01T00:00:02.000Z".into(),
             workspace_caches: vec![
                 HeldWorkspaceCacheState {
@@ -315,7 +315,7 @@ async fn invalid_working_dir_allocates_only_required_workspace_drive() {
     );
     assert!(lease.workspace_drive_config().is_none());
 
-    let no_session_lease = cache
+    let no_reuse_key_lease = cache
         .prepare(WorkspaceImagePrepareRequest {
             identity: WorkspaceImageLeaseIdentity {
                 run_id: RunId::new_v4(),
@@ -331,10 +331,10 @@ async fn invalid_working_dir_allocates_only_required_workspace_drive() {
         .await;
 
     assert_eq!(
-        no_session_lease.result(),
+        no_reuse_key_lease.result(),
         WorkspaceCacheCheckoutResult::InvalidWorkingDir
     );
-    assert!(no_session_lease.workspace_drive_config().is_none());
+    assert!(no_reuse_key_lease.workspace_drive_config().is_none());
 
     let snapshot_restore_lease = cache
         .prepare(WorkspaceImagePrepareRequest {
@@ -444,7 +444,7 @@ async fn held_workspace_states_reject_metadata_under_wrong_cache_key() {
 
     assert!(
         cache.held_workspace_states().await.is_empty(),
-        "metadata must not be advertised from a cache key derived from another session"
+        "metadata must not be advertised from a cache key derived from another reuse key"
     );
 }
 
