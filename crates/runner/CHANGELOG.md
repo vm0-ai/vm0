@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.151.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.150.7...runner-rs-v0.151.0) (2026-07-31)
+
+
+### Features
+
+* reuse runner sandboxes by chat thread ([#24285](https://github.com/vm0-ai/vm0/issues/24285)) ([181eb2f](https://github.com/vm0-ai/vm0/commit/181eb2f6741ed448fcebf7d8108bbc1438e366ef))
+
+
+### Documentation
+
+* **mitm-addon:** document websocket retention contract ([#24288](https://github.com/vm0-ai/vm0/issues/24288)) ([1383eb6](https://github.com/vm0-ai/vm0/commit/1383eb6932a2814dd77be8e42728177acd3cb46d))
+
+
+### Performance Improvements
+
+* **mitm-addon:** bypass decoding for plain ascii paths ([#24286](https://github.com/vm0-ai/vm0/issues/24286)) ([5313946](https://github.com/vm0-ai/vm0/commit/53139469894073488e3d55de4552483b1533ecbf))
+
 ## [0.150.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.150.6...runner-rs-v0.150.7) (2026-07-31)
 
 
