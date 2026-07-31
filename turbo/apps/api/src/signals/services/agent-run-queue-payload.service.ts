@@ -18,8 +18,9 @@ const queuedRunnerJobPayloadWireSchema = z.object({
   runnerGroup: z.string(),
   profile: z.string(),
   // Wire/backing payload compatibility field. Semantically this is the
-  // Claude/Codex CLI agent session id used for runner sandbox reuse affinity.
+  // Claude/Codex CLI agent session id retained for telemetry and diagnostics.
   sessionId: z.string().nullable(),
+  reuseKey: z.string().nullable().optional(),
   executionContext: compatibleStoredExecutionContextSchema,
 });
 
@@ -28,6 +29,7 @@ interface QueuedRunnerJobPayload {
   readonly runnerGroup: string;
   readonly profile: string;
   readonly cliAgentSessionId: string | null;
+  readonly reuseKey: string | null;
   readonly historyGenerationRunId: string | undefined;
   readonly executionContext: StoredExecutionContext;
 }
@@ -59,6 +61,7 @@ export async function encryptQueuedRunnerJobPayload(
         runnerGroup: payload.runnerGroup,
         profile: payload.profile,
         sessionId: payload.cliAgentSessionId,
+        reuseKey: payload.reuseKey,
         executionContext: payload.executionContext,
       }),
     },
@@ -91,6 +94,7 @@ export async function decryptQueuedRunnerJobPayload(
     runnerGroup: wirePayload.runnerGroup,
     profile: wirePayload.profile,
     cliAgentSessionId: wirePayload.sessionId,
+    reuseKey: wirePayload.reuseKey ?? null,
     historyGenerationRunId: historyGenerationRunId(
       wirePayload.executionContext,
     ),
@@ -102,6 +106,7 @@ export function queuedRunnerJobPayload(args: {
   readonly runnerGroup: string;
   readonly profile: string;
   readonly cliAgentSessionId: string | null;
+  readonly reuseKey: string | null;
   readonly executionContext: StoredExecutionContext;
 }): QueuedRunnerJobPayload {
   return {
@@ -109,6 +114,7 @@ export function queuedRunnerJobPayload(args: {
     runnerGroup: args.runnerGroup,
     profile: args.profile,
     cliAgentSessionId: args.cliAgentSessionId,
+    reuseKey: args.reuseKey,
     historyGenerationRunId: historyGenerationRunId(args.executionContext),
     executionContext: args.executionContext,
   };

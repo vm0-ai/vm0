@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { clearMockedEnv, mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import {
   findPendingChatEventInputParamsByPromptFixture,
@@ -1227,6 +1228,83 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(timingActionTypes).not.toContain(
       "api_dispatch_pre_create_zero_prepare_args",
     );
+  });
+
+  it("snapshots thread reuse affinity before a CLI session exists", async () => {
+    const runnerGroup = configureCanonicalTelegramRunner();
+    const fixture = await trackFixture(
+      seedTelegramPostFixture({ linkTelegramUser: true }),
+    );
+    telegramApiMocks();
+    const prompt = "reuse this Telegram thread";
+    expect(
+      (
+        await postWebhook({
+          telegramBotId: fixture.telegramBotId,
+          secret: fixture.webhookSecret,
+          body: {
+            update_id: 211,
+            message: {
+              message_id: 2211,
+              chat: { id: 77_011, type: "private" },
+              from: {
+                id: Number(fixture.telegramUserId),
+                username: "alice",
+                first_name: "Alice",
+              },
+              text: prompt,
+            },
+          },
+        })
+      ).status,
+    ).toBe(200);
+    await flushWaitUntilForTest();
+
+    const state = await telegramPostRunState(fixture, prompt);
+    const runId = state.run?.id;
+    const threadId = state.zeroRun?.chatThreadId;
+    if (!runId || !threadId) {
+      throw new Error("Expected a thread-bound Telegram run");
+    }
+    const reuseKey = `thread:${threadId}`;
+    const runnerId = randomUUID();
+    await runsApi.requestHeartbeatRunner(true, [200], {
+      runnerId,
+      group: runnerGroup,
+      admittableProfiles: [],
+      heldSessionStates: [
+        {
+          sessionId: "diagnostic-session-does-not-match",
+          reuseKey,
+          lastCompletedAt: nowDate().toISOString(),
+          reusableSandbox: { profile: "vm0/default" },
+        },
+      ],
+    });
+
+    const poll = await runsApi.requestPollRunner(
+      true,
+      {
+        runnerId,
+        group: runnerGroup,
+        supportedProfiles: ["vm0/default"],
+      },
+      [200],
+    );
+    if (poll.status !== 200) {
+      throw new Error("Expected the thread-affinity poll to succeed");
+    }
+    expect(poll.body.job).toMatchObject({
+      runId,
+      cliAgentSessionId: null,
+      reuseKey,
+      sessionAffinityResource: "reusableSandbox",
+      affinityProtectedUntil: expect.any(String),
+    });
+
+    const claim = await runsApi.claimRunnerJob(runId);
+    expect(claim.reuseKey).toBe(reuseKey);
+    await runsApi.requestCancelRun(actorForFixture(fixture), runId, [200]);
   });
 
   it("keeps queued Telegram transport params until the input is claimed", async () => {

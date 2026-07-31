@@ -373,6 +373,7 @@ function canonicalizeHeldSessionStates(
     const cliAgentSessionId = state.sessionId;
     return {
       sessionId: cliAgentSessionId,
+      ...(state.reuseKey ? { reuseKey: state.reuseKey } : {}),
       lastCompletedAt: new Date(state.lastCompletedAt).toISOString(),
       ...(state.reusableSandbox
         ? {
@@ -633,6 +634,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       vars: agentRuns.vars,
       profile: runnerJobQueue.profile,
       cliAgentSessionId: runnerJobQueue.cliAgentSessionId,
+      reuseKey: runnerJobQueue.reuseKey,
       historyGenerationRunId:
         sql`${runnerJobQueue.executionContext}->'resumeSession'->>'historyGenerationRunId'`.mapWith(
           nullableDriverValueDecoder(pgTextDecoder),
@@ -661,7 +663,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         db,
         runnerGroup: group,
         profile: pendingJob.profile,
-        cliAgentSessionId: pendingJob.cliAgentSessionId,
+        reuseKey: pendingJob.reuseKey,
         historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
         createdAt: pendingJob.createdAt,
         currentDate,
@@ -704,6 +706,7 @@ const pollInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         vars: (pendingJob.vars as Record<string, string>) ?? null,
         experimentalProfile: pendingJob.profile,
         cliAgentSessionId: pendingJob.cliAgentSessionId,
+        reuseKey: pendingJob.reuseKey,
         historyGenerationRunId: pendingJob.historyGenerationRunId ?? undefined,
         historyGenerationAffinityProtectedUntil:
           affinity.historyGenerationProtectedUntil?.toISOString() ?? null,
@@ -725,7 +728,7 @@ const builtinFirewallsResolveBody$ = bodyResultOf(
 interface ClaimableJob {
   readonly job: Pick<
     typeof runnerJobQueue.$inferSelect,
-    "runnerGroup" | "profile" | "executionContext" | "createdAt"
+    "runnerGroup" | "profile" | "reuseKey" | "executionContext" | "createdAt"
   >;
   readonly run: ClaimedRun;
 }
@@ -812,6 +815,7 @@ async function getClaimableJob(
       job: {
         runnerGroup: runnerJobQueue.runnerGroup,
         profile: runnerJobQueue.profile,
+        reuseKey: runnerJobQueue.reuseKey,
         executionContext: runnerJobQueue.executionContext,
         createdAt: runnerJobQueue.createdAt,
       },
@@ -1651,6 +1655,7 @@ async function resolveResumeSessionForClaim(args: {
 async function buildClaimResponseBody(args: {
   readonly db: Db;
   readonly run: ClaimedRun;
+  readonly reuseKey: string | null;
   readonly storedContext: StoredExecutionContext;
   readonly connectorPermissionBaseline: ConnectorPermissionBaselineRead;
   readonly timing: ClaimRouteTimingCollector;
@@ -1729,6 +1734,7 @@ async function buildClaimResponseBody(args: {
       return {
         ...runnerStoredContext,
         runId: args.run.id,
+        reuseKey: args.reuseKey,
         prompt: args.run.prompt,
         appendSystemPrompt: args.run.appendSystemPrompt,
         agentComposeVersionId: args.run.agentComposeVersionId,
@@ -1758,6 +1764,7 @@ const buildClaimResponseBodyForClaim$ = command(
     args: {
       readonly db: Db;
       readonly run: ClaimedRun;
+      readonly reuseKey: string | null;
       readonly storedContext: StoredExecutionContext;
       readonly connectorPermissionBaseline: ConnectorPermissionBaselineRead;
       readonly timing: ClaimRouteTimingCollector;
@@ -1767,6 +1774,7 @@ const buildClaimResponseBodyForClaim$ = command(
     return await buildClaimResponseBody({
       db: args.db,
       run: args.run,
+      reuseKey: args.reuseKey,
       storedContext: args.storedContext,
       connectorPermissionBaseline: args.connectorPermissionBaseline,
       timing: args.timing,
@@ -2222,6 +2230,7 @@ const claimAuthorizedJob$ = command(
       set(buildClaimResponseBodyForClaim$, {
         db,
         run,
+        reuseKey: jobWithRun.job.reuseKey,
         storedContext,
         connectorPermissionBaseline,
         timing: claimRouteTiming,

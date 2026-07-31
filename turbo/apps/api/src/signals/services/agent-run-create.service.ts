@@ -434,9 +434,19 @@ interface ExplicitConnectorScope {
 // - agentSessionId is the vm0 application session (`agent_sessions.id`) used
 //   for product-level continuation and future correctness checks.
 // - cliAgentSessionId is the Claude/Codex CLI agent session stored on
-//   `conversations.cli_agent_session_id`; runner sandbox reuse is keyed by it.
+//   `conversations.cli_agent_session_id`.
 // Existing API/runner wire fields named `sessionId` are preserved for
 // compatibility and normalized to these semantic names at the boundary.
+
+function runnerReuseKey(
+  chatThreadId: string | undefined,
+  cliAgentSessionId: string | null,
+): string | null {
+  if (chatThreadId) {
+    return `thread:${chatThreadId}`;
+  }
+  return cliAgentSessionId ? `session:${cliAgentSessionId}` : null;
+}
 
 interface RunRecord {
   readonly id: string;
@@ -5728,6 +5738,7 @@ function buildRunnerJobPayload(
         runnerGroup: group,
         profile,
         cliAgentSessionId,
+        reuseKey: runnerReuseKey(args.chatThreadId, cliAgentSessionId),
         executionContext: storedContext,
       }),
       runContextSnapshot,
@@ -5756,6 +5767,7 @@ async function insertRunnerJobQueueRow(
       runnerGroup: args.payload.runnerGroup,
       profile: args.payload.profile,
       cliAgentSessionId: args.payload.cliAgentSessionId,
+      reuseKey: args.payload.reuseKey,
       executionContext: args.payload.executionContext,
       ...timestamps,
     })
@@ -6380,6 +6392,13 @@ async function commitPreparedLaunch(
   args: CommitPreparedLaunchArgs,
 ): Promise<AtomicLaunchCommitResult | CreateRunErrorResult> {
   const committed = await args.db.transaction(async (tx) => {
+    const payload = queuedRunnerJobPayload({
+      ...args.launch.runnerJobPayload,
+      reuseKey: runnerReuseKey(
+        args.createArgs.chatThreadId,
+        args.launch.runnerJobPayload.cliAgentSessionId,
+      ),
+    });
     await args.timing.measure(
       "api_dispatch_admission_lock_wait",
       "nested",
@@ -6391,11 +6410,7 @@ async function commitPreparedLaunch(
     );
     const admissionLockHeldStartedAt = now();
     return {
-      result: await commitPreparedLaunchUnderLock(
-        tx,
-        args,
-        args.launch.runnerJobPayload,
-      ),
+      result: await commitPreparedLaunchUnderLock(tx, args, payload),
       admissionLockHeldStartedAt,
     };
   });
@@ -7428,6 +7443,7 @@ async function committedAtomicLaunchResponse(args: {
     runnerGroup: args.committed.runnerJobPayload.runnerGroup,
     runId: args.committed.run.id,
     profile: args.committed.runnerJobPayload.profile,
+    reuseKey: args.committed.runnerJobPayload.reuseKey,
     cliAgentSessionId: args.committed.runnerJobPayload.cliAgentSessionId,
     historyGenerationRunId:
       args.committed.runnerJobPayload.historyGenerationRunId,
