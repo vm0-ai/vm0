@@ -362,7 +362,7 @@ async fn repeated_clean_close_reconnect_is_rate_limited() {
     });
 
     let mut timing = TimingConfig::default();
-    timing.min_reconnect_interval = Duration::from_secs(2);
+    timing.min_reconnect_interval = Duration::from_secs(1);
     let mut sub = subscribe(test_config_with_timing(ws_port, http.port(), "ch", timing))
         .await
         .unwrap();
