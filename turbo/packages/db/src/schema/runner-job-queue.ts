@@ -33,9 +33,12 @@ export const runnerJobQueue = pgTable(
       .notNull()
       .default("vm0/default"),
 
-    // Claude/Codex CLI agent session id for affinity routing (nullable for
-    // first-turn jobs before the guest reports a CLI agent session).
+    // Claude/Codex CLI agent session id (nullable for first-turn jobs before
+    // the guest reports a CLI agent session).
     cliAgentSessionId: varchar("session_id", { length: 255 }),
+
+    // Snapshot of the sandbox and workspace reuse identity at enqueue time.
+    reuseKey: varchar("reuse_key", { length: 263 }),
 
     // Execution context (secrets encrypted with persistent-secret envelope)
     executionContext: jsonb("execution_context")
