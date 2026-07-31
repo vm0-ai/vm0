@@ -131,6 +131,27 @@ function providerProfile(id: string, name: string) {
   };
 }
 
+function browserUseCdpWebSocketUrl(providerSessionId: string): string {
+  return `wss://${providerSessionId}.cdp.browser-use.com/devtools/browser/test`;
+}
+
+function acceptBrowserUseCdpSessions(
+  providerSessionIds: readonly string[],
+): void {
+  for (const providerSessionId of providerSessionIds) {
+    const webSocketUrl = browserUseCdpWebSocketUrl(providerSessionId);
+    server.use(
+      http.get(
+        `https://${providerSessionId}.cdp.browser-use.com/json/version`,
+        () => {
+          return HttpResponse.json({ webSocketDebuggerUrl: webSocketUrl });
+        },
+      ),
+      browserUseCdpHandler(webSocketUrl),
+    );
+  }
+}
+
 async function claimChatRun(
   runs: ReturnType<typeof createRunsApi>,
   actor: ApiTestUser,
@@ -399,6 +420,7 @@ describe("zero browser route", () => {
 
     const profileIds = [randomUUID(), randomUUID()] as const;
     const providerIds = [randomUUID(), randomUUID()] as const;
+    acceptBrowserUseCdpSessions(providerIds);
     const providerCreateBodies: unknown[] = [];
     const deletedProfiles: string[] = [];
     let profileCreates = 0;
@@ -508,12 +530,37 @@ describe("zero browser route", () => {
     expect(createdInOtherThread.body.browser).toMatchObject({
       name: "research",
       status: "active",
+      screen: {
+        width: 1440,
+        height: 900,
+        resizable: true,
+      },
     });
     expect(createdInOtherThread.body.browser.threadId).not.toBe(
       created.body.browser.threadId,
     );
     expect(profileCreates).toBe(2);
     expect(providerCreates).toBe(2);
+    expect(
+      context.mocks.browserUseCdp.command.mock.calls
+        .map(([command]) => {
+          return command;
+        })
+        .filter((command) => {
+          return command.method === "Browser.setContentsSize";
+        }),
+    ).toStrictEqual([
+      {
+        id: 3,
+        method: "Browser.setContentsSize",
+        params: { windowId: 7, width: 1440, height: 900 },
+      },
+      {
+        id: 3,
+        method: "Browser.setContentsSize",
+        params: { windowId: 7, width: 1440, height: 900 },
+      },
+    ]);
 
     const crossThreadResize = await createApp({
       signal: context.signal,
@@ -556,18 +603,9 @@ describe("zero browser route", () => {
     if (!createdProviderId) {
       throw new Error("Expected a Browser Use provider ID");
     }
-    const cdpWebSocketUrl = `wss://${createdProviderId}.cdp.browser-use.com/devtools/browser/test`;
-    server.use(
-      http.get(
-        `https://${createdProviderId}.cdp.browser-use.com/json/version`,
-        () => {
-          return HttpResponse.json({
-            webSocketDebuggerUrl: cdpWebSocketUrl,
-          });
-        },
-      ),
-      browserUseCdpHandler(cdpWebSocketUrl),
-    );
+    const cdpWebSocketUrl = browserUseCdpWebSocketUrl(createdProviderId);
+    context.mocks.browserUseCdp.connect.mockClear();
+    context.mocks.browserUseCdp.command.mockClear();
     routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     const resized = await accept(
       client().resizeByThread({
@@ -619,6 +657,54 @@ describe("zero browser route", () => {
       height: 1920,
       resizable: true,
     });
+
+    context.mocks.browserUseCdp.command.mockClear();
+    const clampedTall = await accept(
+      client().resizeByThread({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: created.body.browser.threadId },
+        body: { aspectRatio: 0.1 },
+      }),
+      [200],
+    );
+    expect(clampedTall.body.browser.screen).toStrictEqual({
+      width: 1440,
+      height: 3456,
+      resizable: true,
+    });
+    const clampedWide = await accept(
+      client().resizeByThread({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: created.body.browser.threadId },
+        body: { aspectRatio: 10 },
+      }),
+      [200],
+    );
+    expect(clampedWide.body.browser.screen).toStrictEqual({
+      width: 1440,
+      height: 320,
+      resizable: true,
+    });
+    expect(
+      context.mocks.browserUseCdp.command.mock.calls
+        .map(([command]) => {
+          return command;
+        })
+        .filter((command) => {
+          return command.method === "Browser.setContentsSize";
+        }),
+    ).toStrictEqual([
+      {
+        id: 3,
+        method: "Browser.setContentsSize",
+        params: { windowId: 7, width: 1440, height: 3456 },
+      },
+      {
+        id: 3,
+        method: "Browser.setContentsSize",
+        params: { windowId: 7, width: 1440, height: 320 },
+      },
+    ]);
     const copiedToAnotherThread = await createApp({
       signal: context.signal,
     }).request(`/api/zero/chat-threads/${randomUUID()}/browser`, {
@@ -719,6 +805,63 @@ describe("zero browser route", () => {
     });
   }, 120_000);
 
+  it("fails browser start when its initial size cannot be applied", async () => {
+    const { runs, chat, actor, agent } = await setupBrowserScenario();
+    const first = await createClaimedChatRun(
+      chat,
+      runs,
+      actor,
+      agent.agentId,
+      "Open a managed browser whose window cannot be resized",
+    );
+    const providerId = randomUUID();
+    acceptBrowserUseCdpSessions([providerId]);
+    context.mocks.browserUseCdp.command.mockImplementation((command) => {
+      return command.method === "Browser.setContentsSize"
+        ? new Error("test resize failure")
+        : undefined;
+    });
+    let providerStops = 0;
+    server.use(
+      http.post(`${BROWSER_USE_API_URL}/profiles`, async ({ request }) => {
+        const body = z
+          .strictObject({ name: z.string() })
+          .parse(await request.json());
+        return HttpResponse.json(providerProfile(randomUUID(), body.name), {
+          status: 201,
+        });
+      }),
+      http.post(`${BROWSER_USE_API_URL}/browsers`, () => {
+        return HttpResponse.json(providerBrowser(providerId), { status: 201 });
+      }),
+      http.patch(`${BROWSER_USE_API_URL}/browsers/:id`, ({ params }) => {
+        providerStops += 1;
+        return HttpResponse.json(
+          providerBrowser(String(params.id), { status: "stopped" }),
+        );
+      }),
+    );
+
+    const failed = await requestBrowserUse(first.claim.browserHeaders);
+    expect(failed.status).toBe(502);
+    await expect(failed.json()).resolves.toMatchObject({
+      error: { code: "BROWSER_USE_RESIZE_ERROR" },
+    });
+    await flushWaitUntilForTest();
+    expect(providerStops).toBe(1);
+
+    const current = await accept(
+      client().current({ headers: first.claim.browserHeaders }),
+      [200],
+    );
+    expect(current.body.browser.status).toBe("error");
+    expect(current.body.browser).not.toHaveProperty("screen");
+
+    await chat.deleteThread(actor, first.threadId);
+    await flushWaitUntilForTest();
+    expect(providerStops).toBe(1);
+  }, 120_000);
+
   it("reclaims the earliest idle lease before starting past org concurrency", async () => {
     const { runs, chat, actor, agent } = await setupBrowserScenario();
     const first = await createClaimedChatRun(
@@ -764,6 +907,7 @@ describe("zero browser route", () => {
     }
 
     const providerIds = [randomUUID(), randomUUID(), randomUUID()] as const;
+    acceptBrowserUseCdpSessions(providerIds);
     let providerCreates = 0;
     const providerStopAttempts: string[] = [];
     server.use(
@@ -901,13 +1045,15 @@ describe("zero browser route", () => {
     );
 
     const providerIds = [randomUUID(), randomUUID(), randomUUID()] as const;
+    acceptBrowserUseCdpSessions(providerIds);
     const savedTabUrls = [
       "https://example.com/research?q=one",
       "http://example.org/draft#section",
     ] as const;
     const cdpWebSocketUrls = [
-      `wss://${providerIds[0]}.cdp.browser-use.com/devtools/browser/test`,
-      `wss://${providerIds[1]}.cdp.browser-use.com/devtools/browser/test`,
+      browserUseCdpWebSocketUrl(providerIds[0]),
+      browserUseCdpWebSocketUrl(providerIds[1]),
+      browserUseCdpWebSocketUrl(providerIds[2]),
     ] as const;
     let currentCdpWebSocketUrl: string | null = null;
     context.mocks.browserUseCdp.connect.mockImplementation((url) => {
@@ -963,6 +1109,12 @@ describe("zero browser route", () => {
       ) {
         return new Error("test tab restoration failure");
       }
+      if (
+        currentCdpWebSocketUrl === cdpWebSocketUrls[2] &&
+        command.method === "Browser.setContentsSize"
+      ) {
+        return new Error("test resize failure");
+      }
       return undefined;
     });
     let providerCreates = 0;
@@ -991,24 +1143,6 @@ describe("zero browser route", () => {
       http.get(`${BROWSER_USE_API_URL}/browsers/:id`, ({ params }) => {
         return HttpResponse.json(providerBrowser(String(params.id)));
       }),
-      http.get(
-        `https://${providerIds[0]}.cdp.browser-use.com/json/version`,
-        () => {
-          return HttpResponse.json({
-            webSocketDebuggerUrl: cdpWebSocketUrls[0],
-          });
-        },
-      ),
-      http.get(
-        `https://${providerIds[1]}.cdp.browser-use.com/json/version`,
-        () => {
-          return HttpResponse.json({
-            webSocketDebuggerUrl: cdpWebSocketUrls[1],
-          });
-        },
-      ),
-      browserUseCdpHandler(cdpWebSocketUrls[0]),
-      browserUseCdpHandler(cdpWebSocketUrls[1]),
       http.patch(
         `${BROWSER_USE_API_URL}/browsers/:id`,
         async ({ params, request }) => {
@@ -1039,8 +1173,27 @@ describe("zero browser route", () => {
     expect(opened.body.browser).toMatchObject({
       status: "active",
       idleExpiresAt: isoAt(10 * MINUTE_MS),
+      screen: {
+        width: 1440,
+        height: 900,
+        resizable: true,
+      },
     });
     expect(providerCreates).toBe(1);
+    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const fitted = await accept(
+      client().resizeByThread({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId },
+        body: { aspectRatio: 0.75 },
+      }),
+      [200],
+    );
+    expect(fitted.body.browser.screen).toStrictEqual({
+      width: 1440,
+      height: 1920,
+      resizable: true,
+    });
 
     // The run ends without stopping the browser, and the thread's next message
     // starts a run right away instead of waiting for browser cleanup.
@@ -1135,7 +1288,6 @@ describe("zero browser route", () => {
     });
     expect(firstStopFailures).toBe(1);
 
-    routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
     await accept(
       chatThreadComputerUseHostClient().update({
         headers: { authorization: "Bearer clerk-session" },
@@ -1187,23 +1339,54 @@ describe("zero browser route", () => {
       threadId: threadId,
       status: "active",
       idleExpiresAt: isoAt(26 * MINUTE_MS),
+      screen: {
+        width: 1440,
+        height: 1920,
+        resizable: true,
+      },
     });
     expect(providerCreates).toBe(2);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "browserSessionChanged",
       { threadId },
     );
-    expect(context.mocks.browserUseCdp.connect.mock.calls).toStrictEqual([
-      [cdpWebSocketUrls[0]],
-      [cdpWebSocketUrls[1]],
+    expect(
+      context.mocks.browserUseCdp.command.mock.calls
+        .map(([command]) => {
+          return command;
+        })
+        .filter((command) => {
+          return command.method === "Browser.setContentsSize";
+        }),
+    ).toStrictEqual([
+      {
+        id: 3,
+        method: "Browser.setContentsSize",
+        params: { windowId: 7, width: 1440, height: 900 },
+      },
+      {
+        id: 3,
+        method: "Browser.setContentsSize",
+        params: { windowId: 7, width: 1440, height: 1920 },
+      },
+      {
+        id: 3,
+        method: "Browser.setContentsSize",
+        params: { windowId: 7, width: 1440, height: 1920 },
+      },
     ]);
     expect(
-      context.mocks.browserUseCdp.command.mock.calls.map(([command]) => {
-        return command;
-      }),
+      context.mocks.browserUseCdp.command.mock.calls
+        .map(([command]) => {
+          return command;
+        })
+        .filter((command) => {
+          return (
+            command.method === "Target.createTarget" ||
+            command.method === "Target.closeTarget"
+          );
+        }),
     ).toStrictEqual([
-      { id: 1, method: "Target.getTargets", params: {} },
-      { id: 1, method: "Target.getTargets", params: {} },
       {
         id: 2,
         method: "Target.createTarget",
@@ -1235,9 +1418,42 @@ describe("zero browser route", () => {
       idleExpiresAt: isoAt(30 * MINUTE_MS),
     });
 
-    await chat.deleteThread(actor, first.threadId);
+    mockNow(STARTED_AT_MS + 31 * MINUTE_MS);
+    const reclaimedAgain = await reconcileBrowsers();
+    expect(reclaimedAgain.body).toMatchObject({ stopped: 1, errors: 0 });
     await flushWaitUntilForTest();
     expect(providerStops).toBe(1);
+
+    const failedResume = await createApp({
+      signal: context.signal,
+    }).request(`/api/zero/chat-threads/${threadId}/browser/start`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer clerk-session",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ eventId: randomUUID() }),
+    });
+    expect(failedResume.status).toBe(502);
+    await expect(failedResume.json()).resolves.toMatchObject({
+      error: { code: "BROWSER_USE_RESIZE_ERROR" },
+    });
+    await flushWaitUntilForTest();
+    expect(providerCreates).toBe(3);
+    expect(providerStops).toBe(2);
+    const afterFailedResume = await accept(
+      client().get({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId },
+      }),
+      [200],
+    );
+    expect(afterFailedResume.body.browser.status).toBe("error");
+    expect(afterFailedResume.body.browser).not.toHaveProperty("screen");
+
+    await chat.deleteThread(actor, first.threadId);
+    await flushWaitUntilForTest();
+    expect(providerStops).toBe(2);
 
     const reconciled = await reconcileBrowsers();
     expect(reconciled.body).toMatchObject({
@@ -1412,6 +1628,7 @@ describe("zero browser route", () => {
     );
 
     const providerIds = [randomUUID(), randomUUID(), randomUUID()] as const;
+    acceptBrowserUseCdpSessions(providerIds);
     let providerCreates = 0;
     let providerStops = 0;
     server.use(
