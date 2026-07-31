@@ -1611,7 +1611,7 @@ describe("cron execute morning briefs", () => {
       content: displayContent,
       prompt: realPrompt,
       appendSystemPrompt,
-      apiStartTime: BEFORE_SEVEN_LOCAL,
+      createdAt: new Date(BEFORE_SEVEN_LOCAL),
     });
     const oldParams = await readMorningBriefQueuedParamsFixture({
       messageId,
@@ -1622,7 +1622,6 @@ describe("cron execute morning briefs", () => {
       version: 1,
       prompt: realPrompt,
       appendSystemPrompt,
-      apiStartTime: BEFORE_SEVEN_LOCAL,
     });
 
     mockUploadedBriefOutput(VALID_OUTPUT);

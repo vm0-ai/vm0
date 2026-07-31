@@ -89,7 +89,6 @@ const queuedUserMessageRunParamsSchema = z.object({
   version: z.literal(1),
   prompt: z.string(),
   appendSystemPrompt: z.string(),
-  realAgentInPreview: z.boolean().optional(),
   slackDelivery: z
     .object({
       channelId: z.string(),
@@ -121,7 +120,6 @@ const queuedUserMessageRunParamsSchema = z.object({
       payload: z.unknown(),
     })
     .optional(),
-  apiStartTime: z.number().optional(),
   userInfoExtras: z
     .object({
       slackDisplayName: z.string().optional(),
@@ -147,7 +145,6 @@ type QueuedUserMessageRunParams = z.infer<
 const queuedChatEvent = alias(chatEvents, "queued_chat_event");
 const queuedChatEventRevoker = alias(chatEvents, "queued_chat_event_revoker");
 const queuedEncryptedParams = chatEventInputParams.encryptedParams;
-const queuedAttachFileMetadata = chatEventInputParams.attachFileMetadata;
 const queueFirstReplacementTargetFields = {
   id: chatEvents.id,
   chatThreadId: chatEvents.chatThreadId,
@@ -156,7 +153,6 @@ const queueFirstReplacementTargetFields = {
   contextType: chatEvents.contextType,
   contextId: chatEvents.contextId,
   encryptedParams: queuedEncryptedParams,
-  attachFileMetadata: queuedAttachFileMetadata,
 } as const;
 
 export interface QueuedUserMessage {
@@ -164,7 +160,6 @@ export interface QueuedUserMessage {
   readonly createdAt: Date;
   readonly userMessage: ChatEventUserMessage;
   readonly attachFiles: readonly string[] | null;
-  readonly attachFileMetadata: readonly ChatEventAttachFileMetadata[] | null;
   readonly generationTemplate: ChatEventGenerationTemplate | null;
   readonly modelProviderId: string | null;
   readonly modelProviderType: string | null;
@@ -364,7 +359,6 @@ export async function loadNextUnclaimedQueuedUserMessage(
       createdAt: chatEvents.createdAt,
       userMessage: chatEvents.userMessage,
       attachFiles: chatEvents.attachFiles,
-      attachFileMetadata: queuedAttachFileMetadata,
       generationTemplate: chatEvents.generationTemplate,
       modelProviderId: sql`NULL`.mapWith(pgNullDecoder),
       modelProviderType: sql`NULL`.mapWith(pgNullDecoder),
@@ -449,7 +443,6 @@ function replacementTargetFromQueueHead(
     contextType: head.contextType,
     contextId: head.contextId,
     encryptedParams: head.encryptedParams,
-    attachFileMetadata: head.attachFileMetadata,
   };
 }
 
@@ -497,7 +490,6 @@ async function resolveUserQueueFirstClaimSnapshot(
       userMessage: head.userMessage,
       runId: args.runId,
       attachFiles: head.attachFiles ? [...head.attachFiles] : null,
-      attachFileMetadata: null,
       generationTemplate: head.generationTemplate,
       ...(head.triggerSource ? { triggerSource: head.triggerSource } : {}),
     },
@@ -996,14 +988,9 @@ export async function failQueuedUserMessage(
       .select({
         userMessage: chatEvents.userMessage,
         attachFiles: chatEvents.attachFiles,
-        attachFileMetadata: queuedAttachFileMetadata,
         generationTemplate: chatEvents.generationTemplate,
       })
       .from(chatEvents)
-      .leftJoin(
-        chatEventInputParams,
-        eq(chatEventInputParams.eventId, chatEvents.id),
-      )
       .where(
         and(
           eq(chatEvents.id, args.eventId),
@@ -1026,9 +1013,6 @@ export async function failQueuedUserMessage(
       eventType: "input.rejected",
       userMessage: queued.userMessage,
       attachFiles: queued.attachFiles ? [...queued.attachFiles] : null,
-      attachFileMetadata: queued.attachFileMetadata
-        ? [...queued.attachFileMetadata]
-        : null,
       generationTemplate: queued.generationTemplate,
       runId: null,
       error: args.errorMarker,

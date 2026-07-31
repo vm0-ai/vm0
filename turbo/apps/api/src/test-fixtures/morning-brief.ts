@@ -89,7 +89,6 @@ export async function replaceMorningBriefQueuedCallbackPayloadFixture(args: {
       encryptedParams: chatEventInputParams.encryptedParams,
       userMessage: chatEvents.userMessage,
       attachFiles: chatEvents.attachFiles,
-      attachFileMetadata: chatEventInputParams.attachFileMetadata,
       generationTemplate: chatEvents.generationTemplate,
       triggerSource: chatEvents.triggerSource,
     })
@@ -129,9 +128,6 @@ export async function replaceMorningBriefQueuedCallbackPayloadFixture(args: {
         runId: null,
         encryptedParams,
         attachFiles: message.attachFiles ? [...message.attachFiles] : null,
-        attachFileMetadata: message.attachFileMetadata
-          ? [...message.attachFileMetadata]
-          : null,
         generationTemplate: message.generationTemplate,
         ...(message.triggerSource
           ? { triggerSource: message.triggerSource }
@@ -212,7 +208,7 @@ export async function insertOldFormatQueuedUserMessageFixture(args: {
   readonly content: string;
   readonly prompt: string;
   readonly appendSystemPrompt: string;
-  readonly apiStartTime?: number;
+  readonly createdAt?: Date;
 }): Promise<string> {
   const messageId = randomUUID();
   const encryptedParams = await encryptQueuedUserMessageRunParams(
@@ -220,7 +216,6 @@ export async function insertOldFormatQueuedUserMessageFixture(args: {
       version: 1,
       prompt: args.prompt,
       appendSystemPrompt: args.appendSystemPrompt,
-      apiStartTime: args.apiStartTime,
     },
     { orgId: args.orgId, userId: args.userId },
   );
@@ -233,6 +228,7 @@ export async function insertOldFormatQueuedUserMessageFixture(args: {
       runId: null,
       triggerSource: "workflow-schedule",
       encryptedParams,
+      ...(args.createdAt ? { createdAt: args.createdAt } : {}),
     });
     if (!inserted) {
       throw new Error("Expected the old-format queued message fixture");

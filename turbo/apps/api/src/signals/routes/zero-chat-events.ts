@@ -16,7 +16,6 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { chatEventInputParams } from "@vm0/db/schema/chat-event-input-params";
 import {
   chatEvents,
   type ChatEventAttachFileMetadata,
@@ -1742,7 +1741,6 @@ async function appendAssociatedUserMessage(params: {
       userMessage: params.userMessage,
       runId: params.runId,
       attachFiles: fileIds,
-      attachFileMetadata: fileMetadata,
       generationTemplate: params.generationTemplate,
     };
     const inserted = params.revokesEventId
@@ -2798,15 +2796,10 @@ async function appendQueueFirstInsufficientCreditsEvents(params: {
       .select({
         userMessage: chatEvents.userMessage,
         attachFiles: chatEvents.attachFiles,
-        attachFileMetadata: chatEventInputParams.attachFileMetadata,
         generationTemplate: chatEvents.generationTemplate,
         createdAt: chatEvents.createdAt,
       })
       .from(chatEvents)
-      .leftJoin(
-        chatEventInputParams,
-        eq(chatEventInputParams.eventId, chatEvents.id),
-      )
       .where(
         and(
           eq(chatEvents.id, params.eventId),
@@ -2838,9 +2831,6 @@ async function appendQueueFirstInsufficientCreditsEvents(params: {
       createdAt: rejectedCreatedAt,
       attachFiles: queuedMessage.attachFiles
         ? [...queuedMessage.attachFiles]
-        : null,
-      attachFileMetadata: queuedMessage.attachFileMetadata
-        ? [...queuedMessage.attachFileMetadata]
         : null,
       generationTemplate: queuedMessage.generationTemplate,
     });
@@ -2919,7 +2909,6 @@ async function appendInsufficientCreditsEvents(params: {
       sequenceNumber: 0,
       createdAt: userCreatedAt,
       attachFiles: fileIds,
-      attachFileMetadata: fileMetadata,
     };
     const userMessage = params.body.revokesEventId
       ? await replaceChatEvent(tx, params.body.revokesEventId, userValues, {
@@ -3205,16 +3194,14 @@ const createNormalChatRun$ = command(
         eventId: queueFirstEventId,
       });
     }
-    const attachFileMetadata = queuedMessage.attachFileMetadata
-      ? [...queuedMessage.attachFileMetadata]
-      : await set(
-          resolveAttachFileMetadata$,
-          {
-            userId: args.userId,
-            attachFiles: queuedMessage.attachFiles,
-          },
-          signal,
-        );
+    const attachFileMetadata = await set(
+      resolveAttachFileMetadata$,
+      {
+        userId: args.userId,
+        attachFiles: queuedMessage.attachFiles,
+      },
+      signal,
+    );
     signal.throwIfAborted();
 
     const featureSwitchContext = await loadUserFeatureSwitchContext(

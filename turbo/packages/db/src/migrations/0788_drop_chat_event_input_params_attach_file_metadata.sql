@@ -1,0 +1,1 @@
+ALTER TABLE "chat_event_input_params" DROP COLUMN "attach_file_metadata";

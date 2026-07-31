@@ -1,5 +1,4 @@
-import { jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import type { ChatEventAttachFileMetadataList } from "@vm0/db/jsonb-contracts/chat-event";
+import { pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 import { chatEvents } from "./chat-event";
 
 /**
@@ -17,8 +16,5 @@ export const chatEventInputParams = pgTable("chat_event_input_params", {
       { onDelete: "cascade" },
     ),
   encryptedParams: text("encrypted_params").notNull(),
-  attachFileMetadata: jsonb(
-    "attach_file_metadata",
-  ).$type<ChatEventAttachFileMetadataList>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

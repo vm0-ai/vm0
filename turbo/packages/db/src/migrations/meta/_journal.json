@@ -5517,6 +5517,13 @@
       "when": 1785498033767,
       "tag": "0787_drop_legacy_browser_billing_storage",
       "breakpoints": true
+    },
+    {
+      "idx": 788,
+      "version": "7",
+      "when": 1785507060886,
+      "tag": "0788_drop_chat_event_input_params_attach_file_metadata",
+      "breakpoints": true
     }
   ]
 }
