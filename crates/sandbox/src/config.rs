@@ -5,12 +5,13 @@ use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 
 /// Identity of a Firecracker VM sandbox — the workspace directory basename
-/// and socket directory name. Survives sandbox reuse: the first job creates
-/// the sandbox with this ID, and subsequent reuse jobs inherit it.
+/// and socket directory name. A newly created sandbox receives this ID, and
+/// subsequent reuse jobs retain it.
 ///
 /// Distinct from `RunId` (a per-job server identifier defined in the
-/// `runner` crate). The two are equal on the first run but diverge on
-/// sandbox reuse.
+/// `runner` crate). A new sandbox receives its ID independently of the current
+/// job's `RunId`. A reused sandbox keeps its existing `SandboxId` while the
+/// new job has its own `RunId`; the two identifiers are not interchangeable.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SandboxId(uuid::Uuid);
