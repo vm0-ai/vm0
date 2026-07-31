@@ -1694,20 +1694,29 @@ describe("chat lifecycle", () => {
       selectedModel: "gpt-5.6-sol",
       error:
         "You've hit your usage limit. Try again at 5:00 PM (Asia/Shanghai).",
-      allowedOption: /Claude Sonnet 4\.6/u,
-      hiddenOption: /GPT 5\.6 Sol/u,
+      resetText: "Resets 5:00 PM (Asia/Shanghai)",
+      currentOption: /GPT 5\.6 Sol/u,
+      otherOption: /Claude Sonnet 4\.6/u,
     },
     {
       name: "Claude Code",
       threadId: "b0000000-0000-4000-a000-000000000793",
       selectedModel: "claude-sonnet-4-6",
       error: "You've hit your session limit · resets 5:00 PM",
-      allowedOption: /GPT 5\.6 Sol/u,
-      hiddenOption: /Claude Sonnet 4\.6/u,
+      resetText: "Resets 5:00 PM",
+      currentOption: /Claude Sonnet 4\.6/u,
+      otherOption: /GPT 5\.6 Sol/u,
     },
   ])(
-    "offers only the opposite framework for a $name framework limit",
-    async ({ threadId, selectedModel, error, allowedOption, hiddenOption }) => {
+    "keeps the current model selectable and shows its reset time for a $name framework limit",
+    async ({
+      threadId,
+      selectedModel,
+      error,
+      resetText,
+      currentOption,
+      otherOption,
+    }) => {
       context.mocks.data.orgModelPolicies([
         buildModelPolicy({
           id: "00000000-0000-4000-a000-000000000971",
@@ -1756,15 +1765,16 @@ describe("chat lifecycle", () => {
       });
 
       const card = await screen.findByTestId("assistant-error-recovery");
+      expect(within(card).getByText(resetText)).toBeInTheDocument();
       click(within(card).getByRole("combobox", { name: "Switch model" }));
 
-      const claudeOption = await screen.findByRole("option", {
-        name: allowedOption,
+      const alternative = await screen.findByRole("option", {
+        name: otherOption,
       });
-      expect(claudeOption).toBeInTheDocument();
+      expect(alternative).toBeInTheDocument();
       expect(
-        screen.queryByRole("option", { name: hiddenOption }),
-      ).not.toBeInTheDocument();
+        screen.getByRole("option", { name: currentOption }),
+      ).toBeInTheDocument();
     },
   );
 
