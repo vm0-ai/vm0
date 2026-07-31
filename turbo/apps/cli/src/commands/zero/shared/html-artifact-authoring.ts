@@ -11,7 +11,7 @@ import {
 type HtmlArtifactKind = GenerationTarget;
 
 const HTML_RESOURCE_INDEX_BASE_URL =
-  "https://static.vm0.io/html-resources/e2eaf4c4761a524b692d79eb88588debd2daef59e9b121f1e67e1a10abe74736";
+  "https://static.vm0.io/html-resources/148123fe587c1218b3019916484955c30c98289031ba4e7799bd04dfba305fa5";
 
 const HTML_RESOURCE_INDEX_URLS: Partial<Record<HtmlArtifactKind, string>> = {
   website: `${HTML_RESOURCE_INDEX_BASE_URL}/website.json`,
@@ -192,11 +192,11 @@ export function createHtmlArtifactAuthoringPacket(
         "## Stage 2: Resolve Selected Resources",
         "- Resolve and download only resources selected from the index. Do not fetch unselected resources.",
         "- For a selected entry without `source.archive`, resolve its `source.path` from the index's pinned `source.repo@source.ref`. Do not run `zero resource pull` for it.",
-        "- For a selected entry with `source.archive`, run `zero resource pull <candidate-id> --dir ./generated/resources`, then resolve it at `./generated/resources/<source.path>`.",
+        "- For a selected entry with `source.archive`, run its exact `source.pull.command`, then use `source.pull.resolvedPath`. Do not construct or guess a direct R2 URL.",
         ...(options.kind === "website"
           ? [
               "- The Website index includes vm0 built-in R2 template packages as template entries with `source.archive`.",
-              "- For each selected built-in Website template, use its `source.path` as the package path under `./generated/resources/` after pulling it.",
+              "- Each built-in Website template entry includes the exact pull command and extracted package path in `source.pull`.",
             ]
           : []),
         "- For directory refs, inspect the most relevant files such as `SKILL.md`, `DESIGN.md`, `README.md`, tokens, examples, and templates.",

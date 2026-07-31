@@ -143,7 +143,7 @@ describe("zero generate website command", () => {
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(
-      "https://static.vm0.io/html-resources/e2eaf4c4761a524b692d79eb88588debd2daef59e9b121f1e67e1a10abe74736/website.json",
+      "https://static.vm0.io/html-resources/148123fe587c1218b3019916484955c30c98289031ba4e7799bd04dfba305fa5/website.json",
     );
     expect(stdout).not.toContain("## Candidate Registry Slice");
     expect(stdout).not.toContain('"id": "template:black-slabs"');
@@ -154,7 +154,10 @@ describe("zero generate website command", () => {
       "The Website index includes vm0 built-in R2 template packages as template entries with `source.archive`.",
     );
     expect(stdout).toContain(
-      "use its `source.path` as the package path under `./generated/resources/` after pulling it.",
+      "Each built-in Website template entry includes the exact pull command and extracted package path in `source.pull`.",
+    );
+    expect(stdout).toContain(
+      "run its exact `source.pull.command`, then use `source.pull.resolvedPath`.",
     );
   });
 

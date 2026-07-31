@@ -27,6 +27,10 @@ interface HtmlResourceIndexEntry {
       readonly type: "tar.gz";
       readonly sha256: string;
     };
+    readonly pull?: {
+      readonly command: string;
+      readonly resolvedPath: string;
+    };
   };
 }
 
@@ -72,6 +76,8 @@ const ON_DEMAND_SELECTION_INSTRUCTIONS = [
   "Derive keywords from the user's request and search this target-specific index.",
   "Select resources only when they are useful for the request. There is no fixed selection count for any resource type.",
   "After selecting, resolve and download only the selected resources. Do not fetch unselected candidates.",
+  "For a selected entry without source.archive, resolve source.path from this index's pinned source.repo@source.ref.",
+  "For a selected entry with source.archive, run its exact source.pull.command and then use source.pull.resolvedPath. Do not construct or guess a direct R2 URL.",
 ] as const;
 
 function readOption(name: string): string | undefined {
@@ -124,6 +130,10 @@ function toIndexEntry(
       ? {
           path: entry.source.path,
           archive: entry.source.archive,
+          pull: {
+            command: `zero resource pull ${entry.id} --dir ./generated/resources`,
+            resolvedPath: `./generated/resources/${entry.source.path}`,
+          },
         }
       : {
           path: entry.source.path,
