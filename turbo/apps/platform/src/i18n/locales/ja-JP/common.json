@@ -1401,6 +1401,7 @@
       "automationEvent": "オートメーションイベント",
       "automationEventDescription": "キューに入れられたメッセージの後ろで待機し、現在の実行が終了すると実行されます。",
       "cancelGoal": "ゴールをキャンセルする",
+      "cancellationRecoveryPending": "キュー内の作業を続行する前に、キャンセルされた実行の終了処理を行っています。",
       "event_one": "{{count}} イベント",
       "event_other": "{{count}} イベント",
       "goal": "目標",

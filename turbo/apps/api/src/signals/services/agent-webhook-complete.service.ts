@@ -6,13 +6,17 @@ import { webhookCompleteContract } from "@vm0/api-contracts/contracts/webhooks";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 
 import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
-import { publishRunChangedForUserSafely } from "../external/realtime";
+import {
+  publishChatThreadDetailChangedSafely,
+  publishRunChangedForUserSafely,
+} from "../external/realtime";
 import { tapError } from "../utils";
 import {
   chatCallbackIdForRun,
@@ -46,6 +50,8 @@ interface TerminalSideEffectsInput {
 interface CancellationRecoverySideEffectsInput {
   readonly kind: "cancellation-recovery";
   readonly runId: string;
+  readonly userId: string;
+  readonly chatThreadId: string | null;
 }
 
 type CompleteSideEffectsInput =
@@ -77,6 +83,7 @@ interface RunRecord {
   readonly orgId: string;
   readonly status: string;
   readonly userId: string;
+  readonly chatThreadId: string | null;
 }
 
 const L = logger("webhook:complete");
@@ -182,8 +189,10 @@ async function handleLostTerminalTransition(
       status: agentRuns.status,
       userId: agentRuns.userId,
       cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
+      chatThreadId: zeroRuns.chatThreadId,
     })
     .from(agentRuns)
+    .leftJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
     .where(
       and(
         eq(agentRuns.id, input.body.runId),
@@ -238,6 +247,8 @@ async function handleCancelledCompletion(
           sideEffects: {
             kind: "cancellation-recovery" as const,
             runId: input.body.runId,
+            userId: run.userId,
+            chatThreadId: run.chatThreadId,
           },
         }
       : {}),
@@ -386,6 +397,13 @@ export const dispatchCompleteSideEffects$ = command(
   ): Promise<void> => {
     const apiStartTime = input.apiStartTime ?? now();
     if (input.kind === "cancellation-recovery") {
+      if (input.chatThreadId !== null) {
+        await publishChatThreadDetailChangedSafely(
+          input.userId,
+          input.chatThreadId,
+        );
+        signal.throwIfAborted();
+      }
       await tapError(
         set(
           drainChatThreadQueueForRun$,
@@ -499,8 +517,10 @@ export const completeAgentRun$ = command(
         status: agentRuns.status,
         userId: agentRuns.userId,
         cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
+        chatThreadId: zeroRuns.chatThreadId,
       })
       .from(agentRuns)
+      .leftJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
       .where(
         and(
           eq(agentRuns.id, input.body.runId),

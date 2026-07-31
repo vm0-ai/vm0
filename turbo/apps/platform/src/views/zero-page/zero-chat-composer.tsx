@@ -350,6 +350,8 @@ export interface ZeroChatComposerProps {
   workflowEventItems?: WorkflowEventComposerItem[];
   /** Skips one pending workflow event. */
   onRemoveWorkflowEvent?: (id: string) => void;
+  /** The API is preserving a cancelled session before queued work can start. */
+  cancellationRecoveryPending?: boolean;
   /**
    * The thread's active goal. Rendered as a row beneath the queued messages in
    * the strip above the composer — a goal runs only once the queue drains, so it
@@ -561,12 +563,14 @@ function ComposerStripRow({
   onRemove,
   onOpenDetail,
   removeAriaLabel,
+  cancellationRecoveryPending,
 }: {
   kind: "queued" | "workflow-event" | "goal";
   text: string;
   onRemove?: () => void;
   onOpenDetail?: () => void;
   removeAriaLabel: string;
+  cancellationRecoveryPending?: boolean;
 }) {
   const { t } = useTranslation();
   const isGoal = kind === "goal";
@@ -604,17 +608,22 @@ function ComposerStripRow({
       : t(($) => {
           return $.chat.queue.queuedMessage;
         });
-  const itemDescription = isGoal
-    ? t(($) => {
-        return $.chat.queue.goalDescription;
-      })
-    : isWorkflowEvent
+  const itemDescription =
+    cancellationRecoveryPending && !isGoal
       ? t(($) => {
-          return $.chat.queue.automationEventDescription;
+          return $.chat.queue.cancellationRecoveryPending;
         })
-      : t(($) => {
-          return $.chat.queue.queuedMessageDescription;
-        });
+      : isGoal
+        ? t(($) => {
+            return $.chat.queue.goalDescription;
+          })
+        : isWorkflowEvent
+          ? t(($) => {
+              return $.chat.queue.automationEventDescription;
+            })
+          : t(($) => {
+              return $.chat.queue.queuedMessageDescription;
+            });
   return (
     <div
       role="listitem"
@@ -770,12 +779,28 @@ function ActiveGoalObjectiveDialog({ threadId }: { threadId?: string }) {
   );
 }
 
-function PendingItemsStripHeader({ label }: { label: string }) {
+function PendingItemsStripHeader({
+  label,
+  cancellationRecoveryPending,
+}: {
+  label: string;
+  cancellationRecoveryPending: boolean;
+}) {
+  const { t } = useTranslation();
   return (
-    <div className="flex items-center gap-2 px-5 pt-3 pb-2">
-      <div className="min-w-0 flex-1">
-        <span className="text-sm text-muted-foreground">{label}</span>
-      </div>
+    <div className="px-5 pt-3 pb-2">
+      <p className="text-sm text-muted-foreground">{label}</p>
+      {cancellationRecoveryPending ? (
+        <p
+          role="status"
+          aria-live="polite"
+          className="mt-1 text-xs text-muted-foreground"
+        >
+          {t(($) => {
+            return $.chat.queue.cancellationRecoveryPending;
+          })}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -788,6 +813,7 @@ function PendingItemsStrip({
   activeGoal,
   onCancelGoal,
   onOpenGoal,
+  cancellationRecoveryPending = false,
 }: {
   items: QueuedComposerItem[] | undefined;
   onRemove?: (id: string) => void;
@@ -796,6 +822,7 @@ function PendingItemsStrip({
   activeGoal?: ActiveGoalComposerItem;
   onCancelGoal?: () => void;
   onOpenGoal?: () => void;
+  cancellationRecoveryPending?: boolean;
 }) {
   const { t } = useTranslation();
   const queued = items ?? [];
@@ -841,7 +868,12 @@ function PendingItemsStrip({
   }
   return (
     <div className="relative z-0 mx-5 -mb-6 overflow-hidden rounded-xl bg-gray-50 dark:bg-gray-100">
-      {count > 0 ? <PendingItemsStripHeader label={label} /> : null}
+      {count > 0 ? (
+        <PendingItemsStripHeader
+          label={label}
+          cancellationRecoveryPending={cancellationRecoveryPending}
+        />
+      ) : null}
       <div className="max-h-[200px] overflow-y-auto px-2 pb-7 pt-1" role="list">
         {queued.map((item) => {
           return (
@@ -855,6 +887,7 @@ function PendingItemsStrip({
               removeAriaLabel={t(($) => {
                 return $.chat.queue.removeQueuedMessage;
               })}
+              cancellationRecoveryPending={cancellationRecoveryPending}
             />
           );
         })}
@@ -870,6 +903,7 @@ function PendingItemsStrip({
               removeAriaLabel={t(($) => {
                 return $.chat.queue.skipAutomationEvent;
               })}
+              cancellationRecoveryPending={cancellationRecoveryPending}
             />
           );
         })}
@@ -7646,6 +7680,7 @@ export function useZeroChatComposer(
     onRemoveQueuedItem,
     workflowEventItems,
     onRemoveWorkflowEvent,
+    cancellationRecoveryPending,
     activeGoal,
     onCancelActiveGoal,
   }: ZeroChatComposerProps,
@@ -8185,6 +8220,7 @@ export function useZeroChatComposer(
           onRemove={onRemoveQueuedItem}
           workflowEvents={workflowEventItems}
           onRemoveWorkflowEvent={onRemoveWorkflowEvent}
+          cancellationRecoveryPending={cancellationRecoveryPending}
           activeGoal={activeGoal}
           onCancelGoal={onCancelActiveGoal}
           onOpenGoal={

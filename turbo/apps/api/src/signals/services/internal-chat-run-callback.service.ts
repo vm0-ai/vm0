@@ -44,6 +44,7 @@ import { now, nowDate } from "../../lib/time";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$, type Db } from "../external/db";
 import {
+  publishChatThreadDetailChangedSafely,
   publishChatThreadMessageCreatedSafely,
   publishThreadListChanged,
   publishThreadListChangedSafely,
@@ -559,6 +560,7 @@ interface ChatRunInfo {
   readonly prompt: string;
   readonly error: string | null;
   readonly lastEventSequence: number | null;
+  readonly cancellationRecoveryCompleted: boolean | null;
 }
 
 interface CreateQueuedChatRunInput {
@@ -1297,6 +1299,7 @@ async function insertAssistantErrorEvent(args: {
   readonly threadId: string;
   readonly userId: string;
   readonly lifecycleEvent: "failed" | "cancelled";
+  readonly cancellationRecoveryCapable: boolean;
   readonly getFormattedError: () => Promise<string>;
   readonly slackDelivery?: SlackDeliveryTarget;
   readonly feishuDelivery?: FeishuDeliveryTarget;
@@ -1395,6 +1398,9 @@ async function insertAssistantErrorEvent(args: {
 
   await publishChatThreadMessageCreatedSafely(args.userId, args.threadId);
   await publishThreadListChangedSafely(args.userId);
+  if (args.lifecycleEvent === "cancelled" && args.cancellationRecoveryCapable) {
+    await publishChatThreadDetailChangedSafely(args.userId, args.threadId);
+  }
   return {
     displayErrorMessage,
     inserted: true,
@@ -2015,6 +2021,7 @@ async function handleFailedChatCallback(args: {
   readonly runId: string;
   readonly chatThread: ChatThreadForRunRow;
   readonly errorMessage: string;
+  readonly cancellationRecoveryCapable: boolean;
   readonly getFormattedError: () => Promise<string>;
   readonly slackDelivery?: SlackDeliveryTarget;
   readonly feishuDelivery?: FeishuDeliveryTarget;
@@ -2034,6 +2041,7 @@ async function handleFailedChatCallback(args: {
     threadId: args.chatThread.chatThreadId,
     userId: args.chatThread.userId,
     lifecycleEvent,
+    cancellationRecoveryCapable: args.cancellationRecoveryCapable,
     getFormattedError: args.getFormattedError,
     slackDelivery: args.slackDelivery,
     feishuDelivery: args.feishuDelivery,
@@ -3616,6 +3624,7 @@ async function loadTerminalChatCallback(args: {
       prompt: agentRuns.prompt,
       error: agentRuns.error,
       lastEventSequence: agentRuns.lastEventSequence,
+      cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
     })
     .from(agentRuns)
     .where(eq(agentRuns.id, args.runId))
@@ -3765,6 +3774,8 @@ async function prepareFailedTerminalChatCallbackWork(args: {
         runId: args.runId,
         chatThread: args.chatThread,
         errorMessage: args.errorMessage,
+        cancellationRecoveryCapable:
+          args.run.cancellationRecoveryCompleted !== null,
         getFormattedError: () => {
           return args.dependencies.formatRunError(
             {

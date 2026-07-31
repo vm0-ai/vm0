@@ -1401,6 +1401,7 @@
       "automationEvent": "Automation event",
       "automationEventDescription": "Waits behind queued messages and runs once the current run finishes.",
       "cancelGoal": "Cancel goal",
+      "cancellationRecoveryPending": "Finalizing the cancelled run before queued work continues.",
       "event_one": "{{count}} event",
       "event_other": "{{count}} events",
       "goal": "Goal",

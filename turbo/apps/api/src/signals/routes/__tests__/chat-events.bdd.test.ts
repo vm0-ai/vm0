@@ -1105,6 +1105,7 @@ describe("CHAT-02: web chat send and client ids", () => {
     await expect(chat.readThread(actor, clientThreadId)).resolves.toStrictEqual(
       {
         lastReadAt: null,
+        cancellationRecoveryPending: false,
       },
     );
 

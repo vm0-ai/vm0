@@ -94,6 +94,7 @@ export interface ChatThreadSignals {
   threadTitleEmoji$: Computed<string | null>;
   threadTitleText$: Computed<string>;
   threadSettledInServer$: Computed<boolean>;
+  cancellationRecoveryPending$: Computed<Promise<boolean>>;
   // -- Composer model selection --------------------------------------------
   // Derived from the thread event projection; user edits register optimistic
   // model_selection_updated events and then persist through the thread API.

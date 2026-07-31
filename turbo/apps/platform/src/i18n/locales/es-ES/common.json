@@ -1432,6 +1432,7 @@
       "automationEvent": "Evento de automatización",
       "automationEventDescription": "Espera detrás de los mensajes en cola y se ejecuta cuando termina la ejecución actual.",
       "cancelGoal": "Cancelar objetivo",
+      "cancellationRecoveryPending": "Finalizando la ejecución cancelada antes de continuar con el trabajo en cola.",
       "event_one": "{{count}} evento",
       "event_many": "{{count}} eventos",
       "event_other": "{{count}} eventos",

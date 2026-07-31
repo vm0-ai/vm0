@@ -118,6 +118,7 @@ import {
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { cancellationRecoveryPendingForThread } from "./zero-chat-active-run.service";
 
 const nullableTriggerSourceDecoder = nullableDriverValueDecoder(
   zodEnumDriverValueDecoder(triggerSourceSchema),
@@ -1146,9 +1147,14 @@ export function zeroChatThreadDetail(args: {
     if (!thread) {
       return null;
     }
+    const cancellationRecoveryPending =
+      await cancellationRecoveryPendingForThread(get(db$), {
+        threadId: args.threadId,
+      });
 
     return {
       lastReadAt: thread.lastReadAt?.toISOString() ?? null,
+      cancellationRecoveryPending,
     };
   });
 }

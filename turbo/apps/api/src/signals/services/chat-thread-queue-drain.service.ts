@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { logger } from "../../lib/log";
 import { writeDb$ } from "../external/db";
 import { now, nowDate } from "../external/time";
+import { publishChatThreadDetailChangedSafely } from "../external/realtime";
 import { tapError } from "../utils";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
 import { staleChatThreadQueueThreadIds } from "./workflow-chat-event-queue.service";
@@ -17,7 +18,7 @@ import {
   drainWorkflowQueueForThread$,
   type WorkflowQueueDrainResult,
 } from "./zero-workflow-queue-drain.service";
-import { expiredCancellationRecoveryThreadIds } from "./zero-chat-active-run.service";
+import { expiredCancellationRecoveryThreads } from "./zero-chat-active-run.service";
 import { drainGoalQueueForThread$ } from "./zero-goal-queue-drain.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 
@@ -25,11 +26,17 @@ const DRAIN_SWEEP_LIMIT = 20;
 const STALE_QUEUE_ITEM_AGE_MS = 5 * 60 * 1000;
 const L = logger("ChatThreadQueueDrain");
 
-interface QueueDrainSweepCandidate {
-  readonly chatThreadId: string;
-  readonly queueItemCreatedBefore?: Date;
-  readonly reason: "cancellation-recovery-expired" | "queue-item-stale";
-}
+type QueueDrainSweepCandidate =
+  | {
+      readonly chatThreadId: string;
+      readonly userId: string;
+      readonly reason: "cancellation-recovery-expired";
+    }
+  | {
+      readonly chatThreadId: string;
+      readonly queueItemCreatedBefore: Date;
+      readonly reason: "queue-item-stale";
+    };
 
 interface DrainChatThreadQueueInput {
   readonly apiStartTime?: number;
@@ -150,8 +157,8 @@ export const drainStaleChatThreadQueues$ = command(
     const recoveryExpiredBefore = new Date(
       currentTime - CANCELLATION_RECOVERY_STALE_AFTER_MS,
     );
-    const [recoveryThreadIds, staleThreadIds] = await Promise.all([
-      expiredCancellationRecoveryThreadIds(db, {
+    const [recoveryThreads, staleThreadIds] = await Promise.all([
+      expiredCancellationRecoveryThreads(db, {
         expiredBefore: recoveryExpiredBefore,
         limit: DRAIN_SWEEP_LIMIT,
       }),
@@ -161,11 +168,16 @@ export const drainStaleChatThreadQueues$ = command(
       }),
     ]);
     signal.throwIfAborted();
-    const recoveryThreadIdSet = new Set(recoveryThreadIds);
+    const recoveryThreadIdSet = new Set(
+      recoveryThreads.map((thread) => {
+        return thread.chatThreadId;
+      }),
+    );
     const recoveryCandidates: readonly QueueDrainSweepCandidate[] =
-      recoveryThreadIds.map((chatThreadId) => {
+      recoveryThreads.map(({ chatThreadId, userId }) => {
         return {
           chatThreadId,
+          userId,
           reason: "cancellation-recovery-expired" as const,
         };
       });
@@ -196,7 +208,10 @@ export const drainStaleChatThreadQueues$ = command(
           {
             chatThreadId: candidate.chatThreadId,
             dispatchFailedCallbacks: input.dispatchFailedCallbacks,
-            queueItemCreatedBefore: candidate.queueItemCreatedBefore,
+            queueItemCreatedBefore:
+              candidate.reason === "queue-item-stale"
+                ? candidate.queueItemCreatedBefore
+                : undefined,
           },
           signal,
         ),
@@ -209,6 +224,13 @@ export const drainStaleChatThreadQueues$ = command(
         },
       );
       signal.throwIfAborted();
+      if (candidate.reason === "cancellation-recovery-expired") {
+        await publishChatThreadDetailChangedSafely(
+          candidate.userId,
+          candidate.chatThreadId,
+        );
+        signal.throwIfAborted();
+      }
     }
     return candidates.length;
   },

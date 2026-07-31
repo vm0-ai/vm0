@@ -1401,6 +1401,7 @@
       "automationEvent": "Automatisierungsereignis",
       "automationEventDescription": "Wartet hinter Nachrichten in der Warteschlange und wird ausgeführt, sobald die aktuelle Ausführung abgeschlossen ist.",
       "cancelGoal": "Ziel abbrechen",
+      "cancellationRecoveryPending": "Die abgebrochene Ausführung wird abgeschlossen, bevor die Arbeit in der Warteschlange fortgesetzt wird.",
       "event_one": "{{count}} Ereignis",
       "event_other": "{{count}} Ereignisse",
       "goal": "Ziel",
