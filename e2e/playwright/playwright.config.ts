@@ -60,7 +60,7 @@ export default defineConfig({
       ? { "x-vercel-protection-bypass": vercelAutomationBypassSecret }
       : undefined,
     ignoreHTTPSErrors: true,
-    trace: "on-first-retry",
+    trace: "retain-on-failure",
     ...devices["Desktop Chrome"],
   },
   projects: [
