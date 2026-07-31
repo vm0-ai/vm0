@@ -814,15 +814,7 @@ describe("runner resume session contract", () => {
   });
 });
 
-describe("runner claim capability contract", () => {
-  it("accepts unknown capabilities for forward compatibility", () => {
-    const result = runnersJobClaimContract.claim.body.safeParse({
-      capabilities: ["futureCapability"],
-    });
-
-    expect(result.success).toBe(true);
-  });
-
+describe("runner claim request contract", () => {
   it("accepts optional direct candidate timing telemetry", () => {
     const result = runnersJobClaimContract.claim.body.safeParse({
       telemetry: {
@@ -852,7 +844,7 @@ describe("runner claim capability contract", () => {
     expect(body.telemetry).toEqual({});
   });
 
-  it("discards malformed diagnostic telemetry without weakening capabilities", () => {
+  it("discards malformed diagnostic telemetry", () => {
     const body = runnersJobClaimContract.claim.body.parse({
       telemetry: {
         pollReason: "future-reason",
@@ -861,11 +853,6 @@ describe("runner claim capability contract", () => {
     });
 
     expect(body.telemetry).toEqual({});
-    expect(
-      runnersJobClaimContract.claim.body.safeParse({
-        capabilities: [123],
-      }).success,
-    ).toBe(false);
   });
 });
 

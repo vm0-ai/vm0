@@ -2150,10 +2150,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, created.runId, [200]);
   });
 
-  it("returns canonical storage manifests with and without the retired capability", async () => {
+  it("returns canonical storage manifests without API-only ownership fields", async () => {
     const api = createRunsApi(context);
     const { actor, runnerGroup } = await entitledRunActor();
-    const composeName = `bdd-storage-capability-${randomUUID().slice(0, 8)}`;
+    const composeName = `bdd-storage-manifest-${randomUUID().slice(0, 8)}`;
     const compose = await api.createCompose(actor, {
       version: "1",
       agents: {
@@ -2191,34 +2191,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       expect(mount).not.toHaveProperty("userId");
     }
 
-    const retiredCapabilityRun = await api.createDirectRun(actor, {
-      agentComposeVersionId: compose.versionId,
-      prompt: "retired storage capability claim",
-    });
-    // Receiver versions deployed before capability retirement keep sending this
-    // open-ended claim field while the new API rolls out.
-    const retiredCapabilityClaim = await api.claimRunnerJob(
-      retiredCapabilityRun.runId,
-      {
-        capabilities: ["storage-mounts-v1"],
-      },
-    );
-    const retiredCapabilityManifest = expectCanonicalStorageManifest(
-      retiredCapabilityClaim.storageManifest,
-    );
-    if (!retiredCapabilityManifest) {
-      throw new Error("Expected canonical mounts for the retired capability");
-    }
-    expect(retiredCapabilityManifest).not.toHaveProperty("storages");
-    expect(retiredCapabilityManifest).not.toHaveProperty("artifacts");
-    expect(retiredCapabilityManifest.storageMounts).toStrictEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: "memory", writeback: true }),
-      ]),
-    );
-
     await api.requestCancelRun(actor, canonicalRun.runId, [200]);
-    await api.requestCancelRun(actor, retiredCapabilityRun.runId, [200]);
   });
 
   it("persists canonical mounts across session continuation", async () => {
