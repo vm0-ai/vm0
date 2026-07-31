@@ -53,7 +53,6 @@ type ChatEventInputPayload = Pick<
   "attachFiles" | "generationTemplate"
 > & {
   readonly attachFileMetadata?: typeof chatEventInputParams.$inferInsert.attachFileMetadata;
-  readonly goalSnapshot?: ChatEventGoalSnapshot | null;
   readonly userMessage: NonNullable<ChatEventInsert["userMessage"]>;
 };
 
@@ -461,10 +460,10 @@ function persistedChatEventValues(
   >,
 ): PersistedChatEvent {
   const runLifecycleEvent = chatEventRunLifecycle(values.eventType);
-  const persistedValues =
-    "goalSnapshot" in values
-      ? (({ goalSnapshot: _goalSnapshot, ...rest }) => rest)(values)
-      : values;
+  const { goalSnapshot: _goalSnapshot, ...persistedValues } = {
+    goalSnapshot: undefined,
+    ...values,
+  };
   return {
     ...persistedValues,
     ...overrides,
