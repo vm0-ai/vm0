@@ -2316,6 +2316,56 @@ describe("zero attachment chips", () => {
     expect(screen.getByTestId("artifact-sidebar")).toBe(sidebar);
   });
 
+  it("keeps a composer upload preview in the lightbox while the sidebar is open", async () => {
+    const user = userEvent.setup({ delay: null });
+    context.mocks.upload.success({
+      id: "upload-composer-photo",
+      filename: "photo.png",
+      contentType: "image/png",
+      size: 2048,
+      url: "https://example.com/photo.png",
+    });
+    setupHostedSiteArtifactPreview({
+      featureSwitches: {
+        [FeatureSwitchKey.ArtifactSidebarInlineOpen]: true,
+      },
+      filename: "composer-guard.html",
+      htmlUrl: "https://composer-guard.sites.vm7.io",
+      label: "Composer guard",
+      runId: "run-composer-guard",
+    });
+
+    await user.click(
+      await screen.findByLabelText("Open html preview for Composer guard"),
+    );
+    await user.click(await screen.findByLabelText("Open in split view"));
+
+    const sidebar = await screen.findByTestId("artifact-sidebar");
+    await waitFor(() => {
+      expect(
+        within(sidebar).getByTestId("artifact-sidebar-body-html"),
+      ).toBeInTheDocument();
+    });
+
+    await uploadFile(new File(["img"], "photo.png", { type: "image/png" }));
+    const composerPreview = await screen.findByLabelText(
+      "Open image preview for photo.png",
+    );
+    await waitFor(() => {
+      expect(composerPreview).toBeEnabled();
+    });
+    click(composerPreview);
+
+    // The pending upload opens the lightbox and leaves the sidebar on the
+    // artifact the user was reading.
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox")).toBeInTheDocument();
+    });
+    expect(
+      within(sidebar).getByTestId("artifact-sidebar-body-html"),
+    ).toBeInTheDocument();
+  });
+
   it("swaps the open artifact sidebar to a different clicked artifact", async () => {
     const user = userEvent.setup({ delay: null });
     const videoUrl = "https://cdn.vm7.io/artifacts/test/sidebar-swap/demo.mp4";

@@ -48,7 +48,8 @@ type AttachmentFramedDocumentLightboxInput = AttachmentDocumentLightboxBase & {
 };
 
 type AttachmentDocumentLightboxInput =
-  AttachmentTextDocumentLightboxInput | AttachmentFramedDocumentLightboxInput;
+  | AttachmentTextDocumentLightboxInput
+  | AttachmentFramedDocumentLightboxInput;
 
 export type AttachmentDocumentLightboxState =
   | (AttachmentDocumentLightboxBase & {
