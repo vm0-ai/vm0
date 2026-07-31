@@ -436,7 +436,7 @@ ruleTester.run("require-execute-row-schema", requireExecuteRowSchema, {
     },
     {
       code: `${drizzlePreamble}
-        const { ex\\u0065cute: run } = db;
+        const { ["e\\x78ecute"]: run } = db;
       `,
       errors: [{ messageId: "executeReference" }],
     },
