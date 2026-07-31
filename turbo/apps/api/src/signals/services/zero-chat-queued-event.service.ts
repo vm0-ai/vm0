@@ -451,6 +451,7 @@ export async function claimQueueFirstRunAssociation(
     readonly apiStartTime: number;
     readonly runId: string;
     readonly timing: ApiDispatchTimingCollector;
+    readonly threadAlreadyLocked?: true;
   },
 ): Promise<QueueFirstRunClaimResult> {
   let outcome: "claimed" | "lost" | "error" = "error";
@@ -458,13 +459,15 @@ export async function claimQueueFirstRunAssociation(
     "api_dispatch_claim_queue_first_message",
     "nested",
     async () => {
-      const threadExists = await args.timing.measure(
-        "api_dispatch_queue_first_thread_lock_wait",
-        "nested",
-        async () => {
-          return await lockUserMessageQueueThread(db, args.threadId);
-        },
-      );
+      const threadExists =
+        args.threadAlreadyLocked ??
+        (await args.timing.measure(
+          "api_dispatch_queue_first_thread_lock_wait",
+          "nested",
+          async () => {
+            return await lockUserMessageQueueThread(db, args.threadId);
+          },
+        ));
       if (!threadExists) {
         outcome = "lost";
         return { kind: "lost" };

@@ -131,6 +131,7 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_persist_custom_connector_auth_refs"
   | "api_dispatch_insert_runner_job_queue"
   | "api_dispatch_admission_lock_wait"
+  | "api_dispatch_admission_lock_held"
   | "api_dispatch_check_concurrency_limit"
   | "api_dispatch_concurrency_preflight_lock_wait"
   | "api_dispatch_concurrency_preflight_check"

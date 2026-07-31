@@ -171,7 +171,6 @@ import {
   loadCustomConnectorPermissionBundle,
   type CustomConnectorPermissionBundle,
 } from "./custom-connector-permission-bundle.service";
-import { activePendingRunPredicate } from "./agent-run-activity.service";
 import {
   prepareAgentRunStorage,
   type PreparedAgentRunStorage,
@@ -223,8 +222,8 @@ import {
 } from "./zero-chat-queued-event.service";
 import { recordFirstAssistantEventEligibility } from "./zero-chat-first-assistant-event-metric.service";
 import {
-  activePaidConcurrencySlots,
   cappedBaseConcurrencyLimit,
+  loadOrgConcurrencyState,
   totalConcurrencyLimit,
 } from "./org-concurrency-entitlements.service";
 import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
@@ -504,6 +503,12 @@ interface ThreadSessionSnapshotStale {
   readonly agentSessionRunId: string;
   readonly resolutionAction: ChatThreadSessionResolutionAction;
   readonly reason: "binding_changed" | "session_changed";
+}
+
+interface ValidatedThreadSessionSnapshot {
+  readonly kind: "validated-thread-session-snapshot";
+  readonly chatThreadId: string;
+  readonly agentSessionId: string | null;
 }
 
 type AtomicLaunchCommitResult =
@@ -4422,36 +4427,21 @@ async function checkRunConcurrencyLimit(
   tx: DbTransaction,
   orgId: string,
 ): Promise<CreateRunErrorResult | null> {
-  const [capabilities, paidSlots] = await Promise.all([
-    loadOrgPlanCapabilities(tx, orgId),
-    activePaidConcurrencySlots(tx, orgId),
-  ]);
+  const at = nowDate();
+  const state = await loadOrgConcurrencyState(tx, {
+    orgId,
+    at,
+    activePendingAfter: new Date(at.getTime() - PENDING_RUN_TTL_MS),
+  });
   const limit = getEffectiveConcurrencyLimit(
-    capabilities?.baseConcurrencyLimit ?? 0,
-    paidSlots,
+    state.baseConcurrencyLimit,
+    state.paidSlots,
   );
   if (limit === 0) {
     return null;
   }
 
-  const staleThreshold = new Date(now() - PENDING_RUN_TTL_MS);
-  const [activeResult] = await tx
-    .select({ count: count() })
-    .from(agentRuns)
-    .where(
-      and(
-        eq(agentRuns.orgId, orgId),
-        or(
-          eq(agentRuns.status, "running"),
-          and(
-            eq(agentRuns.status, "pending"),
-            activePendingRunPredicate(staleThreshold),
-          ),
-        ),
-      ),
-    );
-  const activeCount = Number(activeResult?.count ?? 0);
-  return activeCount >= limit ? concurrentRunLimit() : null;
+  return state.activeRunCount >= limit ? concurrentRunLimit() : null;
 }
 
 async function checkFinalRunAdmission(
@@ -5838,6 +5828,7 @@ async function claimQueueFirstAssociationForLaunch(args: {
   readonly createArgs: CreateAgentRunArgs;
   readonly identity: LaunchRunIdentity;
   readonly timing: ApiDispatchTimingCollector;
+  readonly validatedThreadSession: ValidatedThreadSessionSnapshot | undefined;
 }): Promise<QueueFirstRunClaimResult | undefined> {
   const association = args.createArgs.queueFirstAssociation;
   if (!association) {
@@ -5851,6 +5842,9 @@ async function claimQueueFirstAssociationForLaunch(args: {
     apiStartTime: args.createArgs.apiStartTime,
     runId: args.identity.runId,
     timing: args.timing,
+    ...(args.validatedThreadSession?.chatThreadId === association.threadId
+      ? { threadAlreadyLocked: true }
+      : {}),
   });
 }
 
@@ -5871,6 +5865,7 @@ async function commitFailedLaunch(args: {
         createArgs: args.createArgs,
         identity: args.identity,
         timing: args.timing,
+        validatedThreadSession: undefined,
       });
       if (queueFirstClaim?.kind === "lost") {
         return { kind: "queue-first-claim-lost" };
@@ -6007,6 +6002,7 @@ async function persistThreadSessionBinding(
     readonly identity: LaunchRunIdentity;
     readonly resolution: ChatThreadSessionResolution | undefined;
     readonly timing: ApiDispatchTimingCollector;
+    readonly validatedThreadSession: ValidatedThreadSessionSnapshot | undefined;
   },
 ): Promise<ThreadSessionBindingWrite | undefined> {
   if (!args.chatThreadId) {
@@ -6014,27 +6010,36 @@ async function persistThreadSessionBinding(
   }
   const chatThreadId = args.chatThreadId;
 
-  const [thread] = await args.timing.measure(
-    "api_dispatch_load_thread_session_binding",
-    "nested",
-    async () => {
-      return await tx
-        .select({ agentSessionId: chatThreads.agentSessionId })
-        .from(chatThreads)
-        .where(eq(chatThreads.id, chatThreadId))
-        .for("update")
-        .limit(1);
-    },
-  );
-  if (!thread) {
-    throw new Error("Chat thread not found while persisting session binding");
+  let previousAgentSessionId: string | null;
+  if (args.validatedThreadSession) {
+    if (args.validatedThreadSession.chatThreadId !== chatThreadId) {
+      throw new Error("Validated chat thread does not match binding target");
+    }
+    previousAgentSessionId = args.validatedThreadSession.agentSessionId;
+  } else {
+    const [thread] = await args.timing.measure(
+      "api_dispatch_load_thread_session_binding",
+      "nested",
+      async () => {
+        return await tx
+          .select({ agentSessionId: chatThreads.agentSessionId })
+          .from(chatThreads)
+          .where(eq(chatThreads.id, chatThreadId))
+          .for("update")
+          .limit(1);
+      },
+    );
+    if (!thread) {
+      throw new Error("Chat thread not found while persisting session binding");
+    }
+    previousAgentSessionId = thread.agentSessionId;
   }
 
   const action: ThreadSessionBindingAction =
     args.resolution?.action ??
-    (thread.agentSessionId === null
+    (previousAgentSessionId === null
       ? "initialized"
-      : thread.agentSessionId === args.identity.sessionId
+      : previousAgentSessionId === args.identity.sessionId
         ? "reused"
         : "rotated");
   const [updated] = await args.timing.measure(
@@ -6090,7 +6095,9 @@ async function validateThreadSessionSnapshot(
     readonly identity: LaunchRunIdentity;
     readonly timing: ApiDispatchTimingCollector;
   },
-): Promise<ThreadSessionSnapshotStale | undefined> {
+): Promise<
+  ThreadSessionSnapshotStale | ValidatedThreadSessionSnapshot | undefined
+> {
   const resolution = args.createArgs.threadSessionResolution;
   const chatThreadId = args.createArgs.chatThreadId;
   if (!resolution || !chatThreadId) {
@@ -6128,7 +6135,11 @@ async function validateThreadSessionSnapshot(
 
   const expectedSessionId = resolution.expected.sessionId;
   if (expectedSessionId === null) {
-    return undefined;
+    return {
+      kind: "validated-thread-session-snapshot",
+      chatThreadId,
+      agentSessionId: thread.agentSessionId,
+    };
   }
   const [session] = await args.timing.measure(
     "api_dispatch_validate_thread_session_snapshot_session",
@@ -6152,7 +6163,11 @@ async function validateThreadSessionSnapshot(
       reason: "session_changed",
     });
   }
-  return undefined;
+  return {
+    kind: "validated-thread-session-snapshot",
+    chatThreadId,
+    agentSessionId: thread.agentSessionId,
+  };
 }
 
 async function commitQueuedPreparedLaunch(
@@ -6160,6 +6175,7 @@ async function commitQueuedPreparedLaunch(
   args: CommitPreparedLaunchArgs,
   payload: RunnerJobPayload,
   queueFirstClaim: QueueFirstRunClaimed | undefined,
+  validatedThreadSession: ValidatedThreadSessionSnapshot | undefined,
 ): Promise<Extract<AtomicLaunchCommitResult, { readonly kind: "queued" }>> {
   if (!args.encryptedQueuedParams) {
     throw new Error("Missing encrypted queued runner job payload");
@@ -6216,6 +6232,7 @@ async function commitQueuedPreparedLaunch(
     identity: args.identity,
     resolution: args.createArgs.threadSessionResolution,
     timing: args.timing,
+    validatedThreadSession,
   });
   return {
     kind: "queued",
@@ -6234,6 +6251,7 @@ async function commitPendingPreparedLaunch(
   args: CommitPreparedLaunchArgs,
   payload: RunnerJobPayload,
   queueFirstClaim: QueueFirstRunClaimed | undefined,
+  validatedThreadSession: ValidatedThreadSessionSnapshot | undefined,
 ): Promise<Extract<AtomicLaunchCommitResult, { readonly kind: "pending" }>> {
   const run = await insertAtomicLaunchRunRecord({
     tx,
@@ -6278,6 +6296,7 @@ async function commitPendingPreparedLaunch(
     identity: args.identity,
     resolution: args.createArgs.threadSessionResolution,
     timing: args.timing,
+    validatedThreadSession,
   });
   return {
     kind: "pending",
@@ -6290,11 +6309,77 @@ async function commitPendingPreparedLaunch(
   };
 }
 
+async function commitPreparedLaunchUnderLock(
+  tx: DbTransaction,
+  args: CommitPreparedLaunchArgs,
+  payload: RunnerJobPayload,
+): Promise<AtomicLaunchCommitResult | CreateRunErrorResult> {
+  const threadSessionValidation = await validateThreadSessionSnapshot(tx, {
+    createArgs: args.createArgs,
+    identity: args.identity,
+    timing: args.timing,
+  });
+  if (threadSessionValidation?.kind === "thread-session-snapshot-stale") {
+    return threadSessionValidation;
+  }
+  const validatedThreadSession = threadSessionValidation;
+  const concurrency = await args.timing.measure(
+    "api_dispatch_check_concurrency_limit",
+    "nested",
+    async () => {
+      return await checkRunConcurrencyLimit(tx, args.createArgs.orgId);
+    },
+  );
+
+  if (concurrency) {
+    if (!args.createArgs.queueOnConcurrencyLimit) {
+      return concurrency;
+    }
+    if (!args.encryptedQueuedParams) {
+      return { kind: "queue-payload-required" };
+    }
+    const queueFirstClaim = await claimQueueFirstAssociationForLaunch({
+      tx,
+      createArgs: args.createArgs,
+      identity: args.identity,
+      timing: args.timing,
+      validatedThreadSession,
+    });
+    if (queueFirstClaim?.kind === "lost") {
+      return { kind: "queue-first-claim-lost" };
+    }
+    return await commitQueuedPreparedLaunch(
+      tx,
+      args,
+      payload,
+      queueFirstClaim,
+      validatedThreadSession,
+    );
+  }
+
+  const queueFirstClaim = await claimQueueFirstAssociationForLaunch({
+    tx,
+    createArgs: args.createArgs,
+    identity: args.identity,
+    timing: args.timing,
+    validatedThreadSession,
+  });
+  if (queueFirstClaim?.kind === "lost") {
+    return { kind: "queue-first-claim-lost" };
+  }
+  return await commitPendingPreparedLaunch(
+    tx,
+    args,
+    payload,
+    queueFirstClaim,
+    validatedThreadSession,
+  );
+}
+
 async function commitPreparedLaunch(
   args: CommitPreparedLaunchArgs,
 ): Promise<AtomicLaunchCommitResult | CreateRunErrorResult> {
-  const payload = args.launch.runnerJobPayload;
-  return await args.db.transaction(async (tx) => {
+  const committed = await args.db.transaction(async (tx) => {
     await args.timing.measure(
       "api_dispatch_admission_lock_wait",
       "nested",
@@ -6304,62 +6389,22 @@ async function commitPreparedLaunch(
         );
       },
     );
-    const staleThreadSession = await validateThreadSessionSnapshot(tx, {
-      createArgs: args.createArgs,
-      identity: args.identity,
-      timing: args.timing,
-    });
-    if (staleThreadSession) {
-      return staleThreadSession;
-    }
-    const concurrency = await args.timing.measure(
-      "api_dispatch_check_concurrency_limit",
-      "nested",
-      async () => {
-        return await checkRunConcurrencyLimit(tx, args.createArgs.orgId);
-      },
-    );
-
-    if (concurrency) {
-      if (!args.createArgs.queueOnConcurrencyLimit) {
-        return concurrency;
-      }
-      if (!args.encryptedQueuedParams) {
-        return { kind: "queue-payload-required" };
-      }
-      const queueFirstClaim = await claimQueueFirstAssociationForLaunch({
-        tx,
-        createArgs: args.createArgs,
-        identity: args.identity,
-        timing: args.timing,
-      });
-      if (queueFirstClaim?.kind === "lost") {
-        return { kind: "queue-first-claim-lost" };
-      }
-      return await commitQueuedPreparedLaunch(
+    const admissionLockHeldStartedAt = now();
+    return {
+      result: await commitPreparedLaunchUnderLock(
         tx,
         args,
-        payload,
-        queueFirstClaim,
-      );
-    }
-
-    const queueFirstClaim = await claimQueueFirstAssociationForLaunch({
-      tx,
-      createArgs: args.createArgs,
-      identity: args.identity,
-      timing: args.timing,
-    });
-    if (queueFirstClaim?.kind === "lost") {
-      return { kind: "queue-first-claim-lost" };
-    }
-    return await commitPendingPreparedLaunch(
-      tx,
-      args,
-      payload,
-      queueFirstClaim,
-    );
+        args.launch.runnerJobPayload,
+      ),
+      admissionLockHeldStartedAt,
+    };
   });
+  args.timing.recordElapsed(
+    "api_dispatch_admission_lock_held",
+    "nested",
+    committed.admissionLockHeldStartedAt,
+  );
+  return committed.result;
 }
 
 function buildAtomicLaunchPayload(

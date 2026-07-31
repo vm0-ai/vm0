@@ -1296,6 +1296,73 @@ describe("RUN-01/RUN-02: session continuation, memory policies, and volume pinni
 });
 
 describe("RUN-01: direct run admission boundaries", () => {
+  it("serializes concurrent direct runs at a one-run limit", async () => {
+    const actor = await entitledActor();
+    const compose = await createClaudeCompose(actor, "bdd-admission-race");
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+
+    const attempts = await Promise.all([
+      reads.requestCreateDirectRun(
+        actor,
+        {
+          agentComposeId: compose.composeId,
+          prompt: "concurrent admission candidate one",
+        },
+        [201, 429],
+      ),
+      reads.requestCreateDirectRun(
+        actor,
+        {
+          agentComposeId: compose.composeId,
+          prompt: "concurrent admission candidate two",
+        },
+        [201, 429],
+      ),
+    ]);
+
+    expect(
+      attempts
+        .map((attempt) => {
+          return attempt.status;
+        })
+        .sort(),
+    ).toStrictEqual([201, 429]);
+
+    const rejected = attempts.find((attempt) => {
+      return attempt.status === 429;
+    });
+    if (!rejected || rejected.status !== 429) {
+      throw new Error("Expected one concurrent run to be rejected");
+    }
+    expectApiError(rejected.body);
+    expect(rejected.body.error.code).toBe("CONCURRENT_RUN_LIMIT");
+
+    const accepted = attempts.find((attempt) => {
+      return attempt.status === 201;
+    });
+    if (!accepted || accepted.status !== 201) {
+      throw new Error("Expected one concurrent run to be accepted");
+    }
+    const pending = await reads.requestListAgentRuns(
+      actor,
+      { status: "pending" },
+      [200],
+    );
+    expect(
+      pending.body.runs.map((run) => {
+        return run.id;
+      }),
+    ).toStrictEqual([accepted.body.runId]);
+    const queued = await reads.requestListAgentRuns(
+      actor,
+      { status: "queued" },
+      [200],
+    );
+    expect(queued.body.runs).toStrictEqual([]);
+
+    await api.requestCancelRun(actor, accepted.body.runId, [200]);
+  });
+
   it("enforces direct-run concurrency, caps, and the production capture gate", async () => {
     const actor = await entitledActor();
     const compose = await createClaudeCompose(actor, "bdd-admission");
