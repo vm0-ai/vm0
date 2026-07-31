@@ -139,8 +139,11 @@ const API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
 ] as const;
 const API_DISPATCH_THREAD_SESSION_BINDING_ACTION_TYPES = [
   "api_dispatch_validate_thread_session_snapshot_thread",
-  "api_dispatch_load_thread_session_binding",
   "api_dispatch_update_thread_session_binding",
+] as const;
+const API_DISPATCH_REUSED_THREAD_READ_ACTION_TYPES = [
+  "api_dispatch_queue_first_thread_lock_wait",
+  "api_dispatch_load_thread_session_binding",
 ] as const;
 const API_DISPATCH_QUEUED_PERSISTENCE_ACTION_TYPES = [
   "api_dispatch_persist_custom_connector_auth_refs",
@@ -983,6 +986,18 @@ describe("CHAT-02: web chat send and client ids", () => {
       timingEvents,
       API_DISPATCH_THREAD_SESSION_BINDING_ACTION_TYPES,
       "nested",
+    );
+    expectApiDispatchSpanKind(
+      timingEvents,
+      [
+        "api_dispatch_admission_lock_held",
+        "api_dispatch_claim_queue_first_message",
+      ],
+      "nested",
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_REUSED_THREAD_READ_ACTION_TYPES,
     );
     expect(timingEvents).toContainEqual(
       expect.objectContaining({

@@ -228,6 +228,7 @@ const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_persist_runner_job_queue",
   ...API_DISPATCH_QUEUE_PERSISTENCE_ACTION_TYPES,
   "api_dispatch_admission_lock_wait",
+  "api_dispatch_admission_lock_held",
   "api_dispatch_check_concurrency_limit",
   "api_dispatch_insert_run_record",
   "api_dispatch_prepare_storage_manifest",
