@@ -443,7 +443,7 @@ fn filter_current_held_workspace_states(
         .into_iter()
         .filter(|state| !active_reuse_keys.contains(&state.reuse_key))
         .collect::<Vec<_>>();
-    let observed_sessions = states.len();
+    let observed_workspace_states = states.len();
     let observed_workspace_caches = states
         .iter()
         .map(|state| state.workspace_caches.len())
@@ -458,10 +458,12 @@ fn filter_current_held_workspace_states(
         .iter()
         .map(|state| state.workspace_caches.len())
         .sum::<usize>();
-    if states.len() < observed_sessions || retained_workspace_caches < observed_workspace_caches {
+    if states.len() < observed_workspace_states
+        || retained_workspace_caches < observed_workspace_caches
+    {
         info!(
-            observed_sessions,
-            retained_sessions = states.len(),
+            observed_workspace_states,
+            retained_workspace_states = states.len(),
             observed_workspace_caches,
             retained_workspace_caches,
             "heartbeat held workspace state truncated"
@@ -516,7 +518,7 @@ fn merge_workspace_cache_snapshot_states(
 }
 
 fn cap_workspace_cache_snapshot_states(states: &mut Vec<HeldWorkspaceState>) {
-    let observed_sessions = states.len();
+    let observed_workspace_states = states.len();
     let observed_workspace_caches = states
         .iter()
         .map(|state| state.workspace_caches.len())
@@ -526,10 +528,12 @@ fn cap_workspace_cache_snapshot_states(states: &mut Vec<HeldWorkspaceState>) {
         .iter()
         .map(|state| state.workspace_caches.len())
         .sum::<usize>();
-    if states.len() < observed_sessions || retained_workspace_caches < observed_workspace_caches {
+    if states.len() < observed_workspace_states
+        || retained_workspace_caches < observed_workspace_caches
+    {
         info!(
-            observed_sessions,
-            retained_sessions = states.len(),
+            observed_workspace_states,
+            retained_workspace_states = states.len(),
             observed_workspace_caches,
             retained_workspace_caches,
             "workspace cache snapshot truncated"

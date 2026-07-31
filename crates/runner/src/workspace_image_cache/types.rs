@@ -11,7 +11,7 @@ use super::{MAX_ENTRY_BYTES_CAP, MIN_FREE_BYTES_FLOOR};
 pub(crate) enum WorkspaceCacheCheckoutResult {
     Hit,
     Miss,
-    NoSession,
+    NoReuseKey,
     InvalidWorkingDir,
     LockBusy,
     InvalidMetadata,

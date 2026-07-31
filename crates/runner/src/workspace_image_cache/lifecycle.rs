@@ -281,7 +281,7 @@ impl SessionWorkspaceCache {
             return active_lease(WorkspaceCacheCheckoutResult::InvalidWorkingDir, None, None);
         };
         let Some(reuse_key) = common.reuse_key else {
-            return active_lease(WorkspaceCacheCheckoutResult::NoSession, None, None);
+            return active_lease(WorkspaceCacheCheckoutResult::NoReuseKey, None, None);
         };
 
         let cache_key = common.cache_key(self, reuse_key, working_dir);
@@ -347,7 +347,7 @@ impl SessionWorkspaceCache {
         };
         let Some(reuse_key) = common.reuse_key else {
             return workspace_drive(
-                WorkspaceCacheCheckoutResult::NoSession,
+                WorkspaceCacheCheckoutResult::NoReuseKey,
                 None,
                 None,
                 None,
@@ -1129,7 +1129,7 @@ impl WorkspaceImageLease {
                         .or_else(|| cli_agent_session_id_override.map(str::to_owned)),
                 })
             }
-            WorkspaceCacheCheckoutResult::NoSession => None,
+            WorkspaceCacheCheckoutResult::NoReuseKey => None,
             WorkspaceCacheCheckoutResult::InvalidWorkingDir
             | WorkspaceCacheCheckoutResult::LockBusy
             | WorkspaceCacheCheckoutResult::InvalidMetadata

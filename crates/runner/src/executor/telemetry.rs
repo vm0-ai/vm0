@@ -220,7 +220,8 @@ pub(super) fn record_workspace_cache_result(
     let action_type = match result {
         WorkspaceCacheCheckoutResult::Hit => "workspace_image_cache_hit",
         WorkspaceCacheCheckoutResult::Miss => "workspace_image_cache_miss",
-        WorkspaceCacheCheckoutResult::NoSession => "workspace_image_cache_no_session",
+        // Keep the established action type stable for existing telemetry consumers.
+        WorkspaceCacheCheckoutResult::NoReuseKey => "workspace_image_cache_no_session",
         WorkspaceCacheCheckoutResult::InvalidWorkingDir => {
             "workspace_image_cache_invalid_working_dir"
         }

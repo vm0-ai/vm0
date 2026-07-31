@@ -1231,7 +1231,7 @@ async fn no_reuse_key_checkout_without_session_has_no_promotion_context() {
         })
         .await;
 
-    assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::NoSession);
+    assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::NoReuseKey);
     assert!(
         lease
             .into_promotion_context(WorkspaceImagePromotionRequest {
@@ -1274,7 +1274,7 @@ async fn no_reuse_key_checkout_cannot_promote_with_late_discovered_cli_agent_ses
         .await
         .unwrap();
 
-    assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::NoSession);
+    assert_eq!(lease.result(), WorkspaceCacheCheckoutResult::NoReuseKey);
     assert!(
         !lease
             .promote(
