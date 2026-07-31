@@ -6,10 +6,25 @@ import {
 } from "@typescript-eslint/utils";
 import {
   IndexKind,
+  isAsExpression,
+  isCallExpression,
+  isElementAccessExpression,
+  isExpression,
+  isFunctionDeclaration,
+  isIdentifier,
+  isMethodDeclaration,
+  isNonNullExpression,
+  isObjectLiteralExpression,
+  isParenthesizedExpression,
+  isPropertyAccessExpression,
+  isSatisfiesExpression,
+  isSpreadElement,
+  isTypeAssertionExpression,
   isVariableDeclaration,
   isVariableDeclarationList,
   NodeFlags,
   TypeFlags,
+  type Expression,
   type Node,
   type Symbol as TypeScriptSymbol,
   type Type,
@@ -18,6 +33,7 @@ import {
 } from "typescript";
 
 import {
+  isDrizzleColumnType,
   isDrizzleDeclaration,
   isDrizzleSqlTag as isDrizzleSqlTagExpression,
   isDrizzleSymbol,
@@ -43,6 +59,15 @@ const RESULT_METHOD_NAMES = [
 const RESULT_METHOD_HINTS = RESULT_METHOD_NAMES.map((name) => {
   return name.toLowerCase();
 });
+
+const SHARED_DECODER_SOURCE_SUFFIX =
+  "/turbo/apps/api/src/lib/db-structured-result.ts";
+const VALIDATING_DECODER_FACTORIES = new Set([
+  "zodDriverValueDecoder",
+  "zodEnumDriverValueDecoder",
+]);
+const NULLABLE_DECODER_FACTORY = "nullableDriverValueDecoder";
+const MAX_DECODER_PROVENANCE_STEPS = 64;
 
 type SelectionTypeStatus = "safe" | "unmapped" | "uninspectable";
 
@@ -359,6 +384,8 @@ export const requireSqlResultMapping = createRule({
         "Relational query config must be an inline object or a local variable so raw SQL extras can be inspected.",
       unmappedResult:
         "Raw SQL in a structured Drizzle result must derive a concrete output from .mapWith(...) or a trusted schema-aware helper.",
+      uninspectableResultDecoder:
+        "Drizzle .mapWith(...) must use an inspectable schema column or reviewed runtime decoder.",
     },
   },
   create(context) {
@@ -371,6 +398,7 @@ export const requireSqlResultMapping = createRule({
     >();
     const resultMethodHintVariablesInProgress =
       new Set<TSESLint.Scope.Variable>();
+    const decoderProvenanceByNode = new WeakMap<Node, boolean>();
 
     function symbolAt(node: TSESTree.Node): TypeScriptSymbol | undefined {
       const tsNode = services.esTreeNodeToTSNodeMap.get(node);
@@ -425,6 +453,279 @@ export const requireSqlResultMapping = createRule({
         isVariableDeclarationList(declaration.parent) &&
         (declaration.parent.flags & NodeFlags.Const) !== 0
       );
+    }
+
+    function isSharedDecoderDeclaration(node: Node): boolean {
+      return node
+        .getSourceFile()
+        .fileName.replaceAll("\\", "/")
+        .endsWith(SHARED_DECODER_SOURCE_SUFFIX);
+    }
+
+    function expressionSymbol(node: Expression): TypeScriptSymbol | undefined {
+      if (isIdentifier(node)) {
+        return resolvedSymbol(checker, checker.getSymbolAtLocation(node));
+      }
+      if (isPropertyAccessExpression(node)) {
+        return resolvedSymbol(checker, checker.getSymbolAtLocation(node.name));
+      }
+      if (isElementAccessExpression(node)) {
+        return resolvedSymbol(
+          checker,
+          checker.getSymbolAtLocation(node.argumentExpression),
+        );
+      }
+      return undefined;
+    }
+
+    function transparentDecoderExpression(
+      node: Expression,
+    ): Expression | undefined {
+      return isParenthesizedExpression(node) || isSatisfiesExpression(node)
+        ? node.expression
+        : undefined;
+    }
+
+    function reviewedDecoderFactorySymbol(
+      node: Expression,
+      visited: Set<TypeScriptSymbol>,
+    ): TypeScriptSymbol | undefined {
+      const transparent = transparentDecoderExpression(node);
+      if (transparent !== undefined) {
+        return reviewedDecoderFactorySymbol(transparent, visited);
+      }
+      if (
+        isAsExpression(node) ||
+        isTypeAssertionExpression(node) ||
+        isNonNullExpression(node)
+      ) {
+        return undefined;
+      }
+      const symbol = expressionSymbol(node);
+      if (
+        symbol?.declarations?.some((declaration) => {
+          return (
+            isFunctionDeclaration(declaration) &&
+            isSharedDecoderDeclaration(declaration)
+          );
+        }) === true
+      ) {
+        return symbol;
+      }
+      if (symbol === undefined || visited.has(symbol)) {
+        return undefined;
+      }
+      const declaration = symbol.valueDeclaration;
+      if (
+        declaration === undefined ||
+        !isVariableDeclaration(declaration) ||
+        !isConstVariable(declaration) ||
+        declaration.initializer === undefined
+      ) {
+        return undefined;
+      }
+      visited.add(symbol);
+      const target = reviewedDecoderFactorySymbol(
+        declaration.initializer,
+        visited,
+      );
+      visited.delete(symbol);
+      return target;
+    }
+
+    function isRealDriverValueDecoderType(type: Type, location: Node): boolean {
+      const mapFromDriverValue = checker.getPropertyOfType(
+        type,
+        "mapFromDriverValue",
+      );
+      return (
+        mapFromDriverValue !== undefined &&
+        isDrizzleSymbol(checker, mapFromDriverValue) &&
+        checker
+          .getTypeOfSymbolAtLocation(mapFromDriverValue, location)
+          .getCallSignatures().length > 0
+      );
+    }
+
+    function isGlobalObjectFreezeCall(node: Expression): boolean {
+      if (
+        !isCallExpression(node) ||
+        !isPropertyAccessExpression(node.expression) ||
+        node.expression.expression.getText() !== "Object" ||
+        node.expression.name.text !== "freeze"
+      ) {
+        return false;
+      }
+      const symbol = resolvedSymbol(
+        checker,
+        checker.getSymbolAtLocation(node.expression.name),
+      );
+      return (
+        symbol?.declarations?.some((declaration) => {
+          const source = declaration
+            .getSourceFile()
+            .fileName.replaceAll("\\", "/");
+          return /\/lib\.es\d+(?:\.[^.]+)*\.d\.ts$/.test(source);
+        }) === true
+      );
+    }
+
+    function isReviewedFrozenDecoder(
+      declaration: VariableDeclaration,
+    ): boolean {
+      const initializer = declaration.initializer;
+      if (
+        !isSharedDecoderDeclaration(declaration) ||
+        !isConstVariable(declaration) ||
+        initializer === undefined ||
+        !isRealDriverValueDecoderType(
+          checker.getTypeAtLocation(declaration.name),
+          declaration.name,
+        ) ||
+        !isCallExpression(initializer) ||
+        !isGlobalObjectFreezeCall(initializer) ||
+        initializer.arguments.length !== 1
+      ) {
+        return false;
+      }
+      const value = initializer.arguments[0];
+      return (
+        value !== undefined &&
+        !isSpreadElement(value) &&
+        isObjectLiteralExpression(value) &&
+        value.properties.some((property) => {
+          return (
+            isMethodDeclaration(property) &&
+            property.name.getText().replaceAll(/["']/g, "") ===
+              "mapFromDriverValue"
+          );
+        })
+      );
+    }
+
+    interface DecoderProvenanceState {
+      steps: number;
+      readonly symbols: Set<TypeScriptSymbol>;
+    }
+
+    function isReviewedDecoderFactoryCall(
+      node: Expression,
+      state: DecoderProvenanceState,
+    ): boolean {
+      if (!isCallExpression(node)) {
+        return false;
+      }
+      const target = reviewedDecoderFactorySymbol(node.expression, new Set());
+      if (target === undefined || node.arguments.length !== 1) {
+        return false;
+      }
+      const argument = node.arguments[0];
+      if (argument === undefined || isSpreadElement(argument)) {
+        return false;
+      }
+      const name = target.getName();
+      if (VALIDATING_DECODER_FACTORIES.has(name)) {
+        return true;
+      }
+      return (
+        name === NULLABLE_DECODER_FACTORY &&
+        hasInspectableDecoderProvenance(argument, state)
+      );
+    }
+
+    function hasInspectableDecoderProvenance(
+      node: Expression,
+      state: DecoderProvenanceState,
+    ): boolean {
+      const cached = decoderProvenanceByNode.get(node);
+      if (cached !== undefined) {
+        return cached;
+      }
+      state.steps += 1;
+      if (state.steps > MAX_DECODER_PROVENANCE_STEPS) {
+        return false;
+      }
+
+      const transparent = transparentDecoderExpression(node);
+      let inspected: boolean;
+      if (transparent !== undefined) {
+        inspected = hasInspectableDecoderProvenance(transparent, state);
+      } else if (
+        isAsExpression(node) ||
+        isTypeAssertionExpression(node) ||
+        isNonNullExpression(node)
+      ) {
+        inspected = false;
+      } else if (
+        (isPropertyAccessExpression(node) || isElementAccessExpression(node)) &&
+        isDrizzleColumnType(checker, checker.getTypeAtLocation(node), node)
+      ) {
+        inspected = true;
+      } else if (isCallExpression(node)) {
+        inspected = isReviewedDecoderFactoryCall(node, state);
+      } else {
+        const symbol = expressionSymbol(node);
+        const declaration = symbol?.valueDeclaration;
+        if (
+          symbol === undefined ||
+          declaration === undefined ||
+          !isVariableDeclaration(declaration) ||
+          !isConstVariable(declaration) ||
+          declaration.initializer === undefined ||
+          state.symbols.has(symbol)
+        ) {
+          inspected = false;
+        } else if (isReviewedFrozenDecoder(declaration)) {
+          inspected = true;
+        } else {
+          state.symbols.add(symbol);
+          inspected = hasInspectableDecoderProvenance(
+            declaration.initializer,
+            state,
+          );
+          state.symbols.delete(symbol);
+        }
+      }
+      decoderProvenanceByNode.set(node, inspected);
+      return inspected;
+    }
+
+    function isDrizzleMapWithCall(node: TSESTree.CallExpression): boolean {
+      if (
+        node.callee.type !== AST_NODE_TYPES.MemberExpression ||
+        resolvedMemberName(node.callee) !== "mapWith"
+      ) {
+        return false;
+      }
+      return isDrizzleSymbol(checker, symbolAt(node.callee.property));
+    }
+
+    function checkResultDecoder(node: TSESTree.CallExpression): void {
+      if (!isDrizzleMapWithCall(node)) {
+        return;
+      }
+      const argument = node.arguments[0];
+      if (
+        node.arguments.length !== 1 ||
+        argument === undefined ||
+        argument.type === AST_NODE_TYPES.SpreadElement
+      ) {
+        context.report({ node, messageId: "uninspectableResultDecoder" });
+        return;
+      }
+      const tsArgument = services.esTreeNodeToTSNodeMap.get(argument);
+      if (
+        !isExpression(tsArgument) ||
+        !hasInspectableDecoderProvenance(tsArgument, {
+          steps: 0,
+          symbols: new Set(),
+        })
+      ) {
+        context.report({
+          node: argument,
+          messageId: "uninspectableResultDecoder",
+        });
+      }
     }
 
     function localVariableInitializer(
@@ -1337,6 +1638,7 @@ export const requireSqlResultMapping = createRule({
         }
       },
       CallExpression(node: TSESTree.CallExpression): void {
+        checkResultDecoder(node);
         if (
           node.typeArguments?.params.length === 1 &&
           isDrizzleSqlTag(node.callee)

@@ -10,7 +10,7 @@ import { delay } from "signal-timers";
 import { describe, expect, it } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { now } from "../../../lib/time";
+import { now, withMockNowForTest } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import {
   createBddApi,
@@ -173,6 +173,26 @@ async function completeRun(
     headers,
     [200],
   );
+}
+
+async function completeRunAfter(
+  actor: ApiTestUser,
+  runId: string,
+  durationMs: number,
+): Promise<void> {
+  const detail = await api.requestReadRun(actor, runId, [200]);
+  mustOk(detail, "claimed run detail");
+  const startedAt = detail.body.startedAt;
+  if (typeof startedAt !== "string") {
+    throw new Error("Claimed run is missing its start time");
+  }
+  const startedAtMs = Date.parse(startedAt);
+  if (!Number.isFinite(startedAtMs)) {
+    throw new Error("Claimed run has an invalid start time");
+  }
+  await withMockNowForTest(startedAtMs + durationMs, async () => {
+    await completeRun(runId, api.sandboxTokenForRun(actor, runId));
+  });
 }
 
 describe("RUN-03/RUN-04: run read surface auth matrix", () => {
@@ -464,6 +484,56 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
     const drained = await api.readRunQueue(actor);
     expect(drained.body.concurrency.active).toBe(0);
     expect(drained.body.queue).toStrictEqual([]);
+  });
+
+  it("returns validated run duration estimates across the numeric domain", async () => {
+    const actor = await entitledActor();
+    const compose = await createClaudeCompose(actor, "bdd-duration-estimate");
+
+    const emptyQueue = await api.readRunQueue(actor);
+    expect(emptyQueue.body.estimatedTimePerRun).toBeNull();
+
+    const zeroRun = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "zero duration estimate",
+    });
+    await api.claimRunnerJob(zeroRun.runId);
+    await completeRunAfter(actor, zeroRun.runId, 0);
+    const zeroQueue = await api.readRunQueue(actor);
+    expect(zeroQueue.body.estimatedTimePerRun).toBe(0);
+
+    const fractionalRun = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "fractional average estimate",
+    });
+    await api.claimRunnerJob(fractionalRun.runId);
+    await completeRunAfter(actor, fractionalRun.runId, 1);
+    const fractionalQueue = await api.readRunQueue(actor);
+    expect(fractionalQueue.body.estimatedTimePerRun).toBe(1);
+
+    const normalRun = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "normal duration estimate",
+    });
+    await api.claimRunnerJob(normalRun.runId);
+    await completeRunAfter(actor, normalRun.runId, 2999);
+    const normalQueue = await api.readRunQueue(actor);
+    expect(normalQueue.body.estimatedTimePerRun).toBe(1000);
+
+    const largeActor = await entitledActor();
+    const largeCompose = await createClaudeCompose(
+      largeActor,
+      "bdd-large-duration-estimate",
+    );
+    const largeRun = await api.createDirectRun(largeActor, {
+      agentComposeId: largeCompose.composeId,
+      prompt: "large duration estimate",
+    });
+    await api.claimRunnerJob(largeRun.runId);
+    const largeDurationMs = 200_000_000_000_000;
+    await completeRunAfter(largeActor, largeRun.runId, largeDurationMs);
+    const largeQueue = await api.readRunQueue(largeActor);
+    expect(largeQueue.body.estimatedTimePerRun).toBe(largeDurationMs);
   });
 });
 
