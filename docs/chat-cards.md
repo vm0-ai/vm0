@@ -220,7 +220,7 @@ A connector link such as:
 /connectors/slack/connect?agentId=agent-123
 ```
 
-produces a descriptor containing the connector reference, agent ID, and
+produces a descriptor containing the connector slug, agent ID, and
 original URL. Its signals combine several reactive reads and an action:
 
 ```ts

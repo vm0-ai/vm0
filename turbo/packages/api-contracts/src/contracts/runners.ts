@@ -548,8 +548,6 @@ export const storedExecutionContextSchema = z.object({
   encryptedSecrets: z.string().nullable(),
   // Maps firewall auth secret env aliases (the `NAME` in `${{ secrets.NAME }}`) to
   // their connector or provider owner. Keys are env aliases, not storage secret names.
-  // TODO(#23619): Split connector slugs from provider keys before renaming this
-  // persisted runner field.
   secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
   // Same keys as secretConnectorMap; adds source details when the owner alone
   // is not enough to locate access storage (for example, personal model providers).
@@ -636,8 +634,6 @@ export const executionContextSchema = z.object({
   encryptedSecrets: z.string().nullable(),
   // Maps firewall auth secret env aliases (the `NAME` in `${{ secrets.NAME }}`) to
   // their connector or provider owner. Keys are env aliases, not storage secret names.
-  // TODO(#23619): Split connector slugs from provider keys before renaming this
-  // runner wire field.
   secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
   // Same keys as secretConnectorMap; adds source details when the owner alone
   // is not enough to locate access storage (for example, personal model providers).

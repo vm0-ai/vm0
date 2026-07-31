@@ -863,7 +863,7 @@ const updateAgentUserConnectorsInner$ = command(
       signal.throwIfAborted();
       if (!resolved.ok) {
         return validationError(
-          `Invalid connector types: ${resolved.connectorSlug}`,
+          `Invalid connector slugs: ${resolved.connectorSlug}`,
         );
       }
     }
