@@ -24,6 +24,14 @@ load '../../helpers/codex-zero'
 export BATS_TEST_TIMEOUT=300
 
 setup_file() {
+    local real_preview_credentials="/tmp/e2e-api-credentials-real-preview.json"
+    E2E_API_TOKEN=$(jq -er '.token | select(type == "string" and length > 0)' "$real_preview_credentials")
+    E2E_API_URL=$(jq -er '.apiUrl | select(type == "string" and length > 0)' "$real_preview_credentials")
+    export E2E_API_TOKEN E2E_API_URL
+
+    # realAgentInPreview is a user-scoped switch read when an idle thread is
+    # claimed. Keep its brief true window on a dedicated identity so parallel
+    # mock-runner tests cannot be routed to a real CLI with mock credentials.
     export UNIQUE_ID="$(date +%s%3N)-$RANDOM"
     export TEST_DIR="$(mktemp -d)"
     export AGENT_NAME="e2e-codex-byok-${UNIQUE_ID}"

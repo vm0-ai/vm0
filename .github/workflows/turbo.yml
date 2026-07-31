@@ -1148,7 +1148,7 @@ jobs:
           done
 
           # Create test users + orgs (browser is created via UI sign-up flow)
-          for variant in serial runner; do
+          for variant in serial runner real-preview; do
             email="${JOB_REF}+clerk_test+${variant}@vm0-e2e.ai"
             encoded_email=$(jq -rn --arg email "$email" '$email|@uri')
             existing_users=$(curl -sS -X GET \
@@ -1194,6 +1194,9 @@ jobs:
           e2e/scripts/generate-test-token.sh \
             "${JOB_REF}+clerk_test+runner@vm0-e2e.ai" \
             "/tmp/e2e-api-credentials-runner.json"
+          e2e/scripts/generate-test-token.sh \
+            "${JOB_REF}+clerk_test+real-preview@vm0-e2e.ai" \
+            "/tmp/e2e-api-credentials-real-preview.json"
         env:
           VM0_API_BACKEND_URL: ${{ steps.api-alias.outputs.url || steps.api-deploy.outputs.url }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
@@ -1206,6 +1209,7 @@ jobs:
           path: |
             /tmp/e2e-api-credentials-serial.json
             /tmp/e2e-api-credentials-runner.json
+            /tmp/e2e-api-credentials-real-preview.json
           retention-days: 1
 
   # Build the canonical Cloudflare app artifact independently of Vercel, then
