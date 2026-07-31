@@ -167,6 +167,12 @@ async function createWorkflow(
   return workflow;
 }
 
+async function enableWorkflowRuns(actor: ApiTestUser): Promise<void> {
+  await api.grantProEntitlement(actor);
+  await api.ensureOrgModelProvider(actor);
+  api.configureRunnerGroup();
+}
+
 async function connectManualGrant(
   actor: ApiTestUser,
   connectorSlug: ConnectorSlug,
@@ -524,6 +530,13 @@ describe("zero workflows", () => {
       displayName: "Run Attribution Workflow",
       instruction: "# run attribution workflow",
     });
+    const prepared = await accept(
+      detailClient().chatThread({
+        headers: authHeaders(actor),
+        params: { workflowId: created.body.id },
+      }),
+      [200],
+    );
 
     const run = await accept(
       detailClient().run({
@@ -539,6 +552,35 @@ describe("zero workflows", () => {
       throw new Error("Expected an idle workflow invocation to create a run");
     }
     expectZeroPreCreateSource(run.body.runId, "workflow_slash_command");
+    expect(run.body.chatThreadId).toBe(prepared.body.chatThreadId);
+    const timingEvents = sandboxOperationEventsForRun(run.body.runId);
+    const actionTypes = timingEvents.map((event) => {
+      return event.op_type;
+    });
+    expect(actionTypes).toStrictEqual(
+      expect.arrayContaining([
+        "api_dispatch_pre_create_zero_workflow_slash_prepare_normal_send",
+        "api_dispatch_pre_create_zero_workflow_slash_load_thread_mapping",
+        "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
+        "api_dispatch_pre_create_zero_web_chat_prepare_normal_send_load_and_authorize_agent",
+      ]),
+    );
+    expect(actionTypes).not.toContain(
+      "api_dispatch_pre_create_zero_workflow_slash_ensure_thread",
+    );
+    expect(actionTypes).not.toContain(
+      "api_dispatch_pre_create_zero_entrypoint_gap",
+    );
+    const serializedTimingEvents = JSON.stringify(timingEvents);
+    for (const sensitiveValue of [
+      created.body.id,
+      agent.agentId,
+      actor.userId,
+      `/${created.body.name}`,
+      "workflow-openai-key",
+    ]) {
+      expect(serializedTimingEvents).not.toContain(sensitiveValue);
+    }
 
     const queued = await accept(
       detailClient().run({
@@ -558,6 +600,106 @@ describe("zero workflows", () => {
     expect(claim.environment?.OPENAI_MODEL).toBe("gpt-5.6-terra");
     expect(claim.environment?.ANTHROPIC_MODEL).toBeUndefined();
     await api.requestCancelRun(actor, run.body.runId, [200]);
+  });
+
+  it("resolves concurrent first workflow runs to one automation thread", async () => {
+    const actor = user({ orgRole: "org:admin" });
+    await enableWorkflowRuns(actor);
+    const agent = await createAgent(actor, {
+      displayName: "Concurrent Workflow Agent",
+      visibility: "private",
+    });
+    const created = await createWorkflow(actor, {
+      agentId: agent.agentId,
+      name: `concurrent-run-workflow-${randomUUID().slice(0, 8)}`,
+      displayName: "Concurrent Run Workflow",
+      instruction: "# concurrent run workflow",
+    });
+    const client = detailClient();
+    const headers = authHeaders(actor);
+
+    const runs = await Promise.all([
+      accept(
+        client.run({
+          headers,
+          params: { workflowId: created.body.id },
+        }),
+        [200],
+      ),
+      accept(
+        client.run({
+          headers,
+          params: { workflowId: created.body.id },
+        }),
+        [200],
+      ),
+    ]);
+
+    expect(
+      new Set(
+        runs.map((run) => {
+          return run.body.chatThreadId;
+        }),
+      ).size,
+    ).toBe(1);
+    const runIds = [
+      ...new Set(
+        runs.flatMap((run) => {
+          return run.body.runId ? [run.body.runId] : [];
+        }),
+      ),
+    ];
+    expect(runIds.length).toBeGreaterThan(0);
+    for (const runId of runIds) {
+      await api.requestCancelRun(actor, runId, [200]);
+    }
+  });
+
+  it("runs public workflows for members and hides private-agent workflows", async () => {
+    const owner = user({ orgRole: "org:admin" });
+    const member = user({ orgId: owner.orgId, orgRole: "org:member" });
+    await enableWorkflowRuns(owner);
+    const publicAgent = await createAgent(owner, {
+      displayName: "Public Workflow Agent",
+      visibility: "public",
+    });
+    const publicWorkflow = await createWorkflow(owner, {
+      agentId: publicAgent.agentId,
+      name: `public-run-workflow-${randomUUID().slice(0, 8)}`,
+      visibility: "public",
+      instruction: "# public run workflow",
+    });
+
+    const publicRun = await accept(
+      detailClient().run({
+        headers: authHeaders(member),
+        params: { workflowId: publicWorkflow.body.id },
+      }),
+      [200],
+    );
+    if (!publicRun.body.runId) {
+      throw new Error("Expected the public workflow to create a run");
+    }
+
+    const privateAgent = await createAgent(owner, {
+      displayName: "Hidden Private Workflow Agent",
+      visibility: "private",
+    });
+    const privateWorkflow = await createWorkflow(owner, {
+      agentId: privateAgent.agentId,
+      name: `private-run-workflow-${randomUUID().slice(0, 8)}`,
+      instruction: "# private run workflow",
+    });
+    const hidden = await accept(
+      detailClient().run({
+        headers: authHeaders(member),
+        params: { workflowId: privateWorkflow.body.id },
+      }),
+      [404],
+    );
+    expect(hidden.body.error.code).toBe("NOT_FOUND");
+
+    await api.requestCancelRun(member, publicRun.body.runId, [200]);
   });
 
   it("requires agent write-permission to create public workflows under an agent", async () => {
