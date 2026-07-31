@@ -409,17 +409,32 @@ describe("workflow queue", () => {
     mockNow(Date.UTC(2020, 0, 1));
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
-    const admissionLock = await holdOrgAdmissionLockFixture({
-      orgId: scenario.orgId,
-      signal: context.signal,
-    });
-    onTestFinished(async () => {
-      admissionLock.release();
-      await admissionLock.done;
+    const workflowPublishStarted = createDeferredPromise<void>(context.signal);
+    const releaseWorkflowPublish = createDeferredPromise<void>(context.signal);
+    let heldWorkflowPublish = false;
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (
+        !heldWorkflowPublish &&
+        topic === `chatThreadMessageCreated:${automation.threadId}`
+      ) {
+        heldWorkflowPublish = true;
+        workflowPublishStarted.resolve(undefined);
+        return releaseWorkflowPublish.promise;
+      }
+      return Promise.resolve(undefined);
     });
 
     const workflowRequest = postWorkflowWebhook(automation, "fresh event");
-    await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(1);
+    onTestFinished(async () => {
+      if (!releaseWorkflowPublish.settled()) {
+        releaseWorkflowPublish.resolve(undefined);
+      }
+      await Promise.allSettled([workflowRequest]);
+    });
+    // The first realtime publish happens after the queue event transaction has
+    // committed and before this request can drain it. This is the durable
+    // product milestone the stale sweep races, without observing pg_locks.
+    await workflowPublishStarted.promise;
     const event = (await pendingWorkflowEvents(automation.threadId))[0];
     if (!event) {
       throw new Error("Expected a pending workflow event");
@@ -430,9 +445,8 @@ describe("workflow queue", () => {
     await cleanupSandboxes();
     await expectSweepLeftQueueUntouched(automation.threadId, [event.id]);
 
-    admissionLock.release();
+    releaseWorkflowPublish.resolve(undefined);
     const result = await workflowRequest;
-    await admissionLock.done;
     const runId = await expectAcceptedRunId(result, automation.threadId);
     await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
       runId,
