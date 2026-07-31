@@ -3,6 +3,7 @@
 import gzip
 import json
 import zlib
+from dataclasses import replace
 
 import brotli
 import pytest
@@ -69,7 +70,7 @@ class TestModelProviderJsonFallback:
 
     def test_openai_non_streaming_json_fallback(self, tmp_path, real_flow):
         """Legacy JSON fallback should use OpenAI Responses mapping."""
-        provider_case = OPENAI_RESPONSES_CASE
+        provider_case = replace(OPENAI_RESPONSES_CASE, model="gpt-5.6-sol")
         input_tokens = 272_001
         output_tokens = 20
         cached_tokens = 70_000

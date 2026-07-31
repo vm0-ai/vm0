@@ -45,7 +45,10 @@ def _model_provider_sse_flow(
 
 
 def _openai_responses_sse_flow(
-    tmp_path: Path, real_flow: Callable[..., http.HTTPFlow]
+    tmp_path: Path,
+    real_flow: Callable[..., http.HTTPFlow],
+    *,
+    model_usage_provider: str = "gpt-5.5",
 ) -> http.HTTPFlow:
     return _model_provider_sse_flow(
         tmp_path,
@@ -54,7 +57,7 @@ def _openai_responses_sse_flow(
         original_url="https://api.openai.com/v1/responses",
         firewall_name="model-provider:openai-api-key",
         cli_agent_type="codex",
-        model_usage_provider="gpt-5.5",
+        model_usage_provider=model_usage_provider,
     )
 
 
@@ -106,13 +109,17 @@ class TestModelProviderSseUsage:
 
     def test_full_pipeline_model_sse_finalizes_trailing_event(self, tmp_path, real_flow):
         """response() must flush a trailing SSE usage event before reporting."""
-        flow = _openai_responses_sse_flow(tmp_path, real_flow)
+        flow = _openai_responses_sse_flow(
+            tmp_path,
+            real_flow,
+            model_usage_provider="gpt-5.6-sol",
+        )
         mitm_addon.responseheaders(flow)
         assert metadata_keys.STREAM_BUFFER not in flow.metadata
         assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
         response_stream(flow)(
             b"event: response.completed\n"
-            b'data: {"response":{"model":"gpt-5.5",'
+            b'data: {"response":{"model":"gpt-5.6-sol",'
             b'"usage":{"input_tokens":50,"output_tokens":20,'
             b'"input_tokens_details":{"cached_tokens":10,'
             b'"cache_write_tokens":15}}}}'
@@ -131,11 +138,15 @@ class TestModelProviderSseUsage:
         }
 
     def test_full_pipeline_openai_sse_reports_long_context_items(self, tmp_path, real_flow):
-        flow = _openai_responses_sse_flow(tmp_path, real_flow)
+        flow = _openai_responses_sse_flow(
+            tmp_path,
+            real_flow,
+            model_usage_provider="gpt-5.6-sol",
+        )
         mitm_addon.responseheaders(flow)
         response_stream(flow)(
             b"event: response.completed\n"
-            b'data: {"response":{"model":"gpt-5.5",'
+            b'data: {"response":{"model":"gpt-5.6-sol",'
             b'"usage":{"input_tokens":272001,"output_tokens":20,'
             b'"input_tokens_details":{"cached_tokens":70000,'
             b'"cache_write_tokens":2001}}}}\n\n'
