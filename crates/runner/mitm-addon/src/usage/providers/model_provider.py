@@ -65,7 +65,7 @@ class _ModelUsageTierDecision:
     committed: bool
 
 
-_MODEL_LONG_CONTEXT_MIN_INPUT_TOKENS = {
+_MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS = {
     "gpt-5.5": 272_001,
     "gpt-5.6-sol": 272_001,
     "gpt-5.6-terra": 272_001,
@@ -194,9 +194,9 @@ def report_model_provider_usage_source(
     in a later frame. Callers can drop the source from flow metadata after this
     returns: observable flows carry the canonical ``MODEL_USAGE_PROVIDER``, so
     zero-usage source model hints do not need to be retained for later
-    same-response-id frames. Tiered OpenAI models retain only their bounded
-    concrete tier decision so later or duplicate output-only frames derive the
-    same billable category.
+    same-response-id frames. Tiered models retain only their bounded concrete
+    tier decision so later or duplicate output-only frames derive the same
+    billable category.
     """
     usage_events: list[UsageEvent] = []
     observations: list[ModelUsageObservation] = []
@@ -539,7 +539,7 @@ def _source_model_usage_tier(
     usage: dict,
 ) -> _ModelUsageTier | None:
     billing_tier = _model_usage_tier(provider, usage)
-    if provider not in _MODEL_LONG_CONTEXT_MIN_INPUT_TOKENS:
+    if provider not in _MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS:
         return billing_tier
 
     tiers = _model_provider_usage_tiers(flow)
@@ -578,7 +578,7 @@ def _model_provider_usage_tiers(
 
 
 def _model_usage_tier(provider: str, usage: dict) -> _ModelUsageTier | None:
-    min_input_tokens = _MODEL_LONG_CONTEXT_MIN_INPUT_TOKENS.get(provider)
+    min_input_tokens = _MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS.get(provider)
     if min_input_tokens is None:
         return _MODEL_USAGE_TIER_BASE
 
