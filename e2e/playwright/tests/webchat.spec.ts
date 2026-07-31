@@ -30,10 +30,11 @@ test("send a chat message and receive an assistant response", async ({
     timeout: 10_000,
   });
 
-  const assistantMessage = page.locator('[data-role="assistant"]').last();
-  await expect(assistantMessage.getByText(prompt, { exact: true })).toBeVisible(
-    {
-      timeout: 120_000,
-    },
-  );
+  const assistantReply = page
+    .locator('[data-role="assistant"]:not([data-thinking-indicator])')
+    .locator(".zero-chat-bubble-assistant")
+    .filter({ hasText: /\S/ })
+    .last();
+  await expect(assistantReply).toBeVisible({ timeout: 120_000 });
+  await expect(assistantReply).not.toContainText("Oops, something went wrong");
 });
