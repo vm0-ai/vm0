@@ -190,6 +190,49 @@ describe("assistant markdown", () => {
     expect(lightboxImage.getAttribute("src")).toContain("data:image/svg+xml");
   });
 
+  it("keeps a mermaid diagram in the lightbox while the artifact sidebar is open", async () => {
+    mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
+
+    detachedSetupPage({
+      context,
+      path: "/chats/thread-markdown",
+      featureSwitches: {
+        [FeatureSwitchKey.MermaidDiagrams]: true,
+        [FeatureSwitchKey.ArtifactSidebarInlineOpen]: true,
+      },
+    });
+
+    const artifactsButton = await waitFor(() => {
+      const found = queryAllByRoleFast("button").find((element) => {
+        return element.getAttribute("aria-label") === "Open artifacts";
+      });
+      if (!found) {
+        throw new Error("Expected the artifacts header button");
+      }
+      return found;
+    });
+    click(artifactsButton);
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("thread-sidebar-artifacts"),
+      ).toBeInTheDocument();
+    });
+
+    const expand = await screen.findByLabelText("Expand diagram");
+    await waitFor(() => {
+      expect(expand).toBeEnabled();
+    });
+    click(expand);
+
+    // A rendered diagram is an inline data URL, so it opens the lightbox and
+    // leaves the artifact sidebar on its own content.
+    const lightboxImage = await screen.findByTestId(
+      "attachment-lightbox-image",
+    );
+    expect(lightboxImage.getAttribute("src")).toContain("data:image/svg+xml");
+    expect(screen.getByTestId("thread-sidebar-artifacts")).toBeInTheDocument();
+  });
+
   it("keeps the source visible when a mermaid diagram cannot be parsed", async () => {
     mockThread("```mermaid\nthis is not a diagram\n```");
 
