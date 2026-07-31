@@ -1844,6 +1844,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn unknown_cancel_notification_mode_defaults_to_hard_signal() {
+        let run_id: RunId = "00000000-0000-0000-0000-000000000002".parse().unwrap();
+        let tokens = RunCancellationRegistry::new();
+        let registration = tokens.register(run_id).await.unwrap();
+        let signals = registration.handle().signals();
+        let wakeups = PollWakeups::new(true);
+        let direct_candidates = direct_candidate_inbox();
+        let profiles = default_profiles();
+        let msg = make_message(
+            Some("cancel"),
+            serde_json::json!({ "runId": run_id, "mode": "future-mode" }),
+        );
+
+        handle_ably_message(&msg, &profiles, &wakeups, &direct_candidates, &tokens).await;
+
+        assert!(signals.any().is_cancelled());
+        assert!(signals.hard().is_cancelled());
+        assert!(!signals.cooperative_user().is_cancelled());
+        assert_no_direct_candidate(&direct_candidates).await;
+    }
+
+    #[tokio::test]
     async fn broadcast_supported_job_notification_enqueues_direct_candidate() {
         let tokens = RunCancellationRegistry::new();
         let wakeups = PollWakeups::new(true);
@@ -2243,21 +2265,5 @@ mod tests {
             "00000000-0000-0000-0000-000000000002"
         );
         assert_eq!(notification.mode, CancelNotificationMode::Cooperative);
-    }
-
-    #[test]
-    fn parse_cancel_notification_defaults_unknown_mode_to_hard() {
-        let msg = make_message(
-            Some("cancel"),
-            serde_json::json!({
-                "runId": "00000000-0000-0000-0000-000000000002",
-                "mode": "future-mode"
-            }),
-        );
-
-        assert_eq!(
-            parse_cancel_notification(&msg).unwrap().mode,
-            CancelNotificationMode::Hard
-        );
     }
 }
