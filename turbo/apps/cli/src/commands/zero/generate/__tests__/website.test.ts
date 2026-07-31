@@ -48,9 +48,21 @@ describe("zero generate website command", () => {
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain("# Zero generate website");
-    expect(stdout).toContain("federated generation source-selection packet");
+    expect(stdout).toContain("generation source-selection packet");
+    expect(stdout).not.toContain("federated");
     expect(stdout).toContain("## Stage 1: Resource Selection");
     expect(stdout).toContain("## Candidate Registry Slice");
+    expect(stdout).toContain(
+      "Source: `nexu-io/open-design@3fb620af423534643677c7c6fae76be088fa770a`",
+    );
+    expect(stdout).not.toContain("Sources:");
+    expect(stdout).not.toContain("vm0-ai/vm0-skills");
+    expect(stdout).toContain(
+      "For a candidate without `source.archive`, resolve `source.path` only from the pinned Git Source above. Do not run `zero resource pull` for it.",
+    );
+    expect(stdout).toContain(
+      "For a candidate with `source.archive`, run `zero resource pull <candidate-id> --dir ./generated/resources` with that candidate's `id`, then resolve it at `./generated/resources/<source.path>`. Do not look for it in the Git Source.",
+    );
     expect(stdout).toContain("observability launch site");
     expect(stdout).toContain("template:black-slabs");
     expect(stdout).toContain("template:web-prototype-taste-editorial");

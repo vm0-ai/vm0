@@ -78,21 +78,11 @@ export interface VideoTemplateRegistryEntry extends Omit<
 
 export interface ResourceCandidateSlice {
   readonly registryVersion: string;
+  /** Pinned Git source for every candidate without `source.archive`. */
   readonly source: {
     readonly repo: string;
     readonly ref: string;
   };
-  readonly sources: readonly (
-    | {
-        readonly type?: "git";
-        readonly repo: string;
-        readonly ref: string;
-      }
-    | {
-        readonly type: "r2-archive";
-        readonly description: string;
-      }
-  )[];
   readonly candidates: {
     readonly skills: readonly RegistryEntry[];
     readonly templates: readonly RegistryEntry[];
@@ -4059,21 +4049,6 @@ export function selectResourceCandidates(
       repo: RESOURCE_REGISTRY_REPO,
       ref: RESOURCE_REGISTRY_COMMIT,
     },
-    sources: [
-      {
-        repo: RESOURCE_REGISTRY_REPO,
-        ref: RESOURCE_REGISTRY_COMMIT,
-      },
-      {
-        repo: VM0_SKILLS_REPO,
-        ref: VM0_SKILLS_REF,
-      },
-      {
-        type: "r2-archive",
-        description:
-          "Private R2-backed resource archives resolved through authenticated `zero resource pull` requests",
-      },
-    ],
     candidates: {
       skills: listSkills(target),
       templates: listTemplates(target),
