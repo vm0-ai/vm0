@@ -201,7 +201,7 @@ impl CowLayer {
     /// Returns an I/O error if the base image cannot be opened, or if an
     /// existing bitmap sidecar cannot be inspected or loaded. When the restored
     /// bitmap contains dirty blocks, also returns an I/O error if the associated
-    /// COW file cannot be opened or does not cover those blocks.
+    /// COW file cannot be opened or validated to cover those blocks.
     pub fn new(
         base_path: &Path,
         cow_path: &Path,
