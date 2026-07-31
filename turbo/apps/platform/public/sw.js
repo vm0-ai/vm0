@@ -1,4 +1,3 @@
-const LEGACY_CACHE_PREFIX = "static-";
 const OKOU_ROOT_DOMAINS = ["okou.ai", "omby.ai", "okou-app.pages.dev"];
 
 function defaultNotificationTitle() {
@@ -11,23 +10,6 @@ function defaultNotificationTitle() {
 
 self.addEventListener("install", (_event) => {
   self.skipWaiting();
-});
-
-// Activate: drop the Cache Storage entries written by earlier versions of this
-// worker. There is no `fetch` handler anymore, so requests go straight to the
-// network and the browser HTTP cache; nothing reads those caches.
-self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    (async () => {
-      const keys = await caches.keys();
-      await Promise.all(
-        keys
-          .filter((key) => key.startsWith(LEGACY_CACHE_PREFIX))
-          .map((key) => caches.delete(key)),
-      );
-      await self.clients.claim();
-    })(),
-  );
 });
 
 // --- Web Push Notifications ---
