@@ -2,7 +2,7 @@
 
 ## Overview
 
-A chat card turns a specially recognized link inside a `ChatMessage` into a
+A chat card turns a specially recognized link inside a `ChatEvent` into a
 rich, interactive React surface. The message remains the transport: an agent or
 another producer can emit a normal URL, Markdown link, or relative platform
 path, and the platform upgrades that link into a typed card when its path
@@ -11,7 +11,7 @@ matches a supported pattern.
 The core pipeline is:
 
 ```text
-ChatMessage content
+ChatEvent content
   -> recognize a trusted link and parse a typed descriptor
   -> derive a stable resource key
   -> register signals at the message write/command boundary
@@ -65,7 +65,7 @@ that card type exists.
 
 ### 1. Parse content into pure descriptors
 
-`parseMessageBodyBlocks` extracts renderable content from a `ChatMessage`
+`parseChatEventBodyBlocks` extracts renderable content from a `ChatEvent`
 and passes it to `parseBodyBlocks`. The parser separates normal Markdown from
 recognized cards.
 
@@ -350,7 +350,7 @@ registry.
 
 ## Relevant Implementation Files
 
-- `turbo/apps/platform/src/signals/chat-page/chat-message-body-blocks.ts`
+- `turbo/apps/platform/src/signals/chat-page/chat-event-body-blocks.ts`
 - `turbo/apps/platform/src/signals/chat-page/parse-body-blocks.ts`
 - `turbo/apps/platform/src/signals/chat-page/create-chat-thread.ts`
 - `turbo/apps/platform/src/signals/chat-page/artifact-card-signals.ts`

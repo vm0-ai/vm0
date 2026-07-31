@@ -13,7 +13,20 @@ export const githubDeliveryTargetSchema = z.object({
 
 export type GitHubDeliveryTarget = z.infer<typeof githubDeliveryTargetSchema>;
 
-export const githubChatCallbackPayloadSchema =
+export const githubChatCallbackPayloadSchema = z.preprocess(
+  (payload) => {
+    if (
+      typeof payload !== "object" ||
+      payload === null ||
+      "chatEventId" in payload ||
+      !("chatMessageId" in payload)
+    ) {
+      return payload;
+    }
+    const { chatMessageId, ...target } = payload;
+    return { ...target, chatEventId: chatMessageId };
+  },
   githubDeliveryTargetSchema.extend({
-    chatMessageId: z.string().uuid(),
-  });
+    chatEventId: z.string().uuid(),
+  }),
+);

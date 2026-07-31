@@ -538,7 +538,7 @@ interface ChatCallbackDependencies {
       readonly orgId: string;
       readonly agentId: string;
       readonly target: GitHubDeliveryTarget;
-      readonly chatMessageId: string;
+      readonly chatEventId: string;
     },
     signal: AbortSignal,
   ) => Promise<void>;
@@ -1254,7 +1254,7 @@ async function insertGitHubChatDeliveryCallback(args: {
   readonly runId: string;
   readonly sourceCallbackId?: string;
   readonly target: GitHubDeliveryTarget;
-  readonly chatMessageId: string;
+  readonly chatEventId: string;
 }): Promise<string> {
   const callbackCondition = args.sourceCallbackId
     ? and(
@@ -1283,7 +1283,7 @@ async function insertGitHubChatDeliveryCallback(args: {
       encryptedSecret: sourceCallback.encryptedSecret,
       payload: {
         ...args.target,
-        chatMessageId: args.chatMessageId,
+        chatEventId: args.chatEventId,
       },
     })
     .returning({ id: agentRunCallbacks.id });
@@ -1379,7 +1379,7 @@ async function insertAssistantErrorEvent(args: {
           runId: args.runId,
           sourceCallbackId: args.sourceCallbackId,
           target: args.githubDelivery,
-          chatMessageId: event.id,
+          chatEventId: event.id,
         })
       : undefined;
     await touchChatThreadLastMessageAt(tx, args.threadId, event.createdAt);
@@ -1650,7 +1650,7 @@ async function insertRunLifecycleMarkerTransaction(args: {
           runId: input.runId,
           sourceCallbackId: input.sourceCallbackId,
           target: input.githubDelivery,
-          chatMessageId: deliveryEvent.id,
+          chatEventId: deliveryEvent.id,
         })
       : undefined;
   await touchChatThreadLastMessageAt(
@@ -3320,7 +3320,7 @@ async function handleGitHubQueuedMessageAdmissionFailure(args: {
         orgId: args.failure.orgId,
         agentId: args.failure.agentId,
         target: args.failure.githubDelivery,
-        chatMessageId: failed.assistantEventId,
+        chatEventId: failed.assistantEventId,
       },
       args.signal,
     ),
